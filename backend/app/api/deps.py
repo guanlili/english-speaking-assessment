@@ -1,4 +1,5 @@
-from collections.abc import Generator
+import uuid
+from collections.abc import Callable, Generator
 from typing import Annotated
 
 import jwt
@@ -25,6 +26,18 @@ def get_db() -> Generator[Session]:
 
 SessionDep = Annotated[Session, Depends(get_db)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
+
+
+def get_scoring_submitter() -> Callable[[uuid.UUID], None]:
+    """评分任务提交器。测试里覆写为同步执行以走完整个状态机。"""
+    from app.scoring.worker import submit_attempt_scoring
+
+    return submit_attempt_scoring
+
+
+ScoringSubmitter = Annotated[
+    Callable[[uuid.UUID], None], Depends(get_scoring_submitter)
+]
 
 
 def get_current_user(session: SessionDep, token: TokenDep) -> User:
@@ -61,3 +74,6 @@ def get_current_active_superuser(current_user: CurrentUser) -> User:
             status_code=403, detail="The user doesn't have enough privileges"
         )
     return current_user
+
+
+SuperUserDep = Annotated[User, Depends(get_current_active_superuser)]

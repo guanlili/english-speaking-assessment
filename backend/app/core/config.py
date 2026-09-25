@@ -106,6 +106,25 @@ class Settings(BaseSettings):
     EMAIL_TEST_USER: EmailStr = "test@example.com"
     FIRST_SUPERUSER: EmailStr
     FIRST_SUPERUSER_PASSWORD: str
+
+    # ── 口语评测评分（PRD §7.2：引擎藏在可替换接口后面）──
+    # mock=离线演示/测试；ark=火山方舟 Responses API（需开通模型 + ARK_API_KEY）
+    SCORING_PROVIDER: Literal["mock", "ark"] = "mock"
+    ARK_API_KEY: str | None = None
+    ARK_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
+    ARK_ASR_MODEL: str = "doubao-seed-2-0-lite"
+    # 开放题 rubric 评分模型（豆包或 DeepSeek 系列，按账号开通情况调整）
+    ARK_RUBRIC_MODEL: str = "doubao-seed-2-0-lite"
+    # 标准音合成（PRD §7.2）：模型与音色按方舟控制台开通情况调整
+    ARK_TTS_MODEL: str = "doubao-seed-tts"
+    ARK_TTS_VOICE: str = "en_female_calm"
+    # 后台评分线程数（PRD：8 个 worker 可在 2 分钟内打完 40 人）
+    SCORING_WORKERS: int = 2
+    # 音频落盘目录（compose 里挂卷到 /app/audio）
+    AUDIO_STORAGE_DIR: str = "./audio"
+    MAX_AUDIO_MB: int = 20
+    # 练习日切分时区（教室在国内；UTC 会在早八点切日）
+    PRACTICE_TZ: str = "Asia/Shanghai"
     # 是否开放自助注册。代码默认关（安全兜底）；本地 .env.example 开着便于开发演示，
     # 生产由 GitHub Secrets 控制（deploy.yml 默认写 false）
     USERS_OPEN_REGISTRATION: bool = False
