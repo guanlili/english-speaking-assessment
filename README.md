@@ -1,8 +1,18 @@
-# lili-full-stack
+# 英语口语评测平台
 
-guanlili 的个人全栈项目模板。基于 [fastapi/full-stack-fastapi-template](https://github.com/fastapi/full-stack-fastapi-template) 精简定制，面向 AI 驱动的外包项目快速交付。
 
-> **AI 助手请注意**：本仓库是模板仓库，不是具体项目。具体项目的业务背景请看该项目自己的 `CLAUDE.md`。
+基于 [guanlili/lili-full-stack](https://github.com/guanlili/lili-full-stack) 创建的独立项目仓库。
+
+## 当前状态
+
+项目骨架已初始化，包含用户认证、管理界面、数据库迁移、CI 与部署脚本。口语评测业务尚未开始开发；原有 Items 功能暂作参考。
+
+- 本地配置：`.env`（已忽略，不提交）；首次克隆可运行 `bash scripts/init-project.sh "英语口语评测平台"`，然后将 `COMPOSE_PROJECT_NAME` 设为 `english-speaking-assessment`。
+- 开发规范：[AGENTS.md](AGENTS.md)、[CLAUDE.md](CLAUDE.md)、[AI_RULES.md](AI_RULES.md)。
+- 下一步：确认目标用户、题型和评分标准，再用真实录音验证评测方案。
+- 生产部署默认关闭。配置服务器 Secrets 后，设置仓库变量 `ENABLE_PRODUCTION_DEPLOY=true` 启用。CI 检查始终保留。
+
+下方保留模板操作指南供开发参考，其中“开启新项目”步骤在本仓库已完成。
 
 ---
 

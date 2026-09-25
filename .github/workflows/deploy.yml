@@ -117,7 +117,7 @@ jobs:
     name: 部署到服务器
     needs: [backend, frontend]
     # PR 只跑检查不部署；push 事件本身已限定 master 分支
-    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: vars.ENABLE_PRODUCTION_DEPLOY == 'true' && github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     # 同一生产环境互斥；过期提交在服务器持锁阶段跳过，不假设排队顺序。
     concurrency:
       group: production-deploy
