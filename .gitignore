@@ -16,3 +16,9 @@ node_modules/
 .env.new
 .env.new.*
 __pycache__/
+
+# 本地直跑后端时的学生录音目录（docker 内在卷里）
+backend/audio/
+
+# ZCode 本地工具配置
+.zcodeignore

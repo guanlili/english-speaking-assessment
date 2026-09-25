@@ -5,7 +5,22 @@
 
 ## 当前状态
 
-项目骨架已初始化，包含用户认证、管理界面、数据库迁移、CI 与部署脚本。口语评测业务尚未开始开发；原有 Items 功能暂作参考。
+口语评测业务已实现 PRD 三个阶段的学生端与教师端（课堂码进入、一轮 3 复述 + 2 分级问答、反馈与词汇参考等级、进步轨迹、教师面板）。原有 Items 功能暂作参考，交付前删除。
+
+### 演示入口（本地 `docker compose up -d` 后）
+
+| 入口 | 地址 | 说明 |
+|------|------|------|
+| 单页演示（无登录） | http://localhost:5173/practice | 听 → 读 → 录 → 反馈 → 再练 |
+| 学生进入课堂 | http://localhost:5173/j/DEMO01 | 输入显示名开始当天 5 题 |
+| 学生结果页 | http://localhost:5173/p/DEMO01/result | 每题转写与总评 |
+| 学生进步 | http://localhost:5173/me/DEMO01 | 口语分与词汇档轨迹 |
+| 教师面板 | http://localhost:5173/t/DEMO01 | 名单、均分、音频回放、档位分布 |
+| 内容管理 | http://localhost:5173/admin（管理员登录） | 篇目/情景问法/词表 CSV/课堂码 |
+
+演示前重置数据：`bash scripts/reset-demo.sh`（清学生与作答，保留内容与课堂码）。
+
+默认评分引擎为离线 mock（`SCORING_PROVIDER=mock`）。接入真实转写：方舟控制台开通模型后，在 `.env` 设置 `ARK_API_KEY` 并把 `SCORING_PROVIDER` 改为 `ark`。
 
 - 本地配置：`.env`（已忽略，不提交）；首次克隆可运行 `bash scripts/init-project.sh "英语口语评测平台"`，然后将 `COMPOSE_PROJECT_NAME` 设为 `english-speaking-assessment`。
 - 开发规范：[AGENTS.md](AGENTS.md)、[CLAUDE.md](CLAUDE.md)、[AI_RULES.md](AI_RULES.md)。
