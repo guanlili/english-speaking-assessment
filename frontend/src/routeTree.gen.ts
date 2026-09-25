@@ -12,12 +12,25 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
+import { Route as PracticeRouteImport } from './routes/practice'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
+import { Route as TCodeRouteImport } from './routes/t.$code'
+import { Route as PCodeRouteImport } from './routes/p.$code'
+import { Route as MeCodeRouteImport } from './routes/me.$code'
+import { Route as JCodeRouteImport } from './routes/j.$code'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
-import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
+import { Route as TCodeIndexRouteImport } from './routes/t.$code.index'
+import { Route as PCodeIndexRouteImport } from './routes/p.$code.index'
+import { Route as LayoutAdminIndexRouteImport } from './routes/_layout/admin.index'
+import { Route as PCodeResultRouteImport } from './routes/p.$code.result'
+import { Route as LayoutAdminWordlistRouteImport } from './routes/_layout/admin.wordlist'
+import { Route as LayoutAdminScenariosRouteImport } from './routes/_layout/admin.scenarios'
+import { Route as LayoutAdminPassagesRouteImport } from './routes/_layout/admin.passages'
+import { Route as LayoutAdminClassroomsRouteImport } from './routes/_layout/admin.classrooms'
+import { Route as TCodeSStudentIdRouteImport } from './routes/t.$code.s.$studentId'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -34,6 +47,11 @@ const RecoverPasswordRoute = RecoverPasswordRouteImport.update({
   path: '/recover-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PracticeRoute = PracticeRouteImport.update({
+  id: '/practice',
+  path: '/practice',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -48,14 +66,29 @@ const LayoutIndexRoute = LayoutIndexRouteImport.update({
   path: '/',
   getParentRoute: () => LayoutRoute,
 } as any)
+const TCodeRoute = TCodeRouteImport.update({
+  id: '/t/$code',
+  path: '/t/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PCodeRoute = PCodeRouteImport.update({
+  id: '/p/$code',
+  path: '/p/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MeCodeRoute = MeCodeRouteImport.update({
+  id: '/me/$code',
+  path: '/me/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JCodeRoute = JCodeRouteImport.update({
+  id: '/j/$code',
+  path: '/j/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const LayoutItemsRoute = LayoutItemsRouteImport.update({
-  id: '/items',
-  path: '/items',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutAdminRoute = LayoutAdminRouteImport.update({
@@ -63,79 +96,201 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => LayoutRoute,
 } as any)
+const TCodeIndexRoute = TCodeIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TCodeRoute,
+} as any)
+const PCodeIndexRoute = PCodeIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PCodeRoute,
+} as any)
+const LayoutAdminIndexRoute = LayoutAdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => LayoutAdminRoute,
+} as any)
+const PCodeResultRoute = PCodeResultRouteImport.update({
+  id: '/result',
+  path: '/result',
+  getParentRoute: () => PCodeRoute,
+} as any)
+const LayoutAdminWordlistRoute = LayoutAdminWordlistRouteImport.update({
+  id: '/wordlist',
+  path: '/wordlist',
+  getParentRoute: () => LayoutAdminRoute,
+} as any)
+const LayoutAdminScenariosRoute = LayoutAdminScenariosRouteImport.update({
+  id: '/scenarios',
+  path: '/scenarios',
+  getParentRoute: () => LayoutAdminRoute,
+} as any)
+const LayoutAdminPassagesRoute = LayoutAdminPassagesRouteImport.update({
+  id: '/passages',
+  path: '/passages',
+  getParentRoute: () => LayoutAdminRoute,
+} as any)
+const LayoutAdminClassroomsRoute = LayoutAdminClassroomsRouteImport.update({
+  id: '/classrooms',
+  path: '/classrooms',
+  getParentRoute: () => LayoutAdminRoute,
+} as any)
+const TCodeSStudentIdRoute = TCodeSStudentIdRouteImport.update({
+  id: '/s/$studentId',
+  path: '/s/$studentId',
+  getParentRoute: () => TCodeRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
   '/login': typeof LoginRoute
+  '/practice': typeof PracticeRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
-  '/admin': typeof LayoutAdminRoute
-  '/items': typeof LayoutItemsRoute
+  '/admin': typeof LayoutAdminRouteWithChildren
   '/settings': typeof LayoutSettingsRoute
+  '/j/$code': typeof JCodeRoute
+  '/me/$code': typeof MeCodeRoute
+  '/p/$code': typeof PCodeRouteWithChildren
+  '/t/$code': typeof TCodeRouteWithChildren
+  '/admin/classrooms': typeof LayoutAdminClassroomsRoute
+  '/admin/passages': typeof LayoutAdminPassagesRoute
+  '/admin/scenarios': typeof LayoutAdminScenariosRoute
+  '/admin/wordlist': typeof LayoutAdminWordlistRoute
+  '/p/$code/result': typeof PCodeResultRoute
+  '/admin/': typeof LayoutAdminIndexRoute
+  '/p/$code/': typeof PCodeIndexRoute
+  '/t/$code/': typeof TCodeIndexRoute
+  '/t/$code/s/$studentId': typeof TCodeSStudentIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/practice': typeof PracticeRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
-  '/admin': typeof LayoutAdminRoute
-  '/items': typeof LayoutItemsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/j/$code': typeof JCodeRoute
+  '/me/$code': typeof MeCodeRoute
   '/': typeof LayoutIndexRoute
+  '/admin/classrooms': typeof LayoutAdminClassroomsRoute
+  '/admin/passages': typeof LayoutAdminPassagesRoute
+  '/admin/scenarios': typeof LayoutAdminScenariosRoute
+  '/admin/wordlist': typeof LayoutAdminWordlistRoute
+  '/p/$code/result': typeof PCodeResultRoute
+  '/admin': typeof LayoutAdminIndexRoute
+  '/p/$code': typeof PCodeIndexRoute
+  '/t/$code': typeof TCodeIndexRoute
+  '/t/$code/s/$studentId': typeof TCodeSStudentIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
   '/login': typeof LoginRoute
+  '/practice': typeof PracticeRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
-  '/_layout/admin': typeof LayoutAdminRoute
-  '/_layout/items': typeof LayoutItemsRoute
+  '/_layout/admin': typeof LayoutAdminRouteWithChildren
   '/_layout/settings': typeof LayoutSettingsRoute
+  '/j/$code': typeof JCodeRoute
+  '/me/$code': typeof MeCodeRoute
+  '/p/$code': typeof PCodeRouteWithChildren
+  '/t/$code': typeof TCodeRouteWithChildren
   '/_layout/': typeof LayoutIndexRoute
+  '/_layout/admin/classrooms': typeof LayoutAdminClassroomsRoute
+  '/_layout/admin/passages': typeof LayoutAdminPassagesRoute
+  '/_layout/admin/scenarios': typeof LayoutAdminScenariosRoute
+  '/_layout/admin/wordlist': typeof LayoutAdminWordlistRoute
+  '/p/$code/result': typeof PCodeResultRoute
+  '/_layout/admin/': typeof LayoutAdminIndexRoute
+  '/p/$code/': typeof PCodeIndexRoute
+  '/t/$code/': typeof TCodeIndexRoute
+  '/t/$code/s/$studentId': typeof TCodeSStudentIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/login'
+    | '/practice'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
     | '/admin'
-    | '/items'
     | '/settings'
+    | '/j/$code'
+    | '/me/$code'
+    | '/p/$code'
+    | '/t/$code'
+    | '/admin/classrooms'
+    | '/admin/passages'
+    | '/admin/scenarios'
+    | '/admin/wordlist'
+    | '/p/$code/result'
+    | '/admin/'
+    | '/p/$code/'
+    | '/t/$code/'
+    | '/t/$code/s/$studentId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/practice'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
-    | '/admin'
-    | '/items'
     | '/settings'
+    | '/j/$code'
+    | '/me/$code'
     | '/'
+    | '/admin/classrooms'
+    | '/admin/passages'
+    | '/admin/scenarios'
+    | '/admin/wordlist'
+    | '/p/$code/result'
+    | '/admin'
+    | '/p/$code'
+    | '/t/$code'
+    | '/t/$code/s/$studentId'
   id:
     | '__root__'
     | '/_layout'
     | '/login'
+    | '/practice'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
     | '/_layout/admin'
-    | '/_layout/items'
     | '/_layout/settings'
+    | '/j/$code'
+    | '/me/$code'
+    | '/p/$code'
+    | '/t/$code'
     | '/_layout/'
+    | '/_layout/admin/classrooms'
+    | '/_layout/admin/passages'
+    | '/_layout/admin/scenarios'
+    | '/_layout/admin/wordlist'
+    | '/p/$code/result'
+    | '/_layout/admin/'
+    | '/p/$code/'
+    | '/t/$code/'
+    | '/t/$code/s/$studentId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
   LoginRoute: typeof LoginRoute
+  PracticeRoute: typeof PracticeRoute
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  JCodeRoute: typeof JCodeRoute
+  MeCodeRoute: typeof MeCodeRoute
+  PCodeRoute: typeof PCodeRouteWithChildren
+  TCodeRoute: typeof TCodeRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -161,6 +316,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RecoverPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/practice': {
+      id: '/practice'
+      path: '/practice'
+      fullPath: '/practice'
+      preLoaderRoute: typeof PracticeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -182,18 +344,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutIndexRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/t/$code': {
+      id: '/t/$code'
+      path: '/t/$code'
+      fullPath: '/t/$code'
+      preLoaderRoute: typeof TCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/p/$code': {
+      id: '/p/$code'
+      path: '/p/$code'
+      fullPath: '/p/$code'
+      preLoaderRoute: typeof PCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/me/$code': {
+      id: '/me/$code'
+      path: '/me/$code'
+      fullPath: '/me/$code'
+      preLoaderRoute: typeof MeCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/j/$code': {
+      id: '/j/$code'
+      path: '/j/$code'
+      fullPath: '/j/$code'
+      preLoaderRoute: typeof JCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_layout/settings': {
       id: '/_layout/settings'
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof LayoutSettingsRouteImport
-      parentRoute: typeof LayoutRoute
-    }
-    '/_layout/items': {
-      id: '/_layout/items'
-      path: '/items'
-      fullPath: '/items'
-      preLoaderRoute: typeof LayoutItemsRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/admin': {
@@ -203,19 +386,100 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/t/$code/': {
+      id: '/t/$code/'
+      path: '/'
+      fullPath: '/t/$code/'
+      preLoaderRoute: typeof TCodeIndexRouteImport
+      parentRoute: typeof TCodeRoute
+    }
+    '/p/$code/': {
+      id: '/p/$code/'
+      path: '/'
+      fullPath: '/p/$code/'
+      preLoaderRoute: typeof PCodeIndexRouteImport
+      parentRoute: typeof PCodeRoute
+    }
+    '/_layout/admin/': {
+      id: '/_layout/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof LayoutAdminIndexRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
+    '/p/$code/result': {
+      id: '/p/$code/result'
+      path: '/result'
+      fullPath: '/p/$code/result'
+      preLoaderRoute: typeof PCodeResultRouteImport
+      parentRoute: typeof PCodeRoute
+    }
+    '/_layout/admin/wordlist': {
+      id: '/_layout/admin/wordlist'
+      path: '/wordlist'
+      fullPath: '/admin/wordlist'
+      preLoaderRoute: typeof LayoutAdminWordlistRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
+    '/_layout/admin/scenarios': {
+      id: '/_layout/admin/scenarios'
+      path: '/scenarios'
+      fullPath: '/admin/scenarios'
+      preLoaderRoute: typeof LayoutAdminScenariosRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
+    '/_layout/admin/passages': {
+      id: '/_layout/admin/passages'
+      path: '/passages'
+      fullPath: '/admin/passages'
+      preLoaderRoute: typeof LayoutAdminPassagesRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
+    '/_layout/admin/classrooms': {
+      id: '/_layout/admin/classrooms'
+      path: '/classrooms'
+      fullPath: '/admin/classrooms'
+      preLoaderRoute: typeof LayoutAdminClassroomsRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
+    '/t/$code/s/$studentId': {
+      id: '/t/$code/s/$studentId'
+      path: '/s/$studentId'
+      fullPath: '/t/$code/s/$studentId'
+      preLoaderRoute: typeof TCodeSStudentIdRouteImport
+      parentRoute: typeof TCodeRoute
+    }
   }
 }
 
+interface LayoutAdminRouteChildren {
+  LayoutAdminClassroomsRoute: typeof LayoutAdminClassroomsRoute
+  LayoutAdminPassagesRoute: typeof LayoutAdminPassagesRoute
+  LayoutAdminScenariosRoute: typeof LayoutAdminScenariosRoute
+  LayoutAdminWordlistRoute: typeof LayoutAdminWordlistRoute
+  LayoutAdminIndexRoute: typeof LayoutAdminIndexRoute
+}
+
+const LayoutAdminRouteChildren: LayoutAdminRouteChildren = {
+  LayoutAdminClassroomsRoute: LayoutAdminClassroomsRoute,
+  LayoutAdminPassagesRoute: LayoutAdminPassagesRoute,
+  LayoutAdminScenariosRoute: LayoutAdminScenariosRoute,
+  LayoutAdminWordlistRoute: LayoutAdminWordlistRoute,
+  LayoutAdminIndexRoute: LayoutAdminIndexRoute,
+}
+
+const LayoutAdminRouteWithChildren = LayoutAdminRoute._addFileChildren(
+  LayoutAdminRouteChildren,
+)
+
 interface LayoutRouteChildren {
-  LayoutAdminRoute: typeof LayoutAdminRoute
-  LayoutItemsRoute: typeof LayoutItemsRoute
+  LayoutAdminRoute: typeof LayoutAdminRouteWithChildren
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
-  LayoutAdminRoute: LayoutAdminRoute,
-  LayoutItemsRoute: LayoutItemsRoute,
+  LayoutAdminRoute: LayoutAdminRouteWithChildren,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
 }
@@ -223,12 +487,41 @@ const LayoutRouteChildren: LayoutRouteChildren = {
 const LayoutRouteWithChildren =
   LayoutRoute._addFileChildren(LayoutRouteChildren)
 
+interface PCodeRouteChildren {
+  PCodeResultRoute: typeof PCodeResultRoute
+  PCodeIndexRoute: typeof PCodeIndexRoute
+}
+
+const PCodeRouteChildren: PCodeRouteChildren = {
+  PCodeResultRoute: PCodeResultRoute,
+  PCodeIndexRoute: PCodeIndexRoute,
+}
+
+const PCodeRouteWithChildren = PCodeRoute._addFileChildren(PCodeRouteChildren)
+
+interface TCodeRouteChildren {
+  TCodeIndexRoute: typeof TCodeIndexRoute
+  TCodeSStudentIdRoute: typeof TCodeSStudentIdRoute
+}
+
+const TCodeRouteChildren: TCodeRouteChildren = {
+  TCodeIndexRoute: TCodeIndexRoute,
+  TCodeSStudentIdRoute: TCodeSStudentIdRoute,
+}
+
+const TCodeRouteWithChildren = TCodeRoute._addFileChildren(TCodeRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
   LoginRoute: LoginRoute,
+  PracticeRoute: PracticeRoute,
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  JCodeRoute: JCodeRoute,
+  MeCodeRoute: MeCodeRoute,
+  PCodeRoute: PCodeRouteWithChildren,
+  TCodeRoute: TCodeRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

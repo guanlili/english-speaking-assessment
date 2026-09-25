@@ -16,7 +16,7 @@ function getUsersQueryOptions() {
   }
 }
 
-export const Route = createFileRoute("/_layout/admin")({
+export const Route = createFileRoute("/_layout/admin/")({
   component: Admin,
   beforeLoad: async () => {
     const user = await UsersService.readUserMe()
