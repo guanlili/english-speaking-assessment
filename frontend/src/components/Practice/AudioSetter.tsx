@@ -13,10 +13,13 @@ function AudioSetter({
   hasAudio,
   text,
   onSet,
+  stopPropagation = false,
 }: {
   hasAudio: boolean
   text: string
   onSet: (audioUrl: string | null) => Promise<unknown>
+  /** 外层容器可点击（如卡片头展开）时，阻止按钮点击冒泡 */
+  stopPropagation?: boolean
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -58,7 +61,10 @@ function AudioSetter({
         variant="ghost"
         size="icon-sm"
         title="语音合成生成标准音（需配置方舟密钥）"
-        onClick={() => ttsMutation.mutate()}
+        onClick={(e) => {
+          if (stopPropagation) e.stopPropagation()
+          ttsMutation.mutate()
+        }}
         disabled={ttsMutation.isPending || !text}
       >
         {ttsMutation.isPending ? (
@@ -82,7 +88,10 @@ function AudioSetter({
         variant="ghost"
         size="icon-sm"
         title="上传现成音频"
-        onClick={() => fileRef.current?.click()}
+        onClick={(e) => {
+          if (stopPropagation) e.stopPropagation()
+          fileRef.current?.click()
+        }}
         disabled={uploadMutation.isPending}
       >
         {uploadMutation.isPending ? (
@@ -96,7 +105,10 @@ function AudioSetter({
           variant="ghost"
           size="icon-sm"
           title="清除标准音（回退浏览器朗读）"
-          onClick={() => void clear()}
+          onClick={(e) => {
+            if (stopPropagation) e.stopPropagation()
+            void clear()
+          }}
         >
           <Trash2 className="size-3.5 text-destructive" />
         </Button>

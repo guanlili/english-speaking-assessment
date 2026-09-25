@@ -255,13 +255,11 @@ function PassageCard({
             {passage.slug}
           </CardDescription>
         </div>
-        <div
-          className="flex items-center gap-1"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="flex items-center gap-1">
           <AudioSetter
             hasAudio={Boolean(passage.audio_url)}
             text={passage.text ?? ""}
+            stopPropagation
             onSet={async (audio_url) => {
               await AdminService.updatePassage({
                 passageId: passage.id,

@@ -16,7 +16,7 @@ def test_tts_requires_api_key() -> None:
 def test_tts_synthesize_success() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         body = __import__("json").loads(request.content)
-        assert request.url.path == "/api/v3/audio/speech"
+        assert request.url.path == "/v1/audio/speech"
         assert body["input"] == "Dogs are friendly."
         assert body["response_format"] == "mp3"
         return httpx.Response(200, content=b"ID3-mp3-bytes")
@@ -108,6 +108,7 @@ def test_tts_endpoint_without_key_returns_503(
     client, superuser_token_headers, monkeypatch
 ) -> None:
     monkeypatch.setattr(settings, "ARK_API_KEY", None)
+    monkeypatch.setattr(settings, "ARK_TTS_API_KEY", None)
     resp = client.post(
         "/api/v1/admin/audio/tts",
         json={"text": "hello"},

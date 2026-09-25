@@ -108,16 +108,22 @@ class Settings(BaseSettings):
     FIRST_SUPERUSER_PASSWORD: str
 
     # ── 口语评测评分（PRD §7.2：引擎藏在可替换接口后面）──
-    # mock=离线演示/测试；ark=火山方舟 Responses API（需开通模型 + ARK_API_KEY）
+    # mock=离线演示/测试；ark=火山方舟（需 ARK_API_KEY，模型名必须带日期后缀）
     SCORING_PROVIDER: Literal["mock", "ark"] = "mock"
     ARK_API_KEY: str | None = None
     ARK_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
-    ARK_ASR_MODEL: str = "doubao-seed-2-0-lite"
-    # 开放题 rubric 评分模型（豆包或 DeepSeek 系列，按账号开通情况调整）
-    ARK_RUBRIC_MODEL: str = "doubao-seed-2-0-lite"
-    # 标准音合成（PRD §7.2）：模型与音色按方舟控制台开通情况调整
-    ARK_TTS_MODEL: str = "doubao-seed-tts"
-    ARK_TTS_VOICE: str = "en_female_calm"
+    # 方舟 API 调用名必须用带日期后缀的快照名，广场短名（doubao-seed-2-0-lite）会 404
+    ARK_ASR_MODEL: str = "doubao-seed-2-0-lite-260428"
+    # 开放题 rubric 评分模型（同一模型走 chat 接口；豆包或 DeepSeek 系列均可）
+    ARK_RUBRIC_MODEL: str = "doubao-seed-2-0-lite-260428"
+    # 标准音合成：方舟域名没有 /audio/speech，走 vei AI 网关的 OpenAI 兼容接口；
+    # 网关密钥与方舟 Key 是两套（console.volcengine.com/vei/aigateway 创建），
+    # 未配置时 TTS 返回 503，上传现成音频的通道不受影响
+    ARK_TTS_BASE_URL: str = "https://ai-gateway.vei.volces.com/v1"
+    ARK_TTS_API_KEY: str | None = None
+    ARK_TTS_MODEL: str = "doubao-tts"
+    # 音色从控制台「音色列表」选择后填写（bigtts 系命名），留空则生成时报 503
+    ARK_TTS_VOICE: str = ""
     # 后台评分线程数（PRD：8 个 worker 可在 2 分钟内打完 40 人）
     SCORING_WORKERS: int = 2
     # 音频落盘目录（compose 里挂卷到 /app/audio）
