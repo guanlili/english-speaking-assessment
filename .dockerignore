@@ -1,0 +1,12 @@
+node_modules
+frontend/node_modules
+**/.DS_Store
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+.git
+# 任意层级的 .env 都不进构建上下文；.env.development 是 vite 开发配置，需保留
+**/.env
+.env.*
+!.env.example

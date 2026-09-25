@@ -1,0 +1,240 @@
+name: CI & Deploy
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+# CI 检查按分支分组排队，不打断进行中的检查
+concurrency:
+  group: ci-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+
+  backend:
+    name: 后端 Lint + 测试
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: changethis
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      mailcatcher:
+        image: schickling/mailcatcher
+        ports:
+          - 1025:1025
+    env:
+      # 覆盖 .env 中面向 docker 网络的配置，CI 里服务都在 localhost
+      POSTGRES_SERVER: localhost
+      SMTP_HOST: localhost
+      SMTP_PORT: "1025"
+      SMTP_TLS: "false"
+      EMAILS_FROM_EMAIL: noreply@example.com
+    steps:
+      - uses: actions/checkout@v7
+      - name: 校验 .env.example 与 deploy.yml 写入的键一致
+        run: |
+          if ! diff <(grep -oE '^[A-Z_]+=' .env.example | tr -d '=' | sort) \
+                    <(sed -n 's/^ *keys=(\(.*\)).*/\1/p' scripts/generate-deploy-env.sh \
+                      | tr ' ' '\n' | sed '/^$/d' | sort); then
+            echo "❌ .env.example 与 generate-deploy-env.sh 的 keys 清单（写入 .env 的键）不一致。"
+            echo "   新增/删除配置项时必须两边同步，否则该变量在生产上是空值（静默失效）。"
+            exit 1
+          fi
+      - name: 部署配置回归检查
+        run: python3 scripts/test_deploy.py
+      - uses: astral-sh/setup-uv@v7
+      - name: 准备环境变量
+        run: cp .env.example .env
+      - name: 安装依赖
+        run: uv sync
+      - name: Lint（ty + ruff，覆盖 app 与 tests）
+        working-directory: backend
+        run: uv run bash scripts/lint.sh
+      - name: 数据库迁移 + 初始数据（应用库，验证迁移链）
+        working-directory: backend
+        run: uv run bash scripts/prestart.sh
+      - name: 运行测试（独立测试库 app_test，由 conftest 自动创建）
+        working-directory: backend
+        run: uv run bash scripts/tests-start.sh
+
+  frontend:
+    name: 前端 Lint + 构建 + 客户端一致性
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: 安装依赖
+        working-directory: frontend
+        run: npm ci
+      - name: Biome 检查
+        working-directory: frontend
+        run: npx biome ci .
+      - name: 类型检查 + 构建
+        working-directory: frontend
+        run: npm run build
+      # 校验 src/client/ 与后端 OpenAPI 一致：后端接口改了但忘记 generate-client 时在这里拦下
+      - uses: astral-sh/setup-uv@v7
+        with:
+          # 只读缓存不写：与 backend job 缓存 key 相同，双写会报 reserve cache 竞争告警，由 backend 统一写
+          save-cache: false
+      - name: 准备环境变量（导入 app 需要）
+        run: cp .env.example .env
+      - name: 安装后端依赖（导入 app.main 需要）
+        working-directory: backend
+        run: uv sync --no-dev
+      - name: 导出后端 OpenAPI 规范
+        working-directory: backend
+        run: uv run python -c "import json, app.main; print(json.dumps(app.main.app.openapi()))" > ../frontend/openapi.json
+      - name: 校验前端客户端无漂移
+        working-directory: frontend
+        run: |
+          npx openapi-ts
+          if [ -n "$(git status --porcelain src/client/)" ]; then
+            git status --porcelain src/client/
+            git --no-pager diff src/client/ | head -100
+            echo "❌ 前端 src/client/ 与后端 OpenAPI 不一致（后端接口改动后未重新生成客户端）。"
+            echo "   修复：docker compose up -d 后执行 cd frontend && npm run generate-client，提交 src/client/ 的变更。"
+            exit 1
+          fi
+
+  deploy:
+    name: 部署到服务器
+    needs: [backend, frontend]
+    # PR 只跑检查不部署；push 事件本身已限定 master 分支
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    # 同一生产环境互斥；过期提交在服务器持锁阶段跳过，不假设排队顺序。
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: 从 Secrets 生成 .env（base64 中转，值不进入 shell 源码）
+        id: envfile
+        # Secrets 只经 env: 进入进程环境，脚本里按变量名引用；
+        # 任何 $、引号、反引号都不会被 shell 解释（对比直接拼进脚本文本的写法）
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          FRONTEND_HOST: ${{ secrets.FRONTEND_HOST }}
+          PROJECT_NAME: ${{ secrets.PROJECT_NAME }}
+          COMPOSE_PROJECT_NAME: ${{ secrets.COMPOSE_PROJECT_NAME }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          FIRST_SUPERUSER: ${{ secrets.FIRST_SUPERUSER }}
+          FIRST_SUPERUSER_PASSWORD: ${{ secrets.FIRST_SUPERUSER_PASSWORD }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          APP_PORT: ${{ secrets.APP_PORT }}
+          WORKERS: ${{ secrets.WORKERS || '1' }}
+          USERS_OPEN_REGISTRATION: ${{ secrets.USERS_OPEN_REGISTRATION || 'false' }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAILS_FROM_EMAIL: ${{ secrets.EMAILS_FROM_EMAIL || 'info@example.com' }}
+          SMTP_TLS: ${{ secrets.SMTP_TLS || 'True' }}
+          SMTP_SSL: ${{ secrets.SMTP_SSL || 'False' }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
+        run: |
+          bash scripts/generate-deploy-env.sh "$RUNNER_TEMP/deploy.env"
+          env_b64=$(base64 < "$RUNNER_TEMP/deploy.env" | tr -d '\n')
+          echo "::add-mask::$env_b64"
+          echo "env_b64=$env_b64" >> "$GITHUB_OUTPUT"
+          echo "path_b64=$(printf '%s' "$DEPLOY_PATH" | base64 | tr -d '\n')" >> "$GITHUB_OUTPUT"
+          rm -f "$RUNNER_TEMP/deploy.env"
+
+      - name: 服务器拉代码并重启服务
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          ENV_B64: ${{ steps.envfile.outputs.env_b64 }}
+          PATH_B64: ${{ steps.envfile.outputs.path_b64 }}
+          DEPLOY_SHA: ${{ github.sha }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 30m
+          envs: ENV_B64,PATH_B64,DEPLOY_SHA
+          script: |
+            set -e
+            umask 077
+            deploy_path=$(printf '%s' "$PATH_B64" | base64 -d)
+            cd "$deploy_path"
+            trap 'rm -f .env.new' EXIT
+
+            echo "=== 1/5 checkout 到本次 CI 验证过的提交 ==="
+            # 不用 git pull：pull 拿到的是"部署时刻的最新 master"，连续 push 时可能部署到还没过 CI 的提交。
+            # reset --hard 到 github.sha 保证部署的永远是这个 run 测过的代码，也兼容紧急回滚后的服务器状态。
+            git fetch origin
+            if [ "$DEPLOY_SHA" != "$(git rev-parse origin/master)" ]; then
+              echo "Skipping superseded commit; deploy the current master through its own CI run."
+              exit 0
+            fi
+            git reset --hard "$DEPLOY_SHA"
+
+            echo "=== 2/5 解码 .env 并校验 ==="
+            printf '%s' "$ENV_B64" | base64 -d > .env.new
+            chmod 600 .env.new
+            # 必填键非空白（生成的每行都是 KEY="value" 形式，值非空即引号间有内容）
+            for k in FRONTEND_HOST SECRET_KEY FIRST_SUPERUSER FIRST_SUPERUSER_PASSWORD POSTGRES_PASSWORD APP_PORT; do
+              if ! grep -Eq "^${k}=\".+\"" .env.new; then
+                echo "❌ .env 校验失败：$k 缺失或为空白"
+                exit 1
+              fi
+            done
+            # 这份配置必须能被 compose 完整解析（含 ${VAR?} 必填检查与插值合法性）
+            if ! COMPOSE_ENV_FILE=.env.new docker compose -f compose.yml --env-file .env.new config --quiet; then
+              echo "❌ .env.new 无法通过 docker compose 校验，保留现有 .env 不变"
+              exit 1
+            fi
+
+            echo "=== 3/5 原子替换 .env ==="
+            # 校验全部通过才替换（同文件系统 rename，不存在写一半的 .env）
+            mv .env.new .env
+
+            echo "=== 4/5 构建并重启容器 ==="
+            docker compose -f compose.yml up -d --build --remove-orphans || {
+              echo "--- prestart logs ---"
+              docker compose -f compose.yml logs prestart --tail 50
+              echo "--- backend logs ---"
+              docker compose -f compose.yml logs backend --tail 50
+              exit 1
+            }
+
+            echo "=== 5/5 验证（就绪检查 = 含数据库可用性；经 nginx 反代访问）==="
+            app_port=$(sed -n 's/^APP_PORT="\([0-9]*\)"$/\1/p' .env)
+            healthy=""
+            for i in $(seq 1 30); do
+              if curl --connect-timeout 2 --max-time 5 -fsS "http://localhost:$app_port/api/v1/utils/ready-check/" > /dev/null 2>&1; then
+                healthy=1
+                break
+              fi
+              sleep 2
+            done
+            if [ -z "$healthy" ]; then
+              echo "❌ 就绪检查重试 30 次后仍未通过"
+              docker compose -f compose.yml ps
+              docker compose -f compose.yml logs backend --tail 50
+              exit 1
+            fi
+            echo "✅ 部署成功"
+            docker compose -f compose.yml ps
+
+            echo "=== 清理旧镜像，防止磁盘被悬空镜像占满 ==="
+            docker image prune -f

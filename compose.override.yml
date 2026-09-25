@@ -1,0 +1,54 @@
+# 本地开发覆盖配置（docker compose 自动加载，生产部署用 -f compose.yml 跳过）
+# 需要 Docker Compose v2.24+（!override 标签）
+services:
+
+  db:
+    ports:
+      - "5432:5432"
+
+  backend:
+    ports:
+      - "8000:8000"
+    command:
+      - fastapi
+      - run
+      - --reload
+      - "app/main.py"
+    develop:
+      watch:
+        - path: ./backend
+          action: sync
+          target: /app/backend
+          ignore:
+            # 相对于被 watch 的 ./backend 目录
+            - .venv
+        - path: ./backend/pyproject.toml
+          action: rebuild
+    environment:
+      SMTP_HOST: "mailcatcher"
+      SMTP_PORT: "1025"
+      SMTP_TLS: "false"
+      EMAILS_FROM_EMAIL: "noreply@example.com"
+
+  # 本地开发跑 vite dev server（支持 HMR 热更新），API 地址来自 frontend/.env.development
+  frontend:
+    build:
+      target: dev
+    ports: !override
+      - "5173:5173"
+    develop:
+      watch:
+        - path: ./frontend
+          action: sync
+          target: /app/frontend
+          ignore:
+            - node_modules/
+            - dist/
+        - path: ./frontend/package.json
+          action: rebuild
+
+  mailcatcher:
+    image: schickling/mailcatcher
+    ports:
+      - "1080:1080"
+      - "1025:1025"

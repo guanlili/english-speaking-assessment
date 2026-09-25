@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose ps*)",
+      "Bash(docker compose logs*)",
+      "Bash(docker compose config*)",
+      "Bash(docker compose build*)",
+      "Bash(docker compose up*)",
+      "Bash(docker compose watch*)",
+      "Bash(docker compose restart*)",
+      "Bash(docker compose stop*)",
+      "Bash(docker compose down)",
+      "Bash(docker compose exec backend *)",
+      "Bash(docker compose exec -T backend *)",
+      "Bash(docker compose exec db psql*)",
+      "Bash(npm run *)",
+      "Bash(npm ci*)",
+      "Bash(npx biome *)",
+      "Bash(bash frontend/scripts/regen-lockfile.sh)",
+      "Bash(uv run *)",
+      "Bash(uv sync*)",
+      "Bash(uv lock*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git blame*)",
+      "Bash(git branch)",
+      "Bash(git add *)",
+      "Bash(gh run list*)",
+      "Bash(gh run view*)",
+      "Bash(gh run watch*)",
+      "Bash(gh pr list*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr checks*)",
+      "Bash(curl -s http://localhost*)",
+      "Bash(curl -fsS http://localhost*)"
+    ]
+  }
+}

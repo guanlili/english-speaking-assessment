@@ -1,0 +1,93 @@
+# 日志轮转：json-file 默认无大小上限，restart:always 的服务长期运行会把磁盘吃满
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+# prestart 与 backend 共享的配置。
+# 所有环境变量由 env_file (.env) 提供，environment 里只保留：
+#   1. 容器内必须覆盖的值（POSTGRES_SERVER 指向 db 服务）
+#   2. 必填变量的 fail-fast 校验（缺失时 compose 直接报错，不带病启动）
+x-backend-common: &backend-common
+  <<: *logging
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  env_file:
+    - ${COMPOSE_ENV_FILE:-.env}
+  environment:
+    POSTGRES_SERVER: db
+    FRONTEND_HOST: ${FRONTEND_HOST?Variable not set}
+    SECRET_KEY: ${SECRET_KEY?Variable not set}
+    FIRST_SUPERUSER: ${FIRST_SUPERUSER?Variable not set}
+    FIRST_SUPERUSER_PASSWORD: ${FIRST_SUPERUSER_PASSWORD?Variable not set}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD?Variable not set}
+
+services:
+
+  db:
+    <<: *logging
+    image: postgres:18
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    volumes:
+      - app-db-data:/var/lib/postgresql/data/pgdata
+    env_file:
+      - ${COMPOSE_ENV_FILE:-.env}
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD?Variable not set}
+      POSTGRES_USER: ${POSTGRES_USER?Variable not set}
+      POSTGRES_DB: ${POSTGRES_DB?Variable not set}
+
+  # 一次性任务：等待 DB → 跑 Alembic 迁移 → 写入初始数据
+  prestart:
+    <<: *backend-common
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
+    command: bash scripts/prestart.sh
+
+  backend:
+    <<: *backend-common
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
+      prestart:
+        condition: service_completed_successfully
+    healthcheck:
+      # 就绪检查（含数据库可用性）：DB 挂掉时容器标记 unhealthy，
+      # unhealthy 不会触发自动重启；数据库恢复后后续探测恢复 healthy。
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/utils/ready-check/')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    <<: *logging
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # 生产走 nginx 反代，前端用相对路径请求 /api
+        - VITE_API_URL=
+    restart: always
+    ports:
+      - "${APP_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  app-db-data:

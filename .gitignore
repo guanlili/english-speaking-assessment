@@ -1,0 +1,18 @@
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+node_modules/
+.DS_Store
+.env
+.env.local
+.qoder/
+
+# Claude Code 运行时自动生成 / 个人配置，不需要提交
+.agents/
+.claude/skills/
+.claude/settings.local.json
+
+# 部署临时配置（失败时也不得提交）
+.env.new
+.env.new.*
+__pycache__/
