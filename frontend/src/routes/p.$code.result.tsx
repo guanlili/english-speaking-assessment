@@ -45,6 +45,10 @@ import { displayName, loadStudent } from "@/lib/classroom-student"
 
 export const Route = createFileRoute("/p/$code/result")({
   component: RoundResultPage,
+  validateSearch: (search: Record<string, unknown>): { explore?: string } => {
+    if (typeof search.explore === "string") return { explore: search.explore }
+    return {}
+  },
   head: () => ({
     meta: [{ title: `本轮结果 - ${APP_NAME}` }],
   }),
@@ -57,15 +61,18 @@ const ITEM_TYPE_LABELS: Record<string, string> = {
 
 function RoundResultPage() {
   const { code } = useParams({ from: "/p/$code/result" })
+  const { explore: exploreSessionId } = Route.useSearch()
   const navigate = useNavigate({ from: "/p/$code/result" })
   const student = loadStudent(code)
 
   const todayQuery = useQuery({
-    queryKey: ["classroom", code, "today", student?.id],
+    queryKey: ["classroom", code, "today", student?.id, exploreSessionId],
     queryFn: () =>
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
         studentId: student?.id as string,
+        // 主题探索轮：结果必须属于该轮会话，而不是当日课堂计划
+        ...(exploreSessionId ? { sessionId: exploreSessionId } : {}),
       }),
     enabled: student !== null,
   })
@@ -83,7 +90,10 @@ function RoundResultPage() {
       void navigate({
         to: "/p/$code",
         params: { code },
-        search: { next: true },
+        search: {
+          next: true,
+          ...(exploreSessionId ? { explore: exploreSessionId } : {}),
+        },
       })
     },
   })
@@ -463,7 +473,12 @@ function RoundResultPage() {
                     void navigate({
                       to: "/p/$code",
                       params: { code },
-                      search: { focus: replay.item.id },
+                      search: {
+                        focus: replay.item.id,
+                        ...(exploreSessionId
+                          ? { explore: exploreSessionId }
+                          : {}),
+                      },
                     })
                   }
                 }}
@@ -483,7 +498,10 @@ function RoundResultPage() {
                 void navigate({
                   to: "/p/$code",
                   params: { code },
-                  search: { focus: weakest },
+                  search: {
+                    focus: weakest,
+                    ...(exploreSessionId ? { explore: exploreSessionId } : {}),
+                  },
                 })
               }
             >
@@ -504,7 +522,11 @@ function RoundResultPage() {
               : "换同主题下一问"}
           </Button>
           <Button variant="ghost" asChild>
-            <Link to="/p/$code" params={{ code }}>
+            <Link
+              to="/p/$code"
+              params={{ code }}
+              search={exploreSessionId ? { explore: exploreSessionId } : {}}
+            >
               回练习页
               <ArrowRight />
             </Link>

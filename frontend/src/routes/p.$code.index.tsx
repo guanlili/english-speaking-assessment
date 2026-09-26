@@ -106,7 +106,7 @@ function ClassroomPracticePage() {
     refetchInterval: (query) =>
       query.state.data?.attempts.some((a) => !isTerminal(a.status))
         ? 2000
-        : false,
+        : 30000, // 慢速同步：老师中途指派新单元时学生端最迟 30 秒感知
   })
 
   // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
@@ -267,9 +267,23 @@ function ClassroomPracticePage() {
     )
   }
   if (todayQuery.isError || !plan) {
+    const detail = (todayQuery.error as { body?: { detail?: string } })?.body
+      ?.detail
+    const contentMissing =
+      detail === "No active passage" ||
+      detail === "No repeat sentences configured"
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
-        练习加载失败，请刷新重试。
+        {contentMissing ? (
+          <>
+            今天还没有可以练习的内容。
+            <span className="text-sm">
+              请联系老师在后台配置篇目和复述句，配好后回来刷新即可。
+            </span>
+          </>
+        ) : (
+          "练习加载失败，请刷新重试。"
+        )}
         <Button variant="outline" onClick={() => todayQuery.refetch()}>
           重试
         </Button>
@@ -332,7 +346,11 @@ function ClassroomPracticePage() {
           </div>
           <div className="flex gap-1">
             <Button variant="ghost" size="sm" asChild>
-              <Link to="/p/$code/result" params={{ code }}>
+              <Link
+                to="/p/$code/result"
+                params={{ code }}
+                search={exploreSessionId ? { explore: exploreSessionId } : {}}
+              >
                 结果页
               </Link>
             </Button>
@@ -619,7 +637,11 @@ function ClassroomPracticePage() {
 
         {allDone && (
           <Button size="lg" asChild>
-            <Link to="/p/$code/result" params={{ code }}>
+            <Link
+              to="/p/$code/result"
+              params={{ code }}
+              search={exploreSessionId ? { explore: exploreSessionId } : {}}
+            >
               查看本轮结果
             </Link>
           </Button>
