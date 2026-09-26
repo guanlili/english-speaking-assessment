@@ -11,12 +11,22 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, delete, select
 
 from app.api.deps import get_scoring_submitter
 from app.core.config import settings
+from app.core.db import DEMO_CLASSROOM_CODE
 from app.main import app
-from app.models import Attempt
+from app.models import (
+    Attempt,
+    Classroom,
+    Passage,
+    PracticeSession,
+    RepeatSentence,
+    Student,
+    StudentBadge,
+    Unit,
+)
 from app.scoring import worker
 from app.scoring.base import ScoringError
 
@@ -311,3 +321,141 @@ def test_create_classroom_as_superuser(
     data = resp.json()
     assert len(data["code"]) == 6
     assert data["class_size"] == 30
+
+
+# ── 指派单元中途切换：开新轮，旧轮保留（课堂流程正确性）──────────────
+
+
+def test_unit_switch_starts_new_round_preserving_attempts(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    inline_scoring: Callable[[dict[str, str]], None],
+    db: Session,
+) -> None:
+    set_transcripts = inline_scoring
+    student = _join(client, "韩梅梅")
+    # conftest 只在整轮测试结束后清库：本测试自建的数据必须自行清理，
+    # 否则新增单元会污染后续 path/board 测试的精确计数断言
+    sid = uuid.UUID(student["id"])
+    created: dict[str, uuid.UUID] = {}
+    try:
+        plan1 = _today(client, student["id"]).json()
+        first_item = plan1["items"][0]
+
+        # 在原轮完成一题
+        set_transcripts({"audio/webm": first_item["text"]})
+        resp = _submit(
+            client,
+            first_item["type"],
+            first_item["id"],
+            student["id"],
+            plan1["session_id"],
+        )
+        assert resp.status_code == 200, resp.text
+
+        # 老师新建另一单元（同主题复用情景配置）并指派
+        headers = superuser_token_headers
+        unit = client.post(
+            "/api/v1/admin/units",
+            json={"order_index": 1, "title": "Unit 2 · Pets Daily", "topic": "Pets"},
+            headers=headers,
+        ).json()
+        created["unit"] = uuid.UUID(unit["id"])
+        passage = client.post(
+            "/api/v1/admin/passages",
+            json={
+                "slug": f"daily-pets-{unit['id'][:8]}",
+                "title": "A Day with My Dog",
+                "topic": "Pets",
+                "cefr_band": "B1",
+                "text": "Every morning I walk my dog in the park.",
+                "suggested_seconds": 30,
+                "unit_id": unit["id"],
+            },
+            headers=headers,
+        ).json()
+        created["passage"] = uuid.UUID(passage["id"])
+        client.post(
+            f"/api/v1/admin/passages/{passage['id']}/sentences",
+            json={
+                "order_index": 0,
+                "text": "Every morning I walk my dog in the park.",
+            },
+            headers=headers,
+        )
+        assigned = client.put(
+            f"/api/v1/classes/DEMO01/assignment", json={"unit_id": unit["id"]}
+        )
+        assert assigned.status_code == 200, assigned.text
+
+        # 切换单元后：新会话开新轮，旧作答不串进本轮
+        plan2 = _today(client, student["id"]).json()
+        assert plan2["session_id"] != plan1["session_id"]
+        assert plan2["attempts"] == []
+        # 复述句必须是新篇目的；情景问法按主题出题、跨轮共享属正常
+        old_sentence_ids = {i["id"] for i in plan1["items"] if i["type"] == "repeat"}
+        assert all(
+            i["id"] not in old_sentence_ids
+            for i in plan2["items"]
+            if i["type"] == "repeat"
+        )
+        assert any(i["type"] == "repeat" for i in plan2["items"])
+
+        # 切回原单元：继续旧轮，已完成题仍在
+        units = client.get("/api/v1/classes/DEMO01/units").json()
+        original_unit = next(u for u in units if u["unit_id"] != unit["id"])
+        client.put(
+            f"/api/v1/classes/DEMO01/assignment",
+            json={"unit_id": original_unit["unit_id"]},
+        )
+        plan3 = _today(client, student["id"]).json()
+        assert plan3["session_id"] == plan1["session_id"]
+        assert any(a["item_id"] == first_item["id"] for a in plan3["attempts"])
+    finally:
+        # 恢复现场：清指派 + 删本测试创建的单元/篇目/学生及其作答会话
+        classroom = db.exec(
+            select(Classroom).where(Classroom.code == DEMO_CLASSROOM_CODE)
+        ).first()
+        if classroom is not None:
+            classroom.current_unit_id = None
+            db.add(classroom)
+        db.exec(delete(Attempt).where(Attempt.student_id == sid))  # type: ignore[call-overload]
+        db.exec(
+            delete(PracticeSession).where(PracticeSession.student_id == sid)  # type: ignore[call-overload]
+        )
+        db.exec(delete(StudentBadge).where(StudentBadge.student_id == sid))  # type: ignore[call-overload]
+        db.exec(delete(Student).where(Student.id == sid))  # type: ignore[call-overload]
+        if "passage" in created:
+            db.exec(
+                delete(RepeatSentence).where(  # type: ignore[call-overload]
+                    RepeatSentence.passage_id == created["passage"]
+                )
+            )
+            db.exec(
+                delete(Passage).where(Passage.id == created["passage"])  # type: ignore[call-overload]
+            )
+        if "unit" in created:
+            db.exec(delete(Unit).where(Unit.id == created["unit"]))  # type: ignore[call-overload]
+        db.commit()
+
+
+def test_content_gap_404_details_are_distinct(client: TestClient) -> None:
+    """内容缺失类 404 有独立 detail，前端据此区分「不清身份」场景。"""
+    student = _join(client, "内容检查")
+    # 指向不存在的会话：detail 必须是 Session not found（而非 Student not found）
+    resp = client.get(
+        f"/api/v1/classes/DEMO01/today",
+        params={
+            "student_id": student["id"],
+            "session_id": str(uuid.uuid4()),
+        },
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Session not found"
+    # 陌生学生 ID：身份类 404
+    resp2 = client.get(
+        f"/api/v1/classes/DEMO01/today",
+        params={"student_id": str(uuid.uuid4())},
+    )
+    assert resp2.status_code == 404
+    assert resp2.json()["detail"] == "Student not found"

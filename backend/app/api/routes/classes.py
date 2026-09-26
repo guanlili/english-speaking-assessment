@@ -515,11 +515,14 @@ def read_class_board(session: SessionDep, code: str) -> Any:
         select(Student).where(Student.classroom_id == classroom.id)
     ).all()
     today_sessions = session.exec(
-        select(PracticeSession).where(
+        select(PracticeSession)
+        .where(
             PracticeSession.classroom_id == classroom.id,
             PracticeSession.session_date == today,
             PracticeSession.mode == "daily",
         )
+        # 一天多轮（老师中途换单元）时，取每个学生最新的一轮展示当前进度
+        .order_by(col(PracticeSession.created_at))
     ).all()
     session_by_student = {s.student_id: s for s in today_sessions}
 

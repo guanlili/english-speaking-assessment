@@ -42,14 +42,20 @@ export function displayName(student: StoredStudent): string {
     : student.display_name
 }
 
-/** API 错误是否为「学生身份已失效」（清库/课堂重建后 404）。 */
+/**
+ * API 错误是否为「学生身份已失效」（清库/课堂重建后的身份/课堂 404）。
+ * 内容缺失类 404（无篇目、无复述句、会话不存在）不清身份——那是老师
+ * 侧配置问题，清掉会把学生踢回加入页并创建新身份，数据就断了。
+ */
 export function isStudentNotFound(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "status" in error &&
-    (error as { status?: number }).status === 404
-  )
+  if (typeof error !== "object" || error === null || !("status" in error))
+    return false
+  const e = error as { status?: number; body?: { detail?: unknown } }
+  if (e.status !== 404) return false
+  const detail = typeof e.body?.detail === "string" ? e.body.detail : undefined
+  // 无 detail 的 404 保持旧行为（视为身份失效）；有 detail 时只认身份类
+  if (detail === undefined) return true
+  return detail === "Student not found" || detail === "Classroom not found"
 }
 
 export const WEEK_GOAL_KEY = "esa:week-goal"

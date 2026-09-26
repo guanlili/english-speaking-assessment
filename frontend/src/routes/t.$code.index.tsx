@@ -49,6 +49,8 @@ const TYPE_LABELS: Record<string, string> = {
 
 // 有学生在评分中时的轮询间隔（PRD US-10：最后一人提交后 2 分钟内一致）
 const PENDING_REFRESH_MS = 5000
+// 无人评分时的基础同步间隔：面板提前打开也能发现后续提交/指派变化
+const IDLE_REFRESH_MS = 20000
 
 function audioUrl(attemptId: string): string {
   return `${API_BASE}/api/v1/attempts/${attemptId}/audio`
@@ -64,7 +66,9 @@ function TeacherBoardPage() {
     queryKey: ["teacher", "board", code],
     queryFn: () => ClassesService.readClassBoard({ code: code.toUpperCase() }),
     refetchInterval: (query) =>
-      (query.state.data?.pending_count ?? 0) > 0 ? PENDING_REFRESH_MS : false,
+      (query.state.data?.pending_count ?? 0) > 0
+        ? PENDING_REFRESH_MS
+        : IDLE_REFRESH_MS,
   })
 
   const queryClient = useQueryClient()
