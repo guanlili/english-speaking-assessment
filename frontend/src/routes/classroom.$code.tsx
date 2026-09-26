@@ -1,7 +1,15 @@
+import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router"
-import { CheckCircle2, Copy, LogOut } from "lucide-react"
-import { useState } from "react"
+import {
+  ArrowRight,
+  CheckCircle2,
+  Copy,
+  Headphones,
+  LogOut,
+} from "lucide-react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
+import { ClassesService } from "@/client"
 import StudentShell from "@/components/Practice/StudentShell"
 import { Button } from "@/components/ui/button"
 import {
@@ -12,7 +20,12 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { APP_NAME } from "@/config"
-import { clearStudent, displayName, loadStudent } from "@/lib/classroom-student"
+import {
+  clearStudent,
+  displayName,
+  isStudentNotFound,
+  loadStudent,
+} from "@/lib/classroom-student"
 
 export const Route = createFileRoute("/classroom/$code")({
   component: ClassroomPage,
@@ -24,6 +37,26 @@ function ClassroomPage() {
   const navigate = useNavigate({ from: "/classroom/$code" })
   const student = loadStudent(code)
   const [confirmExit, setConfirmExit] = useState(false)
+
+  const todayQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
+    queryKey: ["classroom", code, "today", student?.id],
+    queryFn: () =>
+      ClassesService.readTodayPlan({
+        code: code.toUpperCase(),
+        studentId: student?.id as string,
+      }),
+    enabled: student !== null,
+    staleTime: 60_000,
+  })
+
+  useEffect(() => {
+    if (todayQuery.isError && isStudentNotFound(todayQuery.error)) {
+      clearStudent(code)
+      void navigate({ to: "/j/$code", params: { code } })
+    }
+  }, [todayQuery.isError, todayQuery.error, code, navigate])
 
   const copyCode = async () => {
     try {
@@ -78,6 +111,42 @@ function ClassroomPage() {
                 课堂码只和本班同学分享
               </span>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">今日课堂任务</CardTitle>
+            <CardDescription>
+              {todayQuery.data?.assigned_unit_title
+                ? `老师指派：${todayQuery.data.assigned_unit_title}`
+                : "老师未指派时，按你自己的关卡进度练习"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="flex size-10 items-center justify-center rounded-xl bg-secondary text-primary">
+                <Headphones className="size-5" />
+              </span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold">
+                  {todayQuery.data?.assigned_unit_title ?? "个人关卡"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  3 句听后复述 + 2 道情景问答 · 约 10 分钟
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={() =>
+                void navigate({ to: "/p/$code", params: { code } })
+              }
+            >
+              开始课堂练习 <ArrowRight />
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              没有公开排名，老师看到的是你的练习进度与参考反馈。
+            </p>
           </CardContent>
         </Card>
 
