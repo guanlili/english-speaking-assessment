@@ -155,7 +155,9 @@ class DeploymentTests(unittest.TestCase):
         }
         workflow = (ROOT / ".github/workflows/deploy.yml").read_text()
         mapped = set(
-            re.findall(r"^ +([A-Z_]+): \$\{\{ secrets\.[A-Z_]+", workflow, re.MULTILINE)
+            re.findall(
+                r"^ +([A-Za-z_]+): \$\{\{ secrets\.[A-Za-z_]+", workflow, re.MULTILINE
+            )
         )
         self.assertEqual(keys - derived - mapped, set())
 

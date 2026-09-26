@@ -89,10 +89,29 @@ services:
     restart: always
     ports:
       - "${APP_PORT:-80}:80"
+      - "443:443"
+    volumes:
+      # 证书目录（服务器上由 acme 容器写入；本地开发不存在则为空目录 → 纯 HTTP）
+      - ./ssl:/etc/nginx/ssl:ro
     depends_on:
       backend:
         condition: service_healthy
 
+  # 证书签发与自动续期：Let's Encrypt DNS-01（DNSPod 密钥），daemon 模式自动续。
+  # 首次签发由部署脚本以 docker compose run --rm acme --issue 触发。
+  acme:
+    <<: *logging
+    image: neilpang/acme.sh:latest
+    restart: always
+    command: daemon
+    volumes:
+      - acme-sh-data:/acme.sh
+      - ./ssl:/ssl
+    environment:
+      DP_Id: ${DP_Id:-}
+      DP_Key: ${DP_Key:-}
+
 volumes:
   app-db-data:
   app-audio-data:
+  acme-sh-data:

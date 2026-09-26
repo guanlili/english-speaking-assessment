@@ -33,3 +33,9 @@ FROM nginx:1
 COPY --from=build-stage /app/frontend/dist/ /usr/share/nginx/html
 
 COPY ./frontend/nginx.conf /etc/nginx/conf.d/default.conf
+# TLS 变体由 entrypoint 按证书存在与否选用（本地开发无证书，保持纯 HTTP）
+COPY ./frontend/nginx-tls.conf /etc/nginx/conf.d/nginx-tls.conf
+COPY ./frontend/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
