@@ -15,7 +15,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlmodel import col, select
+from sqlmodel import SQLModel, col, select
 
 from app.api.deps import SessionDep, SuperUserDep
 from app.core.config import settings
@@ -27,6 +27,7 @@ from app.crud import (
     join_classroom,
 )
 from app.models import (
+    AssignmentInfo,
     Attempt,
     AttemptItemType,
     AttemptStatus,
@@ -87,14 +88,38 @@ def _generate_classroom_code() -> str:
     )
 
 
+def _assignment_unit(session: Any, classroom: Classroom) -> Unit | None:
+    """老师指派的当前单元（教学工具定位：全班同步）。"""
+    if classroom.current_unit_id is None:
+        return None
+    unit = session.get(Unit, classroom.current_unit_id)
+    if unit is None or not unit.is_active:
+        return None
+    return unit
+
+
 def _active_passage(session: Any, student: Student | None = None) -> Passage:
-    """课堂练习篇目：有单元时按学生路径取（第一个未完成单元），
-    无单元数据回退全局第一篇（兼容 /practice 与老数据）。"""
+    """课堂练习篇目（优先级）：老师指派单元 > 学生路径 > 全局第一篇。"""
     units = session.exec(
         select(Unit)
         .where(Unit.is_active)  # type: ignore[attr-defined]
         .order_by(col(Unit.order_index))
     ).all()
+    if student is not None:
+        classroom = session.get(Classroom, student.classroom_id)
+        assigned = _assignment_unit(session, classroom) if classroom else None
+        if assigned is not None:
+            passage = session.exec(
+                select(Passage)
+                .where(Passage.unit_id == assigned.id, Passage.is_active)  # type: ignore[attr-defined]
+                .limit(1)
+            ).first()
+            if passage is not None:
+                return passage
+            raise HTTPException(
+                status_code=404,
+                detail=f"指派的单元「{assigned.title}」还没有篇目，请联系老师",
+            )
     if student is None or not units:
         passage = session.exec(
             select(Passage)
@@ -387,10 +412,12 @@ def read_today_plan(
         for b in student_badges(session, student.id)
     ]
 
+    assigned_unit = _assignment_unit(session, classroom)
     return TodayPlan(
         session_id=practice_session.id,
         classroom_code=classroom.code,
         band=band,
+        assigned_unit_title=assigned_unit.title if assigned_unit else None,
         items=items,
         attempts=plan_attempts,
         questions_exhausted=exhausted,
@@ -608,6 +635,7 @@ def read_class_board(session: SessionDep, code: str) -> Any:
         )
     )
 
+    assigned_unit_board = _assignment_unit(session, classroom)
     latest_engine = session.exec(
         select(Attempt.engine)
         .where(Attempt.status == AttemptStatus.DONE)
@@ -619,6 +647,13 @@ def read_class_board(session: SessionDep, code: str) -> Any:
         classroom_code=classroom.code,
         class_size=classroom.class_size,
         engine=latest_engine or "mock",
+        assignment=(
+            AssignmentInfo(
+                unit_id=assigned_unit_board.id, title=assigned_unit_board.title
+            )
+            if assigned_unit_board
+            else None
+        ),
         submitted_count=submitted_count,
         pending_count=pending_count,
         band_distribution=band_distribution,
@@ -764,6 +799,7 @@ def read_learning_path(
         bucket["rounds"] += 1
         bucket["best"] = max(bucket["best"], ps.stars or 0)
 
+    assigned_unit = _assignment_unit(session, classroom)
     result: list[PathUnit] = []
     prev_done = True  # 第一关始终解锁
     for unit in units:
@@ -771,7 +807,11 @@ def read_learning_path(
             (p for p in passages if p.unit_id == unit.id and p.is_active), None
         )
         done = stats.get(unit.id, {"rounds": 0, "best": 0})
-        locked = (not classroom.unlock_all) and not prev_done
+        locked = (
+            (not classroom.unlock_all)
+            and not prev_done
+            and (assigned_unit is None or unit.id != assigned_unit.id)
+        )
         result.append(
             PathUnit(
                 unit_id=unit.id,
@@ -789,5 +829,49 @@ def read_learning_path(
     return LearningPath(
         classroom_code=classroom.code,
         unlock_all=classroom.unlock_all,
+        assignment=(
+            AssignmentInfo(unit_id=assigned_unit.id, title=assigned_unit.title)
+            if assigned_unit
+            else None
+        ),
         units=result,
     )
+
+
+class AssignmentRequest(SQLModel):
+    unit_id: uuid.UUID | None  # None = 清除指派，回到个人路径
+
+
+@router.get("/{code}/units", response_model=list[AssignmentInfo])
+def list_units_for_class(session: SessionDep, code: str) -> Any:
+    """课堂的单元列表（老师面板指派选择器用；课堂码即凭据，同面板口径）。"""
+    from app.models import AssignmentInfo as _AI
+
+    _get_classroom(session, code)  # 仅做课堂码校验
+    units = session.exec(
+        select(Unit)
+        .where(Unit.is_active)  # type: ignore[attr-defined]
+        .order_by(col(Unit.order_index))
+    ).all()
+    return [_AI(unit_id=u.id, title=u.title) for u in units]
+
+
+@router.put("/{code}/assignment", response_model=AssignmentInfo | None)
+def set_assignment(session: SessionDep, code: str, body: AssignmentRequest) -> Any:
+    """老师设置/清除今日指派单元（课堂码即老师凭据，与面板同口径）。
+
+    设置后全班学生的 /today 同步用该单元；清除则回退个人路径。
+    """
+    classroom = _get_classroom(session, code)
+    if body.unit_id is None:
+        classroom.current_unit_id = None
+        session.add(classroom)
+        session.commit()
+        return None
+    unit = session.get(Unit, body.unit_id)
+    if unit is None or not unit.is_active:
+        raise HTTPException(status_code=404, detail="Unit not found")
+    classroom.current_unit_id = unit.id
+    session.add(classroom)
+    session.commit()
+    return AssignmentInfo(unit_id=unit.id, title=unit.title)

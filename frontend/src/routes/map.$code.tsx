@@ -55,7 +55,10 @@ function MapPage() {
           <div>
             <h1 className="text-xl font-bold tracking-tight">关卡地图</h1>
             <p className="text-sm text-muted-foreground">
-              {displayName(student)} · 完成一关解锁下一关
+              {displayName(student)} ·{" "}
+              {pathQuery.data?.assignment
+                ? `今日指派 ${pathQuery.data.assignment.title}`
+                : "完成一关解锁下一关"}
             </p>
           </div>
           <Button variant="outline" size="sm" asChild>
@@ -130,7 +133,9 @@ function MapPage() {
         )}
 
         <p className="pb-6 text-center text-xs text-muted-foreground">
-          星级按每轮平均表现给出，只和自己比。
+          {pathQuery.data?.assignment
+            ? `📌 老师今日指派：${pathQuery.data.assignment.title}（练习页同步使用）`
+            : "老师未指派时按个人关卡进度练习；星级只和自己比。"}
         </p>
       </div>
     </div>

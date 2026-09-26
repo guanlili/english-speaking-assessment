@@ -1,6 +1,12 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link, useParams } from "@tanstack/react-router"
-import { ChevronDown, ChevronRight, Loader2, RefreshCw } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  RefreshCw,
+  Target,
+} from "lucide-react"
 import { useState } from "react"
 import type { BoardStudent } from "@/client"
 import { ClassesService } from "@/client"
@@ -53,6 +59,24 @@ function TeacherBoardPage() {
     queryFn: () => ClassesService.readClassBoard({ code: code.toUpperCase() }),
     refetchInterval: (query) =>
       (query.state.data?.pending_count ?? 0) > 0 ? PENDING_REFRESH_MS : false,
+  })
+
+  const queryClient = useQueryClient()
+  const unitsQuery = useQuery({
+    queryKey: ["teacher", "units", code],
+    queryFn: () =>
+      ClassesService.listUnitsForClass({ code: code.toUpperCase() }),
+  })
+
+  const assignMutation = useMutation({
+    mutationFn: (unitId: string | null) =>
+      ClassesService.setAssignment({
+        code: code.toUpperCase(),
+        requestBody: { unit_id: unitId },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teacher", "board", code] })
+    },
   })
 
   if (boardQuery.isPending) {
@@ -118,6 +142,50 @@ function TeacherBoardPage() {
             刷新
           </Button>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Target className="size-4 text-primary" />
+              今日课堂指派
+            </CardTitle>
+            <CardDescription>
+              指派后全班学生打开练习页就是该单元（课堂教学同步）；清除则回到学生个人进度
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-2">
+            {(unitsQuery.data ?? []).map((u) => (
+              <Button
+                key={u.unit_id}
+                size="sm"
+                variant={
+                  board.assignment?.unit_id === u.unit_id
+                    ? "default"
+                    : "outline"
+                }
+                onClick={() => assignMutation.mutate(u.unit_id)}
+                disabled={assignMutation.isPending}
+              >
+                {u.title}
+              </Button>
+            ))}
+            {board.assignment && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => assignMutation.mutate(null)}
+                disabled={assignMutation.isPending}
+              >
+                清除指派
+              </Button>
+            )}
+            {!board.assignment && (
+              <span className="text-sm text-muted-foreground">
+                未指派（学生按个人关卡进度练习）
+              </span>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

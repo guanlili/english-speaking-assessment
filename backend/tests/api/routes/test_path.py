@@ -51,7 +51,7 @@ def _make_unit_passage(
     passage = client.post(
         "/api/v1/admin/passages",
         json={
-            "slug": f"unit-{order}",
+            "slug": f"unit-{order}-{uuid.uuid4().hex[:6]}",
             "title": f"{title} passage",
             "topic": "Pets",
             "cefr_band": "B1",
@@ -174,3 +174,80 @@ def test_unit_crud(client: TestClient, superuser_token_headers: dict) -> None:
         ).status_code
         == 200
     )
+
+
+# ── 课堂指派（教学工具定位）─────────────────────────────────────────
+
+
+def test_assignment_directs_today_for_whole_class(
+    client: TestClient,
+    inline_scoring: None,
+    superuser_token_headers: dict,
+    db: Session,
+) -> None:
+    """老师指派 Unit 2 → 全班 /today 都练 Unit 2 的篇目（无视个人路径）。"""
+    second = _make_unit_passage(db, superuser_token_headers, client, 1, "Unit 2")
+
+    alice = _join(client, "甲同学")
+    resp = client.put(
+        "/api/v1/classes/DEMO01/assignment",
+        json={"unit_id": second["unit"]["id"]},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "Unit 2"
+
+    plan = client.get(
+        "/api/v1/classes/DEMO01/today", params={"student_id": alice["id"]}
+    ).json()
+    assert plan["assigned_unit_title"] == "Unit 2"
+    # 篇目句子来自 Unit 2 的正文（Cats are quiet...）
+    first_text = plan["items"][0]["text"]
+    assert "Cats" in first_text or "cats" in first_text
+
+    # 清除指派 → 回退个人路径（第一单元）
+    cleared = client.put("/api/v1/classes/DEMO01/assignment", json={"unit_id": None})
+    assert cleared.status_code == 200
+    plan2 = client.get(
+        "/api/v1/classes/DEMO01/today", params={"student_id": alice["id"]}
+    ).json()
+    assert plan2["assigned_unit_title"] is None
+
+
+def test_assignment_invalid_unit_404(client: TestClient) -> None:
+    resp = client.put(
+        "/api/v1/classes/DEMO01/assignment",
+        json={"unit_id": str(uuid.uuid4())},
+    )
+    assert resp.status_code == 404
+
+
+def test_path_and_board_expose_assignment(
+    client: TestClient, superuser_token_headers: dict, db: Session
+) -> None:
+    """path 返回 assignment 且被指派单元解除锁定；board 同步显示。"""
+    second = _make_unit_passage(db, superuser_token_headers, client, 1, "Unit 2")
+    student = _join(client, "乙同学")
+
+    client.put(
+        "/api/v1/classes/DEMO01/assignment",
+        json={"unit_id": second["unit"]["id"]},
+    )
+    path = client.get(
+        "/api/v1/classes/DEMO01/path", params={"student_id": student["id"]}
+    ).json()
+    assert path["assignment"]["title"] == "Unit 2"
+    assert path["units"][1]["locked"] is False  # 指派豁免锁定
+
+    board = client.get("/api/v1/classes/DEMO01/board").json()
+    assert board["assignment"]["title"] == "Unit 2"
+
+    # 清理：恢复无指派状态，避免影响其他测试
+    client.put("/api/v1/classes/DEMO01/assignment", json={"unit_id": None})
+
+
+def test_list_units_public_with_code(client: TestClient) -> None:
+    resp = client.get("/api/v1/classes/DEMO01/units")
+    assert resp.status_code == 200
+    titles = [u["title"] for u in resp.json()]
+    assert any("Unit 1" in t for t in titles)
+    assert client.get("/api/v1/classes/NOPE00/units").status_code == 404

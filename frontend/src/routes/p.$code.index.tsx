@@ -264,6 +264,11 @@ function ClassroomPracticePage() {
               第 {currentIndex + 1}/{items.length} 题 ·{" "}
               {BAND_LABELS[plan.band] ?? plan.band}
             </h1>
+            {plan.assigned_unit_title && (
+              <p className="text-sm font-medium text-primary">
+                📌 今日课堂：{plan.assigned_unit_title}（老师指派）
+              </p>
+            )}
             <p className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
               {displayName(student)} · 课堂 {plan.classroom_code}
               {plan.gamification && (

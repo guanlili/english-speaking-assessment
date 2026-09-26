@@ -203,6 +203,11 @@ class Classroom(SQLModel, table=True):
     unlock_all: bool = Field(
         default=False, sa_column_kwargs={"server_default": "false"}
     )
+    # 课堂指派（教学工具定位）：老师设定的当前单元，全班 /today 优先用它；
+    # 为空时走个人路径（课后自主练习兜底）
+    current_unit_id: uuid.UUID | None = Field(
+        default=None, foreign_key="unit.id", ondelete="SET NULL"
+    )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -407,9 +412,16 @@ class PathUnit(SQLModel):
     passage_id: uuid.UUID | None = None
 
 
+class AssignmentInfo(SQLModel):
+    unit_id: uuid.UUID
+    title: str
+
+
 class LearningPath(SQLModel):
     classroom_code: str
     unlock_all: bool
+    # 老师指派的单元（null = 个人路径模式）
+    assignment: AssignmentInfo | None = None
     units: list[PathUnit]
 
 
@@ -440,6 +452,8 @@ class TodayPlan(SQLModel):
     questions_exhausted: bool = False
     # 激励层（HUD 与结果页用；awarded_at 为今天的即「本轮获得」）
     gamification: GamificationInfo | None = None
+    # 老师指派的单元标题（课堂同步练习；null = 个人路径）
+    assigned_unit_title: str | None = None
 
 
 class NextQuestion(SQLModel):
@@ -484,6 +498,8 @@ class BoardData(SQLModel):
     class_size: int
     # 当前评分引擎（最近一次已评作答；mock=演示模式 / ark=方舟）
     engine: str = "mock"
+    # 老师指派的今日单元（教学工具定位）
+    assignment: AssignmentInfo | None = None
     # 今日至少提交 1 题的人数（PRD US-10 完成率的分子；班额为分母）
     submitted_count: int
     # 尚在评分中的学生数 > 0 时前端轮询
