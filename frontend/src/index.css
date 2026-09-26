@@ -42,7 +42,8 @@
 }
 
 :root {
-  --radius: 1rem;
+  /* SpeakUp 原型：卡片 22px / 小组件 11px 上下两档圆角 */
+  --radius: 1.125rem;
   --background: hsl(75 22% 97%);
   --foreground: hsl(157 24% 15%);
   --card: hsl(0 0% 100%);
@@ -116,6 +117,19 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* SpeakUp 原型字体栈 */
+    font-family:
+      "Avenir Next", "Trebuchet MS", "PingFang SC", "Microsoft YaHei",
+      system-ui, sans-serif;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family:
+      "Avenir Next", "Trebuchet MS", "PingFang SC", "Microsoft YaHei",
+      system-ui, sans-serif;
+    letter-spacing: -0.02em;
   }
   button,
   [role="button"] {
