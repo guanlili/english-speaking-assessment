@@ -223,7 +223,9 @@ jobs:
             echo "=== 4/6 HTTPS 证书（配置 DP_Id/DP_Key/TLS_DOMAIN 时自动签发，幂等） ==="
             if grep -Eq '^DP_Id=".+"' .env && grep -Eq '^DP_Key=".+"' .env && grep -Eq '^TLS_DOMAIN=".+"' .env; then
               tls_domain=$(sed -n 's/^TLS_DOMAIN="\([^"]*\)"$/\1/p' .env)
-              mkdir -p ssl && chmod 700 ssl
+              mkdir -p ssl
+              # 目录可能由 docker（root）在首次挂载时创建，部署用户无权 chmod；属主 root 更安全，不视为失败
+              chmod 700 ssl 2>/dev/null || true
               if [ ! -f ssl/fullchain.pem ]; then
                 echo "首次签发 $tls_domain 证书（Let's Encrypt DNS-01，无需停机）"
                 docker compose -f compose.yml run --rm acme --issue --dns dns_dp -d "$tls_domain" --server letsencrypt --keylength ec-256
