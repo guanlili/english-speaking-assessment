@@ -33,9 +33,12 @@ FROM nginx:1
 COPY --from=build-stage /app/frontend/dist/ /usr/share/nginx/html
 
 COPY ./frontend/nginx.conf /etc/nginx/conf.d/default.conf
-# TLS 变体由 entrypoint 按证书存在与否选用（本地开发无证书，保持纯 HTTP）
-COPY ./frontend/nginx-tls.conf /etc/nginx/conf.d/nginx-tls.conf
+# TLS 变体放 conf.d 之外（主配置 include conf.d/*.conf 全量加载，放里面会被
+# 无条件生效，无证书时 nginx 起不来）；entrypoint 检测到证书时才替换进 conf.d
+COPY ./frontend/nginx-tls.conf /etc/nginx/nginx-tls.conf
 COPY ./frontend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# 注意：声明 ENTRYPOINT 会重置基础镜像（nginx:1）继承的 CMD，必须显式补回
 ENTRYPOINT ["/entrypoint.sh"]
+CMD ["nginx", "-g", "daemon off;"]
