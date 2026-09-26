@@ -8,6 +8,7 @@ import {
 import { ChevronRight, Lock, Star } from "lucide-react"
 import { useEffect } from "react"
 import { ClassesService } from "@/client"
+import StudentShell from "@/components/Practice/StudentShell"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -49,8 +50,8 @@ function MapPage() {
   if (student === null) return null
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto flex w-full max-w-md flex-col gap-4 p-6">
+    <StudentShell active="map">
+      <div className="mx-auto flex w-full max-w-md flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold tracking-tight">关卡地图</h1>
@@ -138,6 +139,6 @@ function MapPage() {
             : "老师未指派时按个人关卡进度练习；星级只和自己比。"}
         </p>
       </div>
-    </div>
+    </StudentShell>
   )
 }

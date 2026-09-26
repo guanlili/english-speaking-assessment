@@ -21,6 +21,8 @@ import { Route as PCodeRouteImport } from './routes/p.$code'
 import { Route as MeCodeRouteImport } from './routes/me.$code'
 import { Route as MapCodeRouteImport } from './routes/map.$code'
 import { Route as JCodeRouteImport } from './routes/j.$code'
+import { Route as HomeCodeRouteImport } from './routes/home.$code'
+import { Route as ExploreCodeRouteImport } from './routes/explore.$code'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as TCodeIndexRouteImport } from './routes/t.$code.index'
@@ -92,6 +94,16 @@ const JCodeRoute = JCodeRouteImport.update({
   path: '/j/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HomeCodeRoute = HomeCodeRouteImport.update({
+  id: '/home/$code',
+  path: '/home/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExploreCodeRoute = ExploreCodeRouteImport.update({
+  id: '/explore/$code',
+  path: '/explore/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -157,6 +169,8 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/admin': typeof LayoutAdminRouteWithChildren
   '/settings': typeof LayoutSettingsRoute
+  '/explore/$code': typeof ExploreCodeRoute
+  '/home/$code': typeof HomeCodeRoute
   '/j/$code': typeof JCodeRoute
   '/map/$code': typeof MapCodeRoute
   '/me/$code': typeof MeCodeRoute
@@ -179,6 +193,8 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/settings': typeof LayoutSettingsRoute
+  '/explore/$code': typeof ExploreCodeRoute
+  '/home/$code': typeof HomeCodeRoute
   '/j/$code': typeof JCodeRoute
   '/map/$code': typeof MapCodeRoute
   '/me/$code': typeof MeCodeRoute
@@ -203,6 +219,8 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_layout/admin': typeof LayoutAdminRouteWithChildren
   '/_layout/settings': typeof LayoutSettingsRoute
+  '/explore/$code': typeof ExploreCodeRoute
+  '/home/$code': typeof HomeCodeRoute
   '/j/$code': typeof JCodeRoute
   '/map/$code': typeof MapCodeRoute
   '/me/$code': typeof MeCodeRoute
@@ -230,6 +248,8 @@ export interface FileRouteTypes {
     | '/signup'
     | '/admin'
     | '/settings'
+    | '/explore/$code'
+    | '/home/$code'
     | '/j/$code'
     | '/map/$code'
     | '/me/$code'
@@ -252,6 +272,8 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/settings'
+    | '/explore/$code'
+    | '/home/$code'
     | '/j/$code'
     | '/map/$code'
     | '/me/$code'
@@ -275,6 +297,8 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_layout/admin'
     | '/_layout/settings'
+    | '/explore/$code'
+    | '/home/$code'
     | '/j/$code'
     | '/map/$code'
     | '/me/$code'
@@ -299,6 +323,8 @@ export interface RootRouteChildren {
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  ExploreCodeRoute: typeof ExploreCodeRoute
+  HomeCodeRoute: typeof HomeCodeRoute
   JCodeRoute: typeof JCodeRoute
   MapCodeRoute: typeof MapCodeRoute
   MeCodeRoute: typeof MeCodeRoute
@@ -390,6 +416,20 @@ declare module '@tanstack/react-router' {
       path: '/j/$code'
       fullPath: '/j/$code'
       preLoaderRoute: typeof JCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/home/$code': {
+      id: '/home/$code'
+      path: '/home/$code'
+      fullPath: '/home/$code'
+      preLoaderRoute: typeof HomeCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/explore/$code': {
+      id: '/explore/$code'
+      path: '/explore/$code'
+      fullPath: '/explore/$code'
+      preLoaderRoute: typeof ExploreCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout/settings': {
@@ -538,6 +578,8 @@ const rootRouteChildren: RootRouteChildren = {
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  ExploreCodeRoute: ExploreCodeRoute,
+  HomeCodeRoute: HomeCodeRoute,
   JCodeRoute: JCodeRoute,
   MapCodeRoute: MapCodeRoute,
   MeCodeRoute: MeCodeRoute,

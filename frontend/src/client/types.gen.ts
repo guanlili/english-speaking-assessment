@@ -141,6 +141,16 @@ export type DraftQuestionOut = {
     suggested_seconds: number;
 };
 
+export type ExploreRequest = {
+    unit_id: string;
+    student_id: string;
+};
+
+export type ExploreStarted = {
+    session_id: string;
+    unit_title: string;
+};
+
 export type GamificationInfo = {
     xp?: number;
     streak_days?: number;
@@ -657,6 +667,7 @@ export type ClassesJoinClassResponse = (StudentPublic);
 
 export type ClassesReadTodayPlanData = {
     code: string;
+    sessionId?: (string | null);
     studentId: string;
 };
 
@@ -702,6 +713,13 @@ export type ClassesSetAssignmentData = {
 };
 
 export type ClassesSetAssignmentResponse = ((AssignmentInfo | null));
+
+export type ClassesStartExploreData = {
+    code: string;
+    requestBody: ExploreRequest;
+};
+
+export type ClassesStartExploreResponse = (ExploreStarted);
 
 export type LoginLoginAccessTokenData = {
     formData: Body_login_login_access_token;

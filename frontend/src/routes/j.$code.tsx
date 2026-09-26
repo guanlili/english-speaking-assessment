@@ -53,7 +53,7 @@ function JoinPage() {
   // 已在本课堂留过名：直接进练习页（BDD B：中途刷新仍是这个个人）
   useEffect(() => {
     if (loadStudent(code)) {
-      void navigate({ to: "/p/$code", params: { code } })
+      void navigate({ to: "/home/$code", params: { code } })
     }
   }, [code, navigate])
 
@@ -65,7 +65,7 @@ function JoinPage() {
       }),
     onSuccess: (student) => {
       saveStudent(code, student)
-      void navigate({ to: "/p/$code", params: { code } })
+      void navigate({ to: "/home/$code", params: { code } })
     },
     onError: () => {
       setError("进入失败：课堂码可能不对，请和老师核对")

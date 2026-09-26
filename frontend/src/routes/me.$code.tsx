@@ -8,9 +8,17 @@ import {
 import { ArrowDown, ArrowUp, Flame, Minus, Sparkles, Star } from "lucide-react"
 import { useEffect } from "react"
 import { ClassesService } from "@/client"
+import StudentShell from "@/components/Practice/StudentShell"
 import TrailView from "@/components/Practice/TrailView"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { APP_NAME } from "@/config"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 
@@ -54,9 +62,13 @@ function MyTrailPage() {
 
   if (student === null) return null
 
+  const savedExpressions = JSON.parse(
+    localStorage.getItem("esa:saved-expressions") ?? "[]",
+  ) as string[]
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
+    <StudentShell active="me">
+      <div className="flex flex-col gap-6">
         {todayQuery.data?.gamification && (
           <div className="flex flex-wrap items-center gap-4 rounded-lg border px-4 py-3">
             <span className="flex items-center gap-1 text-sm font-semibold">
@@ -116,10 +128,31 @@ function MyTrailPage() {
           <TrailView trail={trailQuery.data} />
         )}
 
+        {savedExpressions.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">留住好表达</CardTitle>
+              <CardDescription>
+                练习中收藏的升级表达，下次试着用出来。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {savedExpressions.map((e) => (
+                <p
+                  key={e}
+                  className="rounded-lg bg-background px-3 py-2 font-serif text-base"
+                >
+                  {e}
+                </p>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
         <p className="pb-6 text-center text-xs text-muted-foreground">
           参考数据，不是考试成绩或官方等级。
         </p>
       </div>
-    </div>
+    </StudentShell>
   )
 }

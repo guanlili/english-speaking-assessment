@@ -329,19 +329,35 @@ def read_today_plan(
     session: SessionDep,
     code: str,
     student_id: uuid.UUID = Query(...),
+    session_id: uuid.UUID | None = Query(default=None),
 ) -> Any:
-    """今天的练习计划：3 句听后复述 + 2 道该档情景问答（US-05）。"""
+    """今天的练习计划：3 句听后复述 + 2 道该档情景问答（US-05）。
+
+    传 session_id 时返回该会话的计划（主题探索的自由练习轮）。
+    """
     classroom = _get_classroom(session, code)
     student = _get_student_of_classroom(session, classroom, student_id)
     today = _today_in_practice_tz()
-    passage = _active_passage(session, student)
-    practice_session = get_or_create_today_session(
-        session=session,
-        classroom=classroom,
-        student=student,
-        today=today,
-        passage_id=passage.id,
-    )
+    if session_id is not None:
+        practice_session = session.get(PracticeSession, session_id)
+        if practice_session is None or practice_session.student_id != student.id:
+            raise HTTPException(status_code=404, detail="Session not found")
+        passage = (
+            session.get(Passage, practice_session.passage_id)
+            if practice_session.passage_id
+            else _active_passage(session, student)
+        )
+        if passage is None:
+            raise HTTPException(status_code=404, detail="No active passage")
+    else:
+        passage = _active_passage(session, student)
+        practice_session = get_or_create_today_session(
+            session=session,
+            classroom=classroom,
+            student=student,
+            today=today,
+            passage_id=passage.id,
+        )
     sentences = session.exec(
         select(RepeatSentence)
         .where(RepeatSentence.passage_id == passage.id)
@@ -498,6 +514,7 @@ def read_class_board(session: SessionDep, code: str) -> Any:
         select(PracticeSession).where(
             PracticeSession.classroom_id == classroom.id,
             PracticeSession.session_date == today,
+            PracticeSession.mode == "daily",
         )
     ).all()
     session_by_student = {s.student_id: s for s in today_sessions}
@@ -875,3 +892,39 @@ def set_assignment(session: SessionDep, code: str, body: AssignmentRequest) -> A
     session.add(classroom)
     session.commit()
     return AssignmentInfo(unit_id=unit.id, title=unit.title)
+
+
+class ExploreRequest(SQLModel):
+    unit_id: uuid.UUID
+    student_id: uuid.UUID
+
+
+class ExploreStarted(SQLModel):
+    session_id: uuid.UUID
+    unit_title: str
+
+
+@router.post("/{code}/explore", response_model=ExploreStarted)
+def start_explore(session: SessionDep, code: str, body: ExploreRequest) -> Any:
+    """主题探索：学生选择单元开始/继续当日自由练习轮（不计入课堂完成率）。"""
+    classroom = _get_classroom(session, code)
+    student = _get_student_of_classroom(session, classroom, body.student_id)
+    unit = session.get(Unit, body.unit_id)
+    if unit is None or not unit.is_active:
+        raise HTTPException(status_code=404, detail="Unit not found")
+    passage = session.exec(
+        select(Passage)
+        .where(Passage.unit_id == unit.id, Passage.is_active)  # type: ignore[attr-defined]
+        .limit(1)
+    ).first()
+    if passage is None:
+        raise HTTPException(status_code=404, detail=f"单元「{unit.title}」还没有篇目")
+    practice_session = get_or_create_today_session(
+        session=session,
+        classroom=classroom,
+        student=student,
+        today=_today_in_practice_tz(),
+        passage_id=passage.id,
+        mode="explore",
+    )
+    return {"session_id": practice_session.id, "unit_title": unit.title}

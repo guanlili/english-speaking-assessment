@@ -1,4 +1,4 @@
-import { Loader2, RefreshCw, TriangleAlert } from "lucide-react"
+import { Bookmark, Loader2, RefreshCw, TriangleAlert } from "lucide-react"
 import type { ReactNode } from "react"
 import type { AttemptPublic } from "@/client"
 import VocabBlock from "@/components/Practice/VocabBlock"
@@ -94,7 +94,27 @@ function RubricBlock({ rubric, engine }: { rubric: unknown; engine: string }) {
       </div>
       {data.upgrades && data.upgrades.length > 0 && (
         <div className="space-y-1 text-sm">
-          <span className="text-muted-foreground">更高级的说法</span>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">更高级的说法</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => {
+                const key = "esa:saved-expressions"
+                const saved = JSON.parse(
+                  localStorage.getItem(key) ?? "[]",
+                ) as string[]
+                const merged = Array.from(
+                  new Set([...saved, ...data.upgrades!]),
+                )
+                localStorage.setItem(key, JSON.stringify(merged))
+              }}
+            >
+              <Bookmark />
+              收藏表达
+            </Button>
+          </div>
           <ul className="list-disc space-y-1 pl-5">
             {data.upgrades.map((u) => (
               <li key={u}>{u}</li>

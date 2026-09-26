@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminUpdateScenarioData, AdminUpdateScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminWordlistStatsResponse, AdminImportWordlistCsvData, AdminImportWordlistCsvResponse, AdminListUnitsResponse, AdminCreateUnitData, AdminCreateUnitResponse, AdminUpdateUnitData, AdminUpdateUnitResponse, AdminDeleteUnitData, AdminDeleteUnitResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminUpdateClassroomData, AdminUpdateClassroomResponse, AdminGenerateQuestionsData, AdminGenerateQuestionsResponse, AdminAutoSplitSentencesData, AdminAutoSplitSentencesResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, ClassesReadLearningPathData, ClassesReadLearningPathResponse, ClassesListUnitsForClassData, ClassesListUnitsForClassResponse, ClassesSetAssignmentData, ClassesSetAssignmentResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PracticeReadActivePassageResponse, PrivateCreateUserData, PrivateCreateUserResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse } from './types.gen';
+import type { AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminUpdateScenarioData, AdminUpdateScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminWordlistStatsResponse, AdminImportWordlistCsvData, AdminImportWordlistCsvResponse, AdminListUnitsResponse, AdminCreateUnitData, AdminCreateUnitResponse, AdminUpdateUnitData, AdminUpdateUnitResponse, AdminDeleteUnitData, AdminDeleteUnitResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminUpdateClassroomData, AdminUpdateClassroomResponse, AdminGenerateQuestionsData, AdminGenerateQuestionsResponse, AdminAutoSplitSentencesData, AdminAutoSplitSentencesResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, ClassesReadLearningPathData, ClassesReadLearningPathResponse, ClassesListUnitsForClassData, ClassesListUnitsForClassResponse, ClassesSetAssignmentData, ClassesSetAssignmentResponse, ClassesStartExploreData, ClassesStartExploreResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PracticeReadActivePassageResponse, PrivateCreateUserData, PrivateCreateUserResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse } from './types.gen';
 
 export class AdminService {
     /**
@@ -679,9 +679,12 @@ export class ClassesService {
     /**
      * Read Today Plan
      * 今天的练习计划：3 句听后复述 + 2 道该档情景问答（US-05）。
+     *
+     * 传 session_id 时返回该会话的计划（主题探索的自由练习轮）。
      * @param data The data for the request.
      * @param data.code
      * @param data.studentId
+     * @param data.sessionId
      * @returns TodayPlan Successful Response
      * @throws ApiError
      */
@@ -693,7 +696,8 @@ export class ClassesService {
                 code: data.code
             },
             query: {
-                student_id: data.studentId
+                student_id: data.studentId,
+                session_id: data.sessionId
             },
             errors: {
                 422: 'Validation Error'
@@ -841,6 +845,30 @@ export class ClassesService {
         return __request(OpenAPI, {
             method: 'PUT',
             url: '/api/v1/classes/{code}/assignment',
+            path: {
+                code: data.code
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Start Explore
+     * 主题探索：学生选择单元开始/继续当日自由练习轮（不计入课堂完成率）。
+     * @param data The data for the request.
+     * @param data.code
+     * @param data.requestBody
+     * @returns ExploreStarted Successful Response
+     * @throws ApiError
+     */
+    public static startExplore(data: ClassesStartExploreData): CancelablePromise<ClassesStartExploreResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/classes/{code}/explore',
             path: {
                 code: data.code
             },

@@ -133,13 +133,21 @@ def get_or_create_today_session(
     student: Student,
     today: date,
     passage_id: uuid.UUID | None = None,
+    mode: str = "daily",
 ) -> PracticeSession:
-    existing = session.exec(
-        select(PracticeSession).where(
-            PracticeSession.student_id == student.id,
-            PracticeSession.session_date == today,
+    """取当日会话；daily 每天唯一复用，explore 按篇目各自一轮。"""
+    statement = select(PracticeSession).where(
+        PracticeSession.student_id == student.id,
+        PracticeSession.session_date == today,
+    )
+    if mode == "explore":
+        statement = statement.where(
+            PracticeSession.passage_id == passage_id,
+            PracticeSession.mode == "explore",
         )
-    ).first()
+    else:
+        statement = statement.where(PracticeSession.mode == "daily")
+    existing = session.exec(statement).first()
     if existing is not None:
         return existing
     practice_session = PracticeSession(
@@ -147,6 +155,7 @@ def get_or_create_today_session(
         student_id=student.id,
         band=student.current_band,
         passage_id=passage_id,
+        mode=mode,
         session_date=today,
     )
     session.add(practice_session)

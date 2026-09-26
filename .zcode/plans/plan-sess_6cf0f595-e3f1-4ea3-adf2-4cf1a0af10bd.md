@@ -1,61 +1,40 @@
-# 多邻国式激励层 + 老师出题工作台 + AI 驱动定位
+# SpeakUp 开口说：原型设计系统与功能落地
 
-已确认的产品决策：**只和自己比**（学生端无班级排名）｜**关卡顺序解锁 + 老师可全开**｜**AI 生成问法 + 自动拆句**（篇目正文仍由学校提供，AI 不代写）。
+参照 `prototypes/speakup/index.html`，把正式产品升级为原型的视觉风格与学生端体验。产品定位不变（课堂教学工具），皮肤与交互全面 SpeakUp 化。
 
-## Phase 1：激励层基础（XP / 连胜 / 星级 / 徽章）
+## P1 全局换肤（SpeakUp 设计系统）
+- `src/index.css` 主题变量映射原型 tokens：米白背景 `hsl(75 22% 97%)`、暖绿主色 `hsl(158 41% 29%)`、薄荷 `hsl(111 29% 92%)`、蜜桃点缀、大圆角（22px/12px）、柔和阴影；dark 模式保持可用
+- Button primary 立体风格（底部 4px 深绿硬阴影 + hover 上浮，多邻国式）；录音钮脉冲、波形动画、页面进入动画 keyframes
+- 品牌替换：`APP_NAME` → "SpeakUp 开口说"（config.ts / 页面标题 / README / CLAUDE.md）；登录页与侧边栏品牌字样
 
-**后端**
-- `Student` 加字段：`xp: int`、`streak_days: int`、`last_practice_date: date | None`
-- `PracticeSession` 加 `stars: int | None`（0-3）
-- 新表 `StudentBadge`（student_id / badge_key / awarded_at）；徽章定义为代码常量（first_round、streak_3、streak_7、ten_rounds、reached_b2）
-- 幂等结算函数（在 `/today` 聚合时触发，复用 band_change 的模式）：本轮 5 题全部终态时——星级 = 平均总评 ≥85→3 星、≥70→2 星、完成即 1 星；XP = 每题 10 + 每星 5 + 连胜 ≥3 天奖励 10；连胜按「当日首次结算」推进（昨天练过 +1、断档重置 1）；结算时判定并写入新徽章
-- `TodayPlan` 扩展 `gamification: {xp, streak_days, badges, session_stars}`（新徽章按 awarded_at=今天标出，结果页展示「本轮获得」）
-- 教师面板 `BoardStudent` 加 xp/streak（老师可见全班，学生端不排名）
-- 测试：结算幂等、星级分档、连胜连续/断档、徽章触发条件
+## P2 自由练习后端（探索模式）
+- `PracticeSession.mode`（daily/explore，迁移一列，默认 daily）
+- `POST /classes/{code}/explore {unit_id, student_id}`：创建/复用当日该单元的 explore session
+- `GET /today` 支持 `session_id` 参数返回任意 session 的计划（练习页复用现有流程）；explore 轮同样积累 XP/星级/词汇/轨迹
+- **教师面板 board 只统计 daily 轮**（自由练习不进课堂完成率）
+- 测试：explore 创建/复用/计划/教师面板排除
 
-**前端**
-- 练习页头部 HUD：🔥 连胜天数 + ⭐ XP
-- 结果页：星星逐个点亮（CSS 动画）+「+N XP」+ 新徽章横幅 + `canvas-confetti` 庆祝（3 星或获得新徽章时；新增该依赖，~6KB 无传递依赖）
-- `/me` 我的进步：加徽章墙 + 连胜展示
+## P3 学生端信息架构（新页面 + StudentShell）
+- `StudentShell` 组件：学生端左侧导航（学习首页/今日练习/主题探索/我的成长/关卡地图）+ 课堂信息 + 底部鼓励语；home/explore/practice/result/me/map 六页接入
+- `/home/:code` 学习首页：hero 欢迎卡 + 今日计划卡（进度条、3 复述+2 问答两行、开始按钮）+ 周目标环（trail 近 7 日打卡，目标 5 天，localStorage 可调）+ 档位生长条（A2/B1/B2 track）+ 每日金句卡
+- `/explore/:code` 主题探索：单元卡片网格（插画 + 档位标签 + 时长）、Dialog 预览（篇目/复述句/分档问法）→「就聊这个」进自由练习
+- `TopicArt` 组件：从原型搬 6 幅 SVG 主题插画（pets/school/weekend/food/future/friends），按 topic 映射
 
-## Phase 2：关卡地图（单元路径）
+## P4 练习页交互升级（p.$code.index）
+- 题头：步骤条（done/current）+ 类型标签（LISTEN & REPEAT / YOUR TURN）+ 中文提示（按题型固定文案）
+- 听示范：语速选择（0.8×/1.0×，speechSynthesis rate；音频文件模式隐藏）；复述题「收起原文」练记忆开关
+- 录音区：大圆录音钮（录音中红色脉冲）+ 波形动画 + 计时 + 原型的鼓励文案（"说完后点一下结束"）
+- 表达支架卡：问答 → "I think… because…" 句式支架；复述 → "Listen. Pause. Speak."
+- 反馈卡：分数格子化（score-cell）+ 开头鼓励语（复述/问答两套）+ 来源标注保留
 
-**后端**
-- 新表 `Unit`（order_index / title / topic / is_active）；`Passage` 加 `unit_id`（nullable；迁移把现有 demo-pets 归入默认「Unit 1 · Pets」）；`Classroom` 加 `unlock_all: bool` 默认 false
-- `GET /classes/{code}/path`：单元有序列表，每单元含该生最好星数、完成轮数、是否锁定；锁定规则 = 未开 unlock_all 且上一单元完成 0 轮
-- 今日篇目逻辑改造：从「全局第一篇」改为「学生路径上第一个未完成单元的篇目」（无单元数据时回退现状，保持 `/practice` MVP 页与现有测试兼容）；全部完成 → 复练最后单元
-- admin：Unit 的 CRUD + 篇目归属编辑（复用现有 passage PUT）
-- 测试：路径顺序、解锁/全开、完成推进
+## P5 结果页与成长页重构
+- 结果页：奖杯 banner + 4 统计卡（总评/完整度/流利度/词汇档）+ rubric 四维条形 + 词表命中词 tags + 升级表达卡（**收藏**，localStorage）+ 每题回看 Dialog（转写+音频回放）
+- `/me`：统计卡（累计开口分钟/完成次数/档位/坚持天数）+ 趋势与词汇生长条 + 练习时间线 + 徽章墙保留
+- 表达收藏存 localStorage（`esa:saved-expressions`），不动后端
 
-**前端**
-- `/map/:code` 纵向关卡列表（单元卡：标题/主题/星星/锁），点击进入练习；练习页头部加「关卡地图」入口
-
-## Phase 3：AI 出题（老师侧工作台）
-
-**后端**
-- 抽公共 `ArkChatClient`（`app/scoring/ark_client.py`：chat/completions 封装 + JSON 容错解析公共化），`ArkRubricScorer` 改用之
-- `POST /admin/scenarios/{id}/questions/generate`（count 1-10 / band / hint）→ **只起草不入库**，返回可编辑草稿；prompt 内置 PRD §6 三档难度描述（A2 二选一 15-20s / B1 情景偏好 30s / B2 连续追问 45s）；无密钥 503（同 TTS 口径）
-- `POST /admin/passages/{id}/sentences/auto-split`：本地算法（句分割→按词数升序→取 3 句建复述句），幂等
-- 补 `PUT /admin/scenarios/{id}`（改名/启停）
-- 测试：生成解析与边界（MockTransport）、自动拆句幂等、503、Scenario PUT
-
-**前端**
-- admin 情景页：「AI 生成问法」→ 预览面板（每条可编辑文本/档位/秒数，采纳走已有 POST / 丢弃）
-- admin 篇目页：「自动拆分复述句」按钮
-
-**红线**：AI 只服务老师起草，学生端题库仍全部来自内容表（PRD「模型不当场出唯一题」）。
-
-## Phase 4：AI 驱动定位包装与收尾
-
-- README/界面文案标注五大 AI 能力（转写 / rubric 评分 / 词表 CEFR / TTS 标准音 / AI 出题）
-- 教师面板头部加引擎状态徽章（演示模式 / 方舟）
-- CLAUDE.md 更新；全量测试 + 浏览器验证；提交 PR
-
-## 依赖与迁移
-
-- 前端新增 `canvas-confetti`；后端零新依赖
-- 一个 Alembic 迁移：student 3 字段、practice_session.stars、unit 表、passage.unit_id、classroom.unlock_all、student_badge 表 + 默认单元种子
+## P6 教师/管理端视觉统一
+- 皮肤自动继承；教师面板：统计卡化（完成率/均分/值得关注）、档位分布改条形图、文案换原型基调（"参考数据辅助教学，不定义学生"）；管理端标签文案微调
 
 ## 执行顺序与验证
-
-Phase 1→2→3→4 串行，每阶段：后端+迁移+测试全绿 → generate-client → 前端 → lint/build → 浏览器实测。关键回归点：`/today` 改造不破坏现有 141 个测试（无单元数据走回退路径）；档位降级依旧不向学生展示（星级与档位解耦，无负面反馈机制）。
+P1（皮肤）→ P2（后端探索）→ P3（新页面）→ P4（练习页）→ P5（结果/成长）→ P6（教师/管理）。
+每阶段：后端测试全绿 → generate-client → 前端 lint/build → 浏览器实测；最终全量回归 + 提交 PR。原型的鼓励文案与插画资产直接搬运（自带版权：项目内原型文件）。

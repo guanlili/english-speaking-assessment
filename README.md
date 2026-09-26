@@ -1,4 +1,4 @@
-# 英语口语评测平台
+# SpeakUp 开口说 · 英语口语学习平台
 
 
 基于 [guanlili/lili-full-stack](https://github.com/guanlili/lili-full-stack) 创建的独立项目仓库。

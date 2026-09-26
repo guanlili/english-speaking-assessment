@@ -1,6 +1,6 @@
 # CLAUDE.md — 项目规范
 
-> 本项目为「英语口语评测平台」，基于 lili-full-stack 模板创建。
+> 本项目为「SpeakUp 开口说」英语口语学习平台（视觉与交互参照 prototypes/speakup 原型），基于 lili-full-stack 模板创建。
 
 ## 业务上下文
 

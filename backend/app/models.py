@@ -294,6 +294,10 @@ class PracticeSession(SQLModel, table=True):
     question_band: str | None = Field(default=None, max_length=10)
     # 本轮星级（0-3，完成即 ≥1）；结算见 gamification.settle_session
     stars: int | None = Field(default=None)
+    # 练习模式：daily = 课堂今日轮（教师面板统计）；explore = 主题探索自由练习
+    mode: str = Field(
+        default="daily", max_length=16, sa_column_kwargs={"server_default": "daily"}
+    )
     # 本轮练习的篇目（关卡进度按 passage → unit 聚合）
     passage_id: uuid.UUID | None = Field(
         default=None, foreign_key="passage.id", ondelete="SET NULL"

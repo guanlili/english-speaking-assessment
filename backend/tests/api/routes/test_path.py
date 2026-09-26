@@ -251,3 +251,76 @@ def test_list_units_public_with_code(client: TestClient) -> None:
     titles = [u["title"] for u in resp.json()]
     assert any("Unit 1" in t for t in titles)
     assert client.get("/api/v1/classes/NOPE00/units").status_code == 404
+
+
+# ── 主题探索（自由练习）─────────────────────────────────────────────
+
+
+def test_explore_session_lifecycle(
+    client: TestClient,
+    inline_scoring: None,
+    superuser_token_headers: dict,
+    db: Session,
+) -> None:
+    """探索：按单元开轮、当日复用、today 可取计划、教师面板不计入完成率。"""
+    second = _make_unit_passage(db, superuser_token_headers, client, 1, "Unit 2")
+    student = _join(client, "探索侠")
+
+    # 未加入指派 → today 默认第一单元；explore 用第二单元
+    resp = client.post(
+        "/api/v1/classes/DEMO01/explore",
+        json={"unit_id": second["unit"]["id"], "student_id": student["id"]},
+    )
+    assert resp.status_code == 200, resp.text
+    explore = resp.json()
+
+    # 当日复用同一 explore 会话
+    again = client.post(
+        "/api/v1/classes/DEMO01/explore",
+        json={"unit_id": second["unit"]["id"], "student_id": student["id"]},
+    )
+    assert again.json()["session_id"] == explore["session_id"]
+
+    # today?session_id 返回探索轮计划（Unit 2 的复述句）
+    plan = client.get(
+        "/api/v1/classes/DEMO01/today",
+        params={"student_id": student["id"], "session_id": explore["session_id"]},
+    ).json()
+    assert "Cats" in plan["items"][0]["text"] or "cats" in plan["items"][0]["text"]
+
+    # 默认 today 仍是课堂轮（第一单元），两者互不干扰
+    daily_plan = client.get(
+        "/api/v1/classes/DEMO01/today", params={"student_id": student["id"]}
+    ).json()
+    assert daily_plan["session_id"] != explore["session_id"]
+
+    # 他人会话 → 404
+    other = _join(client, "别人")
+    assert (
+        client.get(
+            "/api/v1/classes/DEMO01/today",
+            params={
+                "student_id": other["id"],
+                "session_id": explore["session_id"],
+            },
+        ).status_code
+        == 404
+    )
+
+    # 探索轮的作答不进教师面板完成率
+    for item in plan["items"]:
+        _resp = client.post(
+            "/api/v1/attempts",
+            files={"audio": ("a.webm", b"bytes", "audio/webm")},
+            data={
+                "item_type": item["type"],
+                "item_id": item["id"],
+                "duration_s": "6.0",
+                "student_id": student["id"],
+                "session_id": explore["session_id"],
+            },
+        )
+        assert _resp.status_code == 200
+    board = client.get("/api/v1/classes/DEMO01/board").json()
+    row = next(s for s in board["students"] if s["display_name"] == "探索侠")
+    assert row["done_count"] == 0  # 探索不计入今日课堂统计
