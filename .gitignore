@@ -22,3 +22,6 @@ backend/audio/
 
 # ZCode 本地工具配置
 .zcodeignore
+
+# HTTPS 证书（acme.sh 签发到本地，不入库）
+ssl/

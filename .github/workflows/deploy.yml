@@ -160,6 +160,9 @@ jobs:
           ARK_TTS_API_KEY: ${{ secrets.ARK_TTS_API_KEY }}
           ARK_TTS_MODEL: ${{ secrets.ARK_TTS_MODEL }}
           ARK_TTS_VOICE: ${{ secrets.ARK_TTS_VOICE }}
+          DP_Id: ${{ secrets.DP_Id }}
+          DP_Key: ${{ secrets.DP_Key }}
+          TLS_DOMAIN: ${{ secrets.TLS_DOMAIN }}
         run: |
           bash scripts/generate-deploy-env.sh "$RUNNER_TEMP/deploy.env"
           env_b64=$(base64 < "$RUNNER_TEMP/deploy.env" | tr -d '\n')
@@ -217,7 +220,26 @@ jobs:
             # 校验全部通过才替换（同文件系统 rename，不存在写一半的 .env）
             mv .env.new .env
 
-            echo "=== 4/5 构建并重启容器 ==="
+            echo "=== 4/6 HTTPS 证书（配置 DP_Id/DP_Key/TLS_DOMAIN 时自动签发，幂等） ==="
+            if grep -Eq '^DP_Id=".+"' .env && grep -Eq '^DP_Key=".+"' .env && grep -Eq '^TLS_DOMAIN=".+"' .env; then
+              tls_domain=$(sed -n 's/^TLS_DOMAIN="\([^"]*\)"$/\1/p' .env)
+              mkdir -p ssl && chmod 700 ssl
+              if [ ! -f ssl/fullchain.pem ]; then
+                echo "首次签发 $tls_domain 证书（Let's Encrypt DNS-01，无需停机）"
+                docker compose -f compose.yml run --rm acme --issue --dns dns_dp -d "$tls_domain" --server letsencrypt --keylength ec-256
+                docker compose -f compose.yml run --rm acme --install-cert -d "$tls_domain" --fullchain-file /ssl/fullchain.pem --key-file /ssl/privkey.pem
+                echo "证书已安装到 ./ssl/，nginx 将以 https 启动"
+              else
+                echo "证书已存在，跳过签发（acme daemon 自动续期）"
+              fi
+              # 每日 04:00 平滑重载 nginx：夜间续期出的新证书最迟一天内加载（reload 无感幂等）
+              reload_cmd="cd '$PWD' && docker compose -f compose.yml exec -T frontend nginx -s reload"
+              (crontab -l 2>/dev/null | grep -v 'nginx -s reload'; echo "0 4 * * * $reload_cmd") | crontab -
+            else
+              echo "未配置 DNSPod 密钥/域名，保持纯 HTTP（本地与首启兼容）"
+            fi
+
+            echo "=== 5/6 构建并重启容器 ==="
             docker compose -f compose.yml up -d --build --remove-orphans || {
               echo "--- prestart logs ---"
               docker compose -f compose.yml logs prestart --tail 50
@@ -226,7 +248,7 @@ jobs:
               exit 1
             }
 
-            echo "=== 5/5 验证（就绪检查 = 含数据库可用性；经 nginx 反代访问）==="
+            echo "=== 6/6 验证（就绪检查 = 含数据库可用性；经 nginx 反代访问）==="
             app_port=$(sed -n 's/^APP_PORT="\([0-9]*\)"$/\1/p' .env)
             healthy=""
             for i in $(seq 1 30); do
