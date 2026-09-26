@@ -249,6 +249,10 @@ jobs:
               docker compose -f compose.yml logs backend --tail 50
               exit 1
             }
+            # frontend 的 TLS 形态由 entrypoint 在容器启动时决定；证书后签发不会
+            # 改变 compose 配置，up 不会重建容器 → 部署时强制重建一次重新求值
+            # （前端闪断 1~2 秒，仅部署窗口内）
+            docker compose -f compose.yml up -d --force-recreate --no-deps frontend
 
             echo "=== 6/6 验证（就绪检查 = 含数据库可用性；经 nginx 反代访问）==="
             app_port=$(sed -n 's/^APP_PORT="\([0-9]*\)"$/\1/p' .env)
