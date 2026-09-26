@@ -6,6 +6,9 @@ WORKDIR /app/frontend
 
 COPY frontend/package.json frontend/package-lock.json ./
 
+# 国内构建加速：npm 走 npmmirror
+RUN npm config set registry https://registry.npmmirror.com
+
 RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY ./frontend ./
