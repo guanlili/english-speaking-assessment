@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, delete, select
+from sqlmodel import Session, select
 
 from app.api.deps import get_scoring_submitter
 from app.core.config import settings
@@ -384,7 +384,7 @@ def test_unit_switch_starts_new_round_preserving_attempts(
             headers=headers,
         )
         assigned = client.put(
-            f"/api/v1/classes/DEMO01/assignment", json={"unit_id": unit["id"]}
+            "/api/v1/classes/DEMO01/assignment", json={"unit_id": unit["id"]}
         )
         assert assigned.status_code == 200, assigned.text
 
@@ -405,37 +405,38 @@ def test_unit_switch_starts_new_round_preserving_attempts(
         units = client.get("/api/v1/classes/DEMO01/units").json()
         original_unit = next(u for u in units if u["unit_id"] != unit["id"])
         client.put(
-            f"/api/v1/classes/DEMO01/assignment",
+            "/api/v1/classes/DEMO01/assignment",
             json={"unit_id": original_unit["unit_id"]},
         )
         plan3 = _today(client, student["id"]).json()
         assert plan3["session_id"] == plan1["session_id"]
         assert any(a["item_id"] == first_item["id"] for a in plan3["attempts"])
     finally:
-        # 恢复现场：清指派 + 删本测试创建的单元/篇目/学生及其作答会话
+        # 恢复现场：清指派 + 删本测试创建的单元/篇目/学生及其作答会话。
+        # 用 select + 实例删除（仓库风格），避免批量 delete().where() 的
+        # 类型检查误报
         classroom = db.exec(
             select(Classroom).where(Classroom.code == DEMO_CLASSROOM_CODE)
         ).first()
         if classroom is not None:
             classroom.current_unit_id = None
             db.add(classroom)
-        db.exec(delete(Attempt).where(Attempt.student_id == sid))  # type: ignore[call-overload]
-        db.exec(
-            delete(PracticeSession).where(PracticeSession.student_id == sid)  # type: ignore[call-overload]
-        )
-        db.exec(delete(StudentBadge).where(StudentBadge.student_id == sid))  # type: ignore[call-overload]
-        db.exec(delete(Student).where(Student.id == sid))  # type: ignore[call-overload]
         if "passage" in created:
-            db.exec(
-                delete(RepeatSentence).where(  # type: ignore[call-overload]
+            for row in db.exec(
+                select(RepeatSentence).where(
                     RepeatSentence.passage_id == created["passage"]
                 )
-            )
-            db.exec(
-                delete(Passage).where(Passage.id == created["passage"])  # type: ignore[call-overload]
-            )
+            ).all():
+                db.delete(row)
+            db.delete(db.get_one(Passage, created["passage"]))
         if "unit" in created:
-            db.exec(delete(Unit).where(Unit.id == created["unit"]))  # type: ignore[call-overload]
+            db.delete(db.get_one(Unit, created["unit"]))
+        for model in (Attempt, PracticeSession, StudentBadge):
+            for row in db.exec(
+                select(model).where(model.student_id == sid)  # type: ignore[attr-defined]
+            ).all():
+                db.delete(row)
+        db.delete(db.get_one(Student, sid))
         db.commit()
 
 
@@ -444,7 +445,7 @@ def test_content_gap_404_details_are_distinct(client: TestClient) -> None:
     student = _join(client, "内容检查")
     # 指向不存在的会话：detail 必须是 Session not found（而非 Student not found）
     resp = client.get(
-        f"/api/v1/classes/DEMO01/today",
+        "/api/v1/classes/DEMO01/today",
         params={
             "student_id": student["id"],
             "session_id": str(uuid.uuid4()),
@@ -454,7 +455,7 @@ def test_content_gap_404_details_are_distinct(client: TestClient) -> None:
     assert resp.json()["detail"] == "Session not found"
     # 陌生学生 ID：身份类 404
     resp2 = client.get(
-        f"/api/v1/classes/DEMO01/today",
+        "/api/v1/classes/DEMO01/today",
         params={"student_id": str(uuid.uuid4())},
     )
     assert resp2.status_code == 404
