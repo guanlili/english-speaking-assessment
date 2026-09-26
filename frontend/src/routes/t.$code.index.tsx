@@ -92,6 +92,11 @@ function TeacherBoardPage() {
                 </span>
               )}
             </p>
+            <div className="mt-1 flex flex-wrap gap-1">
+              <Badge variant="secondary">
+                评分引擎：{board.engine === "ark" ? "方舟（AI）" : "演示模式"}
+              </Badge>
+            </div>
             {/* 三档分布（PRD US-10） */}
             <div className="mt-1 flex flex-wrap gap-1">
               {Object.entries(board.band_distribution).map(([band, count]) => (

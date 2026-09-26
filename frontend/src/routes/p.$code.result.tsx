@@ -5,8 +5,16 @@ import {
   useNavigate,
   useParams,
 } from "@tanstack/react-router"
-import { ArrowRight, Repeat, Shuffle } from "lucide-react"
-import { useMemo } from "react"
+import confetti from "canvas-confetti"
+import {
+  ArrowRight,
+  Flame,
+  Repeat,
+  Shuffle,
+  Sparkles,
+  Star,
+} from "lucide-react"
+import { useEffect, useMemo } from "react"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
 import { Button } from "@/components/ui/button"
@@ -14,6 +22,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -62,6 +71,25 @@ function RoundResultPage() {
   })
 
   const plan = todayQuery.data
+  const gamification = plan?.gamification ?? null
+  const newBadges = useMemo(() => {
+    if (!gamification?.badges) return []
+    const today = new Date().toISOString().slice(0, 10)
+    return gamification.badges.filter(
+      (b) => (b.awarded_at ?? "").slice(0, 10) === today,
+    )
+  }, [gamification])
+
+  // 3 星或新徽章 → 庆祝彩带（只放一次）
+  useEffect(() => {
+    if (
+      gamification &&
+      (gamification.session_stars === 3 || newBadges.length > 0)
+    ) {
+      confetti({ particleCount: 90, spread: 75, origin: { y: 0.6 } })
+    }
+  }, [gamification?.session_stars, newBadges.length, gamification])
+
   const { doneItems, weakest } = useMemo(() => {
     const empty: { item: PlanItem; attempt: PlanAttempt }[] = []
     if (!plan) return { doneItems: empty, weakest: null as string | null }
@@ -121,6 +149,46 @@ function RoundResultPage() {
             {displayName(student)} · 课堂 {plan.classroom_code} · 每题转写和总评
           </p>
         </div>
+
+        {gamification && gamification.session_stars !== null && (
+          <Card>
+            <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
+              <div className="flex items-center gap-1">
+                {[1, 2, 3].map((n) => (
+                  <Star
+                    key={n}
+                    className={
+                      n <= (gamification.session_stars ?? 0)
+                        ? "size-8 fill-yellow-400 text-yellow-400"
+                        : "size-8 text-muted-foreground/30"
+                    }
+                    style={{
+                      animation: `star-pop 0.4s ease-out ${n * 0.25}s both`,
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <span className="flex items-center gap-1 font-semibold">
+                  <Sparkles className="size-4 text-primary" />
+                  XP {gamification.xp}
+                </span>
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  <Flame className="size-4 text-orange-500" />
+                  连胜 {gamification.streak_days} 天
+                </span>
+              </div>
+            </CardContent>
+            {newBadges.length > 0 && (
+              <CardFooter className="border-t bg-muted/30 py-3">
+                <p className="text-sm">
+                  <span className="font-semibold">本轮获得徽章：</span>
+                  {newBadges.map((b) => b.label).join("、")}
+                </p>
+              </CardFooter>
+            )}
+          </Card>
+        )}
 
         {doneItems.length === 0 && (
           <Card>

@@ -26,6 +26,8 @@ from app.models import (
     Scenario,
     ScenarioQuestion,
     Student,
+    StudentBadge,
+    Unit,
     User,
     WordlistEntry,
 )
@@ -95,6 +97,7 @@ def db() -> Generator[Session]:
         # 清理测试库数据（独立库内，无开发数据风险；按外键依赖倒序）
         session.exec(delete(Attempt))  # type: ignore[call-overload]
         session.exec(delete(PracticeSession))  # type: ignore[call-overload]
+        session.exec(delete(StudentBadge))  # type: ignore[call-overload]
         session.exec(delete(Student))  # type: ignore[call-overload]
         session.exec(delete(Classroom))  # type: ignore[call-overload]
         session.exec(delete(ScenarioQuestion))  # type: ignore[call-overload]
@@ -102,6 +105,7 @@ def db() -> Generator[Session]:
         session.exec(delete(RepeatSentence))  # type: ignore[call-overload]
         session.exec(delete(Passage))  # type: ignore[call-overload]
         session.exec(delete(WordlistEntry))  # type: ignore[call-overload]
+        session.exec(delete(Unit))  # type: ignore[call-overload]
         session.exec(delete(User))  # type: ignore[call-overload]
         session.commit()
 

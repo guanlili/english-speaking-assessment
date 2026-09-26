@@ -88,6 +88,10 @@ class PassageBase(SQLModel):
 class Passage(PassageBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     slug: str = Field(unique=True, index=True, max_length=100)
+    # 所属学习单元（关卡）；为空时挂全局默认（老数据兼容）
+    unit_id: uuid.UUID | None = Field(
+        default=None, foreign_key="unit.id", ondelete="SET NULL"
+    )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -102,6 +106,38 @@ class PassagePublic(PassageBase):
 
 class PassageCreate(PassageBase):
     slug: str = Field(min_length=1, max_length=100)
+    unit_id: uuid.UUID | None = None
+
+
+# 学习单元（EIP 教材单元 → 学生端关卡地图）；顺序解锁 + 老师可全开
+class Unit(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    order_index: int = Field(default=0, ge=0, index=True)
+    title: str = Field(min_length=1, max_length=255)
+    topic: str = Field(max_length=100)
+    is_active: bool = True
+
+
+class UnitPublic(SQLModel):
+    id: uuid.UUID
+    order_index: int
+    title: str
+    topic: str
+    is_active: bool
+
+
+class UnitCreate(SQLModel):
+    order_index: int = Field(default=0, ge=0)
+    title: str = Field(min_length=1, max_length=255)
+    topic: str = Field(max_length=100)
+    is_active: bool = True
+
+
+class UnitUpdate(SQLModel):
+    order_index: int | None = None
+    title: str | None = None
+    topic: str | None = None
+    is_active: bool | None = None
 
 
 # 听后复述句：属于篇目，由短到长排序（PRD §6：一轮 3 句）
@@ -163,6 +199,10 @@ class Classroom(SQLModel, table=True):
     code: str = Field(unique=True, index=True, max_length=16)
     class_size: int = Field(default=40, ge=1, le=100)
     is_active: bool = True
+    # 老师一键解锁全部关卡（默认顺序解锁）
+    unlock_all: bool = Field(
+        default=False, sa_column_kwargs={"server_default": "false"}
+    )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -174,6 +214,7 @@ class ClassroomPublic(SQLModel):
     code: str
     class_size: int
     is_active: bool
+    unlock_all: bool = False
     created_at: datetime | None = None
 
 
@@ -194,7 +235,26 @@ class Student(SQLModel, table=True):
     suffix: str | None = Field(default=None, max_length=4)
     # 当前练习档：A2 / B1 / B2。学生端不展示升降，只换题（PRD §6）
     current_band: str = Field(default="B1", max_length=10)
+    # 激励层（只和自己比）：经验值 / 连胜天数 / 最近练习日
+    xp: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    streak_days: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    last_practice_date: date | None = Field(default=None, sa_type=Date)
     created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+# 徽章发放记录；定义见 app/scoring/gamification.py 的 BADGES 常量
+class StudentBadge(SQLModel, table=True):
+    __tablename__ = "student_badge"
+
+    id: int | None = Field(default=None, primary_key=True)
+    student_id: uuid.UUID = Field(
+        foreign_key="student.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    badge_key: str = Field(max_length=32, index=True)
+    awarded_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
     )
@@ -227,6 +287,12 @@ class PracticeSession(SQLModel, table=True):
     band: str = Field(max_length=10)
     # 3 句复述做完后按规则调整出的问答档位（PRD US-05：跟读结果定问答档）
     question_band: str | None = Field(default=None, max_length=10)
+    # 本轮星级（0-3，完成即 ≥1）；结算见 gamification.settle_session
+    stars: int | None = Field(default=None)
+    # 本轮练习的篇目（关卡进度按 passage → unit 聚合）
+    passage_id: uuid.UUID | None = Field(
+        default=None, foreign_key="passage.id", ondelete="SET NULL"
+    )
     session_date: date = Field(sa_type=Date)
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
@@ -328,6 +394,40 @@ class PlanAttempt(SQLModel):
     error: str | None = None
 
 
+# 关卡地图（GET /classes/{code}/path）
+class PathUnit(SQLModel):
+    unit_id: uuid.UUID
+    order_index: int
+    title: str
+    topic: str
+    # 该生在此单元的完成轮数与最好星数
+    rounds_done: int = 0
+    best_stars: int | None = None
+    locked: bool = False
+    passage_id: uuid.UUID | None = None
+
+
+class LearningPath(SQLModel):
+    classroom_code: str
+    unlock_all: bool
+    units: list[PathUnit]
+
+
+class BadgePublic(SQLModel):
+    key: str
+    label: str
+    description: str
+    awarded_at: datetime | None = None
+
+
+class GamificationInfo(SQLModel):
+    xp: int = 0
+    streak_days: int = 0
+    # 本轮星级（未结算为 null）
+    session_stars: int | None = None
+    badges: list[BadgePublic] = []
+
+
 class TodayPlan(SQLModel):
     session_id: uuid.UUID
     classroom_code: str
@@ -338,6 +438,8 @@ class TodayPlan(SQLModel):
     attempts: list[PlanAttempt]
     # 同主题同档题是否已用尽（US-06 提示用）
     questions_exhausted: bool = False
+    # 激励层（HUD 与结果页用；awarded_at 为今天的即「本轮获得」）
+    gamification: GamificationInfo | None = None
 
 
 class NextQuestion(SQLModel):
@@ -370,6 +472,9 @@ class BoardStudent(SQLModel):
     current_band: str
     # 过去 7 天无任何作答且加入已超 7 天（PRD US-10：连续缺席口径的简化）
     inactive_days7: bool = False
+    # 激励层（仅老师面板展示；学生端无排名）
+    xp: int = 0
+    streak_days: int = 0
     # 每题最新作答，与 BoardData.items 骨架按 item_id 对应
     items: list[BoardItem]
 
@@ -377,6 +482,8 @@ class BoardStudent(SQLModel):
 class BoardData(SQLModel):
     classroom_code: str
     class_size: int
+    # 当前评分引擎（最近一次已评作答；mock=演示模式 / ark=方舟）
+    engine: str = "mock"
     # 今日至少提交 1 题的人数（PRD US-10 完成率的分子；班额为分母）
     submitted_count: int
     # 尚在评分中的学生数 > 0 时前端轮询

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, redirect } from "@tanstack/react-router"
-import { Loader2, Plus, Trash2 } from "lucide-react"
+import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
+import { toast } from "sonner"
 import { AdminService, UsersService } from "@/client"
 import AudioSetter from "@/components/Practice/AudioSetter"
 import { Badge } from "@/components/ui/badge"
@@ -129,15 +130,20 @@ function ScenarioCard({
     seconds: 30,
   })
 
+  const [gen, setGen] = useState({ band: "B1", count: 3, hint: "" })
+  const [drafts, setDrafts] = useState<
+    Array<{ text: string; band: string; seconds: number }>
+  >([])
+
   const addQuestion = useMutation({
-    mutationFn: () =>
+    mutationFn: (body: { band: string; text: string; seconds: number }) =>
       AdminService.createQuestion({
         scenarioId: scenario.id,
         requestBody: {
           scenario_id: scenario.id,
-          band: question.band,
-          text: question.text,
-          suggested_seconds: question.seconds,
+          band: body.band,
+          text: body.text,
+          suggested_seconds: body.seconds,
           order_index: scenario.questions.length,
         },
       }),
@@ -147,6 +153,37 @@ function ScenarioCard({
       onMutated()
     },
   })
+
+  const generateMutation = useMutation({
+    mutationFn: () =>
+      AdminService.generateQuestions({
+        scenarioId: scenario.id,
+        requestBody: {
+          band: gen.band,
+          count: gen.count,
+          ...(gen.hint ? { hint: gen.hint } : {}),
+        },
+      }),
+    onSuccess: (data) => {
+      setDrafts(
+        (data ?? []).map((d) => ({
+          text: d.text ?? "",
+          band: gen.band,
+          seconds: d.suggested_seconds ?? 30,
+        })),
+      )
+    },
+    onError: (err: { body?: { detail?: string } }) =>
+      toast.error(err.body?.detail ?? "生成失败", {
+        description: "需配置方舟密钥后可用；也可手动录入",
+      }),
+  })
+
+  const adoptDraft = (index: number) => {
+    const d = drafts[index]
+    addQuestion.mutate({ band: d.band, text: d.text, seconds: d.seconds })
+    setDrafts(drafts.filter((_, i) => i !== index))
+  }
 
   const deleteQuestion = useMutation({
     mutationFn: (id: string) => AdminService.deleteQuestion({ questionId: id }),
@@ -242,12 +279,108 @@ function ScenarioCard({
             />
           </div>
           <Button
-            onClick={() => addQuestion.mutate()}
+            onClick={() =>
+              addQuestion.mutate({
+                band: question.band,
+                text: question.text,
+                seconds: question.seconds,
+              })
+            }
             disabled={!question.text || addQuestion.isPending}
           >
             <Plus />
             添加
           </Button>
+        </div>
+
+        {/* AI 起草（不入库，采纳后才保存） */}
+        <div className="space-y-2 border-t pt-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="w-24 space-y-1">
+              <Label>AI 档位</Label>
+              <Input
+                value={gen.band}
+                onChange={(e) => setGen({ ...gen, band: e.target.value })}
+                placeholder="A2/B1/B2"
+              />
+            </div>
+            <div className="w-24 space-y-1">
+              <Label>数量</Label>
+              <Input
+                type="number"
+                min={1}
+                max={10}
+                value={gen.count}
+                onChange={(e) =>
+                  setGen({ ...gen, count: Number(e.target.value) })
+                }
+              />
+            </div>
+            <div className="min-w-48 flex-1 space-y-1">
+              <Label>要求（可选）</Label>
+              <Input
+                value={gen.hint}
+                onChange={(e) => setGen({ ...gen, hint: e.target.value })}
+                placeholder="如：贴近校园生活"
+              />
+            </div>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setDrafts([])
+                generateMutation.mutate()
+              }}
+              disabled={generateMutation.isPending}
+            >
+              {generateMutation.isPending ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <Sparkles />
+              )}
+              AI 起草
+            </Button>
+          </div>
+
+          {drafts.length > 0 && (
+            <div className="space-y-2 rounded-md border border-dashed p-2">
+              <p className="text-xs text-muted-foreground">
+                AI 草稿（可编辑后采纳；不会自动入库）
+              </p>
+              {drafts.map((d, i) => (
+                <div key={d.text} className="flex flex-wrap items-center gap-2">
+                  <Input
+                    className="min-w-48 flex-1"
+                    value={d.text}
+                    onChange={(e) => {
+                      const next = [...drafts]
+                      next[i] = { ...d, text: e.target.value }
+                      setDrafts(next)
+                    }}
+                  />
+                  <Input
+                    className="w-16"
+                    type="number"
+                    value={d.seconds}
+                    onChange={(e) => {
+                      const next = [...drafts]
+                      next[i] = { ...d, seconds: Number(e.target.value) }
+                      setDrafts(next)
+                    }}
+                  />
+                  <Button size="sm" onClick={() => adoptDraft(i)}>
+                    采纳
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setDrafts(drafts.filter((_, j) => j !== i))}
+                  >
+                    丢弃
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

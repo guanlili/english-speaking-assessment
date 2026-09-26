@@ -5,7 +5,7 @@ import {
   useNavigate,
   useParams,
 } from "@tanstack/react-router"
-import { ArrowRight, Circle, Mic, Square } from "lucide-react"
+import { ArrowRight, Circle, Flame, Mic, Sparkles, Square } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { PlanAttempt, PlanItem } from "@/client"
@@ -264,11 +264,28 @@ function ClassroomPracticePage() {
               第 {currentIndex + 1}/{items.length} 题 ·{" "}
               {BAND_LABELS[plan.band] ?? plan.band}
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
               {displayName(student)} · 课堂 {plan.classroom_code}
+              {plan.gamification && (
+                <>
+                  <span className="flex items-center gap-1">
+                    <Flame className="size-4 text-orange-500" />
+                    {plan.gamification.streak_days} 天
+                  </span>
+                  <span className="flex items-center gap-1 font-medium text-foreground">
+                    <Sparkles className="size-4 text-primary" />
+                    {plan.gamification.xp} XP
+                  </span>
+                </>
+              )}
             </p>
           </div>
           <div className="flex gap-1">
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/map/$code" params={{ code }}>
+                关卡地图
+              </Link>
+            </Button>
             <Button variant="ghost" size="sm" asChild>
               <Link to="/me/$code" params={{ code }}>
                 我的进步

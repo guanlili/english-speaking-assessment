@@ -1,0 +1,176 @@
+"""关卡地图（P2）：单元路径、解锁规则、今日篇目按路径推进。"""
+
+import uuid
+from collections.abc import Callable, Generator
+from pathlib import Path
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlmodel import Session
+
+from app.api.deps import get_scoring_submitter
+from app.core.config import settings
+from app.main import app
+from app.scoring import worker
+
+
+@pytest.fixture
+def inline_scoring(
+    db: Session, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> Generator[None]:
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+
+    def run_inline(attempt_id: uuid.UUID) -> None:
+        with Session(db.get_bind()) as session:
+            worker.process_attempt(session, attempt_id)
+
+    def override_submitter() -> Callable[[uuid.UUID], None]:
+        return run_inline
+
+    app.dependency_overrides[get_scoring_submitter] = override_submitter
+    yield None
+    app.dependency_overrides.pop(get_scoring_submitter, None)
+
+
+def _join(client: TestClient, name: str) -> Any:
+    resp = client.post("/api/v1/classes/DEMO01/join", json={"display_name": name})
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _make_unit_passage(
+    db: Session, headers: dict, client: TestClient, order: int, title: str
+) -> dict:
+    """建第二/第三个单元 + 篇目（第一个由种子提供）。"""
+    unit = client.post(
+        "/api/v1/admin/units",
+        json={"order_index": order, "title": title, "topic": "Pets"},
+        headers=headers,
+    ).json()
+    passage = client.post(
+        "/api/v1/admin/passages",
+        json={
+            "slug": f"unit-{order}",
+            "title": f"{title} passage",
+            "topic": "Pets",
+            "cefr_band": "B1",
+            "text": "Cats are quiet and clean. They sleep a lot.",
+            "suggested_seconds": 30,
+            "unit_id": unit["id"],
+        },
+        headers=headers,
+    ).json()
+    # 复述句（供今日 5 题结构）
+    for i, text in enumerate(
+        ["Cats are quiet.", "They sleep a lot every day.", "I like cats and dogs."]
+    ):
+        client.post(
+            f"/api/v1/admin/passages/{passage['id']}/sentences",
+            json={"order_index": i, "text": text, "suggested_seconds": 6},
+            headers=headers,
+        )
+    return {"unit": unit, "passage": passage}
+
+
+def _finish_round(client: TestClient, plan: dict, student_id: str) -> None:
+    for item in plan["items"]:
+        resp = client.post(
+            "/api/v1/attempts",
+            files={"audio": ("a.webm", b"bytes", "audio/webm")},
+            data={
+                "item_type": item["type"],
+                "item_id": item["id"],
+                "duration_s": "6.0",
+                "student_id": student_id,
+                "session_id": plan["session_id"],
+            },
+        )
+        assert resp.status_code == 200, resp.text
+
+
+def test_path_single_unit_unlocked(client: TestClient, inline_scoring: None) -> None:
+    """种子只有一个单元：第一关永远解锁。"""
+    student = _join(client, "路径同学")
+    resp = client.get(
+        "/api/v1/classes/DEMO01/path", params={"student_id": student["id"]}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["unlock_all"] is False
+    assert len(data["units"]) == 1
+    assert data["units"][0]["locked"] is False
+    assert data["units"][0]["rounds_done"] == 0
+    assert data["units"][0]["passage_id"] is not None
+
+
+def test_sequential_unlock_and_advance(
+    client: TestClient,
+    inline_scoring: None,
+    superuser_token_headers: dict,
+    db: Session,
+) -> None:
+    """两个单元：第二关锁 → 完成第一关一轮 → 解锁，今日篇目推进。"""
+    _make_unit_passage(db, superuser_token_headers, client, 1, "Unit 2")
+
+    student = _join(client, "闯关同学")
+    # 第二关锁定
+    path = client.get(
+        "/api/v1/classes/DEMO01/path", params={"student_id": student["id"]}
+    ).json()
+    assert len(path["units"]) == 2
+    assert path["units"][1]["locked"] is True
+
+    # 今日篇目仍是第一关
+    plan = client.get(
+        "/api/v1/classes/DEMO01/today", params={"student_id": student["id"]}
+    ).json()
+
+    # 完成第一关一轮（结算由 /today 聚合触发，先拉一次）
+    _finish_round(client, plan, student["id"])
+    client.get("/api/v1/classes/DEMO01/today", params={"student_id": student["id"]})
+    path2 = client.get(
+        "/api/v1/classes/DEMO01/path", params={"student_id": student["id"]}
+    ).json()
+    assert path2["units"][0]["rounds_done"] == 1
+    assert path2["units"][0]["best_stars"] is not None
+    assert path2["units"][1]["locked"] is False
+
+    # 老师全开开关也生效
+    classroom_id = client.get(
+        "/api/v1/admin/classrooms", headers=superuser_token_headers
+    ).json()[0]["id"]
+    updated = client.put(
+        f"/api/v1/admin/classrooms/{classroom_id}",
+        json={"unlock_all": True},
+        headers=superuser_token_headers,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["unlock_all"] is True
+
+
+def test_unit_crud(client: TestClient, superuser_token_headers: dict) -> None:
+    created = client.post(
+        "/api/v1/admin/units",
+        json={"order_index": 9, "title": "临时单元", "topic": "Test"},
+        headers=superuser_token_headers,
+    )
+    assert created.status_code == 200
+    unit = created.json()
+
+    upd = client.put(
+        f"/api/v1/admin/units/{unit['id']}",
+        json={"title": "改名单元"},
+        headers=superuser_token_headers,
+    )
+    assert upd.json()["title"] == "改名单元"
+
+    listing = client.get("/api/v1/admin/units", headers=superuser_token_headers)
+    assert any(u["id"] == unit["id"] for u in listing.json())
+
+    assert (
+        client.delete(
+            f"/api/v1/admin/units/{unit['id']}", headers=superuser_token_headers
+        ).status_code
+        == 200
+    )

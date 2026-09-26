@@ -127,7 +127,12 @@ def get_student(*, session: Session, student_id: uuid.UUID) -> Student | None:
 
 
 def get_or_create_today_session(
-    *, session: Session, classroom: Classroom, student: Student, today: date
+    *,
+    session: Session,
+    classroom: Classroom,
+    student: Student,
+    today: date,
+    passage_id: uuid.UUID | None = None,
 ) -> PracticeSession:
     existing = session.exec(
         select(PracticeSession).where(
@@ -141,6 +146,7 @@ def get_or_create_today_session(
         classroom_id=classroom.id,
         student_id=student.id,
         band=student.current_band,
+        passage_id=passage_id,
         session_date=today,
     )
     session.add(practice_session)

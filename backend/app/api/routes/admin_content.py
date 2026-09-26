@@ -14,7 +14,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, UploadFile
-from sqlmodel import SQLModel, col, select
+from sqlmodel import Field, SQLModel, col, select
 
 from app.api.deps import SessionDep, SuperUserDep
 from app.core.config import settings
@@ -29,6 +29,10 @@ from app.models import (
     Scenario,
     ScenarioQuestion,
     ScenarioQuestionPublic,
+    Unit,
+    UnitCreate,
+    UnitPublic,
+    UnitUpdate,
     WordlistEntry,
 )
 
@@ -326,6 +330,56 @@ async def import_wordlist_csv(
     return WordlistImportResult(imported=len(staged), invalid_rows=invalid_rows[:20])
 
 
+# ── 学习单元（关卡）─────────────────────────────────────────────────
+
+
+@router.get("/units", response_model=list[UnitPublic])
+def list_units(session: SessionDep, _admin: SuperUserDep) -> Any:
+    return session.exec(select(Unit).order_by(col(Unit.order_index))).all()
+
+
+@router.post("/units", response_model=UnitPublic)
+def create_unit(session: SessionDep, _admin: SuperUserDep, unit_in: UnitCreate) -> Any:
+    unit = Unit.model_validate(unit_in)
+    session.add(unit)
+    session.commit()
+    session.refresh(unit)
+    return unit
+
+
+@router.put("/units/{unit_id}", response_model=UnitPublic)
+def update_unit(
+    session: SessionDep,
+    _admin: SuperUserDep,
+    unit_id: uuid.UUID,
+    unit_in: UnitUpdate,
+) -> Any:
+    unit = session.get(Unit, unit_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="Unit not found")
+    unit.sqlmodel_update(unit_in.model_dump(exclude_unset=True))
+    session.add(unit)
+    session.commit()
+    session.refresh(unit)
+    return unit
+
+
+@router.delete("/units/{unit_id}")
+def delete_unit(
+    session: SessionDep, _admin: SuperUserDep, unit_id: uuid.UUID
+) -> dict[str, str]:
+    unit = session.get(Unit, unit_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="Unit not found")
+    session.delete(unit)  # 篇目 unit_id 置空（SET NULL）
+    session.commit()
+    return {"message": "deleted"}
+
+
+class ClassroomUpdate(SQLModel):
+    unlock_all: bool | None = None
+
+
 # ── 课堂码 ───────────────────────────────────────────────────────────
 
 
@@ -345,6 +399,160 @@ def deactivate_classroom(
     session.add(classroom)
     session.commit()
     return {"message": "deactivated"}
+
+
+@router.put("/classrooms/{classroom_id}", response_model=ClassroomPublic)
+def update_classroom(
+    session: SessionDep,
+    _admin: SuperUserDep,
+    classroom_id: uuid.UUID,
+    classroom_in: ClassroomUpdate,
+) -> Any:
+    """更新课堂设置（当前仅 unlock_all：一键解锁全部关卡）。"""
+    classroom = session.get(Classroom, classroom_id)
+    if classroom is None:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+    classroom.sqlmodel_update(classroom_in.model_dump(exclude_unset=True))
+    session.add(classroom)
+    session.commit()
+    session.refresh(classroom)
+    return classroom
+
+
+# ── 情景编辑与 AI 出题 ────────────────────────────────────────────────
+
+
+class ScenarioUpdate(SQLModel):
+    topic: str | None = None
+    is_active: bool | None = None
+
+
+@router.put("/scenarios/{scenario_id}")
+def update_scenario(
+    session: SessionDep,
+    _admin: SuperUserDep,
+    scenario_id: uuid.UUID,
+    scenario_in: ScenarioUpdate,
+) -> Any:
+    """编辑情景（改名/启停）。"""
+    scenario = session.get(Scenario, scenario_id)
+    if scenario is None:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    update = scenario_in.model_dump(exclude_unset=True)
+    if "topic" in update:
+        duplicate = session.exec(
+            select(Scenario).where(Scenario.topic == update["topic"])
+        ).first()
+        if duplicate is not None and duplicate.id != scenario_id:
+            raise HTTPException(status_code=409, detail="主题已存在")
+    scenario.sqlmodel_update(update)
+    session.add(scenario)
+    session.commit()
+    session.refresh(scenario)
+    return scenario
+
+
+class GenerateRequest(SQLModel):
+    band: str
+    count: int = Field(default=3, ge=1, le=10)
+    hint: str | None = None
+
+
+class DraftQuestionOut(SQLModel):
+    text: str
+    suggested_seconds: int
+
+
+@router.post(
+    "/scenarios/{scenario_id}/questions/generate", response_model=list[DraftQuestionOut]
+)
+def generate_questions(
+    session: SessionDep,
+    _admin: SuperUserDep,
+    scenario_id: uuid.UUID,
+    body: GenerateRequest,
+) -> Any:
+    """AI 按主题/档位起草问法（不入库，老师审改后走创建接口）。
+
+    PRD 红线：模型只起草，不直接服务学生。
+    """
+    from app.scoring.question_gen import generate_draft_questions
+
+    scenario = session.get(Scenario, scenario_id)
+    if scenario is None:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    if body.band not in VALID_BANDS:
+        raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
+    try:
+        drafts = generate_draft_questions(
+            topic=scenario.topic, band=body.band, count=body.count, hint=body.hint
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - 无密钥/调用失败 → 503
+        raise HTTPException(status_code=503, detail=f"AI 生成暂不可用：{exc}") from exc
+    return [
+        DraftQuestionOut(text=d.text, suggested_seconds=d.suggested_seconds)
+        for d in drafts
+    ]
+
+
+class AutoSplitResult(SQLModel):
+    created: int
+
+
+@router.post(
+    "/passages/{passage_id}/sentences/auto-split", response_model=AutoSplitResult
+)
+def auto_split_sentences(
+    session: SessionDep,
+    _admin: SuperUserDep,
+    passage_id: uuid.UUID,
+    target_count: int = 3,
+) -> Any:
+    """从篇目正文自动拆分复述句（本地算法非 AI）：按句切、由短到长取 3 句。
+
+    幂等：已有人工维护的句子时拒绝（避免覆盖老师内容）。
+    """
+    import re as _re
+
+    passage = session.get(Passage, passage_id)
+    if passage is None:
+        raise HTTPException(status_code=404, detail="Passage not found")
+    existing = session.exec(
+        select(RepeatSentence).where(RepeatSentence.passage_id == passage_id)
+    ).all()
+    if existing:
+        raise HTTPException(status_code=409, detail="已有复述句，请先清空再自动拆分")
+
+    sentences = [s.strip() for s in _re.split(r"[.!?]+\s*", passage.text) if s.strip()]
+    if len(sentences) < target_count:
+        raise HTTPException(
+            status_code=422, detail=f"正文句子不足 {target_count} 句，无法拆分"
+        )
+    # 由短到长取 target_count 句，再按原文顺序输出（保持叙述顺序）
+    picked = sorted(range(len(sentences)), key=lambda i: len(sentences[i].split()))[
+        :target_count
+    ]
+    picked.sort()
+
+    created = []
+    for order, idx in enumerate(picked):
+        text = sentences[idx]
+        words = len(text.split())
+        seconds = max(4, min(30, round(words / 2.5) + 2))
+        sentence = RepeatSentence(
+            passage_id=passage_id,
+            order_index=order,
+            text=text,
+            suggested_seconds=seconds,
+        )
+        session.add(sentence)
+        created.append(sentence)
+    session.commit()
+    for sentence_ in created:
+        session.refresh(sentence_)
+    return AutoSplitResult(created=len(created))
 
 
 # ── 内容标准音 ───────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, redirect } from "@tanstack/react-router"
-import { Loader2, Plus, Trash2 } from "lucide-react"
+import { Loader2, Plus, Scissors, Trash2 } from "lucide-react"
 import { useState } from "react"
+import { toast } from "sonner"
 import type { PassageWithSentences } from "@/client"
 import { AdminService, UsersService } from "@/client"
 import AudioSetter from "@/components/Practice/AudioSetter"
@@ -237,6 +238,17 @@ function PassageCard({
     onSuccess: () => onMutated(),
   })
 
+  const autoSplit = useMutation({
+    mutationFn: () =>
+      AdminService.autoSplitSentences({ passageId: passage.id }),
+    onSuccess: (data) => {
+      toast.success(`已拆分出 ${data.created ?? 0} 句复述句`)
+      onMutated()
+    },
+    onError: (err: { body?: { detail?: string } }) =>
+      toast.error(err.body?.detail ?? "拆分失败"),
+  })
+
   return (
     <Card>
       <CardHeader
@@ -334,6 +346,26 @@ function PassageCard({
               </div>
             ))}
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => autoSplit.mutate()}
+            disabled={
+              autoSplit.isPending || (passage.sentences ?? []).length > 0
+            }
+            title={
+              (passage.sentences ?? []).length > 0
+                ? "已有复述句，清空后可自动拆分"
+                : "按句切分正文，由短到长取 3 句"
+            }
+          >
+            {autoSplit.isPending ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <Scissors />
+            )}
+            自动拆分复述句
+          </Button>
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-64 flex-1 space-y-1">
               <Label>添加复述句（由短到长）</Label>

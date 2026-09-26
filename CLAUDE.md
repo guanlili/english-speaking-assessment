@@ -5,7 +5,10 @@
 ## 业务上下文
 
 - 需求来源：甲方 PRD《独立英语口语评测平台 v0.1》（2026-09-25，王府学校）。三阶段累计工期：2 天演示（周一 2026-09-28）→ 2 周（课堂码+问答）→ 3 周（词汇/CEFR/教师面板）。
-- 当前阶段：**PRD 功能全部就绪（含内容标准音与建议档）**——学生端全流程（US-04/05/06）+ 词汇量与 CEFR（US-07）+ 模拟分骨架（US-08，ark 引擎下 LLM rubric 四维 + 0-9 映射 + 升级表达；mock 不出假分）+ 学生进步轨迹（US-09）+ 教师面板（US-10）+ 管理端内容管理（`/admin/passages|scenarios|wordlist|classrooms`：篇目与复述句、情景问法、词表 CSV 导入、课堂码生成/停用）。内容标准音：TTS 生成（`app/scoring/tts.py`，需方舟密钥）或上传现成音频，回放走 `GET /audio/content/{name}`；无密钥时前端 speechSynthesis 兜底。学生轨迹含 band_change（维持/升/降，PRD US-10）。模板 Items 已删除。演示重置：`bash scripts/reset-demo.sh`。
+- 当前阶段：**PRD 功能全部就绪 + 增强版（多邻国式激励层 + 关卡地图 + AI 出题）**——学生端全流程（US-04/05/06）+ 词汇量与 CEFR（US-07）+ 模拟分骨架（US-08，ark 引擎下 LLM rubric 四维 + 0-9 映射 + 升级表达；mock 不出假分）+ 学生进步轨迹（US-09）+ 教师面板（US-10）+ 管理端内容管理（`/admin/passages|scenarios|wordlist|classrooms`：篇目与复述句、情景问法、词表 CSV 导入、课堂码生成/停用）。内容标准音：TTS 生成（`app/scoring/tts.py`，需方舟密钥）或上传现成音频，回放走 `GET /audio/content/{name}`；无密钥时前端 speechSynthesis 兜底。学生轨迹含 band_change（维持/升/降，PRD US-10）。模板 Items 已删除。演示重置：`bash scripts/reset-demo.sh`。
+- 激励层（P1，`app/scoring/gamification.py`）：星级（均分 ≥85→3/≥70→2/完成 1）、XP（题×10+星×5+连胜≥3 奖 10）、连胜、5 枚徽章；结算幂等挂在 /today；只和自己比（学生端无排名，老师面板可看 XP/连胜）。
+- 关卡地图（P2）：Unit 表 + Passage.unit_id + Classroom.unlock_all（顺序解锁默认开，老师可全开）；/classes/{code}/path；今日篇目=路径上第一个未完成单元（无单元数据回退全局第一篇）；/map/:code 地图页。
+- AI 出题（P3，`app/scoring/ark_client.py` + `question_gen.py`）：chat/completions 公共客户端；/admin/scenarios/{id}/questions/generate 只出草稿不入库（老师审改后采纳）；自动拆句 /admin/passages/{id}/sentences/auto-split（本地算法幂等）；无密钥 503。
 - 模拟分（`app/scoring/rubric.py`）：rubric 四维 0-4 映射 0-9（`RUBRIC_TO_SCORE` 表）；LLM 失败降级不出假分，界面显示「建议暂缺」；仅 `SCORING_PROVIDER=ark` 时启用（`ARK_RUBRIC_MODEL` 配置模型）。
 - 词汇分析（`app/scoring/lexicon.py`）：问答作答评分后写入 `attempt.vocab`（命中分档词/覆盖率/CEFR 参考）；只统计问答转写（跟读参考文本不算）；词元匹配支持规则屈折；标签规则：最高稳定档（≥5 命中）即该档，否则降一档。词表未配置时 vocab 为 null，界面显示「未配置词表」（BDD D）。内置演示词表 ~600 词（A2/B1/B2），待学校 CSV 替换。
 - 40 人并发已验证（BDD B）：测试 `test_board.py::test_classroom_40_concurrent_submissions` 用真实线程池跑 40 并发上传 → 全部出分 → board 到齐。
@@ -14,7 +17,8 @@
 - 档位规则（`app/scoring/bands.py`）：A2/B1/B2 三档，首轮默认 B1；复述平均完整度 ≥80 且流利度 ≥60 升档，<50 降档；调整写入 student.current_band（下一轮沿用）与 session.question_band（本轮问答用）。
 - 界面文案铁律（PRD §3.2）：分数一律标「参考/模拟」，写明不是官方成绩；三种分（跟读引擎/模型/词表）来源要在界面上分开标注。
 - EIP 教材原文因版权**不进仓库**，只建内容槽（Passage/RepeatSentence/Scenario/ScenarioQuestion 表）；演示种子用自写 Pets 内容（slug: demo-pets，课堂码 DEMO01）。
-- 待办（上线前）：火山方舟控制台开通模型推理（当前账号所有模型 NotFound；开通后填 `ARK_API_KEY` 并设 `SCORING_PROVIDER=ark`，转写与模拟分同时激活）、讯飞评测账号（跟读分升级可选）、学校分级词表 CSV（经 /admin/wordlist 导入）、EIP 文本（经 /admin/passages 录入，配音可上传现成音频）、域名 + ICP 备案（进教室要 HTTPS，备案 1~3 周需立即启动）。
+- **方舟已开通（2026-09-26 实测）**：`SCORING_PROVIDER=ark` 真实转写/rubric 模拟分已全链路验证。关键适配：浏览器 webm/opus 需服务端 ffmpeg 转 16kHz wav（`app/scoring/audio_convert.py`，容器已装 ffmpeg）；空转写不出 0 分模拟分。TTS `/audio/speech` 报 401（模型未开通），标准音暂用上传通道。
+- 待办（上线前）：讯飞评测账号（跟读分升级可选）、学校分级词表 CSV（经 /admin/wordlist 导入）、EIP 文本（经 /admin/passages 录入，配音可上传现成音频）、域名 + ICP 备案（进教室要 HTTPS，备案 1~3 周需立即启动）。
 - 生产部署尚未启用。配置部署 Secrets 后，将 GitHub Actions 仓库变量 `ENABLE_PRODUCTION_DEPLOY` 设置为 `true` 才允许自动部署。
 
 ## 项目结构

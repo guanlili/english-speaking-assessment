@@ -2,6 +2,10 @@ FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1
 
+# 音频转码：浏览器 webm/opus → 方舟支持的 wav
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install uv
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#installing-uv
 COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /uvx /bin/

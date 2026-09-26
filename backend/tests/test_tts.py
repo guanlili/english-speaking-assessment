@@ -1,5 +1,7 @@
 """标准音：TTS provider、内容音频存取、上传与回放端点。"""
 
+from pathlib import Path
+
 import httpx
 import pytest
 
@@ -116,3 +118,29 @@ def test_tts_endpoint_without_key_returns_503(
     )
     assert resp.status_code == 503
     assert "上传" in resp.json()["detail"] or "ARK_API_KEY" in resp.json()["detail"]
+
+
+def test_convert_webm_to_wav(tmp_path) -> None:
+    """转码链路（宿主机需 ffmpeg；无则跳过——容器内必有）。"""
+    import pytest as _pytest
+
+    from app.scoring.audio_convert import (
+        convert_to_wav,
+        ensure_ark_supported,
+        ffmpeg_available,
+    )
+
+    if not ffmpeg_available():
+        _pytest.skip("ffmpeg 不可用")
+    webm = Path("/tmp/practice_demo.webm")
+    if not webm.exists():
+        _pytest.skip("无样本音频")
+    wav, mime = convert_to_wav(webm.read_bytes(), ".webm")
+    assert mime == "audio/wav"
+    assert wav[:4] == b"RIFF"  # wav 头
+
+    # ensure：webm 转、mp3 原样
+    data2, mime2 = ensure_ark_supported(b"raw", "audio/mpeg")
+    assert (data2, mime2) == (b"raw", "audio/mpeg")
+    data3, mime3 = ensure_ark_supported(webm.read_bytes(), "audio/webm")
+    assert mime3 == "audio/wav"

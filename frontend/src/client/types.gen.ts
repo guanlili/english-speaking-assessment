@@ -29,9 +29,21 @@ export type AudioUrlResult = {
     audio_url: string;
 };
 
+export type AutoSplitResult = {
+    created: number;
+};
+
+export type BadgePublic = {
+    key: string;
+    label: string;
+    description: string;
+    awarded_at?: (string | null);
+};
+
 export type BoardData = {
     classroom_code: string;
     class_size: number;
+    engine?: string;
     submitted_count: number;
     pending_count: number;
     band_distribution: {
@@ -60,6 +72,8 @@ export type BoardStudent = {
     has_pending: boolean;
     current_band: string;
     inactive_days7?: boolean;
+    xp?: number;
+    streak_days?: number;
     items: Array<BoardItem>;
 };
 
@@ -104,11 +118,40 @@ export type ClassroomPublic = {
     code: string;
     class_size: number;
     is_active: boolean;
+    unlock_all?: boolean;
     created_at?: (string | null);
+};
+
+export type ClassroomUpdate = {
+    unlock_all?: (boolean | null);
+};
+
+export type DraftQuestionOut = {
+    text: string;
+    suggested_seconds: number;
+};
+
+export type GamificationInfo = {
+    xp?: number;
+    streak_days?: number;
+    session_stars?: (number | null);
+    badges?: Array<BadgePublic>;
+};
+
+export type GenerateRequest = {
+    band: string;
+    count?: number;
+    hint?: (string | null);
 };
 
 export type HTTPValidationError = {
     detail?: Array<ValidationError>;
+};
+
+export type LearningPath = {
+    classroom_code: string;
+    unlock_all: boolean;
+    units: Array<PathUnit>;
 };
 
 export type Message = {
@@ -134,6 +177,7 @@ export type PassageCreate = {
     suggested_seconds?: number;
     is_active?: boolean;
     slug: string;
+    unit_id?: (string | null);
 };
 
 export type PassagePublic = {
@@ -161,6 +205,17 @@ export type PassageWithSentences = {
     slug: string;
     created_at?: (string | null);
     sentences?: Array<RepeatSentence>;
+};
+
+export type PathUnit = {
+    unit_id: string;
+    order_index: number;
+    title: string;
+    topic: string;
+    rounds_done?: number;
+    best_stars?: (number | null);
+    locked?: boolean;
+    passage_id?: (string | null);
 };
 
 export type PlanAttempt = {
@@ -242,6 +297,11 @@ export type ScenarioQuestionPublic = {
     suggested_seconds: number;
 };
 
+export type ScenarioUpdate = {
+    topic?: (string | null);
+    is_active?: (boolean | null);
+};
+
 export type StudentJoin = {
     display_name: string;
 };
@@ -261,6 +321,7 @@ export type TodayPlan = {
     items: Array<PlanItem>;
     attempts: Array<PlanAttempt>;
     questions_exhausted?: boolean;
+    gamification?: (GamificationInfo | null);
 };
 
 export type Token = {
@@ -288,6 +349,28 @@ export type TrailSession = {
 export type TtsRequest = {
     text: string;
     voice?: (string | null);
+};
+
+export type UnitCreate = {
+    order_index?: number;
+    title: string;
+    topic: string;
+    is_active?: boolean;
+};
+
+export type UnitPublic = {
+    id: string;
+    order_index: number;
+    title: string;
+    topic: string;
+    is_active: boolean;
+};
+
+export type UnitUpdate = {
+    order_index?: (number | null);
+    title?: (string | null);
+    topic?: (string | null);
+    is_active?: (boolean | null);
 };
 
 export type UpdatePassword = {
@@ -420,6 +503,13 @@ export type AdminDeleteScenarioResponse = ({
     [key: string]: (string);
 });
 
+export type AdminUpdateScenarioData = {
+    requestBody: ScenarioUpdate;
+    scenarioId: string;
+};
+
+export type AdminUpdateScenarioResponse = (unknown);
+
 export type AdminCreateQuestionData = {
     requestBody: ScenarioQuestion;
     scenarioId: string;
@@ -450,6 +540,29 @@ export type AdminImportWordlistCsvData = {
 
 export type AdminImportWordlistCsvResponse = (WordlistImportResult);
 
+export type AdminListUnitsResponse = (Array<UnitPublic>);
+
+export type AdminCreateUnitData = {
+    requestBody: UnitCreate;
+};
+
+export type AdminCreateUnitResponse = (UnitPublic);
+
+export type AdminUpdateUnitData = {
+    requestBody: UnitUpdate;
+    unitId: string;
+};
+
+export type AdminUpdateUnitResponse = (UnitPublic);
+
+export type AdminDeleteUnitData = {
+    unitId: string;
+};
+
+export type AdminDeleteUnitResponse = ({
+    [key: string]: (string);
+});
+
 export type AdminListClassroomsResponse = (Array<ClassroomPublic>);
 
 export type AdminDeactivateClassroomData = {
@@ -459,6 +572,27 @@ export type AdminDeactivateClassroomData = {
 export type AdminDeactivateClassroomResponse = ({
     [key: string]: (string);
 });
+
+export type AdminUpdateClassroomData = {
+    classroomId: string;
+    requestBody: ClassroomUpdate;
+};
+
+export type AdminUpdateClassroomResponse = (ClassroomPublic);
+
+export type AdminGenerateQuestionsData = {
+    requestBody: GenerateRequest;
+    scenarioId: string;
+};
+
+export type AdminGenerateQuestionsResponse = (Array<DraftQuestionOut>);
+
+export type AdminAutoSplitSentencesData = {
+    passageId: string;
+    targetCount?: number;
+};
+
+export type AdminAutoSplitSentencesResponse = (AutoSplitResult);
 
 export type AdminGenerateStandardAudioData = {
     requestBody: TtsRequest;
@@ -536,6 +670,13 @@ export type ClassesReadStudentTrailData = {
 };
 
 export type ClassesReadStudentTrailResponse = (TrailData);
+
+export type ClassesReadLearningPathData = {
+    code: string;
+    studentId: string;
+};
+
+export type ClassesReadLearningPathResponse = (LearningPath);
 
 export type LoginLoginAccessTokenData = {
     formData: Body_login_login_access_token;

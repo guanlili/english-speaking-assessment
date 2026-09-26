@@ -75,6 +75,14 @@ DEMO_CLASSROOM_CODE = "DEMO01"
 
 
 def _seed_practice_content(session: Session) -> None:
+    from app.models import Unit
+
+    unit = session.exec(select(Unit).limit(1)).first()
+    if unit is None:
+        unit = Unit(order_index=0, title="Unit 1 · Pets", topic="Pets")
+        session.add(unit)
+        session.commit()
+
     passage = session.exec(select(Passage).where(Passage.slug == "demo-pets")).first()
     if not passage:
         passage = crud.create_passage(
@@ -86,8 +94,13 @@ def _seed_practice_content(session: Session) -> None:
                 cefr_band="B1",
                 text=DEMO_PASSAGE_TEXT,
                 suggested_seconds=45,
+                unit_id=unit.id,
             ),
         )
+    elif passage.unit_id is None:
+        passage.unit_id = unit.id
+        session.add(passage)
+        session.commit()
 
     if not session.exec(
         select(RepeatSentence).where(RepeatSentence.passage_id == passage.id)

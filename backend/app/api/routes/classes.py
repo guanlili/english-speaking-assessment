@@ -30,14 +30,18 @@ from app.models import (
     Attempt,
     AttemptItemType,
     AttemptStatus,
+    BadgePublic,
     BoardData,
     BoardItem,
     BoardStudent,
     Classroom,
     ClassroomCreate,
     ClassroomPublic,
+    GamificationInfo,
+    LearningPath,
     NextQuestion,
     Passage,
+    PathUnit,
     PlanAttempt,
     PlanItem,
     PracticeSession,
@@ -51,8 +55,14 @@ from app.models import (
     TodayPlan,
     TrailData,
     TrailSession,
+    Unit,
 )
 from app.scoring.bands import BAND_ORDER, adjust_band
+from app.scoring.gamification import (
+    BADGE_BY_KEY,
+    settle_session,
+    student_badges,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,14 +87,56 @@ def _generate_classroom_code() -> str:
     )
 
 
-def _active_passage(session: Any) -> Passage:
-    """课堂练习用的篇目 = 当前激活篇目（试点单班单主题）。"""
-    passage = session.exec(
-        select(Passage)
-        .where(Passage.is_active)  # type: ignore[attr-defined]
-        .order_by(col(Passage.created_at))
-        .limit(1)
-    ).first()
+def _active_passage(session: Any, student: Student | None = None) -> Passage:
+    """课堂练习篇目：有单元时按学生路径取（第一个未完成单元），
+    无单元数据回退全局第一篇（兼容 /practice 与老数据）。"""
+    units = session.exec(
+        select(Unit)
+        .where(Unit.is_active)  # type: ignore[attr-defined]
+        .order_by(col(Unit.order_index))
+    ).all()
+    if student is None or not units:
+        passage = session.exec(
+            select(Passage)
+            .where(Passage.is_active)  # type: ignore[attr-defined]
+            .order_by(col(Passage.created_at))
+            .limit(1)
+        ).first()
+        if passage is None:
+            raise HTTPException(status_code=404, detail="No active passage")
+        return passage
+
+    classroom = session.get(Classroom, student.classroom_id)
+    unlock_all = bool(classroom and classroom.unlock_all)
+    # 各单元完成轮数（按 session.passage → unit 聚合已结算轮）
+    settled = session.exec(
+        select(PracticeSession).where(
+            PracticeSession.student_id == student.id,
+            col(PracticeSession.stars).is_not(None),
+            col(PracticeSession.passage_id).is_not(None),
+        )
+    ).all()
+    passage_ids = {ps.passage_id for ps in settled if ps.passage_id}
+    passages = session.exec(select(Passage)).all()
+    unit_done: dict = {}
+    for passage in passages:
+        if passage.unit_id is not None and passage.id in passage_ids:
+            unit_done[passage.unit_id] = True
+
+    chosen: Unit | None = None
+    if not unlock_all:
+        # 第一个未完成的激活单元
+        for unit in units:
+            if not unit_done.get(unit.id):
+                chosen = unit
+                break
+    if chosen is None:
+        chosen = units[-1]  # 全部完成（或全开）→ 复练最后单元
+
+    passage = next(
+        (p for p in passages if p.unit_id == chosen.id and p.is_active),
+        None,
+    )
     if passage is None:
         raise HTTPException(status_code=404, detail="No active passage")
     return passage
@@ -257,11 +309,14 @@ def read_today_plan(
     classroom = _get_classroom(session, code)
     student = _get_student_of_classroom(session, classroom, student_id)
     today = _today_in_practice_tz()
+    passage = _active_passage(session, student)
     practice_session = get_or_create_today_session(
-        session=session, classroom=classroom, student=student, today=today
+        session=session,
+        classroom=classroom,
+        student=student,
+        today=today,
+        passage_id=passage.id,
     )
-
-    passage = _active_passage(session)
     sentences = session.exec(
         select(RepeatSentence)
         .where(RepeatSentence.passage_id == passage.id)
@@ -297,6 +352,9 @@ def read_today_plan(
         for q in questions
     ]
 
+    # 激励结算（幂等）：本轮全部终态时计算星/XP/连胜/徽章
+    settle_session(session, practice_session, student, today, len(items))
+
     attempts = _latest_done_attempts(session, student.id, practice_session.id)
     plan_attempts = [
         PlanAttempt(
@@ -313,6 +371,22 @@ def read_today_plan(
         for a in attempts
     ]
 
+    session.refresh(student)
+    session.refresh(practice_session)
+    badges = [
+        BadgePublic(
+            key=b.badge_key,
+            label=BADGE_BY_KEY[b.badge_key].label
+            if b.badge_key in BADGE_BY_KEY
+            else b.badge_key,
+            description=BADGE_BY_KEY[b.badge_key].description
+            if b.badge_key in BADGE_BY_KEY
+            else "",
+            awarded_at=b.awarded_at,
+        )
+        for b in student_badges(session, student.id)
+    ]
+
     return TodayPlan(
         session_id=practice_session.id,
         classroom_code=classroom.code,
@@ -320,6 +394,12 @@ def read_today_plan(
         items=items,
         attempts=plan_attempts,
         questions_exhausted=exhausted,
+        gamification=GamificationInfo(
+            xp=student.xp,
+            streak_days=student.streak_days,
+            session_stars=practice_session.stars,
+            badges=badges,
+        ),
     )
 
 
@@ -333,15 +413,15 @@ def read_next_question(
     """换一题：同主题、同档、未做过的问题（US-06）。用尽时 exhausted=true。"""
     classroom = _get_classroom(session, code)
     student = _get_student_of_classroom(session, classroom, student_id)
+    passage = _active_passage(session, student)
     practice_session = get_or_create_today_session(
         session=session,
         classroom=classroom,
         student=student,
         today=_today_in_practice_tz(),
+        passage_id=passage.id,
     )
     band = practice_session.question_band or practice_session.band
-
-    passage = _active_passage(session)
     scenario = _scenario_for_topic(session, passage.topic)
 
     questions, _ = _pick_questions(
@@ -513,6 +593,8 @@ def read_class_board(session: SessionDep, code: str) -> Any:
                 has_pending=has_pending,
                 current_band=student.current_band,
                 inactive_days7=inactive,
+                xp=student.xp,
+                streak_days=student.streak_days,
                 items=items,
             )
         )
@@ -526,9 +608,17 @@ def read_class_board(session: SessionDep, code: str) -> Any:
         )
     )
 
+    latest_engine = session.exec(
+        select(Attempt.engine)
+        .where(Attempt.status == AttemptStatus.DONE)
+        .order_by(col(Attempt.created_at).desc())
+        .limit(1)
+    ).first()
+
     return BoardData(
         classroom_code=classroom.code,
         class_size=classroom.class_size,
+        engine=latest_engine or "mock",
         submitted_count=submitted_count,
         pending_count=pending_count,
         band_distribution=band_distribution,
@@ -637,4 +727,67 @@ def read_student_trail(
         suffix=student.suffix,
         sessions=sessions,
         band_change=band_change,
+    )
+
+
+@router.get("/{code}/path", response_model=LearningPath)
+def read_learning_path(
+    session: SessionDep,
+    code: str,
+    student_id: uuid.UUID = Query(...),
+) -> Any:
+    """关卡地图（PRD 拾阶而上 → 多邻国式路径）：单元有序 + 完成轮数/星级 + 锁定。"""
+    classroom = _get_classroom(session, code)
+    student = _get_student_of_classroom(session, classroom, student_id)
+
+    units = session.exec(
+        select(Unit)
+        .where(Unit.is_active)  # type: ignore[attr-defined]
+        .order_by(col(Unit.order_index))
+    ).all()
+    passages = session.exec(select(Passage)).all()
+    settled = session.exec(
+        select(PracticeSession).where(
+            PracticeSession.student_id == student.id,
+            col(PracticeSession.stars).is_not(None),
+            col(PracticeSession.passage_id).is_not(None),
+        )
+    ).all()
+    # unit → {rounds, best_stars}
+    stats: dict = {}
+    passage_to_unit = {p.id: p.unit_id for p in passages}
+    for ps in settled:
+        uid = passage_to_unit.get(ps.passage_id)
+        if uid is None:
+            continue
+        bucket = stats.setdefault(uid, {"rounds": 0, "best": 0})
+        bucket["rounds"] += 1
+        bucket["best"] = max(bucket["best"], ps.stars or 0)
+
+    result: list[PathUnit] = []
+    prev_done = True  # 第一关始终解锁
+    for unit in units:
+        unit_passage = next(
+            (p for p in passages if p.unit_id == unit.id and p.is_active), None
+        )
+        done = stats.get(unit.id, {"rounds": 0, "best": 0})
+        locked = (not classroom.unlock_all) and not prev_done
+        result.append(
+            PathUnit(
+                unit_id=unit.id,
+                order_index=unit.order_index,
+                title=unit.title,
+                topic=unit.topic,
+                rounds_done=done["rounds"],
+                best_stars=done["best"] if done["rounds"] else None,
+                locked=locked,
+                passage_id=unit_passage.id if unit_passage else None,
+            )
+        )
+        prev_done = done["rounds"] > 0
+
+    return LearningPath(
+        classroom_code=classroom.code,
+        unlock_all=classroom.unlock_all,
+        units=result,
     )

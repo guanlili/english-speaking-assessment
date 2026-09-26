@@ -281,3 +281,58 @@ def test_trail_band_change_keep_when_partial(
         "/api/v1/classes/DEMO01/trail", params={"student_id": student["id"]}
     ).json()
     assert trail["band_change"] is None
+
+
+def _finish_round(
+    client: TestClient, plan: dict, student_id: str, transcripts_by_item: dict
+) -> None:
+    for item in plan["items"]:
+        scripted = transcripts_by_item.get(item["id"], item["text"])
+        resp = client.post(
+            "/api/v1/attempts",
+            files={"audio": ("a.webm", b"bytes", scripted)},
+            data={
+                "item_type": item["type"],
+                "item_id": item["id"],
+                "duration_s": "6.0",
+                "student_id": student_id,
+                "session_id": plan["session_id"],
+            },
+        )
+        assert resp.status_code == 200, resp.text
+
+
+def test_settlement_xp_stars_badge_on_today(
+    client: TestClient, scripted_scoring: Callable[[str], None]
+) -> None:
+    """答完全轮 → /today 结算：1 星保底、XP 入账、首轮徽章、幂等。"""
+    student = _join(client, "激励同学")
+    plan = _plan(client, student["id"])
+    _finish_round(client, plan, student["id"], {})
+
+    data = _plan(client, student["id"])  # 再拉一次触发结算
+    g = data["gamification"]
+    assert g is not None
+    assert g["session_stars"] == 1  # mock 转写分不高 → 保底 1 星
+    assert g["xp"] == 5 * 10 + 1 * 5  # 5 题 ×10 + 1 星 ×5（无连胜奖励）
+    assert g["streak_days"] == 1
+    keys = [b["key"] for b in g["badges"]]
+    assert "first_round" in keys
+
+    # 幂等：再拉 today 不重复结算
+    again = _plan(client, student["id"])["gamification"]
+    assert again["xp"] == g["xp"]
+
+
+def test_settlement_partial_round_not_settled(
+    client: TestClient, scripted_scoring: Callable[[str], None]
+) -> None:
+    """只答部分题 → 不结算（stars/xp 保持初始）。"""
+    student = _join(client, "未完成同学")
+    plan = _plan(client, student["id"])
+    first = plan["items"][0]
+    _submit(client, first, student["id"], plan["session_id"])
+
+    g = _plan(client, student["id"])["gamification"]
+    assert g["session_stars"] is None
+    assert g["xp"] == 0

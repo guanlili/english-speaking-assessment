@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminWordlistStatsResponse, AdminImportWordlistCsvData, AdminImportWordlistCsvResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PracticeReadActivePassageResponse, PrivateCreateUserData, PrivateCreateUserResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse } from './types.gen';
+import type { AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminUpdateScenarioData, AdminUpdateScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminWordlistStatsResponse, AdminImportWordlistCsvData, AdminImportWordlistCsvResponse, AdminListUnitsResponse, AdminCreateUnitData, AdminCreateUnitResponse, AdminUpdateUnitData, AdminUpdateUnitResponse, AdminDeleteUnitData, AdminDeleteUnitResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminUpdateClassroomData, AdminUpdateClassroomResponse, AdminGenerateQuestionsData, AdminGenerateQuestionsResponse, AdminAutoSplitSentencesData, AdminAutoSplitSentencesResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, ClassesReadLearningPathData, ClassesReadLearningPathResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PracticeReadActivePassageResponse, PrivateCreateUserData, PrivateCreateUserResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse } from './types.gen';
 
 export class AdminService {
     /**
@@ -198,6 +198,30 @@ export class AdminService {
     }
     
     /**
+     * Update Scenario
+     * 编辑情景（改名/启停）。
+     * @param data The data for the request.
+     * @param data.scenarioId
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static updateScenario(data: AdminUpdateScenarioData): CancelablePromise<AdminUpdateScenarioResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/admin/scenarios/{scenario_id}',
+            path: {
+                scenario_id: data.scenarioId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
      * Create Question
      * @param data The data for the request.
      * @param data.scenarioId
@@ -296,6 +320,80 @@ export class AdminService {
     }
     
     /**
+     * List Units
+     * @returns UnitPublic Successful Response
+     * @throws ApiError
+     */
+    public static listUnits(): CancelablePromise<AdminListUnitsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/admin/units'
+        });
+    }
+    
+    /**
+     * Create Unit
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns UnitPublic Successful Response
+     * @throws ApiError
+     */
+    public static createUnit(data: AdminCreateUnitData): CancelablePromise<AdminCreateUnitResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/admin/units',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Unit
+     * @param data The data for the request.
+     * @param data.unitId
+     * @param data.requestBody
+     * @returns UnitPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateUnit(data: AdminUpdateUnitData): CancelablePromise<AdminUpdateUnitResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/admin/units/{unit_id}',
+            path: {
+                unit_id: data.unitId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Delete Unit
+     * @param data The data for the request.
+     * @param data.unitId
+     * @returns string Successful Response
+     * @throws ApiError
+     */
+    public static deleteUnit(data: AdminDeleteUnitData): CancelablePromise<AdminDeleteUnitResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/admin/units/{unit_id}',
+            path: {
+                unit_id: data.unitId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
      * List Classrooms
      * @returns ClassroomPublic Successful Response
      * @throws ApiError
@@ -320,6 +418,83 @@ export class AdminService {
             url: '/api/v1/admin/classrooms/{classroom_id}',
             path: {
                 classroom_id: data.classroomId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Classroom
+     * 更新课堂设置（当前仅 unlock_all：一键解锁全部关卡）。
+     * @param data The data for the request.
+     * @param data.classroomId
+     * @param data.requestBody
+     * @returns ClassroomPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateClassroom(data: AdminUpdateClassroomData): CancelablePromise<AdminUpdateClassroomResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/admin/classrooms/{classroom_id}',
+            path: {
+                classroom_id: data.classroomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Generate Questions
+     * AI 按主题/档位起草问法（不入库，老师审改后走创建接口）。
+     *
+     * PRD 红线：模型只起草，不直接服务学生。
+     * @param data The data for the request.
+     * @param data.scenarioId
+     * @param data.requestBody
+     * @returns DraftQuestionOut Successful Response
+     * @throws ApiError
+     */
+    public static generateQuestions(data: AdminGenerateQuestionsData): CancelablePromise<AdminGenerateQuestionsResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/admin/scenarios/{scenario_id}/questions/generate',
+            path: {
+                scenario_id: data.scenarioId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Auto Split Sentences
+     * 从篇目正文自动拆分复述句（本地算法非 AI）：按句切、由短到长取 3 句。
+     *
+     * 幂等：已有人工维护的句子时拒绝（避免覆盖老师内容）。
+     * @param data The data for the request.
+     * @param data.passageId
+     * @param data.targetCount
+     * @returns AutoSplitResult Successful Response
+     * @throws ApiError
+     */
+    public static autoSplitSentences(data: AdminAutoSplitSentencesData): CancelablePromise<AdminAutoSplitSentencesResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/admin/passages/{passage_id}/sentences/auto-split',
+            path: {
+                passage_id: data.passageId
+            },
+            query: {
+                target_count: data.targetCount
             },
             errors: {
                 422: 'Validation Error'
@@ -593,6 +768,31 @@ export class ClassesService {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/api/v1/classes/{code}/trail',
+            path: {
+                code: data.code
+            },
+            query: {
+                student_id: data.studentId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Learning Path
+     * 关卡地图（PRD 拾阶而上 → 多邻国式路径）：单元有序 + 完成轮数/星级 + 锁定。
+     * @param data The data for the request.
+     * @param data.code
+     * @param data.studentId
+     * @returns LearningPath Successful Response
+     * @throws ApiError
+     */
+    public static readLearningPath(data: ClassesReadLearningPathData): CancelablePromise<ClassesReadLearningPathResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/classes/{code}/path',
             path: {
                 code: data.code
             },

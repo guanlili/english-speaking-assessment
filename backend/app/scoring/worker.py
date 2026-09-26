@@ -23,6 +23,7 @@ from app.models import (
     WordlistEntry,
 )
 from app.scoring.asr import ArkResponsesAsr, MockAsr
+from app.scoring.audio_convert import ensure_ark_supported
 from app.scoring.base import AsrProvider, ScoringError
 from app.scoring.heuristic import score_open_response, score_read_aloud
 from app.scoring.lexicon import analyze_transcript
@@ -124,7 +125,12 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
         audio_path = Path(attempt.audio_path)
         audio = audio_path.read_bytes()
         provider = build_asr_provider()
-        transcript = provider.transcribe(audio, attempt.audio_mime)
+        # 方舟不接受浏览器 webm/opus：转 16kHz wav 再送（本地 mock 原样）
+        if provider.name == "ark":
+            audio, effective_mime = ensure_ark_supported(audio, attempt.audio_mime)
+        else:
+            effective_mime = attempt.audio_mime
+        transcript = provider.transcribe(audio, effective_mime)
         engine = provider.name
 
         read_aloud = _resolve_read_aloud_item(session, attempt)
@@ -153,7 +159,8 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             # 词汇分析（PRD US-07）：只统计问答转写；词表为空时留 null
             attempt.vocab = _analyze_vocab(session, transcript)
             # rubric 四维与模拟分（PRD US-08）：仅 ark 引擎；失败降级不出假分
-            if engine == "ark":
+            # 空转写（没说话/识别不到）不出 0 分模拟——界面显示暂缺
+            if engine == "ark" and transcript.strip():
                 attempt.rubric = _score_rubric(prompt, band, transcript)
 
         attempt.status = AttemptStatus.DONE

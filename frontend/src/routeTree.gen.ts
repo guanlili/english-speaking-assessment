@@ -19,6 +19,7 @@ import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as TCodeRouteImport } from './routes/t.$code'
 import { Route as PCodeRouteImport } from './routes/p.$code'
 import { Route as MeCodeRouteImport } from './routes/me.$code'
+import { Route as MapCodeRouteImport } from './routes/map.$code'
 import { Route as JCodeRouteImport } from './routes/j.$code'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
@@ -79,6 +80,11 @@ const PCodeRoute = PCodeRouteImport.update({
 const MeCodeRoute = MeCodeRouteImport.update({
   id: '/me/$code',
   path: '/me/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MapCodeRoute = MapCodeRouteImport.update({
+  id: '/map/$code',
+  path: '/map/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JCodeRoute = JCodeRouteImport.update({
@@ -152,6 +158,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof LayoutAdminRouteWithChildren
   '/settings': typeof LayoutSettingsRoute
   '/j/$code': typeof JCodeRoute
+  '/map/$code': typeof MapCodeRoute
   '/me/$code': typeof MeCodeRoute
   '/p/$code': typeof PCodeRouteWithChildren
   '/t/$code': typeof TCodeRouteWithChildren
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/settings': typeof LayoutSettingsRoute
   '/j/$code': typeof JCodeRoute
+  '/map/$code': typeof MapCodeRoute
   '/me/$code': typeof MeCodeRoute
   '/': typeof LayoutIndexRoute
   '/admin/classrooms': typeof LayoutAdminClassroomsRoute
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   '/_layout/admin': typeof LayoutAdminRouteWithChildren
   '/_layout/settings': typeof LayoutSettingsRoute
   '/j/$code': typeof JCodeRoute
+  '/map/$code': typeof MapCodeRoute
   '/me/$code': typeof MeCodeRoute
   '/p/$code': typeof PCodeRouteWithChildren
   '/t/$code': typeof TCodeRouteWithChildren
@@ -222,6 +231,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/settings'
     | '/j/$code'
+    | '/map/$code'
     | '/me/$code'
     | '/p/$code'
     | '/t/$code'
@@ -243,6 +253,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/settings'
     | '/j/$code'
+    | '/map/$code'
     | '/me/$code'
     | '/'
     | '/admin/classrooms'
@@ -265,6 +276,7 @@ export interface FileRouteTypes {
     | '/_layout/admin'
     | '/_layout/settings'
     | '/j/$code'
+    | '/map/$code'
     | '/me/$code'
     | '/p/$code'
     | '/t/$code'
@@ -288,6 +300,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
   JCodeRoute: typeof JCodeRoute
+  MapCodeRoute: typeof MapCodeRoute
   MeCodeRoute: typeof MeCodeRoute
   PCodeRoute: typeof PCodeRouteWithChildren
   TCodeRoute: typeof TCodeRouteWithChildren
@@ -363,6 +376,13 @@ declare module '@tanstack/react-router' {
       path: '/me/$code'
       fullPath: '/me/$code'
       preLoaderRoute: typeof MeCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/map/$code': {
+      id: '/map/$code'
+      path: '/map/$code'
+      fullPath: '/map/$code'
+      preLoaderRoute: typeof MapCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/j/$code': {
@@ -519,6 +539,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
   JCodeRoute: JCodeRoute,
+  MapCodeRoute: MapCodeRoute,
   MeCodeRoute: MeCodeRoute,
   PCodeRoute: PCodeRouteWithChildren,
   TCodeRoute: TCodeRouteWithChildren,
