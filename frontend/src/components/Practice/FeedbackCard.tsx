@@ -13,6 +13,9 @@ import {
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 
+// 生产构建为空（同源相对路径）；本地开发由 VITE_API_URL 指向后端
+const API_BASE = import.meta.env.VITE_API_URL ?? ""
+
 // PRD §4：三种分的来源必须在界面上写清
 const ENGINE_LABELS: Record<string, string> = {
   mock: "演示模式 · 本地模拟引擎",
@@ -187,6 +190,20 @@ function FeedbackCard({
           <p className="leading-relaxed">
             {attempt.transcript || "（无转写内容）"}
           </p>
+        </div>
+        {/* 刚说完就能听自己的录音（结果页弹窗同款接口，attempt id 随机不可猜） */}
+        <div className="space-y-1">
+          <span className="text-sm text-muted-foreground">
+            听听自己刚才的声音
+          </span>
+          <audio
+            controls
+            preload="metadata"
+            src={`${API_BASE}/api/v1/attempts/${attempt.id}/audio`}
+            className="w-full"
+          >
+            <track kind="captions" />
+          </audio>
         </div>
         <Separator />
         {isQuestion ? (
