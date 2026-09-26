@@ -122,8 +122,9 @@ class Settings(BaseSettings):
     ARK_TTS_BASE_URL: str = "https://ai-gateway.vei.volces.com/v1"
     ARK_TTS_API_KEY: str | None = None
     ARK_TTS_MODEL: str = "doubao-tts"
-    # 音色从控制台「音色列表」选择后填写（bigtts 系命名），留空则生成时报 503
-    ARK_TTS_VOICE: str = ""
+    # 音色：mars 系标准音色账号直接可用，uranus 系精品音色需购买
+    # （不存在的音色会返回 200 + 0 字节音频，不报错，按字节数判断）
+    ARK_TTS_VOICE: str = "en_female_anna_mars_bigtts"
     # 后台评分线程数（PRD：8 个 worker 可在 2 分钟内打完 40 人）
     SCORING_WORKERS: int = 2
     # 音频落盘目录（compose 里挂卷到 /app/audio）

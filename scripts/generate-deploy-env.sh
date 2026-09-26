@@ -55,7 +55,7 @@ ARK_RUBRIC_MODEL=${ARK_RUBRIC_MODEL:-doubao-seed-2-0-lite-260428}
 # TTS 走 vei AI 网关（与方舟两套密钥）；未配时 TTS 生成 503，上传通道不受影响
 ARK_TTS_API_KEY=${ARK_TTS_API_KEY:-}
 ARK_TTS_MODEL=${ARK_TTS_MODEL:-doubao-tts}
-ARK_TTS_VOICE=${ARK_TTS_VOICE:-}
+ARK_TTS_VOICE=${ARK_TTS_VOICE:-en_female_anna_mars_bigtts}
 # CORS 与前端同源（沿用原部署行为）
 BACKEND_CORS_ORIGINS="$FRONTEND_HOST"
 

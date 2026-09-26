@@ -1,4 +1,9 @@
+import os
 from collections.abc import Generator
+
+# 必须在导入 app 之前设置：测试永远跑 mock 引擎，不读本地 .env 的
+# SCORING_PROVIDER（开发者本机切 ark 后，测试不能变成真调付费云 API）
+os.environ["SCORING_PROVIDER"] = "mock"
 
 import pytest
 from fastapi.testclient import TestClient
