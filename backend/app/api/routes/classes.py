@@ -409,6 +409,8 @@ def read_today_plan(
             fluency=a.fluency,
             transcript=a.transcript,
             advice=a.advice,
+            vocab=a.vocab if isinstance(a.vocab, dict) else None,
+            rubric=a.rubric if isinstance(a.rubric, dict) else None,
             error=a.error,
         )
         for a in attempts

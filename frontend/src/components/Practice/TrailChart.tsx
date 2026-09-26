@@ -78,11 +78,26 @@ function TrailChart({
               />
             )
           })}
+          {/* 渐变填充（SpeakUp 成长页样式） */}
+          <defs>
+            <linearGradient id="trail-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop stopColor="currentColor" stopOpacity={0.25} />
+              <stop offset="1" stopColor="currentColor" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          {chart.coords.length > 1 && (
+            <path
+              d={`${chart.path} L${chart.coords[chart.coords.length - 1].x.toFixed(1)},${HEIGHT - PADDING} L${chart.coords[0].x.toFixed(1)},${HEIGHT - PADDING} Z`}
+              fill="url(#trail-fill)"
+              stroke="none"
+            />
+          )}
           <path
             d={chart.path}
             fill="none"
             stroke="currentColor"
-            strokeWidth={2}
+            strokeWidth={2.5}
+            strokeLinecap="round"
             strokeLinejoin="round"
           />
           {chart.coords.map((c) => (

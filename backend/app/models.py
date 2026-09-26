@@ -405,6 +405,10 @@ class PlanAttempt(SQLModel):
     fluency: int | None = None
     transcript: str | None = None
     advice: list[str] | None = None
+    # 词汇命中分析（问答）：命中词/覆盖率/CEFR——结果页命中词 tags 用
+    vocab: dict[str, object] | None = None
+    # rubric 四维与升级表达（问答 + ark）——结果页四维条形用
+    rubric: dict[str, object] | None = None
     error: str | None = None
 
 

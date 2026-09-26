@@ -7,10 +7,13 @@ import {
   Headphones,
   Sparkles,
   Star,
+  Volume2,
 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { ClassesService } from "@/client"
+import HeroArt from "@/components/Practice/HeroArt"
 import StudentShell from "@/components/Practice/StudentShell"
+import TopicArt from "@/components/Practice/TopicArt"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -77,6 +80,19 @@ function HomePage() {
     }
   }, [todayQuery.isError, todayQuery.error, code, navigate])
 
+  const pathQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
+    queryKey: ["classroom", code, "path", student?.id],
+    queryFn: () =>
+      ClassesService.readLearningPath({
+        code: code.toUpperCase(),
+        studentId: student?.id as string,
+      }),
+    enabled: student !== null,
+    staleTime: 60_000,
+  })
+
   const trailQuery = useQuery({
     queryKey: ["classroom", code, "trail", student?.id],
     queryFn: () =>
@@ -121,6 +137,15 @@ function HomePage() {
             className="absolute -top-28 -right-20 size-60 rounded-full border"
             aria-hidden
           />
+          <div className="absolute right-0 bottom-0 hidden h-[92%] w-[46%] md:block">
+            <HeroArt />
+          </div>
+          <span
+            className="absolute right-6 bottom-5 hidden -rotate-6 text-[9px] font-semibold tracking-[0.2em] text-primary md:block"
+            aria-hidden
+          >
+            SAY IT YOUR WAY.
+          </span>
           <div className="relative z-10 max-w-[70%]">
             <p className="text-[10px] font-bold tracking-[0.2em] text-primary">
               A LITTLE PRACTICE. A BIG DIFFERENCE.
@@ -218,6 +243,58 @@ function HomePage() {
           </CardContent>
         </Card>
 
+        {/* 从感兴趣的事，开始聊（主题推荐 3 卡） */}
+        {(pathQuery.data?.units ?? []).length > 0 && (
+          <div>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold tracking-tight">
+                从感兴趣的事，开始聊
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-primary"
+                onClick={() =>
+                  void navigate({ to: "/explore/$code", params: { code } })
+                }
+              >
+                全部主题 <ArrowRight />
+              </Button>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {(pathQuery.data?.units ?? []).slice(0, 3).map((unit) => (
+                <button
+                  key={unit.unit_id}
+                  type="button"
+                  onClick={() =>
+                    void navigate({ to: "/explore/$code", params: { code } })
+                  }
+                  className="overflow-hidden rounded-2xl border border-border bg-card text-left transition hover:-translate-y-1 hover:shadow-lg"
+                >
+                  <div className="relative h-24">
+                    <TopicArt topic={unit.topic} />
+                    <span className="absolute top-2 left-2 rounded-md bg-card/85 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                      {(unit.rounds_done ?? 0) > 0
+                        ? `已获 ${unit.best_stars ?? 0} 星`
+                        : "新主题"}
+                    </span>
+                  </div>
+                  <div className="p-3">
+                    <h3 className="text-sm font-semibold">{unit.title}</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {unit.topic}
+                    </p>
+                    <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>约 10 分钟</span>
+                      <ArrowRight className="size-3.5" />
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 周目标 + 档位生长 + 金句 */}
         <div className="grid gap-5 md:grid-cols-3">
           <Card>
@@ -296,6 +373,35 @@ function HomePage() {
                   </span>
                 </p>
               </div>
+              <div className="mt-3 grid grid-cols-7 gap-1 text-center">
+                {["一", "二", "三", "四", "五", "六", "日"].map((d, i) => {
+                  const now = new Date()
+                  const dow = (now.getDay() + 6) % 7
+                  const day = new Date(now)
+                  day.setDate(now.getDate() - dow + i)
+                  const key = day.toISOString().slice(0, 10)
+                  const isToday = i === dow
+                  const practiced = practicedDates.has(key)
+                  return (
+                    <div key={d}>
+                      <p className="mb-1.5 text-[9px] text-muted-foreground">
+                        {d}
+                      </p>
+                      <span
+                        className={
+                          practiced
+                            ? "mx-auto grid size-6 place-items-center rounded-full bg-primary text-[10px] text-white"
+                            : isToday
+                              ? "mx-auto grid size-6 place-items-center rounded-full border-[1.5px] border-dashed border-primary bg-card text-[10px] text-primary"
+                              : "mx-auto grid size-6 place-items-center rounded-full bg-background text-[10px] text-muted-foreground"
+                        }
+                      >
+                        {practiced ? "✓" : isToday ? "今" : "·"}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
               <p className="mt-3 text-center text-xs text-muted-foreground">
                 {weekDone >= weekGoal
                   ? "本周目标已达成，保持自己的节奏"
@@ -358,6 +464,24 @@ function HomePage() {
               <p className="mt-2 text-xs text-accent-foreground/80">
                 {quote.zh}
               </p>
+              <div className="mt-3 flex items-center justify-between text-[10px] text-accent-foreground/70">
+                <span>ONE SENTENCE A DAY</span>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="朗读今日金句"
+                  onClick={() => {
+                    const synth = window.speechSynthesis
+                    if (!synth) return
+                    synth.cancel()
+                    const u = new SpeechSynthesisUtterance(quote.en)
+                    u.lang = "en-US"
+                    synth.speak(u)
+                  }}
+                >
+                  <Volume2 />
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>

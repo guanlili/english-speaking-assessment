@@ -219,12 +219,28 @@ function TeacherBoardPage() {
               </Badge>
             </div>
             {/* 三档分布（PRD US-10） */}
-            <div className="mt-1 flex flex-wrap gap-1">
-              {Object.entries(board.band_distribution).map(([band, count]) => (
-                <Badge key={band} variant="outline">
-                  {band} × {count}
-                </Badge>
-              ))}
+            <div className="mt-1.5 grid max-w-xs gap-1">
+              {Object.entries(board.band_distribution).map(([band, count]) => {
+                const max = Math.max(
+                  1,
+                  ...Object.values(board.band_distribution),
+                )
+                return (
+                  <div
+                    key={band}
+                    className="grid grid-cols-[80px_1fr_30px] items-center gap-2 text-[11px]"
+                  >
+                    <span className="text-muted-foreground">{band}</span>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-background">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{ width: `${(count / max) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-right tabular-nums">{count}</span>
+                  </div>
+                )
+              })}
             </div>
           </div>
           <Button

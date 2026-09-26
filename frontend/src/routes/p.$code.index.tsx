@@ -5,7 +5,17 @@ import {
   useNavigate,
   useParams,
 } from "@tanstack/react-router"
-import { ArrowRight, Flame, Mic, Sparkles, Square } from "lucide-react"
+import {
+  ArrowRight,
+  ChartLine,
+  Flame,
+  Headphones,
+  MessageCircle,
+  Mic,
+  Shield,
+  Sparkles,
+  Square,
+} from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { PlanAttempt, PlanItem } from "@/client"
@@ -353,150 +363,213 @@ function ClassroomPracticePage() {
           })}
         </div>
 
-        {/* 练习主卡 */}
-        <Card>
-          <CardContent className="space-y-5 pt-6">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-semibold tracking-wide text-primary">
-                {itemPromptLabel}
-              </span>
-              <span className="rounded-md bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
-                {ITEM_TYPE_LABELS[currentItem.type] ?? currentItem.type}
-                {isQuestion && currentItem.band
-                  ? ` · ${BAND_LABELS[currentItem.band] ?? currentItem.band}`
-                  : ""}
-                {" · "}
-                {formatSeconds(currentItem.suggested_seconds ?? 20)}
-              </span>
-            </div>
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_270px]">
+          <div className="grid gap-5">
+            {/* 练习主卡 */}
+            <Card>
+              <CardContent className="space-y-5 pt-6">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold tracking-wide text-primary">
+                    {itemPromptLabel}
+                  </span>
+                  <span className="rounded-md bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
+                    {ITEM_TYPE_LABELS[currentItem.type] ?? currentItem.type}
+                    {isQuestion && currentItem.band
+                      ? ` · ${BAND_LABELS[currentItem.band] ?? currentItem.band}`
+                      : ""}
+                    {" · "}
+                    {formatSeconds(currentItem.suggested_seconds ?? 20)}
+                  </span>
+                </div>
 
-            <p className="prompt-display min-h-24">
-              {hideText
-                ? "原文已收起。试着回想刚刚听到的内容。"
-                : currentItem.text}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {hideText
-                ? "想不起来也没关系，随时可以重新看看。"
-                : (currentItem.translation ?? itemHintZh)}
-            </p>
+                <p className="prompt-display min-h-24">
+                  {hideText
+                    ? "原文已收起。试着回想刚刚听到的内容。"
+                    : currentItem.text}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {hideText
+                    ? "想不起来也没关系，随时可以重新看看。"
+                    : (currentItem.translation ?? itemHintZh)}
+                </p>
 
-            <SpeakButton
-              text={currentItem.text}
-              audioUrl={currentItem.audio_url}
-            />
-            {!isQuestion && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs text-primary"
-                onClick={() => setHideText(!hideText)}
-              >
-                {hideText ? "显示原文" : "收起原文（练记忆）"}
-              </Button>
-            )}
+                <SpeakButton
+                  text={currentItem.text}
+                  audioUrl={currentItem.audio_url}
+                />
+                {!isQuestion && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-primary"
+                    onClick={() => setHideText(!hideText)}
+                  >
+                    {hideText ? "显示原文" : "收起原文（练记忆）"}
+                  </Button>
+                )}
 
-            <Separator />
+                <Separator />
 
-            {/* 录音区（SpeakUp：大圆钮 + 波形） */}
-            <div className="flex flex-col items-center gap-1 border-t pt-5 text-center">
-              {recorder.status === "recording" ? (
-                <>
+                {/* 录音区（SpeakUp：大圆钮 + 波形） */}
+                <div className="flex flex-col items-center gap-1 border-t pt-5 text-center">
+                  {recorder.status === "recording" ? (
+                    <>
+                      <div
+                        className="flex h-8 items-center justify-center gap-1"
+                        aria-hidden
+                      >
+                        {Array.from({ length: 25 }).map((_, i) => (
+                          <i
+                            key={i}
+                            className="wave-bar block w-[3px] rounded bg-primary"
+                            style={{
+                              height: `${[7, 20, 29, 13, 18, 24, 10, 16, 28, 12][i % 10]}px`,
+                              animationDelay: `${(i % 5) * -0.2}s`,
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={recorder.stop}
+                        aria-label="结束录音"
+                        className="record-pulse mt-3 grid size-[72px] place-items-center rounded-full bg-destructive text-white shadow-[0_0_0_7px_var(--accent)] transition hover:scale-105"
+                      >
+                        <Square className="size-7" />
+                      </button>
+                      <p className="mt-4 text-sm">
+                        <span className="font-mono tabular-nums">
+                          {formatSeconds(recorder.elapsed)}
+                        </span>{" "}
+                        · 说完后点一下结束
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        最长 {formatSeconds(MAX_RECORD_SECONDS)} ·
+                        不用着急，按自己的节奏说
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => recorder.start()}
+                        disabled={submitting}
+                        aria-label="开始录音"
+                        className="mt-1 grid size-[72px] place-items-center rounded-full bg-primary text-white shadow-[0_0_0_7px_var(--secondary)] transition hover:scale-105 disabled:opacity-50"
+                      >
+                        <Mic className="size-7" />
+                      </button>
+                      <p className="mt-4 text-sm">
+                        {recorder.status === "ready" && submitting
+                          ? "已提交，正在出反馈…"
+                          : recorder.status === "ready"
+                            ? "这一次开口，已记录"
+                            : "准备好了，就点一下麦克风"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        需要麦克风权限 · 每一次练习都有意义
+                      </p>
+                    </>
+                  )}
+                  {recorder.error && (
+                    <p className="mt-1 text-sm text-destructive">
+                      {recorder.error}
+                    </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <aside className="grid gap-4">
+            <Card className="border-secondary bg-secondary/60">
+              <CardContent className="space-y-2 py-4">
+                <p className="flex items-center gap-1.5 text-sm font-semibold">
+                  <Sparkles className="size-4 text-primary" /> 一个小小的提示
+                </p>
+                {isQuestion ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      不用寻找「标准答案」。试试这个顺序，让你的表达更完整。
+                    </p>
+                    <p className="font-serif text-xl">I think… because…</p>
+                    <p className="text-xs text-muted-foreground">
+                      我的观点 → 一个理由 → 一个小例子
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      先听完整句子，再跟着意群停顿。比起说得快，说得自然更重要。
+                    </p>
+                    <p className="font-serif text-xl">Listen. Pause. Speak.</p>
+                    <p className="text-xs text-muted-foreground">
+                      听一遍 · 想一想 · 大胆说
+                    </p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="hidden lg:block">
+              <CardContent className="py-4">
+                <p className="mb-3 text-sm font-semibold">今天的路线</p>
+                {[
+                  {
+                    icon: Headphones,
+                    title: "听后复述",
+                    sub: "3 个短句",
+                    active: !isQuestion,
+                  },
+                  {
+                    icon: MessageCircle,
+                    title: "情景问答",
+                    sub: "2 个问题",
+                    active: isQuestion,
+                  },
+                  {
+                    icon: ChartLine,
+                    title: "看看收获",
+                    sub: "专属练习反馈",
+                    active: false,
+                  },
+                ].map((step) => (
                   <div
-                    className="flex h-8 items-center justify-center gap-1"
-                    aria-hidden
+                    key={step.title}
+                    className={
+                      step.active
+                        ? "flex items-center gap-2.5 py-2.5 text-sm font-semibold text-primary"
+                        : "flex items-center gap-2.5 py-2.5 text-sm text-muted-foreground"
+                    }
                   >
-                    {Array.from({ length: 25 }).map((_, i) => (
-                      <i
-                        key={i}
-                        className="wave-bar block w-[3px] rounded bg-primary"
-                        style={{
-                          height: `${[7, 20, 29, 13, 18, 24, 10, 16, 28, 12][i % 10]}px`,
-                          animationDelay: `${(i % 5) * -0.2}s`,
-                        }}
-                      />
-                    ))}
+                    <span
+                      className={
+                        step.active
+                          ? "grid size-7 place-items-center rounded-full bg-secondary text-primary"
+                          : "grid size-7 place-items-center rounded-full bg-background text-muted-foreground"
+                      }
+                    >
+                      <step.icon className="size-3.5" />
+                    </span>
+                    <span>
+                      {step.title}
+                      <span className="block text-[10px] font-normal text-muted-foreground">
+                        {step.sub}
+                      </span>
+                    </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={recorder.stop}
-                    aria-label="结束录音"
-                    className="record-pulse mt-3 grid size-[72px] place-items-center rounded-full bg-destructive text-white shadow-[0_0_0_7px_var(--accent)] transition hover:scale-105"
-                  >
-                    <Square className="size-7" />
-                  </button>
-                  <p className="mt-4 text-sm">
-                    <span className="font-mono tabular-nums">
-                      {formatSeconds(recorder.elapsed)}
-                    </span>{" "}
-                    · 说完后点一下结束
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    最长 {formatSeconds(MAX_RECORD_SECONDS)} ·
-                    不用着急，按自己的节奏说
-                  </p>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => recorder.start()}
-                    disabled={submitting}
-                    aria-label="开始录音"
-                    className="mt-1 grid size-[72px] place-items-center rounded-full bg-primary text-white shadow-[0_0_0_7px_var(--secondary)] transition hover:scale-105 disabled:opacity-50"
-                  >
-                    <Mic className="size-7" />
-                  </button>
-                  <p className="mt-4 text-sm">
-                    {recorder.status === "ready" && submitting
-                      ? "已提交，正在出反馈…"
-                      : recorder.status === "ready"
-                        ? "这一次开口，已记录"
-                        : "准备好了，就点一下麦克风"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    需要麦克风权限 · 每一次练习都有意义
-                  </p>
-                </>
-              )}
-              {recorder.error && (
-                <p className="mt-1 text-sm text-destructive">
-                  {recorder.error}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+              </CardContent>
+            </Card>
 
-        {/* 表达支架（SpeakUp 提示卡） */}
-        <Card className="border-secondary bg-secondary/60">
-          <CardContent className="space-y-2 py-4">
-            <p className="flex items-center gap-1.5 text-sm font-semibold">
-              <Sparkles className="size-4 text-primary" /> 一个小小的提示
-            </p>
-            {isQuestion ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  不用寻找「标准答案」。试试这个顺序，让你的表达更完整。
-                </p>
-                <p className="font-serif text-xl">I think… because…</p>
-                <p className="text-xs text-muted-foreground">
-                  我的观点 → 一个理由 → 一个小例子
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  先听完整句子，再跟着意群停顿。比起说得快，说得自然更重要。
-                </p>
-                <p className="font-serif text-xl">Listen. Pause. Speak.</p>
-                <p className="text-xs text-muted-foreground">
-                  听一遍 · 想一想 · 大胆说
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+            <Card className="hidden lg:block">
+              <CardContent className="flex items-start gap-2 py-3.5 text-xs text-muted-foreground">
+                <Shield className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                每次录音只有你和老师能听到。说错了没关系，再录一次就好。
+              </CardContent>
+            </Card>
+          </aside>
+        </div>
 
         {/* 当前题反馈：先显示轮询中的，再显示历史完成态 */}
         {attempt !== undefined ? (

@@ -131,6 +131,46 @@ function RoundResultPage() {
     return { doneItems: scored, weakest: weakestId }
   }, [plan])
 
+  // 本轮汇总（SpeakUp 4 统计卡）
+  const roundStats = useMemo(() => {
+    const done = doneItems.map((d) => d.attempt)
+    const avg = (nums: Array<number | null | undefined>) => {
+      const valid = nums.filter(
+        (n): n is number => n !== null && n !== undefined,
+      )
+      return valid.length
+        ? Math.round(valid.reduce((a, b) => a + b, 0) / valid.length)
+        : null
+    }
+    const repeats = doneItems.filter((d) => d.item.type !== "question")
+    const questions = doneItems.filter((d) => d.item.type === "question")
+    const lastVocab = [...questions].reverse().find((d) => d.attempt.vocab)
+    return {
+      overall: avg(done.map((a) => a.overall)),
+      completeness: avg(repeats.map((d) => d.attempt.completeness)),
+      fluency: avg(done.map((a) => a.fluency)),
+      vocabCefr:
+        (lastVocab?.attempt.vocab as { cefr?: string } | undefined)?.cefr ??
+        null,
+      hitWords: questions.flatMap((d) => {
+        const v = d.attempt.vocab as
+          | { hits?: Record<string, string[]> }
+          | undefined
+        return Object.values(v?.hits ?? {}).flat()
+      }),
+      rubric: questions.find((d) => d.attempt.rubric)?.attempt.rubric as
+        | {
+            fluency?: number
+            vocabulary?: number
+            grammar?: number
+            task?: number
+            mock_score?: number
+            upgrades?: string[]
+          }
+        | undefined,
+    }
+  }, [doneItems])
+
   if (student === null) {
     return (
       <div className="flex min-h-screen items-center justify-center text-muted-foreground">
@@ -215,6 +255,97 @@ function RoundResultPage() {
               )}
             </div>
           </section>
+        )}
+
+        {doneItems.length > 0 && (
+          <>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {(
+                [
+                  ["口语总评参考", roundStats.overall, "本轮均值"],
+                  ["完整度参考", roundStats.completeness, "听后复述"],
+                  ["流利度参考", roundStats.fluency, "全部题目"],
+                  ["词汇参考档位", roundStats.vocabCefr, "分级词表"],
+                ] as const
+              ).map(([label, value, note]) => (
+                <Card key={label}>
+                  <CardContent className="py-4">
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-2xl font-bold tabular-nums">
+                      {value === null ? "–" : value}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">{note}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {(roundStats.hitWords.length > 0 || roundStats.rubric) && (
+              <div className="grid gap-5 md:grid-cols-2">
+                {roundStats.hitWords.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">
+                        把好表达，变成自己的
+                      </CardTitle>
+                      <CardDescription>
+                        只分析自主问答 · 来源：分级词表命中
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex flex-wrap gap-1.5">
+                      {roundStats.hitWords.slice(0, 24).map((w) => (
+                        <span
+                          key={w}
+                          className="rounded bg-secondary px-2 py-0.5 text-xs text-primary"
+                        >
+                          {w}
+                        </span>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+                {roundStats.rubric && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">
+                        说得更自然一点
+                      </CardTitle>
+                      <CardDescription>
+                        模拟分 {roundStats.rubric.mock_score ?? "–"} / 9 ·
+                        非官方成绩
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2.5">
+                      {(
+                        [
+                          ["流利与连贯", roundStats.rubric.fluency],
+                          ["词汇运用", roundStats.rubric.vocabulary],
+                          ["语法表达", roundStats.rubric.grammar],
+                          ["任务完成", roundStats.rubric.task],
+                        ] as const
+                      ).map(([label, dim]) => (
+                        <div
+                          key={label}
+                          className="grid grid-cols-[70px_1fr_30px] items-center gap-2.5 text-xs"
+                        >
+                          <span className="text-muted-foreground">{label}</span>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-background">
+                            <div
+                              className="h-full rounded-full bg-primary"
+                              style={{ width: `${((dim ?? 0) / 4) * 100}%` }}
+                            />
+                          </div>
+                          <span className="text-right tabular-nums">
+                            {dim ?? "–"}/4
+                          </span>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         {doneItems.length === 0 && (

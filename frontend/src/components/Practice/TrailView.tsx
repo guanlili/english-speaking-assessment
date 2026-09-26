@@ -20,8 +20,18 @@ import {
 const BAND_VALUES: Record<string, number> = { A2: 1, B1: 2, B2: 3 }
 const BAND_LABELS = ["", "A2", "B1", "B2"]
 
-function TrailView({ trail }: { trail: TrailData }) {
-  const sessions = trail.sessions
+function TrailView({
+  trail,
+  period = 30,
+}: {
+  trail: TrailData
+  period?: number
+}) {
+  const allSessions = trail.sessions
+  const cutoff = new Date(Date.now() - period * 86400000)
+    .toISOString()
+    .slice(0, 10)
+  const sessions = allSessions.filter((x) => x.date >= cutoff)
   const hasTrend = sessions.length >= 2 // PRD US-09：少于 2 次不画趋势，只列表
 
   const speakingPoints = sessions.map((s) => ({

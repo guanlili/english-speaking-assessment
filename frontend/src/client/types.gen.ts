@@ -251,6 +251,12 @@ export type PlanAttempt = {
     fluency?: (number | null);
     transcript?: (string | null);
     advice?: (Array<(string)> | null);
+    vocab?: ({
+    [key: string]: unknown;
+} | null);
+    rubric?: ({
+    [key: string]: unknown;
+} | null);
     error?: (string | null);
 };
 

@@ -16,7 +16,7 @@ import {
   Star,
   Trophy,
 } from "lucide-react"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { ClassesService } from "@/client"
 import StudentShell from "@/components/Practice/StudentShell"
 import TrailView from "@/components/Practice/TrailView"
@@ -55,6 +55,8 @@ function MyTrailPage() {
     }
   }, [student, code, navigate])
 
+  const [growthTab, setGrowthTab] = useState<"trail" | "saved">("trail")
+  const [period, setPeriod] = useState(30)
   const todayQuery = useQuery({
     queryKey: ["classroom", code, "today", student?.id],
     queryFn: () =>
@@ -246,10 +248,55 @@ function MyTrailPage() {
             加载失败，请刷新重试。
           </p>
         ) : (
-          <TrailView trail={trailQuery.data} />
+          <>
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex gap-1 rounded-xl bg-secondary/60 p-1">
+                {(
+                  [
+                    ["trail", "学习轨迹"],
+                    ["saved", "表达收藏"],
+                  ] as const
+                ).map(([v, label]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setGrowthTab(v)}
+                    className={
+                      growthTab === v
+                        ? "rounded-lg bg-card px-3 py-1.5 text-xs font-semibold shadow-sm"
+                        : "rounded-lg px-3 py-1.5 text-xs text-muted-foreground"
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {growthTab === "trail" && (
+                <div className="flex gap-1 rounded-xl bg-secondary/60 p-1">
+                  {[7, 30].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setPeriod(n)}
+                      className={
+                        period === n
+                          ? "rounded-lg bg-card px-3 py-1.5 text-xs font-semibold shadow-sm"
+                          : "rounded-lg px-3 py-1.5 text-xs text-muted-foreground"
+                      }
+                    >
+                      近 {n} 天
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {growthTab === "trail" && (
+              <TrailView trail={trailQuery.data} period={period} />
+            )}
+          </>
         )}
 
-        {savedExpressions.length > 0 && (
+        {growthTab === "saved" && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">留住好表达</CardTitle>
