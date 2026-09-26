@@ -151,6 +151,15 @@ jobs:
           SMTP_TLS: ${{ secrets.SMTP_TLS || 'True' }}
           SMTP_SSL: ${{ secrets.SMTP_SSL || 'False' }}
           SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
+          # 可选 Secrets：不设置时为空，默认值统一由 generate-deploy-env.sh 落
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SCORING_PROVIDER: ${{ secrets.SCORING_PROVIDER }}
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+          ARK_ASR_MODEL: ${{ secrets.ARK_ASR_MODEL }}
+          ARK_RUBRIC_MODEL: ${{ secrets.ARK_RUBRIC_MODEL }}
+          ARK_TTS_API_KEY: ${{ secrets.ARK_TTS_API_KEY }}
+          ARK_TTS_MODEL: ${{ secrets.ARK_TTS_MODEL }}
+          ARK_TTS_VOICE: ${{ secrets.ARK_TTS_VOICE }}
         run: |
           bash scripts/generate-deploy-env.sh "$RUNNER_TEMP/deploy.env"
           env_b64=$(base64 < "$RUNNER_TEMP/deploy.env" | tr -d '\n')

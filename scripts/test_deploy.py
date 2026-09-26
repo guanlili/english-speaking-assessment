@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -132,6 +133,31 @@ class DeploymentTests(unittest.TestCase):
             }
 
         self.assertEqual(keys(ROOT / ".env.example"), keys(self.directory / ".env.new"))
+
+    def test_workflow_maps_every_secret_key(self):
+        """keys 里非派生键必须在 deploy.yml 的 env: 映射出现。
+
+        ARK_TTS_API_KEY 曾只在脚本/键清单里补了、工作流没映射，
+        Secret 设了也永远到不了 .env（静默空值）。
+        """
+        script = (ROOT / "scripts/generate-deploy-env.sh").read_text()
+        keys = set(
+            re.search(r"^keys=\((.*)\)$", script, re.MULTILINE).group(1).split()
+        )
+        # 脚本内固定值/派生值键不来自 Secrets，无需映射
+        derived = {
+            "ENVIRONMENT",
+            "POSTGRES_SERVER",
+            "POSTGRES_PORT",
+            "POSTGRES_DB",
+            "POSTGRES_USER",
+            "BACKEND_CORS_ORIGINS",
+        }
+        workflow = (ROOT / ".github/workflows/deploy.yml").read_text()
+        mapped = set(
+            re.findall(r"^ +([A-Z_]+): \$\{\{ secrets\.[A-Z_]+", workflow, re.MULTILINE)
+        )
+        self.assertEqual(keys - derived - mapped, set())
 
 
 if __name__ == "__main__":
