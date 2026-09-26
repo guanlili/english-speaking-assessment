@@ -79,6 +79,8 @@ class PassageBase(SQLModel):
     topic: str = Field(default="Pets", max_length=100)
     cefr_band: str = Field(default="B1", max_length=10)
     text: str = Field(min_length=1)
+    # 中文提示（可选）：学生端题干下方展示；空则回退题型固定提示
+    translation: str | None = Field(default=None, max_length=1024)
     # 标准音地址；为空时前端用 speechSynthesis 兜底（PRD §7.2）
     audio_url: str | None = Field(default=None, max_length=1024)
     suggested_seconds: int = Field(default=45, ge=10, le=180)
@@ -150,6 +152,7 @@ class RepeatSentence(SQLModel, table=True):
     )
     order_index: int = Field(ge=0)
     text: str = Field(min_length=1)
+    translation: str | None = Field(default=None, max_length=1024)
     audio_url: str | None = Field(default=None, max_length=1024)
     suggested_seconds: int = Field(default=8, ge=3, le=60)
 
@@ -181,6 +184,7 @@ class ScenarioQuestion(SQLModel, table=True):
     band: str = Field(max_length=10, index=True)
     order_index: int = Field(default=0, ge=0)
     text: str = Field(min_length=1)
+    translation: str | None = Field(default=None, max_length=1024)
     audio_url: str | None = Field(default=None, max_length=1024)
     suggested_seconds: int = Field(default=20, ge=10, le=60)
 
@@ -386,6 +390,7 @@ class PlanItem(SQLModel):
     type: str  # repeat | question
     id: uuid.UUID
     text: str
+    translation: str | None = None
     audio_url: str | None = None
     suggested_seconds: int
     band: str | None = None
@@ -534,6 +539,10 @@ class TrailData(SQLModel):
     sessions: list[TrailSession]
     # 最近一轮的档位动向（PRD US-10：维持/升/降）；不足一轮为 null
     band_change: str | None = None
+    # 累计开口分钟（Σ作答时长；SpeakUp 成长页统计）
+    total_minutes: int = 0
+    # 累计词汇命中次数按档（SpeakUp 词汇生长条形图）
+    vocab_counts: dict[str, int] = {}
 
 
 # Generic message

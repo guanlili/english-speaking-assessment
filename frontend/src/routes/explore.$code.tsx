@@ -1,13 +1,24 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
-import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router"
-import { ArrowRight, Clock, Compass, MessageCircle } from "lucide-react"
-import { useEffect, useState } from "react"
+import {
+  createFileRoute,
+  Link,
+  useNavigate,
+  useParams,
+} from "@tanstack/react-router"
+import {
+  ArrowRight,
+  BookOpen,
+  Clock,
+  Compass,
+  MessageCircle,
+} from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import type { PathUnit } from "@/client"
 import { ClassesService } from "@/client"
 import StudentShell from "@/components/Practice/StudentShell"
 import TopicArt from "@/components/Practice/TopicArt"
-import { Button } from "@/components/ui/button"
+import { Button as Btn, Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Dialog,
@@ -34,6 +45,8 @@ function ExplorePage() {
   const navigate = useNavigate({ from: "/explore/$code" })
   const student = loadStudent(code)
   const [selected, setSelected] = useState<PathUnit | null>(null)
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [query, setQuery] = useState("")
 
   useEffect(() => {
     if (student === null) {
@@ -52,6 +65,21 @@ function ExplorePage() {
       }),
     enabled: student !== null,
   })
+
+  const filteredUnits = useMemo(() => {
+    const units = pathQuery.data?.units ?? []
+    return units.filter((u) => {
+      const done = (u.rounds_done ?? 0) > 0
+      if (statusFilter === "done" && !done) return false
+      if (statusFilter === "new" && done) return false
+      if (
+        query &&
+        !`${u.title} ${u.topic}`.toLowerCase().includes(query.toLowerCase())
+      )
+        return false
+      return true
+    })
+  }, [pathQuery.data, statusFilter, query])
 
   // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
   useEffect(() => {
@@ -99,6 +127,36 @@ function ExplorePage() {
           </p>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+          {(
+            [
+              ["all", "全部"],
+              ["new", "未开始"],
+              ["done", "已练过"],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setStatusFilter(v)}
+              className={
+                statusFilter === v
+                  ? "rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-white"
+                  : "rounded-full border border-border bg-card px-4 py-1.5 text-xs text-muted-foreground"
+              }
+            >
+              {label}
+            </button>
+          ))}
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="找一个喜欢的话题"
+            aria-label="搜索主题"
+            className="ml-auto h-9 rounded-full border border-border bg-card px-4 text-xs"
+          />
+        </div>
+
         {pathQuery.isPending ? (
           <p className="py-10 text-center text-muted-foreground">正在加载…</p>
         ) : units.length === 0 ? (
@@ -109,7 +167,7 @@ function ExplorePage() {
           </Card>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {units.map((unit) => (
+            {filteredUnits.map((unit) => (
               <button
                 key={unit.unit_id}
                 type="button"
@@ -141,6 +199,14 @@ function ExplorePage() {
           </div>
         )}
 
+        {units.length > 0 && filteredUnits.length === 0 && (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              暂时没找到这个主题，试试「宠物」，或切换筛选。
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardContent className="flex items-start gap-2.5 py-4 text-sm text-muted-foreground">
             <Compass className="mt-0.5 size-4 shrink-0" />
@@ -169,6 +235,12 @@ function ExplorePage() {
             自由练习 · 同样积累 XP 与星级 · 不计入课堂完成率
           </p>
           <DialogFooter>
+            <Btn variant="outline" asChild>
+              <Link to="/practice">
+                <BookOpen />
+                整篇跟读
+              </Link>
+            </Btn>
             <Button variant="outline" onClick={() => setSelected(null)}>
               再看看
             </Button>

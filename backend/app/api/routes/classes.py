@@ -377,6 +377,7 @@ def read_today_plan(
             type=AttemptItemType.REPEAT,
             id=s.id,
             text=s.text,
+            translation=s.translation,
             audio_url=s.audio_url,
             suggested_seconds=s.suggested_seconds,
         )
@@ -386,6 +387,7 @@ def read_today_plan(
             type=AttemptItemType.QUESTION,
             id=q.id,
             text=q.text,
+            translation=q.translation,
             audio_url=q.audio_url,
             suggested_seconds=q.suggested_seconds,
             band=q.band,
@@ -772,6 +774,27 @@ def read_student_trail(
             else:
                 band_change = "down"
 
+    # 累计开口分钟 + 词汇命中按档（只统计已完成作答）
+    done_attempts = [
+        a
+        for a in session.exec(
+            select(Attempt).where(Attempt.student_id == student.id)
+        ).all()
+        if a.status == AttemptStatus.DONE
+    ]
+    total_minutes = round(sum(a.duration_s for a in done_attempts) / 60)
+    vocab_counts: dict[str, int] = {}
+    for a in done_attempts:
+        vocab = a.vocab if isinstance(a.vocab, dict) else None
+        if not vocab:
+            continue
+        hits = vocab.get("hits")
+        if isinstance(hits, dict):
+            for band, words in hits.items():
+                if not isinstance(band, str) or not isinstance(words, list):
+                    continue
+                vocab_counts[band] = vocab_counts.get(band, 0) + len(words)
+
     return TrailData(
         classroom_code=classroom.code,
         student_id=student.id,
@@ -779,6 +802,8 @@ def read_student_trail(
         suffix=student.suffix,
         sessions=sessions,
         band_change=band_change,
+        total_minutes=total_minutes,
+        vocab_counts=vocab_counts,
     )
 
 

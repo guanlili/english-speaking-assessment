@@ -51,3 +51,15 @@ export function isStudentNotFound(error: unknown): boolean {
     (error as { status?: number }).status === 404
   )
 }
+
+export const WEEK_GOAL_KEY = "esa:week-goal"
+export const DEFAULT_WEEK_GOAL = 5
+
+export function readWeekGoal(): number {
+  const v = Number(localStorage.getItem(WEEK_GOAL_KEY))
+  return v === 3 || v === 5 || v === 7 ? v : DEFAULT_WEEK_GOAL
+}
+
+export function writeWeekGoal(goal: number): void {
+  localStorage.setItem(WEEK_GOAL_KEY, String(goal))
+}

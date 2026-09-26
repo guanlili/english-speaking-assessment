@@ -208,6 +208,16 @@ function ClassroomPracticePage() {
     },
   })
 
+  // 录音中离开：刷新/关闭浏览器前确认（录音未提交会被丢弃）
+  useEffect(() => {
+    if (recorder.status !== "recording") return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+    }
+    window.addEventListener("beforeunload", handler)
+    return () => window.removeEventListener("beforeunload", handler)
+  }, [recorder.status])
+
   useEffect(() => {
     if (submitError) {
       toast.error("上传失败", { description: "请检查网络后再录一次" })
@@ -366,7 +376,9 @@ function ClassroomPracticePage() {
                 : currentItem.text}
             </p>
             <p className="text-xs text-muted-foreground">
-              {hideText ? "想不起来也没关系，随时可以重新看看。" : itemHintZh}
+              {hideText
+                ? "想不起来也没关系，随时可以重新看看。"
+                : (currentItem.translation ?? itemHintZh)}
             </p>
 
             <SpeakButton

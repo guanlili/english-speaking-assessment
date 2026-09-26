@@ -8,7 +8,7 @@ import {
   Sparkles,
   Star,
 } from "lucide-react"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { ClassesService } from "@/client"
 import StudentShell from "@/components/Practice/StudentShell"
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,8 @@ import {
   displayName,
   isStudentNotFound,
   loadStudent,
+  readWeekGoal,
+  writeWeekGoal,
 } from "@/lib/classroom-student"
 
 export const Route = createFileRoute("/home/$code")({
@@ -42,9 +44,6 @@ const QUOTES = [
   { en: "Speak from the heart.", zh: "从心里说出来的话，最有力量。" },
 ]
 
-const WEEK_GOAL_KEY = "esa:week-goal"
-const DEFAULT_WEEK_GOAL = 5
-
 function HomePage() {
   const { code } = useParams({ from: "/home/$code" })
   const navigate = useNavigate({ from: "/home/$code" })
@@ -55,6 +54,8 @@ function HomePage() {
       void navigate({ to: "/j/$code", params: { code } })
     }
   }, [student, code, navigate])
+
+  const [goalPicker, setGoalPicker] = useState(false)
 
   const todayQuery = useQuery({
     retry: 1,
@@ -97,8 +98,7 @@ function HomePage() {
   const totalItems = plan?.items.length ?? 5
 
   // 周目标：trail 近 7 天有练习的天数
-  const weekGoal =
-    Number(localStorage.getItem(WEEK_GOAL_KEY)) || DEFAULT_WEEK_GOAL
+  const weekGoal = readWeekGoal()
   const practicedDates = new Set(
     (trailQuery.data?.sessions ?? [])
       .map((s) => s.date)
@@ -221,9 +221,43 @@ function HomePage() {
         {/* 周目标 + 档位生长 + 金句 */}
         <div className="grid gap-5 md:grid-cols-3">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
               <CardTitle className="text-sm">这周，稳稳前进</CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setGoalPicker(!goalPicker)}
+              >
+                调整目标
+              </Button>
             </CardHeader>
+            {goalPicker && (
+              <CardContent className="pb-0">
+                <div className="grid grid-cols-3 gap-2">
+                  {[3, 5, 7].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => {
+                        writeWeekGoal(n)
+                        setGoalPicker(false)
+                      }}
+                      className={
+                        weekGoal === n
+                          ? "rounded-xl border border-primary bg-secondary py-3 text-center"
+                          : "rounded-xl border border-border py-3 text-center hover:bg-background"
+                      }
+                    >
+                      <strong className="block text-xl">{n}</strong>
+                      <small className="text-[10px] text-muted-foreground">
+                        {{ 3: "慢慢来", 5: "稳稳进步", 7: "每天一点" }[n]}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            )}
             <CardContent className="flex flex-col items-center">
               <div className="relative grid size-32 place-items-center">
                 <svg

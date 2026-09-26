@@ -5,7 +5,17 @@ import {
   useNavigate,
   useParams,
 } from "@tanstack/react-router"
-import { ArrowDown, ArrowUp, Flame, Minus, Sparkles, Star } from "lucide-react"
+import {
+  ArrowDown,
+  ArrowUp,
+  BookOpen,
+  Flame,
+  Mic,
+  Minus,
+  Sparkles,
+  Star,
+  Trophy,
+} from "lucide-react"
 import { useEffect } from "react"
 import { ClassesService } from "@/client"
 import StudentShell from "@/components/Practice/StudentShell"
@@ -84,6 +94,102 @@ function MyTrailPage() {
   return (
     <StudentShell active="me">
       <div className="flex flex-col gap-6">
+        {trailQuery.data && (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Card>
+              <CardContent className="py-4">
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Mic className="size-3.5" /> 累计开口
+                </p>
+                <p className="mt-1 text-2xl font-bold">
+                  {trailQuery.data.total_minutes ?? 0}
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    分钟
+                  </span>
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4">
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Trophy className="size-3.5" /> 完成练习
+                </p>
+                <p className="mt-1 text-2xl font-bold">
+                  {trailQuery.data.sessions?.length ?? 0}
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    次
+                  </span>
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4">
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Star className="size-3.5" /> 当前档位
+                </p>
+                <p className="mt-1 text-2xl font-bold">
+                  {todayQuery.data?.gamification
+                    ? "B1"
+                    : (trailQuery.data.sessions?.[0]?.vocab_cefr ?? "–")}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4">
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Flame className="size-3.5" /> 坚持练习
+                </p>
+                <p className="mt-1 text-2xl font-bold">
+                  {todayQuery.data?.gamification?.streak_days ?? 0}
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    天
+                  </span>
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {trailQuery.data && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-1.5 text-base">
+                <BookOpen className="size-4 text-primary" /> 词汇，也在慢慢生长
+              </CardTitle>
+              <CardDescription>
+                累计命中分级词次数 · 来源：分级词表分析
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2.5">
+              {(["A2", "B1", "B2"] as const).map((band) => {
+                const count = trailQuery.data?.vocab_counts?.[band] ?? 0
+                const max = Math.max(
+                  1,
+                  ...Object.values(trailQuery.data?.vocab_counts ?? {}),
+                )
+                return (
+                  <div
+                    key={band}
+                    className="grid grid-cols-[80px_1fr_50px] items-center gap-2.5 text-xs"
+                  >
+                    <span className="text-muted-foreground">{band} 命中词</span>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-background">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all"
+                        style={{ width: `${(count / max) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-right tabular-nums">{count}</span>
+                  </div>
+                )
+              })}
+              <p className="pt-1 text-xs text-muted-foreground">
+                词汇档位不是英语能力的完整评价。多说、多用，比「背到哪个级别」更重要。
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {todayQuery.data?.gamification && (
           <div className="flex flex-wrap items-center gap-4 rounded-lg border px-4 py-3">
             <span className="flex items-center gap-1 text-sm font-semibold">

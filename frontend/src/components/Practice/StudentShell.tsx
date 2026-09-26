@@ -1,13 +1,18 @@
+import { useQuery } from "@tanstack/react-query"
 import { Link, useParams } from "@tanstack/react-router"
 import {
+  Bell,
   ChartLine,
+  CircleHelp,
   Home,
   ListChecks,
   Map as MapIcon,
   Mic,
   Sparkles,
+  UsersRound,
 } from "lucide-react"
-import type { ReactNode } from "react"
+import { type ReactNode, useState } from "react"
+import { ClassesService } from "@/client"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 
 /**
@@ -19,7 +24,7 @@ function StudentShell({
   children,
   wide,
 }: {
-  active: "home" | "practice" | "explore" | "me" | "map"
+  active: "home" | "practice" | "explore" | "me" | "map" | "help" | "classroom"
   children: ReactNode
   wide?: boolean
 }) {
@@ -32,6 +37,13 @@ function StudentShell({
     { key: "explore", to: "/explore/$code", label: "主题探索", icon: Sparkles },
     { key: "me", to: "/me/$code", label: "我的成长", icon: ChartLine },
     { key: "map", to: "/map/$code", label: "关卡地图", icon: MapIcon },
+    {
+      key: "classroom",
+      to: "/classroom/$code",
+      label: "我的课堂",
+      icon: UsersRound,
+    },
+    { key: "help", to: "/help/$code", label: "帮助与设备", icon: CircleHelp },
   ] as const
 
   return (
@@ -75,6 +87,7 @@ function StudentShell({
           ))}
         </nav>
         <div className="mt-auto">
+          <NotificationBell code={code ?? ""} />
           <div className="rounded-2xl bg-background p-4">
             <p className="flex items-center gap-1.5 text-xs font-semibold">
               <ListChecks className="size-3.5 text-primary" />
@@ -126,3 +139,93 @@ function StudentShell({
 }
 
 export default StudentShell
+
+function NotificationBell({ code }: { code: string }) {
+  const student = loadStudent(code)
+  const [open, setOpen] = useState(false)
+  const todayQuery = useQuery({
+    queryKey: ["classroom", code, "today", student?.id],
+    queryFn: () =>
+      ClassesService.readTodayPlan({
+        code: code.toUpperCase(),
+        studentId: student?.id as string,
+      }),
+    enabled: student !== null && code !== "",
+    retry: 1,
+    retryDelay: 500,
+    staleTime: 60_000,
+  })
+  const g = todayQuery.data?.gamification
+  const done = todayQuery.data
+    ? todayQuery.data.attempts.filter(
+        (a) => a.status === "done" || a.status === "failed",
+      ).length
+    : 0
+  const total = todayQuery.data?.items.length ?? 5
+  const today = new Date().toISOString().slice(0, 10)
+  const newBadges = (g?.badges ?? []).filter(
+    (b) => (b.awarded_at ?? "").slice(0, 10) === today,
+  )
+
+  return (
+    <div className="relative mb-3">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-label="消息通知"
+        className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3.5 text-sm text-muted-foreground transition hover:bg-background hover:text-foreground"
+      >
+        <Bell className="size-4" />
+        消息
+        {newBadges.length > 0 && (
+          <span className="ml-auto size-2 rounded-full bg-orange-400" />
+        )}
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-30 mb-2 w-64 rounded-2xl border border-border bg-card p-4 shadow-lg">
+          <p className="mb-2 text-xs font-semibold">学习空间的消息</p>
+          <div className="space-y-3 text-xs">
+            <div className="border-b border-border pb-3">
+              <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                今日任务
+              </span>
+              <p className="mt-1.5 font-medium">
+                {done >= total
+                  ? "今天的练习已完成，辛苦啦"
+                  : `已完成 ${done}/${total} 题`}
+              </p>
+              <p className="mt-0.5 text-muted-foreground">
+                {done >= total
+                  ? "可以去主题探索里自由聊一个话题"
+                  : "回来继续，每题只占用一点时间"}
+              </p>
+            </div>
+            {g && (g.streak_days ?? 0) > 0 && (
+              <div className="border-b border-border pb-3">
+                <span className="rounded bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-accent-foreground">
+                  一点鼓励
+                </span>
+                <p className="mt-1.5 font-medium">
+                  你已经坚持练习 {g.streak_days ?? 0} 天
+                </p>
+                <p className="mt-0.5 text-muted-foreground">
+                  一步一步来，就很好。
+                </p>
+              </div>
+            )}
+            {newBadges.length > 0 && (
+              <div>
+                <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                  新徽章
+                </span>
+                <p className="mt-1.5 font-medium">
+                  {newBadges.map((b) => b.label).join("、")}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

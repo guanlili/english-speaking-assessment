@@ -22,7 +22,9 @@ import { Route as MeCodeRouteImport } from './routes/me.$code'
 import { Route as MapCodeRouteImport } from './routes/map.$code'
 import { Route as JCodeRouteImport } from './routes/j.$code'
 import { Route as HomeCodeRouteImport } from './routes/home.$code'
+import { Route as HelpCodeRouteImport } from './routes/help.$code'
 import { Route as ExploreCodeRouteImport } from './routes/explore.$code'
+import { Route as ClassroomCodeRouteImport } from './routes/classroom.$code'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as TCodeIndexRouteImport } from './routes/t.$code.index'
@@ -99,9 +101,19 @@ const HomeCodeRoute = HomeCodeRouteImport.update({
   path: '/home/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HelpCodeRoute = HelpCodeRouteImport.update({
+  id: '/help/$code',
+  path: '/help/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ExploreCodeRoute = ExploreCodeRouteImport.update({
   id: '/explore/$code',
   path: '/explore/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClassroomCodeRoute = ClassroomCodeRouteImport.update({
+  id: '/classroom/$code',
+  path: '/classroom/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
@@ -169,7 +181,9 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/admin': typeof LayoutAdminRouteWithChildren
   '/settings': typeof LayoutSettingsRoute
+  '/classroom/$code': typeof ClassroomCodeRoute
   '/explore/$code': typeof ExploreCodeRoute
+  '/help/$code': typeof HelpCodeRoute
   '/home/$code': typeof HomeCodeRoute
   '/j/$code': typeof JCodeRoute
   '/map/$code': typeof MapCodeRoute
@@ -193,7 +207,9 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/settings': typeof LayoutSettingsRoute
+  '/classroom/$code': typeof ClassroomCodeRoute
   '/explore/$code': typeof ExploreCodeRoute
+  '/help/$code': typeof HelpCodeRoute
   '/home/$code': typeof HomeCodeRoute
   '/j/$code': typeof JCodeRoute
   '/map/$code': typeof MapCodeRoute
@@ -219,7 +235,9 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_layout/admin': typeof LayoutAdminRouteWithChildren
   '/_layout/settings': typeof LayoutSettingsRoute
+  '/classroom/$code': typeof ClassroomCodeRoute
   '/explore/$code': typeof ExploreCodeRoute
+  '/help/$code': typeof HelpCodeRoute
   '/home/$code': typeof HomeCodeRoute
   '/j/$code': typeof JCodeRoute
   '/map/$code': typeof MapCodeRoute
@@ -248,7 +266,9 @@ export interface FileRouteTypes {
     | '/signup'
     | '/admin'
     | '/settings'
+    | '/classroom/$code'
     | '/explore/$code'
+    | '/help/$code'
     | '/home/$code'
     | '/j/$code'
     | '/map/$code'
@@ -272,7 +292,9 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/settings'
+    | '/classroom/$code'
     | '/explore/$code'
+    | '/help/$code'
     | '/home/$code'
     | '/j/$code'
     | '/map/$code'
@@ -297,7 +319,9 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_layout/admin'
     | '/_layout/settings'
+    | '/classroom/$code'
     | '/explore/$code'
+    | '/help/$code'
     | '/home/$code'
     | '/j/$code'
     | '/map/$code'
@@ -323,7 +347,9 @@ export interface RootRouteChildren {
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  ClassroomCodeRoute: typeof ClassroomCodeRoute
   ExploreCodeRoute: typeof ExploreCodeRoute
+  HelpCodeRoute: typeof HelpCodeRoute
   HomeCodeRoute: typeof HomeCodeRoute
   JCodeRoute: typeof JCodeRoute
   MapCodeRoute: typeof MapCodeRoute
@@ -425,11 +451,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HomeCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/help/$code': {
+      id: '/help/$code'
+      path: '/help/$code'
+      fullPath: '/help/$code'
+      preLoaderRoute: typeof HelpCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/explore/$code': {
       id: '/explore/$code'
       path: '/explore/$code'
       fullPath: '/explore/$code'
       preLoaderRoute: typeof ExploreCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/classroom/$code': {
+      id: '/classroom/$code'
+      path: '/classroom/$code'
+      fullPath: '/classroom/$code'
+      preLoaderRoute: typeof ClassroomCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout/settings': {
@@ -578,7 +618,9 @@ const rootRouteChildren: RootRouteChildren = {
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  ClassroomCodeRoute: ClassroomCodeRoute,
   ExploreCodeRoute: ExploreCodeRoute,
+  HelpCodeRoute: HelpCodeRoute,
   HomeCodeRoute: HomeCodeRoute,
   JCodeRoute: JCodeRoute,
   MapCodeRoute: MapCodeRoute,

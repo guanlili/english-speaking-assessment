@@ -194,6 +194,7 @@ export type PassageCreate = {
     topic?: string;
     cefr_band?: string;
     text: string;
+    translation?: (string | null);
     audio_url?: (string | null);
     suggested_seconds?: number;
     is_active?: boolean;
@@ -206,6 +207,7 @@ export type PassagePublic = {
     topic?: string;
     cefr_band?: string;
     text: string;
+    translation?: (string | null);
     audio_url?: (string | null);
     suggested_seconds?: number;
     is_active?: boolean;
@@ -219,6 +221,7 @@ export type PassageWithSentences = {
     topic?: string;
     cefr_band?: string;
     text: string;
+    translation?: (string | null);
     audio_url?: (string | null);
     suggested_seconds?: number;
     is_active?: boolean;
@@ -255,6 +258,7 @@ export type PlanItem = {
     type: string;
     id: string;
     text: string;
+    translation?: (string | null);
     audio_url?: (string | null);
     suggested_seconds: number;
     band?: (string | null);
@@ -280,6 +284,7 @@ export type RepeatSentence = {
     passage_id: string;
     order_index: number;
     text: string;
+    translation?: (string | null);
     audio_url?: (string | null);
     suggested_seconds?: number;
 };
@@ -306,6 +311,7 @@ export type ScenarioQuestion = {
     band: string;
     order_index?: number;
     text: string;
+    translation?: (string | null);
     audio_url?: (string | null);
     suggested_seconds?: number;
 };
@@ -358,6 +364,10 @@ export type TrailData = {
     suffix?: (string | null);
     sessions: Array<TrailSession>;
     band_change?: (string | null);
+    total_minutes?: number;
+    vocab_counts?: {
+        [key: string]: (number);
+    };
 };
 
 export type TrailSession = {

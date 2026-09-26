@@ -9,13 +9,14 @@ import confetti from "canvas-confetti"
 import {
   ArrowRight,
   Flame,
+  Play,
   Repeat,
   Shuffle,
   Sparkles,
   Star,
   Trophy,
 } from "lucide-react"
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
 import StudentShell from "@/components/Practice/StudentShell"
@@ -27,8 +28,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { APP_NAME } from "@/config"
+
+const API_BASE = import.meta.env.VITE_API_URL ?? ""
+
 import { displayName, loadStudent } from "@/lib/classroom-student"
 
 export const Route = createFileRoute("/p/$code/result")({
@@ -57,6 +69,11 @@ function RoundResultPage() {
       }),
     enabled: student !== null,
   })
+
+  const [replay, setReplay] = useState<{
+    item: PlanItem
+    attempt: PlanAttempt
+  } | null>(null)
 
   const nextQuestionMutation = useMutation({
     mutationFn: () =>
@@ -243,9 +260,89 @@ function RoundResultPage() {
                   ))}
                 </ul>
               )}
+              {attempt.attempt_id && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setReplay({ item, attempt })}
+                >
+                  <Play />
+                  回听这一题
+                </Button>
+              )}
             </CardContent>
           </Card>
         ))}
+
+        {/* 回看弹窗：转写 + 自己的录音 */}
+        <Dialog
+          open={replay !== null}
+          onOpenChange={(o) => !o && setReplay(null)}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {replay && (
+                  <>
+                    {ITEM_TYPE_LABELS[replay.item.type] ?? replay.item.type} ·
+                    回看这次表达
+                  </>
+                )}
+              </DialogTitle>
+              <DialogDescription>{replay?.item.text}</DialogDescription>
+            </DialogHeader>
+            {replay && (
+              <div className="space-y-3">
+                <div>
+                  <p className="mb-1 text-xs text-muted-foreground">
+                    你说了什么（转写）
+                  </p>
+                  <p className="rounded-lg bg-background p-3 text-sm leading-relaxed">
+                    {replay.attempt.transcript || "（无转写）"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-2xl font-bold tabular-nums">
+                    {replay.attempt.overall ?? "–"}
+                  </span>
+                  <span className="text-muted-foreground">参考总评</span>
+                </div>
+                {replay.attempt.attempt_id && (
+                  <audio
+                    controls
+                    preload="metadata"
+                    src={`${API_BASE}/api/v1/attempts/${replay.attempt.attempt_id}/audio`}
+                    className="w-full"
+                  >
+                    <track kind="captions" />
+                  </audio>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  听一听自己刚才的声音，找出下一句想说得更好的地方。
+                </p>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setReplay(null)}>
+                关闭
+              </Button>
+              <Button
+                onClick={() => {
+                  if (replay) {
+                    void navigate({
+                      to: "/p/$code",
+                      params: { code },
+                      search: { focus: replay.item.id },
+                    })
+                  }
+                }}
+              >
+                <Repeat />
+                再练这一题
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className="flex flex-wrap gap-3">
           {weakest && (

@@ -112,12 +112,21 @@ function NewPassageForm({
     suggested_seconds?: number
   }) => void
 }) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    slug: string
+    title: string
+    topic: string
+    cefr_band: string
+    text: string
+    translation?: string
+    suggested_seconds: number
+  }>({
     slug: "",
     title: "",
     topic: "",
     cefr_band: "B1",
     text: "",
+    translation: "",
     suggested_seconds: 45,
   })
 
@@ -183,6 +192,14 @@ function NewPassageForm({
             rows={4}
             value={form.text}
             onChange={(e) => setForm({ ...form, text: e.target.value })}
+          />
+        </div>
+        <div className="space-y-1 md:col-span-2">
+          <Label htmlFor="translation">中文提示（可选，学生端显示）</Label>
+          <Input
+            id="translation"
+            value={form.translation ?? ""}
+            onChange={(e) => setForm({ ...form, translation: e.target.value })}
           />
         </div>
         <div className="md:col-span-2">
