@@ -19,7 +19,12 @@ import { Separator } from "@/components/ui/separator"
 import { APP_NAME } from "@/config"
 import { useAttemptSubmit } from "@/hooks/useAttemptSubmit"
 import { MAX_RECORD_SECONDS, useRecorder } from "@/hooks/useRecorder"
-import { displayName, loadStudent } from "@/lib/classroom-student"
+import {
+  clearStudent,
+  displayName,
+  isStudentNotFound,
+  loadStudent,
+} from "@/lib/classroom-student"
 
 export const Route = createFileRoute("/p/$code/")({
   component: ClassroomPracticePage,
@@ -78,6 +83,8 @@ function ClassroomPracticePage() {
   const [hideText, setHideText] = useState(false)
 
   const todayQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
     queryKey: ["classroom", code, "today", student?.id, exploreSessionId],
     queryFn: () =>
       ClassesService.readTodayPlan({
@@ -91,6 +98,14 @@ function ClassroomPracticePage() {
         ? 2000
         : false,
   })
+
+  // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
+  useEffect(() => {
+    if (todayQuery.isError && isStudentNotFound(todayQuery.error)) {
+      clearStudent(code)
+      void navigate({ to: "/j/$code", params: { code } })
+    }
+  }, [todayQuery.isError, todayQuery.error, code, navigate])
 
   // 未留名 → 回加入页
   useEffect(() => {

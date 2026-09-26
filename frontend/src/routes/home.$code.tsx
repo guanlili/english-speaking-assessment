@@ -20,7 +20,12 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { APP_NAME } from "@/config"
-import { displayName, loadStudent } from "@/lib/classroom-student"
+import {
+  clearStudent,
+  displayName,
+  isStudentNotFound,
+  loadStudent,
+} from "@/lib/classroom-student"
 
 export const Route = createFileRoute("/home/$code")({
   component: HomePage,
@@ -52,6 +57,8 @@ function HomePage() {
   }, [student, code, navigate])
 
   const todayQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
     queryKey: ["classroom", code, "today", student?.id],
     queryFn: () =>
       ClassesService.readTodayPlan({
@@ -60,6 +67,14 @@ function HomePage() {
       }),
     enabled: student !== null,
   })
+
+  // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
+  useEffect(() => {
+    if (todayQuery.isError && isStudentNotFound(todayQuery.error)) {
+      clearStudent(code)
+      void navigate({ to: "/j/$code", params: { code } })
+    }
+  }, [todayQuery.isError, todayQuery.error, code, navigate])
 
   const trailQuery = useQuery({
     queryKey: ["classroom", code, "trail", student?.id],

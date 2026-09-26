@@ -41,3 +41,13 @@ export function displayName(student: StoredStudent): string {
     ? `${student.display_name}·${student.suffix}`
     : student.display_name
 }
+
+/** API 错误是否为「学生身份已失效」（清库/课堂重建后 404）。 */
+export function isStudentNotFound(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    (error as { status?: number }).status === 404
+  )
+}

@@ -20,7 +20,12 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { APP_NAME } from "@/config"
-import { displayName, loadStudent } from "@/lib/classroom-student"
+import {
+  clearStudent,
+  displayName,
+  isStudentNotFound,
+  loadStudent,
+} from "@/lib/classroom-student"
 
 export const Route = createFileRoute("/me/$code")({
   component: MyTrailPage,
@@ -51,6 +56,8 @@ function MyTrailPage() {
   })
 
   const trailQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
     queryKey: ["classroom", code, "trail", student?.id],
     queryFn: () =>
       ClassesService.readStudentTrail({
@@ -59,6 +66,14 @@ function MyTrailPage() {
       }),
     enabled: student !== null,
   })
+
+  // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
+  useEffect(() => {
+    if (trailQuery.isError && isStudentNotFound(trailQuery.error)) {
+      clearStudent(code)
+      void navigate({ to: "/j/$code", params: { code } })
+    }
+  }, [trailQuery.isError, trailQuery.error, code, navigate])
 
   if (student === null) return null
 

@@ -18,7 +18,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { APP_NAME } from "@/config"
-import { loadStudent } from "@/lib/classroom-student"
+import {
+  clearStudent,
+  isStudentNotFound,
+  loadStudent,
+} from "@/lib/classroom-student"
 
 export const Route = createFileRoute("/explore/$code")({
   component: ExplorePage,
@@ -38,6 +42,8 @@ function ExplorePage() {
   }, [student, code, navigate])
 
   const pathQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
     queryKey: ["classroom", code, "path", student?.id],
     queryFn: () =>
       ClassesService.readLearningPath({
@@ -46,6 +52,14 @@ function ExplorePage() {
       }),
     enabled: student !== null,
   })
+
+  // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
+  useEffect(() => {
+    if (pathQuery.isError && isStudentNotFound(pathQuery.error)) {
+      clearStudent(code)
+      void navigate({ to: "/j/$code", params: { code } })
+    }
+  }, [pathQuery.isError, pathQuery.error, code, navigate])
 
   const exploreMutation = useMutation({
     mutationFn: (unitId: string) =>
