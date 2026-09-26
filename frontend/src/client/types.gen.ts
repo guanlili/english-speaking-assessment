@@ -739,6 +739,8 @@ export type LoginLoginAccessTokenResponse = (Token);
 
 export type LoginTestTokenResponse = (UserPublic);
 
+export type LoginLoginDemoResponse = (Token);
+
 export type LoginRecoverPasswordData = {
     email: string;
 };
