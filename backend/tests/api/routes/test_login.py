@@ -199,3 +199,14 @@ def test_use_invalid_token_returns_401(client: TestClient) -> None:
     assert r.status_code == 401
     # 401 必须带 WWW-Authenticate；403 留给"已登录但权限不足"（不触发前端登出）
     assert r.headers["WWW-Authenticate"] == "Bearer"
+
+
+def test_demo_login_issues_admin_token(client: TestClient) -> None:
+    """演示登录（仅 local）：token 可访问管理端接口。"""
+    resp = client.post("/api/v1/login/demo")
+    assert resp.status_code == 200
+    token = resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    me = client.get("/api/v1/users/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["is_superuser"] is True

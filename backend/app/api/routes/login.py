@@ -53,6 +53,26 @@ def test_token(current_user: CurrentUser) -> Any:
     return current_user
 
 
+@router.post("/login/demo")
+def login_demo(session: SessionDep) -> Token:
+    """演示视角快捷登录：为内置管理员直接签发 token。
+
+    仅在 ENVIRONMENT=local 开放（登录页三角色入口用）；
+    生产/预发环境一律 404，不暴露任何凭据。
+    """
+    if settings.ENVIRONMENT != "local":
+        raise HTTPException(status_code=404, detail="Not Found")
+    user = crud.get_user_by_email(session=session, email=settings.FIRST_SUPERUSER)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=404, detail="Not Found")
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return Token(
+        access_token=security.create_access_token(
+            user.id, expires_delta=access_token_expires
+        )
+    )
+
+
 @router.post("/password-recovery/{email}")
 def recover_password(email: str, session: SessionDep) -> Message:
     """

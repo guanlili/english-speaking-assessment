@@ -1,4 +1,9 @@
+import os
 from collections.abc import Generator
+
+# 必须在导入 app 之前设置：测试永远跑 mock 引擎，不读本地 .env 的
+# SCORING_PROVIDER（开发者本机切 ark 后，测试不能变成真调付费云 API）
+os.environ["SCORING_PROVIDER"] = "mock"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,7 +17,20 @@ from app.api.routes.utils import get_readiness_dsn
 from app.core.config import settings
 from app.core.db import init_db
 from app.main import app
-from app.models import Item, User
+from app.models import (
+    Attempt,
+    Classroom,
+    Passage,
+    PracticeSession,
+    RepeatSentence,
+    Scenario,
+    ScenarioQuestion,
+    Student,
+    StudentBadge,
+    Unit,
+    User,
+    WordlistEntry,
+)
 from tests.utils.user import authentication_token_from_email
 from tests.utils.utils import get_superuser_token_headers
 
@@ -76,8 +94,18 @@ def db() -> Generator[Session]:
     with Session(engine) as session:
         init_db(session)
         yield session
-        # 清理测试库数据（独立库内，无开发数据风险）
-        session.exec(delete(Item))  # type: ignore[call-overload]
+        # 清理测试库数据（独立库内，无开发数据风险；按外键依赖倒序）
+        session.exec(delete(Attempt))  # type: ignore[call-overload]
+        session.exec(delete(PracticeSession))  # type: ignore[call-overload]
+        session.exec(delete(StudentBadge))  # type: ignore[call-overload]
+        session.exec(delete(Student))  # type: ignore[call-overload]
+        session.exec(delete(Classroom))  # type: ignore[call-overload]
+        session.exec(delete(ScenarioQuestion))  # type: ignore[call-overload]
+        session.exec(delete(Scenario))  # type: ignore[call-overload]
+        session.exec(delete(RepeatSentence))  # type: ignore[call-overload]
+        session.exec(delete(Passage))  # type: ignore[call-overload]
+        session.exec(delete(WordlistEntry))  # type: ignore[call-overload]
+        session.exec(delete(Unit))  # type: ignore[call-overload]
         session.exec(delete(User))  # type: ignore[call-overload]
         session.commit()
 

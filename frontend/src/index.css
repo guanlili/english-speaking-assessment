@@ -42,72 +42,72 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.5982 0.10687 182.4689);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.5982 0.10687 182.4689);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 1rem;
+  --background: hsl(75 22% 97%);
+  --foreground: hsl(157 24% 15%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(157 24% 15%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(157 24% 15%);
+  --primary: hsl(158 41% 29%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(111 29% 92%);
+  --secondary-foreground: hsl(158 41% 29%);
+  --muted: hsl(111 29% 92%);
+  --muted-foreground: hsl(150 7% 43%);
+  --accent: hsl(28 88% 94%);
+  --accent-foreground: hsl(20 60% 36%);
+  --destructive: hsl(6 54% 43%);
+  --border: hsl(100 15% 88%);
+  --input: hsl(100 15% 88%);
+  --ring: hsl(158 41% 29%);
+  --chart-1: hsl(158 41% 29%);
+  --chart-2: hsl(22 86% 68%);
+  --chart-3: hsl(47 89% 78%);
+  --chart-4: hsl(150 7% 43%);
+  --chart-5: hsl(158 37% 21%);
+  --sidebar: hsl(0 0% 100%);
+  --sidebar-foreground: hsl(157 24% 15%);
+  --sidebar-primary: hsl(158 41% 29%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(111 29% 92%);
+  --sidebar-accent-foreground: hsl(158 41% 29%);
+  --sidebar-border: hsl(100 15% 88%);
+  --sidebar-ring: hsl(158 41% 29%);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.65 0.10687 182.4689);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.65 0.10687 182.4689);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: hsl(157 24% 12%);
+  --foreground: hsl(75 15% 92%);
+  --card: hsl(157 22% 16%);
+  --card-foreground: hsl(75 15% 92%);
+  --popover: hsl(157 22% 16%);
+  --popover-foreground: hsl(75 15% 92%);
+  --primary: hsl(158 45% 42%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(157 18% 22%);
+  --secondary-foreground: hsl(111 29% 82%);
+  --muted: hsl(157 18% 22%);
+  --muted-foreground: hsl(150 8% 65%);
+  --accent: hsl(22 40% 24%);
+  --accent-foreground: hsl(28 88% 84%);
+  --destructive: hsl(6 60% 55%);
+  --border: hsl(157 15% 26%);
+  --input: hsl(157 15% 26%);
+  --ring: hsl(158 45% 42%);
+  --chart-1: hsl(158 45% 42%);
+  --chart-2: hsl(22 86% 68%);
+  --chart-3: hsl(47 89% 78%);
+  --chart-4: hsl(150 8% 65%);
+  --chart-5: hsl(111 29% 82%);
+  --sidebar: hsl(157 22% 16%);
+  --sidebar-foreground: hsl(75 15% 92%);
+  --sidebar-primary: hsl(158 45% 42%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(157 18% 22%);
+  --sidebar-accent-foreground: hsl(111 29% 82%);
+  --sidebar-border: hsl(157 15% 26%);
+  --sidebar-ring: hsl(158 45% 42%);
 }
 
 @layer base {
@@ -121,4 +121,83 @@
   [role="button"] {
     cursor: pointer;
   }
+}
+
+/* 激励层：星级逐个点亮 */
+@keyframes star-pop {
+  0% {
+    transform: scale(0) rotate(-30deg);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.25) rotate(6deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+/* ── SpeakUp 设计系统（源自 prototypes/speakup）── */
+
+/* 立体主按钮：底部硬阴影 + hover 上浮（多邻国式） */
+.btn-pop {
+  box-shadow: 0 4px 0 hsl(158 37% 21%);
+  transition:
+    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.2s;
+}
+.btn-pop:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 hsl(158 37% 21%);
+}
+.btn-pop:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 hsl(158 37% 21%);
+}
+.dark .btn-pop {
+  box-shadow: 0 4px 0 hsl(158 45% 18%);
+}
+
+/* 录音钮脉冲 */
+@keyframes record-pulse {
+  50% {
+    box-shadow: 0 0 0 13px hsl(22 86% 68% / 0.15);
+  }
+}
+.record-pulse {
+  animation: record-pulse 1.5s infinite;
+}
+
+/* 波形动画 */
+@keyframes wave-bar {
+  50% {
+    transform: scaleY(0.3);
+  }
+}
+.wave-bar {
+  animation: wave-bar 1s ease-in-out infinite;
+}
+
+/* 页面进入 */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.page-enter {
+  animation: page-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* 大字题干（练习页） */
+.prompt-display {
+  font-size: 1.65rem;
+  line-height: 1.65;
+  font-weight: 550;
+  letter-spacing: -0.3px;
 }

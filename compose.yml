@@ -24,6 +24,10 @@ x-backend-common: &backend-common
     FIRST_SUPERUSER: ${FIRST_SUPERUSER?Variable not set}
     FIRST_SUPERUSER_PASSWORD: ${FIRST_SUPERUSER_PASSWORD?Variable not set}
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD?Variable not set}
+    # 学生录音落盘到独立卷，重建容器不丢
+    AUDIO_STORAGE_DIR: /app/audio
+  volumes:
+    - app-audio-data:/app/audio
 
 services:
 
@@ -91,3 +95,4 @@ services:
 
 volumes:
   app-db-data:
+  app-audio-data:

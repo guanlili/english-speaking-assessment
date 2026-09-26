@@ -106,6 +106,32 @@ class Settings(BaseSettings):
     EMAIL_TEST_USER: EmailStr = "test@example.com"
     FIRST_SUPERUSER: EmailStr
     FIRST_SUPERUSER_PASSWORD: str
+
+    # ── 口语评测评分（PRD §7.2：引擎藏在可替换接口后面）──
+    # mock=离线演示/测试；ark=火山方舟（需 ARK_API_KEY，模型名必须带日期后缀）
+    SCORING_PROVIDER: Literal["mock", "ark"] = "mock"
+    ARK_API_KEY: str | None = None
+    ARK_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
+    # 方舟 API 调用名必须用带日期后缀的快照名，广场短名（doubao-seed-2-0-lite）会 404
+    ARK_ASR_MODEL: str = "doubao-seed-2-0-lite-260428"
+    # 开放题 rubric 评分模型（同一模型走 chat 接口；豆包或 DeepSeek 系列均可）
+    ARK_RUBRIC_MODEL: str = "doubao-seed-2-0-lite-260428"
+    # 标准音合成：方舟域名没有 /audio/speech，走 vei AI 网关的 OpenAI 兼容接口；
+    # 网关密钥与方舟 Key 是两套（console.volcengine.com/vei/aigateway 创建），
+    # 未配置时 TTS 返回 503，上传现成音频的通道不受影响
+    ARK_TTS_BASE_URL: str = "https://ai-gateway.vei.volces.com/v1"
+    ARK_TTS_API_KEY: str | None = None
+    ARK_TTS_MODEL: str = "doubao-tts"
+    # 音色：mars 系标准音色账号直接可用，uranus 系精品音色需购买
+    # （不存在的音色会返回 200 + 0 字节音频，不报错，按字节数判断）
+    ARK_TTS_VOICE: str = "en_female_anna_mars_bigtts"
+    # 后台评分线程数（PRD：8 个 worker 可在 2 分钟内打完 40 人）
+    SCORING_WORKERS: int = 2
+    # 音频落盘目录（compose 里挂卷到 /app/audio）
+    AUDIO_STORAGE_DIR: str = "./audio"
+    MAX_AUDIO_MB: int = 20
+    # 练习日切分时区（教室在国内；UTC 会在早八点切日）
+    PRACTICE_TZ: str = "Asia/Shanghai"
     # 是否开放自助注册。代码默认关（安全兜底）；本地 .env.example 开着便于开发演示，
     # 生产由 GitHub Secrets 控制（deploy.yml 默认写 false）
     USERS_OPEN_REGISTRATION: bool = False
