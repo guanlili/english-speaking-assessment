@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: 校验 .env.example 与 deploy.yml 写入的键一致
         run: |
-          if ! diff <(grep -oE '^[A-Z_]+=' .env.example | tr -d '=' | sort) \
+          if ! diff <(grep -oE '^[A-Za-z_]+=' .env.example | tr -d '=' | sort) \
                     <(sed -n 's/^ *keys=(\(.*\)).*/\1/p' scripts/generate-deploy-env.sh \
                       | tr ' ' '\n' | sed '/^$/d' | sort); then
             echo "❌ .env.example 与 generate-deploy-env.sh 的 keys 清单（写入 .env 的键）不一致。"
