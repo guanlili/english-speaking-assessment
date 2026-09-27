@@ -369,8 +369,11 @@ def _active_passage_counts(session: SessionDep) -> dict[uuid.UUID, int]:
     """每个单元的启用篇目数（指派前完整性检查用）。"""
     rows = session.exec(
         select(Passage.unit_id, func.count())
-        .where(Passage.is_active, Passage.unit_id.is_not(None))
-        .group_by(Passage.unit_id)
+        .where(
+            Passage.is_active,
+            Passage.unit_id.is_not(None),  # type: ignore
+        )
+        .group_by(Passage.unit_id)  # type: ignore
     ).all()
     return {unit_id: count for unit_id, count in rows if unit_id is not None}
 
