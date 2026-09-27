@@ -125,25 +125,33 @@ def get_classroom_by_code(*, session: Session, code: str) -> Classroom | None:
 def join_classroom(
     *, session: Session, classroom: Classroom, display_name: str
 ) -> Student:
-    """同名允许进入，追加 4 位区分码并返回给学生（PRD US-04）。"""
-    duplicate = session.exec(
-        select(Student).where(
-            Student.classroom_id == classroom.id,
-            Student.display_name == display_name,
+    """同名允许进入，追加 4 位区分码并返回给学生（PRD US-04）。
+
+    用唯一约束 + IntegrityError 重试应对并发同名加入，确保不会产生
+    重复的 display_name + suffix 组合。
+    """
+    for attempt in range(10):
+        duplicate = session.exec(
+            select(Student).where(
+                Student.classroom_id == classroom.id,
+                Student.display_name == display_name,
+            )
+        ).first()
+        suffix = None if duplicate is None else f"{random.randint(1000, 9999)}"  # noqa: S311
+        student = Student(
+            classroom_id=classroom.id,
+            display_name=display_name,
+            suffix=suffix,
         )
-    ).first()
-    suffix = None
-    if duplicate is not None:
-        suffix = f"{random.randint(1000, 9999)}"  # noqa: S311 - 展示用途区分码
-    student = Student(
-        classroom_id=classroom.id,
-        display_name=display_name,
-        suffix=suffix,
-    )
-    session.add(student)
-    session.commit()
-    session.refresh(student)
-    return student
+        session.add(student)
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            continue
+        session.refresh(student)
+        return student
+    raise RuntimeError("生成唯一学生显示名失败（重试耗尽）")
 
 
 def get_student(*, session: Session, student_id: uuid.UUID) -> Student | None:

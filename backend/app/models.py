@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, date, datetime
 
 from pydantic import EmailStr
-from sqlalchemy import JSON, Column, Date, DateTime, Index, text
+from sqlalchemy import JSON, Column, Date, DateTime, Index, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
 
 
@@ -245,6 +245,20 @@ class ClassroomCreate(SQLModel):
 # 学生：显示名 + 同名 4 位区分码；无正式账号（PRD US-04）
 class Student(SQLModel, table=True):
     __tablename__ = "student"
+    __table_args__ = (
+        # suffix 为 NULL 时：同名只能一个（首个加入的不追加后缀）
+        Index(
+            "ix_student_classroom_display_name_no_suffix",
+            "classroom_id",
+            "display_name",
+            unique=True,
+            postgresql_where=text("suffix IS NULL"),
+        ),
+        # suffix 不为 NULL 时：同名+同后缀唯一
+        UniqueConstraint(
+            "classroom_id", "display_name", "suffix", name="uq_student_name_suffix"
+        ),
+    )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     classroom_id: uuid.UUID = Field(
@@ -373,7 +387,7 @@ class Attempt(SQLModel, table=True):
     )
     # 幂等键：同一次录音重传不重复创建作答/扣费
     idempotency_key: str | None = Field(
-        default=None, max_length=64, index=True, sa_column_kwargs={"unique": False}
+        default=None, max_length=64, sa_column_kwargs={"unique": True}
     )
     # 服务端存储路径（随机文件名），不通过 API 暴露
     audio_path: str = Field(max_length=512)

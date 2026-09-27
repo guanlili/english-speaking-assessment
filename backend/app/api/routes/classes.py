@@ -10,12 +10,13 @@ GET  /classes/{code}/board         老师名单表（谁交了/每题分数/音�
 import logging
 import secrets
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import SQLModel, col, select
 
 from app.api.deps import (
@@ -248,9 +249,12 @@ def create_class(
     """创建课堂，返回课堂码（老师把它当作进入链接分发）。"""
     for _ in range(5):
         code = _generate_classroom_code()
-        if get_classroom_by_code(session=session, code=code) is None:
-            classroom = Classroom(code=code, class_size=class_in.class_size)
+        classroom = Classroom(code=code, class_size=class_in.class_size)
+        try:
             return create_classroom(session=session, classroom=classroom)
+        except IntegrityError:
+            session.rollback()
+            continue
     raise HTTPException(status_code=500, detail="无法生成唯一课堂码")
 
 
@@ -637,16 +641,21 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
 
     now = datetime.now(ZoneInfo(settings.PRACTICE_TZ))
     week_ago = (now - timedelta(days=7)).date()
-    recent_attempts = session.exec(select(Attempt)).all()
+    week_ago_utc = datetime(
+        week_ago.year, week_ago.month, week_ago.day, tzinfo=ZoneInfo("UTC")
+    )
+    student_ids = [s.id for s in students]
+    recent_attempts = session.exec(
+        select(Attempt).where(
+            Attempt.student_id.in_(student_ids),
+            Attempt.created_at >= week_ago_utc,
+        )
+    ).all()
     recent_by_student: dict[uuid.UUID, list[Attempt]] = {}
     for attempt in recent_attempts:
-        if attempt.student_id is None or attempt.created_at is None:
+        if attempt.student_id is None:
             continue
-        if (
-            attempt.created_at.astimezone(ZoneInfo(settings.PRACTICE_TZ)).date()
-            >= week_ago
-        ):
-            recent_by_student.setdefault(attempt.student_id, []).append(attempt)
+        recent_by_student.setdefault(attempt.student_id, []).append(attempt)
 
     band_distribution = {"A2": 0, "B1": 0, "B2": 0}
     board_students: list[BoardStudent] = []
@@ -819,6 +828,7 @@ def read_student_trail(
     code: str,
     student_id: uuid.UUID = Query(...),
     token: str | None = Query(default=None, description="入班时发放的学生轻量凭证"),
+    days: int = Query(default=90, ge=1, le=3650, description="查询最近多少天的轨迹"),
     current_user: OptionalCurrentUser = None,
 ) -> Any:
     """学生进步轨迹（PRD US-09）：按练习日聚合口语参考分与词汇档。
@@ -839,13 +849,21 @@ def read_student_trail(
             headers={"WWW-Authenticate": "StudentCredential"},
         )
 
+    tz = ZoneInfo(settings.PRACTICE_TZ)
+    now_tz = datetime.now(tz)
+    window_start = (now_tz - timedelta(days=days)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    window_start_utc = window_start.astimezone(ZoneInfo("UTC"))
+
     attempts = session.exec(
         select(Attempt)
-        .where(Attempt.student_id == student.id)
+        .where(
+            Attempt.student_id == student.id,
+            Attempt.created_at >= window_start_utc,
+        )
         .order_by(col(Attempt.created_at))
     ).all()
-
-    tz = ZoneInfo(settings.PRACTICE_TZ)
     by_date: dict[str, dict[str, Any]] = {}
     for attempt in attempts:
         day = (
@@ -904,8 +922,10 @@ def read_student_trail(
     practice_sessions = session.exec(
         select(PracticeSession)
         .where(PracticeSession.student_id == student.id)
-        .order_by(col(PracticeSession.created_at))
+        .order_by(col(PracticeSession.created_at).desc())
+        .limit(100)
     ).all()
+    practice_sessions.reverse()
     if practice_sessions:
         latest = practice_sessions[-1]
         _question_band_for_session(session, latest, student)
@@ -918,14 +938,8 @@ def read_student_trail(
             else:
                 band_change = "down"
 
-    # 累计开口分钟 + 词汇命中按档（只统计已完成作答）
-    done_attempts = [
-        a
-        for a in session.exec(
-            select(Attempt).where(Attempt.student_id == student.id)
-        ).all()
-        if a.status == AttemptStatus.DONE
-    ]
+    # 累计开口分钟 + 词汇命中按档（与轨迹窗口一致，只统计已完成作答）
+    done_attempts = [a for a in attempts if a.status == AttemptStatus.DONE]
     total_minutes = round(sum(a.duration_s for a in done_attempts) / 60)
     vocab_counts: dict[str, int] = {}
     for a in done_attempts:

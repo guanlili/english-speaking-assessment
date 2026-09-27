@@ -301,7 +301,18 @@ async def import_wordlist_csv(
     file: UploadFile,
 ) -> Any:
     """导入学校分级词表 CSV（表头 lemma,band；整体替换内置词表）。"""
-    raw = await file.read()
+    max_bytes = settings.MAX_WORDLIST_CSV_MB * 1024 * 1024
+    raw = b""
+    while True:
+        chunk = await file.read(64 * 1024)
+        if not chunk:
+            break
+        raw += chunk
+        if len(raw) > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"CSV 超过 {settings.MAX_WORDLIST_CSV_MB}MB 上限",
+            )
     try:
         text = raw.decode("utf-8-sig")  # 兼容 Excel 导出的 BOM
     except UnicodeDecodeError as exc:
@@ -674,11 +685,17 @@ async def upload_standard_audio(_admin: SuperUserDep, file: UploadFile) -> Any:
     suffix = PurePosixPath(file.filename or "").suffix.lower()
     if suffix not in {".mp3", ".wav", ".m4a", ".ogg", ".webm"}:
         raise HTTPException(status_code=422, detail="仅支持 mp3/wav/m4a/ogg/webm")
-    data = await file.read()
-    if len(data) > settings.MAX_AUDIO_MB * 1024 * 1024:
-        raise HTTPException(
-            status_code=413, detail=f"音频超过 {settings.MAX_AUDIO_MB}MB 上限"
-        )
+    max_bytes = settings.MAX_AUDIO_MB * 1024 * 1024
+    data = b""
+    while True:
+        chunk = await file.read(256 * 1024)
+        if not chunk:
+            break
+        data += chunk
+        if len(data) > max_bytes:
+            raise HTTPException(
+                status_code=413, detail=f"音频超过 {settings.MAX_AUDIO_MB}MB 上限"
+            )
     if not data:
         raise HTTPException(status_code=422, detail="音频为空")
     path = save_content_audio(data, suffix)
