@@ -758,7 +758,7 @@ def test_concurrent_session_creation(
             select(Classroom).where(Classroom.code == DEMO_CLASSROOM_CODE)
         ).first()
         assert classroom is not None
-        passage = db.exec(select(Passage).where(Passage.is_active)).first()  # type: ignore
+        passage = db.exec(select(Passage).where(Passage.is_active)).first()
         assert passage is not None
         today = _today_in_practice_tz()
 

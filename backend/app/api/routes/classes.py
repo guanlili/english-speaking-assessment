@@ -110,9 +110,7 @@ def _assignment_unit(session: Any, classroom: Classroom) -> Unit | None:
 def _active_passage(session: Any, student: Student | None = None) -> Passage:
     """课堂练习篇目（优先级）：老师指派单元 > 学生路径 > 全局第一篇。"""
     units = session.exec(
-        select(Unit)
-        .where(Unit.is_active)  # type: ignore
-        .order_by(col(Unit.order_index))
+        select(Unit).where(Unit.is_active).order_by(col(Unit.order_index))
     ).all()
     if student is not None:
         classroom = session.get(Classroom, student.classroom_id)
@@ -120,7 +118,7 @@ def _active_passage(session: Any, student: Student | None = None) -> Passage:
         if assigned is not None:
             passage = session.exec(
                 select(Passage)
-                .where(Passage.unit_id == assigned.id, Passage.is_active)  # type: ignore
+                .where(Passage.unit_id == assigned.id, Passage.is_active)
                 .limit(1)
             ).first()
             if passage is not None:
@@ -132,7 +130,7 @@ def _active_passage(session: Any, student: Student | None = None) -> Passage:
     if student is None or not units:
         passage = session.exec(
             select(Passage)
-            .where(Passage.is_active)  # type: ignore
+            .where(Passage.is_active)
             .order_by(col(Passage.created_at))
             .limit(1)
         ).first()
@@ -586,7 +584,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
     if assigned_unit_board is not None:
         board_passage = session.exec(
             select(Passage)
-            .where(Passage.unit_id == assigned_unit_board.id, Passage.is_active)  # type: ignore
+            .where(Passage.unit_id == assigned_unit_board.id, Passage.is_active)
             .limit(1)
         ).first()
     if board_passage is None:
@@ -965,9 +963,7 @@ def read_learning_path(
     student = _require_student_credential(session, classroom, student_id, token)
 
     units = session.exec(
-        select(Unit)
-        .where(Unit.is_active)  # type: ignore
-        .order_by(col(Unit.order_index))
+        select(Unit).where(Unit.is_active).order_by(col(Unit.order_index))
     ).all()
     passages = session.exec(select(Passage)).all()
     settled = session.exec(
@@ -1039,9 +1035,7 @@ def list_units_for_class(
     classroom = _get_classroom(session, code)
     _require_classroom_teacher(classroom, current_user)
     units = session.exec(
-        select(Unit)
-        .where(Unit.is_active)  # type: ignore
-        .order_by(col(Unit.order_index))
+        select(Unit).where(Unit.is_active).order_by(col(Unit.order_index))
     ).all()
     counts = dict(
         session.exec(
@@ -1114,9 +1108,7 @@ def start_explore(
     if unit is None or not unit.is_active:
         raise HTTPException(status_code=404, detail="Unit not found")
     passage = session.exec(
-        select(Passage)
-        .where(Passage.unit_id == unit.id, Passage.is_active)  # type: ignore
-        .limit(1)
+        select(Passage).where(Passage.unit_id == unit.id, Passage.is_active).limit(1)
     ).first()
     if passage is None:
         raise HTTPException(status_code=404, detail=f"单元「{unit.title}」还没有篇目")
