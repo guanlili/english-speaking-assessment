@@ -15,7 +15,7 @@ from sqlmodel import Session, select
 from app.api.deps import get_scoring_submitter
 from app.core.config import settings
 from app.main import app
-from app.models import Attempt
+from app.models import Attempt, AttemptStatus
 from app.scoring import worker
 from app.scoring.base import ScoringError
 
@@ -35,6 +35,14 @@ def inline_scoring(
     def run_inline(attempt_id: uuid.UUID) -> None:
         with Session(db.get_bind()) as session:
             worker.process_attempt(session, attempt_id)
+        # 自动重试：评分失败后重排队列，继续处理到终态
+        while True:
+            with Session(db.get_bind()) as check:
+                attempt = check.get(Attempt, attempt_id)
+                if attempt is None or attempt.status != AttemptStatus.QUEUED:
+                    break
+            with Session(db.get_bind()) as session:
+                worker.process_attempt(session, attempt_id)
 
     def override_submitter() -> Callable[[uuid.UUID], None]:
         return run_inline

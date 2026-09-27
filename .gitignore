@@ -25,3 +25,6 @@ backend/audio/
 
 # HTTPS 证书（acme.sh 签发到本地，不入库）
 ssl/
+
+# 本地容器源码备份（任务审计用，不入库）
+backups/

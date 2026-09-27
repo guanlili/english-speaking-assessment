@@ -20,6 +20,10 @@ if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    # 启动时恢复僵尸 scoring 作答（进程崩溃后遗留）
+    from app.scoring.worker import startup_recovery
+
+    startup_recovery()
     yield
     # 关闭评分线程池，避免 docker stop 时挂起
     from app.scoring.worker import shutdown_executor

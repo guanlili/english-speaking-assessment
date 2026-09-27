@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.api.deps import ScoringSubmitter, SessionDep
 from app.core.config import settings
@@ -20,6 +20,7 @@ from app.models import (
     Attempt,
     AttemptItemType,
     AttemptPublic,
+    AttemptStatus,
     Passage,
     PracticeSession,
     RepeatSentence,
@@ -30,6 +31,8 @@ router = APIRouter(tags=["attempts"])
 
 # PRD US-02：短于 1 秒不打分，提示再录
 MIN_DURATION_S = 1.0
+# 队列容量上限：超过时前端保留录音并提示稍后重试
+MAX_QUEUE_SIZE = 200
 
 
 def _validate_item(session: Session, item_type: str, item_id: uuid.UUID) -> None:
@@ -55,10 +58,23 @@ def create_attempt_upload(
     duration_s: float = Form(..., gt=0, description="录音时长（秒）"),
     student_id: uuid.UUID | None = Form(default=None),
     session_id: uuid.UUID | None = Form(default=None),
+    idempotency_key: str | None = Form(default=None, description="幂等键：重传不重复创建"),
 ) -> Any:
     """
     上传一条作答。立即返回 queued，分数通过轮询获取（PRD 不可协商 #4）。
+
+    传 idempotency_key 时：已有同键作答直接返回（重传/断网重试不重复扣费）。
+    队列繁忙时返回 503，前端保留录音提示稍后重试。
     """
+    # 幂等检查：同键已有作答直接返回
+    if idempotency_key:
+        existing = session.exec(
+            select(Attempt).where(Attempt.idempotency_key == idempotency_key)
+        ).first()
+        if existing is not None:
+            session.refresh(existing)
+            return existing
+
     _validate_item(session, item_type, item_id)
 
     if student_id is not None:
@@ -83,12 +99,23 @@ def create_attempt_upload(
             status_code=413, detail=f"音频超过 {settings.MAX_AUDIO_MB}MB 上限"
         )
 
+    # 队列容量检查：繁忙时拒绝，前端保留录音提示稍后重试
+    queued_count = session.exec(
+        select(Attempt).where(Attempt.status == AttemptStatus.QUEUED)
+    ).all()
+    if len(queued_count) >= MAX_QUEUE_SIZE:
+        raise HTTPException(
+            status_code=503,
+            detail="评分队列繁忙，请稍后重试",
+        )
+
     audio_path = save_audio_file(data, audio.content_type or "audio/webm")
     attempt = Attempt(
         item_type=item_type,
         item_id=item_id,
         student_id=student_id,
         session_id=session_id,
+        idempotency_key=idempotency_key,
         audio_path=str(audio_path),
         audio_mime=audio.content_type or "audio/webm",
         duration_s=duration_s,

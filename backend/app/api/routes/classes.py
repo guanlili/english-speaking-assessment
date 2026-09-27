@@ -263,8 +263,8 @@ def _pick_questions(
     """同主题同档、未做过的优先，按 order_index 稳定排序。
 
     返回 (题目列表, 是否已用尽)。选择是确定性的：刷新不会换题。
-    fill_with_done=True 用于 /today（一轮必须凑满题数，练习允许重做）；
-    换一题（US-06）只允许未做过的，用尽即 exhausted。
+    fill_with_done=True 用于 /today：取前 N 道题（按 order_index 固定题单，
+    提交 Q1 后不会变成 Q2/Q3）；fill_with_done=False 用于换一题（只取未做过）。
     """
     questions = session.exec(
         select(ScenarioQuestion)
@@ -284,10 +284,12 @@ def _pick_questions(
     )
     undone = [q for q in questions if q.id not in done_ids]
     exhausted = len(undone) == 0
-    picked = undone[:limit]
-    if fill_with_done and len(picked) < limit:
-        # 未做的不足时用做过的补齐（练习场景允许重做）
-        picked += [q for q in questions if q not in picked][: limit - len(picked)]
+    if fill_with_done:
+        # /today：按 order_index 固定取前 N 道，提交后不偏移
+        picked = questions[:limit]
+    else:
+        # 换一题：只取未做过的
+        picked = undone[:limit]
     return picked, exhausted
 
 
@@ -302,7 +304,13 @@ def _question_band_for_session(
     if practice_session.question_band is not None:
         return practice_session.question_band
 
-    passage = _active_passage(session)
+    # 使用该会话的篇目，不用全局首篇（老师中途换单元时各轮篇目不同）
+    if practice_session.passage_id is not None:
+        passage = session.get(Passage, practice_session.passage_id)
+    else:
+        passage = _active_passage(session, student)
+    if passage is None:
+        return practice_session.band
     sentences = session.exec(
         select(RepeatSentence)
         .where(RepeatSentence.passage_id == passage.id)
@@ -455,29 +463,47 @@ def read_next_question(
     session: SessionDep,
     code: str,
     student_id: uuid.UUID = Query(...),
+    session_id: uuid.UUID | None = Query(default=None),
     exclude_ids: list[uuid.UUID] = Query(default=[]),
 ) -> Any:
-    """换一题：同主题、同档、未做过的问题（US-06）。用尽时 exhausted=true。"""
+    """换一题：同主题、同档、未做过的问题（US-06）。用尽时 exhausted=true。
+
+    传 session_id 时使用该会话的篇目与档位（主题探索轮），
+    不传时使用当日课堂会话。
+    """
     classroom = _get_classroom(session, code)
     student = _get_student_of_classroom(session, classroom, student_id)
-    passage = _active_passage(session, student)
-    practice_session = get_or_create_today_session(
-        session=session,
-        classroom=classroom,
-        student=student,
-        today=_today_in_practice_tz(),
-        passage_id=passage.id,
-    )
-    band = practice_session.question_band or practice_session.band
+    if session_id is not None:
+        practice_session = session.get(PracticeSession, session_id)
+        if practice_session is None or practice_session.student_id != student.id:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if practice_session.passage_id is not None:
+            passage = session.get(Passage, practice_session.passage_id)
+        else:
+            passage = _active_passage(session, student)
+        if passage is None:
+            raise HTTPException(status_code=404, detail="No active passage")
+        band = practice_session.question_band or practice_session.band
+    else:
+        passage = _active_passage(session, student)
+        practice_session = get_or_create_today_session(
+            session=session,
+            classroom=classroom,
+            student=student,
+            today=_today_in_practice_tz(),
+            passage_id=passage.id,
+        )
+        band = practice_session.question_band or practice_session.band
     scenario = _scenario_for_topic(session, passage.topic)
 
-    questions, _ = _pick_questions(
-        session, scenario, band, student.id, 1, fill_with_done=False
+    # 先取所有未做过的题，再排除当前题单已有的，避免误报题库耗尽
+    questions, exhausted = _pick_questions(
+        session, scenario, band, student.id, limit=999, fill_with_done=False
     )
     excluded = set(exclude_ids)
     candidates = [q for q in questions if q.id not in excluded]
     if not candidates:
-        return NextQuestion(question=None, exhausted=True)
+        return NextQuestion(question=None, exhausted=exhausted)
     return NextQuestion(
         question=ScenarioQuestionPublic.model_validate(candidates[0]),
         exhausted=False,
@@ -494,12 +520,22 @@ def read_class_board(session: SessionDep, code: str) -> Any:
     classroom = _get_classroom(session, code)
     today = _today_in_practice_tz()
 
-    # 题目骨架：激活篇目的 3 句复述（当前学生可能各有 2 道不同档的问答，
-    # 表头只列复述骨架，问答分数体现在均分里，明细在每生的 items）
-    passage = _active_passage(session)
+    # 当前指派单元对应的篇目（面板和档位计算都用它，不用全局首篇）
+    assigned_unit_board = _assignment_unit(session, classroom)
+    board_passage: Passage | None = None
+    if assigned_unit_board is not None:
+        board_passage = session.exec(
+            select(Passage)
+            .where(Passage.unit_id == assigned_unit_board.id, Passage.is_active)  # type: ignore[attr-defined]
+            .limit(1)
+        ).first()
+    if board_passage is None:
+        board_passage = _active_passage(session)
+
+    # 题目骨架：当前篇目的 3 句复述
     sentences = session.exec(
         select(RepeatSentence)
-        .where(RepeatSentence.passage_id == passage.id)
+        .where(RepeatSentence.passage_id == board_passage.id)
         .order_by(col(RepeatSentence.order_index))
     ).all()
     skeleton = [
@@ -521,10 +557,22 @@ def read_class_board(session: SessionDep, code: str) -> Any:
             PracticeSession.session_date == today,
             PracticeSession.mode == "daily",
         )
-        # 一天多轮（老师中途换单元）时，取每个学生最新的一轮展示当前进度
         .order_by(col(PracticeSession.created_at))
     ).all()
-    session_by_student = {s.student_id: s for s in today_sessions}
+
+    # A→B→A 修复：优先匹配当前指派篇目的会话，而非仅按创建时间取最新
+    student_sessions: dict[uuid.UUID, list[PracticeSession]] = {}
+    for s in today_sessions:
+        student_sessions.setdefault(s.student_id, []).append(s)
+    session_by_student: dict[uuid.UUID, PracticeSession] = {}
+    assigned_passage_id = board_passage.id if board_passage else None
+    for sid, sessions in student_sessions.items():
+        if assigned_passage_id is not None:
+            matching = [s for s in sessions if s.passage_id == assigned_passage_id]
+            if matching:
+                session_by_student[sid] = matching[-1]
+                continue
+        session_by_student[sid] = sessions[-1]
 
     # 7 日未练口径：加入超过 7 天且窗口内无任何作答（US-10 简化实现）
     from datetime import timedelta
@@ -545,6 +593,7 @@ def read_class_board(session: SessionDep, code: str) -> Any:
     band_distribution = {"A2": 0, "B1": 0, "B2": 0}
     board_students: list[BoardStudent] = []
     submitted_count = 0
+    completed_count = 0
     pending_count = 0
     for student in students:
         practice_session = session_by_student.get(student.id)
@@ -552,6 +601,7 @@ def read_class_board(session: SessionDep, code: str) -> Any:
         repeat_scores: list[float] = []
         question_scores: list[float] = []
         has_pending = False
+        round_status = "not_started"
 
         if practice_session is not None:
             attempts = session.exec(
@@ -610,9 +660,29 @@ def read_class_board(session: SessionDep, code: str) -> Any:
                     )
                 )
 
+        # 统一统计口径：not_started / scoring / in_progress / all_done / has_failures
+        non_missing = [i for i in items if i.status != "missing"]
+        terminal = [
+            i
+            for i in items
+            if i.status in (AttemptStatus.DONE, AttemptStatus.FAILED)
+        ]
+        if not non_missing:
+            round_status = "not_started"
+        elif has_pending:
+            round_status = "scoring"
+        elif len(terminal) < len(items):
+            round_status = "in_progress"
+        elif all(i.status == AttemptStatus.DONE for i in terminal):
+            round_status = "all_done"
+        else:
+            round_status = "has_failures"
+
         done_count = sum(1 for i in items if i.status == AttemptStatus.DONE)
         if any(i.status != "missing" for i in items):
             submitted_count += 1
+        if round_status in ("all_done", "has_failures"):
+            completed_count += 1
         if has_pending:
             pending_count += 1
         joined_before_window = (
@@ -642,6 +712,7 @@ def read_class_board(session: SessionDep, code: str) -> Any:
                     else None
                 ),
                 has_pending=has_pending,
+                round_status=round_status,
                 current_band=student.current_band,
                 inactive_days7=inactive,
                 xp=student.xp,
@@ -659,7 +730,6 @@ def read_class_board(session: SessionDep, code: str) -> Any:
         )
     )
 
-    assigned_unit_board = _assignment_unit(session, classroom)
     latest_engine = session.exec(
         select(Attempt.engine)
         .where(Attempt.status == AttemptStatus.DONE)
@@ -679,6 +749,7 @@ def read_class_board(session: SessionDep, code: str) -> Any:
             else None
         ),
         submitted_count=submitted_count,
+        completed_count=completed_count,
         pending_count=pending_count,
         band_distribution=band_distribution,
         students=board_students,

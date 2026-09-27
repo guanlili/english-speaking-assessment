@@ -3,6 +3,7 @@ import uuid
 from datetime import date
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.core.security import get_password_hash, verify_password
@@ -166,7 +167,15 @@ def get_or_create_today_session(
         session_date=today,
     )
     session.add(practice_session)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # 并发创建：另一请求已插入同键会话，回滚后重新查询
+        session.rollback()
+        existing = session.exec(statement).first()
+        if existing is not None:
+            return existing
+        raise
     session.refresh(practice_session)
     return practice_session
 

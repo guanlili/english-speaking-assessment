@@ -79,13 +79,22 @@ def _submit_repeat(
     return resp.json()
 
 
-def test_board_empty_classroom(client: TestClient) -> None:
-    resp = client.get("/api/v1/classes/DEMO01/board")
+def test_board_empty_classroom(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    """新建空课堂的 board 应无学生数据。"""
+    created = client.post(
+        "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+    )
+    assert created.status_code == 200
+    code = created.json()["code"]
+    resp = client.get(f"/api/v1/classes/{code}/board")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["classroom_code"] == "DEMO01"
+    assert data["classroom_code"] == code
     assert data["students"] == []
     assert data["submitted_count"] == 0
+    assert data["completed_count"] == 0
     assert len(data["items"]) == 3  # 复述句骨架
 
 
@@ -124,6 +133,7 @@ def test_board_aggregates_students(client: TestClient, inline_scoring: None) -> 
 
     data = client.get("/api/v1/classes/DEMO01/board").json()
     assert data["submitted_count"] == 2
+    assert data["completed_count"] == 1  # Alice 完成全部，Bob 只做了 1 题
     assert data["pending_count"] == 0
 
     by_name = {s["display_name"]: s for s in data["students"]}
@@ -235,6 +245,7 @@ def test_classroom_40_concurrent_submissions(
 
     data = client.get(f"/api/v1/classes/{code}/board").json()
     assert data["submitted_count"] == CLASS_STUDENTS
+    assert data["completed_count"] == 0  # 每人只做了 1/5 题，不算整轮完成
     assert data["pending_count"] == 0
     submitted = [s for s in data["students"] if s["done_count"] >= 1]
     assert len(submitted) == CLASS_STUDENTS

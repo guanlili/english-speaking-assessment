@@ -19,6 +19,7 @@ from app.core.db import DEMO_CLASSROOM_CODE
 from app.main import app
 from app.models import (
     Attempt,
+    AttemptStatus,
     Classroom,
     Passage,
     PracticeSession,
@@ -53,6 +54,14 @@ def inline_scoring(
     def run_inline(attempt_id: uuid.UUID) -> None:
         with Session(db.get_bind()) as session:
             worker.process_attempt(session, attempt_id)
+        # 自动重试：评分失败后重排队列，继续处理到终态
+        while True:
+            with Session(db.get_bind()) as check:
+                attempt = check.get(Attempt, attempt_id)
+                if attempt is None or attempt.status != AttemptStatus.QUEUED:
+                    break
+            with Session(db.get_bind()) as session:
+                worker.process_attempt(session, attempt_id)
 
     def override_submitter() -> Callable[[uuid.UUID], None]:
         return run_inline
@@ -460,3 +469,312 @@ def test_content_gap_404_details_are_distinct(client: TestClient) -> None:
     )
     assert resp2.status_code == 404
     assert resp2.json()["detail"] == "Student not found"
+
+
+# ── 回归测试：固定题单、探索换题、A→B→A 面板、并发建轮、统计口径 ──────
+
+
+def test_question_list_stable_after_submit(
+    client: TestClient,
+    inline_scoring: Any,
+) -> None:
+    """提交 Q1 后刷新，题单不偏移：Q1/Q2 不会变成 Q2/Q3。"""
+    student_id = _join(client, "稳定题单")["id"]
+    plan = _today(client, student_id).json()
+    questions = [i for i in plan["items"] if i["type"] == "question"]
+    assert len(questions) == 2
+    q1_id, q2_id = questions[0]["id"], questions[1]["id"]
+
+    # 提交 Q1
+    inline_scoring({"question": "i think it is good"})
+    resp = _submit(client, "question", q1_id, student_id, plan["session_id"])
+    assert resp.status_code == 200
+
+    # 刷新后 Q1 和 Q2 不变
+    plan2 = _today(client, student_id).json()
+    questions2 = [i for i in plan2["items"] if i["type"] == "question"]
+    assert len(questions2) == 2
+    assert questions2[0]["id"] == q1_id
+    assert questions2[1]["id"] == q2_id
+
+
+def test_explore_next_question_binds_to_session(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    inline_scoring: Any,
+    db: Session,
+) -> None:
+    """探索换题绑定 session_id，不用 daily 的主题。"""
+    student = _join(client, "探索换题")
+    sid = uuid.UUID(student["id"])
+    created: dict[str, uuid.UUID] = {}
+    try:
+        # 建另一个单元和篇目（主题不同于 Pets → 断言换题不会拿到 daily 题库的题）
+        unit = client.post(
+            "/api/v1/admin/units",
+            json={"order_index": 99, "title": "Food", "topic": "Food"},
+            headers=superuser_token_headers,
+        ).json()
+        created["unit"] = uuid.UUID(unit["id"])
+        passage = client.post(
+            "/api/v1/admin/passages",
+            json={
+                "slug": f"food-{unit['id'][:8]}",
+                "title": "My Favorite Food",
+                "topic": "Food",
+                "cefr_band": "B1",
+                "text": "I love pizza and pasta.",
+                "suggested_seconds": 30,
+                "unit_id": unit["id"],
+            },
+            headers=superuser_token_headers,
+        ).json()
+        created["passage"] = uuid.UUID(passage["id"])
+        client.post(
+            f"/api/v1/admin/passages/{passage['id']}/sentences",
+            json={"order_index": 0, "text": "I love pizza and pasta."},
+            headers=superuser_token_headers,
+        )
+        # 建情景问法（Food 主题）
+        scenario = client.post(
+            "/api/v1/admin/scenarios",
+            json={"topic": "Food"},
+            headers=superuser_token_headers,
+        ).json()
+        created["scenario"] = uuid.UUID(scenario["id"])
+        for i in range(3):
+            client.post(
+                f"/api/v1/admin/scenarios/{scenario['id']}/questions",
+                json={"band": "B1", "order_index": i, "text": f"Food Q{i}"},
+                headers=superuser_token_headers,
+            )
+
+        # 开始探索轮
+        explore = client.post(
+            "/api/v1/classes/DEMO01/explore",
+            json={"unit_id": unit["id"], "student_id": student["id"]},
+        )
+        assert explore.status_code == 200, explore.text
+        session_id = explore.json()["session_id"]
+
+        # 换一题（带 session_id）→ 应拿到 Food 主题的题
+        resp = client.get(
+            "/api/v1/classes/DEMO01/next-question",
+            params={"student_id": student["id"], "session_id": session_id},
+        )
+        assert resp.status_code == 200
+        q = resp.json()["question"]
+        assert q is not None
+        assert q["text"].startswith("Food Q")
+    finally:
+        classroom = db.exec(
+            select(Classroom).where(Classroom.code == "DEMO01")
+        ).first()
+        if classroom is not None:
+            classroom.current_unit_id = None
+            db.add(classroom)
+        if "scenario" in created:
+            from app.models import Scenario, ScenarioQuestion
+            for row in db.exec(
+                select(ScenarioQuestion).where(
+                    ScenarioQuestion.scenario_id == created["scenario"]
+                )
+            ).all():
+                db.delete(row)
+            db.delete(db.get_one(Scenario, created["scenario"]))
+        if "passage" in created:
+            for row in db.exec(
+                select(RepeatSentence).where(
+                    RepeatSentence.passage_id == created["passage"]
+                )
+            ).all():
+                db.delete(row)
+            db.delete(db.get_one(Passage, created["passage"]))
+        if "unit" in created:
+            db.delete(db.get_one(Unit, created["unit"]))
+        for model in (Attempt, PracticeSession, StudentBadge):
+            for row in db.exec(
+                select(model).where(model.student_id == sid)  # type: ignore[attr-defined]
+            ).all():
+                db.delete(row)
+        db.delete(db.get_one(Student, sid))
+        db.commit()
+
+
+def test_abac_board_shows_current_assignment(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    inline_scoring: Any,
+    db: Session,
+) -> None:
+    """A→B→A 后教师面板展示 A 轮进度，不残留 B。"""
+    set_transcripts = inline_scoring
+    student = _join(client, "ABAC面板")
+    sid = uuid.UUID(student["id"])
+    created: dict[str, uuid.UUID] = {}
+    try:
+        # A 轮：默认篇目，做 1 题
+        plan_a = _today(client, student["id"]).json()
+        first_a = plan_a["items"][0]
+        set_transcripts({"audio/webm": first_a["text"]})
+        _submit(
+            client, first_a["type"], first_a["id"],
+            student["id"], plan_a["session_id"],
+        )
+
+        # 建单元 B 并指派
+        unit_b = client.post(
+            "/api/v1/admin/units",
+            json={"order_index": 50, "title": "Unit B", "topic": "Pets"},
+            headers=superuser_token_headers,
+        ).json()
+        created["unit_b"] = uuid.UUID(unit_b["id"])
+        passage_b = client.post(
+            "/api/v1/admin/passages",
+            json={
+                "slug": f"unit-b-{unit_b['id'][:8]}",
+                "title": "Unit B Passage",
+                "topic": "Pets", "cefr_band": "B1",
+                "text": "Unit B text.", "suggested_seconds": 30,
+                "unit_id": unit_b["id"],
+            },
+            headers=superuser_token_headers,
+        ).json()
+        created["passage_b"] = uuid.UUID(passage_b["id"])
+        client.post(
+            f"/api/v1/admin/passages/{passage_b['id']}/sentences",
+            json={"order_index": 0, "text": "Unit B sentence."},
+            headers=superuser_token_headers,
+        )
+        client.put(
+            "/api/v1/classes/DEMO01/assignment",
+            json={"unit_id": unit_b["id"]},
+        )
+
+        # B 轮：学生做 1 题
+        plan_b = _today(client, student["id"]).json()
+        assert plan_b["session_id"] != plan_a["session_id"]
+        first_b = plan_b["items"][0]
+        _submit(
+            client, first_b["type"], first_b["id"],
+            student["id"], plan_b["session_id"],
+        )
+
+        # 切回 A
+        units = client.get("/api/v1/classes/DEMO01/units").json()
+        original_unit = next(u for u in units if u["unit_id"] != unit_b["id"])
+        client.put(
+            "/api/v1/classes/DEMO01/assignment",
+            json={"unit_id": original_unit["unit_id"]},
+        )
+
+        # 面板应展示 A 轮（session_id = plan_a），不是 B 轮
+        board = client.get("/api/v1/classes/DEMO01/board").json()
+        row = next(s for s in board["students"] if s["student_id"] == student["id"])
+        # A 轮做了 1 题，B 轮做了 1 题；面板应展示 A 轮的 1 题
+        assert row["total_count"] > 0
+        # A 轮的第一题应在 items 里（B 轮的不在）
+        item_ids = {i["item_id"] for i in row["items"]}
+        assert first_a["id"] in item_ids
+    finally:
+        classroom = db.exec(
+            select(Classroom).where(Classroom.code == "DEMO01")
+        ).first()
+        if classroom is not None:
+            classroom.current_unit_id = None
+            db.add(classroom)
+        if "passage_b" in created:
+            for row in db.exec(
+                select(RepeatSentence).where(
+                    RepeatSentence.passage_id == created["passage_b"]
+                )
+            ).all():
+                db.delete(row)
+            db.delete(db.get_one(Passage, created["passage_b"]))
+        if "unit_b" in created:
+            db.delete(db.get_one(Unit, created["unit_b"]))
+        for model in (Attempt, PracticeSession, StudentBadge):
+            for row in db.exec(
+                select(model).where(model.student_id == sid)  # type: ignore[attr-defined]
+            ).all():
+                db.delete(row)
+        db.delete(db.get_one(Student, sid))
+        db.commit()
+
+
+def test_concurrent_session_creation(
+    client: TestClient,
+    inline_scoring: Any,
+    db: Session,
+) -> None:
+    """同学生并发建轮：唯一约束保证只建一个会话。"""
+    import concurrent.futures
+
+    from app.api.routes.classes import _today_in_practice_tz
+    from app.core.db import DEMO_CLASSROOM_CODE
+    from app.crud import get_or_create_today_session, get_student
+
+    student = _join(client, "并发建轮")
+    sid = uuid.UUID(student["id"])
+    try:
+        classroom = db.exec(
+            select(Classroom).where(Classroom.code == DEMO_CLASSROOM_CODE)
+        ).first()
+        assert classroom is not None
+        passage = db.exec(select(Passage).where(Passage.is_active)).first()  # type: ignore
+        assert passage is not None
+        today = _today_in_practice_tz()
+
+        def create_session() -> Any:
+            with Session(db.get_bind()) as s:
+                stu = get_student(session=s, student_id=sid)
+                assert stu is not None
+                result = get_or_create_today_session(
+                    session=s, classroom=classroom, student=stu,
+                    today=today, passage_id=passage.id,
+                )
+                return result.id
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            futures = [pool.submit(create_session) for _ in range(5)]
+            session_ids = [f.result() for f in futures]
+
+        # 所有线程应拿到同一个 session_id
+        assert len(set(session_ids)) == 1
+    finally:
+        for model in (Attempt, PracticeSession, StudentBadge):
+            for row in db.exec(
+                select(model).where(model.student_id == sid)  # type: ignore[attr-defined]
+            ).all():
+                db.delete(row)
+        db.delete(db.get_one(Student, sid))
+        db.commit()
+
+
+def test_partial_completion_not_counted_as_done(
+    client: TestClient,
+    inline_scoring: Any,
+    db: Session,
+) -> None:
+    """只提交一道题 → round_status=in_progress，不算整轮完成。"""
+    inline_scoring({"audio/webm": "hello world"})
+    student_id = _join(client, "部分完成")["id"]
+    sid = uuid.UUID(student_id)
+    try:
+        plan = _today(client, student_id).json()
+        first = plan["items"][0]
+        _submit(client, first["type"], first["id"], student_id, plan["session_id"])
+
+        board = client.get("/api/v1/classes/DEMO01/board").json()
+        row = next(s for s in board["students"] if s["student_id"] == student_id)
+        # 只做了 1 题，不是全部完成
+        assert row["round_status"] == "in_progress"
+        assert row["done_count"] < row["total_count"]
+    finally:
+        for model in (Attempt, PracticeSession, StudentBadge):
+            for row in db.exec(
+                select(model).where(model.student_id == sid)  # type: ignore[attr-defined]
+            ).all():
+                db.delete(row)
+        db.delete(db.get_one(Student, sid))
+        db.commit()
