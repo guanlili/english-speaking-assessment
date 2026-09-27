@@ -18,6 +18,7 @@ from app.models import (
     Student,
     StudentBadge,
 )
+
 # 星级分档：平均总评 ≥85 → 3 星；≥70 → 2 星；完成即 1 星
 STARS_3_THRESHOLD = 85
 STARS_2_THRESHOLD = 70

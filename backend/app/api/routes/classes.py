@@ -647,8 +647,8 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
     student_ids = [s.id for s in students]
     recent_attempts = session.exec(
         select(Attempt).where(
-            Attempt.student_id.in_(student_ids),
-            Attempt.created_at >= week_ago_utc,
+            Attempt.student_id.in_(student_ids),  # type: ignore
+            Attempt.created_at >= week_ago_utc,  # type: ignore
         )
     ).all()
     recent_by_student: dict[uuid.UUID, list[Attempt]] = {}
@@ -860,7 +860,7 @@ def read_student_trail(
         select(Attempt)
         .where(
             Attempt.student_id == student.id,
-            Attempt.created_at >= window_start_utc,
+            Attempt.created_at >= window_start_utc,  # type: ignore
         )
         .order_by(col(Attempt.created_at))
     ).all()
@@ -925,7 +925,7 @@ def read_student_trail(
         .order_by(col(PracticeSession.created_at).desc())
         .limit(100)
     ).all()
-    practice_sessions.reverse()
+    practice_sessions.reverse()  # type: ignore
     if practice_sessions:
         latest = practice_sessions[-1]
         _question_band_for_session(session, latest, student)

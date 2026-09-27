@@ -746,6 +746,10 @@ export type ClassesReadClassBoardResponse = (BoardData);
 
 export type ClassesReadStudentTrailData = {
     code: string;
+    /**
+     * 查询最近多少天的轨迹
+     */
+    days?: number;
     studentId: string;
     /**
      * 入班时发放的学生轻量凭证

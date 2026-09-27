@@ -37,9 +37,7 @@ def _lemma_variants(token: str) -> list[str]:
         variants.append(stem)
         variants.append(stem + "e")  # making → make
         if (
-            len(stem) > 2
-            and stem[-1] == stem[-2]
-            and stem[-1] in _CONSONANTS
+            len(stem) > 2 and stem[-1] == stem[-2] and stem[-1] in _CONSONANTS
         ):  # running → run
             variants.append(stem[:-1])
     if token.endswith("ed") and len(token) > 4:
@@ -47,9 +45,7 @@ def _lemma_variants(token: str) -> list[str]:
         variants.append(stem)
         variants.append(token[:-1])  # hoped → hope
         if (
-            len(stem) > 2
-            and stem[-1] == stem[-2]
-            and stem[-1] in _CONSONANTS
+            len(stem) > 2 and stem[-1] == stem[-2] and stem[-1] in _CONSONANTS
         ):  # stopped → stop
             variants.append(stem[:-1])
     if token.endswith("er") and len(token) > 4:
