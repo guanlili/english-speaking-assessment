@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
-import { useRef, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import { AttemptsService } from "@/client"
 
 export interface AttemptSubmitTarget {
@@ -64,7 +64,8 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
     },
   })
 
-  const reset = () => setAttemptId(null)
+  // useCallback：reset 会作为练习页自动推进 effect 的依赖，必须保持引用稳定
+  const reset = useCallback(() => setAttemptId(null), [])
 
   return {
     submit: (
