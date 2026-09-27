@@ -34,13 +34,14 @@ export function Main({ items }: MainProps) {
   return (
     <SidebarGroup>
       <SidebarGroupContent>
-        <SidebarMenu>
+        <SidebarMenu className="gap-2">
           {items.map((item) => {
             const isActive = currentPath === item.path
 
             return (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton
+                  className="h-11 rounded-xl px-3 text-sm data-[active=true]:font-semibold data-[active=true]:text-primary"
                   tooltip={item.title}
                   isActive={isActive}
                   asChild

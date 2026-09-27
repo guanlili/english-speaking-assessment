@@ -129,7 +129,7 @@ function HomePage() {
   const quote = QUOTES[new Date().getDay() % QUOTES.length]
 
   return (
-    <StudentShell active="home">
+    <StudentShell active="home" wide>
       <div className="flex flex-col gap-5">
         {/* Hero */}
         <section className="relative overflow-hidden rounded-3xl bg-secondary p-7">
@@ -146,7 +146,7 @@ function HomePage() {
           >
             SAY IT YOUR WAY.
           </span>
-          <div className="relative z-10 max-w-[70%]">
+          <div className="relative z-10 md:max-w-[65%]">
             <p className="text-[10px] font-bold tracking-[0.2em] text-primary">
               A LITTLE PRACTICE. A BIG DIFFERENCE.
             </p>
@@ -154,7 +154,7 @@ function HomePage() {
               Hi，{displayName(student)}
               <span className="text-primary">。</span>
               <br />
-              今天也给自己一点开口的勇气吧。
+              准备好今天的表达了吗？
             </h1>
             {plan?.assigned_unit_title && (
               <p className="mt-2 text-xs font-medium text-primary">
@@ -183,7 +183,7 @@ function HomePage() {
 
         {/* 今日计划 */}
         <Card>
-          <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
             <div className="flex items-center gap-3">
               <span className="flex size-10 items-center justify-center rounded-xl bg-secondary text-primary">
                 <Headphones className="size-5" />
@@ -298,7 +298,7 @@ function HomePage() {
         {/* 周目标 + 档位生长 + 金句 */}
         <div className="grid gap-5 md:grid-cols-3">
           <Card>
-            <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
               <CardTitle className="text-sm">这周，稳稳前进</CardTitle>
               <Button
                 variant="ghost"

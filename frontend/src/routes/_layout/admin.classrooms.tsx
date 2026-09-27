@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute, redirect } from "@tanstack/react-router"
+import { createFileRoute, Link, redirect } from "@tanstack/react-router"
 import { Plus, Trash2 } from "lucide-react"
 import { AdminService, ClassesService, UsersService } from "@/client"
 import { Badge } from "@/components/ui/badge"
@@ -68,7 +68,7 @@ function ClassroomsAdmin() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">课堂码</h1>
         <p className="text-muted-foreground">
-          学生链接 /j/课堂码，老师面板 /t/课堂码。停用后学生无法再进入。
+          邀请学生加入课堂，并从教师面板安排今日练习。
         </p>
       </div>
 
@@ -93,7 +93,7 @@ function ClassroomsAdmin() {
                 <TableHead>课堂码</TableHead>
                 <TableHead>班额</TableHead>
                 <TableHead>状态</TableHead>
-                <TableHead>学生入口</TableHead>
+                <TableHead>课堂入口</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -111,13 +111,25 @@ function ClassroomsAdmin() {
                       <Badge variant="secondary">已停用</Badge>
                     )}
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    /j/{c.code}
+                  <TableCell>
+                    <div className="flex flex-wrap gap-2">
+                      <Button asChild variant="outline" size="sm">
+                        <Link to="/j/$code" params={{ code: c.code }}>
+                          学生入口
+                        </Link>
+                      </Button>
+                      <Button asChild variant="secondary" size="sm">
+                        <Link to="/t/$code" params={{ code: c.code }}>
+                          教师面板
+                        </Link>
+                      </Button>
+                    </div>
                   </TableCell>
                   <TableCell>
                     {c.is_active && (
                       <Button
                         variant="ghost"
+                        aria-label={`停用课堂 ${c.code}`}
                         size="icon-sm"
                         onClick={() => deactivateMutation.mutate(c.id)}
                       >

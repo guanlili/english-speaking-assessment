@@ -43,8 +43,8 @@
 
 :root {
   /* SpeakUp 原型：卡片 22px / 小组件 11px 上下两档圆角 */
-  --radius: 1.125rem;
-  --background: hsl(75 22% 97%);
+  --radius: 0.875rem;
+  --background: hsl(150 18% 97%);
   --foreground: hsl(157 24% 15%);
   --card: hsl(0 0% 100%);
   --card-foreground: hsl(157 24% 15%);
@@ -55,7 +55,7 @@
   --secondary: hsl(111 29% 92%);
   --secondary-foreground: hsl(158 41% 29%);
   --muted: hsl(111 29% 92%);
-  --muted-foreground: hsl(150 7% 43%);
+  --muted-foreground: hsl(150 9% 38%);
   --accent: hsl(28 88% 94%);
   --accent-foreground: hsl(20 60% 36%);
   --destructive: hsl(6 54% 43%);
@@ -154,23 +154,12 @@
 
 /* ── SpeakUp 设计系统（源自 prototypes/speakup）── */
 
-/* 立体主按钮：底部硬阴影 + hover 上浮（多邻国式） */
+/* 主操作使用轻量阴影，保持课堂界面的安静感。 */
 .btn-pop {
-  box-shadow: 0 4px 0 hsl(158 37% 21%);
-  transition:
-    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
-    box-shadow 0.2s;
+  box-shadow: 0 3px 8px hsl(158 37% 21% / 0.12);
 }
 .btn-pop:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 0 hsl(158 37% 21%);
-}
-.btn-pop:active:not(:disabled) {
-  transform: translateY(2px);
-  box-shadow: 0 2px 0 hsl(158 37% 21%);
-}
-.dark .btn-pop {
-  box-shadow: 0 4px 0 hsl(158 45% 18%);
+  box-shadow: 0 5px 14px hsl(158 37% 21% / 0.2);
 }
 
 /* 录音钮脉冲 */
@@ -214,4 +203,25 @@
   line-height: 1.65;
   font-weight: 550;
   letter-spacing: -0.3px;
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 4px;
+  }
+  ::selection {
+    background: var(--secondary);
+    color: var(--primary);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: Respect reduced motion even for utility animations. */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: Respect reduced motion even for utility transitions. */
+    transition-duration: 0.01ms !important;
+  }
 }

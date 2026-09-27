@@ -19,14 +19,14 @@ import useAuth from "@/hooks/useAuth"
 import { type Item, Main } from "./Main"
 import { User } from "./User"
 
-const baseItems: Item[] = [{ icon: Home, title: "Dashboard", path: "/" }]
+const baseItems: Item[] = [{ icon: Home, title: "教学工作台", path: "/" }]
 
 const adminItems: Item[] = [
-  { icon: Users, title: "Admin", path: "/admin" },
+  { icon: Users, title: "用户与权限", path: "/admin" },
   { icon: BookOpen, title: "篇目管理", path: "/admin/passages" },
   { icon: ListChecks, title: "情景与问法", path: "/admin/scenarios" },
   { icon: GraduationCap, title: "分级词表", path: "/admin/wordlist" },
-  { icon: UsersRound, title: "课堂码", path: "/admin/classrooms" },
+  { icon: UsersRound, title: "课堂管理", path: "/admin/classrooms" },
 ]
 
 export function AppSidebar() {
