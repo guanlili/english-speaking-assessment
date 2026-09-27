@@ -20,7 +20,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
-import FeedbackCard from "@/components/Practice/FeedbackCard"
 import SpeakButton from "@/components/Practice/SpeakButton"
 import StudentShell from "@/components/Practice/StudentShell"
 import { Button } from "@/components/ui/button"
@@ -94,6 +93,10 @@ function ClassroomPracticePage() {
   const [hideText, setHideText] = useState(false)
   // 录音开始时钉住 item_id / session_id / 题型：录音期间老师切换指派不影响旧录音
   const recordingTargetRef = useRef<AttemptSubmitTarget | null>(null)
+  // 本次停留是否提交过录音：防止从结果页回来时 allDone 直接又跳回结果页
+  const submittedRef = useRef(false)
+  // 自动跳结果页的闩锁：每次挂载最多跳一次
+  const navigatedRef = useRef(false)
 
   const todayQuery = useQuery({
     retry: 1,
@@ -201,9 +204,9 @@ function ClassroomPracticePage() {
   }, [items, attemptByItem, focusItemId, pinnedItemId])
 
   const currentItem = items[currentIndex]
-  const allDone = plan?.items.every((item) =>
-    isTerminal(attemptByItem.get(item.id)?.status),
-  )
+  const allDone =
+    items.length > 0 &&
+    items.every((item) => isTerminal(attemptByItem.get(item.id)?.status))
 
   const {
     submit,
@@ -222,6 +225,7 @@ function ClassroomPracticePage() {
 
   const recorder = useRecorder({
     onComplete: (rec) => {
+      submittedRef.current = true
       if (currentItem) setPinnedItemId(currentItem.id)
       // 使用录音开始时钉住的目标，避免录音期间计划刷新导致提交到新题新轮
       submit(
@@ -247,6 +251,7 @@ function ClassroomPracticePage() {
   // 重传：用相同幂等键重新提交同一段录音（断网/超时后恢复）
   const retrySubmit = () => {
     if (recorder.recording) {
+      submittedRef.current = true
       submit(
         {
           blob: recorder.recording.blob,
@@ -282,28 +287,59 @@ function ClassroomPracticePage() {
     }
   }, [submitError, submitErrorData])
 
-  // 当前题评分完成后同步今日计划（进度、allDone、升降档后的问答）
-  const attemptDone = attempt !== undefined && attempt.status === "done"
+  // 评分状态：上传中或排队/评分中都算「评分中」，期间禁用麦克风
+  const attemptStatus = attempt?.status
+  const attemptTerminal = isTerminal(attemptStatus)
+  const attemptFailed = attemptStatus === "failed"
+  const scoring =
+    submitting || (attemptStatus !== undefined && !attemptTerminal)
+  const recorderReset = recorder.reset
+
+  // 评分完成：同步今日计划（进度、升降档后的问答）；成功自动进入下一题，失败留在本题可重录
   useEffect(() => {
-    if (attemptDone) {
-      void queryClient.invalidateQueries({
-        queryKey: ["classroom", code, "today", student?.id],
-      })
-    }
-  }, [attemptDone, queryClient, code, student?.id])
-
-  const repractice = () => recorder.reset()
-
-  // 下一题：清空当前反馈态，进度由服务端 attempts 推进
-  const goNext = () => {
-    resetAttempt()
-    recorder.reset()
-    setFocusItemId(null)
-    setPinnedItemId(null)
+    if (!attemptTerminal) return
     void queryClient.invalidateQueries({
       queryKey: ["classroom", code, "today", student?.id],
     })
-  }
+    if (attemptFailed) {
+      toast.error("这次没有评出来", { description: "可以再录一次" })
+      return
+    }
+    // 不再逐题展示反馈：清掉钉住的题，视图自动滑到下一题，结果统一在结果页看
+    setPinnedItemId(null)
+    setFocusItemId(null)
+    recorderReset()
+    resetAttempt()
+  }, [
+    attemptTerminal,
+    attemptFailed,
+    queryClient,
+    code,
+    student?.id,
+    recorderReset,
+    resetAttempt,
+  ])
+
+  // 全部完成后自动进入结果页统一展示（本次停留提交过 + 本地评分已结束 + 服务端计划全部完成）
+  useEffect(() => {
+    if (!allDone || !submittedRef.current || navigatedRef.current) return
+    if (attemptStatus !== undefined && !attemptTerminal) return
+    if (attemptFailed) return
+    navigatedRef.current = true
+    void navigate({
+      to: "/p/$code/result",
+      params: { code },
+      search: exploreSessionId ? { explore: exploreSessionId } : {},
+    })
+  }, [
+    allDone,
+    attemptStatus,
+    attemptTerminal,
+    attemptFailed,
+    navigate,
+    code,
+    exploreSessionId,
+  ])
 
   if (student === null) return null
 
@@ -347,12 +383,13 @@ function ClassroomPracticePage() {
     )
   }
 
-  const previousItem = currentIndex > 0 ? items[currentIndex - 1] : null
-  const previousAttempt = previousItem
-    ? attemptByItem.get(previousItem.id)
-    : undefined
-
   const isQuestion = currentItem.type === "question"
+  // 其余题都已完成 → 当前是最后一题（评分完成后直接进结果页）
+  const isLastQuestion = items.every(
+    (item) =>
+      item.id === currentItem.id ||
+      isTerminal(attemptByItem.get(item.id)?.status),
+  )
 
   const itemPromptLabel = isQuestion
     ? "YOUR TURN · 分享你的想法"
@@ -473,6 +510,17 @@ function ClassroomPracticePage() {
                     {hideText ? "显示原文" : "收起原文（练记忆）"}
                   </Button>
                 )}
+                {isQuestion && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-primary"
+                    onClick={() => nextQuestionMutation.mutate()}
+                    disabled={nextQuestionMutation.isPending}
+                  >
+                    换一题（同主题）
+                  </Button>
+                )}
 
                 <Separator />
 
@@ -544,22 +592,34 @@ function ClassroomPracticePage() {
                       <button
                         type="button"
                         onClick={startRecording}
-                        disabled={submitting}
+                        disabled={scoring}
                         aria-label="开始录音"
                         className="mt-1 grid size-[72px] place-items-center rounded-full bg-primary text-white shadow-[0_0_0_7px_var(--secondary)] transition hover:scale-105 disabled:opacity-50"
                       >
                         <Mic className="size-7" />
                       </button>
                       <p className="mt-4 text-sm">
-                        {recorder.status === "ready" && submitting
+                        {scoring
                           ? "已提交，正在出反馈…"
                           : recorder.status === "ready"
                             ? "这一次开口，已记录"
                             : "准备好了，就点一下麦克风"}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        需要麦克风权限 · 每一次练习都有意义
-                      </p>
+                      {scoring ? (
+                        <p className="text-xs text-muted-foreground">
+                          {isLastQuestion
+                            ? "完成后自动展示本轮结果"
+                            : "完成后自动进入下一题 · 分数最后一起看"}
+                        </p>
+                      ) : attemptFailed ? (
+                        <p className="text-xs text-destructive">
+                          这次没有评出来，再录一次就好
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          需要麦克风权限 · 每一次练习都有意义
+                        </p>
+                      )}
                     </>
                   )}
                   {recorder.error && (
@@ -621,8 +681,8 @@ function ClassroomPracticePage() {
                   {
                     icon: ChartLine,
                     title: "看看收获",
-                    sub: "专属练习反馈",
-                    active: false,
+                    sub: "全部完成后一起看",
+                    active: allDone,
                   },
                 ].map((step) => (
                   <div
@@ -662,52 +722,12 @@ function ClassroomPracticePage() {
           </aside>
         </div>
 
-        {/* 当前题反馈：先显示轮询中的，再显示历史完成态 */}
-        {attempt !== undefined ? (
-          <FeedbackCard
-            attempt={attempt}
-            itemType={currentItem.type as "repeat" | "question"}
-            onRepractice={repractice}
-            studentToken={student?.access_token}
-            extraActions={
-              <>
-                {attemptDone && (
-                  <Button onClick={goNext}>
-                    下一题
-                    <ArrowRight />
-                  </Button>
-                )}
-                {isQuestion && (
-                  <Button
-                    variant="secondary"
-                    onClick={() => nextQuestionMutation.mutate()}
-                    disabled={nextQuestionMutation.isPending}
-                  >
-                    换一题（同主题）
-                  </Button>
-                )}
-              </>
-            }
-          />
-        ) : attemptByItem.has(currentItem.id) ? (
-          <PreviousScoreCard
-            item={currentItem}
-            attempt={attemptByItem.get(currentItem.id)}
-          />
-        ) : null}
-
-        {/* 底部上一题分数（PRD §8.5） */}
-        {previousItem &&
-          previousAttempt?.overall !== null &&
-          previousAttempt && (
-            <p className="text-sm text-muted-foreground">
-              上一题（{ITEM_TYPE_LABELS[previousItem.type] ?? previousItem.type}
-              ）总评：{" "}
-              <span className="font-semibold text-foreground">
-                {previousAttempt.overall ?? "–"}
-              </span>
-            </p>
-          )}
+        {/* 不逐题出反馈：所有题做完后统一在结果页看 */}
+        <p className="text-center text-sm text-muted-foreground">
+          {allDone
+            ? "全部完成，可以查看本轮结果。"
+            : "逐题练完，分数和反馈会在最后一题后一起展示。"}
+        </p>
 
         {allDone && (
           <Button size="lg" asChild>
@@ -726,33 +746,5 @@ function ClassroomPracticePage() {
         </p>
       </div>
     </StudentShell>
-  )
-}
-
-function PreviousScoreCard({
-  item,
-  attempt,
-}: {
-  item: PlanItem
-  attempt: PlanAttempt | undefined
-}) {
-  if (attempt === undefined) return null
-  return (
-    <Card>
-      <CardContent className="space-y-2 py-4">
-        <p className="text-sm text-muted-foreground">
-          {ITEM_TYPE_LABELS[item.type] ?? item.type} · 最近一次
-        </p>
-        {attempt.status === "failed" ? (
-          <p className="text-sm text-destructive">
-            上次没有评出来（{attempt.error ?? "原因未知"}），可以再录
-          </p>
-        ) : (
-          <p className="text-2xl font-bold tabular-nums">
-            总评 {attempt.overall ?? "–"}
-          </p>
-        )}
-      </CardContent>
-    </Card>
   )
 }
