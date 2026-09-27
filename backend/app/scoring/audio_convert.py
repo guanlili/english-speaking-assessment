@@ -180,22 +180,22 @@ def probe_audio(data: bytes, suffix: str) -> AudioProbeResult | None:
         if "duration" in stream:
             try:
                 duration_s = float(stream["duration"])
-            except TypeError, ValueError:
+            except (TypeError, ValueError):  # fmt: skip
                 duration_s = None
         if duration_s is None and "duration" in info.get("format", {}):
             try:
                 duration_s = float(info["format"]["duration"])
-            except TypeError, ValueError:
+            except (TypeError, ValueError):  # fmt: skip
                 duration_s = None
         channels: int | None = None
         try:
             channels = int(stream["channels"])
-        except KeyError, TypeError, ValueError:
+        except (KeyError, TypeError, ValueError):  # fmt: skip
             channels = None
         sample_rate: int | None = None
         try:
             sample_rate = int(stream["sample_rate"])
-        except KeyError, TypeError, ValueError:
+        except (KeyError, TypeError, ValueError):  # fmt: skip
             sample_rate = None
         return AudioProbeResult(
             duration_s=duration_s,

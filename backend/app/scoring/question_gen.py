@@ -71,7 +71,7 @@ def generate_draft_questions(
             continue
         try:
             seconds = int(item.get("suggested_seconds", 20))
-        except TypeError, ValueError:
+        except (TypeError, ValueError):  # fmt: skip
             seconds = 20
         drafts.append(
             DraftQuestion(text=text, suggested_seconds=max(10, min(60, seconds)))

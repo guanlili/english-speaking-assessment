@@ -36,6 +36,35 @@ logger = logging.getLogger(__name__)
 _executor: ThreadPoolExecutor | None = None
 
 
+def _get_wordlist_cache(
+    session: Session,
+) -> tuple[list[WordlistEntry], dict[str, set[str]]]:
+    """查询词表条目。"""
+    entries = list(session.exec(select(WordlistEntry)).all())
+    if not entries:
+        return entries, {}
+    lemmas_by_band: dict[str, set[str]] = {"A2": set(), "B1": set(), "B2": set()}
+    for entry in entries:
+        lemmas_by_band.setdefault(entry.band, set()).add(entry.lemma)
+    return entries, lemmas_by_band
+
+
+def _analyze_vocab(session: Session, transcript: str) -> dict[str, object] | None:
+    """词表命中分析；未配置词表时返回 None（界面显示「未配置词表」，BDD D）。"""
+    entries, lemmas_by_band = _get_wordlist_cache(session)
+    if not entries:
+        return None
+    analysis = analyze_transcript(transcript, lemmas_by_band)
+    from app.core.db import WORDLIST_NAME
+
+    return {
+        "wordlist": WORDLIST_NAME,
+        "hits": {band: words for band, words in analysis.hits_by_band.items() if words},
+        "coverage": analysis.coverage_ratio,
+        "cefr": analysis.cefr_label,
+    }
+
+
 def build_asr_provider() -> AsrProvider:
     if settings.SCORING_PROVIDER == "ark":
         if not settings.ARK_API_KEY:
@@ -93,25 +122,6 @@ def _score_rubric(prompt: str, band: str, transcript: str) -> dict[str, object] 
     except Exception as exc:  # noqa: BLE001 - rubric 失败不影响作答本体
         logger.warning("rubric scoring failed: %s", exc)
         return None
-
-
-def _analyze_vocab(session: Session, transcript: str) -> dict[str, object] | None:
-    """词表命中分析；未配置词表时返回 None（界面显示「未配置词表」，BDD D）。"""
-    entries = session.exec(select(WordlistEntry)).all()
-    if not entries:
-        return None
-    lemmas_by_band: dict[str, set[str]] = {"A2": set(), "B1": set(), "B2": set()}
-    for entry in entries:
-        lemmas_by_band.setdefault(entry.band, set()).add(entry.lemma)
-    analysis = analyze_transcript(transcript, lemmas_by_band)
-    from app.core.db import WORDLIST_NAME
-
-    return {
-        "wordlist": WORDLIST_NAME,
-        "hits": {band: words for band, words in analysis.hits_by_band.items() if words},
-        "coverage": analysis.coverage_ratio,
-        "cefr": analysis.cefr_label,
-    }
 
 
 def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
