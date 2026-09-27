@@ -6,5 +6,6 @@ export default function useLoginOptions() {
     queryKey: ["login-options"],
     queryFn: () => LoginService.readLoginOptions(),
     retry: false,
+    staleTime: 60_000,
   })
 }

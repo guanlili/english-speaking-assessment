@@ -28,6 +28,8 @@ ASR_INSTRUCTIONS = (
 
 _MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
+_shared_client = httpx.Client(timeout=60)
+
 
 class MockAsr:
     name = "mock"
@@ -86,16 +88,11 @@ class ArkResponsesAsr:
 
         payload = build_ark_payload(self.model, audio, mime_type)
         headers = {"Authorization": f"Bearer {self.api_key}"}
+        client = self._client if self._client is not None else _shared_client
         try:
-            if self._client is not None:
-                resp = self._client.post(
-                    f"{self.base_url}/responses", json=payload, headers=headers
-                )
-            else:
-                with httpx.Client(timeout=60) as client:
-                    resp = client.post(
-                        f"{self.base_url}/responses", json=payload, headers=headers
-                    )
+            resp = client.post(
+                f"{self.base_url}/responses", json=payload, headers=headers
+            )
         except httpx.HTTPError as exc:
             raise ScoringError(f"Ark 请求失败: {exc}") from exc
         if resp.status_code != 200:

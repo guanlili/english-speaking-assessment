@@ -662,6 +662,28 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
     submitted_count = 0
     completed_count = 0
     pending_count = 0
+    # 预取所有学生的作答（一次查询替代 N+1）
+    practice_session_ids = [
+        ps.id for ps in session_by_student.values() if ps is not None
+    ]
+    attempts_map: dict[tuple[uuid.UUID, uuid.UUID], list[Attempt]] = {}
+    if practice_session_ids:
+        all_attempts = session.exec(
+            select(Attempt)
+            .where(
+                Attempt.student_id.in_(student_ids),  # type: ignore
+                Attempt.session_id.in_(practice_session_ids),  # type: ignore
+            )
+            .order_by(col(Attempt.created_at))
+        ).all()
+        for attempt in all_attempts:
+            if attempt.student_id is None or attempt.session_id is None:
+                continue
+            key = (attempt.student_id, attempt.session_id)
+            if key not in attempts_map:
+                attempts_map[key] = []
+            attempts_map[key].append(attempt)
+
     for student in students:
         practice_session = session_by_student.get(student.id)
         items: list[BoardItem] = []
@@ -671,14 +693,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         round_status = "not_started"
 
         if practice_session is not None:
-            attempts = session.exec(
-                select(Attempt)
-                .where(
-                    Attempt.student_id == student.id,
-                    Attempt.session_id == practice_session.id,
-                )
-                .order_by(col(Attempt.created_at))
-            ).all()
+            attempts = attempts_map.get((student.id, practice_session.id), [])
             latest: dict[uuid.UUID, Attempt] = {}
             for attempt in attempts:
                 latest[attempt.item_id] = attempt
