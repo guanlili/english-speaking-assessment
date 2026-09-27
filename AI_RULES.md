@@ -53,7 +53,7 @@ Follow these guidelines to ensure code stability, consistency, and maintainabili
 
 - **Compose**: `compose.yml` is production. `compose.override.yml` is local dev (auto-applied).
 - **API Routing**: nginx proxies `/api`, `/docs`, `/redoc` to the `backend` container. `VITE_API_URL` is empty in production (relative URLs).
-- **Local Dev**: `VITE_API_URL=http://localhost:8000` in override so frontend calls backend directly.
+- **Local Dev**: `VITE_API_URL` is empty; Vite proxies `/api` to `API_PROXY_TARGET` (defaults to `http://127.0.0.1:8000`; Docker uses `http://backend:8000`). If another local service occupies IPv4 port 8000, start Vite with `API_PROXY_TARGET=http://[::1]:8000` to reach the Docker backend over IPv6.
 - **Credentials**: NEVER commit `.env` or any secret to git（`.gitignore` 已忽略）. Production `.env` is regenerated from GitHub Secrets on every deploy — GitHub Secrets is the single source of truth.
 - **Deploy**: Production deployment requires repository variable `ENABLE_PRODUCTION_DEPLOY=true`; until then only CI runs. Push to `master` → CI (lint + tests + 前端客户端一致性) → server-side checkout 到该次 CI 验证过的 commit + `docker compose up -d --build`. See `.github/workflows/deploy.yml`.
 - **HTTP vs HTTPS**: Internal tools and demos run on plain `http://IP:port` (the template default) — do NOT add TLS/reverse-proxy machinery to individual projects. Demos using microphone/camera or other secure-context APIs also require HTTPS when accessed remotely (localhost is exempt). Projects going live for real users MUST use HTTPS via the server-level Caddy path documented in README（域名 + ICP 备案，备案需提前 1~3 周启动）. If a project is about to go live and still runs on HTTP, remind the user.
