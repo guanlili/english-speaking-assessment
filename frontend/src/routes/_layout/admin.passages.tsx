@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute, redirect } from "@tanstack/react-router"
+import { createFileRoute } from "@tanstack/react-router"
 import { Loader2, Pencil, Plus, Scissors, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import type { PassageWithSentences } from "@/client"
-import { AdminService, UsersService } from "@/client"
+import { AdminService } from "@/client"
 import { TopicPicker } from "@/components/Admin/TopicPicker"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import AudioSetter from "@/components/Practice/AudioSetter"
@@ -43,12 +43,6 @@ import useCustomToast from "@/hooks/useCustomToast"
 
 export const Route = createFileRoute("/_layout/admin/passages")({
   component: PassagesAdmin,
-  beforeLoad: async () => {
-    const user = await UsersService.readUserMe()
-    if (!user.is_superuser) {
-      throw redirect({ to: "/" })
-    }
-  },
   head: () => ({ meta: [{ title: `篇目管理 - ${APP_NAME}` }] }),
 })
 
@@ -573,16 +567,19 @@ function PassageCard({
             text={passage.text ?? ""}
             stopPropagation
             onSet={async (audio_url) => {
+              if (audio_url === null) return
               await AdminService.updatePassage({
                 passageId: passage.id,
                 requestBody: {
-                  slug: passage.slug ?? "",
                   title: passage.title ?? "",
                   topic: passage.topic ?? "",
                   cefr_band: passage.cefr_band ?? "B1",
                   text: passage.text ?? "",
+                  translation: passage.translation ?? undefined,
+                  audio_url,
                   suggested_seconds: passage.suggested_seconds ?? 45,
-                  ...(audio_url !== null ? { audio_url } : {}),
+                  is_active: passage.is_active ?? true,
+                  unit_id: passage.unit_id ?? undefined,
                 },
               })
               onMutated()
@@ -634,14 +631,16 @@ function PassageCard({
                     hasAudio={Boolean(s.audio_url)}
                     text={s.text ?? ""}
                     onSet={async (audio_url) => {
+                      if (audio_url === null) return
                       await AdminService.updateSentence({
                         sentenceId: s.id ?? "",
                         requestBody: {
                           passage_id: passage.id,
                           order_index: s.order_index ?? 0,
                           text: s.text ?? "",
+                          translation: s.translation ?? undefined,
+                          audio_url,
                           suggested_seconds: s.suggested_seconds ?? 8,
-                          ...(audio_url !== null ? { audio_url } : {}),
                         },
                       })
                       onMutated()

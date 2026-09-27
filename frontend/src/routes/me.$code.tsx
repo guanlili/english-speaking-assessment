@@ -36,6 +36,7 @@ import {
   isStudentNotFound,
   loadStudent,
 } from "@/lib/classroom-student"
+import { safeLocalStorageGet } from "@/utils"
 
 export const Route = createFileRoute("/me/$code")({
   component: MyTrailPage,
@@ -91,9 +92,10 @@ function MyTrailPage() {
 
   if (student === null) return null
 
-  const savedExpressions = JSON.parse(
-    localStorage.getItem("esa:saved-expressions") ?? "[]",
-  ) as string[]
+  const savedExpressions = safeLocalStorageGet<string[]>(
+    "esa:saved-expressions",
+    [],
+  )
 
   return (
     <StudentShell active="me">

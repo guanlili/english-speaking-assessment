@@ -85,17 +85,7 @@ def create_passage(
         ).first()
         if duplicate is not None:
             raise HTTPException(status_code=409, detail="slug 已存在")
-        slug = passage_in.slug
-    else:
-        # 未填 slug：按标题自动生成并去重（管理端可不填）
-        slug = crud.unique_passage_slug(session, crud.slugify_title(passage_in.title))
-    passage = Passage.model_validate(
-        passage_in.model_dump(exclude={"slug"}) | {"slug": slug}
-    )
-    session.add(passage)
-    session.commit()
-    session.refresh(passage)
-    return passage
+    return crud.create_passage(session=session, passage_in=passage_in)
 
 
 @router.put("/passages/{passage_id}", response_model=PassagePublic)

@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute, redirect } from "@tanstack/react-router"
+import { createFileRoute } from "@tanstack/react-router"
 import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
-import { AdminService, UsersService } from "@/client"
+import { AdminService } from "@/client"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import AudioSetter from "@/components/Practice/AudioSetter"
 import { Badge } from "@/components/ui/badge"
@@ -30,12 +30,6 @@ import useCustomToast from "@/hooks/useCustomToast"
 
 export const Route = createFileRoute("/_layout/admin/scenarios")({
   component: ScenariosAdmin,
-  beforeLoad: async () => {
-    const user = await UsersService.readUserMe()
-    if (!user.is_superuser) {
-      throw redirect({ to: "/" })
-    }
-  },
   head: () => ({ meta: [{ title: `口语分级题库 - ${APP_NAME}` }] }),
 })
 

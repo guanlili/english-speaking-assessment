@@ -1,10 +1,39 @@
+import time
+from collections import defaultdict
 from datetime import timedelta
+from threading import Lock
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import SQLModel
+
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+_login_lock = Lock()
+LOGIN_RATE_LIMIT = 10
+LOGIN_RATE_WINDOW_S = 300
+
+
+def _check_login_rate_limit(client_ip: str) -> None:
+    now = time.monotonic()
+    with _login_lock:
+        window = _login_attempts[client_ip]
+        cutoff = now - LOGIN_RATE_WINDOW_S
+        while window and window[0] < cutoff:
+            window.pop(0)
+        if len(window) >= LOGIN_RATE_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail="登录尝试过于频繁，请 5 分钟后再试",
+                headers={"Retry-After": str(LOGIN_RATE_WINDOW_S)},
+            )
+        window.append(now)
+
+
+def _record_login_success(client_ip: str) -> None:
+    with _login_lock:
+        _login_attempts.pop(client_ip, None)
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
@@ -39,11 +68,16 @@ def read_login_options(response: Response) -> LoginOptions:
 
 @router.post("/login/access-token")
 def login_access_token(
-    session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
+    request: Request,
+    session: SessionDep,
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
     """
     OAuth2 compatible token login, get an access token for future requests
     """
+    client_ip = request.client.host if request.client else "unknown"
+    _check_login_rate_limit(client_ip)
+
     user = crud.authenticate(
         session=session, email=form_data.username, password=form_data.password
     )
@@ -52,6 +86,7 @@ def login_access_token(
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    _record_login_success(client_ip)
     return Token(
         access_token=security.create_access_token(
             user.id, expires_delta=access_token_expires
