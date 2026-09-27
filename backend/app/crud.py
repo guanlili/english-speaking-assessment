@@ -130,7 +130,7 @@ def join_classroom(
     用唯一约束 + IntegrityError 重试应对并发同名加入，确保不会产生
     重复的 display_name + suffix 组合。
     """
-    for attempt in range(10):
+    for _attempt in range(10):
         duplicate = session.exec(
             select(Student).where(
                 Student.classroom_id == classroom.id,

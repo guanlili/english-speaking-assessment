@@ -9,6 +9,18 @@ from fastapi.responses import HTMLResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import SQLModel
 
+from app import crud
+from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.core import security
+from app.core.config import settings
+from app.models import Message, NewPassword, Token, UserPublic, UserUpdate
+from app.utils import (
+    generate_password_reset_token,
+    generate_reset_password_email,
+    send_email,
+    verify_password_reset_token,
+)
+
 _login_attempts: dict[str, list[float]] = defaultdict(list)
 _login_lock = Lock()
 LOGIN_RATE_LIMIT = 10
@@ -35,17 +47,6 @@ def _record_login_success(client_ip: str) -> None:
     with _login_lock:
         _login_attempts.pop(client_ip, None)
 
-from app import crud
-from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
-from app.core import security
-from app.core.config import settings
-from app.models import Message, NewPassword, Token, UserPublic, UserUpdate
-from app.utils import (
-    generate_password_reset_token,
-    generate_reset_password_email,
-    send_email,
-    verify_password_reset_token,
-)
 
 router = APIRouter(tags=["login"])
 
