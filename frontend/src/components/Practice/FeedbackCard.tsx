@@ -1,6 +1,7 @@
 import { Bookmark, Loader2, RefreshCw, TriangleAlert } from "lucide-react"
 import type { ReactNode } from "react"
 import type { AttemptPublic } from "@/client"
+import AttemptAudio from "@/components/Practice/AttemptAudio"
 import VocabBlock from "@/components/Practice/VocabBlock"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,9 +13,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-
-// 生产构建为空（同源相对路径）；本地开发由 VITE_API_URL 指向后端
-const API_BASE = import.meta.env.VITE_API_URL ?? ""
 
 // PRD §4：三种分的来源必须在界面上写清
 const ENGINE_LABELS: Record<string, string> = {
@@ -134,11 +132,14 @@ function FeedbackCard({
   itemType = "passage",
   onRepractice,
   extraActions,
+  studentToken,
 }: {
   attempt: AttemptPublic
   itemType?: "passage" | "repeat" | "question"
   onRepractice: () => void
   extraActions?: ReactNode
+  /** 课堂练习：入班凭证（用于回放本人录音）；公开练习页留空 */
+  studentToken?: string | null
 }) {
   if (attempt.status === "queued" || attempt.status === "scoring") {
     return (
@@ -196,14 +197,12 @@ function FeedbackCard({
           <span className="text-sm text-muted-foreground">
             听听自己刚才的声音
           </span>
-          <audio
-            controls
+          <AttemptAudio
+            attemptId={attempt.id}
+            studentToken={studentToken}
             preload="metadata"
-            src={`${API_BASE}/api/v1/attempts/${attempt.id}/audio`}
             className="w-full"
-          >
-            <track kind="captions" />
-          </audio>
+          />
         </div>
         <Separator />
         {isQuestion ? (

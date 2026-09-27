@@ -25,6 +25,8 @@ from app.models import (
 )
 from app.scoring import worker
 from app.scoring.base import ScoringError
+from tests.utils.audio import wav_upload
+from tests.utils.credential import remember_join, student_form, student_params
 
 
 @pytest.fixture(autouse=True)
@@ -85,16 +87,14 @@ def inline_scoring(
 
 
 def _join(client: TestClient, name: str = "恢复测试") -> Any:
-    resp = client.post(
-        "/api/v1/classes/DEMO01/join", json={"display_name": name}
-    )
+    resp = client.post("/api/v1/classes/DEMO01/join", json={"display_name": name})
     assert resp.status_code == 200, resp.text
-    return resp.json()
+    return remember_join(resp.json())
 
 
 def _today(client: TestClient, student_id: str) -> Any:
     return client.get(
-        "/api/v1/classes/DEMO01/today", params={"student_id": student_id}
+        "/api/v1/classes/DEMO01/today", params=student_params(student_id)
     ).json()
 
 
@@ -110,15 +110,14 @@ def _submit(
         "item_type": item_type,
         "item_id": item_id,
         "duration_s": "6.0",
-        "student_id": student_id,
         "session_id": session_id,
     }
     if idempotency_key:
         data["idempotency_key"] = idempotency_key
     resp = client.post(
         "/api/v1/attempts",
-        files={"audio": ("a.webm", b"bytes", "audio/webm")},
-        data=data,
+        files={"audio": wav_upload(6.0)},
+        data=student_form(student_id, **data),
     )
     return resp
 
@@ -127,7 +126,7 @@ def test_idempotent_reupload_returns_same_attempt(
     client: TestClient, inline_scoring: Any
 ) -> None:
     """断网后重传：同幂等键返回同一作答，不重复创建。"""
-    inline_scoring({"audio/webm": "hello world"})
+    inline_scoring({"audio/wav": "hello world"})
     student = _join(client)
     plan = _today(client, student["id"])
     first = plan["items"][0]
@@ -152,14 +151,19 @@ def test_duplicate_submission_no_double_xp(
     client: TestClient, inline_scoring: Any, db: Session
 ) -> None:
     """重复提交不重复结算 XP。"""
-    inline_scoring({"audio/webm": "hello world"})
+    inline_scoring({"audio/wav": "hello world"})
     student = _join(client)
     plan = _today(client, student["id"])
 
     # 完成全部 5 题（3 复述 + 2 问答），重复提交第一题两次验证 XP 不翻倍
     for item in plan["items"]:
         _submit(
-            client, item["type"], item["id"], student["id"], plan["session_id"], str(uuid.uuid4())
+            client,
+            item["type"],
+            item["id"],
+            student["id"],
+            plan["session_id"],
+            str(uuid.uuid4()),
         )
     # 再用已有幂等键重复提交第一题
     first = plan["items"][0]
@@ -188,7 +192,7 @@ def test_stale_scoring_recovery(
     client: TestClient, inline_scoring: Any, db: Session
 ) -> None:
     """评分中断恢复：僵尸 scoring 作答被重排队列并最终完成。"""
-    inline_scoring({"audio/webm": "hello world"})
+    inline_scoring({"audio/wav": "hello world"})
     student = _join(client)
     plan = _today(client, student["id"])
     first = plan["items"][0]
@@ -257,11 +261,116 @@ def test_retry_limit_marks_failed(
         app.dependency_overrides.pop(get_scoring_submitter, None)
 
 
+def test_retry_redispatched_in_production_path(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    db: Session,
+) -> None:
+    """生产路径回归：线程池评分失败重排队后必须被自动重新投递。
+
+    之前的缺陷：process_attempt 重试分支置回 queued 后无人再投，
+    只有进程重启才能救活。本测试走真实 submit_attempt_scoring
+    （不覆盖 get_scoring_submitter），引擎第一次调用抛错、第二次成功，
+    断言作答最终 DONE 且 retry_count=1（重投发生且只发生一次）。
+    """
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+    # 线程池 worker 用全局引擎连库；测试里 conftest 只覆写了 get_db，
+    # 必须把全局引擎也指到测试库，否则 worker 线程会读到开发库
+    monkeypatch.setattr("app.core.db.engine", db.get_bind())
+
+    class FlakyAsr:
+        name = "fake"
+        calls = 0
+
+        def transcribe(self, audio: bytes, mime_type: str) -> str:
+            FlakyAsr.calls += 1
+            if FlakyAsr.calls == 1:
+                raise ScoringError("引擎瞬时故障")
+            return "hello world"
+
+    monkeypatch.setattr(worker, "build_asr_provider", lambda: FlakyAsr())
+
+    try:
+        student = _join(client)
+        plan = _today(client, student["id"])
+        first = plan["items"][0]
+        resp = _submit(
+            client, first["type"], first["id"], student["id"], plan["session_id"]
+        )
+        assert resp.status_code == 200, resp.text
+        attempt_id = uuid.UUID(resp.json()["id"])
+
+        # 轮询等待线程池完成「失败 → 重排队 → 重投 → 成功」全链路
+        deadline = datetime.now(UTC) + timedelta(seconds=15)
+        final: Attempt | None = None
+        while datetime.now(UTC) < deadline:
+            with Session(db.get_bind()) as check:
+                final = check.get(Attempt, attempt_id)
+            if final is not None and final.status not in (
+                AttemptStatus.QUEUED,
+                AttemptStatus.SCORING,
+            ):
+                break
+            import time
+
+            time.sleep(0.05)
+
+        assert final is not None
+        assert final.status == AttemptStatus.DONE, (
+            f"重投未生效，状态卡在 {final.status}（retry_count={final.retry_count}）"
+        )
+        assert final.retry_count == 1
+        assert FlakyAsr.calls == 2
+    finally:
+        worker.shutdown_executor()
+
+
+def test_stale_failed_marks_are_committed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, db: Session
+) -> None:
+    """僵尸恢复的 FAILED 分支必须落库：全部僵尸都超重试上限时，
+    recovered=0 但 FAILED 状态变更依然要 commit（之前永不落库，
+    作答会永远卡在 scoring）。"""
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+    from app.core.storage import save_audio_file
+
+    student = _join(client)
+    plan = _today(client, student["id"])
+
+    with Session(db.get_bind()) as session:
+        path = save_audio_file(b"fake", "audio/wav")
+        attempt = Attempt(
+            item_type="repeat",
+            item_id=uuid.uuid4(),
+            student_id=uuid.UUID(student["id"]),
+            session_id=uuid.UUID(plan["session_id"]),
+            audio_path=str(path),
+            duration_s=5.0,
+            status=AttemptStatus.SCORING,
+            retry_count=MAX_SCORING_RETRIES,  # 已达上限：恢复只能标 failed
+            claimed_at=datetime.now(UTC) - timedelta(seconds=300),
+        )
+        session.add(attempt)
+        session.commit()
+        attempt_id = attempt.id
+
+    with Session(db.get_bind()) as session:
+        recovered = worker.recover_stale_attempts(session)
+    assert recovered == 0  # 没有可重排队的
+
+    # 新会话读库验证 FAILED 已持久化（修复前这里仍会是 scoring）
+    with Session(db.get_bind()) as check:
+        after = check.get(Attempt, attempt_id)
+    assert after is not None
+    assert after.status == AttemptStatus.FAILED
+
+
 def test_queue_full_returns_503(
     client: TestClient, inline_scoring: Any, db: Session
 ) -> None:
     """队列满时返回 503，前端保留录音提示稍后重试。"""
-    inline_scoring({"audio/webm": "hello world"})
+    inline_scoring({"audio/wav": "hello world"})
     student = _join(client)
     plan = _today(client, student["id"])
 

@@ -103,6 +103,7 @@ function ClassroomPracticePage() {
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
         studentId: student?.id as string,
+        token: student?.access_token as string,
         ...(exploreSessionId ? { sessionId: exploreSessionId } : {}),
       }),
     enabled: student !== null,
@@ -133,6 +134,7 @@ function ClassroomPracticePage() {
       ClassesService.readNextQuestion({
         code: code.toUpperCase(),
         studentId: student?.id as string,
+        token: student?.access_token as string,
         ...(plan?.session_id ? { sessionId: plan.session_id } : {}),
         ...(items.length ? { excludeIds: items.map((i) => i.id) } : {}),
       }),
@@ -215,6 +217,7 @@ function ClassroomPracticePage() {
     itemId: currentItem?.id ?? "",
     studentId: student?.id,
     sessionId: plan?.session_id,
+    token: student?.access_token,
   })
 
   const recorder = useRecorder({
@@ -228,7 +231,7 @@ function ClassroomPracticePage() {
     },
   })
 
-  // 开始录音前钉住当前题 / 会话 / 题型 / 幂等键
+  // 开始录音前钉住当前题 / 会话 / 题型 / 幂等键 / 凭证
   const startRecording = () => {
     recordingTargetRef.current = {
       itemType: (currentItem?.type as "repeat" | "question") ?? "repeat",
@@ -236,6 +239,7 @@ function ClassroomPracticePage() {
       studentId: student?.id,
       sessionId: plan?.session_id,
       idempotencyKey: crypto.randomUUID(),
+      token: student?.access_token,
     }
     recorder.start()
   }
@@ -652,7 +656,7 @@ function ClassroomPracticePage() {
             <Card className="hidden lg:block">
               <CardContent className="flex items-start gap-2 py-3.5 text-xs text-muted-foreground">
                 <Shield className="mt-0.5 size-3.5 shrink-0 text-primary" />
-                每次录音只有你和老师能听到。说错了没关系，再录一次就好。
+                每次录音只有你自己和本课授权老师能回听。说错了没关系，再录一次就好。
               </CardContent>
             </Card>
           </aside>
@@ -664,6 +668,7 @@ function ClassroomPracticePage() {
             attempt={attempt}
             itemType={currentItem.type as "repeat" | "question"}
             onRepractice={repractice}
+            studentToken={student?.access_token}
             extraActions={
               <>
                 {attemptDone && (

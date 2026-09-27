@@ -3,6 +3,7 @@ import {
   ArrowRight,
   BookOpen,
   GraduationCap,
+  Layers,
   ListChecks,
   UsersRound,
 } from "lucide-react"
@@ -23,25 +24,32 @@ const modules = [
     step: "01",
   },
   {
+    to: "/admin/units",
+    icon: Layers,
+    title: "学习单元",
+    description: "编排关卡单元，把篇目挂到单元上。",
+    step: "02",
+  },
+  {
     to: "/admin/passages",
     icon: BookOpen,
     title: "篇目与复述",
     description: "准备阅读材料、复述短句和标准音。",
-    step: "02",
+    step: "03",
   },
   {
     to: "/admin/scenarios",
     icon: ListChecks,
     title: "情景与问法",
     description: "编排分级问答，让表达贴近真实生活。",
-    step: "03",
+    step: "04",
   },
   {
     to: "/admin/wordlist",
     icon: GraduationCap,
     title: "分级词表",
     description: "维护词汇分级，为学习反馈提供参考。",
-    step: "04",
+    step: "05",
   },
 ] as const
 

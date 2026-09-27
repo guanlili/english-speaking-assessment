@@ -14,8 +14,10 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, UploadFile
+from sqlalchemy import func
 from sqlmodel import Field, SQLModel, col, select
 
+from app import crud
 from app.api.deps import SessionDep, SuperUserDep
 from app.core.config import settings
 from app.core.storage import content_audio_url, save_content_audio
@@ -48,6 +50,14 @@ class PassageWithSentences(PassagePublic):
     sentences: list[RepeatSentence] = []
 
 
+def _require_valid_band(band: str) -> None:
+    if band not in VALID_BANDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"CEFR 档位无效，可选：{'/'.join(sorted(VALID_BANDS))}",
+        )
+
+
 @router.get("/passages", response_model=list[PassageWithSentences])
 def list_passages(session: SessionDep, _admin: SuperUserDep) -> Any:
     passages = session.exec(select(Passage).order_by(col(Passage.created_at))).all()
@@ -68,12 +78,20 @@ def list_passages(session: SessionDep, _admin: SuperUserDep) -> Any:
 def create_passage(
     session: SessionDep, _admin: SuperUserDep, passage_in: PassageCreate
 ) -> Any:
-    duplicate = session.exec(
-        select(Passage).where(Passage.slug == passage_in.slug)
-    ).first()
-    if duplicate is not None:
-        raise HTTPException(status_code=409, detail="slug 已存在")
-    passage = Passage.model_validate(passage_in)
+    _require_valid_band(passage_in.cefr_band)
+    if passage_in.slug:
+        duplicate = session.exec(
+            select(Passage).where(Passage.slug == passage_in.slug)
+        ).first()
+        if duplicate is not None:
+            raise HTTPException(status_code=409, detail="slug 已存在")
+        slug = passage_in.slug
+    else:
+        # 未填 slug：按标题自动生成并去重（管理端可不填）
+        slug = crud.unique_passage_slug(session, crud.slugify_title(passage_in.title))
+    passage = Passage.model_validate(
+        passage_in.model_dump(exclude={"slug"}) | {"slug": slug}
+    )
     session.add(passage)
     session.commit()
     session.refresh(passage)
@@ -90,6 +108,7 @@ def update_passage(
     passage = session.get(Passage, passage_id)
     if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
+    _require_valid_band(passage_in.cefr_band)
     update = passage_in.model_dump(exclude={"slug"}, exclude_unset=True)
     passage.sqlmodel_update(update)
     session.add(passage)
@@ -335,7 +354,25 @@ async def import_wordlist_csv(
 
 @router.get("/units", response_model=list[UnitPublic])
 def list_units(session: SessionDep, _admin: SuperUserDep) -> Any:
-    return session.exec(select(Unit).order_by(col(Unit.order_index))).all()
+    units = session.exec(select(Unit).order_by(col(Unit.order_index))).all()
+    counts = _active_passage_counts(session)
+    return [
+        UnitPublic(
+            **u.model_dump(),
+            passage_count=counts.get(u.id, 0),
+        )
+        for u in units
+    ]
+
+
+def _active_passage_counts(session: SessionDep) -> dict[uuid.UUID, int]:
+    """每个单元的启用篇目数（指派前完整性检查用）。"""
+    rows = session.exec(
+        select(Passage.unit_id, func.count())
+        .where(Passage.is_active, Passage.unit_id.is_not(None))
+        .group_by(Passage.unit_id)
+    ).all()
+    return {unit_id: count for unit_id, count in rows if unit_id is not None}
 
 
 @router.post("/units", response_model=UnitPublic)
@@ -378,6 +415,17 @@ def delete_unit(
 
 class ClassroomUpdate(SQLModel):
     unlock_all: bool | None = None
+    owner_id: uuid.UUID | None = None
+    is_active: bool | None = None
+
+
+@router.get("/topics", response_model=list[str])
+def list_topics(session: SessionDep, _admin: SuperUserDep) -> Any:
+    """已有主题词表（篇目/单元/情景的 topic 并集）：录入时从列表选，不再自由输入。"""
+    topics: set[str] = set()
+    for column in (Passage.topic, Unit.topic, Scenario.topic):
+        topics.update(t for t in session.exec(select(column)).all() if t)
+    return sorted(topics)
 
 
 # ── 课堂码 ───────────────────────────────────────────────────────────
@@ -408,11 +456,18 @@ def update_classroom(
     classroom_id: uuid.UUID,
     classroom_in: ClassroomUpdate,
 ) -> Any:
-    """更新课堂设置（当前仅 unlock_all：一键解锁全部关卡）。"""
+    """更新课堂设置：unlock_all（一键解锁）、owner_id（绑定授权教师）、启停。"""
     classroom = session.get(Classroom, classroom_id)
     if classroom is None:
         raise HTTPException(status_code=404, detail="Classroom not found")
-    classroom.sqlmodel_update(classroom_in.model_dump(exclude_unset=True))
+    update = classroom_in.model_dump(exclude_unset=True)
+    if "owner_id" in update and update["owner_id"] is not None:
+        # 校验被绑定教师真实存在
+        from app.models import User as _User
+
+        if session.get(_User, update["owner_id"]) is None:
+            raise HTTPException(status_code=422, detail="教师账号不存在")
+    classroom.sqlmodel_update(update)
     session.add(classroom)
     session.commit()
     session.refresh(classroom)

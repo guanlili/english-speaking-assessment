@@ -68,6 +68,7 @@ function HomePage() {
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
         studentId: student?.id as string,
+        token: student?.access_token as string,
       }),
     enabled: student !== null,
   })
@@ -88,6 +89,7 @@ function HomePage() {
       ClassesService.readLearningPath({
         code: code.toUpperCase(),
         studentId: student?.id as string,
+        token: student?.access_token as string,
       }),
     enabled: student !== null,
     staleTime: 60_000,
@@ -99,6 +101,7 @@ function HomePage() {
       ClassesService.readStudentTrail({
         code: code.toUpperCase(),
         studentId: student?.id as string,
+        token: student?.access_token as string,
       }),
     enabled: student !== null,
   })

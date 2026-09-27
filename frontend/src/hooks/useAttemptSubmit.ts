@@ -8,6 +8,7 @@ export interface AttemptSubmitTarget {
   studentId?: string
   sessionId?: string
   idempotencyKey?: string
+  token?: string
 }
 
 /**
@@ -42,6 +43,7 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
           ...(t.studentId ? { student_id: t.studentId } : {}),
           ...(t.sessionId ? { session_id: t.sessionId } : {}),
           ...(t.idempotencyKey ? { idempotency_key: t.idempotencyKey } : {}),
+          ...(t.token ? { token: t.token } : {}),
         },
       })
     },
@@ -51,7 +53,10 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
   const attemptQuery = useQuery({
     queryKey: ["attempt", attemptId],
     queryFn: () =>
-      AttemptsService.readAttempt({ attemptId: attemptId as string }),
+      AttemptsService.readAttempt({
+        attemptId: attemptId as string,
+        ...(targetRef.current.token ? { token: targetRef.current.token } : {}),
+      }),
     enabled: attemptId !== null,
     refetchInterval: (query) => {
       const status = query.state.data?.status

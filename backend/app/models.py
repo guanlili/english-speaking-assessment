@@ -103,11 +103,14 @@ class Passage(PassageBase, table=True):
 class PassagePublic(PassageBase):
     id: uuid.UUID
     slug: str
+    # 所属单元：管理端要能读回指派关系（写入口同为 PassageCreate.unit_id）
+    unit_id: uuid.UUID | None = None
     created_at: datetime | None = None
 
 
 class PassageCreate(PassageBase):
-    slug: str = Field(min_length=1, max_length=100)
+    # 留空则由服务端从标题自动生成（同名自动 -2/-3 去重）；显式给值仍查重 409
+    slug: str | None = Field(default=None, max_length=100)
     unit_id: uuid.UUID | None = None
 
 
@@ -126,6 +129,8 @@ class UnitPublic(SQLModel):
     title: str
     topic: str
     is_active: bool
+    # 单元下的启用篇目数：管理端/老师端指派前的完整性检查（0 = 指派后学生无内容）
+    passage_count: int = 0
 
 
 class UnitCreate(SQLModel):
@@ -203,6 +208,11 @@ class Classroom(SQLModel, table=True):
     code: str = Field(unique=True, index=True, max_length=16)
     class_size: int = Field(default=40, ge=1, le=100)
     is_active: bool = True
+    # 授权教师（User.id）：教师面板/指派/名单必须由本人或管理员访问；
+    # 课堂码只用于学生入班，不能凭课堂码查看全班数据
+    owner_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL"
+    )
     # 老师一键解锁全部关卡（默认顺序解锁）
     unlock_all: bool = Field(
         default=False, sa_column_kwargs={"server_default": "false"}
@@ -224,6 +234,7 @@ class ClassroomPublic(SQLModel):
     class_size: int
     is_active: bool
     unlock_all: bool = False
+    owner_id: uuid.UUID | None = None
     created_at: datetime | None = None
 
 
@@ -279,6 +290,12 @@ class StudentPublic(SQLModel):
     suffix: str | None = None
     current_band: str
     classroom_id: uuid.UUID
+
+
+class StudentJoined(StudentPublic):
+    """入班响应：轻量凭证（HMAC 签名，随每次学生请求校验本人身份）。"""
+
+    access_token: str
 
 
 # 一次练习会话：一个学生一天一轮（PRD §8.4：日期、当前档、做到哪一题）
@@ -367,7 +384,8 @@ class Attempt(SQLModel, table=True):
     retry_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
     # worker 领取时间（用于崩溃恢复时识别僵尸 scoring）
     claimed_at: datetime | None = Field(
-        default=None, sa_type=DateTime(timezone=True)  # type: ignore
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
     )
     # 转写与评分使用的引擎名（mock / ark / …），界面据此标注分数来源（PRD §4）
     engine: str = Field(default="mock", max_length=32)
@@ -454,6 +472,8 @@ class PathUnit(SQLModel):
 class AssignmentInfo(SQLModel):
     unit_id: uuid.UUID
     title: str
+    # 指派前完整性检查：该单元当前的启用篇目数
+    passage_count: int = 0
 
 
 class LearningPath(SQLModel):

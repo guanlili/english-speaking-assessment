@@ -30,6 +30,13 @@ from app.models import (
 )
 from app.scoring import worker
 from app.scoring.base import ScoringError
+from tests.utils.audio import wav_upload
+from tests.utils.credential import (
+    remember_join,
+    student_form,
+    student_params,
+    token_for,
+)
 
 
 class FakeAsr:
@@ -78,12 +85,12 @@ def inline_scoring(
 def _join(client: TestClient, name: str = "李雷", code: str = "DEMO01") -> Any:
     resp = client.post(f"/api/v1/classes/{code}/join", json={"display_name": name})
     assert resp.status_code == 200, resp.text
-    return resp.json()
+    return remember_join(resp.json())
 
 
 def _today(client: TestClient, student_id: str, code: str = "DEMO01") -> Any:
     return client.get(
-        f"/api/v1/classes/{code}/today", params={"student_id": student_id}
+        f"/api/v1/classes/{code}/today", params=student_params(student_id)
     )
 
 
@@ -97,15 +104,21 @@ def _submit(
 ) -> Any:
     return client.post(
         "/api/v1/attempts",
-        files={"audio": ("a.webm", b"bytes", "audio/webm")},
-        data={
-            "item_type": item_type,
-            "item_id": item_id,
-            "duration_s": str(duration),
-            "student_id": student_id,
-            "session_id": session_id,
-        },
+        files={"audio": wav_upload(duration)},
+        data=student_form(
+            student_id,
+            item_type=item_type,
+            item_id=item_id,
+            duration_s=str(duration),
+            session_id=session_id,
+        ),
     )
+
+
+@pytest.fixture(scope="module", autouse=True)
+def teacher_auth(client: TestClient, superuser_token_headers: dict[str, str]) -> None:
+    """教师端点（board/units/assignment）需要登录：本模块默认带管理员身份。"""
+    client.headers.update(superuser_token_headers)
 
 
 # ── US-04 加入课堂 ───────────────────────────────────────────────────
@@ -126,6 +139,8 @@ def test_join_returns_student(client: TestClient) -> None:
     assert data["display_name"] == "李雷"
     assert data["suffix"] is None
     assert data["current_band"] == "B1"
+    # 入班即发放轻量凭证（后续学生请求都带它）
+    assert data["access_token"]
 
 
 def test_join_duplicate_name_gets_suffix(client: TestClient) -> None:
@@ -158,29 +173,39 @@ def test_today_plan_shape(
     assert again["session_id"] == plan["session_id"]
 
 
-def test_today_unknown_student_404(
+def test_today_requires_student_credential(
     client: TestClient,
     inline_scoring: Any,
 ) -> None:
-    assert _today(client, str(uuid.uuid4())).status_code == 404
+    """只给学生 ID、没有入班凭证 → 401（课堂码/学生 ID 不再是身份）。"""
+    resp = client.get(
+        "/api/v1/classes/DEMO01/today",
+        params={"student_id": str(uuid.uuid4())},
+    )
+    assert resp.status_code == 401
 
 
 def _finish_repeats(
-    client: TestClient, plan: dict, student_id: str, transcripts: dict[str, str]
+    client: TestClient,
+    plan: dict,
+    student_id: str,
+    set_transcripts: Callable[[dict[str, str]], None],
+    fixed_text: str | None = None,
 ) -> None:
-    """把 3 句复述全部答完（对每句用假转写控制得分）。"""
+    """把 3 句复述全部答完（每句提交前设定该句假转写，控制得分）。"""
     repeats = [i for i in plan["items"] if i["type"] == "repeat"]
     for item in repeats:
+        set_transcripts({"audio/wav": fixed_text or item["text"]})
         resp = client.post(
             "/api/v1/attempts",
-            files={"audio": ("a.webm", b"bytes", item["id"])},
-            data={
-                "item_type": "repeat",
-                "item_id": item["id"],
-                "duration_s": "6.0",
-                "student_id": student_id,
-                "session_id": plan["session_id"],
-            },
+            files={"audio": wav_upload(6.0)},
+            data=student_form(
+                student_id,
+                item_type="repeat",
+                item_id=item["id"],
+                duration_s="6.0",
+                session_id=plan["session_id"],
+            ),
         )
         assert resp.status_code == 200, resp.text
         assert resp.json()["status"] == "done"
@@ -190,13 +215,11 @@ def test_high_completeness_upgrades_band(
     client: TestClient, inline_scoring: Any
 ) -> None:
     """US-05：复述完整度 ≥80 且流利度达标 → 问答升到 B2。"""
+    set_transcripts = inline_scoring
     student_id = _join(client)["id"]
     plan = _today(client, student_id).json()
-    repeats = [i for i in plan["items"] if i["type"] == "repeat"]
     # 每句原文照读 + 合适语速 → 完整度 100
-    transcripts = {item["id"]: item["text"] for item in repeats}
-    inline_scoring(transcripts)
-    _finish_repeats(client, plan, student_id, transcripts)
+    _finish_repeats(client, plan, student_id, set_transcripts)
 
     resp = _today(client, student_id)
     plan2 = resp.json()
@@ -209,12 +232,10 @@ def test_low_completeness_downgrades_band(
     client: TestClient, inline_scoring: Any
 ) -> None:
     """US-05：跟读完整度低于 50% → 问答为低档 A2。"""
+    set_transcripts = inline_scoring
     student_id = _join(client)["id"]
     plan = _today(client, student_id).json()
-    repeats = [i for i in plan["items"] if i["type"] == "repeat"]
-    transcripts = {item["id"]: "hello" for item in repeats}
-    inline_scoring(transcripts)
-    _finish_repeats(client, plan, student_id, transcripts)
+    _finish_repeats(client, plan, student_id, set_transcripts, fixed_text="hello")
 
     plan2 = _today(client, student_id).json()
     assert plan2["band"] == "A2"
@@ -236,7 +257,7 @@ def test_next_question_then_exhausted(
     def next_q() -> Any:
         return client.get(
             "/api/v1/classes/DEMO01/next-question",
-            params={"student_id": student_id},
+            params=student_params(student_id),
         )
 
     # B1 种子有 3 道题：今日占 2 道，换一题先拿到第 3 道
@@ -261,7 +282,7 @@ def test_question_attempt_scores_open_response(
     client: TestClient, inline_scoring: Any
 ) -> None:
     """问答作答走开放题评分：只有总评/流利度/一句建议，无完整度。"""
-    inline_scoring({"question": "i like dogs because they are friendly"})
+    inline_scoring({"audio/wav": "i like dogs because they are friendly"})
     student_id = _join(client)["id"]
     plan = _today(client, student_id).json()
     question = next(i for i in plan["items"] if i["type"] == "question")
@@ -316,7 +337,12 @@ def test_scoring_failure_preserves_attempt(
 
 def test_create_classroom_requires_superuser(client: TestClient) -> None:
     """匿名创建课堂 → 401（课堂码由老师/管理员生成）。"""
-    resp = client.post("/api/v1/classes", json={"class_size": 40})
+    # 本模块默认带管理员身份：这里显式用无效凭证模拟匿名
+    resp = client.post(
+        "/api/v1/classes",
+        json={"class_size": 40},
+        headers={"Authorization": "Bearer invalid"},
+    )
     assert resp.status_code == 401
 
 
@@ -352,7 +378,7 @@ def test_unit_switch_starts_new_round_preserving_attempts(
         first_item = plan1["items"][0]
 
         # 在原轮完成一题
-        set_transcripts({"audio/webm": first_item["text"]})
+        set_transcripts({"audio/wav": first_item["text"]})
         resp = _submit(
             client,
             first_item["type"],
@@ -449,23 +475,28 @@ def test_unit_switch_starts_new_round_preserving_attempts(
         db.commit()
 
 
-def test_content_gap_404_details_are_distinct(client: TestClient) -> None:
+def test_content_gap_404_details_are_distinct(client: TestClient, db: Session) -> None:
     """内容缺失类 404 有独立 detail，前端据此区分「不清身份」场景。"""
     student = _join(client, "内容检查")
     # 指向不存在的会话：detail 必须是 Session not found（而非 Student not found）
     resp = client.get(
         "/api/v1/classes/DEMO01/today",
-        params={
-            "student_id": student["id"],
-            "session_id": str(uuid.uuid4()),
-        },
+        params=student_params(student["id"], session_id=str(uuid.uuid4())),
     )
     assert resp.status_code == 404
     assert resp.json()["detail"] == "Session not found"
-    # 陌生学生 ID：身份类 404
+    # 凭证有效、但学生行已不存在（清库后的旧身份）：身份类 404
+    from app.core.security import create_student_token
+
+    classroom = db.exec(
+        select(Classroom).where(Classroom.code == DEMO_CLASSROOM_CODE)
+    ).first()
+    assert classroom is not None
+    ghost_id = uuid.uuid4()
+    ghost_token = create_student_token(ghost_id, classroom.id)
     resp2 = client.get(
         "/api/v1/classes/DEMO01/today",
-        params={"student_id": str(uuid.uuid4())},
+        params={"student_id": str(ghost_id), "token": ghost_token},
     )
     assert resp2.status_code == 404
     assert resp2.json()["detail"] == "Student not found"
@@ -486,7 +517,7 @@ def test_question_list_stable_after_submit(
     q1_id, q2_id = questions[0]["id"], questions[1]["id"]
 
     # 提交 Q1
-    inline_scoring({"question": "i think it is good"})
+    inline_scoring({"audio/wav": "i think it is good"})
     resp = _submit(client, "question", q1_id, student_id, plan["session_id"])
     assert resp.status_code == 200
 
@@ -553,6 +584,7 @@ def test_explore_next_question_binds_to_session(
         explore = client.post(
             "/api/v1/classes/DEMO01/explore",
             json={"unit_id": unit["id"], "student_id": student["id"]},
+            params={"token": token_for(student["id"])},
         )
         assert explore.status_code == 200, explore.text
         session_id = explore.json()["session_id"]
@@ -560,21 +592,20 @@ def test_explore_next_question_binds_to_session(
         # 换一题（带 session_id）→ 应拿到 Food 主题的题
         resp = client.get(
             "/api/v1/classes/DEMO01/next-question",
-            params={"student_id": student["id"], "session_id": session_id},
+            params=student_params(student["id"], session_id=session_id),
         )
         assert resp.status_code == 200
         q = resp.json()["question"]
         assert q is not None
         assert q["text"].startswith("Food Q")
     finally:
-        classroom = db.exec(
-            select(Classroom).where(Classroom.code == "DEMO01")
-        ).first()
+        classroom = db.exec(select(Classroom).where(Classroom.code == "DEMO01")).first()
         if classroom is not None:
             classroom.current_unit_id = None
             db.add(classroom)
         if "scenario" in created:
             from app.models import Scenario, ScenarioQuestion
+
             for row in db.exec(
                 select(ScenarioQuestion).where(
                     ScenarioQuestion.scenario_id == created["scenario"]
@@ -616,10 +647,13 @@ def test_abac_board_shows_current_assignment(
         # A 轮：默认篇目，做 1 题
         plan_a = _today(client, student["id"]).json()
         first_a = plan_a["items"][0]
-        set_transcripts({"audio/webm": first_a["text"]})
+        set_transcripts({"audio/wav": first_a["text"]})
         _submit(
-            client, first_a["type"], first_a["id"],
-            student["id"], plan_a["session_id"],
+            client,
+            first_a["type"],
+            first_a["id"],
+            student["id"],
+            plan_a["session_id"],
         )
 
         # 建单元 B 并指派
@@ -634,8 +668,10 @@ def test_abac_board_shows_current_assignment(
             json={
                 "slug": f"unit-b-{unit_b['id'][:8]}",
                 "title": "Unit B Passage",
-                "topic": "Pets", "cefr_band": "B1",
-                "text": "Unit B text.", "suggested_seconds": 30,
+                "topic": "Pets",
+                "cefr_band": "B1",
+                "text": "Unit B text.",
+                "suggested_seconds": 30,
                 "unit_id": unit_b["id"],
             },
             headers=superuser_token_headers,
@@ -656,8 +692,11 @@ def test_abac_board_shows_current_assignment(
         assert plan_b["session_id"] != plan_a["session_id"]
         first_b = plan_b["items"][0]
         _submit(
-            client, first_b["type"], first_b["id"],
-            student["id"], plan_b["session_id"],
+            client,
+            first_b["type"],
+            first_b["id"],
+            student["id"],
+            plan_b["session_id"],
         )
 
         # 切回 A
@@ -677,9 +716,7 @@ def test_abac_board_shows_current_assignment(
         item_ids = {i["item_id"] for i in row["items"]}
         assert first_a["id"] in item_ids
     finally:
-        classroom = db.exec(
-            select(Classroom).where(Classroom.code == "DEMO01")
-        ).first()
+        classroom = db.exec(select(Classroom).where(Classroom.code == "DEMO01")).first()
         if classroom is not None:
             classroom.current_unit_id = None
             db.add(classroom)
@@ -730,8 +767,11 @@ def test_concurrent_session_creation(
                 stu = get_student(session=s, student_id=sid)
                 assert stu is not None
                 result = get_or_create_today_session(
-                    session=s, classroom=classroom, student=stu,
-                    today=today, passage_id=passage.id,
+                    session=s,
+                    classroom=classroom,
+                    student=stu,
+                    today=today,
+                    passage_id=passage.id,
                 )
                 return result.id
 
@@ -757,7 +797,7 @@ def test_partial_completion_not_counted_as_done(
     db: Session,
 ) -> None:
     """只提交一道题 → round_status=in_progress，不算整轮完成。"""
-    inline_scoring({"audio/webm": "hello world"})
+    inline_scoring({"audio/wav": "hello world"})
     student_id = _join(client, "部分完成")["id"]
     sid = uuid.UUID(student_id)
     try:

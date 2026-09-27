@@ -2,6 +2,7 @@ import {
   BookOpen,
   GraduationCap,
   Home,
+  Layers,
   ListChecks,
   Users,
   UsersRound,
@@ -23,6 +24,7 @@ const baseItems: Item[] = [{ icon: Home, title: "教学工作台", path: "/" }]
 
 const adminItems: Item[] = [
   { icon: Users, title: "用户与权限", path: "/admin" },
+  { icon: Layers, title: "学习单元", path: "/admin/units" },
   { icon: BookOpen, title: "篇目管理", path: "/admin/passages" },
   { icon: ListChecks, title: "情景与问法", path: "/admin/scenarios" },
   { icon: GraduationCap, title: "分级词表", path: "/admin/wordlist" },

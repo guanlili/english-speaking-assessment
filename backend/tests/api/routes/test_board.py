@@ -22,6 +22,8 @@ from app.core.config import settings
 from app.main import app
 from app.models import Attempt
 from app.scoring import worker
+from tests.utils.audio import wav_bytes, wav_upload
+from tests.utils.credential import remember_join, student_form, student_params
 
 CLASS_STUDENTS = 40
 SCORING_WAIT_TIMEOUT_S = 60.0
@@ -58,7 +60,7 @@ def thread_pool_scoring(
 def _join(client: TestClient, name: str) -> Any:
     resp = client.post("/api/v1/classes/DEMO01/join", json={"display_name": name})
     assert resp.status_code == 200, resp.text
-    return resp.json()
+    return remember_join(resp.json())
 
 
 def _submit_repeat(
@@ -66,17 +68,23 @@ def _submit_repeat(
 ) -> Any:
     resp = client.post(
         "/api/v1/attempts",
-        files={"audio": ("a.webm", b"bytes", "audio/webm")},
-        data={
-            "item_type": "repeat",
-            "item_id": item_id,
-            "duration_s": "5.0",
-            "student_id": student_id,
-            "session_id": session_id,
-        },
+        files={"audio": wav_upload(5.0)},
+        data=student_form(
+            student_id,
+            item_type="repeat",
+            item_id=item_id,
+            duration_s="5.0",
+            session_id=session_id,
+        ),
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def teacher_auth(client: TestClient, superuser_token_headers: dict[str, str]) -> None:
+    """教师端点（board/音频回放）需要登录：本模块默认带管理员身份。"""
+    client.headers.update(superuser_token_headers)
 
 
 def test_board_empty_classroom(
@@ -108,25 +116,25 @@ def test_board_aggregates_students(client: TestClient, inline_scoring: None) -> 
     bob = _join(client, "Bob")
 
     alice_plan = client.get(
-        "/api/v1/classes/DEMO01/today", params={"student_id": alice["id"]}
+        "/api/v1/classes/DEMO01/today", params=student_params(alice["id"])
     ).json()
     # Alice 全部答完（mock 引擎）
     for item in alice_plan["items"]:
         resp = client.post(
             "/api/v1/attempts",
-            files={"audio": ("a.webm", b"bytes", item["id"])},
-            data={
-                "item_type": item["type"],
-                "item_id": item["id"],
-                "duration_s": "5.0",
-                "student_id": alice["id"],
-                "session_id": alice_plan["session_id"],
-            },
+            files={"audio": wav_upload(5.0)},
+            data=student_form(
+                alice["id"],
+                item_type=item["type"],
+                item_id=item["id"],
+                duration_s="5.0",
+                session_id=alice_plan["session_id"],
+            ),
         )
         assert resp.status_code == 200
     # Bob 只答第一句复述
     bob_plan = client.get(
-        "/api/v1/classes/DEMO01/today", params={"student_id": bob["id"]}
+        "/api/v1/classes/DEMO01/today", params=student_params(bob["id"])
     ).json()
     first_repeat = bob_plan["items"][0]
     _submit_repeat(client, first_repeat["id"], bob["id"], bob_plan["session_id"])
@@ -153,26 +161,26 @@ def test_attempt_audio_roundtrip(client: TestClient, inline_scoring: None) -> No
     """音频回放：上传的字节能原样取回（老师表点开听）。"""
     student = _join(client, "Audio 测试")
     plan = client.get(
-        "/api/v1/classes/DEMO01/today", params={"student_id": student["id"]}
+        "/api/v1/classes/DEMO01/today", params=student_params(student["id"])
     ).json()
     first = plan["items"][0]
-    payload = b"fake-audio-bytes-for-roundtrip"
+    payload = wav_bytes(5.0)
     created = client.post(
         "/api/v1/attempts",
-        files={"audio": ("a.webm", payload, "audio/webm")},
-        data={
-            "item_type": "repeat",
-            "item_id": first["id"],
-            "duration_s": "5.0",
-            "student_id": student["id"],
-            "session_id": plan["session_id"],
-        },
+        files={"audio": ("a.wav", payload, "audio/wav")},
+        data=student_form(
+            student["id"],
+            item_type="repeat",
+            item_id=first["id"],
+            duration_s="5.0",
+            session_id=plan["session_id"],
+        ),
     ).json()
 
     resp = client.get(f"/api/v1/attempts/{created['id']}/audio")
     assert resp.status_code == 200
     assert resp.content == payload
-    assert resp.headers["content-type"].startswith("audio/webm")
+    assert resp.headers["content-type"].startswith("audio/wav")
 
     assert client.get(f"/api/v1/attempts/{uuid.uuid4()}/audio").status_code == 404
 
@@ -201,12 +209,12 @@ def test_classroom_40_concurrent_submissions(
             f"/api/v1/classes/{code}/join", json={"display_name": f"学生{i:02d}"}
         )
         assert resp.status_code == 200
-        students.append(resp.json())
+        students.append(remember_join(resp.json()))
 
     plans = {}
     for student in students:
         plan = client.get(
-            f"/api/v1/classes/{code}/today", params={"student_id": student["id"]}
+            f"/api/v1/classes/{code}/today", params=student_params(student["id"])
         ).json()
         plans[student["id"]] = plan
 

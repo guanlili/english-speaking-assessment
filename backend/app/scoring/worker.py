@@ -179,7 +179,12 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
         attempt.status = AttemptStatus.DONE
         attempt.engine = engine
     except Exception as exc:  # noqa: BLE001 - 任何引擎异常都按重试/失败处理
-        logger.warning("attempt %s scoring failed (retry %d): %s", attempt_id, attempt.retry_count, exc)
+        logger.warning(
+            "attempt %s scoring failed (retry %d): %s",
+            attempt_id,
+            attempt.retry_count,
+            exc,
+        )
         if attempt.retry_count < MAX_SCORING_RETRIES:
             attempt.retry_count += 1
             attempt.status = AttemptStatus.QUEUED
@@ -198,6 +203,11 @@ def _run_in_worker(attempt_id: uuid.UUID) -> None:
 
     with Session(engine) as session:
         process_attempt(session, attempt_id)
+        # 失败重排队后必须重新投递，否则作答会永久卡在 queued
+        # （retry_count 上限兜底，不会无限循环；测试直接调 process_attempt 不走这里）
+        attempt = session.get(Attempt, attempt_id)
+        if attempt is not None and attempt.status == AttemptStatus.QUEUED:
+            submit_attempt_scoring(attempt_id)
 
 
 def get_executor() -> ThreadPoolExecutor:
@@ -227,6 +237,7 @@ def recover_stale_attempts(session: Session) -> int:
         select(Attempt).where(Attempt.status == AttemptStatus.SCORING)
     ).all()
     recovered = 0
+    changed = False
     for attempt in stale:
         if attempt.claimed_at is None:
             continue
@@ -239,11 +250,14 @@ def recover_stale_attempts(session: Session) -> int:
             attempt.error = "worker 崩溃后自动重试"
             session.add(attempt)
             recovered += 1
+            changed = True
         else:
             attempt.status = AttemptStatus.FAILED
             attempt.error = "评分多次失败（worker 崩溃后重试上限）"
             session.add(attempt)
-    if recovered > 0:
+            changed = True
+    if changed:
+        # 只要有状态变更（含超限标 failed）就必须落库，否则僵尸永远卡在 scoring
         session.commit()
         logger.info("recovered %d stale scoring attempts", recovered)
     return recovered

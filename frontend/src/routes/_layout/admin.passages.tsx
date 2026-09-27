@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, redirect } from "@tanstack/react-router"
-import { Loader2, Plus, Scissors, Trash2 } from "lucide-react"
+import { Loader2, Pencil, Plus, Scissors, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import type { PassageWithSentences } from "@/client"
 import { AdminService, UsersService } from "@/client"
+import { TopicPicker } from "@/components/Admin/TopicPicker"
+import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import AudioSetter from "@/components/Practice/AudioSetter"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -14,8 +17,26 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { LoadingButton } from "@/components/ui/loading-button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
@@ -31,28 +52,81 @@ export const Route = createFileRoute("/_layout/admin/passages")({
   head: () => ({ meta: [{ title: `篇目管理 - ${APP_NAME}` }] }),
 })
 
+/** CEFR 档位是枚举（后端同样校验），不再自由输入。 */
+const CEFR_BANDS = ["A2", "B1", "B2"] as const
+const NO_UNIT = "__none__"
+
+interface PassageForm {
+  slug: string
+  title: string
+  topic: string
+  cefr_band: string
+  text: string
+  translation?: string
+  suggested_seconds: number
+  unit_id: string
+  is_active: boolean
+}
+
+const emptyForm: PassageForm = {
+  slug: "",
+  title: "",
+  topic: "",
+  cefr_band: "B1",
+  text: "",
+  translation: "",
+  suggested_seconds: 45,
+  unit_id: NO_UNIT,
+  is_active: true,
+}
+
+interface UnitOption {
+  id: string
+  title: string
+}
+
+function toRequestBody(form: PassageForm) {
+  return {
+    slug: form.slug.trim() ? form.slug.trim() : null,
+    title: form.title.trim(),
+    topic: form.topic.trim(),
+    cefr_band: form.cefr_band,
+    text: form.text,
+    translation: form.translation?.trim() ? form.translation.trim() : null,
+    suggested_seconds: form.suggested_seconds,
+    unit_id: form.unit_id === NO_UNIT ? null : form.unit_id,
+    is_active: form.is_active,
+  }
+}
+
 function PassagesAdmin() {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [editing, setEditing] = useState<PassageWithSentences | null>(null)
+  const [toDelete, setToDelete] = useState<PassageWithSentences | null>(null)
 
   const passagesQuery = useQuery({
     queryKey: ["admin", "passages"],
     queryFn: () => AdminService.listPassages(),
   })
+  const unitsQuery = useQuery({
+    queryKey: ["admin", "units"],
+    queryFn: () => AdminService.listUnits(),
+  })
+  const topicsQuery = useQuery({
+    queryKey: ["admin", "topics"],
+    queryFn: () => AdminService.listTopics(),
+  })
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["admin", "passages"] })
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ["admin", "passages"] })
+    void queryClient.invalidateQueries({ queryKey: ["admin", "units"] })
+  }
 
   const createMutation = useMutation({
-    mutationFn: (body: {
-      slug: string
-      title: string
-      topic: string
-      cefr_band: string
-      text: string
-      suggested_seconds?: number
-    }) => AdminService.createPassage({ requestBody: body }),
+    mutationFn: (form: PassageForm) =>
+      AdminService.createPassage({ requestBody: toRequestBody(form) }),
     onSuccess: () => {
       showSuccessToast("篇目已创建")
       invalidate()
@@ -61,13 +135,38 @@ function PassagesAdmin() {
       showErrorToast(err.body?.detail ?? "创建失败"),
   })
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, form }: { id: string; form: PassageForm }) =>
+      AdminService.updatePassage({
+        passageId: id,
+        requestBody: toRequestBody(form),
+      }),
+    onSuccess: () => {
+      showSuccessToast("篇目已更新")
+      setEditing(null)
+      invalidate()
+    },
+    onError: (err: { body?: { detail?: string } }) =>
+      showErrorToast(err.body?.detail ?? "更新失败"),
+  })
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => AdminService.deletePassage({ passageId: id }),
     onSuccess: () => {
       showSuccessToast("已删除")
+      setToDelete(null)
       invalidate()
     },
+    onError: (err: { body?: { detail?: string } }) =>
+      showErrorToast(err.body?.detail ?? "删除失败"),
   })
+
+  const units = (unitsQuery.data ?? []).map((u) => ({
+    id: u.id,
+    title: u.title,
+  }))
+  const unitTitle = (id?: string | null) =>
+    units.find((u) => u.id === id)?.title ?? "未归属"
 
   return (
     <div className="flex flex-col gap-6">
@@ -78,135 +177,229 @@ function PassagesAdmin() {
         </p>
       </div>
 
-      <NewPassageForm onSubmit={(body) => createMutation.mutate(body)} />
+      <NewPassageForm
+        topics={topicsQuery.data ?? []}
+        units={units}
+        onSubmit={(form) => createMutation.mutate(form)}
+      />
 
       {passagesQuery.isPending ? (
-        <Loader2 className="size-5 animate-spin" />
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+      ) : passagesQuery.isError ? (
+        <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
+          <p>篇目列表加载失败。</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void passagesQuery.refetch()}
+          >
+            重试
+          </Button>
+        </div>
+      ) : (passagesQuery.data ?? []).length === 0 ? (
+        <p className="py-8 text-center text-muted-foreground">
+          还没有篇目，用上面的表单创建第一篇。
+        </p>
       ) : (
         (passagesQuery.data ?? []).map((passage) => (
           <PassageCard
             key={passage.id}
             passage={passage}
+            unitTitle={unitTitle(passage.unit_id)}
             expanded={expandedId === passage.id}
             onToggle={() =>
               setExpandedId(expandedId === passage.id ? null : passage.id)
             }
-            onDelete={() => deleteMutation.mutate(passage.id)}
+            onEdit={() => setEditing(passage)}
+            onDelete={() => setToDelete(passage)}
             onMutated={invalidate}
           />
         ))
       )}
+
+      <EditPassageDialog
+        passage={editing}
+        topics={topicsQuery.data ?? []}
+        units={units}
+        pending={updateMutation.isPending}
+        onClose={() => setEditing(null)}
+        onSubmit={(form) => {
+          if (editing) updateMutation.mutate({ id: editing.id, form })
+        }}
+      />
+
+      <ConfirmDialog
+        open={toDelete !== null}
+        title={`删除篇目「${toDelete?.title ?? ""}」？`}
+        description="删除会连带清掉它的复述句，正在练习中的学生下次会拿到别的篇目。此操作不可撤销。"
+        confirmText="删除篇目"
+        onOpenChange={(next) => {
+          if (!next) setToDelete(null)
+        }}
+        onConfirm={async () => {
+          if (toDelete) await deleteMutation.mutateAsync(toDelete.id)
+        }}
+      />
     </div>
+  )
+}
+
+function PassageFields({
+  form,
+  setForm,
+  topics,
+  units,
+  idPrefix = "passage-",
+}: {
+  form: PassageForm
+  setForm: (next: PassageForm) => void
+  topics: string[]
+  units: UnitOption[]
+  /** 新建表单与编辑弹窗同时在页面上，用前缀避免重复 id。 */
+  idPrefix?: string
+}) {
+  return (
+    <>
+      <div className="space-y-1">
+        <Label htmlFor={`${idPrefix}title`}>标题</Label>
+        <Input
+          id={`${idPrefix}title`}
+          value={form.title}
+          onChange={(e) => setForm({ ...form, title: e.target.value })}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label>主题（与情景主题一致才会配对）</Label>
+        <TopicPicker
+          value={form.topic}
+          topics={topics}
+          onChange={(topic) => setForm({ ...form, topic })}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label>所属单元（关卡）</Label>
+        <Select
+          value={form.unit_id}
+          onValueChange={(next) => setForm({ ...form, unit_id: next })}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="选择单元" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_UNIT}>未归属</SelectItem>
+            {units.map((u) => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label htmlFor={`${idPrefix}band`}>CEFR 档</Label>
+          <Select
+            value={form.cefr_band}
+            onValueChange={(next) => setForm({ ...form, cefr_band: next })}
+          >
+            <SelectTrigger id={`${idPrefix}band`} className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CEFR_BANDS.map((band) => (
+                <SelectItem key={band} value={band}>
+                  {band}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`${idPrefix}seconds`}>建议秒数</Label>
+          <Input
+            id={`${idPrefix}seconds`}
+            type="number"
+            value={form.suggested_seconds}
+            onChange={(e) =>
+              setForm({ ...form, suggested_seconds: Number(e.target.value) })
+            }
+          />
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor={`${idPrefix}text`}>正文（朗读参考文本）</Label>
+        <Textarea
+          id={`${idPrefix}text`}
+          rows={4}
+          value={form.text}
+          onChange={(e) => setForm({ ...form, text: e.target.value })}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor={`${idPrefix}translation`}>
+          中文提示（可选，学生端显示）
+        </Label>
+        <Input
+          id={`${idPrefix}translation`}
+          value={form.translation ?? ""}
+          onChange={(e) => setForm({ ...form, translation: e.target.value })}
+        />
+      </div>
+      <div className="flex items-center gap-2 text-sm">
+        <Checkbox
+          checked={form.is_active}
+          onCheckedChange={(checked) =>
+            setForm({ ...form, is_active: checked === true })
+          }
+        />
+        启用（学生端可练；停用后今天练习与地图里都不再出现）
+      </div>
+    </>
   )
 }
 
 function NewPassageForm({
   onSubmit,
+  topics,
+  units,
 }: {
-  onSubmit: (body: {
-    slug: string
-    title: string
-    topic: string
-    cefr_band: string
-    text: string
-    suggested_seconds?: number
-  }) => void
+  onSubmit: (form: PassageForm) => void
+  topics: string[]
+  units: UnitOption[]
 }) {
-  const [form, setForm] = useState<{
-    slug: string
-    title: string
-    topic: string
-    cefr_band: string
-    text: string
-    translation?: string
-    suggested_seconds: number
-  }>({
-    slug: "",
-    title: "",
-    topic: "",
-    cefr_band: "B1",
-    text: "",
-    translation: "",
-    suggested_seconds: 45,
-  })
+  const [form, setForm] = useState<PassageForm>(emptyForm)
+  const canSubmit = form.title.trim().length > 0 && form.text.trim().length > 0
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">新建篇目</CardTitle>
-        <CardDescription>slug 用于唯一标识（英文短横线）</CardDescription>
+        <CardDescription>
+          slug 留空会按标题自动生成（重名自动加 -2/-3），需要固定标识时再手填。
+        </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 md:grid-cols-2">
-        <div className="space-y-1">
-          <Label htmlFor="slug">Slug</Label>
+        <div className="space-y-1 md:col-span-2">
+          <Label htmlFor="slug">Slug（可留空）</Label>
           <Input
             id="slug"
             value={form.slug}
             onChange={(e) => setForm({ ...form, slug: e.target.value })}
-            placeholder="eip-unit1-pets"
+            placeholder="留空自动生成，例如 my-family"
           />
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="title">标题</Label>
-          <Input
-            id="title"
-            value={form.title}
-            onChange={(e) => setForm({ ...form, title: e.target.value })}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="topic">主题（与情景主题一致才会配对）</Label>
-          <Input
-            id="topic"
-            value={form.topic}
-            onChange={(e) => setForm({ ...form, topic: e.target.value })}
-            placeholder="Pets"
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label htmlFor="band">CEFR 档</Label>
-            <Input
-              id="band"
-              value={form.cefr_band}
-              onChange={(e) => setForm({ ...form, cefr_band: e.target.value })}
-              placeholder="A2/B1/B2"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="seconds">建议秒数</Label>
-            <Input
-              id="seconds"
-              type="number"
-              value={form.suggested_seconds}
-              onChange={(e) =>
-                setForm({ ...form, suggested_seconds: Number(e.target.value) })
-              }
-            />
-          </div>
-        </div>
-        <div className="space-y-1 md:col-span-2">
-          <Label htmlFor="text">正文（朗读参考文本）</Label>
-          <Textarea
-            id="text"
-            rows={4}
-            value={form.text}
-            onChange={(e) => setForm({ ...form, text: e.target.value })}
-          />
-        </div>
-        <div className="space-y-1 md:col-span-2">
-          <Label htmlFor="translation">中文提示（可选，学生端显示）</Label>
-          <Input
-            id="translation"
-            value={form.translation ?? ""}
-            onChange={(e) => setForm({ ...form, translation: e.target.value })}
-          />
-        </div>
+        <PassageFields
+          form={form}
+          setForm={setForm}
+          topics={topics}
+          units={units}
+        />
         <div className="md:col-span-2">
-          <Button
-            onClick={() => onSubmit(form)}
-            disabled={!form.slug || !form.title || !form.text}
-          >
+          <Button onClick={() => onSubmit(form)} disabled={!canSubmit}>
             <Plus />
             创建
           </Button>
@@ -216,16 +409,97 @@ function NewPassageForm({
   )
 }
 
+function EditPassageDialog({
+  passage,
+  topics,
+  units,
+  pending,
+  onClose,
+  onSubmit,
+}: {
+  passage: PassageWithSentences | null
+  topics: string[]
+  units: UnitOption[]
+  pending: boolean
+  onClose: () => void
+  onSubmit: (form: PassageForm) => void
+}) {
+  const [form, setForm] = useState<PassageForm>(emptyForm)
+  const [loadedId, setLoadedId] = useState<string | null>(null)
+
+  if (passage && passage.id !== loadedId) {
+    setLoadedId(passage.id)
+    setForm({
+      slug: passage.slug ?? "",
+      title: passage.title ?? "",
+      topic: passage.topic ?? "",
+      cefr_band: passage.cefr_band ?? "B1",
+      text: passage.text ?? "",
+      translation: passage.translation ?? "",
+      suggested_seconds: passage.suggested_seconds ?? 45,
+      unit_id: passage.unit_id ?? NO_UNIT,
+      is_active: passage.is_active ?? true,
+    })
+  }
+  if (!passage && loadedId !== null) setLoadedId(null)
+
+  const canSubmit = form.title.trim().length > 0 && form.text.trim().length > 0
+
+  return (
+    <Dialog
+      open={passage !== null}
+      onOpenChange={(next) => {
+        if (!next) onClose()
+      }}
+    >
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>编辑篇目</DialogTitle>
+          <DialogDescription>
+            slug 建成后不可改（学生进度与录音都挂在它上面）：{" "}
+            <span className="font-mono">{passage?.slug}</span>
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 md:grid-cols-2">
+          <PassageFields
+            form={form}
+            setForm={setForm}
+            topics={topics}
+            units={units}
+            idPrefix="edit-passage-"
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            取消
+          </Button>
+          <LoadingButton
+            disabled={!canSubmit}
+            loading={pending}
+            onClick={() => onSubmit(form)}
+          >
+            保存
+          </LoadingButton>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function PassageCard({
   passage,
+  unitTitle,
   expanded,
   onToggle,
+  onEdit,
   onDelete,
   onMutated,
 }: {
   passage: PassageWithSentences
+  unitTitle: string
   expanded: boolean
   onToggle: () => void
+  onEdit: () => void
   onDelete: () => void
   onMutated: () => void
 }) {
@@ -255,6 +529,11 @@ function PassageCard({
     onSuccess: () => onMutated(),
   })
 
+  const [sentenceToDelete, setSentenceToDelete] = useState<{
+    id: string
+    text: string | null
+  } | null>(null)
+
   const autoSplit = useMutation({
     mutationFn: () =>
       AdminService.autoSplitSentences({ passageId: passage.id }),
@@ -280,8 +559,12 @@ function PassageCard({
               {(passage.sentences ?? []).length} 句复述
             </span>
           </CardTitle>
-          <CardDescription className="mt-1 font-mono">
-            {passage.slug}
+          <CardDescription className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="font-mono">{passage.slug}</span>
+            <Badge variant="outline">{unitTitle}</Badge>
+            {passage.is_active === false && (
+              <Badge variant="secondary">已停用</Badge>
+            )}
           </CardDescription>
         </div>
         <div className="flex items-center gap-1">
@@ -308,6 +591,18 @@ function PassageCard({
           <Button
             variant="ghost"
             size="icon-sm"
+            aria-label={`编辑 ${passage.title}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onEdit()
+            }}
+          >
+            <Pencil />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`删除 ${passage.title}`}
             onClick={(e) => {
               e.stopPropagation()
               onDelete()
@@ -355,7 +650,10 @@ function PassageCard({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    onClick={() => s.id && deleteSentence.mutate(s.id)}
+                    aria-label="删除复述句"
+                    onClick={() =>
+                      s.id && setSentenceToDelete({ id: s.id, text: s.text })
+                    }
                   >
                     <Trash2 className="size-3.5 text-destructive" />
                   </Button>
@@ -416,6 +714,20 @@ function PassageCard({
           </div>
         </CardContent>
       )}
+
+      <ConfirmDialog
+        open={sentenceToDelete !== null}
+        title={`删除复述句「${sentenceToDelete?.text ?? ""}」？`}
+        description="删除会连同它的标准音一起移除，正在练习的学生下次会拿到别的句子。此操作不可撤销。"
+        confirmText="删除复述句"
+        onOpenChange={(next) => {
+          if (!next) setSentenceToDelete(null)
+        }}
+        onConfirm={async () => {
+          if (sentenceToDelete)
+            await deleteSentence.mutateAsync(sentenceToDelete.id)
+        }}
+      />
     </Card>
   )
 }
