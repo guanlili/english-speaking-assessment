@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { safeLocalStorageGet, safeLocalStorageSet } from "@/utils"
 
 // PRD §4：三种分的来源必须在界面上写清
 const ENGINE_LABELS: Record<string, string> = {
@@ -103,13 +104,11 @@ function RubricBlock({ rubric, engine }: { rubric: unknown; engine: string }) {
               className="h-7 text-xs"
               onClick={() => {
                 const key = "esa:saved-expressions"
-                const saved = JSON.parse(
-                  localStorage.getItem(key) ?? "[]",
-                ) as string[]
+                const saved = safeLocalStorageGet<string[]>(key, [])
                 const merged = Array.from(
                   new Set([...saved, ...data.upgrades!]),
                 )
-                localStorage.setItem(key, JSON.stringify(merged))
+                safeLocalStorageSet(key, merged)
               }}
             >
               <Bookmark />

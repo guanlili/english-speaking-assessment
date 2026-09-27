@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -216,9 +217,9 @@ def create_attempt_upload(
 
     # 队列容量检查：繁忙时拒绝，前端保留录音提示稍后重试
     queued_count = session.exec(
-        select(Attempt).where(Attempt.status == AttemptStatus.QUEUED)
-    ).all()
-    if len(queued_count) >= MAX_QUEUE_SIZE:
+        select(func.count(Attempt.id)).where(Attempt.status == AttemptStatus.QUEUED)
+    ).one()
+    if queued_count >= MAX_QUEUE_SIZE:
         raise HTTPException(
             status_code=503,
             detail="评分队列繁忙，请稍后重试",

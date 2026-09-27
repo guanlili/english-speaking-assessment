@@ -8,6 +8,7 @@ import re
 from dataclasses import dataclass, field
 
 _TOKEN_RE = re.compile(r"[a-z']+")
+_CONSONANTS = set("bcdfghjklmnpqrstvwxyz")
 
 # PRD US-07 标签规则：最高稳定档（至少命中 5 个该档词）即该档，否则降一档
 STABLE_BAND_HITS = 5
@@ -35,13 +36,21 @@ def _lemma_variants(token: str) -> list[str]:
         stem = token[:-3]
         variants.append(stem)
         variants.append(stem + "e")  # making → make
-        if len(stem) > 2 and stem[-1] == stem[-2]:  # running → run
+        if (
+            len(stem) > 2
+            and stem[-1] == stem[-2]
+            and stem[-1] in _CONSONANTS
+        ):  # running → run
             variants.append(stem[:-1])
     if token.endswith("ed") and len(token) > 4:
         stem = token[:-2]
         variants.append(stem)
         variants.append(token[:-1])  # hoped → hope
-        if len(stem) > 2 and stem[-1] == stem[-2]:  # stopped → stop
+        if (
+            len(stem) > 2
+            and stem[-1] == stem[-2]
+            and stem[-1] in _CONSONANTS
+        ):  # stopped → stop
             variants.append(stem[:-1])
     if token.endswith("er") and len(token) > 4:
         variants.append(token[:-2])

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute, redirect } from "@tanstack/react-router"
+import { createFileRoute } from "@tanstack/react-router"
 import { Upload } from "lucide-react"
 import { useRef, useState } from "react"
-import { AdminService, UsersService } from "@/client"
+import { AdminService } from "@/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -17,12 +17,6 @@ import useCustomToast from "@/hooks/useCustomToast"
 
 export const Route = createFileRoute("/_layout/admin/wordlist")({
   component: WordlistAdmin,
-  beforeLoad: async () => {
-    const user = await UsersService.readUserMe()
-    if (!user.is_superuser) {
-      throw redirect({ to: "/" })
-    }
-  },
   head: () => ({ meta: [{ title: `分级词表 - ${APP_NAME}` }] }),
 })
 

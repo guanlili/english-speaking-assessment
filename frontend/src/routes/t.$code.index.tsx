@@ -226,7 +226,8 @@ function TeacherBoardPage() {
     try {
       await navigator.clipboard.writeText(url)
       toast.success("学生入口链接已复制", { description: url })
-    } catch {
+    } catch (err) {
+      console.error("Failed to copy share link:", err)
       toast.error("复制失败，请手动复制", { description: url })
     }
   }

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute, redirect } from "@tanstack/react-router"
+import { createFileRoute } from "@tanstack/react-router"
 import { Pencil, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
-import { AdminService, UsersService } from "@/client"
+import { AdminService } from "@/client"
 import { TopicPicker } from "@/components/Admin/TopicPicker"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import { Badge } from "@/components/ui/badge"
@@ -40,12 +40,6 @@ import useCustomToast from "@/hooks/useCustomToast"
 
 export const Route = createFileRoute("/_layout/admin/units")({
   component: UnitsAdmin,
-  beforeLoad: async () => {
-    const user = await UsersService.readUserMe()
-    if (!user.is_superuser) {
-      throw redirect({ to: "/" })
-    }
-  },
   head: () => ({ meta: [{ title: `学习单元 - ${APP_NAME}` }] }),
 })
 

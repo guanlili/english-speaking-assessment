@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute, Link, redirect } from "@tanstack/react-router"
+import { createFileRoute, Link } from "@tanstack/react-router"
 import { Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { AdminService, ClassesService, UsersService } from "@/client"
@@ -35,12 +35,6 @@ import useCustomToast from "@/hooks/useCustomToast"
 
 export const Route = createFileRoute("/_layout/admin/classrooms")({
   component: ClassroomsAdmin,
-  beforeLoad: async () => {
-    const user = await UsersService.readUserMe()
-    if (!user.is_superuser) {
-      throw redirect({ to: "/" })
-    }
-  },
   head: () => ({ meta: [{ title: `课堂码 - ${APP_NAME}` }] }),
 })
 
