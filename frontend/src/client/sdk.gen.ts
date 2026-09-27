@@ -547,6 +547,9 @@ export class AttemptsService {
     /**
      * Create Attempt Upload
      * 上传一条作答。立即返回 queued，分数通过轮询获取（PRD 不可协商 #4）。
+     *
+     * 传 idempotency_key 时：已有同键作答直接返回（重传/断网重试不重复扣费）。
+     * 队列繁忙时返回 503，前端保留录音提示稍后重试。
      * @param data The data for the request.
      * @param data.formData
      * @returns AttemptPublic Successful Response
@@ -708,9 +711,13 @@ export class ClassesService {
     /**
      * Read Next Question
      * 换一题：同主题、同档、未做过的问题（US-06）。用尽时 exhausted=true。
+     *
+     * 传 session_id 时使用该会话的篇目与档位（主题探索轮），
+     * 不传时使用当日课堂会话。
      * @param data The data for the request.
      * @param data.code
      * @param data.studentId
+     * @param data.sessionId
      * @param data.excludeIds
      * @returns NextQuestion Successful Response
      * @throws ApiError
@@ -724,6 +731,7 @@ export class ClassesService {
             },
             query: {
                 student_id: data.studentId,
+                session_id: data.sessionId,
                 exclude_ids: data.excludeIds
             },
             errors: {

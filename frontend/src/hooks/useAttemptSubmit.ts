@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { AttemptsService } from "@/client"
 
 export interface AttemptSubmitTarget {
@@ -7,28 +7,41 @@ export interface AttemptSubmitTarget {
   itemId: string
   studentId?: string
   sessionId?: string
+  idempotencyKey?: string
 }
 
 /**
  * 上传一条作答并轮询到 done/failed（PRD 不可协商 #4：上传与评分分离）。
+ *
+ * submit 接受可选的 targetOverride：录音开始时钉住 item_id / session_id / 题型，
+ * 录音期间老师切换指派不会让旧录音提交到新题新轮。
+ * idempotencyKey 确保重传不重复创建作答/扣费。
+ * 返回 uploadError 区分上传失败（可重传）与评分失败。
  */
 export function useAttemptSubmit(target: AttemptSubmitTarget) {
   const [attemptId, setAttemptId] = useState<string | null>(null)
+  const targetRef = useRef(target)
+  targetRef.current = target
 
   const submitMutation = useMutation({
-    mutationFn: async (variables: { blob: Blob; duration: number }) => {
+    mutationFn: async (variables: {
+      blob: Blob
+      duration: number
+      targetOverride?: AttemptSubmitTarget
+    }) => {
+      const t = variables.targetOverride ?? targetRef.current
       const file = new File([variables.blob], "attempt.webm", {
         type: variables.blob.type || "audio/webm",
       })
       return AttemptsService.createAttemptUpload({
         formData: {
-          // 生成器把 binary 类型标为 string，运行时传 File 均可
           audio: file as unknown as string,
-          item_type: target.itemType,
-          item_id: target.itemId,
+          item_type: t.itemType,
+          item_id: t.itemId,
           duration_s: Math.round(variables.duration * 10) / 10,
-          ...(target.studentId ? { student_id: target.studentId } : {}),
-          ...(target.sessionId ? { session_id: target.sessionId } : {}),
+          ...(t.studentId ? { student_id: t.studentId } : {}),
+          ...(t.sessionId ? { session_id: t.sessionId } : {}),
+          ...(t.idempotencyKey ? { idempotency_key: t.idempotencyKey } : {}),
         },
       })
     },
@@ -49,9 +62,16 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
   const reset = () => setAttemptId(null)
 
   return {
-    submit: submitMutation.mutate,
+    submit: (
+      variables: { blob: Blob; duration: number },
+      targetOverride?: AttemptSubmitTarget,
+    ) => submitMutation.mutate({ ...variables, targetOverride }),
     submitting: submitMutation.isPending,
     submitError: submitMutation.isError,
+    submitErrorData: submitMutation.error as {
+      status?: number
+      body?: { detail?: string }
+    } | null,
     attempt: attemptId ? attemptQuery.data : undefined,
     reset,
   }

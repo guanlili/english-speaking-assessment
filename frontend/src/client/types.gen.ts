@@ -18,6 +18,7 @@ export type AttemptPublic = {
     status: string;
     engine: string;
     duration_s: number;
+    retry_count?: number;
     transcript?: (string | null);
     completeness?: (number | null);
     fluency?: (number | null);
@@ -55,6 +56,7 @@ export type BoardData = {
     engine?: string;
     assignment?: (AssignmentInfo | null);
     submitted_count: number;
+    completed_count: number;
     pending_count: number;
     band_distribution: {
         [key: string]: (number);
@@ -80,6 +82,7 @@ export type BoardStudent = {
     repeat_avg?: (number | null);
     question_avg?: (number | null);
     has_pending: boolean;
+    round_status?: string;
     current_band: string;
     inactive_days7?: boolean;
     xp?: number;
@@ -108,6 +111,10 @@ export type Body_attempts_create_attempt_upload = {
     duration_s: number;
     student_id?: (string | null);
     session_id?: (string | null);
+    /**
+     * 幂等键：重传不重复创建
+     */
+    idempotency_key?: (string | null);
 };
 
 export type Body_login_login_access_token = {
@@ -692,6 +699,7 @@ export type ClassesReadTodayPlanResponse = (TodayPlan);
 export type ClassesReadNextQuestionData = {
     code: string;
     excludeIds?: Array<(string)>;
+    sessionId?: (string | null);
     studentId: string;
 };
 
