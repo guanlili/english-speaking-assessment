@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.api.deps import OptionalCurrentUser, ScoringSubmitter, SessionDep
@@ -235,11 +236,19 @@ def create_attempt_upload(
         duration_s=duration_s,
         engine=settings.SCORING_PROVIDER,
     )
-    attempt = create_attempt(session=session, attempt_in=attempt)
+    try:
+        attempt = create_attempt(session=session, attempt_in=attempt)
+    except IntegrityError as exc:
+        session.rollback()
+        if idempotency_key and "idempotency_key" in str(exc.orig):
+            existing = session.exec(
+                select(Attempt).where(Attempt.idempotency_key == idempotency_key)
+            ).first()
+            if existing is not None:
+                return existing
+        raise
 
     submitter(attempt.id)
-    # 评分可能已在另一会话完成（同步覆写/线程池跑得快），刷新取最新状态；
-    # 异步场景下仍是 queued，由前端轮询获取
     session.refresh(attempt)
     return attempt
 

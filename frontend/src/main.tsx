@@ -24,20 +24,16 @@ const handleApiError = (error: Error) => {
   if (error instanceof ApiError && error.status === 401) {
     const body = error.body as { detail?: unknown } | null
     const detail = typeof body?.detail === "string" ? body.detail : ""
-    const hasTeacherToken = Boolean(localStorage.getItem("access_token"))
-    const hasStudentIdentity = Object.keys(localStorage).some((key) =>
-      key.startsWith("esa:student:"),
-    )
     // 登录接口的 401（密码错误）不属于任何身份失效，走教师分支静默处理
     const isLoginCall = error.url.includes("/login/access-token")
-    // 学生凭证失效：文案标记命中，或「学生身份在、教师令牌不在」的
-    // 纯学生浏览器（后端各处 401 文案不完全一致，不能只靠字符串匹配）
+    // 学生凭证失效：错误文案明确提到学生凭证/重新进入课堂时才清除，
+    // 避免其他接口的 401 误把学生登录态清掉
     const isStudentCredentialFailure =
       !isLoginCall &&
       (detail.includes("学生凭证") ||
         detail.includes("重新进入课堂") ||
         detail.includes("缺少凭证") ||
-        (!hasTeacherToken && hasStudentIdentity))
+        detail.includes("凭证无效"))
     if (isStudentCredentialFailure) {
       // 学生入班凭证失效（过期/课堂被重建）：清掉本地身份，
       // 重载后由各学生页跳回 /j/$code 加入页，而不是跳教师登录

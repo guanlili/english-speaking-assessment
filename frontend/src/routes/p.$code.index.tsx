@@ -159,7 +159,7 @@ function ClassroomPracticePage() {
       nextFlagConsumedRef.current = true
       nextQuestionMutation.mutate()
     }
-  })
+  }, [nextFlag, student, nextQuestionMutation])
 
   // 追加换来的题（本地状态；完成后随 attempts 展示）
   const [extraQuestion, setExtraQuestion] = useState<PlanItem | null>(null)

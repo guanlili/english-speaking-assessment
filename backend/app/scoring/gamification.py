@@ -18,7 +18,6 @@ from app.models import (
     Student,
     StudentBadge,
 )
-
 # 星级分档：平均总评 ≥85 → 3 星；≥70 → 2 星；完成即 1 星
 STARS_3_THRESHOLD = 85
 STARS_2_THRESHOLD = 70
@@ -92,8 +91,24 @@ def settle_session(
     判定「全部完成」：有作答的题目数达到本轮应做题数（expected_items，
     换题追加的作答数多于应做数也视为完成），且每题最新作答均为终态。
     """
+    locked_session = session.exec(
+        select(PracticeSession)
+        .where(PracticeSession.id == practice_session.id)
+        .with_for_update()
+    ).first()
+    if locked_session is None:
+        return
+    practice_session = locked_session
+
     if practice_session.stars is not None:
         return
+
+    locked_student = session.exec(
+        select(Student).where(Student.id == student.id).with_for_update()
+    ).first()
+    if locked_student is None:
+        return
+    student = locked_student
 
     attempts = session.exec(
         select(Attempt).where(Attempt.session_id == practice_session.id)
