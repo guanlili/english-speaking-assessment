@@ -217,7 +217,9 @@ def create_attempt_upload(
 
     # 队列容量检查：繁忙时拒绝，前端保留录音提示稍后重试
     queued_count = session.exec(
-        select(func.count(Attempt.id)).where(Attempt.status == AttemptStatus.QUEUED)
+        select(func.count(Attempt.id)).where(  # type: ignore
+            Attempt.status == AttemptStatus.QUEUED
+        )
     ).one()
     if queued_count >= MAX_QUEUE_SIZE:
         raise HTTPException(

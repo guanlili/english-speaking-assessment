@@ -801,6 +801,7 @@ export class ClassesService {
      * @param data.code
      * @param data.studentId
      * @param data.token 入班时发放的学生轻量凭证
+     * @param data.days 查询最近多少天的轨迹
      * @returns TrailData Successful Response
      * @throws ApiError
      */
@@ -813,7 +814,8 @@ export class ClassesService {
             },
             query: {
                 student_id: data.studentId,
-                token: data.token
+                token: data.token,
+                days: data.days
             },
             errors: {
                 422: 'Validation Error'
