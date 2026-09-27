@@ -20,7 +20,9 @@ import { useEffect, useMemo, useState } from "react"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
+import { RubricBlock } from "@/components/Practice/FeedbackCard"
 import StudentShell from "@/components/Practice/StudentShell"
+import VocabBlock from "@/components/Practice/VocabBlock"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -74,6 +76,15 @@ function RoundResultPage() {
         ...(exploreSessionId ? { sessionId: exploreSessionId } : {}),
       }),
     enabled: student !== null,
+    refetchInterval: (query) =>
+      query.state.data?.attempts.some(
+        (a) =>
+          a.status === "queued" ||
+          a.status === "scoring" ||
+          a.rubric?.status === "pending",
+      )
+        ? 2000
+        : false,
   })
 
   const [replay, setReplay] = useState<{
@@ -167,16 +178,30 @@ function RoundResultPage() {
           | undefined
         return Object.values(v?.hits ?? {}).flat()
       }),
-      rubric: questions.find((d) => d.attempt.rubric)?.attempt.rubric as
-        | {
-            fluency?: number
-            vocabulary?: number
-            grammar?: number
-            task?: number
-            mock_score?: number
-            upgrades?: string[]
-          }
-        | undefined,
+      rubric: (() => {
+        const rubrics = questions
+          .map((d) => d.attempt.rubric)
+          .filter((r) => r && typeof r.mock_score === "number")
+        if (!rubrics.length) return undefined
+        const mean = (key: string) => {
+          const values = rubrics
+            .map((r) => r?.[key])
+            .filter((v): v is number => typeof v === "number")
+          return values.length
+            ? Math.round(
+                (values.reduce((a, b) => a + b, 0) / values.length) * 10,
+              ) / 10
+            : undefined
+        }
+        return {
+          fluency: mean("fluency"),
+          vocabulary: mean("vocabulary"),
+          grammar: mean("grammar"),
+          task: mean("task"),
+          mock_score: mean("mock_score"),
+          count: rubrics.length,
+        }
+      })(),
     }
   }, [doneItems])
 
@@ -274,7 +299,11 @@ function RoundResultPage() {
                   ["口语总评参考", roundStats.overall, "本轮均值"],
                   ["完整度参考", roundStats.completeness, "听后复述"],
                   ["流利度参考", roundStats.fluency, "全部题目"],
-                  ["词汇参考档位", roundStats.vocabCefr, "分级词表"],
+                  [
+                    "词汇参考档位",
+                    roundStats.vocabCefr,
+                    "最近有效问答 · 分级词表",
+                  ],
                 ] as const
               ).map(([label, value, note]) => (
                 <Card key={label}>
@@ -302,14 +331,16 @@ function RoundResultPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="flex flex-wrap gap-1.5">
-                      {roundStats.hitWords.slice(0, 24).map((w) => (
-                        <span
-                          key={w}
-                          className="rounded bg-secondary px-2 py-0.5 text-xs text-primary"
-                        >
-                          {w}
-                        </span>
-                      ))}
+                      {Array.from(new Set(roundStats.hitWords))
+                        .slice(0, 24)
+                        .map((w) => (
+                          <span
+                            key={w}
+                            className="rounded bg-secondary px-2 py-0.5 text-xs text-primary"
+                          >
+                            {w}
+                          </span>
+                        ))}
                     </CardContent>
                   </Card>
                 )}
@@ -321,7 +352,7 @@ function RoundResultPage() {
                       </CardTitle>
                       <CardDescription>
                         模拟分 {roundStats.rubric.mock_score ?? "–"} / 9 ·
-                        非官方成绩
+                        非官方成绩 · 已评 {roundStats.rubric.count} 题均值
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-2.5">
@@ -365,6 +396,43 @@ function RoundResultPage() {
           </Card>
         )}
 
+        {doneItems.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">本轮总评与练习计划</CardTitle>
+              <CardDescription>
+                已完成 {doneItems.length} / {plan.items.length} 题 ·
+                参考分来自转写文本与语速规则，模型四维分单独统计。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <p>
+                本轮平均参考分 {roundStats.overall ?? "–"} / 100。复述完整度{" "}
+                {roundStats.completeness ?? "–"} / 100，流利度参考{" "}
+                {roundStats.fluency ?? "–"} / 100。
+              </p>
+              <p>
+                {roundStats.completeness !== null &&
+                roundStats.completeness < 80
+                  ? "复述优先检查漏读的关键词，对照下面的原文和转写，分句听读后再完整复述。"
+                  : "继续巩固完整表达，复述时注意意群衔接，避免只记住零散单词。"}
+              </p>
+              <p>
+                {roundStats.fluency !== null && roundStats.fluency < 60
+                  ? "下一次先用短句表达完整意思，再逐步连成两到三句；录音回听检查停顿。"
+                  : "在保持表达节奏的基础上，为观点补充理由和具体例子，让回答更充分。"}
+              </p>
+              <p>
+                练习顺序：回听最需要改进的一题 → 对照逐题建议修改表达 →
+                重录并比较转写和参考分。
+              </p>
+              <p className="text-xs text-muted-foreground">
+                转写可能有误；仅凭文本不能准确判断发音、重音和语调。缺失或失败的评价不计入均值，以下保留各题依据。
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {doneItems.map(({ item, attempt }, index) => (
           <Card key={item.id}>
             <CardHeader>
@@ -399,6 +467,12 @@ function RoundResultPage() {
                     <li key={line}>{line}</li>
                   ))}
                 </ul>
+              )}
+              {item.type === "question" && (
+                <>
+                  <RubricBlock rubric={attempt.rubric} engine="" />
+                  <VocabBlock vocab={attempt.vocab} />
+                </>
               )}
               {attempt.attempt_id && (
                 <Button

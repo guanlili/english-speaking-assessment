@@ -34,6 +34,7 @@ from app.scoring.lexicon import analyze_transcript
 logger = logging.getLogger(__name__)
 
 _executor: ThreadPoolExecutor | None = None
+_detail_executor: ThreadPoolExecutor | None = None
 
 
 def build_asr_provider() -> AsrProvider:
@@ -89,6 +90,7 @@ def _score_rubric(prompt: str, band: str, transcript: str) -> dict[str, object] 
             "task": scores.task,
             "mock_score": scores.mock_score,
             "upgrades": scores.upgrades,
+            "advice": scores.advice,
         }
     except Exception as exc:  # noqa: BLE001 - rubric 失败不影响作答本体
         logger.warning("rubric scoring failed: %s", exc)
@@ -134,6 +136,7 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
     session.add(attempt)
     session.commit()
 
+    detail_request: tuple[str, str, str] | None = None
     try:
         audio_path = Path(attempt.audio_path)
         audio = audio_path.read_bytes()
@@ -174,7 +177,8 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             # rubric 四维与模拟分（PRD US-08）：仅 ark 引擎；失败降级不出假分
             # 空转写（没说话/识别不到）不出 0 分模拟——界面显示暂缺
             if engine == "ark" and transcript.strip():
-                attempt.rubric = _score_rubric(prompt, band, transcript)
+                attempt.rubric = {"status": "pending"}
+                detail_request = (prompt, band, transcript)
 
         attempt.status = AttemptStatus.DONE
         attempt.engine = engine
@@ -195,6 +199,28 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             attempt.error = str(exc)[:500]
     session.add(attempt)
     session.commit()
+
+    if detail_request is not None and attempt.status == AttemptStatus.DONE:
+        global _detail_executor
+        if _detail_executor is None:
+            _detail_executor = ThreadPoolExecutor(
+                max_workers=settings.SCORING_WORKERS, thread_name_prefix="feedback"
+            )
+        _detail_executor.submit(_complete_detail, attempt_id, *detail_request)
+
+
+def _complete_detail(
+    attempt_id: uuid.UUID, prompt: str, band: str, transcript: str
+) -> None:
+    from app.core.db import engine
+
+    result = _score_rubric(prompt, band, transcript)
+    with Session(engine) as session:
+        attempt = session.get(Attempt, attempt_id)
+        if attempt is not None and attempt.status == AttemptStatus.DONE:
+            attempt.rubric = result or {"status": "unavailable"}
+            session.add(attempt)
+            session.commit()
 
 
 def _run_in_worker(attempt_id: uuid.UUID) -> None:
@@ -268,6 +294,13 @@ def startup_recovery() -> None:
     from app.core.db import engine
 
     with Session(engine) as session:
+        for attempt in session.exec(
+            select(Attempt).where(Attempt.status == AttemptStatus.DONE)
+        ).all():
+            if attempt.rubric and attempt.rubric.get("status") == "pending":
+                attempt.rubric = {"status": "unavailable"}
+                session.add(attempt)
+        session.commit()
         count = recover_stale_attempts(session)
         if count > 0:
             for attempt in session.exec(
@@ -277,7 +310,10 @@ def startup_recovery() -> None:
 
 
 def shutdown_executor() -> None:
-    global _executor
+    global _executor, _detail_executor
+    if _detail_executor is not None:
+        _detail_executor.shutdown(wait=False)
+        _detail_executor = None
     if _executor is not None:
         _executor.shutdown(wait=False)
         _executor = None

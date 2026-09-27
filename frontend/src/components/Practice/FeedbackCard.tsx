@@ -1,8 +1,6 @@
 import { Bookmark, Loader2, RefreshCw, TriangleAlert } from "lucide-react"
 import type { ReactNode } from "react"
 import type { AttemptPublic } from "@/client"
-import AttemptAudio from "@/components/Practice/AttemptAudio"
-import VocabBlock from "@/components/Practice/VocabBlock"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -44,6 +42,8 @@ interface RubricPayload {
   grammar?: number
   task?: number
   mock_score?: number
+  advice?: string[]
+  status?: string
   upgrades?: string[]
 }
 
@@ -53,8 +53,24 @@ function parseRubric(raw: unknown): RubricPayload | null {
 }
 
 /** 模拟分块（PRD US-08）：四维 + 0-9 模拟分 + 升级表达；无数据不出假分。 */
-function RubricBlock({ rubric, engine }: { rubric: unknown; engine: string }) {
+export function RubricBlock({
+  rubric,
+  engine,
+}: {
+  rubric: unknown
+  engine: string
+}) {
   const data = parseRubric(rubric)
+
+  if (data?.status === "pending" || data?.status === "unavailable") {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {data.status === "pending"
+          ? "详细评价正在生成…"
+          : "详细评价暂缺，请稍后再试。"}
+      </p>
+    )
+  }
 
   if (data === null) {
     // ark 引擎下模型没出分 → 如实显示暂缺，绝不出 0 分
@@ -94,6 +110,13 @@ function RubricBlock({ rubric, engine }: { rubric: unknown; engine: string }) {
           </span>
         ))}
       </div>
+      {data.advice?.length ? (
+        <ul className="list-disc space-y-1 pl-5 text-sm">
+          {data.advice.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ) : null}
       {data.upgrades && data.upgrades.length > 0 && (
         <div className="space-y-1 text-sm">
           <div className="flex items-center justify-between">
@@ -131,7 +154,6 @@ function FeedbackCard({
   itemType = "passage",
   onRepractice,
   extraActions,
-  studentToken,
 }: {
   attempt: AttemptPublic
   itemType?: "passage" | "repeat" | "question"
@@ -191,45 +213,8 @@ function FeedbackCard({
             {attempt.transcript || "（无转写内容）"}
           </p>
         </div>
-        {/* 刚说完就能听自己的录音（结果页弹窗同款接口，attempt id 随机不可猜） */}
-        <div className="space-y-1">
-          <span className="text-sm text-muted-foreground">
-            听听自己刚才的声音
-          </span>
-          <AttemptAudio
-            attemptId={attempt.id}
-            studentToken={studentToken}
-            preload="metadata"
-            className="w-full"
-          />
-        </div>
         <Separator />
-        {isQuestion ? (
-          <div className="space-y-3 py-2">
-            <ScoreItem label="总评（参考）" value={attempt.overall} />
-            {/* 模拟分与升级表达（PRD US-08）：mock 引擎无数据不显示 */}
-            <RubricBlock rubric={attempt.rubric} engine={attempt.engine} />
-            {/* 词汇参考等级（PRD US-07）：未配置词表时如实提示 */}
-            <VocabBlock vocab={attempt.vocab} />
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 gap-2 py-2">
-            <ScoreItem label="完整度" value={attempt.completeness} />
-            <ScoreItem label="流利度" value={attempt.fluency} />
-            <ScoreItem label="总评" value={attempt.overall} />
-          </div>
-        )}
-        <Separator />
-        {attempt.advice && attempt.advice.length > 0 && (
-          <div className="space-y-1">
-            <span className="text-sm text-muted-foreground">建议</span>
-            <ul className="list-disc space-y-1 pl-5">
-              {attempt.advice.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-          </div>
-        )}
+        <ScoreItem label="本次参考分 / 100" value={attempt.overall} />
       </CardContent>
       <CardFooter className="flex-col items-start gap-3">
         <p className="text-xs text-muted-foreground">

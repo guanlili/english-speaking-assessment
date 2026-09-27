@@ -184,3 +184,51 @@ def test_unknown_passage_404(client: TestClient) -> None:
         },
     )
     assert resp.status_code == 404
+
+
+def test_quick_feedback_committed_before_detail(
+    client: TestClient,
+    inline_scoring: None,
+    monkeypatch: pytest.MonkeyPatch,
+    db: Session,
+) -> None:
+    """详细评价未执行时，分数与转写已经持久化并可轮询。"""
+    from unittest.mock import Mock
+
+    from app.core import db as db_module
+
+    provider = Mock(name="asr")
+    provider.name = "ark"
+    provider.transcribe.return_value = "I like cats because they are friendly."
+    detail_executor = Mock()
+    monkeypatch.setattr(worker, "build_asr_provider", lambda: provider)
+    monkeypatch.setattr(
+        worker, "ensure_ark_supported", lambda audio, mime: (audio, mime)
+    )
+    monkeypatch.setattr(worker, "_resolve_read_aloud_item", lambda *_: None)
+    monkeypatch.setattr(
+        worker, "_resolve_question_prompt", lambda *_: ("Why cats?", "B1")
+    )
+    monkeypatch.setattr(worker, "_detail_executor", detail_executor)
+    monkeypatch.setattr(db_module, "engine", db.get_bind())
+    passage_id = client.get("/api/v1/practice/passage").json()["id"]
+    response = client.post(
+        "/api/v1/attempts",
+        files={"audio": wav_upload(8.0)},
+        data={"item_type": "passage", "item_id": passage_id, "duration_s": "8.0"},
+    )
+    data = response.json()
+    assert response.status_code == 200
+    assert data["status"] == "done"
+    assert data["overall"] is not None
+    assert data["transcript"] == provider.transcribe.return_value
+    assert data["rubric"] == {"status": "pending"}
+    detail_executor.submit.assert_called_once()
+
+    monkeypatch.setattr(worker, "_score_rubric", lambda *_: None)
+    callback, *args = detail_executor.submit.call_args.args
+    callback(*args)
+    polled = client.get(f"/api/v1/attempts/{data['id']}").json()
+    assert polled["status"] == "done"
+    assert polled["overall"] == data["overall"]
+    assert polled["rubric"] == {"status": "unavailable"}
