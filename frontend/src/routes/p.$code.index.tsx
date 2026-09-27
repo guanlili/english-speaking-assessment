@@ -20,6 +20,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
+import FeedbackCard from "@/components/Practice/FeedbackCard"
 import SpeakButton from "@/components/Practice/SpeakButton"
 import StudentShell from "@/components/Practice/StudentShell"
 import { Button } from "@/components/ui/button"
@@ -295,7 +296,7 @@ function ClassroomPracticePage() {
     submitting || (attemptStatus !== undefined && !attemptTerminal)
   const recorderReset = recorder.reset
 
-  // 评分完成：同步今日计划（进度、升降档后的问答）；成功自动进入下一题，失败留在本题可重录
+  // 评分完成：同步今日计划（进度、升降档后的问答）；保留单题简短反馈，学生点击后继续
   useEffect(() => {
     if (!attemptTerminal) return
     void queryClient.invalidateQueries({
@@ -305,25 +306,12 @@ function ClassroomPracticePage() {
       toast.error("这次没有评出来", { description: "可以再录一次" })
       return
     }
-    // 不再逐题展示反馈：清掉钉住的题，视图自动滑到下一题，结果统一在结果页看
-    setPinnedItemId(null)
-    setFocusItemId(null)
-    recorderReset()
-    resetAttempt()
-  }, [
-    attemptTerminal,
-    attemptFailed,
-    queryClient,
-    code,
-    student?.id,
-    recorderReset,
-    resetAttempt,
-  ])
+  }, [attemptTerminal, attemptFailed, queryClient, code, student?.id])
 
   // 全部完成后自动进入结果页统一展示（本次停留提交过 + 本地评分已结束 + 服务端计划全部完成）
   useEffect(() => {
     if (!allDone || !submittedRef.current || navigatedRef.current) return
-    if (attemptStatus !== undefined && !attemptTerminal) return
+    if (attemptStatus !== undefined) return
     if (attemptFailed) return
     navigatedRef.current = true
     void navigate({
@@ -331,15 +319,7 @@ function ClassroomPracticePage() {
       params: { code },
       search: exploreSessionId ? { explore: exploreSessionId } : {},
     })
-  }, [
-    allDone,
-    attemptStatus,
-    attemptTerminal,
-    attemptFailed,
-    navigate,
-    code,
-    exploreSessionId,
-  ])
+  }, [allDone, attemptStatus, attemptFailed, navigate, code, exploreSessionId])
 
   if (student === null) return null
 
@@ -608,8 +588,8 @@ function ClassroomPracticePage() {
                       {scoring ? (
                         <p className="text-xs text-muted-foreground">
                           {isLastQuestion
-                            ? "完成后自动展示本轮结果"
-                            : "完成后自动进入下一题 · 分数最后一起看"}
+                            ? "先显示本题分数和转写"
+                            : "先显示本题分数和转写，详细评价最后看"}
                         </p>
                       ) : attemptFailed ? (
                         <p className="text-xs text-destructive">
@@ -722,11 +702,33 @@ function ClassroomPracticePage() {
           </aside>
         </div>
 
-        {/* 不逐题出反馈：所有题做完后统一在结果页看 */}
+        {attempt && attemptTerminal && (
+          <FeedbackCard
+            attempt={attempt}
+            itemType={currentItem?.type as "repeat" | "question"}
+            onRepractice={() => {
+              resetAttempt()
+              recorderReset()
+            }}
+            extraActions={
+              !attemptFailed && (
+                <Button
+                  onClick={() => {
+                    setPinnedItemId(null)
+                    setFocusItemId(null)
+                    recorderReset()
+                    resetAttempt()
+                  }}
+                >
+                  {allDone ? "查看详细总反馈" : "下一题"}
+                  <ArrowRight />
+                </Button>
+              )
+            }
+          />
+        )}
         <p className="text-center text-sm text-muted-foreground">
-          {allDone
-            ? "全部完成，可以查看本轮结果。"
-            : "逐题练完，分数和反馈会在最后一题后一起展示。"}
+          每题先看分数和转写，完成后查看全面评价与改进建议。
         </p>
 
         {allDone && (

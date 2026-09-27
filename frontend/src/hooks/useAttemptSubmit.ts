@@ -60,7 +60,7 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
     enabled: attemptId !== null,
     refetchInterval: (query) => {
       const status = query.state.data?.status
-      return status === "done" || status === "failed" ? false : 2000
+      return status === "done" || status === "failed" ? false : 1000
     },
   })
 
