@@ -1,10 +1,10 @@
-import logging
 from datetime import timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import HTMLResponse
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlmodel import SQLModel
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
@@ -20,7 +20,21 @@ from app.utils import (
 
 router = APIRouter(tags=["login"])
 
-logger = logging.getLogger(__name__)
+
+class LoginOptions(SQLModel):
+    demo_enabled: bool
+    registration_enabled: bool
+    password_recovery_enabled: bool
+
+
+@router.get("/login/options", response_model=LoginOptions)
+def read_login_options(response: Response) -> LoginOptions:
+    response.headers["Cache-Control"] = "no-store"
+    return LoginOptions(
+        demo_enabled=settings.ENVIRONMENT == "local",
+        registration_enabled=settings.USERS_OPEN_REGISTRATION,
+        password_recovery_enabled=settings.emails_enabled,
+    )
 
 
 @router.post("/login/access-token")
@@ -78,29 +92,22 @@ def recover_password(email: str, session: SessionDep) -> Message:
     """
     Password Recovery
     """
+    # 在查询账号前统一检查，服务不可用时也不能泄露邮箱是否已注册。
+    if not settings.emails_enabled:
+        raise HTTPException(
+            status_code=503, detail="邮件找回暂不可用，请联系学校管理员重置密码"
+        )
     user = crud.get_user_by_email(session=session, email=email)
-
-    # Always return the same response to prevent email enumeration attacks
-    # Only send email if user actually exists
     if user:
-        if not settings.emails_enabled:
-            # 邮件未配置（SMTP_HOST / EMAILS_FROM_EMAIL 缺失）时不能让接口 500，
-            # 仍返回同样的防枚举响应，服务端记日志提醒运维
-            logger.warning(
-                "Password recovery requested for an existing user, but email is "
-                "not configured (SMTP_HOST / EMAILS_FROM_EMAIL missing); "
-                "no email sent."
-            )
-        else:
-            password_reset_token = generate_password_reset_token(email=email)
-            email_data = generate_reset_password_email(
-                email_to=user.email, email=email, token=password_reset_token
-            )
-            send_email(
-                email_to=user.email,
-                subject=email_data.subject,
-                html_content=email_data.html_content,
-            )
+        password_reset_token = generate_password_reset_token(email=email)
+        email_data = generate_reset_password_email(
+            email_to=user.email, email=email, token=password_reset_token
+        )
+        send_email(
+            email_to=user.email,
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+        )
     return Message(
         message="If that email is registered, we sent a password recovery link"
     )

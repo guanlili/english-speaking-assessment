@@ -6,6 +6,7 @@ import {
   redirect,
   useNavigate,
 } from "@tanstack/react-router"
+import { useRef } from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { LoginService } from "@/client"
@@ -33,14 +34,12 @@ const formSchema = z
   .object({
     new_password: z
       .string()
-      .min(1, { message: "Password is required" })
-      .min(8, { message: "Password must be at least 8 characters" }),
-    confirm_password: z
-      .string()
-      .min(1, { message: "Password confirmation is required" }),
+      .min(1, { message: "请输入新密码" })
+      .min(8, { message: "密码至少需要 8 个字符" }),
+    confirm_password: z.string().min(1, { message: "请再次输入新密码" }),
   })
   .refine((data) => data.new_password === data.confirm_password, {
-    message: "The passwords don't match",
+    message: "两次输入的密码不一致",
     path: ["confirm_password"],
   })
 
@@ -60,7 +59,7 @@ export const Route = createFileRoute("/reset-password")({
   head: () => ({
     meta: [
       {
-        title: `Reset Password - ${APP_NAME}`,
+        title: `重置密码 - ${APP_NAME}`,
       },
     ],
   }),
@@ -70,6 +69,7 @@ function ResetPassword() {
   const { token } = Route.useSearch()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const navigate = useNavigate()
+  const submissionInFlight = useRef(false)
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -85,14 +85,19 @@ function ResetPassword() {
     mutationFn: (data: { new_password: string; token: string }) =>
       LoginService.resetPassword({ requestBody: data }),
     onSuccess: () => {
-      showSuccessToast("Password updated successfully")
+      showSuccessToast("密码已重置，请使用新密码登录")
       form.reset()
       navigate({ to: "/login" })
     },
     onError: handleError.bind(showErrorToast),
+    onSettled: () => {
+      submissionInFlight.current = false
+    },
   })
 
   const onSubmit = (data: FormData) => {
+    if (!token || mutation.isPending || submissionInFlight.current) return
+    submissionInFlight.current = true
     mutation.mutate({ new_password: data.new_password, token })
   }
 
@@ -100,11 +105,12 @@ function ResetPassword() {
     <AuthLayout>
       <Form {...form}>
         <form
+          noValidate
           onSubmit={form.handleSubmit(onSubmit)}
           className="flex flex-col gap-6"
         >
           <div className="flex flex-col items-center gap-2 text-center">
-            <h1 className="text-2xl font-bold">Reset Password</h1>
+            <h1 className="text-2xl font-bold">重置密码</h1>
           </div>
 
           <div className="grid gap-4">
@@ -113,11 +119,12 @@ function ResetPassword() {
               name="new_password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>New Password</FormLabel>
+                  <FormLabel>新密码</FormLabel>
                   <FormControl>
                     <PasswordInput
                       data-testid="new-password-input"
-                      placeholder="New Password"
+                      placeholder="请输入新密码"
+                      autoComplete="new-password"
                       {...field}
                     />
                   </FormControl>
@@ -131,11 +138,12 @@ function ResetPassword() {
               name="confirm_password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Confirm Password</FormLabel>
+                  <FormLabel>确认新密码</FormLabel>
                   <FormControl>
                     <PasswordInput
                       data-testid="confirm-password-input"
-                      placeholder="Confirm Password"
+                      placeholder="请再次输入新密码"
+                      autoComplete="new-password"
                       {...field}
                     />
                   </FormControl>
@@ -147,16 +155,16 @@ function ResetPassword() {
             <LoadingButton
               type="submit"
               className="w-full"
-              loading={mutation.isPending}
+              loading={mutation.isPending || form.formState.isSubmitting}
             >
-              Reset Password
+              重置密码
             </LoadingButton>
           </div>
 
           <div className="text-center text-sm">
-            Remember your password?{" "}
+            想起密码了？{" "}
             <RouterLink to="/login" className="underline underline-offset-4">
-              Log in
+              返回登录
             </RouterLink>
           </div>
         </form>

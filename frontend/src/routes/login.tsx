@@ -6,13 +6,14 @@ import {
   redirect,
   useNavigate,
 } from "@tanstack/react-router"
-import { ArrowRight, BookOpen, Presentation, UsersRound } from "lucide-react"
+import { ArrowRight, Presentation, UsersRound } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 import type { Body_login_login_access_token as AccessToken } from "@/client"
 import { LoginService } from "@/client"
 import { LoginLayout } from "@/components/Common/LoginLayout"
+import { Button } from "@/components/ui/button"
 import {
   Form,
   FormControl,
@@ -24,229 +25,290 @@ import {
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { PasswordInput } from "@/components/ui/password-input"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { APP_NAME } from "@/config"
 import useAuth, { isLoggedIn } from "@/hooks/useAuth"
+import useLoginOptions from "@/hooks/useLoginOptions"
+import { extractErrorMessage } from "@/utils"
 
 const formSchema = z.object({
-  username: z.email({ message: "请输入有效的邮箱地址" }),
-  password: z
+  username: z
     .string()
-    .min(1, { message: "请输入密码" })
-    .min(8, { message: "密码至少需要 8 个字符" }),
+    .trim()
+    .pipe(z.email({ message: "请输入有效的邮箱地址" })),
+  password: z.string().min(1, { message: "请输入密码" }),
 }) satisfies z.ZodType<AccessToken>
+
+const classroomSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z0-9]{6}$/, "请输入老师提供的 6 位课堂码"),
+})
 
 type FormData = z.infer<typeof formSchema>
 
 export const Route = createFileRoute("/login")({
   component: Login,
   beforeLoad: async () => {
-    if (isLoggedIn()) {
-      throw redirect({
-        to: "/",
-      })
-    }
+    if (isLoggedIn()) throw redirect({ to: "/" })
   },
-  head: () => ({
-    meta: [
-      {
-        title: `登录 - ${APP_NAME}`,
-      },
-    ],
-  }),
+  head: () => ({ meta: [{ title: `登录 - ${APP_NAME}` }] }),
 })
 
-const DEMO_CLASSROOM = "DEMO01"
+function ClassroomEntry() {
+  const navigate = useNavigate()
+  const form = useForm<z.infer<typeof classroomSchema>>({
+    resolver: zodResolver(classroomSchema),
+    defaultValues: { code: "" },
+  })
+  return (
+    <Form {...form}>
+      <form
+        className="space-y-5"
+        onSubmit={form.handleSubmit(({ code }) =>
+          navigate({ to: "/j/$code", params: { code } }),
+        )}
+        noValidate
+      >
+        <p className="text-sm leading-6 text-muted-foreground">
+          无需注册账号，输入老师提供的课堂码，再填写你的名字即可加入。
+        </p>
+        <FormField
+          control={form.control}
+          name="code"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>课堂码</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  placeholder="例如 AB3D7K"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="h-12 rounded-xl bg-background/50 px-4 font-mono tracking-widest uppercase"
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <LoadingButton
+          type="submit"
+          className="h-12 w-full rounded-xl"
+          loading={form.formState.isSubmitting}
+        >
+          进入课堂 <ArrowRight className="size-4" />
+        </LoadingButton>
+        <p className="text-xs text-muted-foreground">
+          没有课堂码？请向任课老师获取。
+        </p>
+      </form>
+    </Form>
+  )
+}
 
-function RoleCards({ navigate }: { navigate: (to: string) => void }) {
+function DemoEntry() {
   const demoMutation = useMutation({
     mutationFn: (_role: "teacher" | "admin") => LoginService.loginDemo(),
     onSuccess: (data, role) => {
-      localStorage.setItem("access_token", data.access_token ?? "")
+      localStorage.setItem("access_token", data.access_token)
       window.location.href =
-        role === "teacher" ? `/t/${DEMO_CLASSROOM}` : "/admin/passages"
+        role === "teacher" ? "/t/DEMO01" : "/admin/passages"
     },
-    onError: () => {
-      toast.error("演示登录不可用", {
-        description: "该入口仅在本地演示环境开放，请使用下方账号密码登录",
-      })
-    },
+    onError: () => toast.error("演示入口不可用，请使用账号登录"),
   })
-
-  const roles = [
-    {
-      key: "student",
-      label: "学生",
-      desc: "进入课堂练习",
-      icon: UsersRound,
-      onClick: () => navigate(`/j/${DEMO_CLASSROOM}`),
-    },
-    {
-      key: "teacher",
-      label: "教师",
-      desc: "查看课堂面板",
-      icon: Presentation,
-      onClick: () => demoMutation.mutate("teacher"),
-    },
-    {
-      key: "admin",
-      label: "管理员",
-      desc: "管理教学内容",
-      icon: BookOpen,
-      onClick: () => demoMutation.mutate("admin"),
-    },
-  ]
-
   return (
-    <div className="grid grid-cols-3 gap-2.5">
-      {roles.map((role) => (
-        <button
-          key={role.key}
-          type="button"
-          onClick={role.onClick}
+    <details className="border-t pt-4 text-xs text-muted-foreground">
+      <summary className="cursor-pointer rounded-sm focus-visible:outline-ring">
+        本地演示体验（仅开发环境）
+      </summary>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          asChild
+          variant="outline"
+          size="sm"
           disabled={demoMutation.isPending}
-          className="group flex flex-col items-center gap-2 rounded-2xl border border-border bg-background/50 px-2 py-4 text-center transition duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-secondary/40 hover:shadow-sm disabled:pointer-events-none disabled:opacity-50"
         >
-          <span className="flex size-10 items-center justify-center rounded-xl bg-secondary text-secondary-foreground transition group-hover:bg-primary group-hover:text-primary-foreground">
-            <role.icon className="size-4.5" />
-          </span>
-          <span className="text-xs font-semibold">
-            {demoMutation.isPending && role.key === demoMutation.variables
+          <RouterLink to="/j/$code" params={{ code: "DEMO01" }}>
+            学生演示
+          </RouterLink>
+        </Button>
+        {(["teacher", "admin"] as const).map((role) => (
+          <Button
+            key={role}
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={demoMutation.isPending}
+            onClick={() => demoMutation.mutate(role)}
+          >
+            {demoMutation.isPending && demoMutation.variables === role
               ? "进入中…"
-              : role.label}
-          </span>
-          <span className="text-[10px] leading-tight text-muted-foreground">
-            {role.desc}
-          </span>
-        </button>
-      ))}
-    </div>
+              : role === "teacher"
+                ? "教师演示"
+                : "管理员演示"}
+          </Button>
+        ))}
+      </div>
+    </details>
   )
 }
 
 function Login() {
   const { loginMutation } = useAuth()
-  const navigate = useNavigate()
+  const options = useLoginOptions()
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     mode: "onBlur",
-    criteriaMode: "all",
-    defaultValues: {
-      username: "",
-      password: "",
-    },
+    defaultValues: { username: "", password: "" },
   })
-
   const onSubmit = (data: FormData) => {
-    if (loginMutation.isPending) return
-    loginMutation.mutate(data)
+    if (!loginMutation.isPending) loginMutation.mutate(data)
   }
 
   return (
     <LoginLayout>
-      <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit(onSubmit)}
-          className="flex flex-col gap-6"
-        >
-          <div className="flex flex-col gap-2">
-            <p className="mb-1 text-[10px] font-semibold tracking-[0.22em] text-primary">
-              WELCOME BACK
-            </p>
-            <h2 className="text-2xl font-semibold sm:text-3xl">
-              欢迎回到 SpeakUp
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              准备好了吗？开启今天的表达之旅。
-            </p>
-          </div>
-
-          <div className="grid gap-3">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-medium">选择你的角色</span>
-              <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] text-accent-foreground">
-                演示体验 · 免登录
-              </span>
-            </div>
-            <RoleCards navigate={(to) => void navigate({ to })} />
-          </div>
-
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="h-px flex-1 bg-border" />
-            账号密码登录
-            <span className="h-px flex-1 bg-border" />
-          </div>
-
-          <div className="grid gap-4">
-            <FormField
-              control={form.control}
-              name="username"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>邮箱地址</FormLabel>
-                  <FormControl>
-                    <Input
-                      data-testid="email-input"
-                      placeholder="请输入你的邮箱"
-                      autoComplete="username"
-                      className="h-12 rounded-xl bg-background/50 px-4"
-                      type="email"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage className="text-xs" />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <div className="flex items-center">
-                    <FormLabel>密码</FormLabel>
+      <div className="space-y-5 sm:space-y-6">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold tracking-[0.18em] text-primary">
+            WELCOME TO SPEAKUP
+          </p>
+          <h2 className="text-2xl font-semibold sm:text-3xl">
+            欢迎来到 SpeakUp
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            选择入口，开始今天的口语课堂。
+          </p>
+        </div>
+        <Tabs defaultValue="account" className="gap-5">
+          <TabsList className="grid h-11 w-full grid-cols-2">
+            <TabsTrigger value="student">
+              <UsersRound />
+              学生入班
+            </TabsTrigger>
+            <TabsTrigger value="account">
+              <Presentation />
+              教师 / 管理员
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="student">
+            <ClassroomEntry />
+          </TabsContent>
+          <TabsContent value="account">
+            <Form {...form}>
+              <form
+                onSubmit={form.handleSubmit(onSubmit)}
+                className="space-y-4"
+                noValidate
+              >
+                <FormField
+                  control={form.control}
+                  name="username"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>邮箱地址</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          data-testid="email-input"
+                          placeholder="请输入你的邮箱"
+                          autoComplete="username"
+                          autoCapitalize="none"
+                          spellCheck={false}
+                          className="h-12 rounded-xl bg-background/50 px-4"
+                          type="email"
+                        />
+                      </FormControl>
+                      <FormMessage className="text-xs" />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <div className="flex items-center justify-between gap-3">
+                        <FormLabel>密码</FormLabel>
+                        {options.data?.password_recovery_enabled && (
+                          <RouterLink
+                            to="/recover-password"
+                            className="text-xs text-primary underline-offset-4 hover:underline"
+                          >
+                            忘记密码？
+                          </RouterLink>
+                        )}
+                      </div>
+                      <FormControl>
+                        <PasswordInput
+                          {...field}
+                          data-testid="password-input"
+                          placeholder="请输入密码"
+                          autoComplete="current-password"
+                          className="h-12 rounded-xl bg-background/50 px-4 pr-12"
+                        />
+                      </FormControl>
+                      <FormMessage className="text-xs" />
+                    </FormItem>
+                  )}
+                />
+                {loginMutation.isError && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {extractErrorMessage(loginMutation.error)}
+                  </p>
+                )}
+                <LoadingButton
+                  className="h-12 w-full rounded-xl text-sm"
+                  type="submit"
+                  loading={loginMutation.isPending}
+                >
+                  {loginMutation.isPending ? "正在登录…" : "登录工作台"}
+                  {!loginMutation.isPending && (
+                    <ArrowRight className="size-4" />
+                  )}
+                </LoadingButton>
+              </form>
+            </Form>
+            {options.data && (
+              <div className="mt-4 space-y-2 text-center text-xs leading-5 text-muted-foreground">
+                {options.data.registration_enabled ? (
+                  <p>
+                    还没有账号？{" "}
                     <RouterLink
-                      to="/recover-password"
-                      className="ml-auto text-xs text-primary underline-offset-4 hover:underline"
+                      to="/signup"
+                      className="font-semibold text-primary hover:underline"
                     >
-                      忘记密码？
+                      注册账号
                     </RouterLink>
-                  </div>
-                  <FormControl>
-                    <PasswordInput
-                      data-testid="password-input"
-                      placeholder="请输入密码"
-                      autoComplete="current-password"
-                      className="h-12 rounded-xl bg-background/50 px-4 pr-12"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage className="text-xs" />
-                </FormItem>
-              )}
-            />
-
-            <LoadingButton
-              className="mt-1 h-12 rounded-xl text-sm shadow-lg shadow-primary/10"
-              type="submit"
-              loading={loginMutation.isPending}
+                  </p>
+                ) : (
+                  <p>教师与管理员账号由学校统一开通。</p>
+                )}
+                {!options.data.password_recovery_enabled && (
+                  <p>忘记密码？请联系学校管理员重置。</p>
+                )}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+        {options.isError && (
+          <p role="status" className="text-xs text-muted-foreground">
+            入口信息暂未加载，仍可账号登录或输入课堂码。
+            <button
+              type="button"
+              className="ml-1 text-primary underline"
+              onClick={() => void options.refetch()}
             >
-              {loginMutation.isPending ? "正在登录…" : "登录工作台"}
-              {!loginMutation.isPending && <ArrowRight className="size-4" />}
-            </LoadingButton>
-          </div>
-
-          <div className="text-center text-xs text-muted-foreground">
-            还没有账号？{" "}
-            <RouterLink
-              to="/signup"
-              className="font-semibold text-primary underline-offset-4 hover:underline"
-            >
-              注册账号
-            </RouterLink>
-          </div>
-        </form>
-      </Form>
+              重试
+            </button>
+          </p>
+        )}
+        {options.data?.demo_enabled && <DemoEntry />}
+      </div>
     </LoginLayout>
   )
 }

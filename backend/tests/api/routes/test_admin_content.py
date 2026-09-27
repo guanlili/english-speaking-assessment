@@ -1,7 +1,13 @@
 """管理员内容接口测试（篇目/情景/词表导入/课堂码）。"""
 
+from collections import Counter
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import Session, col, select
+
+from app.core.db import SCHOOL_LIFE_TOPIC, _seed_school_life_questions
+from app.models import Scenario, ScenarioQuestion
 
 
 @pytest.fixture
@@ -108,7 +114,7 @@ def test_scenario_question_crud(
 ) -> None:
     resp = client.post(
         "/api/v1/admin/scenarios",
-        json={"topic": "School Life"},
+        json={"topic": "Test School Life"},
         headers=superuser_token_headers,
     )
     assert resp.status_code == 200
@@ -136,7 +142,7 @@ def test_scenario_question_crud(
     question = ok.json()
 
     listing = client.get("/api/v1/admin/scenarios", headers=superuser_token_headers)
-    mine = next(s for s in listing.json() if s["topic"] == "School Life")
+    mine = next(s for s in listing.json() if s["id"] == scenario["id"])
     assert len(mine["questions"]) == 1
 
     assert (
@@ -153,6 +159,77 @@ def test_scenario_question_crud(
         ).status_code
         == 200
     )
+
+
+def test_school_life_question_bank(
+    client: TestClient, db: Session, superuser_token_headers: dict[str, str]
+) -> None:
+    response = client.get("/api/v1/admin/scenarios", headers=superuser_token_headers)
+    assert response.status_code == 200
+    scenarios = response.json()
+    school = next(s for s in scenarios if s["topic"] == SCHOOL_LIFE_TOPIC)
+    questions = school["questions"]
+    assert school["is_active"] is True
+    assert len(questions) == 10
+    assert Counter(q["band"] for q in questions) == {"A2": 5, "B1": 5}
+    assert len({q["text"] for q in questions}) == 10
+    assert all(q["suggested_seconds"] == 20 for q in questions[:5])
+    assert all(40 <= q["suggested_seconds"] <= 45 for q in questions[5:])
+    pets = next(s for s in scenarios if s["topic"] == "Pets")
+    assert Counter(q["band"] for q in pets["questions"]) == {"A2": 2, "B1": 3, "B2": 2}
+
+    scenario = db.exec(
+        select(Scenario).where(Scenario.topic == SCHOOL_LIFE_TOPIC)
+    ).one()
+    stored = db.exec(
+        select(ScenarioQuestion)
+        .where(ScenarioQuestion.scenario_id == scenario.id)
+        .order_by(col(ScenarioQuestion.order_index))
+    ).all()
+    assert [q.order_index for q in stored] == list(range(10))
+    assert [q.band for q in stored] == ["A2"] * 5 + ["B1"] * 5
+    assert all(q.translation for q in stored)
+
+    _seed_school_life_questions(db)
+    _seed_school_life_questions(db)
+    repeated = client.get(
+        "/api/v1/admin/scenarios", headers=superuser_token_headers
+    ).json()
+    assert repeated == scenarios
+
+
+def test_school_life_seed_preserves_teacher_changes(db: Session) -> None:
+    scenario = db.exec(
+        select(Scenario).where(Scenario.topic == SCHOOL_LIFE_TOPIC)
+    ).one()
+    question = db.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.scenario_id == scenario.id)
+    ).first()
+    assert question is not None
+    original_text = question.text
+    try:
+        question.text = "What do you like about your classroom?"
+        scenario.is_active = False
+        db.add(question)
+        db.add(scenario)
+        db.commit()
+
+        _seed_school_life_questions(db)
+
+        db.refresh(question)
+        db.refresh(scenario)
+        assert question.text == "What do you like about your classroom?"
+        assert scenario.is_active is False
+        questions = db.exec(
+            select(ScenarioQuestion).where(ScenarioQuestion.scenario_id == scenario.id)
+        ).all()
+        assert len(questions) == 10
+    finally:
+        question.text = original_text
+        scenario.is_active = True
+        db.add(question)
+        db.add(scenario)
+        db.commit()
 
 
 def test_wordlist_import_replaces(
