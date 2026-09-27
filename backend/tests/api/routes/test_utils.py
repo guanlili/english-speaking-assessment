@@ -58,7 +58,7 @@ def test_ready_check_timeout_and_recovery(client: TestClient) -> None:
 
 
 def test_recover_password_without_email_configured(client: TestClient) -> None:
-    """找回密码：邮件未配置时不再 500，仍返回防枚举的成功文案，且不尝试发信"""
+    """邮件未配置时明确提示不可用，不假报已发送。"""
     with (
         patch("app.api.routes.login.settings") as mock_settings,
         patch("app.api.routes.login.send_email") as mock_send,
@@ -67,10 +67,8 @@ def test_recover_password_without_email_configured(client: TestClient) -> None:
         r = client.post(
             f"{settings.API_V1_STR}/password-recovery/{settings.FIRST_SUPERUSER}"
         )
-        assert r.status_code == 200
-        assert r.json() == {
-            "message": "If that email is registered, we sent a password recovery link"
-        }
+        assert r.status_code == 503
+        assert r.json() == {"detail": "邮件找回暂不可用，请联系学校管理员重置密码"}
         mock_send.assert_not_called()
 
 

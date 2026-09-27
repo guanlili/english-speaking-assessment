@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 from pwdlib.hashers.bcrypt import BcryptHasher
 from sqlmodel import Session
@@ -11,6 +12,61 @@ from app.models import User, UserCreate
 from app.utils import generate_password_reset_token
 from tests.utils.user import user_authentication_headers
 from tests.utils.utils import random_email, random_lower_string
+
+
+@pytest.mark.parametrize("environment", ["local", "staging", "production"])
+@pytest.mark.parametrize("registration", [False, True])
+@pytest.mark.parametrize("email_enabled", [False, True])
+def test_login_options_match_server_settings(
+    client: TestClient, environment: str, registration: bool, email_enabled: bool
+) -> None:
+    with (
+        patch.object(settings, "ENVIRONMENT", environment),
+        patch.object(settings, "USERS_OPEN_REGISTRATION", registration),
+        patch.object(
+            settings, "SMTP_HOST", "smtp.example.com" if email_enabled else None
+        ),
+        patch.object(settings, "EMAILS_FROM_EMAIL", "support@example.com"),
+    ):
+        response = client.get("/api/v1/login/options")
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.json() == {
+        "demo_enabled": environment == "local",
+        "registration_enabled": registration,
+        "password_recovery_enabled": email_enabled,
+    }
+
+
+@pytest.mark.parametrize("environment", ["staging", "production"])
+def test_demo_login_blocked_outside_local(client: TestClient, environment: str) -> None:
+    with patch.object(settings, "ENVIRONMENT", environment):
+        response = client.post("/api/v1/login/demo")
+    assert response.status_code == 404
+    assert "access_token" not in response.json()
+
+
+@pytest.mark.parametrize("missing_setting", ["SMTP_HOST", "EMAILS_FROM_EMAIL"])
+def test_password_recovery_disabled_without_email(
+    client: TestClient, missing_setting: str
+) -> None:
+    with (
+        patch.object(settings, "SMTP_HOST", "smtp.example.com"),
+        patch.object(settings, "EMAILS_FROM_EMAIL", "support@example.com"),
+        patch.object(settings, missing_setting, None),
+        patch("app.api.routes.login.send_email") as send_email,
+    ):
+        assert (
+            client.get("/api/v1/login/options").json()["password_recovery_enabled"]
+            is False
+        )
+        for email in (settings.FIRST_SUPERUSER, random_email()):
+            response = client.post(f"/api/v1/password-recovery/{email}")
+            assert response.status_code == 503
+            assert response.json() == {
+                "detail": "邮件找回暂不可用，请联系学校管理员重置密码"
+            }
+        send_email.assert_not_called()
 
 
 def test_get_access_token(client: TestClient) -> None:
@@ -50,10 +106,11 @@ def test_recovery_password(
     client: TestClient, normal_user_token_headers: dict[str, str]
 ) -> None:
     with (
-        patch("app.core.config.settings.SMTP_HOST", "smtp.example.com"),
-        patch("app.core.config.settings.SMTP_USER", "admin@example.com"),
+        patch.object(settings, "SMTP_HOST", "smtp.example.com"),
+        patch.object(settings, "EMAILS_FROM_EMAIL", "support@example.com"),
+        patch("app.api.routes.login.send_email") as send_email,
     ):
-        email = "test@example.com"
+        email = settings.EMAIL_TEST_USER
         r = client.post(
             f"{settings.API_V1_STR}/password-recovery/{email}",
             headers=normal_user_token_headers,
@@ -62,21 +119,28 @@ def test_recovery_password(
         assert r.json() == {
             "message": "If that email is registered, we sent a password recovery link"
         }
+        send_email.assert_called_once()
+        assert send_email.call_args.kwargs["email_to"] == email
 
 
 def test_recovery_password_user_not_exits(
     client: TestClient, normal_user_token_headers: dict[str, str]
 ) -> None:
-    email = "jVgQr@example.com"
-    r = client.post(
-        f"{settings.API_V1_STR}/password-recovery/{email}",
-        headers=normal_user_token_headers,
-    )
-    # Should return 200 with generic message to prevent email enumeration attacks
-    assert r.status_code == 200
-    assert r.json() == {
-        "message": "If that email is registered, we sent a password recovery link"
-    }
+    with (
+        patch.object(settings, "SMTP_HOST", "smtp.example.com"),
+        patch.object(settings, "EMAILS_FROM_EMAIL", "support@example.com"),
+        patch("app.api.routes.login.send_email") as send_email,
+    ):
+        email = random_email()
+        r = client.post(
+            f"{settings.API_V1_STR}/password-recovery/{email}",
+            headers=normal_user_token_headers,
+        )
+        assert r.status_code == 200
+        assert r.json() == {
+            "message": "If that email is registered, we sent a password recovery link"
+        }
+        send_email.assert_not_called()
 
 
 def test_reset_password(client: TestClient, db: Session) -> None:

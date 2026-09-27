@@ -7,7 +7,7 @@ import { APP_NAME } from "@/config"
 export function LoginLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-svh bg-[#f8f9f5] dark:bg-background">
-      <header className="mx-auto flex max-w-[1440px] items-center justify-between px-6 py-6 sm:px-10 lg:px-16">
+      <header className="mx-auto flex max-w-[1440px] items-center justify-between px-4 py-4 sm:px-10 lg:px-16 lg:py-6">
         <Logo asLink={false} />
         <div className="flex items-center gap-5">
           <span className="hidden text-xs tracking-wider text-muted-foreground sm:block">
@@ -17,8 +17,11 @@ export function LoginLayout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-[1440px] items-center gap-10 px-6 pb-10 pt-4 sm:px-10 lg:min-h-[calc(100svh-172px)] lg:grid-cols-[1.1fr_1fr] lg:gap-16 lg:px-16 lg:py-8 xl:gap-24">
-        <section className="relative lg:py-6" aria-labelledby="login-intro">
+      <main className="mx-auto grid max-w-[1440px] items-center gap-10 px-4 pb-6 pt-2 sm:px-10 lg:min-h-[calc(100svh-172px)] lg:grid-cols-[1.1fr_1fr] lg:gap-16 lg:px-16 lg:py-8 xl:gap-24">
+        <section
+          className="relative hidden lg:block lg:py-6"
+          aria-labelledby="login-intro"
+        >
           <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-secondary/60 px-3 py-1.5 text-xs font-medium text-secondary-foreground">
             <span className="size-1.5 rounded-full bg-primary" />
             为每一堂英语口语课而来
@@ -96,7 +99,7 @@ export function LoginLayout({ children }: { children: ReactNode }) {
 
         <section
           aria-label="登录 SpeakUp"
-          className="w-full rounded-[28px] border border-border/80 bg-card p-6 shadow-[0_16px_64px_-24px_rgba(32,79,64,0.18)] sm:p-9 lg:max-w-[480px] lg:justify-self-end xl:p-10"
+          className="mx-auto w-full max-w-[480px] rounded-[28px] border border-border/80 bg-card p-5 shadow-[0_16px_64px_-24px_rgba(32,79,64,0.18)] sm:p-9 lg:mx-0 lg:justify-self-end xl:p-10"
         >
           {children}
         </section>

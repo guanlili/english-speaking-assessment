@@ -68,6 +68,70 @@ DEMO_SCENARIO_QUESTIONS = [
 
 DEMO_CLASSROOM_CODE = "DEMO01"
 
+SCHOOL_LIFE_TOPIC = "School Life"
+SCHOOL_LIFE_QUESTIONS = [
+    (
+        "A2",
+        "How do you get to school? What time do you arrive?",
+        "你怎样去学校？几点到校？",
+        20,
+    ),
+    (
+        "A2",
+        "What is your favourite school subject? Why do you like it?",
+        "你最喜欢哪门学科？为什么喜欢它？",
+        20,
+    ),
+    (
+        "A2",
+        "Where do you have lunch at school? What do you usually eat?",
+        "你在学校哪里吃午饭？通常吃什么？",
+        20,
+    ),
+    (
+        "A2",
+        "What do you do with your friends during the school break?",
+        "课间休息时，你和朋友们一起做什么？",
+        20,
+    ),
+    (
+        "A2",
+        "What do you usually do after school? Who do you do it with?",
+        "放学后你通常做什么？和谁一起？",
+        20,
+    ),
+    (
+        "B1",
+        "What do you enjoy most about school? Explain why and give an example.",
+        "你最喜欢学校生活的哪一点？请说明原因并举一个例子。",
+        40,
+    ),
+    (
+        "B1",
+        "Tell me about a school event you enjoyed. What happened, and why was it special for you?",
+        "讲述一次你喜欢的学校活动。发生了什么？为什么这次活动对你很特别？",
+        45,
+    ),
+    (
+        "B1",
+        "Do you prefer studying alone or with classmates? Compare the two and explain your choice.",
+        "你更喜欢独自学习还是和同学一起学习？请比较两种方式并说明你的选择。",
+        45,
+    ),
+    (
+        "B1",
+        "Your school wants to start a new club: a sports club, a music club or a reading club. Which would you suggest, and why?",
+        "学校想新开一个社团：运动社、音乐社或阅读社。你会建议开哪一个？为什么？",
+        45,
+    ),
+    (
+        "B1",
+        "If you could change one thing about your school day, what would it be? Explain how it would help students.",
+        "如果能改变学校日常安排中的一件事，你会改变什么？请说明这会怎样帮助学生。",
+        45,
+    ),
+]
+
 
 # make sure all SQLModel models are imported (app.models) before initializing DB
 # otherwise, SQLModel might fail to initialize relationships properly
@@ -139,7 +203,32 @@ def _seed_practice_content(session: Session) -> None:
         session.add(Classroom(code=DEMO_CLASSROOM_CODE, class_size=40))
         session.commit()
 
+    _seed_school_life_questions(session)
     _seed_wordlist(session)
+
+
+def _seed_school_life_questions(session: Session) -> None:
+    # 已有主题由老师维护，初始化不覆盖编辑，也不恢复已删除的题目。
+    if session.exec(
+        select(Scenario).where(Scenario.topic == SCHOOL_LIFE_TOPIC)
+    ).first():
+        return
+
+    scenario = Scenario(topic=SCHOOL_LIFE_TOPIC)
+    session.add(scenario)
+    session.flush()
+    for index, (band, text, translation, seconds) in enumerate(SCHOOL_LIFE_QUESTIONS):
+        session.add(
+            ScenarioQuestion(
+                scenario_id=scenario.id,
+                band=band,
+                order_index=index,
+                text=text,
+                translation=translation,
+                suggested_seconds=seconds,
+            )
+        )
+    session.commit()
 
 
 def init_db(session: Session) -> None:

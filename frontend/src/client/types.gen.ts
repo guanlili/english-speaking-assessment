@@ -190,6 +190,12 @@ export type LearningPath = {
     units: Array<PathUnit>;
 };
 
+export type LoginOptions = {
+    demo_enabled: boolean;
+    registration_enabled: boolean;
+    password_recovery_enabled: boolean;
+};
+
 export type Message = {
     message: string;
 };
@@ -783,6 +789,8 @@ export type ClassesStartExploreData = {
 };
 
 export type ClassesStartExploreResponse = (ExploreStarted);
+
+export type LoginReadLoginOptionsResponse = (LoginOptions);
 
 export type LoginLoginAccessTokenData = {
     formData: Body_login_login_access_token;

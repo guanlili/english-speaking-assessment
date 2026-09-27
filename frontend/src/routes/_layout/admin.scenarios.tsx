@@ -36,7 +36,7 @@ export const Route = createFileRoute("/_layout/admin/scenarios")({
       throw redirect({ to: "/" })
     }
   },
-  head: () => ({ meta: [{ title: `情景与问法 - ${APP_NAME}` }] }),
+  head: () => ({ meta: [{ title: `口语分级题库 - ${APP_NAME}` }] }),
 })
 
 interface QuestionShape {
@@ -55,6 +55,7 @@ interface ScenarioShape {
 }
 
 const BANDS = ["A2", "B1", "B2"] as const
+const BAND_LABELS = { A2: "KET · A2", B1: "PET · B1", B2: "B2 · 进阶" }
 
 function ScenariosAdmin() {
   const queryClient = useQueryClient()
@@ -84,9 +85,12 @@ function ScenariosAdmin() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">情景与问法</h1>
+        <h1 className="text-2xl font-bold tracking-tight">口语分级题库</h1>
         <p className="text-muted-foreground">
-          每个主题一组问法，分属低/中/高档（A2/B1/B2）。主题需与篇目的主题一致才会配对。
+          同一主题，分级练习：KET 对应 A2，PET 对应 B1，另有 B2 进阶题。
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          题目用于课堂练习，非官方考试真题。主题需与篇目的主题一致才会配对。
         </p>
       </div>
 
@@ -273,7 +277,10 @@ function ScenarioCard({
               <Badge variant="secondary">已停用</Badge>
             )}
           </div>
-          <CardDescription>{scenario.questions.length} 个问法</CardDescription>
+          <CardDescription>
+            {scenario.topic === "School Life" ? "学校生活 · " : ""}共{" "}
+            {scenario.questions.length} 道题
+          </CardDescription>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 whitespace-nowrap text-sm">
@@ -301,14 +308,23 @@ function ScenarioCard({
           if (questions.length === 0) return null
           return (
             <div key={band} className="space-y-1">
-              <Badge variant="outline">{band}</Badge>
-              {questions.map((q) => (
+              <Badge variant="outline">
+                {BAND_LABELS[band]} · {questions.length} 道
+              </Badge>
+              {questions.map((q, index) => (
                 <div
                   key={q.id}
                   className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
                 >
-                  <span className="text-sm">{q.text}</span>
-                  <div className="flex items-center gap-1">
+                  <div className="space-y-1">
+                    <p className="text-sm">
+                      {index + 1}. {q.text}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      建议作答 {q.suggested_seconds} 秒
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
                     <AudioSetter
                       hasAudio={Boolean(q.audio_url)}
                       text={q.text ?? ""}
@@ -334,7 +350,7 @@ function ScenarioCard({
           )
         })}
         <div className="flex flex-wrap items-end gap-2 border-t pt-3">
-          <div className="w-24 space-y-1">
+          <div className="w-32 space-y-1">
             <Label>档位</Label>
             <Select
               value={question.band}
@@ -346,7 +362,7 @@ function ScenarioCard({
               <SelectContent>
                 {BANDS.map((band) => (
                   <SelectItem key={band} value={band}>
-                    {band}
+                    {BAND_LABELS[band]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -389,7 +405,7 @@ function ScenarioCard({
         {/* AI 起草（不入库，采纳后才保存） */}
         <div className="space-y-2 border-t pt-3">
           <div className="flex flex-wrap items-end gap-2">
-            <div className="w-24 space-y-1">
+            <div className="w-32 space-y-1">
               <Label>AI 档位</Label>
               <Select
                 value={gen.band}
@@ -401,7 +417,7 @@ function ScenarioCard({
                 <SelectContent>
                   {BANDS.map((band) => (
                     <SelectItem key={band} value={band}>
-                      {band}
+                      {BAND_LABELS[band]}
                     </SelectItem>
                   ))}
                 </SelectContent>
