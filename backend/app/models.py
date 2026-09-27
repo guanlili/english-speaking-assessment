@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, date, datetime
 
 from pydantic import EmailStr
-from sqlalchemy import JSON, Column, Date, DateTime
+from sqlalchemy import JSON, Column, Date, DateTime, Index, text
 from sqlmodel import Field, SQLModel
 
 
@@ -103,11 +103,14 @@ class Passage(PassageBase, table=True):
 class PassagePublic(PassageBase):
     id: uuid.UUID
     slug: str
+    # 所属单元：管理端要能读回指派关系（写入口同为 PassageCreate.unit_id）
+    unit_id: uuid.UUID | None = None
     created_at: datetime | None = None
 
 
 class PassageCreate(PassageBase):
-    slug: str = Field(min_length=1, max_length=100)
+    # 留空则由服务端从标题自动生成（同名自动 -2/-3 去重）；显式给值仍查重 409
+    slug: str | None = Field(default=None, max_length=100)
     unit_id: uuid.UUID | None = None
 
 
@@ -126,6 +129,8 @@ class UnitPublic(SQLModel):
     title: str
     topic: str
     is_active: bool
+    # 单元下的启用篇目数：管理端/老师端指派前的完整性检查（0 = 指派后学生无内容）
+    passage_count: int = 0
 
 
 class UnitCreate(SQLModel):
@@ -203,6 +208,11 @@ class Classroom(SQLModel, table=True):
     code: str = Field(unique=True, index=True, max_length=16)
     class_size: int = Field(default=40, ge=1, le=100)
     is_active: bool = True
+    # 授权教师（User.id）：教师面板/指派/名单必须由本人或管理员访问；
+    # 课堂码只用于学生入班，不能凭课堂码查看全班数据
+    owner_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL"
+    )
     # 老师一键解锁全部关卡（默认顺序解锁）
     unlock_all: bool = Field(
         default=False, sa_column_kwargs={"server_default": "false"}
@@ -224,6 +234,7 @@ class ClassroomPublic(SQLModel):
     class_size: int
     is_active: bool
     unlock_all: bool = False
+    owner_id: uuid.UUID | None = None
     created_at: datetime | None = None
 
 
@@ -281,9 +292,26 @@ class StudentPublic(SQLModel):
     classroom_id: uuid.UUID
 
 
+class StudentJoined(StudentPublic):
+    """入班响应：轻量凭证（HMAC 签名，随每次学生请求校验本人身份）。"""
+
+    access_token: str
+
+
 # 一次练习会话：一个学生一天一轮（PRD §8.4：日期、当前档、做到哪一题）
 class PracticeSession(SQLModel, table=True):
     __tablename__ = "practice_session"
+    __table_args__ = (
+        Index(
+            "ix_practice_session_unique",
+            "student_id",
+            "session_date",
+            "passage_id",
+            "mode",
+            unique=True,
+            postgresql_where=text("passage_id IS NOT NULL"),
+        ),
+    )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     classroom_id: uuid.UUID = Field(
@@ -328,6 +356,10 @@ class AttemptItemType:
     QUESTION = "question"
 
 
+MAX_SCORING_RETRIES = 2
+SCORING_STALE_TIMEOUT_S = 120  # 超过此时间的 scoring 视为僵尸
+
+
 class Attempt(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     # 作答对象：passage（MVP 整篇跟读）/ repeat（复述句）/ question（情景问答）
@@ -339,11 +371,22 @@ class Attempt(SQLModel, table=True):
     session_id: uuid.UUID | None = Field(
         default=None, foreign_key="practice_session.id", ondelete="CASCADE"
     )
+    # 幂等键：同一次录音重传不重复创建作答/扣费
+    idempotency_key: str | None = Field(
+        default=None, max_length=64, index=True, sa_column_kwargs={"unique": False}
+    )
     # 服务端存储路径（随机文件名），不通过 API 暴露
     audio_path: str = Field(max_length=512)
     audio_mime: str = Field(default="audio/webm", max_length=100)
     duration_s: float = Field(gt=0)
     status: str = Field(default=AttemptStatus.QUEUED, max_length=16, index=True)
+    # 评分重试次数（上限 MAX_SCORING_RETRIES）
+    retry_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    # worker 领取时间（用于崩溃恢复时识别僵尸 scoring）
+    claimed_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
     # 转写与评分使用的引擎名（mock / ark / …），界面据此标注分数来源（PRD §4）
     engine: str = Field(default="mock", max_length=32)
     transcript: str | None = None
@@ -373,6 +416,7 @@ class AttemptPublic(SQLModel):
     status: str
     engine: str
     duration_s: float
+    retry_count: int = 0
     transcript: str | None = None
     completeness: int | None = None
     fluency: int | None = None
@@ -428,6 +472,8 @@ class PathUnit(SQLModel):
 class AssignmentInfo(SQLModel):
     unit_id: uuid.UUID
     title: str
+    # 指派前完整性检查：该单元当前的启用篇目数
+    passage_count: int = 0
 
 
 class LearningPath(SQLModel):
@@ -495,6 +541,8 @@ class BoardStudent(SQLModel):
     question_avg: float | None = None
     # 有非终态作答 → 前端显示「评分中」并自动刷新
     has_pending: bool
+    # 本轮状态口径（统一统计）：not_started / in_progress / scoring / all_done / has_failures
+    round_status: str = "not_started"
     # 当前练习档（PRD US-10：档位分布）
     current_band: str
     # 过去 7 天无任何作答且加入已超 7 天（PRD US-10：连续缺席口径的简化）
@@ -515,6 +563,8 @@ class BoardData(SQLModel):
     assignment: AssignmentInfo | None = None
     # 今日至少提交 1 题的人数（PRD US-10 完成率的分子；班额为分母）
     submitted_count: int
+    # 今日整轮全部完成的人数（"提交过一道题"不算整轮完成）
+    completed_count: int
     # 尚在评分中的学生数 > 0 时前端轮询
     pending_count: int
     # 当前练习档人数分布（PRD US-10：三档人数）

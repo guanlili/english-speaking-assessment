@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { APP_NAME } from "@/config"
+import type { AttemptSubmitTarget } from "@/hooks/useAttemptSubmit"
 import { useAttemptSubmit } from "@/hooks/useAttemptSubmit"
 import { MAX_RECORD_SECONDS, useRecorder } from "@/hooks/useRecorder"
 import {
@@ -91,6 +92,8 @@ function ClassroomPracticePage() {
   const [pinnedItemId, setPinnedItemId] = useState<string | null>(null)
   // 复述题「收起原文」练记忆（SpeakUp）
   const [hideText, setHideText] = useState(false)
+  // 录音开始时钉住 item_id / session_id / 题型：录音期间老师切换指派不影响旧录音
+  const recordingTargetRef = useRef<AttemptSubmitTarget | null>(null)
 
   const todayQuery = useQuery({
     retry: 1,
@@ -100,6 +103,7 @@ function ClassroomPracticePage() {
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
         studentId: student?.id as string,
+        token: student?.access_token as string,
         ...(exploreSessionId ? { sessionId: exploreSessionId } : {}),
       }),
     enabled: student !== null,
@@ -124,12 +128,15 @@ function ClassroomPracticePage() {
     }
   }, [student, code, navigate])
 
-  // 换一题：同主题同档未做过（US-06）
+  // 换一题：同主题同档未做过（US-06）；探索轮绑定 session_id
   const nextQuestionMutation = useMutation({
     mutationFn: () =>
       ClassesService.readNextQuestion({
         code: code.toUpperCase(),
         studentId: student?.id as string,
+        token: student?.access_token as string,
+        ...(plan?.session_id ? { sessionId: plan.session_id } : {}),
+        ...(items.length ? { excludeIds: items.map((i) => i.id) } : {}),
       }),
     onSuccess: (data) => {
       if (data.question) {
@@ -203,20 +210,52 @@ function ClassroomPracticePage() {
     submitting,
     attempt,
     submitError,
+    submitErrorData,
     reset: resetAttempt,
   } = useAttemptSubmit({
     itemType: (currentItem?.type as "repeat" | "question") ?? "repeat",
     itemId: currentItem?.id ?? "",
     studentId: student?.id,
     sessionId: plan?.session_id,
+    token: student?.access_token,
   })
 
   const recorder = useRecorder({
     onComplete: (rec) => {
       if (currentItem) setPinnedItemId(currentItem.id)
-      submit({ blob: rec.blob, duration: rec.duration })
+      // 使用录音开始时钉住的目标，避免录音期间计划刷新导致提交到新题新轮
+      submit(
+        { blob: rec.blob, duration: rec.duration },
+        recordingTargetRef.current ?? undefined,
+      )
     },
   })
+
+  // 开始录音前钉住当前题 / 会话 / 题型 / 幂等键 / 凭证
+  const startRecording = () => {
+    recordingTargetRef.current = {
+      itemType: (currentItem?.type as "repeat" | "question") ?? "repeat",
+      itemId: currentItem?.id ?? "",
+      studentId: student?.id,
+      sessionId: plan?.session_id,
+      idempotencyKey: crypto.randomUUID(),
+      token: student?.access_token,
+    }
+    recorder.start()
+  }
+
+  // 重传：用相同幂等键重新提交同一段录音（断网/超时后恢复）
+  const retrySubmit = () => {
+    if (recorder.recording) {
+      submit(
+        {
+          blob: recorder.recording.blob,
+          duration: recorder.recording.duration,
+        },
+        recordingTargetRef.current ?? undefined,
+      )
+    }
+  }
 
   // 录音中离开：刷新/关闭浏览器前确认（录音未提交会被丢弃）
   useEffect(() => {
@@ -230,9 +269,18 @@ function ClassroomPracticePage() {
 
   useEffect(() => {
     if (submitError) {
-      toast.error("上传失败", { description: "请检查网络后再录一次" })
+      const status = submitErrorData?.status
+      if (status === 503) {
+        toast.error("评分队列繁忙", {
+          description: "录音已保留，请稍后点重传",
+        })
+      } else {
+        toast.error("上传失败", {
+          description: "录音已保留，可以点重传或重新录一次",
+        })
+      }
     }
-  }, [submitError])
+  }, [submitError, submitErrorData])
 
   // 当前题评分完成后同步今日计划（进度、allDone、升降档后的问答）
   const attemptDone = attempt !== undefined && attempt.status === "done"
@@ -466,11 +514,36 @@ function ClassroomPracticePage() {
                         不用着急，按自己的节奏说
                       </p>
                     </>
+                  ) : submitError && recorder.recording ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={retrySubmit}
+                        disabled={submitting}
+                        aria-label="重传录音"
+                        className="mt-1 grid size-[72px] place-items-center rounded-full bg-primary text-white shadow-[0_0_0_7px_var(--secondary)] transition hover:scale-105 disabled:opacity-50"
+                      >
+                        <ArrowRight className="size-7" />
+                      </button>
+                      <p className="mt-4 text-sm text-destructive">
+                        上传失败，录音已保留
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        点这里重传 · 或
+                        <button
+                          type="button"
+                          onClick={startRecording}
+                          className="ml-1 underline text-primary"
+                        >
+                          重新录
+                        </button>
+                      </p>
+                    </>
                   ) : (
                     <>
                       <button
                         type="button"
-                        onClick={() => recorder.start()}
+                        onClick={startRecording}
                         disabled={submitting}
                         aria-label="开始录音"
                         className="mt-1 grid size-[72px] place-items-center rounded-full bg-primary text-white shadow-[0_0_0_7px_var(--secondary)] transition hover:scale-105 disabled:opacity-50"
@@ -583,7 +656,7 @@ function ClassroomPracticePage() {
             <Card className="hidden lg:block">
               <CardContent className="flex items-start gap-2 py-3.5 text-xs text-muted-foreground">
                 <Shield className="mt-0.5 size-3.5 shrink-0 text-primary" />
-                每次录音只有你和老师能听到。说错了没关系，再录一次就好。
+                每次录音只有你自己和本课授权老师能回听。说错了没关系，再录一次就好。
               </CardContent>
             </Card>
           </aside>
@@ -595,6 +668,7 @@ function ClassroomPracticePage() {
             attempt={attempt}
             itemType={currentItem.type as "repeat" | "question"}
             onRepractice={repractice}
+            studentToken={student?.access_token}
             extraActions={
               <>
                 {attemptDone && (

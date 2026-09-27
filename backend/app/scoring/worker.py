@@ -8,12 +8,15 @@ PRD 不可协商 #4：上传接口立即返回，评分在线程池里异步完�
 import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.models import (
+    MAX_SCORING_RETRIES,
+    SCORING_STALE_TIMEOUT_S,
     Attempt,
     AttemptItemType,
     AttemptStatus,
@@ -112,12 +115,22 @@ def _analyze_vocab(session: Session, transcript: str) -> dict[str, object] | Non
 
 
 def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
-    """同步评分一条作答。可在线程池中调用，也可在测试中直接调用。"""
-    attempt = session.get(Attempt, attempt_id)
-    if attempt is None or attempt.status != AttemptStatus.QUEUED:
-        return
+    """同步评分一条作答。可在线程池中调用，也可在测试中直接调用。
+
+    使用 SELECT FOR UPDATE SKIP LOCKED 原子领取，防止多 worker 重复评分。
+    评分失败时按 retry_count 重试，超限后标记 failed。
+    """
+    # 原子领取：FOR UPDATE SKIP LOCKED 防止并发重复评分
+    attempt = session.exec(
+        select(Attempt)
+        .where(Attempt.id == attempt_id, Attempt.status == AttemptStatus.QUEUED)
+        .with_for_update(skip_locked=True)
+    ).first()
+    if attempt is None:
+        return  # 已被其他 worker 领取或已处理
 
     attempt.status = AttemptStatus.SCORING
+    attempt.claimed_at = datetime.now(UTC)
     session.add(attempt)
     session.commit()
 
@@ -165,10 +178,21 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
 
         attempt.status = AttemptStatus.DONE
         attempt.engine = engine
-    except Exception as exc:  # noqa: BLE001 - 任何引擎异常都落为 failed，音频保留
-        logger.warning("attempt %s scoring failed: %s", attempt_id, exc)
-        attempt.status = AttemptStatus.FAILED
-        attempt.error = str(exc)[:500]
+    except Exception as exc:  # noqa: BLE001 - 任何引擎异常都按重试/失败处理
+        logger.warning(
+            "attempt %s scoring failed (retry %d): %s",
+            attempt_id,
+            attempt.retry_count,
+            exc,
+        )
+        if attempt.retry_count < MAX_SCORING_RETRIES:
+            attempt.retry_count += 1
+            attempt.status = AttemptStatus.QUEUED
+            attempt.claimed_at = None
+            attempt.error = str(exc)[:500]
+        else:
+            attempt.status = AttemptStatus.FAILED
+            attempt.error = str(exc)[:500]
     session.add(attempt)
     session.commit()
 
@@ -179,6 +203,11 @@ def _run_in_worker(attempt_id: uuid.UUID) -> None:
 
     with Session(engine) as session:
         process_attempt(session, attempt_id)
+        # 失败重排队后必须重新投递，否则作答会永久卡在 queued
+        # （retry_count 上限兜底，不会无限循环；测试直接调 process_attempt 不走这里）
+        attempt = session.get(Attempt, attempt_id)
+        if attempt is not None and attempt.status == AttemptStatus.QUEUED:
+            submit_attempt_scoring(attempt_id)
 
 
 def get_executor() -> ThreadPoolExecutor:
@@ -192,6 +221,59 @@ def get_executor() -> ThreadPoolExecutor:
 
 def submit_attempt_scoring(attempt_id: uuid.UUID) -> None:
     get_executor().submit(_run_in_worker, attempt_id)
+
+
+def recover_stale_attempts(session: Session) -> int:
+    """恢复僵尸 scoring 作答：进程崩溃后遗留的 scoring 状态作答。
+
+    超过 SCORING_STALE_TIMEOUT_S 的 scoring 作答：
+    - retry_count 未超限 → 回退为 queued，重新提交评分
+    - retry_count 超限 → 标记为 failed
+
+    返回恢复的作答数。
+    """
+    cutoff = datetime.now(UTC).timestamp() - SCORING_STALE_TIMEOUT_S
+    stale = session.exec(
+        select(Attempt).where(Attempt.status == AttemptStatus.SCORING)
+    ).all()
+    recovered = 0
+    changed = False
+    for attempt in stale:
+        if attempt.claimed_at is None:
+            continue
+        if attempt.claimed_at.timestamp() > cutoff:
+            continue  # 还在正常评分中
+        if attempt.retry_count < MAX_SCORING_RETRIES:
+            attempt.status = AttemptStatus.QUEUED
+            attempt.claimed_at = None
+            attempt.retry_count += 1
+            attempt.error = "worker 崩溃后自动重试"
+            session.add(attempt)
+            recovered += 1
+            changed = True
+        else:
+            attempt.status = AttemptStatus.FAILED
+            attempt.error = "评分多次失败（worker 崩溃后重试上限）"
+            session.add(attempt)
+            changed = True
+    if changed:
+        # 只要有状态变更（含超限标 failed）就必须落库，否则僵尸永远卡在 scoring
+        session.commit()
+        logger.info("recovered %d stale scoring attempts", recovered)
+    return recovered
+
+
+def startup_recovery() -> None:
+    """进程启动时恢复僵尸 scoring 作答并重新提交评分。"""
+    from app.core.db import engine
+
+    with Session(engine) as session:
+        count = recover_stale_attempts(session)
+        if count > 0:
+            for attempt in session.exec(
+                select(Attempt).where(Attempt.status == AttemptStatus.QUEUED)
+            ).all():
+                submit_attempt_scoring(attempt.id)
 
 
 def shutdown_executor() -> None:

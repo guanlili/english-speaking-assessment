@@ -15,9 +15,10 @@ from sqlmodel import Session, select
 from app.api.deps import get_scoring_submitter
 from app.core.config import settings
 from app.main import app
-from app.models import Attempt
+from app.models import Attempt, AttemptStatus
 from app.scoring import worker
 from app.scoring.base import ScoringError
+from tests.utils.audio import wav_upload
 
 
 @pytest.fixture
@@ -35,6 +36,14 @@ def inline_scoring(
     def run_inline(attempt_id: uuid.UUID) -> None:
         with Session(db.get_bind()) as session:
             worker.process_attempt(session, attempt_id)
+        # 自动重试：评分失败后重排队列，继续处理到终态
+        while True:
+            with Session(db.get_bind()) as check:
+                attempt = check.get(Attempt, attempt_id)
+                if attempt is None or attempt.status != AttemptStatus.QUEUED:
+                    break
+            with Session(db.get_bind()) as session:
+                worker.process_attempt(session, attempt_id)
 
     def override_submitter() -> Callable[[uuid.UUID], None]:
         return run_inline
@@ -61,7 +70,7 @@ def test_create_and_poll_attempt(
 
     resp = client.post(
         "/api/v1/attempts",
-        files={"audio": ("attempt.webm", b"fake-audio-bytes", "audio/webm")},
+        files={"audio": wav_upload(12.5)},
         data={
             "item_type": "passage",
             "item_id": passage_id,
@@ -96,7 +105,7 @@ def test_repractice_creates_new_attempt(
     for _ in range(2):
         resp = client.post(
             "/api/v1/attempts",
-            files={"audio": ("a.webm", b"bytes", "audio/webm")},
+            files={"audio": wav_upload(10.0)},
             data={
                 "item_type": "passage",
                 "item_id": passage_id,
@@ -117,7 +126,7 @@ def test_short_recording_rejected(
     passage_id = client.get("/api/v1/practice/passage").json()["id"]
     resp = client.post(
         "/api/v1/attempts",
-        files={"audio": ("a.webm", b"bytes", "audio/webm")},
+        files={"audio": wav_upload(0.4)},
         data={
             "item_type": "passage",
             "item_id": passage_id,
@@ -143,7 +152,7 @@ def test_scoring_failure_keeps_audio(
 
     resp = client.post(
         "/api/v1/attempts",
-        files={"audio": ("a.webm", b"keep-me", "audio/webm")},
+        files={"audio": wav_upload(8.0)},
         data={
             "item_type": "passage",
             "item_id": passage_id,
@@ -167,7 +176,7 @@ def test_unknown_attempt_404(client: TestClient) -> None:
 def test_unknown_passage_404(client: TestClient) -> None:
     resp = client.post(
         "/api/v1/attempts",
-        files={"audio": ("a.webm", b"bytes", "audio/webm")},
+        files={"audio": wav_upload(5.0)},
         data={
             "item_type": "passage",
             "item_id": str(uuid.uuid4()),

@@ -46,6 +46,7 @@ function ClassroomPage() {
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
         studentId: student?.id as string,
+        token: student?.access_token as string,
       }),
     enabled: student !== null,
     staleTime: 60_000,
@@ -199,7 +200,7 @@ function ClassroomPage() {
             </p>
             <p className="flex items-start gap-2">
               <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
-              音频只用于学习反馈，老师可回听，不做其他用途。
+              音频只用于学习反馈，只有你自己和本课授权老师可回听，不做其他用途。
             </p>
           </CardContent>
         </Card>

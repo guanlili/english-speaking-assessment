@@ -4,6 +4,7 @@ import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import { AdminService, UsersService } from "@/client"
+import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import AudioSetter from "@/components/Practice/AudioSetter"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,10 +13,18 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
 
@@ -102,7 +111,26 @@ function ScenariosAdmin() {
       </Card>
 
       {scenariosQuery.isPending ? (
-        <Loader2 className="size-5 animate-spin" />
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+      ) : scenariosQuery.isError ? (
+        <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
+          <p>情景列表加载失败。</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void scenariosQuery.refetch()}
+          >
+            重试
+          </Button>
+        </div>
+      ) : (scenariosQuery.data ?? []).length === 0 ? (
+        <p className="py-8 text-center text-muted-foreground">
+          还没有情景主题，先在上面创建一个（主题需与篇目一致才会配对）。
+        </p>
       ) : (
         (scenariosQuery.data ?? []).map((scenario) => (
           <ScenarioCard
@@ -129,6 +157,8 @@ function ScenarioCard({
     text: "",
     seconds: 30,
   })
+  const [topicDraft, setTopicDraft] = useState(scenario.topic)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const [gen, setGen] = useState({ band: "B1", count: 3, hint: "" })
   const [drafts, setDrafts] = useState<
@@ -190,25 +220,80 @@ function ScenarioCard({
     onSuccess: () => onMutated(),
   })
 
+  const updateScenario = useMutation({
+    mutationFn: (patch: { topic?: string; is_active?: boolean }) =>
+      AdminService.updateScenario({
+        scenarioId: scenario.id,
+        requestBody: patch,
+      }),
+    onSuccess: () => {
+      showSuccessToast("情景已更新")
+      onMutated()
+    },
+    onError: (err: { body?: { detail?: string } }) =>
+      toast.error(err.body?.detail ?? "更新失败"),
+  })
+
   const deleteScenario = useMutation({
     mutationFn: () => AdminService.deleteScenario({ scenarioId: scenario.id }),
-    onSuccess: () => onMutated(),
+    onSuccess: () => {
+      setConfirmDelete(false)
+      onMutated()
+    },
+    onError: (err: { body?: { detail?: string } }) =>
+      toast.error(err.body?.detail ?? "删除失败"),
   })
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <div>
-          <CardTitle className="text-base">{scenario.topic}</CardTitle>
+      <CardHeader className="flex-row items-end justify-between gap-3 space-y-0">
+        <div className="flex-1 space-y-1">
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label="情景主题"
+              className="h-8 max-w-56 font-medium"
+              value={topicDraft}
+              onChange={(e) => setTopicDraft(e.target.value)}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={
+                topicDraft.trim().length === 0 ||
+                topicDraft === scenario.topic ||
+                updateScenario.isPending
+              }
+              onClick={() =>
+                updateScenario.mutate({ topic: topicDraft.trim() })
+              }
+            >
+              改名
+            </Button>
+            {scenario.is_active === false && (
+              <Badge variant="secondary">已停用</Badge>
+            )}
+          </div>
           <CardDescription>{scenario.questions.length} 个问法</CardDescription>
         </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => deleteScenario.mutate()}
-        >
-          <Trash2 className="text-destructive" />
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 whitespace-nowrap text-sm">
+            <Checkbox
+              checked={scenario.is_active !== false}
+              onCheckedChange={(checked) =>
+                updateScenario.mutate({ is_active: checked === true })
+              }
+            />
+            启用
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`删除情景 ${scenario.topic}`}
+            onClick={() => setConfirmDelete(true)}
+          >
+            <Trash2 className="text-destructive" />
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {BANDS.map((band) => {
@@ -251,13 +336,21 @@ function ScenarioCard({
         <div className="flex flex-wrap items-end gap-2 border-t pt-3">
           <div className="w-24 space-y-1">
             <Label>档位</Label>
-            <Input
+            <Select
               value={question.band}
-              onChange={(e) =>
-                setQuestion({ ...question, band: e.target.value })
-              }
-              placeholder="A2/B1/B2"
-            />
+              onValueChange={(next) => setQuestion({ ...question, band: next })}
+            >
+              <SelectTrigger className="h-9 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {BANDS.map((band) => (
+                  <SelectItem key={band} value={band}>
+                    {band}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="min-w-56 flex-1 space-y-1">
             <Label>问法</Label>
@@ -298,11 +391,21 @@ function ScenarioCard({
           <div className="flex flex-wrap items-end gap-2">
             <div className="w-24 space-y-1">
               <Label>AI 档位</Label>
-              <Input
+              <Select
                 value={gen.band}
-                onChange={(e) => setGen({ ...gen, band: e.target.value })}
-                placeholder="A2/B1/B2"
-              />
+                onValueChange={(next) => setGen({ ...gen, band: next })}
+              >
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BANDS.map((band) => (
+                    <SelectItem key={band} value={band}>
+                      {band}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="w-24 space-y-1">
               <Label>数量</Label>
@@ -383,6 +486,16 @@ function ScenarioCard({
           )}
         </div>
       </CardContent>
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`删除情景「${scenario.topic}」？`}
+        description="该主题下的全部问法与录音都会一起删除，学生端不再出现这个主题。此操作不可撤销。"
+        confirmText="删除情景"
+        onOpenChange={setConfirmDelete}
+        onConfirm={async () => {
+          await deleteScenario.mutateAsync()
+        }}
+      />
     </Card>
   )
 }

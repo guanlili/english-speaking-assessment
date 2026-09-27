@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link, useParams } from "@tanstack/react-router"
 import { ArrowDown, ArrowUp, Minus } from "lucide-react"
-import { ClassesService } from "@/client"
+import { ApiError, ClassesService } from "@/client"
 import TrailView from "@/components/Practice/TrailView"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -43,9 +43,15 @@ function StudentDetailPage() {
     )
   }
   if (trailQuery.isError || !trailQuery.data) {
+    const status =
+      trailQuery.error instanceof ApiError ? trailQuery.error.status : undefined
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
-        学生不存在。
+        {status === 403
+          ? "你还不是这个课堂的授权教师，无法查看学生数据。"
+          : status === 404
+            ? "学生不存在。"
+            : "学生轨迹加载失败，请稍后重试。"}
         <Button variant="outline" asChild>
           <Link to="/t/$code" params={{ code }}>
             回面板

@@ -3,6 +3,7 @@
 export type AssignmentInfo = {
     unit_id: string;
     title: string;
+    passage_count?: number;
 };
 
 export type AssignmentRequest = {
@@ -18,6 +19,7 @@ export type AttemptPublic = {
     status: string;
     engine: string;
     duration_s: number;
+    retry_count?: number;
     transcript?: (string | null);
     completeness?: (number | null);
     fluency?: (number | null);
@@ -55,6 +57,7 @@ export type BoardData = {
     engine?: string;
     assignment?: (AssignmentInfo | null);
     submitted_count: number;
+    completed_count: number;
     pending_count: number;
     band_distribution: {
         [key: string]: (number);
@@ -80,6 +83,7 @@ export type BoardStudent = {
     repeat_avg?: (number | null);
     question_avg?: (number | null);
     has_pending: boolean;
+    round_status?: string;
     current_band: string;
     inactive_days7?: boolean;
     xp?: number;
@@ -108,6 +112,14 @@ export type Body_attempts_create_attempt_upload = {
     duration_s: number;
     student_id?: (string | null);
     session_id?: (string | null);
+    /**
+     * 幂等键：重传不重复创建
+     */
+    idempotency_key?: (string | null);
+    /**
+     * 入班时发放的学生轻量凭证
+     */
+    token?: (string | null);
 };
 
 export type Body_login_login_access_token = {
@@ -129,11 +141,14 @@ export type ClassroomPublic = {
     class_size: number;
     is_active: boolean;
     unlock_all?: boolean;
+    owner_id?: (string | null);
     created_at?: (string | null);
 };
 
 export type ClassroomUpdate = {
     unlock_all?: (boolean | null);
+    owner_id?: (string | null);
+    is_active?: (boolean | null);
 };
 
 export type DraftQuestionOut = {
@@ -198,7 +213,7 @@ export type PassageCreate = {
     audio_url?: (string | null);
     suggested_seconds?: number;
     is_active?: boolean;
-    slug: string;
+    slug?: (string | null);
     unit_id?: (string | null);
 };
 
@@ -213,6 +228,7 @@ export type PassagePublic = {
     is_active?: boolean;
     id: string;
     slug: string;
+    unit_id?: (string | null);
     created_at?: (string | null);
 };
 
@@ -227,6 +243,7 @@ export type PassageWithSentences = {
     is_active?: boolean;
     id: string;
     slug: string;
+    unit_id?: (string | null);
     created_at?: (string | null);
     sentences?: Array<RepeatSentence>;
 };
@@ -339,12 +356,16 @@ export type StudentJoin = {
     display_name: string;
 };
 
-export type StudentPublic = {
+/**
+ * 入班响应：轻量凭证（HMAC 签名，随每次学生请求校验本人身份）。
+ */
+export type StudentJoined = {
     id: string;
     display_name: string;
     suffix?: (string | null);
     current_band: string;
     classroom_id: string;
+    access_token: string;
 };
 
 export type TodayPlan = {
@@ -402,6 +423,7 @@ export type UnitPublic = {
     title: string;
     topic: string;
     is_active: boolean;
+    passage_count?: number;
 };
 
 export type UnitUpdate = {
@@ -601,6 +623,8 @@ export type AdminDeleteUnitResponse = ({
     [key: string]: (string);
 });
 
+export type AdminListTopicsResponse = (Array<(string)>);
+
 export type AdminListClassroomsResponse = (Array<ClassroomPublic>);
 
 export type AdminDeactivateClassroomData = {
@@ -652,12 +676,14 @@ export type AttemptsCreateAttemptUploadResponse = (AttemptPublic);
 
 export type AttemptsReadAttemptData = {
     attemptId: string;
+    token?: (string | null);
 };
 
 export type AttemptsReadAttemptResponse = (AttemptPublic);
 
 export type AttemptsReadAttemptAudioData = {
     attemptId: string;
+    token?: (string | null);
 };
 
 export type AttemptsReadAttemptAudioResponse = (unknown);
@@ -679,12 +705,16 @@ export type ClassesJoinClassData = {
     requestBody: StudentJoin;
 };
 
-export type ClassesJoinClassResponse = (StudentPublic);
+export type ClassesJoinClassResponse = (StudentJoined);
 
 export type ClassesReadTodayPlanData = {
     code: string;
     sessionId?: (string | null);
     studentId: string;
+    /**
+     * 入班时发放的学生轻量凭证
+     */
+    token?: (string | null);
 };
 
 export type ClassesReadTodayPlanResponse = (TodayPlan);
@@ -692,7 +722,12 @@ export type ClassesReadTodayPlanResponse = (TodayPlan);
 export type ClassesReadNextQuestionData = {
     code: string;
     excludeIds?: Array<(string)>;
+    sessionId?: (string | null);
     studentId: string;
+    /**
+     * 入班时发放的学生轻量凭证
+     */
+    token?: (string | null);
 };
 
 export type ClassesReadNextQuestionResponse = (NextQuestion);
@@ -706,6 +741,10 @@ export type ClassesReadClassBoardResponse = (BoardData);
 export type ClassesReadStudentTrailData = {
     code: string;
     studentId: string;
+    /**
+     * 入班时发放的学生轻量凭证
+     */
+    token?: (string | null);
 };
 
 export type ClassesReadStudentTrailResponse = (TrailData);
@@ -713,6 +752,10 @@ export type ClassesReadStudentTrailResponse = (TrailData);
 export type ClassesReadLearningPathData = {
     code: string;
     studentId: string;
+    /**
+     * 入班时发放的学生轻量凭证
+     */
+    token?: (string | null);
 };
 
 export type ClassesReadLearningPathResponse = (LearningPath);
@@ -733,6 +776,10 @@ export type ClassesSetAssignmentResponse = ((AssignmentInfo | null));
 export type ClassesStartExploreData = {
     code: string;
     requestBody: ExploreRequest;
+    /**
+     * 入班时发放的学生轻量凭证
+     */
+    token?: (string | null);
 };
 
 export type ClassesStartExploreResponse = (ExploreStarted);

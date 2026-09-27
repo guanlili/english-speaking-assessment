@@ -3,21 +3,23 @@
  * 刷新后仍是同一个人，BDD B）。键按课堂码隔离。
  */
 
-import type { StudentPublic } from "@/client"
+import type { StudentJoined } from "@/client"
 
 export interface StoredStudent {
   id: string
   display_name: string
   suffix: string | null
+  access_token: string
 }
 
 const keyFor = (code: string) => `esa:student:${code.toUpperCase()}`
 
-export function saveStudent(code: string, student: StudentPublic): void {
+export function saveStudent(code: string, student: StudentJoined): void {
   const stored: StoredStudent = {
     id: student.id,
     display_name: student.display_name,
     suffix: student.suffix ?? null,
+    access_token: student.access_token,
   }
   localStorage.setItem(keyFor(code), JSON.stringify(stored))
 }
@@ -30,6 +32,10 @@ export function loadStudent(code: string): StoredStudent | null {
   } catch {
     return null
   }
+}
+
+export function studentToken(code: string): string | null {
+  return loadStudent(code)?.access_token ?? null
 }
 
 export function clearStudent(code: string): void {

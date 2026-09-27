@@ -13,6 +13,13 @@ from app.api.deps import get_scoring_submitter
 from app.core.config import settings
 from app.main import app
 from app.scoring import worker
+from tests.utils.audio import wav_upload
+from tests.utils.credential import (
+    remember_join,
+    student_form,
+    student_params,
+    token_for,
+)
 
 
 @pytest.fixture
@@ -36,7 +43,13 @@ def inline_scoring(
 def _join(client: TestClient, name: str) -> Any:
     resp = client.post("/api/v1/classes/DEMO01/join", json={"display_name": name})
     assert resp.status_code == 200, resp.text
-    return resp.json()
+    return remember_join(resp.json())
+
+
+@pytest.fixture(scope="module", autouse=True)
+def teacher_auth(client: TestClient, superuser_token_headers: dict[str, str]) -> None:
+    """教师端点（board/units/assignment）需要登录：本模块默认带管理员身份。"""
+    client.headers.update(superuser_token_headers)
 
 
 def _make_unit_passage(
@@ -77,14 +90,14 @@ def _finish_round(client: TestClient, plan: dict, student_id: str) -> None:
     for item in plan["items"]:
         resp = client.post(
             "/api/v1/attempts",
-            files={"audio": ("a.webm", b"bytes", "audio/webm")},
-            data={
-                "item_type": item["type"],
-                "item_id": item["id"],
-                "duration_s": "6.0",
-                "student_id": student_id,
-                "session_id": plan["session_id"],
-            },
+            files={"audio": wav_upload(6.0)},
+            data=student_form(
+                student_id,
+                item_type=item["type"],
+                item_id=item["id"],
+                duration_s="6.0",
+                session_id=plan["session_id"],
+            ),
         )
         assert resp.status_code == 200, resp.text
 
@@ -93,7 +106,7 @@ def test_path_single_unit_unlocked(client: TestClient, inline_scoring: None) -> 
     """种子只有一个单元：第一关永远解锁。"""
     student = _join(client, "路径同学")
     resp = client.get(
-        "/api/v1/classes/DEMO01/path", params={"student_id": student["id"]}
+        "/api/v1/classes/DEMO01/path", params=student_params(student["id"])
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -116,21 +129,21 @@ def test_sequential_unlock_and_advance(
     student = _join(client, "闯关同学")
     # 第二关锁定
     path = client.get(
-        "/api/v1/classes/DEMO01/path", params={"student_id": student["id"]}
+        "/api/v1/classes/DEMO01/path", params=student_params(student["id"])
     ).json()
     assert len(path["units"]) == 2
     assert path["units"][1]["locked"] is True
 
     # 今日篇目仍是第一关
     plan = client.get(
-        "/api/v1/classes/DEMO01/today", params={"student_id": student["id"]}
+        "/api/v1/classes/DEMO01/today", params=student_params(student["id"])
     ).json()
 
     # 完成第一关一轮（结算由 /today 聚合触发，先拉一次）
     _finish_round(client, plan, student["id"])
-    client.get("/api/v1/classes/DEMO01/today", params={"student_id": student["id"]})
+    client.get("/api/v1/classes/DEMO01/today", params=student_params(student["id"]))
     path2 = client.get(
-        "/api/v1/classes/DEMO01/path", params={"student_id": student["id"]}
+        "/api/v1/classes/DEMO01/path", params=student_params(student["id"])
     ).json()
     assert path2["units"][0]["rounds_done"] == 1
     assert path2["units"][0]["best_stars"] is not None
@@ -197,7 +210,7 @@ def test_assignment_directs_today_for_whole_class(
     assert resp.json()["title"] == "Unit 2"
 
     plan = client.get(
-        "/api/v1/classes/DEMO01/today", params={"student_id": alice["id"]}
+        "/api/v1/classes/DEMO01/today", params=student_params(alice["id"])
     ).json()
     assert plan["assigned_unit_title"] == "Unit 2"
     # 篇目句子来自 Unit 2 的正文（Cats are quiet...）
@@ -208,7 +221,7 @@ def test_assignment_directs_today_for_whole_class(
     cleared = client.put("/api/v1/classes/DEMO01/assignment", json={"unit_id": None})
     assert cleared.status_code == 200
     plan2 = client.get(
-        "/api/v1/classes/DEMO01/today", params={"student_id": alice["id"]}
+        "/api/v1/classes/DEMO01/today", params=student_params(alice["id"])
     ).json()
     assert plan2["assigned_unit_title"] is None
 
@@ -233,7 +246,7 @@ def test_path_and_board_expose_assignment(
         json={"unit_id": second["unit"]["id"]},
     )
     path = client.get(
-        "/api/v1/classes/DEMO01/path", params={"student_id": student["id"]}
+        "/api/v1/classes/DEMO01/path", params=student_params(student["id"])
     ).json()
     assert path["assignment"]["title"] == "Unit 2"
     assert path["units"][1]["locked"] is False  # 指派豁免锁定
@@ -270,6 +283,7 @@ def test_explore_session_lifecycle(
     resp = client.post(
         "/api/v1/classes/DEMO01/explore",
         json={"unit_id": second["unit"]["id"], "student_id": student["id"]},
+        params={"token": token_for(student["id"])},
     )
     assert resp.status_code == 200, resp.text
     explore = resp.json()
@@ -278,19 +292,20 @@ def test_explore_session_lifecycle(
     again = client.post(
         "/api/v1/classes/DEMO01/explore",
         json={"unit_id": second["unit"]["id"], "student_id": student["id"]},
+        params={"token": token_for(student["id"])},
     )
     assert again.json()["session_id"] == explore["session_id"]
 
     # today?session_id 返回探索轮计划（Unit 2 的复述句）
     plan = client.get(
         "/api/v1/classes/DEMO01/today",
-        params={"student_id": student["id"], "session_id": explore["session_id"]},
+        params=student_params(student["id"], session_id=explore["session_id"]),
     ).json()
     assert "Cats" in plan["items"][0]["text"] or "cats" in plan["items"][0]["text"]
 
     # 默认 today 仍是课堂轮（第一单元），两者互不干扰
     daily_plan = client.get(
-        "/api/v1/classes/DEMO01/today", params={"student_id": student["id"]}
+        "/api/v1/classes/DEMO01/today", params=student_params(student["id"])
     ).json()
     assert daily_plan["session_id"] != explore["session_id"]
 
@@ -299,10 +314,7 @@ def test_explore_session_lifecycle(
     assert (
         client.get(
             "/api/v1/classes/DEMO01/today",
-            params={
-                "student_id": other["id"],
-                "session_id": explore["session_id"],
-            },
+            params=student_params(other["id"], session_id=explore["session_id"]),
         ).status_code
         == 404
     )
@@ -311,14 +323,14 @@ def test_explore_session_lifecycle(
     for item in plan["items"]:
         _resp = client.post(
             "/api/v1/attempts",
-            files={"audio": ("a.webm", b"bytes", "audio/webm")},
-            data={
-                "item_type": item["type"],
-                "item_id": item["id"],
-                "duration_s": "6.0",
-                "student_id": student["id"],
-                "session_id": explore["session_id"],
-            },
+            files={"audio": wav_upload(6.0)},
+            data=student_form(
+                student["id"],
+                item_type=item["type"],
+                item_id=item["id"],
+                duration_s="6.0",
+                session_id=explore["session_id"],
+            ),
         )
         assert _resp.status_code == 200
     board = client.get("/api/v1/classes/DEMO01/board").json()

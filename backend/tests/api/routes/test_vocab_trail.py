@@ -12,9 +12,17 @@ from sqlmodel import Session, select
 from app.api.deps import get_scoring_submitter
 from app.core.config import settings
 from app.main import app
-from app.models import WordlistEntry
+from app.models import Attempt, AttemptStatus, WordlistEntry
 from app.scoring import worker
 from app.scoring.base import ScoringError
+from tests.utils.audio import wav_upload
+from tests.utils.credential import (
+    anonymous,
+    remember_join,
+    student_form,
+    student_params,
+    token_for,
+)
 
 
 class FakeAsr:
@@ -37,6 +45,14 @@ def scripted_scoring(
     def run_inline(attempt_id: uuid.UUID) -> None:
         with Session(db.get_bind()) as session:
             worker.process_attempt(session, attempt_id)
+        # 自动重试：评分失败后重排队列，继续处理到终态
+        while True:
+            with Session(db.get_bind()) as check:
+                attempt = check.get(Attempt, attempt_id)
+                if attempt is None or attempt.status != AttemptStatus.QUEUED:
+                    break
+            with Session(db.get_bind()) as session:
+                worker.process_attempt(session, attempt_id)
 
     def override_submitter() -> Callable[[uuid.UUID], None]:
         return run_inline
@@ -54,29 +70,41 @@ def scripted_scoring(
 def _join(client: TestClient, name: str) -> Any:
     resp = client.post("/api/v1/classes/DEMO01/join", json={"display_name": name})
     assert resp.status_code == 200, resp.text
-    return resp.json()
+    return remember_join(resp.json())
 
 
 def _plan(client: TestClient, student_id: str) -> Any:
     return client.get(
-        "/api/v1/classes/DEMO01/today", params={"student_id": student_id}
+        "/api/v1/classes/DEMO01/today", params=student_params(student_id)
     ).json()
 
 
-def _submit(client: TestClient, item: dict, student_id: str, session_id: str) -> Any:
+def _submit(
+    client: TestClient,
+    item: dict,
+    student_id: str,
+    session_id: str,
+    duration: float = 5.0,
+) -> Any:
     resp = client.post(
         "/api/v1/attempts",
-        files={"audio": ("a.webm", b"bytes", "audio/webm")},
-        data={
-            "item_type": item["type"],
-            "item_id": item["id"],
-            "duration_s": "5.0",
-            "student_id": student_id,
-            "session_id": session_id,
-        },
+        files={"audio": wav_upload(duration)},
+        data=student_form(
+            student_id,
+            item_type=item["type"],
+            item_id=item["id"],
+            duration_s=str(duration),
+            session_id=session_id,
+        ),
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def teacher_auth(client: TestClient, superuser_token_headers: dict[str, str]) -> None:
+    """教师端点（board）需要登录：本模块默认带管理员身份。"""
+    client.headers.update(superuser_token_headers)
 
 
 # ── US-07 词汇量与 CEFR ─────────────────────────────────────────────
@@ -161,7 +189,7 @@ def test_trail_aggregates_by_day(
     _submit(client, repeat, student["id"], plan["session_id"])
 
     resp = client.get(
-        "/api/v1/classes/DEMO01/trail", params={"student_id": student["id"]}
+        "/api/v1/classes/DEMO01/trail", params=student_params(student["id"])
     )
     assert resp.status_code == 200
     trail = resp.json()
@@ -174,17 +202,26 @@ def test_trail_aggregates_by_day(
     assert day["attempt_count"] == 2
 
 
-def test_trail_unknown_student_404(client: TestClient) -> None:
-    resp = client.get(
-        "/api/v1/classes/DEMO01/trail", params={"student_id": str(uuid.uuid4())}
-    )
-    assert resp.status_code == 404
+def test_trail_requires_own_credential(client: TestClient) -> None:
+    """轨迹查询校验本人身份：无凭证 401、拿他人凭证 403（不靠学生 ID）。"""
+    student = _join(client, "轨迹甲")
+    other = _join(client, "轨迹乙")
+    with anonymous(client):
+        missing = client.get(
+            "/api/v1/classes/DEMO01/trail", params={"student_id": student["id"]}
+        )
+        assert missing.status_code == 401
+        foreign = client.get(
+            "/api/v1/classes/DEMO01/trail",
+            params={"student_id": student["id"], "token": token_for(other["id"])},
+        )
+        assert foreign.status_code == 403
 
 
 def test_trail_empty_for_new_student(client: TestClient) -> None:
     student = _join(client, "新同学")
     resp = client.get(
-        "/api/v1/classes/DEMO01/trail", params={"student_id": student["id"]}
+        "/api/v1/classes/DEMO01/trail", params=student_params(student["id"])
     )
     assert resp.status_code == 200
     assert resp.json()["sessions"] == []
@@ -222,6 +259,14 @@ def test_engine_failure_vocab_not_fabricated(
         def run(attempt_id: uuid.UUID) -> None:
             with Session(db.get_bind()) as session:
                 worker.process_attempt(session, attempt_id)
+            # 自动重试：评分失败后重排队列，继续处理到终态
+            while True:
+                with Session(db.get_bind()) as check:
+                    attempt = check.get(Attempt, attempt_id)
+                    if attempt is None or attempt.status != AttemptStatus.QUEUED:
+                        break
+                with Session(db.get_bind()) as session:
+                    worker.process_attempt(session, attempt_id)
 
         return run
 
@@ -248,21 +293,22 @@ def test_trail_band_change_after_upgrade(
     for item in repeats:
         scripted_scoring(item["text"])
         words = len(item["text"].split())
+        duration = round(words / 2.5, 1)
         resp = client.post(
             "/api/v1/attempts",
-            files={"audio": ("a.webm", b"bytes", "audio/webm")},
-            data={
-                "item_type": "repeat",
-                "item_id": item["id"],
-                "duration_s": str(round(words / 2.5, 1)),
-                "student_id": student["id"],
-                "session_id": plan["session_id"],
-            },
+            files={"audio": wav_upload(duration)},
+            data=student_form(
+                student["id"],
+                item_type="repeat",
+                item_id=item["id"],
+                duration_s=str(duration),
+                session_id=plan["session_id"],
+            ),
         )
         assert resp.status_code == 200
 
     trail = client.get(
-        "/api/v1/classes/DEMO01/trail", params={"student_id": student["id"]}
+        "/api/v1/classes/DEMO01/trail", params=student_params(student["id"])
     ).json()
     assert trail["band_change"] == "up"
 
@@ -278,26 +324,23 @@ def test_trail_band_change_keep_when_partial(
     _submit(client, first, student["id"], plan["session_id"])
 
     trail = client.get(
-        "/api/v1/classes/DEMO01/trail", params={"student_id": student["id"]}
+        "/api/v1/classes/DEMO01/trail", params=student_params(student["id"])
     ).json()
     assert trail["band_change"] is None
 
 
-def _finish_round(
-    client: TestClient, plan: dict, student_id: str, transcripts_by_item: dict
-) -> None:
+def _finish_round(client: TestClient, plan: dict, student_id: str) -> None:
     for item in plan["items"]:
-        scripted = transcripts_by_item.get(item["id"], item["text"])
         resp = client.post(
             "/api/v1/attempts",
-            files={"audio": ("a.webm", b"bytes", scripted)},
-            data={
-                "item_type": item["type"],
-                "item_id": item["id"],
-                "duration_s": "6.0",
-                "student_id": student_id,
-                "session_id": plan["session_id"],
-            },
+            files={"audio": wav_upload(6.0)},
+            data=student_form(
+                student_id,
+                item_type=item["type"],
+                item_id=item["id"],
+                duration_s="6.0",
+                session_id=plan["session_id"],
+            ),
         )
         assert resp.status_code == 200, resp.text
 
@@ -308,7 +351,7 @@ def test_settlement_xp_stars_badge_on_today(
     """答完全轮 → /today 结算：1 星保底、XP 入账、首轮徽章、幂等。"""
     student = _join(client, "激励同学")
     plan = _plan(client, student["id"])
-    _finish_round(client, plan, student["id"], {})
+    _finish_round(client, plan, student["id"])
 
     data = _plan(client, student["id"])  # 再拉一次触发结算
     g = data["gamification"]

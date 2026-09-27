@@ -15,10 +15,17 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import func
 from sqlmodel import SQLModel, col, select
 
-from app.api.deps import SessionDep, SuperUserDep
+from app.api.deps import (
+    CurrentUser,
+    OptionalCurrentUser,
+    SessionDep,
+    SuperUserDep,
+)
 from app.core.config import settings
+from app.core.security import create_student_token, verify_student_token
 from app.crud import (
     create_classroom,
     get_classroom_by_code,
@@ -52,11 +59,13 @@ from app.models import (
     ScenarioQuestionPublic,
     Student,
     StudentJoin,
+    StudentJoined,
     StudentPublic,
     TodayPlan,
     TrailData,
     TrailSession,
     Unit,
+    User,
 )
 from app.scoring.bands import BAND_ORDER, adjust_band
 from app.scoring.gamification import (
@@ -101,9 +110,7 @@ def _assignment_unit(session: Any, classroom: Classroom) -> Unit | None:
 def _active_passage(session: Any, student: Student | None = None) -> Passage:
     """课堂练习篇目（优先级）：老师指派单元 > 学生路径 > 全局第一篇。"""
     units = session.exec(
-        select(Unit)
-        .where(Unit.is_active)  # type: ignore[attr-defined]
-        .order_by(col(Unit.order_index))
+        select(Unit).where(Unit.is_active).order_by(col(Unit.order_index))
     ).all()
     if student is not None:
         classroom = session.get(Classroom, student.classroom_id)
@@ -111,7 +118,7 @@ def _active_passage(session: Any, student: Student | None = None) -> Passage:
         if assigned is not None:
             passage = session.exec(
                 select(Passage)
-                .where(Passage.unit_id == assigned.id, Passage.is_active)  # type: ignore[attr-defined]
+                .where(Passage.unit_id == assigned.id, Passage.is_active)
                 .limit(1)
             ).first()
             if passage is not None:
@@ -123,7 +130,7 @@ def _active_passage(session: Any, student: Student | None = None) -> Passage:
     if student is None or not units:
         passage = session.exec(
             select(Passage)
-            .where(Passage.is_active)  # type: ignore[attr-defined]
+            .where(Passage.is_active)
             .order_by(col(Passage.created_at))
             .limit(1)
         ).first()
@@ -190,6 +197,48 @@ def _get_student_of_classroom(
     return student
 
 
+def _require_student_credential(
+    session: SessionDep,
+    classroom: Classroom,
+    student_id: uuid.UUID,
+    token: str | None,
+) -> Student:
+    """学生请求的轻量凭证校验（401=凭证无效/过期，403=凭证不属于该学生）。
+
+    课堂码只用于入班，后续每次请求都凭入班发放的 access_token 证明本人身份。
+    """
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="缺少学生凭证，请重新进入课堂",
+            headers={"WWW-Authenticate": "StudentCredential"},
+        )
+    try:
+        sid, cid, _ = verify_student_token(token)
+    except ValueError:
+        raise HTTPException(
+            status_code=401,
+            detail="学生凭证无效或已过期，请重新进入课堂",
+            headers={"WWW-Authenticate": "StudentCredential"},
+        ) from None
+    if sid != student_id or cid != classroom.id:
+        # 凭证有效但指向他人：权限不足，不触发学生端登出逻辑
+        raise HTTPException(status_code=403, detail="没有权限：凭证与该学生不符")
+    return _get_student_of_classroom(session, classroom, student_id)
+
+
+def _require_classroom_teacher(classroom: Classroom, current_user: User) -> None:
+    """教师端点：本人是指派教师或管理员才能访问（课堂码不能当教师凭据）。"""
+    if current_user.is_superuser:
+        return
+    if classroom.owner_id is not None and classroom.owner_id == current_user.id:
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="没有权限：您不是该课堂的授权教师，请联系管理员绑定后再查看",
+    )
+
+
 @router.post("", response_model=ClassroomPublic)
 def create_class(
     session: SessionDep,
@@ -205,15 +254,22 @@ def create_class(
     raise HTTPException(status_code=500, detail="无法生成唯一课堂码")
 
 
-@router.post("/{code}/join", response_model=StudentPublic)
+@router.post("/{code}/join", response_model=StudentJoined)
 def join_class(session: SessionDep, code: str, join_in: StudentJoin) -> Any:
-    """学生凭课堂码 + 显示名进入；同名追加 4 位区分码（US-04）。"""
+    """学生凭课堂码 + 显示名进入；同名追加 4 位区分码（US-04）。
+
+    返回带轻量凭证 access_token：后续学生请求凭它校验本人身份。
+    """
     classroom = _get_classroom(session, code)
     display_name = join_in.display_name.strip()
     if not display_name:
         raise HTTPException(status_code=422, detail="显示名不能为空")
-    return join_classroom(
+    student = join_classroom(
         session=session, classroom=classroom, display_name=display_name
+    )
+    return StudentJoined(
+        **StudentPublic.model_validate(student).model_dump(),
+        access_token=create_student_token(student.id, classroom.id),
     )
 
 
@@ -263,8 +319,8 @@ def _pick_questions(
     """同主题同档、未做过的优先，按 order_index 稳定排序。
 
     返回 (题目列表, 是否已用尽)。选择是确定性的：刷新不会换题。
-    fill_with_done=True 用于 /today（一轮必须凑满题数，练习允许重做）；
-    换一题（US-06）只允许未做过的，用尽即 exhausted。
+    fill_with_done=True 用于 /today：取前 N 道题（按 order_index 固定题单，
+    提交 Q1 后不会变成 Q2/Q3）；fill_with_done=False 用于换一题（只取未做过）。
     """
     questions = session.exec(
         select(ScenarioQuestion)
@@ -284,10 +340,12 @@ def _pick_questions(
     )
     undone = [q for q in questions if q.id not in done_ids]
     exhausted = len(undone) == 0
-    picked = undone[:limit]
-    if fill_with_done and len(picked) < limit:
-        # 未做的不足时用做过的补齐（练习场景允许重做）
-        picked += [q for q in questions if q not in picked][: limit - len(picked)]
+    if fill_with_done:
+        # /today：按 order_index 固定取前 N 道，提交后不偏移
+        picked = questions[:limit]
+    else:
+        # 换一题：只取未做过的
+        picked = undone[:limit]
     return picked, exhausted
 
 
@@ -302,7 +360,13 @@ def _question_band_for_session(
     if practice_session.question_band is not None:
         return practice_session.question_band
 
-    passage = _active_passage(session)
+    # 使用该会话的篇目，不用全局首篇（老师中途换单元时各轮篇目不同）
+    if practice_session.passage_id is not None:
+        passage = session.get(Passage, practice_session.passage_id)
+    else:
+        passage = _active_passage(session, student)
+    if passage is None:
+        return practice_session.band
     sentences = session.exec(
         select(RepeatSentence)
         .where(RepeatSentence.passage_id == passage.id)
@@ -329,6 +393,7 @@ def read_today_plan(
     session: SessionDep,
     code: str,
     student_id: uuid.UUID = Query(...),
+    token: str | None = Query(default=None, description="入班时发放的学生轻量凭证"),
     session_id: uuid.UUID | None = Query(default=None),
 ) -> Any:
     """今天的练习计划：3 句听后复述 + 2 道该档情景问答（US-05）。
@@ -336,7 +401,7 @@ def read_today_plan(
     传 session_id 时返回该会话的计划（主题探索的自由练习轮）。
     """
     classroom = _get_classroom(session, code)
-    student = _get_student_of_classroom(session, classroom, student_id)
+    student = _require_student_credential(session, classroom, student_id, token)
     today = _today_in_practice_tz()
     if session_id is not None:
         practice_session = session.get(PracticeSession, session_id)
@@ -455,29 +520,48 @@ def read_next_question(
     session: SessionDep,
     code: str,
     student_id: uuid.UUID = Query(...),
+    token: str | None = Query(default=None, description="入班时发放的学生轻量凭证"),
+    session_id: uuid.UUID | None = Query(default=None),
     exclude_ids: list[uuid.UUID] = Query(default=[]),
 ) -> Any:
-    """换一题：同主题、同档、未做过的问题（US-06）。用尽时 exhausted=true。"""
+    """换一题：同主题、同档、未做过的问题（US-06）。用尽时 exhausted=true。
+
+    传 session_id 时使用该会话的篇目与档位（主题探索轮），
+    不传时使用当日课堂会话。
+    """
     classroom = _get_classroom(session, code)
-    student = _get_student_of_classroom(session, classroom, student_id)
-    passage = _active_passage(session, student)
-    practice_session = get_or_create_today_session(
-        session=session,
-        classroom=classroom,
-        student=student,
-        today=_today_in_practice_tz(),
-        passage_id=passage.id,
-    )
-    band = practice_session.question_band or practice_session.band
+    student = _require_student_credential(session, classroom, student_id, token)
+    if session_id is not None:
+        practice_session = session.get(PracticeSession, session_id)
+        if practice_session is None or practice_session.student_id != student.id:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if practice_session.passage_id is not None:
+            passage = session.get(Passage, practice_session.passage_id)
+        else:
+            passage = _active_passage(session, student)
+        if passage is None:
+            raise HTTPException(status_code=404, detail="No active passage")
+        band = practice_session.question_band or practice_session.band
+    else:
+        passage = _active_passage(session, student)
+        practice_session = get_or_create_today_session(
+            session=session,
+            classroom=classroom,
+            student=student,
+            today=_today_in_practice_tz(),
+            passage_id=passage.id,
+        )
+        band = practice_session.question_band or practice_session.band
     scenario = _scenario_for_topic(session, passage.topic)
 
-    questions, _ = _pick_questions(
-        session, scenario, band, student.id, 1, fill_with_done=False
+    # 先取所有未做过的题，再排除当前题单已有的，避免误报题库耗尽
+    questions, exhausted = _pick_questions(
+        session, scenario, band, student.id, limit=999, fill_with_done=False
     )
     excluded = set(exclude_ids)
     candidates = [q for q in questions if q.id not in excluded]
     if not candidates:
-        return NextQuestion(question=None, exhausted=True)
+        return NextQuestion(question=None, exhausted=exhausted)
     return NextQuestion(
         question=ScenarioQuestionPublic.model_validate(candidates[0]),
         exhausted=False,
@@ -485,21 +569,31 @@ def read_next_question(
 
 
 @router.get("/{code}/board", response_model=BoardData)
-def read_class_board(session: SessionDep, code: str) -> Any:
+def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) -> Any:
     """老师名单表（PRD §8.5 2 周）：谁交了、每题分数、音频；允许先显示评分中。
 
-    聚合本课堂所有学生「今日会话」里每题的最新作答。数据在评分写入后出现，
-    不承诺秒级；有 pending 时前端轮询（US-10：最后一人提交后 2 分钟内一致）。
+    需要教师身份：本课指派教师或管理员（课堂码不能当教师凭据）。
     """
     classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
     today = _today_in_practice_tz()
 
-    # 题目骨架：激活篇目的 3 句复述（当前学生可能各有 2 道不同档的问答，
-    # 表头只列复述骨架，问答分数体现在均分里，明细在每生的 items）
-    passage = _active_passage(session)
+    # 当前指派单元对应的篇目（面板和档位计算都用它，不用全局首篇）
+    assigned_unit_board = _assignment_unit(session, classroom)
+    board_passage: Passage | None = None
+    if assigned_unit_board is not None:
+        board_passage = session.exec(
+            select(Passage)
+            .where(Passage.unit_id == assigned_unit_board.id, Passage.is_active)
+            .limit(1)
+        ).first()
+    if board_passage is None:
+        board_passage = _active_passage(session)
+
+    # 题目骨架：当前篇目的 3 句复述
     sentences = session.exec(
         select(RepeatSentence)
-        .where(RepeatSentence.passage_id == passage.id)
+        .where(RepeatSentence.passage_id == board_passage.id)
         .order_by(col(RepeatSentence.order_index))
     ).all()
     skeleton = [
@@ -521,10 +615,22 @@ def read_class_board(session: SessionDep, code: str) -> Any:
             PracticeSession.session_date == today,
             PracticeSession.mode == "daily",
         )
-        # 一天多轮（老师中途换单元）时，取每个学生最新的一轮展示当前进度
         .order_by(col(PracticeSession.created_at))
     ).all()
-    session_by_student = {s.student_id: s for s in today_sessions}
+
+    # A→B→A 修复：优先匹配当前指派篇目的会话，而非仅按创建时间取最新
+    student_sessions: dict[uuid.UUID, list[PracticeSession]] = {}
+    for s in today_sessions:
+        student_sessions.setdefault(s.student_id, []).append(s)
+    session_by_student: dict[uuid.UUID, PracticeSession] = {}
+    assigned_passage_id = board_passage.id if board_passage else None
+    for sid, sessions in student_sessions.items():
+        if assigned_passage_id is not None:
+            matching = [s for s in sessions if s.passage_id == assigned_passage_id]
+            if matching:
+                session_by_student[sid] = matching[-1]
+                continue
+        session_by_student[sid] = sessions[-1]
 
     # 7 日未练口径：加入超过 7 天且窗口内无任何作答（US-10 简化实现）
     from datetime import timedelta
@@ -545,6 +651,7 @@ def read_class_board(session: SessionDep, code: str) -> Any:
     band_distribution = {"A2": 0, "B1": 0, "B2": 0}
     board_students: list[BoardStudent] = []
     submitted_count = 0
+    completed_count = 0
     pending_count = 0
     for student in students:
         practice_session = session_by_student.get(student.id)
@@ -552,6 +659,7 @@ def read_class_board(session: SessionDep, code: str) -> Any:
         repeat_scores: list[float] = []
         question_scores: list[float] = []
         has_pending = False
+        round_status = "not_started"
 
         if practice_session is not None:
             attempts = session.exec(
@@ -610,9 +718,27 @@ def read_class_board(session: SessionDep, code: str) -> Any:
                     )
                 )
 
+        # 统一统计口径：not_started / scoring / in_progress / all_done / has_failures
+        non_missing = [i for i in items if i.status != "missing"]
+        terminal = [
+            i for i in items if i.status in (AttemptStatus.DONE, AttemptStatus.FAILED)
+        ]
+        if not non_missing:
+            round_status = "not_started"
+        elif has_pending:
+            round_status = "scoring"
+        elif len(terminal) < len(items):
+            round_status = "in_progress"
+        elif all(i.status == AttemptStatus.DONE for i in terminal):
+            round_status = "all_done"
+        else:
+            round_status = "has_failures"
+
         done_count = sum(1 for i in items if i.status == AttemptStatus.DONE)
         if any(i.status != "missing" for i in items):
             submitted_count += 1
+        if round_status in ("all_done", "has_failures"):
+            completed_count += 1
         if has_pending:
             pending_count += 1
         joined_before_window = (
@@ -642,6 +768,7 @@ def read_class_board(session: SessionDep, code: str) -> Any:
                     else None
                 ),
                 has_pending=has_pending,
+                round_status=round_status,
                 current_band=student.current_band,
                 inactive_days7=inactive,
                 xp=student.xp,
@@ -659,7 +786,6 @@ def read_class_board(session: SessionDep, code: str) -> Any:
         )
     )
 
-    assigned_unit_board = _assignment_unit(session, classroom)
     latest_engine = session.exec(
         select(Attempt.engine)
         .where(Attempt.status == AttemptStatus.DONE)
@@ -679,6 +805,7 @@ def read_class_board(session: SessionDep, code: str) -> Any:
             else None
         ),
         submitted_count=submitted_count,
+        completed_count=completed_count,
         pending_count=pending_count,
         band_distribution=band_distribution,
         students=board_students,
@@ -691,14 +818,26 @@ def read_student_trail(
     session: SessionDep,
     code: str,
     student_id: uuid.UUID = Query(...),
+    token: str | None = Query(default=None, description="入班时发放的学生轻量凭证"),
+    current_user: OptionalCurrentUser = None,
 ) -> Any:
     """学生进步轨迹（PRD US-09）：按练习日聚合口语参考分与词汇档。
 
-    口语参考分 = 当日问答总评均值；跟读完整度单独一列，不混线。
-    少于 2 次由前端只列表不画趋势。
+    本人学生凭轻量凭证访问（带了凭证就以凭证为准，浏览器里残留的
+    教师 JWT 不抢身份）；教师/管理员凭账号访问（面板学生详情）。
     """
     classroom = _get_classroom(session, code)
-    student = _get_student_of_classroom(session, classroom, student_id)
+    if token:
+        student = _require_student_credential(session, classroom, student_id, token)
+    elif current_user is not None:
+        _require_classroom_teacher(classroom, current_user)
+        student = _get_student_of_classroom(session, classroom, student_id)
+    else:
+        raise HTTPException(
+            status_code=401,
+            detail="缺少学生凭证，请重新进入课堂",
+            headers={"WWW-Authenticate": "StudentCredential"},
+        )
 
     attempts = session.exec(
         select(Attempt)
@@ -817,15 +956,14 @@ def read_learning_path(
     session: SessionDep,
     code: str,
     student_id: uuid.UUID = Query(...),
+    token: str | None = Query(default=None, description="入班时发放的学生轻量凭证"),
 ) -> Any:
     """关卡地图（PRD 拾阶而上 → 多邻国式路径）：单元有序 + 完成轮数/星级 + 锁定。"""
     classroom = _get_classroom(session, code)
-    student = _get_student_of_classroom(session, classroom, student_id)
+    student = _require_student_credential(session, classroom, student_id, token)
 
     units = session.exec(
-        select(Unit)
-        .where(Unit.is_active)  # type: ignore[attr-defined]
-        .order_by(col(Unit.order_index))
+        select(Unit).where(Unit.is_active).order_by(col(Unit.order_index))
     ).all()
     passages = session.exec(select(Passage)).all()
     settled = session.exec(
@@ -890,26 +1028,48 @@ class AssignmentRequest(SQLModel):
 
 
 @router.get("/{code}/units", response_model=list[AssignmentInfo])
-def list_units_for_class(session: SessionDep, code: str) -> Any:
-    """课堂的单元列表（老师面板指派选择器用；课堂码即凭据，同面板口径）。"""
-    from app.models import AssignmentInfo as _AI
-
-    _get_classroom(session, code)  # 仅做课堂码校验
+def list_units_for_class(
+    session: SessionDep, code: str, current_user: CurrentUser
+) -> Any:
+    """课堂的单元列表（老师面板指派选择器用；需要教师身份）。"""
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
     units = session.exec(
-        select(Unit)
-        .where(Unit.is_active)  # type: ignore[attr-defined]
-        .order_by(col(Unit.order_index))
+        select(Unit).where(Unit.is_active).order_by(col(Unit.order_index))
     ).all()
-    return [_AI(unit_id=u.id, title=u.title) for u in units]
+    counts = dict(
+        session.exec(
+            select(Passage.unit_id, func.count())
+            .where(
+                Passage.is_active,
+                Passage.unit_id.is_not(None),  # type: ignore
+            )
+            .group_by(Passage.unit_id)  # type: ignore
+        ).all()
+    )
+    return [
+        AssignmentInfo(
+            unit_id=u.id,
+            title=u.title,
+            passage_count=counts.get(u.id, 0),
+        )
+        for u in units
+    ]
 
 
 @router.put("/{code}/assignment", response_model=AssignmentInfo | None)
-def set_assignment(session: SessionDep, code: str, body: AssignmentRequest) -> Any:
-    """老师设置/清除今日指派单元（课堂码即老师凭据，与面板同口径）。
+def set_assignment(
+    session: SessionDep,
+    code: str,
+    body: AssignmentRequest,
+    current_user: CurrentUser,
+) -> Any:
+    """老师设置/清除今日指派单元（需要教师身份）。
 
     设置后全班学生的 /today 同步用该单元；清除则回退个人路径。
     """
     classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
     if body.unit_id is None:
         classroom.current_unit_id = None
         session.add(classroom)
@@ -935,17 +1095,20 @@ class ExploreStarted(SQLModel):
 
 
 @router.post("/{code}/explore", response_model=ExploreStarted)
-def start_explore(session: SessionDep, code: str, body: ExploreRequest) -> Any:
+def start_explore(
+    session: SessionDep,
+    code: str,
+    body: ExploreRequest,
+    token: str | None = Query(default=None, description="入班时发放的学生轻量凭证"),
+) -> Any:
     """主题探索：学生选择单元开始/继续当日自由练习轮（不计入课堂完成率）。"""
     classroom = _get_classroom(session, code)
-    student = _get_student_of_classroom(session, classroom, body.student_id)
+    student = _require_student_credential(session, classroom, body.student_id, token)
     unit = session.get(Unit, body.unit_id)
     if unit is None or not unit.is_active:
         raise HTTPException(status_code=404, detail="Unit not found")
     passage = session.exec(
-        select(Passage)
-        .where(Passage.unit_id == unit.id, Passage.is_active)  # type: ignore[attr-defined]
-        .limit(1)
+        select(Passage).where(Passage.unit_id == unit.id, Passage.is_active).limit(1)
     ).first()
     if passage is None:
         raise HTTPException(status_code=404, detail=f"单元「{unit.title}」还没有篇目")

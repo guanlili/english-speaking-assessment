@@ -1,8 +1,10 @@
 import random
+import re
 import uuid
 from datetime import date
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.core.security import get_password_hash, verify_password
@@ -72,8 +74,30 @@ def authenticate(*, session: Session, email: str, password: str) -> User | None:
     return db_user
 
 
+def slugify_title(title: str) -> str:
+    """标题 → slug；无 ASCII 词元（纯中文）时用随机码兜底。"""
+    base = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    return base[:90].strip("-") or f"p-{uuid.uuid4().hex[:8]}"
+
+
+def unique_passage_slug(session: Session, base: str) -> str:
+    """slug 撞名时追加 -2/-3…（上限后换随机后缀，避免死循环）。"""
+    slug = base
+    for i in range(2, 500):
+        if session.exec(select(Passage).where(Passage.slug == slug)).first() is None:
+            return slug
+        suffix = f"-{i}"
+        slug = f"{base[: 100 - len(suffix)]}{suffix}"
+    return f"{base[:90]}-{uuid.uuid4().hex[:8]}"
+
+
 def create_passage(*, session: Session, passage_in: PassageCreate) -> Passage:
-    db_passage = Passage.model_validate(passage_in)
+    # slug 未填时自动生成（管理端/脚本共用同一套规则）
+    slug = passage_in.slug or unique_passage_slug(
+        session, slugify_title(passage_in.title)
+    )
+    payload = passage_in.model_dump(exclude={"slug"}) | {"slug": slug}
+    db_passage = Passage.model_validate(payload)
     session.add(db_passage)
     session.commit()
     session.refresh(db_passage)
@@ -166,7 +190,15 @@ def get_or_create_today_session(
         session_date=today,
     )
     session.add(practice_session)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # 并发创建：另一请求已插入同键会话，回滚后重新查询
+        session.rollback()
+        existing = session.exec(statement).first()
+        if existing is not None:
+            return existing
+        raise
     session.refresh(practice_session)
     return practice_session
 

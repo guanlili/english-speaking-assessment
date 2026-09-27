@@ -19,6 +19,7 @@ import {
 import { useEffect, useMemo, useState } from "react"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
+import AttemptAudio from "@/components/Practice/AttemptAudio"
 import StudentShell from "@/components/Practice/StudentShell"
 import { Button } from "@/components/ui/button"
 import {
@@ -38,9 +39,6 @@ import {
 } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { APP_NAME } from "@/config"
-
-const API_BASE = import.meta.env.VITE_API_URL ?? ""
-
 import { displayName, loadStudent } from "@/lib/classroom-student"
 
 export const Route = createFileRoute("/p/$code/result")({
@@ -71,6 +69,7 @@ function RoundResultPage() {
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
         studentId: student?.id as string,
+        token: student?.access_token as string,
         // 主题探索轮：结果必须属于该轮会话，而不是当日课堂计划
         ...(exploreSessionId ? { sessionId: exploreSessionId } : {}),
       }),
@@ -449,14 +448,12 @@ function RoundResultPage() {
                   <span className="text-muted-foreground">参考总评</span>
                 </div>
                 {replay.attempt.attempt_id && (
-                  <audio
-                    controls
+                  <AttemptAudio
+                    attemptId={replay.attempt.attempt_id}
+                    studentToken={student?.access_token}
                     preload="metadata"
-                    src={`${API_BASE}/api/v1/attempts/${replay.attempt.attempt_id}/audio`}
                     className="w-full"
-                  >
-                    <track kind="captions" />
-                  </audio>
+                  />
                 )}
                 <p className="text-xs text-muted-foreground">
                   听一听自己刚才的声音，找出下一句想说得更好的地方。

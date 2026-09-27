@@ -236,3 +236,198 @@ def test_classroom_admin(
         json={"display_name": "x"},
     )
     assert join.status_code == 404
+
+
+# ── Task 5：自动 slug / CEFR 档位 / 主题列表 / 单元完整性 ─────────────
+# 注：测试库是会话级共享的（conftest 只在最后统一清理），本组测试创建的
+# 单元/篇目/情景会在用例内显式删除，避免污染后面的关卡路径断言。
+
+
+def _purge_passage(client: TestClient, headers: dict[str, str], pid: str) -> None:
+    client.delete(f"/api/v1/admin/passages/{pid}", headers=headers)
+
+
+def test_passage_auto_slug_is_unique(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    payload = {
+        "title": "Auto Slug Passage",
+        "topic": "AutoSlugTopic",
+        "cefr_band": "B1",
+        "text": "hello world",
+    }
+    created: list[str] = []
+    try:
+        first = client.post(
+            "/api/v1/admin/passages", json=payload, headers=superuser_token_headers
+        )
+        assert first.status_code == 200, first.text
+        created.append(first.json()["id"])
+        slug = first.json()["slug"]
+        assert slug
+
+        # 同名再建不 409，而是自动加后缀
+        second = client.post(
+            "/api/v1/admin/passages", json=payload, headers=superuser_token_headers
+        )
+        assert second.status_code == 200, second.text
+        created.append(second.json()["id"])
+        assert second.json()["slug"] != slug
+        assert second.json()["slug"].startswith(slug)
+
+        # 显式 slug 撞名仍然 409（保留旧语义）
+        dup = client.post(
+            "/api/v1/admin/passages",
+            json={**payload, "slug": slug},
+            headers=superuser_token_headers,
+        )
+        assert dup.status_code == 409
+
+        # 无 ASCII 词元的标题也能生成非空 slug
+        zh = client.post(
+            "/api/v1/admin/passages",
+            json={**payload, "title": "我的中文标题", "slug": None},
+            headers=superuser_token_headers,
+        )
+        assert zh.status_code == 200, zh.text
+        created.append(zh.json()["id"])
+        assert zh.json()["slug"]
+    finally:
+        for pid in created:
+            _purge_passage(client, superuser_token_headers, pid)
+
+
+def test_passage_cefr_band_is_enum(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    bad = client.post(
+        "/api/v1/admin/passages",
+        json={"title": "x", "text": "y", "cefr_band": "Z9"},
+        headers=superuser_token_headers,
+    )
+    assert bad.status_code == 422
+    assert "CEFR" in bad.json()["detail"]
+
+    ok = client.post(
+        "/api/v1/admin/passages",
+        json={"title": "band-ok", "text": "y", "cefr_band": "A2"},
+        headers=superuser_token_headers,
+    )
+    assert ok.status_code == 200, ok.text
+    pid = ok.json()["id"]
+    try:
+        upd = client.put(
+            f"/api/v1/admin/passages/{pid}",
+            json={"title": "band-ok", "text": "y", "cefr_band": "C9"},
+            headers=superuser_token_headers,
+        )
+        assert upd.status_code == 422
+    finally:
+        _purge_passage(client, superuser_token_headers, pid)
+
+
+def test_admin_topics_are_union_and_sorted(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    passage = client.post(
+        "/api/v1/admin/passages",
+        json={"title": "t1", "text": "x", "topic": "主题P"},
+        headers=superuser_token_headers,
+    ).json()
+    unit = client.post(
+        "/api/v1/admin/units",
+        json={"order_index": 99, "title": "u1", "topic": "主题U"},
+        headers=superuser_token_headers,
+    ).json()
+    scenario = client.post(
+        "/api/v1/admin/scenarios",
+        json={"topic": "主题S", "is_active": True},
+        headers=superuser_token_headers,
+    ).json()
+    try:
+        resp = client.get("/api/v1/admin/topics", headers=superuser_token_headers)
+        assert resp.status_code == 200
+        topics = resp.json()
+        assert {"主题P", "主题U", "主题S"} <= set(topics)
+        assert topics == sorted(topics)
+    finally:
+        _purge_passage(client, superuser_token_headers, passage["id"])
+        client.delete(
+            f"/api/v1/admin/units/{unit['id']}", headers=superuser_token_headers
+        )
+        client.delete(
+            f"/api/v1/admin/scenarios/{scenario['id']}", headers=superuser_token_headers
+        )
+
+
+def test_unit_passage_count_and_assignment_read_back(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    unit = client.post(
+        "/api/v1/admin/units",
+        json={"order_index": 98, "title": "计数单元", "topic": "CountTopic"},
+        headers=superuser_token_headers,
+    ).json()
+    passage: dict | None = None
+    classroom: dict | None = None
+    try:
+        assert unit["passage_count"] == 0
+
+        passage = client.post(
+            "/api/v1/admin/passages",
+            json={
+                "title": "counted passage",
+                "text": "x",
+                "topic": "CountTopic",
+                "unit_id": unit["id"],
+            },
+            headers=superuser_token_headers,
+        ).json()
+        # 管理端能读回篇目所属单元
+        assert passage["unit_id"] == unit["id"]
+
+        units = client.get(
+            "/api/v1/admin/units", headers=superuser_token_headers
+        ).json()
+        mine = next(u for u in units if u["id"] == unit["id"])
+        assert mine["passage_count"] == 1
+
+        listed = client.get("/api/v1/admin/passages", headers=superuser_token_headers)
+        row = next(p for p in listed.json() if p["id"] == passage["id"])
+        assert row["unit_id"] == unit["id"]
+
+        # 老师端单元列表同样带篇目数（指派前完整性检查）
+        classroom = client.post(
+            "/api/v1/classes",
+            json={"class_size": 5},
+            headers=superuser_token_headers,
+        ).json()
+        teacher_units = client.get(
+            f"/api/v1/classes/{classroom['code']}/units",
+            headers=superuser_token_headers,
+        ).json()
+        mine2 = next(u for u in teacher_units if u["unit_id"] == unit["id"])
+        assert mine2["passage_count"] == 1
+
+        # 停用篇目不计入（指派前检查按“学生能练到”算）
+        client.put(
+            f"/api/v1/admin/passages/{passage['id']}",
+            json={"title": "counted passage", "text": "x", "is_active": False},
+            headers=superuser_token_headers,
+        )
+        units = client.get(
+            "/api/v1/admin/units", headers=superuser_token_headers
+        ).json()
+        mine = next(u for u in units if u["id"] == unit["id"])
+        assert mine["passage_count"] == 0
+    finally:
+        if passage is not None:
+            _purge_passage(client, superuser_token_headers, passage["id"])
+        client.delete(
+            f"/api/v1/admin/units/{unit['id']}", headers=superuser_token_headers
+        )
+        if classroom is not None:
+            client.delete(
+                f"/api/v1/admin/classrooms/{classroom['id']}",
+                headers=superuser_token_headers,
+            )

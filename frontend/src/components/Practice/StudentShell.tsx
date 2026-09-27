@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import { type ReactNode, useState } from "react"
 import { ClassesService } from "@/client"
+import { Logo } from "@/components/Common/Logo"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 
 /**
@@ -49,35 +50,28 @@ function StudentShell({
   return (
     <div className="flex min-h-screen bg-background">
       {/* 侧边导航（桌面）；移动端折叠为顶部条 */}
-      <aside className="sticky top-0 hidden h-screen w-52 shrink-0 flex-col border-r border-border bg-card p-4 md:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-card p-5 md:flex">
         <Link
           to="/home/$code"
           params={{ code: code ?? "" }}
           className="mb-6 flex items-center gap-2 px-2"
         >
-          <span className="flex size-9 -rotate-4 items-center justify-center rounded-[13px_13px_13px_4px] bg-primary gap-[3px]">
-            <i className="block h-3 w-1 rounded bg-primary-foreground" />
-            <i className="block h-5 w-1 rounded bg-primary-foreground" />
-            <i className="block h-4 w-1 rounded bg-primary-foreground" />
-          </span>
-          <span>
-            <span className="block text-lg leading-none font-750 tracking-tight">
-              SpeakUp<span className="text-primary">.</span>
-            </span>
-            <span className="block text-[10px] tracking-[0.3em] text-muted-foreground">
-              开 口 说
-            </span>
-          </span>
+          <Logo asLink={false} />
         </Link>
-        <nav className="grid gap-1.5">
+        <p className="mb-3 px-3 text-[10px] font-semibold tracking-widest text-muted-foreground">
+          学习空间
+        </p>
+        <nav aria-label="学习导航" className="grid gap-1.5">
           {items.map((item) => (
             <Link
               key={item.key}
+              aria-label={item.label}
+              aria-current={active === item.key ? "page" : undefined}
               to={item.to}
               params={{ code: code ?? "" }}
               className={
                 active === item.key
-                  ? "flex min-h-11 items-center gap-3 rounded-xl bg-secondary px-3.5 text-sm font-650 text-primary"
+                  ? "flex min-h-11 items-center gap-3 rounded-xl bg-secondary px-3.5 text-sm font-semibold text-primary"
                   : "flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-sm text-muted-foreground transition hover:bg-background hover:text-foreground"
               }
             >
@@ -106,20 +100,38 @@ function StudentShell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        <header className="hidden h-20 items-center justify-between border-b bg-card/70 px-8 md:flex">
+          <span className="text-sm font-semibold">
+            {items.find((item) => item.key === active)?.label}
+          </span>
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <span className="rounded-full border bg-card px-3 py-1.5">
+              课堂 {code}
+            </span>
+            {student && (
+              <span className="font-medium text-foreground">
+                {displayName(student)}
+              </span>
+            )}
+          </div>
+        </header>
         {/* 移动端顶条 */}
-        <div className="flex items-center gap-2 border-b border-border bg-card px-4 py-2.5 md:hidden">
+        <div className="sticky top-0 z-20 flex items-center justify-between gap-1 overflow-x-auto border-b border-border bg-card px-2 py-2 md:hidden">
           {items.map((item) => (
             <Link
               key={item.key}
+              aria-label={item.label}
+              aria-current={active === item.key ? "page" : undefined}
               to={item.to}
               params={{ code: code ?? "" }}
               className={
                 active === item.key
-                  ? "rounded-lg bg-secondary p-2 text-primary"
-                  : "rounded-lg p-2 text-muted-foreground"
+                  ? "flex min-w-12 flex-col items-center gap-1 rounded-lg bg-secondary p-2 text-primary"
+                  : "flex min-w-12 flex-col items-center gap-1 rounded-lg p-2 text-muted-foreground"
               }
             >
               <item.icon className="size-4" />
+              <span className="whitespace-nowrap text-[9px]">{item.label}</span>
             </Link>
           ))}
         </div>
@@ -149,6 +161,7 @@ function NotificationBell({ code }: { code: string }) {
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
         studentId: student?.id as string,
+        token: student?.access_token as string,
       }),
     enabled: student !== null && code !== "",
     retry: 1,

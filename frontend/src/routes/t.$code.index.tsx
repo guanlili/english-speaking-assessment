@@ -13,7 +13,9 @@ import {
 import { useState } from "react"
 import { toast } from "sonner"
 import type { BoardStudent } from "@/client"
-import { ClassesService } from "@/client"
+import { ApiError, ClassesService } from "@/client"
+import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
+import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -40,8 +42,6 @@ export const Route = createFileRoute("/t/$code/")({
   }),
 })
 
-const API_BASE = import.meta.env.VITE_API_URL ?? ""
-
 const TYPE_LABELS: Record<string, string> = {
   repeat: "复述",
   question: "问答",
@@ -51,10 +51,6 @@ const TYPE_LABELS: Record<string, string> = {
 const PENDING_REFRESH_MS = 5000
 // 无人评分时的基础同步间隔：面板提前打开也能发现后续提交/指派变化
 const IDLE_REFRESH_MS = 20000
-
-function audioUrl(attemptId: string): string {
-  return `${API_BASE}/api/v1/attempts/${attemptId}/audio`
-}
 
 function TeacherBoardPage() {
   const { code } = useParams({ from: "/t/$code/" })
@@ -72,6 +68,10 @@ function TeacherBoardPage() {
   })
 
   const queryClient = useQueryClient()
+  const [pendingAssign, setPendingAssign] = useState<{
+    unit_id: string
+    title: string
+  } | null>(null)
   const unitsQuery = useQuery({
     queryKey: ["teacher", "units", code],
     queryFn: () =>
@@ -87,6 +87,13 @@ function TeacherBoardPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teacher", "board", code] })
     },
+    onError: (error) => {
+      toast.error(
+        error instanceof ApiError && error.status === 403
+          ? "权限不足：只有本课授权教师可以指派单元"
+          : "指派失败，请稍后重试",
+      )
+    },
   })
 
   if (boardQuery.isPending) {
@@ -97,6 +104,29 @@ function TeacherBoardPage() {
     )
   }
   if (boardQuery.isError || !boardQuery.data) {
+    const status =
+      boardQuery.error instanceof ApiError ? boardQuery.error.status : undefined
+    // 401 由全局处理器跳登录；403 = 已登录但不是本课授权教师，不登出
+    if (status === 403) {
+      return (
+        <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
+          你还不是这个课堂的授权教师，请让管理员在后台把你绑到这间课堂。
+          <Button variant="outline" asChild>
+            <Link to="/">回首页</Link>
+          </Button>
+        </div>
+      )
+    }
+    if (status !== 404) {
+      return (
+        <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
+          课堂面板加载失败，请稍后重试。
+          <Button variant="outline" onClick={() => boardQuery.refetch()}>
+            重试
+          </Button>
+        </div>
+      )
+    }
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
         课堂不存在或已关闭，请核对链接里的课堂码。
@@ -280,10 +310,20 @@ function TeacherBoardPage() {
                     ? "default"
                     : "outline"
                 }
-                onClick={() => assignMutation.mutate(u.unit_id)}
+                onClick={() => {
+                  // 指派前完整性检查：没有可练篇目时先确认，避免全班打开是空的
+                  if ((u.passage_count ?? 0) === 0) {
+                    setPendingAssign({ unit_id: u.unit_id, title: u.title })
+                    return
+                  }
+                  assignMutation.mutate(u.unit_id)
+                }}
                 disabled={assignMutation.isPending}
               >
                 {u.title}
+                {(u.passage_count ?? 0) === 0 && (
+                  <span className="ml-1 text-[10px] opacity-80">缺篇目</span>
+                )}
               </Button>
             ))}
             {board.assignment && (
@@ -303,6 +343,20 @@ function TeacherBoardPage() {
             )}
           </CardContent>
         </Card>
+
+        <ConfirmDialog
+          open={pendingAssign !== null}
+          title={`指派「${pendingAssign?.title ?? ""}」？`}
+          description="这个单元还没有可用篇目，指派后学生打开练习会提示没有内容。建议先请管理员在后台给它挂篇目。仍要指派吗？"
+          confirmText="仍要指派"
+          destructive={false}
+          onOpenChange={(next) => {
+            if (!next) setPendingAssign(null)
+          }}
+          onConfirm={async () => {
+            if (pendingAssign) assignMutation.mutate(pendingAssign.unit_id)
+          }}
+        />
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Card>
@@ -542,17 +596,7 @@ function StudentRow({
                     </span>
                   )}
                   {item.attempt_id && item.status === "done" && (
-                    <audio
-                      controls
-                      preload="none"
-                      src={
-                        item.attempt_id ? audioUrl(item.attempt_id) : undefined
-                      }
-                      className="h-8"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <track kind="captions" />
-                    </audio>
+                    <AttemptAudio attemptId={item.attempt_id} className="h-8" />
                   )}
                 </div>
               ))}
