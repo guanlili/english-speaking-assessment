@@ -8,7 +8,7 @@ import {
   type UserRegister,
   UsersService,
 } from "@/client"
-import { handleError } from "@/utils"
+import { extractErrorMessage } from "@/utils"
 import useCustomToast from "./useCustomToast"
 
 const isLoggedIn = () => {
@@ -24,6 +24,7 @@ const useAuth = () => {
     queryKey: ["currentUser"],
     queryFn: UsersService.readUserMe,
     enabled: isLoggedIn(),
+    staleTime: 5 * 60 * 1000,
   })
 
   const signUpMutation = useMutation({
@@ -32,7 +33,7 @@ const useAuth = () => {
     onSuccess: () => {
       navigate({ to: "/login" })
     },
-    onError: handleError.bind(showErrorToast),
+    onError: (err) => showErrorToast(extractErrorMessage(err)),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] })
     },
@@ -50,15 +51,13 @@ const useAuth = () => {
     onSuccess: () => {
       navigate({ to: "/" })
     },
-    onError: handleError.bind(showErrorToast),
+    onError: (err) => showErrorToast(extractErrorMessage(err)),
   })
 
   const logout = () => {
     localStorage.removeItem("access_token")
-    // 取消进行中的请求并清空全部查询缓存：切换账号时绝不能复用
-    // 上一账号的身份、列表与详情缓存（包括请求还在途的慢网络场景）
     queryClient.cancelQueries()
-    queryClient.clear()
+    queryClient.invalidateQueries({ queryKey: ["currentUser"] })
     navigate({ to: "/login" })
   }
 

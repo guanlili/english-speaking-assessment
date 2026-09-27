@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 MAX_ADVICE = 3
 MAX_UPGRADES = 2
 DIMENSION_MAX = 4
+_shared_client = httpx.Client(timeout=60)
 
 # rubric 四维之和（0-16）→ 0-9 模拟分（PRD：映射表放在配置中）
 RUBRIC_TO_SCORE: list[float] = [
@@ -156,17 +157,10 @@ class ArkRubricScorer:
             "temperature": 0.2,
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        if self._client is not None:
-            resp = self._client.post(
-                f"{self.base_url}/chat/completions", json=payload, headers=headers
-            )
-        else:
-            with httpx.Client(timeout=60) as client:
-                resp = client.post(
-                    f"{self.base_url}/chat/completions",
-                    json=payload,
-                    headers=headers,
-                )
+        client = self._client if self._client is not None else _shared_client
+        resp = client.post(
+            f"{self.base_url}/chat/completions", json=payload, headers=headers
+        )
         if resp.status_code != 200:
             raise ValueError(f"Ark chat 返回 {resp.status_code}: {resp.text[:200]}")
         content = resp.json()["choices"][0]["message"]["content"]

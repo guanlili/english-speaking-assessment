@@ -14,6 +14,8 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+_shared_client = httpx.Client(timeout=120)
+
 
 class TtsError(Exception):
     """TTS 不可用或生成失败（界面提示改用上传或 speechSynthesis 兜底）。"""
@@ -55,11 +57,8 @@ class ArkTtsProvider:
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
         url = f"{self.base_url}/audio/speech"
-        if self._client is not None:
-            resp = self._client.post(url, json=payload, headers=headers)
-        else:
-            with httpx.Client(timeout=120) as client:
-                resp = client.post(url, json=payload, headers=headers)
+        client = self._client if self._client is not None else _shared_client
+        resp = client.post(url, json=payload, headers=headers)
         if resp.status_code != 200:
             raise TtsError(f"TTS 返回 {resp.status_code}: {resp.text[:200]}")
         return resp.content
