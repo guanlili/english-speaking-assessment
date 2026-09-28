@@ -620,8 +620,6 @@ def test_bulk_reset_passwords(
     assert all(p and len(p) >= 8 for p in passwords.values())
 
     # 新密码能登录且带改密标记
-    from app.models import User as _User
-
     sample_user = joined1["user"]
     login = client.post(
         "/api/v1/login/access-token",
@@ -637,6 +635,4 @@ def test_bulk_reset_passwords(
     ).json()
     assert me["must_change_password"] is True
 
-    client.delete(
-        f"/api/v1/classes", headers=superuser_token_headers
-    ) if False else None
+    client.delete("/api/v1/classes", headers=superuser_token_headers) if False else None
