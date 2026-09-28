@@ -15,12 +15,16 @@ import {
   Shield,
   Sparkles,
   Square,
+  Volume2,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
 import FeedbackCard from "@/components/Practice/FeedbackCard"
+
+const API_BASE = import.meta.env.VITE_API_URL ?? ""
+
 import SpeakButton from "@/components/Practice/SpeakButton"
 import StudentShell from "@/components/Practice/StudentShell"
 import { Button } from "@/components/ui/button"
@@ -61,6 +65,7 @@ const BAND_LABELS: Record<string, string> = {
 }
 
 const ITEM_TYPE_LABELS: Record<string, string> = {
+  passage: "整篇朗读",
   repeat: "听后复述",
   question: "情景问答",
 }
@@ -226,7 +231,8 @@ function ClassroomPracticePage() {
     submitErrorData,
     reset: resetAttempt,
   } = useAttemptSubmit({
-    itemType: (currentItem?.type as "repeat" | "question") ?? "repeat",
+    itemType:
+      (currentItem?.type as "passage" | "repeat" | "question") ?? "repeat",
     itemId: currentItem?.id ?? "",
     sessionId: plan?.session_id,
   })
@@ -246,7 +252,8 @@ function ClassroomPracticePage() {
   // 开始录音前钉住当前题 / 会话 / 题型 / 幂等键 / 凭证
   const startRecording = () => {
     recordingTargetRef.current = {
-      itemType: (currentItem?.type as "repeat" | "question") ?? "repeat",
+      itemType:
+        (currentItem?.type as "passage" | "repeat" | "question") ?? "repeat",
       itemId: currentItem?.id ?? "",
       sessionId: plan?.session_id,
       idempotencyKey: crypto.randomUUID(),
@@ -376,12 +383,17 @@ function ClassroomPracticePage() {
       isTerminal(attemptByItem.get(item.id)?.status),
   )
 
+  const isPassage = currentItem.type === "passage"
   const itemPromptLabel = isQuestion
     ? "YOUR TURN · 分享你的想法"
-    : "LISTEN & REPEAT · 听一听，再试着说"
+    : isPassage
+      ? "READ ALOUD · 大声朗读全文"
+      : "LISTEN & REPEAT · 听一听，再试着说"
   const itemHintZh = isQuestion
     ? "试着说出你的观点，再用一个理由或小例子支持它。"
-    : "先听完整句子，再跟着节奏说。比起说得快，说得自然更重要。"
+    : isPassage
+      ? "先扫一眼生词，然后完整朗读。停顿和语调自然比逐词准确更重要。"
+      : "先听完整句子，再跟着节奏说。比起说得快，说得自然更重要。"
 
   return (
     <StudentShell active="practice">
@@ -481,10 +493,22 @@ function ClassroomPracticePage() {
                     : (currentItem.translation ?? itemHintZh)}
                 </p>
 
-                <SpeakButton
-                  text={currentItem.text}
-                  audioUrl={currentItem.audio_url}
-                />
+                {currentItem.type === "repeat" ? (
+                  <LimitedListenButton
+                    code={code.toUpperCase()}
+                    sessionId={plan?.session_id}
+                    itemId={currentItem.id}
+                    text={currentItem.text}
+                    audioUrl={currentItem.audio_url}
+                    replayLimit={currentItem.replay_limit ?? 3}
+                    initialUsed={currentItem.listen_used ?? 0}
+                  />
+                ) : (
+                  <SpeakButton
+                    text={currentItem.text}
+                    audioUrl={currentItem.audio_url}
+                  />
+                )}
                 {!isQuestion && (
                   <Button
                     variant="ghost"
@@ -710,7 +734,7 @@ function ClassroomPracticePage() {
         {attempt && attemptTerminal && (
           <FeedbackCard
             attempt={attempt}
-            itemType={currentItem?.type as "repeat" | "question"}
+            itemType={currentItem?.type as "passage" | "repeat" | "question"}
             onRepractice={() => {
               // 主动重录：清提交标记，避免重置后 allDone 触发自动跳转结果页
               submittedRef.current = false
@@ -755,5 +779,98 @@ function ClassroomPracticePage() {
         </p>
       </div>
     </StudentShell>
+  )
+}
+
+/**
+ * 限听版标准音：听句复述题专用。每次播放先到服务端计数（防刷真源），
+ * 次数用完禁用；replay_limit=0 不限。朗读/问答仍用不限次 SpeakButton。
+ */
+function LimitedListenButton({
+  code,
+  sessionId,
+  itemId,
+  text,
+  audioUrl,
+  replayLimit,
+  initialUsed,
+}: {
+  code: string
+  sessionId: string | undefined
+  itemId: string
+  text: string
+  audioUrl?: string | null
+  replayLimit: number
+  initialUsed: number
+}) {
+  const [used, setUsed] = useState(initialUsed)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const unlimited = replayLimit === 0
+  const remaining = unlimited ? Infinity : Math.max(0, replayLimit - used)
+  const exhausted = !unlimited && remaining <= 0
+
+  const play = async () => {
+    if (exhausted || !sessionId) return
+    // 有音频文件：先计数再播（计数被拒就不播）
+    if (audioUrl) {
+      try {
+        await ClassesService.recordListen({
+          code,
+          requestBody: { session_id: sessionId, item_id: itemId },
+        })
+      } catch {
+        toast.error("可重听次数已用完")
+        setUsed(replayLimit)
+        return
+      }
+      setUsed((u) => u + 1)
+      audioRef.current?.play()
+      return
+    }
+    // TTS 兜底：浏览器合成没有服务端文件，仍走计数
+    try {
+      await ClassesService.recordListen({
+        code,
+        requestBody: { session_id: sessionId, item_id: itemId },
+      })
+      setUsed((u) => u + 1)
+    } catch {
+      toast.error("可重听次数已用完")
+      setUsed(replayLimit)
+      return
+    }
+    const synth = window.speechSynthesis
+    if (!synth) return
+    synth.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = "en-US"
+    synth.speak(utterance)
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      {audioUrl && (
+        <audio
+          ref={audioRef}
+          src={audioUrl.startsWith("/") ? `${API_BASE}${audioUrl}` : audioUrl}
+          preload="metadata"
+          hidden
+        >
+          <track kind="captions" />
+        </audio>
+      )}
+      <Button
+        variant="secondary"
+        size="lg"
+        onClick={() => void play()}
+        disabled={exhausted}
+      >
+        <Volume2 />
+        {exhausted ? "重听次数已用完" : "听示范"}
+      </Button>
+      <span className="text-xs text-muted-foreground">
+        {unlimited ? "重听不限次" : `还可重听 ${remaining} 次`}
+      </span>
+    </div>
   )
 }

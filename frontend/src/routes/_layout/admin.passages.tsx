@@ -498,7 +498,11 @@ function PassageCard({
   onMutated: () => void
 }) {
   const { showSuccessToast } = useCustomToast()
-  const [sentence, setSentence] = useState({ text: "", suggested_seconds: 8 })
+  const [sentence, setSentence] = useState({
+    text: "",
+    suggested_seconds: 8,
+    replay_limit: 3,
+  })
 
   const addSentence = useMutation({
     mutationFn: () =>
@@ -509,11 +513,12 @@ function PassageCard({
           order_index: (passage.sentences ?? []).length,
           text: sentence.text,
           suggested_seconds: sentence.suggested_seconds,
+          replay_limit: sentence.replay_limit,
         },
       }),
     onSuccess: () => {
       showSuccessToast("复述句已添加")
-      setSentence({ text: "", suggested_seconds: 8 })
+      setSentence({ text: "", suggested_seconds: 8, replay_limit: 3 })
       onMutated()
     },
   })
@@ -697,6 +702,25 @@ function PassageCard({
                   setSentence({
                     ...sentence,
                     suggested_seconds: Number(e.target.value),
+                  })
+                }
+              />
+            </div>
+            <div className="w-28 space-y-1">
+              <Label>可重听</Label>
+              <Input
+                type="number"
+                min={0}
+                max={9}
+                title="0 = 不限次数"
+                value={sentence.replay_limit}
+                onChange={(e) =>
+                  setSentence({
+                    ...sentence,
+                    replay_limit: Math.max(
+                      0,
+                      Math.min(9, Number(e.target.value) || 0),
+                    ),
                   })
                 }
               />

@@ -18,7 +18,7 @@ from sqlalchemy import func
 from sqlmodel import Field, SQLModel, col, select
 
 from app import crud
-from app.api.deps import SessionDep, SuperUserDep
+from app.api.deps import SessionDep, SuperUserDep, TeacherUserDep
 from app.core.config import settings
 from app.core.storage import content_audio_url, save_content_audio
 from app.models import (
@@ -59,7 +59,7 @@ def _require_valid_band(band: str) -> None:
 
 
 @router.get("/passages", response_model=list[PassageWithSentences])
-def list_passages(session: SessionDep, _admin: SuperUserDep) -> Any:
+def list_passages(session: SessionDep, _admin: TeacherUserDep) -> Any:
     passages = session.exec(select(Passage).order_by(col(Passage.created_at))).all()
     result = []
     for passage in passages:
@@ -76,7 +76,7 @@ def list_passages(session: SessionDep, _admin: SuperUserDep) -> Any:
 
 @router.post("/passages", response_model=PassagePublic)
 def create_passage(
-    session: SessionDep, _admin: SuperUserDep, passage_in: PassageCreate
+    session: SessionDep, _admin: TeacherUserDep, passage_in: PassageCreate
 ) -> Any:
     _require_valid_band(passage_in.cefr_band)
     if passage_in.slug:
@@ -91,7 +91,7 @@ def create_passage(
 @router.put("/passages/{passage_id}", response_model=PassagePublic)
 def update_passage(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _admin: TeacherUserDep,
     passage_id: uuid.UUID,
     passage_in: PassageCreate,
 ) -> Any:
@@ -109,7 +109,7 @@ def update_passage(
 
 @router.delete("/passages/{passage_id}")
 def delete_passage(
-    session: SessionDep, _admin: SuperUserDep, passage_id: uuid.UUID
+    session: SessionDep, _admin: TeacherUserDep, passage_id: uuid.UUID
 ) -> dict[str, str]:
     passage = session.get(Passage, passage_id)
     if passage is None:
@@ -122,12 +122,15 @@ def delete_passage(
 @router.post("/passages/{passage_id}/sentences", response_model=RepeatSentence)
 def create_sentence(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _admin: TeacherUserDep,
     passage_id: uuid.UUID,
     sentence: RepeatSentence,
 ) -> Any:
     if session.get(Passage, passage_id) is None:
         raise HTTPException(status_code=404, detail="Passage not found")
+    # 表模型不走字段校验，可重听次数在此显式把关（0=不限，1–9）
+    if not 0 <= sentence.replay_limit <= 9:
+        raise HTTPException(status_code=422, detail="可重听次数需在 0–9 之间（0=不限）")
     sentence.passage_id = passage_id
     session.add(sentence)
     session.commit()
@@ -138,7 +141,7 @@ def create_sentence(
 @router.put("/sentences/{sentence_id}", response_model=RepeatSentence)
 def update_sentence(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _admin: TeacherUserDep,
     sentence_id: uuid.UUID,
     sentence_in: RepeatSentence,
 ) -> Any:
@@ -146,6 +149,8 @@ def update_sentence(
     if sentence is None:
         raise HTTPException(status_code=404, detail="Sentence not found")
     update = sentence_in.model_dump(exclude={"id", "passage_id"}, exclude_unset=True)
+    if "replay_limit" in update and not 0 <= update["replay_limit"] <= 9:
+        raise HTTPException(status_code=422, detail="可重听次数需在 0–9 之间（0=不限）")
     sentence.sqlmodel_update(update)
     session.add(sentence)
     session.commit()
@@ -155,7 +160,7 @@ def update_sentence(
 
 @router.delete("/sentences/{sentence_id}")
 def delete_sentence(
-    session: SessionDep, _admin: SuperUserDep, sentence_id: uuid.UUID
+    session: SessionDep, _admin: TeacherUserDep, sentence_id: uuid.UUID
 ) -> dict[str, str]:
     sentence = session.get(RepeatSentence, sentence_id)
     if sentence is None:
@@ -178,7 +183,7 @@ class ScenarioOut(SQLModel):
 
 
 @router.get("/scenarios", response_model=list[ScenarioOut])
-def list_scenarios(session: SessionDep, _admin: SuperUserDep) -> Any:
+def list_scenarios(session: SessionDep, _admin: TeacherUserDep) -> Any:
     scenarios = session.exec(select(Scenario)).all()
     result = []
     for scenario in scenarios:
@@ -200,7 +205,7 @@ def list_scenarios(session: SessionDep, _admin: SuperUserDep) -> Any:
 
 @router.post("/scenarios")
 def create_scenario(
-    session: SessionDep, _admin: SuperUserDep, scenario: Scenario
+    session: SessionDep, _admin: TeacherUserDep, scenario: Scenario
 ) -> Any:
     duplicate = session.exec(
         select(Scenario).where(Scenario.topic == scenario.topic)
@@ -215,7 +220,7 @@ def create_scenario(
 
 @router.delete("/scenarios/{scenario_id}")
 def delete_scenario(
-    session: SessionDep, _admin: SuperUserDep, scenario_id: uuid.UUID
+    session: SessionDep, _admin: TeacherUserDep, scenario_id: uuid.UUID
 ) -> dict[str, str]:
     scenario = session.get(Scenario, scenario_id)
     if scenario is None:
@@ -230,7 +235,7 @@ def delete_scenario(
 )
 def create_question(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _admin: TeacherUserDep,
     scenario_id: uuid.UUID,
     question_in: ScenarioQuestion,
 ) -> Any:
@@ -247,7 +252,7 @@ def create_question(
 
 @router.delete("/questions/{question_id}")
 def delete_question(
-    session: SessionDep, _admin: SuperUserDep, question_id: uuid.UUID
+    session: SessionDep, _admin: TeacherUserDep, question_id: uuid.UUID
 ) -> dict[str, str]:
     question = session.get(ScenarioQuestion, question_id)
     if question is None:
@@ -276,7 +281,7 @@ class QuestionBankOut(SQLModel):
 @router.get("/questions", response_model=list[QuestionBankOut])
 def list_question_bank(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _admin: TeacherUserDep,
     topic: str | None = Query(default=None, description="按主题精确过滤"),
     band: str | None = Query(default=None, description="A2/B1/B2"),
     q: str | None = Query(default=None, description="题目/中文提示关键词"),
@@ -348,7 +353,7 @@ class BatchQuestionResult(SQLModel):
 )
 def create_questions_batch(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _admin: TeacherUserDep,
     scenario_id: uuid.UUID,
     body: BatchQuestionCreate,
 ) -> Any:
@@ -414,7 +419,7 @@ class WordlistStats(SQLModel):
 
 
 @router.get("/wordlist", response_model=WordlistStats)
-def wordlist_stats(session: SessionDep, _admin: SuperUserDep) -> Any:
+def wordlist_stats(session: SessionDep, _admin: TeacherUserDep) -> Any:
     entries = session.exec(select(WordlistEntry)).all()
     by_band: dict[str, int] = dict.fromkeys(sorted(VALID_BANDS), 0)
     for entry in entries:
@@ -434,7 +439,7 @@ class WordlistImportResult(SQLModel):
 @router.post("/wordlist/import", response_model=WordlistImportResult)
 async def import_wordlist_csv(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _admin: TeacherUserDep,
     file: UploadFile,
 ) -> Any:
     """导入学校分级词表 CSV（表头 lemma,band；整体替换内置词表）。"""
@@ -501,7 +506,7 @@ async def import_wordlist_csv(
 
 
 @router.get("/units", response_model=list[UnitPublic])
-def list_units(session: SessionDep, _admin: SuperUserDep) -> Any:
+def list_units(session: SessionDep, _admin: TeacherUserDep) -> Any:
     units = session.exec(select(Unit).order_by(col(Unit.order_index))).all()
     counts = _active_passage_counts(session)
     return [
@@ -527,7 +532,9 @@ def _active_passage_counts(session: SessionDep) -> dict[uuid.UUID, int]:
 
 
 @router.post("/units", response_model=UnitPublic)
-def create_unit(session: SessionDep, _admin: SuperUserDep, unit_in: UnitCreate) -> Any:
+def create_unit(
+    session: SessionDep, _admin: TeacherUserDep, unit_in: UnitCreate
+) -> Any:
     unit = Unit.model_validate(unit_in)
     session.add(unit)
     session.commit()
@@ -538,7 +545,7 @@ def create_unit(session: SessionDep, _admin: SuperUserDep, unit_in: UnitCreate) 
 @router.put("/units/{unit_id}", response_model=UnitPublic)
 def update_unit(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _admin: TeacherUserDep,
     unit_id: uuid.UUID,
     unit_in: UnitUpdate,
 ) -> Any:
@@ -554,7 +561,7 @@ def update_unit(
 
 @router.delete("/units/{unit_id}")
 def delete_unit(
-    session: SessionDep, _admin: SuperUserDep, unit_id: uuid.UUID
+    session: SessionDep, _admin: TeacherUserDep, unit_id: uuid.UUID
 ) -> dict[str, str]:
     unit = session.get(Unit, unit_id)
     if unit is None:
@@ -571,7 +578,7 @@ class ClassroomUpdate(SQLModel):
 
 
 @router.get("/topics", response_model=list[str])
-def list_topics(session: SessionDep, _admin: SuperUserDep) -> Any:
+def list_topics(session: SessionDep, _admin: TeacherUserDep) -> Any:
     """已有主题词表（篇目/单元/情景的 topic 并集）：录入时从列表选，不再自由输入。"""
     topics: set[str] = set()
     for column in (Passage.topic, Unit.topic, Scenario.topic):
@@ -636,7 +643,7 @@ class ScenarioUpdate(SQLModel):
 @router.put("/scenarios/{scenario_id}")
 def update_scenario(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _admin: TeacherUserDep,
     scenario_id: uuid.UUID,
     scenario_in: ScenarioUpdate,
 ) -> Any:
@@ -674,7 +681,7 @@ class DraftQuestionOut(SQLModel):
 )
 def generate_questions(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _admin: TeacherUserDep,
     scenario_id: uuid.UUID,
     body: GenerateRequest,
 ) -> Any:
@@ -712,7 +719,7 @@ class AutoSplitResult(SQLModel):
 )
 def auto_split_sentences(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _admin: TeacherUserDep,
     passage_id: uuid.UUID,
     target_count: int = 3,
 ) -> Any:
@@ -774,7 +781,7 @@ class AudioUrlResult(SQLModel):
 
 
 @router.post("/audio/tts", response_model=AudioUrlResult)
-def generate_standard_audio(_admin: SuperUserDep, body: TtsRequest) -> Any:
+def generate_standard_audio(_admin: TeacherUserDep, body: TtsRequest) -> Any:
     """用语音合成生成标准音并落盘，返回可回放的相对 URL。"""
     from app.scoring.tts import TtsError, build_tts_provider
 
@@ -798,7 +805,7 @@ class QuestionUpdate(SQLModel):
 @router.put("/questions/{question_id}", response_model=ScenarioQuestionPublic)
 def update_question(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _admin: TeacherUserDep,
     question_id: uuid.UUID,
     question_in: QuestionUpdate,
 ) -> Any:
@@ -818,7 +825,7 @@ def update_question(
 
 
 @router.post("/audio/upload", response_model=AudioUrlResult)
-async def upload_standard_audio(_admin: SuperUserDep, file: UploadFile) -> Any:
+async def upload_standard_audio(_admin: TeacherUserDep, file: UploadFile) -> Any:
     """上传现成音频（学校已有的录音/外教音频），作为标准音使用。"""
     from pathlib import PurePosixPath
 

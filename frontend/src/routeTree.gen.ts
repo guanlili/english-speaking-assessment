@@ -15,6 +15,7 @@ import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as PracticeRouteImport } from './routes/practice'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JoinRouteImport } from './routes/join'
+import { Route as CreateRouteImport } from './routes/create'
 import { Route as ClassroomsRouteImport } from './routes/classrooms'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as LayoutRouteImport } from './routes/_layout'
@@ -70,6 +71,11 @@ const LoginRoute = LoginRouteImport.update({
 const JoinRoute = JoinRouteImport.update({
   id: '/join',
   path: '/join',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CreateRoute = CreateRouteImport.update({
+  id: '/create',
+  path: '/create',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ClassroomsRoute = ClassroomsRouteImport.update({
@@ -206,6 +212,7 @@ export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
   '/change-password': typeof ChangePasswordRoute
   '/classrooms': typeof ClassroomsRoute
+  '/create': typeof CreateRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/practice': typeof PracticeRoute
@@ -238,6 +245,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/change-password': typeof ChangePasswordRoute
   '/classrooms': typeof ClassroomsRoute
+  '/create': typeof CreateRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/practice': typeof PracticeRoute
@@ -270,6 +278,7 @@ export interface FileRoutesById {
   '/_layout': typeof LayoutRouteWithChildren
   '/change-password': typeof ChangePasswordRoute
   '/classrooms': typeof ClassroomsRoute
+  '/create': typeof CreateRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/practice': typeof PracticeRoute
@@ -306,6 +315,7 @@ export interface FileRouteTypes {
     | '/'
     | '/change-password'
     | '/classrooms'
+    | '/create'
     | '/join'
     | '/login'
     | '/practice'
@@ -338,6 +348,7 @@ export interface FileRouteTypes {
   to:
     | '/change-password'
     | '/classrooms'
+    | '/create'
     | '/join'
     | '/login'
     | '/practice'
@@ -369,6 +380,7 @@ export interface FileRouteTypes {
     | '/_layout'
     | '/change-password'
     | '/classrooms'
+    | '/create'
     | '/join'
     | '/login'
     | '/practice'
@@ -404,6 +416,7 @@ export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
   ChangePasswordRoute: typeof ChangePasswordRoute
   ClassroomsRoute: typeof ClassroomsRoute
+  CreateRoute: typeof CreateRoute
   JoinRoute: typeof JoinRoute
   LoginRoute: typeof LoginRoute
   PracticeRoute: typeof PracticeRoute
@@ -463,6 +476,13 @@ declare module '@tanstack/react-router' {
       path: '/join'
       fullPath: '/join'
       preLoaderRoute: typeof JoinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/create': {
+      id: '/create'
+      path: '/create'
+      fullPath: '/create'
+      preLoaderRoute: typeof CreateRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/classrooms': {
@@ -717,6 +737,7 @@ const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
   ChangePasswordRoute: ChangePasswordRoute,
   ClassroomsRoute: ClassroomsRoute,
+  CreateRoute: CreateRoute,
   JoinRoute: JoinRoute,
   LoginRoute: LoginRoute,
   PracticeRoute: PracticeRoute,
