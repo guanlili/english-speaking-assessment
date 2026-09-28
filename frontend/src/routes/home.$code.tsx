@@ -401,15 +401,15 @@ function HomePage() {
                 </p>
               </div>
               <div className="mt-3 grid grid-cols-7 gap-1 text-center">
-              {["一", "二", "三", "四", "五", "六", "日"].map((d, i) => {
-                const now = new Date()
-                const dow = (now.getDay() + 6) % 7
-                const day = new Date(now)
-                day.setDate(now.getDate() - dow + i)
-                // 本地日期（不能用 toISOString：会转成 UTC，东八区凌晨会差一天）
-                const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`
-                const isToday = i === dow
-                const practiced = practicedDates.has(key)
+                {["一", "二", "三", "四", "五", "六", "日"].map((d, i) => {
+                  const now = new Date()
+                  const dow = (now.getDay() + 6) % 7
+                  const day = new Date(now)
+                  day.setDate(now.getDate() - dow + i)
+                  // 本地日期（不能用 toISOString：会转成 UTC，东八区凌晨会差一天）
+                  const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`
+                  const isToday = i === dow
+                  const practiced = practicedDates.has(key)
                   return (
                     <div key={d}>
                       <p className="mb-1.5 text-[9px] text-muted-foreground">
