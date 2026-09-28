@@ -881,6 +881,14 @@ export type ClassesCreateClassData = {
 
 export type ClassesCreateClassResponse = (ClassroomPublic);
 
+export type ClassesDeleteClassData = {
+    code: string;
+};
+
+export type ClassesDeleteClassResponse = ({
+    [key: string]: (string);
+});
+
 export type ClassesJoinClassData = {
     code: string;
     requestBody: StudentJoin;

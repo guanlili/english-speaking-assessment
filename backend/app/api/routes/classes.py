@@ -259,6 +259,41 @@ def list_my_classrooms(session: SessionDep, current_user: CurrentUser) -> Any:
     return session.exec(stmt).all()
 
 
+@router.delete("/{code}")
+def delete_class(
+    session: SessionDep, code: str, current_user: CurrentUser
+) -> dict[str, str]:
+    """删除课堂（本人课堂或管理员）。
+
+    仅允许删除没有任何作答记录的课堂（测试/误建场景）；
+    有学生作答的课堂请用管理员后台停用，教学数据必须保留。
+    """
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    student_ids = session.exec(
+        select(Student.id).where(Student.classroom_id == classroom.id)  # type: ignore[arg-type]
+    ).all()
+    if student_ids:
+        has_attempts = (
+            session.exec(
+                select(Attempt.id)
+                .where(
+                    col(Attempt.student_id).in_(student_ids)  # type: ignore[arg-type]
+                )
+                .limit(1)
+            ).first()
+            is not None
+        )
+        if has_attempts:
+            raise HTTPException(
+                status_code=409,
+                detail="课堂内已有学生作答记录，不能删除；如需停用请联系管理员在后台操作",
+            )
+    session.delete(classroom)  # 学生档案/会话随外键级联清理（无作答即无损失）
+    session.commit()
+    return {"message": "课堂已删除"}
+
+
 @router.post("", response_model=ClassroomPublic)
 def create_class(
     session: SessionDep,
