@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react"
+import { Loader2, Pencil, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import { AdminService } from "@/client"
@@ -16,9 +16,19 @@ import {
   CardHeader,
 } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { LoadingButton } from "@/components/ui/loading-button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
 
@@ -31,6 +41,7 @@ interface QuestionShape {
   id: string
   band: string
   text: string
+  translation?: string | null
   audio_url?: string | null
   suggested_seconds?: number
 }
@@ -237,6 +248,45 @@ function ScenarioCard({
     onSuccess: () => onMutated(),
   })
 
+  // ── 编辑题目（与题库页/文章朗读一致的弹窗形态）──
+  const [editingQ, setEditingQ] = useState<QuestionShape | null>(null)
+  const [editForm, setEditForm] = useState({
+    text: "",
+    translation: "",
+    seconds: 30,
+  })
+  const openQEdit = (q: QuestionShape) => {
+    setEditingQ(q)
+    setEditForm({
+      text: q.text ?? "",
+      translation: q.translation ?? "",
+      seconds: q.suggested_seconds ?? 30,
+    })
+  }
+  const updateQuestion = useMutation({
+    mutationFn: () =>
+      AdminService.updateQuestion({
+        questionId: editingQ!.id,
+        requestBody: {
+          text: editForm.text.trim(),
+          translation: editForm.translation.trim() || null,
+          suggested_seconds: editForm.seconds,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("题目已更新")
+      setEditingQ(null)
+      onMutated()
+    },
+    onError: (err: { body?: { detail?: string } }) =>
+      toast.error(err.body?.detail ?? "更新失败"),
+  })
+  const editValid =
+    editForm.text.trim().length > 0 &&
+    Number.isInteger(editForm.seconds) &&
+    editForm.seconds >= 10 &&
+    editForm.seconds <= 60
+
   const updateScenario = useMutation({
     mutationFn: (patch: { topic?: string; is_active?: boolean }) =>
       AdminService.updateScenario({
@@ -348,6 +398,14 @@ function ScenarioCard({
                         onMutated()
                       }}
                     />
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`编辑题目 ${index + 1}`}
+                      onClick={() => openQEdit(q)}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon-sm"
@@ -496,6 +554,71 @@ function ScenarioCard({
           </div>
         </details>
       </CardContent>
+      <Dialog
+        open={editingQ !== null}
+        onOpenChange={(open) => !open && setEditingQ(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>编辑题目</DialogTitle>
+            <DialogDescription>
+              修改即时生效；学生下一轮抽题使用新内容。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="scn-q-text">英文题目</Label>
+              <Textarea
+                id="scn-q-text"
+                rows={3}
+                value={editForm.text}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, text: e.target.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="scn-q-translation">中文提示（可选）</Label>
+              <Input
+                id="scn-q-translation"
+                value={editForm.translation}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, translation: e.target.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="scn-q-seconds">建议秒数（10–60）</Label>
+              <Input
+                id="scn-q-seconds"
+                type="number"
+                min={10}
+                max={60}
+                value={editForm.seconds}
+                onChange={(e) =>
+                  setEditForm((f) => ({
+                    ...f,
+                    seconds: Number(e.target.value),
+                  }))
+                }
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingQ(null)}>
+              取消
+            </Button>
+            <LoadingButton
+              disabled={!editValid}
+              loading={updateQuestion.isPending}
+              onClick={() => updateQuestion.mutate()}
+            >
+              保存
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDialog
         open={confirmDelete}
         title={`删除情景「${scenario.topic}」？`}
