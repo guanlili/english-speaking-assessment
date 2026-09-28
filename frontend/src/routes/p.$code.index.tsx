@@ -159,11 +159,24 @@ function ClassroomPracticePage() {
   // 结果页「换同主题下一问」跳转过来（?next=1）时执行换题（闩锁保证只触发一次）
   const nextFlagConsumedRef = useRef(false)
   useEffect(() => {
-    if (nextFlag && !nextFlagConsumedRef.current && student !== null) {
+    // 等计划加载后再换题：否则 plan?.session_id 为空，探索轮会取错主题/档位
+    if (
+      nextFlag &&
+      !nextFlagConsumedRef.current &&
+      student !== null &&
+      todayQuery.isSuccess
+    ) {
       nextFlagConsumedRef.current = true
       nextQuestionMutation.mutate()
     }
-  }, [nextFlag, student, nextQuestionMutation])
+  }, [nextFlag, student, nextQuestionMutation, todayQuery.isSuccess])
+
+  // ?next=1 但计划加载失败：提示换题未成功（否则静默无反应）
+  useEffect(() => {
+    if (nextFlag && todayQuery.isError) {
+      toast.error("换题失败", { description: "练习计划加载失败，请返回重试" })
+    }
+  }, [nextFlag, todayQuery.isError])
 
   // 追加换来的题（本地状态；完成后随 attempts 展示）
   const [extraQuestion, setExtraQuestion] = useState<PlanItem | null>(null)
@@ -707,6 +720,8 @@ function ClassroomPracticePage() {
             attempt={attempt}
             itemType={currentItem?.type as "repeat" | "question"}
             onRepractice={() => {
+              // 主动重录：清提交标记，避免重置后 allDone 触发自动跳转结果页
+              submittedRef.current = false
               resetAttempt()
               recorderReset()
             }}

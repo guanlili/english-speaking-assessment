@@ -567,7 +567,6 @@ function PassageCard({
             text={passage.text ?? ""}
             stopPropagation
             onSet={async (audio_url) => {
-              if (audio_url === null) return
               await AdminService.updatePassage({
                 passageId: passage.id,
                 requestBody: {
@@ -631,7 +630,6 @@ function PassageCard({
                     hasAudio={Boolean(s.audio_url)}
                     text={s.text ?? ""}
                     onSet={async (audio_url) => {
-                      if (audio_url === null) return
                       await AdminService.updateSentence({
                         sentenceId: s.id ?? "",
                         requestBody: {

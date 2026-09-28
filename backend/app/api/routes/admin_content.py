@@ -338,11 +338,11 @@ async def import_wordlist_csv(
             detail=f"没有有效行（示例：friendly,B1）。无效行号：{invalid_rows[:10]}",
         )
 
-    # 整体替换（学校词表是权威来源）。先删后插、分两次提交：
-    # 同一 flush 内 SQLAlchemy 先执行 INSERT 后 DELETE，会撞 lemma 唯一索引
+    # 整体替换（学校词表是权威来源）。单事务内先删后插：
+    # flush 让 DELETE 先执行（避开 lemma 唯一索引），中途失败整体回滚，不会清空词表
     for entry in session.exec(select(WordlistEntry)).all():
         session.delete(entry)
-    session.commit()
+    session.flush()
     for entry in staged:
         session.add(entry)
     session.commit()

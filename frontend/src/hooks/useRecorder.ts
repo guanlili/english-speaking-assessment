@@ -43,6 +43,8 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   const timerRef = useRef<number | null>(null)
   const onCompleteRef = useRef(options.onComplete)
   onCompleteRef.current = options.onComplete
+  // 卸载标志：录音中离开页面时，onstop 不再提交幽灵作答
+  const disposedRef = useRef(false)
 
   const cleanup = useCallback(() => {
     if (timerRef.current !== null) {
@@ -78,6 +80,13 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
       })
+      // await 期间卸载（权限弹窗未响应/用户已离开）：释放麦克风，不建 recorder
+      if (disposedRef.current) {
+        stream.getTracks().forEach((track) => {
+          track.stop()
+        })
+        return
+      }
       streamRef.current = stream
       const mimeType = pickMimeType()
       const recorder = mimeType
@@ -92,6 +101,11 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         }
       }
       recorder.onstop = () => {
+        // 卸载中（用户离开页面）：释放麦克风但不提交幽灵作答
+        if (disposedRef.current) {
+          cleanup()
+          return
+        }
         const duration = (Date.now() - startedAtRef.current) / 1000
         cleanup()
         // PRD US-02：空文件或短于 1 秒不打分，提示再录
@@ -136,6 +150,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   // 卸载时释放麦克风
   useEffect(() => {
     return () => {
+      disposedRef.current = true
       const recorder = recorderRef.current
       if (recorder && recorder.state === "recording") {
         recorder.stop()

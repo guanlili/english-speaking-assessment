@@ -160,7 +160,7 @@ function ScenarioCard({
 
   const [gen, setGen] = useState({ band: "B1", count: 3, hint: "" })
   const [drafts, setDrafts] = useState<
-    Array<{ text: string; band: string; seconds: number }>
+    Array<{ id: string; text: string; band: string; seconds: number }>
   >([])
 
   const addQuestion = useMutation({
@@ -195,6 +195,7 @@ function ScenarioCard({
     onSuccess: (data) => {
       setDrafts(
         (data ?? []).map((d) => ({
+          id: crypto.randomUUID(),
           text: d.text ?? "",
           band: gen.band,
           seconds: d.suggested_seconds ?? 30,
@@ -325,7 +326,7 @@ function ScenarioCard({
                       onSet={async (audio_url) => {
                         await AdminService.updateQuestion({
                           questionId: q.id,
-                          requestBody: audio_url !== null ? { audio_url } : {},
+                          requestBody: { audio_url },
                         })
                         onMutated()
                       }}
@@ -460,7 +461,7 @@ function ScenarioCard({
                 AI 草稿（可编辑后采纳；不会自动入库）
               </p>
               {drafts.map((d, i) => (
-                <div key={d.text} className="flex flex-wrap items-center gap-2">
+                <div key={d.id} className="flex flex-wrap items-center gap-2">
                   <Input
                     className="min-w-48 flex-1"
                     value={d.text}

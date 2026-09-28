@@ -16,7 +16,7 @@ import {
   Star,
   Trophy,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
@@ -118,12 +118,15 @@ function RoundResultPage() {
     )
   }, [gamification])
 
-  // 3 星或新徽章 → 庆祝彩带（只放一次）
+  // 3 星或新徽章 → 庆祝彩带（每次挂载只放一次；轮询刷新 gamification 对象不重放）
+  const confettiFiredRef = useRef(false)
   useEffect(() => {
+    if (confettiFiredRef.current) return
     if (
       gamification &&
       (gamification.session_stars === 3 || newBadges.length > 0)
     ) {
+      confettiFiredRef.current = true
       confetti({ particleCount: 90, spread: 75, origin: { y: 0.6 } })
     }
   }, [gamification?.session_stars, newBadges.length, gamification])
