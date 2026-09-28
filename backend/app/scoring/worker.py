@@ -10,6 +10,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 
 from sqlmodel import Session, select
 
@@ -26,10 +27,11 @@ from app.models import (
     WordlistEntry,
 )
 from app.scoring.asr import ArkResponsesAsr, MockAsr
-from app.scoring.audio_convert import ensure_ark_supported
+from app.scoring.audio_convert import convert_to_wav, ensure_ark_supported
 from app.scoring.base import AsrProvider, ScoringError
 from app.scoring.heuristic import score_open_response, score_read_aloud
 from app.scoring.lexicon import analyze_transcript
+from app.scoring.volc_flash import VolcFlashAsr
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +70,8 @@ def _analyze_vocab(session: Session, transcript: str) -> dict[str, object] | Non
 
 def build_asr_provider() -> AsrProvider:
     if settings.SCORING_PROVIDER == "ark":
+        if settings.ASR_PROVIDER == "volc_flash":
+            return VolcFlashAsr(api_key=settings.VOLC_ASR_API_KEY or "")
         if not settings.ARK_API_KEY:
             raise ScoringError("SCORING_PROVIDER=ark 但未配置 ARK_API_KEY")
         return ArkResponsesAsr(
@@ -152,11 +156,23 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
         audio = audio_path.read_bytes()
         provider = build_asr_provider()
         # 方舟不接受浏览器 webm/opus：转 16kHz wav 再送（本地 mock 原样）
-        if provider.name == "ark":
+        conversion_start = perf_counter()
+        if provider.name == "volc_flash":
+            audio, effective_mime = convert_to_wav(audio, ".audio")
+        elif provider.name == "ark":
             audio, effective_mime = ensure_ark_supported(audio, attempt.audio_mime)
         else:
             effective_mime = attempt.audio_mime
+        conversion_ms = (perf_counter() - conversion_start) * 1000
+        asr_start = perf_counter()
         transcript = provider.transcribe(audio, effective_mime)
+        logger.info(
+            "ASR attempt=%s provider=%s conversion_ms=%.0f recognition_ms=%.0f",
+            attempt_id,
+            provider.name,
+            conversion_ms,
+            (perf_counter() - asr_start) * 1000,
+        )
         engine = provider.name
 
         read_aloud = _resolve_read_aloud_item(session, attempt)
@@ -186,7 +202,7 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             attempt.vocab = _analyze_vocab(session, transcript)
             # rubric 四维与模拟分（PRD US-08）：仅 ark 引擎；失败降级不出假分
             # 空转写（没说话/识别不到）不出 0 分模拟——界面显示暂缺
-            if engine == "ark" and transcript.strip():
+            if engine in {"ark", "volc_flash"} and transcript.strip():
                 attempt.rubric = {"status": "pending"}
                 detail_request = (prompt, band, transcript)
 

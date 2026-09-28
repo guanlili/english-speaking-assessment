@@ -110,6 +110,8 @@ class Settings(BaseSettings):
     # ── 口语评测评分（PRD §7.2：引擎藏在可替换接口后面）──
     # mock=离线演示/测试；ark=火山方舟（需 ARK_API_KEY，模型名必须带日期后缀）
     SCORING_PROVIDER: Literal["mock", "ark"] = "mock"
+    ASR_PROVIDER: Literal["ark", "volc_flash"] = "ark"
+    VOLC_ASR_API_KEY: str | None = None
     ARK_API_KEY: str | None = None
     ARK_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
     # 方舟 API 调用名必须用带日期后缀的快照名，广场短名（doubao-seed-2-0-lite）会 404

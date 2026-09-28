@@ -16,6 +16,7 @@ import { safeLocalStorageGet, safeLocalStorageSet } from "@/utils"
 // PRD §4：三种分的来源必须在界面上写清
 const ENGINE_LABELS: Record<string, string> = {
   mock: "演示模式 · 本地模拟引擎",
+  volc_flash: "转写来源 · 豆包语音极速版（参考分）",
   ark: "转写来源 · 火山方舟（参考分）",
 }
 
