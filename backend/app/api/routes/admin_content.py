@@ -138,6 +138,52 @@ def create_sentence(
     return sentence
 
 
+class SentenceWithPassage(RepeatSentence):
+    """平铺复述句库视图：带所属篇目标题（独立句为 null）。"""
+
+    passage_title: str | None = None
+
+
+@router.get("/sentences", response_model=list[SentenceWithPassage])
+def list_sentences_flat(session: SessionDep, _admin: TeacherUserDep) -> Any:
+    """复述句独立题库：全部复述句平铺（含挂篇目的），按创建顺序。"""
+    sentences = session.exec(
+        select(RepeatSentence).order_by(col(RepeatSentence.created_at))
+    ).all()
+    passage_titles = {
+        pid: title for pid, title in session.exec(select(Passage.id, Passage.title)).all()
+    }
+    return [
+        SentenceWithPassage(
+            **s.model_dump(),
+            passage_title=passage_titles.get(s.passage_id) if s.passage_id else None,
+        )
+        for s in sentences
+    ]
+
+
+@router.post("/sentences", response_model=RepeatSentence)
+def create_sentence_standalone(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    sentence: RepeatSentence,
+) -> Any:
+    """独立创建复述句（不挂篇目）：题目库三题型互相独立后的复述题入口。
+
+    传 passage_id 仍可挂到篇目（自主练习轮会随篇目出现）。
+    """
+    if not 0 <= sentence.replay_limit <= 9:
+        raise HTTPException(status_code=422, detail="可重听次数需在 0–9 之间（0=不限）")
+    if sentence.passage_id is not None and session.get(
+        Passage, sentence.passage_id
+    ) is None:
+        raise HTTPException(status_code=404, detail="Passage not found")
+    session.add(sentence)
+    session.commit()
+    session.refresh(sentence)
+    return sentence
+
+
 @router.put("/sentences/{sentence_id}", response_model=RepeatSentence)
 def update_sentence(
     session: SessionDep,

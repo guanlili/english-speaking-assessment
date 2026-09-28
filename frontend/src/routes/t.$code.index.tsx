@@ -263,7 +263,11 @@ function TeacherBoardPage() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="prepare">
-            <AssignmentComposer code={code} assignment={board.assignment} />
+            <AssignmentComposer
+              code={code}
+              assignment={board.assignment}
+              assignedItems={board.assigned_items}
+            />
           </TabsContent>
           <TabsContent value="results" className="space-y-6">
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

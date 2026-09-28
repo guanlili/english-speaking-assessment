@@ -5,7 +5,7 @@ from datetime import date
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.core.security import get_password_hash, verify_password
 from app.models import (
@@ -214,10 +214,11 @@ def get_or_create_today_session(
             PracticeSession.mode == "explore",
         )
     else:
-        statement = statement.where(
-            PracticeSession.mode == "daily",
-            PracticeSession.passage_id == passage_id,
-        )
+        statement = statement.where(PracticeSession.mode == "daily")
+        if passage_id is None:
+            statement = statement.where(col(PracticeSession.passage_id).is_(None))
+        else:
+            statement = statement.where(PracticeSession.passage_id == passage_id)
     existing = session.exec(statement).first()
     if existing is not None:
         return existing

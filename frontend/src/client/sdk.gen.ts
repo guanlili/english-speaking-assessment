@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminUpdateScenarioData, AdminUpdateScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminListQuestionBankData, AdminListQuestionBankResponse, AdminCreateQuestionsBatchData, AdminCreateQuestionsBatchResponse, AdminWordlistStatsResponse, AdminImportWordlistCsvData, AdminImportWordlistCsvResponse, AdminListUnitsResponse, AdminCreateUnitData, AdminCreateUnitResponse, AdminUpdateUnitData, AdminUpdateUnitResponse, AdminDeleteUnitData, AdminDeleteUnitResponse, AdminListTopicsResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminUpdateClassroomData, AdminUpdateClassroomResponse, AdminGenerateQuestionsData, AdminGenerateQuestionsResponse, AdminAutoSplitSentencesData, AdminAutoSplitSentencesResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ClassesListMyClassroomsResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, ClassesReadLearningPathData, ClassesReadLearningPathResponse, ClassesRecordListenData, ClassesRecordListenResponse, ClassesListUnitsForClassData, ClassesListUnitsForClassResponse, ClassesSetAssignmentData, ClassesSetAssignmentResponse, ClassesStartExploreData, ClassesStartExploreResponse, LoginReadLoginOptionsResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginLoginDemoResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, StudentsImportStudentsData, StudentsImportStudentsResponse, StudentsListStudentsData, StudentsListStudentsResponse, StudentsResetStudentPasswordData, StudentsResetStudentPasswordResponse, StudentsRemoveStudentData, StudentsRemoveStudentResponse, StudentsBulkResetPasswordsData, StudentsBulkResetPasswordsResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse } from './types.gen';
+import type { AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminListSentencesFlatResponse, AdminCreateSentenceStandaloneData, AdminCreateSentenceStandaloneResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminUpdateScenarioData, AdminUpdateScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminListQuestionBankData, AdminListQuestionBankResponse, AdminCreateQuestionsBatchData, AdminCreateQuestionsBatchResponse, AdminWordlistStatsResponse, AdminImportWordlistCsvData, AdminImportWordlistCsvResponse, AdminListUnitsResponse, AdminCreateUnitData, AdminCreateUnitResponse, AdminUpdateUnitData, AdminUpdateUnitResponse, AdminDeleteUnitData, AdminDeleteUnitResponse, AdminListTopicsResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminUpdateClassroomData, AdminUpdateClassroomResponse, AdminGenerateQuestionsData, AdminGenerateQuestionsResponse, AdminAutoSplitSentencesData, AdminAutoSplitSentencesResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ClassesListMyClassroomsResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, ClassesReadLearningPathData, ClassesReadLearningPathResponse, ClassesRecordListenData, ClassesRecordListenResponse, ClassesListUnitsForClassData, ClassesListUnitsForClassResponse, ClassesSetAssignmentData, ClassesSetAssignmentResponse, ClassesStartExploreData, ClassesStartExploreResponse, LoginReadLoginOptionsResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginLoginDemoResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, StudentsImportStudentsData, StudentsImportStudentsResponse, StudentsListStudentsData, StudentsListStudentsResponse, StudentsResetStudentPasswordData, StudentsResetStudentPasswordResponse, StudentsRemoveStudentData, StudentsRemoveStudentResponse, StudentsBulkResetPasswordsData, StudentsBulkResetPasswordsResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse } from './types.gen';
 
 export class AdminService {
     /**
@@ -95,6 +95,41 @@ export class AdminService {
             path: {
                 passage_id: data.passageId
             },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * List Sentences Flat
+     * 复述句独立题库：全部复述句平铺（含挂篇目的），按创建顺序。
+     * @returns SentenceWithPassage Successful Response
+     * @throws ApiError
+     */
+    public static listSentencesFlat(): CancelablePromise<AdminListSentencesFlatResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/admin/sentences'
+        });
+    }
+    
+    /**
+     * Create Sentence Standalone
+     * 独立创建复述句（不挂篇目）：题目库三题型互相独立后的复述题入口。
+     *
+     * 传 passage_id 仍可挂到篇目（自主练习轮会随篇目出现）。
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns RepeatSentence Successful Response
+     * @throws ApiError
+     */
+    public static createSentenceStandalone(data: AdminCreateSentenceStandaloneData): CancelablePromise<AdminCreateSentenceStandaloneResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/admin/sentences',
             body: data.requestBody,
             mediaType: 'application/json',
             errors: {
@@ -933,9 +968,10 @@ export class ClassesService {
     
     /**
      * Set Assignment
-     * 老师设置/清除今日指派单元（需要教师身份）。
+     * 老师设置/清除今日指派（需要教师身份）。
      *
-     * 设置后全班学生的 /today 同步用该单元；清除则回退个人路径。
+     * 两种模式：按题集合（items，三题型独立各自选题）优先；单元指派（unit_id）兼容旧流。
+     * 清除（items=[] 或 unit_id=null）则回退个人路径。
      * @param data The data for the request.
      * @param data.code
      * @param data.requestBody
