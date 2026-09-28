@@ -46,7 +46,7 @@ const questionTypes = [
   {
     key: "qa",
     title: "情景问答",
-    description: "按学生档位，一问一答",
+    description: "按学生档位（A2/B1/B2）一问一答；档位由系统按练习表现自动调整",
     icon: MessagesSquare,
   },
 ] as const

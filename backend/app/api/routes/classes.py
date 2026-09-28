@@ -334,12 +334,11 @@ def _repeat_attempts_of_session(
 def _pick_questions(
     session: Any,
     scenario: Scenario,
-    band: str,
     student_id: uuid.UUID,
     limit: int = QUESTIONS_PER_ROUND,
     fill_with_done: bool = True,
 ) -> tuple[list[ScenarioQuestion], bool]:
-    """同主题同档、未做过的优先，按 order_index 稳定排序。
+    """同主题、未做过的优先，按 order_index 稳定排序（不分级，全班同题）。
 
     返回 (题目列表, 是否已用尽)。选择是确定性的：刷新不会换题。
     fill_with_done=True 用于 /today：取前 N 道题（按 order_index 固定题单，
@@ -347,10 +346,7 @@ def _pick_questions(
     """
     questions = session.exec(
         select(ScenarioQuestion)
-        .where(
-            ScenarioQuestion.scenario_id == scenario.id,
-            ScenarioQuestion.band == band,
-        )
+        .where(ScenarioQuestion.scenario_id == scenario.id)
         .order_by(col(ScenarioQuestion.order_index))
     ).all()
     done_ids = set(
@@ -475,9 +471,8 @@ def read_today_plan(
     band = practice_session.question_band or practice_session.band
     if include_qa:
         scenario = _scenario_for_topic(session, passage.topic)
-        band = _question_band_for_session(session, practice_session, student)
         questions, exhausted = _pick_questions(
-            session, scenario, band, student.id, QUESTIONS_PER_ROUND
+            session, scenario, student.id, QUESTIONS_PER_ROUND
         )
 
     # 复述句的重听计数（学生×本轮×题目）
@@ -527,7 +522,6 @@ def read_today_plan(
             translation=q.translation,
             audio_url=q.audio_url,
             suggested_seconds=q.suggested_seconds,
-            band=q.band,
         )
         for q in questions
     ]
@@ -595,9 +589,9 @@ def read_next_question(
     session_id: uuid.UUID | None = Query(default=None),
     exclude_ids: list[uuid.UUID] = Query(default=[]),
 ) -> Any:
-    """换一题：同主题、同档、未做过的问题（US-06）。用尽时 exhausted=true。
+    """换一题：同主题、未做过的问题（US-06）。用尽时 exhausted=true。
 
-    传 session_id 时使用该会话的篇目与档位（主题探索轮），
+    传 session_id 时使用该会话的篇目（主题探索轮），
     不传时使用当日课堂会话。
     """
     classroom = _get_classroom(session, code)
@@ -612,7 +606,6 @@ def read_next_question(
             passage = _active_passage(session, student)
         if passage is None:
             raise HTTPException(status_code=404, detail="No active passage")
-        band = practice_session.question_band or practice_session.band
     else:
         passage = _active_passage(session, student)
         practice_session = get_or_create_today_session(
@@ -622,12 +615,11 @@ def read_next_question(
             today=_today_in_practice_tz(),
             passage_id=passage.id,
         )
-        band = practice_session.question_band or practice_session.band
     scenario = _scenario_for_topic(session, passage.topic)
 
     # 先取所有未做过的题，再排除当前题单已有的，避免误报题库耗尽
     questions, exhausted = _pick_questions(
-        session, scenario, band, student.id, limit=999, fill_with_done=False
+        session, scenario, student.id, limit=999, fill_with_done=False
     )
     excluded = set(exclude_ids)
     candidates = [q for q in questions if q.id not in excluded]

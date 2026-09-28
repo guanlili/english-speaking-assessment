@@ -56,11 +56,17 @@ function AudioSetter({
 
   return (
     <div className="flex items-center gap-1">
-      {hasAudio && <Volume2 className="size-4 text-primary" />}
+      {hasAudio && (
+        <>
+          <Volume2 className="size-4 text-primary" />
+          <span className="sr-only">已配置标准音</span>
+        </>
+      )}
       <Button
         variant="ghost"
         size="icon-sm"
         title="语音合成生成标准音（需配置方舟密钥）"
+        aria-label="语音合成生成标准音（需配置方舟密钥）"
         onClick={(e) => {
           if (stopPropagation) e.stopPropagation()
           ttsMutation.mutate()
@@ -88,6 +94,7 @@ function AudioSetter({
         variant="ghost"
         size="icon-sm"
         title="上传现成音频"
+        aria-label="上传现成音频"
         onClick={(e) => {
           if (stopPropagation) e.stopPropagation()
           fileRef.current?.click()
@@ -105,6 +112,7 @@ function AudioSetter({
           variant="ghost"
           size="icon-sm"
           title="清除标准音（回退浏览器朗读）"
+          aria-label="清除标准音（回退浏览器朗读）"
           onClick={(e) => {
             if (stopPropagation) e.stopPropagation()
             void clear()

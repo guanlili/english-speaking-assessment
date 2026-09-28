@@ -84,7 +84,9 @@ export function ScenariosAdmin({ embedded = false }: { embedded?: boolean }) {
     <div className="flex flex-col gap-6">
       {!embedded && <ContentNavigation />}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">情景问答 · 题目管理</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          情景问答 · 题目管理
+        </h1>
         <p className="text-muted-foreground">
           同一主题，分级练习：KET 对应 A2，PET 对应 B1，另有 B2 进阶题。
         </p>
@@ -371,6 +373,7 @@ function ScenarioCard({
                         <Button
                           variant="ghost"
                           size="icon-sm"
+                          aria-label="删除题目"
                           onClick={() => deleteQuestion.mutate(q.id)}
                         >
                           <Trash2 className="size-3.5 text-destructive" />
