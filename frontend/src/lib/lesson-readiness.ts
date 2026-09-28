@@ -23,21 +23,16 @@ export function inspectLesson(
     ? scenarios.find((item) => item.is_active && item.topic === passage.topic)
     : undefined
   const problems: string[] = []
-  if (!unitId) problems.push("请选择一组练习内容。")
+  if (!unitId) problems.push("请选择一个单元。")
   if (!types.reading && !types.repeat && !types.qa)
     problems.push("至少选择一种题型。")
   if (unitId && !materials.length)
-    problems.push("这组内容还没有启用的材料，请先在题目库添加并归入此分组。")
+    problems.push("该单元还没有启用的篇目，请先在题目库添加篇目并归入此单元。")
   if (passage && types.repeat && !materials.some((m) => m.sentences?.length))
     problems.push("尚未添加复述句，请到「听句复述」补充。")
-  if (passage && types.qa) {
-    const missing = ["A2", "B1", "B2"].filter(
-      (band) => !scenario?.questions.some((question) => question.band === band),
+  if (passage && types.qa && !scenario?.questions.length)
+    problems.push(
+      `配套主题「${passage.topic}」还没有问答题，请到「模拟问答」为这个主题添加。`,
     )
-    if (missing.length)
-      problems.push(
-        `配套主题「${passage.topic}」缺少 ${missing.join(" / ")} 问答题。请补齐，确保不同档位学生都有题可答。`,
-      )
-  }
   return { passage, materials, scenario, problems }
 }

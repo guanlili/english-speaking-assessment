@@ -63,7 +63,7 @@ export type BatchFailItem = {
 };
 
 export type BatchQuestionCreate = {
-    band: string;
+    band?: string;
     items: Array<BatchQuestionItem>;
 };
 
@@ -207,7 +207,7 @@ export type GamificationInfo = {
 };
 
 export type GenerateRequest = {
-    band: string;
+    band?: string;
     count?: number;
     hint?: (string | null);
 };
@@ -391,7 +391,7 @@ export type ScenarioOut = {
 export type ScenarioQuestion = {
     id?: string;
     scenario_id: string;
-    band: string;
+    band?: string;
     order_index?: number;
     text: string;
     translation?: (string | null);

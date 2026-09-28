@@ -45,7 +45,7 @@ export const Route = createFileRoute("/t/$code/")({
 const TYPE_LABELS: Record<string, string> = {
   passage: "文章朗读",
   repeat: "听句复述",
-  question: "问答",
+  question: "情景问答",
 }
 
 // 有学生在评分中时的轮询间隔（PRD US-10：最后一人提交后 2 分钟内一致）
@@ -127,7 +127,7 @@ function TeacherBoardPage() {
 
   const STATUS_LABELS: Record<string, string> = {
     all: "全部状态",
-    done: "已完成",
+    done: "已提交",
     practicing: "评分中",
     idle: "未提交",
     inactive: "7 天未练",
@@ -161,7 +161,7 @@ function TeacherBoardPage() {
       "当前档",
       "完成题数",
       "跟读均分",
-      "问答均分",
+      "情景问答均分",
       "XP",
       "连胜天数",
       "状态",
@@ -220,7 +220,7 @@ function TeacherBoardPage() {
               课堂 {board.classroom_code}
             </h1>
             <p className="text-sm text-muted-foreground">
-              课堂 {board.classroom_code} · 已交 {board.submitted_count}/
+              课堂 {board.classroom_code} · 已提交 {board.submitted_count}/
               {board.class_size}
               {board.pending_count > 0 && (
                 <span className="ml-2 inline-flex items-center gap-1">
@@ -437,11 +437,24 @@ function StudentRow({
     <>
       <TableRow onClick={onToggle} className="cursor-pointer">
         <TableCell>
-          {expanded ? (
-            <ChevronDown className="size-4" />
-          ) : (
-            <ChevronRight className="size-4" />
-          )}
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-label={
+              expanded ? `收起 ${name} 的详情` : `展开 ${name} 的详情`
+            }
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggle()
+            }}
+            className="rounded-sm p-0.5 text-muted-foreground transition hover:text-foreground"
+          >
+            {expanded ? (
+              <ChevronDown className="size-4" />
+            ) : (
+              <ChevronRight className="size-4" />
+            )}
+          </button>
         </TableCell>
         <TableCell className="font-medium">{name}</TableCell>
         <TableCell>
@@ -458,7 +471,7 @@ function StudentRow({
           ) : student.done_count === 0 ? (
             <span className="text-muted-foreground">未提交</span>
           ) : (
-            <Badge variant="outline">已交</Badge>
+            <Badge variant="outline">已提交</Badge>
           )}
         </TableCell>
       </TableRow>
@@ -494,7 +507,7 @@ function StudentRow({
                     <span className="text-sm text-muted-foreground">未做</span>
                   ) : item.status === "done" ? (
                     <span className="text-sm font-semibold tabular-nums">
-                      总评 {item.overall ?? "–"}
+                      参考分 {item.overall ?? "–"}
                     </span>
                   ) : item.status === "failed" ? (
                     <span className="text-sm text-destructive">未评出</span>

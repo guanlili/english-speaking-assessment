@@ -19,6 +19,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
+import InfoHint from "@/components/Common/InfoHint"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { RubricBlock } from "@/components/Practice/FeedbackCard"
 import StudentShell from "@/components/Practice/StudentShell"
@@ -40,8 +41,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { APP_NAME } from "@/config"
 import { displayName, loadStudent } from "@/lib/classroom-student"
+import { EXPLAIN } from "@/lib/terms"
 
 export const Route = createFileRoute("/p/$code/result")({
   component: RoundResultPage,
@@ -55,8 +62,8 @@ export const Route = createFileRoute("/p/$code/result")({
 })
 
 const ITEM_TYPE_LABELS: Record<string, string> = {
-  passage: "整篇朗读",
-  repeat: "听后复述",
+  passage: "文章朗读",
+  repeat: "听句复述",
   question: "情景问答",
 }
 
@@ -242,7 +249,8 @@ function RoundResultPage() {
             今天的你，又向前了一步。
           </h1>
           <p className="text-sm text-muted-foreground">
-            {displayName(student)} · 课堂 {plan.classroom_code} · 每题转写和总评
+            {displayName(student)} · 课堂 {plan.classroom_code} ·
+            每题转写和参考分
           </p>
         </div>
 
@@ -259,34 +267,65 @@ function RoundResultPage() {
                 比起完美，开口本身就很棒。
               </h2>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-                <span className="flex items-center gap-1">
-                  {[1, 2, 3].map((n) => (
-                    <Star
-                      key={n}
-                      className={
-                        n <= (gamification.session_stars ?? 0)
-                          ? "size-5 fill-yellow-400 text-yellow-400"
-                          : "size-5 text-muted-foreground/30"
-                      }
-                      style={{
-                        animation: `star-pop 0.4s ease-out ${n * 0.25}s both`,
-                      }}
-                    />
-                  ))}
-                </span>
-                <span className="flex items-center gap-1 font-semibold">
-                  <Sparkles className="size-4 text-primary" />
-                  XP {gamification.xp}
-                </span>
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  <Flame className="size-4 text-orange-500" />
-                  连胜 {gamification.streak_days} 天
-                </span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      role="img"
+                      aria-label={`本轮星级：${gamification.session_stars} / 3`}
+                      className="flex items-center gap-1"
+                    >
+                      {[1, 2, 3].map((n) => (
+                        <Star
+                          key={n}
+                          className={
+                            n <= (gamification.session_stars ?? 0)
+                              ? "size-5 fill-yellow-400 text-yellow-400"
+                              : "size-5 text-muted-foreground/30"
+                          }
+                          style={{
+                            animation: `star-pop 0.4s ease-out ${n * 0.25}s both`,
+                          }}
+                        />
+                      ))}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-64 text-xs leading-relaxed">
+                    {EXPLAIN.stars}
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="flex items-center gap-1 font-semibold">
+                      <Sparkles className="size-4 text-primary" />
+                      XP {gamification.xp}
+                      <span className="sr-only">{EXPLAIN.xp}</span>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-64 text-xs leading-relaxed">
+                    {EXPLAIN.xp}
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <Flame className="size-4 text-orange-500" />
+                      连胜 {gamification.streak_days} 天
+                      <span className="sr-only">{EXPLAIN.streak}</span>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-64 text-xs leading-relaxed">
+                    {EXPLAIN.streak}
+                  </TooltipContent>
+                </Tooltip>
               </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {EXPLAIN.stars}
+              </p>
               {newBadges.length > 0 && (
-                <p className="mt-2 text-sm">
+                <p className="mt-2 flex items-center gap-1 text-sm">
                   <span className="font-semibold">本轮获得徽章：</span>
                   {newBadges.map((b) => b.label).join("、")}
+                  <InfoHint label={EXPLAIN.badges} />
                 </p>
               )}
             </div>
@@ -298,8 +337,8 @@ function RoundResultPage() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {(
                 [
-                  ["口语总评参考", roundStats.overall, "本轮均值"],
-                  ["完整度参考", roundStats.completeness, "听后复述"],
+                  ["参考分", roundStats.overall, "本轮均值"],
+                  ["完整度参考", roundStats.completeness, "听句复述"],
                   ["流利度参考", roundStats.fluency, "全部题目"],
                   [
                     "词汇参考档位",
@@ -401,7 +440,7 @@ function RoundResultPage() {
         {doneItems.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">本轮总评与练习计划</CardTitle>
+              <CardTitle className="text-base">本轮参考分与练习计划</CardTitle>
               <CardDescription>
                 已完成 {doneItems.length} / {plan.items.length} 题 ·
                 参考分来自转写文本与语速规则，模型四维分单独统计。
@@ -454,7 +493,7 @@ function RoundResultPage() {
               <Separator />
               <div className="flex items-center gap-4 text-sm">
                 <span className="text-2xl font-bold tabular-nums">
-                  总评 {attempt.overall ?? "–"}
+                  参考分 {attempt.overall ?? "–"}
                 </span>
                 {item.type !== "question" && (
                   <span className="text-muted-foreground">
@@ -521,7 +560,7 @@ function RoundResultPage() {
                   <span className="text-2xl font-bold tabular-nums">
                     {replay.attempt.overall ?? "–"}
                   </span>
-                  <span className="text-muted-foreground">参考总评</span>
+                  <span className="text-muted-foreground">参考分</span>
                 </div>
                 {replay.attempt.attempt_id && (
                   <AttemptAudio

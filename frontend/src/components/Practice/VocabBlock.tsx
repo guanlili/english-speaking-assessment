@@ -35,7 +35,7 @@ function VocabBlock({ vocab }: { vocab: unknown }) {
   return (
     <div className="space-y-2 rounded-md border px-3 py-2">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-muted-foreground">词汇参考等级</span>
+        <span className="text-muted-foreground">词汇参考档位</span>
         <Badge variant="secondary">{data.cefr ?? "–"}</Badge>
         {typeof data.coverage === "number" && (
           <span className="text-xs text-muted-foreground">
@@ -55,7 +55,7 @@ function VocabBlock({ vocab }: { vocab: unknown }) {
         </div>
       )}
       <p className="text-xs text-muted-foreground">
-        词表来源：{data.wordlist ?? "未命名"} · 参考等级，不是官方 CEFR 证书
+        词表来源：{data.wordlist ?? "未命名"} · 参考档位，不是官方 CEFR 证书
       </p>
     </div>
   )

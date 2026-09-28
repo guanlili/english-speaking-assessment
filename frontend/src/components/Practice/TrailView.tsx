@@ -48,9 +48,9 @@ function TrailView({
       {hasTrend ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">口语参考分</CardTitle>
+            <CardTitle className="text-base">参考分</CardTitle>
             <CardDescription>
-              每日情景问答的总评均值。参考分，不是考试成绩。
+              每日情景问答的参考分均值，不是考试成绩。
             </CardDescription>
           </CardHeader>
           <CardContent className="text-primary">
@@ -64,7 +64,7 @@ function TrailView({
           <CardHeader>
             <CardTitle className="text-base">词汇参考档</CardTitle>
             <CardDescription>
-              按词表命中给出的 CEFR 参考（A2/B1/B2）。参考等级，不是官方证书。
+              按词表命中给出的 CEFR 档位参考（A2/B1/B2），不是官方证书。
             </CardDescription>
           </CardHeader>
           <CardContent className="text-primary">
@@ -89,7 +89,7 @@ function TrailView({
         <CardHeader>
           <CardTitle className="text-base">每次练习</CardTitle>
           <CardDescription>
-            跟读完整度单独列出，不混进口语参考分（PRD 口径）。
+            跟读完整度单独列出，不混进参考分（PRD 口径）。
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -102,7 +102,7 @@ function TrailView({
               <TableHeader>
                 <TableRow>
                   <TableHead>日期</TableHead>
-                  <TableHead>口语参考分</TableHead>
+                  <TableHead>参考分</TableHead>
                   <TableHead>跟读完整度</TableHead>
                   <TableHead>词汇参考档</TableHead>
                   <TableHead>作答数</TableHead>

@@ -95,7 +95,7 @@ function MyClassroomsPage() {
 
       <div className="grid gap-3 sm:grid-cols-3">
         {[
-          { title: "课前 · 准备题目", text: "文章朗读、听句复述、模拟问答" },
+          { title: "课前 · 准备题目", text: "文章朗读、听句复述、情景问答" },
           { title: "课中 · 安排练习", text: "进入课堂，选择内容并预览发布" },
           { title: "课后 · 查看结果", text: "听录音、看参考反馈、跟踪进步" },
         ].map((step, index) => (

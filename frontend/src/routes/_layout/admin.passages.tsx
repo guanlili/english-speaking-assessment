@@ -187,7 +187,7 @@ export function PassagesAdmin({
 
       <details className="rounded-xl border bg-card p-4">
         <summary className="cursor-pointer font-medium text-primary">
-          {mode === "repeat" ? "新建复述材料" : "新建朗读题"}
+          新建篇目
         </summary>
         <div className="mt-4">
           <NewPassageForm
@@ -223,7 +223,7 @@ export function PassagesAdmin({
         </div>
       ) : (passagesQuery.data ?? []).length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">
-          还没有材料，点击上方新建按钮开始备课。
+          还没有篇目，点击上方新建按钮开始备课。
         </p>
       ) : (
         (passagesQuery.data ?? [])
@@ -320,13 +320,13 @@ function PassageFields({
         />
       </div>
       <div className="space-y-1">
-        <Label>练习分组（用于课堂指派）</Label>
+        <Label>所属单元（用于课堂指派）</Label>
         <Select
           value={form.unit_id}
           onValueChange={(next) => setForm({ ...form, unit_id: next })}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="选择练习分组" />
+            <SelectValue placeholder="选择单元" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={NO_UNIT}>未归属</SelectItem>
@@ -420,7 +420,7 @@ function NewPassageForm({
       <CardHeader>
         <CardTitle className="text-base">新建篇目</CardTitle>
         <CardDescription>
-          填写短文并选择主题；相同主题的问答会用于配套练习。
+          填写篇目并选择主题；相同主题的情景问答会用于配套练习。
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 md:grid-cols-2">

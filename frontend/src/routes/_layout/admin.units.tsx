@@ -40,7 +40,7 @@ import useCustomToast from "@/hooks/useCustomToast"
 
 export const Route = createFileRoute("/_layout/admin/units")({
   component: UnitsAdmin,
-  head: () => ({ meta: [{ title: `练习分组 - ${APP_NAME}` }] }),
+  head: () => ({ meta: [{ title: `单元管理 - ${APP_NAME}` }] }),
 })
 
 interface UnitRow {
@@ -134,9 +134,9 @@ export function UnitsAdmin() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">练习分组</h1>
+          <h1 className="text-2xl font-bold tracking-tight">单元管理</h1>
           <p className="text-muted-foreground">
-            把配套内容整理为一组，课堂里选中这组内容即可安排练习。每组建议只保留一篇启用的材料。
+            把一个单元的配套内容整理为一组，课堂里选中该单元即可安排练习。每个单元建议只保留一篇启用的篇目。
           </p>
         </div>
         <Button onClick={openCreate}>
@@ -149,7 +149,7 @@ export function UnitsAdmin() {
         <CardHeader>
           <CardTitle className="text-base">全部单元</CardTitle>
           <CardDescription>
-            按关卡顺序排列；「篇目数」为 0 的单元指派后学生没有可练内容。
+            按单元顺序排列；「篇目数」为 0 的单元指派后学生没有可练内容。
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -172,7 +172,7 @@ export function UnitsAdmin() {
             </div>
           ) : (unitsQuery.data ?? []).length === 0 ? (
             <p className="py-8 text-center text-muted-foreground">
-              还没有单元，先新建分组，再在文章朗读或听句复述中选择此分组。
+              还没有单元，先新建一个单元，再在文章朗读或听句复述中选择此单元。
             </p>
           ) : (
             <Table>
@@ -243,7 +243,7 @@ export function UnitsAdmin() {
           <DialogHeader>
             <DialogTitle>{editing ? "编辑单元" : "新建单元"}</DialogTitle>
             <DialogDescription>
-              关卡顺序决定学生端解锁次序；主题建议从已有列表里选。
+              单元顺序决定学生端自主练习的推进次序；主题建议从已有列表里选。
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">

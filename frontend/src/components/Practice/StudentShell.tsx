@@ -199,7 +199,7 @@ function NotificationBell({ code }: { code: string }) {
           <div className="space-y-3 text-xs">
             <div className="border-b border-border pb-3">
               <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                今日任务
+                今日练习
               </span>
               <p className="mt-1.5 font-medium">
                 {done >= total
@@ -208,7 +208,7 @@ function NotificationBell({ code }: { code: string }) {
               </p>
               <p className="mt-0.5 text-muted-foreground">
                 {done >= total
-                  ? "可以去主题探索里自由聊一个话题"
+                  ? "可以去主题探索里自主练一个主题"
                   : "回来继续，每题只占用一点时间"}
               </p>
             </div>

@@ -138,6 +138,11 @@ function ClassroomsAdmin() {
           <CardDescription>
             按创建时间排序；授权教师决定谁能看到这个班的名单和录音。
           </CardDescription>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            解锁方式：顺序解锁 =
+            学生按单元顺序逐个推进（今日练习始终练当前单元）； 一键全开 =
+            所有单元在主题探索中立即可练。勾选即切换。
+          </p>
         </CardHeader>
         <CardContent>
           {listQuery.isPending ? (
@@ -220,6 +225,7 @@ function ClassroomsAdmin() {
                       <TableCell>
                         <div className="flex items-center gap-2 text-sm">
                           <Checkbox
+                            aria-label={`课堂 ${c.code}：一键全开`}
                             checked={c.unlock_all ?? false}
                             onCheckedChange={(checked) =>
                               updateMutation.mutate({
@@ -228,7 +234,7 @@ function ClassroomsAdmin() {
                               })
                             }
                           />
-                          一键全开
+                          {(c.unlock_all ?? false) ? "一键全开" : "顺序解锁"}
                         </div>
                       </TableCell>
                       <TableCell>

@@ -24,8 +24,8 @@ const types = [
   {
     id: "qa",
     icon: MessagesSquare,
-    title: "模拟问答",
-    description: "模拟口语考试 · 一问一答",
+    title: "情景问答",
+    description: "情景问答 · 一问一答",
   },
 ] as const
 
@@ -138,10 +138,10 @@ function QuestionLibrary() {
       </section>
       <details className="rounded-xl border p-5">
         <summary className="cursor-pointer text-sm font-medium">
-          整理配套内容 · 练习分组
+          整理配套内容 · 单元
         </summary>
         <p className="my-4 text-sm leading-6 text-muted-foreground">
-          需要把材料用于课堂时，在这里建一个分组，再将篇目放入该分组。问答按篇目主题自动配套；题型在课堂发布时选择。
+          需要把篇目用于课堂时，在这里建一个单元，再将篇目放入该单元。问答按篇目主题自动配套；题型在课堂发布时选择。
         </p>
         <UnitsAdmin />
       </details>

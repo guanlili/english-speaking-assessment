@@ -17,7 +17,7 @@ import { lastJoinedCode } from "@/lib/classroom-student"
 
 export const Route = createFileRoute("/join")({
   component: JoinHubPage,
-  head: () => ({ meta: [{ title: `加入课堂 - ${APP_NAME}` }] }),
+  head: () => ({ meta: [{ title: `进入课堂 - ${APP_NAME}` }] }),
 })
 
 /** 学生登录后的落点：输入课堂码进入课堂（/j/$code 完成加入）。 */
@@ -42,7 +42,7 @@ function JoinHubPage() {
       <main className="mx-auto flex w-full max-w-md flex-1 items-center px-6">
         <Card className="w-full py-8 shadow-xl shadow-primary/5">
           <CardHeader>
-            <CardTitle className="text-2xl">加入课堂</CardTitle>
+            <CardTitle className="text-2xl">进入课堂</CardTitle>
             <CardDescription>输入老师给你的课堂码开始练习</CardDescription>
           </CardHeader>
           <CardContent>

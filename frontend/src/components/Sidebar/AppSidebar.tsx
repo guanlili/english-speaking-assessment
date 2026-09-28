@@ -29,7 +29,7 @@ const createHubItem: Item[] = [
 
 // 仅管理员：用户/词表/课堂管理
 const adminOnlyItems: Item[] = [
-  { icon: Layers, title: "学习单元", path: "/admin/units" },
+  { icon: Layers, title: "单元管理", path: "/admin/units" },
   { icon: Users, title: "用户与权限", path: "/admin" },
   { icon: GraduationCap, title: "分级词表", path: "/admin/wordlist" },
   { icon: UsersRound, title: "课堂管理", path: "/admin/classrooms" },

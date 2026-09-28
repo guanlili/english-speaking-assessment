@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { ClassesService } from "@/client"
+import InfoHint from "@/components/Common/InfoHint"
 import StudentShell from "@/components/Practice/StudentShell"
 import TrailView from "@/components/Practice/TrailView"
 import { Badge } from "@/components/ui/badge"
@@ -36,12 +37,13 @@ import {
   isStudentNotFound,
   loadStudent,
 } from "@/lib/classroom-student"
+import { EXPLAIN } from "@/lib/terms"
 import { safeLocalStorageGet } from "@/utils"
 
 export const Route = createFileRoute("/me/$code")({
   component: MyTrailPage,
   head: () => ({
-    meta: [{ title: `我的进步 - ${APP_NAME}` }],
+    meta: [{ title: `我的成长 - ${APP_NAME}` }],
   }),
 })
 
@@ -102,6 +104,7 @@ function MyTrailPage() {
               <CardContent className="py-4">
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Mic className="size-3.5" /> 累计开口
+                  <InfoHint label="练习录音的累计时长（分钟）。" />
                 </p>
                 <p className="mt-1 text-2xl font-bold">
                   {trailQuery.data.total_minutes ?? 0}
@@ -115,6 +118,7 @@ function MyTrailPage() {
               <CardContent className="py-4">
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Trophy className="size-3.5" /> 完成练习
+                  <InfoHint label="已结算出分的练习轮数。" />
                 </p>
                 <p className="mt-1 text-2xl font-bold">
                   {trailQuery.data.sessions?.length ?? 0}
@@ -128,11 +132,12 @@ function MyTrailPage() {
               <CardContent className="py-4">
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Star className="size-3.5" /> 当前档位
+                  <InfoHint label={EXPLAIN.band} />
                 </p>
                 <p className="mt-1 text-2xl font-bold">
-                  {todayQuery.data?.gamification
-                    ? "B1"
-                    : (trailQuery.data.sessions?.[0]?.vocab_cefr ?? "–")}
+                  {todayQuery.data?.band ??
+                    trailQuery.data.sessions?.[0]?.vocab_cefr ??
+                    "–"}
                 </p>
               </CardContent>
             </Card>
@@ -140,6 +145,7 @@ function MyTrailPage() {
               <CardContent className="py-4">
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Flame className="size-3.5" /> 坚持练习
+                  <InfoHint label={EXPLAIN.streak} />
                 </p>
                 <p className="mt-1 text-2xl font-bold">
                   {todayQuery.data?.gamification?.streak_days ?? 0}
@@ -186,7 +192,7 @@ function MyTrailPage() {
                 )
               })}
               <p className="pt-1 text-xs text-muted-foreground">
-                词汇档位不是英语能力的完整评价。多说、多用，比「背到哪个级别」更重要。
+                词汇档位不是英语能力的完整评价。多说、多用，比「处在哪个档位」更重要。
               </p>
             </CardContent>
           </Card>
@@ -197,10 +203,12 @@ function MyTrailPage() {
             <span className="flex items-center gap-1 text-sm font-semibold">
               <Sparkles className="size-4 text-primary" />
               {todayQuery.data.gamification.xp} XP
+              <InfoHint label={EXPLAIN.xp} />
             </span>
             <span className="flex items-center gap-1 text-sm text-muted-foreground">
               <Flame className="size-4 text-orange-500" />
               连胜 {todayQuery.data.gamification.streak_days} 天
+              <InfoHint label={EXPLAIN.streak} />
             </span>
             <div className="ml-auto flex flex-wrap gap-2">
               {(todayQuery.data.gamification.badges ?? []).map((b) => (
@@ -214,7 +222,7 @@ function MyTrailPage() {
 
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">我的进步</h1>
+            <h1 className="text-xl font-bold tracking-tight">我的成长</h1>
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               {displayName(student)} · 课堂 {code.toUpperCase()}
               {trailQuery.data?.band_change === "up" && (
@@ -253,7 +261,7 @@ function MyTrailPage() {
               <div className="flex gap-1 rounded-xl bg-secondary/60 p-1">
                 {(
                   [
-                    ["trail", "学习轨迹"],
+                    ["trail", "进步轨迹"],
                     ["saved", "表达收藏"],
                   ] as const
                 ).map(([v, label]) => (

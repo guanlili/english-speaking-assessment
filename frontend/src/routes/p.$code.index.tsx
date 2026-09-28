@@ -54,19 +54,19 @@ export const Route = createFileRoute("/p/$code/")({
     return result
   },
   head: () => ({
-    meta: [{ title: `今天的练习 - ${APP_NAME}` }],
+    meta: [{ title: `今日练习 - ${APP_NAME}` }],
   }),
 })
 
 const BAND_LABELS: Record<string, string> = {
-  A2: "低档",
-  B1: "中档",
-  B2: "高档",
+  A2: "A2 档",
+  B1: "B1 档",
+  B2: "B2 档",
 }
 
 const ITEM_TYPE_LABELS: Record<string, string> = {
-  passage: "整篇朗读",
-  repeat: "听后复述",
+  passage: "文章朗读",
+  repeat: "听句复述",
   question: "情景问答",
 }
 
@@ -338,7 +338,7 @@ function ClassroomPracticePage() {
   if (todayQuery.isPending) {
     return (
       <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        正在加载今天的练习…
+        正在加载今日练习…
       </div>
     )
   }
@@ -679,7 +679,7 @@ function ClassroomPracticePage() {
                 {[
                   {
                     icon: Headphones,
-                    title: "听后复述",
+                    title: "听句复述",
                     sub: "3 个短句",
                     active: !isQuestion,
                   },

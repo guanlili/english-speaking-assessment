@@ -45,8 +45,8 @@ const questionTypes = [
   },
   {
     key: "qa",
-    title: "模拟问答",
-    description: "按学生档位，一问一答",
+    title: "情景问答",
+    description: "按学生档位（A2/B1/B2）一问一答；档位由系统按练习表现自动调整",
     icon: MessagesSquare,
   },
 ] as const
@@ -181,21 +181,21 @@ function ComposerForm({
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
         <div className="space-y-6 rounded-2xl border bg-card p-6">
           <section>
-            <h2 className="font-semibold">1. 选择练习内容</h2>
+            <h2 className="font-semibold">1. 选择单元</h2>
             <p className="mb-4 mt-2 text-sm text-muted-foreground">
-              使用题目库里整理好的分组，本次为全班统一安排。
+              使用题目库里整理好的单元，本次为全班统一安排。
             </p>
             <select
-              aria-label="选择练习内容"
+              aria-label="选择单元"
               className="h-11 w-full rounded-lg border bg-background px-3 text-sm"
               value={unitId}
               onChange={(event) => setUnitId(event.target.value)}
             >
-              <option value="">请选择练习内容</option>
+              <option value="">请选择单元</option>
               {units.map((unit) => (
                 <option key={unit.unit_id} value={unit.unit_id}>
                   {unit.title}
-                  {unit.passage_count ? "" : "（尚无材料）"}
+                  {unit.passage_count ? "" : "（尚无篇目）"}
                 </option>
               ))}
             </select>
@@ -367,21 +367,14 @@ function ComposerForm({
                 ))}
             {scenario && types.qa && (
               <section className="rounded-xl border p-4">
-                <h3 className="font-semibold">模拟问答 · {scenario.topic}</h3>
-                {["A2", "B1", "B2"].map((band) => (
-                  <div key={band} className="mt-3">
-                    <p className="text-xs font-semibold text-primary">{band}</p>
-                    {scenario.questions
-                      .filter((question) => question.band === band)
-                      .map((question) => (
-                        <p key={question.id} className="mt-2 text-sm leading-6">
-                          {question.text}{" "}
-                          <span className="text-muted-foreground">
-                            · {question.suggested_seconds} 秒
-                          </span>
-                        </p>
-                      ))}
-                  </div>
+                <h3 className="font-semibold">情景问答 · {scenario.topic}</h3>
+                {scenario.questions.map((question) => (
+                  <p key={question.id} className="mt-3 text-sm leading-6">
+                    {question.text}{" "}
+                    <span className="text-muted-foreground">
+                      · {question.suggested_seconds} 秒
+                    </span>
+                  </p>
                 ))}
               </section>
             )}

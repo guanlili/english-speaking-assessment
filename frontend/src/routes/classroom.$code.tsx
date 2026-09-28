@@ -115,7 +115,7 @@ function ClassroomPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">今日课堂任务</CardTitle>
+            <CardTitle className="text-base">今日练习</CardTitle>
             <CardDescription>
               {todayQuery.data?.assigned_unit_title
                 ? `老师指派：${todayQuery.data.assigned_unit_title}`
@@ -129,10 +129,10 @@ function ClassroomPage() {
               </span>
               <div className="flex-1">
                 <p className="text-sm font-semibold">
-                  {todayQuery.data?.assigned_unit_title ?? "个人关卡"}
+                  {todayQuery.data?.assigned_unit_title ?? "自主练习"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  3 句听后复述 + 2 道情景问答 · 约 10 分钟
+                  3 句听句复述 + 2 道情景问答 · 约 10 分钟
                 </p>
               </div>
             </div>

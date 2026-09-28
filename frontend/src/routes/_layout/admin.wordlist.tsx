@@ -156,7 +156,7 @@ function WordlistAdmin() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">分级词表</h1>
         <p className="text-muted-foreground">
-          学生词汇参考等级的数据来源。导入学校分级词表 CSV 会整体替换当前词表。
+          学生词汇参考档位的数据来源。导入学校分级词表 CSV 会整体替换当前词表。
         </p>
       </div>
 
