@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 import httpx
 
 from app.core.config import settings
+from app.scoring.ark_client import fast_chat_options
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,7 @@ class ArkRubricScorer:
                 },
             ],
             "temperature": 0.2,
+            **fast_chat_options(self.model),
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
         client = self._client if self._client is not None else _shared_client

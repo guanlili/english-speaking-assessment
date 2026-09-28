@@ -239,3 +239,13 @@ def test_auto_split_needs_enough_sentences(
         headers=superuser_token_headers,
     )
     assert resp.status_code == 422
+
+
+def test_fast_chat_options_only_for_verified_model() -> None:
+    from app.scoring.ark_client import fast_chat_options
+
+    assert fast_chat_options("doubao-seed-2-0-lite-260428") == {
+        "thinking": {"type": "disabled"},
+        "max_tokens": 2048,
+    }
+    assert fast_chat_options("other-model") == {}
