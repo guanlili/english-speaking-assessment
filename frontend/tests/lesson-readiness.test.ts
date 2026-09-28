@@ -59,16 +59,18 @@ test("inactive materials do not count as ready", () =>
       .passage,
     undefined,
   ))
-test("multiple active passages cannot produce a misleading preview", () =>
-  assert.match(
-    inspectLesson(
-      "unit",
-      all,
-      [passage, { ...passage, id: "other" }],
-      [scenario],
-    ).problems[0],
-    /多篇/,
-  ))
+test("multiple active passages become several reading items", () => {
+  const result = inspectLesson(
+    "unit",
+    all,
+    [passage, { ...passage, id: "other", title: "Pets (2)" }],
+    [scenario],
+  )
+  assert.deepEqual(result.problems, [])
+  assert.equal(result.materials.length, 2)
+  // 锚点取组内第一篇：问答主题按它配套
+  assert.equal(result.passage?.id, "p")
+})
 test("missing sentences prevent repeat publication", () =>
   assert.match(
     inspectLesson("unit", all, [{ ...passage, sentences: [] }], [scenario])

@@ -6,7 +6,8 @@ export interface LessonTypes {
   qa: boolean
 }
 
-/** Mirrors the current classroom delivery contract; never guess between multiple passages. */
+/** Mirrors the current classroom delivery contract: assigned rounds carry every
+ * active passage of the group (long texts can be split into several reading items). */
 export function inspectLesson(
   unitId: string,
   types: LessonTypes,
@@ -16,7 +17,8 @@ export function inspectLesson(
   const materials = passages.filter(
     (passage) => passage.unit_id === unitId && passage.is_active !== false,
   )
-  const passage = materials.length === 1 ? materials[0] : undefined
+  // 锚点篇（组内第一篇）：承担问答主题配套；朗读题则每篇各自一道
+  const passage = materials.length > 0 ? materials[0] : undefined
   const scenario = passage
     ? scenarios.find((item) => item.is_active && item.topic === passage.topic)
     : undefined
@@ -26,11 +28,7 @@ export function inspectLesson(
     problems.push("至少选择一种题型。")
   if (unitId && !materials.length)
     problems.push("这组内容还没有启用的材料，请先在题目库添加并归入此分组。")
-  if (materials.length > 1)
-    problems.push(
-      "这组内容有多篇启用材料，学生端目前只取其中一篇。请整理为每组一篇后再发布。",
-    )
-  if (passage && types.repeat && !passage.sentences?.length)
+  if (passage && types.repeat && !materials.some((m) => m.sentences?.length))
     problems.push("尚未添加复述句，请到「听句复述」补充。")
   if (passage && types.qa) {
     const missing = ["A2", "B1", "B2"].filter(
@@ -41,5 +39,5 @@ export function inspectLesson(
         `配套主题「${passage.topic}」缺少 ${missing.join(" / ")} 问答题。请补齐，确保不同档位学生都有题可答。`,
       )
   }
-  return { passage, scenario, problems }
+  return { passage, materials, scenario, problems }
 }

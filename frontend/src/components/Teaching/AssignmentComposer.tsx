@@ -121,7 +121,7 @@ function ComposerForm({
   const [previewOpen, setPreviewOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
   const queryClient = useQueryClient()
-  const { passage, scenario, problems } = inspectLesson(
+  const { materials, scenario, problems } = inspectLesson(
     unitId,
     types,
     passages,
@@ -253,6 +253,12 @@ function ComposerForm({
                 .map((type) => type.title)
                 .join(" / ") || "尚未选择题型"}
             </p>
+            {types.reading && materials.length > 0 && (
+              <p className="mt-2 text-muted-foreground">
+                朗读材料 {materials.length} 篇
+                {materials.length > 1 ? "（长文拆段，分别朗读）" : ""}
+              </p>
+            )}
           </div>
           {problems.length ? (
             <ul className="space-y-3 text-sm leading-6 text-muted-foreground">
@@ -309,40 +315,56 @@ function ComposerForm({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5">
-            {passage && types.reading && (
-              <section className="rounded-xl border p-4">
-                <h3 className="font-semibold">
-                  文章朗读 · 建议 {passage.suggested_seconds} 秒
-                </h3>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-7">
-                  {passage.text}
-                </p>
-              </section>
-            )}
-            {passage && types.repeat && (
-              <section className="rounded-xl border p-4">
-                <h3 className="font-semibold">听句复述</h3>
-                <ol className="mt-3 space-y-3">
-                  {passage.sentences?.map((sentence, index) => (
-                    <li
-                      key={sentence.id ?? index}
-                      className="text-sm leading-6"
-                    >
-                      <p>
-                        {index + 1}. {sentence.text}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        建议 {sentence.suggested_seconds} 秒 · 可听{" "}
-                        {(sentence.replay_limit ?? 3) === 0
-                          ? "不限次数"
-                          : `${sentence.replay_limit ?? 3} 次`}{" "}
-                        · {sentence.audio_url ? "已配标准音" : "使用浏览器语音"}
-                      </p>
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            )}
+            {types.reading &&
+              materials.map((material, index) => (
+                <section key={material.id} className="rounded-xl border p-4">
+                  <h3 className="font-semibold">
+                    文章朗读{" "}
+                    {materials.length > 1
+                      ? `${index + 1}/${materials.length}`
+                      : ""}{" "}
+                    · {material.title} · 建议 {material.suggested_seconds} 秒
+                  </h3>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7">
+                    {material.text}
+                  </p>
+                </section>
+              ))}
+            {types.repeat &&
+              materials
+                .filter((material) => material.sentences?.length)
+                .map((material) => (
+                  <section
+                    key={`repeat-${material.id}`}
+                    className="rounded-xl border p-4"
+                  >
+                    <h3 className="font-semibold">
+                      听句复述 · {material.title}
+                    </h3>
+                    <ol className="mt-3 space-y-3">
+                      {material.sentences?.map((sentence, index) => (
+                        <li
+                          key={sentence.id ?? index}
+                          className="text-sm leading-6"
+                        >
+                          <p>
+                            {index + 1}. {sentence.text}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            建议 {sentence.suggested_seconds} 秒 · 可听{" "}
+                            {(sentence.replay_limit ?? 3) === 0
+                              ? "不限次数"
+                              : `${sentence.replay_limit ?? 3} 次`}{" "}
+                            ·{" "}
+                            {sentence.audio_url
+                              ? "已配标准音"
+                              : "使用浏览器语音"}
+                          </p>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                ))}
             {scenario && types.qa && (
               <section className="rounded-xl border p-4">
                 <h3 className="font-semibold">模拟问答 · {scenario.topic}</h3>

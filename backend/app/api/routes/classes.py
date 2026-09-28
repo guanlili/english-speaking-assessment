@@ -107,6 +107,23 @@ def _assignment_unit(session: Any, classroom: Classroom) -> Unit | None:
     return unit
 
 
+def _assigned_active_passages(session: Any, classroom: Classroom) -> list[Passage]:
+    """指派单元的全部启用篇目（按创建顺序）：长文可拆多篇，各自成为一道朗读题。
+
+    第一篇是「锚点」：承担会话归属与问答主题（拆分场景下同组各篇同主题）。
+    """
+    assigned = _assignment_unit(session, classroom)
+    if assigned is None:
+        return []
+    return list(
+        session.exec(
+            select(Passage)
+            .where(Passage.unit_id == assigned.id, Passage.is_active)
+            .order_by(col(Passage.created_at))
+        ).all()
+    )
+
+
 def _active_passage(session: Any, student: Student | None = None) -> Passage:
     """课堂练习篇目（优先级）：老师指派单元 > 学生路径 > 全局第一篇。"""
     units = session.exec(
@@ -114,19 +131,16 @@ def _active_passage(session: Any, student: Student | None = None) -> Passage:
     ).all()
     if student is not None:
         classroom = session.get(Classroom, student.classroom_id)
-        assigned = _assignment_unit(session, classroom) if classroom else None
-        if assigned is not None:
-            passage = session.exec(
-                select(Passage)
-                .where(Passage.unit_id == assigned.id, Passage.is_active)
-                .limit(1)
-            ).first()
-            if passage is not None:
-                return passage
-            raise HTTPException(
-                status_code=404,
-                detail=f"指派的单元「{assigned.title}」还没有篇目，请联系老师",
-            )
+        if classroom is not None:
+            assigned = _assignment_unit(session, classroom)
+            if assigned is not None:
+                assigned_passages = _assigned_active_passages(session, classroom)
+                if assigned_passages:
+                    return assigned_passages[0]
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"指派的单元「{assigned.title}」还没有篇目，请联系老师",
+                )
     if student is None or not units:
         passage = session.exec(
             select(Passage)
@@ -431,19 +445,26 @@ def read_today_plan(
             today=today,
             passage_id=passage.id,
         )
+    # 指派轮的朗读题：组内全部启用篇目各自成题（长文拆段场景）。
+    # 非指派/探索轮仍是单篇（passage 本身）。
+    if session_id is None and _assignment_unit(session, classroom) is not None:
+        reading_passages = _assigned_active_passages(session, classroom)
+    else:
+        reading_passages = [passage]
     include_reading = _include_type(classroom, "reading")
     include_repeat = _include_type(classroom, "repeat")
     include_qa = _include_type(classroom, "qa")
 
     sentences: list[RepeatSentence] = []
     if include_repeat:
-        sentences = list(
-            session.exec(
-                select(RepeatSentence)
-                .where(RepeatSentence.passage_id == passage.id)
-                .order_by(col(RepeatSentence.order_index))
-            ).all()
-        )
+        for p in reading_passages:
+            sentences.extend(
+                session.exec(
+                    select(RepeatSentence)
+                    .where(RepeatSentence.passage_id == p.id)
+                    .order_by(col(RepeatSentence.order_index))
+                ).all()
+            )
         if not sentences:
             raise HTTPException(
                 status_code=404, detail="No repeat sentences configured"
@@ -473,17 +494,18 @@ def read_today_plan(
 
     items: list[PlanItem] = []
     if include_reading:
-        # 朗读题：整篇读一遍出总评（新题型，指派勾选后进入轮次）
-        items.append(
+        # 朗读题：组内每篇启用材料一道（长文拆段后分别朗读）
+        items += [
             PlanItem(
                 type=AttemptItemType.PASSAGE,
-                id=passage.id,
-                text=passage.text,
-                translation=passage.translation,
-                audio_url=passage.audio_url,
-                suggested_seconds=passage.suggested_seconds,
+                id=p.id,
+                text=p.text,
+                translation=p.translation,
+                audio_url=p.audio_url,
+                suggested_seconds=p.suggested_seconds,
             )
-        )
+            for p in reading_passages
+        ]
     items += [
         PlanItem(
             type=AttemptItemType.REPEAT,
@@ -627,30 +649,31 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
     _require_classroom_teacher(classroom, current_user)
     today = _today_in_practice_tz()
 
-    # 当前指派单元对应的篇目（面板和档位计算都用它，不用全局首篇）
+    # 当前指派单元的篇目（面板和档位计算都用它，不用全局首篇）；
+    # 组内多篇各自占一个朗读题位，锚点（第一篇）用于会话匹配
     assigned_unit_board = _assignment_unit(session, classroom)
-    board_passage: Passage | None = None
     if assigned_unit_board is not None:
-        board_passage = session.exec(
-            select(Passage)
-            .where(Passage.unit_id == assigned_unit_board.id, Passage.is_active)
-            .limit(1)
-        ).first()
+        board_passages = _assigned_active_passages(session, classroom)
+    else:
+        board_passages = []
+    board_passage = board_passages[0] if board_passages else None
     if board_passage is None:
         board_passage = _active_passage(session)
+        board_passages = [board_passage]
 
     # 题目骨架：按指派题型裁剪（复述默认含；朗读勾选后含）
     include_reading = _include_type(classroom, "reading")
     include_repeat = _include_type(classroom, "repeat")
     sentences: list[RepeatSentence] = []
     if include_repeat:
-        sentences = list(
-            session.exec(
-                select(RepeatSentence)
-                .where(RepeatSentence.passage_id == board_passage.id)
-                .order_by(col(RepeatSentence.order_index))
-            ).all()
-        )
+        for p in board_passages:
+            sentences.extend(
+                session.exec(
+                    select(RepeatSentence)
+                    .where(RepeatSentence.passage_id == p.id)
+                    .order_by(col(RepeatSentence.order_index))
+                ).all()
+            )
     skeleton = [
         BoardItem(
             item_id=s.id,
@@ -659,6 +682,15 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         )
         for s in sentences
     ]
+    if include_reading:
+        skeleton = [
+            BoardItem(
+                item_id=p.id,
+                type=AttemptItemType.PASSAGE,
+                status="missing",
+            )
+            for p in board_passages
+        ] + skeleton
 
     students = session.exec(
         select(Student).where(Student.classroom_id == classroom.id)
@@ -749,37 +781,38 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             for attempt in attempts:
                 latest[attempt.item_id] = attempt
 
-            # 朗读题位（勾选指派才有）
+            # 朗读题位（勾选指派才有；组内多篇各自占位）
             if include_reading:
-                attempt = latest.get(board_passage.id)
-                if attempt is None:
-                    items.append(
-                        BoardItem(
-                            item_id=board_passage.id,
-                            type=AttemptItemType.PASSAGE,
-                            status="missing",
+                for board_p in board_passages:
+                    attempt = latest.get(board_p.id)
+                    if attempt is None:
+                        items.append(
+                            BoardItem(
+                                item_id=board_p.id,
+                                type=AttemptItemType.PASSAGE,
+                                status="missing",
+                            )
                         )
-                    )
-                else:
-                    if attempt.status in (
-                        AttemptStatus.QUEUED,
-                        AttemptStatus.SCORING,
-                    ):
-                        has_pending = True
-                    if (
-                        attempt.status == AttemptStatus.DONE
-                        and attempt.overall is not None
-                    ):
-                        repeat_scores.append(attempt.overall)
-                    items.append(
-                        BoardItem(
-                            item_id=board_passage.id,
-                            type=AttemptItemType.PASSAGE,
-                            status=attempt.status,
-                            overall=attempt.overall,
-                            attempt_id=attempt.id,
+                    else:
+                        if attempt.status in (
+                            AttemptStatus.QUEUED,
+                            AttemptStatus.SCORING,
+                        ):
+                            has_pending = True
+                        if (
+                            attempt.status == AttemptStatus.DONE
+                            and attempt.overall is not None
+                        ):
+                            repeat_scores.append(attempt.overall)
+                        items.append(
+                            BoardItem(
+                                item_id=board_p.id,
+                                type=AttemptItemType.PASSAGE,
+                                status=attempt.status,
+                                overall=attempt.overall,
+                                attempt_id=attempt.id,
+                            )
                         )
-                    )
             # 骨架顺序：复述句
             for s in sentences:
                 attempt = latest.get(s.id)
