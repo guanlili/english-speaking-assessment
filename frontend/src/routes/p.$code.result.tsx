@@ -55,6 +55,7 @@ export const Route = createFileRoute("/p/$code/result")({
 })
 
 const ITEM_TYPE_LABELS: Record<string, string> = {
+  passage: "整篇朗读",
   repeat: "听后复述",
   question: "情景问答",
 }

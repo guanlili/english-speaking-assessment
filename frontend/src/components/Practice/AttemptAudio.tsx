@@ -10,7 +10,9 @@ interface AttemptAudioProps {
 
 /**
  * 受保护作答录音的统一播放器（学生/教师同一路径）：
- * JWT 走 Authorization 头取回 blob，播放完/卸载时释放 objectURL。
+ * JWT 走 Authorization 头取回 blob，卸载时释放 objectURL。
+ * gcTime=0：卸载即弃缓存，下次挂载重新取新 URL——
+ * 缓存里的 URL 已随上次卸载被 revoke，复用会变成不可播放的死链。
  */
 export default function AttemptAudio({
   attemptId,
@@ -21,7 +23,7 @@ export default function AttemptAudio({
     queryKey: ["attempt-audio", attemptId],
     queryFn: () => fetchAudioObjectUrl(attemptId),
     staleTime: Infinity,
-    gcTime: 15 * 60_000,
+    gcTime: 0,
     retry: 1,
   })
 

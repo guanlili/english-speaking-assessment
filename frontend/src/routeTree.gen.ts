@@ -15,8 +15,6 @@ import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as PracticeRouteImport } from './routes/practice'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JoinRouteImport } from './routes/join'
-import { Route as CreateRouteImport } from './routes/create'
-import { Route as ClassroomsRouteImport } from './routes/classrooms'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
@@ -30,6 +28,8 @@ import { Route as HelpCodeRouteImport } from './routes/help.$code'
 import { Route as ExploreCodeRouteImport } from './routes/explore.$code'
 import { Route as ClassroomCodeRouteImport } from './routes/classroom.$code'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
+import { Route as LayoutCreateRouteImport } from './routes/_layout/create'
+import { Route as LayoutClassroomsRouteImport } from './routes/_layout/classrooms'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as TCodeIndexRouteImport } from './routes/t.$code.index'
 import { Route as PCodeIndexRouteImport } from './routes/p.$code.index'
@@ -71,16 +71,6 @@ const LoginRoute = LoginRouteImport.update({
 const JoinRoute = JoinRouteImport.update({
   id: '/join',
   path: '/join',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CreateRoute = CreateRouteImport.update({
-  id: '/create',
-  path: '/create',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ClassroomsRoute = ClassroomsRouteImport.update({
-  id: '/classrooms',
-  path: '/classrooms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChangePasswordRoute = ChangePasswordRouteImport.update({
@@ -147,6 +137,16 @@ const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutCreateRoute = LayoutCreateRouteImport.update({
+  id: '/create',
+  path: '/create',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutClassroomsRoute = LayoutClassroomsRouteImport.update({
+  id: '/classrooms',
+  path: '/classrooms',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutAdminRoute = LayoutAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -211,8 +211,6 @@ const TCodeSStudentIdRoute = TCodeSStudentIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
   '/change-password': typeof ChangePasswordRoute
-  '/classrooms': typeof ClassroomsRoute
-  '/create': typeof CreateRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/practice': typeof PracticeRoute
@@ -220,6 +218,8 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin': typeof LayoutAdminRouteWithChildren
+  '/classrooms': typeof LayoutClassroomsRoute
+  '/create': typeof LayoutCreateRoute
   '/settings': typeof LayoutSettingsRoute
   '/classroom/$code': typeof ClassroomCodeRoute
   '/explore/$code': typeof ExploreCodeRoute
@@ -244,14 +244,14 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/change-password': typeof ChangePasswordRoute
-  '/classrooms': typeof ClassroomsRoute
-  '/create': typeof CreateRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/practice': typeof PracticeRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/classrooms': typeof LayoutClassroomsRoute
+  '/create': typeof LayoutCreateRoute
   '/settings': typeof LayoutSettingsRoute
   '/classroom/$code': typeof ClassroomCodeRoute
   '/explore/$code': typeof ExploreCodeRoute
@@ -277,8 +277,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
   '/change-password': typeof ChangePasswordRoute
-  '/classrooms': typeof ClassroomsRoute
-  '/create': typeof CreateRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/practice': typeof PracticeRoute
@@ -286,6 +284,8 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/_layout/admin': typeof LayoutAdminRouteWithChildren
+  '/_layout/classrooms': typeof LayoutClassroomsRoute
+  '/_layout/create': typeof LayoutCreateRoute
   '/_layout/settings': typeof LayoutSettingsRoute
   '/classroom/$code': typeof ClassroomCodeRoute
   '/explore/$code': typeof ExploreCodeRoute
@@ -314,8 +314,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/change-password'
-    | '/classrooms'
-    | '/create'
     | '/join'
     | '/login'
     | '/practice'
@@ -323,6 +321,8 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/admin'
+    | '/classrooms'
+    | '/create'
     | '/settings'
     | '/classroom/$code'
     | '/explore/$code'
@@ -347,14 +347,14 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/change-password'
-    | '/classrooms'
-    | '/create'
     | '/join'
     | '/login'
     | '/practice'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/classrooms'
+    | '/create'
     | '/settings'
     | '/classroom/$code'
     | '/explore/$code'
@@ -379,8 +379,6 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_layout'
     | '/change-password'
-    | '/classrooms'
-    | '/create'
     | '/join'
     | '/login'
     | '/practice'
@@ -388,6 +386,8 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/_layout/admin'
+    | '/_layout/classrooms'
+    | '/_layout/create'
     | '/_layout/settings'
     | '/classroom/$code'
     | '/explore/$code'
@@ -415,8 +415,6 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
   ChangePasswordRoute: typeof ChangePasswordRoute
-  ClassroomsRoute: typeof ClassroomsRoute
-  CreateRoute: typeof CreateRoute
   JoinRoute: typeof JoinRoute
   LoginRoute: typeof LoginRoute
   PracticeRoute: typeof PracticeRoute
@@ -476,20 +474,6 @@ declare module '@tanstack/react-router' {
       path: '/join'
       fullPath: '/join'
       preLoaderRoute: typeof JoinRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/create': {
-      id: '/create'
-      path: '/create'
-      fullPath: '/create'
-      preLoaderRoute: typeof CreateRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/classrooms': {
-      id: '/classrooms'
-      path: '/classrooms'
-      fullPath: '/classrooms'
-      preLoaderRoute: typeof ClassroomsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/change-password': {
@@ -581,6 +565,20 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof LayoutSettingsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/create': {
+      id: '/_layout/create'
+      path: '/create'
+      fullPath: '/create'
+      preLoaderRoute: typeof LayoutCreateRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/classrooms': {
+      id: '/_layout/classrooms'
+      path: '/classrooms'
+      fullPath: '/classrooms'
+      preLoaderRoute: typeof LayoutClassroomsRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/admin': {
@@ -696,12 +694,16 @@ const LayoutAdminRouteWithChildren = LayoutAdminRoute._addFileChildren(
 
 interface LayoutRouteChildren {
   LayoutAdminRoute: typeof LayoutAdminRouteWithChildren
+  LayoutClassroomsRoute: typeof LayoutClassroomsRoute
+  LayoutCreateRoute: typeof LayoutCreateRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutAdminRoute: LayoutAdminRouteWithChildren,
+  LayoutClassroomsRoute: LayoutClassroomsRoute,
+  LayoutCreateRoute: LayoutCreateRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
 }
@@ -736,8 +738,6 @@ const TCodeRouteWithChildren = TCodeRoute._addFileChildren(TCodeRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
   ChangePasswordRoute: ChangePasswordRoute,
-  ClassroomsRoute: ClassroomsRoute,
-  CreateRoute: CreateRoute,
   JoinRoute: JoinRoute,
   LoginRoute: LoginRoute,
   PracticeRoute: PracticeRoute,

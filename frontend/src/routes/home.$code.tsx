@@ -109,6 +109,20 @@ function HomePage() {
         .length
     : 0
   const totalItems = plan?.items.length ?? 5
+  // 题量按本轮实际指派计算：老师勾选的题型不同，结构就不同
+  const countType = (type: string) =>
+    plan?.items.filter((item) => item.type === type).length ?? 0
+  const readingCount = countType("passage")
+  const repeatCount = countType("repeat")
+  const qaCount = countType("question")
+  const planSummary =
+    [
+      readingCount > 0 && `${readingCount} 篇朗读`,
+      repeatCount > 0 && `${repeatCount} 句复述`,
+      qaCount > 0 && `${qaCount} 道问答`,
+    ]
+      .filter(Boolean)
+      .join(" + ") || "内容待老师安排"
 
   // 周目标：trail 近 7 天有练习的天数
   const weekGoal = readWeekGoal()
@@ -188,8 +202,7 @@ function HomePage() {
               <div>
                 <CardTitle className="text-base">今天的开口计划</CardTitle>
                 <CardDescription>
-                  {plan?.assigned_unit_title ?? "个人关卡"} · 3 句复述 + 2
-                  道问答
+                  {plan?.assigned_unit_title ?? "个人关卡"} · {planSummary}
                 </CardDescription>
               </div>
             </div>
@@ -209,30 +222,47 @@ function HomePage() {
                 {done} / {totalItems} 已完成
               </span>
             </div>
-            <div className="flex items-center gap-3 border-t pt-3.5">
-              <span className="flex size-8 items-center justify-center rounded-full bg-background text-xs text-muted-foreground">
-                01
-              </span>
-              <div className="flex-1">
-                <p className="text-sm font-semibold">先听一听，再说一说</p>
-                <p className="text-xs text-muted-foreground">
-                  听后复述 · 让熟悉的表达自然说出口
-                </p>
-              </div>
-              <span className="text-xs text-muted-foreground">3 个短句</span>
-            </div>
-            <div className="flex items-center gap-3 border-t pt-3.5">
-              <span className="flex size-8 items-center justify-center rounded-full bg-background text-xs text-muted-foreground">
-                02
-              </span>
-              <div className="flex-1">
-                <p className="text-sm font-semibold">轮到你，分享一点想法</p>
-                <p className="text-xs text-muted-foreground">
-                  情景问答 · 没有标准答案，你的想法很重要
-                </p>
-              </div>
-              <span className="text-xs text-muted-foreground">2 个问题</span>
-            </div>
+            {[
+              readingCount > 0
+                ? {
+                    title: "先读一读，说一说",
+                    sub: "整篇朗读 · 自然完整地读出来",
+                    count: `${readingCount} 篇朗读`,
+                  }
+                : null,
+              repeatCount > 0
+                ? {
+                    title: "先听一听，再说一说",
+                    sub: "听后复述 · 让熟悉的表达自然说出口",
+                    count: `${repeatCount} 个短句`,
+                  }
+                : null,
+              qaCount > 0
+                ? {
+                    title: "轮到你，分享一点想法",
+                    sub: "情景问答 · 没有标准答案，你的想法很重要",
+                    count: `${qaCount} 个问题`,
+                  }
+                : null,
+            ]
+              .filter((step) => step !== null)
+              .map((step, index) => (
+                <div
+                  key={step.title}
+                  className="flex items-center gap-3 border-t pt-3.5"
+                >
+                  <span className="flex size-8 items-center justify-center rounded-full bg-background text-xs text-muted-foreground">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold">{step.title}</p>
+                    <p className="text-xs text-muted-foreground">{step.sub}</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {step.count}
+                  </span>
+                </div>
+              ))}
             <p className="flex items-center gap-1.5 border-t pt-3 text-xs text-muted-foreground">
               <CheckCircle2 className="size-3.5" />
               难度会跟着你的状态调整，每一步都刚刚好。
@@ -371,14 +401,15 @@ function HomePage() {
                 </p>
               </div>
               <div className="mt-3 grid grid-cols-7 gap-1 text-center">
-                {["一", "二", "三", "四", "五", "六", "日"].map((d, i) => {
-                  const now = new Date()
-                  const dow = (now.getDay() + 6) % 7
-                  const day = new Date(now)
-                  day.setDate(now.getDate() - dow + i)
-                  const key = day.toISOString().slice(0, 10)
-                  const isToday = i === dow
-                  const practiced = practicedDates.has(key)
+              {["一", "二", "三", "四", "五", "六", "日"].map((d, i) => {
+                const now = new Date()
+                const dow = (now.getDay() + 6) % 7
+                const day = new Date(now)
+                day.setDate(now.getDate() - dow + i)
+                // 本地日期（不能用 toISOString：会转成 UTC，东八区凌晨会差一天）
+                const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`
+                const isToday = i === dow
+                const practiced = practicedDates.has(key)
                   return (
                     <div key={d}>
                       <p className="mb-1.5 text-[9px] text-muted-foreground">
@@ -423,16 +454,22 @@ function HomePage() {
                 词汇参考档位 · 只和自己比
               </p>
               <div className="mt-4 flex gap-1">
-                {["A2", "B1", "B2"].map((b) => (
-                  <span
-                    key={b}
-                    className={
-                      b === (g ? "B1" : "A2")
-                        ? "h-1.5 flex-1 rounded bg-primary"
-                        : "h-1.5 flex-1 rounded bg-border"
-                    }
-                  />
-                ))}
+                {(() => {
+                  const vocabCefr =
+                    trailQuery.data?.sessions?.[
+                      trailQuery.data.sessions.length - 1
+                    ]?.vocab_cefr
+                  return ["A2", "B1", "B2"].map((b) => (
+                    <span
+                      key={b}
+                      className={
+                        b === vocabCefr
+                          ? "h-1.5 flex-1 rounded bg-primary"
+                          : "h-1.5 flex-1 rounded bg-border"
+                      }
+                    />
+                  ))
+                })()}
               </div>
               <div className="mt-1.5 flex justify-between text-[9px] text-muted-foreground">
                 <span>A2 轻松开口</span>

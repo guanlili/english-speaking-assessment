@@ -5,9 +5,11 @@ import { useState } from "react"
 import { toast } from "sonner"
 import type { PassageWithSentences } from "@/client"
 import { AdminService } from "@/client"
+import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { TopicPicker } from "@/components/Admin/TopicPicker"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import AudioSetter from "@/components/Practice/AudioSetter"
+import { RepeatSettings } from "@/components/Teaching/RepeatSettings"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -46,7 +48,7 @@ export const Route = createFileRoute("/_layout/admin/passages")({
   head: () => ({ meta: [{ title: `篇目管理 - ${APP_NAME}` }] }),
 })
 
-/** CEFR 档位是枚举（后端同样校验），不再自由输入。 */
+/** 难度位是枚举（后端同样校验），不再自由输入。 */
 const CEFR_BANDS = ["A2", "B1", "B2"] as const
 const NO_UNIT = "__none__"
 
@@ -93,9 +95,16 @@ function toRequestBody(form: PassageForm) {
   }
 }
 
-function PassagesAdmin() {
+export function PassagesAdmin({
+  mode = "reading",
+  embedded = false,
+}: {
+  mode?: "reading" | "repeat"
+  embedded?: boolean
+}) {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const [keyword, setKeyword] = useState("")
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editing, setEditing] = useState<PassageWithSentences | null>(null)
   const [toDelete, setToDelete] = useState<PassageWithSentences | null>(null)
@@ -164,19 +173,37 @@ function PassagesAdmin() {
 
   return (
     <div className="flex flex-col gap-6">
+      {!embedded && <ContentNavigation />}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">篇目管理</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {mode === "repeat" ? "听句复述" : "文章朗读"}
+        </h1>
         <p className="text-muted-foreground">
-          练习篇目与听后复述句。EIP 文本由学校书面提供后录入，不进代码仓库。
+          {mode === "repeat"
+            ? "按篇目整理复述句，为每句设置标准音、作答时间和可听次数。"
+            : "录入文章或段落，学生朗读并提交录音，系统提供参考反馈。"}
         </p>
       </div>
 
-      <NewPassageForm
-        topics={topicsQuery.data ?? []}
-        units={units}
-        onSubmit={(form) => createMutation.mutate(form)}
+      <details className="rounded-xl border bg-card p-4">
+        <summary className="cursor-pointer font-medium text-primary">
+          {mode === "repeat" ? "新建复述材料" : "新建朗读题"}
+        </summary>
+        <div className="mt-4">
+          <NewPassageForm
+            topics={topicsQuery.data ?? []}
+            units={units}
+            pending={createMutation.isPending}
+            onSubmit={(form) => createMutation.mutateAsync(form)}
+          />
+        </div>
+      </details>
+      <Input
+        aria-label="搜索篇目"
+        placeholder="搜索篇目标题或主题…"
+        value={keyword}
+        onChange={(event) => setKeyword(event.target.value)}
       />
-
       {passagesQuery.isPending ? (
         <div className="flex flex-col gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -196,25 +223,43 @@ function PassagesAdmin() {
         </div>
       ) : (passagesQuery.data ?? []).length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">
-          还没有篇目，用上面的表单创建第一篇。
+          还没有材料，点击上方新建按钮开始备课。
         </p>
       ) : (
-        (passagesQuery.data ?? []).map((passage) => (
-          <PassageCard
-            key={passage.id}
-            passage={passage}
-            unitTitle={unitTitle(passage.unit_id)}
-            expanded={expandedId === passage.id}
-            onToggle={() =>
-              setExpandedId(expandedId === passage.id ? null : passage.id)
-            }
-            onEdit={() => setEditing(passage)}
-            onDelete={() => setToDelete(passage)}
-            onMutated={invalidate}
-          />
-        ))
+        (passagesQuery.data ?? [])
+          .filter((passage) =>
+            `${passage.title} ${passage.topic}`
+              .toLowerCase()
+              .includes(keyword.trim().toLowerCase()),
+          )
+          .map((passage) => (
+            <PassageCard
+              key={passage.id}
+              mode={mode}
+              passage={passage}
+              unitTitle={unitTitle(passage.unit_id)}
+              expanded={expandedId === passage.id}
+              onToggle={() =>
+                setExpandedId(expandedId === passage.id ? null : passage.id)
+              }
+              onEdit={() => setEditing(passage)}
+              onDelete={() => setToDelete(passage)}
+              onMutated={invalidate}
+            />
+          ))
       )}
 
+      {passagesQuery.isSuccess &&
+        (passagesQuery.data ?? []).length > 0 &&
+        !(passagesQuery.data ?? []).some((passage) =>
+          `${passage.title} ${passage.topic}`
+            .toLowerCase()
+            .includes(keyword.trim().toLowerCase()),
+        ) && (
+          <p className="py-8 text-center text-muted-foreground">
+            没有匹配的篇目，请换个关键词。
+          </p>
+        )}
       <EditPassageDialog
         passage={editing}
         topics={topicsQuery.data ?? []}
@@ -267,7 +312,7 @@ function PassageFields({
         />
       </div>
       <div className="space-y-1">
-        <Label>主题（与情景主题一致才会配对）</Label>
+        <Label>配套问答主题</Label>
         <TopicPicker
           value={form.topic}
           topics={topics}
@@ -275,13 +320,13 @@ function PassageFields({
         />
       </div>
       <div className="space-y-1">
-        <Label>所属单元（关卡）</Label>
+        <Label>练习分组（用于课堂指派）</Label>
         <Select
           value={form.unit_id}
           onValueChange={(next) => setForm({ ...form, unit_id: next })}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="选择单元" />
+            <SelectValue placeholder="选择练习分组" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={NO_UNIT}>未归属</SelectItem>
@@ -295,7 +340,7 @@ function PassageFields({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor={`${idPrefix}band`}>CEFR 档</Label>
+          <Label htmlFor={`${idPrefix}band`}>难度</Label>
           <Select
             value={form.cefr_band}
             onValueChange={(next) => setForm({ ...form, cefr_band: next })}
@@ -358,10 +403,12 @@ function PassageFields({
 
 function NewPassageForm({
   onSubmit,
+  pending,
   topics,
   units,
 }: {
-  onSubmit: (form: PassageForm) => void
+  onSubmit: (form: PassageForm) => Promise<unknown>
+  pending: boolean
   topics: string[]
   units: UnitOption[]
 }) {
@@ -373,19 +420,10 @@ function NewPassageForm({
       <CardHeader>
         <CardTitle className="text-base">新建篇目</CardTitle>
         <CardDescription>
-          slug 留空会按标题自动生成（重名自动加 -2/-3），需要固定标识时再手填。
+          填写短文并选择主题；相同主题的问答会用于配套练习。
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 md:grid-cols-2">
-        <div className="space-y-1 md:col-span-2">
-          <Label htmlFor="slug">Slug（可留空）</Label>
-          <Input
-            id="slug"
-            value={form.slug}
-            onChange={(e) => setForm({ ...form, slug: e.target.value })}
-            placeholder="留空自动生成，例如 my-family"
-          />
-        </div>
         <PassageFields
           form={form}
           setForm={setForm}
@@ -393,7 +431,17 @@ function NewPassageForm({
           units={units}
         />
         <div className="md:col-span-2">
-          <Button onClick={() => onSubmit(form)} disabled={!canSubmit}>
+          <Button
+            onClick={async () => {
+              try {
+                await onSubmit(form)
+                setForm(emptyForm)
+              } catch {
+                // Mutation displays the error; retain the draft for retry.
+              }
+            }}
+            disabled={!canSubmit || pending}
+          >
             <Plus />
             创建
           </Button>
@@ -481,6 +529,7 @@ function EditPassageDialog({
 }
 
 function PassageCard({
+  mode,
   passage,
   unitTitle,
   expanded,
@@ -489,6 +538,7 @@ function PassageCard({
   onDelete,
   onMutated,
 }: {
+  mode: "reading" | "repeat"
   passage: PassageWithSentences
   unitTitle: string
   expanded: boolean
@@ -546,10 +596,7 @@ function PassageCard({
 
   return (
     <Card>
-      <CardHeader
-        className="cursor-pointer select-none flex-row items-center justify-between space-y-0"
-        onClick={onToggle}
-      >
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
         <div>
           <CardTitle className="text-base">
             {passage.title}{" "}
@@ -559,7 +606,6 @@ function PassageCard({
             </span>
           </CardTitle>
           <CardDescription className="mt-1 flex flex-wrap items-center gap-2">
-            <span className="font-mono">{passage.slug}</span>
             <Badge variant="outline">{unitTitle}</Badge>
             {passage.is_active === false && (
               <Badge variant="secondary">已停用</Badge>
@@ -567,6 +613,14 @@ function PassageCard({
           </CardDescription>
         </div>
         <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            aria-expanded={expanded}
+            onClick={onToggle}
+          >
+            {expanded ? "收起" : mode === "repeat" ? "管理复述句" : "查看文章"}
+          </Button>
           <AudioSetter
             hasAudio={Boolean(passage.audio_url)}
             text={passage.text ?? ""}
@@ -618,121 +672,131 @@ function PassageCard({
           <p className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">
             {passage.text}
           </p>
-          <div className="space-y-2">
-            {(passage.sentences ?? []).map((s, i) => (
-              <div
-                key={s.id}
-                className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
-              >
-                <span className="text-sm">
-                  {i + 1}. {s.text}
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {s.suggested_seconds}s
-                  </span>
-                </span>
-                <div className="flex items-center gap-1">
-                  <AudioSetter
-                    hasAudio={Boolean(s.audio_url)}
-                    text={s.text ?? ""}
-                    onSet={async (audio_url) => {
-                      await AdminService.updateSentence({
-                        sentenceId: s.id ?? "",
-                        requestBody: {
-                          passage_id: passage.id,
-                          order_index: s.order_index ?? 0,
-                          text: s.text ?? "",
-                          translation: s.translation ?? undefined,
-                          audio_url,
-                          suggested_seconds: s.suggested_seconds ?? 8,
-                        },
-                      })
-                      onMutated()
-                    }}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="删除复述句"
-                    onClick={() =>
-                      s.id && setSentenceToDelete({ id: s.id, text: s.text })
-                    }
+          {mode === "repeat" && (
+            <>
+              <div className="space-y-2">
+                {(passage.sentences ?? []).map((s, i) => (
+                  <div
+                    key={s.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2"
                   >
-                    <Trash2 className="size-3.5 text-destructive" />
-                  </Button>
-                </div>
+                    <span className="text-sm">
+                      {i + 1}. {s.text}
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {s.suggested_seconds} 秒 · 可听{" "}
+                        {(s.replay_limit ?? 3) === 0
+                          ? "不限"
+                          : `${s.replay_limit ?? 3} 次`}
+                      </span>
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <RepeatSettings sentence={s} onSaved={onMutated} />
+                      <AudioSetter
+                        hasAudio={Boolean(s.audio_url)}
+                        text={s.text ?? ""}
+                        onSet={async (audio_url) => {
+                          await AdminService.updateSentence({
+                            sentenceId: s.id ?? "",
+                            requestBody: {
+                              passage_id: passage.id,
+                              order_index: s.order_index ?? 0,
+                              text: s.text ?? "",
+                              translation: s.translation ?? undefined,
+                              audio_url,
+                              suggested_seconds: s.suggested_seconds ?? 8,
+                              replay_limit: s.replay_limit ?? 3,
+                            },
+                          })
+                          onMutated()
+                        }}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="删除复述句"
+                        onClick={() =>
+                          s.id &&
+                          setSentenceToDelete({ id: s.id, text: s.text })
+                        }
+                      >
+                        <Trash2 className="size-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => autoSplit.mutate()}
-            disabled={
-              autoSplit.isPending || (passage.sentences ?? []).length > 0
-            }
-            title={
-              (passage.sentences ?? []).length > 0
-                ? "已有复述句，清空后可自动拆分"
-                : "按句切分正文，由短到长取 3 句"
-            }
-          >
-            {autoSplit.isPending ? (
-              <Loader2 className="animate-spin" />
-            ) : (
-              <Scissors />
-            )}
-            自动拆分复述句
-          </Button>
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="min-w-64 flex-1 space-y-1">
-              <Label>添加复述句（由短到长）</Label>
-              <Input
-                value={sentence.text}
-                onChange={(e) =>
-                  setSentence({ ...sentence, text: e.target.value })
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => autoSplit.mutate()}
+                disabled={
+                  autoSplit.isPending || (passage.sentences ?? []).length > 0
                 }
-              />
-            </div>
-            <div className="w-24 space-y-1">
-              <Label>秒数</Label>
-              <Input
-                type="number"
-                value={sentence.suggested_seconds}
-                onChange={(e) =>
-                  setSentence({
-                    ...sentence,
-                    suggested_seconds: Number(e.target.value),
-                  })
+                title={
+                  (passage.sentences ?? []).length > 0
+                    ? "已有复述句，清空后可自动拆分"
+                    : "按句切分正文，由短到长取 3 句"
                 }
-              />
-            </div>
-            <div className="w-28 space-y-1">
-              <Label>可重听</Label>
-              <Input
-                type="number"
-                min={0}
-                max={9}
-                title="0 = 不限次数"
-                value={sentence.replay_limit}
-                onChange={(e) =>
-                  setSentence({
-                    ...sentence,
-                    replay_limit: Math.max(
-                      0,
-                      Math.min(9, Number(e.target.value) || 0),
-                    ),
-                  })
-                }
-              />
-            </div>
-            <Button
-              onClick={() => addSentence.mutate()}
-              disabled={!sentence.text || addSentence.isPending}
-            >
-              <Plus />
-              添加
-            </Button>
-          </div>
+              >
+                {autoSplit.isPending ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <Scissors />
+                )}
+                自动拆分复述句
+              </Button>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-64 flex-1 space-y-1">
+                  <Label>添加复述句（由短到长）</Label>
+                  <Input
+                    value={sentence.text}
+                    onChange={(e) =>
+                      setSentence({ ...sentence, text: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="w-24 space-y-1">
+                  <Label>秒数</Label>
+                  <Input
+                    type="number"
+                    value={sentence.suggested_seconds}
+                    onChange={(e) =>
+                      setSentence({
+                        ...sentence,
+                        suggested_seconds: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div className="w-28 space-y-1">
+                  <Label>可重听</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={9}
+                    title="0 = 不限次数"
+                    value={sentence.replay_limit}
+                    onChange={(e) =>
+                      setSentence({
+                        ...sentence,
+                        replay_limit: Math.max(
+                          0,
+                          Math.min(9, Number(e.target.value) || 0),
+                        ),
+                      })
+                    }
+                  />
+                </div>
+                <Button
+                  onClick={() => addSentence.mutate()}
+                  disabled={!sentence.text || addSentence.isPending}
+                >
+                  <Plus />
+                  添加
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       )}
 
