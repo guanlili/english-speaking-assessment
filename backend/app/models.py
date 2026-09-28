@@ -126,7 +126,7 @@ class PassageCreate(PassageBase):
     unit_id: uuid.UUID | None = None
 
 
-# 学习单元（EIP 教材单元 → 学生端关卡地图）；顺序解锁 + 老师可全开
+# 学习单元（EIP 教材单元 → 学生端主题探索/学习路径）；顺序解锁 + 老师可全开
 class Unit(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     order_index: int = Field(default=0, ge=0, index=True)
@@ -528,7 +528,7 @@ class PlanAttempt(SQLModel):
     error: str | None = None
 
 
-# 关卡地图（GET /classes/{code}/path）
+# 学习路径（GET /classes/{code}/path，主题探索与首页消费）
 class PathUnit(SQLModel):
     unit_id: uuid.UUID
     order_index: int

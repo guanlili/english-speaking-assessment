@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
-import { Route as PracticeRouteImport } from './routes/practice'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as JoinRouteImport } from './routes/join'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
@@ -21,7 +20,6 @@ import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as TCodeRouteImport } from './routes/t.$code'
 import { Route as PCodeRouteImport } from './routes/p.$code'
 import { Route as MeCodeRouteImport } from './routes/me.$code'
-import { Route as MapCodeRouteImport } from './routes/map.$code'
 import { Route as JCodeRouteImport } from './routes/j.$code'
 import { Route as HomeCodeRouteImport } from './routes/home.$code'
 import { Route as HelpCodeRouteImport } from './routes/help.$code'
@@ -56,11 +54,6 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const RecoverPasswordRoute = RecoverPasswordRouteImport.update({
   id: '/recover-password',
   path: '/recover-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PracticeRoute = PracticeRouteImport.update({
-  id: '/practice',
-  path: '/practice',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -100,11 +93,6 @@ const PCodeRoute = PCodeRouteImport.update({
 const MeCodeRoute = MeCodeRouteImport.update({
   id: '/me/$code',
   path: '/me/$code',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MapCodeRoute = MapCodeRouteImport.update({
-  id: '/map/$code',
-  path: '/map/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JCodeRoute = JCodeRouteImport.update({
@@ -213,7 +201,6 @@ export interface FileRoutesByFullPath {
   '/change-password': typeof ChangePasswordRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
-  '/practice': typeof PracticeRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -226,7 +213,6 @@ export interface FileRoutesByFullPath {
   '/help/$code': typeof HelpCodeRoute
   '/home/$code': typeof HomeCodeRoute
   '/j/$code': typeof JCodeRoute
-  '/map/$code': typeof MapCodeRoute
   '/me/$code': typeof MeCodeRoute
   '/p/$code': typeof PCodeRouteWithChildren
   '/t/$code': typeof TCodeRouteWithChildren
@@ -246,7 +232,6 @@ export interface FileRoutesByTo {
   '/change-password': typeof ChangePasswordRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
-  '/practice': typeof PracticeRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -258,7 +243,6 @@ export interface FileRoutesByTo {
   '/help/$code': typeof HelpCodeRoute
   '/home/$code': typeof HomeCodeRoute
   '/j/$code': typeof JCodeRoute
-  '/map/$code': typeof MapCodeRoute
   '/me/$code': typeof MeCodeRoute
   '/': typeof LayoutIndexRoute
   '/admin/classrooms': typeof LayoutAdminClassroomsRoute
@@ -279,7 +263,6 @@ export interface FileRoutesById {
   '/change-password': typeof ChangePasswordRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
-  '/practice': typeof PracticeRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -292,7 +275,6 @@ export interface FileRoutesById {
   '/help/$code': typeof HelpCodeRoute
   '/home/$code': typeof HomeCodeRoute
   '/j/$code': typeof JCodeRoute
-  '/map/$code': typeof MapCodeRoute
   '/me/$code': typeof MeCodeRoute
   '/p/$code': typeof PCodeRouteWithChildren
   '/t/$code': typeof TCodeRouteWithChildren
@@ -316,7 +298,6 @@ export interface FileRouteTypes {
     | '/change-password'
     | '/join'
     | '/login'
-    | '/practice'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
@@ -329,7 +310,6 @@ export interface FileRouteTypes {
     | '/help/$code'
     | '/home/$code'
     | '/j/$code'
-    | '/map/$code'
     | '/me/$code'
     | '/p/$code'
     | '/t/$code'
@@ -349,7 +329,6 @@ export interface FileRouteTypes {
     | '/change-password'
     | '/join'
     | '/login'
-    | '/practice'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
@@ -361,7 +340,6 @@ export interface FileRouteTypes {
     | '/help/$code'
     | '/home/$code'
     | '/j/$code'
-    | '/map/$code'
     | '/me/$code'
     | '/'
     | '/admin/classrooms'
@@ -381,7 +359,6 @@ export interface FileRouteTypes {
     | '/change-password'
     | '/join'
     | '/login'
-    | '/practice'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
@@ -394,7 +371,6 @@ export interface FileRouteTypes {
     | '/help/$code'
     | '/home/$code'
     | '/j/$code'
-    | '/map/$code'
     | '/me/$code'
     | '/p/$code'
     | '/t/$code'
@@ -417,7 +393,6 @@ export interface RootRouteChildren {
   ChangePasswordRoute: typeof ChangePasswordRoute
   JoinRoute: typeof JoinRoute
   LoginRoute: typeof LoginRoute
-  PracticeRoute: typeof PracticeRoute
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
@@ -426,7 +401,6 @@ export interface RootRouteChildren {
   HelpCodeRoute: typeof HelpCodeRoute
   HomeCodeRoute: typeof HomeCodeRoute
   JCodeRoute: typeof JCodeRoute
-  MapCodeRoute: typeof MapCodeRoute
   MeCodeRoute: typeof MeCodeRoute
   PCodeRoute: typeof PCodeRouteWithChildren
   TCodeRoute: typeof TCodeRouteWithChildren
@@ -453,13 +427,6 @@ declare module '@tanstack/react-router' {
       path: '/recover-password'
       fullPath: '/recover-password'
       preLoaderRoute: typeof RecoverPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/practice': {
-      id: '/practice'
-      path: '/practice'
-      fullPath: '/practice'
-      preLoaderRoute: typeof PracticeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -516,13 +483,6 @@ declare module '@tanstack/react-router' {
       path: '/me/$code'
       fullPath: '/me/$code'
       preLoaderRoute: typeof MeCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/map/$code': {
-      id: '/map/$code'
-      path: '/map/$code'
-      fullPath: '/map/$code'
-      preLoaderRoute: typeof MapCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/j/$code': {
@@ -740,7 +700,6 @@ const rootRouteChildren: RootRouteChildren = {
   ChangePasswordRoute: ChangePasswordRoute,
   JoinRoute: JoinRoute,
   LoginRoute: LoginRoute,
-  PracticeRoute: PracticeRoute,
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
@@ -749,7 +708,6 @@ const rootRouteChildren: RootRouteChildren = {
   HelpCodeRoute: HelpCodeRoute,
   HomeCodeRoute: HomeCodeRoute,
   JCodeRoute: JCodeRoute,
-  MapCodeRoute: MapCodeRoute,
   MeCodeRoute: MeCodeRoute,
   PCodeRoute: PCodeRouteWithChildren,
   TCodeRoute: TCodeRouteWithChildren,

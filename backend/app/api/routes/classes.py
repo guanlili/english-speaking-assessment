@@ -1075,7 +1075,7 @@ def read_learning_path(
     code: str,
     current_user: StudentUserDep,
 ) -> Any:
-    """关卡地图（PRD 拾阶而上 → 多邻国式路径）：单元有序 + 完成轮数/星级 + 锁定。"""
+    """学习路径：单元有序 + 完成轮数/星级 + 锁定（主题探索与首页消费）。"""
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
 

@@ -290,7 +290,7 @@ export function UnitsAdmin() {
                   setForm((f) => ({ ...f, is_active: checked === true }))
                 }
               />
-              启用（学生端可见；停用后不再出现在关卡地图）
+              启用（学生端可见；停用后不再出现在主题探索）
             </div>
           </div>
           <DialogFooter>
@@ -311,7 +311,7 @@ export function UnitsAdmin() {
       <ConfirmDialog
         open={toDelete !== null}
         title={`删除单元「${toDelete?.title ?? ""}」？`}
-        description="删除后该单元下的篇目会变成“未归属”，学生关卡地图里也不再出现这一关。此操作不可撤销。"
+        description="删除后该单元下的篇目会变成“未归属”，学生主题探索里也不再出现这一主题。此操作不可撤销。"
         confirmText="删除单元"
         onOpenChange={(next) => {
           if (!next) setToDelete(null)
