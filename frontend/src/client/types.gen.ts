@@ -135,16 +135,11 @@ export type Body_attempts_create_attempt_upload = {
      * 录音时长（秒）
      */
     duration_s: number;
-    student_id?: (string | null);
     session_id?: (string | null);
     /**
      * 幂等键：重传不重复创建
      */
     idempotency_key?: (string | null);
-    /**
-     * 入班时发放的学生轻量凭证
-     */
-    token?: (string | null);
 };
 
 export type Body_login_login_access_token = {
@@ -183,7 +178,6 @@ export type DraftQuestionOut = {
 
 export type ExploreRequest = {
     unit_id: string;
-    student_id: string;
 };
 
 export type ExploreStarted = {
@@ -398,20 +392,53 @@ export type ScenarioUpdate = {
     is_active?: (boolean | null);
 };
 
-export type StudentJoin = {
-    display_name: string;
+export type StudentAccountOut = {
+    student: StudentPublic;
+    username?: (string | null);
+    full_name?: (string | null);
+    must_change_password?: boolean;
+};
+
+export type StudentImportLine = {
+    username: string;
+    full_name: string;
+};
+
+export type StudentImportRequest = {
+    classroom_id: string;
+    lines: Array<StudentImportLine>;
+};
+
+export type StudentImportResult = {
+    created: number;
+    merged: number;
+    skipped: number;
+    rows: Array<StudentImportRow>;
 };
 
 /**
- * 入班响应：轻量凭证（HMAC 签名，随每次学生请求校验本人身份）。
+ * 导入结果行：初始密码只在本次响应返回一次，不入日志。
  */
-export type StudentJoined = {
+export type StudentImportRow = {
+    username: string;
+    full_name: string;
+    initial_password?: (string | null);
+    student_id?: (string | null);
+    merged_existing?: boolean;
+    error?: (string | null);
+};
+
+export type StudentJoin = {
+    display_name?: (string | null);
+};
+
+export type StudentPublic = {
     id: string;
     display_name: string;
     suffix?: (string | null);
     current_band: string;
     classroom_id: string;
-    access_token: string;
+    user_id?: (string | null);
 };
 
 export type TodayPlan = {
@@ -485,18 +512,24 @@ export type UpdatePassword = {
 };
 
 export type UserCreate = {
-    email: string;
+    email?: (string | null);
     is_active?: boolean;
     is_superuser?: boolean;
     full_name?: (string | null);
+    role?: string;
+    username?: (string | null);
+    must_change_password?: boolean;
     password: string;
 };
 
 export type UserPublic = {
-    email: string;
+    email?: (string | null);
     is_active?: boolean;
     is_superuser?: boolean;
     full_name?: (string | null);
+    role?: string;
+    username?: (string | null);
+    must_change_password?: boolean;
     id: string;
     created_at?: (string | null);
 };
@@ -518,6 +551,8 @@ export type UserUpdate = {
     is_superuser?: (boolean | null);
     full_name?: (string | null);
     password?: (string | null);
+    role?: (string | null);
+    username?: (string | null);
 };
 
 export type UserUpdateMe = {
@@ -746,14 +781,12 @@ export type AttemptsCreateAttemptUploadResponse = (AttemptPublic);
 
 export type AttemptsReadAttemptData = {
     attemptId: string;
-    token?: (string | null);
 };
 
 export type AttemptsReadAttemptResponse = (AttemptPublic);
 
 export type AttemptsReadAttemptAudioData = {
     attemptId: string;
-    token?: (string | null);
 };
 
 export type AttemptsReadAttemptAudioResponse = (unknown);
@@ -763,6 +796,8 @@ export type AudioReadContentAudioData = {
 };
 
 export type AudioReadContentAudioResponse = (unknown);
+
+export type ClassesListMyClassroomsResponse = (Array<ClassroomPublic>);
 
 export type ClassesCreateClassData = {
     requestBody: ClassroomCreate;
@@ -775,16 +810,11 @@ export type ClassesJoinClassData = {
     requestBody: StudentJoin;
 };
 
-export type ClassesJoinClassResponse = (StudentJoined);
+export type ClassesJoinClassResponse = (StudentPublic);
 
 export type ClassesReadTodayPlanData = {
     code: string;
     sessionId?: (string | null);
-    studentId: string;
-    /**
-     * 入班时发放的学生轻量凭证
-     */
-    token?: (string | null);
 };
 
 export type ClassesReadTodayPlanResponse = (TodayPlan);
@@ -793,11 +823,6 @@ export type ClassesReadNextQuestionData = {
     code: string;
     excludeIds?: Array<(string)>;
     sessionId?: (string | null);
-    studentId: string;
-    /**
-     * 入班时发放的学生轻量凭证
-     */
-    token?: (string | null);
 };
 
 export type ClassesReadNextQuestionResponse = (NextQuestion);
@@ -814,22 +839,16 @@ export type ClassesReadStudentTrailData = {
      * 查询最近多少天的轨迹
      */
     days?: number;
-    studentId: string;
     /**
-     * 入班时发放的学生轻量凭证
+     * 教师查看指定学生；学生查看自己时省略
      */
-    token?: (string | null);
+    studentId?: (string | null);
 };
 
 export type ClassesReadStudentTrailResponse = (TrailData);
 
 export type ClassesReadLearningPathData = {
     code: string;
-    studentId: string;
-    /**
-     * 入班时发放的学生轻量凭证
-     */
-    token?: (string | null);
 };
 
 export type ClassesReadLearningPathResponse = (LearningPath);
@@ -850,10 +869,6 @@ export type ClassesSetAssignmentResponse = ((AssignmentInfo | null));
 export type ClassesStartExploreData = {
     code: string;
     requestBody: ExploreRequest;
-    /**
-     * 入班时发放的学生轻量凭证
-     */
-    token?: (string | null);
 };
 
 export type ClassesStartExploreResponse = (ExploreStarted);
@@ -895,6 +910,34 @@ export type PrivateCreateUserData = {
 };
 
 export type PrivateCreateUserResponse = (UserPublic);
+
+export type StudentsImportStudentsData = {
+    requestBody: StudentImportRequest;
+};
+
+export type StudentsImportStudentsResponse = (StudentImportResult);
+
+export type StudentsListStudentsData = {
+    classroomId: string;
+};
+
+export type StudentsListStudentsResponse = (Array<StudentAccountOut>);
+
+export type StudentsResetStudentPasswordData = {
+    studentId: string;
+};
+
+export type StudentsResetStudentPasswordResponse = ({
+    [key: string]: (string);
+});
+
+export type StudentsRemoveStudentData = {
+    studentId: string;
+};
+
+export type StudentsRemoveStudentResponse = ({
+    [key: string]: (string);
+});
 
 export type UsersReadUsersData = {
     limit?: number;

@@ -1,27 +1,30 @@
 /**
- * 学生身份本地存储：课堂码 + 显示名（PRD US-04：无正式账号，
- * 刷新后仍是同一个人，BDD B）。键按课堂码隔离。
+ * 学生课堂档案本地记录：登录态（JWT，见 useAuth）即身份；这里只记
+ * 「该学生加入了哪些课堂」（入班响应），供刷新后续练与登录后跳转。
+ * 键按课堂码隔离：esa:student:{CODE}。
  */
 
-import type { StudentJoined } from "@/client"
+import type { StudentPublic } from "@/client"
 
 export interface StoredStudent {
   id: string
   display_name: string
   suffix: string | null
-  access_token: string
+  user_id: string | null
 }
 
 const keyFor = (code: string) => `esa:student:${code.toUpperCase()}`
+const LAST_CODE_KEY = "esa:student:last-code"
 
-export function saveStudent(code: string, student: StudentJoined): void {
+export function saveStudent(code: string, student: StudentPublic): void {
   const stored: StoredStudent = {
     id: student.id,
     display_name: student.display_name,
     suffix: student.suffix ?? null,
-    access_token: student.access_token,
+    user_id: student.user_id ?? null,
   }
   localStorage.setItem(keyFor(code), JSON.stringify(stored))
+  localStorage.setItem(LAST_CODE_KEY, code.toUpperCase())
 }
 
 export function loadStudent(code: string): StoredStudent | null {
@@ -34,8 +37,8 @@ export function loadStudent(code: string): StoredStudent | null {
   }
 }
 
-export function studentToken(code: string): string | null {
-  return loadStudent(code)?.access_token ?? null
+export function lastJoinedCode(): string | null {
+  return localStorage.getItem(LAST_CODE_KEY)
 }
 
 export function clearStudent(code: string): void {
@@ -49,9 +52,9 @@ export function displayName(student: StoredStudent): string {
 }
 
 /**
- * API 错误是否为「学生身份已失效」（清库/课堂重建后的身份/课堂 404）。
- * 内容缺失类 404（无篇目、无复述句、会话不存在）不清身份——那是老师
- * 侧配置问题，清掉会把学生踢回加入页并创建新身份，数据就断了。
+ * API 错误是否为「学生课堂档案已失效」（被移出课堂/课堂重建的 404）。
+ * 内容缺失类 404（无篇目、无复述句、会话不存在）不清记录——那是老师
+ * 侧配置问题，清掉会把学生踢回加入页，数据就断了。
  */
 export function isStudentNotFound(error: unknown): boolean {
   if (typeof error !== "object" || error === null || !("status" in error))
@@ -59,7 +62,6 @@ export function isStudentNotFound(error: unknown): boolean {
   const e = error as { status?: number; body?: { detail?: unknown } }
   if (e.status !== 404) return false
   const detail = typeof e.body?.detail === "string" ? e.body.detail : undefined
-  // 无 detail 的 404 保持旧行为（视为身份失效）；有 detail 时只认身份类
   if (detail === undefined) return true
   return detail === "Student not found" || detail === "Classroom not found"
 }

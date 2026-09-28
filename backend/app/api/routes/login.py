@@ -80,17 +80,19 @@ def login_access_token(
     _check_login_rate_limit(client_ip)
 
     user = crud.authenticate(
-        session=session, email=form_data.username, password=form_data.password
+        session=session, account=form_data.username.strip(), password=form_data.password
     )
     if not user:
-        raise HTTPException(status_code=400, detail="Incorrect email or password")
+        raise HTTPException(status_code=400, detail="账号或密码不正确")
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     _record_login_success(client_ip)
     return Token(
         access_token=security.create_access_token(
-            user.id, expires_delta=access_token_expires
+            user.id,
+            expires_delta=access_token_expires,
+            role=user.role,
         )
     )
 
@@ -128,6 +130,7 @@ def recover_password(email: str, session: SessionDep) -> Message:
     """
     Password Recovery
     """
+    # 学生无邮箱（学号登录），该通道天然只服务教师/管理员
     # 在查询账号前统一检查，服务不可用时也不能泄露邮箱是否已注册。
     if not settings.emails_enabled:
         raise HTTPException(
@@ -136,11 +139,12 @@ def recover_password(email: str, session: SessionDep) -> Message:
     user = crud.get_user_by_email(session=session, email=email)
     if user:
         password_reset_token = generate_password_reset_token(email=email)
+        email_to = user.email or email  # 按邮箱查到的账号，email 必非空
         email_data = generate_reset_password_email(
-            email_to=user.email, email=email, token=password_reset_token
+            email_to=email_to, email=email, token=password_reset_token
         )
         send_email(
-            email_to=user.email,
+            email_to=email_to,
             subject=email_data.subject,
             html_content=email_data.html_content,
         )
@@ -190,7 +194,7 @@ def recover_password_html_content(email: str, session: SessionDep) -> Any:
         )
     password_reset_token = generate_password_reset_token(email=email)
     email_data = generate_reset_password_email(
-        email_to=user.email, email=email, token=password_reset_token
+        email_to=user.email or email, email=email, token=password_reset_token
     )
 
     return HTMLResponse(

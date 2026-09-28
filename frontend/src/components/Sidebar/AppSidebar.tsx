@@ -5,6 +5,7 @@ import {
   Home,
   Layers,
   ListChecks,
+  School,
   Users,
   UsersRound,
 } from "lucide-react"
@@ -21,7 +22,10 @@ import useAuth from "@/hooks/useAuth"
 import { type Item, Main } from "./Main"
 import { User } from "./User"
 
-const baseItems: Item[] = [{ icon: Home, title: "教学工作台", path: "/" }]
+const baseItems: Item[] = [
+  { icon: Home, title: "教学工作台", path: "/" },
+  { icon: School, title: "我的课堂", path: "/classrooms" },
+]
 
 const adminItems: Item[] = [
   { icon: Users, title: "用户与权限", path: "/admin" },

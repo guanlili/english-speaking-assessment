@@ -106,8 +106,6 @@ function ClassroomPracticePage() {
     queryFn: () =>
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
-        studentId: student?.id as string,
-        token: student?.access_token as string,
         ...(exploreSessionId ? { sessionId: exploreSessionId } : {}),
       }),
     enabled: student !== null,
@@ -137,8 +135,6 @@ function ClassroomPracticePage() {
     mutationFn: () =>
       ClassesService.readNextQuestion({
         code: code.toUpperCase(),
-        studentId: student?.id as string,
-        token: student?.access_token as string,
         ...(plan?.session_id ? { sessionId: plan.session_id } : {}),
         ...(items.length ? { excludeIds: items.map((i) => i.id) } : {}),
       }),
@@ -232,9 +228,7 @@ function ClassroomPracticePage() {
   } = useAttemptSubmit({
     itemType: (currentItem?.type as "repeat" | "question") ?? "repeat",
     itemId: currentItem?.id ?? "",
-    studentId: student?.id,
     sessionId: plan?.session_id,
-    token: student?.access_token,
   })
 
   const recorder = useRecorder({
@@ -254,10 +248,8 @@ function ClassroomPracticePage() {
     recordingTargetRef.current = {
       itemType: (currentItem?.type as "repeat" | "question") ?? "repeat",
       itemId: currentItem?.id ?? "",
-      studentId: student?.id,
       sessionId: plan?.session_id,
       idempotencyKey: crypto.randomUUID(),
-      token: student?.access_token,
     }
     recorder.start()
   }

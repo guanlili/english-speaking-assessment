@@ -21,12 +21,11 @@ from sqlmodel import SQLModel, col, select
 
 from app.api.deps import (
     CurrentUser,
-    OptionalCurrentUser,
     SessionDep,
-    SuperUserDep,
+    StudentUserDep,
+    TeacherUserDep,
 )
 from app.core.config import settings
-from app.core.security import create_student_token, verify_student_token
 from app.crud import (
     create_classroom,
     get_classroom_by_code,
@@ -60,7 +59,6 @@ from app.models import (
     ScenarioQuestionPublic,
     Student,
     StudentJoin,
-    StudentJoined,
     StudentPublic,
     TodayPlan,
     TrailData,
@@ -198,34 +196,22 @@ def _get_student_of_classroom(
     return student
 
 
-def _require_student_credential(
-    session: SessionDep,
-    classroom: Classroom,
-    student_id: uuid.UUID,
-    token: str | None,
+def _student_profile_of(
+    session: SessionDep, classroom: Classroom, current_user: User
 ) -> Student:
-    """学生请求的轻量凭证校验（401=凭证无效/过期，403=凭证不属于该学生）。
+    """学生登录档案解析：JWT → user → 该课堂的学生档案（未入班 404）。
 
-    课堂码只用于入班，后续每次请求都凭入班发放的 access_token 证明本人身份。
+    404 统一口径：学生档案不存在 = 未加入该课堂，前端引导去加入页。
     """
-    if not token:
-        raise HTTPException(
-            status_code=401,
-            detail="缺少学生凭证，请重新进入课堂",
-            headers={"WWW-Authenticate": "StudentCredential"},
+    student = session.exec(
+        select(Student).where(
+            Student.classroom_id == classroom.id,  # type: ignore[arg-type]
+            Student.user_id == current_user.id,  # type: ignore[arg-type]
         )
-    try:
-        sid, cid, _ = verify_student_token(token)
-    except ValueError:
-        raise HTTPException(
-            status_code=401,
-            detail="学生凭证无效或已过期，请重新进入课堂",
-            headers={"WWW-Authenticate": "StudentCredential"},
-        ) from None
-    if sid != student_id or cid != classroom.id:
-        # 凭证有效但指向他人：权限不足，不触发学生端登出逻辑
-        raise HTTPException(status_code=403, detail="没有权限：凭证与该学生不符")
-    return _get_student_of_classroom(session, classroom, student_id)
+    ).first()
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return student
 
 
 def _require_classroom_teacher(classroom: Classroom, current_user: User) -> None:
@@ -240,16 +226,27 @@ def _require_classroom_teacher(classroom: Classroom, current_user: User) -> None
     )
 
 
+@router.get("", response_model=list[ClassroomPublic])
+def list_my_classrooms(session: SessionDep, current_user: CurrentUser) -> Any:
+    """课堂列表：管理员看全部，教师看自己名下的（工作台「我的课堂」）。"""
+    stmt = select(Classroom).order_by(col(Classroom.created_at).desc())  # type: ignore[union-attr]
+    if not current_user.is_superuser:
+        stmt = stmt.where(Classroom.owner_id == current_user.id)  # type: ignore[arg-type]
+    return session.exec(stmt).all()
+
+
 @router.post("", response_model=ClassroomPublic)
 def create_class(
     session: SessionDep,
-    _current_user: SuperUserDep,  # noqa: ARG001 - 权限闸门
+    current_user: TeacherUserDep,
     class_in: ClassroomCreate,
 ) -> Any:
-    """创建课堂，返回课堂码（老师把它当作进入链接分发）。"""
+    """创建课堂（教师或管理员），创建者即属主，课堂码分发给本班学生。"""
     for _ in range(5):
         code = _generate_classroom_code()
-        classroom = Classroom(code=code, class_size=class_in.class_size)
+        classroom = Classroom(
+            code=code, class_size=class_in.class_size, owner_id=current_user.id
+        )
         try:
             return create_classroom(session=session, classroom=classroom)
         except IntegrityError:
@@ -258,22 +255,20 @@ def create_class(
     raise HTTPException(status_code=500, detail="无法生成唯一课堂码")
 
 
-@router.post("/{code}/join", response_model=StudentJoined)
-def join_class(session: SessionDep, code: str, join_in: StudentJoin) -> Any:
-    """学生凭课堂码 + 显示名进入；同名追加 4 位区分码（US-04）。
-
-    返回带轻量凭证 access_token：后续学生请求凭它校验本人身份。
-    """
+@router.post("/{code}/join", response_model=StudentPublic)
+def join_class(
+    session: SessionDep,
+    current_user: StudentUserDep,
+    code: str,
+    join_in: StudentJoin,
+) -> Any:
+    """学生（登录态）凭课堂码加入；显示名缺省用账号姓名，重复入班幂等。"""
     classroom = _get_classroom(session, code)
-    display_name = join_in.display_name.strip()
-    if not display_name:
-        raise HTTPException(status_code=422, detail="显示名不能为空")
-    student = join_classroom(
-        session=session, classroom=classroom, display_name=display_name
-    )
-    return StudentJoined(
-        **StudentPublic.model_validate(student).model_dump(),
-        access_token=create_student_token(student.id, classroom.id),
+    return join_classroom(
+        session=session,
+        classroom=classroom,
+        user=current_user,
+        display_name=join_in.display_name,
     )
 
 
@@ -396,8 +391,7 @@ def _question_band_for_session(
 def read_today_plan(
     session: SessionDep,
     code: str,
-    student_id: uuid.UUID = Query(...),
-    token: str | None = Query(default=None, description="入班时发放的学生轻量凭证"),
+    current_user: StudentUserDep,
     session_id: uuid.UUID | None = Query(default=None),
 ) -> Any:
     """今天的练习计划：3 句听后复述 + 2 道该档情景问答（US-05）。
@@ -405,7 +399,7 @@ def read_today_plan(
     传 session_id 时返回该会话的计划（主题探索的自由练习轮）。
     """
     classroom = _get_classroom(session, code)
-    student = _require_student_credential(session, classroom, student_id, token)
+    student = _student_profile_of(session, classroom, current_user)
     today = _today_in_practice_tz()
     if session_id is not None:
         practice_session = session.get(PracticeSession, session_id)
@@ -523,8 +517,7 @@ def read_today_plan(
 def read_next_question(
     session: SessionDep,
     code: str,
-    student_id: uuid.UUID = Query(...),
-    token: str | None = Query(default=None, description="入班时发放的学生轻量凭证"),
+    current_user: StudentUserDep,
     session_id: uuid.UUID | None = Query(default=None),
     exclude_ids: list[uuid.UUID] = Query(default=[]),
 ) -> Any:
@@ -534,7 +527,7 @@ def read_next_question(
     不传时使用当日课堂会话。
     """
     classroom = _get_classroom(session, code)
-    student = _require_student_credential(session, classroom, student_id, token)
+    student = _student_profile_of(session, classroom, current_user)
     if session_id is not None:
         practice_session = session.get(PracticeSession, session_id)
         if practice_session is None or practice_session.student_id != student.id:
@@ -841,28 +834,24 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
 def read_student_trail(
     session: SessionDep,
     code: str,
-    student_id: uuid.UUID = Query(...),
-    token: str | None = Query(default=None, description="入班时发放的学生轻量凭证"),
+    current_user: CurrentUser,
     days: int = Query(default=90, ge=1, le=3650, description="查询最近多少天的轨迹"),
-    current_user: OptionalCurrentUser = None,
+    student_id: uuid.UUID | None = Query(
+        default=None, description="教师查看指定学生；学生查看自己时省略"
+    ),
 ) -> Any:
     """学生进步轨迹（PRD US-09）：按练习日聚合口语参考分与词汇档。
 
-    本人学生凭轻量凭证访问（带了凭证就以凭证为准，浏览器里残留的
-    教师 JWT 不抢身份）；教师/管理员凭账号访问（面板学生详情）。
+    学生账号省略 student_id 看自己；教师/管理员传 student_id（授权范围内）。
     """
     classroom = _get_classroom(session, code)
-    if token:
-        student = _require_student_credential(session, classroom, student_id, token)
-    elif current_user is not None:
+    if current_user.role == "student" and not current_user.is_superuser:
+        student = _student_profile_of(session, classroom, current_user)
+    else:
+        if student_id is None:
+            raise HTTPException(status_code=422, detail="教师查看需传 student_id")
         _require_classroom_teacher(classroom, current_user)
         student = _get_student_of_classroom(session, classroom, student_id)
-    else:
-        raise HTTPException(
-            status_code=401,
-            detail="缺少学生凭证，请重新进入课堂",
-            headers={"WWW-Authenticate": "StudentCredential"},
-        )
 
     tz = ZoneInfo(settings.PRACTICE_TZ)
     now_tz = datetime.now(tz)
@@ -984,12 +973,11 @@ def read_student_trail(
 def read_learning_path(
     session: SessionDep,
     code: str,
-    student_id: uuid.UUID = Query(...),
-    token: str | None = Query(default=None, description="入班时发放的学生轻量凭证"),
+    current_user: StudentUserDep,
 ) -> Any:
     """关卡地图（PRD 拾阶而上 → 多邻国式路径）：单元有序 + 完成轮数/星级 + 锁定。"""
     classroom = _get_classroom(session, code)
-    student = _require_student_credential(session, classroom, student_id, token)
+    student = _student_profile_of(session, classroom, current_user)
 
     units = session.exec(
         select(Unit).where(Unit.is_active).order_by(col(Unit.order_index))
@@ -1115,7 +1103,6 @@ def set_assignment(
 
 class ExploreRequest(SQLModel):
     unit_id: uuid.UUID
-    student_id: uuid.UUID
 
 
 class ExploreStarted(SQLModel):
@@ -1126,13 +1113,13 @@ class ExploreStarted(SQLModel):
 @router.post("/{code}/explore", response_model=ExploreStarted)
 def start_explore(
     session: SessionDep,
+    current_user: StudentUserDep,
     code: str,
     body: ExploreRequest,
-    token: str | None = Query(default=None, description="入班时发放的学生轻量凭证"),
 ) -> Any:
     """主题探索：学生选择单元开始/继续当日自由练习轮（不计入课堂完成率）。"""
     classroom = _get_classroom(session, code)
-    student = _require_student_credential(session, classroom, body.student_id, token)
+    student = _student_profile_of(session, classroom, current_user)
     unit = session.get(Unit, body.unit_id)
     if unit is None or not unit.is_active:
         raise HTTPException(status_code=404, detail="Unit not found")

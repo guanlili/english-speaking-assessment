@@ -45,6 +45,12 @@ def update_user(*, session: Session, db_user: User, user_in: UserUpdate) -> Any:
     return db_user
 
 
+def get_user_by_username(*, session: Session, username: str) -> User | None:
+    return session.exec(
+        select(User).where(User.username == username)  # type: ignore[arg-type]
+    ).first()
+
+
 def get_user_by_email(*, session: Session, email: str) -> User | None:
     statement = select(User).where(User.email == email)
     session_user = session.exec(statement).first()
@@ -56,8 +62,11 @@ def get_user_by_email(*, session: Session, email: str) -> User | None:
 DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$MjQyZWE1MzBjYjJlZTI0Yw$YTU4NGM5ZTZmYjE2NzZlZjY0ZWY3ZGRkY2U2OWFjNjk"
 
 
-def authenticate(*, session: Session, email: str, password: str) -> User | None:
-    db_user = get_user_by_email(session=session, email=email)
+def authenticate(*, session: Session, account: str, password: str) -> User | None:
+    """统一登录：account 为学号（学生）或邮箱（教师/管理员）。"""
+    db_user = get_user_by_username(session=session, username=account)
+    if db_user is None:
+        db_user = get_user_by_email(session=session, email=account)
     if not db_user:
         # Prevent timing attacks by running password verification even when user doesn't exist
         # This ensures the response time is similar whether or not the email exists
@@ -123,24 +132,38 @@ def get_classroom_by_code(*, session: Session, code: str) -> Classroom | None:
 
 
 def join_classroom(
-    *, session: Session, classroom: Classroom, display_name: str
+    *, session: Session, classroom: Classroom, user: User, display_name: str | None
 ) -> Student:
-    """同名允许进入，追加 4 位区分码并返回给学生（PRD US-04）。
+    """账号制入班：一个账号一间课堂一份学生档案（幂等，重复入班返回已有档案）。
 
-    用唯一约束 + IntegrityError 重试应对并发同名加入，确保不会产生
-    重复的 display_name + suffix 组合。
+    并发用 IntegrityError 重试（user/classroom 唯一索引与显示名唯一约束）。
     """
+    existing = session.exec(
+        select(Student).where(
+            Student.classroom_id == classroom.id,  # type: ignore[arg-type]
+            Student.user_id == user.id,  # type: ignore[arg-type]
+        )
+    ).first()
+    if existing is not None:
+        return existing
+    name = (
+        (display_name or "").strip()
+        or (user.full_name or "").strip()
+        or user.username
+        or "同学"
+    )
     for _attempt in range(10):
         duplicate = session.exec(
             select(Student).where(
-                Student.classroom_id == classroom.id,
-                Student.display_name == display_name,
+                Student.classroom_id == classroom.id,  # type: ignore[arg-type]
+                Student.display_name == name,
             )
         ).first()
         suffix = None if duplicate is None else f"{random.randint(1000, 9999)}"  # noqa: S311
         student = Student(
             classroom_id=classroom.id,
-            display_name=display_name,
+            user_id=user.id,
+            display_name=name[:64],
             suffix=suffix,
         )
         session.add(student)
@@ -148,6 +171,15 @@ def join_classroom(
             session.commit()
         except IntegrityError:
             session.rollback()
+            # 并发同账号入班：重查直接返回
+            existing = session.exec(
+                select(Student).where(
+                    Student.classroom_id == classroom.id,  # type: ignore[arg-type]
+                    Student.user_id == user.id,  # type: ignore[arg-type]
+                )
+            ).first()
+            if existing is not None:
+                return existing
             continue
         session.refresh(student)
         return student

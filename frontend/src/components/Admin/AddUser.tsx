@@ -28,13 +28,22 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
 
 const formSchema = z
   .object({
+    // 学生账号走「我的课堂 → 导入学生」批量建号；此处建教师/管理员
     email: z.email({ message: "Invalid email address" }),
     full_name: z.string().optional(),
+    role: z.enum(["teacher", "admin"]),
     password: z
       .string()
       .min(1, { message: "Password is required" })
@@ -42,7 +51,6 @@ const formSchema = z
     confirm_password: z
       .string()
       .min(1, { message: "Please confirm your password" }),
-    is_superuser: z.boolean(),
     is_active: z.boolean(),
   })
   .refine((data) => data.password === data.confirm_password, {
@@ -64,9 +72,9 @@ const AddUser = () => {
     defaultValues: {
       email: "",
       full_name: "",
+      role: "teacher",
       password: "",
       confirm_password: "",
-      is_superuser: false,
       is_active: true,
     },
   })
@@ -188,16 +196,24 @@ const AddUser = () => {
 
               <FormField
                 control={form.control}
-                name="is_superuser"
+                name="role"
                 render={({ field }) => (
-                  <FormItem className="flex items-center gap-3 space-y-0">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormLabel className="font-normal">Is superuser?</FormLabel>
+                  <FormItem>
+                    <FormLabel>
+                      角色 <span className="text-destructive">*</span>
+                    </FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="teacher">教师</SelectItem>
+                        <SelectItem value="admin">管理员</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
                   </FormItem>
                 )}
               />

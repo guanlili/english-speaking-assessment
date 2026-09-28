@@ -6,6 +6,7 @@ import {
   CircleHelp,
   Home,
   ListChecks,
+  LogOut,
   Map as MapIcon,
   Mic,
   Sparkles,
@@ -82,6 +83,7 @@ function StudentShell({
         </nav>
         <div className="mt-auto">
           <NotificationBell code={code ?? ""} />
+          <StudentLogout />
           <div className="rounded-2xl bg-background p-4">
             <p className="flex items-center gap-1.5 text-xs font-semibold">
               <ListChecks className="size-3.5 text-primary" />
@@ -160,8 +162,6 @@ function NotificationBell({ code }: { code: string }) {
     queryFn: () =>
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
-        studentId: student?.id as string,
-        token: student?.access_token as string,
       }),
     enabled: student !== null && code !== "",
     retry: 1,
@@ -240,5 +240,22 @@ function NotificationBell({ code }: { code: string }) {
         </div>
       )}
     </div>
+  )
+}
+
+function StudentLogout() {
+  return (
+    <a
+      href="/login"
+      className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+      onClick={() => {
+        // 学生侧无 queryClient 上下文，直接清存储回登录页
+        localStorage.removeItem("access_token")
+        localStorage.removeItem("esa:role")
+        localStorage.removeItem("esa:must-change-pw")
+      }}
+    >
+      <LogOut className="size-3.5" /> 退出登录
+    </a>
   )
 }

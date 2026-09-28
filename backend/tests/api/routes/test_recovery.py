@@ -2,6 +2,9 @@
 
 验收用 mock：断网后重传、重复提交、评分中断恢复、重试上限、XP 不重复结算。
 不调用真实付费评分引擎。
+
+账号制：学生 = 学号登录 JWT，上传请求带 Authorization 头（form 不再含
+student_id/token）。
 """
 
 import uuid
@@ -26,21 +29,22 @@ from app.models import (
 from app.scoring import worker
 from app.scoring.base import ScoringError
 from tests.utils.audio import wav_upload
-from tests.utils.credential import remember_join, student_form, student_params
+from tests.utils.credential import make_student
 
 
 @pytest.fixture(autouse=True)
 def cleanup_demo_students(db: Session) -> Generator[None]:
-    """本文件测试都往 DEMO01 加入「恢复测试」学生，测完连同作答一并清理，
+    """本文件测试都往 DEMO01 加入「恢复测试」学生，测完连同作答、账号一并清理，
     避免污染后续 vocab_trail 等对 DEMO01 计数敏感的测试。"""
     yield
-    from app.models import PracticeSession, StudentBadge
+    from app.models import PracticeSession, StudentBadge, User
 
     students = db.exec(
         select(Student).where(
             Student.display_name == "恢复测试"  # type: ignore[arg-type]
         )
     ).all()
+    user_ids = [s.user_id for s in students if s.user_id is not None]
     for student in students:
         for model in (Attempt, PracticeSession, StudentBadge):
             for row in db.exec(
@@ -48,6 +52,8 @@ def cleanup_demo_students(db: Session) -> Generator[None]:
             ).all():
                 db.delete(row)
         db.delete(student)
+    for uid in user_ids:
+        db.delete(db.get_one(User, uid))
     db.commit()
 
 
@@ -86,23 +92,20 @@ def inline_scoring(
     app.dependency_overrides.pop(get_scoring_submitter, None)
 
 
-def _join(client: TestClient, name: str = "恢复测试") -> Any:
-    resp = client.post("/api/v1/classes/DEMO01/join", json={"display_name": name})
-    assert resp.status_code == 200, resp.text
-    return remember_join(resp.json())
+def _join(db: Session, client: TestClient, name: str = "恢复测试") -> Any:
+    """建学生账号 + 登录 + 入班 DEMO01，返回 {student, headers, user}。"""
+    return make_student(db, client, "DEMO01", name)
 
 
-def _today(client: TestClient, student_id: str) -> Any:
-    return client.get(
-        "/api/v1/classes/DEMO01/today", params=student_params(student_id)
-    ).json()
+def _today(client: TestClient, headers: dict[str, str]) -> Any:
+    return client.get("/api/v1/classes/DEMO01/today", headers=headers).json()
 
 
 def _submit(
     client: TestClient,
     item_type: str,
     item_id: str,
-    student_id: str,
+    headers: dict[str, str],
     session_id: str,
     idempotency_key: str | None = None,
 ) -> Any:
@@ -117,29 +120,30 @@ def _submit(
     resp = client.post(
         "/api/v1/attempts",
         files={"audio": wav_upload(6.0)},
-        data=student_form(student_id, **data),
+        data=data,
+        headers=headers,
     )
     return resp
 
 
 def test_idempotent_reupload_returns_same_attempt(
-    client: TestClient, inline_scoring: Any
+    client: TestClient, inline_scoring: Any, db: Session
 ) -> None:
     """断网后重传：同幂等键返回同一作答，不重复创建。"""
     inline_scoring({"audio/wav": "hello world"})
-    student = _join(client)
-    plan = _today(client, student["id"])
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
     first = plan["items"][0]
     key = str(uuid.uuid4())
 
     resp1 = _submit(
-        client, first["type"], first["id"], student["id"], plan["session_id"], key
+        client, first["type"], first["id"], student["headers"], plan["session_id"], key
     )
     assert resp1.status_code == 200
     attempt1 = resp1.json()
 
     resp2 = _submit(
-        client, first["type"], first["id"], student["id"], plan["session_id"], key
+        client, first["type"], first["id"], student["headers"], plan["session_id"], key
     )
     assert resp2.status_code == 200
     attempt2 = resp2.json()
@@ -152,8 +156,8 @@ def test_duplicate_submission_no_double_xp(
 ) -> None:
     """重复提交不重复结算 XP。"""
     inline_scoring({"audio/wav": "hello world"})
-    student = _join(client)
-    plan = _today(client, student["id"])
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
 
     # 完成全部 5 题（3 复述 + 2 问答），重复提交第一题两次验证 XP 不翻倍
     for item in plan["items"]:
@@ -161,7 +165,7 @@ def test_duplicate_submission_no_double_xp(
             client,
             item["type"],
             item["id"],
-            student["id"],
+            student["headers"],
             plan["session_id"],
             str(uuid.uuid4()),
         )
@@ -169,18 +173,28 @@ def test_duplicate_submission_no_double_xp(
     first = plan["items"][0]
     first_key = str(uuid.uuid4())
     _submit(
-        client, first["type"], first["id"], student["id"], plan["session_id"], first_key
+        client,
+        first["type"],
+        first["id"],
+        student["headers"],
+        plan["session_id"],
+        first_key,
     )
     _submit(
-        client, first["type"], first["id"], student["id"], plan["session_id"], first_key
+        client,
+        first["type"],
+        first["id"],
+        student["headers"],
+        plan["session_id"],
+        first_key,
     )
 
     # 刷新 today 触发结算
-    _today(client, student["id"])
-    _today(client, student["id"])
+    _today(client, student["headers"])
+    _today(client, student["headers"])
 
     # XP 不应因重复提交翻倍
-    db_student = db.get(Student, uuid.UUID(student["id"]))
+    db_student = db.get(Student, uuid.UUID(student["student"]["id"]))
     assert db_student is not None
     assert db_student.xp > 0
     # 5 题 × 10 XP + 星级 × 5 + 连胜奖励（如有）
@@ -193,12 +207,12 @@ def test_stale_scoring_recovery(
 ) -> None:
     """评分中断恢复：僵尸 scoring 作答被重排队列并最终完成。"""
     inline_scoring({"audio/wav": "hello world"})
-    student = _join(client)
-    plan = _today(client, student["id"])
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
     first = plan["items"][0]
 
     resp = _submit(
-        client, first["type"], first["id"], student["id"], plan["session_id"]
+        client, first["type"], first["id"], student["headers"], plan["session_id"]
     )
     attempt_id = uuid.UUID(resp.json()["id"])
 
@@ -248,11 +262,11 @@ def test_retry_limit_marks_failed(
 
     app.dependency_overrides[get_scoring_submitter] = lambda: run_inline
     try:
-        student = _join(client)
-        plan = _today(client, student["id"])
+        student = _join(db, client)
+        plan = _today(client, student["headers"])
         first = plan["items"][0]
         resp = _submit(
-            client, first["type"], first["id"], student["id"], plan["session_id"]
+            client, first["type"], first["id"], student["headers"], plan["session_id"]
         )
         attempt = resp.json()
         assert attempt["status"] == "failed"
@@ -292,11 +306,11 @@ def test_retry_redispatched_in_production_path(
     monkeypatch.setattr(worker, "build_asr_provider", lambda: FlakyAsr())
 
     try:
-        student = _join(client)
-        plan = _today(client, student["id"])
+        student = _join(db, client)
+        plan = _today(client, student["headers"])
         first = plan["items"][0]
         resp = _submit(
-            client, first["type"], first["id"], student["id"], plan["session_id"]
+            client, first["type"], first["id"], student["headers"], plan["session_id"]
         )
         assert resp.status_code == 200, resp.text
         attempt_id = uuid.UUID(resp.json()["id"])
@@ -335,15 +349,15 @@ def test_stale_failed_marks_are_committed(
     monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
     from app.core.storage import save_audio_file
 
-    student = _join(client)
-    plan = _today(client, student["id"])
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
 
     with Session(db.get_bind()) as session:
         path = save_audio_file(b"fake", "audio/wav")
         attempt = Attempt(
             item_type="repeat",
             item_id=uuid.uuid4(),
-            student_id=uuid.UUID(student["id"]),
+            student_id=uuid.UUID(student["student"]["id"]),
             session_id=uuid.UUID(plan["session_id"]),
             audio_path=str(path),
             duration_s=5.0,
@@ -371,8 +385,8 @@ def test_queue_full_returns_503(
 ) -> None:
     """队列满时返回 503，前端保留录音提示稍后重试。"""
     inline_scoring({"audio/wav": "hello world"})
-    student = _join(client)
-    plan = _today(client, student["id"])
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
 
     # 填满队列（不提交评分，只创建 queued 作答）
     from app.api.routes.attempts import MAX_QUEUE_SIZE
@@ -384,7 +398,7 @@ def test_queue_full_returns_503(
             a = Attempt(
                 item_type="repeat",
                 item_id=uuid.uuid4(),
-                student_id=uuid.UUID(student["id"]),
+                student_id=uuid.UUID(student["student"]["id"]),
                 session_id=uuid.UUID(plan["session_id"]),
                 audio_path=str(path),
                 duration_s=5.0,
@@ -396,7 +410,7 @@ def test_queue_full_returns_503(
     # 队列已满 → 503
     first = plan["items"][0]
     resp = _submit(
-        client, first["type"], first["id"], student["id"], plan["session_id"]
+        client, first["type"], first["id"], student["headers"], plan["session_id"]
     )
     assert resp.status_code == 503
     assert "繁忙" in resp.json()["detail"]

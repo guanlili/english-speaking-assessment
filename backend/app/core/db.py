@@ -9,6 +9,7 @@ from app.models import (
     RepeatSentence,
     Scenario,
     ScenarioQuestion,
+    Student,
     User,
     UserCreate,
     WordlistEntry,
@@ -197,11 +198,45 @@ def _seed_practice_content(session: Session) -> None:
             )
         session.commit()
 
-    if not session.exec(
+    demo_classroom = session.exec(
         select(Classroom).where(Classroom.code == DEMO_CLASSROOM_CODE)
-    ).first():
-        session.add(Classroom(code=DEMO_CLASSROOM_CODE, class_size=40))
+    ).first()
+    if demo_classroom is None:
+        demo_classroom = Classroom(code=DEMO_CLASSROOM_CODE, class_size=40)
+        session.add(demo_classroom)
         session.commit()
+
+    # 本地演示学生账号（学号 student / 密码 demo1234），已加入 DEMO01
+    if settings.ENVIRONMENT == "local" and demo_classroom is not None:
+        from app.core.security import get_password_hash
+
+        demo_student = session.exec(
+            select(User).where(User.username == "student")  # type: ignore[arg-type]
+        ).first()
+        if demo_student is None:
+            demo_student = User(
+                username="student",
+                full_name="演示学生",
+                role="student",
+                hashed_password=get_password_hash("demo1234"),
+            )
+            session.add(demo_student)
+            session.commit()
+        joined = session.exec(
+            select(Student).where(
+                Student.classroom_id == demo_classroom.id,  # type: ignore[arg-type]
+                Student.user_id == demo_student.id,  # type: ignore[arg-type]
+            )
+        ).first()
+        if joined is None:
+            session.add(
+                Student(
+                    classroom_id=demo_classroom.id,
+                    user_id=demo_student.id,
+                    display_name="演示学生",
+                )
+            )
+            session.commit()
 
     _seed_school_life_questions(session)
     _seed_wordlist(session)

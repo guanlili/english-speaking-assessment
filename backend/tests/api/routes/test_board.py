@@ -3,6 +3,9 @@
 并发测试走真实线程池（不覆写评分提交器），需要把 worker 的引擎指向
 测试库，否则评分线程会连开发库找不到作答行。BDD B：40 人同时停止录音，
 老师表最终到齐，允许先显示「评分中」。
+
+账号制：学生 = 学号登录 JWT，请求带 Authorization 头（不再传
+student_id/token 查询参数）。
 """
 
 import concurrent.futures
@@ -23,7 +26,7 @@ from app.main import app
 from app.models import Attempt
 from app.scoring import worker
 from tests.utils.audio import wav_bytes, wav_upload
-from tests.utils.credential import remember_join, student_form, student_params
+from tests.utils.credential import make_student
 
 CLASS_STUDENTS = 40
 SCORING_WAIT_TIMEOUT_S = 60.0
@@ -57,25 +60,24 @@ def thread_pool_scoring(
     monkeypatch.setattr(core_db, "engine", db.get_bind())
 
 
-def _join(client: TestClient, name: str) -> Any:
-    resp = client.post("/api/v1/classes/DEMO01/join", json={"display_name": name})
-    assert resp.status_code == 200, resp.text
-    return remember_join(resp.json())
+def _join(db: Session, client: TestClient, name: str) -> Any:
+    """建学生账号 + 登录 + 入班 DEMO01，返回 {student, headers, user}。"""
+    return make_student(db, client, "DEMO01", name)
 
 
 def _submit_repeat(
-    client: TestClient, item_id: str, student_id: str, session_id: str
+    client: TestClient, item_id: str, headers: dict[str, str], session_id: str
 ) -> Any:
     resp = client.post(
         "/api/v1/attempts",
         files={"audio": wav_upload(5.0)},
-        data=student_form(
-            student_id,
-            item_type="repeat",
-            item_id=item_id,
-            duration_s="5.0",
-            session_id=session_id,
-        ),
+        data={
+            "item_type": "repeat",
+            "item_id": item_id,
+            "duration_s": "5.0",
+            "session_id": session_id,
+        },
+        headers=headers,
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
@@ -110,34 +112,34 @@ def test_board_unknown_classroom_404(client: TestClient) -> None:
     assert client.get("/api/v1/classes/NOPE00/board").status_code == 404
 
 
-def test_board_aggregates_students(client: TestClient, inline_scoring: None) -> None:
+def test_board_aggregates_students(
+    client: TestClient, inline_scoring: None, db: Session
+) -> None:
     """两个学生：一个答完所有题，一个只答一句——聚合正确且排序合理。"""
-    alice = _join(client, "Alice")
-    bob = _join(client, "Bob")
+    alice = _join(db, client, "Alice")
+    bob = _join(db, client, "Bob")
 
     alice_plan = client.get(
-        "/api/v1/classes/DEMO01/today", params=student_params(alice["id"])
+        "/api/v1/classes/DEMO01/today", headers=alice["headers"]
     ).json()
     # Alice 全部答完（mock 引擎）
     for item in alice_plan["items"]:
         resp = client.post(
             "/api/v1/attempts",
             files={"audio": wav_upload(5.0)},
-            data=student_form(
-                alice["id"],
-                item_type=item["type"],
-                item_id=item["id"],
-                duration_s="5.0",
-                session_id=alice_plan["session_id"],
-            ),
+            data={
+                "item_type": item["type"],
+                "item_id": item["id"],
+                "duration_s": "5.0",
+                "session_id": alice_plan["session_id"],
+            },
+            headers=alice["headers"],
         )
         assert resp.status_code == 200
     # Bob 只答第一句复述
-    bob_plan = client.get(
-        "/api/v1/classes/DEMO01/today", params=student_params(bob["id"])
-    ).json()
+    bob_plan = client.get("/api/v1/classes/DEMO01/today", headers=bob["headers"]).json()
     first_repeat = bob_plan["items"][0]
-    _submit_repeat(client, first_repeat["id"], bob["id"], bob_plan["session_id"])
+    _submit_repeat(client, first_repeat["id"], bob["headers"], bob_plan["session_id"])
 
     data = client.get("/api/v1/classes/DEMO01/board").json()
     assert data["submitted_count"] == 2
@@ -157,24 +159,24 @@ def test_board_aggregates_students(client: TestClient, inline_scoring: None) -> 
     assert data["students"][0]["display_name"] == "Alice"
 
 
-def test_attempt_audio_roundtrip(client: TestClient, inline_scoring: None) -> None:
+def test_attempt_audio_roundtrip(
+    client: TestClient, inline_scoring: None, db: Session
+) -> None:
     """音频回放：上传的字节能原样取回（老师表点开听）。"""
-    student = _join(client, "Audio 测试")
-    plan = client.get(
-        "/api/v1/classes/DEMO01/today", params=student_params(student["id"])
-    ).json()
+    student = _join(db, client, "Audio 测试")
+    plan = client.get("/api/v1/classes/DEMO01/today", headers=student["headers"]).json()
     first = plan["items"][0]
     payload = wav_bytes(5.0)
     created = client.post(
         "/api/v1/attempts",
         files={"audio": ("a.wav", payload, "audio/wav")},
-        data=student_form(
-            student["id"],
-            item_type="repeat",
-            item_id=first["id"],
-            duration_s="5.0",
-            session_id=plan["session_id"],
-        ),
+        data={
+            "item_type": "repeat",
+            "item_id": first["id"],
+            "duration_s": "5.0",
+            "session_id": plan["session_id"],
+        },
+        headers=student["headers"],
     ).json()
 
     resp = client.get(f"/api/v1/attempts/{created['id']}/audio")
@@ -203,25 +205,25 @@ def test_classroom_40_concurrent_submissions(
     assert created.status_code == 200, created.text
     code = created.json()["code"]
 
-    students = []
-    for i in range(CLASS_STUDENTS):
-        resp = client.post(
-            f"/api/v1/classes/{code}/join", json={"display_name": f"学生{i:02d}"}
-        )
-        assert resp.status_code == 200
-        students.append(remember_join(resp.json()))
+    students = [
+        make_student(db, client, code, f"学生{i:02d}") for i in range(CLASS_STUDENTS)
+    ]
 
-    plans = {}
+    # sid → (今日计划, 学生 JWT 头)：并发线程各带各的身份上传
+    plans: dict[str, tuple[dict, dict[str, str]]] = {}
     for student in students:
+        sid = student["student"]["id"]
         plan = client.get(
-            f"/api/v1/classes/{code}/today", params=student_params(student["id"])
+            f"/api/v1/classes/{code}/today", headers=student["headers"]
         ).json()
-        plans[student["id"]] = plan
+        plans[sid] = (plan, student["headers"])
 
-    def upload(args: tuple[str, dict]) -> str:
-        sid, plan = args
+    def upload(args: tuple[str, tuple[dict, dict[str, str]]]) -> str:
+        _sid, (plan, headers) = args
         first_item = plan["items"][0]
-        return _submit_repeat(client, first_item["id"], sid, plan["session_id"])["id"]
+        return _submit_repeat(client, first_item["id"], headers, plan["session_id"])[
+            "id"
+        ]
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as pool:
         attempt_ids = list(pool.map(upload, list(plans.items())))

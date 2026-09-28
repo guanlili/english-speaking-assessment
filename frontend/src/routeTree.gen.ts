@@ -14,6 +14,9 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as PracticeRouteImport } from './routes/practice'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as JoinRouteImport } from './routes/join'
+import { Route as ClassroomsRouteImport } from './routes/classrooms'
+import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as TCodeRouteImport } from './routes/t.$code'
@@ -62,6 +65,21 @@ const PracticeRoute = PracticeRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JoinRoute = JoinRouteImport.update({
+  id: '/join',
+  path: '/join',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClassroomsRoute = ClassroomsRouteImport.update({
+  id: '/classrooms',
+  path: '/classrooms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChangePasswordRoute = ChangePasswordRouteImport.update({
+  id: '/change-password',
+  path: '/change-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LayoutRoute = LayoutRouteImport.update({
@@ -186,6 +204,9 @@ const TCodeSStudentIdRoute = TCodeSStudentIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
+  '/change-password': typeof ChangePasswordRoute
+  '/classrooms': typeof ClassroomsRoute
+  '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/practice': typeof PracticeRoute
   '/recover-password': typeof RecoverPasswordRoute
@@ -215,6 +236,9 @@ export interface FileRoutesByFullPath {
   '/t/$code/s/$studentId': typeof TCodeSStudentIdRoute
 }
 export interface FileRoutesByTo {
+  '/change-password': typeof ChangePasswordRoute
+  '/classrooms': typeof ClassroomsRoute
+  '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/practice': typeof PracticeRoute
   '/recover-password': typeof RecoverPasswordRoute
@@ -244,6 +268,9 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
+  '/change-password': typeof ChangePasswordRoute
+  '/classrooms': typeof ClassroomsRoute
+  '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/practice': typeof PracticeRoute
   '/recover-password': typeof RecoverPasswordRoute
@@ -277,6 +304,9 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/change-password'
+    | '/classrooms'
+    | '/join'
     | '/login'
     | '/practice'
     | '/recover-password'
@@ -306,6 +336,9 @@ export interface FileRouteTypes {
     | '/t/$code/s/$studentId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/change-password'
+    | '/classrooms'
+    | '/join'
     | '/login'
     | '/practice'
     | '/recover-password'
@@ -334,6 +367,9 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_layout'
+    | '/change-password'
+    | '/classrooms'
+    | '/join'
     | '/login'
     | '/practice'
     | '/recover-password'
@@ -366,6 +402,9 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
+  ChangePasswordRoute: typeof ChangePasswordRoute
+  ClassroomsRoute: typeof ClassroomsRoute
+  JoinRoute: typeof JoinRoute
   LoginRoute: typeof LoginRoute
   PracticeRoute: typeof PracticeRoute
   RecoverPasswordRoute: typeof RecoverPasswordRoute
@@ -417,6 +456,27 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/join': {
+      id: '/join'
+      path: '/join'
+      fullPath: '/join'
+      preLoaderRoute: typeof JoinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/classrooms': {
+      id: '/classrooms'
+      path: '/classrooms'
+      fullPath: '/classrooms'
+      preLoaderRoute: typeof ClassroomsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/change-password': {
+      id: '/change-password'
+      path: '/change-password'
+      fullPath: '/change-password'
+      preLoaderRoute: typeof ChangePasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout': {
@@ -655,6 +715,9 @@ const TCodeRouteWithChildren = TCodeRoute._addFileChildren(TCodeRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
+  ChangePasswordRoute: ChangePasswordRoute,
+  ClassroomsRoute: ClassroomsRoute,
+  JoinRoute: JoinRoute,
   LoginRoute: LoginRoute,
   PracticeRoute: PracticeRoute,
   RecoverPasswordRoute: RecoverPasswordRoute,
