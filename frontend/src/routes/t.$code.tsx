@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
 
+import { TeachingShell } from "@/components/Teaching/TeachingShell"
 import { isLoggedIn } from "@/hooks/useAuth"
 
 /**
@@ -9,5 +10,9 @@ export const Route = createFileRoute("/t/$code")({
   beforeLoad: () => {
     if (!isLoggedIn()) throw redirect({ to: "/login" })
   },
-  component: () => <Outlet />,
+  component: () => (
+    <TeachingShell>
+      <Outlet />
+    </TeachingShell>
+  ),
 })

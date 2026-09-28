@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { ClipboardPaste, Pencil, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { AdminService, type QuestionBankOut } from "@/client"
+import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -87,7 +88,7 @@ function parseLine(line: string, lineno: number): ParsedLine {
   }
 }
 
-function QuestionsAdmin() {
+export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
@@ -220,107 +221,115 @@ function QuestionsAdmin() {
 
   return (
     <div className="flex flex-col gap-6">
+      {!embedded && <ContentNavigation />}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">题库</h1>
+        <h1 className="text-2xl font-bold tracking-tight">问答题目管理</h1>
         <p className="text-muted-foreground">
           情景问答的集中管理：跨主题搜索、批量粘贴录入、逐条修改。
           学生每轮练习从对应主题和档位里抽题。
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <ClipboardPaste className="size-4" />
-            批量录入
-          </CardTitle>
-          <CardDescription>
-            每行一道题，格式「英文题目 | 中文提示 |
-            建议秒数」，中文和秒数可省略（默认 20 秒）。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label>主题</Label>
-              <Select
-                value={batchTopic}
-                onValueChange={setBatchTopic}
-                disabled={topics.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      topics.length === 0
-                        ? "还没有主题，先去「情景与问法」建一个"
-                        : "选择题库主题"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {topics.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>档位</Label>
-              <Select value={batchBand} onValueChange={setBatchBand}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {BANDS.map((b) => (
-                    <SelectItem key={b} value={b}>
-                      {b}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <Textarea
-            rows={6}
-            value={batchText}
-            onChange={(e) => setBatchText(e.target.value)}
-            placeholder={
-              "How do you get to school? | 你怎样去学校？ | 20\nWhat is your favourite subject? | 你最喜欢哪门学科？"
-            }
-            aria-label="批量录入题目"
-          />
-          {batchText.trim() && (
-            <div className="text-sm text-muted-foreground">
-              将录入{" "}
-              <span className="font-medium text-foreground">
-                {parsed.items.length}
-              </span>{" "}
-              道题
-              {parsed.problems.length > 0 && (
-                <span className="text-destructive">
-                  {" "}
-                  · {parsed.problems.length} 行有问题：
-                  {parsed.problems
-                    .map((p) => `第${p.lineno}行（${p.reason}）`)
-                    .join("、")}
-                </span>
+      <details className="rounded-xl border bg-card p-4">
+        <summary className="cursor-pointer font-medium text-primary">
+          批量录入问答题
+        </summary>
+        <div className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ClipboardPaste className="size-4" />
+                批量录入
+              </CardTitle>
+              <CardDescription>
+                每行一道题，格式「英文题目 | 中文提示 |
+                建议秒数」，中文和秒数可省略（默认 20 秒）。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label>主题</Label>
+                  <Select
+                    value={batchTopic}
+                    onValueChange={setBatchTopic}
+                    disabled={topics.length === 0}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          topics.length === 0
+                            ? "还没有主题，先去「问答主题与出题」建一个"
+                            : "选择题库主题"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {topics.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {t}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label>档位</Label>
+                  <Select value={batchBand} onValueChange={setBatchBand}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BANDS.map((b) => (
+                        <SelectItem key={b} value={b}>
+                          {b}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Textarea
+                rows={6}
+                value={batchText}
+                onChange={(e) => setBatchText(e.target.value)}
+                placeholder={
+                  "How do you get to school? | 你怎样去学校？ | 20\nWhat is your favourite subject? | 你最喜欢哪门学科？"
+                }
+                aria-label="批量录入题目"
+              />
+              {batchText.trim() && (
+                <div className="text-sm text-muted-foreground">
+                  将录入{" "}
+                  <span className="font-medium text-foreground">
+                    {parsed.items.length}
+                  </span>{" "}
+                  道题
+                  {parsed.problems.length > 0 && (
+                    <span className="text-destructive">
+                      {" "}
+                      · {parsed.problems.length} 行有问题：
+                      {parsed.problems
+                        .map((p) => `第${p.lineno}行（${p.reason}）`)
+                        .join("、")}
+                    </span>
+                  )}
+                </div>
               )}
-            </div>
-          )}
-          <div>
-            <LoadingButton
-              disabled={!scenarioId || parsed.items.length === 0}
-              loading={batchMutation.isPending}
-              onClick={() => batchMutation.mutate()}
-            >
-              录入{" "}
-              {parsed.items.length > 0 ? `${parsed.items.length} 道题` : ""}
-            </LoadingButton>
-          </div>
-        </CardContent>
-      </Card>
+              <div>
+                <LoadingButton
+                  disabled={!scenarioId || parsed.items.length === 0}
+                  loading={batchMutation.isPending}
+                  onClick={() => batchMutation.mutate()}
+                >
+                  录入{" "}
+                  {parsed.items.length > 0 ? `${parsed.items.length} 道题` : ""}
+                </LoadingButton>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </details>
 
       <Card>
         <CardHeader>

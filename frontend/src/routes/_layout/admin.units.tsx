@@ -40,7 +40,7 @@ import useCustomToast from "@/hooks/useCustomToast"
 
 export const Route = createFileRoute("/_layout/admin/units")({
   component: UnitsAdmin,
-  head: () => ({ meta: [{ title: `学习单元 - ${APP_NAME}` }] }),
+  head: () => ({ meta: [{ title: `练习分组 - ${APP_NAME}` }] }),
 })
 
 interface UnitRow {
@@ -54,7 +54,7 @@ interface UnitRow {
 
 const emptyForm = { order_index: 0, title: "", topic: "", is_active: true }
 
-function UnitsAdmin() {
+export function UnitsAdmin() {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
@@ -134,9 +134,9 @@ function UnitsAdmin() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">学习单元</h1>
+          <h1 className="text-2xl font-bold tracking-tight">练习分组</h1>
           <p className="text-muted-foreground">
-            单元是学生关卡地图的“关”，也是老师给全班指派今日练习的单位。
+            把配套内容整理为一组，课堂里选中这组内容即可安排练习。每组建议只保留一篇启用的材料。
           </p>
         </div>
         <Button onClick={openCreate}>
@@ -172,13 +172,13 @@ function UnitsAdmin() {
             </div>
           ) : (unitsQuery.data ?? []).length === 0 ? (
             <p className="py-8 text-center text-muted-foreground">
-              还没有单元，先「新建单元」再给它挂篇目。
+              还没有单元，先新建分组，再在文章朗读或听句复述中选择此分组。
             </p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-16">关卡</TableHead>
+                  <TableHead className="w-16">顺序</TableHead>
                   <TableHead>标题</TableHead>
                   <TableHead>主题</TableHead>
                   <TableHead>篇目数</TableHead>
@@ -249,7 +249,7 @@ function UnitsAdmin() {
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="unit-order">关卡序号</Label>
+                <Label htmlFor="unit-order">排列顺序</Label>
                 <Input
                   id="unit-order"
                   type="number"

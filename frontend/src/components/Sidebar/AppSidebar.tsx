@@ -1,11 +1,7 @@
 import {
-  BookOpen,
-  CircleHelp,
   GraduationCap,
-  Home,
   Layers,
-  ListChecks,
-  PenLine,
+  Library,
   School,
   Users,
   UsersRound,
@@ -24,24 +20,16 @@ import { type Item, Main } from "./Main"
 import { User } from "./User"
 
 const baseItems: Item[] = [
-  { icon: Home, title: "教学工作台", path: "/" },
   { icon: School, title: "我的课堂", path: "/classrooms" },
 ] as Item[]
 
 const createHubItem: Item[] = [
-  { icon: PenLine, title: "出题中心", path: "/create" },
-]
-
-// 出题四页：教师与管理员都可见（三种题型的出题入口）
-const contentItems: Item[] = [
-  { icon: BookOpen, title: "篇目与朗读题", path: "/admin/passages" },
-  { icon: ListChecks, title: "情景主题", path: "/admin/scenarios" },
-  { icon: CircleHelp, title: "问答题库", path: "/admin/questions" },
-  { icon: Layers, title: "学习单元", path: "/admin/units" },
+  { icon: Library, title: "题目库", path: "/create" },
 ]
 
 // 仅管理员：用户/词表/课堂管理
 const adminOnlyItems: Item[] = [
+  { icon: Layers, title: "学习单元", path: "/admin/units" },
   { icon: Users, title: "用户与权限", path: "/admin" },
   { icon: GraduationCap, title: "分级词表", path: "/admin/wordlist" },
   { icon: UsersRound, title: "课堂管理", path: "/admin/classrooms" },
@@ -50,11 +38,9 @@ const adminOnlyItems: Item[] = [
 export function AppSidebar() {
   const { user: currentUser } = useAuth()
 
-  // 教师端精简：侧边栏只留「我的课堂」和「出题中心」，
-  // 内容四页统一从出题中心卡片进入（不在侧边栏占位）
-  const items = currentUser?.is_superuser
-    ? [...baseItems, ...createHubItem, ...contentItems, ...adminOnlyItems]
-    : cachedRole() === "teacher"
+  // 教师只需理解课堂与题目；系统配置收纳在管理员区域。
+  const items =
+    currentUser?.is_superuser || cachedRole() === "teacher"
       ? [...baseItems, ...createHubItem]
       : baseItems
 
@@ -65,6 +51,19 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <Main items={items} />
+        <p className="px-5 text-xs leading-6 text-muted-foreground group-data-[collapsible=icon]:hidden">
+          课堂里安排练习、查看结果。
+          <br />
+          题目库里准备三种口语题。
+        </p>
+        {currentUser?.is_superuser && (
+          <details className="mt-6 border-t pt-4 group-data-[collapsible=icon]:hidden">
+            <summary className="cursor-pointer px-5 text-xs font-medium text-muted-foreground">
+              平台设置 · 管理员
+            </summary>
+            <Main items={adminOnlyItems} />
+          </details>
+        )}
       </SidebarContent>
       <SidebarFooter>
         <SidebarAppearance />

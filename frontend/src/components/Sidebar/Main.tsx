@@ -4,6 +4,7 @@ import type { LucideIcon } from "lucide-react"
 import {
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -18,9 +19,10 @@ export type Item = {
 
 interface MainProps {
   items: Item[]
+  label?: string
 }
 
-export function Main({ items }: MainProps) {
+export function Main({ items, label }: MainProps) {
   const { isMobile, setOpenMobile } = useSidebar()
   const router = useRouterState()
   const currentPath = router.location.pathname
@@ -33,10 +35,19 @@ export function Main({ items }: MainProps) {
 
   return (
     <SidebarGroup>
+      {label && <SidebarGroupLabel>{label}</SidebarGroupLabel>}
       <SidebarGroupContent>
         <SidebarMenu className="gap-2">
           {items.map((item) => {
-            const isActive = currentPath === item.path
+            const isActive =
+              currentPath === item.path ||
+              (item.path === "/classrooms" && currentPath.startsWith("/t/")) ||
+              (item.path === "/create" &&
+                [
+                  "/admin/passages",
+                  "/admin/scenarios",
+                  "/admin/questions",
+                ].includes(currentPath))
 
             return (
               <SidebarMenuItem key={item.title}>

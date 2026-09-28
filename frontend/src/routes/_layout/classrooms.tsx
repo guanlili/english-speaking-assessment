@@ -45,7 +45,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
 
-export const Route = createFileRoute("/classrooms")({
+export const Route = createFileRoute("/_layout/classrooms")({
   component: MyClassroomsPage,
   head: () => ({ meta: [{ title: `我的课堂 - ${APP_NAME}` }] }),
 })
@@ -63,6 +63,7 @@ function MyClassroomsPage() {
 
   // ── 新建课堂 ──
   const [createOpen, setCreateOpen] = useState(false)
+  const [keyword, setKeyword] = useState("")
   const [classSize, setClassSize] = useState(40)
   const createMutation = useMutation({
     mutationFn: () =>
@@ -81,9 +82,12 @@ function MyClassroomsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">我的课堂</h1>
+          <p className="mb-2 text-xs font-semibold tracking-widest text-primary">
+            从这里开始上课
+          </p>
+          <h1 className="text-3xl font-bold tracking-tight">我的课堂</h1>
           <p className="text-muted-foreground">
-            创建课堂、分发课堂码、导入学生账号（学号+初始密码）。
+            一间课堂，一个教学空间。安排口语练习，查看学生录音与参考反馈。
           </p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>
@@ -92,11 +96,41 @@ function MyClassroomsPage() {
         </Button>
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          { title: "课前 · 准备题目", text: "文章朗读、听句复述、模拟问答" },
+          { title: "课中 · 安排练习", text: "进入课堂，选择内容并预览发布" },
+          { title: "课后 · 查看结果", text: "听录音、看参考反馈、跟踪进步" },
+        ].map((step, index) => (
+          <div
+            key={step.title}
+            className="flex gap-3 rounded-xl border bg-card p-5"
+          >
+            <span className="text-sm font-semibold text-primary">
+              0{index + 1}
+            </span>
+            <div>
+              <p className="text-sm font-semibold">{step.title}</p>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                {step.text}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <Input
+        aria-label="搜索课堂码"
+        value={keyword}
+        onChange={(event) => setKeyword(event.target.value)}
+        placeholder="搜索课堂码…"
+        className="max-w-sm"
+      />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">课堂列表</CardTitle>
           <CardDescription>
-            管理员可见全部课堂，教师只看自己名下的。
+            {classrooms.length} 间课堂 ·
+            进入课堂安排练习，学生管理在各课堂卡片中。
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -123,18 +157,32 @@ function MyClassroomsPage() {
             </p>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
-              {classrooms.map((c) => (
-                <ClassroomCard
-                  key={c.id}
-                  classroom={c}
-                  onInvalidated={invalidate}
-                />
-              ))}
+              {classrooms
+                .filter((classroom) =>
+                  classroom.code
+                    .toLowerCase()
+                    .includes(keyword.trim().toLowerCase()),
+                )
+                .map((c) => (
+                  <ClassroomCard
+                    key={c.id}
+                    classroom={c}
+                    onInvalidated={invalidate}
+                  />
+                ))}
             </div>
           )}
         </CardContent>
       </Card>
 
+      {classrooms.length > 0 &&
+        !classrooms.some((classroom) =>
+          classroom.code.toLowerCase().includes(keyword.trim().toLowerCase()),
+        ) && (
+          <p className="py-6 text-center text-muted-foreground">
+            没有匹配的课堂。
+          </p>
+        )}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
@@ -162,6 +210,9 @@ function MyClassroomsPage() {
             </Button>
             <LoadingButton
               loading={createMutation.isPending}
+              disabled={
+                !Number.isInteger(classSize) || classSize < 1 || classSize > 100
+              }
               onClick={() => createMutation.mutate()}
             >
               创建
@@ -185,13 +236,17 @@ function ClassroomCard({
   }
   onInvalidated: () => void
 }) {
-  const { showSuccessToast } = useCustomToast()
+  const { showSuccessToast, showErrorToast } = useCustomToast()
   const [importOpen, setImportOpen] = useState(false)
   const [rosterOpen, setRosterOpen] = useState(false)
 
   const copyCode = async () => {
-    await navigator.clipboard.writeText(classroom.code)
-    showSuccessToast(`课堂码 ${classroom.code} 已复制`)
+    try {
+      await navigator.clipboard.writeText(classroom.code)
+      showSuccessToast(`课堂码 ${classroom.code} 已复制`)
+    } catch {
+      showErrorToast(`复制失败，请手动复制课堂码 ${classroom.code}`)
+    }
   }
 
   return (
@@ -205,24 +260,50 @@ function ClassroomCard({
           </CardDescription>
         </div>
         <Badge variant={classroom.is_active ? "outline" : "secondary"}>
-          {classroom.is_active ? "进行中" : "已停用"}
+          {classroom.is_active ? "可使用" : "已停用"}
         </Badge>
       </CardHeader>
-      <CardContent className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={() => void copyCode()}>
-          <Copy className="size-3.5" /> 复制课堂码
-        </Button>
-        <Button asChild size="sm">
-          <Link to="/t/$code" params={{ code: classroom.code }}>
-            教师面板
-          </Link>
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-          <ClipboardPaste className="size-3.5" /> 导入学生
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => setRosterOpen(true)}>
-          学生名单
-        </Button>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          安排本次练习，查看学生作答与录音。
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {classroom.is_active ? (
+            <Button asChild>
+              <Link to="/t/$code" params={{ code: classroom.code }}>
+                进入课堂 →
+              </Link>
+            </Button>
+          ) : (
+            <Button disabled>课堂已停用</Button>
+          )}
+          <Button variant="outline" onClick={() => void copyCode()}>
+            <Copy className="size-3.5" />
+            复制课堂码
+          </Button>
+        </div>
+        <details className="border-t pt-3">
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+            学生管理 · 名单与账号
+          </summary>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setImportOpen(true)}
+            >
+              <ClipboardPaste className="size-3.5" />
+              导入学生
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRosterOpen(true)}
+            >
+              学生名单
+            </Button>
+          </div>
+        </details>
       </CardContent>
       <StudentImportDialog
         classroomId={classroom.id}

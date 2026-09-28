@@ -20,7 +20,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { PlanAttempt, PlanItem } from "@/client"
-import { ClassesService } from "@/client"
+import { ApiError, ClassesService } from "@/client"
 import FeedbackCard from "@/components/Practice/FeedbackCard"
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ""
@@ -495,6 +495,7 @@ function ClassroomPracticePage() {
 
                 {currentItem.type === "repeat" ? (
                   <LimitedListenButton
+                    key={currentItem.id}
                     code={code.toUpperCase()}
                     sessionId={plan?.session_id}
                     itemId={currentItem.id}
@@ -505,6 +506,7 @@ function ClassroomPracticePage() {
                   />
                 ) : (
                   <SpeakButton
+                    key={currentItem.id}
                     text={currentItem.text}
                     audioUrl={currentItem.audio_url}
                   />
@@ -811,40 +813,40 @@ function LimitedListenButton({
 
   const play = async () => {
     if (exhausted || !sessionId) return
-    // 有音频文件：先计数再播（计数被拒就不播）
+    // 先到服务端计数再播：422 = 次数真用完；其他错误（网络等）不锁死按钮
+    const counted = await recordListenCount()
+    if (!counted) return
+    setUsed((u) => u + 1)
     if (audioUrl) {
-      try {
-        await ClassesService.recordListen({
-          code,
-          requestBody: { session_id: sessionId, item_id: itemId },
-        })
-      } catch {
-        toast.error("可重听次数已用完")
-        setUsed(replayLimit)
-        return
-      }
-      setUsed((u) => u + 1)
       audioRef.current?.play()
       return
     }
     // TTS 兜底：浏览器合成没有服务端文件，仍走计数
-    try {
-      await ClassesService.recordListen({
-        code,
-        requestBody: { session_id: sessionId, item_id: itemId },
-      })
-      setUsed((u) => u + 1)
-    } catch {
-      toast.error("可重听次数已用完")
-      setUsed(replayLimit)
-      return
-    }
     const synth = window.speechSynthesis
     if (!synth) return
     synth.cancel()
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.lang = "en-US"
     synth.speak(utterance)
+  }
+
+  const recordListenCount = async (): Promise<boolean> => {
+    if (!sessionId) return false
+    try {
+      await ClassesService.recordListen({
+        code,
+        requestBody: { session_id: sessionId, item_id: itemId },
+      })
+      return true
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 422) {
+        toast.error("可重听次数已用完")
+        setUsed(replayLimit)
+      } else {
+        toast.error("听音失败，请检查网络后重试")
+      }
+      return false
+    }
   }
 
   return (

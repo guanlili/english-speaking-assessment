@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link, useParams } from "@tanstack/react-router"
 import {
   ChevronDown,
@@ -8,14 +8,13 @@ import {
   Loader2,
   RefreshCw,
   Sparkles,
-  Target,
 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { toast } from "sonner"
 import type { BoardStudent } from "@/client"
 import { ApiError, ClassesService } from "@/client"
-import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
+import { AssignmentComposer } from "@/components/Teaching/AssignmentComposer"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -25,7 +24,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Table,
   TableBody,
@@ -34,6 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { APP_NAME } from "@/config"
 
 export const Route = createFileRoute("/t/$code/")({
@@ -44,7 +43,8 @@ export const Route = createFileRoute("/t/$code/")({
 })
 
 const TYPE_LABELS: Record<string, string> = {
-  repeat: "复述",
+  passage: "文章朗读",
+  repeat: "听句复述",
   question: "问答",
 }
 
@@ -66,57 +66,6 @@ function TeacherBoardPage() {
       (query.state.data?.pending_count ?? 0) > 0
         ? PENDING_REFRESH_MS
         : IDLE_REFRESH_MS,
-  })
-
-  const queryClient = useQueryClient()
-  const [pendingAssign, setPendingAssign] = useState<{
-    unit_id: string
-    title: string
-  } | null>(null)
-  const unitsQuery = useQuery({
-    queryKey: ["teacher", "units", code],
-    queryFn: () =>
-      ClassesService.listUnitsForClass({ code: code.toUpperCase() }),
-  })
-
-  // 题型勾选（NULL=默认：复述/问答含、朗读不含）
-  const [types, setTypes] = useState({
-    reading: false,
-    repeat: true,
-    qa: true,
-  })
-  useEffect(() => {
-    if (unitsQuery.data && unitsQuery.data.length > 0) {
-      const u = unitsQuery.data[0]
-      setTypes({
-        reading: u.assign_reading === true,
-        repeat: u.assign_repeat !== false,
-        qa: u.assign_qa !== false,
-      })
-    }
-  }, [unitsQuery.data])
-
-  const assignMutation = useMutation({
-    mutationFn: (unitId: string | null) =>
-      ClassesService.setAssignment({
-        code: code.toUpperCase(),
-        requestBody: {
-          unit_id: unitId,
-          assign_reading: types.reading,
-          assign_repeat: types.repeat,
-          assign_qa: types.qa,
-        },
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["teacher", "board", code] })
-    },
-    onError: (error) => {
-      toast.error(
-        error instanceof ApiError && error.status === 403
-          ? "权限不足：只有本课授权教师可以指派单元"
-          : "指派失败，请稍后重试",
-      )
-    },
   })
 
   if (boardQuery.isPending) {
@@ -151,11 +100,15 @@ function TeacherBoardPage() {
       )
     }
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
-        课堂不存在或已关闭，请核对链接里的课堂码。
-        <Button variant="outline" onClick={() => boardQuery.refetch()}>
-          重试
-        </Button>
+      <div className="space-y-6">
+        <Link to="/classrooms" className="text-sm text-primary">
+          ← 我的课堂
+        </Link>
+        <h1 className="text-2xl font-bold">课堂 {code}</h1>
+        <p className="text-sm text-muted-foreground">
+          暂无可展示的练习结果。可先准备并安排课堂内容；若课堂已停用，请返回课堂列表核对。
+        </p>
+        <AssignmentComposer code={code} />
       </div>
     )
   }
@@ -256,11 +209,16 @@ function TeacherBoardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6">
+    <div className="bg-background">
+      <div className="flex w-full flex-col gap-6">
+        <Link to="/classrooms" className="text-sm font-medium text-primary">
+          ← 我的课堂
+        </Link>
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">课堂面板</h1>
+            <h1 className="text-xl font-bold tracking-tight">
+              课堂 {board.classroom_code}
+            </h1>
             <p className="text-sm text-muted-foreground">
               课堂 {board.classroom_code} · 已交 {board.submitted_count}/
               {board.class_size}
@@ -273,32 +231,13 @@ function TeacherBoardPage() {
             </p>
             <div className="mt-1 flex flex-wrap gap-1">
               <Badge variant="secondary">
-                评分引擎：{board.engine === "ark" ? "方舟（AI）" : "演示模式"}
+                评分引擎：
+                {board.engine === "volc_flash"
+                  ? "豆包语音（AI）"
+                  : board.engine === "ark"
+                    ? "方舟（AI）"
+                    : "演示模式"}
               </Badge>
-            </div>
-            {/* 三档分布（PRD US-10） */}
-            <div className="mt-1.5 grid max-w-xs gap-1">
-              {Object.entries(board.band_distribution).map(([band, count]) => {
-                const max = Math.max(
-                  1,
-                  ...Object.values(board.band_distribution),
-                )
-                return (
-                  <div
-                    key={band}
-                    className="grid grid-cols-[80px_1fr_30px] items-center gap-2 text-[11px]"
-                  >
-                    <span className="text-muted-foreground">{band}</span>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-background">
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{ width: `${(count / max) * 100}%` }}
-                      />
-                    </div>
-                    <span className="text-right tabular-nums">{count}</span>
-                  </div>
-                )
-              })}
             </div>
           </div>
           <Button
@@ -314,247 +253,163 @@ function TeacherBoardPage() {
           </Button>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Target className="size-4 text-primary" />
-              今日课堂指派
-            </CardTitle>
-            <CardDescription>
-              指派后全班学生打开练习页就是该单元（课堂教学同步）；清除则回到学生个人进度
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap items-center gap-2">
-            {(unitsQuery.data ?? []).map((u) => (
-              <Button
-                key={u.unit_id}
-                size="sm"
-                variant={
-                  board.assignment?.unit_id === u.unit_id
-                    ? "default"
-                    : "outline"
-                }
-                onClick={() => {
-                  // 指派前完整性检查：没有可练篇目时先确认，避免全班打开是空的
-                  if ((u.passage_count ?? 0) === 0) {
-                    setPendingAssign({ unit_id: u.unit_id, title: u.title })
-                    return
-                  }
-                  assignMutation.mutate(u.unit_id)
-                }}
-                disabled={assignMutation.isPending}
-              >
-                {u.title}
-                {(u.passage_count ?? 0) === 0 && (
-                  <span className="ml-1 text-[10px] opacity-80">缺篇目</span>
-                )}
-              </Button>
-            ))}
-            {board.assignment && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => assignMutation.mutate(null)}
-                disabled={assignMutation.isPending}
-              >
-                清除指派
-              </Button>
-            )}
-            {!board.assignment && (
-              <span className="text-sm text-muted-foreground">
-                未指派（学生按个人关卡进度练习）
-              </span>
-            )}
-          </CardContent>
-          <CardContent className="flex flex-wrap items-center gap-4 border-t pt-4">
-            <span className="text-xs font-semibold text-muted-foreground">
-              本轮题型
-            </span>
-            {(
-              [
-                ["reading", "整篇朗读"],
-                ["repeat", "听句复述"],
-                ["qa", "情景问答"],
-              ] as const
-            ).map(([key, label]) => (
-              <span
-                key={key}
-                className="flex cursor-pointer select-none items-center gap-1.5 text-sm"
-              >
-                <Checkbox
-                  id={`assign-type-${key}`}
-                  checked={types[key]}
-                  aria-label={label}
-                  onCheckedChange={(v) =>
-                    setTypes((t) => ({ ...t, [key]: v === true }))
-                  }
-                />
-                {label}
-              </span>
-            ))}
-            <span className="text-xs text-muted-foreground">
-              勾选后需重新点上方单元生效；全不勾时学生无内容，请至少保留一种
-            </span>
-          </CardContent>
-        </Card>
-
-        <ConfirmDialog
-          open={pendingAssign !== null}
-          title={`指派「${pendingAssign?.title ?? ""}」？`}
-          description="这个单元还没有可用篇目，指派后学生打开练习会提示没有内容。建议先请管理员在后台给它挂篇目。仍要指派吗？"
-          confirmText="仍要指派"
-          destructive={false}
-          onOpenChange={(next) => {
-            if (!next) setPendingAssign(null)
-          }}
-          onConfirm={async () => {
-            if (pendingAssign) assignMutation.mutate(pendingAssign.unit_id)
-          }}
-        />
-
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Card>
-            <CardContent className="py-4">
-              <p className="text-xs text-muted-foreground">班级学生</p>
-              <p className="mt-1 text-2xl font-bold">
-                {board.students.length}
-                <span className="ml-1 text-xs font-normal text-muted-foreground">
-                  / {board.class_size} 人
-                </span>
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="py-4">
-              <p className="text-xs text-muted-foreground">今日完成</p>
-              <p className="mt-1 text-2xl font-bold">
-                {board.submitted_count}
-                <span className="ml-1 text-xs font-normal text-muted-foreground">
-                  / {board.class_size} 人
-                </span>
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="py-4">
-              <p className="text-xs text-muted-foreground">班级问答均分</p>
-              <p className="mt-1 text-2xl font-bold">{classAvg}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="py-4">
-              <p className="text-xs text-muted-foreground">值得关注</p>
-              <p className="mt-1 text-2xl font-bold">
-                {inactiveCount}
-                <span className="ml-1 text-xs font-normal text-muted-foreground">
-                  人 7 天未练
-                </span>
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">今日名单</CardTitle>
-            <CardDescription>
-              点击一行展开每题分数和音频。分数是参考反馈，不是考试成绩。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pb-0">
-            <div className="flex flex-wrap items-center gap-2 pb-3">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                aria-label="练习状态筛选"
-                className="h-9 rounded-lg border border-border bg-card px-2 text-xs text-muted-foreground"
-              >
-                {Object.entries(STATUS_LABELS).map(([v, label]) => (
-                  <option key={v} value={v}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <input
-                value={nameQuery}
-                onChange={(e) => setNameQuery(e.target.value)}
-                placeholder="搜索学生姓名"
-                aria-label="搜索学生姓名"
-                className="h-9 rounded-lg border border-border bg-card px-3 text-xs"
-              />
-              <span className="text-xs text-muted-foreground">
-                {filteredStudents.length} 人
-              </span>
-              <div className="ml-auto flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void shareLink()}
-                >
-                  <Link2 />
-                  学生入口
-                </Button>
-                <Button variant="outline" size="sm" onClick={exportCsv}>
-                  <Download />
-                  导出
-                </Button>
-              </div>
+        <Tabs defaultValue="prepare" className="gap-6">
+          <TabsList className="h-11">
+            <TabsTrigger value="prepare" className="px-6">
+              练习安排
+            </TabsTrigger>
+            <TabsTrigger value="results" className="px-6">
+              学生结果
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="prepare">
+            <AssignmentComposer code={code} assignment={board.assignment} />
+          </TabsContent>
+          <TabsContent value="results" className="space-y-6">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <Card>
+                <CardContent className="py-4">
+                  <p className="text-xs text-muted-foreground">班级学生</p>
+                  <p className="mt-1 text-2xl font-bold">
+                    {board.students.length}
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">
+                      / {board.class_size} 人
+                    </span>
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="py-4">
+                  <p className="text-xs text-muted-foreground">今日完成</p>
+                  <p className="mt-1 text-2xl font-bold">
+                    {board.submitted_count}
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">
+                      / {board.class_size} 人
+                    </span>
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="py-4">
+                  <p className="text-xs text-muted-foreground">问答参考均分</p>
+                  <p className="mt-1 text-2xl font-bold">{classAvg}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="py-4">
+                  <p className="text-xs text-muted-foreground">值得关注</p>
+                  <p className="mt-1 text-2xl font-bold">
+                    {inactiveCount}
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">
+                      人 7 天未练
+                    </span>
+                  </p>
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-          <CardContent>
-            {!hasStudents ? (
-              <p className="py-8 text-center text-muted-foreground">
-                还没有学生进入这个课堂。
-              </p>
-            ) : filteredStudents.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                没有符合筛选条件的学生。
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-8" />
-                    <TableHead>姓名</TableHead>
-                    <TableHead>完成</TableHead>
-                    <TableHead>跟读均分</TableHead>
-                    <TableHead>问答均分</TableHead>
-                    <TableHead>状态</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredStudents.map((student) => (
-                    <StudentRow
-                      key={student.student_id}
-                      student={student}
-                      code={code}
-                      expanded={expandedId === student.student_id}
-                      onToggle={() =>
-                        setExpandedId(
-                          expandedId === student.student_id
-                            ? null
-                            : student.student_id,
-                        )
-                      }
-                    />
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
 
-        <Card className="border-accent bg-accent">
-          <CardContent className="py-4">
-            <p className="flex items-center gap-1.5 text-sm font-semibold">
-              <Sparkles className="size-4" /> 下一次课堂，可以这样开始
-            </p>
-            <p className="mt-1 text-xs text-accent-foreground/80">
-              让学生分享「今天最想再说一次的句子」。先发现一个亮点，再给一个能做到的小建议。
-            </p>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">今日名单</CardTitle>
+                <CardDescription>
+                  点击一行展开每题分数和音频。分数是参考反馈，不是考试成绩。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pb-0">
+                <div className="flex flex-wrap items-center gap-2 pb-3">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    aria-label="练习状态筛选"
+                    className="h-9 rounded-lg border border-border bg-card px-2 text-xs text-muted-foreground"
+                  >
+                    {Object.entries(STATUS_LABELS).map(([v, label]) => (
+                      <option key={v} value={v}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={nameQuery}
+                    onChange={(e) => setNameQuery(e.target.value)}
+                    placeholder="搜索学生姓名"
+                    aria-label="搜索学生姓名"
+                    className="h-9 rounded-lg border border-border bg-card px-3 text-xs"
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    {filteredStudents.length} 人
+                  </span>
+                  <div className="ml-auto flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void shareLink()}
+                    >
+                      <Link2 />
+                      学生入口
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={exportCsv}>
+                      <Download />
+                      导出
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+              <CardContent>
+                {!hasStudents ? (
+                  <p className="py-8 text-center text-muted-foreground">
+                    还没有学生进入这个课堂。
+                  </p>
+                ) : filteredStudents.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    没有符合筛选条件的学生。
+                  </p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8" />
+                        <TableHead>姓名</TableHead>
+                        <TableHead>完成</TableHead>
+                        <TableHead>跟读参考分</TableHead>
+                        <TableHead>问答参考分</TableHead>
+                        <TableHead>状态</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredStudents.map((student) => (
+                        <StudentRow
+                          key={student.student_id}
+                          student={student}
+                          code={code}
+                          expanded={expandedId === student.student_id}
+                          onToggle={() =>
+                            setExpandedId(
+                              expandedId === student.student_id
+                                ? null
+                                : student.student_id,
+                            )
+                          }
+                        />
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
 
+            <Card className="border-accent bg-accent">
+              <CardContent className="py-4">
+                <p className="flex items-center gap-1.5 text-sm font-semibold">
+                  <Sparkles className="size-4" /> 下一次课堂，可以这样开始
+                </p>
+                <p className="mt-1 text-xs text-accent-foreground/80">
+                  让学生分享「今天最想再说一次的句子」。先发现一个亮点，再给一个能做到的小建议。
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
         <p className="pb-6 text-center text-xs text-muted-foreground">
           数据在评分完成后出现；有「评分中」时页面每几秒自动刷新。参考数据辅助教学，不定义学生。
         </p>

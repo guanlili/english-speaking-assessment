@@ -4,6 +4,7 @@ import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import { AdminService } from "@/client"
+import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import AudioSetter from "@/components/Practice/AudioSetter"
 import { Badge } from "@/components/ui/badge"
@@ -30,7 +31,7 @@ import useCustomToast from "@/hooks/useCustomToast"
 
 export const Route = createFileRoute("/_layout/admin/scenarios")({
   component: ScenariosAdmin,
-  head: () => ({ meta: [{ title: `口语分级题库 - ${APP_NAME}` }] }),
+  head: () => ({ meta: [{ title: `问答主题与出题 - ${APP_NAME}` }] }),
 })
 
 interface QuestionShape {
@@ -51,9 +52,10 @@ interface ScenarioShape {
 const BANDS = ["A2", "B1", "B2"] as const
 const BAND_LABELS = { A2: "KET · A2", B1: "PET · B1", B2: "B2 · 进阶" }
 
-function ScenariosAdmin() {
+export function ScenariosAdmin({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const [keyword, setKeyword] = useState("")
   const [newTopic, setNewTopic] = useState("")
 
   const scenariosQuery = useQuery({
@@ -61,12 +63,14 @@ function ScenariosAdmin() {
     queryFn: () => AdminService.listScenarios(),
   })
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["admin", "scenarios"] })
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ["admin", "scenarios"] })
+    void queryClient.invalidateQueries({ queryKey: ["admin", "question-bank"] })
+  }
 
   const createScenario = useMutation({
     mutationFn: () =>
-      AdminService.createScenario({ requestBody: { topic: newTopic } }),
+      AdminService.createScenario({ requestBody: { topic: newTopic.trim() } }),
     onSuccess: () => {
       showSuccessToast("情景已创建")
       setNewTopic("")
@@ -78,8 +82,9 @@ function ScenariosAdmin() {
 
   return (
     <div className="flex flex-col gap-6">
+      {!embedded && <ContentNavigation />}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">口语分级题库</h1>
+        <h1 className="text-2xl font-bold tracking-tight">模拟口语问答</h1>
         <p className="text-muted-foreground">
           同一主题，分级练习：KET 对应 A2，PET 对应 B1，另有 B2 进阶题。
         </p>
@@ -91,7 +96,7 @@ function ScenariosAdmin() {
       <Card>
         <CardContent className="flex items-end gap-3 py-4">
           <div className="flex-1 space-y-1">
-            <Label>新建情景主题</Label>
+            <Label>新建问答主题</Label>
             <Input
               value={newTopic}
               onChange={(e) => setNewTopic(e.target.value)}
@@ -100,7 +105,7 @@ function ScenariosAdmin() {
           </div>
           <Button
             onClick={() => createScenario.mutate()}
-            disabled={!newTopic || createScenario.isPending}
+            disabled={!newTopic.trim() || createScenario.isPending}
           >
             <Plus />
             创建
@@ -108,6 +113,12 @@ function ScenariosAdmin() {
         </CardContent>
       </Card>
 
+      <Input
+        aria-label="搜索问答主题"
+        placeholder="搜索主题…"
+        value={keyword}
+        onChange={(event) => setKeyword(event.target.value)}
+      />
       {scenariosQuery.isPending ? (
         <div className="flex flex-col gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -130,14 +141,27 @@ function ScenariosAdmin() {
           还没有情景主题，先在上面创建一个（主题需与篇目一致才会配对）。
         </p>
       ) : (
-        (scenariosQuery.data ?? []).map((scenario) => (
-          <ScenarioCard
-            key={scenario.id}
-            scenario={scenario as ScenarioShape}
-            onMutated={invalidate}
-          />
-        ))
+        (scenariosQuery.data ?? [])
+          .filter((scenario) =>
+            scenario.topic.toLowerCase().includes(keyword.trim().toLowerCase()),
+          )
+          .map((scenario) => (
+            <ScenarioCard
+              key={scenario.id}
+              scenario={scenario as ScenarioShape}
+              onMutated={invalidate}
+            />
+          ))
       )}
+      {scenariosQuery.isSuccess &&
+        (scenariosQuery.data ?? []).length > 0 &&
+        !(scenariosQuery.data ?? []).some((scenario) =>
+          scenario.topic.toLowerCase().includes(keyword.trim().toLowerCase()),
+        ) && (
+          <p className="py-8 text-center text-muted-foreground">
+            没有匹配的主题，请换个关键词。
+          </p>
+        )}
     </div>
   )
 }
@@ -180,6 +204,7 @@ function ScenarioCard({
       setQuestion({ band: question.band, text: "", seconds: 30 })
       onMutated()
     },
+    onError: () => toast.error("保存失败，请重试；题目内容已保留"),
   })
 
   const generateMutation = useMutation({
@@ -210,8 +235,13 @@ function ScenarioCard({
 
   const adoptDraft = (index: number) => {
     const d = drafts[index]
-    addQuestion.mutate({ band: d.band, text: d.text, seconds: d.seconds })
-    setDrafts(drafts.filter((_, i) => i !== index))
+    addQuestion.mutate(
+      { band: d.band, text: d.text, seconds: d.seconds },
+      {
+        onSuccess: () =>
+          setDrafts((current) => current.filter((draft) => draft.id !== d.id)),
+      },
+    )
   }
 
   const deleteQuestion = useMutation({
@@ -297,205 +327,234 @@ function ScenarioCard({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {BANDS.map((band) => {
-          const questions = scenario.questions.filter((q) => q.band === band)
-          if (questions.length === 0) return null
-          return (
-            <div key={band} className="space-y-1">
-              <Badge variant="outline">
-                {BAND_LABELS[band]} · {questions.length} 道
-              </Badge>
-              {questions.map((q, index) => (
-                <div
-                  key={q.id}
-                  className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
-                >
-                  <div className="space-y-1">
-                    <p className="text-sm">
-                      {index + 1}. {q.text}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      建议作答 {q.suggested_seconds} 秒
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <AudioSetter
-                      hasAudio={Boolean(q.audio_url)}
-                      text={q.text ?? ""}
-                      onSet={async (audio_url) => {
-                        await AdminService.updateQuestion({
-                          questionId: q.id,
-                          requestBody: { audio_url },
-                        })
-                        onMutated()
-                      }}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => deleteQuestion.mutate(q.id)}
+      <CardContent>
+        <details>
+          <summary className="cursor-pointer text-sm font-medium text-primary">
+            展开题目 · 手动添加 / AI 起草
+          </summary>
+          <div className="mt-4 space-y-3">
+            {BANDS.map((band) => {
+              const questions = scenario.questions.filter(
+                (q) => q.band === band,
+              )
+              if (questions.length === 0) return null
+              return (
+                <div key={band} className="space-y-1">
+                  <Badge variant="outline">
+                    {BAND_LABELS[band]} · {questions.length} 道
+                  </Badge>
+                  {questions.map((q, index) => (
+                    <div
+                      key={q.id}
+                      className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
                     >
-                      <Trash2 className="size-3.5 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )
-        })}
-        <div className="flex flex-wrap items-end gap-2 border-t pt-3">
-          <div className="w-32 space-y-1">
-            <Label>档位</Label>
-            <Select
-              value={question.band}
-              onValueChange={(next) => setQuestion({ ...question, band: next })}
-            >
-              <SelectTrigger className="h-9 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {BANDS.map((band) => (
-                  <SelectItem key={band} value={band}>
-                    {BAND_LABELS[band]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="min-w-56 flex-1 space-y-1">
-            <Label>问法</Label>
-            <Input
-              value={question.text}
-              onChange={(e) =>
-                setQuestion({ ...question, text: e.target.value })
-              }
-            />
-          </div>
-          <div className="w-24 space-y-1">
-            <Label>秒数</Label>
-            <Input
-              type="number"
-              value={question.seconds}
-              onChange={(e) =>
-                setQuestion({ ...question, seconds: Number(e.target.value) })
-              }
-            />
-          </div>
-          <Button
-            onClick={() =>
-              addQuestion.mutate({
-                band: question.band,
-                text: question.text,
-                seconds: question.seconds,
-              })
-            }
-            disabled={!question.text || addQuestion.isPending}
-          >
-            <Plus />
-            添加
-          </Button>
-        </div>
-
-        {/* AI 起草（不入库，采纳后才保存） */}
-        <div className="space-y-2 border-t pt-3">
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="w-32 space-y-1">
-              <Label>AI 档位</Label>
-              <Select
-                value={gen.band}
-                onValueChange={(next) => setGen({ ...gen, band: next })}
-              >
-                <SelectTrigger className="h-9 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {BANDS.map((band) => (
-                    <SelectItem key={band} value={band}>
-                      {BAND_LABELS[band]}
-                    </SelectItem>
+                      <div className="space-y-1">
+                        <p className="text-sm">
+                          {index + 1}. {q.text}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          建议作答 {q.suggested_seconds} 秒
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <AudioSetter
+                          hasAudio={Boolean(q.audio_url)}
+                          text={q.text ?? ""}
+                          onSet={async (audio_url) => {
+                            await AdminService.updateQuestion({
+                              questionId: q.id,
+                              requestBody: { audio_url },
+                            })
+                            onMutated()
+                          }}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => deleteQuestion.mutate(q.id)}
+                        >
+                          <Trash2 className="size-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="w-24 space-y-1">
-              <Label>数量</Label>
-              <Input
-                type="number"
-                min={1}
-                max={10}
-                value={gen.count}
-                onChange={(e) =>
-                  setGen({ ...gen, count: Number(e.target.value) })
-                }
-              />
-            </div>
-            <div className="min-w-48 flex-1 space-y-1">
-              <Label>要求（可选）</Label>
-              <Input
-                value={gen.hint}
-                onChange={(e) => setGen({ ...gen, hint: e.target.value })}
-                placeholder="如：贴近校园生活"
-              />
-            </div>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setDrafts([])
-                generateMutation.mutate()
-              }}
-              disabled={generateMutation.isPending}
-            >
-              {generateMutation.isPending ? (
-                <Loader2 className="animate-spin" />
-              ) : (
-                <Sparkles />
-              )}
-              AI 起草
-            </Button>
-          </div>
-
-          {drafts.length > 0 && (
-            <div className="space-y-2 rounded-md border border-dashed p-2">
-              <p className="text-xs text-muted-foreground">
-                AI 草稿（可编辑后采纳；不会自动入库）
-              </p>
-              {drafts.map((d, i) => (
-                <div key={d.id} className="flex flex-wrap items-center gap-2">
-                  <Input
-                    className="min-w-48 flex-1"
-                    value={d.text}
-                    onChange={(e) => {
-                      const next = [...drafts]
-                      next[i] = { ...d, text: e.target.value }
-                      setDrafts(next)
-                    }}
-                  />
-                  <Input
-                    className="w-16"
-                    type="number"
-                    value={d.seconds}
-                    onChange={(e) => {
-                      const next = [...drafts]
-                      next[i] = { ...d, seconds: Number(e.target.value) }
-                      setDrafts(next)
-                    }}
-                  />
-                  <Button size="sm" onClick={() => adoptDraft(i)}>
-                    采纳
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setDrafts(drafts.filter((_, j) => j !== i))}
-                  >
-                    丢弃
-                  </Button>
                 </div>
-              ))}
+              )
+            })}
+            <div className="flex flex-wrap items-end gap-2 border-t pt-3">
+              <div className="w-32 space-y-1">
+                <Label>档位</Label>
+                <Select
+                  value={question.band}
+                  onValueChange={(next) =>
+                    setQuestion({ ...question, band: next })
+                  }
+                >
+                  <SelectTrigger className="h-9 w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BANDS.map((band) => (
+                      <SelectItem key={band} value={band}>
+                        {BAND_LABELS[band]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-56 flex-1 space-y-1">
+                <Label>问法</Label>
+                <Input
+                  value={question.text}
+                  onChange={(e) =>
+                    setQuestion({ ...question, text: e.target.value })
+                  }
+                />
+              </div>
+              <div className="w-24 space-y-1">
+                <Label>秒数</Label>
+                <Input
+                  type="number"
+                  value={question.seconds}
+                  onChange={(e) =>
+                    setQuestion({
+                      ...question,
+                      seconds: Number(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <Button
+                onClick={() =>
+                  addQuestion.mutate({
+                    band: question.band,
+                    text: question.text,
+                    seconds: question.seconds,
+                  })
+                }
+                disabled={!question.text || addQuestion.isPending}
+              >
+                <Plus />
+                添加
+              </Button>
             </div>
-          )}
-        </div>
+
+            {/* AI 起草（不入库，采纳后才保存） */}
+            <div className="space-y-2 border-t pt-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="w-32 space-y-1">
+                  <Label>AI 档位</Label>
+                  <Select
+                    value={gen.band}
+                    onValueChange={(next) => setGen({ ...gen, band: next })}
+                  >
+                    <SelectTrigger className="h-9 w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BANDS.map((band) => (
+                        <SelectItem key={band} value={band}>
+                          {BAND_LABELS[band]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-24 space-y-1">
+                  <Label>数量</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={gen.count}
+                    onChange={(e) =>
+                      setGen({ ...gen, count: Number(e.target.value) })
+                    }
+                  />
+                </div>
+                <div className="min-w-48 flex-1 space-y-1">
+                  <Label>要求（可选）</Label>
+                  <Input
+                    value={gen.hint}
+                    onChange={(e) => setGen({ ...gen, hint: e.target.value })}
+                    placeholder="如：贴近校园生活"
+                  />
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setDrafts([])
+                    generateMutation.mutate()
+                  }}
+                  disabled={generateMutation.isPending}
+                >
+                  {generateMutation.isPending ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <Sparkles />
+                  )}
+                  AI 起草
+                </Button>
+              </div>
+
+              {drafts.length > 0 && (
+                <div className="space-y-2 rounded-md border border-dashed p-2">
+                  <p className="text-xs text-muted-foreground">
+                    AI 草稿（可编辑后采纳；不会自动入库）
+                  </p>
+                  {drafts.map((d, i) => (
+                    <div
+                      key={d.id}
+                      className="flex flex-wrap items-center gap-2"
+                    >
+                      <Input
+                        className="min-w-48 flex-1"
+                        value={d.text}
+                        onChange={(e) => {
+                          const next = [...drafts]
+                          next[i] = { ...d, text: e.target.value }
+                          setDrafts(next)
+                        }}
+                      />
+                      <Input
+                        className="w-16"
+                        type="number"
+                        value={d.seconds}
+                        onChange={(e) => {
+                          const next = [...drafts]
+                          next[i] = { ...d, seconds: Number(e.target.value) }
+                          setDrafts(next)
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        disabled={
+                          addQuestion.isPending ||
+                          !d.text.trim() ||
+                          !Number.isInteger(d.seconds) ||
+                          d.seconds < 10 ||
+                          d.seconds > 60
+                        }
+                        onClick={() => adoptDraft(i)}
+                      >
+                        采纳
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setDrafts(drafts.filter((_, j) => j !== i))
+                        }
+                      >
+                        丢弃
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </details>
       </CardContent>
       <ConfirmDialog
         open={confirmDelete}
