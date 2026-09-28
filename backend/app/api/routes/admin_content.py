@@ -815,6 +815,105 @@ def auto_split_sentences(
     return AutoSplitResult(created=len(created))
 
 
+_CN_NUMS = "一二三四五六七八九十"
+
+
+def _reading_seconds(words: int) -> int:
+    """朗读建议秒数：学生慢速朗读约 0.9 秒/词，5 秒取整，夹在 15–180。"""
+    import math
+
+    return max(15, min(180, math.ceil(words * 0.9 / 5) * 5))
+
+
+def _split_reading_segments(text: str, max_words: int = 90) -> list[str]:
+    """长文拆段：优先按段落切；超长段再按句聚合成不超过 max_words 词的段。"""
+    import re as _re
+
+    paragraphs = [p.strip() for p in _re.split(r"\n+", text) if p.strip()]
+    segments: list[str] = []
+    for para in paragraphs:
+        if len(para.split()) <= max_words:
+            segments.append(para)
+            continue
+        sentences = _re.split(r"(?<=[.!?])\s+", para)
+        buf: list[str] = []
+        buf_words = 0
+        for s in sentences:
+            w = len(s.split())
+            if buf and buf_words + w > max_words:
+                segments.append(" ".join(buf))
+                buf, buf_words = [], 0
+            buf.append(s)
+            buf_words += w
+        if buf:
+            segments.append(" ".join(buf))
+    return segments
+
+
+class PassageSplitResult(SQLModel):
+    created: int
+    passage_ids: list[uuid.UUID] = []
+    original_deactivated: bool = True
+
+
+@router.post("/passages/{passage_id}/split", response_model=PassageSplitResult)
+def split_passage_into_readings(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    passage_id: uuid.UUID,
+) -> Any:
+    """把长文一键拆成多篇朗读材料（参考复述句自动拆分；本地算法非 AI）。
+
+    按段落切分，超长段再按句聚合；新篇目沿用原标题/主题/难度/分组，
+    标题追加（一）（二）…；原长文自动停用（历史与挂靠复述句保留，可再启用）。
+    """
+    passage = session.get(Passage, passage_id)
+    if passage is None:
+        raise HTTPException(status_code=404, detail="Passage not found")
+
+    segments = _split_reading_segments(passage.text or "")
+    if len(segments) < 2:
+        raise HTTPException(
+            status_code=422, detail="正文只有一个段落，无需拆分；请先用换行分段"
+        )
+
+    base_title = _re_split_title(passage.title or "Reading")
+    created: list[Passage] = []
+    for index, segment in enumerate(segments):
+        num = _CN_NUMS[index] if index < 10 else str(index + 1)
+        words = len(segment.split())
+        new_passage = crud.create_passage(
+            session=session,
+            passage_in=PassageCreate(
+                title=f"{base_title}（{num}）",
+                topic=passage.topic,
+                cefr_band=passage.cefr_band,
+                text=segment,
+                suggested_seconds=_reading_seconds(words),
+                is_active=True,
+                unit_id=passage.unit_id,
+            ),
+        )
+        created.append(new_passage)
+
+    passage.is_active = False
+    session.add(passage)
+    session.commit()
+    for p in created:
+        session.refresh(p)
+    return PassageSplitResult(
+        created=len(created),
+        passage_ids=[p.id for p in created],
+    )
+
+
+def _re_split_title(title: str) -> str:
+    """去掉标题上已有的（一）（二）类后缀，避免重复拆分时叠加。"""
+    import re as _re
+
+    return _re.sub(r"（[一二三四五六七八九十\d]+）$", "", title).strip() or title
+
+
 # ── 内容标准音 ───────────────────────────────────────────────────────
 
 

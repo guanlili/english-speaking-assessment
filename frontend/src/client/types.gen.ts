@@ -293,6 +293,12 @@ export type PassagePublic = {
     created_at?: (string | null);
 };
 
+export type PassageSplitResult = {
+    created: number;
+    passage_ids?: Array<(string)>;
+    original_deactivated?: boolean;
+};
+
 export type PassageWithSentences = {
     title: string;
     topic?: string;
@@ -824,6 +830,12 @@ export type AdminAutoSplitSentencesData = {
 };
 
 export type AdminAutoSplitSentencesResponse = (AutoSplitResult);
+
+export type AdminSplitPassageIntoReadingsData = {
+    passageId: string;
+};
+
+export type AdminSplitPassageIntoReadingsResponse = (PassageSplitResult);
 
 export type AdminGenerateStandardAudioData = {
     requestBody: TtsRequest;
