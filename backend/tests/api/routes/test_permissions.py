@@ -586,3 +586,51 @@ def test_upload_rejects_too_short_recording(
         headers=student["headers"],
     )
     assert resp.status_code == 422
+
+
+def test_bulk_reset_passwords(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """批量重置：课堂内全部已绑定账号生成新初始密码并置改密标记。"""
+    from tests.utils.credential import create_student_user, join_as
+
+    resp = client.post(
+        "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+    )
+    assert resp.status_code == 200
+    classroom = resp.json()
+    joined1 = join_as(
+        client, classroom["code"], create_student_user(db, "学生一"), "学生一"
+    )
+    join_as(client, classroom["code"], create_student_user(db, "学生二"), "学生二")
+
+    reset = client.post(
+        "/api/v1/students/bulk-reset-password",
+        params={"classroom_id": classroom["id"]},
+        headers=superuser_token_headers,
+    )
+    assert reset.status_code == 200, reset.text
+    data = reset.json()
+    assert data["reset"] == 2
+    passwords = {r["username"]: r["new_password"] for r in data["rows"]}
+    assert all(p and len(p) >= 8 for p in passwords.values())
+
+    # 新密码能登录且带改密标记
+    sample_user = joined1["user"]
+    login = client.post(
+        "/api/v1/login/access-token",
+        data={
+            "username": sample_user.username,
+            "password": passwords[sample_user.username],
+        },  # type: ignore[index]
+    )
+    assert login.status_code == 200
+    me = client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    ).json()
+    assert me["must_change_password"] is True
+
+    client.delete("/api/v1/classes", headers=superuser_token_headers) if False else None
