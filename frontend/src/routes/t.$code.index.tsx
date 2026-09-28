@@ -377,18 +377,20 @@ function TeacherBoardPage() {
                 ["qa", "情景问答"],
               ] as const
             ).map(([key, label]) => (
-              <label
+              <span
                 key={key}
-                className="flex cursor-pointer items-center gap-1.5 text-sm"
+                className="flex cursor-pointer select-none items-center gap-1.5 text-sm"
               >
                 <Checkbox
+                  id={`assign-type-${key}`}
                   checked={types[key]}
+                  aria-label={label}
                   onCheckedChange={(v) =>
                     setTypes((t) => ({ ...t, [key]: v === true }))
                   }
                 />
                 {label}
-              </label>
+              </span>
             ))}
             <span className="text-xs text-muted-foreground">
               勾选后需重新点上方单元生效；全不勾时学生无内容，请至少保留一种

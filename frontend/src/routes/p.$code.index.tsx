@@ -855,7 +855,9 @@ function LimitedListenButton({
           src={audioUrl.startsWith("/") ? `${API_BASE}${audioUrl}` : audioUrl}
           preload="metadata"
           hidden
-        />
+        >
+          <track kind="captions" />
+        </audio>
       )}
       <Button
         variant="secondary"
