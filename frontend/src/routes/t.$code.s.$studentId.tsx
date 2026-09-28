@@ -10,7 +10,7 @@ import { APP_NAME } from "@/config"
 export const Route = createFileRoute("/t/$code/s/$studentId")({
   component: StudentDetailPage,
   head: () => ({
-    meta: [{ title: `学生轨迹 - ${APP_NAME}` }],
+    meta: [{ title: `进步轨迹 - ${APP_NAME}` }],
   }),
 })
 
@@ -38,7 +38,7 @@ function StudentDetailPage() {
   if (trailQuery.isPending) {
     return (
       <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        正在加载学生轨迹…
+        正在加载进步轨迹…
       </div>
     )
   }
@@ -51,7 +51,7 @@ function StudentDetailPage() {
           ? "你还不是这个课堂的授权教师，无法查看学生数据。"
           : status === 404
             ? "学生不存在。"
-            : "学生轨迹加载失败，请稍后重试。"}
+            : "进步轨迹加载失败，请稍后重试。"}
         <Button variant="outline" asChild>
           <Link to="/t/$code" params={{ code }}>
             回面板

@@ -107,7 +107,7 @@ function ExplorePage() {
             世界很大，想聊什么？
           </h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            从喜欢的话题开始，让英语走进你的日常。自由练习也积累 XP
+            从喜欢的主题开始，让英语走进你的日常。自主练习也积累 XP
             与星级，不占用课堂任务。
           </p>
         </div>
@@ -136,7 +136,7 @@ function ExplorePage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="找一个喜欢的话题"
+            placeholder="找一个喜欢的主题"
             aria-label="搜索主题"
             className="ml-auto h-9 rounded-full border border-border bg-card px-4 text-xs"
           />
@@ -195,7 +195,7 @@ function ExplorePage() {
         <Card>
           <CardContent className="flex items-start gap-2.5 py-4 text-sm text-muted-foreground">
             <Compass className="mt-0.5 size-4 shrink-0" />
-            主题探索是自由练习，不覆盖你的课堂任务。换题前记得先完成当前一题。
+            主题探索是自主练习，不影响今日练习的进度。换主题前记得先完成当前一题。
           </CardContent>
         </Card>
       </div>
@@ -209,7 +209,7 @@ function ExplorePage() {
           <DialogHeader>
             <DialogTitle>{selected?.title}</DialogTitle>
             <DialogDescription>
-              从 3 句听后复述开始，再回答 2 个开放问题。
+              从 3 句听句复述开始，再做 2 道情景问答。
             </DialogDescription>
           </DialogHeader>
           <div className="h-40 overflow-hidden rounded-xl">
@@ -217,7 +217,7 @@ function ExplorePage() {
           </div>
           <p className="text-xs text-muted-foreground">
             <MessageCircle className="mr-1 inline size-3.5" />
-            自由练习 · 同样积累 XP 与星级 · 不计入课堂完成率
+            自主练习 · 同样积累 XP 与星级 · 不计入课堂完成率
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSelected(null)}>

@@ -81,7 +81,7 @@ function JoinPage() {
           </p>
           <div className="mt-5 grid max-w-lg lg:mt-9 grid-cols-3 gap-4">
             {[
-              { icon: Headphones, title: "听后复述", text: "积累自然表达" },
+              { icon: Headphones, title: "听句复述", text: "积累自然表达" },
               { icon: MessageCircle, title: "情景问答", text: "分享你的想法" },
               { icon: ChartLine, title: "看见成长", text: "记录每次进步" },
             ].map((item) => (

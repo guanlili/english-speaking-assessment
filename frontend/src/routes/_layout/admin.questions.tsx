@@ -223,7 +223,7 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
     <div className="flex flex-col gap-6">
       {!embedded && <ContentNavigation />}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">问答题目管理</h1>
+        <h1 className="text-2xl font-bold tracking-tight">情景问答 · 题目管理</h1>
         <p className="text-muted-foreground">
           情景问答的集中管理：跨主题搜索、批量粘贴录入、逐条修改。
           学生每轮练习从对应主题和档位里抽题。

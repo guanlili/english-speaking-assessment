@@ -41,7 +41,7 @@ import { safeLocalStorageGet } from "@/utils"
 export const Route = createFileRoute("/me/$code")({
   component: MyTrailPage,
   head: () => ({
-    meta: [{ title: `我的进步 - ${APP_NAME}` }],
+    meta: [{ title: `我的成长 - ${APP_NAME}` }],
   }),
 })
 
@@ -186,7 +186,7 @@ function MyTrailPage() {
                 )
               })}
               <p className="pt-1 text-xs text-muted-foreground">
-                词汇档位不是英语能力的完整评价。多说、多用，比「背到哪个级别」更重要。
+                词汇档位不是英语能力的完整评价。多说、多用，比「处在哪个档位」更重要。
               </p>
             </CardContent>
           </Card>
@@ -214,7 +214,7 @@ function MyTrailPage() {
 
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">我的进步</h1>
+            <h1 className="text-xl font-bold tracking-tight">我的成长</h1>
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               {displayName(student)} · 课堂 {code.toUpperCase()}
               {trailQuery.data?.band_change === "up" && (
@@ -253,7 +253,7 @@ function MyTrailPage() {
               <div className="flex gap-1 rounded-xl bg-secondary/60 p-1">
                 {(
                   [
-                    ["trail", "学习轨迹"],
+                    ["trail", "进步轨迹"],
                     ["saved", "表达收藏"],
                   ] as const
                 ).map(([v, label]) => (

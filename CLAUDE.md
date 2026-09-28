@@ -13,6 +13,25 @@
 - 模拟分（`app/scoring/rubric.py`）：rubric 四维 0-4 映射 0-9（`RUBRIC_TO_SCORE` 表）；LLM 失败降级不出假分，界面显示「建议暂缺」；仅 `SCORING_PROVIDER=ark` 时启用（`ARK_RUBRIC_MODEL` 配置模型）。
 - 词汇分析（`app/scoring/lexicon.py`）：问答作答评分后写入 `attempt.vocab`（命中分档词/覆盖率/CEFR 参考）；只统计问答转写（跟读参考文本不算）；词元匹配支持规则屈折；标签规则：最高稳定档（≥5 命中）即该档，否则降一档。词表未配置时 vocab 为 null，界面显示「未配置词表」（BDD D）。内置演示词表 ~600 词（A2/B1/B2），待学校 CSV 替换。
 - 40 人并发已验证（BDD B）：测试 `test_board.py::test_classroom_40_concurrent_submissions` 用真实线程池跑 40 并发上传 → 全部出分 → board 到齐。
+
+### 术语表（2026-09 统一，前端单一事实源 `frontend/src/lib/terms.ts`）
+
+同一概念全端只用一个词，新文案必须遵守（历史盘点：Unit 曾有 7 种叫法、问答 8 种、指派相关 9 种）：
+
+| 概念 | 统一词 | 备注 |
+|---|---|---|
+| Unit | 单元 | 课堂指派与自主练习的基本单位；页面叫「单元管理」 |
+| Unit.topic | 主题 | 与单元名区分（单元叫「宠物朋友」，主题叫「宠物」） |
+| Passage | 篇目 | 教师/管理端；朗读与复述共用的英文材料 |
+| 题型 reading | 文章朗读 | 学生端旧称「整篇朗读」已废 |
+| 题型 repeat | 听句复述 | 学生端旧称「听后复述」已废 |
+| 题型 qa | 情景问答 | 旧称「模拟问答/问答/开放问题/问法」已废；单条题叫「题目」 |
+| 学生每日练习入口 | 今日练习 | 学生端页面 title、通知、首页 CTA 一致；教师端发布动作用「发布」 |
+| 非指派模式 | 自主练习 | 旧称「自由练习/个人关卡」已废 |
+| overall 分 | 参考分 | 可带前缀「跟读参考分/情景问答参考分」；rubric 0-9 叫「模拟分」 |
+| CEFR band | 档位（A2/B1/B2） | 旧称「低/中/高档、等级、级别」已废 |
+| 学生成长页 | 我的成长 | 教师端对应页面叫「进步轨迹」 |
+| 学生进班动作 | 进入课堂 | 旧称「加入课堂」已废（「邀请学生加入」作动词短语保留） |
 - 课堂练习路由注意：TanStack 文件约定下 `p.$code.tsx`、`t.$code.tsx`、`_layout/admin.tsx` 都是父 layout（只渲染 Outlet），实际页面在 `*.index.tsx` 与兄弟路由文件。新增带参数子路由时必须检查父 layout 是否有 Outlet。
 - 评分架构（PRD 不可协商）：引擎藏在可替换接口后（`app/scoring/`），`SCORING_PROVIDER` 配置切换：`mock`（默认，离线演示/测试）｜`ark`（火山方舟 Responses API 转写，需控制台开通模型 + `ARK_API_KEY`）。上传与评分分离：POST `/attempts` 立即返回 queued，线程池异步出分，前端轮询。跟读类（passage/repeat）出三维分，问答（question）只出总评+一句建议（rubric 四维是第 3 周）。音频回放走 `GET /attempts/{id}/audio`（attempt id 随机 UUID，不可猜）。
 - 档位规则（`app/scoring/bands.py`）：A2/B1/B2 三档，首轮默认 B1；复述平均完整度 ≥80 且流利度 ≥60 升档，<50 降档；调整写入 student.current_band（下一轮沿用）与 session.question_band（本轮问答用）。

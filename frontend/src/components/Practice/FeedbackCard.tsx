@@ -95,7 +95,7 @@ export function RubricBlock({
   return (
     <div className="space-y-2 rounded-md border px-3 py-2">
       <div className="flex flex-wrap items-center gap-3 text-sm">
-        <span className="text-muted-foreground">模拟参考分（0–9）</span>
+        <span className="text-muted-foreground">模拟分（0–9）</span>
         <span className="text-2xl font-bold tabular-nums">
           {data.mock_score ?? "–"}
         </span>

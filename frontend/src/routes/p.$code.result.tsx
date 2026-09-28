@@ -55,8 +55,8 @@ export const Route = createFileRoute("/p/$code/result")({
 })
 
 const ITEM_TYPE_LABELS: Record<string, string> = {
-  passage: "整篇朗读",
-  repeat: "听后复述",
+  passage: "文章朗读",
+  repeat: "听句复述",
   question: "情景问答",
 }
 
@@ -242,7 +242,7 @@ function RoundResultPage() {
             今天的你，又向前了一步。
           </h1>
           <p className="text-sm text-muted-foreground">
-            {displayName(student)} · 课堂 {plan.classroom_code} · 每题转写和总评
+            {displayName(student)} · 课堂 {plan.classroom_code} · 每题转写和参考分
           </p>
         </div>
 
@@ -298,8 +298,8 @@ function RoundResultPage() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {(
                 [
-                  ["口语总评参考", roundStats.overall, "本轮均值"],
-                  ["完整度参考", roundStats.completeness, "听后复述"],
+                  ["参考分", roundStats.overall, "本轮均值"],
+                  ["完整度参考", roundStats.completeness, "听句复述"],
                   ["流利度参考", roundStats.fluency, "全部题目"],
                   [
                     "词汇参考档位",
@@ -401,7 +401,7 @@ function RoundResultPage() {
         {doneItems.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">本轮总评与练习计划</CardTitle>
+              <CardTitle className="text-base">本轮参考分与练习计划</CardTitle>
               <CardDescription>
                 已完成 {doneItems.length} / {plan.items.length} 题 ·
                 参考分来自转写文本与语速规则，模型四维分单独统计。
@@ -454,7 +454,7 @@ function RoundResultPage() {
               <Separator />
               <div className="flex items-center gap-4 text-sm">
                 <span className="text-2xl font-bold tabular-nums">
-                  总评 {attempt.overall ?? "–"}
+                  参考分 {attempt.overall ?? "–"}
                 </span>
                 {item.type !== "question" && (
                   <span className="text-muted-foreground">
@@ -521,7 +521,7 @@ function RoundResultPage() {
                   <span className="text-2xl font-bold tabular-nums">
                     {replay.attempt.overall ?? "–"}
                   </span>
-                  <span className="text-muted-foreground">参考总评</span>
+                  <span className="text-muted-foreground">参考分</span>
                 </div>
                 {replay.attempt.attempt_id && (
                   <AttemptAudio

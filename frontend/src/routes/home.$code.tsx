@@ -119,7 +119,7 @@ function HomePage() {
     [
       readingCount > 0 && `${readingCount} 篇朗读`,
       repeatCount > 0 && `${repeatCount} 句复述`,
-      qaCount > 0 && `${qaCount} 道问答`,
+      qaCount > 0 && `${qaCount} 道情景问答`,
     ]
       .filter(Boolean)
       .join(" + ") || "内容待老师安排"
@@ -169,7 +169,7 @@ function HomePage() {
             </h1>
             {plan?.assigned_unit_title && (
               <p className="mt-2 text-xs font-medium text-primary">
-                📌 今日课堂：{plan.assigned_unit_title}（老师指派）
+                📌 今日练习：{plan.assigned_unit_title}（老师指派）
               </p>
             )}
             <div className="mt-5 flex items-center gap-3">
@@ -181,8 +181,8 @@ function HomePage() {
                 {done >= totalItems
                   ? "查看今日成果"
                   : done > 0
-                    ? "继续今天的练习"
-                    : "开始今天的练习"}
+                    ? "继续今日练习"
+                    : "开始今日练习"}
                 <ArrowRight />
               </Button>
               <span className="hidden text-[11px] text-muted-foreground md:inline">
@@ -202,7 +202,7 @@ function HomePage() {
               <div>
                 <CardTitle className="text-base">今天的开口计划</CardTitle>
                 <CardDescription>
-                  {plan?.assigned_unit_title ?? "个人关卡"} · {planSummary}
+                  {plan?.assigned_unit_title ?? "自主练习"} · {planSummary}
                 </CardDescription>
               </div>
             </div>
@@ -226,14 +226,14 @@ function HomePage() {
               readingCount > 0
                 ? {
                     title: "先读一读，说一说",
-                    sub: "整篇朗读 · 自然完整地读出来",
+                    sub: "文章朗读 · 自然完整地读出来",
                     count: `${readingCount} 篇朗读`,
                   }
                 : null,
               repeatCount > 0
                 ? {
                     title: "先听一听，再说一说",
-                    sub: "听后复述 · 让熟悉的表达自然说出口",
+                    sub: "听句复述 · 让熟悉的表达自然说出口",
                     count: `${repeatCount} 个短句`,
                   }
                 : null,
@@ -285,7 +285,7 @@ function HomePage() {
                   void navigate({ to: "/explore/$code", params: { code } })
                 }
               >
-                全部主题 <ArrowRight />
+                全部单元 <ArrowRight />
               </Button>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -303,7 +303,7 @@ function HomePage() {
                     <span className="absolute top-2 left-2 rounded-md bg-card/85 px-2 py-0.5 text-[10px] font-semibold text-primary">
                       {(unit.rounds_done ?? 0) > 0
                         ? `已获 ${unit.best_stars ?? 0} 星`
-                        : "新主题"}
+                        : "新单元"}
                     </span>
                   </div>
                   <div className="p-3">
