@@ -902,6 +902,7 @@ function LimitedListenButton({
         onChange={(e) => setRate(e.target.value)}
         className="h-9 rounded-lg border border-border bg-card px-2 text-xs text-muted-foreground"
       >
+        <option value="0.5">最慢 0.5×</option>
         <option value="0.8">慢速 0.8×</option>
         <option value="1">正常 1.0×</option>
       </select>
