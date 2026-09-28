@@ -1,14 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Trash2 } from "lucide-react"
+import { Pencil, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
-import {
-  AdminService,
-  type RepeatSentence,
-  type SentenceWithPassage,
-} from "@/client"
+import { AdminService, type SentenceWithPassage } from "@/client"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import AudioSetter from "@/components/Practice/AudioSetter"
-import { RepeatSettings } from "@/components/Teaching/RepeatSettings"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -18,8 +13,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { LoadingButton } from "@/components/ui/loading-button"
 import {
   Select,
   SelectContent,
@@ -28,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
 import useCustomToast from "@/hooks/useCustomToast"
 
 const NO_PASSAGE = "__none__"
@@ -63,6 +68,56 @@ export function SentenceLibrary() {
     onError: (err: { body?: { detail?: string } }) =>
       showErrorToast(err.body?.detail ?? "删除失败"),
   })
+
+  // ── 编辑（与文章朗读编辑弹窗同款：铅笔入口 + 全字段）──
+  const [editing, setEditing] = useState<SentenceWithPassage | null>(null)
+  const [editForm, setEditForm] = useState({
+    text: "",
+    translation: "",
+    seconds: 12,
+    replays: 3,
+    passageId: NO_PASSAGE,
+  })
+  const openEdit = (s: SentenceWithPassage) => {
+    setEditing(s)
+    setEditForm({
+      text: s.text ?? "",
+      translation: s.translation ?? "",
+      seconds: s.suggested_seconds ?? 12,
+      replays: s.replay_limit ?? 3,
+      passageId: s.passage_id ?? NO_PASSAGE,
+    })
+  }
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      AdminService.updateSentence({
+        sentenceId: editing?.id ?? "",
+        requestBody: {
+          order_index: editing?.order_index ?? 0,
+          text: editForm.text.trim(),
+          translation: editForm.translation.trim() || null,
+          suggested_seconds: editForm.seconds,
+          replay_limit: editForm.replays,
+          passage_id:
+            editForm.passageId === NO_PASSAGE ? null : editForm.passageId,
+        },
+      }),
+    onSuccess: () => {
+      showSuccessToast("复述句已更新")
+      setEditing(null)
+      invalidate()
+    },
+    onError: (err: { body?: { detail?: string } }) =>
+      showErrorToast(err.body?.detail ?? "更新失败"),
+  })
+  const editValid =
+    editForm.text.trim().length > 0 &&
+    Number.isInteger(editForm.seconds) &&
+    editForm.seconds >= 3 &&
+    editForm.seconds <= 60 &&
+    Number.isInteger(editForm.replays) &&
+    editForm.replays >= 0 &&
+    editForm.replays <= 9
 
   const passages = passagesQuery.data ?? []
   const sentences = (sentencesQuery.data ?? []).filter((s) =>
@@ -135,10 +190,14 @@ export function SentenceLibrary() {
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <RepeatSettings
-                  sentence={s as RepeatSentence}
-                  onSaved={invalidate}
-                />
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="编辑复述句"
+                  onClick={() => openEdit(s)}
+                >
+                  <Pencil className="size-3.5" />
+                </Button>
                 <AudioSetter
                   hasAudio={Boolean(s.audio_url)}
                   text={s.text ?? ""}
@@ -170,6 +229,112 @@ export function SentenceLibrary() {
           ))}
         </div>
       )}
+
+      <Dialog
+        open={editing !== null}
+        onOpenChange={(open) => !open && setEditing(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>编辑复述句</DialogTitle>
+            <DialogDescription>
+              修改即时生效；修改句子后原标准音会失效，需重新配置。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-sentence-text">英文句子</Label>
+              <Textarea
+                id="edit-sentence-text"
+                rows={3}
+                value={editForm.text}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, text: e.target.value }))
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-sentence-translation">
+                中文提示（可选）
+              </Label>
+              <Input
+                id="edit-sentence-translation"
+                value={editForm.translation}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, translation: e.target.value }))
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-sentence-seconds">作答秒数（3–60）</Label>
+                <Input
+                  id="edit-sentence-seconds"
+                  type="number"
+                  min={3}
+                  max={60}
+                  value={editForm.seconds}
+                  onChange={(e) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      seconds: Number(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-sentence-replays">可听次数（0–9）</Label>
+                <Input
+                  id="edit-sentence-replays"
+                  type="number"
+                  min={0}
+                  max={9}
+                  value={editForm.replays}
+                  onChange={(e) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      replays: Number(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>挂到篇目（可选）</Label>
+              <Select
+                value={editForm.passageId}
+                onValueChange={(v) =>
+                  setEditForm((f) => ({ ...f, passageId: v }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PASSAGE}>不挂（独立题目）</SelectItem>
+                  {passages.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>
+              取消
+            </Button>
+            <LoadingButton
+              disabled={!editValid}
+              loading={updateMutation.isPending}
+              onClick={() => updateMutation.mutate()}
+            >
+              保存
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={toDelete !== null}
