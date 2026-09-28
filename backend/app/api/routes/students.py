@@ -13,7 +13,7 @@ from sqlmodel import Session, SQLModel, col, select
 
 from app import crud
 from app.api.deps import SessionDep, TeacherUserDep
-from app.core.security import generate_initial_password, get_password_hash
+from app.core.security import DEFAULT_STUDENT_PASSWORD, get_password_hash
 from app.models import (
     Classroom,
     Student,
@@ -79,7 +79,7 @@ def import_students(
 ) -> Any:
     """批量导入学生：每行「学号 姓名」；已有学号跳过并提示。
 
-    同名历史匿名档案自动绑定（保留 XP/作答）；初始密码仅本次返回。
+    同名历史匿名档案自动绑定（保留 XP/作答）；密码统一为默认密码。
     """
     classroom = _get_classroom_in_scope(session, current_user, body.classroom_id)
     result = StudentImportResult(created=0, merged=0, skipped=0, rows=[])
@@ -106,7 +106,6 @@ def import_students(
             continue
         seen_usernames.add(username)
 
-        password = generate_initial_password()
         user = User(
             email=None,
             is_active=True,
@@ -114,8 +113,8 @@ def import_students(
             full_name=full_name or None,
             role="student",
             username=username,
-            must_change_password=True,
-            hashed_password=get_password_hash(password),
+            must_change_password=False,
+            hashed_password=get_password_hash(DEFAULT_STUDENT_PASSWORD),
         )
         session.add(user)
         session.flush()  # 拿 user.id 供档案绑定/查询
@@ -145,7 +144,7 @@ def import_students(
                 display_name=full_name or username,
             )
             result.created += 1
-        row.initial_password = password
+        row.initial_password = DEFAULT_STUDENT_PASSWORD
         row.student_id = student.id
         result.rows.append(row)
 
@@ -198,7 +197,7 @@ def reset_student_password(
     current_user: TeacherUserDep,
     student_id: uuid.UUID,
 ) -> dict[str, str]:
-    """重置学生密码：生成新初始密码（仅本次返回），置改密标记。"""
+    """重置学生密码：恢复为统一默认密码（学生登录后可自行修改）。"""
     student = session.get(Student, student_id)
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
@@ -208,12 +207,11 @@ def reset_student_password(
     user = session.get(User, student.user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    password = generate_initial_password()
-    user.hashed_password = get_password_hash(password)
-    user.must_change_password = True
+    user.hashed_password = get_password_hash(DEFAULT_STUDENT_PASSWORD)
+    user.must_change_password = False
     session.add(user)
     session.commit()
-    return {"new_password": password}
+    return {"new_password": DEFAULT_STUDENT_PASSWORD}
 
 
 @router.delete("/{student_id}")
@@ -251,10 +249,7 @@ def bulk_reset_passwords(
     current_user: TeacherUserDep,
     classroom_id: uuid.UUID = Query(...),
 ) -> Any:
-    """批量重置课堂内全部已绑定账号的密码（初始密码 CSV 丢失后的补救）。
-
-    生成新初始密码并置改密标记；新密码仅本次响应返回一次。
-    """
+    """批量重置课堂内全部已绑定账号的密码为统一默认密码。"""
     classroom = _get_classroom_in_scope(session, current_user, classroom_id)
     students = session.exec(
         select(Student)
@@ -276,16 +271,15 @@ def bulk_reset_passwords(
         user = users_by_id.get(s.user_id) if s.user_id else None
         if user is None:
             continue
-        password = generate_initial_password()
-        user.hashed_password = get_password_hash(password)
-        user.must_change_password = True
+        user.hashed_password = get_password_hash(DEFAULT_STUDENT_PASSWORD)
+        user.must_change_password = False
         session.add(user)
         result.rows.append(
             StudentResetRow(
                 username=user.username or "",
                 full_name=user.full_name,
                 student_id=s.id,
-                new_password=password,
+                new_password=DEFAULT_STUDENT_PASSWORD,
             )
         )
         result.reset += 1

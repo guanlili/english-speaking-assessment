@@ -1149,7 +1149,7 @@ export class StudentsService {
      * Import Students
      * 批量导入学生：每行「学号 姓名」；已有学号跳过并提示。
      *
-     * 同名历史匿名档案自动绑定（保留 XP/作答）；初始密码仅本次返回。
+     * 同名历史匿名档案自动绑定（保留 XP/作答）；密码统一为默认密码。
      * @param data The data for the request.
      * @param data.requestBody
      * @returns StudentImportResult Successful Response
@@ -1190,7 +1190,7 @@ export class StudentsService {
     
     /**
      * Reset Student Password
-     * 重置学生密码：生成新初始密码（仅本次返回），置改密标记。
+     * 重置学生密码：恢复为统一默认密码（学生登录后可自行修改）。
      * @param data The data for the request.
      * @param data.studentId
      * @returns string Successful Response
@@ -1232,9 +1232,7 @@ export class StudentsService {
     
     /**
      * Bulk Reset Passwords
-     * 批量重置课堂内全部已绑定账号的密码（初始密码 CSV 丢失后的补救）。
-     *
-     * 生成新初始密码并置改密标记；新密码仅本次响应返回一次。
+     * 批量重置课堂内全部已绑定账号的密码为统一默认密码。
      * @param data The data for the request.
      * @param data.classroomId
      * @returns BulkResetResult Successful Response

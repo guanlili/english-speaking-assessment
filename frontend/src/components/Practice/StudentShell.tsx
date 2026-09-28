@@ -5,6 +5,7 @@ import {
   ChartLine,
   CircleHelp,
   Home,
+  KeyRound,
   ListChecks,
   LogOut,
   Map as MapIcon,
@@ -245,17 +246,25 @@ function NotificationBell({ code }: { code: string }) {
 
 function StudentLogout() {
   return (
-    <a
-      href="/login"
-      className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-      onClick={() => {
-        // 学生侧无 queryClient 上下文，直接清存储回登录页
-        localStorage.removeItem("access_token")
-        localStorage.removeItem("esa:role")
-        localStorage.removeItem("esa:must-change-pw")
-      }}
-    >
-      <LogOut className="size-3.5" /> 退出登录
-    </a>
+    <div className="space-y-0.5">
+      <a
+        href="/change-password"
+        className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        <KeyRound className="size-3.5" /> 修改密码
+      </a>
+      <a
+        href="/login"
+        className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+        onClick={() => {
+          // 学生侧无 queryClient 上下文，直接清存储回登录页
+          localStorage.removeItem("access_token")
+          localStorage.removeItem("esa:role")
+          localStorage.removeItem("esa:must-change-pw")
+        }}
+      >
+        <LogOut className="size-3.5" /> 退出登录
+      </a>
+    </div>
   )
 }

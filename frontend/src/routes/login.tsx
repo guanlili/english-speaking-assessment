@@ -69,7 +69,8 @@ function StudentLogin() {
         noValidate
       >
         <p className="text-sm leading-6 text-muted-foreground">
-          用老师发放的学号账号登录；首次登录请用初始密码，进入后可修改。
+          用老师发放的学号账号登录；默认密码
+          brs123456，登录后可在侧边栏自行修改。
         </p>
         <FormField
           control={form.control}
@@ -103,7 +104,7 @@ function StudentLogin() {
                   {...field}
                   type="password"
                   data-testid="student-password-input"
-                  placeholder="初始密码或你修改后的密码"
+                  placeholder="默认密码 brs123456 或你修改后的密码"
                   autoComplete="current-password"
                   className="h-12 rounded-xl bg-background/50 px-4"
                 />
