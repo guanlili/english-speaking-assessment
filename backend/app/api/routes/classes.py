@@ -597,7 +597,9 @@ def read_today_plan(
         assigned_unit_title=(
             assigned_unit.title
             if assigned_unit
-            else ("老师指派" if item_objects is not None and session_id is None else None)
+            else (
+                "老师指派" if item_objects is not None and session_id is None else None
+            )
         ),
         items=items,
         attempts=plan_attempts,
@@ -703,28 +705,32 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         include_reading = True
         include_repeat = True
         include_qa = True
-        skeleton = [
-            BoardItem(
-                item_id=p.id,
-                type=AttemptItemType.PASSAGE,
-                status="missing",
-            )
-            for p in board_passages
-        ] + [
-            BoardItem(
-                item_id=s.id,
-                type=AttemptItemType.REPEAT,
-                status="missing",
-            )
-            for s in board_sentences
-        ] + [
-            BoardItem(
-                item_id=q.id,
-                type=AttemptItemType.QUESTION,
-                status="missing",
-            )
-            for q in board_questions
-        ]
+        skeleton = (
+            [
+                BoardItem(
+                    item_id=p.id,
+                    type=AttemptItemType.PASSAGE,
+                    status="missing",
+                )
+                for p in board_passages
+            ]
+            + [
+                BoardItem(
+                    item_id=s.id,
+                    type=AttemptItemType.REPEAT,
+                    status="missing",
+                )
+                for s in board_sentences
+            ]
+            + [
+                BoardItem(
+                    item_id=q.id,
+                    type=AttemptItemType.QUESTION,
+                    status="missing",
+                )
+                for q in board_questions
+            ]
+        )
         # 按题轮的学生行渲染需要这些集合
         board_repeat_sentences = board_sentences
     else:
@@ -940,10 +946,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                     AttemptStatus.SCORING,
                 ):
                     has_pending = True
-                if (
-                    attempt.status == AttemptStatus.DONE
-                    and attempt.overall is not None
-                ):
+                if attempt.status == AttemptStatus.DONE and attempt.overall is not None:
                     question_scores.append(attempt.overall)
                 items.append(
                     BoardItem(
@@ -1466,20 +1469,14 @@ def set_assignment(
     return AssignmentInfo(unit_id=current.id, title=current.title)
 
 
-def _validate_assignment_items(
-    session: Any, items: list[AssignmentItemIn]
-) -> None:
+def _validate_assignment_items(session: Any, items: list[AssignmentItemIn]) -> None:
     """按题指派引用校验：题型合法且对象存在（朗读要求启用）。"""
     seen: set[tuple[str, uuid.UUID]] = set()
     for item in items:
         if item.type not in {"passage", "repeat", "question"}:
-            raise HTTPException(
-                status_code=422, detail=f"未知题型：{item.type}"
-            )
+            raise HTTPException(status_code=422, detail=f"未知题型：{item.type}")
         if (item.type, item.id) in seen:
-            raise HTTPException(
-                status_code=422, detail="指派清单内有重复题目"
-            )
+            raise HTTPException(status_code=422, detail="指派清单内有重复题目")
         seen.add((item.type, item.id))
         if item.type == "passage":
             obj = session.get(Passage, item.id)

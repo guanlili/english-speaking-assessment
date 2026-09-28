@@ -365,9 +365,7 @@ def test_item_assignment_independent_types(
     )
     assert resp.status_code == 200, resp.text
 
-    plan = client.get(
-        f"/api/v1/classes/{code}/today", headers=made["headers"]
-    ).json()
+    plan = client.get(f"/api/v1/classes/{code}/today", headers=made["headers"]).json()
     assert [i["type"] for i in plan["items"]] == ["repeat", "question"]
     assert plan["items"][0]["text"] == "This is a standalone repeat sentence."
     assert plan["assigned_unit_title"] == "老师指派"
@@ -376,15 +374,11 @@ def test_item_assignment_independent_types(
     board = client.get(
         f"/api/v1/classes/{code}/board", headers=superuser_token_headers
     ).json()
-    row = next(
-        s for s in board["students"] if s["student_id"] == made["student"]["id"]
-    )
+    row = next(s for s in board["students"] if s["student_id"] == made["student"]["id"])
     assert {i["type"] for i in row["items"]} == {"repeat", "question"}
 
     # 换题：同情景其余题目（排除已指派那道）
-    nxt = client.get(
-        f"/api/v1/classes/{code}/next-question", headers=made["headers"]
-    )
+    nxt = client.get(f"/api/v1/classes/{code}/next-question", headers=made["headers"])
     assert nxt.status_code == 200
     assert nxt.json()["question"] is not None
     assert nxt.json()["question"]["id"] != question_id
@@ -403,8 +397,6 @@ def test_item_assignment_independent_types(
         json={"items": []},
         headers=superuser_token_headers,
     )
-    plan2 = client.get(
-        f"/api/v1/classes/{code}/today", headers=made["headers"]
-    ).json()
+    plan2 = client.get(f"/api/v1/classes/{code}/today", headers=made["headers"]).json()
     assert {i["type"] for i in plan2["items"]} == {"repeat", "question"}
     assert plan2["items"][0]["id"] != sentence_id  # 回到种子篇目的复述句

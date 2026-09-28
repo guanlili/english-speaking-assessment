@@ -150,9 +150,7 @@ def list_sentences_flat(session: SessionDep, _admin: TeacherUserDep) -> Any:
     sentences = session.exec(
         select(RepeatSentence).order_by(col(RepeatSentence.created_at))
     ).all()
-    passage_titles = dict(
-        session.exec(select(Passage.id, Passage.title)).all()
-    )
+    passage_titles = dict(session.exec(select(Passage.id, Passage.title)).all())
     return [
         SentenceWithPassage(
             **s.model_dump(),
@@ -174,9 +172,10 @@ def create_sentence_standalone(
     """
     if not 0 <= sentence.replay_limit <= 9:
         raise HTTPException(status_code=422, detail="可重听次数需在 0–9 之间（0=不限）")
-    if sentence.passage_id is not None and session.get(
-        Passage, sentence.passage_id
-    ) is None:
+    if (
+        sentence.passage_id is not None
+        and session.get(Passage, sentence.passage_id) is None
+    ):
         raise HTTPException(status_code=404, detail="Passage not found")
     session.add(sentence)
     session.commit()
