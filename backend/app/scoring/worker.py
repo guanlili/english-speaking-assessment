@@ -286,7 +286,9 @@ def recover_stale_attempts(session: Session) -> int:
     """
     cutoff = datetime.now(UTC).timestamp() - SCORING_STALE_TIMEOUT_S
     stale = session.exec(
-        select(Attempt).where(Attempt.status == AttemptStatus.SCORING)
+        select(Attempt)
+        .where(Attempt.status == AttemptStatus.SCORING)
+        .with_for_update(skip_locked=True)
     ).all()
     recovered = 0
     changed = False

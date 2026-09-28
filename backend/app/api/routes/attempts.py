@@ -157,6 +157,8 @@ def create_attempt_upload(
             select(Attempt).where(Attempt.idempotency_key == idempotency_key)
         ).first()
         if existing is not None:
+            # 幂等重传同样校验归属，防止拿到他人 idempotency_key 后越权读取作答
+            _require_student_submitter(existing.student_id, token)
             session.refresh(existing)
             return existing
 
@@ -248,6 +250,8 @@ def create_attempt_upload(
                 select(Attempt).where(Attempt.idempotency_key == idempotency_key)
             ).first()
             if existing is not None:
+                # 兜底分支同样校验归属，封死「预检查时未提交→撞唯一约束→拿到他人作答」路径
+                _require_student_submitter(existing.student_id, token)
                 return existing
         raise
 

@@ -375,20 +375,24 @@ SCORING_STALE_TIMEOUT_S = 120  # 超过此时间的 scoring 视为僵尸
 
 
 class Attempt(SQLModel, table=True):
+    __tablename__ = "attempt"
+    __table_args__ = (
+        # 幂等键唯一：同一次录音重传不重复创建作答/扣费（并发安全）
+        UniqueConstraint("idempotency_key", name="uq_attempt_idempotency_key"),
+    )
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     # 作答对象：passage（MVP 整篇跟读）/ repeat（复述句）/ question（情景问答）
     item_type: str = Field(default=AttemptItemType.PASSAGE, max_length=16, index=True)
     item_id: uuid.UUID = Field(index=True)
+    # board/trail/today/gamification 高频按学生与会话过滤，需索引
     student_id: uuid.UUID | None = Field(
-        default=None, foreign_key="student.id", ondelete="CASCADE"
+        default=None, foreign_key="student.id", ondelete="CASCADE", index=True
     )
     session_id: uuid.UUID | None = Field(
-        default=None, foreign_key="practice_session.id", ondelete="CASCADE"
+        default=None, foreign_key="practice_session.id", ondelete="CASCADE", index=True
     )
     # 幂等键：同一次录音重传不重复创建作答/扣费
-    idempotency_key: str | None = Field(
-        default=None, max_length=64, sa_column_kwargs={"unique": True}
-    )
+    idempotency_key: str | None = Field(default=None, max_length=64)
     # 服务端存储路径（随机文件名），不通过 API 暴露
     audio_path: str = Field(max_length=512)
     audio_mime: str = Field(default="audio/webm", max_length=100)
