@@ -482,16 +482,27 @@ function ClassroomPracticePage() {
                   </span>
                 </div>
 
-                <p className="prompt-display min-h-24">
-                  {hideText
-                    ? "原文已收起。试着回想刚刚听到的内容。"
-                    : currentItem.text}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {hideText
-                    ? "想不起来也没关系，随时可以重新看看。"
-                    : (currentItem.translation ?? itemHintZh)}
-                </p>
+                {currentItem.type === "repeat" ? (
+                  <p className="prompt-display min-h-24 text-muted-foreground">
+                    本题不显示文字。点下方「听示范」听语音，听完后复述出来。
+                  </p>
+                ) : (
+                  <>
+                    <p className="prompt-display min-h-24">
+                      {hideText
+                        ? "原文已收起。试着回想刚刚听到的内容。"
+                        : currentItem.text}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {hideText
+                        ? "想不起来也没关系，随时可以重新看看。"
+                        : (currentItem.translation ?? itemHintZh)}
+                    </p>
+                  </>
+                )}
+                {currentItem.type === "repeat" && (
+                  <p className="text-xs text-muted-foreground">{itemHintZh}</p>
+                )}
 
                 {currentItem.type === "repeat" ? (
                   <LimitedListenButton
@@ -511,7 +522,7 @@ function ClassroomPracticePage() {
                     audioUrl={currentItem.audio_url}
                   />
                 )}
-                {!isQuestion && (
+                {isPassage && (
                   <Button
                     variant="ghost"
                     size="sm"
