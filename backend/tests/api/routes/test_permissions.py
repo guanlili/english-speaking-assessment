@@ -604,9 +604,7 @@ def test_bulk_reset_passwords(
     joined1 = join_as(
         client, classroom["code"], create_student_user(db, "学生一"), "学生一"
     )
-    joined2 = join_as(
-        client, classroom["code"], create_student_user(db, "学生二"), "学生二"
-    )
+    join_as(client, classroom["code"], create_student_user(db, "学生二"), "学生二")
 
     reset = client.post(
         "/api/v1/students/bulk-reset-password",
