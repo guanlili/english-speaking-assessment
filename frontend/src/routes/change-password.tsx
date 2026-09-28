@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { APP_NAME } from "@/config"
-import { isLoggedIn, mustChangePassword } from "@/hooks/useAuth"
+import { isLoggedIn } from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { lastJoinedCode } from "@/lib/classroom-student"
 
@@ -74,17 +74,17 @@ function ChangePasswordPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-2xl">
               <KeyRound className="size-5 text-primary" />
-              {mustChangePassword() ? "首次登录，请修改密码" : "修改密码"}
+              修改密码
             </CardTitle>
             <CardDescription>
-              老师发放的是初始密码，改成只有你知道的密码后再开始练习
+              当前密码是默认密码或你上次设置的密码；改成只有你知道的密码
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={submit} className="space-y-4">
               <div className="space-y-2">
                 <label htmlFor="cur-pw" className="text-sm font-medium">
-                  当前密码（初始密码）
+                  当前密码（默认密码 brs123456）
                 </label>
                 <Input
                   id="cur-pw"
@@ -127,10 +127,10 @@ function ChangePasswordPage() {
                 className="h-12 w-full"
                 disabled={mutation.isPending}
               >
-                {mutation.isPending ? "提交中…" : "保存并继续"}
+                {mutation.isPending ? "提交中…" : "保存"}
               </Button>
             </form>
-            {isLoggedIn() && !mustChangePassword() && (
+            {isLoggedIn() && (
               <button
                 type="button"
                 className="mt-4 w-full text-center text-xs text-muted-underline text-muted-foreground hover:underline"

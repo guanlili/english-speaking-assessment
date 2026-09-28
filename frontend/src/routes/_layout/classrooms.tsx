@@ -5,11 +5,8 @@ import { useMemo, useState } from "react"
 import {
   ClassesService,
   type StudentImportResult,
-  type StudentsBulkResetPasswordsResponse,
   StudentsService,
 } from "@/client"
-
-type StudentBulkResetResult = StudentsBulkResetPasswordsResponse
 
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import { Badge } from "@/components/ui/badge"
@@ -375,28 +372,6 @@ function StudentImportDialog({
     onError: (error) => showErrorToast(`导入失败：${error.message}`),
   })
 
-  const exportCsv = () => {
-    if (!result) return
-    const rows = [
-      ["学号", "姓名", "初始密码", "是否绑定历史档案"],
-      ...result.rows.map((r) => [
-        r.username,
-        r.full_name,
-        r.initial_password ?? "",
-        r.merged_existing ? "是" : "否",
-      ]),
-    ]
-    const csv = rows.map((r) => r.join(",")).join("\n")
-    const url = URL.createObjectURL(
-      new Blob([`\ufeff${csv}`], { type: "text/csv" }),
-    )
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `学生初始密码-${classroomCode}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   return (
     <Dialog
       open={open}
@@ -412,8 +387,8 @@ function StudentImportDialog({
         <DialogHeader>
           <DialogTitle>导入学生（{classroomCode}）</DialogTitle>
           <DialogDescription>
-            每行「学号 姓名」（空格或制表符分隔）；系统生成初始密码，
-            与历史匿名学生同名时自动绑定其练习数据。初始密码仅显示一次，请导出保存。
+            每行「学号 姓名」（空格或制表符分隔）；账号初始密码统一为默认密码
+            brs123456，与历史匿名学生同名时自动绑定其练习数据。
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
@@ -450,11 +425,6 @@ function StudentImportDialog({
           )}
         </div>
         <DialogFooter className="flex-row gap-2">
-          {result && (
-            <Button variant="outline" onClick={exportCsv}>
-              导出初始密码 CSV
-            </Button>
-          )}
           <LoadingButton
             disabled={lines.length === 0}
             loading={mutation.isPending}
@@ -483,19 +453,15 @@ function StudentRosterDialog({
     queryFn: () => StudentsService.listStudents({ classroomId }),
     enabled: open,
   })
-  const [resetResult, setResetResult] = useState<string | null>(null)
   const [resetPwd, setResetPwd] = useState<string | null>(null)
-  const [bulkResult, setBulkResult] = useState<StudentBulkResetResult | null>(
-    null,
-  )
   const [bulkConfirm, setBulkConfirm] = useState(false)
+  const [bulkDone, setBulkDone] = useState<number | null>(null)
 
   const resetMutation = useMutation({
     mutationFn: (studentId: string) =>
       StudentsService.resetStudentPassword({ studentId }),
-    onSuccess: (data) => {
-      setResetResult(data.new_password)
-      showSuccessToast("已重置，请把新密码发给学生")
+    onSuccess: () => {
+      showSuccessToast("已重置为默认密码 brs123456")
     },
     onError: (error) => showErrorToast(`重置失败：${error.message}`),
   })
@@ -503,32 +469,11 @@ function StudentRosterDialog({
   const bulkResetMutation = useMutation({
     mutationFn: () => StudentsService.bulkResetPasswords({ classroomId }),
     onSuccess: (res) => {
-      setBulkResult(res)
-      showSuccessToast(`已重置 ${res.reset} 个账号，请导出新密码`)
+      setBulkDone(res.reset)
+      showSuccessToast(`已重置 ${res.reset} 个账号为默认密码 brs123456`)
     },
     onError: (error) => showErrorToast(`批量重置失败：${error.message}`),
   })
-
-  const exportBulkCsv = () => {
-    if (!bulkResult) return
-    const rows = [
-      ["学号", "姓名", "新初始密码"],
-      ...bulkResult.rows.map((r) => [
-        r.username,
-        r.full_name ?? "",
-        r.new_password,
-      ]),
-    ]
-    const csv = rows.map((r) => r.join(",")).join("\n")
-    const url = URL.createObjectURL(
-      new Blob([`\ufeff${csv}`], { type: "text/csv" }),
-    )
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `学生新初始密码-${classroomId.slice(0, 8)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
 
   const removeMutation = useMutation({
     mutationFn: (studentId: string) =>
@@ -549,41 +494,26 @@ function StudentRosterDialog({
         <DialogHeader>
           <DialogTitle>学生名单</DialogTitle>
           <DialogDescription>
-            学号账号与改密状态；重置密码生成新初始密码（仅显示一次）。
+            学号账号与状态；忘记密码时重置为默认密码 brs123456。
           </DialogDescription>
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
-              初始密码 CSV 丢了？可全部重置后重新导出（旧密码立即失效）。
+              学生可自行修改密码；重置后已修改的密码会被覆盖回默认。
             </p>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setBulkConfirm(true)}
             >
-              全部重置并导出
+              全部重置为默认密码
             </Button>
           </div>
-          {bulkResult && (
+          {bulkDone !== null && (
             <div className="rounded-md border bg-muted/40 p-3 text-sm">
-              已重置 {bulkResult.reset} 个账号。
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-2"
-                onClick={exportBulkCsv}
-              >
-                导出新密码 CSV
-              </Button>
+              已重置 {bulkDone} 个账号为默认密码 brs123456。
             </div>
           )}
         </DialogHeader>
-        {resetResult && (
-          <div className="rounded-md border bg-muted/40 p-3 text-sm">
-            新初始密码：
-            <span className="font-mono font-semibold">{resetResult}</span>
-            （仅显示一次，请立即转告学生）
-          </div>
-        )}
         {rosterQuery.isPending ? (
           <Skeleton className="h-40 w-full" />
         ) : students.length === 0 ? (
@@ -596,7 +526,6 @@ function StudentRosterDialog({
               <TableRow>
                 <TableHead>姓名</TableHead>
                 <TableHead>学号</TableHead>
-                <TableHead>状态</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -609,17 +538,6 @@ function StudentRosterDialog({
                   <TableCell className="font-mono">
                     {s.username ?? "—"}
                   </TableCell>
-                  <TableCell>
-                    {s.username ? (
-                      s.must_change_password ? (
-                        <Badge variant="secondary">待改密</Badge>
-                      ) : (
-                        <Badge variant="outline">正常</Badge>
-                      )
-                    ) : (
-                      <Badge variant="secondary">未绑账号</Badge>
-                    )}
-                  </TableCell>
                   <TableCell className="text-right">
                     {s.username && (
                       <div className="flex justify-end gap-1">
@@ -627,8 +545,8 @@ function StudentRosterDialog({
                           variant="ghost"
                           size="icon-sm"
                           aria-label="重置密码"
+                          disabled={resetMutation.isPending}
                           onClick={() => {
-                            setResetResult(null)
                             setResetPwd(s.student.id)
                             resetMutation.mutate(s.student.id)
                           }}
@@ -653,7 +571,7 @@ function StudentRosterDialog({
         )}
       </DialogContent>
       <ConfirmDialog
-        open={resetPwd !== null && resetResult === null}
+        open={resetPwd !== null && !resetMutation.isPending}
         title="把该学生移出课堂？"
         description="仅解除账号与课堂的绑定；练习档案与作答历史保留，重新导入相同学号可找回。"
         confirmText="移出课堂"
@@ -665,12 +583,19 @@ function StudentRosterDialog({
         }}
       />
 
-      <Dialog open={bulkConfirm} onOpenChange={setBulkConfirm}>
+      <Dialog
+        open={bulkConfirm}
+        onOpenChange={(v) => {
+          setBulkConfirm(v)
+          if (!v) setBulkDone(null)
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>重置全部学生密码？</DialogTitle>
+            <DialogTitle>全部重置为默认密码？</DialogTitle>
             <DialogDescription>
-              课堂内全部已绑定账号的密码将立即失效，生成新初始密码（学生下次登录需改密）。确定继续？
+              课堂内全部已绑定账号的密码将统一重置为默认密码
+              brs123456（学生自行修改过的密码也会被覆盖）。确定继续？
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

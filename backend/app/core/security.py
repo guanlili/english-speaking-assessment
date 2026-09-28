@@ -45,12 +45,8 @@ def get_password_hash(password: str) -> str:
     return password_hash.hash(password)
 
 
-def generate_initial_password() -> str:
-    """学生批量导入的初始密码：12 位可读随机串（避开易混淆字符）。"""
-    import secrets
-
-    alphabet = "23456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ"
-    return "".join(secrets.choice(alphabet) for _ in range(12))
+# 学生账号统一默认密码（学校统一发放，学生登录后可自行修改）
+DEFAULT_STUDENT_PASSWORD = "brs123456"
 
 
 # 密码哈希摘要：导入去重与日志脱敏共用（不存明文）
