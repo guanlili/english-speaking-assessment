@@ -172,6 +172,10 @@ class RepeatSentence(SQLModel, table=True):
     translation: str | None = Field(default=None, max_length=1024)
     audio_url: str | None = Field(default=None, max_length=1024)
     suggested_seconds: int = Field(default=8, ge=3, le=60)
+    # 听句复述可重听次数：0=不限，默认 3；服务端按学生×会话×题目计数防刷
+    replay_limit: int = Field(
+        default=3, ge=0, le=9, sa_column_kwargs={"server_default": "3"}
+    )
 
 
 # 情景主题（来自 EIP），同主题一组问法分属低/中/高档（PRD §8.4）
@@ -234,6 +238,10 @@ class Classroom(SQLModel, table=True):
     current_unit_id: uuid.UUID | None = Field(
         default=None, foreign_key="unit.id", ondelete="SET NULL"
     )
+    # 题型指派：本轮包含的题型（专项训练）；NULL=包含（默认三种全有）
+    assign_reading: bool | None = Field(default=None)
+    assign_repeat: bool | None = Field(default=None)
+    assign_qa: bool | None = Field(default=None)
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -247,7 +255,26 @@ class ClassroomPublic(SQLModel):
     is_active: bool
     unlock_all: bool = False
     owner_id: uuid.UUID | None = None
+    assign_reading: bool | None = None
+    assign_repeat: bool | None = None
+    assign_qa: bool | None = None
     created_at: datetime | None = None
+
+
+# 听句复述的播放计数（防刷）：一个学生一轮里对一道题听了多少次标准音
+class ItemListen(SQLModel, table=True):
+    __tablename__ = "item_listen"
+    __table_args__ = (
+        UniqueConstraint(
+            "student_id", "session_id", "item_id", name="uq_item_listen_scope"
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    student_id: uuid.UUID = Field(foreign_key="student.id", ondelete="CASCADE")
+    session_id: uuid.UUID = Field(foreign_key="practice_session.id", ondelete="CASCADE")
+    item_id: uuid.UUID = Field(index=True)
+    count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
 
 
 class ClassroomCreate(SQLModel):
@@ -473,13 +500,16 @@ class AttemptPublic(SQLModel):
 
 # 今日练习计划（GET /classes/{code}/today）：3 句复述 + 2 道该档问答
 class PlanItem(SQLModel):
-    type: str  # repeat | question
+    type: str  # passage（整篇朗读）| repeat | question
     id: uuid.UUID
     text: str
     translation: str | None = None
     audio_url: str | None = None
     suggested_seconds: int
     band: str | None = None
+    # 听句复述的可重听次数与已听次数（仅 repeat 项；0=不限）
+    replay_limit: int | None = None
+    listen_used: int | None = None
 
 
 class PlanAttempt(SQLModel):
@@ -516,6 +546,10 @@ class AssignmentInfo(SQLModel):
     title: str
     # 指派前完整性检查：该单元当前的启用篇目数
     passage_count: int = 0
+    # 本轮题型勾选（None=默认：复述/问答含、朗读不含）
+    assign_reading: bool | None = None
+    assign_repeat: bool | None = None
+    assign_qa: bool | None = None
 
 
 class LearningPath(SQLModel):

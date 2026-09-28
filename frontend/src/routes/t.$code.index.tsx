@@ -10,7 +10,7 @@ import {
   Sparkles,
   Target,
 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import type { BoardStudent } from "@/client"
 import { ApiError, ClassesService } from "@/client"
@@ -25,6 +25,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Table,
   TableBody,
@@ -78,11 +79,33 @@ function TeacherBoardPage() {
       ClassesService.listUnitsForClass({ code: code.toUpperCase() }),
   })
 
+  // 题型勾选（NULL=默认：复述/问答含、朗读不含）
+  const [types, setTypes] = useState({
+    reading: false,
+    repeat: true,
+    qa: true,
+  })
+  useEffect(() => {
+    if (unitsQuery.data && unitsQuery.data.length > 0) {
+      const u = unitsQuery.data[0]
+      setTypes({
+        reading: u.assign_reading === true,
+        repeat: u.assign_repeat !== false,
+        qa: u.assign_qa !== false,
+      })
+    }
+  }, [unitsQuery.data])
+
   const assignMutation = useMutation({
     mutationFn: (unitId: string | null) =>
       ClassesService.setAssignment({
         code: code.toUpperCase(),
-        requestBody: { unit_id: unitId },
+        requestBody: {
+          unit_id: unitId,
+          assign_reading: types.reading,
+          assign_repeat: types.repeat,
+          assign_qa: types.qa,
+        },
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teacher", "board", code] })
@@ -342,6 +365,34 @@ function TeacherBoardPage() {
                 未指派（学生按个人关卡进度练习）
               </span>
             )}
+          </CardContent>
+          <CardContent className="flex flex-wrap items-center gap-4 border-t pt-4">
+            <span className="text-xs font-semibold text-muted-foreground">
+              本轮题型
+            </span>
+            {(
+              [
+                ["reading", "整篇朗读"],
+                ["repeat", "听句复述"],
+                ["qa", "情景问答"],
+              ] as const
+            ).map(([key, label]) => (
+              <label
+                key={key}
+                className="flex cursor-pointer items-center gap-1.5 text-sm"
+              >
+                <Checkbox
+                  checked={types[key]}
+                  onCheckedChange={(v) =>
+                    setTypes((t) => ({ ...t, [key]: v === true }))
+                  }
+                />
+                {label}
+              </label>
+            ))}
+            <span className="text-xs text-muted-foreground">
+              勾选后需重新点上方单元生效；全不勾时学生无内容，请至少保留一种
+            </span>
           </CardContent>
         </Card>
 

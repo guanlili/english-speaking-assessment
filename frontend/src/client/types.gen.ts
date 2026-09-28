@@ -4,10 +4,16 @@ export type AssignmentInfo = {
     unit_id: string;
     title: string;
     passage_count?: number;
+    assign_reading?: (boolean | null);
+    assign_repeat?: (boolean | null);
+    assign_qa?: (boolean | null);
 };
 
 export type AssignmentRequest = {
-    unit_id: (string | null);
+    unit_id?: (string | null);
+    assign_reading?: (boolean | null);
+    assign_repeat?: (boolean | null);
+    assign_qa?: (boolean | null);
 };
 
 export type AttemptPublic = {
@@ -167,6 +173,9 @@ export type ClassroomPublic = {
     is_active: boolean;
     unlock_all?: boolean;
     owner_id?: (string | null);
+    assign_reading?: (boolean | null);
+    assign_repeat?: (boolean | null);
+    assign_qa?: (boolean | null);
     created_at?: (string | null);
 };
 
@@ -212,6 +221,16 @@ export type LearningPath = {
     unlock_all: boolean;
     assignment?: (AssignmentInfo | null);
     units: Array<PathUnit>;
+};
+
+export type ListenRequest = {
+    session_id: string;
+    item_id: string;
+};
+
+export type ListenResult = {
+    listen_used: number;
+    replay_limit: number;
 };
 
 export type LoginOptions = {
@@ -315,6 +334,8 @@ export type PlanItem = {
     audio_url?: (string | null);
     suggested_seconds: number;
     band?: (string | null);
+    replay_limit?: (number | null);
+    listen_used?: (number | null);
 };
 
 export type PrivateUserCreate = {
@@ -355,6 +376,7 @@ export type RepeatSentence = {
     translation?: (string | null);
     audio_url?: (string | null);
     suggested_seconds?: number;
+    replay_limit?: number;
 };
 
 export type Scenario = {
@@ -864,6 +886,13 @@ export type ClassesReadLearningPathData = {
 };
 
 export type ClassesReadLearningPathResponse = (LearningPath);
+
+export type ClassesRecordListenData = {
+    code: string;
+    requestBody: ListenRequest;
+};
+
+export type ClassesRecordListenResponse = (ListenResult);
 
 export type ClassesListUnitsForClassData = {
     code: string;

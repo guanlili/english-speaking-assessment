@@ -46,6 +46,7 @@ from app.models import (
     ClassroomCreate,
     ClassroomPublic,
     GamificationInfo,
+    ItemListen,
     LearningPath,
     NextQuestion,
     Passage,
@@ -214,6 +215,15 @@ def _student_profile_of(
     return student
 
 
+def _include_type(classroom: Classroom, kind: str) -> bool:
+    """本轮是否包含某题型。复述/问答默认包含（NULL/True）；朗读是新题型，默认不含。"""
+    if kind == "reading":
+        return classroom.assign_reading is True
+    if kind == "repeat":
+        return classroom.assign_repeat is not False
+    return classroom.assign_qa is not False
+
+
 def _require_classroom_teacher(classroom: Classroom, current_user: User) -> None:
     """教师端点：本人是指派教师或管理员才能访问（课堂码不能当教师凭据）。"""
     if current_user.is_superuser:
@@ -366,7 +376,7 @@ def _question_band_for_session(
         passage = _active_passage(session, student)
     if passage is None:
         return practice_session.band
-    sentences = session.exec(
+    sentences: list[RepeatSentence] = session.exec(  # type: ignore[assignment]
         select(RepeatSentence)
         .where(RepeatSentence.passage_id == passage.id)
         .order_by(col(RepeatSentence.order_index))
@@ -421,21 +431,60 @@ def read_today_plan(
             today=today,
             passage_id=passage.id,
         )
-    sentences = session.exec(
-        select(RepeatSentence)
-        .where(RepeatSentence.passage_id == passage.id)
-        .order_by(col(RepeatSentence.order_index))
-    ).all()
-    if not sentences:
-        raise HTTPException(status_code=404, detail="No repeat sentences configured")
-    scenario = _scenario_for_topic(session, passage.topic)
+    include_reading = _include_type(classroom, "reading")
+    include_repeat = _include_type(classroom, "repeat")
+    include_qa = _include_type(classroom, "qa")
 
-    band = _question_band_for_session(session, practice_session, student)
-    questions, exhausted = _pick_questions(
-        session, scenario, band, student.id, QUESTIONS_PER_ROUND
-    )
+    sentences: list[RepeatSentence] = []
+    if include_repeat:
+        sentences = list(
+            session.exec(
+                select(RepeatSentence)
+                .where(RepeatSentence.passage_id == passage.id)
+                .order_by(col(RepeatSentence.order_index))
+            ).all()
+        )
+        if not sentences:
+            raise HTTPException(
+                status_code=404, detail="No repeat sentences configured"
+            )
 
-    items = [
+    questions: list = []
+    exhausted = False
+    band = practice_session.question_band or practice_session.band
+    if include_qa:
+        scenario = _scenario_for_topic(session, passage.topic)
+        band = _question_band_for_session(session, practice_session, student)
+        questions, exhausted = _pick_questions(
+            session, scenario, band, student.id, QUESTIONS_PER_ROUND
+        )
+
+    # 复述句的重听计数（学生×本轮×题目）
+    listen_counts: dict[uuid.UUID, int] = {}
+    if sentences:
+        listens = session.exec(
+            select(ItemListen).where(
+                ItemListen.student_id == student.id,  # type: ignore[arg-type]
+                ItemListen.session_id == practice_session.id,  # type: ignore[arg-type]
+                col(ItemListen.item_id).in_([s.id for s in sentences]),  # type: ignore[operator]
+            )
+        ).all()
+        listen_counts = {ln.item_id: ln.count for ln in listens}
+
+    items: list[PlanItem] = []
+    if include_reading:
+        # 朗读题：整篇读一遍出总评（新题型，指派勾选后进入轮次）
+        items.append(
+            PlanItem(
+                type=AttemptItemType.PASSAGE,
+                id=passage.id,
+                text=passage.text,
+                translation=passage.translation,
+                audio_url=passage.audio_url,
+                suggested_seconds=passage.suggested_seconds,
+            )
+        )
+    items += [
         PlanItem(
             type=AttemptItemType.REPEAT,
             id=s.id,
@@ -443,9 +492,12 @@ def read_today_plan(
             translation=s.translation,
             audio_url=s.audio_url,
             suggested_seconds=s.suggested_seconds,
+            replay_limit=s.replay_limit,
+            listen_used=listen_counts.get(s.id, 0),
         )
         for s in sentences
-    ] + [
+    ]
+    items += [
         PlanItem(
             type=AttemptItemType.QUESTION,
             id=q.id,
@@ -587,12 +639,18 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
     if board_passage is None:
         board_passage = _active_passage(session)
 
-    # 题目骨架：当前篇目的 3 句复述
-    sentences = session.exec(
-        select(RepeatSentence)
-        .where(RepeatSentence.passage_id == board_passage.id)
-        .order_by(col(RepeatSentence.order_index))
-    ).all()
+    # 题目骨架：按指派题型裁剪（复述默认含；朗读勾选后含）
+    include_reading = _include_type(classroom, "reading")
+    include_repeat = _include_type(classroom, "repeat")
+    sentences: list[RepeatSentence] = []
+    if include_repeat:
+        sentences = list(
+            session.exec(
+                select(RepeatSentence)
+                .where(RepeatSentence.passage_id == board_passage.id)
+                .order_by(col(RepeatSentence.order_index))
+            ).all()
+        )
     skeleton = [
         BoardItem(
             item_id=s.id,
@@ -691,6 +749,37 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             for attempt in attempts:
                 latest[attempt.item_id] = attempt
 
+            # 朗读题位（勾选指派才有）
+            if include_reading:
+                attempt = latest.get(board_passage.id)
+                if attempt is None:
+                    items.append(
+                        BoardItem(
+                            item_id=board_passage.id,
+                            type=AttemptItemType.PASSAGE,
+                            status="missing",
+                        )
+                    )
+                else:
+                    if attempt.status in (
+                        AttemptStatus.QUEUED,
+                        AttemptStatus.SCORING,
+                    ):
+                        has_pending = True
+                    if (
+                        attempt.status == AttemptStatus.DONE
+                        and attempt.overall is not None
+                    ):
+                        repeat_scores.append(attempt.overall)
+                    items.append(
+                        BoardItem(
+                            item_id=board_passage.id,
+                            type=AttemptItemType.PASSAGE,
+                            status=attempt.status,
+                            overall=attempt.overall,
+                            attempt_id=attempt.id,
+                        )
+                    )
             # 骨架顺序：复述句
             for s in sentences:
                 attempt = latest.get(s.id)
@@ -717,9 +806,20 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                         attempt_id=attempt.id,
                     )
                 )
-            # 问答（每个学生的题可能不同）
+            # 问答（每个学生的题可能不同；未指派问答时旧作答仅展示不计分）
             for item_id, attempt in latest.items():
                 if attempt.item_type != AttemptItemType.QUESTION:
+                    continue
+                if not _include_type(classroom, "qa"):
+                    items.append(
+                        BoardItem(
+                            item_id=item_id,
+                            type=AttemptItemType.QUESTION,
+                            status=attempt.status,
+                            overall=attempt.overall,
+                            attempt_id=attempt.id,
+                        )
+                    )
                     continue
                 if attempt.status in (AttemptStatus.QUEUED, AttemptStatus.SCORING):
                     has_pending = True
@@ -1041,7 +1141,74 @@ def read_learning_path(
 
 
 class AssignmentRequest(SQLModel):
-    unit_id: uuid.UUID | None  # None = 清除指派，回到个人路径
+    # 不传 unit_id = 不动当前单元；显式 null = 清除指派回个人路径
+    unit_id: uuid.UUID | None = None
+    # 题型勾选（不传=不改；朗读默认不含，复述/问答默认含）
+    assign_reading: bool | None = None
+    assign_repeat: bool | None = None
+    assign_qa: bool | None = None
+
+
+class ListenRequest(SQLModel):
+    session_id: uuid.UUID
+    item_id: uuid.UUID
+
+
+class ListenResult(SQLModel):
+    listen_used: int
+    replay_limit: int  # 0 = 不限
+
+
+@router.post("/{code}/listens", response_model=ListenResult)
+def record_listen(
+    session: SessionDep,
+    current_user: StudentUserDep,
+    code: str,
+    body: ListenRequest,
+) -> Any:
+    """听句复述播放计数：学生每听一次标准音 +1，超过可重听次数返回 422。
+
+    防刷口径：按 学生×本轮×题目 在库计数（前端禁播为体验层，真源在这里）。
+    """
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(session, classroom, current_user)
+    practice_session = session.get(PracticeSession, body.session_id)
+    if practice_session is None or practice_session.student_id != student.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    sentence = session.get(RepeatSentence, body.item_id)
+    if sentence is None:
+        raise HTTPException(status_code=404, detail="Sentence not found")
+    if (
+        practice_session.passage_id is None
+        or sentence.passage_id != practice_session.passage_id
+    ):
+        raise HTTPException(status_code=422, detail="该句不在本轮篇目内")
+
+    row = session.exec(
+        select(ItemListen).where(
+            ItemListen.student_id == student.id,  # type: ignore[arg-type]
+            ItemListen.session_id == practice_session.id,  # type: ignore[arg-type]
+            ItemListen.item_id == sentence.id,  # type: ignore[arg-type]
+        )
+    ).first()
+    used = (row.count if row else 0) + 1
+    if sentence.replay_limit > 0 and used > sentence.replay_limit:
+        raise HTTPException(
+            status_code=422,
+            detail=f"可重听次数已用完（{sentence.replay_limit} 次）",
+        )
+    if row is None:
+        row = ItemListen(
+            student_id=student.id,
+            session_id=practice_session.id,
+            item_id=sentence.id,
+            count=used,
+        )
+    else:
+        row.count = used
+    session.add(row)
+    session.commit()
+    return ListenResult(listen_used=used, replay_limit=sentence.replay_limit)
 
 
 @router.get("/{code}/units", response_model=list[AssignmentInfo])
@@ -1069,6 +1236,9 @@ def list_units_for_class(
             unit_id=u.id,
             title=u.title,
             passage_count=counts.get(u.id, 0),
+            assign_reading=classroom.assign_reading,
+            assign_repeat=classroom.assign_repeat,
+            assign_qa=classroom.assign_qa,
         )
         for u in units
     ]
@@ -1087,18 +1257,36 @@ def set_assignment(
     """
     classroom = _get_classroom(session, code)
     _require_classroom_teacher(classroom, current_user)
-    if body.unit_id is None:
-        classroom.current_unit_id = None
+    # 题型勾选：显式传值才更新（None=不动）
+    if body.assign_reading is not None:
+        classroom.assign_reading = body.assign_reading
+    if body.assign_repeat is not None:
+        classroom.assign_repeat = body.assign_repeat
+    if body.assign_qa is not None:
+        classroom.assign_qa = body.assign_qa
+    body_update = body.model_dump(exclude_unset=True)
+    if "unit_id" in body_update:
+        if body_update["unit_id"] is None:
+            classroom.current_unit_id = None
+            session.add(classroom)
+            session.commit()
+            return None
+        unit = session.get(Unit, body_update["unit_id"])
+        if unit is None or not unit.is_active:
+            raise HTTPException(status_code=404, detail="Unit not found")
+        classroom.current_unit_id = unit.id
         session.add(classroom)
         session.commit()
-        return None
-    unit = session.get(Unit, body.unit_id)
-    if unit is None or not unit.is_active:
-        raise HTTPException(status_code=404, detail="Unit not found")
-    classroom.current_unit_id = unit.id
+        return AssignmentInfo(unit_id=unit.id, title=unit.title)
+    # 只改题型勾选（未动单元）：返回当前指派单元
     session.add(classroom)
     session.commit()
-    return AssignmentInfo(unit_id=unit.id, title=unit.title)
+    if classroom.current_unit_id is None:
+        return None
+    current = session.get(Unit, classroom.current_unit_id)
+    if current is None:
+        return None
+    return AssignmentInfo(unit_id=current.id, title=current.title)
 
 
 class ExploreRequest(SQLModel):
