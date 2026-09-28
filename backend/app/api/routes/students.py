@@ -231,3 +231,63 @@ def remove_student(
     session.add(student)
     session.commit()
     return {"message": "已移出课堂（档案与历史保留，重新导入可找回）"}
+
+
+class StudentResetRow(SQLModel):
+    username: str
+    full_name: str | None = None
+    student_id: uuid.UUID
+    new_password: str
+
+
+class BulkResetResult(SQLModel):
+    reset: int
+    rows: list[StudentResetRow]
+
+
+@router.post("/bulk-reset-password", response_model=BulkResetResult)
+def bulk_reset_passwords(
+    session: SessionDep,
+    current_user: TeacherUserDep,
+    classroom_id: uuid.UUID = Query(...),
+) -> Any:
+    """批量重置课堂内全部已绑定账号的密码（初始密码 CSV 丢失后的补救）。
+
+    生成新初始密码并置改密标记；新密码仅本次响应返回一次。
+    """
+    classroom = _get_classroom_in_scope(session, current_user, classroom_id)
+    students = session.exec(
+        select(Student)
+        .where(
+            Student.classroom_id == classroom.id,  # type: ignore[arg-type]
+            col(Student.user_id).is_not(None),
+        )
+        .order_by(col(Student.display_name))
+    ).all()
+    user_ids = [s.user_id for s in students if s.user_id is not None]
+    users_by_id = {
+        u.id: u
+        for u in session.exec(
+            select(User).where(col(User.id).in_(user_ids))  # type: ignore[operator]
+        ).all()
+    }
+    result = BulkResetResult(reset=0, rows=[])
+    for s in students:
+        user = users_by_id.get(s.user_id) if s.user_id else None
+        if user is None:
+            continue
+        password = generate_initial_password()
+        user.hashed_password = get_password_hash(password)
+        user.must_change_password = True
+        session.add(user)
+        result.rows.append(
+            StudentResetRow(
+                username=user.username or "",
+                full_name=user.full_name,
+                student_id=s.id,
+                new_password=password,
+            )
+        )
+        result.reset += 1
+    session.commit()
+    return result

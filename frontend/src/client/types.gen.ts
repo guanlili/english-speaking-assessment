@@ -151,6 +151,11 @@ export type Body_login_login_access_token = {
     client_secret?: (string | null);
 };
 
+export type BulkResetResult = {
+    reset: number;
+    rows: Array<StudentResetRow>;
+};
+
 export type ClassroomCreate = {
     class_size?: number;
 };
@@ -439,6 +444,13 @@ export type StudentPublic = {
     current_band: string;
     classroom_id: string;
     user_id?: (string | null);
+};
+
+export type StudentResetRow = {
+    username: string;
+    full_name?: (string | null);
+    student_id: string;
+    new_password: string;
 };
 
 export type TodayPlan = {
@@ -938,6 +950,12 @@ export type StudentsRemoveStudentData = {
 export type StudentsRemoveStudentResponse = ({
     [key: string]: (string);
 });
+
+export type StudentsBulkResetPasswordsData = {
+    classroomId: string;
+};
+
+export type StudentsBulkResetPasswordsResponse = (BulkResetResult);
 
 export type UsersReadUsersData = {
     limit?: number;

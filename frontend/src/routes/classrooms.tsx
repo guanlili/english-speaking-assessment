@@ -5,8 +5,12 @@ import { useMemo, useState } from "react"
 import {
   ClassesService,
   type StudentImportResult,
+  type StudentsBulkResetPasswordsResponse,
   StudentsService,
 } from "@/client"
+
+type StudentBulkResetResult = StudentsBulkResetPasswordsResponse
+
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -400,6 +404,10 @@ function StudentRosterDialog({
   })
   const [resetResult, setResetResult] = useState<string | null>(null)
   const [resetPwd, setResetPwd] = useState<string | null>(null)
+  const [bulkResult, setBulkResult] = useState<StudentBulkResetResult | null>(
+    null,
+  )
+  const [bulkConfirm, setBulkConfirm] = useState(false)
 
   const resetMutation = useMutation({
     mutationFn: (studentId: string) =>
@@ -410,6 +418,36 @@ function StudentRosterDialog({
     },
     onError: (error) => showErrorToast(`重置失败：${error.message}`),
   })
+
+  const bulkResetMutation = useMutation({
+    mutationFn: () => StudentsService.bulkResetPasswords({ classroomId }),
+    onSuccess: (res) => {
+      setBulkResult(res)
+      showSuccessToast(`已重置 ${res.reset} 个账号，请导出新密码`)
+    },
+    onError: (error) => showErrorToast(`批量重置失败：${error.message}`),
+  })
+
+  const exportBulkCsv = () => {
+    if (!bulkResult) return
+    const rows = [
+      ["学号", "姓名", "新初始密码"],
+      ...bulkResult.rows.map((r) => [
+        r.username,
+        r.full_name ?? "",
+        r.new_password,
+      ]),
+    ]
+    const csv = rows.map((r) => r.join(",")).join("\n")
+    const url = URL.createObjectURL(
+      new Blob([`\ufeff${csv}`], { type: "text/csv" }),
+    )
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `学生新初始密码-${classroomId.slice(0, 8)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const removeMutation = useMutation({
     mutationFn: (studentId: string) =>
@@ -432,6 +470,31 @@ function StudentRosterDialog({
           <DialogDescription>
             学号账号与改密状态；重置密码生成新初始密码（仅显示一次）。
           </DialogDescription>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              初始密码 CSV 丢了？可全部重置后重新导出（旧密码立即失效）。
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkConfirm(true)}
+            >
+              全部重置并导出
+            </Button>
+          </div>
+          {bulkResult && (
+            <div className="rounded-md border bg-muted/40 p-3 text-sm">
+              已重置 {bulkResult.reset} 个账号。
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-2"
+                onClick={exportBulkCsv}
+              >
+                导出新密码 CSV
+              </Button>
+            </div>
+          )}
         </DialogHeader>
         {resetResult && (
           <div className="rounded-md border bg-muted/40 p-3 text-sm">
@@ -520,6 +583,31 @@ function StudentRosterDialog({
           if (resetPwd) await removeMutation.mutateAsync(resetPwd)
         }}
       />
+
+      <Dialog open={bulkConfirm} onOpenChange={setBulkConfirm}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>重置全部学生密码？</DialogTitle>
+            <DialogDescription>
+              课堂内全部已绑定账号的密码将立即失效，生成新初始密码（学生下次登录需改密）。确定继续？
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkConfirm(false)}>
+              取消
+            </Button>
+            <LoadingButton
+              loading={bulkResetMutation.isPending}
+              onClick={() => {
+                bulkResetMutation.mutate()
+                setBulkConfirm(false)
+              }}
+            >
+              重置全部
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }
