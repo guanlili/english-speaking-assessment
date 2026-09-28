@@ -594,6 +594,24 @@ function PassageCard({
       toast.error(err.body?.detail ?? "拆分失败"),
   })
 
+  const [splitConfirm, setSplitConfirm] = useState(false)
+  const splitPassage = useMutation({
+    mutationFn: () =>
+      AdminService.splitPassageIntoReadings({ passageId: passage.id }),
+    onSuccess: (data) => {
+      toast.success(
+        `已拆分为 ${data.created} 篇朗读材料，原长文已停用（可再启用）`,
+      )
+      setSplitConfirm(false)
+      onMutated()
+    },
+    onError: (err: { body?: { detail?: string } }) =>
+      toast.error(err.body?.detail ?? "拆分失败"),
+  })
+  const paragraphCount = (passage.text ?? "")
+    .split(/\n+/)
+    .filter((p) => p.trim()).length
+
   return (
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
@@ -621,6 +639,22 @@ function PassageCard({
           >
             {expanded ? "收起" : mode === "repeat" ? "管理复述句" : "查看文章"}
           </Button>
+          {mode === "reading" && passage.is_active !== false && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={paragraphCount < 2 || splitPassage.isPending}
+              title={
+                paragraphCount < 2
+                  ? "正文只有一个段落：请先用换行分段，再拆分"
+                  : "按段落拆成多篇朗读材料，原长文停用"
+              }
+              onClick={() => setSplitConfirm(true)}
+            >
+              <Scissors />
+              拆分为多篇
+            </Button>
+          )}
           <AudioSetter
             hasAudio={Boolean(passage.audio_url)}
             text={passage.text ?? ""}
@@ -799,6 +833,19 @@ function PassageCard({
           )}
         </CardContent>
       )}
+
+      <ConfirmDialog
+        open={splitConfirm}
+        title={`把「${passage.title}」拆分为多篇朗读材料？`}
+        description={`按段落拆成 ${paragraphCount} 篇（超长段会再按句聚合），新篇沿用标题、主题与分组并自动编号；原长文将停用，历史与挂靠的复述句保留。`}
+        confirmText="拆分"
+        onOpenChange={(next) => {
+          if (!next) setSplitConfirm(false)
+        }}
+        onConfirm={async () => {
+          await splitPassage.mutateAsync()
+        }}
+      />
 
       <ConfirmDialog
         open={sentenceToDelete !== null}
