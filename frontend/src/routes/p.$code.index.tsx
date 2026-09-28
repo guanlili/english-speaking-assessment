@@ -817,6 +817,7 @@ function LimitedListenButton({
   initialUsed: number
 }) {
   const [used, setUsed] = useState(initialUsed)
+  const [rate, setRate] = useState("1")
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const unlimited = replayLimit === 0
   const remaining = unlimited ? Infinity : Math.max(0, replayLimit - used)
@@ -829,7 +830,10 @@ function LimitedListenButton({
     if (!counted) return
     setUsed((u) => u + 1)
     if (audioUrl) {
-      audioRef.current?.play()
+      if (audioRef.current) {
+        audioRef.current.playbackRate = Number(rate)
+        void audioRef.current.play()
+      }
       return
     }
     // TTS 兜底：浏览器合成没有服务端文件，仍走计数
@@ -838,6 +842,11 @@ function LimitedListenButton({
     synth.cancel()
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.lang = "en-US"
+    utterance.rate = Number(rate)
+    const voice = synth.getVoices().find((v) => v.lang.startsWith("en"))
+    if (voice) {
+      utterance.voice = voice
+    }
     synth.speak(utterance)
   }
 
@@ -884,6 +893,18 @@ function LimitedListenButton({
       <span className="text-xs text-muted-foreground">
         {unlimited ? "重听不限次" : `还可重听 ${remaining} 次`}
       </span>
+      <label className="sr-only" htmlFor={`listen-rate-${itemId}`}>
+        示范语速
+      </label>
+      <select
+        id={`listen-rate-${itemId}`}
+        value={rate}
+        onChange={(e) => setRate(e.target.value)}
+        className="h-9 rounded-lg border border-border bg-card px-2 text-xs text-muted-foreground"
+      >
+        <option value="0.8">慢速 0.8×</option>
+        <option value="1">正常 1.0×</option>
+      </select>
     </div>
   )
 }
