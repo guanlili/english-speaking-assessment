@@ -243,3 +243,74 @@ def test_teacher_can_manage_content_but_not_classrooms(
         f"/api/v1/admin/units/{unit.json()['id']}",
     ):
         client.delete(path, headers=superuser_token_headers)
+
+
+def test_assigned_multi_passage_reading(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """指派组内多篇启用篇目：长文拆段后各自成为一道朗读题（按创建顺序）。"""
+    classroom = _classroom(client, superuser_token_headers)
+    made = make_student(db, client, classroom["code"], "拆段学生")
+    code = classroom["code"]
+
+    units = client.get("/api/v1/admin/units", headers=superuser_token_headers).json()
+    unit = next(u for u in units if u["passage_count"] >= 1)
+
+    second = client.post(
+        "/api/v1/admin/passages",
+        json={
+            "title": "Pets Part 2",
+            "topic": "Pets",
+            "cefr_band": "B1",
+            "text": "Cats are also lovely. They are quiet and clean.",
+            "suggested_seconds": 30,
+            "unit_id": unit["id"],
+        },
+        headers=superuser_token_headers,
+    )
+    assert second.status_code == 200, second.text
+
+    resp = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={
+            "unit_id": unit["id"],
+            "assign_reading": True,
+            "assign_repeat": False,
+            "assign_qa": False,
+        },
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    try:
+        plan = client.get(
+            f"/api/v1/classes/{code}/today", headers=made["headers"]
+        ).json()
+        reading_items = [i for i in plan["items"] if i["type"] == "passage"]
+        assert len(reading_items) == 2, f"应有两道朗读题，实际 {plan['items']}"
+        # 按创建顺序：种子篇在前，拆出的第二段在后
+        assert reading_items[0]["text"].startswith("Many students")
+        assert reading_items[1]["text"].startswith("Cats are also lovely")
+
+        # 面板同步出现两个朗读题位
+        board = client.get(
+            f"/api/v1/classes/{code}/board", headers=superuser_token_headers
+        ).json()
+        row = next(
+            s for s in board["students"] if s["student_id"] == made["student"]["id"]
+        )
+        passage_slots = [i for i in row["items"] if i["type"] == "passage"]
+        assert len(passage_slots) == 2, f"面板应有两个朗读题位，实际 {row['items']}"
+    finally:
+        # 清理：删除拆段篇目并解除指派，避免影响后续用例
+        client.delete(
+            f"/api/v1/admin/passages/{second.json()['id']}",
+            headers=superuser_token_headers,
+        )
+        client.put(
+            f"/api/v1/classes/{code}/assignment",
+            json={"unit_id": None},
+            headers=superuser_token_headers,
+        )
