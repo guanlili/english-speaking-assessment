@@ -154,6 +154,8 @@ jobs:
           # 可选 Secrets：不设置时为空，默认值统一由 generate-deploy-env.sh 落
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SCORING_PROVIDER: ${{ secrets.SCORING_PROVIDER }}
+          ASR_PROVIDER: ${{ secrets.ASR_PROVIDER }}
+          VOLC_ASR_API_KEY: ${{ secrets.VOLC_ASR_API_KEY }}
           ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
           ARK_ASR_MODEL: ${{ secrets.ARK_ASR_MODEL }}
           ARK_RUBRIC_MODEL: ${{ secrets.ARK_RUBRIC_MODEL }}
