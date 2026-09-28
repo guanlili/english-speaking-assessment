@@ -7,6 +7,7 @@ from sqlmodel import Session
 
 from app import crud
 from app.models import User, UserCreate
+from tests.utils.audio import wav_upload
 from tests.utils.credential import make_student
 from tests.utils.utils import random_email, random_lower_string
 
@@ -468,3 +469,41 @@ def test_split_passage_into_readings(
     # 清理
     for pid in [*data["passage_ids"], original["id"], single.json()["id"]]:
         client.delete(f"/api/v1/admin/passages/{pid}", headers=superuser_token_headers)
+
+
+def test_delete_classroom_guards(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """课堂删除：无作答可删；有作答 409 提示改停用。"""
+    classroom = _classroom(client, superuser_token_headers)
+    code = classroom["code"]
+
+    # 空课堂直接删
+    resp = client.delete(f"/api/v1/classes/{code}", headers=superuser_token_headers)
+    assert resp.status_code == 200, resp.text
+    listed = client.get("/api/v1/classes", headers=superuser_token_headers).json()
+    assert all(c["code"] != code for c in listed)
+
+    # 有作答的课堂拒绝删除
+    classroom2 = _classroom(client, superuser_token_headers)
+    code2 = classroom2["code"]
+    made = make_student(db, client, code2, "作答学生")
+    plan = client.get(f"/api/v1/classes/{code2}/today", headers=made["headers"]).json()
+    item = next(i for i in plan["items"] if i["type"] == "repeat")
+    resp = client.post(
+        "/api/v1/attempts",
+        files={"audio": wav_upload(6.0)},
+        data={
+            "item_type": "repeat",
+            "item_id": item["id"],
+            "duration_s": "6.0",
+            "session_id": plan["session_id"],
+        },
+        headers=made["headers"],
+    )
+    assert resp.status_code == 200, resp.text
+    refused = client.delete(f"/api/v1/classes/{code2}", headers=superuser_token_headers)
+    assert refused.status_code == 409
+    assert "作答" in refused.json()["detail"]

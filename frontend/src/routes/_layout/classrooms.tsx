@@ -246,6 +246,17 @@ function ClassroomCard({
     }
   }
 
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const deleteMutation = useMutation({
+    mutationFn: () => ClassesService.deleteClass({ code: classroom.code }),
+    onSuccess: () => {
+      showSuccessToast(`课堂 ${classroom.code} 已删除`)
+      setDeleteOpen(false)
+      onInvalidated()
+    },
+    onError: (error) => showErrorToast(`删除失败：${error.message}`),
+  })
+
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -299,6 +310,14 @@ function ClassroomCard({
             >
               学生名单
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setDeleteOpen(true)}
+            >
+              删除课堂
+            </Button>
           </div>
         </details>
       </CardContent>
@@ -313,6 +332,18 @@ function ClassroomCard({
         classroomId={classroom.id}
         open={rosterOpen}
         onOpenChange={setRosterOpen}
+      />
+      <ConfirmDialog
+        open={deleteOpen}
+        title={`删除课堂 ${classroom.code}？`}
+        description="课堂码将立即失效，课堂与学生名单一并删除。仅能删除没有学生作答记录的课堂；已有作答的课堂需管理员停用。"
+        confirmText="删除课堂"
+        onOpenChange={(next) => {
+          if (!next) setDeleteOpen(false)
+        }}
+        onConfirm={async () => {
+          await deleteMutation.mutateAsync()
+        }}
       />
     </Card>
   )
