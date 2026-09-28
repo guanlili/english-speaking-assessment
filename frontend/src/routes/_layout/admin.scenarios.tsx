@@ -18,13 +18,6 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
@@ -48,9 +41,6 @@ interface ScenarioShape {
   is_active?: boolean
   questions: QuestionShape[]
 }
-
-const BANDS = ["A2", "B1", "B2"] as const
-const BAND_LABELS = { A2: "KET · A2", B1: "PET · B1", B2: "B2 · 进阶" }
 
 export function ScenariosAdmin({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient()
@@ -84,7 +74,9 @@ export function ScenariosAdmin({ embedded = false }: { embedded?: boolean }) {
     <div className="flex flex-col gap-6">
       {!embedded && <ContentNavigation />}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">情景问答 · 题目管理</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          情景问答 · 题目管理
+        </h1>
         <p className="text-muted-foreground">
           同一主题，分级练习：KET 对应 A2，PET 对应 B1，另有 B2 进阶题。
         </p>
@@ -175,25 +167,23 @@ function ScenarioCard({
 }) {
   const { showSuccessToast } = useCustomToast()
   const [question, setQuestion] = useState({
-    band: "B1",
     text: "",
     seconds: 30,
   })
   const [topicDraft, setTopicDraft] = useState(scenario.topic)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const [gen, setGen] = useState({ band: "B1", count: 3, hint: "" })
+  const [gen, setGen] = useState({ count: 3, hint: "" })
   const [drafts, setDrafts] = useState<
-    Array<{ id: string; text: string; band: string; seconds: number }>
+    Array<{ id: string; text: string; seconds: number }>
   >([])
 
   const addQuestion = useMutation({
-    mutationFn: (body: { band: string; text: string; seconds: number }) =>
+    mutationFn: (body: { text: string; seconds: number }) =>
       AdminService.createQuestion({
         scenarioId: scenario.id,
         requestBody: {
           scenario_id: scenario.id,
-          band: body.band,
           text: body.text,
           suggested_seconds: body.seconds,
           order_index: scenario.questions.length,
@@ -201,7 +191,7 @@ function ScenarioCard({
       }),
     onSuccess: () => {
       showSuccessToast("题目已添加")
-      setQuestion({ band: question.band, text: "", seconds: 30 })
+      setQuestion({ text: "", seconds: 30 })
       onMutated()
     },
     onError: () => toast.error("保存失败，请重试；题目内容已保留"),
@@ -212,7 +202,6 @@ function ScenarioCard({
       AdminService.generateQuestions({
         scenarioId: scenario.id,
         requestBody: {
-          band: gen.band,
           count: gen.count,
           ...(gen.hint ? { hint: gen.hint } : {}),
         },
@@ -222,7 +211,6 @@ function ScenarioCard({
         (data ?? []).map((d) => ({
           id: crypto.randomUUID(),
           text: d.text ?? "",
-          band: gen.band,
           seconds: d.suggested_seconds ?? 30,
         })),
       )
@@ -236,7 +224,7 @@ function ScenarioCard({
   const adoptDraft = (index: number) => {
     const d = drafts[index]
     addQuestion.mutate(
-      { band: d.band, text: d.text, seconds: d.seconds },
+      { text: d.text, seconds: d.seconds },
       {
         onSuccess: () =>
           setDrafts((current) => current.filter((draft) => draft.id !== d.id)),
@@ -333,75 +321,46 @@ function ScenarioCard({
             展开题目 · 手动添加 / AI 起草
           </summary>
           <div className="mt-4 space-y-3">
-            {BANDS.map((band) => {
-              const questions = scenario.questions.filter(
-                (q) => q.band === band,
-              )
-              if (questions.length === 0) return null
-              return (
-                <div key={band} className="space-y-1">
-                  <Badge variant="outline">
-                    {BAND_LABELS[band]} · {questions.length} 道
-                  </Badge>
-                  {questions.map((q, index) => (
-                    <div
-                      key={q.id}
-                      className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
-                    >
-                      <div className="space-y-1">
-                        <p className="text-sm">
-                          {index + 1}. {q.text}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          建议作答 {q.suggested_seconds} 秒
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <AudioSetter
-                          hasAudio={Boolean(q.audio_url)}
-                          text={q.text ?? ""}
-                          onSet={async (audio_url) => {
-                            await AdminService.updateQuestion({
-                              questionId: q.id,
-                              requestBody: { audio_url },
-                            })
-                            onMutated()
-                          }}
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => deleteQuestion.mutate(q.id)}
-                        >
-                          <Trash2 className="size-3.5 text-destructive" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-            })}
-            <div className="flex flex-wrap items-end gap-2 border-t pt-3">
-              <div className="w-32 space-y-1">
-                <Label>档位</Label>
-                <Select
-                  value={question.band}
-                  onValueChange={(next) =>
-                    setQuestion({ ...question, band: next })
-                  }
+            <div className="space-y-1">
+              <Badge variant="outline">共 {scenario.questions.length} 道</Badge>
+              {scenario.questions.map((q, index) => (
+                <div
+                  key={q.id}
+                  className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
                 >
-                  <SelectTrigger className="h-9 w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {BANDS.map((band) => (
-                      <SelectItem key={band} value={band}>
-                        {BAND_LABELS[band]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  <div className="space-y-1">
+                    <p className="text-sm">
+                      {index + 1}. {q.text}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      建议作答 {q.suggested_seconds} 秒
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <AudioSetter
+                      hasAudio={Boolean(q.audio_url)}
+                      text={q.text ?? ""}
+                      onSet={async (audio_url) => {
+                        await AdminService.updateQuestion({
+                          questionId: q.id,
+                          requestBody: { audio_url },
+                        })
+                        onMutated()
+                      }}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="删除题目"
+                      onClick={() => deleteQuestion.mutate(q.id)}
+                    >
+                      <Trash2 className="size-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-end gap-2 border-t pt-3">
               <div className="min-w-56 flex-1 space-y-1">
                 <Label>题目</Label>
                 <Input
@@ -427,7 +386,6 @@ function ScenarioCard({
               <Button
                 onClick={() =>
                   addQuestion.mutate({
-                    band: question.band,
                     text: question.text,
                     seconds: question.seconds,
                   })
@@ -442,24 +400,6 @@ function ScenarioCard({
             {/* AI 起草（不入库，采纳后才保存） */}
             <div className="space-y-2 border-t pt-3">
               <div className="flex flex-wrap items-end gap-2">
-                <div className="w-32 space-y-1">
-                  <Label>AI 档位</Label>
-                  <Select
-                    value={gen.band}
-                    onValueChange={(next) => setGen({ ...gen, band: next })}
-                  >
-                    <SelectTrigger className="h-9 w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {BANDS.map((band) => (
-                        <SelectItem key={band} value={band}>
-                          {BAND_LABELS[band]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="w-24 space-y-1">
                   <Label>数量</Label>
                   <Input

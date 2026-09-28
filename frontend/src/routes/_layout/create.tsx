@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { ArrowLeft, BookOpenText, Ear, MessagesSquare } from "lucide-react"
 import { useState } from "react"
+import { SentenceLibrary } from "@/components/Teaching/SentenceLibrary"
 import { Button } from "@/components/ui/button"
 import { APP_NAME } from "@/config"
 import { PassagesAdmin } from "./admin.passages"
@@ -132,6 +133,8 @@ function QuestionLibrary() {
               <QuestionsAdmin embedded />
             )}
           </div>
+        ) : kind === "repeat" ? (
+          <SentenceLibrary />
         ) : (
           <PassagesAdmin key={kind} embedded mode={kind} />
         )}

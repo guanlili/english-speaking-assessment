@@ -314,3 +314,157 @@ def test_assigned_multi_passage_reading(
             json={"unit_id": None},
             headers=superuser_token_headers,
         )
+
+
+def test_item_assignment_independent_types(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """按题指派：三题型独立选题成卷，不经单元/篇目载体。"""
+    classroom = _classroom(client, superuser_token_headers)
+    made = make_student(db, client, classroom["code"], "按题学生")
+    code = classroom["code"]
+
+    # 独立复述句：不挂篇目直接创建
+    sentence = client.post(
+        "/api/v1/admin/sentences",
+        json={
+            "order_index": 0,
+            "text": "This is a standalone repeat sentence.",
+            "suggested_seconds": 12,
+            "replay_limit": 2,
+        },
+        headers=superuser_token_headers,
+    )
+    assert sentence.status_code == 200, sentence.text
+    sentence_id = sentence.json()["id"]
+
+    # 平铺复述句库可见（带所属篇目信息）
+    flat = client.get("/api/v1/admin/sentences", headers=superuser_token_headers)
+    assert flat.status_code == 200
+    assert any(s["id"] == sentence_id for s in flat.json())
+
+    # 从种子情景取一道问答题
+    scenarios = client.get(
+        "/api/v1/admin/scenarios", headers=superuser_token_headers
+    ).json()
+    scenario = next(s for s in scenarios if s["topic"] == "Pets")
+    question_id = scenario["questions"][0]["id"]
+
+    # 按题指派：1 复述 + 1 问答（无朗读、无单元）
+    resp = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={
+            "items": [
+                {"type": "repeat", "id": sentence_id},
+                {"type": "question", "id": question_id},
+            ]
+        },
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    plan = client.get(f"/api/v1/classes/{code}/today", headers=made["headers"]).json()
+    assert [i["type"] for i in plan["items"]] == ["repeat", "question"]
+    assert plan["items"][0]["text"] == "This is a standalone repeat sentence."
+    assert plan["assigned_unit_title"] == "老师指派"
+
+    # 面板题位同步（无会话学生按骨架展示）
+    board = client.get(
+        f"/api/v1/classes/{code}/board", headers=superuser_token_headers
+    ).json()
+    row = next(s for s in board["students"] if s["student_id"] == made["student"]["id"])
+    assert {i["type"] for i in row["items"]} == {"repeat", "question"}
+
+    # 换题：同情景其余题目（排除已指派那道）
+    nxt = client.get(f"/api/v1/classes/{code}/next-question", headers=made["headers"])
+    assert nxt.status_code == 200
+    assert nxt.json()["question"] is not None
+    assert nxt.json()["question"]["id"] != question_id
+
+    # 非法题型引用被拒
+    bad = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": [{"type": "essay", "id": sentence_id}]},
+        headers=superuser_token_headers,
+    )
+    assert bad.status_code == 422
+
+    # 清除指派回个人路径
+    client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": []},
+        headers=superuser_token_headers,
+    )
+    plan2 = client.get(f"/api/v1/classes/{code}/today", headers=made["headers"]).json()
+    assert {i["type"] for i in plan2["items"]} == {"repeat", "question"}
+    assert plan2["items"][0]["id"] != sentence_id  # 回到种子篇目的复述句
+
+
+def test_split_passage_into_readings(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """长文自动拆分：按段落生成多篇朗读材料，原长文停用。"""
+    long_text = "\n".join(
+        [
+            "I went there with my parents and my younger brother because my father thought it would be educational for us.",
+            "Firstly, the building was very dark and old, and there were almost no other visitors inside. Most of the exhibits were just old dusty photographs in small glass cases.",
+            "In the end, I felt it was boring because there was nothing engaging to see. I was really relieved when we finally left.",
+        ]
+    )
+    resp = client.post(
+        "/api/v1/admin/passages",
+        json={
+            "title": "Split Me",
+            "topic": "Places",
+            "cefr_band": "B1",
+            "text": long_text,
+            "suggested_seconds": 60,
+        },
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    original = resp.json()
+
+    split = client.post(
+        f"/api/v1/admin/passages/{original['id']}/split",
+        headers=superuser_token_headers,
+    )
+    assert split.status_code == 200, split.text
+    data = split.json()
+    assert data["created"] == 3
+
+    passages = client.get(
+        "/api/v1/admin/passages", headers=superuser_token_headers
+    ).json()
+    by_id = {p["id"]: p for p in passages}
+    titles = [by_id[pid]["title"] for pid in data["passage_ids"]]
+    assert titles == ["Split Me（一）", "Split Me（二）", "Split Me（三）"]
+    assert all(by_id[pid]["is_active"] for pid in data["passage_ids"])
+    # 原长文停用，主题与秒数合理
+    assert by_id[original["id"]]["is_active"] is False
+    assert by_id[data["passage_ids"][0]]["topic"] == "Places"
+    assert by_id[data["passage_ids"][0]]["suggested_seconds"] >= 15
+
+    # 单段落无法拆分
+    single = client.post(
+        "/api/v1/admin/passages",
+        json={
+            "title": "One Para",
+            "text": "Only one paragraph here.",
+            "topic": "Places",
+        },
+        headers=superuser_token_headers,
+    )
+    refused = client.post(
+        f"/api/v1/admin/passages/{single.json()['id']}/split",
+        headers=superuser_token_headers,
+    )
+    assert refused.status_code == 422
+
+    # 清理
+    for pid in [*data["passage_ids"], original["id"], single.json()["id"]]:
+        client.delete(f"/api/v1/admin/passages/{pid}", headers=superuser_token_headers)

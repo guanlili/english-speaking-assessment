@@ -263,7 +263,11 @@ function TeacherBoardPage() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="prepare">
-            <AssignmentComposer code={code} assignment={board.assignment} />
+            <AssignmentComposer
+              code={code}
+              assignment={board.assignment}
+              assignedItems={board.assigned_items}
+            />
           </TabsContent>
           <TabsContent value="results" className="space-y-6">
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -437,11 +441,24 @@ function StudentRow({
     <>
       <TableRow onClick={onToggle} className="cursor-pointer">
         <TableCell>
-          {expanded ? (
-            <ChevronDown className="size-4" />
-          ) : (
-            <ChevronRight className="size-4" />
-          )}
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-label={
+              expanded ? `收起 ${name} 的详情` : `展开 ${name} 的详情`
+            }
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggle()
+            }}
+            className="rounded-sm p-0.5 text-muted-foreground transition hover:text-foreground"
+          >
+            {expanded ? (
+              <ChevronDown className="size-4" />
+            ) : (
+              <ChevronRight className="size-4" />
+            )}
+          </button>
         </TableCell>
         <TableCell className="font-medium">{name}</TableCell>
         <TableCell>

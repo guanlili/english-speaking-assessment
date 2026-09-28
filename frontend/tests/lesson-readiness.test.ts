@@ -1,106 +1,75 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { inspectLesson } from "../src/lib/lesson-readiness.ts"
+import { inspectSelection } from "../src/lib/lesson-readiness.ts"
 
-const passage = {
-  id: "p",
-  slug: "test",
-  title: "Pets",
-  topic: "Pets",
-  text: "I have a cat.",
-  unit_id: "unit",
+const scenario = {
+  id: "sc1",
+  topic: "Boring Places",
   is_active: true,
-  sentences: [
+  questions: [
     {
-      id: "s",
-      passage_id: "p",
-      order_index: 0,
-      text: "I have a cat.",
-      replay_limit: 2,
+      id: "q1",
+      band: "B1",
+      text: "Describe a boring place.",
+      suggested_seconds: 30,
     },
+    { id: "q2", band: "B1", text: "Explain why.", suggested_seconds: 45 },
   ],
 }
-const scenario = {
-  id: "q",
-  topic: "Pets",
-  is_active: true,
-  questions: ["A2", "B1", "B2"].map((band) => ({
-    id: band,
-    band,
-    text: "Do you have a pet?",
-    suggested_seconds: 20,
-  })),
-}
+const emptyScenario = { ...scenario, id: "sc2", questions: [] }
+const data = { sentences: [], scenarios: [scenario, emptyScenario] }
 const all = { reading: true, repeat: true, qa: true }
-test("complete content allows all three types", () =>
+
+test("each type only requires its own selection", () => {
   assert.deepEqual(
-    inspectLesson("unit", all, [passage], [scenario]).problems,
-    [],
-  ))
-test("reading-only does not require repeat or questions", () =>
-  assert.deepEqual(
-    inspectLesson(
-      "unit",
+    inspectSelection(
       { reading: true, repeat: false, qa: false },
-      [{ ...passage, sentences: [] }],
-      [],
+      { passages: ["p1"], sentences: [], scenarioId: null },
+      data,
     ).problems,
     [],
-  ))
-test("empty selection cannot publish", () =>
-  assert.equal(
-    inspectLesson("", { reading: false, repeat: false, qa: false }, [], [])
-      .problems.length,
-    2,
-  ))
-test("inactive materials do not count as ready", () =>
-  assert.equal(
-    inspectLesson("unit", all, [{ ...passage, is_active: false }], [scenario])
-      .passage,
-    undefined,
-  ))
-test("multiple active passages become several reading items", () => {
-  const result = inspectLesson(
-    "unit",
-    all,
-    [passage, { ...passage, id: "other", title: "Pets (2)" }],
-    [scenario],
   )
-  assert.deepEqual(result.problems, [])
-  assert.equal(result.materials.length, 2)
-  // 锚点取组内第一篇：问答主题按它配套
-  assert.equal(result.passage?.id, "p")
+  assert.deepEqual(
+    inspectSelection(
+      { reading: false, repeat: true, qa: false },
+      { passages: [], sentences: ["s1", "s2"], scenarioId: null },
+      data,
+    ).problems,
+    [],
+  )
+  assert.deepEqual(
+    inspectSelection(
+      { reading: false, repeat: false, qa: true },
+      { passages: [], sentences: [], scenarioId: "sc1" },
+      data,
+    ).problems,
+    [],
+  )
 })
-test("missing sentences prevent repeat publication", () =>
-  assert.match(
-    inspectLesson("unit", all, [{ ...passage, sentences: [] }], [scenario])
-      .problems[0],
-    /复述句/,
-  ))
-test("missing adaptive band is identified", () =>
-  assert.match(
-    inspectLesson(
-      "unit",
-      all,
-      [passage],
-      [
-        {
-          ...scenario,
-          questions: scenario.questions.filter((q) => q.band !== "B2"),
-        },
-      ],
-    ).problems[0],
-    /B2/,
-  ))
-test("disabled and mismatched topics cannot supply questions", () => {
-  assert.match(
-    inspectLesson("unit", all, [passage], [{ ...scenario, is_active: false }])
-      .problems[0],
-    /A2 \/ B1 \/ B2/,
+
+test("checked type with empty selection is reported per type", () => {
+  const { problems } = inspectSelection(
+    all,
+    {
+      passages: [],
+      sentences: [],
+      scenarioId: null,
+    },
+    data,
   )
+  assert.equal(problems.length, 3) // 三类勾选了但都没选内容
+  assert.match(problems[0], /朗读/)
+  assert.match(problems[1], /复述/)
+  assert.match(problems[2], /问答/)
+})
+
+test("scenario without questions blocks QA", () => {
   assert.match(
-    inspectLesson("unit", all, [passage], [{ ...scenario, topic: "School" }])
-      .problems[0],
-    /缺少/,
+    inspectSelection(
+      { reading: false, repeat: false, qa: true },
+      { passages: [], sentences: [], scenarioId: "sc2" },
+      data,
+    ).problems[0],
+    /有题目/,
   )
 })

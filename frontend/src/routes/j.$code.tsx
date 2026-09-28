@@ -1,8 +1,8 @@
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router"
 import { ArrowRight, ChartLine, Headphones, MessageCircle } from "lucide-react"
 import { useEffect, useState } from "react"
-import { ClassesService } from "@/client"
+import { ClassesService, UsersService } from "@/client"
 import { Logo } from "@/components/Common/Logo"
 import {
   Card,
@@ -11,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { APP_NAME } from "@/config"
 import { isStudentLoggedIn } from "@/hooks/useAuth"
@@ -27,8 +26,11 @@ export const Route = createFileRoute("/j/$code")({
 function JoinPage() {
   const { code } = useParams({ from: "/j/$code" })
   const navigate = useNavigate({ from: "/j/$code" })
-  const [name, setName] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const meQuery = useQuery({
+    queryKey: ["join-me"],
+    queryFn: () => UsersService.readUserMe(),
+  })
 
   // 未登录学生 → 登录页（学生 Tab）；已在本课堂 → 直接进练习页
   useEffect(() => {
@@ -45,7 +47,7 @@ function JoinPage() {
     mutationFn: () =>
       ClassesService.joinClass({
         code: code.toUpperCase(),
-        requestBody: name.trim() ? { display_name: name.trim() } : {},
+        requestBody: {},
       }),
     onSuccess: (student) => {
       saveStudent(code, student)
@@ -116,18 +118,16 @@ function JoinPage() {
               }}
               className="space-y-6"
             >
-              <div className="space-y-2">
-                <label htmlFor="join-name" className="text-sm font-medium">
-                  课堂里显示的名字（可改，默认用你的姓名）
-                </label>
-                <Input
-                  id="join-name"
-                  className="h-12 bg-background/60"
-                  autoComplete="name"
-                  placeholder="例如：李雷"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
+              <div className="rounded-xl bg-background/60 px-4 py-3 text-sm">
+                <span className="text-muted-foreground">
+                  将以账号姓名进入：
+                </span>
+                <span className="font-semibold">
+                  {meQuery.data?.full_name || meQuery.data?.username || "同学"}
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  课堂内显示名使用学号账号的姓名，如需修改请联系老师。
+                </span>
               </div>
               {error && <p className="text-sm text-destructive">{error}</p>}
               <LoadingButton

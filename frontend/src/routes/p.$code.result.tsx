@@ -19,6 +19,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
+import InfoHint from "@/components/Common/InfoHint"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { RubricBlock } from "@/components/Practice/FeedbackCard"
 import StudentShell from "@/components/Practice/StudentShell"
@@ -40,8 +41,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { APP_NAME } from "@/config"
 import { displayName, loadStudent } from "@/lib/classroom-student"
+import { EXPLAIN } from "@/lib/terms"
 
 export const Route = createFileRoute("/p/$code/result")({
   component: RoundResultPage,
@@ -242,7 +249,8 @@ function RoundResultPage() {
             今天的你，又向前了一步。
           </h1>
           <p className="text-sm text-muted-foreground">
-            {displayName(student)} · 课堂 {plan.classroom_code} · 每题转写和参考分
+            {displayName(student)} · 课堂 {plan.classroom_code} ·
+            每题转写和参考分
           </p>
         </div>
 
@@ -259,34 +267,65 @@ function RoundResultPage() {
                 比起完美，开口本身就很棒。
               </h2>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-                <span className="flex items-center gap-1">
-                  {[1, 2, 3].map((n) => (
-                    <Star
-                      key={n}
-                      className={
-                        n <= (gamification.session_stars ?? 0)
-                          ? "size-5 fill-yellow-400 text-yellow-400"
-                          : "size-5 text-muted-foreground/30"
-                      }
-                      style={{
-                        animation: `star-pop 0.4s ease-out ${n * 0.25}s both`,
-                      }}
-                    />
-                  ))}
-                </span>
-                <span className="flex items-center gap-1 font-semibold">
-                  <Sparkles className="size-4 text-primary" />
-                  XP {gamification.xp}
-                </span>
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  <Flame className="size-4 text-orange-500" />
-                  连胜 {gamification.streak_days} 天
-                </span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      role="img"
+                      aria-label={`本轮星级：${gamification.session_stars} / 3`}
+                      className="flex items-center gap-1"
+                    >
+                      {[1, 2, 3].map((n) => (
+                        <Star
+                          key={n}
+                          className={
+                            n <= (gamification.session_stars ?? 0)
+                              ? "size-5 fill-yellow-400 text-yellow-400"
+                              : "size-5 text-muted-foreground/30"
+                          }
+                          style={{
+                            animation: `star-pop 0.4s ease-out ${n * 0.25}s both`,
+                          }}
+                        />
+                      ))}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-64 text-xs leading-relaxed">
+                    {EXPLAIN.stars}
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="flex items-center gap-1 font-semibold">
+                      <Sparkles className="size-4 text-primary" />
+                      XP {gamification.xp}
+                      <span className="sr-only">{EXPLAIN.xp}</span>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-64 text-xs leading-relaxed">
+                    {EXPLAIN.xp}
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <Flame className="size-4 text-orange-500" />
+                      连胜 {gamification.streak_days} 天
+                      <span className="sr-only">{EXPLAIN.streak}</span>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-64 text-xs leading-relaxed">
+                    {EXPLAIN.streak}
+                  </TooltipContent>
+                </Tooltip>
               </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {EXPLAIN.stars}
+              </p>
               {newBadges.length > 0 && (
-                <p className="mt-2 text-sm">
+                <p className="mt-2 flex items-center gap-1 text-sm">
                   <span className="font-semibold">本轮获得徽章：</span>
                   {newBadges.map((b) => b.label).join("、")}
+                  <InfoHint label={EXPLAIN.badges} />
                 </p>
               )}
             </div>

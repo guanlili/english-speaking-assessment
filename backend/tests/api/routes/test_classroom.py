@@ -197,9 +197,9 @@ def test_today_plan_shape(
     questions = [i for i in plan["items"] if i["type"] == "question"]
     assert len(repeats) == 3
     assert len(questions) == 2
-    # 首次进入默认中档（PRD §6）
+    # 首次进入默认中档（PRD §6）；题目不分级（2026-09-29 起全班同题，题项不带档位）
     assert plan["band"] == "B1"
-    assert all(q["band"] == "B1" for q in questions)
+    assert all(q.get("band") is None for q in questions)
     # 两次调用同一天同一会话（刷新恢复进度）
     again = _today(client, student["headers"]).json()
     assert again["session_id"] == plan["session_id"]
@@ -268,8 +268,6 @@ def test_high_completeness_upgrades_band(
     resp = _today(client, student["headers"])
     plan2 = resp.json()
     assert plan2["band"] == "B2"
-    questions = [i for i in plan2["items"] if i["type"] == "question"]
-    assert all(q["band"] == "B2" for q in questions)
 
 
 def test_low_completeness_downgrades_band(
@@ -285,8 +283,6 @@ def test_low_completeness_downgrades_band(
 
     plan2 = _today(client, student["headers"]).json()
     assert plan2["band"] == "A2"
-    questions = [i for i in plan2["items"] if i["type"] == "question"]
-    assert all(q["band"] == "A2" for q in questions)
 
 
 # ── US-06 换一题 ─────────────────────────────────────────────────────
@@ -297,7 +293,7 @@ def test_next_question_then_exhausted(
     inline_scoring: Any,
     db: Session,
 ) -> None:
-    """换一题给出同主题同档未做的题；做完后 exhausted=true。"""
+    """换一题给出同主题未做的题（不分级）；做完后 exhausted=true。"""
     student = _join(db, client)
     plan = _today(client, student["headers"]).json()
 
@@ -307,13 +303,12 @@ def test_next_question_then_exhausted(
             headers=student["headers"],
         )
 
-    # B1 种子有 3 道题：今日占 2 道，换一题先拿到第 3 道
+    # 种子主题共 7 道题（不分级）：今日占 2 道，换一题按序给未做过的
     seen: list[str] = []
-    for _ in range(3):
+    for _ in range(7):
         resp = next_q()
         question = resp.json()["question"]
         assert question is not None
-        assert question["band"] == "B1"
         assert question["id"] not in seen
         seen.append(question["id"])
         # 学生答掉这题（标记为已做）
@@ -321,7 +316,7 @@ def test_next_question_then_exhausted(
             client, "question", question["id"], student["headers"], plan["session_id"]
         )
 
-    # 3 道全做完 → exhausted（不再返回新题）
+    # 全做完 → exhausted（不再返回新题）
     resp = next_q()
     assert resp.json()["question"] is None
     assert resp.json()["exhausted"] is True

@@ -1,5 +1,14 @@
-import { createFileRoute, useParams } from "@tanstack/react-router"
-import { CheckCircle2, Headphones, Mic, Volume2, XCircle } from "lucide-react"
+import { createFileRoute, Link, useParams } from "@tanstack/react-router"
+import {
+  CheckCircle2,
+  Flame,
+  Headphones,
+  Mic,
+  Sparkles,
+  Star,
+  Volume2,
+  XCircle,
+} from "lucide-react"
 import { useState } from "react"
 import StudentShell from "@/components/Practice/StudentShell"
 import { Button } from "@/components/ui/button"
@@ -11,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { APP_NAME } from "@/config"
+import { EXPLAIN } from "@/lib/terms"
 
 export const Route = createFileRoute("/help/$code")({
   component: HelpPage,
@@ -37,7 +47,7 @@ const FAQS: Array<[string, string]> = [
 ]
 
 function HelpPage() {
-  useParams({ from: "/help/$code" }) // 课堂码仅用于导航上下文
+  const { code } = useParams({ from: "/help/$code" }) // 课堂码仅用于导航上下文
   const [speakerOk, setSpeakerOk] = useState<boolean | null>(null)
   const [micState, setMicState] = useState<"idle" | "testing" | "ok" | "fail">(
     "idle",
@@ -166,6 +176,65 @@ function HelpPage() {
                 </p>
               </details>
             ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">分数与激励怎么算</CardTitle>
+            <CardDescription>
+              练习中会看到这些数字，它们的含义都在这里
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="flex items-start gap-2.5">
+              <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
+              <p className="leading-relaxed">
+                <span className="font-semibold">参考分</span>：{EXPLAIN.score}
+              </p>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <Star className="mt-0.5 size-4 shrink-0 text-yellow-500" />
+              <p className="leading-relaxed">
+                <span className="font-semibold">星级</span>：{EXPLAIN.stars}
+              </p>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
+              <p className="leading-relaxed">
+                <span className="font-semibold">XP</span>：{EXPLAIN.xp}
+              </p>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <Flame className="mt-0.5 size-4 shrink-0 text-orange-500" />
+              <p className="leading-relaxed">
+                <span className="font-semibold">连胜</span>：{EXPLAIN.streak}
+              </p>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <Star className="mt-0.5 size-4 shrink-0 text-yellow-500" />
+              <p className="leading-relaxed">
+                <span className="font-semibold">徽章</span>：{EXPLAIN.badges}
+              </p>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+              <p className="leading-relaxed">
+                <span className="font-semibold">档位</span>：{EXPLAIN.band}
+                A2/B1/B2 大致对应剑桥 KET/PET/FCE 的难度级别。
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              自己的累计数据在{" "}
+              <Link
+                to="/me/$code"
+                params={{ code }}
+                className="font-medium text-primary hover:underline"
+              >
+                我的成长
+              </Link>{" "}
+              里查看。
+            </p>
           </CardContent>
         </Card>
 
