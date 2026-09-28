@@ -1,4 +1,8 @@
-"""词汇分析集成（问答作答写入 vocab）与轨迹/面板增强（US-07/09/10）。"""
+"""词汇分析集成（问答作答写入 vocab）与轨迹/面板增强（US-07/09/10）。
+
+账号制：学生 = 学号登录 JWT，请求带 Authorization 头（不再传
+student_id/token 查询参数）。
+"""
 
 import uuid
 from collections.abc import Callable, Generator
@@ -16,13 +20,7 @@ from app.models import Attempt, AttemptStatus, WordlistEntry
 from app.scoring import worker
 from app.scoring.base import ScoringError
 from tests.utils.audio import wav_upload
-from tests.utils.credential import (
-    anonymous,
-    remember_join,
-    student_form,
-    student_params,
-    token_for,
-)
+from tests.utils.credential import anonymous, make_student
 
 
 class FakeAsr:
@@ -67,35 +65,32 @@ def scripted_scoring(
     app.dependency_overrides.pop(get_scoring_submitter, None)
 
 
-def _join(client: TestClient, name: str) -> Any:
-    resp = client.post("/api/v1/classes/DEMO01/join", json={"display_name": name})
-    assert resp.status_code == 200, resp.text
-    return remember_join(resp.json())
+def _join(db: Session, client: TestClient, name: str) -> Any:
+    """建学生账号 + 登录 + 入班 DEMO01，返回 {student, headers, user}。"""
+    return make_student(db, client, "DEMO01", name)
 
 
-def _plan(client: TestClient, student_id: str) -> Any:
-    return client.get(
-        "/api/v1/classes/DEMO01/today", params=student_params(student_id)
-    ).json()
+def _plan(client: TestClient, headers: dict[str, str]) -> Any:
+    return client.get("/api/v1/classes/DEMO01/today", headers=headers).json()
 
 
 def _submit(
     client: TestClient,
     item: dict,
-    student_id: str,
+    headers: dict[str, str],
     session_id: str,
     duration: float = 5.0,
 ) -> Any:
     resp = client.post(
         "/api/v1/attempts",
         files={"audio": wav_upload(duration)},
-        data=student_form(
-            student_id,
-            item_type=item["type"],
-            item_id=item["id"],
-            duration_s=str(duration),
-            session_id=session_id,
-        ),
+        data={
+            "item_type": item["type"],
+            "item_id": item["id"],
+            "duration_s": str(duration),
+            "session_id": session_id,
+        },
+        headers=headers,
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
@@ -111,18 +106,18 @@ def teacher_auth(client: TestClient, superuser_token_headers: dict[str, str]) ->
 
 
 def test_question_attempt_has_vocab_analysis(
-    client: TestClient, scripted_scoring: Callable[[str], None]
+    client: TestClient, scripted_scoring: Callable[[str], None], db: Session
 ) -> None:
     """问答作答评分后带词汇分析：命中词/覆盖率/CEFR 参考标签。"""
-    student = _join(client, "词汇同学")
-    plan = _plan(client, student["id"])
+    student = _join(db, client, "词汇同学")
+    plan = _plan(client, student["headers"])
     question = next(i for i in plan["items"] if i["type"] == "question")
     # 转写含多个 B1 词：prefer loyal independent relax effort
     scripted_scoring(
         "i prefer loyal dogs because they help me relax with effort and "
         "independent habits at home"
     )
-    attempt = _submit(client, question, student["id"], plan["session_id"])
+    attempt = _submit(client, question, student["headers"], plan["session_id"])
     assert attempt["status"] == "done"
     vocab = attempt["vocab"]
     assert vocab is not None
@@ -135,13 +130,13 @@ def test_question_attempt_has_vocab_analysis(
 
 
 def test_repeat_attempt_has_no_vocab(
-    client: TestClient, scripted_scoring: Callable[[str], None]
+    client: TestClient, scripted_scoring: Callable[[str], None], db: Session
 ) -> None:
     """跟读参考文本的词不算学生词汇（PRD US-07）→ 复述作答 vocab 为 null。"""
-    student = _join(client, "跟读同学")
-    plan = _plan(client, student["id"])
+    student = _join(db, client, "跟读同学")
+    plan = _plan(client, student["headers"])
     repeat = next(i for i in plan["items"] if i["type"] == "repeat")
-    attempt = _submit(client, repeat, student["id"], plan["session_id"])
+    attempt = _submit(client, repeat, student["headers"], plan["session_id"])
     assert attempt["vocab"] is None
 
 
@@ -159,10 +154,10 @@ def test_no_wordlist_shows_null_not_fabricated(
         db.delete(entry)
     db.commit()
     try:
-        student = _join(client, "无词表同学")
-        plan = _plan(client, student["id"])
+        student = _join(db, client, "无词表同学")
+        plan = _plan(client, student["headers"])
         question = next(i for i in plan["items"] if i["type"] == "question")
-        attempt = _submit(client, question, student["id"], plan["session_id"])
+        attempt = _submit(client, question, student["headers"], plan["session_id"])
         assert attempt["status"] == "done"
         assert attempt["vocab"] is None
     finally:
@@ -173,24 +168,22 @@ def test_no_wordlist_shows_null_not_fabricated(
 
 
 def test_trail_aggregates_by_day(
-    client: TestClient, scripted_scoring: Callable[[str], None]
+    client: TestClient, scripted_scoring: Callable[[str], None], db: Session
 ) -> None:
-    student = _join(client, "轨迹同学")
-    plan = _plan(client, student["id"])
+    student = _join(db, client, "轨迹同学")
+    plan = _plan(client, student["headers"])
     # 答一题问答 + 一句复述
     scripted_scoring(
         "i prefer loyal dogs because they help me relax with effort and "
         "independent habits"
     )
     question = next(i for i in plan["items"] if i["type"] == "question")
-    _submit(client, question, student["id"], plan["session_id"])
+    _submit(client, question, student["headers"], plan["session_id"])
     scripted_scoring("dogs are friendly and loyal")
     repeat = next(i for i in plan["items"] if i["type"] == "repeat")
-    _submit(client, repeat, student["id"], plan["session_id"])
+    _submit(client, repeat, student["headers"], plan["session_id"])
 
-    resp = client.get(
-        "/api/v1/classes/DEMO01/trail", params=student_params(student["id"])
-    )
+    resp = client.get("/api/v1/classes/DEMO01/trail", headers=student["headers"])
     assert resp.status_code == 200
     trail = resp.json()
     assert trail["display_name"] == "轨迹同学"
@@ -202,27 +195,28 @@ def test_trail_aggregates_by_day(
     assert day["attempt_count"] == 2
 
 
-def test_trail_requires_own_credential(client: TestClient) -> None:
-    """轨迹查询校验本人身份：无凭证 401、拿他人凭证 403（不靠学生 ID）。"""
-    student = _join(client, "轨迹甲")
-    other = _join(client, "轨迹乙")
+def test_trail_requires_own_credential(client: TestClient, db: Session) -> None:
+    """轨迹凭 JWT 自识别：无登录 401、坏 token 401、他人 JWT 只能看自己的。"""
+    student = _join(db, client, "轨迹甲")
+    other = _join(db, client, "轨迹乙")
     with anonymous(client):
-        missing = client.get(
-            "/api/v1/classes/DEMO01/trail", params={"student_id": student["id"]}
-        )
+        missing = client.get("/api/v1/classes/DEMO01/trail")
         assert missing.status_code == 401
-        foreign = client.get(
+        tampered = client.get(
             "/api/v1/classes/DEMO01/trail",
-            params={"student_id": student["id"], "token": token_for(other["id"])},
+            headers={"Authorization": "Bearer not-a-jwt"},
         )
-        assert foreign.status_code == 403
+        assert tampered.status_code == 401
+        # 乙的有效学生 JWT：看的是乙自己的轨迹（拿不到甲的）
+        foreign = client.get("/api/v1/classes/DEMO01/trail", headers=other["headers"])
+        assert foreign.status_code == 200
+        assert foreign.json()["student_id"] != student["student"]["id"]
+        assert foreign.json()["student_id"] == other["student"]["id"]
 
 
-def test_trail_empty_for_new_student(client: TestClient) -> None:
-    student = _join(client, "新同学")
-    resp = client.get(
-        "/api/v1/classes/DEMO01/trail", params=student_params(student["id"])
-    )
+def test_trail_empty_for_new_student(client: TestClient, db: Session) -> None:
+    student = _join(db, client, "新同学")
+    resp = client.get("/api/v1/classes/DEMO01/trail", headers=student["headers"])
     assert resp.status_code == 200
     assert resp.json()["sessions"] == []
 
@@ -234,7 +228,7 @@ def test_board_band_distribution_and_inactive(
     client: TestClient, scripted_scoring: Callable[[str], None], db: Session
 ) -> None:
     """档位分布按学生当前档统计；新加入（<7 天）不算未练。"""
-    _join(client, "面板同学")
+    _join(db, client, "面板同学")
 
     data = client.get("/api/v1/classes/DEMO01/board").json()
     assert data["band_distribution"].get("B1", 0) >= 1
@@ -272,10 +266,10 @@ def test_engine_failure_vocab_not_fabricated(
 
     app.dependency_overrides[get_scoring_submitter] = override_submitter
     try:
-        student = _join(client, "失败同学")
-        plan = _plan(client, student["id"])
+        student = _join(db, client, "失败同学")
+        plan = _plan(client, student["headers"])
         question = next(i for i in plan["items"] if i["type"] == "question")
-        attempt = _submit(client, question, student["id"], plan["session_id"])
+        attempt = _submit(client, question, student["headers"], plan["session_id"])
         assert attempt["status"] == "failed"
         assert attempt["vocab"] is None
     finally:
@@ -283,11 +277,11 @@ def test_engine_failure_vocab_not_fabricated(
 
 
 def test_trail_band_change_after_upgrade(
-    client: TestClient, scripted_scoring: Callable[[str], None]
+    client: TestClient, scripted_scoring: Callable[[str], None], db: Session
 ) -> None:
     """复述全对（高完整度+达标语速）→ 问答档升 → trail 标记 up。"""
-    student = _join(client, "升档同学")
-    plan = _plan(client, student["id"])
+    student = _join(db, client, "升档同学")
+    plan = _plan(client, student["headers"])
     # 每句原文照读 + 语速 2.5 w/s 附近 → 完整度 100、流利度高
     repeats = [i for i in plan["items"] if i["type"] == "repeat"]
     for item in repeats:
@@ -297,63 +291,63 @@ def test_trail_band_change_after_upgrade(
         resp = client.post(
             "/api/v1/attempts",
             files={"audio": wav_upload(duration)},
-            data=student_form(
-                student["id"],
-                item_type="repeat",
-                item_id=item["id"],
-                duration_s=str(duration),
-                session_id=plan["session_id"],
-            ),
+            data={
+                "item_type": "repeat",
+                "item_id": item["id"],
+                "duration_s": str(duration),
+                "session_id": plan["session_id"],
+            },
+            headers=student["headers"],
         )
         assert resp.status_code == 200
 
     trail = client.get(
-        "/api/v1/classes/DEMO01/trail", params=student_params(student["id"])
+        "/api/v1/classes/DEMO01/trail", headers=student["headers"]
     ).json()
     assert trail["band_change"] == "up"
 
 
 def test_trail_band_change_keep_when_partial(
-    client: TestClient, scripted_scoring: Callable[[str], None]
+    client: TestClient, scripted_scoring: Callable[[str], None], db: Session
 ) -> None:
     """只答一题（复述未全完成）→ 无调整 → band_change 为 null。"""
-    student = _join(client, "未调档同学")
-    plan = _plan(client, student["id"])
+    student = _join(db, client, "未调档同学")
+    plan = _plan(client, student["headers"])
     first = plan["items"][0]
     scripted_scoring(first["text"])
-    _submit(client, first, student["id"], plan["session_id"])
+    _submit(client, first, student["headers"], plan["session_id"])
 
     trail = client.get(
-        "/api/v1/classes/DEMO01/trail", params=student_params(student["id"])
+        "/api/v1/classes/DEMO01/trail", headers=student["headers"]
     ).json()
     assert trail["band_change"] is None
 
 
-def _finish_round(client: TestClient, plan: dict, student_id: str) -> None:
+def _finish_round(client: TestClient, plan: dict, headers: dict[str, str]) -> None:
     for item in plan["items"]:
         resp = client.post(
             "/api/v1/attempts",
             files={"audio": wav_upload(6.0)},
-            data=student_form(
-                student_id,
-                item_type=item["type"],
-                item_id=item["id"],
-                duration_s="6.0",
-                session_id=plan["session_id"],
-            ),
+            data={
+                "item_type": item["type"],
+                "item_id": item["id"],
+                "duration_s": "6.0",
+                "session_id": plan["session_id"],
+            },
+            headers=headers,
         )
         assert resp.status_code == 200, resp.text
 
 
 def test_settlement_xp_stars_badge_on_today(
-    client: TestClient, scripted_scoring: Callable[[str], None]
+    client: TestClient, scripted_scoring: Callable[[str], None], db: Session
 ) -> None:
     """答完全轮 → /today 结算：1 星保底、XP 入账、首轮徽章、幂等。"""
-    student = _join(client, "激励同学")
-    plan = _plan(client, student["id"])
-    _finish_round(client, plan, student["id"])
+    student = _join(db, client, "激励同学")
+    plan = _plan(client, student["headers"])
+    _finish_round(client, plan, student["headers"])
 
-    data = _plan(client, student["id"])  # 再拉一次触发结算
+    data = _plan(client, student["headers"])  # 再拉一次触发结算
     g = data["gamification"]
     assert g is not None
     assert g["session_stars"] == 1  # mock 转写分不高 → 保底 1 星
@@ -363,19 +357,19 @@ def test_settlement_xp_stars_badge_on_today(
     assert "first_round" in keys
 
     # 幂等：再拉 today 不重复结算
-    again = _plan(client, student["id"])["gamification"]
+    again = _plan(client, student["headers"])["gamification"]
     assert again["xp"] == g["xp"]
 
 
 def test_settlement_partial_round_not_settled(
-    client: TestClient, scripted_scoring: Callable[[str], None]
+    client: TestClient, scripted_scoring: Callable[[str], None], db: Session
 ) -> None:
     """只答部分题 → 不结算（stars/xp 保持初始）。"""
-    student = _join(client, "未完成同学")
-    plan = _plan(client, student["id"])
+    student = _join(db, client, "未完成同学")
+    plan = _plan(client, student["headers"])
     first = plan["items"][0]
-    _submit(client, first, student["id"], plan["session_id"])
+    _submit(client, first, student["headers"], plan["session_id"])
 
-    g = _plan(client, student["id"])["gamification"]
+    g = _plan(client, student["headers"])["gamification"]
     assert g["session_stars"] is None
     assert g["xp"] == 0

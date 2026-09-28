@@ -1,9 +1,9 @@
-"""权限与音频保护测试（Task 4）。
+"""权限与音频保护测试（账号制 JWT）。
 
 口径：
 - 课堂码只用于学生入班，不构成任何教师权限；
-- 教师 = 独立登录账号 + 课堂 owner 范围校验（401=未登录/凭证无效，403=权限不足）；
-- 学生 = 入班轻量凭证（401=缺失/无效，403=凭证非本人）；
+- 教师 = 独立登录账号 + 课堂 owner 范围校验（401=未登录/JWT 无效，403=权限不足）；
+- 学生 = role=student 的账号 JWT，服务端从 token 自识别（不再传 student_id/token）；
 - 录音回放按归属校验，不靠「知道 UUID」；
 - 上传用 ffprobe 校验真实音频，坏文件在付费评分前就被拒。
 """
@@ -21,13 +21,7 @@ from app.api.deps import get_scoring_submitter
 from app.main import app
 from app.models import User, UserCreate
 from tests.utils.audio import wav_upload
-from tests.utils.credential import (
-    anonymous,
-    remember_join,
-    student_form,
-    student_params,
-    token_for,
-)
+from tests.utils.credential import anonymous, make_student
 from tests.utils.utils import random_email, random_lower_string
 
 
@@ -62,27 +56,21 @@ def _login_teacher(db: Session, client: TestClient) -> tuple[User, dict[str, str
     return user, {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
-def _join(client: TestClient, code: str, name: str) -> dict:
-    resp = client.post(f"/api/v1/classes/{code}/join", json={"display_name": name})
-    assert resp.status_code == 200, resp.text
-    return remember_join(resp.json())
-
-
 def _submit_first_attempt(client: TestClient, code: str, student: dict) -> str:
     plan = client.get(
-        f"/api/v1/classes/{code}/today", params=student_params(student["id"])
+        f"/api/v1/classes/{code}/today", headers=student["headers"]
     ).json()
     item = plan["items"][0]
     resp = client.post(
         "/api/v1/attempts",
         files={"audio": wav_upload(5.0)},
-        data=student_form(
-            student["id"],
-            item_type=item["type"],
-            item_id=item["id"],
-            duration_s="5.0",
-            session_id=plan["session_id"],
-        ),
+        data={
+            "item_type": item["type"],
+            "item_id": item["id"],
+            "duration_s": "5.0",
+            "session_id": plan["session_id"],
+        },
+        headers=student["headers"],
     )
     assert resp.status_code == 200, resp.text
     return resp.json()["id"]
@@ -92,12 +80,12 @@ def _submit_first_attempt(client: TestClient, code: str, student: dict) -> str:
 
 
 def test_classroom_code_grants_no_teacher_power(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
-    """只知道课堂码（学生身份）拿不到名单/指派：未登录一律 401。"""
+    """只知道课堂码拿不到教师面板：未登录 401，学生 JWT 也只有学生视角（403）。"""
     classroom = _create_classroom(client, superuser_token_headers)
     code = classroom["code"]
-    student = _join(client, code, "小明")
+    student = make_student(db, client, code, "小明")
 
     with anonymous(client):
         assert client.get(f"/api/v1/classes/{code}/board").status_code == 401
@@ -109,10 +97,29 @@ def test_classroom_code_grants_no_teacher_power(
             ).status_code
             == 401
         )
-        # 学生自己带凭证也只能查自己
-        ok = client.get(
-            f"/api/v1/classes/{code}/today", params=student_params(student["id"])
+        # 学生 JWT：登录有效但角色不足 → 403（不触发登出）
+        assert (
+            client.get(
+                f"/api/v1/classes/{code}/board", headers=student["headers"]
+            ).status_code
+            == 403
         )
+        assert (
+            client.get(
+                f"/api/v1/classes/{code}/units", headers=student["headers"]
+            ).status_code
+            == 403
+        )
+        assert (
+            client.put(
+                f"/api/v1/classes/{code}/assignment",
+                json={"unit_id": str(uuid.uuid4())},
+                headers=student["headers"],
+            ).status_code
+            == 403
+        )
+        # 学生 JWT 查自己的今日计划 → 200
+        ok = client.get(f"/api/v1/classes/{code}/today", headers=student["headers"])
         assert ok.status_code == 200
 
 
@@ -182,82 +189,172 @@ def test_owner_binding_rejects_unknown_user(
     assert resp.status_code == 422
 
 
-# ── 学生轻量凭证 ────────────────────────────────────────────────────
-
-
-def test_student_endpoints_require_credential(
-    client: TestClient, superuser_token_headers: dict[str, str]
+def test_teacher_creates_classroom_and_lists_own(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
-    """学生查询校验本人凭证：缺 401、非本人 403、本人 200。"""
+    """教师（非管理员）现在可以建课堂：创建者即属主，列表只见自己名下的。"""
+    _teacher_a, headers_a = _login_teacher(db, client)
+    _teacher_b, headers_b = _login_teacher(db, client)
+
+    created = client.post("/api/v1/classes", json={"class_size": 25}, headers=headers_a)
+    assert created.status_code == 200, created.text
+    classroom = created.json()
+    assert len(classroom["code"]) == 6
+    assert classroom["owner_id"] is not None
+
+    mine = client.get("/api/v1/classes", headers=headers_a).json()
+    assert [c["code"] for c in mine] == [classroom["code"]]
+    # 别的教师看不到这间课堂
+    others = client.get("/api/v1/classes", headers=headers_b).json()
+    assert classroom["code"] not in [c["code"] for c in others]
+    # 管理员看得到全部
+    admin_view = client.get("/api/v1/classes", headers=superuser_token_headers).json()
+    assert classroom["code"] in [c["code"] for c in admin_view]
+
+    # 学生建课堂 → 403；学生列表 → 200 且为空（名下无课堂）
+    student = make_student(db, client, classroom["code"], "建班学生")
+    with anonymous(client):
+        assert (
+            client.post(
+                "/api/v1/classes", json={"class_size": 10}, headers=student["headers"]
+            ).status_code
+            == 403
+        )
+        assert client.get("/api/v1/classes", headers=student["headers"]).json() == []
+
+
+# ── 学生 JWT ─────────────────────────────────────────────────────────
+
+
+def test_join_requires_student_login(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """入班需要学生 JWT：匿名/坏 token 401，教师 JWT 403，学生 200 且幂等。"""
     classroom = _create_classroom(client, superuser_token_headers)
     code = classroom["code"]
-    student = _join(client, code, "小红")
-    other = _join(client, code, "小刚")
+    url = f"/api/v1/classes/{code}/join"
 
     with anonymous(client):
-        missing = client.get(
-            f"/api/v1/classes/{code}/today", params={"student_id": student["id"]}
+        assert client.post(url, json={"display_name": "甲"}).status_code == 401
+        assert (
+            client.post(
+                url, json={"display_name": "甲"}, headers={"Authorization": "Bearer x"}
+            ).status_code
+            == 401
         )
+        _teacher, teacher_headers = _login_teacher(db, client)
+        assert (
+            client.post(
+                url, json={"display_name": "甲"}, headers=teacher_headers
+            ).status_code
+            == 403
+        )
+
+    student = make_student(db, client, code, "甲")
+    data = student["student"]
+    assert data["display_name"] == "甲"
+    assert data["user_id"] == str(student["user"].id)
+    assert "access_token" not in data  # 入班响应不再携带轻量凭证
+
+    # 重复入班幂等：同一账号再 join 返回已有档案
+    again = client.post(url, json={"display_name": "甲"}, headers=student["headers"])
+    assert again.status_code == 200, again.text
+    assert again.json()["id"] == data["id"]
+
+
+def test_student_endpoints_validate_jwt(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """学生查询凭 JWT 自识别：缺失/篡改 401，本人 200，他人 JWT 只见自己的。"""
+    classroom = _create_classroom(client, superuser_token_headers)
+    code = classroom["code"]
+    student = make_student(db, client, code, "小红")
+    other = make_student(db, client, code, "小刚")
+
+    with anonymous(client):
+        missing = client.get(f"/api/v1/classes/{code}/today")
         assert missing.status_code == 401
 
-        forged = client.get(
-            f"/api/v1/classes/{code}/today",
-            params={"student_id": student["id"], "token": token_for(other["id"])},
-        )
-        assert forged.status_code == 403
-
-        # 凭证无效/过期（篡改签名）→ 401
+        # JWT 无效/过期（篡改签名）→ 401
         tampered = client.get(
             f"/api/v1/classes/{code}/today",
-            params={"student_id": student["id"], "token": "not-a-token"},
+            headers={"Authorization": "Bearer not-a-jwt"},
         )
         assert tampered.status_code == 401
 
-        own = client.get(
-            f"/api/v1/classes/{code}/today", params=student_params(student["id"])
+        # 教师 JWT 访问学生端点 → 403（角色不足）
+        _teacher, teacher_headers = _login_teacher(db, client)
+        assert (
+            client.get(
+                f"/api/v1/classes/{code}/today", headers=teacher_headers
+            ).status_code
+            == 403
         )
-        assert own.status_code == 200
+
+    own = client.get(f"/api/v1/classes/{code}/today", headers=student["headers"])
+    assert own.status_code == 200
+    own_plan = own.json()
+
+    # 别人的有效学生 JWT → 200，但拿到的是他自己的计划（读不到小红的数据）
+    foreign = client.get(f"/api/v1/classes/{code}/today", headers=other["headers"])
+    assert foreign.status_code == 200
+    assert foreign.json()["session_id"] != own_plan["session_id"]
+
+    # 拿别人的会话 ID 查计划 → 404（会话归属校验）
+    with anonymous(client):
+        hijack = client.get(
+            f"/api/v1/classes/{code}/today",
+            params={"session_id": own_plan["session_id"]},
+            headers=other["headers"],
+        )
+        assert hijack.status_code == 404
 
 
-def test_submit_requires_own_credential(
+def test_submit_requires_own_jwt(
     client: TestClient,
     superuser_token_headers: dict[str, str],
+    db: Session,
     noop_scoring: None,
 ) -> None:
-    """交作业必须带本人凭证（只给 student_id 拒绝）。"""
+    """交作业必须是登录学生本人：匿名 401，借他人会话 403。"""
     classroom = _create_classroom(client, superuser_token_headers)
     code = classroom["code"]
-    student = _join(client, code, "提交人")
-    other = _join(client, code, "冒名者")
+    student = make_student(db, client, code, "提交人")
+    other = make_student(db, client, code, "冒名者")
     plan = client.get(
-        f"/api/v1/classes/{code}/today", params=student_params(student["id"])
+        f"/api/v1/classes/{code}/today", headers=student["headers"]
     ).json()
     item = plan["items"][0]
 
+    base = {
+        "item_type": item["type"],
+        "item_id": item["id"],
+        "duration_s": "5.0",
+        "session_id": plan["session_id"],
+    }
     with anonymous(client):
-        base = {
-            "item_type": item["type"],
-            "item_id": item["id"],
-            "duration_s": "5.0",
-            "session_id": plan["session_id"],
-        }
-        no_token = client.post(
+        no_login = client.post(
             "/api/v1/attempts",
             files={"audio": wav_upload(5.0)},
-            data={"student_id": student["id"], **base},
+            data={**base},
         )
-        assert no_token.status_code == 401
+        assert no_login.status_code == 401
 
         forged = client.post(
             "/api/v1/attempts",
             files={"audio": wav_upload(5.0)},
-            data={
-                "student_id": student["id"],
-                "token": token_for(other["id"]),
-                **base,
-            },
+            data={**base},
+            headers=other["headers"],
         )
         assert forged.status_code == 403
+
+    own = client.post(
+        "/api/v1/attempts",
+        files={"audio": wav_upload(5.0)},
+        data={**base},
+        headers=student["headers"],
+    )
+    assert own.status_code == 200, own.text
 
 
 # ── 录音回放按归属校验（不靠 UUID）──────────────────────────────────
@@ -280,20 +377,18 @@ def test_attempt_audio_access_matrix(
     )
     assert resp.status_code == 200
 
-    student = _join(client, code, "录音人")
-    other = _join(client, code, "旁听人")
+    student = make_student(db, client, code, "录音人")
+    other = make_student(db, client, code, "旁听人")
     attempt_id = _submit_first_attempt(client, code, student)
     url = f"/api/v1/attempts/{attempt_id}/audio"
 
     with anonymous(client):
         # 匿名：401（UUID 猜不到也没用）
         assert client.get(url).status_code == 401
-        # 别人的学生凭证：403
-        assert (
-            client.get(url, params={"token": token_for(other["id"])}).status_code == 403
-        )
-        # 本人凭证：200 且字节一致
-        own = client.get(url, params={"token": token_for(student["id"])})
+        # 别人的学生 JWT：403
+        assert client.get(url, headers=other["headers"]).status_code == 403
+        # 本人 JWT：200 且字节可回放
+        own = client.get(url, headers=student["headers"])
         assert own.status_code == 200
         assert own.headers["content-type"].startswith("audio/")
         # 非授权教师（登录但没绑进这间课堂）：403（不登出）
@@ -309,28 +404,84 @@ def test_attempt_audio_access_matrix(
 def test_attempt_status_poll_requires_credential(
     client: TestClient,
     superuser_token_headers: dict[str, str],
+    db: Session,
     noop_scoring: None,
 ) -> None:
-    """轮询作答状态同样校验归属。"""
+    """轮询作答状态同样校验归属：匿名 401、他人 JWT 403、本人 200。"""
     classroom = _create_classroom(client, superuser_token_headers)
     code = classroom["code"]
-    student = _join(client, code, "轮询人")
-    other = _join(client, code, "别人")
+    student = make_student(db, client, code, "轮询人")
+    other = make_student(db, client, code, "别人")
     attempt_id = _submit_first_attempt(client, code, student)
 
     with anonymous(client):
         assert client.get(f"/api/v1/attempts/{attempt_id}").status_code == 401
         assert (
             client.get(
-                f"/api/v1/attempts/{attempt_id}",
-                params={"token": token_for(other["id"])},
+                f"/api/v1/attempts/{attempt_id}", headers=other["headers"]
             ).status_code
             == 403
         )
         assert (
             client.get(
-                f"/api/v1/attempts/{attempt_id}",
-                params={"token": token_for(student["id"])},
+                f"/api/v1/attempts/{attempt_id}", headers=student["headers"]
+            ).status_code
+            == 200
+        )
+
+
+def test_trail_access_matrix(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """轨迹：学生看自己；教师缺 student_id 422、非属主 403、属主/管理员 200。"""
+    classroom = _create_classroom(client, superuser_token_headers)
+    code = classroom["code"]
+    owner, owner_headers = _login_teacher(db, client)
+    _stranger, stranger_headers = _login_teacher(db, client)
+    resp = client.put(
+        f"/api/v1/admin/classrooms/{classroom['id']}",
+        json={"owner_id": str(owner.id)},
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200
+
+    student = make_student(db, client, code, "轨迹人")
+    trail_url = f"/api/v1/classes/{code}/trail"
+
+    # 学生：省略 student_id 看自己
+    own = client.get(trail_url, headers=student["headers"])
+    assert own.status_code == 200
+    assert own.json()["student_id"] == student["student"]["id"]
+
+    with anonymous(client):
+        # 未登录 401
+        assert client.get(trail_url).status_code == 401
+        # 教师必须传 student_id（缺参 422，而不是看自己）
+        assert client.get(trail_url, headers=owner_headers).status_code == 422
+        # 非属主教师传 student_id → 403
+        assert (
+            client.get(
+                trail_url,
+                params={"student_id": student["student"]["id"]},
+                headers=stranger_headers,
+            ).status_code
+            == 403
+        )
+        # 属主教师 → 200
+        assert (
+            client.get(
+                trail_url,
+                params={"student_id": student["student"]["id"]},
+                headers=owner_headers,
+            ).status_code
+            == 200
+        )
+        # 管理员 → 200
+        assert (
+            client.get(
+                trail_url,
+                params={"student_id": student["student"]["id"]},
+                headers=superuser_token_headers,
             ).status_code
             == 200
         )
@@ -340,16 +491,14 @@ def test_attempt_status_poll_requires_credential(
 
 
 def test_closed_classroom_hides_from_students(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
     """课堂停用后学生请求 404（前端据此清身份回加入页），不再出题。"""
     classroom = _create_classroom(client, superuser_token_headers)
     code = classroom["code"]
-    student = _join(client, code, "在班人")
+    student = make_student(db, client, code, "在班人")
 
-    ok = client.get(
-        f"/api/v1/classes/{code}/today", params=student_params(student["id"])
-    )
+    ok = client.get(f"/api/v1/classes/{code}/today", headers=student["headers"])
     assert ok.status_code == 200
 
     closed = client.put(
@@ -360,11 +509,8 @@ def test_closed_classroom_hides_from_students(
     assert closed.status_code == 200
     assert closed.json()["is_active"] is False
 
-    with anonymous(client):
-        resp = client.get(
-            f"/api/v1/classes/{code}/today", params=student_params(student["id"])
-        )
-        assert resp.status_code == 404
+    resp = client.get(f"/api/v1/classes/{code}/today", headers=student["headers"])
+    assert resp.status_code == 404
 
 
 # ── 上传音频校验（付费评分前拦截坏输入）──────────────────────────────
@@ -373,13 +519,14 @@ def test_closed_classroom_hides_from_students(
 def test_upload_rejects_non_audio_and_accepts_wav(
     client: TestClient,
     superuser_token_headers: dict[str, str],
+    db: Session,
     noop_scoring: None,
 ) -> None:
     classroom = _create_classroom(client, superuser_token_headers)
     code = classroom["code"]
-    student = _join(client, code, "录音校验")
+    student = make_student(db, client, code, "录音校验")
     plan = client.get(
-        f"/api/v1/classes/{code}/today", params=student_params(student["id"])
+        f"/api/v1/classes/{code}/today", headers=student["headers"]
     ).json()
     item = plan["items"][0]
     base = {
@@ -393,7 +540,8 @@ def test_upload_rejects_non_audio_and_accepts_wav(
         return client.post(
             "/api/v1/attempts",
             files={"audio": (name, payload, mime)},
-            data=student_form(student["id"], **base),
+            data={**base},
+            headers=student["headers"],
         )
 
     # 真实 WAV：通过
@@ -406,7 +554,8 @@ def test_upload_rejects_non_audio_and_accepts_wav(
     short_claim = client.post(
         "/api/v1/attempts",
         files={"audio": ("a.wav", wav_upload(1.0)[1], "audio/wav")},
-        data=student_form(student["id"], **{**base, "duration_s": "30.0"}),
+        data={**base, "duration_s": "30.0"},
+        headers=student["headers"],
     )
     assert short_claim.status_code == 200
     assert short_claim.json()["duration_s"] == 1.0
@@ -415,24 +564,25 @@ def test_upload_rejects_non_audio_and_accepts_wav(
 def test_upload_rejects_too_short_recording(
     client: TestClient,
     superuser_token_headers: dict[str, str],
+    db: Session,
     noop_scoring: None,
 ) -> None:
     classroom = _create_classroom(client, superuser_token_headers)
     code = classroom["code"]
-    student = _join(client, code, "短录音")
+    student = make_student(db, client, code, "短录音")
     plan = client.get(
-        f"/api/v1/classes/{code}/today", params=student_params(student["id"])
+        f"/api/v1/classes/{code}/today", headers=student["headers"]
     ).json()
     item = plan["items"][0]
     resp = client.post(
         "/api/v1/attempts",
         files={"audio": wav_upload(0.4)},
-        data=student_form(
-            student["id"],
-            item_type=item["type"],
-            item_id=item["id"],
-            duration_s="0.4",
-            session_id=plan["session_id"],
-        ),
+        data={
+            "item_type": item["type"],
+            "item_id": item["id"],
+            "duration_s": "0.4",
+            "session_id": plan["session_id"],
+        },
+        headers=student["headers"],
     )
     assert resp.status_code == 422

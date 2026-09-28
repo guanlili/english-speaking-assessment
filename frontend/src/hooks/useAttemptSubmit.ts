@@ -5,15 +5,14 @@ import { AttemptsService } from "@/client"
 export interface AttemptSubmitTarget {
   itemType: "passage" | "repeat" | "question"
   itemId: string
-  studentId?: string
   sessionId?: string
   idempotencyKey?: string
-  token?: string
 }
 
 /**
  * 上传一条作答并轮询到 done/failed（PRD 不可协商 #4：上传与评分分离）。
  *
+ * 学生身份走登录 JWT（Authorization 头，SDK 自动注入）；
  * submit 接受可选的 targetOverride：录音开始时钉住 item_id / session_id / 题型，
  * 录音期间老师切换指派不会让旧录音提交到新题新轮。
  * idempotencyKey 确保重传不重复创建作答/扣费。
@@ -40,10 +39,8 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
           item_type: t.itemType,
           item_id: t.itemId,
           duration_s: Math.round(variables.duration * 10) / 10,
-          ...(t.studentId ? { student_id: t.studentId } : {}),
           ...(t.sessionId ? { session_id: t.sessionId } : {}),
           ...(t.idempotencyKey ? { idempotency_key: t.idempotencyKey } : {}),
-          ...(t.token ? { token: t.token } : {}),
         },
       })
     },
@@ -53,10 +50,7 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
   const attemptQuery = useQuery({
     queryKey: ["attempt", attemptId],
     queryFn: () =>
-      AttemptsService.readAttempt({
-        attemptId: attemptId as string,
-        ...(targetRef.current.token ? { token: targetRef.current.token } : {}),
-      }),
+      AttemptsService.readAttempt({ attemptId: attemptId as string }),
     enabled: attemptId !== null,
     refetchInterval: (query) => {
       const status = query.state.data?.status

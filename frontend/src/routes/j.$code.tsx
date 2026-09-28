@@ -1,10 +1,7 @@
-import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation } from "@tanstack/react-query"
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router"
 import { ArrowRight, ChartLine, Headphones, MessageCircle } from "lucide-react"
 import { useEffect, useState } from "react"
-import { useForm } from "react-hook-form"
-import { z } from "zod"
 import { ClassesService } from "@/client"
 import { Logo } from "@/components/Common/Logo"
 import {
@@ -14,28 +11,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { APP_NAME } from "@/config"
+import { isStudentLoggedIn } from "@/hooks/useAuth"
 import { loadStudent, saveStudent } from "@/lib/classroom-student"
-
-const formSchema = z.object({
-  display_name: z
-    .string()
-    .trim()
-    .min(1, { message: "请输入你的名字" })
-    .max(64, { message: "名字太长了" }),
-})
-
-type FormData = z.infer<typeof formSchema>
 
 export const Route = createFileRoute("/j/$code")({
   component: JoinPage,
@@ -47,24 +27,25 @@ export const Route = createFileRoute("/j/$code")({
 function JoinPage() {
   const { code } = useParams({ from: "/j/$code" })
   const navigate = useNavigate({ from: "/j/$code" })
-  const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
-    defaultValues: { display_name: "" },
-  })
+  const [name, setName] = useState("")
   const [error, setError] = useState<string | null>(null)
 
-  // 已在本课堂留过名：直接进练习页（BDD B：中途刷新仍是这个个人）
+  // 未登录学生 → 登录页（学生 Tab）；已在本课堂 → 直接进练习页
   useEffect(() => {
+    if (!isStudentLoggedIn()) {
+      void navigate({ to: "/login" })
+      return
+    }
     if (loadStudent(code)) {
       void navigate({ to: "/home/$code", params: { code } })
     }
   }, [code, navigate])
 
   const joinMutation = useMutation({
-    mutationFn: (display_name: string) =>
+    mutationFn: () =>
       ClassesService.joinClass({
         code: code.toUpperCase(),
-        requestBody: { display_name },
+        requestBody: name.trim() ? { display_name: name.trim() } : {},
       }),
     onSuccess: (student) => {
       saveStudent(code, student)
@@ -125,47 +106,40 @@ function JoinPage() {
               <span className="font-mono font-semibold">
                 {code.toUpperCase()}
               </span>
-              · 请使用老师熟悉的名字
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit((values) =>
-                  joinMutation.mutate(values.display_name.trim()),
-                )}
-                className="space-y-6"
-              >
-                <FormField
-                  control={form.control}
-                  name="display_name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>你的名字</FormLabel>
-                      <FormControl>
-                        <Input
-                          className="h-12 bg-background/60"
-                          autoComplete="name"
-                          placeholder="例如：李雷"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                joinMutation.mutate()
+              }}
+              className="space-y-6"
+            >
+              <div className="space-y-2">
+                <label htmlFor="join-name" className="text-sm font-medium">
+                  课堂里显示的名字（可改，默认用你的姓名）
+                </label>
+                <Input
+                  id="join-name"
+                  className="h-12 bg-background/60"
+                  autoComplete="name"
+                  placeholder="例如：李雷"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                 />
-                {error && <p className="text-sm text-destructive">{error}</p>}
-                <LoadingButton
-                  type="submit"
-                  className="h-12 w-full"
-                  loading={joinMutation.isPending}
-                >
-                  进入课堂 <ArrowRight className="size-4" />
-                </LoadingButton>
-              </form>
-            </Form>
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <LoadingButton
+                type="submit"
+                className="h-12 w-full"
+                loading={joinMutation.isPending}
+              >
+                进入课堂 <ArrowRight className="size-4" />
+              </LoadingButton>
+            </form>
             <p className="mt-5 text-center text-xs leading-6 text-muted-foreground">
-              无需注册账号 · 进入后即可查看老师安排的练习
+              用你的学号账号进入 · 老师能看见你的练习进度
             </p>
           </CardContent>
         </Card>

@@ -55,14 +55,34 @@ def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
 )
 def create_user(*, session: SessionDep, user_in: UserCreate) -> Any:
     """
-    Create new user.
+    Create new user. 学生账号建议走 /students/import 批量建号；
+    此处后台单个建号支持 teacher/admin（admin 自动置 is_superuser）。
     """
-    user = crud.get_user_by_email(session=session, email=user_in.email)
-    if user:
-        raise HTTPException(
-            status_code=400,
-            detail="The user with this email already exists in the system.",
-        )
+    from app.core.security import VALID_ROLES
+
+    if user_in.role == "student" and not user_in.username:
+        raise HTTPException(status_code=422, detail="学生账号必须提供学号")
+    if user_in.role is not None and user_in.role not in VALID_ROLES:
+        raise HTTPException(status_code=422, detail=f"角色无效：{user_in.role}")
+    if not user_in.role or user_in.role != "student":
+        if not user_in.email:
+            raise HTTPException(status_code=422, detail="教师/管理员必须提供邮箱")
+    if user_in.email:
+        user = crud.get_user_by_email(session=session, email=user_in.email)
+        if user:
+            raise HTTPException(
+                status_code=400,
+                detail="The user with this email already exists in the system.",
+            )
+    if user_in.username:
+        user = crud.get_user_by_username(session=session, username=user_in.username)
+        if user:
+            raise HTTPException(status_code=400, detail="该学号已存在")
+    # 维护不变量：role==admin ⇔ is_superuser
+    if user_in.role == "admin":
+        user_in.is_superuser = True
+    elif user_in.role is not None and user_in.is_superuser:
+        user_in.role = "admin"
 
     user = crud.create_user(session=session, user_create=user_in)
     if settings.emails_enabled and user_in.email:
@@ -115,6 +135,8 @@ def update_password_me(
         )
     hashed_password = get_password_hash(body.new_password)
     current_user.hashed_password = hashed_password
+    # 批量导入的初始密码：改密即视为完成首次登录激活
+    current_user.must_change_password = False
     session.add(current_user)
     session.commit()
     return Message(message="Password updated successfully")

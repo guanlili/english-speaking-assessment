@@ -83,6 +83,29 @@ def get_current_active_superuser(current_user: CurrentUser) -> User:
 SuperUserDep = Annotated[User, Depends(get_current_active_superuser)]
 
 
+def _require_role(current_user: User, *allowed: str) -> User:
+    """角色门：admin 恒通过（admin ⇔ is_superuser 的不变量见 models.UserBase）。"""
+    if current_user.is_superuser or current_user.role in allowed:
+        return current_user
+    raise HTTPException(status_code=403, detail=f"该操作需要角色：{'/'.join(allowed)}")
+
+
+def get_current_teacher(current_user: CurrentUser) -> User:
+    """教师或管理员（内容/课堂/学生账号管理类操作）。"""
+    return _require_role(current_user, "teacher")
+
+
+def get_current_student(current_user: CurrentUser) -> User:
+    """仅学生（学生端练习链路）。"""
+    if not current_user.is_superuser and current_user.role != "student":
+        raise HTTPException(status_code=403, detail="该操作仅限学生账号")
+    return current_user
+
+
+TeacherUserDep = Annotated[User, Depends(get_current_teacher)]
+StudentUserDep = Annotated[User, Depends(get_current_student)]
+
+
 def get_optional_current_user(
     session: SessionDep, token: str | None = Depends(reusable_oauth2_optional)
 ) -> User | None:

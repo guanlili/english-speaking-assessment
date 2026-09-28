@@ -16,9 +16,8 @@ from sqlmodel import Session, select
 
 from app.api.deps import OptionalCurrentUser, ScoringSubmitter, SessionDep
 from app.core.config import settings
-from app.core.security import verify_student_token
 from app.core.storage import save_audio_file
-from app.crud import create_attempt, get_attempt, get_student
+from app.crud import create_attempt, get_attempt
 from app.models import (
     Attempt,
     AttemptItemType,
@@ -29,6 +28,7 @@ from app.models import (
     PracticeSession,
     RepeatSentence,
     ScenarioQuestion,
+    Student,
     User,
 )
 from app.scoring.audio_convert import probe_audio
@@ -58,74 +58,63 @@ def _validate_item(session: Session, item_type: str, item_id: uuid.UUID) -> None
         raise HTTPException(status_code=404, detail="题目不存在")
 
 
-def _require_student_submitter(student_id: uuid.UUID | None, token: str | None) -> None:
-    """上传作答：提交学生必须凭入班凭证证明本人身份（匿名演示作答除外）。
+def _resolve_submit_student(
+    session: Session, session_id: uuid.UUID | None, current_user: User | None
+) -> Student | None:
+    """课堂作答归属解析：有 session 必须是登录学生本人；无 session 为匿名演示。
 
-    student_id 为空 = 旧版整篇跟读演示，不校验；有 student_id 时必须带有效凭证。
+    返回归属的 Student 档案（演示作答返回 None）。
     """
-    if student_id is None:
-        return
-    if not token:
-        raise HTTPException(
-            status_code=401,
-            detail="缺少学生凭证，请重新进入课堂",
-            headers={"WWW-Authenticate": "StudentCredential"},
+    if session_id is None:
+        # 公开练习页的整篇跟读演示：无归属主体
+        return None
+    if current_user is None or (
+        not current_user.is_superuser and current_user.role != "student"
+    ):
+        raise HTTPException(status_code=401, detail="请先登录后再提交课堂作答")
+    practice_session = session.get(PracticeSession, session_id)
+    if practice_session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    student = session.exec(
+        select(Student).where(
+            Student.classroom_id == practice_session.classroom_id,  # type: ignore[arg-type]
+            Student.user_id == current_user.id,  # type: ignore[arg-type]
         )
-    try:
-        sid, _, _ = verify_student_token(token)
-    except ValueError:
-        raise HTTPException(
-            status_code=401,
-            detail="学生凭证无效或已过期，请重新进入课堂",
-            headers={"WWW-Authenticate": "StudentCredential"},
-        ) from None
-    if sid != student_id:
-        raise HTTPException(status_code=403, detail="没有权限：凭证与该学生不符")
+    ).first()
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if practice_session.student_id != student.id:
+        raise HTTPException(status_code=403, detail="没有权限：该练习轮不属于你本人")
+    return student
 
 
 def _require_attempt_access(
     session: Session,
     attempt: Attempt,
-    student_token: str | None,
     current_user: User | None,
 ) -> None:
-    """音频/作答访问：本人学生或授权教师（管理员）可访问，不靠 UUID 难猜。
-
-    带了学生凭证就走学生通道（浏览器里可能残留教师 JWT，不能反过来
-    抢身份）；没带凭证才按登录教师（管理员）放行。
-    """
+    """音频/作答访问：本人学生（登录账号比对）或授权教师（管理员）可访问。"""
     if attempt.student_id is None:
         # 匿名演示作答（公开练习页）：没有归属主体可保护，按随机 UUID 回放
         return
-    if student_token:
-        try:
-            sid, _, _ = verify_student_token(student_token)
-        except ValueError:
-            raise HTTPException(
-                status_code=401,
-                detail="凭证无效或已过期，请重新进入课堂",
-                headers={"WWW-Authenticate": "StudentCredential"},
-            ) from None
-        if attempt.student_id == sid:
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    student = session.get(Student, attempt.student_id)
+    if (
+        student is not None
+        and student.user_id == current_user.id
+        and current_user.role == "student"
+    ):
+        return
+    # 教师/管理员通道
+    if current_user.is_superuser:
+        return
+    if student is not None:
+        classroom = session.get(Classroom, student.classroom_id)
+        if classroom is not None and classroom.owner_id == current_user.id:
             return
-        raise HTTPException(status_code=403, detail="没有权限：该作答不属于你本人")
-    if current_user is not None:
-        # 教师/管理员通道
-        if current_user.is_superuser:
-            return
-        if attempt.session_id is not None:
-            practice_session = session.get(PracticeSession, attempt.session_id)
-            if practice_session is not None:
-                classroom = session.get(Classroom, practice_session.classroom_id)
-                if classroom is not None and classroom.owner_id == current_user.id:
-                    return
-        raise HTTPException(
-            status_code=403, detail="没有权限：您不是该作答所属课堂的授权教师"
-        )
     raise HTTPException(
-        status_code=401,
-        detail="缺少凭证",
-        headers={"WWW-Authenticate": "StudentCredential"},
+        status_code=403, detail="没有权限：您不是该作答所属课堂的授权教师"
     )
 
 
@@ -133,16 +122,15 @@ def _require_attempt_access(
 def create_attempt_upload(
     session: SessionDep,
     submitter: ScoringSubmitter,
+    current_user: OptionalCurrentUser = None,
     audio: UploadFile = File(..., description="浏览器 MediaRecorder 录制的音频"),
     item_type: str = Form(...),
     item_id: uuid.UUID = Form(...),
     duration_s: float = Form(..., gt=0, description="录音时长（秒）"),
-    student_id: uuid.UUID | None = Form(default=None),
     session_id: uuid.UUID | None = Form(default=None),
     idempotency_key: str | None = Form(
         default=None, description="幂等键：重传不重复创建"
     ),
-    token: str | None = Form(default=None, description="入班时发放的学生轻量凭证"),
 ) -> Any:
     """
     上传一条作答。立即返回 queued，分数通过轮询获取（PRD 不可协商 #4）。
@@ -151,32 +139,20 @@ def create_attempt_upload(
     队列繁忙时返回 503，前端保留录音提示稍后重试。
     音频真实格式/音轨/时长用 ffprobe 校验，不信客户端上报值。
     """
-    # 幂等检查：同键已有作答直接返回
+    # 归属解析：课堂作答（有 session）必须登录学生本人，演示作答无归属
+    student = _resolve_submit_student(session, session_id, current_user)
+
+    # 幂等检查：同键已有作答直接返回（同样校验归属，防越权读取他人作答）
     if idempotency_key:
         existing = session.exec(
             select(Attempt).where(Attempt.idempotency_key == idempotency_key)
         ).first()
         if existing is not None:
-            # 幂等重传同样校验归属，防止拿到他人 idempotency_key 后越权读取作答
-            _require_student_submitter(existing.student_id, token)
+            _require_attempt_access(session, existing, current_user)
             session.refresh(existing)
             return existing
 
     _validate_item(session, item_type, item_id)
-
-    if student_id is not None:
-        student = get_student(session=session, student_id=student_id)
-        if student is None:
-            raise HTTPException(status_code=404, detail="Student not found")
-    if session_id is not None:
-        practice_session = session.get(PracticeSession, session_id)
-        if practice_session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
-        if student_id is None or practice_session.student_id != student_id:
-            raise HTTPException(status_code=422, detail="会话不属于该学生")
-
-    # 提交学生必须凭入班凭证校验本人身份
-    _require_student_submitter(student_id, token)
 
     if duration_s < MIN_DURATION_S:
         raise HTTPException(status_code=422, detail="录音太短（不足 1 秒），请再录一次")
@@ -233,7 +209,7 @@ def create_attempt_upload(
     attempt = Attempt(
         item_type=item_type,
         item_id=item_id,
-        student_id=student_id,
+        student_id=student.id if student is not None else None,
         session_id=session_id,
         idempotency_key=idempotency_key,
         audio_path=str(audio_path),
@@ -251,7 +227,7 @@ def create_attempt_upload(
             ).first()
             if existing is not None:
                 # 兜底分支同样校验归属，封死「预检查时未提交→撞唯一约束→拿到他人作答」路径
-                _require_student_submitter(existing.student_id, token)
+                _require_attempt_access(session, existing, current_user)
                 return existing
         raise
 
@@ -282,7 +258,6 @@ def _mime_to_suffix(base_mime: str) -> str:
 def read_attempt(
     session: SessionDep,
     attempt_id: uuid.UUID,
-    token: str | None = None,
     current_user: OptionalCurrentUser = None,
 ) -> Any:
     """轮询作答状态与反馈。done 返回转写和分数，failed 返回 error。
@@ -292,7 +267,7 @@ def read_attempt(
     attempt = get_attempt(session=session, attempt_id=attempt_id)
     if not attempt:
         raise HTTPException(status_code=404, detail="Attempt not found")
-    _require_attempt_access(session, attempt, token, current_user)
+    _require_attempt_access(session, attempt, current_user)
     return attempt
 
 
@@ -300,14 +275,13 @@ def read_attempt(
 def read_attempt_audio(
     session: SessionDep,
     attempt_id: uuid.UUID,
-    token: str | None = None,
     current_user: OptionalCurrentUser = None,
 ) -> FileResponse:
     """回放一条作答的音频。本人学生或授权教师可访问，不靠 UUID 难猜。"""
     attempt = get_attempt(session=session, attempt_id=attempt_id)
     if not attempt:
         raise HTTPException(status_code=404, detail="Attempt not found")
-    _require_attempt_access(session, attempt, token, current_user)
+    _require_attempt_access(session, attempt, current_user)
     path = Path(attempt.audio_path)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Audio not found")

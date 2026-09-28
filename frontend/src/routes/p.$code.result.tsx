@@ -70,8 +70,6 @@ function RoundResultPage() {
     queryFn: () =>
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
-        studentId: student?.id as string,
-        token: student?.access_token as string,
         // 主题探索轮：结果必须属于该轮会话，而不是当日课堂计划
         ...(exploreSessionId ? { sessionId: exploreSessionId } : {}),
       }),
@@ -527,7 +525,6 @@ function RoundResultPage() {
                 {replay.attempt.attempt_id && (
                   <AttemptAudio
                     attemptId={replay.attempt.attempt_id}
-                    studentToken={student?.access_token}
                     preload="metadata"
                     className="w-full"
                   />

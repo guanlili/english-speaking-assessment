@@ -63,8 +63,6 @@ function MyTrailPage() {
     queryFn: () =>
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
-        studentId: student?.id as string,
-        token: student?.access_token as string,
       }),
     enabled: student !== null,
   })
@@ -76,8 +74,6 @@ function MyTrailPage() {
     queryFn: () =>
       ClassesService.readStudentTrail({
         code: code.toUpperCase(),
-        studentId: student?.id as string,
-        token: student?.access_token as string,
       }),
     enabled: student !== null,
   })

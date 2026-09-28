@@ -8,6 +8,7 @@ from app.api.routes import (
     login,
     practice,
     private,
+    students,
     users,
     utils,
 )
@@ -20,6 +21,7 @@ api_router.include_router(utils.router)
 api_router.include_router(practice.router)
 api_router.include_router(classes.router)
 api_router.include_router(attempts.router)
+api_router.include_router(students.router)
 api_router.include_router(admin_content.router)
 api_router.include_router(audio.router)
 

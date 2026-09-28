@@ -1,4 +1,8 @@
-"""关卡地图（P2）：单元路径、解锁规则、今日篇目按路径推进。"""
+"""关卡地图（P2）：单元路径、解锁规则、今日篇目按路径推进。
+
+账号制：学生 = 学号登录 JWT，请求带 Authorization 头（不再传
+student_id/token 查询参数）。
+"""
 
 import uuid
 from collections.abc import Callable, Generator
@@ -14,12 +18,7 @@ from app.core.config import settings
 from app.main import app
 from app.scoring import worker
 from tests.utils.audio import wav_upload
-from tests.utils.credential import (
-    remember_join,
-    student_form,
-    student_params,
-    token_for,
-)
+from tests.utils.credential import make_student
 
 
 @pytest.fixture
@@ -40,10 +39,9 @@ def inline_scoring(
     app.dependency_overrides.pop(get_scoring_submitter, None)
 
 
-def _join(client: TestClient, name: str) -> Any:
-    resp = client.post("/api/v1/classes/DEMO01/join", json={"display_name": name})
-    assert resp.status_code == 200, resp.text
-    return remember_join(resp.json())
+def _join(db: Session, client: TestClient, name: str) -> Any:
+    """建学生账号 + 登录 + 入班 DEMO01，返回 {student, headers, user}。"""
+    return make_student(db, client, "DEMO01", name)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -86,28 +84,28 @@ def _make_unit_passage(
     return {"unit": unit, "passage": passage}
 
 
-def _finish_round(client: TestClient, plan: dict, student_id: str) -> None:
+def _finish_round(client: TestClient, plan: dict, headers: dict[str, str]) -> None:
     for item in plan["items"]:
         resp = client.post(
             "/api/v1/attempts",
             files={"audio": wav_upload(6.0)},
-            data=student_form(
-                student_id,
-                item_type=item["type"],
-                item_id=item["id"],
-                duration_s="6.0",
-                session_id=plan["session_id"],
-            ),
+            data={
+                "item_type": item["type"],
+                "item_id": item["id"],
+                "duration_s": "6.0",
+                "session_id": plan["session_id"],
+            },
+            headers=headers,
         )
         assert resp.status_code == 200, resp.text
 
 
-def test_path_single_unit_unlocked(client: TestClient, inline_scoring: None) -> None:
+def test_path_single_unit_unlocked(
+    client: TestClient, inline_scoring: None, db: Session
+) -> None:
     """种子只有一个单元：第一关永远解锁。"""
-    student = _join(client, "路径同学")
-    resp = client.get(
-        "/api/v1/classes/DEMO01/path", params=student_params(student["id"])
-    )
+    student = _join(db, client, "路径同学")
+    resp = client.get("/api/v1/classes/DEMO01/path", headers=student["headers"])
     assert resp.status_code == 200
     data = resp.json()
     assert data["unlock_all"] is False
@@ -120,31 +118,25 @@ def test_path_single_unit_unlocked(client: TestClient, inline_scoring: None) -> 
 def test_sequential_unlock_and_advance(
     client: TestClient,
     inline_scoring: None,
-    superuser_token_headers: dict,
+    superuser_token_headers: dict[str, str],
     db: Session,
 ) -> None:
     """两个单元：第二关锁 → 完成第一关一轮 → 解锁，今日篇目推进。"""
     _make_unit_passage(db, superuser_token_headers, client, 1, "Unit 2")
 
-    student = _join(client, "闯关同学")
+    student = _join(db, client, "闯关同学")
     # 第二关锁定
-    path = client.get(
-        "/api/v1/classes/DEMO01/path", params=student_params(student["id"])
-    ).json()
+    path = client.get("/api/v1/classes/DEMO01/path", headers=student["headers"]).json()
     assert len(path["units"]) == 2
     assert path["units"][1]["locked"] is True
 
     # 今日篇目仍是第一关
-    plan = client.get(
-        "/api/v1/classes/DEMO01/today", params=student_params(student["id"])
-    ).json()
+    plan = client.get("/api/v1/classes/DEMO01/today", headers=student["headers"]).json()
 
     # 完成第一关一轮（结算由 /today 聚合触发，先拉一次）
-    _finish_round(client, plan, student["id"])
-    client.get("/api/v1/classes/DEMO01/today", params=student_params(student["id"]))
-    path2 = client.get(
-        "/api/v1/classes/DEMO01/path", params=student_params(student["id"])
-    ).json()
+    _finish_round(client, plan, student["headers"])
+    client.get("/api/v1/classes/DEMO01/today", headers=student["headers"])
+    path2 = client.get("/api/v1/classes/DEMO01/path", headers=student["headers"]).json()
     assert path2["units"][0]["rounds_done"] == 1
     assert path2["units"][0]["best_stars"] is not None
     assert path2["units"][1]["locked"] is False
@@ -162,7 +154,7 @@ def test_sequential_unlock_and_advance(
     assert updated.json()["unlock_all"] is True
 
 
-def test_unit_crud(client: TestClient, superuser_token_headers: dict) -> None:
+def test_unit_crud(client: TestClient, superuser_token_headers: dict[str, str]) -> None:
     created = client.post(
         "/api/v1/admin/units",
         json={"order_index": 9, "title": "临时单元", "topic": "Test"},
@@ -195,13 +187,13 @@ def test_unit_crud(client: TestClient, superuser_token_headers: dict) -> None:
 def test_assignment_directs_today_for_whole_class(
     client: TestClient,
     inline_scoring: None,
-    superuser_token_headers: dict,
+    superuser_token_headers: dict[str, str],
     db: Session,
 ) -> None:
     """老师指派 Unit 2 → 全班 /today 都练 Unit 2 的篇目（无视个人路径）。"""
     second = _make_unit_passage(db, superuser_token_headers, client, 1, "Unit 2")
 
-    alice = _join(client, "甲同学")
+    alice = _join(db, client, "甲同学")
     resp = client.put(
         "/api/v1/classes/DEMO01/assignment",
         json={"unit_id": second["unit"]["id"]},
@@ -209,9 +201,7 @@ def test_assignment_directs_today_for_whole_class(
     assert resp.status_code == 200
     assert resp.json()["title"] == "Unit 2"
 
-    plan = client.get(
-        "/api/v1/classes/DEMO01/today", params=student_params(alice["id"])
-    ).json()
+    plan = client.get("/api/v1/classes/DEMO01/today", headers=alice["headers"]).json()
     assert plan["assigned_unit_title"] == "Unit 2"
     # 篇目句子来自 Unit 2 的正文（Cats are quiet...）
     first_text = plan["items"][0]["text"]
@@ -220,9 +210,7 @@ def test_assignment_directs_today_for_whole_class(
     # 清除指派 → 回退个人路径（第一单元）
     cleared = client.put("/api/v1/classes/DEMO01/assignment", json={"unit_id": None})
     assert cleared.status_code == 200
-    plan2 = client.get(
-        "/api/v1/classes/DEMO01/today", params=student_params(alice["id"])
-    ).json()
+    plan2 = client.get("/api/v1/classes/DEMO01/today", headers=alice["headers"]).json()
     assert plan2["assigned_unit_title"] is None
 
 
@@ -235,19 +223,17 @@ def test_assignment_invalid_unit_404(client: TestClient) -> None:
 
 
 def test_path_and_board_expose_assignment(
-    client: TestClient, superuser_token_headers: dict, db: Session
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
     """path 返回 assignment 且被指派单元解除锁定；board 同步显示。"""
     second = _make_unit_passage(db, superuser_token_headers, client, 1, "Unit 2")
-    student = _join(client, "乙同学")
+    student = _join(db, client, "乙同学")
 
     client.put(
         "/api/v1/classes/DEMO01/assignment",
         json={"unit_id": second["unit"]["id"]},
     )
-    path = client.get(
-        "/api/v1/classes/DEMO01/path", params=student_params(student["id"])
-    ).json()
+    path = client.get("/api/v1/classes/DEMO01/path", headers=student["headers"]).json()
     assert path["assignment"]["title"] == "Unit 2"
     assert path["units"][1]["locked"] is False  # 指派豁免锁定
 
@@ -272,18 +258,18 @@ def test_list_units_public_with_code(client: TestClient) -> None:
 def test_explore_session_lifecycle(
     client: TestClient,
     inline_scoring: None,
-    superuser_token_headers: dict,
+    superuser_token_headers: dict[str, str],
     db: Session,
 ) -> None:
     """探索：按单元开轮、当日复用、today 可取计划、教师面板不计入完成率。"""
     second = _make_unit_passage(db, superuser_token_headers, client, 1, "Unit 2")
-    student = _join(client, "探索侠")
+    student = _join(db, client, "探索侠")
 
     # 未加入指派 → today 默认第一单元；explore 用第二单元
     resp = client.post(
         "/api/v1/classes/DEMO01/explore",
-        json={"unit_id": second["unit"]["id"], "student_id": student["id"]},
-        params={"token": token_for(student["id"])},
+        json={"unit_id": second["unit"]["id"]},
+        headers=student["headers"],
     )
     assert resp.status_code == 200, resp.text
     explore = resp.json()
@@ -291,30 +277,32 @@ def test_explore_session_lifecycle(
     # 当日复用同一 explore 会话
     again = client.post(
         "/api/v1/classes/DEMO01/explore",
-        json={"unit_id": second["unit"]["id"], "student_id": student["id"]},
-        params={"token": token_for(student["id"])},
+        json={"unit_id": second["unit"]["id"]},
+        headers=student["headers"],
     )
     assert again.json()["session_id"] == explore["session_id"]
 
     # today?session_id 返回探索轮计划（Unit 2 的复述句）
     plan = client.get(
         "/api/v1/classes/DEMO01/today",
-        params=student_params(student["id"], session_id=explore["session_id"]),
+        params={"session_id": explore["session_id"]},
+        headers=student["headers"],
     ).json()
     assert "Cats" in plan["items"][0]["text"] or "cats" in plan["items"][0]["text"]
 
     # 默认 today 仍是课堂轮（第一单元），两者互不干扰
     daily_plan = client.get(
-        "/api/v1/classes/DEMO01/today", params=student_params(student["id"])
+        "/api/v1/classes/DEMO01/today", headers=student["headers"]
     ).json()
     assert daily_plan["session_id"] != explore["session_id"]
 
     # 他人会话 → 404
-    other = _join(client, "别人")
+    other = _join(db, client, "别人")
     assert (
         client.get(
             "/api/v1/classes/DEMO01/today",
-            params=student_params(other["id"], session_id=explore["session_id"]),
+            params={"session_id": explore["session_id"]},
+            headers=other["headers"],
         ).status_code
         == 404
     )
@@ -324,13 +312,13 @@ def test_explore_session_lifecycle(
         _resp = client.post(
             "/api/v1/attempts",
             files={"audio": wav_upload(6.0)},
-            data=student_form(
-                student["id"],
-                item_type=item["type"],
-                item_id=item["id"],
-                duration_s="6.0",
-                session_id=explore["session_id"],
-            ),
+            data={
+                "item_type": item["type"],
+                "item_id": item["id"],
+                "duration_s": "6.0",
+                "session_id": explore["session_id"],
+            },
+            headers=student["headers"],
         )
         assert _resp.status_code == 200
     board = client.get("/api/v1/classes/DEMO01/board").json()

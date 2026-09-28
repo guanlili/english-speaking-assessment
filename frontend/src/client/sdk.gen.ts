@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminUpdateScenarioData, AdminUpdateScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminListQuestionBankData, AdminListQuestionBankResponse, AdminCreateQuestionsBatchData, AdminCreateQuestionsBatchResponse, AdminWordlistStatsResponse, AdminImportWordlistCsvData, AdminImportWordlistCsvResponse, AdminListUnitsResponse, AdminCreateUnitData, AdminCreateUnitResponse, AdminUpdateUnitData, AdminUpdateUnitResponse, AdminDeleteUnitData, AdminDeleteUnitResponse, AdminListTopicsResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminUpdateClassroomData, AdminUpdateClassroomResponse, AdminGenerateQuestionsData, AdminGenerateQuestionsResponse, AdminAutoSplitSentencesData, AdminAutoSplitSentencesResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, ClassesReadLearningPathData, ClassesReadLearningPathResponse, ClassesListUnitsForClassData, ClassesListUnitsForClassResponse, ClassesSetAssignmentData, ClassesSetAssignmentResponse, ClassesStartExploreData, ClassesStartExploreResponse, LoginReadLoginOptionsResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginLoginDemoResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PracticeReadActivePassageResponse, PrivateCreateUserData, PrivateCreateUserResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse } from './types.gen';
+import type { AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminUpdateScenarioData, AdminUpdateScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminListQuestionBankData, AdminListQuestionBankResponse, AdminCreateQuestionsBatchData, AdminCreateQuestionsBatchResponse, AdminWordlistStatsResponse, AdminImportWordlistCsvData, AdminImportWordlistCsvResponse, AdminListUnitsResponse, AdminCreateUnitData, AdminCreateUnitResponse, AdminUpdateUnitData, AdminUpdateUnitResponse, AdminDeleteUnitData, AdminDeleteUnitResponse, AdminListTopicsResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminUpdateClassroomData, AdminUpdateClassroomResponse, AdminGenerateQuestionsData, AdminGenerateQuestionsResponse, AdminAutoSplitSentencesData, AdminAutoSplitSentencesResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ClassesListMyClassroomsResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, ClassesReadLearningPathData, ClassesReadLearningPathResponse, ClassesListUnitsForClassData, ClassesListUnitsForClassResponse, ClassesSetAssignmentData, ClassesSetAssignmentResponse, ClassesStartExploreData, ClassesStartExploreResponse, LoginReadLoginOptionsResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginLoginDemoResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PracticeReadActivePassageResponse, PrivateCreateUserData, PrivateCreateUserResponse, StudentsImportStudentsData, StudentsImportStudentsResponse, StudentsListStudentsData, StudentsListStudentsResponse, StudentsResetStudentPasswordData, StudentsResetStudentPasswordResponse, StudentsRemoveStudentData, StudentsRemoveStudentResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse } from './types.gen';
 
 export class AdminService {
     /**
@@ -636,7 +636,6 @@ export class AttemptsService {
      * 需要本人学生凭证或授权教师身份。
      * @param data The data for the request.
      * @param data.attemptId
-     * @param data.token
      * @returns AttemptPublic Successful Response
      * @throws ApiError
      */
@@ -646,9 +645,6 @@ export class AttemptsService {
             url: '/api/v1/attempts/{attempt_id}',
             path: {
                 attempt_id: data.attemptId
-            },
-            query: {
-                token: data.token
             },
             errors: {
                 422: 'Validation Error'
@@ -661,7 +657,6 @@ export class AttemptsService {
      * 回放一条作答的音频。本人学生或授权教师可访问，不靠 UUID 难猜。
      * @param data The data for the request.
      * @param data.attemptId
-     * @param data.token
      * @returns unknown Successful Response
      * @throws ApiError
      */
@@ -671,9 +666,6 @@ export class AttemptsService {
             url: '/api/v1/attempts/{attempt_id}/audio',
             path: {
                 attempt_id: data.attemptId
-            },
-            query: {
-                token: data.token
             },
             errors: {
                 422: 'Validation Error'
@@ -706,8 +698,21 @@ export class AudioService {
 
 export class ClassesService {
     /**
+     * List My Classrooms
+     * 课堂列表：管理员看全部，教师看自己名下的（工作台「我的课堂」）。
+     * @returns ClassroomPublic Successful Response
+     * @throws ApiError
+     */
+    public static listMyClassrooms(): CancelablePromise<ClassesListMyClassroomsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/classes'
+        });
+    }
+    
+    /**
      * Create Class
-     * 创建课堂，返回课堂码（老师把它当作进入链接分发）。
+     * 创建课堂（教师或管理员），创建者即属主，课堂码分发给本班学生。
      * @param data The data for the request.
      * @param data.requestBody
      * @returns ClassroomPublic Successful Response
@@ -727,13 +732,11 @@ export class ClassesService {
     
     /**
      * Join Class
-     * 学生凭课堂码 + 显示名进入；同名追加 4 位区分码（US-04）。
-     *
-     * 返回带轻量凭证 access_token：后续学生请求凭它校验本人身份。
+     * 学生（登录态）凭课堂码加入；显示名缺省用账号姓名，重复入班幂等。
      * @param data The data for the request.
      * @param data.code
      * @param data.requestBody
-     * @returns StudentJoined Successful Response
+     * @returns StudentPublic Successful Response
      * @throws ApiError
      */
     public static joinClass(data: ClassesJoinClassData): CancelablePromise<ClassesJoinClassResponse> {
@@ -758,8 +761,6 @@ export class ClassesService {
      * 传 session_id 时返回该会话的计划（主题探索的自由练习轮）。
      * @param data The data for the request.
      * @param data.code
-     * @param data.studentId
-     * @param data.token 入班时发放的学生轻量凭证
      * @param data.sessionId
      * @returns TodayPlan Successful Response
      * @throws ApiError
@@ -772,8 +773,6 @@ export class ClassesService {
                 code: data.code
             },
             query: {
-                student_id: data.studentId,
-                token: data.token,
                 session_id: data.sessionId
             },
             errors: {
@@ -790,8 +789,6 @@ export class ClassesService {
      * 不传时使用当日课堂会话。
      * @param data The data for the request.
      * @param data.code
-     * @param data.studentId
-     * @param data.token 入班时发放的学生轻量凭证
      * @param data.sessionId
      * @param data.excludeIds
      * @returns NextQuestion Successful Response
@@ -805,8 +802,6 @@ export class ClassesService {
                 code: data.code
             },
             query: {
-                student_id: data.studentId,
-                token: data.token,
                 session_id: data.sessionId,
                 exclude_ids: data.excludeIds
             },
@@ -843,13 +838,11 @@ export class ClassesService {
      * Read Student Trail
      * 学生进步轨迹（PRD US-09）：按练习日聚合口语参考分与词汇档。
      *
-     * 本人学生凭轻量凭证访问（带了凭证就以凭证为准，浏览器里残留的
-     * 教师 JWT 不抢身份）；教师/管理员凭账号访问（面板学生详情）。
+     * 学生账号省略 student_id 看自己；教师/管理员传 student_id（授权范围内）。
      * @param data The data for the request.
      * @param data.code
-     * @param data.studentId
-     * @param data.token 入班时发放的学生轻量凭证
      * @param data.days 查询最近多少天的轨迹
+     * @param data.studentId 教师查看指定学生；学生查看自己时省略
      * @returns TrailData Successful Response
      * @throws ApiError
      */
@@ -861,9 +854,8 @@ export class ClassesService {
                 code: data.code
             },
             query: {
-                student_id: data.studentId,
-                token: data.token,
-                days: data.days
+                days: data.days,
+                student_id: data.studentId
             },
             errors: {
                 422: 'Validation Error'
@@ -876,8 +868,6 @@ export class ClassesService {
      * 关卡地图（PRD 拾阶而上 → 多邻国式路径）：单元有序 + 完成轮数/星级 + 锁定。
      * @param data The data for the request.
      * @param data.code
-     * @param data.studentId
-     * @param data.token 入班时发放的学生轻量凭证
      * @returns LearningPath Successful Response
      * @throws ApiError
      */
@@ -887,10 +877,6 @@ export class ClassesService {
             url: '/api/v1/classes/{code}/path',
             path: {
                 code: data.code
-            },
-            query: {
-                student_id: data.studentId,
-                token: data.token
             },
             errors: {
                 422: 'Validation Error'
@@ -951,7 +937,6 @@ export class ClassesService {
      * @param data The data for the request.
      * @param data.code
      * @param data.requestBody
-     * @param data.token 入班时发放的学生轻量凭证
      * @returns ExploreStarted Successful Response
      * @throws ApiError
      */
@@ -961,9 +946,6 @@ export class ClassesService {
             url: '/api/v1/classes/{code}/explore',
             path: {
                 code: data.code
-            },
-            query: {
-                token: data.token
             },
             body: data.requestBody,
             mediaType: 'application/json',
@@ -1136,6 +1118,93 @@ export class PrivateService {
     }
 }
 
+export class StudentsService {
+    /**
+     * Import Students
+     * 批量导入学生：每行「学号 姓名」；已有学号跳过并提示。
+     *
+     * 同名历史匿名档案自动绑定（保留 XP/作答）；初始密码仅本次返回。
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns StudentImportResult Successful Response
+     * @throws ApiError
+     */
+    public static importStudents(data: StudentsImportStudentsData): CancelablePromise<StudentsImportStudentsResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/students/import',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * List Students
+     * 课堂学生名单（带学号与改密状态）。
+     * @param data The data for the request.
+     * @param data.classroomId
+     * @returns StudentAccountOut Successful Response
+     * @throws ApiError
+     */
+    public static listStudents(data: StudentsListStudentsData): CancelablePromise<StudentsListStudentsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/students',
+            query: {
+                classroom_id: data.classroomId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Reset Student Password
+     * 重置学生密码：生成新初始密码（仅本次返回），置改密标记。
+     * @param data The data for the request.
+     * @param data.studentId
+     * @returns string Successful Response
+     * @throws ApiError
+     */
+    public static resetStudentPassword(data: StudentsResetStudentPasswordData): CancelablePromise<StudentsResetStudentPasswordResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/students/{student_id}/reset-password',
+            path: {
+                student_id: data.studentId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Remove Student
+     * 把学生移出课堂：档案与作答历史保留（可重新导入找回），仅解除账号绑定。
+     * @param data The data for the request.
+     * @param data.studentId
+     * @returns string Successful Response
+     * @throws ApiError
+     */
+    public static removeStudent(data: StudentsRemoveStudentData): CancelablePromise<StudentsRemoveStudentResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/students/{student_id}',
+            path: {
+                student_id: data.studentId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
 export class UsersService {
     /**
      * Read Users
@@ -1162,7 +1231,8 @@ export class UsersService {
     
     /**
      * Create User
-     * Create new user.
+     * Create new user. 学生账号建议走 /students/import 批量建号；
+     * 此处后台单个建号支持 teacher/admin（admin 自动置 is_superuser）。
      * @param data The data for the request.
      * @param data.requestBody
      * @returns UserPublic Successful Response

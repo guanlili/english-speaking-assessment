@@ -4,7 +4,6 @@ import {
   createFileRoute,
   Link as RouterLink,
   redirect,
-  useNavigate,
 } from "@tanstack/react-router"
 import { ArrowRight, Presentation, UsersRound } from "lucide-react"
 import { useForm } from "react-hook-form"
@@ -39,12 +38,9 @@ const formSchema = z.object({
   password: z.string().min(1, { message: "请输入密码" }),
 }) satisfies z.ZodType<AccessToken>
 
-const classroomSchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[A-Z0-9]{6}$/, "请输入老师提供的 6 位课堂码"),
+const studentSchema = z.object({
+  username: z.string().min(1, { message: "请输入学号" }),
+  password: z.string().min(1, { message: "请输入密码" }),
 })
 
 type FormData = z.infer<typeof formSchema>
@@ -57,54 +53,74 @@ export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: `登录 - ${APP_NAME}` }] }),
 })
 
-function ClassroomEntry() {
-  const navigate = useNavigate()
-  const form = useForm<z.infer<typeof classroomSchema>>({
-    resolver: zodResolver(classroomSchema),
-    defaultValues: { code: "" },
+function StudentLogin() {
+  const { loginMutation } = useAuth()
+  const form = useForm<z.infer<typeof studentSchema>>({
+    resolver: zodResolver(studentSchema),
+    defaultValues: { username: "", password: "" },
   })
   return (
     <Form {...form}>
       <form
-        className="space-y-5"
-        onSubmit={form.handleSubmit(({ code }) =>
-          navigate({ to: "/j/$code", params: { code } }),
-        )}
+        className="space-y-4"
+        onSubmit={form.handleSubmit((data) => {
+          if (!loginMutation.isPending) loginMutation.mutate(data)
+        })}
         noValidate
       >
         <p className="text-sm leading-6 text-muted-foreground">
-          无需注册账号，输入老师提供的课堂码，再填写你的名字即可加入。
+          用老师发放的学号账号登录；首次登录请用初始密码，进入后可修改。
         </p>
         <FormField
           control={form.control}
-          name="code"
+          name="username"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>课堂码</FormLabel>
+              <FormLabel>学号</FormLabel>
               <FormControl>
                 <Input
                   {...field}
-                  placeholder="例如 AB3D7K"
-                  autoComplete="off"
-                  autoCapitalize="characters"
-                  autoCorrect="off"
+                  data-testid="student-no-input"
+                  placeholder="请输入你的学号"
+                  autoComplete="username"
+                  autoCapitalize="none"
                   spellCheck={false}
-                  className="h-12 rounded-xl bg-background/50 px-4 font-mono tracking-widest uppercase"
+                  className="h-12 rounded-xl bg-background/50 px-4 font-mono"
                 />
               </FormControl>
-              <FormMessage />
+              <FormMessage className="text-xs" />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>密码</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  type="password"
+                  data-testid="student-password-input"
+                  placeholder="初始密码或你修改后的密码"
+                  autoComplete="current-password"
+                  className="h-12 rounded-xl bg-background/50 px-4"
+                />
+              </FormControl>
+              <FormMessage className="text-xs" />
             </FormItem>
           )}
         />
         <LoadingButton
           type="submit"
           className="h-12 w-full rounded-xl"
-          loading={form.formState.isSubmitting}
+          loading={loginMutation.isPending}
         >
-          进入课堂 <ArrowRight className="size-4" />
+          登录 <ArrowRight className="size-4" />
         </LoadingButton>
         <p className="text-xs text-muted-foreground">
-          没有课堂码？请向任课老师获取。
+          没有账号或忘记密码？请联系任课老师。
         </p>
       </form>
     </Form>
@@ -188,7 +204,7 @@ function Login() {
           <TabsList className="grid h-11 w-full grid-cols-2">
             <TabsTrigger value="student">
               <UsersRound />
-              学生入班
+              学生登录
             </TabsTrigger>
             <TabsTrigger value="account">
               <Presentation />
@@ -196,7 +212,7 @@ function Login() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="student">
-            <ClassroomEntry />
+            <StudentLogin />
           </TabsContent>
           <TabsContent value="account">
             <Form {...form}>

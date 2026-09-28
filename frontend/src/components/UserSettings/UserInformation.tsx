@@ -23,7 +23,10 @@ import { handleError } from "@/utils"
 
 const formSchema = z.object({
   full_name: z.string().max(30).optional(),
-  email: z.email({ message: "Invalid email address" }),
+  email: z.union([
+    z.literal(""),
+    z.email({ message: "Invalid email address" }),
+  ]),
 })
 
 type FormData = z.infer<typeof formSchema>
@@ -40,7 +43,7 @@ const UserInformation = () => {
     criteriaMode: "all",
     defaultValues: {
       full_name: currentUser?.full_name ?? undefined,
-      email: currentUser?.email,
+      email: currentUser?.email ?? "",
     },
   })
 

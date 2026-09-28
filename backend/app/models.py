@@ -12,10 +12,20 @@ def get_datetime_utc() -> datetime:
 
 # Shared properties
 class UserBase(SQLModel):
-    email: EmailStr = Field(unique=True, index=True, max_length=255)
+    # 学生无邮箱：email 可空（学号登录），教师/管理员必填（API 层校验）
+    email: EmailStr | None = Field(
+        default=None, unique=True, index=True, max_length=255
+    )
     is_active: bool = True
     is_superuser: bool = False
     full_name: str | None = Field(default=None, max_length=255)
+    # 三级角色：admin（=is_superuser）/ teacher / student。
+    # 不变量：role=="admin" ⇔ is_superuser，建号与迁移双写保持一致
+    role: str = Field(default="teacher", max_length=16, index=True)
+    # 学号（student 登录名）；教师/管理员为空。PG 唯一索引对 NULL 不去重，可空唯一安全
+    username: str | None = Field(default=None, unique=True, index=True, max_length=64)
+    # 批量导入的初始密码标记：首登后前端强制改密，改密接口清位
+    must_change_password: bool = Field(default=False)
 
 
 # Properties to receive via API on creation
@@ -36,6 +46,8 @@ class UserUpdate(SQLModel):
     is_superuser: bool | None = None
     full_name: str | None = Field(default=None, max_length=255)
     password: str | None = Field(default=None, min_length=8, max_length=128)
+    role: str | None = Field(default=None, max_length=16)
+    username: str | None = Field(default=None, max_length=64)
 
 
 class UserUpdateMe(SQLModel):
@@ -242,7 +254,7 @@ class ClassroomCreate(SQLModel):
     class_size: int = Field(default=40, ge=1, le=100)
 
 
-# 学生：显示名 + 同名 4 位区分码；无正式账号（PRD US-04）
+# 学生：与登录账号（role=student 的 User）关联；游戏化数据挂在本行
 class Student(SQLModel, table=True):
     __tablename__ = "student"
     __table_args__ = (
@@ -258,11 +270,23 @@ class Student(SQLModel, table=True):
         UniqueConstraint(
             "classroom_id", "display_name", "suffix", name="uq_student_name_suffix"
         ),
+        # 一个账号在一间课堂只有一份学生档案（XP/作答历史挂在档案上）
+        Index(
+            "ix_student_user_classroom_unique",
+            "user_id",
+            "classroom_id",
+            unique=True,
+            postgresql_where=text("user_id IS NOT NULL"),
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     classroom_id: uuid.UUID = Field(
         foreign_key="classroom.id", nullable=False, ondelete="CASCADE"
+    )
+    # 登录账号（学生）；历史匿名数据迁移前为 NULL
+    user_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="CASCADE"
     )
     display_name: str = Field(min_length=1, max_length=64)
     # 同名时追加的 4 位区分码，展示给学生（PRD US-04）
@@ -295,7 +319,8 @@ class StudentBadge(SQLModel, table=True):
 
 
 class StudentJoin(SQLModel):
-    display_name: str = Field(min_length=1, max_length=64)
+    # 账号制：名字可省（默认用账号姓名）
+    display_name: str | None = Field(default=None, max_length=64)
 
 
 class StudentPublic(SQLModel):
@@ -304,12 +329,11 @@ class StudentPublic(SQLModel):
     suffix: str | None = None
     current_band: str
     classroom_id: uuid.UUID
+    user_id: uuid.UUID | None = None
 
 
-class StudentJoined(StudentPublic):
-    """入班响应：轻量凭证（HMAC 签名，随每次学生请求校验本人身份）。"""
-
-    access_token: str
+# 入班响应：登录态即身份，无独立凭证
+StudentJoined = StudentPublic
 
 
 # 一次练习会话：一个学生一天一轮（PRD §8.4：日期、当前档、做到哪一题）
@@ -631,6 +655,8 @@ class Token(SQLModel):
 # Contents of JWT token
 class TokenPayload(SQLModel):
     sub: str | None = None
+    # 登录角色随 token 下发，前端按角色分流（不作为权限依据，权限查库）
+    role: str | None = None
 
 
 class NewPassword(SQLModel):

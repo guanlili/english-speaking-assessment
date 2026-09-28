@@ -8,6 +8,7 @@ from sqlmodel import Session, col, select
 
 from app.core.db import SCHOOL_LIFE_TOPIC, _seed_school_life_questions
 from app.models import Scenario, ScenarioQuestion
+from tests.utils.credential import create_student_user, login_headers
 
 
 @pytest.fixture
@@ -292,7 +293,7 @@ def test_wordlist_import_rejects_bad_csv(
 
 
 def test_classroom_admin(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
     listing = client.get("/api/v1/admin/classrooms", headers=superuser_token_headers)
     assert listing.status_code == 200
@@ -307,10 +308,13 @@ def test_classroom_admin(
         headers=superuser_token_headers,
     )
     assert deactivate.status_code == 200
-    # 停用后加入应 404
+    # 停用后加入应 404（先过学生登录闸门：未登录会先 401）
+    student_user = create_student_user(db, full_name="停用课堂")
+    headers = login_headers(client, student_user.username)  # type: ignore
     join = client.post(
         f"/api/v1/classes/{created['code']}/join",
         json={"display_name": "x"},
+        headers=headers,
     )
     assert join.status_code == 404
 

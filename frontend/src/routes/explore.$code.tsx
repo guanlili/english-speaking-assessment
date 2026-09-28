@@ -61,8 +61,6 @@ function ExplorePage() {
     queryFn: () =>
       ClassesService.readLearningPath({
         code: code.toUpperCase(),
-        studentId: student?.id as string,
-        token: student?.access_token as string,
       }),
     enabled: student !== null,
   })
@@ -94,11 +92,7 @@ function ExplorePage() {
     mutationFn: (unitId: string) =>
       ClassesService.startExplore({
         code: code.toUpperCase(),
-        token: student?.access_token as string,
-        requestBody: {
-          unit_id: unitId,
-          student_id: student?.id as string,
-        },
+        requestBody: { unit_id: unitId },
       }),
     onSuccess: (data) => {
       // 进入练习页（explore session 计划由练习页通过 session_id 拉取）

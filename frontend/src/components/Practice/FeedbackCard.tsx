@@ -160,8 +160,6 @@ function FeedbackCard({
   itemType?: "passage" | "repeat" | "question"
   onRepractice: () => void
   extraActions?: ReactNode
-  /** 课堂练习：入班凭证（用于回放本人录音）；公开练习页留空 */
-  studentToken?: string | null
 }) {
   if (attempt.status === "queued" || attempt.status === "scoring") {
     return (
