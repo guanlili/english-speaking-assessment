@@ -508,3 +508,197 @@ def test_unit_passage_count_and_assignment_read_back(
                 f"/api/v1/admin/classrooms/{classroom['id']}",
                 headers=superuser_token_headers,
             )
+
+
+# ── 题库：全局列表 + 批量录入 ────────────────────────────────────────
+
+
+def _mk_scenario(client: TestClient, headers: dict[str, str], topic: str) -> dict:
+    resp = client.post(
+        "/api/v1/admin/scenarios", json={"topic": topic}, headers=headers
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def test_question_bank_requires_superuser(client: TestClient) -> None:
+    assert client.get("/api/v1/admin/questions").status_code == 401
+
+
+def test_question_bank_list_with_filters(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    scenario = _mk_scenario(client, superuser_token_headers, "Test Bank Filter")
+    try:
+        for band, text, translation in [
+            ("A2", "How do you go to school?", "你怎么去学校？"),
+            ("B1", "Describe your favorite teacher.", "介绍你最喜欢的老师"),
+            ("B1", "What did you do last weekend?", None),
+        ]:
+            resp = client.post(
+                f"/api/v1/admin/scenarios/{scenario['id']}/questions",
+                json={"band": band, "text": text, "translation": translation},
+                headers=superuser_token_headers,
+            )
+            assert resp.status_code == 200, resp.text
+
+        # 无过滤：包含本题库全部（其他主题种子也在，只验证本题都在）
+        base = client.get("/api/v1/admin/questions", headers=superuser_token_headers)
+        assert base.status_code == 200
+        mine = [q for q in base.json() if q["topic"] == "Test Bank Filter"]
+        assert len(mine) == 3
+        assert all(q["scenario_id"] == scenario["id"] for q in mine)
+
+        # 主题过滤
+        by_topic = client.get(
+            "/api/v1/admin/questions",
+            params={"topic": "Test Bank Filter"},
+            headers=superuser_token_headers,
+        )
+        assert len(by_topic.json()) == 3
+
+        # 档位过滤
+        by_band = client.get(
+            "/api/v1/admin/questions",
+            params={"topic": "Test Bank Filter", "band": "B1"},
+            headers=superuser_token_headers,
+        )
+        assert len(by_band.json()) == 2
+
+        # 关键词（英文）
+        by_q = client.get(
+            "/api/v1/admin/questions",
+            params={"topic": "Test Bank Filter", "q": "weekend"},
+            headers=superuser_token_headers,
+        )
+        assert [q["text"] for q in by_q.json()] == ["What did you do last weekend?"]
+
+        # 关键词（中文提示）
+        by_cn = client.get(
+            "/api/v1/admin/questions",
+            params={"topic": "Test Bank Filter", "q": "老师"},
+            headers=superuser_token_headers,
+        )
+        assert len(by_cn.json()) == 1
+
+        # 非法档位 → 422
+        bad = client.get(
+            "/api/v1/admin/questions",
+            params={"band": "C1"},
+            headers=superuser_token_headers,
+        )
+        assert bad.status_code == 422
+    finally:
+        _cleanup_scenario(client, superuser_token_headers, scenario["id"])
+
+
+def _cleanup_scenario(
+    client: TestClient, headers: dict[str, str], scenario_id: str
+) -> None:
+    client.delete(f"/api/v1/admin/scenarios/{scenario_id}", headers=headers)
+
+
+def test_batch_create_questions_partial_success(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    scenario = _mk_scenario(client, superuser_token_headers, "Test Bank Batch")
+    try:
+        resp = client.post(
+            f"/api/v1/admin/scenarios/{scenario['id']}/questions/batch",
+            json={
+                "band": "A2",
+                "items": [
+                    {
+                        "text": "  What is your name?  ",
+                        "translation": " 你叫什么名字？ ",
+                    },
+                    {"text": "   "},  # 空文本 → 失败
+                    {"text": "How old are you?", "suggested_seconds": 5},  # 秒数越界
+                    {"text": "Where do you live?"},
+                ],
+            },
+            headers=superuser_token_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        result = resp.json()
+        assert result["created"] == 2
+        assert [f["index"] for f in result["failed"]] == [1, 2]
+        assert "为空" in result["failed"][0]["reason"]
+        assert "10–60" in result["failed"][1]["reason"]
+
+        rows = db.exec(
+            select(ScenarioQuestion).where(
+                ScenarioQuestion.scenario_id == scenario["id"]  # type: ignore[arg-type]
+            )
+        ).all()
+        assert len(rows) == 2
+        named = next(r for r in rows if r.text == "What is your name?")
+        assert named.translation == "你叫什么名字？"  # 去过空白
+        assert named.band == "A2"
+
+        # 空 items → 422；非法 band → 422；不存在场景 → 404
+        assert (
+            client.post(
+                f"/api/v1/admin/scenarios/{scenario['id']}/questions/batch",
+                json={"band": "A2", "items": []},
+                headers=superuser_token_headers,
+            ).status_code
+            == 422
+        )
+        assert (
+            client.post(
+                f"/api/v1/admin/scenarios/{scenario['id']}/questions/batch",
+                json={"band": "C1", "items": [{"text": "x"}]},
+                headers=superuser_token_headers,
+            ).status_code
+            == 422
+        )
+        import uuid as _uuid
+
+        assert (
+            client.post(
+                f"/api/v1/admin/scenarios/{_uuid.uuid4()}/questions/batch",
+                json={"band": "A2", "items": [{"text": "x"}]},
+                headers=superuser_token_headers,
+            ).status_code
+            == 404
+        )
+    finally:
+        _cleanup_scenario(client, superuser_token_headers, scenario["id"])
+
+
+def test_update_question_translation_and_bounds(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    scenario = _mk_scenario(client, superuser_token_headers, "Test Bank Edit")
+    try:
+        created = client.post(
+            f"/api/v1/admin/scenarios/{scenario['id']}/questions",
+            json={"band": "B1", "text": "Original text?"},
+            headers=superuser_token_headers,
+        ).json()
+
+        updated = client.put(
+            f"/api/v1/admin/questions/{created['id']}",
+            json={"translation": "中文提示", "suggested_seconds": 30},
+            headers=superuser_token_headers,
+        )
+        assert updated.status_code == 200
+        # 响应模型不含 translation，用题库接口读回验证
+        bank = client.get(
+            "/api/v1/admin/questions",
+            params={"topic": "Test Bank Edit"},
+            headers=superuser_token_headers,
+        ).json()
+        row = next(q for q in bank if q["id"] == created["id"])
+        assert row["translation"] == "中文提示"
+        assert row["suggested_seconds"] == 30
+
+        bad = client.put(
+            f"/api/v1/admin/questions/{created['id']}",
+            json={"suggested_seconds": 99},
+            headers=superuser_token_headers,
+        )
+        assert bad.status_code == 422
+    finally:
+        _cleanup_scenario(client, superuser_token_headers, scenario["id"])
