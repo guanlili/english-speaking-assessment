@@ -6,7 +6,6 @@ const TEACHER_ALLOWED = [
   "/admin/passages",
   "/admin/scenarios",
   "/admin/questions",
-  "/admin/units",
 ]
 
 /**

@@ -94,16 +94,13 @@ function CreateHubPage() {
         <CardHeader>
           <CardTitle className="text-base">出完题之后</CardTitle>
           <CardDescription>
-            题目挂到单元 → 课堂面板指派单元（可选本轮题型组合，如纯问答专项）→
-            学生打开就是本轮内容
+            到「我的课堂」打开教师面板 →
+            指派单元（可勾选本轮题型，如纯问答专项）→ 学生打开就是本轮内容
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
+        <CardContent>
           <Button asChild variant="outline" size="sm">
-            <Link to="/admin/units">管理单元</Link>
-          </Button>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/classrooms">我的课堂</Link>
+            <Link to="/classrooms">去我的课堂</Link>
           </Button>
         </CardContent>
       </Card>

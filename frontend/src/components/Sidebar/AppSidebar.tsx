@@ -50,11 +50,12 @@ const adminOnlyItems: Item[] = [
 export function AppSidebar() {
   const { user: currentUser } = useAuth()
 
-  const isTeacherSide = currentUser?.is_superuser || cachedRole() === "teacher"
+  // 教师端精简：侧边栏只留「我的课堂」和「出题中心」，
+  // 内容四页统一从出题中心卡片进入（不在侧边栏占位）
   const items = currentUser?.is_superuser
     ? [...baseItems, ...createHubItem, ...contentItems, ...adminOnlyItems]
-    : isTeacherSide
-      ? [...baseItems, ...createHubItem, ...contentItems]
+    : cachedRole() === "teacher"
+      ? [...baseItems, ...createHubItem]
       : baseItems
 
   return (
