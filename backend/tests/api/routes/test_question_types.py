@@ -314,3 +314,97 @@ def test_assigned_multi_passage_reading(
             json={"unit_id": None},
             headers=superuser_token_headers,
         )
+
+
+def test_item_assignment_independent_types(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """按题指派：三题型独立选题成卷，不经单元/篇目载体。"""
+    classroom = _classroom(client, superuser_token_headers)
+    made = make_student(db, client, classroom["code"], "按题学生")
+    code = classroom["code"]
+
+    # 独立复述句：不挂篇目直接创建
+    sentence = client.post(
+        "/api/v1/admin/sentences",
+        json={
+            "order_index": 0,
+            "text": "This is a standalone repeat sentence.",
+            "suggested_seconds": 12,
+            "replay_limit": 2,
+        },
+        headers=superuser_token_headers,
+    )
+    assert sentence.status_code == 200, sentence.text
+    sentence_id = sentence.json()["id"]
+
+    # 平铺复述句库可见（带所属篇目信息）
+    flat = client.get("/api/v1/admin/sentences", headers=superuser_token_headers)
+    assert flat.status_code == 200
+    assert any(s["id"] == sentence_id for s in flat.json())
+
+    # 从种子情景取一道问答题
+    scenarios = client.get(
+        "/api/v1/admin/scenarios", headers=superuser_token_headers
+    ).json()
+    scenario = next(s for s in scenarios if s["topic"] == "Pets")
+    question_id = scenario["questions"][0]["id"]
+
+    # 按题指派：1 复述 + 1 问答（无朗读、无单元）
+    resp = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={
+            "items": [
+                {"type": "repeat", "id": sentence_id},
+                {"type": "question", "id": question_id},
+            ]
+        },
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    plan = client.get(
+        f"/api/v1/classes/{code}/today", headers=made["headers"]
+    ).json()
+    assert [i["type"] for i in plan["items"]] == ["repeat", "question"]
+    assert plan["items"][0]["text"] == "This is a standalone repeat sentence."
+    assert plan["assigned_unit_title"] == "老师指派"
+
+    # 面板题位同步（无会话学生按骨架展示）
+    board = client.get(
+        f"/api/v1/classes/{code}/board", headers=superuser_token_headers
+    ).json()
+    row = next(
+        s for s in board["students"] if s["student_id"] == made["student"]["id"]
+    )
+    assert {i["type"] for i in row["items"]} == {"repeat", "question"}
+
+    # 换题：同情景其余题目（排除已指派那道）
+    nxt = client.get(
+        f"/api/v1/classes/{code}/next-question", headers=made["headers"]
+    )
+    assert nxt.status_code == 200
+    assert nxt.json()["question"] is not None
+    assert nxt.json()["question"]["id"] != question_id
+
+    # 非法题型引用被拒
+    bad = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": [{"type": "essay", "id": sentence_id}]},
+        headers=superuser_token_headers,
+    )
+    assert bad.status_code == 422
+
+    # 清除指派回个人路径
+    client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": []},
+        headers=superuser_token_headers,
+    )
+    plan2 = client.get(
+        f"/api/v1/classes/{code}/today", headers=made["headers"]
+    ).json()
+    assert {i["type"] for i in plan2["items"]} == {"repeat", "question"}
+    assert plan2["items"][0]["id"] != sentence_id  # 回到种子篇目的复述句

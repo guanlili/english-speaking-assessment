@@ -164,8 +164,10 @@ class RepeatSentence(SQLModel, table=True):
     __tablename__ = "repeat_sentence"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    passage_id: uuid.UUID = Field(
-        foreign_key="passage.id", nullable=False, ondelete="CASCADE"
+    # 可空：2026-09-29 起复述句可独立存在（题目库直接创建、指派直接选用）；
+    # 挂到篇目时仍随篇目出现在自主练习轮里
+    passage_id: uuid.UUID | None = Field(
+        default=None, foreign_key="passage.id", nullable=True, ondelete="CASCADE"
     )
     order_index: int = Field(ge=0)
     text: str = Field(min_length=1)
@@ -175,6 +177,10 @@ class RepeatSentence(SQLModel, table=True):
     # 听句复述可重听次数：0=不限，默认 3；服务端按学生×会话×题目计数防刷
     replay_limit: int = Field(
         default=3, ge=0, le=9, sa_column_kwargs={"server_default": "3"}
+    )
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
     )
 
 
@@ -243,6 +249,11 @@ class Classroom(SQLModel, table=True):
     assign_reading: bool | None = Field(default=None)
     assign_repeat: bool | None = Field(default=None)
     assign_qa: bool | None = Field(default=None)
+    # 按题指派（2026-09-29 三题型独立）：[{type: passage|repeat|question, id}]
+    # 非空时优先于 unit 指派；题目删除后解析时自动跳过
+    assigned_items: list[dict[str, str]] | None = Field(
+        default=None, sa_column=Column("assigned_items", JSON, nullable=True)
+    )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -638,6 +649,8 @@ class BoardData(SQLModel):
     engine: str = "mock"
     # 老师指派的今日单元（教学工具定位）
     assignment: AssignmentInfo | None = None
+    # 按题指派（三题型独立）：[{type, id}]，非空时优先于单元指派
+    assigned_items: list[dict[str, str]] | None = None
     # 今日至少提交 1 题的人数（PRD US-10 完成率的分子；班额为分母）
     submitted_count: int
     # 今日整轮全部完成的人数（"提交过一道题"不算整轮完成）

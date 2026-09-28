@@ -9,11 +9,20 @@ export type AssignmentInfo = {
     assign_qa?: (boolean | null);
 };
 
+/**
+ * 按题指派的单条题目引用：三种题型互相独立，各自成题。
+ */
+export type AssignmentItemIn = {
+    type: string;
+    id: string;
+};
+
 export type AssignmentRequest = {
     unit_id?: (string | null);
     assign_reading?: (boolean | null);
     assign_repeat?: (boolean | null);
     assign_qa?: (boolean | null);
+    items?: (Array<AssignmentItemIn> | null);
 };
 
 export type AttemptPublic = {
@@ -87,6 +96,9 @@ export type BoardData = {
     class_size: number;
     engine?: string;
     assignment?: (AssignmentInfo | null);
+    assigned_items?: (Array<{
+    [key: string]: (string);
+}> | null);
     submitted_count: number;
     completed_count: number;
     pending_count: number;
@@ -363,13 +375,14 @@ export type QuestionUpdate = {
 
 export type RepeatSentence = {
     id?: string;
-    passage_id: string;
+    passage_id?: (string | null);
     order_index: number;
     text: string;
     translation?: (string | null);
     audio_url?: (string | null);
     suggested_seconds?: number;
     replay_limit?: number;
+    created_at?: (string | null);
 };
 
 export type Scenario = {
@@ -410,6 +423,22 @@ export type ScenarioQuestionPublic = {
 export type ScenarioUpdate = {
     topic?: (string | null);
     is_active?: (boolean | null);
+};
+
+/**
+ * 平铺复述句库视图：带所属篇目标题（独立句为 null）。
+ */
+export type SentenceWithPassage = {
+    id?: string;
+    passage_id?: (string | null);
+    order_index?: number;
+    text?: string;
+    translation?: (string | null);
+    audio_url?: (string | null);
+    suggested_seconds?: number;
+    replay_limit?: number;
+    created_at?: (string | null);
+    passage_title?: (string | null);
 };
 
 export type StudentAccountOut = {
@@ -639,6 +668,14 @@ export type AdminCreateSentenceData = {
 };
 
 export type AdminCreateSentenceResponse = (RepeatSentence);
+
+export type AdminListSentencesFlatResponse = (Array<SentenceWithPassage>);
+
+export type AdminCreateSentenceStandaloneData = {
+    requestBody: RepeatSentence;
+};
+
+export type AdminCreateSentenceStandaloneResponse = (RepeatSentence);
 
 export type AdminUpdateSentenceData = {
     requestBody: RepeatSentence;
