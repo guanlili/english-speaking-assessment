@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  CircleHelp,
   GraduationCap,
   Home,
   Layers,
@@ -27,6 +28,7 @@ const adminItems: Item[] = [
   { icon: Layers, title: "学习单元", path: "/admin/units" },
   { icon: BookOpen, title: "篇目管理", path: "/admin/passages" },
   { icon: ListChecks, title: "情景与问法", path: "/admin/scenarios" },
+  { icon: CircleHelp, title: "题库", path: "/admin/questions" },
   { icon: GraduationCap, title: "分级词表", path: "/admin/wordlist" },
   { icon: UsersRound, title: "课堂管理", path: "/admin/classrooms" },
 ]

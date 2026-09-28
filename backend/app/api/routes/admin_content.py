@@ -13,7 +13,7 @@ import io
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Query, UploadFile
 from sqlalchemy import func
 from sqlmodel import Field, SQLModel, col, select
 
@@ -255,6 +255,153 @@ def delete_question(
     session.delete(question)
     session.commit()
     return {"message": "deleted"}
+
+
+# ── 题库（全局视图 + 批量录入）──────────────────────────────────────
+
+
+class QuestionBankOut(SQLModel):
+    """题库全局视图：带上主题，供管理端筛选/搜索。"""
+
+    id: uuid.UUID
+    scenario_id: uuid.UUID
+    topic: str
+    band: str
+    order_index: int
+    text: str
+    translation: str | None = None
+    suggested_seconds: int
+
+
+@router.get("/questions", response_model=list[QuestionBankOut])
+def list_question_bank(
+    session: SessionDep,
+    _admin: SuperUserDep,
+    topic: str | None = Query(default=None, description="按主题精确过滤"),
+    band: str | None = Query(default=None, description="A2/B1/B2"),
+    q: str | None = Query(default=None, description="题目/中文提示关键词"),
+) -> Any:
+    stmt = (
+        select(ScenarioQuestion, Scenario.topic)
+        .join(Scenario, ScenarioQuestion.scenario_id == Scenario.id)  # ty: ignore[invalid-argument-type]
+        .order_by(
+            col(Scenario.topic),
+            col(ScenarioQuestion.band),
+            col(ScenarioQuestion.order_index),
+        )
+    )
+    if topic is not None:
+        stmt = stmt.where(Scenario.topic == topic)
+    if band is not None:
+        if band not in VALID_BANDS:
+            raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
+        stmt = stmt.where(ScenarioQuestion.band == band)
+    if q and q.strip():
+        needle = q.strip()
+        stmt = stmt.where(
+            col(ScenarioQuestion.text).icontains(needle)
+            | col(ScenarioQuestion.translation).icontains(needle)  # type: ignore[operator]
+        )
+    rows = session.exec(stmt).all()
+    return [
+        QuestionBankOut(
+            id=question.id,
+            scenario_id=question.scenario_id,
+            topic=topic_name,
+            band=question.band,
+            order_index=question.order_index,
+            text=question.text,
+            translation=question.translation,
+            suggested_seconds=question.suggested_seconds,
+        )
+        for question, topic_name in rows
+    ]
+
+
+class BatchQuestionItem(SQLModel):
+    """批量录入的单条：空文本/秒数越界等校验放处理器里逐条做，
+    不在模型层拦——否则一条非法会把整批 422 掉。"""
+
+    text: str = ""
+    translation: str | None = None
+    suggested_seconds: int = 20
+
+
+class BatchQuestionCreate(SQLModel):
+    band: str
+    items: list[BatchQuestionItem]
+
+
+class BatchFailItem(SQLModel):
+    index: int
+    reason: str
+
+
+class BatchQuestionResult(SQLModel):
+    created: int
+    failed: list[BatchFailItem]
+
+
+@router.post(
+    "/scenarios/{scenario_id}/questions/batch",
+    response_model=BatchQuestionResult,
+)
+def create_questions_batch(
+    session: SessionDep,
+    _admin: SuperUserDep,
+    scenario_id: uuid.UUID,
+    body: BatchQuestionCreate,
+) -> Any:
+    """批量录入问法：逐条校验，合法的入库，非法的带原因返回（部分成功）。"""
+    if session.get(Scenario, scenario_id) is None:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    if body.band not in VALID_BANDS:
+        raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
+    if not body.items:
+        raise HTTPException(status_code=422, detail="没有可录入的题目")
+
+    next_order = 1 + (
+        session.exec(
+            select(func.max(ScenarioQuestion.order_index)).where(  # type: ignore[call-overload]
+                ScenarioQuestion.scenario_id == scenario_id,
+                ScenarioQuestion.band == body.band,
+            )
+        ).one()
+        or 0
+    )
+
+    created = 0
+    failed: list[BatchFailItem] = []
+    for i, item in enumerate(body.items):
+        text = item.text.strip()
+        if not text:
+            failed.append(BatchFailItem(index=i, reason="题目内容为空"))
+            continue
+        if len(text) > 512:
+            failed.append(BatchFailItem(index=i, reason="题目过长（>512 字符）"))
+            continue
+        if not 10 <= item.suggested_seconds <= 60:
+            failed.append(
+                BatchFailItem(
+                    index=i,
+                    reason=f"建议秒数需在 10–60 之间（当前 {item.suggested_seconds}）",
+                )
+            )
+            continue
+        session.add(
+            ScenarioQuestion(
+                scenario_id=scenario_id,
+                band=body.band,
+                order_index=next_order + created,
+                text=text,
+                translation=(item.translation or "").strip() or None,
+                suggested_seconds=item.suggested_seconds,
+            )
+        )
+        created += 1
+    if created:
+        session.commit()
+    return BatchQuestionResult(created=created, failed=failed)
 
 
 # ── 词表 ─────────────────────────────────────────────────────────────
@@ -642,6 +789,7 @@ def generate_standard_audio(_admin: SuperUserDep, body: TtsRequest) -> Any:
 class QuestionUpdate(SQLModel):
     band: str | None = None
     text: str | None = None
+    translation: str | None = None
     audio_url: str | None = None
     suggested_seconds: int | None = None
     order_index: int | None = None
@@ -660,6 +808,8 @@ def update_question(
     update = question_in.model_dump(exclude_unset=True)
     if "band" in update and update["band"] not in VALID_BANDS:
         raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
+    if "suggested_seconds" in update and not 10 <= update["suggested_seconds"] <= 60:
+        raise HTTPException(status_code=422, detail="建议秒数需在 10–60 之间")
     question.sqlmodel_update(update)
     session.add(question)
     session.commit()

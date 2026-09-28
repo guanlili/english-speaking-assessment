@@ -51,6 +51,31 @@ export type BadgePublic = {
     awarded_at?: (string | null);
 };
 
+export type BatchFailItem = {
+    index: number;
+    reason: string;
+};
+
+export type BatchQuestionCreate = {
+    band: string;
+    items: Array<BatchQuestionItem>;
+};
+
+/**
+ * 批量录入的单条：空文本/秒数越界等校验放处理器里逐条做，
+ * 不在模型层拦——否则一条非法会把整批 422 掉。
+ */
+export type BatchQuestionItem = {
+    text?: string;
+    translation?: (string | null);
+    suggested_seconds?: number;
+};
+
+export type BatchQuestionResult = {
+    created: number;
+    failed: Array<BatchFailItem>;
+};
+
 export type BoardData = {
     classroom_code: string;
     class_size: number;
@@ -300,9 +325,24 @@ export type PrivateUserCreate = {
     is_verified?: boolean;
 };
 
+/**
+ * 题库全局视图：带上主题，供管理端筛选/搜索。
+ */
+export type QuestionBankOut = {
+    id: string;
+    scenario_id: string;
+    topic: string;
+    band: string;
+    order_index: number;
+    text: string;
+    translation?: (string | null);
+    suggested_seconds: number;
+};
+
 export type QuestionUpdate = {
     band?: (string | null);
     text?: (string | null);
+    translation?: (string | null);
     audio_url?: (string | null);
     suggested_seconds?: (number | null);
     order_index?: (number | null);
@@ -597,6 +637,30 @@ export type AdminUpdateQuestionData = {
 };
 
 export type AdminUpdateQuestionResponse = (ScenarioQuestionPublic);
+
+export type AdminListQuestionBankData = {
+    /**
+     * A2/B1/B2
+     */
+    band?: (string | null);
+    /**
+     * 题目/中文提示关键词
+     */
+    q?: (string | null);
+    /**
+     * 按主题精确过滤
+     */
+    topic?: (string | null);
+};
+
+export type AdminListQuestionBankResponse = (Array<QuestionBankOut>);
+
+export type AdminCreateQuestionsBatchData = {
+    requestBody: BatchQuestionCreate;
+    scenarioId: string;
+};
+
+export type AdminCreateQuestionsBatchResponse = (BatchQuestionResult);
 
 export type AdminWordlistStatsResponse = (WordlistStats);
 

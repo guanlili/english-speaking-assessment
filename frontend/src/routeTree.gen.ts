@@ -34,6 +34,7 @@ import { Route as PCodeResultRouteImport } from './routes/p.$code.result'
 import { Route as LayoutAdminWordlistRouteImport } from './routes/_layout/admin.wordlist'
 import { Route as LayoutAdminUnitsRouteImport } from './routes/_layout/admin.units'
 import { Route as LayoutAdminScenariosRouteImport } from './routes/_layout/admin.scenarios'
+import { Route as LayoutAdminQuestionsRouteImport } from './routes/_layout/admin.questions'
 import { Route as LayoutAdminPassagesRouteImport } from './routes/_layout/admin.passages'
 import { Route as LayoutAdminClassroomsRouteImport } from './routes/_layout/admin.classrooms'
 import { Route as TCodeSStudentIdRouteImport } from './routes/t.$code.s.$studentId'
@@ -162,6 +163,11 @@ const LayoutAdminScenariosRoute = LayoutAdminScenariosRouteImport.update({
   path: '/scenarios',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
+const LayoutAdminQuestionsRoute = LayoutAdminQuestionsRouteImport.update({
+  id: '/questions',
+  path: '/questions',
+  getParentRoute: () => LayoutAdminRoute,
+} as any)
 const LayoutAdminPassagesRoute = LayoutAdminPassagesRouteImport.update({
   id: '/passages',
   path: '/passages',
@@ -198,6 +204,7 @@ export interface FileRoutesByFullPath {
   '/t/$code': typeof TCodeRouteWithChildren
   '/admin/classrooms': typeof LayoutAdminClassroomsRoute
   '/admin/passages': typeof LayoutAdminPassagesRoute
+  '/admin/questions': typeof LayoutAdminQuestionsRoute
   '/admin/scenarios': typeof LayoutAdminScenariosRoute
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/wordlist': typeof LayoutAdminWordlistRoute
@@ -224,6 +231,7 @@ export interface FileRoutesByTo {
   '/': typeof LayoutIndexRoute
   '/admin/classrooms': typeof LayoutAdminClassroomsRoute
   '/admin/passages': typeof LayoutAdminPassagesRoute
+  '/admin/questions': typeof LayoutAdminQuestionsRoute
   '/admin/scenarios': typeof LayoutAdminScenariosRoute
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/wordlist': typeof LayoutAdminWordlistRoute
@@ -255,6 +263,7 @@ export interface FileRoutesById {
   '/_layout/': typeof LayoutIndexRoute
   '/_layout/admin/classrooms': typeof LayoutAdminClassroomsRoute
   '/_layout/admin/passages': typeof LayoutAdminPassagesRoute
+  '/_layout/admin/questions': typeof LayoutAdminQuestionsRoute
   '/_layout/admin/scenarios': typeof LayoutAdminScenariosRoute
   '/_layout/admin/units': typeof LayoutAdminUnitsRoute
   '/_layout/admin/wordlist': typeof LayoutAdminWordlistRoute
@@ -286,6 +295,7 @@ export interface FileRouteTypes {
     | '/t/$code'
     | '/admin/classrooms'
     | '/admin/passages'
+    | '/admin/questions'
     | '/admin/scenarios'
     | '/admin/units'
     | '/admin/wordlist'
@@ -312,6 +322,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin/classrooms'
     | '/admin/passages'
+    | '/admin/questions'
     | '/admin/scenarios'
     | '/admin/units'
     | '/admin/wordlist'
@@ -342,6 +353,7 @@ export interface FileRouteTypes {
     | '/_layout/'
     | '/_layout/admin/classrooms'
     | '/_layout/admin/passages'
+    | '/_layout/admin/questions'
     | '/_layout/admin/scenarios'
     | '/_layout/admin/units'
     | '/_layout/admin/wordlist'
@@ -547,6 +559,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminScenariosRouteImport
       parentRoute: typeof LayoutAdminRoute
     }
+    '/_layout/admin/questions': {
+      id: '/_layout/admin/questions'
+      path: '/questions'
+      fullPath: '/admin/questions'
+      preLoaderRoute: typeof LayoutAdminQuestionsRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
     '/_layout/admin/passages': {
       id: '/_layout/admin/passages'
       path: '/passages'
@@ -574,6 +593,7 @@ declare module '@tanstack/react-router' {
 interface LayoutAdminRouteChildren {
   LayoutAdminClassroomsRoute: typeof LayoutAdminClassroomsRoute
   LayoutAdminPassagesRoute: typeof LayoutAdminPassagesRoute
+  LayoutAdminQuestionsRoute: typeof LayoutAdminQuestionsRoute
   LayoutAdminScenariosRoute: typeof LayoutAdminScenariosRoute
   LayoutAdminUnitsRoute: typeof LayoutAdminUnitsRoute
   LayoutAdminWordlistRoute: typeof LayoutAdminWordlistRoute
@@ -583,6 +603,7 @@ interface LayoutAdminRouteChildren {
 const LayoutAdminRouteChildren: LayoutAdminRouteChildren = {
   LayoutAdminClassroomsRoute: LayoutAdminClassroomsRoute,
   LayoutAdminPassagesRoute: LayoutAdminPassagesRoute,
+  LayoutAdminQuestionsRoute: LayoutAdminQuestionsRoute,
   LayoutAdminScenariosRoute: LayoutAdminScenariosRoute,
   LayoutAdminUnitsRoute: LayoutAdminUnitsRoute,
   LayoutAdminWordlistRoute: LayoutAdminWordlistRoute,
