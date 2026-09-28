@@ -333,7 +333,9 @@ class BatchQuestionItem(SQLModel):
 
 
 class BatchQuestionCreate(SQLModel):
-    band: str
+    # 档位已不参与抽题与展示（2026-09-29 产品决策：问答不分级，老师自由编排）；
+    # 字段保留兼容旧客户端，缺省落 B1
+    band: str = "B1"
     items: list[BatchQuestionItem]
 
 
@@ -666,7 +668,7 @@ def update_scenario(
 
 
 class GenerateRequest(SQLModel):
-    band: str
+    band: str = "B1"
     count: int = Field(default=3, ge=1, le=10)
     hint: str | None = None
 

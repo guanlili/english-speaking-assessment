@@ -471,6 +471,8 @@ def read_today_plan(
     band = practice_session.question_band or practice_session.band
     if include_qa:
         scenario = _scenario_for_topic(session, passage.topic)
+        # 档位仅作学生进度展示（升降档），抽题不再按档位过滤：全班同题
+        band = _question_band_for_session(session, practice_session, student)
         questions, exhausted = _pick_questions(
             session, scenario, student.id, QUESTIONS_PER_ROUND
         )

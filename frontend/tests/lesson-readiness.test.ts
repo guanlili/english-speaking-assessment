@@ -77,8 +77,8 @@ test("missing sentences prevent repeat publication", () =>
       .problems[0],
     /复述句/,
   ))
-test("missing adaptive band is identified", () =>
-  assert.match(
+test("any question count passes: QA no longer requires bands", () =>
+  assert.deepEqual(
     inspectLesson(
       "unit",
       all,
@@ -89,18 +89,25 @@ test("missing adaptive band is identified", () =>
           questions: scenario.questions.filter((q) => q.band !== "B2"),
         },
       ],
-    ).problems[0],
-    /B2/,
+    ).problems,
+    [],
   ))
+test("scenario without questions blocks QA publication", () => {
+  assert.match(
+    inspectLesson("unit", all, [passage], [{ ...scenario, questions: [] }])
+      .problems[0],
+    /还没有问答题/,
+  )
+})
 test("disabled and mismatched topics cannot supply questions", () => {
   assert.match(
     inspectLesson("unit", all, [passage], [{ ...scenario, is_active: false }])
       .problems[0],
-    /A2 \/ B1 \/ B2/,
+    /还没有问答题/,
   )
   assert.match(
     inspectLesson("unit", all, [passage], [{ ...scenario, topic: "School" }])
       .problems[0],
-    /缺少/,
+    /还没有问答题/,
   )
 })

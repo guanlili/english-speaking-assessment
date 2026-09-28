@@ -30,14 +30,9 @@ export function inspectLesson(
     problems.push("该单元还没有启用的篇目，请先在题目库添加篇目并归入此单元。")
   if (passage && types.repeat && !materials.some((m) => m.sentences?.length))
     problems.push("尚未添加复述句，请到「听句复述」补充。")
-  if (passage && types.qa) {
-    const missing = ["A2", "B1", "B2"].filter(
-      (band) => !scenario?.questions.some((question) => question.band === band),
+  if (passage && types.qa && !scenario?.questions.length)
+    problems.push(
+      `配套主题「${passage.topic}」还没有问答题，请到「模拟问答」为这个主题添加。`,
     )
-    if (missing.length)
-      problems.push(
-        `配套主题「${passage.topic}」缺少 ${missing.join(" / ")} 档情景问答。请补齐，确保不同档位学生都有题可答。`,
-      )
-  }
   return { passage, materials, scenario, problems }
 }

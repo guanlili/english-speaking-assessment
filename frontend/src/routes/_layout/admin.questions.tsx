@@ -5,7 +5,6 @@ import { useMemo, useState } from "react"
 import { AdminService, type QuestionBankOut } from "@/client"
 import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -50,7 +49,6 @@ export const Route = createFileRoute("/_layout/admin/questions")({
   head: () => ({ meta: [{ title: `题库 - ${APP_NAME}` }] }),
 })
 
-const BANDS = ["A2", "B1", "B2"] as const
 const ALL_TOPICS = "__all__"
 
 interface BatchItem {
@@ -99,16 +97,14 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
 
   // ── 筛选 ──
   const [filterTopic, setFilterTopic] = useState(ALL_TOPICS)
-  const [filterBand, setFilterBand] = useState<string>("all")
   const [keyword, setKeyword] = useState("")
   const [search, setSearch] = useState("")
 
   const bankQuery = useQuery({
-    queryKey: ["admin", "question-bank", filterTopic, filterBand, search],
+    queryKey: ["admin", "question-bank", filterTopic, search],
     queryFn: () =>
       AdminService.listQuestionBank({
         topic: filterTopic === ALL_TOPICS ? undefined : filterTopic,
-        band: filterBand === "all" ? undefined : filterBand,
         q: search || undefined,
       }),
   })
@@ -120,7 +116,6 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
 
   // ── 批量录入 ──
   const [batchTopic, setBatchTopic] = useState("")
-  const [batchBand, setBatchBand] = useState<string>("A2")
   const [batchText, setBatchText] = useState("")
 
   const parsed = useMemo(() => {
@@ -143,7 +138,7 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
     mutationFn: () =>
       AdminService.createQuestionsBatch({
         scenarioId: scenarioId ?? "",
-        requestBody: { band: batchBand, items: parsed.items },
+        requestBody: { items: parsed.items },
       }),
     onSuccess: (result) => {
       if (result.failed.length === 0) {
@@ -168,7 +163,6 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
   const [editForm, setEditForm] = useState({
     text: "",
     translation: "",
-    band: "A2",
     suggested_seconds: 20,
   })
   const [toDelete, setToDelete] = useState<QuestionBankOut | null>(null)
@@ -178,7 +172,6 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
     setEditForm({
       text: row.text,
       translation: row.translation ?? "",
-      band: row.band,
       suggested_seconds: row.suggested_seconds,
     })
   }
@@ -190,7 +183,6 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
         requestBody: {
           text: editForm.text.trim(),
           translation: editForm.translation.trim() || null,
-          band: editForm.band,
           suggested_seconds: editForm.suggested_seconds,
         },
       }),
@@ -228,7 +220,7 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
         </h1>
         <p className="text-muted-foreground">
           情景问答的集中管理：跨主题搜索、批量粘贴录入、逐条修改。
-          学生每轮练习从对应主题和档位里抽题。
+          学生每轮练习从对应主题的题目里按序抽取。
         </p>
       </div>
 
@@ -249,47 +241,30 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-2">
-                  <Label>主题</Label>
-                  <Select
-                    value={batchTopic}
-                    onValueChange={setBatchTopic}
-                    disabled={topics.length === 0}
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={
-                          topics.length === 0
-                            ? "还没有主题，先去「问答主题与出题」建一个"
-                            : "选择题库主题"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {topics.map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {t}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label>档位</Label>
-                  <Select value={batchBand} onValueChange={setBatchBand}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {BANDS.map((b) => (
-                        <SelectItem key={b} value={b}>
-                          {b}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="flex flex-col gap-2">
+                <Label>主题</Label>
+                <Select
+                  value={batchTopic}
+                  onValueChange={setBatchTopic}
+                  disabled={topics.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        topics.length === 0
+                          ? "还没有主题，先去「问答主题与出题」建一个"
+                          : "选择题库主题"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {topics.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <Textarea
                 rows={6}
@@ -337,11 +312,11 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
         <CardHeader>
           <CardTitle className="text-base">全部题目</CardTitle>
           <CardDescription>
-            共 {rows.length} 条，按主题、档位、序号排列。
+            共 {rows.length} 条，按主题、序号排列。
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Select value={filterTopic} onValueChange={setFilterTopic}>
               <SelectTrigger>
                 <SelectValue />
@@ -351,19 +326,6 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                 {topics.map((t) => (
                   <SelectItem key={t} value={t}>
                     {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={filterBand} onValueChange={setFilterBand}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部档位</SelectItem>
-                {BANDS.map((b) => (
-                  <SelectItem key={b} value={b}>
-                    {b}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -413,7 +375,6 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>主题</TableHead>
-                  <TableHead className="w-16">档位</TableHead>
                   <TableHead>题目</TableHead>
                   <TableHead>中文提示</TableHead>
                   <TableHead className="w-16">秒数</TableHead>
@@ -424,9 +385,6 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                 {rows.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell>{row.topic}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{row.band}</Badge>
-                    </TableCell>
                     <TableCell className="max-w-96 font-medium">
                       {row.text}
                     </TableCell>
@@ -495,41 +453,21 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                 }
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-2">
-                <Label>档位</Label>
-                <Select
-                  value={editForm.band}
-                  onValueChange={(b) => setEditForm((f) => ({ ...f, band: b }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {BANDS.map((b) => (
-                      <SelectItem key={b} value={b}>
-                        {b}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="q-seconds">建议秒数（10–60）</Label>
-                <Input
-                  id="q-seconds"
-                  type="number"
-                  min={10}
-                  max={60}
-                  value={editForm.suggested_seconds}
-                  onChange={(e) =>
-                    setEditForm((f) => ({
-                      ...f,
-                      suggested_seconds: Number(e.target.value),
-                    }))
-                  }
-                />
-              </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="q-seconds">建议秒数（10–60）</Label>
+              <Input
+                id="q-seconds"
+                type="number"
+                min={10}
+                max={60}
+                value={editForm.suggested_seconds}
+                onChange={(e) =>
+                  setEditForm((f) => ({
+                    ...f,
+                    suggested_seconds: Number(e.target.value),
+                  }))
+                }
+              />
             </div>
           </div>
           <DialogFooter>

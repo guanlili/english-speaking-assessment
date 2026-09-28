@@ -368,20 +368,13 @@ function ComposerForm({
             {scenario && types.qa && (
               <section className="rounded-xl border p-4">
                 <h3 className="font-semibold">情景问答 · {scenario.topic}</h3>
-                {["A2", "B1", "B2"].map((band) => (
-                  <div key={band} className="mt-3">
-                    <p className="text-xs font-semibold text-primary">{band}</p>
-                    {scenario.questions
-                      .filter((question) => question.band === band)
-                      .map((question) => (
-                        <p key={question.id} className="mt-2 text-sm leading-6">
-                          {question.text}{" "}
-                          <span className="text-muted-foreground">
-                            · {question.suggested_seconds} 秒
-                          </span>
-                        </p>
-                      ))}
-                  </div>
+                {scenario.questions.map((question) => (
+                  <p key={question.id} className="mt-3 text-sm leading-6">
+                    {question.text}{" "}
+                    <span className="text-muted-foreground">
+                      · {question.suggested_seconds} 秒
+                    </span>
+                  </p>
                 ))}
               </section>
             )}

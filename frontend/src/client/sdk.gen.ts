@@ -783,9 +783,9 @@ export class ClassesService {
     
     /**
      * Read Next Question
-     * 换一题：同主题、同档、未做过的问题（US-06）。用尽时 exhausted=true。
+     * 换一题：同主题、未做过的问题（US-06）。用尽时 exhausted=true。
      *
-     * 传 session_id 时使用该会话的篇目与档位（主题探索轮），
+     * 传 session_id 时使用该会话的篇目（主题探索轮），
      * 不传时使用当日课堂会话。
      * @param data The data for the request.
      * @param data.code

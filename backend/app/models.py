@@ -201,8 +201,9 @@ class ScenarioQuestion(SQLModel, table=True):
     scenario_id: uuid.UUID = Field(
         foreign_key="scenario.id", nullable=False, ondelete="CASCADE"
     )
-    # 档位与篇目 cefr_band 同一套值：A2 / B1 / B2
-    band: str = Field(max_length=10, index=True)
+    # 历史字段：问答已不分级（2026-09-29 产品决策，老师自由编排题目），
+    # 抽题与展示均不再使用；保留列兼容存量数据，缺省落 B1
+    band: str = Field(default="B1", max_length=10, index=True)
     order_index: int = Field(default=0, ge=0)
     text: str = Field(min_length=1)
     translation: str | None = Field(default=None, max_length=1024)
