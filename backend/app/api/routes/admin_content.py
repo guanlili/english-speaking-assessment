@@ -150,9 +150,9 @@ def list_sentences_flat(session: SessionDep, _admin: TeacherUserDep) -> Any:
     sentences = session.exec(
         select(RepeatSentence).order_by(col(RepeatSentence.created_at))
     ).all()
-    passage_titles = {
-        pid: title for pid, title in session.exec(select(Passage.id, Passage.title)).all()
-    }
+    passage_titles = dict(
+        session.exec(select(Passage.id, Passage.title)).all()
+    )
     return [
         SentenceWithPassage(
             **s.model_dump(),
