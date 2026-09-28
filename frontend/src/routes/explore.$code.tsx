@@ -1,24 +1,13 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
-import {
-  createFileRoute,
-  Link,
-  useNavigate,
-  useParams,
-} from "@tanstack/react-router"
-import {
-  ArrowRight,
-  BookOpen,
-  Clock,
-  Compass,
-  MessageCircle,
-} from "lucide-react"
+import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router"
+import { ArrowRight, Clock, Compass, MessageCircle } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import type { PathUnit } from "@/client"
 import { ClassesService } from "@/client"
 import StudentShell from "@/components/Practice/StudentShell"
 import TopicArt from "@/components/Practice/TopicArt"
-import { Button as Btn, Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Dialog,
@@ -231,12 +220,6 @@ function ExplorePage() {
             自由练习 · 同样积累 XP 与星级 · 不计入课堂完成率
           </p>
           <DialogFooter>
-            <Btn variant="outline" asChild>
-              <Link to="/practice">
-                <BookOpen />
-                整篇跟读
-              </Link>
-            </Btn>
             <Button variant="outline" onClick={() => setSelected(null)}>
               再看看
             </Button>

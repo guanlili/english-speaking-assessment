@@ -8,7 +8,6 @@ import {
   KeyRound,
   ListChecks,
   LogOut,
-  Map as MapIcon,
   Mic,
   Sparkles,
   UsersRound,
@@ -27,7 +26,7 @@ function StudentShell({
   children,
   wide,
 }: {
-  active: "home" | "practice" | "explore" | "me" | "map" | "help" | "classroom"
+  active: "home" | "practice" | "explore" | "me" | "help" | "classroom"
   children: ReactNode
   wide?: boolean
 }) {
@@ -39,7 +38,6 @@ function StudentShell({
     { key: "practice", to: "/p/$code", label: "今日练习", icon: Mic },
     { key: "explore", to: "/explore/$code", label: "主题探索", icon: Sparkles },
     { key: "me", to: "/me/$code", label: "我的成长", icon: ChartLine },
-    { key: "map", to: "/map/$code", label: "关卡地图", icon: MapIcon },
     {
       key: "classroom",
       to: "/classroom/$code",

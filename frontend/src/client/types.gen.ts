@@ -338,13 +338,6 @@ export type PlanItem = {
     listen_used?: (number | null);
 };
 
-export type PrivateUserCreate = {
-    email: string;
-    password: string;
-    full_name: string;
-    is_verified?: boolean;
-};
-
 /**
  * 题库全局视图：带上主题，供管理端筛选/搜索。
  */
@@ -943,14 +936,6 @@ export type LoginRecoverPasswordHtmlContentData = {
 };
 
 export type LoginRecoverPasswordHtmlContentResponse = (string);
-
-export type PracticeReadActivePassageResponse = (PassagePublic);
-
-export type PrivateCreateUserData = {
-    requestBody: PrivateUserCreate;
-};
-
-export type PrivateCreateUserResponse = (UserPublic);
 
 export type StudentsImportStudentsData = {
     requestBody: StudentImportRequest;

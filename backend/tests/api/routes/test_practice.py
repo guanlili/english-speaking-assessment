@@ -15,7 +15,7 @@ from sqlmodel import Session, select
 from app.api.deps import get_scoring_submitter
 from app.core.config import settings
 from app.main import app
-from app.models import Attempt, AttemptStatus
+from app.models import Attempt, AttemptStatus, Passage
 from app.scoring import worker
 from app.scoring.base import ScoringError
 from tests.utils.audio import wav_upload
@@ -53,20 +53,19 @@ def inline_scoring(
     app.dependency_overrides.pop(get_scoring_submitter, None)
 
 
-def test_read_active_passage(client: TestClient) -> None:
-    resp = client.get("/api/v1/practice/passage")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["slug"] == "demo-pets"
-    assert "friendly" in data["text"]
-    assert data["is_active"] is True
+def _demo_passage_id(db: Session) -> str:
+    """初始化数据内置的演示篇目（原 /practice/passage 接口已随 MVP 演示形态移除）。"""
+    passage = db.exec(select(Passage).where(Passage.slug == "demo-pets")).first()
+    assert passage is not None
+    return str(passage.id)
 
 
 def test_create_and_poll_attempt(
     client: TestClient,
     inline_scoring: None,
+    db: Session,
 ) -> None:
-    passage_id = client.get("/api/v1/practice/passage").json()["id"]
+    passage_id = _demo_passage_id(db)
 
     resp = client.post(
         "/api/v1/attempts",
@@ -99,7 +98,7 @@ def test_repractice_creates_new_attempt(
     db: Session,
 ) -> None:
     """US-03：再练一次新建一条作答，不覆盖旧记录。"""
-    passage_id = client.get("/api/v1/practice/passage").json()["id"]
+    passage_id = _demo_passage_id(db)
     before = len(db.exec(select(Attempt)).all())
 
     for _ in range(2):
@@ -121,9 +120,10 @@ def test_repractice_creates_new_attempt(
 def test_short_recording_rejected(
     client: TestClient,
     inline_scoring: None,
+    db: Session,
 ) -> None:
     """US-02：短于 1 秒不打分。"""
-    passage_id = client.get("/api/v1/practice/passage").json()["id"]
+    passage_id = _demo_passage_id(db)
     resp = client.post(
         "/api/v1/attempts",
         files={"audio": wav_upload(0.4)},
@@ -148,7 +148,7 @@ def test_scoring_failure_keeps_audio(
         "build_asr_provider",
         lambda: (_ for _ in ()).throw(ScoringError("引擎不可用")),
     )
-    passage_id = client.get("/api/v1/practice/passage").json()["id"]
+    passage_id = _demo_passage_id(db)
 
     resp = client.post(
         "/api/v1/attempts",
@@ -211,7 +211,7 @@ def test_quick_feedback_committed_before_detail(
     )
     monkeypatch.setattr(worker, "_detail_executor", detail_executor)
     monkeypatch.setattr(db_module, "engine", db.get_bind())
-    passage_id = client.get("/api/v1/practice/passage").json()["id"]
+    passage_id = _demo_passage_id(db)
     response = client.post(
         "/api/v1/attempts",
         files={"audio": wav_upload(8.0)},
