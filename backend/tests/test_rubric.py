@@ -90,7 +90,9 @@ def test_ark_rubric_scorer_success() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
         assert request.url.path == "/api/v3/chat/completions"
-        assert body["model"] == "rubric-model"
+        assert body["model"] == "doubao-seed-2-0-lite-260428"
+        assert body["thinking"] == {"type": "disabled"}
+        assert body["max_tokens"] == 2048
         assert len(body["messages"]) == 2
         assert body["messages"][0]["role"] == "system"
         content = json.dumps({"fluency": 2, "vocabulary": 2, "grammar": 1, "task": 2})
@@ -101,7 +103,7 @@ def test_ark_rubric_scorer_success() -> None:
 
     scorer = ArkRubricScorer(
         api_key="key",
-        model="rubric-model",
+        model="doubao-seed-2-0-lite-260428",
         client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
     scores = scorer.score("Do you like cats?", "B1", "yes i like")

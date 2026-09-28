@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 _shared_client = httpx.Client(timeout=60)
 
 
+def fast_chat_options(model: str | None) -> dict[str, object]:
+    """已验证的 Seed Lite 快速模式；其他模型不发送专有参数。"""
+    if model == "doubao-seed-2-0-lite-260428":
+        return {"thinking": {"type": "disabled"}, "max_tokens": 2048}
+    return {}
+
+
 class ArkChatError(Exception):
     """chat 调用失败（未配置、HTTP 错误、无 JSON 输出）。"""
 
@@ -50,6 +57,7 @@ class ArkChatClient:
                 {"role": "user", "content": user},
             ],
             "temperature": temperature,
+            **fast_chat_options(model or self.model),
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
         url = f"{self.base_url}/chat/completions"
