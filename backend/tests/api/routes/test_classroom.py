@@ -282,7 +282,7 @@ def test_low_completeness_downgrades_band(
     )
 
     plan2 = _today(client, student["headers"]).json()
-    assert plan2["band"] == "A2" 
+    assert plan2["band"] == "A2"
 
 
 # ── US-06 换一题 ─────────────────────────────────────────────────────
