@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query"
-import { Loader2, Mic, Trash2, Upload, Volume2 } from "lucide-react"
+import { Loader2, Mic, Upload, Volume2, X } from "lucide-react"
 import { useRef } from "react"
 import { toast } from "sonner"
 import { AdminService } from "@/client"
@@ -118,7 +118,7 @@ function AudioSetter({
             void clear()
           }}
         >
-          <Trash2 className="size-3.5 text-destructive" />
+          <X className="size-3.5 text-muted-foreground" />
         </Button>
       )}
     </div>

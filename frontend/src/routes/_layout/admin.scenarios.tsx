@@ -387,6 +387,14 @@ function ScenarioCard({
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`编辑题目 ${index + 1}`}
+                      onClick={() => openQEdit(q)}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
                     <AudioSetter
                       hasAudio={Boolean(q.audio_url)}
                       text={q.text ?? ""}
@@ -398,14 +406,6 @@ function ScenarioCard({
                         onMutated()
                       }}
                     />
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`编辑题目 ${index + 1}`}
-                      onClick={() => openQEdit(q)}
-                    >
-                      <Pencil className="size-3.5" />
-                    </Button>
                     <Button
                       variant="ghost"
                       size="icon-sm"

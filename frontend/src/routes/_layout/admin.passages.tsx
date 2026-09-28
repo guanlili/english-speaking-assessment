@@ -655,6 +655,17 @@ function PassageCard({
               拆分为多篇
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`编辑 ${passage.title}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onEdit()
+            }}
+          >
+            <Pencil />
+          </Button>
           <AudioSetter
             hasAudio={Boolean(passage.audio_url)}
             text={passage.text ?? ""}
@@ -677,17 +688,6 @@ function PassageCard({
               onMutated()
             }}
           />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`编辑 ${passage.title}`}
-            onClick={(e) => {
-              e.stopPropagation()
-              onEdit()
-            }}
-          >
-            <Pencil />
-          </Button>
           <Button
             variant="ghost"
             size="icon-sm"
