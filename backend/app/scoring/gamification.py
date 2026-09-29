@@ -74,11 +74,14 @@ def settle_session(
     student: Student,
     today: date,
     expected_items: int,
+    required_item_ids: set | None = None,
 ) -> None:
     """一轮全部完成后结算星/XP/连胜/徽章。幂等：stars 已写入直接返回。
 
-    判定「全部完成」：有作答的题目数达到本轮应做题数（expected_items，
-    换题追加的作答数多于应做数也视为完成），且每题最新作答均为终态。
+    判定「全部完成」：
+    - expected_items：本轮应做题数（来自 PlanItem 列表，快照/题单口径）
+    - required_item_ids：若提供，只检查这些 item_id 的作答；额外换题的作答不顶替必做题
+    - 每个必须题位的最新作答均为终态（done/failed）
     """
     locked_session = session.exec(
         select(PracticeSession)
@@ -106,6 +109,8 @@ def settle_session(
     ).all()
     latest: dict = {}
     for attempt in attempts:
+        if required_item_ids is not None and attempt.item_id not in required_item_ids:
+            continue
         latest[attempt.item_id] = attempt
     if len(latest) < expected_items or any(
         a.status not in (AttemptStatus.DONE, AttemptStatus.FAILED)

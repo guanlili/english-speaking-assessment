@@ -1,3 +1,4 @@
+
 from sqlmodel import Session, create_engine, select
 
 from app import crud
@@ -15,7 +16,27 @@ from app.models import (
     WordlistEntry,
 )
 
-engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
+_engine_override: object | None = None
+
+def set_engine(engine_obj: object | None) -> None:
+    """测试/CLI 用：覆盖全局 engine，所有从 core.db 取 engine 的路径都受影响。"""
+    global _engine_override
+    _engine_override = engine_obj
+
+def _make_default_engine():
+    return create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
+
+_default_engine = _make_default_engine()
+
+def _get_engine():
+    return _engine_override if _engine_override is not None else _default_engine
+
+# 模块属性名保持 `engine`，get_db/worker/启动脚本均以 `from app.core.db import engine` 取值。
+# 通过 __getattr__ 拦截，使得 deps 等模块级 `from ... import engine` 也能动态拿到覆盖后的引擎。
+def __getattr__(name):
+    if name == "engine":
+        return _get_engine()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # 内置演示词表（PRD §7.4：学校没给 CSV 前先用公开分级词的子集，界面标明来源）
 WORDLIST_NAME = "内置演示词表（待学校分级词表 CSV 替换）"

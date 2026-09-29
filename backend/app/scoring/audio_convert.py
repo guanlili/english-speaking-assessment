@@ -13,9 +13,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# 方舟 input_audio 支持的格式
-ARK_SUPPORTED_SUFFIXES = {".mp3", ".wav", ".aac", ".flac", ".m4a", ".amr"}
-# 需要转码的浏览器录音格式
+# 需要转码的浏览器录音格式（方舟只收 mp3/wav/aac/flac/m4a/amr，见 ensure_ark_supported）
 BROWSER_SUFFIXES = {".webm", ".ogg", ".oga"}
 
 

@@ -151,25 +151,25 @@ function ClassroomPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">换一个名字 / 退出课堂</CardTitle>
+            <CardTitle className="text-base">退出课堂</CardTitle>
             <CardDescription>
-              换设备练习、名字打错了，或想以新身份开始时使用。练习记录保存在服务器，
-              重新输入同一个名字不会找回旧记录（同名会分配新的区分码）。
+              换设备或想以其他身份开始时，先退出当前课堂。练习记录保存在你的学生账号下，
+              重新登录同一账号并进入课堂即可找回。
             </CardDescription>
           </CardHeader>
           <CardContent>
             {!confirmExit ? (
               <Button variant="outline" onClick={() => setConfirmExit(true)}>
                 <LogOut />
-                退出并重新进入
+                退出课堂
               </Button>
             ) : (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm text-muted-foreground">
-                  确定退出当前身份？
+                  确定退出当前课堂？
                 </span>
                 <Button variant="destructive" size="sm" onClick={leave}>
-                  确定，重新进入
+                  确定退出
                 </Button>
                 <Button
                   variant="ghost"
@@ -190,7 +190,7 @@ function ClassroomPage() {
           <CardContent className="space-y-2.5 text-sm">
             <p className="flex items-start gap-2">
               <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
-              显示名 + 区分码识别身份，不需要注册账号。
+              用学生账号登录进入课堂，练习记录跟随账号保存；课堂里用显示名与区分码区分同学。
             </p>
             <p className="flex items-start gap-2">
               <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />

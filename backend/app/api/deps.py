@@ -9,9 +9,9 @@ from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
 from sqlmodel import Session
 
+from app.core import db as _db
 from app.core import security
 from app.core.config import settings
-from app.core.db import engine
 from app.models import TokenPayload, User
 
 reusable_oauth2 = OAuth2PasswordBearer(
@@ -24,7 +24,8 @@ reusable_oauth2_optional = OAuth2PasswordBearer(
 
 
 def get_db() -> Generator[Session]:
-    with Session(engine) as session:
+    # 每次请求解析 engine，保证测试 set_engine() 覆盖生效
+    with Session(_db.engine) as session:
         yield session
 
 

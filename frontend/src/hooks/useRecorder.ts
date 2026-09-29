@@ -45,6 +45,8 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   onCompleteRef.current = options.onComplete
   // 卸载标志：录音中离开页面时，onstop 不再提交幽灵作答
   const disposedRef = useRef(false)
+  // 同步并发保护：getUserMedia 是异步的，连续点击期间用 ref 挡住第二个 start
+  const startingRef = useRef(false)
 
   const cleanup = useCallback(() => {
     if (timerRef.current !== null) {
@@ -73,6 +75,10 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   }, [])
 
   const start = useCallback(async () => {
+    // 同步并发保护：getUserMedia 未返回前第二个 start 直接忽略
+    if (startingRef.current) return
+    if (recorderRef.current?.state === "recording") return
+    startingRef.current = true
     setError(null)
     setRecording(null)
     setElapsed(0)
@@ -144,11 +150,15 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       } else {
         setError("无法访问麦克风，请检查耳机是否插好")
       }
+    } finally {
+      startingRef.current = false
     }
   }, [cleanup, stop])
 
-  // 卸载时释放麦克风
+  // 卸载时释放麦克风。注意 StrictMode 会先「挂载→清理→再挂载」：
+  // 清理里置 disposed=true，再挂载时必须复位为 false，否则 start 会误判为已卸载。
   useEffect(() => {
+    disposedRef.current = false
     return () => {
       disposedRef.current = true
       const recorder = recorderRef.current

@@ -200,30 +200,24 @@ def get_or_create_today_session(
     mode: str = "daily",
     assignment_id: uuid.UUID | None = None,
 ) -> PracticeSession:
-    """取当日会话；explore 按篇目各一轮；daily 按篇目复用。
+    """取当日会话；explore 按篇目各一轮；daily 按发布快照或自主练习各一轮。
 
-    daily 以（学生、日期、篇目、发布快照）为复用键：老师中途切换指派
-    即使锚点篇目不变，也会自动开新轮，旧轮作答与星级保留。
+    唯一键：
+    - assignment_id IS NOT NULL → (student, date, mode, assignment_id)
+    - mode='daily' 且 assignment_id IS NULL → 每日一条自主轮
+    - mode='explore' → (student, date, mode, passage_id)
     """
     statement = select(PracticeSession).where(
         PracticeSession.student_id == student.id,
         PracticeSession.session_date == today,
+        PracticeSession.mode == mode,
     )
     if mode == "explore":
-        statement = statement.where(
-            PracticeSession.passage_id == passage_id,
-            PracticeSession.mode == "explore",
-        )
+        statement = statement.where(PracticeSession.passage_id == passage_id)
+    elif assignment_id is not None:
+        statement = statement.where(PracticeSession.assignment_id == assignment_id)
     else:
-        statement = statement.where(PracticeSession.mode == "daily")
-        if passage_id is None:
-            statement = statement.where(col(PracticeSession.passage_id).is_(None))
-        else:
-            statement = statement.where(PracticeSession.passage_id == passage_id)
-        if assignment_id is None:
-            statement = statement.where(col(PracticeSession.assignment_id).is_(None))
-        else:
-            statement = statement.where(PracticeSession.assignment_id == assignment_id)
+        statement = statement.where(col(PracticeSession.assignment_id).is_(None))
     existing = session.exec(statement).first()
     if existing is not None:
         return existing
@@ -240,7 +234,6 @@ def get_or_create_today_session(
     try:
         session.commit()
     except IntegrityError:
-        # 并发创建：另一请求已插入同键会话，回滚后重新查询
         session.rollback()
         existing = session.exec(statement).first()
         if existing is not None:

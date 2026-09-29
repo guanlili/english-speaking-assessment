@@ -1,5 +1,6 @@
 """管理员内容接口测试（篇目/情景/词表导入/课堂码）。"""
 
+import uuid as _uuid
 from collections import Counter
 
 import pytest
@@ -706,3 +707,213 @@ def test_update_question_translation_and_bounds(
         assert bad.status_code == 422
     finally:
         _cleanup_scenario(client, superuser_token_headers, scenario["id"])
+
+
+# ── 输入边界：空文本 / 负时长 / 越界序号 / 非法外键 / null 语义 ──────
+
+
+def test_create_content_rejects_empty_text_and_bounds(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    # 空文本（含纯空白）→ 422
+    assert (
+        client.post(
+            "/api/v1/admin/passages",
+            json={"title": "x", "text": "   ", "slug": None},
+            headers=superuser_token_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/v1/admin/passages",
+            json={"title": "   ", "text": "body", "slug": None},
+            headers=superuser_token_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/v1/admin/sentences",
+            json={"text": "   ", "order_index": 0},
+            headers=superuser_token_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/v1/admin/scenarios",
+            json={"topic": "  "},
+            headers=superuser_token_headers,
+        ).status_code
+        == 422
+    )
+
+    # 负序号 / 越界建议秒数 → 422
+    assert (
+        client.post(
+            "/api/v1/admin/sentences",
+            json={"text": "hi", "order_index": -1},
+            headers=superuser_token_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/v1/admin/sentences",
+            json={"text": "hi", "order_index": 0, "suggested_seconds": 2},
+            headers=superuser_token_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/v1/admin/sentences",
+            json={"text": "hi", "order_index": 0, "suggested_seconds": 61},
+            headers=superuser_token_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/v1/admin/sentences",
+            json={"text": "hi", "order_index": 0, "replay_limit": 10},
+            headers=superuser_token_headers,
+        ).status_code
+        == 422
+    )
+
+    # 非法外键：独立复述句挂不存在的篇目 → 404
+    import uuid as _uuid
+
+    assert (
+        client.post(
+            "/api/v1/admin/sentences",
+            json={"text": "hi", "order_index": 0, "passage_id": str(_uuid.uuid4())},
+            headers=superuser_token_headers,
+        ).status_code
+        == 404
+    )
+
+
+def test_update_content_null_and_partial_semantics(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    """更新语义：缺省不修改；可空字段 null 清空；非空字段 null → 422。"""
+    passage = client.post(
+        "/api/v1/admin/passages",
+        json={
+            "slug": "null-semantics",
+            "title": "Before",
+            "text": "Hello world.",
+            "suggested_seconds": 30,
+            "translation": "初始提示",
+        },
+        headers=superuser_token_headers,
+    ).json()
+    sentence = client.post(
+        f"/api/v1/admin/passages/{passage['id']}/sentences",
+        json={"order_index": 0, "text": "Repeat me.", "translation": "句提示"},
+        headers=superuser_token_headers,
+    ).json()
+    scenario = _mk_scenario(client, superuser_token_headers, "Null 语义测试")
+    question = client.post(
+        f"/api/v1/admin/scenarios/{scenario['id']}/questions",
+        json={"band": "A2", "text": "Q?", "translation": "问提示"},
+        headers=superuser_token_headers,
+    ).json()
+    try:
+        # 缺省不修改：只发一个字段，其它保留
+        upd = client.put(
+            f"/api/v1/admin/passages/{passage['id']}",
+            json={"title": "After"},
+            headers=superuser_token_headers,
+        )
+        assert upd.status_code == 200
+        assert upd.json()["title"] == "After"
+        assert upd.json()["text"] == "Hello world."
+        assert upd.json()["suggested_seconds"] == 30
+
+        # 可空字段 null 清空
+        upd_s = client.put(
+            f"/api/v1/admin/sentences/{sentence['id']}",
+            json={"translation": None},
+            headers=superuser_token_headers,
+        )
+        assert upd_s.status_code == 200
+        assert upd_s.json()["translation"] is None
+        assert upd_s.json()["text"] == "Repeat me."
+
+        upd_q = client.put(
+            f"/api/v1/admin/questions/{question['id']}",
+            json={"translation": None},
+            headers=superuser_token_headers,
+        )
+        assert upd_q.status_code == 200
+
+        # 非空字段传 null → 422（suggested_seconds=null 不再落到 DB 层抛 TypeError）
+        for url, payload in [
+            (f"/api/v1/admin/passages/{passage['id']}", {"suggested_seconds": None}),
+            (f"/api/v1/admin/passages/{passage['id']}", {"text": None}),
+            (f"/api/v1/admin/sentences/{sentence['id']}", {"suggested_seconds": None}),
+            (f"/api/v1/admin/sentences/{sentence['id']}", {"text": None}),
+            (f"/api/v1/admin/sentences/{sentence['id']}", {"order_index": None}),
+            (f"/api/v1/admin/questions/{question['id']}", {"suggested_seconds": None}),
+            (f"/api/v1/admin/questions/{question['id']}", {"order_index": None}),
+            (f"/api/v1/admin/questions/{question['id']}", {"band": None}),
+        ]:
+            resp = client.put(url, json=payload, headers=superuser_token_headers)
+            assert resp.status_code == 422, (url, payload, resp.text)
+
+        # 空白文本更新 → 422
+        assert (
+            client.put(
+                f"/api/v1/admin/sentences/{sentence['id']}",
+                json={"text": "   "},
+                headers=superuser_token_headers,
+            ).status_code
+            == 422
+        )
+
+        # 非法外键更新：句子挂到不存在的篇目 → 422；unit_id 不存在 → 422
+        assert (
+            client.put(
+                f"/api/v1/admin/sentences/{sentence['id']}",
+                json={"passage_id": str(_uuid.uuid4())},
+                headers=superuser_token_headers,
+            ).status_code
+            == 422
+        )
+        assert (
+            client.put(
+                f"/api/v1/admin/passages/{passage['id']}",
+                json={"unit_id": str(_uuid.uuid4())},
+                headers=superuser_token_headers,
+            ).status_code
+            == 422
+        )
+
+        # 可空外键清空合法（句子脱离篇目）
+        detach = client.put(
+            f"/api/v1/admin/sentences/{sentence['id']}",
+            json={"passage_id": None},
+            headers=superuser_token_headers,
+        )
+        assert detach.status_code == 200
+        assert detach.json()["passage_id"] is None
+    finally:
+        client.delete(
+            f"/api/v1/admin/questions/{question['id']}", headers=superuser_token_headers
+        )
+        client.delete(
+            f"/api/v1/admin/scenarios/{scenario['id']}",
+            headers=superuser_token_headers,
+        )
+        client.delete(
+            f"/api/v1/admin/sentences/{sentence['id']}",
+            headers=superuser_token_headers,
+        )
+        client.delete(
+            f"/api/v1/admin/passages/{passage['id']}",
+            headers=superuser_token_headers,
+        )

@@ -57,9 +57,12 @@ function parseRubric(raw: unknown): RubricPayload | null {
 export function RubricBlock({
   rubric,
   engine,
+  savedExpressionsKey,
 }: {
   rubric: unknown
   engine: string
+  /** 按用户隔离的收藏键；缺省时收藏按钮降级为不写（避免写进无归属旧键串号）。 */
+  savedExpressionsKey?: string
 }) {
   const data = parseRubric(rubric)
 
@@ -126,13 +129,17 @@ export function RubricBlock({
               variant="ghost"
               size="sm"
               className="h-7 text-xs"
+              disabled={!savedExpressionsKey}
               onClick={() => {
-                const key = "esa:saved-expressions"
-                const saved = safeLocalStorageGet<string[]>(key, [])
+                if (!savedExpressionsKey) return
+                const saved = safeLocalStorageGet<string[]>(
+                  savedExpressionsKey,
+                  [],
+                )
                 const merged = Array.from(
                   new Set([...saved, ...data.upgrades!]),
                 )
-                safeLocalStorageSet(key, merged)
+                safeLocalStorageSet(savedExpressionsKey, merged)
               }}
             >
               <Bookmark />

@@ -5,8 +5,6 @@
 明显读不完（完整度 <50）降一档。调整不告诉学生，只换题。
 """
 
-from app.scoring.base import ReadAloudScores
-
 BAND_LOW = "A2"
 BAND_MID = "B1"
 BAND_HIGH = "B2"
@@ -27,12 +25,3 @@ def adjust_band(avg_completeness: float, avg_fluency: float, current: str) -> st
     if avg_completeness >= UP_COMPLETENESS and avg_fluency >= UP_FLUENCY:
         return BAND_ORDER[min(len(BAND_ORDER) - 1, BAND_ORDER.index(current) + 1)]
     return current
-
-
-def band_from_scores(scores: list[ReadAloudScores]) -> str:
-    """按本轮复述句的平均完整度/流利度给出问答档位。"""
-    if not scores:
-        return DEFAULT_BAND
-    avg_c = sum(s.completeness for s in scores) / len(scores)
-    avg_f = sum(s.fluency for s in scores) / len(scores)
-    return adjust_band(avg_c, avg_f, DEFAULT_BAND)

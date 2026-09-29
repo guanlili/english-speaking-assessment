@@ -136,7 +136,7 @@ function QuestionLibrary() {
         ) : kind === "repeat" ? (
           <SentenceLibrary />
         ) : (
-          <PassagesAdmin key={kind} embedded mode={kind} />
+          <PassagesAdmin key={kind} embedded />
         )}
       </section>
       <details className="rounded-xl border p-5">
