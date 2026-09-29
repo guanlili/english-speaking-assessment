@@ -824,6 +824,14 @@ function LimitedListenButton({
   const remaining = unlimited ? Infinity : Math.max(0, replayLimit - used)
   const exhausted = !unlimited && remaining <= 0
 
+  useEffect(() => {
+    return () => {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [])
+
   const play = async () => {
     if (exhausted || !sessionId || countingRef.current) return
     countingRef.current = true

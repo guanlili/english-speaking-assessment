@@ -210,7 +210,16 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
 
         attempt.status = AttemptStatus.DONE
         attempt.engine = engine
-    except Exception as exc:  # noqa: BLE001 - 任何引擎异常都按重试/失败处理
+    except ScoringError as exc:
+        # 可预期的业务错误（题目被删等）：直接标失败，不重试
+        logger.warning(
+            "attempt %s scoring aborted: %s",
+            attempt_id,
+            exc,
+        )
+        attempt.status = AttemptStatus.FAILED
+        attempt.error = str(exc)[:500]
+    except Exception as exc:  # noqa: BLE001 - 其他引擎异常都按重试/失败处理
         logger.warning(
             "attempt %s scoring failed (retry %d): %s",
             attempt_id,

@@ -100,6 +100,10 @@ const useAuth = () => {
     for (const key of Object.keys(localStorage)) {
       if (key.startsWith("esa:student:")) localStorage.removeItem(key)
     }
+    // 停掉任何正在播放的语音（退出后不应继续发声）
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+    }
     queryClient.cancelQueries()
     queryClient.invalidateQueries({ queryKey: ["currentUser"] })
     navigate({ to: "/login" })

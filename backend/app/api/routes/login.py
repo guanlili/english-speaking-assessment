@@ -139,7 +139,9 @@ def recover_password(email: str, session: SessionDep) -> Message:
         )
     user = crud.get_user_by_email(session=session, email=email)
     if user:
-        password_reset_token = generate_password_reset_token(email=email)
+        password_reset_token = generate_password_reset_token(
+            email=email, password_hash=user.hashed_password
+        )
         email_to = user.email or email  # 按邮箱查到的账号，email 必非空
         email_data = generate_reset_password_email(
             email_to=email_to, email=email, token=password_reset_token
@@ -168,6 +170,12 @@ def reset_password(session: SessionDep, body: NewPassword) -> Message:
         raise HTTPException(status_code=400, detail="Invalid token")
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
+    # 二次校验 token 中的密码哈希前缀，确保 token 在改密后自动失效（防复用）
+    email_recheck = verify_password_reset_token(
+        token=body.token, password_hash=user.hashed_password
+    )
+    if not email_recheck:
+        raise HTTPException(status_code=400, detail="Invalid token")
     user_in_update = UserUpdate(password=body.new_password)
     crud.update_user(
         session=session,
@@ -193,7 +201,9 @@ def recover_password_html_content(email: str, session: SessionDep) -> Any:
             status_code=404,
             detail="The user with this username does not exist in the system.",
         )
-    password_reset_token = generate_password_reset_token(email=email)
+    password_reset_token = generate_password_reset_token(
+        email=email, password_hash=user.hashed_password
+    )
     email_data = generate_reset_password_email(
         email_to=user.email or email, email=email, token=password_reset_token
     )
