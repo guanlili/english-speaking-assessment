@@ -16,12 +16,12 @@ from app.models import (
     AttemptItemType,
     Classroom,
     ClassroomExercise,
-    get_datetime_utc,
     Passage,
     PracticeSession,
     RepeatSentence,
     Scenario,
     ScenarioQuestion,
+    get_datetime_utc,
 )
 
 

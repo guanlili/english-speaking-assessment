@@ -26,7 +26,6 @@ from app.api.deps import (
     TeacherUserDep,
 )
 from app.core.config import settings
-from app.services import exercise as exercise_service
 from app.crud import (
     create_classroom,
     get_classroom_by_code,
@@ -77,6 +76,7 @@ from app.scoring.gamification import (
     settle_session,
     student_badges,
 )
+from app.services import exercise as exercise_service
 
 logger = logging.getLogger(__name__)
 
