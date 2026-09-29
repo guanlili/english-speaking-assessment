@@ -121,12 +121,7 @@ def db() -> Generator[Session]:
     try:
         from app.scoring import worker as _worker_mod
 
-        if getattr(_worker_mod, "_executor", None) is not None:
-            _worker_mod._executor.shutdown(wait=False)
-            _worker_mod._executor = None
-        if getattr(_worker_mod, "_detail_executor", None) is not None:
-            _worker_mod._detail_executor.shutdown(wait=False)
-            _worker_mod._detail_executor = None
+        _worker_mod.shutdown_executor()
     except Exception:  # pragma: no cover - 清理阶段兜底
         pass
 

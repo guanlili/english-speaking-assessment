@@ -41,5 +41,7 @@ def test_worker_and_deps_use_test_engine() -> None:
     # If a regression introduces an eager `engine = create_engine(...)` at module
     # level in core/db, this will catch it.
     with Session(db_module.engine) as s:
-        result = s.exec(text("SELECT current_database()")).one()
+        result = s.connection().execute(
+            text("SELECT current_database()")
+        ).one()
         assert result[0] == settings.POSTGRES_DB_TEST

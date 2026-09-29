@@ -1,13 +1,13 @@
 import assert from "node:assert/strict"
 import { beforeEach, test } from "node:test"
 
+import type { StoredStudent } from "../src/lib/classroom-student.ts"
 import {
   LEGACY_SAVED_EXPRESSIONS_KEY,
   readSavedExpressions,
-  saveSavedExpressions,
   savedExpressionsKey,
+  saveSavedExpressions,
 } from "../src/lib/favorites.ts"
-import type { StoredStudent } from "../src/lib/classroom-student.ts"
 
 // Node 无 localStorage：给一个内存 mock（favorites.ts 在调用时才读全局）。
 const storage = new Map<string, string>()

@@ -453,6 +453,40 @@ def _parse_snapshot_plan_items(
     return ps, rs, qs
 
 
+def _snapshot_int(value: object | None, default: int) -> int:
+    """快照数值字段转 int：缺失/非法/0 用 default 兜底。"""
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value or default
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            try:
+                return int(stripped)
+            except ValueError:
+                pass
+    return default
+
+
+def _snapshot_optional_int(value: object | None) -> int | None:
+    """快照可空数值字段转 int：None → None，其余转 int。"""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            try:
+                return int(stripped)
+            except ValueError:
+                pass
+    return None
+
+
 def _plan_item_from_snapshot(
     item: dict[str, object],
     listen_counts: dict[uuid.UUID, int] | None = None,
@@ -484,11 +518,9 @@ def _plan_item_from_snapshot(
             str(item["translation"]) if item.get("translation") is not None else None
         ),
         audio_url=(str(item["audio_url"]) if item.get("audio_url") is not None else None),
-        suggested_seconds=int(item.get("suggested_seconds") or 20),
+        suggested_seconds=_snapshot_int(item.get("suggested_seconds"), 20),
         band=(str(item["band"]) if item.get("band") is not None else None),
-        replay_limit=(
-            int(item["replay_limit"]) if item.get("replay_limit") is not None else None
-        ),
+        replay_limit=_snapshot_optional_int(item.get("replay_limit")),
         listen_used=(
             (listen_counts or {}).get(item_id, 0) if t == AttemptItemType.REPEAT else None
         ),
@@ -1016,7 +1048,9 @@ def read_next_question(
                         if candidate.get("audio_url") is not None
                         else None
                     ),
-                    suggested_seconds=int(candidate.get("suggested_seconds") or 20),
+                    suggested_seconds=_snapshot_int(
+                        candidate.get("suggested_seconds"), 20
+                    ),
                 ),
                 exhausted=False,
             )
