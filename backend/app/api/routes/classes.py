@@ -1731,6 +1731,113 @@ def list_classroom_exercises(
     ]
 
 
+class ExerciseStudentResult(SQLModel):
+    """单次练习按学生的结果行（发布历史结果页）。"""
+
+    student_id: uuid.UUID
+    display_name: str
+    suffix: str | None = None
+    done_count: int
+    total_count: int
+    has_pending: bool
+    items: list[BoardItem]
+
+
+@router.get(
+    "/{code}/exercises/{exercise_id}/results",
+    response_model=list[ExerciseStudentResult],
+)
+def read_exercise_results(
+    session: SessionDep,
+    code: str,
+    exercise_id: uuid.UUID,
+    current_user: CurrentUser,
+) -> Any:
+    """按发布快照回看每次练习的学生结果（历史结果页）。
+
+    数据源 = 绑定该快照的学生会话上的作答；未开始的学生按快照题位
+    全 missing 展示，老师能看出谁没做。
+    """
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    exercise = session.get(ClassroomExercise, exercise_id)
+    if exercise is None or exercise.classroom_id != classroom.id:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+
+    students = session.exec(
+        select(Student)
+        .where(Student.classroom_id == classroom.id)
+        .order_by(col(Student.display_name))
+    ).all()
+    sessions_by_student: dict[uuid.UUID, PracticeSession] = {}
+    if students:
+        for ps in session.exec(
+            select(PracticeSession).where(
+                PracticeSession.classroom_id == classroom.id,
+                PracticeSession.assignment_id == exercise.id,
+            )
+        ).all():
+            # 同学生多轮（跨天重发）取最新
+            sessions_by_student[ps.student_id] = ps
+
+    out: list[ExerciseStudentResult] = []
+    for student in students:
+        ps = sessions_by_student.get(student.id)
+        latest: dict[uuid.UUID, Attempt] = {}
+        has_pending = False
+        if ps is not None:
+            for attempt in session.exec(
+                select(Attempt)
+                .where(
+                    Attempt.student_id == student.id,  # type: ignore[arg-type]
+                    Attempt.session_id == ps.id,  # type: ignore[arg-type]
+                )
+                .order_by(col(Attempt.created_at))
+            ).all():
+                latest[attempt.item_id] = attempt
+            has_pending = any(
+                a.status in (AttemptStatus.QUEUED, AttemptStatus.SCORING)
+                for a in latest.values()
+            )
+        items: list[BoardItem] = []
+        done = 0
+        for spec in exercise.snapshot_items:
+            item_id = uuid.UUID(str(spec["id"]))
+            attempt = latest.get(item_id)
+            if attempt is None:
+                items.append(
+                    BoardItem(
+                        item_id=item_id,
+                        type=str(spec["type"]),
+                        status="missing",
+                    )
+                )
+                continue
+            if attempt.status == AttemptStatus.DONE:
+                done += 1
+            items.append(
+                BoardItem(
+                    item_id=item_id,
+                    type=str(spec["type"]),
+                    status=attempt.status,
+                    overall=attempt.overall,
+                    attempt_id=attempt.id,
+                )
+            )
+        out.append(
+            ExerciseStudentResult(
+                student_id=student.id,
+                display_name=student.display_name,
+                suffix=student.suffix,
+                done_count=done,
+                total_count=len(exercise.snapshot_items),
+                has_pending=has_pending,
+                items=items,
+            )
+        )
+    return out
+
+
 @router.put("/{code}/assignment", response_model=AssignmentInfo | None)
 def set_assignment(
     session: SessionDep,
