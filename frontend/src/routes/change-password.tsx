@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query"
-import { createFileRoute, useNavigate } from "@tanstack/react-router"
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router"
 import { KeyRound } from "lucide-react"
 import { useState } from "react"
 import { UsersService } from "@/client"
@@ -19,6 +19,9 @@ import useCustomToast from "@/hooks/useCustomToast"
 import { lastJoinedCode } from "@/lib/classroom-student"
 
 export const Route = createFileRoute("/change-password")({
+  beforeLoad: () => {
+    if (!isLoggedIn()) throw redirect({ to: "/login" })
+  },
   component: ChangePasswordPage,
   head: () => ({ meta: [{ title: `修改密码 - ${APP_NAME}` }] }),
 })

@@ -15,13 +15,16 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile
 from sqlalchemy import func
-from sqlmodel import Field, SQLModel, col, select
+from sqlmodel import Field, Session, SQLModel, col, select
 
 from app import crud
 from app.api.deps import SessionDep, SuperUserDep, TeacherUserDep
 from app.core.config import settings
 from app.core.storage import content_audio_url, save_content_audio
 from app.models import (
+    Attempt,
+    AttemptItemType,
+    AttemptStatus,
     Classroom,
     ClassroomPublic,
     Passage,
@@ -58,18 +61,77 @@ def _require_valid_band(band: str) -> None:
         )
 
 
+def _reject_delete_with_queued_attempts(
+    session: Session, item_id: uuid.UUID, item_type: str
+) -> None:
+    """有排队评分中的作答时拒绝删除内容（否则 worker 领取时找不到题目会失败）。"""
+    has_queued = (
+        session.exec(
+            select(Attempt.id)
+            .where(
+                Attempt.item_id == item_id,
+                Attempt.item_type == item_type,
+                col(Attempt.status).in_([AttemptStatus.QUEUED, AttemptStatus.SCORING]),
+            )
+            .limit(1)
+        ).first()
+        is not None
+    )
+    if has_queued:
+        raise HTTPException(
+            status_code=409,
+            detail="有正在评分中的作答，请稍后再删除",
+        )
+
+
+def _reject_delete_items_queued(
+    session: Session, items: list[tuple[uuid.UUID, str]]
+) -> None:
+    """批量检查多个 item 是否有待评作答，任一有则拒绝删除。"""
+    if not items:
+        return
+    item_ids_by_type: dict[str, list[uuid.UUID]] = {}
+    for item_id, item_type in items:
+        item_ids_by_type.setdefault(item_type, []).append(item_id)
+    has_queued = False
+    for item_type, ids in item_ids_by_type.items():
+        found = session.exec(
+            select(Attempt.id)
+            .where(
+                col(Attempt.item_id).in_(ids),
+                Attempt.item_type == item_type,
+                col(Attempt.status).in_([AttemptStatus.QUEUED, AttemptStatus.SCORING]),
+            )
+            .limit(1)
+        ).first()
+        if found is not None:
+            has_queued = True
+            break
+    if has_queued:
+        raise HTTPException(
+            status_code=409,
+            detail="有正在评分中的作答，请稍后再删除",
+        )
+
+
 @router.get("/passages", response_model=list[PassageWithSentences])
 def list_passages(session: SessionDep, _admin: TeacherUserDep) -> Any:
     passages = session.exec(select(Passage).order_by(col(Passage.created_at))).all()
-    result = []
-    for passage in passages:
-        sentences = session.exec(
+    passage_ids = [p.id for p in passages]
+    sentences_by_passage: dict[uuid.UUID, list[RepeatSentence]] = {}
+    if passage_ids:
+        all_sentences = session.exec(
             select(RepeatSentence)
-            .where(RepeatSentence.passage_id == passage.id)
+            .where(col(RepeatSentence.passage_id).in_(passage_ids))
             .order_by(col(RepeatSentence.order_index))
         ).all()
+        for s in all_sentences:
+            if s.passage_id is not None:
+                sentences_by_passage.setdefault(s.passage_id, []).append(s)
+    result = []
+    for passage in passages:
         item = PassageWithSentences.model_validate(passage)
-        item.sentences = list(sentences)
+        item.sentences = sentences_by_passage.get(passage.id, [])
         result.append(item)
     return result
 
@@ -114,6 +176,14 @@ def delete_passage(
     passage = session.get(Passage, passage_id)
     if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
+    sentence_ids = session.exec(
+        select(RepeatSentence.id).where(RepeatSentence.passage_id == passage_id)
+    ).all()
+    _reject_delete_items_queued(
+        session,
+        [(passage_id, AttemptItemType.PASSAGE)]
+        + [(sid, AttemptItemType.REPEAT) for sid in sentence_ids],
+    )
     session.delete(passage)  # 复述句/作答按外键级联
     session.commit()
     return {"message": "deleted"}
@@ -210,6 +280,7 @@ def delete_sentence(
     sentence = session.get(RepeatSentence, sentence_id)
     if sentence is None:
         raise HTTPException(status_code=404, detail="Sentence not found")
+    _reject_delete_with_queued_attempts(session, sentence_id, AttemptItemType.REPEAT)
     session.delete(sentence)
     session.commit()
     return {"message": "deleted"}
@@ -230,13 +301,19 @@ class ScenarioOut(SQLModel):
 @router.get("/scenarios", response_model=list[ScenarioOut])
 def list_scenarios(session: SessionDep, _admin: TeacherUserDep) -> Any:
     scenarios = session.exec(select(Scenario)).all()
-    result = []
-    for scenario in scenarios:
-        questions = session.exec(
+    scenario_ids = [s.id for s in scenarios]
+    questions_by_scenario: dict[uuid.UUID, list[ScenarioQuestion]] = {}
+    if scenario_ids:
+        all_questions = session.exec(
             select(ScenarioQuestion)
-            .where(ScenarioQuestion.scenario_id == scenario.id)
+            .where(col(ScenarioQuestion.scenario_id).in_(scenario_ids))
             .order_by(col(ScenarioQuestion.order_index))
         ).all()
+        for q in all_questions:
+            questions_by_scenario.setdefault(q.scenario_id, []).append(q)
+    result = []
+    for scenario in scenarios:
+        questions = questions_by_scenario.get(scenario.id, [])
         result.append(
             ScenarioOut(
                 id=scenario.id,
@@ -270,6 +347,13 @@ def delete_scenario(
     scenario = session.get(Scenario, scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
+    question_ids = session.exec(
+        select(ScenarioQuestion.id).where(ScenarioQuestion.scenario_id == scenario_id)
+    ).all()
+    _reject_delete_items_queued(
+        session,
+        [(qid, AttemptItemType.QUESTION) for qid in question_ids],
+    )
     session.delete(scenario)
     session.commit()
     return {"message": "deleted"}
@@ -302,6 +386,7 @@ def delete_question(
     question = session.get(ScenarioQuestion, question_id)
     if question is None:
         raise HTTPException(status_code=404, detail="Question not found")
+    _reject_delete_with_queued_attempts(session, question_id, AttemptItemType.QUESTION)
     session.delete(question)
     session.commit()
     return {"message": "deleted"}

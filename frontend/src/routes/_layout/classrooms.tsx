@@ -484,7 +484,7 @@ function StudentRosterDialog({
     queryFn: () => StudentsService.listStudents({ classroomId }),
     enabled: open,
   })
-  const [resetPwd, setResetPwd] = useState<string | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<string | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState(false)
   const [bulkDone, setBulkDone] = useState<number | null>(null)
 
@@ -511,7 +511,7 @@ function StudentRosterDialog({
       StudentsService.removeStudent({ studentId }),
     onSuccess: () => {
       showSuccessToast("已移出课堂（档案与历史保留）")
-      setResetPwd(null)
+      setRemoveTarget(null)
       void rosterQuery.refetch()
     },
     onError: (error) => showErrorToast(`移出失败：${error.message}`),
@@ -578,7 +578,6 @@ function StudentRosterDialog({
                           aria-label="重置密码"
                           disabled={resetMutation.isPending}
                           onClick={() => {
-                            setResetPwd(s.student.id)
                             resetMutation.mutate(s.student.id)
                           }}
                         >
@@ -588,7 +587,7 @@ function StudentRosterDialog({
                           variant="ghost"
                           size="icon-sm"
                           aria-label="移出课堂"
-                          onClick={() => setResetPwd(s.student.id)}
+                          onClick={() => setRemoveTarget(s.student.id)}
                         >
                           <UserMinus className="size-3.5 text-destructive" />
                         </Button>
@@ -602,15 +601,15 @@ function StudentRosterDialog({
         )}
       </DialogContent>
       <ConfirmDialog
-        open={resetPwd !== null && !resetMutation.isPending}
+        open={removeTarget !== null}
         title="把该学生移出课堂？"
         description="仅解除账号与课堂的绑定；练习档案与作答历史保留，重新导入相同学号可找回。"
         confirmText="移出课堂"
         onOpenChange={(next) => {
-          if (!next) setResetPwd(null)
+          if (!next) setRemoveTarget(null)
         }}
         onConfirm={async () => {
-          if (resetPwd) await removeMutation.mutateAsync(resetPwd)
+          if (removeTarget) await removeMutation.mutateAsync(removeTarget)
         }}
       />
 

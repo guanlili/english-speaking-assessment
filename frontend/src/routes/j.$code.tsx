@@ -30,6 +30,7 @@ function JoinPage() {
   const meQuery = useQuery({
     queryKey: ["join-me"],
     queryFn: () => UsersService.readUserMe(),
+    enabled: isStudentLoggedIn(),
   })
 
   // 未登录学生 → 登录页（学生 Tab）；已在本课堂 → 直接进练习页

@@ -136,7 +136,9 @@ function MyTrailPage() {
                 </p>
                 <p className="mt-1 text-2xl font-bold">
                   {todayQuery.data?.band ??
-                    trailQuery.data.sessions?.[0]?.vocab_cefr ??
+                    trailQuery.data.sessions?.[
+                      trailQuery.data.sessions.length - 1
+                    ]?.vocab_cefr ??
                     "–"}
                 </p>
               </CardContent>

@@ -259,6 +259,10 @@ function StudentLogout() {
           localStorage.removeItem("access_token")
           localStorage.removeItem("esa:role")
           localStorage.removeItem("esa:must-change-pw")
+          // 学生课堂记录一并清除（共用设备切换身份不留旧档案）
+          for (const key of Object.keys(localStorage)) {
+            if (key.startsWith("esa:student:")) localStorage.removeItem(key)
+          }
         }}
       >
         <LogOut className="size-3.5" /> 退出登录

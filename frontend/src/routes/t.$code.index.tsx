@@ -482,7 +482,11 @@ function StudentRow({
       {expanded && (
         <TableRow>
           <TableCell colSpan={6}>
-            <div className="space-y-2 py-1">
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: stop click bubbling to row toggle */}
+            <div
+              className="space-y-2 py-1"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">
                   当前练习档：{student.current_band}

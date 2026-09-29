@@ -6,6 +6,7 @@ PRD 不可协商 #4：上传接口立即返回，评分在线程池里异步完�
 """
 
 import logging
+import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 _executor: ThreadPoolExecutor | None = None
 _detail_executor: ThreadPoolExecutor | None = None
+_executor_lock = threading.Lock()
 
 
 def _get_wordlist_cache(
@@ -227,11 +229,7 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
     session.commit()
 
     if detail_request is not None and attempt.status == AttemptStatus.DONE:
-        global _detail_executor
-        if _detail_executor is None:
-            _detail_executor = ThreadPoolExecutor(
-                max_workers=settings.SCORING_WORKERS, thread_name_prefix="feedback"
-            )
+        _detail_executor = _get_or_create_detail_executor()
         _detail_executor.submit(_complete_detail, attempt_id, *detail_request)
 
 
@@ -265,10 +263,25 @@ def _run_in_worker(attempt_id: uuid.UUID) -> None:
 def get_executor() -> ThreadPoolExecutor:
     global _executor
     if _executor is None:
-        _executor = ThreadPoolExecutor(
-            max_workers=settings.SCORING_WORKERS, thread_name_prefix="scoring"
-        )
+        with _executor_lock:
+            if _executor is None:
+                _executor = ThreadPoolExecutor(
+                    max_workers=settings.SCORING_WORKERS,
+                    thread_name_prefix="scoring",
+                )
     return _executor
+
+
+def _get_or_create_detail_executor() -> ThreadPoolExecutor:
+    global _detail_executor
+    if _detail_executor is None:
+        with _executor_lock:
+            if _detail_executor is None:
+                _detail_executor = ThreadPoolExecutor(
+                    max_workers=settings.SCORING_WORKERS,
+                    thread_name_prefix="feedback",
+                )
+    return _detail_executor
 
 
 def submit_attempt_scoring(attempt_id: uuid.UUID) -> None:

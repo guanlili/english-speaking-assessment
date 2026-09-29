@@ -182,6 +182,7 @@ function ScenarioCard({
     seconds: 30,
   })
   const [topicDraft, setTopicDraft] = useState(scenario.topic)
+  const [confirmDeleteQ, setConfirmDeleteQ] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const [gen, setGen] = useState({ count: 3, hint: "" })
@@ -410,7 +411,7 @@ function ScenarioCard({
                       variant="ghost"
                       size="icon-sm"
                       aria-label="删除题目"
-                      onClick={() => deleteQuestion.mutate(q.id)}
+                      onClick={() => setConfirmDeleteQ(q.id)}
                     >
                       <Trash2 className="size-3.5 text-destructive" />
                     </Button>
@@ -627,6 +628,20 @@ function ScenarioCard({
         onOpenChange={setConfirmDelete}
         onConfirm={async () => {
           await deleteScenario.mutateAsync()
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteQ !== null}
+        title="删除这道题？"
+        description="删除后学生端不再出现这道题，已有作答记录保留。此操作不可撤销。"
+        confirmText="删除"
+        onOpenChange={(v) => {
+          if (!v) setConfirmDeleteQ(null)
+        }}
+        onConfirm={async () => {
+          if (confirmDeleteQ) deleteQuestion.mutate(confirmDeleteQ)
+          setConfirmDeleteQ(null)
         }}
       />
     </Card>

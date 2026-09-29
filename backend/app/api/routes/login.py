@@ -30,7 +30,7 @@ LOGIN_RATE_WINDOW_S = 300
 def _check_login_rate_limit(client_ip: str) -> None:
     now = time.monotonic()
     with _login_lock:
-        window = _login_attempts[client_ip]
+        window = _login_attempts.get(client_ip, [])
         cutoff = now - LOGIN_RATE_WINDOW_S
         while window and window[0] < cutoff:
             window.pop(0)
@@ -41,6 +41,7 @@ def _check_login_rate_limit(client_ip: str) -> None:
                 headers={"Retry-After": str(LOGIN_RATE_WINDOW_S)},
             )
         window.append(now)
+        _login_attempts[client_ip] = window
 
 
 def _record_login_success(client_ip: str) -> None:
