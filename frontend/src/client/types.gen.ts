@@ -23,6 +23,7 @@ export type AssignmentRequest = {
     assign_repeat?: (boolean | null);
     assign_qa?: (boolean | null);
     items?: (Array<AssignmentItemIn> | null);
+    title?: (string | null);
 };
 
 export type AttemptPublic = {
@@ -99,6 +100,7 @@ export type BoardData = {
     assigned_items?: (Array<{
     [key: string]: (string);
 }> | null);
+    current_exercise?: (ClassroomExercisePublic | null);
     submitted_count: number;
     completed_count: number;
     pending_count: number;
@@ -178,6 +180,18 @@ export type ClassroomCreate = {
     class_size?: number;
 };
 
+export type ClassroomExercisePublic = {
+    id: string;
+    classroom_id: string;
+    version_no: number;
+    title: string;
+    status: string;
+    item_count: number;
+    created_at?: (string | null);
+    published_at?: (string | null);
+    archived_at?: (string | null);
+};
+
 export type ClassroomPublic = {
     id: string;
     code: string;
@@ -188,6 +202,7 @@ export type ClassroomPublic = {
     assign_reading?: (boolean | null);
     assign_repeat?: (boolean | null);
     assign_qa?: (boolean | null);
+    current_exercise_id?: (string | null);
     created_at?: (string | null);
 };
 
@@ -949,6 +964,12 @@ export type ClassesListUnitsForClassData = {
 };
 
 export type ClassesListUnitsForClassResponse = (Array<AssignmentInfo>);
+
+export type ClassesListClassroomExercisesData = {
+    code: string;
+};
+
+export type ClassesListClassroomExercisesResponse = (Array<ClassroomExercisePublic>);
 
 export type ClassesSetAssignmentData = {
     code: string;

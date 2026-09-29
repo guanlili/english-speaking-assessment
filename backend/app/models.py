@@ -254,6 +254,13 @@ class Classroom(SQLModel, table=True):
     assigned_items: list[dict[str, str]] | None = Field(
         default=None, sa_column=Column("assigned_items", JSON, nullable=True)
     )
+    # 当前已发布练习的不可变快照；assigned_items 保留用于兼容旧数据/客户端
+    current_exercise_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="classroom_exercise.id",
+        ondelete="SET NULL",
+        index=True,
+    )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -270,7 +277,62 @@ class ClassroomPublic(SQLModel):
     assign_reading: bool | None = None
     assign_repeat: bool | None = None
     assign_qa: bool | None = None
+    current_exercise_id: uuid.UUID | None = None
     created_at: datetime | None = None
+
+
+class ClassroomExercise(SQLModel, table=True):
+    """课堂一次发布的练习快照。
+
+    题目库可以继续编辑，但已发布练习和已开始的学生会话始终使用这里保存的
+    snapshot_items，避免历史作答被新内容重新解释。
+    """
+
+    __tablename__ = "classroom_exercise"
+    __table_args__ = (
+        UniqueConstraint(
+            "classroom_id", "version_no", name="uq_classroom_exercise_version"
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    classroom_id: uuid.UUID = Field(
+        foreign_key="classroom.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    version_no: int = Field(default=1, ge=1)
+    title: str = Field(default="课堂练习", max_length=255)
+    status: str = Field(default="published", max_length=16, index=True)
+    # [{type, id, text, translation, audio_url, suggested_seconds, replay_limit, band}]
+    snapshot_items: list[dict[str, object]] = Field(
+        sa_column=Column("snapshot_items", JSON, nullable=False)
+    )
+    created_by: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL"
+    )
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    published_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    archived_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class ClassroomExercisePublic(SQLModel):
+    id: uuid.UUID
+    classroom_id: uuid.UUID
+    version_no: int
+    title: str
+    status: str
+    item_count: int
+    created_at: datetime | None = None
+    published_at: datetime | None = None
+    archived_at: datetime | None = None
 
 
 # 听句复述的播放计数（防刷）：一个学生一轮里对一道题听了多少次标准音
@@ -385,16 +447,37 @@ class PracticeSession(SQLModel, table=True):
             "session_date",
             "passage_id",
             "mode",
+            "assignment_id",
             unique=True,
-            postgresql_where=text("passage_id IS NOT NULL"),
+            postgresql_where=text(
+                "passage_id IS NOT NULL AND assignment_id IS NOT NULL"
+            ),
+        ),
+        Index(
+            "ix_practice_session_unique_legacy_passage",
+            "student_id",
+            "session_date",
+            "passage_id",
+            "mode",
+            unique=True,
+            postgresql_where=text("passage_id IS NOT NULL AND assignment_id IS NULL"),
         ),
         Index(
             "ix_practice_session_unique_null_passage",
             "student_id",
             "session_date",
             "mode",
+            "assignment_id",
             unique=True,
-            postgresql_where=text("passage_id IS NULL"),
+            postgresql_where=text("passage_id IS NULL AND assignment_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_practice_session_unique_null_passage_legacy",
+            "student_id",
+            "session_date",
+            "mode",
+            unique=True,
+            postgresql_where=text("passage_id IS NULL AND assignment_id IS NULL"),
         ),
     )
 
@@ -418,6 +501,13 @@ class PracticeSession(SQLModel, table=True):
     # 本轮练习的篇目（关卡进度按 passage → unit 聚合）
     passage_id: uuid.UUID | None = Field(
         default=None, foreign_key="passage.id", ondelete="SET NULL"
+    )
+    # daily 会话固定关联发布快照；explore/旧数据为空
+    assignment_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="classroom_exercise.id",
+        ondelete="SET NULL",
+        index=True,
     )
     session_date: date = Field(sa_type=Date)
     created_at: datetime | None = Field(
@@ -464,6 +554,10 @@ class Attempt(SQLModel, table=True):
     )
     # 幂等键：同一次录音重传不重复创建作答/扣费
     idempotency_key: str | None = Field(default=None, max_length=64)
+    # 提交时保存题目快照，评分不再读取可能已被编辑的题库内容
+    item_snapshot: dict[str, object] | None = Field(
+        default=None, sa_column=Column("item_snapshot", JSON, nullable=True)
+    )
     # 服务端存储路径（随机文件名），不通过 API 暴露
     audio_path: str = Field(max_length=512)
     audio_mime: str = Field(default="audio/webm", max_length=100)
@@ -659,6 +753,8 @@ class BoardData(SQLModel):
     assignment: AssignmentInfo | None = None
     # 按题指派（三题型独立）：[{type, id}]，非空时优先于单元指派
     assigned_items: list[dict[str, str]] | None = None
+    # 当前发布版本；题库内容后续编辑不应改变本次课堂看到的题目
+    current_exercise: ClassroomExercisePublic | None = None
     # 今日至少提交 1 题的人数（PRD US-10 完成率的分子；班额为分母）
     submitted_count: int
     # 今日整轮全部完成的人数（"提交过一道题"不算整轮完成）

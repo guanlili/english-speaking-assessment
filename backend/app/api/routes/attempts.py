@@ -24,6 +24,7 @@ from app.models import (
     AttemptPublic,
     AttemptStatus,
     Classroom,
+    ClassroomExercise,
     Passage,
     PracticeSession,
     RepeatSentence,
@@ -45,17 +46,61 @@ _CHUNK_SIZE = 64 * 1024
 DURATION_TOLERANCE_S = 3.0
 
 
-def _validate_item(session: Session, item_type: str, item_id: uuid.UUID) -> None:
-    if item_type == AttemptItemType.PASSAGE:
-        exists = session.get(Passage, item_id) is not None
-    elif item_type == AttemptItemType.REPEAT:
-        exists = session.get(RepeatSentence, item_id) is not None
-    elif item_type == AttemptItemType.QUESTION:
-        exists = session.get(ScenarioQuestion, item_id) is not None
-    else:
+def _snapshot_attempt_item(
+    session: Session,
+    item_type: str,
+    item_id: uuid.UUID,
+    session_id: uuid.UUID | None,
+) -> dict[str, object]:
+    """复制提交时题目内容，评分时不读取后来被编辑的题库。"""
+    if item_type not in {
+        AttemptItemType.PASSAGE,
+        AttemptItemType.REPEAT,
+        AttemptItemType.QUESTION,
+    }:
         raise HTTPException(status_code=422, detail="item_type 无效")
-    if not exists:
+    if session_id is not None:
+        practice_session = session.get(PracticeSession, session_id)
+        if practice_session is not None and practice_session.assignment_id is not None:
+            exercise = session.get(ClassroomExercise, practice_session.assignment_id)
+            if exercise is not None:
+                for item in exercise.snapshot_items:
+                    if item.get("type") == item_type and str(item.get("id")) == str(
+                        item_id
+                    ):
+                        return item
+            raise HTTPException(status_code=422, detail="题目不在本次发布练习内")
+
+    if item_type == AttemptItemType.PASSAGE:
+        item = session.get(Passage, item_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="题目不存在")
+        return {
+            "type": item_type,
+            "id": str(item.id),
+            "text": item.text,
+            "suggested_seconds": item.suggested_seconds,
+        }
+    if item_type == AttemptItemType.REPEAT:
+        item = session.get(RepeatSentence, item_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="题目不存在")
+        return {
+            "type": item_type,
+            "id": str(item.id),
+            "text": item.text,
+            "suggested_seconds": item.suggested_seconds,
+        }
+    item = session.get(ScenarioQuestion, item_id)
+    if item is None:
         raise HTTPException(status_code=404, detail="题目不存在")
+    return {
+        "type": item_type,
+        "id": str(item.id),
+        "text": item.text,
+        "band": item.band,
+        "suggested_seconds": item.suggested_seconds,
+    }
 
 
 def _resolve_submit_student(
@@ -152,7 +197,7 @@ def create_attempt_upload(
             session.refresh(existing)
             return existing
 
-    _validate_item(session, item_type, item_id)
+    item_snapshot = _snapshot_attempt_item(session, item_type, item_id, session_id)
 
     if duration_s < MIN_DURATION_S:
         raise HTTPException(status_code=422, detail="录音太短（不足 1 秒），请再录一次")
@@ -212,6 +257,7 @@ def create_attempt_upload(
         student_id=student.id if student is not None else None,
         session_id=session_id,
         idempotency_key=idempotency_key,
+        item_snapshot=item_snapshot,
         audio_path=str(audio_path),
         audio_mime=mime_type,
         duration_s=duration_s,

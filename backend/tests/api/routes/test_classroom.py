@@ -491,7 +491,7 @@ def test_unit_switch_starts_new_round_preserving_attempts(
         )
         assert any(i["type"] == "repeat" for i in plan2["items"])
 
-        # 切回原单元：继续旧轮，已完成题仍在
+        # 重新发布原单元也会生成新版本，避免把旧版本作答带入新轮
         units = client.get("/api/v1/classes/DEMO01/units").json()
         original_unit = next(u for u in units if u["unit_id"] != unit["id"])
         client.put(
@@ -499,8 +499,8 @@ def test_unit_switch_starts_new_round_preserving_attempts(
             json={"unit_id": original_unit["unit_id"]},
         )
         plan3 = _today(client, student["headers"]).json()
-        assert plan3["session_id"] == plan1["session_id"]
-        assert any(a["item_id"] == first_item["id"] for a in plan3["attempts"])
+        assert plan3["session_id"] != plan1["session_id"]
+        assert plan3["attempts"] == []
     finally:
         # 恢复现场：清指派 + 删本测试创建的单元/篇目/学生及其作答会话。
         # 用 select + 实例删除（仓库风格），避免批量 delete().where() 的
@@ -510,6 +510,8 @@ def test_unit_switch_starts_new_round_preserving_attempts(
         ).first()
         if classroom is not None:
             classroom.current_unit_id = None
+            classroom.current_exercise_id = None
+            classroom.assigned_items = None
             db.add(classroom)
         if "passage" in created:
             for row in db.exec(
@@ -661,6 +663,8 @@ def test_explore_next_question_binds_to_session(
         classroom = db.exec(select(Classroom).where(Classroom.code == "DEMO01")).first()
         if classroom is not None:
             classroom.current_unit_id = None
+            classroom.current_exercise_id = None
+            classroom.assigned_items = None
             db.add(classroom)
         if "scenario" in created:
             from app.models import Scenario, ScenarioQuestion
@@ -769,20 +773,20 @@ def test_abac_board_shows_current_assignment(
             json={"unit_id": original_unit["unit_id"]},
         )
 
-        # 面板应展示 A 轮（session_id = plan_a），不是 B 轮
+        # 当前发布是 A 的新版本，旧 A/B 轮都不冒充当前版本
         board = client.get("/api/v1/classes/DEMO01/board").json()
         row = next(
             s for s in board["students"] if s["student_id"] == student["student"]["id"]
         )
-        # A 轮做了 1 题，B 轮做了 1 题；面板应展示 A 轮的 1 题
-        assert row["total_count"] > 0
-        # A 轮的第一题应在 items 里（B 轮的不在）
-        item_ids = {i["item_id"] for i in row["items"]}
-        assert first_a["id"] in item_ids
+        # A 被重新发布后是新版本，旧 A 轮不冒充当前版本进度
+        assert row["done_count"] == 0
+        assert row["items"] == []
     finally:
         classroom = db.exec(select(Classroom).where(Classroom.code == "DEMO01")).first()
         if classroom is not None:
             classroom.current_unit_id = None
+            classroom.current_exercise_id = None
+            classroom.assigned_items = None
             db.add(classroom)
         if "passage_b" in created:
             for row in db.exec(

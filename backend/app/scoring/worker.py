@@ -88,6 +88,13 @@ def _resolve_read_aloud_item(
     session: Session, attempt: Attempt
 ) -> tuple[str, int] | None:
     """返回 (参考文本, 建议秒数)；题型不是跟读类时返回 None。"""
+    if isinstance(attempt.item_snapshot, dict):
+        if attempt.item_type not in (AttemptItemType.PASSAGE, AttemptItemType.REPEAT):
+            return None
+        text = attempt.item_snapshot.get("text")
+        if isinstance(text, str) and text.strip():
+            suggested = attempt.item_snapshot.get("suggested_seconds", 20)
+            return text, int(suggested) if isinstance(suggested, (int, float)) else 20
     if attempt.item_type == AttemptItemType.PASSAGE:
         passage = session.get(Passage, attempt.item_id)
         if passage is None:
@@ -102,6 +109,11 @@ def _resolve_read_aloud_item(
 
 
 def _resolve_question_prompt(session: Session, attempt: Attempt) -> tuple[str, str]:
+    if isinstance(attempt.item_snapshot, dict):
+        text = attempt.item_snapshot.get("text")
+        band = attempt.item_snapshot.get("band", "B1")
+        if isinstance(text, str) and text.strip():
+            return text, band if isinstance(band, str) else "B1"
     question = session.get(ScenarioQuestion, attempt.item_id)
     if question is None:
         raise ContentMissingError("问题不存在")

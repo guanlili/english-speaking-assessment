@@ -267,6 +267,7 @@ function TeacherBoardPage() {
               code={code}
               assignment={board.assignment}
               assignedItems={board.assigned_items}
+              currentExercise={board.current_exercise}
             />
           </TabsContent>
           <TabsContent value="results" className="space-y-6">
