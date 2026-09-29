@@ -124,6 +124,9 @@ function ExerciseResults({
         code: code.toUpperCase(),
         exerciseId: exercise.id,
       }),
+    // 有学生在评分中时 5 秒刷新（与学生结果面板口径一致），否则不轮询
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((row) => row.has_pending) ? 5000 : false,
   })
 
   const exportCsv = (rows: ExerciseStudentResult[]) => {

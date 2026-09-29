@@ -190,6 +190,25 @@ def delete_passage(
     return {"message": "deleted"}
 
 
+def next_question_order(session: Any, scenario_id: uuid.UUID) -> int:
+    """同主题下一道题的排序号：现存最大 +1（删除中间题不影响单调性）。"""
+    max_order = session.exec(
+        select(func.max(ScenarioQuestion.order_index)).where(  # type: ignore[call-overload]
+            ScenarioQuestion.scenario_id == scenario_id,
+        )
+    ).one()
+    return (max_order or 0) + 1
+
+
+def next_sentence_order(session: Any, passage_id: uuid.UUID | None) -> int:
+    """复述句下一题排序号：挂篇目取同篇目 max+1，独立句取全局 max+1。"""
+    stmt = select(func.max(RepeatSentence.order_index))  # type: ignore[call-overload]
+    if passage_id is not None:
+        stmt = stmt.where(RepeatSentence.passage_id == passage_id)  # type: ignore[arg-type]
+    max_order = session.exec(stmt).one()
+    return (max_order or 0) + 1
+
+
 @router.post("/passages/{passage_id}/sentences", response_model=RepeatSentence)
 def create_sentence(
     session: SessionDep,
@@ -203,6 +222,7 @@ def create_sentence(
     if not 0 <= sentence.replay_limit <= 9:
         raise HTTPException(status_code=422, detail="可重听次数需在 0–9 之间（0=不限）")
     sentence.passage_id = passage_id
+    sentence.order_index = next_sentence_order(session, passage_id)
     session.add(sentence)
     session.commit()
     session.refresh(sentence)
@@ -248,6 +268,7 @@ def create_sentence_standalone(
         and session.get(Passage, sentence.passage_id) is None
     ):
         raise HTTPException(status_code=404, detail="Passage not found")
+    sentence.order_index = next_sentence_order(session, sentence.passage_id)
     session.add(sentence)
     session.commit()
     session.refresh(sentence)
@@ -374,6 +395,8 @@ def create_question(
     if question_in.band not in VALID_BANDS:
         raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
     question_in.scenario_id = scenario_id
+    # 排序号服务端生成：删过中间题后仍单调递增，不信任前端数组长度
+    question_in.order_index = next_question_order(session, scenario_id)
     session.add(question_in)
     session.commit()
     session.refresh(question_in)
@@ -502,7 +525,6 @@ def create_questions_batch(
         session.exec(
             select(func.max(ScenarioQuestion.order_index)).where(  # type: ignore[call-overload]
                 ScenarioQuestion.scenario_id == scenario_id,
-                ScenarioQuestion.band == body.band,
             )
         ).one()
         or 0
