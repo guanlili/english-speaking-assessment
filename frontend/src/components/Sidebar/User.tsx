@@ -23,19 +23,26 @@ import { getInitials } from "@/utils"
 interface UserInfoProps {
   fullName?: string | null
   email?: string | null
+  compact?: boolean
 }
 
-function UserInfo({ fullName, email }: UserInfoProps) {
+function UserInfo({ fullName, email, compact = false }: UserInfoProps) {
+  const displayName = fullName?.trim() || email?.split("@")[0] || "我的账户"
+
   return (
-    <div className="flex items-center gap-2.5 w-full min-w-0">
-      <Avatar className="size-8">
-        <AvatarFallback className="bg-zinc-600 text-white">
-          {getInitials(fullName || "User")}
+    <div className="flex w-full min-w-0 items-center gap-2.5">
+      <Avatar className="size-8 shrink-0 rounded-lg" aria-hidden="true">
+        <AvatarFallback className="rounded-lg border border-primary/10 bg-secondary text-xs font-semibold text-primary">
+          {getInitials(displayName)}
         </AvatarFallback>
       </Avatar>
-      <div className="flex flex-col items-start min-w-0">
-        <p className="text-sm font-medium truncate w-full">{fullName}</p>
-        <p className="text-xs text-muted-foreground truncate w-full">{email}</p>
+      <div
+        className={
+          compact ? "sr-only" : "flex min-w-0 flex-col items-start gap-0.5"
+        }
+      >
+        <p className="w-full truncate text-sm font-medium">{displayName}</p>
+        <p className="w-full truncate text-xs text-muted-foreground">{email}</p>
       </div>
     </div>
   )
@@ -43,7 +50,8 @@ function UserInfo({ fullName, email }: UserInfoProps) {
 
 export function User({ user }: { user: UserPublic | null | undefined }) {
   const { logout } = useAuth()
-  const { isMobile, setOpenMobile } = useSidebar()
+  const { isMobile, setOpenMobile, state } = useSidebar()
+  const isCompact = state === "collapsed" && !isMobile
 
   if (!user) return null
 
@@ -51,9 +59,6 @@ export function User({ user }: { user: UserPublic | null | undefined }) {
     if (isMobile) {
       setOpenMobile(false)
     }
-  }
-  const handleLogout = async () => {
-    logout()
   }
 
   return (
@@ -63,32 +68,47 @@ export function User({ user }: { user: UserPublic | null | undefined }) {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="rounded-lg data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              aria-label="账户菜单"
+              tooltip="账户菜单"
               data-testid="user-menu"
             >
-              <UserInfo fullName={user?.full_name} email={user?.email} />
-              <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
+              <UserInfo
+                fullName={user.full_name}
+                email={user.email}
+                compact={isCompact}
+              />
+              {!isCompact && (
+                <ChevronsUpDown
+                  aria-hidden="true"
+                  className="ml-auto size-3.5 text-muted-foreground"
+                />
+              )}
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
-            side={isMobile ? "bottom" : "right"}
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-60 rounded-xl p-1.5"
+            side={isMobile ? "top" : "right"}
             align="end"
-            sideOffset={4}
+            sideOffset={8}
           >
-            <DropdownMenuLabel className="p-0 font-normal">
-              <UserInfo fullName={user?.full_name} email={user?.email} />
+            <DropdownMenuLabel className="p-2 font-normal">
+              <UserInfo fullName={user.full_name} email={user.email} />
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <RouterLink to="/settings" onClick={handleMenuClick}>
-              <DropdownMenuItem>
-                <Settings />
-                User Settings
-              </DropdownMenuItem>
-            </RouterLink>
-            <DropdownMenuItem onClick={handleLogout}>
-              <LogOut />
-              Log Out
+            <DropdownMenuItem asChild className="rounded-md px-2 py-2.5">
+              <RouterLink to="/settings" onClick={handleMenuClick}>
+                <Settings aria-hidden="true" />
+                个人设置
+              </RouterLink>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={logout}
+              variant="destructive"
+              className="rounded-md px-2 py-2.5"
+            >
+              <LogOut aria-hidden="true" />
+              退出登录
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

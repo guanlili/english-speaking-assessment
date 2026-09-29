@@ -42,11 +42,10 @@
 }
 
 :root {
-  /* SpeakUp 原型：卡片 22px / 小组件 11px 上下两档圆角 */
   --radius: 0.875rem;
-  --background: hsl(150 18% 97%);
+  --background: hsl(45 25% 96%);
   --foreground: hsl(157 24% 15%);
-  --card: hsl(0 0% 100%);
+  --card: hsl(48 40% 99%);
   --card-foreground: hsl(157 24% 15%);
   --popover: hsl(0 0% 100%);
   --popover-foreground: hsl(157 24% 15%);
@@ -115,9 +114,12 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    scroll-padding-top: 6rem;
+    -webkit-text-size-adjust: 100%;
+  }
   body {
-    @apply bg-background text-foreground;
-    /* SpeakUp 原型字体栈 */
+    @apply bg-background text-foreground antialiased;
     font-family:
       "Avenir Next", "Trebuchet MS", "PingFang SC", "Microsoft YaHei",
       system-ui, sans-serif;
@@ -197,12 +199,36 @@
   animation: page-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-/* 大字题干（练习页） */
 .prompt-display {
-  font-size: 1.65rem;
-  line-height: 1.65;
+  font-size: clamp(1.25rem, 2.5vw, 1.65rem);
+  line-height: 1.75;
   font-weight: 550;
   letter-spacing: -0.3px;
+}
+
+.skip-link {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 100;
+  transform: translateY(-200%);
+  border-radius: 0.75rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  padding: 0.75rem 1.25rem;
+}
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.learning-hero {
+  background-color: #204f40;
+  background-image: radial-gradient(
+    ellipse at 85% 30%,
+    #3f7360 0%,
+    transparent 65%
+  );
+  color: #fffdf6;
 }
 
 @layer base {

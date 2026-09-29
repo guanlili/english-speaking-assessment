@@ -614,9 +614,9 @@ function PassageCard({
 
   return (
     <Card>
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-        <div>
-          <CardTitle className="text-base">
+      <CardHeader className="flex flex-wrap items-start justify-between gap-3 space-y-0">
+        <div className="min-w-0">
+          <CardTitle className="break-words text-base leading-relaxed">
             {passage.title}{" "}
             <span className="font-normal text-muted-foreground">
               · {passage.topic} · {passage.cefr_band} ·{" "}
@@ -630,7 +630,7 @@ function PassageCard({
             )}
           </CardDescription>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex max-w-full flex-wrap items-center gap-1.5">
           <Button
             variant="outline"
             size="sm"

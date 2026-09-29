@@ -2,6 +2,7 @@ import { createRootRoute, HeadContent, Outlet } from "@tanstack/react-router"
 import { lazy, Suspense } from "react"
 import ErrorComponent from "@/components/Common/ErrorComponent"
 import NotFound from "@/components/Common/NotFound"
+import { useIsMobile } from "@/hooks/useMobile"
 
 const TanStackRouterDevtools = import.meta.env.PROD
   ? () => null
@@ -19,17 +20,24 @@ const ReactQueryDevtools = import.meta.env.PROD
       })),
     )
 
-export const Route = createRootRoute({
-  component: () => (
+function RootLayout() {
+  const isMobile = useIsMobile()
+  return (
     <>
       <HeadContent />
       <Outlet />
-      <Suspense>
-        <TanStackRouterDevtools position="bottom-right" />
-        <ReactQueryDevtools initialIsOpen={false} />
-      </Suspense>
+      {!isMobile && (
+        <Suspense>
+          <TanStackRouterDevtools position="bottom-right" />
+          <ReactQueryDevtools initialIsOpen={false} />
+        </Suspense>
+      )}
     </>
-  ),
+  )
+}
+
+export const Route = createRootRoute({
+  component: RootLayout,
   notFoundComponent: () => <NotFound />,
   errorComponent: () => <ErrorComponent />,
 })

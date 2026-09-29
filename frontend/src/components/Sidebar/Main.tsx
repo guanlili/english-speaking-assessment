@@ -22,10 +22,25 @@ interface MainProps {
   label?: string
 }
 
+export function isItemActive(itemPath: string, pathname: string) {
+  const currentPath = pathname.replace(/\/+$/, "") || "/"
+  const matches = (path: string) =>
+    currentPath === path || currentPath.startsWith(`${path}/`)
+
+  return (
+    currentPath === itemPath ||
+    (itemPath !== "/admin" && matches(itemPath)) ||
+    (itemPath === "/classrooms" && currentPath.startsWith("/t/")) ||
+    (itemPath === "/create" &&
+      ["/admin/passages", "/admin/scenarios", "/admin/questions"].some(matches))
+  )
+}
+
 export function Main({ items, label }: MainProps) {
   const { isMobile, setOpenMobile } = useSidebar()
-  const router = useRouterState()
-  const currentPath = router.location.pathname
+  const currentPath = useRouterState({
+    select: (state) => state.location.pathname,
+  })
 
   const handleMenuClick = () => {
     if (isMobile) {
@@ -35,37 +50,42 @@ export function Main({ items, label }: MainProps) {
 
   return (
     <SidebarGroup>
-      {label && <SidebarGroupLabel>{label}</SidebarGroupLabel>}
+      {label && (
+        <SidebarGroupLabel className="mb-2 px-3 text-[10px] font-medium tracking-widest text-muted-foreground">
+          {label}
+        </SidebarGroupLabel>
+      )}
       <SidebarGroupContent>
-        <SidebarMenu className="gap-2">
-          {items.map((item) => {
-            const isActive =
-              currentPath === item.path ||
-              (item.path === "/classrooms" && currentPath.startsWith("/t/")) ||
-              (item.path === "/create" &&
-                [
-                  "/admin/passages",
-                  "/admin/scenarios",
-                  "/admin/questions",
-                ].includes(currentPath))
+        <nav aria-label={label || "平台设置"}>
+          <SidebarMenu className="gap-1.5">
+            {items.map((item) => {
+              const isActive = isItemActive(item.path, currentPath)
 
-            return (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton
-                  className="h-11 rounded-xl px-3 text-sm data-[active=true]:font-semibold data-[active=true]:text-primary"
-                  tooltip={item.title}
-                  isActive={isActive}
-                  asChild
-                >
-                  <RouterLink to={item.path} onClick={handleMenuClick}>
-                    <item.icon />
-                    <span>{item.title}</span>
-                  </RouterLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )
-          })}
-        </SidebarMenu>
+              return (
+                <SidebarMenuItem key={item.path}>
+                  <SidebarMenuButton
+                    className="relative h-11 gap-3 rounded-lg px-3 text-sm text-sidebar-foreground/80 transition-colors hover:text-sidebar-foreground data-[active=true]:bg-primary data-[active=true]:font-semibold data-[active=true]:text-primary-foreground data-[active=true]:shadow-sm data-[active=true]:hover:bg-primary/90 data-[active=true]:hover:text-primary-foreground motion-reduce:transition-none"
+                    tooltip={item.title}
+                    isActive={isActive}
+                    asChild
+                  >
+                    <RouterLink
+                      to={item.path}
+                      activeOptions={{ exact: item.path === "/admin" }}
+                      aria-current={isActive ? "page" : undefined}
+                      onClick={handleMenuClick}
+                    >
+                      <item.icon aria-hidden="true" className="size-4" />
+                      <span className="group-data-[collapsible=icon]:sr-only">
+                        {item.title}
+                      </span>
+                    </RouterLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )
+            })}
+          </SidebarMenu>
+        </nav>
       </SidebarGroupContent>
     </SidebarGroup>
   )
