@@ -100,24 +100,27 @@ def generate_new_account_email(email_to: str, username: str) -> EmailData:
     return EmailData(html_content=html_content, subject=subject)
 
 
-def generate_password_reset_token(email: str) -> str:
+def generate_password_reset_token(email: str, *, password_hash: str = "") -> str:
     delta = timedelta(hours=settings.EMAIL_RESET_TOKEN_EXPIRE_HOURS)
     now = datetime.now(UTC)
     expires = now + delta
     exp = expires.timestamp()
     encoded_jwt = jwt.encode(
-        {"exp": exp, "nbf": now, "sub": email},
+        {"exp": exp, "nbf": now, "sub": email, "pwd": password_hash[:16]},
         settings.SECRET_KEY,
         algorithm=security.ALGORITHM,
     )
     return encoded_jwt
 
 
-def verify_password_reset_token(token: str) -> str | None:
+def verify_password_reset_token(token: str, *, password_hash: str = "") -> str | None:
     try:
         decoded_token = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
         )
+        token_pwd = str(decoded_token.get("pwd", ""))
+        if password_hash and token_pwd != password_hash[:16]:
+            return None
         return str(decoded_token["sub"])
     except InvalidTokenError:
         return None

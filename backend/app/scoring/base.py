@@ -16,6 +16,10 @@ class ScoringError(Exception):
     """评分失败（引擎不可用、音频无法识别等）。作答保留，学生可重录。"""
 
 
+class ContentMissingError(ScoringError):
+    """题目内容（篇目/复述句/问答题）已被删除：不可重试，直接标失败。"""
+
+
 class AsrProvider(Protocol):
     """语音转文字提供方。返回纯文本；无语音时返回空字符串。"""
 

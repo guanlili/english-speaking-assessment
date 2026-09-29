@@ -15,7 +15,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import SQLModel, col, select
 
@@ -141,7 +141,7 @@ def _active_passage(session: Any, student: Student | None = None) -> Passage:
                     status_code=404,
                     detail=f"指派的单元「{assigned.title}」还没有篇目，请联系老师",
                 )
-    if student is None or not units:
+    if not units or student is None:
         passage = session.exec(
             select(Passage)
             .where(Passage.is_active)
@@ -414,7 +414,6 @@ def _question_band_for_session(
     if practice_session.question_band is not None:
         return practice_session.question_band
 
-    # 使用该会话的篇目，不用全局首篇（老师中途换单元时各轮篇目不同）
     if practice_session.passage_id is not None:
         passage = session.get(Passage, practice_session.passage_id)
     else:
@@ -431,13 +430,26 @@ def _question_band_for_session(
     if not sentences or len(done) < len(sentences):
         return practice_session.band
 
+    locked_session = session.exec(
+        select(PracticeSession)
+        .where(PracticeSession.id == practice_session.id)
+        .with_for_update()
+    ).first()
+    locked_student = session.exec(
+        select(Student).where(Student.id == student.id).with_for_update()
+    ).first()
+    if locked_session is None or locked_student is None:
+        return practice_session.band
+    if locked_session.question_band is not None:
+        return locked_session.question_band
+
     avg_c = sum(a.completeness or 0 for a in done) / len(done)
     avg_f = sum(a.fluency or 0 for a in done) / len(done)
-    adjusted = adjust_band(avg_c, avg_f, student.current_band)
-    student.current_band = adjusted
-    practice_session.question_band = adjusted
-    session.add(student)
-    session.add(practice_session)
+    adjusted = adjust_band(avg_c, avg_f, locked_student.current_band)
+    locked_student.current_band = adjusted
+    locked_session.question_band = adjusted
+    session.add(locked_student)
+    session.add(locked_session)
     session.commit()
     return adjusted
 
@@ -1382,29 +1394,48 @@ def record_listen(
     ):
         raise HTTPException(status_code=422, detail="该句不在本轮篇目内")
 
-    row = session.exec(
-        select(ItemListen).where(
-            ItemListen.student_id == student.id,  # type: ignore[arg-type]
-            ItemListen.session_id == practice_session.id,  # type: ignore[arg-type]
-            ItemListen.item_id == sentence.id,  # type: ignore[arg-type]
-        )
-    ).first()
-    used = (row.count if row else 0) + 1
-    if sentence.replay_limit > 0 and used > sentence.replay_limit:
+    params = {
+        "iid": uuid.uuid4(),
+        "sid": student.id,
+        "sess": practice_session.id,
+        "item": sentence.id,
+    }
+    if sentence.replay_limit == 0:
+        # 不限次：直接原子自增（原生 UPSERT，并发安全）
+        used = session.execute(  # ty: ignore[deprecated]
+            text(
+                "INSERT INTO item_listen (id, student_id, session_id, item_id, count)"
+                " VALUES (:iid, :sid, :sess, :item, 1)"
+                " ON CONFLICT ON CONSTRAINT uq_item_listen_scope"
+                " DO UPDATE SET count = item_listen.count + 1"
+                " RETURNING count"
+            ),
+            params,
+        ).scalar_one()
+        session.commit()
+        return ListenResult(listen_used=used, replay_limit=0)
+
+    # 有限次：原子自增 + WHERE 上限保护；到上限时 UPDATE 不执行、无返回行
+    result = session.execute(  # ty: ignore[deprecated]
+        text(
+            "INSERT INTO item_listen (id, student_id, session_id, item_id, count)"
+            " VALUES (:iid, :sid, :sess, :item, 1)"
+            " ON CONFLICT ON CONSTRAINT uq_item_listen_scope"
+            " DO UPDATE SET count = item_listen.count + 1"
+            " WHERE item_listen.count < :limit"
+            " RETURNING count"
+        ),
+        {**params, "limit": sentence.replay_limit},
+    ).scalar_one_or_none()
+    if result is None:
+        # INSERT 走了 ON CONFLICT 但 WHERE 不满足 → 已到上限；或 INSERT 本身因其它原因未返回
+        # 回滚未完成的计数操作
+        session.rollback()
         raise HTTPException(
             status_code=422,
             detail=f"可重听次数已用完（{sentence.replay_limit} 次）",
         )
-    if row is None:
-        row = ItemListen(
-            student_id=student.id,
-            session_id=practice_session.id,
-            item_id=sentence.id,
-            count=used,
-        )
-    else:
-        row.count = used
-    session.add(row)
+    used = result
     session.commit()
     return ListenResult(listen_used=used, replay_limit=sentence.replay_limit)
 

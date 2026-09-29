@@ -497,6 +497,10 @@ function StudentRosterDialog({
     onError: (error) => showErrorToast(`重置失败：${error.message}`),
   })
 
+  const resetPendingId = resetMutation.isPending
+    ? (resetMutation.variables as string | undefined)
+    : null
+
   const bulkResetMutation = useMutation({
     mutationFn: () => StudentsService.bulkResetPasswords({ classroomId }),
     onSuccess: (res) => {
@@ -576,7 +580,7 @@ function StudentRosterDialog({
                           variant="ghost"
                           size="icon-sm"
                           aria-label="重置密码"
-                          disabled={resetMutation.isPending}
+                          disabled={resetPendingId === s.student.id}
                           onClick={() => {
                             resetMutation.mutate(s.student.id)
                           }}

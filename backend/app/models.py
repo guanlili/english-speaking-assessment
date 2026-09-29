@@ -388,6 +388,14 @@ class PracticeSession(SQLModel, table=True):
             unique=True,
             postgresql_where=text("passage_id IS NOT NULL"),
         ),
+        Index(
+            "ix_practice_session_unique_null_passage",
+            "student_id",
+            "session_date",
+            "mode",
+            unique=True,
+            postgresql_where=text("passage_id IS NULL"),
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
