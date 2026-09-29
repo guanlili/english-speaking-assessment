@@ -15,7 +15,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import func, text
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import SQLModel, col, select
 
@@ -1662,39 +1662,6 @@ def record_listen(
     used = result
     session.commit()
     return ListenResult(listen_used=used, replay_limit=replay_limit)
-
-
-@router.get("/{code}/units", response_model=list[AssignmentInfo])
-def list_units_for_class(
-    session: SessionDep, code: str, current_user: CurrentUser
-) -> Any:
-    """课堂的单元列表（老师面板指派选择器用；需要教师身份）。"""
-    classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
-    units = session.exec(
-        select(Unit).where(Unit.is_active).order_by(col(Unit.order_index))
-    ).all()
-    counts = dict(
-        session.exec(
-            select(Passage.unit_id, func.count())
-            .where(
-                Passage.is_active,
-                Passage.unit_id.is_not(None),  # type: ignore
-            )
-            .group_by(Passage.unit_id)  # type: ignore
-        ).all()
-    )
-    return [
-        AssignmentInfo(
-            unit_id=u.id,
-            title=u.title,
-            passage_count=counts.get(u.id, 0),
-            assign_reading=classroom.assign_reading,
-            assign_repeat=classroom.assign_repeat,
-            assign_qa=classroom.assign_qa,
-        )
-        for u in units
-    ]
 
 
 @router.get("/{code}/exercises", response_model=list[ClassroomExercisePublic])

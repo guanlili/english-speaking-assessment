@@ -502,11 +502,11 @@ def test_unit_switch_starts_new_round_preserving_attempts(
         assert any(i["type"] == "repeat" for i in plan2["items"])
 
         # 重新发布原单元也会生成新版本，避免把旧版本作答带入新轮
-        units = client.get("/api/v1/classes/DEMO01/units").json()
-        original_unit = next(u for u in units if u["unit_id"] != unit["id"])
+        units = client.get("/api/v1/admin/units").json()
+        original_unit = next(u for u in units if u["id"] != unit["id"])
         client.put(
             "/api/v1/classes/DEMO01/assignment",
-            json={"unit_id": original_unit["unit_id"]},
+            json={"unit_id": original_unit["id"]},
         )
         plan3 = _today(client, student["headers"]).json()
         assert plan3["session_id"] != plan1["session_id"]
@@ -776,11 +776,11 @@ def test_abac_board_shows_current_assignment(
         )
 
         # 切回 A
-        units = client.get("/api/v1/classes/DEMO01/units").json()
-        original_unit = next(u for u in units if u["unit_id"] != unit_b["id"])
+        units = client.get("/api/v1/admin/units").json()
+        original_unit = next(u for u in units if u["id"] != unit_b["id"])
         client.put(
             "/api/v1/classes/DEMO01/assignment",
-            json={"unit_id": original_unit["unit_id"]},
+            json={"unit_id": original_unit["id"]},
         )
 
         # 当前发布是 A 的新版本，旧 A/B 轮都不冒充当前版本

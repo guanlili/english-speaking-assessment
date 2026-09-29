@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { Loader2, Pencil, Plus, Scissors, Trash2 } from "lucide-react"
+import { Pencil, Plus, Scissors, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import type { PassageWithSentences } from "@/client"
@@ -9,7 +9,6 @@ import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { TopicPicker } from "@/components/Admin/TopicPicker"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import AudioSetter from "@/components/Practice/AudioSetter"
-import { RepeatSettings } from "@/components/Teaching/RepeatSettings"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -95,13 +94,7 @@ function toRequestBody(form: PassageForm) {
   }
 }
 
-export function PassagesAdmin({
-  mode = "reading",
-  embedded = false,
-}: {
-  mode?: "reading" | "repeat"
-  embedded?: boolean
-}) {
+export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const [keyword, setKeyword] = useState("")
@@ -175,13 +168,9 @@ export function PassagesAdmin({
     <div className="flex flex-col gap-6">
       {!embedded && <ContentNavigation />}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          {mode === "repeat" ? "听句复述" : "文章朗读"}
-        </h1>
+        <h1 className="text-2xl font-bold tracking-tight">文章朗读</h1>
         <p className="text-muted-foreground">
-          {mode === "repeat"
-            ? "按篇目整理复述句，为每句设置标准音、作答时间和可听次数。"
-            : "录入文章或段落，学生朗读并提交录音，系统提供参考反馈。"}
+          录入文章或段落，学生朗读并提交录音，系统提供参考反馈。听句复述请到「听句复述」题库。
         </p>
       </div>
 
@@ -235,7 +224,6 @@ export function PassagesAdmin({
           .map((passage) => (
             <PassageCard
               key={passage.id}
-              mode={mode}
               passage={passage}
               unitTitle={unitTitle(passage.unit_id)}
               expanded={expandedId === passage.id}
@@ -529,7 +517,6 @@ function EditPassageDialog({
 }
 
 function PassageCard({
-  mode,
   passage,
   unitTitle,
   expanded,
@@ -538,7 +525,6 @@ function PassageCard({
   onDelete,
   onMutated,
 }: {
-  mode: "reading" | "repeat"
   passage: PassageWithSentences
   unitTitle: string
   expanded: boolean
@@ -547,53 +533,6 @@ function PassageCard({
   onDelete: () => void
   onMutated: () => void
 }) {
-  const { showSuccessToast } = useCustomToast()
-  const [sentence, setSentence] = useState({
-    text: "",
-    suggested_seconds: 8,
-    replay_limit: 3,
-  })
-
-  const addSentence = useMutation({
-    mutationFn: () =>
-      AdminService.createSentence({
-        passageId: passage.id,
-        requestBody: {
-          passage_id: passage.id,
-          order_index: (passage.sentences ?? []).length,
-          text: sentence.text,
-          suggested_seconds: sentence.suggested_seconds,
-          replay_limit: sentence.replay_limit,
-        },
-      }),
-    onSuccess: () => {
-      showSuccessToast("复述句已添加")
-      setSentence({ text: "", suggested_seconds: 8, replay_limit: 3 })
-      onMutated()
-    },
-  })
-
-  const deleteSentence = useMutation({
-    mutationFn: (id: string) => AdminService.deleteSentence({ sentenceId: id }),
-    onSuccess: () => onMutated(),
-  })
-
-  const [sentenceToDelete, setSentenceToDelete] = useState<{
-    id: string
-    text: string | null
-  } | null>(null)
-
-  const autoSplit = useMutation({
-    mutationFn: () =>
-      AdminService.autoSplitSentences({ passageId: passage.id }),
-    onSuccess: (data) => {
-      toast.success(`已拆分出 ${data.created ?? 0} 句复述句`)
-      onMutated()
-    },
-    onError: (err: { body?: { detail?: string } }) =>
-      toast.error(err.body?.detail ?? "拆分失败"),
-  })
-
   const [splitConfirm, setSplitConfirm] = useState(false)
   const splitPassage = useMutation({
     mutationFn: () =>
@@ -637,9 +576,9 @@ function PassageCard({
             aria-expanded={expanded}
             onClick={onToggle}
           >
-            {expanded ? "收起" : mode === "repeat" ? "管理复述句" : "查看文章"}
+            {expanded ? "收起" : "查看文章"}
           </Button>
-          {mode === "reading" && passage.is_active !== false && (
+          {passage.is_active !== false && (
             <Button
               variant="outline"
               size="sm"
@@ -706,130 +645,10 @@ function PassageCard({
           <p className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">
             {passage.text}
           </p>
-          {mode === "repeat" && (
-            <>
-              <div className="space-y-2">
-                {(passage.sentences ?? []).map((s, i) => (
-                  <div
-                    key={s.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2"
-                  >
-                    <span className="text-sm">
-                      {i + 1}. {s.text}
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {s.suggested_seconds} 秒 · 可听{" "}
-                        {(s.replay_limit ?? 3) === 0
-                          ? "不限"
-                          : `${s.replay_limit ?? 3} 次`}
-                      </span>
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <RepeatSettings sentence={s} onSaved={onMutated} />
-                      <AudioSetter
-                        hasAudio={Boolean(s.audio_url)}
-                        text={s.text ?? ""}
-                        onSet={async (audio_url) => {
-                          await AdminService.updateSentence({
-                            sentenceId: s.id ?? "",
-                            requestBody: {
-                              passage_id: passage.id,
-                              order_index: s.order_index ?? 0,
-                              text: s.text ?? "",
-                              translation: s.translation ?? undefined,
-                              audio_url,
-                              suggested_seconds: s.suggested_seconds ?? 8,
-                              replay_limit: s.replay_limit ?? 3,
-                            },
-                          })
-                          onMutated()
-                        }}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label="删除复述句"
-                        onClick={() =>
-                          s.id &&
-                          setSentenceToDelete({ id: s.id, text: s.text })
-                        }
-                      >
-                        <Trash2 className="size-3.5 text-destructive" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => autoSplit.mutate()}
-                disabled={
-                  autoSplit.isPending || (passage.sentences ?? []).length > 0
-                }
-                title={
-                  (passage.sentences ?? []).length > 0
-                    ? "已有复述句，清空后可自动拆分"
-                    : "按句切分正文，由短到长取 3 句"
-                }
-              >
-                {autoSplit.isPending ? (
-                  <Loader2 className="animate-spin" />
-                ) : (
-                  <Scissors />
-                )}
-                自动拆分复述句
-              </Button>
-              <div className="flex flex-wrap items-end gap-2">
-                <div className="min-w-64 flex-1 space-y-1">
-                  <Label>添加复述句（由短到长）</Label>
-                  <Input
-                    value={sentence.text}
-                    onChange={(e) =>
-                      setSentence({ ...sentence, text: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="w-24 space-y-1">
-                  <Label>秒数</Label>
-                  <Input
-                    type="number"
-                    value={sentence.suggested_seconds}
-                    onChange={(e) =>
-                      setSentence({
-                        ...sentence,
-                        suggested_seconds: Number(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-                <div className="w-28 space-y-1">
-                  <Label>可重听</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={9}
-                    title="0 = 不限次数"
-                    value={sentence.replay_limit}
-                    onChange={(e) =>
-                      setSentence({
-                        ...sentence,
-                        replay_limit: Math.max(
-                          0,
-                          Math.min(9, Number(e.target.value) || 0),
-                        ),
-                      })
-                    }
-                  />
-                </div>
-                <Button
-                  onClick={() => addSentence.mutate()}
-                  disabled={!sentence.text || addSentence.isPending}
-                >
-                  <Plus />
-                  添加
-                </Button>
-              </div>
-            </>
+          {(passage.sentences ?? []).length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              本篇挂有 {(passage.sentences ?? []).length} 句复述句，请在「听句复述」题库中管理。
+            </p>
           )}
         </CardContent>
       )}
@@ -847,19 +666,6 @@ function PassageCard({
         }}
       />
 
-      <ConfirmDialog
-        open={sentenceToDelete !== null}
-        title={`删除复述句「${sentenceToDelete?.text ?? ""}」？`}
-        description="删除会连同它的标准音一起移除，正在练习的学生下次会拿到别的句子。此操作不可撤销。"
-        confirmText="删除复述句"
-        onOpenChange={(next) => {
-          if (!next) setSentenceToDelete(null)
-        }}
-        onConfirm={async () => {
-          if (sentenceToDelete)
-            await deleteSentence.mutateAsync(sentenceToDelete.id)
-        }}
-      />
     </Card>
   )
 }
