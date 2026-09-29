@@ -29,7 +29,7 @@ from app.models import (
 )
 from app.scoring.asr import ArkResponsesAsr, MockAsr
 from app.scoring.audio_convert import convert_to_wav, ensure_ark_supported
-from app.scoring.base import AsrProvider, ScoringError
+from app.scoring.base import AsrProvider, ContentMissingError, ScoringError
 from app.scoring.heuristic import score_open_response, score_read_aloud
 from app.scoring.lexicon import analyze_transcript
 from app.scoring.volc_flash import VolcFlashAsr
@@ -91,12 +91,12 @@ def _resolve_read_aloud_item(
     if attempt.item_type == AttemptItemType.PASSAGE:
         passage = session.get(Passage, attempt.item_id)
         if passage is None:
-            raise ScoringError("篇目不存在")
+            raise ContentMissingError("篇目不存在")
         return passage.text, passage.suggested_seconds
     if attempt.item_type == AttemptItemType.REPEAT:
         sentence = session.get(RepeatSentence, attempt.item_id)
         if sentence is None:
-            raise ScoringError("复述句不存在")
+            raise ContentMissingError("复述句不存在")
         return sentence.text, sentence.suggested_seconds
     return None
 
@@ -104,7 +104,7 @@ def _resolve_read_aloud_item(
 def _resolve_question_prompt(session: Session, attempt: Attempt) -> tuple[str, str]:
     question = session.get(ScenarioQuestion, attempt.item_id)
     if question is None:
-        raise ScoringError("问题不存在")
+        raise ContentMissingError("问题不存在")
     return question.text, question.band
 
 
@@ -210,10 +210,10 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
 
         attempt.status = AttemptStatus.DONE
         attempt.engine = engine
-    except ScoringError as exc:
-        # 可预期的业务错误（题目被删等）：直接标失败，不重试
+    except ContentMissingError as exc:
+        # 题目内容已被删除：重试无意义，直接标失败不消耗重试配额
         logger.warning(
-            "attempt %s scoring aborted: %s",
+            "attempt %s scoring aborted (content missing): %s",
             attempt_id,
             exc,
         )

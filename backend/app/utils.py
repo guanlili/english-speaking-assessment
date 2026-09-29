@@ -113,9 +113,7 @@ def generate_password_reset_token(email: str, *, password_hash: str = "") -> str
     return encoded_jwt
 
 
-def verify_password_reset_token(
-    token: str, *, password_hash: str = ""
-) -> str | None:
+def verify_password_reset_token(token: str, *, password_hash: str = "") -> str | None:
     try:
         decoded_token = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
