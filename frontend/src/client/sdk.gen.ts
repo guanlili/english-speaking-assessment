@@ -17,7 +17,7 @@ export class AdminService {
             url: '/api/v1/admin/passages'
         });
     }
-
+    
     /**
      * Create Passage
      * @param data The data for the request.
@@ -1034,7 +1034,7 @@ export class ClassesService {
             }
         });
     }
-
+    
     /**
      * Set Assignment
      * 老师设置/清除今日指派（需要教师身份）。
