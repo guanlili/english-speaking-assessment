@@ -198,11 +198,12 @@ def get_or_create_today_session(
     today: date,
     passage_id: uuid.UUID | None = None,
     mode: str = "daily",
+    assignment_id: uuid.UUID | None = None,
 ) -> PracticeSession:
     """取当日会话；explore 按篇目各一轮；daily 按篇目复用。
 
-    daily 以（学生、日期、篇目）为复用键：老师中途切换指派单元导致篇目
-    变化时自动开新轮，旧轮作答与星级保留；切回原单元则继续原轮。
+    daily 以（学生、日期、篇目、发布快照）为复用键：老师中途切换指派
+    即使锚点篇目不变，也会自动开新轮，旧轮作答与星级保留。
     """
     statement = select(PracticeSession).where(
         PracticeSession.student_id == student.id,
@@ -219,6 +220,10 @@ def get_or_create_today_session(
             statement = statement.where(col(PracticeSession.passage_id).is_(None))
         else:
             statement = statement.where(PracticeSession.passage_id == passage_id)
+        if assignment_id is None:
+            statement = statement.where(col(PracticeSession.assignment_id).is_(None))
+        else:
+            statement = statement.where(PracticeSession.assignment_id == assignment_id)
     existing = session.exec(statement).first()
     if existing is not None:
         return existing
@@ -228,6 +233,7 @@ def get_or_create_today_session(
         band=student.current_band,
         passage_id=passage_id,
         mode=mode,
+        assignment_id=assignment_id,
         session_date=today,
     )
     session.add(practice_session)

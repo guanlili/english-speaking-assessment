@@ -224,18 +224,16 @@ def test_trail_empty_for_new_student(client: TestClient, db: Session) -> None:
 # ── US-10 面板增强 ───────────────────────────────────────────────────
 
 
-def test_board_band_distribution_and_inactive(
+def test_board_inactive_students(
     client: TestClient, scripted_scoring: Callable[[str], None], db: Session
 ) -> None:
-    """档位分布按学生当前档统计；新加入（<7 天）不算未练。"""
+    """新加入（<7 天）的学生不标记为长期未练。"""
     _join(db, client, "面板同学")
 
     data = client.get("/api/v1/classes/DEMO01/board").json()
-    assert data["band_distribution"].get("B1", 0) >= 1
     # 刚加入不到 7 天：不标记未练
     row = next(s for s in data["students"] if s["display_name"] == "面板同学")
     assert row["inactive_days7"] is False
-    assert row["current_band"] == "B1"
 
 
 def test_engine_failure_vocab_not_fabricated(

@@ -274,7 +274,7 @@ function HomePage() {
               ))}
             <p className="flex items-center gap-1.5 border-t pt-3 text-xs text-muted-foreground">
               <CheckCircle2 className="size-3.5" />
-              难度会跟着你的状态调整，每一步都刚刚好。
+              老师会根据课堂目标安排内容；按自己的节奏完成每一步。
             </p>
           </CardContent>
         </Card>
@@ -331,7 +331,7 @@ function HomePage() {
           </div>
         )}
 
-        {/* 周目标 + 档位生长 + 金句 */}
+        {/* 周目标 + 表达积累 + 金句 */}
         <div className="grid gap-5 md:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
@@ -452,39 +452,15 @@ function HomePage() {
               <CardTitle className="text-sm">你的表达，正在生长</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="mt-2 text-4xl font-bold">
-                {g
-                  ? (trailQuery.data?.sessions?.[
-                      trailQuery.data.sessions.length - 1
-                    ]?.vocab_cefr ?? "–")
-                  : "–"}
+              <p className="mt-2 text-4xl font-bold tabular-nums">
+                {Object.values(trailQuery.data?.vocab_counts ?? {}).reduce(
+                  (sum, count) => sum + count,
+                  0,
+                )}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                词汇参考档位 · 只和自己比
+                累计用过的词汇表达
               </p>
-              <div className="mt-4 flex gap-1">
-                {(() => {
-                  const vocabCefr =
-                    trailQuery.data?.sessions?.[
-                      trailQuery.data.sessions.length - 1
-                    ]?.vocab_cefr
-                  return ["A2", "B1", "B2"].map((b) => (
-                    <span
-                      key={b}
-                      className={
-                        b === vocabCefr
-                          ? "h-1.5 flex-1 rounded bg-primary"
-                          : "h-1.5 flex-1 rounded bg-border"
-                      }
-                    />
-                  ))
-                })()}
-              </div>
-              <div className="mt-1.5 flex justify-between text-[9px] text-muted-foreground">
-                <span>A2 轻松开口</span>
-                <span>B1 自在表达</span>
-                <span>B2 拓展观点</span>
-              </div>
               {g && (
                 <p className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
                   <Flame className="size-3.5 text-orange-400" />

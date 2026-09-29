@@ -34,7 +34,7 @@ const FAQS: Array<[string, string]> = [
   ],
   [
     "为什么分数不是正式成绩？",
-    "跟读参考分、模拟分、词汇档位分别来自不同来源，都标了「参考」，帮助你发现下一步怎么练，不是官方考试成绩。",
+    "跟读参考分、模拟分和词汇分析分别来自不同来源，帮助你发现下一步怎么练，不是官方考试成绩。",
   ],
   [
     "我的录音保存在哪里？",
@@ -215,13 +215,6 @@ function HelpPage() {
               <Star className="mt-0.5 size-4 shrink-0 text-yellow-500" />
               <p className="leading-relaxed">
                 <span className="font-semibold">徽章</span>：{EXPLAIN.badges}
-              </p>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
-              <p className="leading-relaxed">
-                <span className="font-semibold">档位</span>：{EXPLAIN.band}
-                A2/B1/B2 大致对应剑桥 KET/PET/FCE 的难度级别。
               </p>
             </div>
             <p className="text-xs text-muted-foreground">

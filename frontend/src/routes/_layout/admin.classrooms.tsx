@@ -170,7 +170,7 @@ function ClassroomsAdmin() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>课堂码</TableHead>
+                  <TableHead>课堂</TableHead>
                   <TableHead>班额</TableHead>
                   <TableHead>授权教师</TableHead>
                   <TableHead>解锁方式</TableHead>
@@ -184,8 +184,11 @@ function ClassroomsAdmin() {
                   const owner = teachers.find((t) => t.id === c.owner_id)
                   return (
                     <TableRow key={c.id}>
-                      <TableCell className="font-mono font-medium">
-                        {c.code}
+                      <TableCell>
+                        <p className="font-medium">{c.name}</p>
+                        <p className="font-mono text-xs text-muted-foreground">
+                          {c.code}
+                        </p>
                       </TableCell>
                       <TableCell>{c.class_size}</TableCell>
                       <TableCell>

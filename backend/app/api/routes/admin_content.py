@@ -1,6 +1,7 @@
 """管理员内容管理接口（PRD：内容槽由校方录入，软件只留槽位）。
 
-全部需要超级管理员权限。EIP 文本只进数据库，不进 git。
+篇目、情景和问法允许教师/管理员维护；词表和课堂平台配置仅超级管理员可操作。
+EIP 文本只进数据库，不进 git。
 
     /admin/passages            篇目 CRUD（含复述句子路由）
     /admin/scenarios           情景 + 分档问法 CRUD
@@ -551,7 +552,7 @@ class WordlistStats(SQLModel):
 
 
 @router.get("/wordlist", response_model=WordlistStats)
-def wordlist_stats(session: SessionDep, _admin: TeacherUserDep) -> Any:
+def wordlist_stats(session: SessionDep, _admin: SuperUserDep) -> Any:
     entries = session.exec(select(WordlistEntry)).all()
     by_band: dict[str, int] = dict.fromkeys(sorted(VALID_BANDS), 0)
     for entry in entries:
@@ -571,7 +572,7 @@ class WordlistImportResult(SQLModel):
 @router.post("/wordlist/import", response_model=WordlistImportResult)
 async def import_wordlist_csv(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    _admin: SuperUserDep,
     file: UploadFile,
 ) -> Any:
     """导入学校分级词表 CSV（表头 lemma,band；整体替换内置词表）。"""
@@ -704,6 +705,9 @@ def delete_unit(
 
 
 class ClassroomUpdate(SQLModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    grade: str | None = Field(default=None, max_length=64)
+    teaching_goal: str | None = Field(default=None, max_length=255)
     unlock_all: bool | None = None
     owner_id: uuid.UUID | None = None
     is_active: bool | None = None

@@ -61,13 +61,26 @@ function MyClassroomsPage() {
   // ── 新建课堂 ──
   const [createOpen, setCreateOpen] = useState(false)
   const [keyword, setKeyword] = useState("")
+  const [className, setClassName] = useState("")
+  const [grade, setGrade] = useState("")
+  const [teachingGoal, setTeachingGoal] = useState("")
   const [classSize, setClassSize] = useState(40)
   const createMutation = useMutation({
     mutationFn: () =>
-      ClassesService.createClass({ requestBody: { class_size: classSize } }),
+      ClassesService.createClass({
+        requestBody: {
+          name: className.trim(),
+          grade: grade.trim() || undefined,
+          teaching_goal: teachingGoal.trim() || undefined,
+          class_size: classSize,
+        },
+      }),
     onSuccess: (data) => {
       showSuccessToast(`课堂已创建，课堂码 ${data.code}`)
       setCreateOpen(false)
+      setClassName("")
+      setGrade("")
+      setTeachingGoal("")
       invalidate()
     },
     onError: (error) => showErrorToast(`创建失败：${error.message}`),
@@ -116,10 +129,10 @@ function MyClassroomsPage() {
         ))}
       </div>
       <Input
-        aria-label="搜索课堂码"
+        aria-label="搜索课堂名称或课堂码"
         value={keyword}
         onChange={(event) => setKeyword(event.target.value)}
-        placeholder="搜索课堂码…"
+        placeholder="搜索课堂名称或课堂码…"
         className="max-w-sm"
       />
       <Card>
@@ -156,7 +169,7 @@ function MyClassroomsPage() {
             <div className="grid gap-4 md:grid-cols-2">
               {classrooms
                 .filter((classroom) =>
-                  classroom.code
+                  `${classroom.name ?? ""} ${classroom.code}`
                     .toLowerCase()
                     .includes(keyword.trim().toLowerCase()),
                 )
@@ -174,7 +187,9 @@ function MyClassroomsPage() {
 
       {classrooms.length > 0 &&
         !classrooms.some((classroom) =>
-          classroom.code.toLowerCase().includes(keyword.trim().toLowerCase()),
+          `${classroom.name ?? ""} ${classroom.code}`
+            .toLowerCase()
+            .includes(keyword.trim().toLowerCase()),
         ) && (
           <p className="py-6 text-center text-muted-foreground">
             没有匹配的课堂。
@@ -190,14 +205,47 @@ function MyClassroomsPage() {
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="class-size">班级人数上限</Label>
+              <Label htmlFor="class-name">课堂名称</Label>
               <Input
-                id="class-size"
-                type="number"
-                min={1}
-                max={100}
-                value={classSize}
-                onChange={(e) => setClassSize(Number(e.target.value))}
+                id="class-name"
+                value={className}
+                onChange={(e) => setClassName(e.target.value)}
+                placeholder="例如：六年级英语口语"
+                maxLength={120}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="class-grade">年级 / 班型（可选）</Label>
+                <Input
+                  id="class-grade"
+                  value={grade}
+                  onChange={(e) => setGrade(e.target.value)}
+                  placeholder="例如：六年级 2 班"
+                  maxLength={64}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="class-size">班级人数上限</Label>
+                <Input
+                  id="class-size"
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={classSize}
+                  onChange={(e) => setClassSize(Number(e.target.value))}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="teaching-goal">本阶段教学目标（可选）</Label>
+              <Textarea
+                id="teaching-goal"
+                value={teachingGoal}
+                onChange={(e) => setTeachingGoal(e.target.value)}
+                placeholder="例如：能用完整句介绍自己的宠物"
+                maxLength={255}
+                rows={2}
               />
             </div>
           </div>
@@ -208,7 +256,10 @@ function MyClassroomsPage() {
             <LoadingButton
               loading={createMutation.isPending}
               disabled={
-                !Number.isInteger(classSize) || classSize < 1 || classSize > 100
+                !className.trim() ||
+                !Number.isInteger(classSize) ||
+                classSize < 1 ||
+                classSize > 100
               }
               onClick={() => createMutation.mutate()}
             >
@@ -228,6 +279,9 @@ function ClassroomCard({
   classroom: {
     id: string
     code: string
+    name?: string | null
+    grade?: string | null
+    teaching_goal?: string | null
     is_active: boolean
     class_size: number
   }
@@ -261,9 +315,13 @@ function ClassroomCard({
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <div>
-          <CardTitle className="font-mono text-lg">{classroom.code}</CardTitle>
+          <CardTitle className="text-lg">
+            {classroom.name || "未命名课堂"}
+          </CardTitle>
           <CardDescription>
-            上限 {classroom.class_size} 人
+            <span className="font-mono">{classroom.code}</span>
+            {classroom.grade && ` · ${classroom.grade}`}
+            {` · 上限 ${classroom.class_size} 人`}
             {classroom.is_active === false && " · 已停用"}
           </CardDescription>
         </div>
@@ -273,7 +331,7 @@ function ClassroomCard({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          安排本次练习，查看学生作答与录音。
+          {classroom.teaching_goal || "安排本次练习，查看学生作答与录音。"}
         </p>
         <div className="flex flex-wrap gap-2">
           {classroom.is_active ? (

@@ -5,17 +5,7 @@ import {
   useNavigate,
   useParams,
 } from "@tanstack/react-router"
-import {
-  ArrowDown,
-  ArrowUp,
-  BookOpen,
-  Flame,
-  Mic,
-  Minus,
-  Sparkles,
-  Star,
-  Trophy,
-} from "lucide-react"
+import { BookOpen, Flame, Mic, Sparkles, Star, Trophy } from "lucide-react"
 import { useEffect, useState } from "react"
 import { ClassesService } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
@@ -131,21 +121,6 @@ function MyTrailPage() {
             <Card>
               <CardContent className="py-4">
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Star className="size-3.5" /> 当前档位
-                  <InfoHint label={EXPLAIN.band} />
-                </p>
-                <p className="mt-1 text-2xl font-bold">
-                  {todayQuery.data?.band ??
-                    trailQuery.data.sessions?.[
-                      trailQuery.data.sessions.length - 1
-                    ]?.vocab_cefr ??
-                    "–"}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="py-4">
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Flame className="size-3.5" /> 坚持练习
                   <InfoHint label={EXPLAIN.streak} />
                 </p>
@@ -167,34 +142,23 @@ function MyTrailPage() {
                 <BookOpen className="size-4 text-primary" /> 词汇，也在慢慢生长
               </CardTitle>
               <CardDescription>
-                累计命中分级词次数 · 来源：分级词表分析
+                累计命中表达次数 · 来源：词表分析
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2.5">
-              {(["A2", "B1", "B2"] as const).map((band) => {
-                const count = trailQuery.data?.vocab_counts?.[band] ?? 0
-                const max = Math.max(
-                  1,
-                  ...Object.values(trailQuery.data?.vocab_counts ?? {}),
-                )
-                return (
-                  <div
-                    key={band}
-                    className="grid grid-cols-[80px_1fr_50px] items-center gap-2.5 text-xs"
-                  >
-                    <span className="text-muted-foreground">{band} 命中词</span>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-background">
-                      <div
-                        className="h-full rounded-full bg-primary transition-all"
-                        style={{ width: `${(count / max) * 100}%` }}
-                      />
-                    </div>
-                    <span className="text-right tabular-nums">{count}</span>
-                  </div>
-                )
-              })}
+              <div className="flex items-end gap-3">
+                <span className="text-4xl font-bold tabular-nums">
+                  {Object.values(trailQuery.data.vocab_counts ?? {}).reduce(
+                    (sum, count) => sum + count,
+                    0,
+                  )}
+                </span>
+                <span className="pb-1 text-xs text-muted-foreground">
+                  次命中
+                </span>
+              </div>
               <p className="pt-1 text-xs text-muted-foreground">
-                词汇档位不是英语能力的完整评价。多说、多用，比「处在哪个档位」更重要。
+                用过的表达越多，越容易在真实交流中自然说出来。
               </p>
             </CardContent>
           </Card>
@@ -227,21 +191,6 @@ function MyTrailPage() {
             <h1 className="text-xl font-bold tracking-tight">我的成长</h1>
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               {displayName(student)} · 课堂 {code.toUpperCase()}
-              {trailQuery.data?.band_change === "up" && (
-                <Badge variant="outline" className="text-primary">
-                  <ArrowUp /> 升档
-                </Badge>
-              )}
-              {trailQuery.data?.band_change === "down" && (
-                <Badge variant="outline">
-                  <ArrowDown /> 降档
-                </Badge>
-              )}
-              {trailQuery.data?.band_change === "keep" && (
-                <Badge variant="outline">
-                  <Minus /> 维持
-                </Badge>
-              )}
             </p>
           </div>
           <Button variant="outline" size="sm" asChild>

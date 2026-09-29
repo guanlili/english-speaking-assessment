@@ -341,9 +341,9 @@ function RoundResultPage() {
                   ["完整度参考", roundStats.completeness, "听句复述"],
                   ["流利度参考", roundStats.fluency, "全部题目"],
                   [
-                    "词汇参考档位",
-                    roundStats.vocabCefr,
-                    "最近有效问答 · 分级词表",
+                    "词汇覆盖",
+                    roundStats.vocabCefr ? "已分析" : "–",
+                    "最近有效问答 · 词表分析",
                   ],
                 ] as const
               ).map(([label, value, note]) => (
@@ -479,7 +479,6 @@ function RoundResultPage() {
             <CardHeader>
               <CardDescription>
                 {index + 1}. {ITEM_TYPE_LABELS[item.type] ?? item.type}
-                {item.band ? ` · ${item.band}` : ""}
               </CardDescription>
               <CardTitle className="text-sm leading-relaxed font-medium">
                 {item.text}

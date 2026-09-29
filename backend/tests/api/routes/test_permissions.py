@@ -616,10 +616,10 @@ def test_bulk_reset_passwords(
     data = reset.json()
     assert data["reset"] == 2
     passwords = {r["username"]: r["new_password"] for r in data["rows"]}
-    # 重置后统一为默认密码，不再强制改密
+    # 重置后统一为默认密码，并要求学生首次登录后修改
     assert all(p == DEFAULT_STUDENT_PASSWORD for p in passwords.values())
 
-    # 默认密码能直接登录，无改密标记
+    # 默认密码能登录，但必须先修改
     sample_user = joined1["user"]
     login = client.post(
         "/api/v1/login/access-token",

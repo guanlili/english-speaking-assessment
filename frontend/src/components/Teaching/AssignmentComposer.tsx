@@ -14,6 +14,7 @@ import {
   AdminService,
   type AssignmentInfo,
   ClassesService,
+  type ClassroomExercisePublic,
   type PassageWithSentences,
   type ScenarioOut,
   type SentenceWithPassage,
@@ -28,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import {
   Select,
@@ -69,10 +71,12 @@ export function AssignmentComposer({
   code,
   assignment,
   assignedItems,
+  currentExercise,
 }: {
   code: string
   assignment?: AssignmentInfo | null
   assignedItems?: AssignedItemRef[] | null
+  currentExercise?: ClassroomExercisePublic | null
 }) {
   // 三种题型互相独立：各自的题库列表分别加载
   const passagesQuery = useQuery({
@@ -86,6 +90,10 @@ export function AssignmentComposer({
   const scenariosQuery = useQuery({
     queryKey: ["admin", "scenarios"],
     queryFn: () => AdminService.listScenarios(),
+  })
+  const exercisesQuery = useQuery({
+    queryKey: ["teacher", "exercises", code],
+    queryFn: () => ClassesService.listClassroomExercises({ code }),
   })
 
   if (passagesQuery.isError || sentencesQuery.isError || scenariosQuery.isError)
@@ -157,6 +165,8 @@ export function AssignmentComposer({
       scenarios={scenarios}
       initialTypes={initialTypes}
       initialSelection={initialSelection}
+      initialTitle={currentExercise?.title ?? "课堂练习"}
+      exerciseHistory={exercisesQuery.data ?? []}
     />
   )
 }
@@ -171,6 +181,8 @@ function ComposerForm({
   scenarios,
   initialTypes,
   initialSelection,
+  initialTitle,
+  exerciseHistory,
 }: {
   code: string
   hasUnitAssignment: boolean
@@ -181,14 +193,18 @@ function ComposerForm({
   scenarios: ScenarioOut[]
   initialTypes: LessonTypes
   initialSelection: LessonSelection
+  initialTitle: string
+  exerciseHistory: ClassroomExercisePublic[]
 }) {
   const [types, setTypes] = useState<LessonTypes>(initialTypes)
   const [selection, setSelection] = useState<LessonSelection>(initialSelection)
+  const [title, setTitle] = useState(initialTitle)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
   const dirtyRef = useRef(false)
   const prevServerTypesRef = useRef(initialTypes)
   const prevServerSelectionRef = useRef(initialSelection)
+  const prevServerTitleRef = useRef(initialTitle)
   const queryClient = useQueryClient()
 
   // 服务端指派变更时同步本地表单（如老师在另一设备改了指派）
@@ -201,14 +217,17 @@ function ComposerForm({
     const selectionSame =
       JSON.stringify(initialSelection) ===
       JSON.stringify(prevServerSelectionRef.current)
-    if (typesSame && selectionSame) return
+    const titleSame = initialTitle === prevServerTitleRef.current
+    if (typesSame && selectionSame && titleSame) return
     prevServerTypesRef.current = initialTypes
     prevServerSelectionRef.current = initialSelection
+    prevServerTitleRef.current = initialTitle
     if (!dirtyRef.current) {
       setTypes(initialTypes)
       setSelection(initialSelection)
+      setTitle(initialTitle)
     }
-  }, [initialTypes, initialSelection])
+  }, [initialTypes, initialSelection, initialTitle])
 
   const setTypesDirty = (
     next: LessonTypes | ((prev: LessonTypes) => LessonTypes),
@@ -238,7 +257,8 @@ function ComposerForm({
 
   const changed =
     JSON.stringify(types) !== JSON.stringify(initialTypes) ||
-    JSON.stringify(selection) !== JSON.stringify(initialSelection)
+    JSON.stringify(selection) !== JSON.stringify(initialSelection) ||
+    title.trim() !== initialTitle.trim()
 
   const publish = useMutation({
     mutationFn: (clear: boolean) =>
@@ -260,6 +280,7 @@ function ComposerForm({
                     }))
                   : []),
               ],
+              title: title.trim() || undefined,
             },
       }),
     onSuccess: async (_, clear) => {
@@ -269,6 +290,9 @@ function ComposerForm({
       toast.success(clear ? "已恢复学生自主练习" : "本次课堂练习已发布")
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["teacher", "board", code] }),
+        queryClient.invalidateQueries({
+          queryKey: ["teacher", "exercises", code],
+        }),
         queryClient.invalidateQueries({ queryKey: ["admin", "sentences"] }),
       ])
     },
@@ -304,6 +328,21 @@ function ComposerForm({
       </div>
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
         <div className="space-y-6 rounded-2xl border bg-card p-6">
+          <section>
+            <h2 className="font-semibold">练习名称</h2>
+            <p className="mb-3 mt-2 text-sm text-muted-foreground">
+              用一个清晰的名称标识这次发布，方便之后回看课堂练习版本。
+            </p>
+            <Input
+              value={title}
+              maxLength={255}
+              onChange={(event) => {
+                dirtyRef.current = true
+                setTitle(event.target.value)
+              }}
+              placeholder="例如：第 3 周｜旅行主题口语练习"
+            />
+          </section>
           <section>
             <h2 className="font-semibold">1. 选择题型</h2>
             <p className="mb-4 mt-2 text-sm text-muted-foreground">
@@ -520,6 +559,32 @@ function ComposerForm({
           </Button>
         </aside>
       </div>
+      {exerciseHistory.length > 0 && (
+        <details className="rounded-2xl border bg-card px-5 py-4">
+          <summary className="cursor-pointer text-sm font-semibold">
+            发布历史（{exerciseHistory.length} 个版本）
+          </summary>
+          <div className="mt-4 divide-y text-sm">
+            {exerciseHistory.map((exercise) => (
+              <div
+                key={exercise.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0"
+              >
+                <span>
+                  v{exercise.version_no} · {exercise.title} ·{" "}
+                  {exercise.item_count} 道题
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {exercise.status === "published" ? "当前发布" : "已归档"}
+                  {exercise.published_at
+                    ? ` · ${new Date(exercise.published_at).toLocaleString()}`
+                    : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
       <Dialog
         open={previewOpen}
         onOpenChange={(open) => !publish.isPending && setPreviewOpen(open)}

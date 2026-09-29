@@ -23,6 +23,7 @@ export type AssignmentRequest = {
     assign_repeat?: (boolean | null);
     assign_qa?: (boolean | null);
     items?: (Array<AssignmentItemIn> | null);
+    title?: (string | null);
 };
 
 export type AttemptPublic = {
@@ -93,18 +94,19 @@ export type BatchQuestionResult = {
 
 export type BoardData = {
     classroom_code: string;
+    classroom_name: string;
+    classroom_grade?: (string | null);
+    teaching_goal?: (string | null);
     class_size: number;
     engine?: string;
     assignment?: (AssignmentInfo | null);
     assigned_items?: (Array<{
     [key: string]: (string);
 }> | null);
+    current_exercise?: (ClassroomExercisePublic | null);
     submitted_count: number;
     completed_count: number;
     pending_count: number;
-    band_distribution: {
-        [key: string]: (number);
-    };
     students: Array<BoardStudent>;
     items: Array<BoardItem>;
 };
@@ -127,7 +129,6 @@ export type BoardStudent = {
     question_avg?: (number | null);
     has_pending: boolean;
     round_status?: string;
-    current_band: string;
     inactive_days7?: boolean;
     xp?: number;
     streak_days?: number;
@@ -175,12 +176,30 @@ export type BulkResetResult = {
 };
 
 export type ClassroomCreate = {
+    name?: string;
+    grade?: (string | null);
+    teaching_goal?: (string | null);
     class_size?: number;
+};
+
+export type ClassroomExercisePublic = {
+    id: string;
+    classroom_id: string;
+    version_no: number;
+    title: string;
+    status: string;
+    item_count: number;
+    created_at?: (string | null);
+    published_at?: (string | null);
+    archived_at?: (string | null);
 };
 
 export type ClassroomPublic = {
     id: string;
     code: string;
+    name: string;
+    grade?: (string | null);
+    teaching_goal?: (string | null);
     class_size: number;
     is_active: boolean;
     unlock_all?: boolean;
@@ -188,10 +207,14 @@ export type ClassroomPublic = {
     assign_reading?: (boolean | null);
     assign_repeat?: (boolean | null);
     assign_qa?: (boolean | null);
+    current_exercise_id?: (string | null);
     created_at?: (string | null);
 };
 
 export type ClassroomUpdate = {
+    name?: (string | null);
+    grade?: (string | null);
+    teaching_goal?: (string | null);
     unlock_all?: (boolean | null);
     owner_id?: (string | null);
     is_active?: (boolean | null);
@@ -949,6 +972,12 @@ export type ClassesListUnitsForClassData = {
 };
 
 export type ClassesListUnitsForClassResponse = (Array<AssignmentInfo>);
+
+export type ClassesListClassroomExercisesData = {
+    code: string;
+};
+
+export type ClassesListClassroomExercisesResponse = (Array<ClassroomExercisePublic>);
 
 export type ClassesSetAssignmentData = {
     code: string;

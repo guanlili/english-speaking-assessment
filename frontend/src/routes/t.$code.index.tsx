@@ -3,9 +3,11 @@ import { createFileRoute, Link, useParams } from "@tanstack/react-router"
 import {
   ChevronDown,
   ChevronRight,
+  ClipboardCheck,
   Download,
   Link2,
   Loader2,
+  MessageCircle,
   RefreshCw,
   Sparkles,
 } from "lucide-react"
@@ -56,6 +58,7 @@ const IDLE_REFRESH_MS = 20000
 function TeacherBoardPage() {
   const { code } = useParams({ from: "/t/$code/" })
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<"prepare" | "results">("prepare")
 
   const [statusFilter, setStatusFilter] = useState("all")
   const [nameQuery, setNameQuery] = useState("")
@@ -158,7 +161,6 @@ function TeacherBoardPage() {
     const header = [
       "姓名",
       "区分码",
-      "当前档",
       "完成题数",
       "跟读均分",
       "情景问答均分",
@@ -169,7 +171,6 @@ function TeacherBoardPage() {
     const rows = filteredStudents.map((st) => [
       st.display_name,
       st.suffix ?? "",
-      st.current_band ?? "",
       `${st.done_count ?? 0}/${st.total_count ?? 0}`,
       st.repeat_avg ?? "-",
       st.question_avg ?? "-",
@@ -208,6 +209,25 @@ function TeacherBoardPage() {
     }
   }
 
+  const attentionStudents = board.students.filter(
+    (student) => student.inactive_days7 || student.done_count === 0,
+  )
+
+  const copyReminder = async () => {
+    const names = attentionStudents
+      .map((student) => student.display_name)
+      .slice(0, 8)
+      .join("、")
+    const message = `【${board.classroom_name}】${names || "同学们"}，请完成今天的口语练习。提交后老师会查看反馈。课堂码：${board.classroom_code}`
+    try {
+      await navigator.clipboard.writeText(message)
+      toast.success("提醒文案已复制", { description: message })
+    } catch (error) {
+      console.error("Failed to copy reminder:", error)
+      toast.error("复制失败，请重试")
+    }
+  }
+
   return (
     <div className="bg-background">
       <div className="flex w-full flex-col gap-6">
@@ -217,10 +237,11 @@ function TeacherBoardPage() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-xl font-bold tracking-tight">
-              课堂 {board.classroom_code}
+              {board.classroom_name}
             </h1>
             <p className="text-sm text-muted-foreground">
-              课堂 {board.classroom_code} · 已提交 {board.submitted_count}/
+              {board.classroom_grade && `${board.classroom_grade} · `}
+              课堂码 {board.classroom_code} · 已提交 {board.submitted_count}/
               {board.class_size}
               {board.pending_count > 0 && (
                 <span className="ml-2 inline-flex items-center gap-1">
@@ -230,6 +251,9 @@ function TeacherBoardPage() {
               )}
             </p>
             <div className="mt-1 flex flex-wrap gap-1">
+              {board.teaching_goal && (
+                <Badge variant="secondary">目标：{board.teaching_goal}</Badge>
+              )}
               <Badge variant="secondary">
                 评分引擎：
                 {board.engine === "volc_flash"
@@ -253,7 +277,13 @@ function TeacherBoardPage() {
           </Button>
         </div>
 
-        <Tabs defaultValue="prepare" className="gap-6">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            if (value === "prepare" || value === "results") setActiveTab(value)
+          }}
+          className="gap-6"
+        >
           <TabsList className="h-11">
             <TabsTrigger value="prepare" className="px-6">
               练习安排
@@ -267,6 +297,7 @@ function TeacherBoardPage() {
               code={code}
               assignment={board.assignment}
               assignedItems={board.assigned_items}
+              currentExercise={board.current_exercise}
             />
           </TabsContent>
           <TabsContent value="results" className="space-y-6">
@@ -311,6 +342,29 @@ function TeacherBoardPage() {
                 </CardContent>
               </Card>
             </div>
+
+            <Card className="border-primary/20 bg-secondary/30">
+              <CardContent className="flex flex-wrap items-center gap-3 py-4">
+                <div className="mr-auto min-w-48">
+                  <p className="flex items-center gap-1.5 text-sm font-semibold">
+                    <ClipboardCheck className="size-4 text-primary" /> 教学动作
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {attentionStudents.length > 0
+                      ? `有 ${attentionStudents.length} 位学生还没完成本轮。`
+                      : "本轮已全部提交，可以进入下一次安排。"}
+                  </p>
+                </div>
+                {attentionStudents.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={copyReminder}>
+                    <MessageCircle /> 复制提醒文案
+                  </Button>
+                )}
+                <Button size="sm" onClick={() => setActiveTab("prepare")}>
+                  安排下一次练习
+                </Button>
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader>
@@ -488,17 +542,38 @@ function StudentRow({
               onMouseDown={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  当前练习档：{student.current_band}
-                </span>
-                <Button variant="link" size="sm" asChild>
-                  <Link
-                    to="/t/$code/s/$studentId"
-                    params={{ code, studentId: student.student_id }}
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="link" size="sm" asChild>
+                    <Link
+                      to="/t/$code/s/$studentId"
+                      params={{ code, studentId: student.student_id }}
+                    >
+                      查看进步轨迹 →
+                    </Link>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async (event) => {
+                      event.stopPropagation()
+                      const feedback =
+                        student.done_count === 0
+                          ? `${name} 还没有提交本轮口语练习，可以提醒完成。`
+                          : `${name} 已完成 ${student.done_count}/${student.total_count} 题，可结合结果页逐题反馈。`
+                      try {
+                        await navigator.clipboard.writeText(feedback)
+                        toast.success("反馈文案已复制", {
+                          description: feedback,
+                        })
+                      } catch (error) {
+                        console.error("Failed to copy feedback:", error)
+                        toast.error("复制失败，请重试")
+                      }
+                    }}
                   >
-                    查看进步轨迹 →
-                  </Link>
-                </Button>
+                    复制反馈
+                  </Button>
+                </div>
               </div>
               {student.items.every((i) => i.status === "missing") && (
                 <p className="text-sm text-muted-foreground">还没有作答。</p>

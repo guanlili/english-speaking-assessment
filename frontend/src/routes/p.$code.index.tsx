@@ -58,12 +58,6 @@ export const Route = createFileRoute("/p/$code/")({
   }),
 })
 
-const BAND_LABELS: Record<string, string> = {
-  A2: "A2 档",
-  B1: "B1 档",
-  B2: "B2 档",
-}
-
 const ITEM_TYPE_LABELS: Record<string, string> = {
   passage: "文章朗读",
   repeat: "听句复述",
@@ -160,7 +154,7 @@ function ClassroomPracticePage() {
   // 结果页「换同主题下一问」跳转过来（?next=1）时执行换题（闩锁保证只触发一次）
   const nextFlagConsumedRef = useRef(false)
   useEffect(() => {
-    // 等计划加载后再换题：否则 plan?.session_id 为空，探索轮会取错主题/档位
+    // 等计划加载后再换题：否则 plan?.session_id 为空，探索轮会取错主题
     if (
       nextFlag &&
       !nextFlagConsumedRef.current &&
@@ -402,8 +396,7 @@ function ClassroomPracticePage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold tracking-tight">
-              第 {currentIndex + 1}/{items.length} 题 ·{" "}
-              {BAND_LABELS[plan.band] ?? plan.band}
+              第 {currentIndex + 1}/{items.length} 题
               {plan.assigned_unit_title && (
                 <span className="ml-2 text-sm font-medium text-primary">
                   📌 {plan.assigned_unit_title}
@@ -474,9 +467,6 @@ function ClassroomPracticePage() {
                   </span>
                   <span className="rounded-md bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
                     {ITEM_TYPE_LABELS[currentItem.type] ?? currentItem.type}
-                    {isQuestion && currentItem.band
-                      ? ` · ${BAND_LABELS[currentItem.band] ?? currentItem.band}`
-                      : ""}
                     {" · "}
                     {formatSeconds(currentItem.suggested_seconds ?? 20)}
                   </span>
