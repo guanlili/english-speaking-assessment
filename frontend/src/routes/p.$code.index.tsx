@@ -828,7 +828,6 @@ function LimitedListenButton({
     // 先到服务端计数再播：422 = 次数真用完；其他错误（网络等）不锁死按钮
     const counted = await recordListenCount()
     if (!counted) return
-    setUsed((u) => u + 1)
     if (audioUrl) {
       if (audioRef.current) {
         audioRef.current.playbackRate = Number(rate)
@@ -853,10 +852,11 @@ function LimitedListenButton({
   const recordListenCount = async (): Promise<boolean> => {
     if (!sessionId) return false
     try {
-      await ClassesService.recordListen({
+      const result = await ClassesService.recordListen({
         code,
         requestBody: { session_id: sessionId, item_id: itemId },
       })
+      setUsed(result.listen_used)
       return true
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {

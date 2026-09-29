@@ -8,7 +8,7 @@ import {
   MessagesSquare,
   Send,
 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import {
   AdminService,
@@ -187,6 +187,14 @@ function ComposerForm({
   const [previewOpen, setPreviewOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
   const queryClient = useQueryClient()
+
+  // 服务端指派变更时同步本地表单（如老师在另一设备改了指派）
+  useEffect(() => {
+    setTypes(initialTypes)
+  }, [initialTypes])
+  useEffect(() => {
+    setSelection(initialSelection)
+  }, [initialSelection])
 
   const { scenario, problems } = inspectSelection(types, selection, {
     sentences,

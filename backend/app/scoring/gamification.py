@@ -68,18 +68,6 @@ def advance_streak(last: date | None, streak: int, today: date) -> int:
     return 1
 
 
-def _round_done_attempts(
-    session: Session, practice_session: PracticeSession
-) -> list[Attempt]:
-    attempts = session.exec(
-        select(Attempt).where(Attempt.session_id == practice_session.id)
-    ).all()
-    latest: dict = {}
-    for attempt in attempts:
-        latest[attempt.item_id] = attempt
-    return [a for a in latest.values() if a.status == AttemptStatus.DONE]
-
-
 def settle_session(
     session: Session,
     practice_session: PracticeSession,
@@ -112,7 +100,9 @@ def settle_session(
     student = locked_student
 
     attempts = session.exec(
-        select(Attempt).where(Attempt.session_id == practice_session.id)
+        select(Attempt)
+        .where(Attempt.session_id == practice_session.id)
+        .order_by(col(Attempt.created_at))
     ).all()
     latest: dict = {}
     for attempt in attempts:

@@ -68,10 +68,10 @@ def _resolve_submit_student(
     if session_id is None:
         # 公开练习页的整篇跟读演示：无归属主体
         return None
-    if current_user is None or (
-        not current_user.is_superuser and current_user.role != "student"
-    ):
+    if current_user is None:
         raise HTTPException(status_code=401, detail="请先登录后再提交课堂作答")
+    if not current_user.is_superuser and current_user.role != "student":
+        raise HTTPException(status_code=403, detail="该操作仅限学生账号")
     practice_session = session.get(PracticeSession, session_id)
     if practice_session is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -254,6 +254,22 @@ def _mime_to_suffix(base_mime: str) -> str:
     return mapping.get(base_mime, ".webm")
 
 
+_AUDIO_MIME_BY_SUFFIX = {
+    ".webm": "audio/webm",
+    ".ogg": "audio/ogg",
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".wav": "audio/wav",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+    ".amr": "audio/amr",
+}
+
+
+def _mime_to_suffix_reverse() -> dict[str, str]:
+    return _AUDIO_MIME_BY_SUFFIX
+
+
 @router.get("/attempts/{attempt_id}", response_model=AttemptPublic)
 def read_attempt(
     session: SessionDep,
@@ -285,4 +301,5 @@ def read_attempt_audio(
     path = Path(attempt.audio_path)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Audio not found")
-    return FileResponse(path, media_type=attempt.audio_mime)
+    safe_mime = _mime_to_suffix_reverse().get(path.suffix, "application/octet-stream")
+    return FileResponse(path, media_type=safe_mime)

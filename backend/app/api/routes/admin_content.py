@@ -15,13 +15,16 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile
 from sqlalchemy import func
-from sqlmodel import Field, SQLModel, col, select
+from sqlmodel import Field, Session, SQLModel, col, select
 
 from app import crud
 from app.api.deps import SessionDep, SuperUserDep, TeacherUserDep
 from app.core.config import settings
 from app.core.storage import content_audio_url, save_content_audio
 from app.models import (
+    Attempt,
+    AttemptItemType,
+    AttemptStatus,
     Classroom,
     ClassroomPublic,
     Passage,
@@ -58,18 +61,46 @@ def _require_valid_band(band: str) -> None:
         )
 
 
+def _reject_delete_with_queued_attempts(
+    session: Session, item_id: uuid.UUID, item_type: str
+) -> None:
+    """有排队评分中的作答时拒绝删除内容（否则 worker 领取时找不到题目会失败）。"""
+    has_queued = (
+        session.exec(
+            select(Attempt.id)
+            .where(
+                Attempt.item_id == item_id,
+                Attempt.item_type == item_type,
+                Attempt.status.in_([AttemptStatus.QUEUED, AttemptStatus.SCORING]),
+            )
+            .limit(1)
+        ).first()
+        is not None
+    )
+    if has_queued:
+        raise HTTPException(
+            status_code=409,
+            detail="有正在评分中的作答，请稍后再删除",
+        )
+
+
 @router.get("/passages", response_model=list[PassageWithSentences])
 def list_passages(session: SessionDep, _admin: TeacherUserDep) -> Any:
     passages = session.exec(select(Passage).order_by(col(Passage.created_at))).all()
-    result = []
-    for passage in passages:
-        sentences = session.exec(
+    passage_ids = [p.id for p in passages]
+    sentences_by_passage: dict[uuid.UUID, list[RepeatSentence]] = {}
+    if passage_ids:
+        all_sentences = session.exec(
             select(RepeatSentence)
-            .where(RepeatSentence.passage_id == passage.id)
+            .where(col(RepeatSentence.passage_id).in_(passage_ids))
             .order_by(col(RepeatSentence.order_index))
         ).all()
+        for s in all_sentences:
+            sentences_by_passage.setdefault(s.passage_id, []).append(s)
+    result = []
+    for passage in passages:
         item = PassageWithSentences.model_validate(passage)
-        item.sentences = list(sentences)
+        item.sentences = sentences_by_passage.get(passage.id, [])
         result.append(item)
     return result
 
@@ -114,6 +145,7 @@ def delete_passage(
     passage = session.get(Passage, passage_id)
     if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
+    _reject_delete_with_queued_attempts(session, passage_id, AttemptItemType.PASSAGE)
     session.delete(passage)  # 复述句/作答按外键级联
     session.commit()
     return {"message": "deleted"}
@@ -230,13 +262,19 @@ class ScenarioOut(SQLModel):
 @router.get("/scenarios", response_model=list[ScenarioOut])
 def list_scenarios(session: SessionDep, _admin: TeacherUserDep) -> Any:
     scenarios = session.exec(select(Scenario)).all()
-    result = []
-    for scenario in scenarios:
-        questions = session.exec(
+    scenario_ids = [s.id for s in scenarios]
+    questions_by_scenario: dict[uuid.UUID, list[ScenarioQuestion]] = {}
+    if scenario_ids:
+        all_questions = session.exec(
             select(ScenarioQuestion)
-            .where(ScenarioQuestion.scenario_id == scenario.id)
+            .where(col(ScenarioQuestion.scenario_id).in_(scenario_ids))
             .order_by(col(ScenarioQuestion.order_index))
         ).all()
+        for q in all_questions:
+            questions_by_scenario.setdefault(q.scenario_id, []).append(q)
+    result = []
+    for scenario in scenarios:
+        questions = questions_by_scenario.get(scenario.id, [])
         result.append(
             ScenarioOut(
                 id=scenario.id,
@@ -302,6 +340,7 @@ def delete_question(
     question = session.get(ScenarioQuestion, question_id)
     if question is None:
         raise HTTPException(status_code=404, detail="Question not found")
+    _reject_delete_with_queued_attempts(session, question_id, AttemptItemType.QUESTION)
     session.delete(question)
     session.commit()
     return {"message": "deleted"}

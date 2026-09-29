@@ -79,6 +79,13 @@ function HomePage() {
     }
   }, [todayQuery.isError, todayQuery.error, code, navigate])
 
+  // 组件卸载时停止语音合成
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis?.cancel()
+    }
+  }, [])
+
   const pathQuery = useQuery({
     retry: 1,
     retryDelay: 500,
@@ -215,7 +222,9 @@ function HomePage() {
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-background">
                 <div
                   className="h-full rounded-full bg-primary transition-all"
-                  style={{ width: `${(done / totalItems) * 100}%` }}
+                  style={{
+                    width: `${((done / (totalItems || 1)) * 100).toFixed(0)}%`,
+                  }}
                 />
               </div>
               <span className="text-[11px] text-muted-foreground">

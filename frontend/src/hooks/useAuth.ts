@@ -56,13 +56,19 @@ const useAuth = () => {
     })
     localStorage.setItem("access_token", response.access_token)
     // 角色与改密标记随登录缓存，供路由分流（学生/教师互斥登录）
-    const me = await UsersService.readUserMe()
-    localStorage.setItem("esa:role", me.role ?? "teacher")
-    localStorage.setItem(
-      "esa:must-change-pw",
-      me.must_change_password ? "1" : "0",
-    )
-    return me
+    try {
+      const me = await UsersService.readUserMe()
+      localStorage.setItem("esa:role", me.role ?? "teacher")
+      localStorage.setItem(
+        "esa:must-change-pw",
+        me.must_change_password ? "1" : "0",
+      )
+      return me
+    } catch {
+      // readUserMe 失败（网络等）：清除 token，避免半认证状态
+      localStorage.removeItem("access_token")
+      throw new Error("登录后获取用户信息失败，请重试")
+    }
   }
 
   const loginMutation = useMutation({

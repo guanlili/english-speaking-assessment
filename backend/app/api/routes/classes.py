@@ -846,10 +846,10 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
     from datetime import timedelta
 
     now = datetime.now(ZoneInfo(settings.PRACTICE_TZ))
-    week_ago = (now - timedelta(days=7)).date()
-    week_ago_utc = datetime(
-        week_ago.year, week_ago.month, week_ago.day, tzinfo=ZoneInfo("UTC")
+    week_ago = (now - timedelta(days=7)).replace(
+        hour=0, minute=0, second=0, microsecond=0
     )
+    week_ago_utc = week_ago.astimezone(ZoneInfo("UTC"))
     student_ids = [s.id for s in students]
     recent_attempts = session.exec(
         select(Attempt).where(
@@ -1049,7 +1049,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         joined_before_window = (
             student.created_at is not None
             and student.created_at.astimezone(ZoneInfo(settings.PRACTICE_TZ)).date()
-            < week_ago
+            < week_ago.date()
         )
         inactive = joined_before_window and student.id not in recent_by_student
         band_distribution[student.current_band] = (
