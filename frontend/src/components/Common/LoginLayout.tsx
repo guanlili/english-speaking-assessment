@@ -1,111 +1,126 @@
-import { ArrowUpRight, AudioLines, Check, Mic } from "lucide-react"
+import { AudioLines, Mic } from "lucide-react"
 import type { ReactNode } from "react"
 import { Appearance } from "@/components/Common/Appearance"
 import { Logo } from "@/components/Common/Logo"
 import { APP_NAME } from "@/config"
 
+const classroomSteps = [
+  { number: "01", title: "进入课堂", description: "跟随今日练习" },
+  { number: "02", title: "开口练习", description: "练习真实表达" },
+  { number: "03", title: "回看反馈", description: "找到下一步方向" },
+]
+
 export function LoginLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-svh bg-[#f8f9f5] dark:bg-background">
-      <header className="mx-auto flex max-w-[1440px] items-center justify-between px-4 py-4 sm:px-10 lg:px-16 lg:py-6">
+    <div className="min-h-svh bg-[#f7f4ed] font-['Avenir_Next','PingFang_SC','Hiragino_Sans_GB','Microsoft_YaHei',sans-serif] text-[#233e34] dark:bg-background dark:text-foreground">
+      <header className="mx-auto flex max-w-[1440px] items-center justify-between px-5 py-5 sm:px-10 lg:px-16 lg:py-6">
         <Logo asLink={false} />
-        <div className="flex items-center gap-5">
-          <span className="hidden text-xs tracking-wider text-muted-foreground sm:block">
+        <div className="flex items-center gap-6">
+          <span className="hidden border-r border-[#233e34]/15 pr-6 text-xs tracking-wider text-muted-foreground sm:block dark:border-border">
             每一次开口，都是进步
           </span>
           <Appearance />
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-[1440px] items-center gap-10 px-4 pb-6 pt-2 sm:px-10 lg:min-h-[calc(100svh-172px)] lg:grid-cols-[1.1fr_1fr] lg:gap-16 lg:px-16 lg:py-8 xl:gap-24">
+      <main className="mx-auto grid max-w-[1440px] items-center gap-7 px-5 pb-10 pt-4 sm:px-10 lg:min-h-[calc(100svh-152px)] lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-16 lg:px-16 lg:py-8 xl:gap-24">
         <section
-          className="relative hidden lg:block lg:py-6"
+          className="mx-auto w-full max-w-[480px] lg:max-w-[560px]"
           aria-labelledby="login-intro"
         >
-          <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-secondary/60 px-3 py-1.5 text-xs font-medium text-secondary-foreground">
-            <span className="size-1.5 rounded-full bg-primary" />
-            为每一堂英语口语课而来
-          </div>
-          <h1
-            id="login-intro"
-            className="text-4xl font-semibold leading-[1.25] tracking-tight sm:text-5xl xl:text-6xl"
-          >
-            自信表达，
-            <br />从
-            <span className="relative inline-block text-primary">
-              开口说
-              <span className="absolute -bottom-2 left-0 h-1.5 w-full -rotate-2 rounded-full bg-[#efbd84]/70" />
-            </span>
-            开始。
-          </h1>
-          <p className="mt-7 max-w-sm text-sm leading-7 text-muted-foreground sm:text-base">
-            跟随课堂节奏，练习真实表达。
-            <br />
-            让每一次小小的尝试，汇成看得见的成长。
-          </p>
-
-          <div className="relative mt-10 hidden max-w-[510px] sm:block">
-            <div
-              className="absolute -right-4 -top-4 size-28 rounded-full border border-primary/10"
+          <p className="mb-3 flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.16em] text-muted-foreground lg:mb-5">
+            <span
+              className="h-px w-7 bg-[#ac7048] dark:bg-[#efbd94]"
               aria-hidden="true"
             />
-            <div className="relative overflow-hidden rounded-[28px] bg-[#204f40] p-7 text-white shadow-xl shadow-[#204f40]/10 xl:p-8">
-              <div
-                className="absolute -bottom-28 -right-20 size-72 rounded-full border-[40px] border-white/5"
-                aria-hidden="true"
-              />
-              <div className="relative flex items-center justify-between">
-                <span className="flex items-center gap-2 text-xs tracking-[0.16em] text-[#cee2d6]">
-                  <AudioLines className="size-4" /> SPEAK. CONNECT. GROW.
-                </span>
-                <ArrowUpRight className="size-5 text-[#cee2d6]" />
+            为每一堂英语口语课而来
+          </p>
+          <h1
+            id="login-intro"
+            className="text-[28px] font-semibold leading-[1.25] tracking-tight sm:text-3xl lg:text-[38px] xl:text-[44px]"
+          >
+            让表达，自然发生。
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground lg:text-base">
+            跟随课堂节奏，练习真实表达。
+          </p>
+
+          <div className="relative mt-7 hidden overflow-hidden rounded-2xl bg-[#204f40] p-7 text-[#fbf6eb] lg:block xl:p-8 dark:bg-[#193f33]">
+            <div
+              className="pointer-events-none absolute -right-20 top-10 size-72 rounded-full border border-[#e9c6a2]/15 before:absolute before:inset-7 before:rounded-full before:border before:border-[#e9c6a2]/15 after:absolute after:inset-14 after:rounded-full after:border after:border-[#e9c6a2]/15"
+              aria-hidden="true"
+            />
+            <p
+              className="relative flex items-center gap-2 text-[10px] font-medium tracking-[0.2em] text-[#d0ded3]"
+              lang="en"
+            >
+              <AudioLines className="size-4" aria-hidden="true" />
+              LISTEN. SPEAK. GROW.
+            </p>
+            <p
+              className="relative mt-6 font-['Iowan_Old_Style','Palatino_Linotype',Georgia,serif] text-5xl leading-[1.05] tracking-tight xl:text-6xl"
+              lang="en"
+            >
+              Find your
+              <br />
+              <span className="italic text-[#efbd94]">own voice.</span>
+            </p>
+            <div
+              className="relative mt-7 flex items-center gap-5 border-t border-white/20 pt-5"
+              aria-hidden="true"
+            >
+              <span className="grid size-10 shrink-0 place-items-center rounded-full border border-[#efbd94]/50 text-[#efbd94]">
+                <Mic className="size-4" />
+              </span>
+              <div className="flex h-10 flex-1 items-center justify-between gap-1">
+                {Array.from({ length: 31 }, (_, index) => (
+                  <span
+                    key={`wave-${index}`}
+                    className={`w-1 rounded-full ${index > 10 && index < 20 ? "bg-[#efbd94]" : "bg-[#c9decf]/65"} ${["h-2", "h-4", "h-6", "h-3", "h-8", "h-10", "h-5"][index % 7]}`}
+                  />
+                ))}
               </div>
-              <p className="relative mt-9 text-3xl font-medium leading-snug tracking-tight xl:text-4xl">
-                Every voice
-                <br />
-                has a story.
-              </p>
-              <p className="relative mt-3 text-sm text-[#cee2d6]">
-                你的声音，值得被听见。
-              </p>
-              <div className="relative mt-8 flex items-center gap-4 rounded-2xl border border-white/15 bg-white/10 p-4">
-                <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#e9c99d] text-[#204f40]">
-                  <Mic className="size-5" />
-                </span>
-                <div
-                  className="flex flex-1 items-center justify-between gap-1"
-                  aria-hidden="true"
-                >
-                  {Array.from({ length: 27 }, (_, index) => (
-                    <span
-                      key={`wave-${index}`}
-                      className={`w-1 rounded-full bg-[#c9decf] ${["h-3", "h-5", "h-8", "h-4", "h-6", "h-9", "h-5"][index % 7]}`}
-                    />
-                  ))}
-                </div>
-                <span className="text-xs text-[#cee2d6]">开口，就现在</span>
-              </div>
-            </div>
-            <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
-              {["课堂同步", "口语练习", "成长反馈"].map((item) => (
-                <span key={item} className="flex items-center gap-1.5">
-                  <Check className="size-3.5 text-primary" />
-                  {item}
-                </span>
-              ))}
             </div>
           </div>
+
+          <ol
+            className="mt-6 hidden grid-cols-3 lg:grid"
+            aria-label="课堂练习流程"
+          >
+            {classroomSteps.map((step) => (
+              <li
+                key={step.number}
+                className="border-l border-[#233e34]/15 pl-4 first:border-0 first:pl-0 dark:border-border"
+              >
+                <span
+                  className="font-['Iowan_Old_Style',Georgia,serif] text-xl italic text-[#99603d] dark:text-[#efbd94]"
+                  aria-hidden="true"
+                >
+                  {step.number}
+                </span>
+                <h2 className="mt-1 text-sm font-semibold">{step.title}</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {step.description}
+                </p>
+              </li>
+            ))}
+          </ol>
         </section>
 
         <section
           aria-label="登录 SpeakUp"
-          className="mx-auto w-full max-w-[480px] rounded-[28px] border border-border/80 bg-card p-5 shadow-[0_16px_64px_-24px_rgba(32,79,64,0.18)] sm:p-9 lg:mx-0 lg:justify-self-end xl:p-10"
+          className="relative mx-auto w-full max-w-[480px] rounded-2xl border border-[#233e34]/12 bg-[#fffdf8] p-5 shadow-[0_20px_70px_-36px_rgba(32,79,64,0.28)] before:absolute before:-top-px before:left-6 before:h-[3px] before:w-12 before:bg-[#dba77b] sm:p-8 sm:before:left-9 lg:mx-0 lg:justify-self-end xl:p-10 dark:border-border dark:bg-card dark:shadow-none"
         >
           {children}
         </section>
       </main>
-      <footer className="px-6 pb-6 text-center text-xs text-muted-foreground">
-        © {new Date().getFullYear()} {APP_NAME} · 让表达自然发生
+      <footer className="mx-auto flex max-w-[1440px] items-center justify-center px-5 pb-6 text-[11px] tracking-wide text-muted-foreground sm:justify-between sm:px-10 lg:px-16">
+        <span>
+          © {new Date().getFullYear()} {APP_NAME}
+        </span>
+        <span className="hidden sm:block" lang="en">
+          A little practice. A little braver.
+        </span>
       </footer>
     </div>
   )

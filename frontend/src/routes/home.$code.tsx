@@ -10,6 +10,7 @@ import {
   Volume2,
 } from "lucide-react"
 import { useEffect, useState } from "react"
+import { toast } from "sonner"
 import { ClassesService } from "@/client"
 import HeroArt from "@/components/Practice/HeroArt"
 import StudentShell from "@/components/Practice/StudentShell"
@@ -22,6 +23,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
 import {
   clearStudent,
@@ -109,13 +119,52 @@ function HomePage() {
 
   if (student === null) return null
 
+  if (todayQuery.isPending) {
+    return (
+      <StudentShell active="home" wide>
+        <div role="status" className="space-y-6">
+          <span className="sr-only">正在加载今日学习计划…</span>
+          <Skeleton className="h-72 rounded-3xl" />
+          <Skeleton className="h-64 rounded-3xl" />
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[1, 2, 3].map((item) => (
+              <Skeleton key={item} className="h-40 rounded-2xl" />
+            ))}
+          </div>
+        </div>
+      </StudentShell>
+    )
+  }
+
+  if (todayQuery.isError) {
+    return (
+      <StudentShell active="home" wide>
+        <Card className="items-center px-6 py-12 text-center">
+          <Headphones className="size-10 text-primary" />
+          <div role="alert" className="space-y-2">
+            <h1 className="text-xl font-semibold">学习计划暂时没有加载成功</h1>
+            <p className="text-sm text-muted-foreground">
+              请检查网络连接，再试一次。你的练习记录不会丢失。
+            </p>
+          </div>
+          <Button
+            onClick={() => void todayQuery.refetch()}
+            disabled={todayQuery.isFetching}
+          >
+            重新加载
+          </Button>
+        </Card>
+      </StudentShell>
+    )
+  }
+
   const plan = todayQuery.data
   const g = plan?.gamification
   const done = plan
     ? plan.attempts.filter((a) => a.status === "done" || a.status === "failed")
         .length
     : 0
-  const totalItems = plan?.items.length ?? 5
+  const totalItems = plan?.items.length ?? 0
   // 题量按本轮实际指派计算：老师勾选的题型不同，结构就不同
   const countType = (type: string) =>
     plan?.items.filter((item) => item.type === type).length ?? 0
@@ -148,53 +197,51 @@ function HomePage() {
 
   return (
     <StudentShell active="home" wide>
-      <div className="flex flex-col gap-5">
-        {/* Hero */}
-        <section className="relative overflow-hidden rounded-3xl bg-secondary p-7">
+      <div className="flex flex-col gap-7">
+        <section className="learning-hero relative isolate overflow-hidden rounded-3xl p-6 sm:p-9 lg:p-10">
           <div
-            className="absolute -top-28 -right-20 size-60 rounded-full border"
-            aria-hidden
+            className="pointer-events-none absolute -right-20 -top-28 size-96 rounded-full border border-white/10"
+            aria-hidden="true"
           />
-          <div className="absolute right-0 bottom-0 hidden h-[92%] w-[46%] md:block">
+          <div
+            className="pointer-events-none absolute -bottom-5 right-0 hidden h-[95%] w-[42%] lg:block"
+            aria-hidden="true"
+          >
             <HeroArt />
           </div>
-          <span
-            className="absolute right-6 bottom-5 hidden -rotate-6 text-[9px] font-semibold tracking-[0.2em] text-primary md:block"
-            aria-hidden
-          >
-            SAY IT YOUR WAY.
-          </span>
-          <div className="relative z-10 md:max-w-[65%]">
-            <p className="text-[10px] font-bold tracking-[0.2em] text-primary">
-              A LITTLE PRACTICE. A BIG DIFFERENCE.
+          <div className="relative z-10 lg:max-w-[65%]">
+            <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.2em] text-[#d1dfd4]">
+              <span className="h-px w-6 bg-[#edc393]" /> YOUR VOICE MATTERS
             </p>
-            <h1 className="mt-3 text-2xl leading-snug font-bold tracking-tight md:text-3xl">
-              Hi，{displayName(student)}
-              <span className="text-primary">。</span>
+            <h1 className="mt-5 break-words text-2xl font-semibold leading-snug tracking-tight sm:text-3xl lg:text-4xl">
+              Hi，{displayName(student)}。
               <br />
-              准备好今天的表达了吗？
+              <span className="text-[#edc393]">今天，也勇敢开口。</span>
             </h1>
-            {plan?.assigned_unit_title && (
-              <p className="mt-2 text-xs font-medium text-primary">
-                📌 今日练习：{plan.assigned_unit_title}（老师指派）
-              </p>
-            )}
-            <div className="mt-5 flex items-center gap-3">
+            <p className="mt-4 text-sm leading-6 text-[#d1dfd4]">
+              {plan?.assigned_unit_title
+                ? `今日练习 · ${plan.assigned_unit_title}`
+                : "从一次小小的练习，开始你的表达。"}
+            </p>
+            <div className="mt-7 flex flex-wrap items-center gap-4">
               <Button
+                size="lg"
+                className="group bg-[#f2d1a8] text-[#204f40] shadow-none hover:bg-[#ffe2be]"
+                disabled={totalItems === 0}
                 onClick={() =>
                   void navigate({ to: "/p/$code", params: { code } })
                 }
               >
-                {done >= totalItems
-                  ? "查看今日成果"
-                  : done > 0
-                    ? "继续今日练习"
-                    : "开始今日练习"}
-                <ArrowRight />
+                {totalItems === 0
+                  ? "等待课堂安排"
+                  : done >= totalItems
+                    ? "查看今日成果"
+                    : done > 0
+                      ? "继续今日练习"
+                      : "开始今日练习"}
+                <ArrowRight className="transition-transform group-hover:translate-x-1" />
               </Button>
-              <span className="hidden text-[11px] text-muted-foreground md:inline">
-                轻松开口，不怕说错
-              </span>
+              <span className="text-xs text-[#d1dfd4]">轻松开口，不怕说错</span>
             </div>
           </div>
         </section>
@@ -213,17 +260,32 @@ function HomePage() {
                 </CardDescription>
               </div>
             </div>
-            <span className="rounded-md bg-background px-2 py-1 text-[11px] text-muted-foreground">
-              约 10 分钟
+            <span className="rounded-full border bg-background px-3 py-1.5 text-xs text-muted-foreground">
+              {totalItems > 0 ? "按自己的节奏完成" : "内容待安排"}
             </span>
           </CardHeader>
           <CardContent className="space-y-4">
+            {totalItems === 0 && (
+              <p
+                role="status"
+                className="rounded-xl bg-secondary/50 p-4 text-sm leading-6 text-muted-foreground"
+              >
+                老师还没有安排练习内容。你可以先检查麦克风，或到主题探索中自主练习。
+              </p>
+            )}
             <div className="flex items-center gap-3">
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-background">
+              <div
+                role="progressbar"
+                aria-label="今日练习完成进度"
+                aria-valuemin={0}
+                aria-valuemax={totalItems || 1}
+                aria-valuenow={Math.min(done, totalItems)}
+                className="h-2 flex-1 overflow-hidden rounded-full bg-secondary"
+              >
                 <div
                   className="h-full rounded-full bg-primary transition-all"
                   style={{
-                    width: `${((done / (totalItems || 1)) * 100).toFixed(0)}%`,
+                    width: `${Math.min((done / (totalItems || 1)) * 100, 100).toFixed(0)}%`,
                   }}
                 />
               </div>
@@ -305,7 +367,7 @@ function HomePage() {
                   onClick={() =>
                     void navigate({ to: "/explore/$code", params: { code } })
                   }
-                  className="overflow-hidden rounded-2xl border border-border bg-card text-left transition hover:-translate-y-1 hover:shadow-lg"
+                  className="group overflow-hidden rounded-[1.375rem] border border-border/80 bg-card text-left transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-1 hover:border-primary/30 hover:shadow-lg"
                 >
                   <div className="relative h-24">
                     <TopicArt topic={unit.topic} />
@@ -336,41 +398,49 @@ function HomePage() {
           <Card>
             <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
               <CardTitle className="text-sm">这周，稳稳前进</CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => setGoalPicker(!goalPicker)}
-              >
-                调整目标
-              </Button>
+              <Dialog open={goalPicker} onOpenChange={setGoalPicker}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-primary"
+                  >
+                    调整目标
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>找到适合自己的练习节奏</DialogTitle>
+                    <DialogDescription>
+                      选择每周想练习的天数，随时可以调整。不用和别人比。
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[3, 5, 7].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        aria-pressed={weekGoal === n}
+                        onClick={() => {
+                          writeWeekGoal(n)
+                          setGoalPicker(false)
+                          toast.success(`每周目标已调整为 ${n} 天`)
+                        }}
+                        className={`rounded-2xl border px-2 py-5 text-center transition-colors ${weekGoal === n ? "border-primary bg-secondary text-primary" : "border-border hover:border-primary/50 hover:bg-secondary/40"}`}
+                      >
+                        <strong className="block text-3xl tabular-nums">
+                          {n}
+                          <span className="ml-1 text-xs font-normal">天</span>
+                        </strong>
+                        <span className="mt-2 block text-xs text-muted-foreground">
+                          {{ 3: "慢慢来", 5: "稳稳进步", 7: "每天一点" }[n]}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </DialogContent>
+              </Dialog>
             </CardHeader>
-            {goalPicker && (
-              <CardContent className="pb-0">
-                <div className="grid grid-cols-3 gap-2">
-                  {[3, 5, 7].map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => {
-                        writeWeekGoal(n)
-                        setGoalPicker(false)
-                      }}
-                      className={
-                        weekGoal === n
-                          ? "rounded-xl border border-primary bg-secondary py-3 text-center"
-                          : "rounded-xl border border-border py-3 text-center hover:bg-background"
-                      }
-                    >
-                      <strong className="block text-xl">{n}</strong>
-                      <small className="text-[10px] text-muted-foreground">
-                        {{ 3: "慢慢来", 5: "稳稳进步", 7: "每天一点" }[n]}
-                      </small>
-                    </button>
-                  ))}
-                </div>
-              </CardContent>
-            )}
             <CardContent className="flex flex-col items-center">
               <div className="relative grid size-32 place-items-center">
                 <svg

@@ -9,6 +9,7 @@ import {
   Loader2,
   MessageCircle,
   RefreshCw,
+  Search,
   Sparkles,
 } from "lucide-react"
 import { useState } from "react"
@@ -26,6 +27,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -73,8 +76,11 @@ function TeacherBoardPage() {
 
   if (boardQuery.isPending) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        正在加载课堂面板…
+      <div role="status" className="space-y-6">
+        <span className="sr-only">正在加载课堂面板…</span>
+        <Skeleton className="h-40 rounded-2xl" />
+        <Skeleton className="h-11 w-64 rounded-xl" />
+        <Skeleton className="h-80 rounded-2xl" />
       </div>
     )
   }
@@ -234,9 +240,12 @@ function TeacherBoardPage() {
         <Link to="/classrooms" className="text-sm font-medium text-primary">
           ← 我的课堂
         </Link>
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">
+        <div className="flex items-start justify-between gap-4 rounded-2xl border border-primary/10 bg-secondary/40 p-5 sm:p-7">
+          <div className="min-w-0">
+            <p className="mb-2 text-[10px] font-semibold tracking-[0.18em] text-primary">
+              CLASSROOM STUDIO
+            </p>
+            <h1 className="break-words text-2xl font-semibold tracking-tight sm:text-3xl">
               {board.classroom_name}
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -371,6 +380,9 @@ function TeacherBoardPage() {
                 <CardTitle className="text-base">今日名单</CardTitle>
                 <CardDescription>
                   点击一行展开每题分数和音频。分数是参考反馈，不是考试成绩。
+                  <span className="mt-1 block sm:hidden">
+                    横向滑动表格，可以查看完整成绩与状态。
+                  </span>
                 </CardDescription>
               </CardHeader>
               <CardContent className="pb-0">
@@ -379,7 +391,7 @@ function TeacherBoardPage() {
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
                     aria-label="练习状态筛选"
-                    className="h-9 rounded-lg border border-border bg-card px-2 text-xs text-muted-foreground"
+                    className="h-11 rounded-xl border border-input bg-card px-3 text-sm text-foreground transition-colors hover:border-primary/35"
                   >
                     {Object.entries(STATUS_LABELS).map(([v, label]) => (
                       <option key={v} value={v}>
@@ -387,16 +399,35 @@ function TeacherBoardPage() {
                       </option>
                     ))}
                   </select>
-                  <input
-                    value={nameQuery}
-                    onChange={(e) => setNameQuery(e.target.value)}
-                    placeholder="搜索学生姓名"
-                    aria-label="搜索学生姓名"
-                    className="h-9 rounded-lg border border-border bg-card px-3 text-xs"
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {filteredStudents.length} 人
+                  <div className="relative min-w-40 flex-1 sm:max-w-64">
+                    <Search
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-3.5 size-4 text-muted-foreground"
+                    />
+                    <Input
+                      type="search"
+                      value={nameQuery}
+                      onChange={(e) => setNameQuery(e.target.value)}
+                      placeholder="搜索学生姓名"
+                      aria-label="搜索学生姓名"
+                      className="pl-9"
+                    />
+                  </div>
+                  <span role="status" className="text-xs text-muted-foreground">
+                    {filteredStudents.length} / {board.students.length} 人
                   </span>
+                  {(nameQuery || statusFilter !== "all") && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setNameQuery("")
+                        setStatusFilter("all")
+                      }}
+                    >
+                      清除筛选
+                    </Button>
+                  )}
                   <div className="ml-auto flex gap-2">
                     <Button
                       variant="outline"
@@ -419,9 +450,28 @@ function TeacherBoardPage() {
                     还没有学生进入这个课堂。
                   </p>
                 ) : filteredStudents.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-muted-foreground">
-                    没有符合筛选条件的学生。
-                  </p>
+                  <div className="flex flex-col items-center gap-3 rounded-2xl bg-background px-4 py-10 text-center">
+                    <Search
+                      className="size-7 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <p className="text-sm font-semibold">
+                      没有找到符合条件的学生
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      试试其他姓名，或清除筛选查看全部学生。
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setNameQuery("")
+                        setStatusFilter("all")
+                      }}
+                    >
+                      查看全部学生
+                    </Button>
+                  </div>
                 ) : (
                   <Table>
                     <TableHeader>
@@ -505,7 +555,7 @@ function StudentRow({
               e.stopPropagation()
               onToggle()
             }}
-            className="rounded-sm p-0.5 text-muted-foreground transition hover:text-foreground"
+            className="grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
           >
             {expanded ? (
               <ChevronDown className="size-4" />
