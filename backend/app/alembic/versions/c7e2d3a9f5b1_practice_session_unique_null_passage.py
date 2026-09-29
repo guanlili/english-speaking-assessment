@@ -18,6 +18,20 @@ depends_on = None
 
 
 def upgrade():
+    # 先清理竞态期间已产生的重复 NULL-passage 会话（同学生同日同模式保留最新一条）。
+    # 被删的是 bug 期脏会话；其上若有作答随外键级联删除（生产当前为测试数据）。
+    op.execute(
+        """
+        DELETE FROM practice_session ps
+        USING practice_session keep
+        WHERE ps.passage_id IS NULL
+          AND keep.passage_id IS NULL
+          AND ps.student_id = keep.student_id
+          AND ps.session_date = keep.session_date
+          AND ps.mode = keep.mode
+          AND (ps.created_at, ps.id) < (keep.created_at, keep.id)
+        """
+    )
     op.create_index(
         "ix_practice_session_unique_null_passage",
         "practice_session",
