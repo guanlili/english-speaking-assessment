@@ -21,7 +21,6 @@ import {
 } from "@/client"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -30,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import {
   Select,
@@ -571,7 +571,8 @@ function ComposerForm({
                 className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0"
               >
                 <span>
-                  v{exercise.version_no} · {exercise.title} · {exercise.item_count} 道题
+                  v{exercise.version_no} · {exercise.title} ·{" "}
+                  {exercise.item_count} 道题
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {exercise.status === "published" ? "当前发布" : "已归档"}

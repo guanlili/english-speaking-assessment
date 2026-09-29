@@ -630,10 +630,10 @@ def read_today_plan(
                     if item.get("audio_url") is not None
                     else None
                 ),
-                suggested_seconds=int(item.get("suggested_seconds") or 20),
+                suggested_seconds=int(item.get("suggested_seconds") or 20),  # ty: ignore[invalid-argument-type]
                 band=(str(item["band"]) if item.get("band") is not None else None),
                 replay_limit=(
-                    int(item["replay_limit"])
+                    int(item["replay_limit"])  # ty: ignore[invalid-argument-type]
                     if item.get("replay_limit") is not None
                     else None
                 ),
@@ -738,7 +738,10 @@ def read_today_plan(
         else assigned_unit.title
         if assigned_unit
         else "老师指派"
-        if item_objects is not None and session_id is None
+        if (
+            practice_session.assignment_id is not None
+            or (item_objects is not None and session_id is None)
+        )
         else None
     )
     return TodayPlan(
@@ -833,7 +836,7 @@ def read_next_question(
                         if candidate.get("audio_url") is not None
                         else None
                     ),
-                    suggested_seconds=int(candidate.get("suggested_seconds") or 20),
+                    suggested_seconds=int(candidate.get("suggested_seconds") or 20),  # ty: ignore[invalid-argument-type]
                 ),
                 exhausted=False,
             )
@@ -1595,7 +1598,9 @@ def record_listen(
     if practice_session is None or practice_session.student_id != student.id:
         raise HTTPException(status_code=404, detail="Session not found")
     sentence = session.get(RepeatSentence, body.item_id)
-    replay_limit: int | None = sentence.replay_limit if sentence is not None else None
+    if sentence is None:
+        raise HTTPException(status_code=404, detail="Sentence not found")
+    replay_limit: int | None = sentence.replay_limit
     if practice_session.assignment_id is not None:
         exercise = session.get(ClassroomExercise, practice_session.assignment_id)
         snapshot = next(
@@ -1610,9 +1615,7 @@ def record_listen(
         if snapshot is None:
             raise HTTPException(status_code=422, detail="该句不在本轮练习内")
         if isinstance(snapshot.get("replay_limit"), (int, float)):
-            replay_limit = int(snapshot["replay_limit"])
-    elif sentence is None:
-        raise HTTPException(status_code=404, detail="Sentence not found")
+            replay_limit = int(snapshot["replay_limit"])  # ty: ignore[invalid-argument-type]
     elif (
         practice_session.passage_id is None
         or sentence.passage_id != practice_session.passage_id
@@ -1764,6 +1767,8 @@ def set_assignment(
                 title=body.title,
             )
             classroom.current_unit_id = None  # 按题模式取代单元指派
+            # assigned_items 保留（_publish_exercise 已写入）：读取优先快照，
+            # 换题用它排除已指派题目、从情景题库取未做过的新题
             session.commit()
             return None
         _archive_current_exercise(session, classroom)
@@ -2000,6 +2005,24 @@ def _archive_current_exercise(session: Any, classroom: Classroom) -> None:
         previous.archived_at = get_datetime_utc()
         session.add(previous)
     classroom.current_exercise_id = None
+    # 恢复自主练习时解绑当日已开始的会话：否则学生会一直读到旧快照，
+    # "恢复自主"对当天开练的学生不生效。
+    from sqlalchemy import update
+
+    from sqlalchemy import and_, update
+
+    session.execute(
+        update(PracticeSession)
+        .where(
+            and_(
+                PracticeSession.classroom_id == classroom.id,  # ty: ignore[invalid-argument-type]
+                PracticeSession.session_date == _today_in_practice_tz(),  # ty: ignore[invalid-argument-type]
+                PracticeSession.mode == "daily",  # ty: ignore[invalid-argument-type]
+                PracticeSession.assignment_id == previous_id,  # ty: ignore[invalid-argument-type]
+            )
+        )
+        .values(assignment_id=None)
+    )
 
 
 class ExploreRequest(SQLModel):

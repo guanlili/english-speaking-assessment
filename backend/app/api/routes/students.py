@@ -113,7 +113,7 @@ def import_students(
             full_name=full_name or None,
             role="student",
             username=username,
-            must_change_password=True,
+            must_change_password=False,
             hashed_password=get_password_hash(DEFAULT_STUDENT_PASSWORD),
         )
         session.add(user)
@@ -208,7 +208,7 @@ def reset_student_password(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     user.hashed_password = get_password_hash(DEFAULT_STUDENT_PASSWORD)
-    user.must_change_password = True
+    user.must_change_password = False
     session.add(user)
     session.commit()
     return {"new_password": DEFAULT_STUDENT_PASSWORD}
@@ -272,7 +272,7 @@ def bulk_reset_passwords(
         if user is None:
             continue
         user.hashed_password = get_password_hash(DEFAULT_STUDENT_PASSWORD)
-        user.must_change_password = True
+        user.must_change_password = False
         session.add(user)
         result.rows.append(
             StudentResetRow(

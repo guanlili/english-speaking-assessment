@@ -633,6 +633,6 @@ def test_bulk_reset_passwords(
         "/api/v1/users/me",
         headers={"Authorization": f"Bearer {login.json()['access_token']}"},
     ).json()
-    assert me["must_change_password"] is True
+    assert me["must_change_password"] is False
 
     client.delete("/api/v1/classes", headers=superuser_token_headers) if False else None
