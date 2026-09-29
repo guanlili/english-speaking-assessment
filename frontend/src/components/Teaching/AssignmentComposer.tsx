@@ -8,7 +8,7 @@ import {
   MessagesSquare,
   Send,
 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
   AdminService,
@@ -186,15 +186,25 @@ function ComposerForm({
   const [selection, setSelection] = useState<LessonSelection>(initialSelection)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
+  const prevServerTypesRef = useRef(initialTypes)
+  const prevServerSelectionRef = useRef(initialSelection)
   const queryClient = useQueryClient()
 
   // 服务端指派变更时同步本地表单（如老师在另一设备改了指派）
+  // 用深比较判断是否真的变了，避免父组件重渲染导致的引用变化覆盖本地状态
   useEffect(() => {
+    const typesSame =
+      JSON.stringify(initialTypes) ===
+      JSON.stringify(prevServerTypesRef.current)
+    const selectionSame =
+      JSON.stringify(initialSelection) ===
+      JSON.stringify(prevServerSelectionRef.current)
+    if (typesSame && selectionSame) return
+    prevServerTypesRef.current = initialTypes
+    prevServerSelectionRef.current = initialSelection
     setTypes(initialTypes)
-  }, [initialTypes])
-  useEffect(() => {
     setSelection(initialSelection)
-  }, [initialSelection])
+  }, [initialTypes, initialSelection])
 
   const { scenario, problems } = inspectSelection(types, selection, {
     sentences,

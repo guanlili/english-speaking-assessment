@@ -71,12 +71,42 @@ def _reject_delete_with_queued_attempts(
             .where(
                 Attempt.item_id == item_id,
                 Attempt.item_type == item_type,
-                Attempt.status.in_([AttemptStatus.QUEUED, AttemptStatus.SCORING]),
+                col(Attempt.status).in_([AttemptStatus.QUEUED, AttemptStatus.SCORING]),
             )
             .limit(1)
         ).first()
         is not None
     )
+    if has_queued:
+        raise HTTPException(
+            status_code=409,
+            detail="有正在评分中的作答，请稍后再删除",
+        )
+
+
+def _reject_delete_items_queued(
+    session: Session, items: list[tuple[uuid.UUID, str]]
+) -> None:
+    """批量检查多个 item 是否有待评作答，任一有则拒绝删除。"""
+    if not items:
+        return
+    item_ids_by_type: dict[str, list[uuid.UUID]] = {}
+    for item_id, item_type in items:
+        item_ids_by_type.setdefault(item_type, []).append(item_id)
+    has_queued = False
+    for item_type, ids in item_ids_by_type.items():
+        found = session.exec(
+            select(Attempt.id)
+            .where(
+                col(Attempt.item_id).in_(ids),
+                Attempt.item_type == item_type,
+                col(Attempt.status).in_([AttemptStatus.QUEUED, AttemptStatus.SCORING]),
+            )
+            .limit(1)
+        ).first()
+        if found is not None:
+            has_queued = True
+            break
     if has_queued:
         raise HTTPException(
             status_code=409,
@@ -96,7 +126,8 @@ def list_passages(session: SessionDep, _admin: TeacherUserDep) -> Any:
             .order_by(col(RepeatSentence.order_index))
         ).all()
         for s in all_sentences:
-            sentences_by_passage.setdefault(s.passage_id, []).append(s)
+            if s.passage_id is not None:
+                sentences_by_passage.setdefault(s.passage_id, []).append(s)
     result = []
     for passage in passages:
         item = PassageWithSentences.model_validate(passage)
@@ -145,7 +176,14 @@ def delete_passage(
     passage = session.get(Passage, passage_id)
     if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
-    _reject_delete_with_queued_attempts(session, passage_id, AttemptItemType.PASSAGE)
+    sentence_ids = session.exec(
+        select(RepeatSentence.id).where(RepeatSentence.passage_id == passage_id)
+    ).all()
+    _reject_delete_items_queued(
+        session,
+        [(passage_id, AttemptItemType.PASSAGE)]
+        + [(sid, AttemptItemType.REPEAT) for sid in sentence_ids],
+    )
     session.delete(passage)  # 复述句/作答按外键级联
     session.commit()
     return {"message": "deleted"}
@@ -242,6 +280,7 @@ def delete_sentence(
     sentence = session.get(RepeatSentence, sentence_id)
     if sentence is None:
         raise HTTPException(status_code=404, detail="Sentence not found")
+    _reject_delete_with_queued_attempts(session, sentence_id, AttemptItemType.REPEAT)
     session.delete(sentence)
     session.commit()
     return {"message": "deleted"}
@@ -308,6 +347,13 @@ def delete_scenario(
     scenario = session.get(Scenario, scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
+    question_ids = session.exec(
+        select(ScenarioQuestion.id).where(ScenarioQuestion.scenario_id == scenario_id)
+    ).all()
+    _reject_delete_items_queued(
+        session,
+        [(qid, AttemptItemType.QUESTION) for qid in question_ids],
+    )
     session.delete(scenario)
     session.commit()
     return {"message": "deleted"}

@@ -819,34 +819,39 @@ function LimitedListenButton({
   const [used, setUsed] = useState(initialUsed)
   const [rate, setRate] = useState("1")
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const countingRef = useRef(false)
   const unlimited = replayLimit === 0
   const remaining = unlimited ? Infinity : Math.max(0, replayLimit - used)
   const exhausted = !unlimited && remaining <= 0
 
   const play = async () => {
-    if (exhausted || !sessionId) return
-    // 先到服务端计数再播：422 = 次数真用完；其他错误（网络等）不锁死按钮
-    const counted = await recordListenCount()
-    if (!counted) return
-    if (audioUrl) {
-      if (audioRef.current) {
-        audioRef.current.playbackRate = Number(rate)
-        void audioRef.current.play()
+    if (exhausted || !sessionId || countingRef.current) return
+    countingRef.current = true
+    try {
+      const counted = await recordListenCount()
+      if (!counted) return
+      if (audioUrl) {
+        if (audioRef.current) {
+          audioRef.current.playbackRate = Number(rate)
+          void audioRef.current.play()
+        }
+        return
       }
-      return
+      // TTS 兜底：浏览器合成没有服务端文件，仍走计数
+      const synth = window.speechSynthesis
+      if (!synth) return
+      synth.cancel()
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.lang = "en-US"
+      utterance.rate = Number(rate)
+      const voice = synth.getVoices().find((v) => v.lang.startsWith("en"))
+      if (voice) {
+        utterance.voice = voice
+      }
+      synth.speak(utterance)
+    } finally {
+      countingRef.current = false
     }
-    // TTS 兜底：浏览器合成没有服务端文件，仍走计数
-    const synth = window.speechSynthesis
-    if (!synth) return
-    synth.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = "en-US"
-    utterance.rate = Number(rate)
-    const voice = synth.getVoices().find((v) => v.lang.startsWith("en"))
-    if (voice) {
-      utterance.voice = voice
-    }
-    synth.speak(utterance)
   }
 
   const recordListenCount = async (): Promise<boolean> => {
@@ -856,12 +861,12 @@ function LimitedListenButton({
         code,
         requestBody: { session_id: sessionId, item_id: itemId },
       })
-      setUsed(result.listen_used)
+      setUsed((prev) => Math.max(prev, result.listen_used))
       return true
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
         toast.error("可重听次数已用完")
-        setUsed(replayLimit)
+        setUsed((prev) => Math.max(prev, replayLimit))
       } else {
         toast.error("听音失败，请检查网络后重试")
       }
