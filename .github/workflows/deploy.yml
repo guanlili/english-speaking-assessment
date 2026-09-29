@@ -246,6 +246,13 @@ jobs:
               echo "未配置 DNSPod 密钥/域名，保持纯 HTTP（本地与首启兼容）"
             fi
 
+            echo "=== 4.5/6 每日数据库备份（幂等注册，保留 14 天） ==="
+            mkdir -p backups
+            backup_cmd="cd '$PWD' && docker compose -f compose.yml exec -T db sh -c 'pg_dump -U $${POSTGRES_USER} $${POSTGRES_DB}' | gzip > backups/app-$(date +\%Y\%m\%d-\%H\%M).sql.gz && find backups -name 'app-*.sql.gz' -mtime +14 -delete"
+            (crontab -l 2>/dev/null | grep -v 'app-.*sql.gz'; echo "30 3 * * * $backup_cmd") | crontab -
+            # 部署时顺手做一次当次备份，保证改库前总有快照
+            docker compose -f compose.yml exec -T db sh -c 'pg_dump -U $${POSTGRES_USER} $${POSTGRES_DB}' | gzip > "backups/app-$(date +%Y%m%d-%H%M)-predeploy.sql.gz"
+
             echo "=== 5/6 构建并重启容器 ==="
             docker compose -f compose.yml up -d --build --remove-orphans || {
               echo "--- prestart logs ---"
