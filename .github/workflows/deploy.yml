@@ -124,18 +124,22 @@ jobs:
       - name: 准备环境变量（local 环境，演示登录可用）
         run: cp .env.example .env
       - name: 启动完整栈（db + backend + prestart + frontend）
-        run: docker compose up -d --build
+        # -f 跳过本地开发的 compose.override.yml（5173 映射），用生产端口形态
+        run: docker compose -f compose.yml up -d --build
       - name: 等待就绪（prestart 迁移 + backend 健康检查，首次较慢）
         run: |
+          port=$(grep -E '^APP_PORT=' .env | cut -d= -f2 | tr -d '"')
+          port=${port:-80}
+          echo "frontend 端口: $port"
           for i in $(seq 1 150); do
-            if curl -fsS http://localhost:80/api/v1/utils/ready-check/ > /dev/null 2>&1; then
+            if curl -fsS "http://localhost:$port/api/v1/utils/ready-check/" > /dev/null 2>&1; then
               echo "ready"; exit 0
             fi
             sleep 2
           done
           echo "❌ 栈未就绪，容器状态："
-          docker compose ps
-          docker compose logs backend --tail 30
+          docker compose -f compose.yml ps
+          docker compose -f compose.yml logs backend --tail 30
           exit 1
       - uses: actions/setup-node@v6
         with:
@@ -147,7 +151,9 @@ jobs:
         run: npm ci && npx playwright install --with-deps chromium
       - name: 运行 E2E
         working-directory: frontend
-        run: npx playwright test
+        run: |
+          port=$(grep -E '^APP_PORT=' ../.env | cut -d= -f2 | tr -d '"')
+          E2E_BASE_URL="http://localhost:${port:-80}" npx playwright test
       - name: 上传失败现场
         if: failure()
         uses: actions/upload-artifact@v4
