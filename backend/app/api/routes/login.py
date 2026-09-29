@@ -165,16 +165,13 @@ def reset_password(session: SessionDep, body: NewPassword) -> Message:
     if not email:
         raise HTTPException(status_code=400, detail="Invalid token")
     user = crud.get_user_by_email(session=session, email=email)
-    if not user:
-        # Don't reveal that the user doesn't exist - use same error as invalid token
+    if not user or not user.is_active:
+        # 不暴露账号是否存在；用同一错误避免信息泄露
         raise HTTPException(status_code=400, detail="Invalid token")
-    elif not user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    # 二次校验 token 中的密码哈希前缀，确保 token 在改密后自动失效（防复用）
-    email_recheck = verify_password_reset_token(
+    # token 中密码哈希前缀与当前不一致 → token 已被用过后改密了，拒绝复用
+    if not verify_password_reset_token(
         token=body.token, password_hash=user.hashed_password
-    )
-    if not email_recheck:
+    ):
         raise HTTPException(status_code=400, detail="Invalid token")
     user_in_update = UserUpdate(password=body.new_password)
     crud.update_user(

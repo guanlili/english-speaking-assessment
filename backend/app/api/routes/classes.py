@@ -142,17 +142,7 @@ def _active_passage(session: Any, student: Student | None = None) -> Passage:
                     status_code=404,
                     detail=f"指派的单元「{assigned.title}」还没有篇目，请联系老师",
                 )
-    if not units:
-        passage = session.exec(
-            select(Passage)
-            .where(Passage.is_active)
-            .order_by(col(Passage.created_at))
-            .limit(1)
-        ).first()
-        if passage is None:
-            raise HTTPException(status_code=404, detail="No active passage")
-        return passage
-    if student is None:
+    if not units or student is None:
         passage = session.exec(
             select(Passage)
             .where(Passage.is_active)
@@ -1407,20 +1397,27 @@ def record_listen(
     ):
         raise HTTPException(status_code=422, detail="该句不在本轮篇目内")
 
-    if sentence.replay_limit > 0:
-        row = session.exec(
-            select(ItemListen).where(
-                ItemListen.student_id == student.id,  # type: ignore[arg-type]
-                ItemListen.session_id == practice_session.id,  # type: ignore[arg-type]
-                ItemListen.item_id == sentence.id,  # type: ignore[arg-type]
+    if sentence.replay_limit == 0:
+        # 不限次：直接原子自增
+        stmt = (
+            pg_insert(ItemListen)
+            .values(
+                student_id=student.id,
+                session_id=practice_session.id,
+                item_id=sentence.id,
+                count=1,
             )
-        ).first()
-        if row is not None and row.count >= sentence.replay_limit:
-            raise HTTPException(
-                status_code=422,
-                detail=f"可重听次数已用完（{sentence.replay_limit} 次）",
+            .on_conflict_do_update(
+                index_elements=["student_id", "session_id", "item_id"],
+                set_=dict(count=ItemListen.count + 1),
             )
+            .returning(ItemListen.count)
+        )
+        used = session.execute(stmt).scalar_one()
+        session.commit()
+        return ListenResult(listen_used=used, replay_limit=0)
 
+    # 有限次：原子自增 + WHERE 上限保护，超限时不更新，需判断是否真的成功
     stmt = (
         pg_insert(ItemListen)
         .values(
@@ -1432,19 +1429,21 @@ def record_listen(
         .on_conflict_do_update(
             index_elements=["student_id", "session_id", "item_id"],
             set_=dict(count=ItemListen.count + 1),
+            where=(ItemListen.count < sentence.replay_limit),
         )
         .returning(ItemListen.count)
     )
-    used = session.execute(stmt).scalar_one()
-    session.commit()
-
-    if sentence.replay_limit > 0 and used > sentence.replay_limit:
+    result = session.execute(stmt).scalar_one_or_none()
+    if result is None:
+        # INSERT 走了 ON CONFLICT 但 WHERE 不满足 → 已到上限；或 INSERT 本身因其它原因未返回
+        # 回滚未完成的计数操作
         session.rollback()
         raise HTTPException(
             status_code=422,
             detail=f"可重听次数已用完（{sentence.replay_limit} 次）",
         )
-
+    used = result
+    session.commit()
     return ListenResult(listen_used=used, replay_limit=sentence.replay_limit)
 
 

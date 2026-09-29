@@ -9,22 +9,34 @@ const TEACHER_ALLOWED = [
 ]
 
 let cachedUser: UserPublic | null = null
+let cachedTokenFingerprint = ""
 let cachedAt = 0
 const CACHE_TTL = 5 * 60 * 1000
 
-async function readUserMeCached(): Promise<UserPublic> {
+function tokenFingerprint(token: string): string {
+  return token.slice(-16)
+}
+
+async function readUserMeCached(token: string): Promise<UserPublic> {
   const now = Date.now()
-  if (cachedUser && now - cachedAt < CACHE_TTL) {
+  const fp = tokenFingerprint(token)
+  if (
+    cachedUser &&
+    cachedTokenFingerprint === fp &&
+    now - cachedAt < CACHE_TTL
+  ) {
     return cachedUser
   }
   const user = await UsersService.readUserMe()
   cachedUser = user
+  cachedTokenFingerprint = fp
   cachedAt = now
   return user
 }
 
 export function invalidateAdminUserCache() {
   cachedUser = null
+  cachedTokenFingerprint = ""
   cachedAt = 0
 }
 
@@ -40,7 +52,7 @@ export const Route = createFileRoute("/_layout/admin")({
       throw redirect({ to: "/login" })
     }
     try {
-      const user = await readUserMeCached()
+      const user = await readUserMeCached(token)
       if (!user.is_superuser) {
         const allowed =
           user.role === "teacher" &&
