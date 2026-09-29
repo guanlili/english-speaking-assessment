@@ -1,12 +1,13 @@
 """三种题型体系测试：可重听次数、播放计数防刷、题型指派组卷、内容接口教师化。"""
 
+import uuid
 from typing import Any
 
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, col
 
 from app import crud
-from app.models import User, UserCreate
+from app.models import ScenarioQuestion, User, UserCreate
 from tests.utils.audio import wav_upload
 from tests.utils.credential import make_student
 from tests.utils.utils import random_email, random_lower_string
@@ -507,3 +508,64 @@ def test_delete_classroom_guards(
     refused = client.delete(f"/api/v1/classes/{code2}", headers=superuser_token_headers)
     assert refused.status_code == 409
     assert "作答" in refused.json()["detail"]
+
+
+def test_question_order_index_monotonic_after_delete(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """删除中间题后新增：order_index 取现存最大 +1，不再撞号。"""
+    scenario = client.post(
+        "/api/v1/admin/scenarios",
+        json={"topic": "OrderTest"},
+        headers=superuser_token_headers,
+    )
+    assert scenario.status_code == 200, scenario.text
+    scenario_id = scenario.json()["id"]
+
+    created = []
+    for i in range(2):
+        resp = client.post(
+            f"/api/v1/admin/scenarios/{scenario_id}/questions",
+            json={
+                "scenario_id": scenario_id,
+                "text": f"question {i}",
+                "suggested_seconds": 20,
+            },
+            headers=superuser_token_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        created.append(resp.json())
+    # 此时 order_index 为 1、2（服务端从 max+1 起算）
+
+    # 删掉最大那道，再建一道：老逻辑（数组长度）会得到重复的 2
+    client.delete(
+        f"/api/v1/admin/questions/{created[1]['id']}",
+        headers=superuser_token_headers,
+    )
+    client.post(
+        f"/api/v1/admin/scenarios/{scenario_id}/questions",
+        json={
+            "scenario_id": scenario_id,
+            "text": "question after delete",
+            "suggested_seconds": 20,
+        },
+        headers=superuser_token_headers,
+    )
+    # 直查库：新题 order_index = 现存最大 +1，不与剩余题撞号
+    from sqlmodel import select as sql_select
+
+    rows = db.exec(
+        sql_select(ScenarioQuestion)
+        .where(ScenarioQuestion.scenario_id == uuid.UUID(scenario_id))
+        .order_by(col(ScenarioQuestion.order_index))
+    ).all()
+    orders = [q.order_index for q in rows]
+    assert len(orders) == len(set(orders)), f"order_index 撞号：{orders}"
+    assert orders == sorted(orders)
+
+    client.delete(
+        f"/api/v1/admin/scenarios/{scenario_id}",
+        headers=superuser_token_headers,
+    )
