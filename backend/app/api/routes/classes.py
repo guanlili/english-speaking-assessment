@@ -15,7 +15,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import func, text
+from sqlalchemy import func, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import SQLModel, col, select
 
@@ -2007,9 +2007,8 @@ def _archive_current_exercise(session: Any, classroom: Classroom) -> None:
     classroom.current_exercise_id = None
     # 恢复自主练习时解绑当日已开始的会话：否则学生会一直读到旧快照，
     # "恢复自主"对当天开练的学生不生效。
-    from sqlalchemy import update
 
-    from sqlalchemy import and_, update
+    from sqlalchemy import and_
 
     session.execute(
         update(PracticeSession)
