@@ -311,10 +311,20 @@ def create_class(
     class_in: ClassroomCreate,
 ) -> Any:
     """创建课堂（教师或管理员），创建者即属主，课堂码分发给本班学生。"""
+    name = class_in.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="课堂名称不能为空")
     for _ in range(5):
         code = _generate_classroom_code()
         classroom = Classroom(
-            code=code, class_size=class_in.class_size, owner_id=current_user.id
+            code=code,
+            name=name,
+            grade=class_in.grade.strip() if class_in.grade else None,
+            teaching_goal=(
+                class_in.teaching_goal.strip() if class_in.teaching_goal else None
+            ),
+            class_size=class_in.class_size,
+            owner_id=current_user.id,
         )
         try:
             return create_classroom(session=session, classroom=classroom)
@@ -720,19 +730,22 @@ def read_today_plan(
         if practice_session.assignment_id is not None
         else None
     )
+    # 兼容旧版“课堂练习”默认标题：学生端继续看到单元/老师指派语义，
+    # 教师显式填写的练习名称则优先展示。
+    assigned_title = (
+        exercise.title
+        if exercise is not None and exercise.title != "课堂练习"
+        else assigned_unit.title
+        if assigned_unit
+        else "老师指派"
+        if item_objects is not None and session_id is None
+        else None
+    )
     return TodayPlan(
         session_id=practice_session.id,
         classroom_code=classroom.code,
         band=band,
-        assigned_unit_title=(
-            exercise.title
-            if exercise is not None
-            else assigned_unit.title
-            if assigned_unit
-            else (
-                "老师指派" if item_objects is not None and session_id is None else None
-            )
-        ),
+        assigned_unit_title=assigned_title,
         items=items,
         attempts=plan_attempts,
         questions_exhausted=exhausted,
@@ -760,7 +773,12 @@ def read_next_question(
     """
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
-    if session_id is None and classroom.current_exercise_id is not None:
+    # 按题发布时优先走下方的情景题库换题逻辑；快照分支仅用于兼容单元发布。
+    if (
+        session_id is None
+        and classroom.current_exercise_id is not None
+        and classroom.assigned_items is None
+    ):
         exercise = session.get(ClassroomExercise, classroom.current_exercise_id)
         if exercise is not None:
             question_snapshots = [
@@ -1052,7 +1070,6 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             continue
         recent_by_student.setdefault(attempt.student_id, []).append(attempt)
 
-    band_distribution = {"A2": 0, "B1": 0, "B2": 0}
     board_students: list[BoardStudent] = []
     submitted_count = 0
     completed_count = 0
@@ -1241,9 +1258,6 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             < week_ago.date()
         )
         inactive = joined_before_window and student.id not in recent_by_student
-        band_distribution[student.current_band] = (
-            band_distribution.get(student.current_band, 0) + 1
-        )
         board_students.append(
             BoardStudent(
                 student_id=student.id,
@@ -1263,7 +1277,6 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                 ),
                 has_pending=has_pending,
                 round_status=round_status,
-                current_band=student.current_band,
                 inactive_days7=inactive,
                 xp=student.xp,
                 streak_days=student.streak_days,
@@ -1289,6 +1302,9 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
 
     return BoardData(
         classroom_code=classroom.code,
+        classroom_name=classroom.name,
+        classroom_grade=classroom.grade,
+        teaching_goal=classroom.teaching_goal,
         class_size=classroom.class_size,
         assigned_items=classroom.assigned_items,
         current_exercise=(
@@ -1317,7 +1333,6 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         submitted_count=submitted_count,
         completed_count=completed_count,
         pending_count=pending_count,
-        band_distribution=band_distribution,
         students=board_students,
         items=skeleton,
     )

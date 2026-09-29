@@ -404,12 +404,22 @@ def test_create_classroom_as_superuser(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
     resp = client.post(
-        "/api/v1/classes", json={"class_size": 30}, headers=superuser_token_headers
+        "/api/v1/classes",
+        json={
+            "name": "六年级英语口语",
+            "grade": "六年级 2 班",
+            "teaching_goal": "能用完整句介绍自己的宠物",
+            "class_size": 30,
+        },
+        headers=superuser_token_headers,
     )
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["code"]) == 6
     assert data["class_size"] == 30
+    assert data["name"] == "六年级英语口语"
+    assert data["grade"] == "六年级 2 班"
+    assert data["teaching_goal"] == "能用完整句介绍自己的宠物"
 
 
 # ── 指派单元中途切换：开新轮，旧轮保留（课堂流程正确性）──────────────

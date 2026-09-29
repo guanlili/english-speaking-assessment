@@ -705,6 +705,9 @@ def delete_unit(
 
 
 class ClassroomUpdate(SQLModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    grade: str | None = Field(default=None, max_length=64)
+    teaching_goal: str | None = Field(default=None, max_length=255)
     unlock_all: bool | None = None
     owner_id: uuid.UUID | None = None
     is_active: bool | None = None

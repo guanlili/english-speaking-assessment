@@ -94,6 +94,9 @@ export type BatchQuestionResult = {
 
 export type BoardData = {
     classroom_code: string;
+    classroom_name: string;
+    classroom_grade?: (string | null);
+    teaching_goal?: (string | null);
     class_size: number;
     engine?: string;
     assignment?: (AssignmentInfo | null);
@@ -104,9 +107,6 @@ export type BoardData = {
     submitted_count: number;
     completed_count: number;
     pending_count: number;
-    band_distribution: {
-        [key: string]: (number);
-    };
     students: Array<BoardStudent>;
     items: Array<BoardItem>;
 };
@@ -129,7 +129,6 @@ export type BoardStudent = {
     question_avg?: (number | null);
     has_pending: boolean;
     round_status?: string;
-    current_band: string;
     inactive_days7?: boolean;
     xp?: number;
     streak_days?: number;
@@ -177,6 +176,9 @@ export type BulkResetResult = {
 };
 
 export type ClassroomCreate = {
+    name?: string;
+    grade?: (string | null);
+    teaching_goal?: (string | null);
     class_size?: number;
 };
 
@@ -195,6 +197,9 @@ export type ClassroomExercisePublic = {
 export type ClassroomPublic = {
     id: string;
     code: string;
+    name: string;
+    grade?: (string | null);
+    teaching_goal?: (string | null);
     class_size: number;
     is_active: boolean;
     unlock_all?: boolean;
@@ -207,6 +212,9 @@ export type ClassroomPublic = {
 };
 
 export type ClassroomUpdate = {
+    name?: (string | null);
+    grade?: (string | null);
+    teaching_goal?: (string | null);
     unlock_all?: (boolean | null);
     owner_id?: (string | null);
     is_active?: (boolean | null);

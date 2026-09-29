@@ -229,6 +229,10 @@ class ScenarioQuestionPublic(SQLModel):
 class Classroom(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     code: str = Field(unique=True, index=True, max_length=16)
+    # 教师自定义课堂信息；课堂难度由发布时选择的内容决定，不再依赖档位。
+    name: str = Field(default="未命名课堂", max_length=120)
+    grade: str | None = Field(default=None, max_length=64)
+    teaching_goal: str | None = Field(default=None, max_length=255)
     class_size: int = Field(default=40, ge=1, le=100)
     is_active: bool = True
     # 授权教师（User.id）：教师面板/指派/名单必须由本人或管理员访问；
@@ -270,6 +274,9 @@ class Classroom(SQLModel, table=True):
 class ClassroomPublic(SQLModel):
     id: uuid.UUID
     code: str
+    name: str
+    grade: str | None = None
+    teaching_goal: str | None = None
     class_size: int
     is_active: bool
     unlock_all: bool = False
@@ -352,6 +359,9 @@ class ItemListen(SQLModel, table=True):
 
 
 class ClassroomCreate(SQLModel):
+    name: str = Field(default="未命名课堂", min_length=1, max_length=120)
+    grade: str | None = Field(default=None, max_length=64)
+    teaching_goal: str | None = Field(default=None, max_length=255)
     class_size: int = Field(default=40, ge=1, le=100)
 
 
@@ -733,8 +743,6 @@ class BoardStudent(SQLModel):
     has_pending: bool
     # 本轮状态口径（统一统计）：not_started / in_progress / scoring / all_done / has_failures
     round_status: str = "not_started"
-    # 当前练习档（PRD US-10：档位分布）
-    current_band: str
     # 过去 7 天无任何作答且加入已超 7 天（PRD US-10：连续缺席口径的简化）
     inactive_days7: bool = False
     # 激励层（仅老师面板展示；学生端无排名）
@@ -746,6 +754,9 @@ class BoardStudent(SQLModel):
 
 class BoardData(SQLModel):
     classroom_code: str
+    classroom_name: str
+    classroom_grade: str | None = None
+    teaching_goal: str | None = None
     class_size: int
     # 当前评分引擎（最近一次已评作答；mock=演示模式 / ark=方舟）
     engine: str = "mock"
@@ -761,8 +772,6 @@ class BoardData(SQLModel):
     completed_count: int
     # 尚在评分中的学生数 > 0 时前端轮询
     pending_count: int
-    # 当前练习档人数分布（PRD US-10：三档人数）
-    band_distribution: dict[str, int]
     students: list[BoardStudent]
     items: list[BoardItem]  # 题目骨架（顺序与各生 items 对齐）
 
