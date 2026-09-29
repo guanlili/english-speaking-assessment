@@ -186,12 +186,14 @@ function ComposerForm({
   const [selection, setSelection] = useState<LessonSelection>(initialSelection)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
+  const dirtyRef = useRef(false)
   const prevServerTypesRef = useRef(initialTypes)
   const prevServerSelectionRef = useRef(initialSelection)
   const queryClient = useQueryClient()
 
   // 服务端指派变更时同步本地表单（如老师在另一设备改了指派）
-  // 用深比较判断是否真的变了，避免父组件重渲染导致的引用变化覆盖本地状态
+  // 1. 用深比较判断是否真的变了，避免父组件重渲染导致的引用变化
+  // 2. 用户已编辑过则不同步，避免覆盖正在编辑的内容
   useEffect(() => {
     const typesSame =
       JSON.stringify(initialTypes) ===
@@ -202,9 +204,24 @@ function ComposerForm({
     if (typesSame && selectionSame) return
     prevServerTypesRef.current = initialTypes
     prevServerSelectionRef.current = initialSelection
-    setTypes(initialTypes)
-    setSelection(initialSelection)
+    if (!dirtyRef.current) {
+      setTypes(initialTypes)
+      setSelection(initialSelection)
+    }
   }, [initialTypes, initialSelection])
+
+  const setTypesDirty = (
+    next: LessonTypes | ((prev: LessonTypes) => LessonTypes),
+  ) => {
+    dirtyRef.current = true
+    setTypes(next)
+  }
+  const setSelectionDirty = (
+    next: LessonSelection | ((prev: LessonSelection) => LessonSelection),
+  ) => {
+    dirtyRef.current = true
+    setSelection(next)
+  }
 
   const { scenario, problems } = inspectSelection(types, selection, {
     sentences,
@@ -248,6 +265,7 @@ function ComposerForm({
     onSuccess: async (_, clear) => {
       setPreviewOpen(false)
       setClearOpen(false)
+      dirtyRef.current = false
       toast.success(clear ? "已恢复学生自主练习" : "本次课堂练习已发布")
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["teacher", "board", code] }),
@@ -302,7 +320,7 @@ function ComposerForm({
                     id={`lesson-type-${type.key}`}
                     checked={types[type.key]}
                     onCheckedChange={(checked) =>
-                      setTypes((current) => ({
+                      setTypesDirty((current) => ({
                         ...current,
                         [type.key]: checked === true,
                       }))
@@ -343,7 +361,7 @@ function ComposerForm({
                       id={`pick-passage-${p.id}`}
                       checked={selection.passages.includes(p.id ?? "")}
                       onCheckedChange={() =>
-                        setSelection((cur) => ({
+                        setSelectionDirty((cur) => ({
                           ...cur,
                           passages: toggleInList(cur.passages, p.id ?? ""),
                         }))
@@ -386,7 +404,7 @@ function ComposerForm({
                       id={`pick-sentence-${s.id}`}
                       checked={selection.sentences.includes(s.id ?? "")}
                       onCheckedChange={() =>
-                        setSelection((cur) => ({
+                        setSelectionDirty((cur) => ({
                           ...cur,
                           sentences: toggleInList(cur.sentences, s.id ?? ""),
                         }))
@@ -425,7 +443,10 @@ function ComposerForm({
               <Select
                 value={selection.scenarioId ?? ""}
                 onValueChange={(id) =>
-                  setSelection((cur) => ({ ...cur, scenarioId: id || null }))
+                  setSelectionDirty((cur) => ({
+                    ...cur,
+                    scenarioId: id || null,
+                  }))
                 }
               >
                 <SelectTrigger aria-label="选择问答主题">

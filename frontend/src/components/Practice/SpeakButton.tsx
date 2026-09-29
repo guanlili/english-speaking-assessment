@@ -1,5 +1,5 @@
 import { Volume2 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ""
@@ -17,6 +17,16 @@ function SpeakButton({
 }) {
   const [playing, setPlaying] = useState(false)
   const [rate, setRate] = useState("1")
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel()
+      }
+      utteranceRef.current = null
+    }
+  }, [])
 
   if (audioUrl) {
     const src = audioUrl.startsWith("/") ? `${API_BASE}${audioUrl}` : audioUrl
@@ -38,8 +48,15 @@ function SpeakButton({
     if (voice) {
       utterance.voice = voice
     }
-    utterance.onend = () => setPlaying(false)
-    utterance.onerror = () => setPlaying(false)
+    utterance.onend = () => {
+      setPlaying(false)
+      utteranceRef.current = null
+    }
+    utterance.onerror = () => {
+      setPlaying(false)
+      utteranceRef.current = null
+    }
+    utteranceRef.current = utterance
     setPlaying(true)
     synth.speak(utterance)
   }
