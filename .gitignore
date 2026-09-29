@@ -29,3 +29,7 @@ ssl/
 # 本地容器源码备份（任务审计用，不入库）
 backups/
 .zcode/
+
+# playwright
+frontend/test-results/
+frontend/playwright-report/

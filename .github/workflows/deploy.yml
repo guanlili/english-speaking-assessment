@@ -116,9 +116,55 @@ jobs:
             exit 1
           fi
 
+  e2e:
+    name: E2E 冒烟（主干道）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: 准备环境变量（local 环境，演示登录可用）
+        run: cp .env.example .env
+      - name: 启动完整栈（db + backend + prestart + frontend）
+        # -f 跳过本地开发的 compose.override.yml（5173 映射），用生产端口形态
+        run: docker compose -f compose.yml up -d --build
+      - name: 等待就绪（prestart 迁移 + backend 健康检查，首次较慢）
+        run: |
+          port=$(grep -E '^APP_PORT=' .env | cut -d= -f2 | tr -d '"')
+          port=${port:-80}
+          echo "frontend 端口: $port"
+          for i in $(seq 1 150); do
+            if curl -fsS "http://localhost:$port/api/v1/utils/ready-check/" > /dev/null 2>&1; then
+              echo "ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "❌ 栈未就绪，容器状态："
+          docker compose -f compose.yml ps
+          docker compose -f compose.yml logs backend --tail 30
+          exit 1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: 安装依赖与 Chromium
+        working-directory: frontend
+        run: npm ci && npx playwright install --with-deps chromium
+      - name: 运行 E2E
+        working-directory: frontend
+        run: |
+          port=$(grep -E '^APP_PORT=' ../.env | cut -d= -f2 | tr -d '"')
+          E2E_BASE_URL="http://localhost:${port:-80}" npx playwright test
+      - name: 上传失败现场
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/test-results/
+          retention-days: 7
+
   deploy:
     name: 部署到服务器
-    needs: [backend, frontend]
+    needs: [backend, frontend, e2e]
     # PR 只跑检查不部署；push 事件本身已限定 master 分支
     if: vars.ENABLE_PRODUCTION_DEPLOY == 'true' && github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     # 同一生产环境互斥；过期提交在服务器持锁阶段跳过，不假设排队顺序。
