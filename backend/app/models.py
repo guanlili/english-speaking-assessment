@@ -722,6 +722,13 @@ class NextQuestion(SQLModel):
 
 # 老师名单表（GET /classes/{code}/board，PRD §8.5 2 周形态）：
 # 谁交了、每题分数、音频可点开，允许先显示「评分中」
+class AssignmentItemIn(SQLModel):
+    """按题指派的单条题目引用：三种题型互相独立，各自成题。"""
+
+    type: str  # passage | repeat | question
+    id: uuid.UUID
+
+
 class BoardItem(SQLModel):
     item_id: uuid.UUID
     type: str
