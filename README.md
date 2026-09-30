@@ -11,7 +11,6 @@
 
 | 入口 | 地址 | 说明 |
 |------|------|------|
-| 单页演示（无登录） | http://localhost:5173/practice | 听 → 读 → 录 → 反馈 → 再练 |
 | 学生进入课堂 | http://localhost:5173/j/DEMO01 | 输入显示名开始当天 5 题 |
 | 学生结果页 | http://localhost:5173/p/DEMO01/result | 每题转写与总评 |
 | 学生进步 | http://localhost:5173/me/DEMO01 | 口语分与词汇档轨迹 |
@@ -315,7 +314,7 @@ ssh 服务器 "cd 部署路径 && git reset --hard <上一个好提交> && docke
 ## 项目结构
 
 ```
-lili-full-stack/
+english-speaking-assessment/
 ├── .claude/
 │   └── commands/          # Claude Code 自定义斜杠命令
 ├── scripts/
@@ -350,7 +349,7 @@ lili-full-stack/
 |------|------------------------------------------|--------|
 | 反向代理 | Traefik（复杂 label 配置） | nginx proxy_pass（内置前端镜像） |
 | CI/CD | staging + production 双套 | 单一 workflow：CI（lint+测试）通过后部署 |
-| Playwright e2e 测试 | 包含 | 已移除 |
+| Playwright e2e 测试 | 包含 | 2026-09-29 回归：冒烟用例进 CI（独立 e2e job，deploy 依赖其通过） |
 | Copier 模板系统 | 包含 | 已移除 |
 | AI 开发规范 | 无 | AI_RULES.md + CLAUDE.md + .claude/commands/ |
 
@@ -362,8 +361,8 @@ lili-full-stack/
 
 | 不做什么 | 为什么 |
 |---------|--------|
-| 前端单元测试（vitest） | 模板阶段收益低。前端质量门槛 = tsc 类型检查 + biome + 后端 API 测试兜底；具体项目有复杂前端逻辑时再按需引入 |
-| dependabot / renovate | 小团队没精力处理持续的升级 PR 噪音。用季度 `/upgrade-deps` 集中升级 + 验证代替 |
+| 前端组件测试（vitest） | 纯逻辑（lib/）用 node --test 覆盖；组件层暂不做，前端质量门槛 = tsc + biome + E2E 冒烟 + 后端 API 测试兜底 |
+| dependabot / renovate | 小团队没精力处理持续的升级 PR 噪音。用季度 `/upgrade-deps` 集中升级 + 验证代替；每周 audit.yml 定时跑 pip-audit / npm audit 作发现渠道 |
 | pre-commit 钩子 | CI 是唯一质量门槛。本地钩子对 AI 驱动的开发是摩擦（AI 每次提交都会被格式化钩子打断），且和 CI 重复 |
 | staging 环境 | 单服务器多项目、快速交付定位。staging 的维护成本大于收益；重要变更靠 CI 门槛 + 部署后健康检查兜底 |
 | JWT refresh token | 8 天 access token + localStorage 是简单性取舍，适合工具型产品。对安全有更高要求的项目再升级会话机制 |
