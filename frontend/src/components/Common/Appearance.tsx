@@ -13,6 +13,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { useI18n } from "@/lib/i18n"
 
 type LucideIcon = React.FC<React.SVGProps<SVGSVGElement>>
 
@@ -23,6 +24,7 @@ const ICON_MAP: Record<Theme, LucideIcon> = {
 }
 
 export const SidebarAppearance = () => {
+  const { t } = useI18n()
   const { isMobile } = useSidebar()
   const { setTheme, theme } = useTheme()
   const Icon = ICON_MAP[theme]
@@ -31,10 +33,15 @@ export const SidebarAppearance = () => {
     <SidebarMenuItem>
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
-          <SidebarMenuButton tooltip="外观" data-testid="theme-button">
+          <SidebarMenuButton
+            tooltip={t({ zh: "外观", en: "Appearance" })}
+            data-testid="theme-button"
+          >
             <Icon className="size-4 text-muted-foreground" />
-            <span>外观</span>
-            <span className="sr-only">切换外观</span>
+            <span>{t({ zh: "外观", en: "Appearance" })}</span>
+            <span className="sr-only">
+              {t({ zh: "切换外观", en: "Toggle appearance" })}
+            </span>
           </SidebarMenuButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -47,18 +54,18 @@ export const SidebarAppearance = () => {
             onClick={() => setTheme("light")}
           >
             <Sun className="mr-2 h-4 w-4" />
-            浅色
+            {t({ zh: "浅色", en: "Light" })}
           </DropdownMenuItem>
           <DropdownMenuItem
             data-testid="dark-mode"
             onClick={() => setTheme("dark")}
           >
             <Moon className="mr-2 h-4 w-4" />
-            深色
+            {t({ zh: "深色", en: "Dark" })}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setTheme("system")}>
             <Monitor className="mr-2 h-4 w-4" />
-            跟随系统
+            {t({ zh: "跟随系统", en: "System" })}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -67,6 +74,7 @@ export const SidebarAppearance = () => {
 }
 
 export const Appearance = () => {
+  const { t } = useI18n()
   const { setTheme } = useTheme()
 
   return (
@@ -81,7 +89,9 @@ export const Appearance = () => {
           >
             <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
             <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-            <span className="sr-only">切换外观</span>
+            <span className="sr-only">
+              {t({ zh: "切换外观", en: "Toggle appearance" })}
+            </span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -90,18 +100,18 @@ export const Appearance = () => {
             onClick={() => setTheme("light")}
           >
             <Sun className="mr-2 h-4 w-4" />
-            浅色
+            {t({ zh: "浅色", en: "Light" })}
           </DropdownMenuItem>
           <DropdownMenuItem
             data-testid="dark-mode"
             onClick={() => setTheme("dark")}
           >
             <Moon className="mr-2 h-4 w-4" />
-            深色
+            {t({ zh: "深色", en: "Dark" })}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setTheme("system")}>
             <Monitor className="mr-2 h-4 w-4" />
-            跟随系统
+            {t({ zh: "跟随系统", en: "System" })}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

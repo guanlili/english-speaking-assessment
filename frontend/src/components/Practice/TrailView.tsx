@@ -15,6 +15,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useI18n } from "@/lib/i18n"
+import { TERMS } from "@/lib/terms"
 
 function TrailView({
   trail,
@@ -23,6 +25,7 @@ function TrailView({
   trail: TrailData
   period?: number
 }) {
+  const { t } = useI18n()
   const allSessions = trail.sessions
   const cutoff = new Date(Date.now() - period * 86400000)
     .toISOString()
@@ -39,9 +42,12 @@ function TrailView({
       {hasTrend ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">参考分</CardTitle>
+            <CardTitle className="text-base">{t(TERMS.score)}</CardTitle>
             <CardDescription>
-              每日情景问答的参考分均值，不是考试成绩。
+              {t({
+                zh: "每日情景问答的参考分均值，不是考试成绩。",
+                en: "Daily average of Scenario Q&A reference scores — not exam results.",
+              })}
             </CardDescription>
           </CardHeader>
           <CardContent className="text-primary">
@@ -53,31 +59,47 @@ function TrailView({
       {!hasTrend && (
         <Card>
           <CardContent className="py-6 text-center text-muted-foreground">
-            练习满 2 次后这里会出现口语参考分的变化曲线。
+            {t({
+              zh: "练习满 2 次后这里会出现口语参考分的变化曲线。",
+              en: "After 2 practice rounds, your reference score trend will appear here.",
+            })}
           </CardContent>
         </Card>
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">每次练习</CardTitle>
+          <CardTitle className="text-base">
+            {t({ zh: "每次练习", en: "Practice sessions" })}
+          </CardTitle>
           <CardDescription>
-            跟读完整度单独列出，不混进参考分（PRD 口径）。
+            {t({
+              zh: "跟读完整度单独列出，不混进参考分（PRD 口径）。",
+              en: "Read-along completeness is listed separately, not mixed into reference scores.",
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {sessions.length === 0 ? (
             <p className="py-6 text-center text-muted-foreground">
-              还没有练习记录。
+              {t({
+                zh: "还没有练习记录。",
+                en: "No practice records yet.",
+              })}
             </p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>日期</TableHead>
-                  <TableHead>参考分</TableHead>
-                  <TableHead>跟读完整度</TableHead>
-                  <TableHead>作答数</TableHead>
+                  <TableHead>{t({ zh: "日期", en: "Date" })}</TableHead>
+                  <TableHead>{t(TERMS.score)}</TableHead>
+                  <TableHead>
+                    {t({
+                      zh: "跟读完整度",
+                      en: "Read-along completeness",
+                    })}
+                  </TableHead>
+                  <TableHead>{t({ zh: "作答数", en: "Attempts" })}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

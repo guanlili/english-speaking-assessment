@@ -2,6 +2,7 @@
  * 主题插画（搬运自 prototypes/speakup 的 topicArt SVG，按主题名映射）。
  * 6 幅：pets / school / weekend / food / future / friends；未匹配回退 pets。
  */
+import { useI18n } from "@/lib/i18n"
 
 const ART: Record<string, React.ReactNode> = {
   pets: (
@@ -194,12 +195,16 @@ function artKey(topic?: string | null): string {
 }
 
 function TopicArt({ topic }: { topic?: string | null }) {
+  const { t } = useI18n()
   return (
     <svg
       viewBox="0 0 320 180"
       preserveAspectRatio="xMidYMid slice"
       role="img"
-      aria-label={`${topic ?? "英语"} 主题插画`}
+      aria-label={t({
+        zh: `${topic ?? "英语"} 主题插画`,
+        en: `${topic ?? "English"} topic illustration`,
+      })}
       className="h-full w-full"
     >
       {ART[artKey(topic)]}

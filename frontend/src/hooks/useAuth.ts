@@ -9,6 +9,7 @@ import {
   UsersService,
 } from "@/client"
 import { lastJoinedCode } from "@/lib/classroom-student"
+import { useI18n } from "@/lib/i18n"
 import { extractErrorMessage } from "@/utils"
 import useCustomToast from "./useCustomToast"
 
@@ -27,6 +28,7 @@ export const mustChangePassword = () =>
   localStorage.getItem("esa:must-change-pw") === "1"
 
 const useAuth = () => {
+  const { t } = useI18n()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { showErrorToast } = useCustomToast()
@@ -67,7 +69,12 @@ const useAuth = () => {
     } catch {
       // readUserMe 失败（网络等）：清除 token，避免半认证状态
       localStorage.removeItem("access_token")
-      throw new Error("登录后获取用户信息失败，请重试")
+      throw new Error(
+        t({
+          zh: "登录后获取用户信息失败，请重试",
+          en: "Failed to load your profile after sign-in, please retry",
+        }),
+      )
     }
   }
 

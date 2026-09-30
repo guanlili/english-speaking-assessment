@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useI18n } from "@/lib/i18n"
 
 const CUSTOM = "__custom__"
 
@@ -20,7 +21,7 @@ export function TopicPicker({
   onChange,
   topics,
   disabled = false,
-  placeholder = "选择主题",
+  placeholder,
 }: {
   value: string
   onChange: (next: string) => void
@@ -28,6 +29,7 @@ export function TopicPicker({
   disabled?: boolean
   placeholder?: string
 }) {
+  const { t } = useI18n()
   const [custom, setCustom] = useState(false)
 
   useEffect(() => {
@@ -43,7 +45,7 @@ export function TopicPicker({
         <Input
           value={value}
           disabled={disabled}
-          placeholder="输入新主题"
+          placeholder={t({ zh: "输入新主题", en: "Enter a new topic" })}
           onChange={(e) => onChange(e.target.value)}
         />
         {topics.length > 0 && (
@@ -56,7 +58,7 @@ export function TopicPicker({
               onChange(topics[0])
             }}
           >
-            用列表
+            {t({ zh: "用列表", en: "Use list" })}
           </Button>
         )}
       </div>
@@ -77,7 +79,11 @@ export function TopicPicker({
       }}
     >
       <SelectTrigger className="w-full">
-        <SelectValue placeholder={placeholder} />
+        <SelectValue
+          placeholder={
+            placeholder ?? t({ zh: "选择主题", en: "Select a topic" })
+          }
+        />
       </SelectTrigger>
       <SelectContent>
         {topics.map((topic) => (
@@ -85,7 +91,9 @@ export function TopicPicker({
             {topic}
           </SelectItem>
         ))}
-        <SelectItem value={CUSTOM}>＋ 自定义主题…</SelectItem>
+        <SelectItem value={CUSTOM}>
+          {t({ zh: "＋ 自定义主题…", en: "＋ Custom topic…" })}
+        </SelectItem>
       </SelectContent>
     </Select>
   )

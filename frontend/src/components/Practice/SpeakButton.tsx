@@ -1,9 +1,18 @@
 import { Volume2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
+import type { BiString } from "@/lib/bi"
+import { useI18n } from "@/lib/i18n"
 import { speakEnglish, TTS_RATE_OPTIONS } from "@/lib/tts"
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ""
+
+/** 语速选项双语（TTS_RATE_OPTIONS 的 label 目前是单语，渲染时按 value 映射） */
+const RATE_LABELS: Record<string, BiString> = {
+  "0.5": { zh: "最慢 0.5×", en: "Slowest 0.5×" },
+  "0.8": { zh: "慢速 0.8×", en: "Slow 0.8×" },
+  "1": { zh: "正常 1.0×", en: "Normal 1.0×" },
+}
 
 /**
  * 标准音播放。audioUrl 存在时用音频文件；否则浏览器 speechSynthesis
@@ -16,6 +25,7 @@ function SpeakButton({
   text: string
   audioUrl?: string | null
 }) {
+  const { t } = useI18n()
   const [playing, setPlaying] = useState(false)
   const [rate, setRate] = useState("1")
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
@@ -60,11 +70,13 @@ function SpeakButton({
     <div className="flex flex-wrap items-center justify-between gap-2">
       <Button variant="secondary" size="lg" onClick={speak} disabled={playing}>
         <Volume2 />
-        {playing ? "正在播放…" : "听示范"}
+        {playing
+          ? t({ zh: "正在播放…", en: "Playing…" })
+          : t({ zh: "听示范", en: "Listen" })}
       </Button>
       <div className="flex items-center gap-2">
         <label className="sr-only" htmlFor="speech-rate">
-          示范语速
+          {t({ zh: "示范语速", en: "Speed" })}
         </label>
         <select
           id="speech-rate"
@@ -74,7 +86,12 @@ function SpeakButton({
         >
           {TTS_RATE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
-              {opt.label}
+              {t(
+                RATE_LABELS[opt.value] ?? {
+                  zh: String(opt.label),
+                  en: String(opt.label),
+                },
+              )}
             </option>
           ))}
         </select>

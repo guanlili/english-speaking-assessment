@@ -15,13 +15,17 @@ import {
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
 import { downloadCsv } from "@/lib/csv"
+import { useI18n } from "@/lib/i18n"
 
 export const Route = createFileRoute("/_layout/admin/wordlist")({
   component: WordlistAdmin,
-  head: () => ({ meta: [{ title: `分级词表 - ${APP_NAME}` }] }),
+  head: () => ({
+    meta: [{ title: `分级词表 / Graded Word List - ${APP_NAME}` }],
+  }),
 })
 
 function WordlistAdmin() {
+  const { t } = useI18n()
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -42,17 +46,26 @@ function WordlistAdmin() {
       }),
     onSuccess: (data) => {
       showSuccessToast(
-        `已导入 ${data.imported ?? 0} 个词${
-          (data.invalid_rows ?? []).length > 0
-            ? `，跳过 ${(data.invalid_rows ?? []).length} 个无效行`
-            : ""
-        }`,
+        t({
+          zh: `已导入 ${data.imported ?? 0} 个词${
+            (data.invalid_rows ?? []).length > 0
+              ? `，跳过 ${(data.invalid_rows ?? []).length} 个无效行`
+              : ""
+          }`,
+          en: `Imported ${data.imported ?? 0} words${
+            (data.invalid_rows ?? []).length > 0
+              ? `, skipped ${(data.invalid_rows ?? []).length} invalid rows`
+              : ""
+          }`,
+        }),
       )
       setPreview(null)
       queryClient.invalidateQueries({ queryKey: ["admin", "wordlist"] })
     },
     onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(err.body?.detail ?? "导入失败"),
+      showErrorToast(
+        err.body?.detail ?? t({ zh: "导入失败", en: "Import failed" }),
+      ),
   })
 
   // 预览：前端解析校验（搬原型的 parseCSV 口径），确认后才上传
@@ -95,7 +108,8 @@ function WordlistAdmin() {
     if (!file) return
     try {
       const rows = parseCsv(await file.text())
-      if (!rows.length) throw new Error("文件为空")
+      if (!rows.length)
+        throw new Error(t({ zh: "文件为空", en: "The file is empty" }))
       const headers = (rows.shift() ?? []).map((h) => h.trim().toLowerCase())
       const wi =
         headers.indexOf("lemma") >= 0
@@ -103,7 +117,12 @@ function WordlistAdmin() {
           : headers.indexOf("word")
       const bi = headers.indexOf("band")
       if (wi < 0 || bi < 0)
-        throw new Error("缺少 lemma 或 band 列（第一行表头）")
+        throw new Error(
+          t({
+            zh: "缺少 lemma 或 band 列（第一行表头）",
+            en: "Missing lemma or band column (header row)",
+          }),
+        )
       const seen = new Set<string>()
       const words: Array<{ word: string; band: string }> = []
       let invalid = 0
@@ -117,10 +136,17 @@ function WordlistAdmin() {
         seen.add(word)
         words.push({ word, band })
       }
-      if (!words.length) throw new Error("没有有效词条")
+      if (!words.length)
+        throw new Error(
+          t({ zh: "没有有效词条", en: "No valid word entries found" }),
+        )
       setPreview({ file, words, invalid })
     } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : "解析失败")
+      showErrorToast(
+        error instanceof Error
+          ? error.message
+          : t({ zh: "解析失败", en: "Failed to parse file" }),
+      )
       if (fileRef.current) fileRef.current.value = ""
     }
   }
@@ -153,21 +179,37 @@ function WordlistAdmin() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">分级词表</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {t({ zh: "分级词表", en: "Graded Word List" })}
+        </h1>
         <p className="text-muted-foreground">
-          学生词汇参考档位的数据来源。导入学校分级词表 CSV 会整体替换当前词表。
+          {t({
+            zh: "学生词汇参考档位的数据来源。导入学校分级词表 CSV 会整体替换当前词表。",
+            en: "Source of the vocabulary reference levels students see. Importing a school CSV replaces the current word list entirely.",
+          })}
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">当前词表</CardTitle>
+          <CardTitle className="text-base">
+            {t({ zh: "当前词表", en: "Current Word List" })}
+          </CardTitle>
           <CardDescription>
-            {stats?.name ?? "未配置"} · 界面会向学生标注词表来源
+            {stats?.name ?? t({ zh: "未配置", en: "Not configured" })} ·{" "}
+            {t({
+              zh: "界面会向学生标注词表来源",
+              en: "Students see this word list source",
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3">
-          <Badge variant="secondary">共 {stats?.total ?? 0} 词</Badge>
+          <Badge variant="secondary">
+            {t({
+              zh: `共 ${stats?.total ?? 0} 词`,
+              en: `${stats?.total ?? 0} words`,
+            })}
+          </Badge>
           {Object.entries(stats?.by_band ?? {}).map(([band, count]) => (
             <Badge key={band} variant="outline">
               {band} × {count}
@@ -178,10 +220,14 @@ function WordlistAdmin() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">导入 CSV</CardTitle>
+          <CardTitle className="text-base">
+            {t({ zh: "导入 CSV", en: "Import CSV" })}
+          </CardTitle>
           <CardDescription>
-            第一行表头 <code>lemma,band</code>；band 取 A2/B1/B2；UTF-8 编码；
-            重复词自动去重。整体替换现有词表。
+            {t({
+              zh: "第一行表头 lemma,band；band 取 A2/B1/B2；UTF-8 编码；重复词自动去重。整体替换现有词表。",
+              en: "Header row lemma,band; band is A2/B1/B2; UTF-8 encoded; duplicates are removed automatically. This replaces the existing word list.",
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -194,28 +240,35 @@ function WordlistAdmin() {
           />
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={downloadTemplate}>
-              下载模板
+              {t({ zh: "下载模板", en: "Download Template" })}
             </Button>
             <Button
               onClick={() => fileRef.current?.click()}
               disabled={uploading}
             >
               <Upload />
-              {uploading ? "导入中…" : "选择 CSV 文件"}
+              {uploading
+                ? t({ zh: "导入中…", en: "Importing…" })
+                : t({ zh: "选择 CSV 文件", en: "Choose CSV File" })}
             </Button>
           </div>
 
           {preview && (
             <div className="mt-4 rounded-xl border border-dashed border-primary/40 bg-secondary/40 p-4">
               <p className="text-sm">
-                校验通过：<strong>{preview.words.length}</strong> 个词条（A2{" "}
+                {t({ zh: "校验通过：", en: "Validation passed: " })}
+                <strong>{preview.words.length}</strong>
+                {t({ zh: " 个词条（A2 ", en: " entries (A2 " })}
                 {preview.words.filter((w) => w.band === "A2").length} / B1{" "}
                 {preview.words.filter((w) => w.band === "B1").length} / B2{" "}
                 {preview.words.filter((w) => w.band === "B2").length}
                 {preview.invalid > 0
-                  ? `，跳过 ${preview.invalid} 个无效/重复行`
+                  ? t({
+                      zh: `，跳过 ${preview.invalid} 个无效/重复行`,
+                      en: `, ${preview.invalid} invalid/duplicate rows skipped`,
+                    })
                   : ""}
-                ）
+                {t({ zh: "）", en: ")" })}
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {preview.words.slice(0, 12).map((w) => (
@@ -228,12 +281,18 @@ function WordlistAdmin() {
                 ))}
                 {preview.words.length > 12 && (
                   <span className="text-xs text-muted-foreground">
-                    …共 {preview.words.length} 个
+                    {t({
+                      zh: `…共 ${preview.words.length} 个`,
+                      en: `…${preview.words.length} in total`,
+                    })}
                   </span>
                 )}
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                确认后整体替换当前词表。
+                {t({
+                  zh: "确认后整体替换当前词表。",
+                  en: "Confirming replaces the current word list entirely.",
+                })}
               </p>
               <div className="mt-3 flex gap-2">
                 <Button
@@ -241,7 +300,7 @@ function WordlistAdmin() {
                   disabled={importMutation.isPending}
                   onClick={() => void confirmImport()}
                 >
-                  预览无误，替换词表
+                  {t({ zh: "预览无误，替换词表", en: "Looks Good, Replace" })}
                 </Button>
                 <Button
                   variant="ghost"
@@ -251,7 +310,7 @@ function WordlistAdmin() {
                     if (fileRef.current) fileRef.current.value = ""
                   }}
                 >
-                  取消
+                  {t({ zh: "取消", en: "Cancel" })}
                 </Button>
               </div>
             </div>

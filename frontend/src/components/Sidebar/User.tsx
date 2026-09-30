@@ -18,6 +18,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import useAuth from "@/hooks/useAuth"
+import { useI18n } from "@/lib/i18n"
 import { getInitials } from "@/utils"
 
 interface UserInfoProps {
@@ -27,7 +28,11 @@ interface UserInfoProps {
 }
 
 function UserInfo({ fullName, email, compact = false }: UserInfoProps) {
-  const displayName = fullName?.trim() || email?.split("@")[0] || "我的账户"
+  const { t } = useI18n()
+  const displayName =
+    fullName?.trim() ||
+    email?.split("@")[0] ||
+    t({ zh: "我的账户", en: "My Account" })
 
   return (
     <div className="flex w-full min-w-0 items-center gap-2.5">
@@ -49,6 +54,7 @@ function UserInfo({ fullName, email, compact = false }: UserInfoProps) {
 }
 
 export function User({ user }: { user: UserPublic | null | undefined }) {
+  const { t } = useI18n()
   const { logout } = useAuth()
   const { isMobile, setOpenMobile, state } = useSidebar()
   const isCompact = state === "collapsed" && !isMobile
@@ -69,8 +75,8 @@ export function User({ user }: { user: UserPublic | null | undefined }) {
             <SidebarMenuButton
               size="lg"
               className="rounded-lg data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-              aria-label="账户菜单"
-              tooltip="账户菜单"
+              aria-label={t({ zh: "账户菜单", en: "Account menu" })}
+              tooltip={t({ zh: "账户菜单", en: "Account menu" })}
               data-testid="user-menu"
             >
               <UserInfo
@@ -99,7 +105,7 @@ export function User({ user }: { user: UserPublic | null | undefined }) {
             <DropdownMenuItem asChild className="rounded-md px-2 py-2.5">
               <RouterLink to="/settings" onClick={handleMenuClick}>
                 <Settings aria-hidden="true" />
-                个人设置
+                {t({ zh: "个人设置", en: "Settings" })}
               </RouterLink>
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -108,7 +114,7 @@ export function User({ user }: { user: UserPublic | null | undefined }) {
               className="rounded-md px-2 py-2.5"
             >
               <LogOut aria-hidden="true" />
-              退出登录
+              {t({ zh: "退出登录", en: "Sign Out" })}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

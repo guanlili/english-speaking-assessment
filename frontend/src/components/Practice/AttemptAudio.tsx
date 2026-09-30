@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { useEffect } from "react"
 import { fetchAudioObjectUrl } from "@/lib/attempt-audio"
+import { useI18n } from "@/lib/i18n"
 
 interface AttemptAudioProps {
   attemptId: string
@@ -19,6 +20,7 @@ export default function AttemptAudio({
   className,
   preload = "none",
 }: AttemptAudioProps) {
+  const { t } = useI18n()
   const srcQuery = useQuery({
     queryKey: ["attempt-audio", attemptId],
     queryFn: () => fetchAudioObjectUrl(attemptId),
@@ -38,7 +40,11 @@ export default function AttemptAudio({
   }, [objectUrl])
 
   if (srcQuery.isPending) {
-    return <span className="text-xs text-muted-foreground">加载录音…</span>
+    return (
+      <span className="text-xs text-muted-foreground">
+        {t({ zh: "加载录音…", en: "Loading recording…" })}
+      </span>
+    )
   }
   if (srcQuery.isError || !objectUrl) {
     return (
@@ -47,7 +53,10 @@ export default function AttemptAudio({
         className="text-xs text-destructive underline-offset-2 hover:underline"
         onClick={() => void srcQuery.refetch()}
       >
-        录音加载失败，点击重试
+        {t({
+          zh: "录音加载失败，点击重试",
+          en: "Failed to load recording — tap to retry",
+        })}
       </button>
     )
   }

@@ -41,12 +41,13 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { APP_NAME } from "@/config"
 import { downloadCsv } from "@/lib/csv"
-import { ITEM_TYPE_LABELS } from "@/lib/terms"
+import { type BiString, useI18n } from "@/lib/i18n"
+import { ITEM_TYPE_LABELS, TERMS } from "@/lib/terms"
 
 export const Route = createFileRoute("/t/$code/")({
   component: TeacherBoardPage,
   head: () => ({
-    meta: [{ title: `课堂面板 - ${APP_NAME}` }],
+    meta: [{ title: `课堂面板 / Class Dashboard - ${APP_NAME}` }],
   }),
 })
 
@@ -56,6 +57,7 @@ const PENDING_REFRESH_MS = 5000
 const IDLE_REFRESH_MS = 20000
 
 function TeacherBoardPage() {
+  const { t } = useI18n()
   const { code } = useParams({ from: "/t/$code/" })
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"prepare" | "results">("prepare")
@@ -74,7 +76,9 @@ function TeacherBoardPage() {
   if (boardQuery.isPending) {
     return (
       <div role="status" className="space-y-6">
-        <span className="sr-only">正在加载课堂面板…</span>
+        <span className="sr-only">
+          {t({ zh: "正在加载课堂面板…", en: "Loading class dashboard…" })}
+        </span>
         <Skeleton className="h-40 rounded-2xl" />
         <Skeleton className="h-11 w-64 rounded-xl" />
         <Skeleton className="h-80 rounded-2xl" />
@@ -88,9 +92,12 @@ function TeacherBoardPage() {
     if (status === 403) {
       return (
         <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
-          你还不是这个课堂的授权教师，请让管理员在后台把你绑到这间课堂。
+          {t({
+            zh: "你还不是这个课堂的授权教师，请让管理员在后台把你绑到这间课堂。",
+            en: "You are not an owner teacher of this classroom yet. Ask an admin to link you to it in the admin console.",
+          })}
           <Button variant="outline" asChild>
-            <Link to="/">回首页</Link>
+            <Link to="/">{t({ zh: "回首页", en: "Back to Home" })}</Link>
           </Button>
         </div>
       )
@@ -98,9 +105,12 @@ function TeacherBoardPage() {
     if (status !== 404) {
       return (
         <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
-          课堂面板加载失败，请稍后重试。
+          {t({
+            zh: "课堂面板加载失败，请稍后重试。",
+            en: "Failed to load the class dashboard, please try again later.",
+          })}
           <Button variant="outline" onClick={() => boardQuery.refetch()}>
-            重试
+            {t({ zh: "重试", en: "Retry" })}
           </Button>
         </div>
       )
@@ -108,11 +118,19 @@ function TeacherBoardPage() {
     return (
       <div className="space-y-6">
         <Link to="/classrooms" className="text-sm text-primary">
-          ← 我的课堂
+          ← {t({ zh: "我的课堂", en: "My Classrooms" })}
         </Link>
-        <h1 className="text-2xl font-bold">课堂 {code}</h1>
+        <h1 className="text-2xl font-bold">
+          {t({
+            zh: `课堂 ${code}`,
+            en: `Classroom ${code}`,
+          })}
+        </h1>
         <p className="text-sm text-muted-foreground">
-          暂无可展示的练习结果。可先准备并安排课堂内容；若课堂已停用，请返回课堂列表核对。
+          {t({
+            zh: "暂无可展示的练习结果。可先准备并安排课堂内容；若课堂已停用，请返回课堂列表核对。",
+            en: "No practice results to show yet. Prepare and assign classroom content first; if the classroom is deactivated, check the classroom list.",
+          })}
         </p>
         <AssignmentComposer code={code} />
       </div>
@@ -131,12 +149,12 @@ function TeacherBoardPage() {
           ? "done"
           : "idle"
 
-  const STATUS_LABELS: Record<string, string> = {
-    all: "全部状态",
-    done: "已提交",
-    practicing: "评分中",
-    idle: "未提交",
-    inactive: "7 天未练",
+  const STATUS_LABELS: Record<string, BiString> = {
+    all: { zh: "全部状态", en: "All statuses" },
+    done: { zh: "已提交", en: "Submitted" },
+    practicing: { zh: "评分中", en: "Scoring" },
+    idle: { zh: "未提交", en: "Not submitted" },
+    inactive: { zh: "7 天未练", en: "Inactive 7 days" },
   }
 
   const filteredStudents = board.students.filter((st) => {
@@ -162,14 +180,14 @@ function TeacherBoardPage() {
 
   const exportCsv = () => {
     const header = [
-      "姓名",
-      "区分码",
-      "完成题数",
-      "跟读均分",
-      "情景问答均分",
+      t({ zh: "姓名", en: "Name" }),
+      t({ zh: "区分码", en: "Suffix" }),
+      t({ zh: "完成题数", en: "Items Done" }),
+      t({ zh: "跟读均分", en: "Repeat Avg" }),
+      t({ zh: "情景问答均分", en: "Scenario Q&A Avg" }),
       "XP",
-      "连胜天数",
-      "状态",
+      t({ zh: "连胜天数", en: "Streak Days" }),
+      t({ zh: "状态", en: "Status" }),
     ]
     const rows = filteredStudents.map((st) => [
       st.display_name,
@@ -179,13 +197,18 @@ function TeacherBoardPage() {
       st.question_avg ?? "-",
       String(st.xp ?? 0),
       String(st.streak_days ?? 0),
-      STATUS_LABELS[statusOf(st)] ?? "",
+      t(STATUS_LABELS[statusOf(st)] ?? { zh: "", en: "" }),
     ])
     downloadCsv(
       [header, ...rows],
-      `课堂${board.classroom_code}-练习名单-${new Date()
-        .toISOString()
-        .slice(0, 10)}.csv`,
+      t({
+        zh: `课堂${board.classroom_code}-练习名单-${new Date()
+          .toISOString()
+          .slice(0, 10)}.csv`,
+        en: `classroom-${board.classroom_code}-practice-roster-${new Date()
+          .toISOString()
+          .slice(0, 10)}.csv`,
+      }),
     )
   }
 
@@ -193,10 +216,23 @@ function TeacherBoardPage() {
     const url = `${window.location.origin}/j/${board.classroom_code}`
     try {
       await navigator.clipboard.writeText(url)
-      toast.success("学生入口链接已复制", { description: url })
+      toast.success(
+        t({ zh: "学生入口链接已复制", en: "Student entry link copied" }),
+        {
+          description: url,
+        },
+      )
     } catch (err) {
       console.error("Failed to copy share link:", err)
-      toast.error("复制失败，请手动复制", { description: url })
+      toast.error(
+        t({
+          zh: "复制失败，请手动复制",
+          en: "Copy failed — please copy manually",
+        }),
+        {
+          description: url,
+        },
+      )
     }
   }
 
@@ -209,13 +245,20 @@ function TeacherBoardPage() {
       .map((student) => student.display_name)
       .slice(0, 8)
       .join("、")
-    const message = `【${board.classroom_name}】${names || "同学们"}，请完成今天的口语练习。提交后老师会查看反馈。课堂码：${board.classroom_code}`
+    const message = t({
+      zh: `【${board.classroom_name}】${names || "同学们"}，请完成今天的口语练习。提交后老师会查看反馈。课堂码：${board.classroom_code}`,
+      en: `[${board.classroom_name}] ${names || "everyone"}, please complete today's speaking practice. Your teacher will review your feedback after you submit. Classroom code: ${board.classroom_code}`,
+    })
     try {
       await navigator.clipboard.writeText(message)
-      toast.success("提醒文案已复制", { description: message })
+      toast.success(t({ zh: "提醒文案已复制", en: "Reminder text copied" }), {
+        description: message,
+      })
     } catch (error) {
       console.error("Failed to copy reminder:", error)
-      toast.error("复制失败，请重试")
+      toast.error(
+        t({ zh: "复制失败，请重试", en: "Copy failed, please try again" }),
+      )
     }
   }
 
@@ -223,7 +266,7 @@ function TeacherBoardPage() {
     <div className="bg-background">
       <div className="flex w-full flex-col gap-6">
         <Link to="/classrooms" className="text-sm font-medium text-primary">
-          ← 我的课堂
+          ← {t({ zh: "我的课堂", en: "My Classrooms" })}
         </Link>
         <div className="flex items-start justify-between gap-4 rounded-2xl border border-primary/10 bg-secondary/40 p-5 sm:p-7">
           <div className="min-w-0">
@@ -235,26 +278,36 @@ function TeacherBoardPage() {
             </h1>
             <p className="text-sm text-muted-foreground">
               {board.classroom_grade && `${board.classroom_grade} · `}
-              课堂码 {board.classroom_code} · 已提交 {board.submitted_count}/
-              {board.class_size}
+              {t({
+                zh: `课堂码 ${board.classroom_code} · 已提交 ${board.submitted_count}/${board.class_size}`,
+                en: `Classroom code ${board.classroom_code} · Submitted ${board.submitted_count}/${board.class_size}`,
+              })}
               {board.pending_count > 0 && (
                 <span className="ml-2 inline-flex items-center gap-1">
                   <Loader2 className="size-3 animate-spin" />
-                  {board.pending_count} 人评分中
+                  {t({
+                    zh: `${board.pending_count} 人评分中`,
+                    en: `${board.pending_count} scoring`,
+                  })}
                 </span>
               )}
             </p>
             <div className="mt-1 flex flex-wrap gap-1">
               {board.teaching_goal && (
-                <Badge variant="secondary">目标：{board.teaching_goal}</Badge>
+                <Badge variant="secondary">
+                  {t({
+                    zh: `目标：${board.teaching_goal}`,
+                    en: `Goal: ${board.teaching_goal}`,
+                  })}
+                </Badge>
               )}
               <Badge variant="secondary">
-                评分引擎：
+                {t({ zh: "评分引擎：", en: "Scoring engine: " })}
                 {board.engine === "volc_flash"
-                  ? "豆包语音（AI）"
+                  ? t({ zh: "豆包语音（AI）", en: "Doubao Speech (AI)" })
                   : board.engine === "ark"
-                    ? "方舟（AI）"
-                    : "演示模式"}
+                    ? t({ zh: "方舟（AI）", en: "Ark (AI)" })
+                    : t({ zh: "演示模式", en: "Demo mode" })}
               </Badge>
             </div>
           </div>
@@ -267,7 +320,7 @@ function TeacherBoardPage() {
             <RefreshCw
               className={boardQuery.isFetching ? "animate-spin" : ""}
             />
-            刷新
+            {t({ zh: "刷新", en: "Refresh" })}
           </Button>
         </div>
 
@@ -280,13 +333,13 @@ function TeacherBoardPage() {
         >
           <TabsList className="h-11">
             <TabsTrigger value="prepare" className="px-6">
-              练习安排
+              {t({ zh: "练习安排", en: "Assign Practice" })}
             </TabsTrigger>
             <TabsTrigger value="results" className="px-6">
-              学生结果
+              {t({ zh: "学生结果", en: "Student Results" })}
             </TabsTrigger>
             <TabsTrigger value="history" className="px-6">
-              发布历史
+              {t({ zh: "发布历史", en: "Publish History" })}
             </TabsTrigger>
           </TabsList>
           <TabsContent value="prepare">
@@ -301,39 +354,56 @@ function TeacherBoardPage() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Card>
                 <CardContent className="py-4">
-                  <p className="text-xs text-muted-foreground">班级学生</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t({ zh: "班级学生", en: "Students" })}
+                  </p>
                   <p className="mt-1 text-2xl font-bold">
                     {board.students.length}
                     <span className="ml-1 text-xs font-normal text-muted-foreground">
-                      / {board.class_size} 人
+                      {t({
+                        zh: `/ ${board.class_size} 人`,
+                        en: `/ ${board.class_size}`,
+                      })}
                     </span>
                   </p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="py-4">
-                  <p className="text-xs text-muted-foreground">今日完成</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t({ zh: "今日完成", en: "Done Today" })}
+                  </p>
                   <p className="mt-1 text-2xl font-bold">
                     {board.submitted_count}
                     <span className="ml-1 text-xs font-normal text-muted-foreground">
-                      / {board.class_size} 人
+                      {t({
+                        zh: `/ ${board.class_size} 人`,
+                        en: `/ ${board.class_size}`,
+                      })}
                     </span>
                   </p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="py-4">
-                  <p className="text-xs text-muted-foreground">问答参考均分</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t({ zh: "问答参考均分", en: "Scenario Q&A Avg" })}
+                  </p>
                   <p className="mt-1 text-2xl font-bold">{classAvg}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="py-4">
-                  <p className="text-xs text-muted-foreground">值得关注</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t({ zh: "值得关注", en: "Needs Attention" })}
+                  </p>
                   <p className="mt-1 text-2xl font-bold">
                     {inactiveCount}
                     <span className="ml-1 text-xs font-normal text-muted-foreground">
-                      人 7 天未练
+                      {t({
+                        zh: "人 7 天未练",
+                        en: "inactive for 7 days",
+                      })}
                     </span>
                   </p>
                 </CardContent>
@@ -344,32 +414,48 @@ function TeacherBoardPage() {
               <CardContent className="flex flex-wrap items-center gap-3 py-4">
                 <div className="mr-auto min-w-48">
                   <p className="flex items-center gap-1.5 text-sm font-semibold">
-                    <ClipboardCheck className="size-4 text-primary" /> 教学动作
+                    <ClipboardCheck className="size-4 text-primary" />{" "}
+                    {t({ zh: "教学动作", en: "Teaching Actions" })}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {attentionStudents.length > 0
-                      ? `有 ${attentionStudents.length} 位学生还没完成本轮。`
-                      : "本轮已全部提交，可以进入下一次安排。"}
+                      ? t({
+                          zh: `有 ${attentionStudents.length} 位学生还没完成本轮。`,
+                          en: `${attentionStudents.length} student(s) haven't finished this round.`,
+                        })
+                      : t({
+                          zh: "本轮已全部提交，可以进入下一次安排。",
+                          en: "Everyone has submitted this round — ready for the next assignment.",
+                        })}
                   </p>
                 </div>
                 {attentionStudents.length > 0 && (
                   <Button variant="outline" size="sm" onClick={copyReminder}>
-                    <MessageCircle /> 复制提醒文案
+                    <MessageCircle />{" "}
+                    {t({ zh: "复制提醒文案", en: "Copy Reminder" })}
                   </Button>
                 )}
                 <Button size="sm" onClick={() => setActiveTab("prepare")}>
-                  安排下一次练习
+                  {t({ zh: "安排下一次练习", en: "Assign Next Practice" })}
                 </Button>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">今日名单</CardTitle>
+                <CardTitle className="text-base">
+                  {t({ zh: "今日名单", en: "Today's Roster" })}
+                </CardTitle>
                 <CardDescription>
-                  点击一行展开每题分数和音频。分数是参考反馈，不是考试成绩。
+                  {t({
+                    zh: "点击一行展开每题分数和音频。分数是参考反馈，不是考试成绩。",
+                    en: "Click a row to expand per-item scores and audio. Scores are reference feedback, not exam grades.",
+                  })}
                   <span className="mt-1 block sm:hidden">
-                    横向滑动表格，可以查看完整成绩与状态。
+                    {t({
+                      zh: "横向滑动表格，可以查看完整成绩与状态。",
+                      en: "Swipe the table sideways to see all scores and statuses.",
+                    })}
                   </span>
                 </CardDescription>
               </CardHeader>
@@ -378,12 +464,15 @@ function TeacherBoardPage() {
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    aria-label="练习状态筛选"
+                    aria-label={t({
+                      zh: "练习状态筛选",
+                      en: "Filter by practice status",
+                    })}
                     className="h-11 rounded-xl border border-input bg-card px-3 text-sm text-foreground transition-colors hover:border-primary/35"
                   >
                     {Object.entries(STATUS_LABELS).map(([v, label]) => (
                       <option key={v} value={v}>
-                        {label}
+                        {t(label)}
                       </option>
                     ))}
                   </select>
@@ -396,13 +485,22 @@ function TeacherBoardPage() {
                       type="search"
                       value={nameQuery}
                       onChange={(e) => setNameQuery(e.target.value)}
-                      placeholder="搜索学生姓名"
-                      aria-label="搜索学生姓名"
+                      placeholder={t({
+                        zh: "搜索学生姓名",
+                        en: "Search student names",
+                      })}
+                      aria-label={t({
+                        zh: "搜索学生姓名",
+                        en: "Search student names",
+                      })}
                       className="pl-9"
                     />
                   </div>
                   <span role="status" className="text-xs text-muted-foreground">
-                    {filteredStudents.length} / {board.students.length} 人
+                    {t({
+                      zh: `${filteredStudents.length} / ${board.students.length} 人`,
+                      en: `${filteredStudents.length} / ${board.students.length}`,
+                    })}
                   </span>
                   {(nameQuery || statusFilter !== "all") && (
                     <Button
@@ -413,7 +511,7 @@ function TeacherBoardPage() {
                         setStatusFilter("all")
                       }}
                     >
-                      清除筛选
+                      {t({ zh: "清除筛选", en: "Clear Filters" })}
                     </Button>
                   )}
                   <div className="ml-auto flex gap-2">
@@ -423,11 +521,11 @@ function TeacherBoardPage() {
                       onClick={() => void shareLink()}
                     >
                       <Link2 />
-                      学生入口
+                      {t({ zh: "学生入口", en: "Student Entry" })}
                     </Button>
                     <Button variant="outline" size="sm" onClick={exportCsv}>
                       <Download />
-                      导出
+                      {t({ zh: "导出", en: "Export" })}
                     </Button>
                   </div>
                 </div>
@@ -435,7 +533,10 @@ function TeacherBoardPage() {
               <CardContent>
                 {!hasStudents ? (
                   <p className="py-8 text-center text-muted-foreground">
-                    还没有学生进入这个课堂。
+                    {t({
+                      zh: "还没有学生进入这个课堂。",
+                      en: "No students have joined this classroom yet.",
+                    })}
                   </p>
                 ) : filteredStudents.length === 0 ? (
                   <div className="flex flex-col items-center gap-3 rounded-2xl bg-background px-4 py-10 text-center">
@@ -444,10 +545,16 @@ function TeacherBoardPage() {
                       aria-hidden="true"
                     />
                     <p className="text-sm font-semibold">
-                      没有找到符合条件的学生
+                      {t({
+                        zh: "没有找到符合条件的学生",
+                        en: "No matching students",
+                      })}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      试试其他姓名，或清除筛选查看全部学生。
+                      {t({
+                        zh: "试试其他姓名，或清除筛选查看全部学生。",
+                        en: "Try another name, or clear filters to see all students.",
+                      })}
                     </p>
                     <Button
                       variant="outline"
@@ -457,7 +564,7 @@ function TeacherBoardPage() {
                         setStatusFilter("all")
                       }}
                     >
-                      查看全部学生
+                      {t({ zh: "查看全部学生", en: "View All Students" })}
                     </Button>
                   </div>
                 ) : (
@@ -465,11 +572,21 @@ function TeacherBoardPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-8" />
-                        <TableHead>姓名</TableHead>
-                        <TableHead>完成</TableHead>
-                        <TableHead>跟读参考分</TableHead>
-                        <TableHead>问答参考分</TableHead>
-                        <TableHead>状态</TableHead>
+                        <TableHead>{t({ zh: "姓名", en: "Name" })}</TableHead>
+                        <TableHead>{t({ zh: "完成", en: "Done" })}</TableHead>
+                        <TableHead>
+                          {t({
+                            zh: "跟读参考分",
+                            en: "Repeat Reference Score",
+                          })}
+                        </TableHead>
+                        <TableHead>
+                          {t({
+                            zh: "问答参考分",
+                            en: "Scenario Q&A Reference Score",
+                          })}
+                        </TableHead>
+                        <TableHead>{t({ zh: "状态", en: "Status" })}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -497,10 +614,17 @@ function TeacherBoardPage() {
             <Card className="border-accent bg-accent">
               <CardContent className="py-4">
                 <p className="flex items-center gap-1.5 text-sm font-semibold">
-                  <Sparkles className="size-4" /> 下一次课堂，可以这样开始
+                  <Sparkles className="size-4" />{" "}
+                  {t({
+                    zh: "下一次课堂，可以这样开始",
+                    en: "Start your next class like this",
+                  })}
                 </p>
                 <p className="mt-1 text-xs text-accent-foreground/80">
-                  让学生分享「今天最想再说一次的句子」。先发现一个亮点，再给一个能做到的小建议。
+                  {t({
+                    zh: "让学生分享「今天最想再说一次的句子」。先发现一个亮点，再给一个能做到的小建议。",
+                    en: 'Ask students to share "the sentence I\'d most like to say again today". Spot one highlight first, then give one small, doable suggestion.',
+                  })}
                 </p>
               </CardContent>
             </Card>
@@ -510,7 +634,10 @@ function TeacherBoardPage() {
           </TabsContent>
         </Tabs>
         <p className="pb-6 text-center text-xs text-muted-foreground">
-          数据在评分完成后出现；有「评分中」时页面每几秒自动刷新。参考数据辅助教学，不定义学生。
+          {t({
+            zh: "数据在评分完成后出现；有「评分中」时页面每几秒自动刷新。参考数据辅助教学，不定义学生。",
+            en: "Data appears once scoring finishes; while items are scoring, the page refreshes every few seconds. Reference data supports teaching — it doesn't define students.",
+          })}
         </p>
       </div>
     </div>
@@ -528,6 +655,7 @@ function StudentRow({
   expanded: boolean
   onToggle: () => void
 }) {
+  const { t } = useI18n()
   const name = student.suffix
     ? `${student.display_name}·${student.suffix}`
     : student.display_name
@@ -540,7 +668,15 @@ function StudentRow({
             type="button"
             aria-expanded={expanded}
             aria-label={
-              expanded ? `收起 ${name} 的详情` : `展开 ${name} 的详情`
+              expanded
+                ? t({
+                    zh: `收起 ${name} 的详情`,
+                    en: `Collapse details for ${name}`,
+                  })
+                : t({
+                    zh: `展开 ${name} 的详情`,
+                    en: `Expand details for ${name}`,
+                  })
             }
             onClick={(e) => {
               e.stopPropagation()
@@ -563,14 +699,22 @@ function StudentRow({
         <TableCell>{student.question_avg ?? "–"}</TableCell>
         <TableCell className="space-x-1 whitespace-nowrap">
           {student.inactive_days7 && (
-            <Badge variant="destructive">7 日未练</Badge>
+            <Badge variant="destructive">
+              {t({ zh: "7 日未练", en: "Inactive 7 Days" })}
+            </Badge>
           )}
           {student.has_pending ? (
-            <Badge variant="secondary">评分中</Badge>
+            <Badge variant="secondary">
+              {t({ zh: "评分中", en: "Scoring" })}
+            </Badge>
           ) : student.done_count === 0 ? (
-            <span className="text-muted-foreground">未提交</span>
+            <span className="text-muted-foreground">
+              {t({ zh: "未提交", en: "Not submitted" })}
+            </span>
           ) : (
-            <Badge variant="outline">已提交</Badge>
+            <Badge variant="outline">
+              {t({ zh: "已提交", en: "Submitted" })}
+            </Badge>
           )}
         </TableCell>
       </TableRow>
@@ -589,7 +733,10 @@ function StudentRow({
                       to="/t/$code/s/$studentId"
                       params={{ code, studentId: student.student_id }}
                     >
-                      查看进步轨迹 →
+                      {t({
+                        zh: "查看进步轨迹 →",
+                        en: "View Progress Trail →",
+                      })}
                     </Link>
                   </Button>
                   <Button
@@ -599,25 +746,44 @@ function StudentRow({
                       event.stopPropagation()
                       const feedback =
                         student.done_count === 0
-                          ? `${name} 还没有提交本轮口语练习，可以提醒完成。`
-                          : `${name} 已完成 ${student.done_count}/${student.total_count} 题，可结合结果页逐题反馈。`
+                          ? t({
+                              zh: `${name} 还没有提交本轮口语练习，可以提醒完成。`,
+                              en: `${name} hasn't submitted this round of speaking practice yet — a reminder could help.`,
+                            })
+                          : t({
+                              zh: `${name} 已完成 ${student.done_count}/${student.total_count} 题，可结合结果页逐题反馈。`,
+                              en: `${name} has completed ${student.done_count}/${student.total_count} items; give per-item feedback from the results view.`,
+                            })
                       try {
                         await navigator.clipboard.writeText(feedback)
-                        toast.success("反馈文案已复制", {
-                          description: feedback,
-                        })
+                        toast.success(
+                          t({
+                            zh: "反馈文案已复制",
+                            en: "Feedback text copied",
+                          }),
+                          {
+                            description: feedback,
+                          },
+                        )
                       } catch (error) {
                         console.error("Failed to copy feedback:", error)
-                        toast.error("复制失败，请重试")
+                        toast.error(
+                          t({
+                            zh: "复制失败，请重试",
+                            en: "Copy failed, please try again",
+                          }),
+                        )
                       }
                     }}
                   >
-                    复制反馈
+                    {t({ zh: "复制反馈", en: "Copy Feedback" })}
                   </Button>
                 </div>
               </div>
               {student.items.every((i) => i.status === "missing") && (
-                <p className="text-sm text-muted-foreground">还没有作答。</p>
+                <p className="text-sm text-muted-foreground">
+                  {t({ zh: "还没有作答。", en: "No answers yet." })}
+                </p>
               )}
               {student.items.map((item, index) => (
                 <div
@@ -625,20 +791,30 @@ function StudentRow({
                   className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2"
                 >
                   <span className="w-20 text-sm text-muted-foreground">
-                    {index + 1}. {ITEM_TYPE_LABELS[item.type] ?? item.type}
+                    {index + 1}.{" "}
+                    {t(
+                      ITEM_TYPE_LABELS[item.type] ?? {
+                        zh: item.type,
+                        en: item.type,
+                      },
+                    )}
                   </span>
                   {item.status === "missing" ? (
-                    <span className="text-sm text-muted-foreground">未做</span>
+                    <span className="text-sm text-muted-foreground">
+                      {t({ zh: "未做", en: "Missing" })}
+                    </span>
                   ) : item.status === "done" ? (
                     <span className="text-sm font-semibold tabular-nums">
-                      参考分 {item.overall ?? "–"}
+                      {t(TERMS.score)} {item.overall ?? "–"}
                     </span>
                   ) : item.status === "failed" ? (
-                    <span className="text-sm text-destructive">未评出</span>
+                    <span className="text-sm text-destructive">
+                      {t({ zh: "未评出", en: "No Score" })}
+                    </span>
                   ) : (
                     <span className="text-sm text-muted-foreground">
                       <Loader2 className="mr-1 inline size-3 animate-spin" />
-                      评分中
+                      {t({ zh: "评分中", en: "Scoring" })}
                     </span>
                   )}
                   {item.attempt_id && item.status === "done" && (

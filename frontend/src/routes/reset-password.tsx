@@ -6,7 +6,7 @@ import {
   redirect,
   useNavigate,
 } from "@tanstack/react-router"
-import { useRef } from "react"
+import { useMemo, useRef } from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { LoginService } from "@/client"
@@ -24,26 +24,45 @@ import { PasswordInput } from "@/components/ui/password-input"
 import { APP_NAME } from "@/config"
 import { isLoggedIn } from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
+import { useI18n } from "@/lib/i18n"
 import { handleError } from "@/utils"
 
 const searchSchema = z.object({
   token: z.string().catch(""),
 })
 
-const formSchema = z
-  .object({
-    new_password: z
-      .string()
-      .min(1, { message: "请输入新密码" })
-      .min(8, { message: "密码至少需要 8 个字符" }),
-    confirm_password: z.string().min(1, { message: "请再次输入新密码" }),
-  })
-  .refine((data) => data.new_password === data.confirm_password, {
-    message: "两次输入的密码不一致",
-    path: ["confirm_password"],
-  })
+// 校验消息随语言切换：schema 在组件内按当前语言重建
+function buildFormSchema(t: ReturnType<typeof useI18n>["t"]) {
+  return z
+    .object({
+      new_password: z
+        .string()
+        .min(1, {
+          message: t({ zh: "请输入新密码", en: "Enter a new password" }),
+        })
+        .min(8, {
+          message: t({
+            zh: "密码至少需要 8 个字符",
+            en: "Password must be at least 8 characters",
+          }),
+        }),
+      confirm_password: z.string().min(1, {
+        message: t({
+          zh: "请再次输入新密码",
+          en: "Enter the new password again",
+        }),
+      }),
+    })
+    .refine((data) => data.new_password === data.confirm_password, {
+      message: t({
+        zh: "两次输入的密码不一致",
+        en: "The passwords don't match",
+      }),
+      path: ["confirm_password"],
+    })
+}
 
-type FormData = z.infer<typeof formSchema>
+type FormData = z.infer<ReturnType<typeof buildFormSchema>>
 
 export const Route = createFileRoute("/reset-password")({
   component: ResetPassword,
@@ -59,20 +78,22 @@ export const Route = createFileRoute("/reset-password")({
   head: () => ({
     meta: [
       {
-        title: `重置密码 - ${APP_NAME}`,
+        title: `重置密码 / Reset Password - ${APP_NAME}`,
       },
     ],
   }),
 })
 
 function ResetPassword() {
+  const { t } = useI18n()
   const { token } = Route.useSearch()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const navigate = useNavigate()
   const submissionInFlight = useRef(false)
+  const schema = useMemo(() => buildFormSchema(t), [t])
 
   const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(schema),
     mode: "onBlur",
     criteriaMode: "all",
     defaultValues: {
@@ -85,7 +106,12 @@ function ResetPassword() {
     mutationFn: (data: { new_password: string; token: string }) =>
       LoginService.resetPassword({ requestBody: data }),
     onSuccess: () => {
-      showSuccessToast("密码已重置，请使用新密码登录")
+      showSuccessToast(
+        t({
+          zh: "密码已重置，请使用新密码登录",
+          en: "Password reset — sign in with your new password",
+        }),
+      )
       form.reset()
       navigate({ to: "/login" })
     },
@@ -110,7 +136,9 @@ function ResetPassword() {
           className="flex flex-col gap-6"
         >
           <div className="flex flex-col items-center gap-2 text-center">
-            <h1 className="text-2xl font-bold">重置密码</h1>
+            <h1 className="text-2xl font-bold">
+              {t({ zh: "重置密码", en: "Reset Password" })}
+            </h1>
           </div>
 
           <div className="grid gap-4">
@@ -119,11 +147,16 @@ function ResetPassword() {
               name="new_password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>新密码</FormLabel>
+                  <FormLabel>
+                    {t({ zh: "新密码", en: "New Password" })}
+                  </FormLabel>
                   <FormControl>
                     <PasswordInput
                       data-testid="new-password-input"
-                      placeholder="请输入新密码"
+                      placeholder={t({
+                        zh: "请输入新密码",
+                        en: "Enter a new password",
+                      })}
                       autoComplete="new-password"
                       {...field}
                     />
@@ -138,11 +171,16 @@ function ResetPassword() {
               name="confirm_password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>确认新密码</FormLabel>
+                  <FormLabel>
+                    {t({ zh: "确认新密码", en: "Confirm New Password" })}
+                  </FormLabel>
                   <FormControl>
                     <PasswordInput
                       data-testid="confirm-password-input"
-                      placeholder="请再次输入新密码"
+                      placeholder={t({
+                        zh: "请再次输入新密码",
+                        en: "Enter the new password again",
+                      })}
                       autoComplete="new-password"
                       {...field}
                     />
@@ -157,14 +195,14 @@ function ResetPassword() {
               className="w-full"
               loading={mutation.isPending || form.formState.isSubmitting}
             >
-              重置密码
+              {t({ zh: "重置密码", en: "Reset Password" })}
             </LoadingButton>
           </div>
 
           <div className="text-center text-sm">
-            想起密码了？{" "}
+            {t({ zh: "想起密码了？", en: "Remembered your password?" })}{" "}
             <RouterLink to="/login" className="underline underline-offset-4">
-              返回登录
+              {t({ zh: "返回登录", en: "Back to Sign In" })}
             </RouterLink>
           </div>
         </form>

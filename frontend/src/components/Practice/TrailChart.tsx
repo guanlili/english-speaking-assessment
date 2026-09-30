@@ -2,6 +2,7 @@
  * 轻量 SVG 折线图（无第三方依赖）：进步轨迹页用。
  * PRD US-09：参考分与词汇档两条线分开，不混一条曲线。
  */
+import { useI18n } from "@/lib/i18n"
 
 interface TrailPoint {
   label: string // x 轴（日期）
@@ -46,6 +47,7 @@ function TrailChart({
   max: number
   formatValue?: (value: number) => string
 }) {
+  const { t } = useI18n()
   const chart = buildPath(points, min, max)
 
   return (
@@ -53,7 +55,7 @@ function TrailChart({
       <p className="text-sm font-medium">{title}</p>
       {chart === null ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
-          暂无数据
+          {t({ zh: "暂无数据", en: "No data yet" })}
         </p>
       ) : (
         <svg

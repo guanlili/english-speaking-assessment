@@ -43,10 +43,13 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
+import { useI18n } from "@/lib/i18n"
 
 export const Route = createFileRoute("/_layout/admin/questions")({
   component: QuestionsAdmin,
-  head: () => ({ meta: [{ title: `题库 - ${APP_NAME}` }] }),
+  head: () => ({
+    meta: [{ title: `题库 / Question Bank - ${APP_NAME}` }],
+  }),
 })
 
 const ALL_TOPICS = "__all__"
@@ -61,18 +64,41 @@ type ParsedLine =
   | { ok: true; lineno: number; item: BatchItem }
   | { ok: false; lineno: number; reason: string }
 
-/** 解析一行「英文 | 中文提示 | 秒数」（中文与秒数可省略）。 */
-function parseLine(line: string, lineno: number): ParsedLine {
+/** 解析一行「英文 | 中文提示 | 秒数」（中文与秒数可省略）。校验文案随语言切换。 */
+function parseLine(
+  line: string,
+  lineno: number,
+  t: ReturnType<typeof useI18n>["t"],
+): ParsedLine {
   const parts = line.split("|").map((p) => p.trim())
   const [text, translation, seconds] = parts
-  if (!text) return { ok: false, lineno, reason: "题目内容为空" }
+  if (!text)
+    return {
+      ok: false,
+      lineno,
+      reason: t({ zh: "题目内容为空", en: "Question text is empty" }),
+    }
   if (seconds !== undefined && seconds !== "" && !/^\d+$/.test(seconds)) {
-    return { ok: false, lineno, reason: `秒数「${seconds}」不是整数` }
+    return {
+      ok: false,
+      lineno,
+      reason: t({
+        zh: `秒数「${seconds}」不是整数`,
+        en: `Seconds "${seconds}" is not a whole number`,
+      }),
+    }
   }
   if (seconds) {
     const n = Number(seconds)
     if (n < 10 || n > 60) {
-      return { ok: false, lineno, reason: `秒数 ${n} 需在 10–60 之间` }
+      return {
+        ok: false,
+        lineno,
+        reason: t({
+          zh: `秒数 ${n} 需在 10–60 之间`,
+          en: `Seconds must be between 10 and 60 (got ${n})`,
+        }),
+      }
     }
   }
   return {
@@ -87,6 +113,7 @@ function parseLine(line: string, lineno: number): ParsedLine {
 }
 
 export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
+  const { t } = useI18n()
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
@@ -123,12 +150,12 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
       .split("\n")
       .map((raw, i) => ({ raw, lineno: i + 1 }))
       .filter(({ raw }) => raw.trim().length > 0)
-      .map(({ raw, lineno }) => parseLine(raw, lineno))
+      .map(({ raw, lineno }) => parseLine(raw, lineno, t))
     return {
       items: results.flatMap((r) => (r.ok ? [r.item] : [])),
       problems: results.flatMap((r) => (r.ok ? [] : [r])),
     }
-  }, [batchText])
+  }, [batchText, t])
 
   const scenarioId = (scenariosQuery.data ?? []).find(
     (s) => s.topic === batchTopic,
@@ -142,12 +169,22 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
       }),
     onSuccess: (result) => {
       if (result.failed.length === 0) {
-        showSuccessToast(`已录入 ${result.created} 道题`)
+        showSuccessToast(
+          t({
+            zh: `已录入 ${result.created} 道题`,
+            en: `Added ${result.created} questions`,
+          }),
+        )
       } else {
         showErrorToast(
-          `录入 ${result.created} 道，${result.failed.length} 道被拒（第 ${result.failed
-            .map((f) => f.index + 1)
-            .join("、")} 行：${result.failed[0]?.reason}）`,
+          t({
+            zh: `录入 ${result.created} 道，${result.failed.length} 道被拒（第 ${result.failed
+              .map((f) => f.index + 1)
+              .join("、")} 行：${result.failed[0]?.reason}）`,
+            en: `Added ${result.created}, rejected ${result.failed.length} (line ${result.failed
+              .map((f) => f.index + 1)
+              .join(", ")}: ${result.failed[0]?.reason})`,
+          }),
         )
       }
       if (result.created > 0) {
@@ -155,7 +192,13 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
         invalidate()
       }
     },
-    onError: (error) => showErrorToast(`批量录入失败：${error.message}`),
+    onError: (error) =>
+      showErrorToast(
+        t({
+          zh: `批量录入失败：${error.message}`,
+          en: `Bulk add failed: ${error.message}`,
+        }),
+      ),
   })
 
   // ── 编辑 / 删除 ──
@@ -187,21 +230,33 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
         },
       }),
     onSuccess: () => {
-      showSuccessToast("题目已更新")
+      showSuccessToast(t({ zh: "题目已更新", en: "Question updated" }))
       setEditing(null)
       invalidate()
     },
-    onError: (error) => showErrorToast(`更新失败：${error.message}`),
+    onError: (error) =>
+      showErrorToast(
+        t({
+          zh: `更新失败：${error.message}`,
+          en: `Update failed: ${error.message}`,
+        }),
+      ),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => AdminService.deleteQuestion({ questionId: id }),
     onSuccess: () => {
-      showSuccessToast("题目已删除")
+      showSuccessToast(t({ zh: "题目已删除", en: "Question deleted" }))
       setToDelete(null)
       invalidate()
     },
-    onError: (error) => showErrorToast(`删除失败：${error.message}`),
+    onError: (error) =>
+      showErrorToast(
+        t({
+          zh: `删除失败：${error.message}`,
+          en: `Delete failed: ${error.message}`,
+        }),
+      ),
   })
 
   const topics = (scenariosQuery.data ?? []).map((s) => s.topic)
@@ -216,33 +271,37 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
       {!embedded && <ContentNavigation />}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">
-          情景问答 · 题目管理
+          {t({ zh: "情景问答 · 题目管理", en: "Scenario Q&A · Questions" })}
         </h1>
         <p className="text-muted-foreground">
-          情景问答的集中管理：跨主题搜索、批量粘贴录入、逐条修改。
-          学生每轮练习从对应主题的题目里按序抽取。
+          {t({
+            zh: "情景问答的集中管理：跨主题搜索、批量粘贴录入、逐条修改。学生每轮练习从对应主题的题目里按序抽取。",
+            en: "Central management for Scenario Q&A: search across topics, paste in bulk, and edit one by one. Each practice round draws questions in order from the matching topic.",
+          })}
         </p>
       </div>
 
       <details className="rounded-xl border bg-card p-4">
         <summary className="cursor-pointer font-medium text-primary">
-          批量录入问答题
+          {t({ zh: "批量录入问答题", en: "Bulk Add Questions" })}
         </summary>
         <div className="mt-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <ClipboardPaste className="size-4" />
-                批量录入
+                {t({ zh: "批量录入", en: "Bulk Add" })}
               </CardTitle>
               <CardDescription>
-                每行一道题，格式「英文题目 | 中文提示 |
-                建议秒数」，中文和秒数可省略（默认 20 秒）。
+                {t({
+                  zh: "每行一道题，格式「英文题目 | 中文提示 | 建议秒数」，中文和秒数可省略（默认 20 秒）。",
+                  en: 'One question per line, formatted as "English question | Chinese hint | suggested seconds"; the hint and seconds are optional (default 20).',
+                })}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
-                <Label>主题</Label>
+                <Label>{t({ zh: "主题", en: "Topic" })}</Label>
                 <Select
                   value={batchTopic}
                   onValueChange={setBatchTopic}
@@ -252,15 +311,18 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                     <SelectValue
                       placeholder={
                         topics.length === 0
-                          ? "还没有主题，先去「问答主题与出题」建一个"
-                          : "选择题库主题"
+                          ? t({
+                              zh: "还没有主题，先去「问答主题与出题」建一个",
+                              en: "No topics yet — create one in Topics & Questions first",
+                            })
+                          : t({ zh: "选择题库主题", en: "Select a bank topic" })
                       }
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {topics.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
+                    {topics.map((topic) => (
+                      <SelectItem key={topic} value={topic}>
+                        {topic}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -273,22 +335,31 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                 placeholder={
                   "How do you get to school? | 你怎样去学校？ | 20\nWhat is your favourite subject? | 你最喜欢哪门学科？"
                 }
-                aria-label="批量录入题目"
+                aria-label={t({ zh: "批量录入题目", en: "Bulk add questions" })}
               />
               {batchText.trim() && (
                 <div className="text-sm text-muted-foreground">
-                  将录入{" "}
+                  {t({ zh: "将录入", en: "Adding" })}{" "}
                   <span className="font-medium text-foreground">
                     {parsed.items.length}
                   </span>{" "}
-                  道题
+                  {t({ zh: "道题", en: "questions" })}
                   {parsed.problems.length > 0 && (
                     <span className="text-destructive">
                       {" "}
-                      · {parsed.problems.length} 行有问题：
+                      ·{" "}
+                      {t({
+                        zh: `${parsed.problems.length} 行有问题：`,
+                        en: `${parsed.problems.length} lines with problems: `,
+                      })}
                       {parsed.problems
-                        .map((p) => `第${p.lineno}行（${p.reason}）`)
-                        .join("、")}
+                        .map((p) =>
+                          t({
+                            zh: `第${p.lineno}行（${p.reason}）`,
+                            en: `line ${p.lineno} (${p.reason})`,
+                          }),
+                        )
+                        .join(t({ zh: "、", en: ", " }))}
                     </span>
                   )}
                 </div>
@@ -299,8 +370,13 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                   loading={batchMutation.isPending}
                   onClick={() => batchMutation.mutate()}
                 >
-                  录入{" "}
-                  {parsed.items.length > 0 ? `${parsed.items.length} 道题` : ""}
+                  {t({
+                    zh: `录入${parsed.items.length > 0 ? ` ${parsed.items.length} 道题` : ""}`,
+                    en:
+                      parsed.items.length > 0
+                        ? `Add ${parsed.items.length} Questions`
+                        : "Add",
+                  })}
                 </LoadingButton>
               </div>
             </CardContent>
@@ -310,9 +386,14 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">全部题目</CardTitle>
+          <CardTitle className="text-base">
+            {t({ zh: "全部题目", en: "All Questions" })}
+          </CardTitle>
           <CardDescription>
-            共 {rows.length} 条，按主题、序号排列。
+            {t({
+              zh: `共 ${rows.length} 条，按主题、序号排列。`,
+              en: `${rows.length} in total, ordered by topic and index.`,
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -322,10 +403,12 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ALL_TOPICS}>全部主题</SelectItem>
-                {topics.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
+                <SelectItem value={ALL_TOPICS}>
+                  {t({ zh: "全部主题", en: "All Topics" })}
+                </SelectItem>
+                {topics.map((topic) => (
+                  <SelectItem key={topic} value={topic}>
+                    {topic}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -340,11 +423,14 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
               <Input
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                placeholder="搜题目或中文提示…"
-                aria-label="搜索题目"
+                placeholder={t({
+                  zh: "搜题目或中文提示…",
+                  en: "Search questions or hints…",
+                })}
+                aria-label={t({ zh: "搜索题目", en: "Search questions" })}
               />
               <Button type="submit" variant="outline">
-                搜索
+                {t({ zh: "搜索", en: "Search" })}
               </Button>
             </form>
           </div>
@@ -357,27 +443,36 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
             </div>
           ) : bankQuery.isError ? (
             <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
-              <p>题库加载失败。</p>
+              <p>
+                {t({ zh: "题库加载失败。", en: "Failed to load questions." })}
+              </p>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => void bankQuery.refetch()}
               >
-                重试
+                {t({ zh: "重试", en: "Retry" })}
               </Button>
             </div>
           ) : rows.length === 0 ? (
             <p className="py-8 text-center text-muted-foreground">
-              没有符合条件的题目，换个筛选条件或在上面批量录入。
+              {t({
+                zh: "没有符合条件的题目，换个筛选条件或在上面批量录入。",
+                en: "No questions match — adjust the filters or bulk add above.",
+              })}
             </p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>主题</TableHead>
-                  <TableHead>题目</TableHead>
-                  <TableHead>中文提示</TableHead>
-                  <TableHead className="w-16">秒数</TableHead>
+                  <TableHead>{t({ zh: "主题", en: "Topic" })}</TableHead>
+                  <TableHead>{t({ zh: "题目", en: "Question" })}</TableHead>
+                  <TableHead>
+                    {t({ zh: "中文提示", en: "Chinese Hint" })}
+                  </TableHead>
+                  <TableHead className="w-16">
+                    {t({ zh: "秒数", en: "Secs" })}
+                  </TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -397,7 +492,10 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          aria-label="编辑题目"
+                          aria-label={t({
+                            zh: "编辑题目",
+                            en: "Edit question",
+                          })}
                           onClick={() => openEdit(row)}
                         >
                           <Pencil />
@@ -405,7 +503,10 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          aria-label="删除题目"
+                          aria-label={t({
+                            zh: "删除题目",
+                            en: "Delete question",
+                          })}
                           onClick={() => setToDelete(row)}
                         >
                           <Trash2 className="text-destructive" />
@@ -426,14 +527,21 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>编辑题目</DialogTitle>
+            <DialogTitle>
+              {t({ zh: "编辑题目", en: "Edit Question" })}
+            </DialogTitle>
             <DialogDescription>
-              修改会即时生效；学生下一轮抽题时使用新内容。
+              {t({
+                zh: "修改会即时生效；学生下一轮抽题时使用新内容。",
+                en: "Changes take effect immediately; students see the new content next round.",
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="q-text">英文题目</Label>
+              <Label htmlFor="q-text">
+                {t({ zh: "英文题目", en: "Question" })}
+              </Label>
               <Textarea
                 id="q-text"
                 rows={3}
@@ -444,7 +552,9 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="q-translation">中文提示（可选）</Label>
+              <Label htmlFor="q-translation">
+                {t({ zh: "中文提示（可选）", en: "Chinese Hint (optional)" })}
+              </Label>
               <Input
                 id="q-translation"
                 value={editForm.translation}
@@ -454,7 +564,12 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="q-seconds">建议秒数（10–60）</Label>
+              <Label htmlFor="q-seconds">
+                {t({
+                  zh: "建议秒数（10–60）",
+                  en: "Suggested Seconds (10–60)",
+                })}
+              </Label>
               <Input
                 id="q-seconds"
                 type="number"
@@ -472,14 +587,14 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>
-              取消
+              {t({ zh: "取消", en: "Cancel" })}
             </Button>
             <LoadingButton
               disabled={!editValid}
               loading={updateMutation.isPending}
               onClick={() => updateMutation.mutate()}
             >
-              保存
+              {t({ zh: "保存", en: "Save" })}
             </LoadingButton>
           </DialogFooter>
         </DialogContent>
@@ -487,9 +602,12 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
 
       <ConfirmDialog
         open={toDelete !== null}
-        title="删除这道题？"
-        description={`「${toDelete?.text ?? ""}」删除后学生抽题不再出现，历史作答保留。此操作不可撤销。`}
-        confirmText="删除题目"
+        title={t({ zh: "删除这道题？", en: "Delete this question?" })}
+        description={t({
+          zh: `「${toDelete?.text ?? ""}」删除后学生抽题不再出现，历史作答保留。此操作不可撤销。`,
+          en: `"${toDelete?.text ?? ""}" will no longer be drawn for students; past answers are kept. This cannot be undone.`,
+        })}
+        confirmText={t({ zh: "删除题目", en: "Delete Question" })}
         onOpenChange={(next) => {
           if (!next) setToDelete(null)
         }}

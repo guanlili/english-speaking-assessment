@@ -19,16 +19,18 @@ import { APP_NAME } from "@/config"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import { readSavedExpressions } from "@/lib/favorites"
-import { EXPLAIN } from "@/lib/terms"
+import { useI18n } from "@/lib/i18n"
+import { EXPLAIN, TERMS } from "@/lib/terms"
 
 export const Route = createFileRoute("/me/$code")({
   component: MyTrailPage,
   head: () => ({
-    meta: [{ title: `我的成长 - ${APP_NAME}` }],
+    meta: [{ title: `我的成长 / My Growth - ${APP_NAME}` }],
   }),
 })
 
 function MyTrailPage() {
+  const { t } = useI18n()
   const { code } = useParams({ from: "/me/$code" })
   const student = loadStudent(code)
 
@@ -69,13 +71,19 @@ function MyTrailPage() {
             <Card>
               <CardContent className="py-4">
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Mic className="size-3.5" /> 累计开口
-                  <InfoHint label="练习录音的累计时长（分钟）。" />
+                  <Mic className="size-3.5" />{" "}
+                  {t({ zh: "累计开口", en: "Total speaking" })}
+                  <InfoHint
+                    label={t({
+                      zh: "练习录音的累计时长（分钟）。",
+                      en: "Total length of your practice recordings (minutes).",
+                    })}
+                  />
                 </p>
                 <p className="mt-1 text-2xl font-bold">
                   {trailQuery.data.total_minutes ?? 0}
                   <span className="ml-1 text-xs font-normal text-muted-foreground">
-                    分钟
+                    {t({ zh: "分钟", en: "min" })}
                   </span>
                 </p>
               </CardContent>
@@ -83,13 +91,19 @@ function MyTrailPage() {
             <Card>
               <CardContent className="py-4">
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Trophy className="size-3.5" /> 完成练习
-                  <InfoHint label="已结算出分的练习轮数。" />
+                  <Trophy className="size-3.5" />{" "}
+                  {t({ zh: "完成练习", en: "Completed rounds" })}
+                  <InfoHint
+                    label={t({
+                      zh: "已结算出分的练习轮数。",
+                      en: "Practice rounds that have received scores.",
+                    })}
+                  />
                 </p>
                 <p className="mt-1 text-2xl font-bold">
                   {trailQuery.data.sessions?.length ?? 0}
                   <span className="ml-1 text-xs font-normal text-muted-foreground">
-                    次
+                    {t({ zh: "次", en: "rounds" })}
                   </span>
                 </p>
               </CardContent>
@@ -97,13 +111,14 @@ function MyTrailPage() {
             <Card>
               <CardContent className="py-4">
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Flame className="size-3.5" /> 坚持练习
-                  <InfoHint label={EXPLAIN.streak} />
+                  <Flame className="size-3.5" />{" "}
+                  {t({ zh: "坚持练习", en: "Keep going" })}
+                  <InfoHint label={t(EXPLAIN.streak)} />
                 </p>
                 <p className="mt-1 text-2xl font-bold">
                   {todayQuery.data?.gamification?.streak_days ?? 0}
                   <span className="ml-1 text-xs font-normal text-muted-foreground">
-                    天
+                    {t({ zh: "天", en: "days" })}
                   </span>
                 </p>
               </CardContent>
@@ -115,10 +130,17 @@ function MyTrailPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-1.5 text-base">
-                <BookOpen className="size-4 text-primary" /> 词汇，也在慢慢生长
+                <BookOpen className="size-4 text-primary" />{" "}
+                {t({
+                  zh: "词汇，也在慢慢生长",
+                  en: "Your vocabulary is growing too",
+                })}
               </CardTitle>
               <CardDescription>
-                累计命中表达次数 · 来源：词表分析
+                {t({
+                  zh: "累计命中表达次数 · 来源：词表分析",
+                  en: "Total expression hits · source: wordlist analysis",
+                })}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2.5">
@@ -130,11 +152,14 @@ function MyTrailPage() {
                   )}
                 </span>
                 <span className="pb-1 text-xs text-muted-foreground">
-                  次命中
+                  {t({ zh: "次命中", en: "hits" })}
                 </span>
               </div>
               <p className="pt-1 text-xs text-muted-foreground">
-                用过的表达越多，越容易在真实交流中自然说出来。
+                {t({
+                  zh: "用过的表达越多，越容易在真实交流中自然说出来。",
+                  en: "The more expressions you've used, the more naturally they come out in real conversations.",
+                })}
               </p>
             </CardContent>
           </Card>
@@ -145,12 +170,15 @@ function MyTrailPage() {
             <span className="flex items-center gap-1 text-sm font-semibold">
               <Sparkles className="size-4 text-primary" />
               {todayQuery.data.gamification.xp} XP
-              <InfoHint label={EXPLAIN.xp} />
+              <InfoHint label={t(EXPLAIN.xp)} />
             </span>
             <span className="flex items-center gap-1 text-sm text-muted-foreground">
               <Flame className="size-4 text-orange-500" />
-              连胜 {todayQuery.data.gamification.streak_days} 天
-              <InfoHint label={EXPLAIN.streak} />
+              {t({
+                zh: `连胜 ${todayQuery.data.gamification.streak_days} 天`,
+                en: `Streak ${todayQuery.data.gamification.streak_days} days`,
+              })}
+              <InfoHint label={t(EXPLAIN.streak)} />
             </span>
             <div className="ml-auto flex flex-wrap gap-2">
               {(todayQuery.data.gamification.badges ?? []).map((b) => (
@@ -164,23 +192,34 @@ function MyTrailPage() {
 
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">我的成长</h1>
+            <h1 className="text-xl font-bold tracking-tight">
+              {t(TERMS.growthPage)}
+            </h1>
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              {displayName(student)} · 课堂 {code.toUpperCase()}
+              {displayName(student)} ·{" "}
+              {t({
+                zh: `课堂 ${code.toUpperCase()}`,
+                en: `Classroom ${code.toUpperCase()}`,
+              })}
             </p>
           </div>
           <Button variant="outline" size="sm" asChild>
             <Link to="/p/$code" params={{ code }}>
-              回练习页
+              {t({ zh: "回练习页", en: "Back to practice" })}
             </Link>
           </Button>
         </div>
 
         {trailQuery.isPending ? (
-          <p className="py-10 text-center text-muted-foreground">正在加载…</p>
+          <p className="py-10 text-center text-muted-foreground">
+            {t({ zh: "正在加载…", en: "Loading…" })}
+          </p>
         ) : trailQuery.isError || !trailQuery.data ? (
           <p className="py-10 text-center text-muted-foreground">
-            加载失败，请刷新重试。
+            {t({
+              zh: "加载失败，请刷新重试。",
+              en: "Failed to load — please refresh and retry.",
+            })}
           </p>
         ) : (
           <>
@@ -188,8 +227,8 @@ function MyTrailPage() {
               <div className="flex gap-1 rounded-xl bg-secondary/60 p-1">
                 {(
                   [
-                    ["trail", "进步轨迹"],
-                    ["saved", "表达收藏"],
+                    ["trail", t(TERMS.trailPage)],
+                    ["saved", t({ zh: "表达收藏", en: "Saved expressions" })],
                   ] as const
                 ).map(([v, label]) => (
                   <button
@@ -219,7 +258,7 @@ function MyTrailPage() {
                           : "rounded-lg px-3 py-1.5 text-xs text-muted-foreground"
                       }
                     >
-                      近 {n} 天
+                      {t({ zh: `近 ${n} 天`, en: `Last ${n} days` })}
                     </button>
                   ))}
                 </div>
@@ -234,9 +273,14 @@ function MyTrailPage() {
         {growthTab === "saved" && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">留住好表达</CardTitle>
+              <CardTitle className="text-base">
+                {t({ zh: "留住好表达", en: "Keep the great expressions" })}
+              </CardTitle>
               <CardDescription>
-                练习中收藏的升级表达，下次试着用出来。
+                {t({
+                  zh: "练习中收藏的升级表达，下次试着用出来。",
+                  en: "Upgraded expressions you saved during practice — try using them next time.",
+                })}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -253,7 +297,10 @@ function MyTrailPage() {
         )}
 
         <p className="pb-6 text-center text-xs text-muted-foreground">
-          参考数据，不是考试成绩或官方等级。
+          {t({
+            zh: "参考数据，不是考试成绩或官方等级。",
+            en: "Reference data, not exam results or official levels.",
+          })}
         </p>
       </div>
     </StudentShell>

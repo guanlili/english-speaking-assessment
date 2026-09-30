@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useI18n } from "@/lib/i18n"
 
 export type RecorderStatus = "idle" | "recording" | "ready"
 
@@ -31,6 +32,7 @@ function pickMimeType(): string {
 }
 
 export function useRecorder(options: UseRecorderOptions = {}) {
+  const { t } = useI18n()
   const [status, setStatus] = useState<RecorderStatus>("idle")
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -117,7 +119,12 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         // PRD US-02：空文件或短于 1 秒不打分，提示再录
         if (duration < MIN_RECORD_SECONDS || chunksRef.current.length === 0) {
           setStatus("idle")
-          setError("录音太短（不足 1 秒），请再录一次")
+          setError(
+            t({
+              zh: "录音太短（不足 1 秒），请再录一次",
+              en: "Recording too short (under 1 second). Please try again.",
+            }),
+          )
           return
         }
         const blob = new Blob(chunksRef.current, { type: blobType })
@@ -145,15 +152,23 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       // PRD US-02：拒绝授权时说明原因，不提交空文件
       if (name === "NotAllowedError" || name === "SecurityError") {
         setError(
-          "需要允许麦克风：请在浏览器地址栏的权限设置中允许麦克风，然后重试",
+          t({
+            zh: "需要允许麦克风：请在浏览器地址栏的权限设置中允许麦克风，然后重试",
+            en: "Microphone blocked: allow microphone access in the browser address bar, then retry.",
+          }),
         )
       } else {
-        setError("无法访问麦克风，请检查耳机是否插好")
+        setError(
+          t({
+            zh: "无法访问麦克风，请检查耳机是否插好",
+            en: "Cannot access the microphone. Please check your headset connection.",
+          }),
+        )
       }
     } finally {
       startingRef.current = false
     }
-  }, [cleanup, stop])
+  }, [cleanup, stop, t])
 
   // 卸载时释放麦克风。注意 StrictMode 会先「挂载→清理→再挂载」：
   // 清理里置 disposed=true，再挂载时必须复位为 false，否则 start 会误判为已卸载。

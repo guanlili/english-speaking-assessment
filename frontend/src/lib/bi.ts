@@ -15,3 +15,21 @@ export interface BiString {
 export function resolveBi(bi: BiString, lang: Lang): string {
   return bi[lang]
 }
+
+const LANG_STORAGE_KEY = "esa:lang"
+
+export function readStoredLang(): Lang {
+  try {
+    return localStorage.getItem(LANG_STORAGE_KEY) === "en" ? "en" : "zh"
+  } catch {
+    return "zh"
+  }
+}
+
+export function writeStoredLang(lang: Lang): void {
+  try {
+    localStorage.setItem(LANG_STORAGE_KEY, lang)
+  } catch {
+    /* 隐私模式等场景写入失败可接受：仅本次会话生效 */
+  }
+}

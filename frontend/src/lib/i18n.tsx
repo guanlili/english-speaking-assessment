@@ -1,4 +1,10 @@
-import { type BiString, type Lang, resolveBi } from "@/lib/bi"
+import {
+  type BiString,
+  type Lang,
+  readStoredLang,
+  resolveBi,
+  writeStoredLang,
+} from "@/lib/bi"
 
 export type { BiString, Lang } from "@/lib/bi"
 export { resolveBi } from "@/lib/bi"
@@ -26,24 +32,6 @@ import {
   useMemo,
   useState,
 } from "react"
-
-const LANG_STORAGE_KEY = "esa:lang"
-
-export function readStoredLang(): Lang {
-  try {
-    return localStorage.getItem(LANG_STORAGE_KEY) === "en" ? "en" : "zh"
-  } catch {
-    return "zh"
-  }
-}
-
-function writeStoredLang(lang: Lang) {
-  try {
-    localStorage.setItem(LANG_STORAGE_KEY, lang)
-  } catch {
-    /* 隐私模式等场景写入失败可接受：仅本次会话生效 */
-  }
-}
 
 interface I18nContextValue {
   lang: Lang

@@ -15,10 +15,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { downloadCsv } from "@/lib/csv"
+import { useI18n } from "@/lib/i18n"
 import { ITEM_TYPE_LABELS } from "@/lib/terms"
 
 /** 发布历史：每次发布的练习（快照）列表 + 按次结果回看与导出。 */
 export function ExerciseHistory({ code }: { code: string }) {
+  const { t } = useI18n()
   const exercisesQuery = useQuery({
     queryKey: ["teacher", "exercises", code],
     queryFn: () =>
@@ -29,20 +31,23 @@ export function ExerciseHistory({ code }: { code: string }) {
   if (exercisesQuery.isPending)
     return (
       <p className="rounded-xl border p-6 text-muted-foreground">
-        正在加载发布历史…
+        {t({
+          zh: "正在加载发布历史…",
+          en: "Loading publish history…",
+        })}
       </p>
     )
   if (exercisesQuery.isError)
     return (
       <div className="rounded-xl border p-6 text-muted-foreground">
-        发布历史加载失败。
+        {t({ zh: "发布历史加载失败。", en: "Failed to load publish history." })}
         <Button
           variant="outline"
           size="sm"
           className="ml-3"
           onClick={() => void exercisesQuery.refetch()}
         >
-          重试
+          {t({ zh: "重试", en: "Retry" })}
         </Button>
       </div>
     )
@@ -51,7 +56,10 @@ export function ExerciseHistory({ code }: { code: string }) {
   if (exercises.length === 0)
     return (
       <p className="rounded-xl border bg-card p-6 text-center text-muted-foreground">
-        还没有发布过练习。第一次发布后会在这里留档，可随时回看每次练习的结果。
+        {t({
+          zh: "还没有发布过练习。第一次发布后会在这里留档，可随时回看每次练习的结果。",
+          en: "Nothing published yet. Each publish is archived here so you can review its results anytime.",
+        })}
       </p>
     )
 
@@ -79,13 +87,22 @@ export function ExerciseHistory({ code }: { code: string }) {
                     exercise.status === "published" ? "outline" : "secondary"
                   }
                 >
-                  {exercise.status === "published" ? "当前发布" : "已归档"}
+                  {exercise.status === "published"
+                    ? t({ zh: "当前发布", en: "Current publish" })
+                    : t({ zh: "已归档", en: "Archived" })}
                 </Badge>
-                <span>{exercise.item_count} 道题</span>
+                <span>
+                  {t({
+                    zh: `${exercise.item_count} 道题`,
+                    en: `${exercise.item_count} items`,
+                  })}
+                </span>
                 {exercise.published_at && (
                   <span>
-                    发布于{" "}
-                    {new Date(exercise.published_at).toLocaleString("zh-CN")}
+                    {t({
+                      zh: `发布于 ${new Date(exercise.published_at).toLocaleString("zh-CN")}`,
+                      en: `Published ${new Date(exercise.published_at).toLocaleString("zh-CN")}`,
+                    })}
                   </span>
                 )}
               </p>
@@ -95,7 +112,7 @@ export function ExerciseHistory({ code }: { code: string }) {
               size="sm"
               onClick={() => setSelected(exercise)}
             >
-              查看结果
+              {t({ zh: "查看结果", en: "View Results" })}
             </Button>
           </CardContent>
         </Card>
@@ -113,6 +130,7 @@ function ExerciseResults({
   exercise: ClassroomExercisePublic
   onBack: () => void
 }) {
+  const { t } = useI18n()
   const resultsQuery = useQuery({
     queryKey: ["teacher", "exercise-results", code, exercise.id],
     queryFn: () =>
@@ -127,10 +145,18 @@ function ExerciseResults({
 
   const exportCsv = (rows: ExerciseStudentResult[]) => {
     // 每题一列：分数或未做
-    const itemColumns = rows[0]?.items.map((_, idx) => `第${idx + 1}题`) ?? []
+    const itemColumns =
+      rows[0]?.items.map((_, idx) =>
+        t({ zh: `第${idx + 1}题`, en: `Item ${idx + 1}` }),
+      ) ?? []
     downloadCsv(
       [
-        ["姓名", "完成", "总题数", ...itemColumns],
+        [
+          t({ zh: "姓名", en: "Name" }),
+          t({ zh: "完成", en: "Done" }),
+          t({ zh: "总题数", en: "Total Items" }),
+          ...itemColumns,
+        ],
         ...rows.map((row) => [
           row.suffix ? `${row.display_name}·${row.suffix}` : row.display_name,
           row.done_count,
@@ -139,14 +165,17 @@ function ExerciseResults({
             item.status === "done"
               ? (item.overall ?? "-")
               : item.status === "missing"
-                ? "未做"
+                ? t({ zh: "未做", en: "Missing" })
                 : item.status === "failed"
-                  ? "未评出"
-                  : "评分中",
+                  ? t({ zh: "未评出", en: "No Score" })
+                  : t({ zh: "评分中", en: "Scoring" }),
           ),
         ]),
       ],
-      `练习v${exercise.version_no}-${exercise.title}.csv`,
+      t({
+        zh: `练习v${exercise.version_no}-${exercise.title}.csv`,
+        en: `practice-v${exercise.version_no}-${exercise.title}.csv`,
+      }),
     )
   }
 
@@ -160,7 +189,7 @@ function ExerciseResults({
             className="mb-1 px-0"
             onClick={onBack}
           >
-            ← 发布历史
+            ← {t({ zh: "发布历史", en: "Publish History" })}
           </Button>
           <p className="font-semibold">
             v{exercise.version_no} · {exercise.title}
@@ -173,34 +202,46 @@ function ExerciseResults({
             onClick={() => exportCsv(resultsQuery.data!)}
           >
             <Download />
-            导出成绩 CSV
+            {t({ zh: "导出成绩 CSV", en: "Export Grades CSV" })}
           </Button>
         )}
       </div>
       {resultsQuery.isPending ? (
         <p className="rounded-xl border p-6 text-muted-foreground">
-          正在加载结果…
+          {t({ zh: "正在加载结果…", en: "Loading results…" })}
         </p>
       ) : resultsQuery.isError ? (
         <p className="rounded-xl border p-6 text-muted-foreground">
-          结果加载失败，请重试。
+          {t({
+            zh: "结果加载失败，请重试。",
+            en: "Failed to load results, please retry.",
+          })}
         </p>
       ) : (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              按「{exercise.title}」发布的题单解释（{exercise.item_count} 道题）
+              {t({
+                zh: `按「${exercise.title}」发布的题单解释（${exercise.item_count} 道题）`,
+                en: `Items published for "${exercise.title}" (${exercise.item_count} items)`,
+              })}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>姓名</TableHead>
-                  <TableHead>完成</TableHead>
+                  <TableHead>{t({ zh: "姓名", en: "Name" })}</TableHead>
+                  <TableHead>{t({ zh: "完成", en: "Done" })}</TableHead>
                   {(resultsQuery.data?.[0]?.items ?? []).map((item, idx) => (
                     <TableHead key={item.item_id} className="whitespace-nowrap">
-                      {idx + 1}. {ITEM_TYPE_LABELS[item.type] ?? item.type}
+                      {idx + 1}.{" "}
+                      {t(
+                        ITEM_TYPE_LABELS[item.type] ?? {
+                          zh: item.type,
+                          en: item.type,
+                        },
+                      )}
                     </TableHead>
                   ))}
                 </TableRow>
@@ -214,7 +255,7 @@ function ExerciseResults({
                         : row.display_name}
                       {row.has_pending && (
                         <Badge variant="secondary" className="ml-2">
-                          评分中
+                          {t({ zh: "评分中", en: "Scoring" })}
                         </Badge>
                       )}
                     </TableCell>
@@ -228,11 +269,17 @@ function ExerciseResults({
                             {item.overall ?? "-"}
                           </span>
                         ) : item.status === "missing" ? (
-                          <span className="text-muted-foreground">未做</span>
+                          <span className="text-muted-foreground">
+                            {t({ zh: "未做", en: "Missing" })}
+                          </span>
                         ) : item.status === "failed" ? (
-                          <span className="text-destructive">未评出</span>
+                          <span className="text-destructive">
+                            {t({ zh: "未评出", en: "No Score" })}
+                          </span>
                         ) : (
-                          <span className="text-muted-foreground">评分中</span>
+                          <span className="text-muted-foreground">
+                            {t({ zh: "评分中", en: "Scoring" })}
+                          </span>
                         )}
                       </TableCell>
                     ))}
@@ -246,7 +293,10 @@ function ExerciseResults({
               ),
             ) && (
               <p className="mt-3 text-xs text-muted-foreground">
-                分数为参考反馈；录音请在「学生结果」面板按学生展开回听。
+                {t({
+                  zh: "分数为参考反馈；录音请在「学生结果」面板按学生展开回听。",
+                  en: "Scores are reference feedback; listen to recordings by expanding students in the Student Results panel.",
+                })}
               </p>
             )}
           </CardContent>

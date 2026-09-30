@@ -17,17 +17,21 @@ import { APP_NAME } from "@/config"
 import { isLoggedIn } from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { lastJoinedCode } from "@/lib/classroom-student"
+import { useI18n } from "@/lib/i18n"
 
 export const Route = createFileRoute("/change-password")({
   beforeLoad: () => {
     if (!isLoggedIn()) throw redirect({ to: "/login" })
   },
   component: ChangePasswordPage,
-  head: () => ({ meta: [{ title: `修改密码 - ${APP_NAME}` }] }),
+  head: () => ({
+    meta: [{ title: `修改密码 / Change Password - ${APP_NAME}` }],
+  }),
 })
 
 /** 首次登录（初始密码）强制改密；改完回到学生流程。 */
 function ChangePasswordPage() {
+  const { t } = useI18n()
   const navigate = useNavigate()
   const { showSuccessToast } = useCustomToast()
   const [current, setCurrent] = useState("")
@@ -42,7 +46,7 @@ function ChangePasswordPage() {
       }),
     onSuccess: () => {
       localStorage.setItem("esa:must-change-pw", "0")
-      showSuccessToast("密码已修改")
+      showSuccessToast(t({ zh: "密码已修改", en: "Password changed" }))
       const code = lastJoinedCode()
       void navigate({
         to: code ? "/home/$code" : "/join",
@@ -50,18 +54,31 @@ function ChangePasswordPage() {
       })
     },
     onError: (err: { body?: { detail?: string } }) =>
-      setError(err.body?.detail ?? "修改失败，请重试"),
+      setError(
+        err.body?.detail ??
+          t({ zh: "修改失败，请重试", en: "Change failed, please retry" }),
+      ),
   })
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     if (next.length < 8) {
-      setError("新密码至少 8 位")
+      setError(
+        t({
+          zh: "新密码至少 8 位",
+          en: "New password needs at least 8 characters",
+        }),
+      )
       return
     }
     if (next !== confirm) {
-      setError("两次输入的新密码不一致")
+      setError(
+        t({
+          zh: "两次输入的新密码不一致",
+          en: "The new passwords don't match",
+        }),
+      )
       return
     }
     mutation.mutate()
@@ -77,17 +94,23 @@ function ChangePasswordPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-2xl">
               <KeyRound className="size-5 text-primary" />
-              修改密码
+              {t({ zh: "修改密码", en: "Change Password" })}
             </CardTitle>
             <CardDescription>
-              当前密码是默认密码或你上次设置的密码；改成只有你知道的密码
+              {t({
+                zh: "当前密码是默认密码或你上次设置的密码；改成只有你知道的密码",
+                en: "Your current password is the default one or what you last set; change it to something only you know",
+              })}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={submit} className="space-y-4">
               <div className="space-y-2">
                 <label htmlFor="cur-pw" className="text-sm font-medium">
-                  当前密码（默认密码 brs123456）
+                  {t({
+                    zh: "当前密码（默认密码 brs123456）",
+                    en: "Current Password (default brs123456)",
+                  })}
                 </label>
                 <Input
                   id="cur-pw"
@@ -100,7 +123,10 @@ function ChangePasswordPage() {
               </div>
               <div className="space-y-2">
                 <label htmlFor="new-pw" className="text-sm font-medium">
-                  新密码（至少 8 位）
+                  {t({
+                    zh: "新密码（至少 8 位）",
+                    en: "New Password (at least 8 characters)",
+                  })}
                 </label>
                 <Input
                   id="new-pw"
@@ -113,7 +139,7 @@ function ChangePasswordPage() {
               </div>
               <div className="space-y-2">
                 <label htmlFor="confirm-pw" className="text-sm font-medium">
-                  确认新密码
+                  {t({ zh: "确认新密码", en: "Confirm New Password" })}
                 </label>
                 <Input
                   id="confirm-pw"
@@ -130,7 +156,9 @@ function ChangePasswordPage() {
                 className="h-12 w-full"
                 disabled={mutation.isPending}
               >
-                {mutation.isPending ? "提交中…" : "保存"}
+                {mutation.isPending
+                  ? t({ zh: "提交中…", en: "Submitting…" })
+                  : t({ zh: "保存", en: "Save" })}
               </Button>
             </form>
             {isLoggedIn() && (
@@ -139,7 +167,7 @@ function ChangePasswordPage() {
                 className="mt-4 w-full text-center text-xs text-muted-underline text-muted-foreground hover:underline"
                 onClick={() => void navigate({ to: "/login" })}
               >
-                返回登录
+                {t({ zh: "返回登录", en: "Back to Sign In" })}
               </button>
             )}
           </CardContent>
