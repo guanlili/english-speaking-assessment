@@ -1,24 +1,39 @@
 import { AudioLines, Mic } from "lucide-react"
 import type { ReactNode } from "react"
 import { Appearance } from "@/components/Common/Appearance"
+import { LanguageToggle } from "@/components/Common/LanguageToggle"
 import { Logo } from "@/components/Common/Logo"
 import { APP_NAME } from "@/config"
-
-const classroomSteps = [
-  { number: "01", title: "进入课堂", description: "跟随今日练习" },
-  { number: "02", title: "开口练习", description: "练习真实表达" },
-  { number: "03", title: "回看反馈", description: "找到下一步方向" },
-]
+import { useI18n } from "@/lib/i18n"
 
 export function LoginLayout({ children }: { children: ReactNode }) {
+  const { t } = useI18n()
+  const classroomSteps = [
+    {
+      number: "01",
+      title: t({ zh: "进入课堂", en: "Join class" }),
+      description: t({ zh: "跟随今日练习", en: "Follow today's practice" }),
+    },
+    {
+      number: "02",
+      title: t({ zh: "开口练习", en: "Speak up" }),
+      description: t({ zh: "练习真实表达", en: "Practice real expression" }),
+    },
+    {
+      number: "03",
+      title: t({ zh: "回看反馈", en: "Review feedback" }),
+      description: t({ zh: "找到下一步方向", en: "Find your next step" }),
+    },
+  ]
   return (
     <div className="min-h-svh bg-[#f7f4ed] font-['Avenir_Next','PingFang_SC','Hiragino_Sans_GB','Microsoft_YaHei',sans-serif] text-[#233e34] dark:bg-background dark:text-foreground">
       <header className="mx-auto flex max-w-[1440px] items-center justify-between px-5 py-5 sm:px-10 lg:px-16 lg:py-6">
         <Logo asLink={false} />
         <div className="flex items-center gap-6">
           <span className="hidden border-r border-[#233e34]/15 pr-6 text-xs tracking-wider text-muted-foreground sm:block dark:border-border">
-            每一次开口，都是进步
+            {t({ zh: "每一次开口，都是进步", en: "Every voice counts" })}
           </span>
+          <LanguageToggle />
           <Appearance />
         </div>
       </header>
@@ -33,16 +48,25 @@ export function LoginLayout({ children }: { children: ReactNode }) {
               className="h-px w-7 bg-[#ac7048] dark:bg-[#efbd94]"
               aria-hidden="true"
             />
-            为每一堂英语口语课而来
+            {t({
+              zh: "为每一堂英语口语课而来",
+              en: "BUILT FOR SPOKEN ENGLISH CLASS",
+            })}
           </p>
           <h1
             id="login-intro"
             className="text-[28px] font-semibold leading-[1.25] tracking-tight sm:text-3xl lg:text-[38px] xl:text-[44px]"
           >
-            让表达，自然发生。
+            {t({
+              zh: "让表达，自然发生。",
+              en: "Speak naturally. Grow confidently.",
+            })}
           </h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground lg:text-base">
-            跟随课堂节奏，练习真实表达。
+            {t({
+              zh: "跟随课堂节奏，练习真实表达。",
+              en: "Follow your class pace and practice speaking for real.",
+            })}
           </p>
 
           <div className="relative mt-7 hidden overflow-hidden rounded-2xl bg-[#204f40] p-7 text-[#fbf6eb] lg:block xl:p-8 dark:bg-[#193f33]">
@@ -85,7 +109,10 @@ export function LoginLayout({ children }: { children: ReactNode }) {
 
           <ol
             className="mt-6 hidden grid-cols-3 lg:grid"
-            aria-label="课堂练习流程"
+            aria-label={t({
+              zh: "课堂练习流程",
+              en: "How class practice works",
+            })}
           >
             {classroomSteps.map((step) => (
               <li
@@ -108,7 +135,7 @@ export function LoginLayout({ children }: { children: ReactNode }) {
         </section>
 
         <section
-          aria-label="登录 SpeakUp"
+          aria-label={t({ zh: "登录 SpeakUp", en: "Sign in to SpeakUp" })}
           className="relative mx-auto w-full max-w-[480px] rounded-2xl border border-[#233e34]/12 bg-[#fffdf8] p-5 shadow-[0_20px_70px_-36px_rgba(32,79,64,0.28)] before:absolute before:-top-px before:left-6 before:h-[3px] before:w-12 before:bg-[#dba77b] sm:p-8 sm:before:left-9 lg:mx-0 lg:justify-self-end xl:p-10 dark:border-border dark:bg-card dark:shadow-none"
         >
           {children}

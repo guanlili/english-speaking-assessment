@@ -25,6 +25,14 @@ Follow these guidelines to ensure code stability, consistency, and maintainabili
 
 ## 2. Coding Conventions
 
+### 双语（Bilingual UI，必须）
+
+平台有外教使用，所有用户可见文案必须中英双语（CLAUDE.md「双语准则」为权威说明）：
+
+- 新代码一律 `useI18n().t({ zh, en })`（`src/lib/i18n.tsx`），禁止新增单语言硬编码文案
+- 后端错误 `detail` 文案是稳定标识（前端按文案分流），改措辞前先全局搜索引用；用户提示在前端做双语映射
+- 存量页面按页面渐进迁移：PR 触碰到的页面必须顺手完成该页双语
+
 ### General
 - **Naming**:
   - Python: `snake_case` for variables/functions, `PascalCase` for classes.

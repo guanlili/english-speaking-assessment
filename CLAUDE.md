@@ -96,6 +96,17 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 uv run bash scripts/tests-start.sh
 3. **前端 API 客户端**：后端改完后重新生成 → `cd frontend && npm run generate-client`（脚本会从运行中的 backend 容器导出最新 OpenAPI 规范再生成）
 4. **前端页面**：在 `routes/_layout/` 加新页面，在 `frontend/src/components/Sidebar/AppSidebar.tsx` 的 `baseItems` 里加导航链接（Admin 入口已按 `is_superuser` 条件展示，可参考）
 
+## 双语准则（平台级，2026-09-30 起）
+
+平台有外教使用，**所有用户可见文案必须中英双语**。这是硬性开发准则，不是可选项。
+
+- **机制**：`frontend/src/lib/i18n.tsx` 的 `useI18n()` → `t({ zh: "…", en: "…" })`；语言切换组件 `components/Common/LanguageToggle`（中/EN，localStorage 按浏览器记忆，默认中文）。
+- **参考实现**：`frontend/src/routes/login.tsx` 与 `components/Common/LoginLayout.tsx`（含 zod 校验消息随语言重建的写法）。
+- **新增界面/文案**：一律 `t({ zh, en })`，不允许再落单语言硬编码。共享术语的中英文对齐本文件「术语表」。
+- **存量迁移**：按页面渐进迁移（改哪页双语哪页），不要求一次性完成；新 PR 触碰某页时顺手完成该页双语。
+- **后端 API 错误文案**：`detail` 是稳定标识（前端 `main.tsx` 有按文案分流的 401 处理逻辑，**不得随意改措辞**）；面向用户的错误提示一律在前端映射成双语展示，不直接透出 detail。后端返回值的枚举/状态值（如 `status: "done"`）永不做翻译。
+- **不做**：URL 按语言分路由（`/en/...`）；服务端语言协商。一个前端包、客户端切换即可。
+
 ## 技术规范
 
 详见 `AI_RULES.md`。
