@@ -1,0 +1,33 @@
+# 依赖安全审计：每周一上午 + 手动触发。
+# 与 CI&Deploy 解耦（失败只发邮件通知，不阻塞部署）——README 的
+# "季度升级依赖" 是流程承诺，这里是发现渠道的机制化兜底。
+name: 依赖审计
+
+on:
+  schedule:
+    - cron: "0 2 * * 1" # 每周一 10:00（北京时间）
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: 后端 pip-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: 导出锁定依赖并审计
+        working-directory: backend
+        run: |
+          uv export --format requirements-txt --no-hashes --no-dev -o /tmp/req.txt
+          uvx pip-audit --requirement /tmp/req.txt
+  frontend:
+    name: 前端 npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: 审计生产依赖（high 及以上）
+        working-directory: frontend
+        run: npm audit --package-lock-only --audit-level=high

@@ -68,6 +68,37 @@ jobs:
       - name: 运行测试（独立测试库 app_test，由 conftest 自动创建）
         working-directory: backend
         run: uv run bash scripts/tests-start.sh
+      # 测试库由 conftest 用 create_all 按模型建表：改了 models 忘生成迁移时
+      # 测试照常全绿，问题拖到生产缺列才爆。此步骤在"迁移链建出的库"上
+      # autogenerate，有任何 diff 即失败。
+      - name: 迁移-模型一致性校验
+        working-directory: backend
+        env:
+          POSTGRES_DB: alembic_drift_check
+        run: |
+          uv run python - <<'EOF'
+          from sqlalchemy import create_engine, text
+          from app.core.config import settings
+          base = str(settings.SQLALCHEMY_DATABASE_URI).rsplit("/", 1)[0]
+          engine = create_engine(f"{base}/postgres", isolation_level="AUTOCOMMIT")
+          with engine.connect() as conn:
+              conn.execute(text('DROP DATABASE IF EXISTS "alembic_drift_check"'))
+              conn.execute(text('CREATE DATABASE "alembic_drift_check"'))
+          EOF
+          uv run alembic upgrade head
+          uv run alembic revision --autogenerate -m "ci drift check"
+          marker="ci drift check"
+          file=$(grep -rl "$marker" app/alembic/versions/ | head -1 || true)
+          if [ -n "$file" ]; then
+            if grep -qE "op\.(create|drop|add|alter)" "$file"; then
+              echo "❌ models.py 与迁移存在漂移（改模型后忘记生成迁移？）："
+              grep -E "op\.(create|drop|add|alter)" "$file"
+              rm -f "$file"
+              exit 1
+            fi
+            rm -f "$file"
+            echo "无漂移（自动生成的空迁移已清理）"
+          fi
 
   frontend:
     name: 前端 Lint + 构建 + 客户端一致性
