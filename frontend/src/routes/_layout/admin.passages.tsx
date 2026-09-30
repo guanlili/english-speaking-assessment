@@ -41,10 +41,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
+import { useI18n } from "@/lib/i18n"
+import { TERMS } from "@/lib/terms"
 
 export const Route = createFileRoute("/_layout/admin/passages")({
   component: PassagesAdmin,
-  head: () => ({ meta: [{ title: `篇目管理 - ${APP_NAME}` }] }),
+  head: () => ({ meta: [{ title: `篇目管理 / Passages - ${APP_NAME}` }] }),
 })
 
 /** 难度位是枚举（后端同样校验），不再自由输入。 */
@@ -95,6 +97,7 @@ function toRequestBody(form: PassageForm) {
 }
 
 export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
+  const { t } = useI18n()
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const [keyword, setKeyword] = useState("")
@@ -124,11 +127,13 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
     mutationFn: (form: PassageForm) =>
       AdminService.createPassage({ requestBody: toRequestBody(form) }),
     onSuccess: () => {
-      showSuccessToast("篇目已创建")
+      showSuccessToast(t({ zh: "篇目已创建", en: "Passage created" }))
       invalidate()
     },
     onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(err.body?.detail ?? "创建失败"),
+      showErrorToast(
+        err.body?.detail ?? t({ zh: "创建失败", en: "Create failed" }),
+      ),
   })
 
   const updateMutation = useMutation({
@@ -138,23 +143,27 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
         requestBody: toRequestBody(form),
       }),
     onSuccess: () => {
-      showSuccessToast("篇目已更新")
+      showSuccessToast(t({ zh: "篇目已更新", en: "Passage updated" }))
       setEditing(null)
       invalidate()
     },
     onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(err.body?.detail ?? "更新失败"),
+      showErrorToast(
+        err.body?.detail ?? t({ zh: "更新失败", en: "Update failed" }),
+      ),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => AdminService.deletePassage({ passageId: id }),
     onSuccess: () => {
-      showSuccessToast("已删除")
+      showSuccessToast(t({ zh: "已删除", en: "Deleted" }))
       setToDelete(null)
       invalidate()
     },
     onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(err.body?.detail ?? "删除失败"),
+      showErrorToast(
+        err.body?.detail ?? t({ zh: "删除失败", en: "Delete failed" }),
+      ),
   })
 
   const units = (unitsQuery.data ?? []).map((u) => ({
@@ -162,21 +171,27 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
     title: u.title,
   }))
   const unitTitle = (id?: string | null) =>
-    units.find((u) => u.id === id)?.title ?? "未归属"
+    units.find((u) => u.id === id)?.title ??
+    t({ zh: "未归属", en: "Unassigned" })
 
   return (
     <div className="flex flex-col gap-6">
       {!embedded && <ContentNavigation />}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">文章朗读</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {t(TERMS.typeReading)}
+        </h1>
         <p className="text-muted-foreground">
-          录入文章或段落，学生朗读并提交录音，系统提供参考反馈。听句复述请到「听句复述」题库。
+          {t({
+            zh: "录入文章或段落，学生朗读并提交录音，系统提供参考反馈。听句复述请到「听句复述」题库。",
+            en: "Add articles or paragraphs for students to read aloud and submit recordings, with reference feedback from the system. For Listen & Repeat, use its own question bank.",
+          })}
         </p>
       </div>
 
       <details className="rounded-xl border bg-card p-4">
         <summary className="cursor-pointer font-medium text-primary">
-          新建篇目
+          {t({ zh: "新建篇目", en: "New Passage" })}
         </summary>
         <div className="mt-4">
           <NewPassageForm
@@ -188,8 +203,11 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
         </div>
       </details>
       <Input
-        aria-label="搜索篇目"
-        placeholder="搜索篇目标题或主题…"
+        aria-label={t({ zh: "搜索篇目", en: "Search passages" })}
+        placeholder={t({
+          zh: "搜索篇目标题或主题…",
+          en: "Search passage title or topic…",
+        })}
         value={keyword}
         onChange={(event) => setKeyword(event.target.value)}
       />
@@ -201,18 +219,23 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
         </div>
       ) : passagesQuery.isError ? (
         <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
-          <p>篇目列表加载失败。</p>
+          <p>
+            {t({ zh: "篇目列表加载失败。", en: "Failed to load passages." })}
+          </p>
           <Button
             variant="outline"
             size="sm"
             onClick={() => void passagesQuery.refetch()}
           >
-            重试
+            {t({ zh: "重试", en: "Retry" })}
           </Button>
         </div>
       ) : (passagesQuery.data ?? []).length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">
-          还没有篇目，点击上方新建按钮开始备课。
+          {t({
+            zh: "还没有篇目，点击上方新建按钮开始备课。",
+            en: "No passages yet — use the New Passage form above to start building.",
+          })}
         </p>
       ) : (
         (passagesQuery.data ?? [])
@@ -245,7 +268,10 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
             .includes(keyword.trim().toLowerCase()),
         ) && (
           <p className="py-8 text-center text-muted-foreground">
-            没有匹配的篇目，请换个关键词。
+            {t({
+              zh: "没有匹配的篇目，请换个关键词。",
+              en: "No passages match — try another keyword.",
+            })}
           </p>
         )}
       <EditPassageDialog
@@ -261,9 +287,15 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
 
       <ConfirmDialog
         open={toDelete !== null}
-        title={`删除篇目「${toDelete?.title ?? ""}」？`}
-        description="删除会连带清掉它的复述句，正在练习中的学生下次会拿到别的篇目。此操作不可撤销。"
-        confirmText="删除篇目"
+        title={t({
+          zh: `删除篇目「${toDelete?.title ?? ""}」？`,
+          en: `Delete passage "${toDelete?.title ?? ""}"?`,
+        })}
+        description={t({
+          zh: "删除会连带清掉它的复述句，正在练习中的学生下次会拿到别的篇目。此操作不可撤销。",
+          en: "Deleting also removes its repeat sentences; students mid-practice will get a different passage next time. This cannot be undone.",
+        })}
+        confirmText={t({ zh: "删除篇目", en: "Delete Passage" })}
         onOpenChange={(next) => {
           if (!next) setToDelete(null)
         }}
@@ -289,10 +321,13 @@ function PassageFields({
   /** 新建表单与编辑弹窗同时在页面上，用前缀避免重复 id。 */
   idPrefix?: string
 }) {
+  const { t } = useI18n()
   return (
     <>
       <div className="space-y-1">
-        <Label htmlFor={`${idPrefix}title`}>标题</Label>
+        <Label htmlFor={`${idPrefix}title`}>
+          {t({ zh: "标题", en: "Title" })}
+        </Label>
         <Input
           id={`${idPrefix}title`}
           value={form.title}
@@ -300,7 +335,7 @@ function PassageFields({
         />
       </div>
       <div className="space-y-1">
-        <Label>配套问答主题</Label>
+        <Label>{t({ zh: "配套问答主题", en: "Paired Q&A Topic" })}</Label>
         <TopicPicker
           value={form.topic}
           topics={topics}
@@ -308,16 +343,25 @@ function PassageFields({
         />
       </div>
       <div className="space-y-1">
-        <Label>所属单元（用于课堂指派）</Label>
+        <Label>
+          {t({
+            zh: "所属单元（用于课堂指派）",
+            en: "Unit (for class assignment)",
+          })}
+        </Label>
         <Select
           value={form.unit_id}
           onValueChange={(next) => setForm({ ...form, unit_id: next })}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="选择单元" />
+            <SelectValue
+              placeholder={t({ zh: "选择单元", en: "Select unit" })}
+            />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={NO_UNIT}>未归属</SelectItem>
+            <SelectItem value={NO_UNIT}>
+              {t({ zh: "未归属", en: "Unassigned" })}
+            </SelectItem>
             {units.map((u) => (
               <SelectItem key={u.id} value={u.id}>
                 {u.title}
@@ -328,7 +372,9 @@ function PassageFields({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor={`${idPrefix}band`}>难度</Label>
+          <Label htmlFor={`${idPrefix}band`}>
+            {t({ zh: "难度", en: "Level" })}
+          </Label>
           <Select
             value={form.cefr_band}
             onValueChange={(next) => setForm({ ...form, cefr_band: next })}
@@ -346,7 +392,9 @@ function PassageFields({
           </Select>
         </div>
         <div className="space-y-1">
-          <Label htmlFor={`${idPrefix}seconds`}>建议秒数</Label>
+          <Label htmlFor={`${idPrefix}seconds`}>
+            {t({ zh: "建议秒数", en: "Suggested Seconds" })}
+          </Label>
           <Input
             id={`${idPrefix}seconds`}
             type="number"
@@ -358,7 +406,12 @@ function PassageFields({
         </div>
       </div>
       <div className="space-y-1">
-        <Label htmlFor={`${idPrefix}text`}>正文（朗读参考文本）</Label>
+        <Label htmlFor={`${idPrefix}text`}>
+          {t({
+            zh: "正文（朗读参考文本）",
+            en: "Text (read-aloud reference)",
+          })}
+        </Label>
         <Textarea
           id={`${idPrefix}text`}
           rows={4}
@@ -368,7 +421,10 @@ function PassageFields({
       </div>
       <div className="space-y-1">
         <Label htmlFor={`${idPrefix}translation`}>
-          中文提示（可选，学生端显示）
+          {t({
+            zh: "中文提示（可选，学生端显示）",
+            en: "Chinese Hint (optional, shown to students)",
+          })}
         </Label>
         <Input
           id={`${idPrefix}translation`}
@@ -383,7 +439,10 @@ function PassageFields({
             setForm({ ...form, is_active: checked === true })
           }
         />
-        启用（学生端可练；停用后今天练习与地图里都不再出现）
+        {t({
+          zh: "启用（学生端可练；停用后今天练习与地图里都不再出现）",
+          en: "Enabled (visible to students; once disabled it leaves Today's Practice and the map)",
+        })}
       </div>
     </>
   )
@@ -400,15 +459,21 @@ function NewPassageForm({
   topics: string[]
   units: UnitOption[]
 }) {
+  const { t } = useI18n()
   const [form, setForm] = useState<PassageForm>(emptyForm)
   const canSubmit = form.title.trim().length > 0 && form.text.trim().length > 0
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">新建篇目</CardTitle>
+        <CardTitle className="text-base">
+          {t({ zh: "新建篇目", en: "New Passage" })}
+        </CardTitle>
         <CardDescription>
-          填写篇目并选择主题；相同主题的情景问答会用于配套练习。
+          {t({
+            zh: "填写篇目并选择主题；相同主题的情景问答会用于配套练习。",
+            en: "Fill in the passage and pick a topic; Scenario Q&A under the same topic is used as paired practice.",
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 md:grid-cols-2">
@@ -431,7 +496,7 @@ function NewPassageForm({
             disabled={!canSubmit || pending}
           >
             <Plus />
-            创建
+            {t({ zh: "创建", en: "Create" })}
           </Button>
         </div>
       </CardContent>
@@ -454,6 +519,7 @@ function EditPassageDialog({
   onClose: () => void
   onSubmit: (form: PassageForm) => void
 }) {
+  const { t } = useI18n()
   const [form, setForm] = useState<PassageForm>(emptyForm)
   const [loadedId, setLoadedId] = useState<string | null>(null)
 
@@ -484,9 +550,12 @@ function EditPassageDialog({
     >
       <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>编辑篇目</DialogTitle>
+          <DialogTitle>{t({ zh: "编辑篇目", en: "Edit Passage" })}</DialogTitle>
           <DialogDescription>
-            slug 建成后不可改（学生进度与录音都挂在它上面）：{" "}
+            {t({
+              zh: "slug 建成后不可改（学生进度与录音都挂在它上面）：",
+              en: "The slug cannot be changed once created (student progress and recordings are tied to it):",
+            })}{" "}
             <span className="font-mono">{passage?.slug}</span>
           </DialogDescription>
         </DialogHeader>
@@ -501,14 +570,14 @@ function EditPassageDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            取消
+            {t({ zh: "取消", en: "Cancel" })}
           </Button>
           <LoadingButton
             disabled={!canSubmit}
             loading={pending}
             onClick={() => onSubmit(form)}
           >
-            保存
+            {t({ zh: "保存", en: "Save" })}
           </LoadingButton>
         </DialogFooter>
       </DialogContent>
@@ -533,19 +602,25 @@ function PassageCard({
   onDelete: () => void
   onMutated: () => void
 }) {
+  const { t } = useI18n()
   const [splitConfirm, setSplitConfirm] = useState(false)
   const splitPassage = useMutation({
     mutationFn: () =>
       AdminService.splitPassageIntoReadings({ passageId: passage.id }),
     onSuccess: (data) => {
       toast.success(
-        `已拆分为 ${data.created} 篇朗读材料，原长文已停用（可再启用）`,
+        t({
+          zh: `已拆分为 ${data.created} 篇朗读材料，原长文已停用（可再启用）`,
+          en: `Split into ${data.created} reading passages; the original long text is now disabled (can be re-enabled)`,
+        }),
       )
       setSplitConfirm(false)
       onMutated()
     },
     onError: (err: { body?: { detail?: string } }) =>
-      toast.error(err.body?.detail ?? "拆分失败"),
+      toast.error(
+        err.body?.detail ?? t({ zh: "拆分失败", en: "Split failed" }),
+      ),
   })
   const paragraphCount = (passage.text ?? "")
     .split(/\n+/)
@@ -559,13 +634,16 @@ function PassageCard({
             {passage.title}{" "}
             <span className="font-normal text-muted-foreground">
               · {passage.topic} · {passage.cefr_band} ·{" "}
-              {(passage.sentences ?? []).length} 句复述
+              {(passage.sentences ?? []).length}{" "}
+              {t({ zh: "句复述", en: "repeat sentences" })}
             </span>
           </CardTitle>
           <CardDescription className="mt-1 flex flex-wrap items-center gap-2">
             <Badge variant="outline">{unitTitle}</Badge>
             {passage.is_active === false && (
-              <Badge variant="secondary">已停用</Badge>
+              <Badge variant="secondary">
+                {t({ zh: "已停用", en: "Disabled" })}
+              </Badge>
             )}
           </CardDescription>
         </div>
@@ -576,7 +654,9 @@ function PassageCard({
             aria-expanded={expanded}
             onClick={onToggle}
           >
-            {expanded ? "收起" : "查看文章"}
+            {expanded
+              ? t({ zh: "收起", en: "Collapse" })
+              : t({ zh: "查看文章", en: "View Text" })}
           </Button>
           {passage.is_active !== false && (
             <Button
@@ -585,19 +665,28 @@ function PassageCard({
               disabled={paragraphCount < 2 || splitPassage.isPending}
               title={
                 paragraphCount < 2
-                  ? "正文只有一个段落：请先用换行分段，再拆分"
-                  : "按段落拆成多篇朗读材料，原长文停用"
+                  ? t({
+                      zh: "正文只有一个段落：请先用换行分段，再拆分",
+                      en: "Only one paragraph: separate paragraphs with line breaks before splitting",
+                    })
+                  : t({
+                      zh: "按段落拆成多篇朗读材料，原长文停用",
+                      en: "Split by paragraph into multiple readings; the original is disabled",
+                    })
               }
               onClick={() => setSplitConfirm(true)}
             >
               <Scissors />
-              拆分为多篇
+              {t({ zh: "拆分为多篇", en: "Split" })}
             </Button>
           )}
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={`编辑 ${passage.title}`}
+            aria-label={t({
+              zh: `编辑 ${passage.title}`,
+              en: `Edit ${passage.title}`,
+            })}
             onClick={(e) => {
               e.stopPropagation()
               onEdit()
@@ -630,7 +719,10 @@ function PassageCard({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={`删除 ${passage.title}`}
+            aria-label={t({
+              zh: `删除 ${passage.title}`,
+              en: `Delete ${passage.title}`,
+            })}
             onClick={(e) => {
               e.stopPropagation()
               onDelete()
@@ -647,8 +739,10 @@ function PassageCard({
           </p>
           {(passage.sentences ?? []).length > 0 && (
             <p className="text-xs text-muted-foreground">
-              本篇挂有 {(passage.sentences ?? []).length}{" "}
-              句复述句，请在「听句复述」题库中管理。
+              {t({
+                zh: `本篇挂有 ${(passage.sentences ?? []).length} 句复述句，请在「听句复述」题库中管理。`,
+                en: `This passage has ${(passage.sentences ?? []).length} repeat sentences — manage them in the Listen & Repeat bank.`,
+              })}
             </p>
           )}
         </CardContent>
@@ -656,9 +750,15 @@ function PassageCard({
 
       <ConfirmDialog
         open={splitConfirm}
-        title={`把「${passage.title}」拆分为多篇朗读材料？`}
-        description={`按段落拆成 ${paragraphCount} 篇（超长段会再按句聚合），新篇沿用标题、主题与分组并自动编号；原长文将停用，历史与挂靠的复述句保留。`}
-        confirmText="拆分"
+        title={t({
+          zh: `把「${passage.title}」拆分为多篇朗读材料？`,
+          en: `Split "${passage.title}" into multiple readings?`,
+        })}
+        description={t({
+          zh: `按段落拆成 ${paragraphCount} 篇（超长段会再按句聚合），新篇沿用标题、主题与分组并自动编号；原长文将停用，历史与挂靠的复述句保留。`,
+          en: `Split into ${paragraphCount} passages by paragraph (very long paragraphs are regrouped by sentence); new passages reuse the title, topic, and group with automatic numbering. The original long text is disabled; history and attached repeat sentences are kept.`,
+        })}
+        confirmText={t({ zh: "拆分", en: "Split" })}
         onOpenChange={(next) => {
           if (!next) setSplitConfirm(false)
         }}

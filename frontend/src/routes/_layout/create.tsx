@@ -4,6 +4,8 @@ import { useState } from "react"
 import { SentenceLibrary } from "@/components/Teaching/SentenceLibrary"
 import { Button } from "@/components/ui/button"
 import { APP_NAME } from "@/config"
+import { useI18n } from "@/lib/i18n"
+import { TERMS } from "@/lib/terms"
 import { PassagesAdmin } from "./admin.passages"
 import { QuestionsAdmin } from "./admin.questions"
 import { ScenariosAdmin } from "./admin.scenarios"
@@ -13,20 +15,29 @@ const types = [
   {
     id: "reading",
     icon: BookOpenText,
-    title: "文章朗读",
-    description: "读文章或段落 · 录音批改",
+    title: TERMS.typeReading,
+    description: {
+      zh: "读文章或段落 · 录音批改",
+      en: "Read a text or paragraph · recorded and reviewed",
+    },
   },
   {
     id: "repeat",
     icon: Ear,
-    title: "听句复述",
-    description: "听一句再复述 · 设置可听次数",
+    title: TERMS.typeRepeat,
+    description: {
+      zh: "听一句再复述 · 设置可听次数",
+      en: "Listen, then repeat · set replays",
+    },
   },
   {
     id: "qa",
     icon: MessagesSquare,
-    title: "情景问答",
-    description: "情景问答 · 一问一答",
+    title: TERMS.typeQa,
+    description: {
+      zh: "情景问答 · 一问一答",
+      en: "Scenario Q&A · ask and answer",
+    },
   },
 ] as const
 
@@ -45,10 +56,13 @@ export const Route = createFileRoute("/_layout/create")({
         : undefined,
   }),
   component: QuestionLibrary,
-  head: () => ({ meta: [{ title: `题目库 - ${APP_NAME}` }] }),
+  head: () => ({
+    meta: [{ title: `题目库 / Question Bank - ${APP_NAME}` }],
+  }),
 })
 
 function QuestionLibrary() {
+  const { t } = useI18n()
   const { kind, classroom } = Route.useSearch()
   const navigate = Route.useNavigate()
   const [qaMode, setQaMode] = useState<"topics" | "questions">("topics")
@@ -61,22 +75,35 @@ function QuestionLibrary() {
           className="inline-flex items-center gap-2 text-sm font-medium text-primary"
         >
           <ArrowLeft className="size-4" />
-          返回课堂 {classroom}，安排练习
+          {t({
+            zh: `返回课堂 ${classroom}，安排练习`,
+            en: `Back to classroom ${classroom} to assign practice`,
+          })}
         </Link>
       )}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="mb-2 text-xs font-semibold tracking-widest text-primary">
-            准备教学内容
+            {t({ zh: "准备教学内容", en: "Prepare teaching content" })}
           </p>
-          <h1 className="text-3xl font-bold">题目库</h1>
+          <h1 className="text-3xl font-bold">
+            {t({ zh: "题目库", en: "Question Bank" })}
+          </h1>
           <p className="mt-3 text-sm text-muted-foreground">
-            选择一种题型开始出题。内容保存后，可在课堂中组合使用。
+            {t({
+              zh: "选择一种题型开始出题。内容保存后，可在课堂中组合使用。",
+              en: "Pick a question type to start creating. Saved content can be combined in classrooms.",
+            })}
           </p>
         </div>
         {!classroom && (
           <Button asChild variant="outline">
-            <Link to="/classrooms">去课堂安排练习</Link>
+            <Link to="/classrooms">
+              {t({
+                zh: "去课堂安排练习",
+                en: "Assign practice in classrooms",
+              })}
+            </Link>
           </Button>
         )}
       </div>
@@ -98,9 +125,9 @@ function QuestionLibrary() {
           >
             <type.icon className="mt-1 size-6 shrink-0 text-primary" />
             <div>
-              <p className="font-semibold">{type.title}</p>
+              <p className="font-semibold">{t(type.title)}</p>
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                {type.description}
+                {t(type.description)}
               </p>
             </div>
           </button>
@@ -118,13 +145,19 @@ function QuestionLibrary() {
                 variant={qaMode === "topics" ? "secondary" : "ghost"}
                 onClick={() => setQaMode("topics")}
               >
-                按主题出题 / AI 起草
+                {t({
+                  zh: "按主题出题 / AI 起草",
+                  en: "By topic / AI draft",
+                })}
               </Button>
               <Button
                 variant={qaMode === "questions" ? "secondary" : "ghost"}
                 onClick={() => setQaMode("questions")}
               >
-                搜索、编辑与批量录入
+                {t({
+                  zh: "搜索、编辑与批量录入",
+                  en: "Search, edit & bulk entry",
+                })}
               </Button>
             </div>
             {qaMode === "topics" ? (
@@ -141,15 +174,21 @@ function QuestionLibrary() {
       </section>
       <details className="rounded-xl border p-5">
         <summary className="cursor-pointer text-sm font-medium">
-          整理配套内容 · 单元
+          {t({ zh: "整理配套内容 · 单元", en: "Organize content · Units" })}
         </summary>
         <p className="my-4 text-sm leading-6 text-muted-foreground">
-          需要把篇目用于课堂时，在这里建一个单元，再将篇目放入该单元。问答按篇目主题自动配套；题型在课堂发布时选择。
+          {t({
+            zh: "需要把篇目用于课堂时，在这里建一个单元，再将篇目放入该单元。问答按篇目主题自动配套；题型在课堂发布时选择。",
+            en: "To use passages in class, create a unit here and add passages to it. Q&A pairs match the passage topic automatically; question types are chosen when publishing to a classroom.",
+          })}
         </p>
         <UnitsAdmin />
       </details>
       <p className="text-xs leading-6 text-muted-foreground">
-        题目库由全校共享，编辑已使用的内容会影响后续练习。平台评分为教学参考，不代表官方考试成绩。
+        {t({
+          zh: "题目库由全校共享，编辑已使用的内容会影响后续练习。平台评分为教学参考，不代表官方考试成绩。",
+          en: "The question bank is shared school-wide; editing content already in use affects later practice. Platform scores are teaching references, not official exam results.",
+        })}
       </p>
     </div>
   )

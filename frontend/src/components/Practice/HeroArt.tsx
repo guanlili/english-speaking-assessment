@@ -2,12 +2,18 @@
  * 首页 hero 插画（搬运自 prototypes/speakup 的 heroArt SVG）：
  * 耳机 + 对话气泡 + 书本，口语探索意象。
  */
+import { useI18n } from "@/lib/i18n"
+
 function HeroArt() {
+  const { t } = useI18n()
   return (
     <svg
       viewBox="0 0 370 320"
       role="img"
-      aria-label="耳机、对话气泡和书本组成的口语探索插画"
+      aria-label={t({
+        zh: "耳机、对话气泡和书本组成的口语探索插画",
+        en: "Illustration of headphones, speech bubbles and books for speaking practice",
+      })}
       className="h-full w-full"
     >
       <defs>

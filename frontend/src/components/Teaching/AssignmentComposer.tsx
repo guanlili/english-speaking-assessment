@@ -39,29 +39,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useI18n } from "@/lib/i18n"
 import {
   inspectSelection,
   type LessonSelection,
   type LessonTypes,
 } from "@/lib/lesson-readiness"
+import { TERMS } from "@/lib/terms"
 
 const questionTypes = [
   {
     key: "reading",
-    title: "文章朗读",
-    description: "看文章或段落，录音提交",
+    title: TERMS.typeReading,
+    description: {
+      zh: "看文章或段落，录音提交",
+      en: "Read a text or paragraph, record and submit",
+    },
     icon: BookOpenText,
   },
   {
     key: "repeat",
-    title: "听句复述",
-    description: "听标准音，按设定次数重听",
+    title: TERMS.typeRepeat,
+    description: {
+      zh: "听标准音，按设定次数重听",
+      en: "Listen to the model audio, replay as set",
+    },
     icon: Ear,
   },
   {
     key: "qa",
-    title: "模拟问答",
-    description: "按主题出题，一问一答",
+    title: { zh: "模拟问答", en: "Scenario Q&A" },
+    description: {
+      zh: "按主题出题，一问一答",
+      en: "Questions by topic, ask and answer",
+    },
     icon: MessagesSquare,
   },
 ] as const
@@ -79,6 +90,7 @@ export function AssignmentComposer({
   assignedItems?: AssignedItemRef[] | null
   currentExercise?: ClassroomExercisePublic | null
 }) {
+  const { t } = useI18n()
   // 三种题型互相独立：各自的题库列表分别加载
   const passagesQuery = useQuery({
     queryKey: ["admin", "passages"],
@@ -100,7 +112,12 @@ export function AssignmentComposer({
   if (passagesQuery.isError || sentencesQuery.isError || scenariosQuery.isError)
     return (
       <div className="rounded-2xl border p-6">
-        <p>练习内容加载失败。</p>
+        <p>
+          {t({
+            zh: "练习内容加载失败。",
+            en: "Failed to load practice content.",
+          })}
+        </p>
         <Button
           className="mt-3"
           variant="outline"
@@ -110,7 +127,7 @@ export function AssignmentComposer({
             void scenariosQuery.refetch()
           }}
         >
-          重新加载
+          {t({ zh: "重新加载", en: "Reload" })}
         </Button>
       </div>
     )
@@ -121,7 +138,10 @@ export function AssignmentComposer({
   )
     return (
       <p className="rounded-2xl border p-6 text-muted-foreground">
-        正在加载可用练习…
+        {t({
+          zh: "正在加载可用练习…",
+          en: "Loading available practice…",
+        })}
       </p>
     )
 
@@ -166,7 +186,9 @@ export function AssignmentComposer({
       scenarios={scenarios}
       initialTypes={initialTypes}
       initialSelection={initialSelection}
-      initialTitle={currentExercise?.title ?? "课堂练习"}
+      initialTitle={
+        currentExercise?.title ?? t({ zh: "课堂练习", en: "Class Practice" })
+      }
       exerciseHistory={exercisesQuery.data ?? []}
     />
   )
@@ -197,6 +219,7 @@ function ComposerForm({
   initialTitle: string
   exerciseHistory: ClassroomExercisePublic[]
 }) {
+  const { t } = useI18n()
   const [types, setTypes] = useState<LessonTypes>(initialTypes)
   const [selection, setSelection] = useState<LessonSelection>(initialSelection)
   const [title, setTitle] = useState(initialTitle)
@@ -308,7 +331,17 @@ function ComposerForm({
       setPreviewOpen(false)
       setClearOpen(false)
       dirtyRef.current = false
-      toast.success(clear ? "已恢复学生自主练习" : "本次课堂练习已发布")
+      toast.success(
+        clear
+          ? t({
+              zh: "已恢复学生自主练习",
+              en: "Restored student self practice",
+            })
+          : t({
+              zh: "本次课堂练习已发布",
+              en: "Class practice published",
+            }),
+      )
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["teacher", "board", code] }),
         queryClient.invalidateQueries({
@@ -317,7 +350,13 @@ function ComposerForm({
         queryClient.invalidateQueries({ queryKey: ["admin", "sentences"] }),
       ])
     },
-    onError: () => toast.error("发布失败，选择已保留，请重试"),
+    onError: () =>
+      toast.error(
+        t({
+          zh: "发布失败，选择已保留，请重试",
+          en: "Publish failed — your selections are kept, please retry",
+        }),
+      ),
   })
 
   const toggleInList = (list: string[], id: string) =>
@@ -327,32 +366,54 @@ function ComposerForm({
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-secondary/40 px-5 py-4">
         <div>
-          <p className="text-xs text-muted-foreground">学生当前练习</p>
+          <p className="text-xs text-muted-foreground">
+            {t({ zh: "学生当前练习", en: "Students are currently practicing" })}
+          </p>
           <p className="mt-1 font-semibold">
             {hasItemAssignment
-              ? `按题指派 · ${initialSelection.passages.length} 篇朗读 · ${initialSelection.sentences.length} 句复述 · ${currentQuestionCount(scenarios, initialSelection)} 道问答`
+              ? t({
+                  zh: `按题指派 · ${initialSelection.passages.length} 篇朗读 · ${initialSelection.sentences.length} 句复述 · ${currentQuestionCount(scenarios, initialSelection)} 道问答`,
+                  en: `Item-based assignment · ${initialSelection.passages.length} read-aloud · ${initialSelection.sentences.length} repeat · ${currentQuestionCount(scenarios, initialSelection)} Q&A`,
+                })
               : unitTitle
-                ? `单元指派 · ${unitTitle}（旧版，重新发布后转为按题指派）`
-                : "自主练习 · 尚未安排统一内容"}
+                ? t({
+                    zh: `单元指派 · ${unitTitle}（旧版，重新发布后转为按题指派）`,
+                    en: `Unit assignment · ${unitTitle} (legacy; republish to convert to item-based)`,
+                  })
+                : t({
+                    zh: "自主练习 · 尚未安排统一内容",
+                    en: "Self Practice · no shared content assigned yet",
+                  })}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {hasItemAssignment || unitTitle
-              ? "发布后，全班按本次设置练习。"
-              : "发布后，全班按本次设置练习。"}
+              ? t({
+                  zh: "发布后，全班按本次设置练习。",
+                  en: "After publishing, the whole class practices with these settings.",
+                })
+              : t({
+                  zh: "发布后，全班按本次设置练习。",
+                  en: "After publishing, the whole class practices with these settings.",
+                })}
           </p>
         </div>
         {(hasItemAssignment || hasUnitAssignment) && (
           <Button variant="ghost" size="sm" onClick={() => setClearOpen(true)}>
-            恢复自主练习
+            {t({ zh: "恢复自主练习", en: "Restore Self Practice" })}
           </Button>
         )}
       </div>
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
         <div className="space-y-6 rounded-2xl border bg-card p-6">
           <section>
-            <h2 className="font-semibold">练习名称</h2>
+            <h2 className="font-semibold">
+              {t({ zh: "练习名称", en: "Practice Name" })}
+            </h2>
             <p className="mb-3 mt-2 text-sm text-muted-foreground">
-              用一个清晰的名称标识这次发布，方便之后回看课堂练习版本。
+              {t({
+                zh: "用一个清晰的名称标识这次发布，方便之后回看课堂练习版本。",
+                en: "Give this publish a clear name so you can revisit classroom practice versions later.",
+              })}
             </p>
             <Input
               value={title}
@@ -361,13 +422,21 @@ function ComposerForm({
                 dirtyRef.current = true
                 setTitle(event.target.value)
               }}
-              placeholder="例如：第 3 周｜旅行主题口语练习"
+              placeholder={t({
+                zh: "例如：第 3 周｜旅行主题口语练习",
+                en: "e.g., Week 3 | Travel-themed speaking",
+              })}
             />
           </section>
           <section>
-            <h2 className="font-semibold">1. 选择题型</h2>
+            <h2 className="font-semibold">
+              {t({ zh: "1. 选择题型", en: "1. Choose Question Types" })}
+            </h2>
             <p className="mb-4 mt-2 text-sm text-muted-foreground">
-              三种题型互相独立：勾选后在下方为该题型挑选内容。
+              {t({
+                zh: "三种题型互相独立：勾选后在下方为该题型挑选内容。",
+                en: "The three types are independent: check one, then pick its content below.",
+              })}
             </p>
             <div className="space-y-3">
               {questionTypes.map((type) => (
@@ -389,10 +458,10 @@ function ComposerForm({
                   <type.icon className="size-5 shrink-0 text-primary" />
                   <span>
                     <span className="block text-sm font-medium">
-                      {type.title}
+                      {t(type.title)}
                     </span>
                     <span className="mt-1 block text-xs text-muted-foreground">
-                      {type.description}
+                      {t(type.description)}
                     </span>
                   </span>
                 </label>
@@ -401,14 +470,22 @@ function ComposerForm({
           </section>
           {types.reading && (
             <section>
-              <h2 className="font-semibold">2. 朗读篇目</h2>
+              <h2 className="font-semibold">
+                {t({ zh: "2. 朗读篇目", en: "2. Read Aloud Passages" })}
+              </h2>
               <p className="mb-3 mt-2 text-sm text-muted-foreground">
-                可多选：长文拆成几篇时学生按顺序分别朗读。
+                {t({
+                  zh: "可多选：长文拆成几篇时学生按顺序分别朗读。",
+                  en: "Multi-select: when a long text is split into passages, students read them in order.",
+                })}
               </p>
               <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
                 {passages.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    还没有朗读篇目，去题目库创建。
+                    {t({
+                      zh: "还没有朗读篇目，去题目库创建。",
+                      en: "No read-aloud passages yet — create some in the Question Bank.",
+                    })}
                   </p>
                 )}
                 {passages.map((p) => (
@@ -432,7 +509,10 @@ function ComposerForm({
                         {p.title}
                       </span>
                       <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {p.topic} · 建议 {p.suggested_seconds} 秒
+                        {t({
+                          zh: `${p.topic} · 建议 ${p.suggested_seconds} 秒`,
+                          en: `${p.topic} · suggested ${p.suggested_seconds}s`,
+                        })}
                       </span>
                     </span>
                   </label>
@@ -443,15 +523,22 @@ function ComposerForm({
           {types.repeat && (
             <section>
               <h2 className="font-semibold">
-                {types.reading ? "3" : "2"}. 复述句
+                {types.reading ? "3" : "2"}.{" "}
+                {t({ zh: "复述句", en: "Repeat Sentences" })}
               </h2>
               <p className="mb-3 mt-2 text-sm text-muted-foreground">
-                从复述句题库多选，学生只能听语音复述。
+                {t({
+                  zh: "从复述句题库多选，学生只能听语音复述。",
+                  en: "Multi-select from the repeat-sentence bank; students repeat what they hear.",
+                })}
               </p>
               <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
                 {sentences.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    还没有复述句，去题目库创建。
+                    {t({
+                      zh: "还没有复述句，去题目库创建。",
+                      en: "No repeat sentences yet — create some in the Question Bank.",
+                    })}
                   </p>
                 )}
                 {sentences.map((s) => (
@@ -473,13 +560,10 @@ function ComposerForm({
                     <span className="min-w-0">
                       <span className="block truncate text-sm">{s.text}</span>
                       <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {s.suggested_seconds} 秒 · 可听{" "}
-                        {(s.replay_limit ?? 3) === 0
-                          ? "不限"
-                          : `${s.replay_limit ?? 3} 次`}
-                        {s.passage_title
-                          ? ` · 挂篇目：${s.passage_title}`
-                          : " · 独立题"}
+                        {t({
+                          zh: `${s.suggested_seconds} 秒 · 可听 ${(s.replay_limit ?? 3) === 0 ? "不限" : `${s.replay_limit ?? 3} 次`}${s.passage_title ? ` · 挂篇目：${s.passage_title}` : " · 独立题"}`,
+                          en: `${s.suggested_seconds}s · ${(s.replay_limit ?? 3) === 0 ? "unlimited replays" : `${s.replay_limit ?? 3} replays`}${s.passage_title ? ` · Passage: ${s.passage_title}` : " · Standalone"}`,
+                        })}
                       </span>
                     </span>
                   </label>
@@ -495,10 +579,13 @@ function ComposerForm({
                   : types.reading || types.repeat
                     ? "3"
                     : "2"}
-                . 问答主题
+                . {t({ zh: "问答主题", en: "Q&A Topic" })}
               </h2>
               <p className="mb-3 mt-2 text-sm text-muted-foreground">
-                选一个主题，该主题下全部题目按序进入本次练习。
+                {t({
+                  zh: "选一个主题，该主题下全部题目按序进入本次练习。",
+                  en: "Pick one topic; all its questions join this practice in order.",
+                })}
               </p>
               <Select
                 value={selection.scenarioId ?? ""}
@@ -509,15 +596,28 @@ function ComposerForm({
                   }))
                 }
               >
-                <SelectTrigger aria-label="选择问答主题">
-                  <SelectValue placeholder="选择问答主题" />
+                <SelectTrigger
+                  aria-label={t({
+                    zh: "选择问答主题",
+                    en: "Select a Q&A topic",
+                  })}
+                >
+                  <SelectValue
+                    placeholder={t({
+                      zh: "选择问答主题",
+                      en: "Select a Q&A topic",
+                    })}
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {scenarios
                     .filter((s) => s.is_active)
                     .map((s) => (
                       <SelectItem key={s.id} value={s.id}>
-                        {s.topic}（{s.questions.length} 题）
+                        {t({
+                          zh: `${s.topic}（${s.questions.length} 题）`,
+                          en: `${s.topic} (${s.questions.length} questions)`,
+                        })}
                       </SelectItem>
                     ))}
                 </SelectContent>
@@ -528,7 +628,10 @@ function ComposerForm({
                     <p key={q.id} className="truncate">
                       · {q.text}{" "}
                       <span className="text-xs text-muted-foreground">
-                        {q.suggested_seconds} 秒
+                        {t({
+                          zh: `${q.suggested_seconds} 秒`,
+                          en: `${q.suggested_seconds}s`,
+                        })}
                       </span>
                     </p>
                   ))}
@@ -538,29 +641,52 @@ function ComposerForm({
           )}
         </div>
         <aside className="self-start rounded-2xl border bg-card p-6">
-          <h2 className="font-semibold">检查并发布</h2>
+          <h2 className="font-semibold">
+            {t({ zh: "检查并发布", en: "Review & Publish" })}
+          </h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            选好内容和题型后，先预览学生将看到的内容，再确认发布。
+            {t({
+              zh: "选好内容和题型后，先预览学生将看到的内容，再确认发布。",
+              en: "After choosing content and types, preview what students will see, then confirm the publish.",
+            })}
           </p>
           <div className="my-5 space-y-1 border-y py-4 text-sm">
             <p className="font-medium">
-              {planCounts.reading > 0 ? `朗读 ${planCounts.reading} 篇` : null}
-              {planCounts.repeat > 0 ? `复述 ${planCounts.repeat} 句` : null}
-              {planCounts.qa > 0 ? `问答 ${planCounts.qa} 道` : null}
+              {planCounts.reading > 0
+                ? t({
+                    zh: `朗读 ${planCounts.reading} 篇`,
+                    en: `${planCounts.reading} Read Aloud`,
+                  })
+                : null}
+              {planCounts.repeat > 0
+                ? t({
+                    zh: `复述 ${planCounts.repeat} 句`,
+                    en: `${planCounts.repeat} Listen & Repeat`,
+                  })
+                : null}
+              {planCounts.qa > 0
+                ? t({
+                    zh: `问答 ${planCounts.qa} 道`,
+                    en: `${planCounts.qa} Scenario Q&A`,
+                  })
+                : null}
               {planCounts.reading + planCounts.repeat + planCounts.qa === 0 &&
-                "尚未选择题型"}
+                t({ zh: "尚未选择题型", en: "No question types selected" })}
             </p>
           </div>
           {problems.length ? (
             <ul className="space-y-3 text-sm leading-6 text-muted-foreground">
               {problems.map((problem) => (
-                <li key={problem}>{problem}</li>
+                <li key={problem.zh}>{t(problem)}</li>
               ))}
             </ul>
           ) : (
             <p className="flex items-center gap-2 text-sm text-primary">
               <Check className="size-4" />
-              内容已齐备，可以预览
+              {t({
+                zh: "内容已齐备，可以预览",
+                en: "Everything is ready — you can preview",
+              })}
             </p>
           )}
           <Button
@@ -569,14 +695,20 @@ function ComposerForm({
             onClick={() => setPreviewOpen(true)}
           >
             <Eye className="size-4" />
-            预览练习
+            {t({ zh: "预览练习", en: "Preview Practice" })}
           </Button>
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            当前选择尚未发布。只有确认发布后，才会更新学生练习。
+            {t({
+              zh: "当前选择尚未发布。只有确认发布后，才会更新学生练习。",
+              en: "Your current selections aren't published yet. Student practice updates only after you confirm the publish.",
+            })}
           </p>
           <Button variant="link" className="mt-2 h-auto px-0" asChild>
             <Link to="/create" search={{ kind: "reading", classroom: code }}>
-              到题目库补充内容 →
+              {t({
+                zh: "到题目库补充内容 →",
+                en: "Add content in the Question Bank →",
+              })}
             </Link>
           </Button>
         </aside>
@@ -584,7 +716,10 @@ function ComposerForm({
       {exerciseHistory.length > 0 && (
         <details className="rounded-2xl border bg-card px-5 py-4">
           <summary className="cursor-pointer text-sm font-semibold">
-            发布历史（{exerciseHistory.length} 个版本）
+            {t({
+              zh: `发布历史（${exerciseHistory.length} 个版本）`,
+              en: `Publish History (${exerciseHistory.length} versions)`,
+            })}
           </summary>
           <div className="mt-4 divide-y text-sm">
             {exerciseHistory.map((exercise) => (
@@ -593,11 +728,15 @@ function ComposerForm({
                 className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0"
               >
                 <span>
-                  v{exercise.version_no} · {exercise.title} ·{" "}
-                  {exercise.item_count} 道题
+                  {t({
+                    zh: `v${exercise.version_no} · ${exercise.title} · ${exercise.item_count} 道题`,
+                    en: `v${exercise.version_no} · ${exercise.title} · ${exercise.item_count} items`,
+                  })}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {exercise.status === "published" ? "当前发布" : "已归档"}
+                  {exercise.status === "published"
+                    ? t({ zh: "当前发布", en: "Current publish" })
+                    : t({ zh: "已归档", en: "Archived" })}
                   {exercise.published_at
                     ? ` · ${new Date(exercise.published_at).toLocaleString()}`
                     : ""}
@@ -613,21 +752,28 @@ function ComposerForm({
       >
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>练习预览</DialogTitle>
+            <DialogTitle>
+              {t({ zh: "练习预览", en: "Practice Preview" })}
+            </DialogTitle>
             <DialogDescription>
-              发布到课堂 {code}
-              。学生按以下顺序作答；已有作答的处理沿用当前课堂规则。
+              {t({
+                zh: `发布到课堂 ${code}。学生按以下顺序作答；已有作答的处理沿用当前课堂规则。`,
+                en: `Will be published to classroom ${code}. Students answer in the order below; existing answers follow the classroom's current rules.`,
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5">
             {previewPassages.map((p, index) => (
               <section key={p.id} className="rounded-xl border p-4">
                 <h3 className="font-semibold">
-                  文章朗读{" "}
+                  {t(TERMS.typeReading)}{" "}
                   {previewPassages.length > 1
                     ? `${index + 1}/${previewPassages.length}`
                     : ""}{" "}
-                  · {p.title} · 建议 {p.suggested_seconds} 秒
+                  {t({
+                    zh: `· ${p.title} · 建议 ${p.suggested_seconds} 秒`,
+                    en: `· ${p.title} · suggested ${p.suggested_seconds}s`,
+                  })}
                 </h3>
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-7">
                   {p.text}
@@ -636,7 +782,7 @@ function ComposerForm({
             ))}
             {previewSentences.length > 0 && (
               <section className="rounded-xl border p-4">
-                <h3 className="font-semibold">听句复述</h3>
+                <h3 className="font-semibold">{t(TERMS.typeRepeat)}</h3>
                 <ol className="mt-3 space-y-3">
                   {previewSentences.map((s, index) => (
                     <li key={s.id} className="text-sm leading-6">
@@ -644,11 +790,10 @@ function ComposerForm({
                         {index + 1}. {s.text}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        建议 {s.suggested_seconds} 秒 · 可听{" "}
-                        {(s.replay_limit ?? 3) === 0
-                          ? "不限次数"
-                          : `${s.replay_limit ?? 3} 次`}{" "}
-                        · {s.audio_url ? "已配标准音" : "使用浏览器语音"}
+                        {t({
+                          zh: `建议 ${s.suggested_seconds} 秒 · 可听 ${(s.replay_limit ?? 3) === 0 ? "不限次数" : `${s.replay_limit ?? 3} 次`} · ${s.audio_url ? "已配标准音" : "使用浏览器语音"}`,
+                          en: `Suggested ${s.suggested_seconds}s · ${(s.replay_limit ?? 3) === 0 ? "unlimited replays" : `${s.replay_limit ?? 3} replays`} · ${s.audio_url ? "model audio attached" : "browser voice"}`,
+                        })}
                       </p>
                     </li>
                   ))}
@@ -657,12 +802,20 @@ function ComposerForm({
             )}
             {previewQuestions.length > 0 && (
               <section className="rounded-xl border p-4">
-                <h3 className="font-semibold">模拟问答 · {scenario?.topic}</h3>
+                <h3 className="font-semibold">
+                  {t({
+                    zh: `模拟问答 · ${scenario?.topic}`,
+                    en: `Scenario Q&A · ${scenario?.topic}`,
+                  })}
+                </h3>
                 {previewQuestions.map((q) => (
                   <p key={q.id} className="mt-3 text-sm leading-6">
                     {q.text}{" "}
                     <span className="text-muted-foreground">
-                      · {q.suggested_seconds} 秒
+                      {t({
+                        zh: `· ${q.suggested_seconds} 秒`,
+                        en: `· ${q.suggested_seconds}s`,
+                      })}
                     </span>
                   </p>
                 ))}
@@ -675,7 +828,7 @@ function ComposerForm({
               disabled={publish.isPending}
               onClick={() => setPreviewOpen(false)}
             >
-              返回修改
+              {t({ zh: "返回修改", en: "Back to Edit" })}
             </Button>
             <LoadingButton
               loading={publish.isPending}
@@ -683,7 +836,15 @@ function ComposerForm({
               onClick={() => publish.mutate(false)}
             >
               <Send className="size-4" />
-              {changed ? "确认发布到课堂" : "与当前发布一致"}
+              {changed
+                ? t({
+                    zh: "确认发布到课堂",
+                    en: "Confirm Publish to Classroom",
+                  })
+                : t({
+                    zh: "与当前发布一致",
+                    en: "Same as current publish",
+                  })}
             </LoadingButton>
           </DialogFooter>
         </DialogContent>
@@ -694,9 +855,17 @@ function ComposerForm({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>恢复学生自主练习？</DialogTitle>
+            <DialogTitle>
+              {t({
+                zh: "恢复学生自主练习？",
+                en: "Restore student self practice?",
+              })}
+            </DialogTitle>
             <DialogDescription>
-              移除课堂统一指派后，学生将按各自学习进度练习，已提交记录保留。
+              {t({
+                zh: "移除课堂统一指派后，学生将按各自学习进度练习，已提交记录保留。",
+                en: "After removing the classroom-wide assignment, students practice at their own pace; submitted records are kept.",
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -705,13 +874,13 @@ function ComposerForm({
               disabled={publish.isPending}
               onClick={() => setClearOpen(false)}
             >
-              取消
+              {t({ zh: "取消", en: "Cancel" })}
             </Button>
             <LoadingButton
               loading={publish.isPending}
               onClick={() => publish.mutate(true)}
             >
-              确认恢复
+              {t({ zh: "确认恢复", en: "Confirm Restore" })}
             </LoadingButton>
           </DialogFooter>
         </DialogContent>

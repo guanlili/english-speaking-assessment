@@ -1,5 +1,6 @@
 import { Appearance } from "@/components/Common/Appearance"
 import { Logo } from "@/components/Common/Logo"
+import { useI18n } from "@/lib/i18n"
 import { Footer } from "./Footer"
 
 interface AuthLayoutProps {
@@ -7,6 +8,7 @@ interface AuthLayoutProps {
 }
 
 export function AuthLayout({ children }: AuthLayoutProps) {
+  const { t } = useI18n()
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
       <div className="relative hidden flex-col justify-between bg-primary p-14 text-primary-foreground lg:flex">
@@ -18,24 +20,30 @@ export function AuthLayout({ children }: AuthLayoutProps) {
             A LITTLE PRACTICE. A BIG DIFFERENCE.
           </p>
           <h2 className="text-5xl font-semibold leading-tight">
-            让每一种声音，
+            {t({ zh: "让每一种声音，", en: "Every voice," })}
             <br />
-            都被听见。
+            {t({ zh: "都被听见。", en: "deserves to be heard." })}
           </h2>
           <p className="mt-6 text-base leading-8 opacity-80">
-            从一段跟读，到一次自在表达。
+            {t({
+              zh: "从一段跟读，到一次自在表达。",
+              en: "From read-aloud repetition to confident expression.",
+            })}
             <br />
-            连接课堂、练习与成长的英语口语学习空间。
+            {t({
+              zh: "连接课堂、练习与成长的英语口语学习空间。",
+              en: "An English speaking space connecting class, practice, and growth.",
+            })}
           </p>
           <div className="mt-10 flex gap-3 text-sm">
             <span className="rounded-full border border-white/25 px-4 py-2">
-              课堂同步
+              {t({ zh: "课堂同步", en: "Classroom Sync" })}
             </span>
             <span className="rounded-full border border-white/25 px-4 py-2">
-              口语练习
+              {t({ zh: "口语练习", en: "Speaking Practice" })}
             </span>
             <span className="rounded-full border border-white/25 px-4 py-2">
-              成长反馈
+              {t({ zh: "成长反馈", en: "Growth Feedback" })}
             </span>
           </div>
         </div>

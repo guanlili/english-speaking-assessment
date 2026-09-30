@@ -10,16 +10,18 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import type { BiString } from "@/lib/bi"
+import { useI18n } from "@/lib/i18n"
 
 export type Item = {
   icon: LucideIcon
-  title: string
+  title: BiString
   path: string
 }
 
 interface MainProps {
   items: Item[]
-  label?: string
+  label?: BiString
 }
 
 export function isItemActive(itemPath: string, pathname: string) {
@@ -37,6 +39,7 @@ export function isItemActive(itemPath: string, pathname: string) {
 }
 
 export function Main({ items, label }: MainProps) {
+  const { t } = useI18n()
   const { isMobile, setOpenMobile } = useSidebar()
   const currentPath = useRouterState({
     select: (state) => state.location.pathname,
@@ -48,15 +51,21 @@ export function Main({ items, label }: MainProps) {
     }
   }
 
+  const labelText = label ? t(label) : undefined
+
   return (
     <SidebarGroup>
-      {label && (
+      {labelText && (
         <SidebarGroupLabel className="mb-2 px-3 text-[10px] font-medium tracking-widest text-muted-foreground">
-          {label}
+          {labelText}
         </SidebarGroupLabel>
       )}
       <SidebarGroupContent>
-        <nav aria-label={label || "平台设置"}>
+        <nav
+          aria-label={
+            labelText ?? t({ zh: "平台设置", en: "Platform Settings" })
+          }
+        >
           <SidebarMenu className="gap-1.5">
             {items.map((item) => {
               const isActive = isItemActive(item.path, currentPath)
@@ -65,7 +74,7 @@ export function Main({ items, label }: MainProps) {
                 <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton
                     className="relative h-11 gap-3 rounded-lg px-3 text-sm text-sidebar-foreground/80 transition-colors hover:text-sidebar-foreground data-[active=true]:bg-primary data-[active=true]:font-semibold data-[active=true]:text-primary-foreground data-[active=true]:shadow-sm data-[active=true]:hover:bg-primary/90 data-[active=true]:hover:text-primary-foreground motion-reduce:transition-none"
-                    tooltip={item.title}
+                    tooltip={t(item.title)}
                     isActive={isActive}
                     asChild
                   >
@@ -77,7 +86,7 @@ export function Main({ items, label }: MainProps) {
                     >
                       <item.icon aria-hidden="true" className="size-4" />
                       <span className="group-data-[collapsible=icon]:sr-only">
-                        {item.title}
+                        {t(item.title)}
                       </span>
                     </RouterLink>
                   </SidebarMenuButton>

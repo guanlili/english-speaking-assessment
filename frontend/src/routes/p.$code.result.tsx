@@ -49,7 +49,8 @@ import {
 import { APP_NAME } from "@/config"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import { savedExpressionsKey } from "@/lib/favorites"
-import { EXPLAIN, ITEM_TYPE_LABELS } from "@/lib/terms"
+import { useI18n } from "@/lib/i18n"
+import { EXPLAIN, ITEM_TYPE_LABELS, TERMS } from "@/lib/terms"
 
 export const Route = createFileRoute("/p/$code/result")({
   component: RoundResultPage,
@@ -62,11 +63,12 @@ export const Route = createFileRoute("/p/$code/result")({
     return {}
   },
   head: () => ({
-    meta: [{ title: `本轮结果 - ${APP_NAME}` }],
+    meta: [{ title: `本轮结果 / Round Results - ${APP_NAME}` }],
   }),
 })
 
 function RoundResultPage() {
+  const { t } = useI18n()
   const { code } = useParams({ from: "/p/$code/result" })
   const { explore: exploreSessionId, session: sessionParam } = Route.useSearch()
   const navigate = useNavigate({ from: "/p/$code/result" })
@@ -220,7 +222,7 @@ function RoundResultPage() {
       <div className="flex min-h-screen items-center justify-center text-muted-foreground">
         <Button variant="outline" asChild>
           <Link to="/j/$code" params={{ code }}>
-            先进入课堂
+            {t({ zh: "先进入课堂", en: "Join the class first" })}
           </Link>
         </Button>
       </div>
@@ -230,14 +232,17 @@ function RoundResultPage() {
   if (todayQuery.isPending) {
     return (
       <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        正在加载结果…
+        {t({ zh: "正在加载结果…", en: "Loading results…" })}
       </div>
     )
   }
   if (todayQuery.isError || !plan) {
     return (
       <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        结果加载失败，请刷新重试。
+        {t({
+          zh: "结果加载失败，请刷新重试。",
+          en: "Results failed to load — please refresh and retry.",
+        })}
       </div>
     )
   }
@@ -247,11 +252,17 @@ function RoundResultPage() {
       <div className="flex flex-col gap-6">
         <div>
           <h1 className="text-xl font-bold tracking-tight">
-            今天的你，又向前了一步。
+            {t({
+              zh: "今天的你，又向前了一步。",
+              en: "You moved one step further today.",
+            })}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {displayName(student)} · 课堂 {plan.classroom_code} ·
-            每题转写和参考分
+            {displayName(student)} ·{" "}
+            {t({
+              zh: `课堂 ${plan.classroom_code} · 每题转写和参考分`,
+              en: `Classroom ${plan.classroom_code} · transcripts and reference scores per item`,
+            })}
           </p>
         </div>
 
@@ -265,14 +276,20 @@ function RoundResultPage() {
                 EVERY WORD COUNTS
               </p>
               <h2 className="mt-1.5 text-xl font-bold">
-                比起完美，开口本身就很棒。
+                {t({
+                  zh: "比起完美，开口本身就很棒。",
+                  en: "Speaking up itself is wonderful — perfection can wait.",
+                })}
               </h2>
               <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span
                       role="img"
-                      aria-label={`本轮星级：${gamification.session_stars} / 3`}
+                      aria-label={t({
+                        zh: `本轮星级：${gamification.session_stars} / 3`,
+                        en: `Stars this round: ${gamification.session_stars} / 3`,
+                      })}
                       className="flex items-center gap-1"
                     >
                       {[1, 2, 3].map((n) => (
@@ -291,7 +308,7 @@ function RoundResultPage() {
                     </span>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-64 text-xs leading-relaxed">
-                    {EXPLAIN.stars}
+                    {t(EXPLAIN.stars)}
                   </TooltipContent>
                 </Tooltip>
                 <Tooltip>
@@ -299,34 +316,41 @@ function RoundResultPage() {
                     <span className="flex items-center gap-1 font-semibold">
                       <Sparkles className="size-4 text-primary" />
                       XP {gamification.xp}
-                      <span className="sr-only">{EXPLAIN.xp}</span>
+                      <span className="sr-only">{t(EXPLAIN.xp)}</span>
                     </span>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-64 text-xs leading-relaxed">
-                    {EXPLAIN.xp}
+                    {t(EXPLAIN.xp)}
                   </TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="flex items-center gap-1 text-muted-foreground">
                       <Flame className="size-4 text-orange-500" />
-                      连胜 {gamification.streak_days} 天
-                      <span className="sr-only">{EXPLAIN.streak}</span>
+                      {t({
+                        zh: `连胜 ${gamification.streak_days} 天`,
+                        en: `Streak ${gamification.streak_days} days`,
+                      })}
+                      <span className="sr-only">{t(EXPLAIN.streak)}</span>
                     </span>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-64 text-xs leading-relaxed">
-                    {EXPLAIN.streak}
+                    {t(EXPLAIN.streak)}
                   </TooltipContent>
                 </Tooltip>
               </div>
               <p className="mt-1.5 text-xs text-muted-foreground">
-                {EXPLAIN.stars}
+                {t(EXPLAIN.stars)}
               </p>
               {newBadges.length > 0 && (
                 <p className="mt-2 flex items-center gap-1 text-sm">
-                  <span className="font-semibold">本轮获得徽章：</span>
-                  {newBadges.map((b) => b.label).join("、")}
-                  <InfoHint label={EXPLAIN.badges} />
+                  <span className="font-semibold">
+                    {t({ zh: "本轮获得徽章：", en: "New badges this round:" })}
+                  </span>
+                  {newBadges
+                    .map((b) => b.label)
+                    .join(t({ zh: "、", en: ", " }))}
+                  <InfoHint label={t(EXPLAIN.badges)} />
                 </p>
               )}
             </div>
@@ -338,13 +362,30 @@ function RoundResultPage() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {(
                 [
-                  ["参考分", roundStats.overall, "本轮均值"],
-                  ["完整度参考", roundStats.completeness, "听句复述"],
-                  ["流利度参考", roundStats.fluency, "全部题目"],
                   [
-                    "词汇覆盖",
-                    roundStats.vocabCefr ? "已分析" : "–",
-                    "最近有效问答 · 词表分析",
+                    t({ zh: "参考分", en: "Reference Score" }),
+                    roundStats.overall,
+                    t({ zh: "本轮均值", en: "Round average" }),
+                  ],
+                  [
+                    t({ zh: "完整度参考", en: "Completeness" }),
+                    roundStats.completeness,
+                    t(TERMS.typeRepeat),
+                  ],
+                  [
+                    t({ zh: "流利度参考", en: "Fluency" }),
+                    roundStats.fluency,
+                    t({ zh: "全部题目", en: "All items" }),
+                  ],
+                  [
+                    t({ zh: "词汇覆盖", en: "Vocabulary" }),
+                    roundStats.vocabCefr
+                      ? t({ zh: "已分析", en: "Analyzed" })
+                      : "–",
+                    t({
+                      zh: "最近有效问答 · 词表分析",
+                      en: "Latest valid Q&A · wordlist analysis",
+                    }),
                   ],
                 ] as const
               ).map(([label, value, note]) => (
@@ -366,10 +407,16 @@ function RoundResultPage() {
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base">
-                        把好表达，变成自己的
+                        {t({
+                          zh: "把好表达，变成自己的",
+                          en: "Make great expressions your own",
+                        })}
                       </CardTitle>
                       <CardDescription>
-                        只分析自主问答 · 来源：分级词表命中
+                        {t({
+                          zh: "只分析自主问答 · 来源：分级词表命中",
+                          en: "Self-practice Q&A only · source: graded wordlist hits",
+                        })}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="flex flex-wrap gap-1.5">
@@ -390,20 +437,34 @@ function RoundResultPage() {
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base">
-                        说得更自然一点
+                        {t({ zh: "说得更自然一点", en: "Sound more natural" })}
                       </CardTitle>
                       <CardDescription>
-                        模拟分 {roundStats.rubric.mock_score ?? "–"} / 9 ·
-                        非官方成绩 · 已评 {roundStats.rubric.count} 题均值
+                        {t({
+                          zh: `模拟分 ${roundStats.rubric.mock_score ?? "–"} / 9 · 非官方成绩 · 已评 ${roundStats.rubric.count} 题均值`,
+                          en: `Mock score ${roundStats.rubric.mock_score ?? "–"} / 9 · unofficial · average of ${roundStats.rubric.count} rated items`,
+                        })}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-2.5">
                       {(
                         [
-                          ["流利与连贯", roundStats.rubric.fluency],
-                          ["词汇运用", roundStats.rubric.vocabulary],
-                          ["语法表达", roundStats.rubric.grammar],
-                          ["任务完成", roundStats.rubric.task],
+                          [
+                            t({ zh: "流利与连贯", en: "Fluency & coherence" }),
+                            roundStats.rubric.fluency,
+                          ],
+                          [
+                            t({ zh: "词汇运用", en: "Vocabulary" }),
+                            roundStats.rubric.vocabulary,
+                          ],
+                          [
+                            t({ zh: "语法表达", en: "Grammar" }),
+                            roundStats.rubric.grammar,
+                          ],
+                          [
+                            t({ zh: "任务完成", en: "Task" }),
+                            roundStats.rubric.task,
+                          ],
                         ] as const
                       ).map(([label, dim]) => (
                         <div
@@ -433,7 +494,10 @@ function RoundResultPage() {
         {doneItems.length === 0 && (
           <Card>
             <CardContent className="py-6 text-muted-foreground">
-              还没有完成的作答。回到练习页开始第一题。
+              {t({
+                zh: "还没有完成的作答。回到练习页开始第一题。",
+                en: "No completed attempts yet. Head back to practice and start the first item.",
+              })}
             </CardContent>
           </Card>
         )}
@@ -441,35 +505,60 @@ function RoundResultPage() {
         {doneItems.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">本轮参考分与练习计划</CardTitle>
+              <CardTitle className="text-base">
+                {t({
+                  zh: "本轮参考分与练习计划",
+                  en: "This round's reference scores and plan",
+                })}
+              </CardTitle>
               <CardDescription>
-                已完成 {doneItems.length} / {plan.items.length} 题 ·
-                参考分来自转写文本与语速规则，模型四维分单独统计。
+                {t({
+                  zh: `已完成 ${doneItems.length} / ${plan.items.length} 题 · 参考分来自转写文本与语速规则，模型四维分单独统计。`,
+                  en: `${doneItems.length} / ${plan.items.length} items done · reference scores come from transcript text and speaking-rate rules; model dimension scores are counted separately.`,
+                })}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <p>
-                本轮平均参考分 {roundStats.overall ?? "–"} / 100。复述完整度{" "}
-                {roundStats.completeness ?? "–"} / 100，流利度参考{" "}
-                {roundStats.fluency ?? "–"} / 100。
+                {t({
+                  zh: `本轮平均参考分 ${roundStats.overall ?? "–"} / 100。复述完整度 ${roundStats.completeness ?? "–"} / 100，流利度参考 ${roundStats.fluency ?? "–"} / 100。`,
+                  en: `Average reference score this round: ${roundStats.overall ?? "–"} / 100. Repeat completeness ${roundStats.completeness ?? "–"} / 100, fluency ${roundStats.fluency ?? "–"} / 100.`,
+                })}
               </p>
               <p>
                 {roundStats.completeness !== null &&
                 roundStats.completeness < 80
-                  ? "复述优先检查漏读的关键词，对照下面的原文和转写，分句听读后再完整复述。"
-                  : "继续巩固完整表达，复述时注意意群衔接，避免只记住零散单词。"}
+                  ? t({
+                      zh: "复述优先检查漏读的关键词，对照下面的原文和转写，分句听读后再完整复述。",
+                      en: "For repeats, first check for missed keywords: compare the original text below with your transcript, listen and read sentence by sentence, then repeat in full.",
+                    })
+                  : t({
+                      zh: "继续巩固完整表达，复述时注意意群衔接，避免只记住零散单词。",
+                      en: "Keep strengthening complete expressions; mind how thought chunks connect when repeating, instead of memorizing scattered words.",
+                    })}
               </p>
               <p>
                 {roundStats.fluency !== null && roundStats.fluency < 60
-                  ? "下一次先用短句表达完整意思，再逐步连成两到三句；录音回听检查停顿。"
-                  : "在保持表达节奏的基础上，为观点补充理由和具体例子，让回答更充分。"}
+                  ? t({
+                      zh: "下一次先用短句表达完整意思，再逐步连成两到三句；录音回听检查停顿。",
+                      en: "Next time, express a complete idea in short sentences first, then build up to two or three; replay your recording to check pauses.",
+                    })
+                  : t({
+                      zh: "在保持表达节奏的基础上，为观点补充理由和具体例子，让回答更充分。",
+                      en: "While keeping your pace, add reasons and concrete examples to your opinions for fuller answers.",
+                    })}
               </p>
               <p>
-                练习顺序：回听最需要改进的一题 → 对照逐题建议修改表达 →
-                重录并比较转写和参考分。
+                {t({
+                  zh: "练习顺序：回听最需要改进的一题 → 对照逐题建议修改表达 → 重录并比较转写和参考分。",
+                  en: "Practice order: replay the item that needs the most work → revise your wording with the per-item tips → re-record and compare transcripts and scores.",
+                })}
               </p>
               <p className="text-xs text-muted-foreground">
-                转写可能有误；仅凭文本不能准确判断发音、重音和语调。缺失或失败的评价不计入均值，以下保留各题依据。
+                {t({
+                  zh: "转写可能有误；仅凭文本不能准确判断发音、重音和语调。缺失或失败的评价不计入均值，以下保留各题依据。",
+                  en: "Transcripts may contain errors; text alone cannot judge pronunciation, stress or intonation accurately. Missing or failed evaluations are excluded from averages; each item's basis is kept below.",
+                })}
               </p>
             </CardContent>
           </Card>
@@ -479,7 +568,13 @@ function RoundResultPage() {
           <Card key={item.id}>
             <CardHeader>
               <CardDescription>
-                {index + 1}. {ITEM_TYPE_LABELS[item.type] ?? item.type}
+                {index + 1}.{" "}
+                {t(
+                  ITEM_TYPE_LABELS[item.type] ?? {
+                    zh: item.type,
+                    en: item.type,
+                  },
+                )}
               </CardDescription>
               <CardTitle className="text-sm leading-relaxed font-medium">
                 {item.text}
@@ -487,17 +582,21 @@ function RoundResultPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm leading-relaxed">
-                <span className="text-muted-foreground">转写：</span>
-                {attempt.transcript || "（无）"}
+                <span className="text-muted-foreground">
+                  {t({ zh: "转写：", en: "Transcript:" })}
+                </span>
+                {attempt.transcript || t({ zh: "（无）", en: "(none)" })}
               </p>
               <Separator />
               <div className="flex items-center gap-4 text-sm">
                 <span className="text-2xl font-bold tabular-nums">
-                  参考分 {attempt.overall ?? "–"}
+                  {t({ zh: "参考分", en: "Score" })} {attempt.overall ?? "–"}
                 </span>
                 {item.type !== "question" && (
                   <span className="text-muted-foreground">
-                    完整度 {attempt.completeness ?? "–"} · 流利度{" "}
+                    {t({ zh: "完整度", en: "Completeness" })}{" "}
+                    {attempt.completeness ?? "–"} ·{" "}
+                    {t({ zh: "流利度", en: "Fluency" })}{" "}
                     {attempt.fluency ?? "–"}
                   </span>
                 )}
@@ -528,7 +627,7 @@ function RoundResultPage() {
                   onClick={() => setReplay({ item, attempt })}
                 >
                   <Play />
-                  回听这一题
+                  {t({ zh: "回听这一题", en: "Replay this item" })}
                 </Button>
               )}
             </CardContent>
@@ -545,8 +644,13 @@ function RoundResultPage() {
               <DialogTitle>
                 {replay && (
                   <>
-                    {ITEM_TYPE_LABELS[replay.item.type] ?? replay.item.type} ·
-                    回看这次表达
+                    {t(
+                      ITEM_TYPE_LABELS[replay.item.type] ?? {
+                        zh: replay.item.type,
+                        en: replay.item.type,
+                      },
+                    )}{" "}
+                    · {t({ zh: "回看这次表达", en: "Review this attempt" })}
                   </>
                 )}
               </DialogTitle>
@@ -556,17 +660,23 @@ function RoundResultPage() {
               <div className="space-y-3">
                 <div>
                   <p className="mb-1 text-xs text-muted-foreground">
-                    你说了什么（转写）
+                    {t({
+                      zh: "你说了什么（转写）",
+                      en: "What you said (transcript)",
+                    })}
                   </p>
                   <p className="rounded-lg bg-background p-3 text-sm leading-relaxed">
-                    {replay.attempt.transcript || "（无转写）"}
+                    {replay.attempt.transcript ||
+                      t({ zh: "（无转写）", en: "(no transcript)" })}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                   <span className="text-2xl font-bold tabular-nums">
                     {replay.attempt.overall ?? "–"}
                   </span>
-                  <span className="text-muted-foreground">参考分</span>
+                  <span className="text-muted-foreground">
+                    {t({ zh: "参考分", en: "Reference Score" })}
+                  </span>
                 </div>
                 {replay.attempt.attempt_id && (
                   <AttemptAudio
@@ -576,13 +686,16 @@ function RoundResultPage() {
                   />
                 )}
                 <p className="text-xs text-muted-foreground">
-                  听一听自己刚才的声音，找出下一句想说得更好的地方。
+                  {t({
+                    zh: "听一听自己刚才的声音，找出下一句想说得更好的地方。",
+                    en: "Listen to your own voice and find the next sentence you'd like to say better.",
+                  })}
                 </p>
               </div>
             )}
             <DialogFooter>
               <Button variant="outline" onClick={() => setReplay(null)}>
-                关闭
+                {t({ zh: "关闭", en: "Close" })}
               </Button>
               <Button
                 onClick={() => {
@@ -599,7 +712,7 @@ function RoundResultPage() {
                 }}
               >
                 <Repeat />
-                再练这一题
+                {t({ zh: "再练这一题", en: "Practice this item again" })}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -621,7 +734,7 @@ function RoundResultPage() {
               }
             >
               <Repeat />
-              重练最弱的一题
+              {t({ zh: "重练最弱的一题", en: "Redo your weakest item" })}
             </Button>
           )}
           <Button
@@ -633,8 +746,14 @@ function RoundResultPage() {
           >
             <Shuffle />
             {plan.questions_exhausted === true
-              ? "这个主题的题已练完"
-              : "换同主题下一问"}
+              ? t({
+                  zh: "这个主题的题已练完",
+                  en: "All questions on this topic are done",
+                })
+              : t({
+                  zh: "换同主题下一问",
+                  en: "Next question on this topic",
+                })}
           </Button>
           <Button variant="ghost" asChild>
             <Link
@@ -642,14 +761,17 @@ function RoundResultPage() {
               params={{ code }}
               search={sessionId ? { session: sessionId } : {}}
             >
-              回练习页
+              {t({ zh: "回练习页", en: "Back to practice" })}
               <ArrowRight />
             </Link>
           </Button>
         </div>
 
         <p className="pb-6 text-center text-xs text-muted-foreground">
-          参考反馈，不是考试成绩。
+          {t({
+            zh: "参考反馈，不是考试成绩。",
+            en: "Reference feedback, not exam results.",
+          })}
         </p>
       </div>
     </StudentShell>

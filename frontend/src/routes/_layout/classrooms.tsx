@@ -41,15 +41,19 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
+import { useI18n } from "@/lib/i18n"
 
 export const Route = createFileRoute("/_layout/classrooms")({
   component: MyClassroomsPage,
-  head: () => ({ meta: [{ title: `我的课堂 - ${APP_NAME}` }] }),
+  head: () => ({
+    meta: [{ title: `我的课堂 / My Classrooms - ${APP_NAME}` }],
+  }),
 })
 
 function MyClassroomsPage() {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { t } = useI18n()
   const classroomsQuery = useQuery({
     queryKey: ["my-classrooms"],
     queryFn: () => ClassesService.listMyClassrooms(),
@@ -76,14 +80,25 @@ function MyClassroomsPage() {
         },
       }),
     onSuccess: (data) => {
-      showSuccessToast(`课堂已创建，课堂码 ${data.code}`)
+      showSuccessToast(
+        t({
+          zh: `课堂已创建，课堂码 ${data.code}`,
+          en: `Classroom created. Classroom code ${data.code}`,
+        }),
+      )
       setCreateOpen(false)
       setClassName("")
       setGrade("")
       setTeachingGoal("")
       invalidate()
     },
-    onError: (error) => showErrorToast(`创建失败：${error.message}`),
+    onError: (error) =>
+      showErrorToast(
+        t({
+          zh: `创建失败：${error.message}`,
+          en: `Failed to create: ${error.message}`,
+        }),
+      ),
   })
 
   const classrooms = classroomsQuery.data ?? []
@@ -93,54 +108,96 @@ function MyClassroomsPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="mb-2 text-xs font-semibold tracking-widest text-primary">
-            从这里开始上课
+            {t({ zh: "从这里开始上课", en: "Start here" })}
           </p>
-          <h1 className="text-3xl font-bold tracking-tight">我的课堂</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {t({ zh: "我的课堂", en: "My Classrooms" })}
+          </h1>
           <p className="text-muted-foreground">
-            一间课堂，一个教学空间。安排口语练习，查看学生录音与参考反馈。
+            {t({
+              zh: "一间课堂，一个教学空间。安排口语练习，查看学生录音与参考反馈。",
+              en: "One classroom, one teaching space. Assign speaking practice and review student recordings with reference feedback.",
+            })}
           </p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>
           <Plus />
-          新建课堂
+          {t({ zh: "新建课堂", en: "New Classroom" })}
         </Button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
         {[
-          { title: "课前 · 准备题目", text: "文章朗读、听句复述、情景问答" },
-          { title: "课中 · 安排练习", text: "进入课堂，选择内容并预览发布" },
-          { title: "课后 · 查看结果", text: "听录音、看参考反馈、跟踪进步" },
+          {
+            title: {
+              zh: "课前 · 准备题目",
+              en: "Before class · Prepare questions",
+            },
+            text: {
+              zh: "文章朗读、听句复述、情景问答",
+              en: "Read Aloud, Listen & Repeat, Scenario Q&A",
+            },
+          },
+          {
+            title: {
+              zh: "课中 · 安排练习",
+              en: "In class · Assign practice",
+            },
+            text: {
+              zh: "进入课堂，选择内容并预览发布",
+              en: "Open the classroom, choose content and preview before publishing",
+            },
+          },
+          {
+            title: {
+              zh: "课后 · 查看结果",
+              en: "After class · Review results",
+            },
+            text: {
+              zh: "听录音、看参考反馈、跟踪进步",
+              en: "Listen to recordings, check reference feedback, track progress",
+            },
+          },
         ].map((step, index) => (
           <div
-            key={step.title}
+            key={step.title.zh}
             className="flex gap-3 rounded-xl border bg-card p-5"
           >
             <span className="text-sm font-semibold text-primary">
               0{index + 1}
             </span>
             <div>
-              <p className="text-sm font-semibold">{step.title}</p>
+              <p className="text-sm font-semibold">{t(step.title)}</p>
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                {step.text}
+                {t(step.text)}
               </p>
             </div>
           </div>
         ))}
       </div>
       <Input
-        aria-label="搜索课堂名称或课堂码"
+        aria-label={t({
+          zh: "搜索课堂名称或课堂码",
+          en: "Search by classroom name or code",
+        })}
         value={keyword}
         onChange={(event) => setKeyword(event.target.value)}
-        placeholder="搜索课堂名称或课堂码…"
+        placeholder={t({
+          zh: "搜索课堂名称或课堂码…",
+          en: "Search by classroom name or code…",
+        })}
         className="max-w-sm"
       />
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">课堂列表</CardTitle>
+          <CardTitle className="text-base">
+            {t({ zh: "课堂列表", en: "Classroom List" })}
+          </CardTitle>
           <CardDescription>
-            {classrooms.length} 间课堂 ·
-            进入课堂安排练习，学生管理在各课堂卡片中。
+            {t({
+              zh: `${classrooms.length} 间课堂 · 进入课堂安排练习，学生管理在各课堂卡片中。`,
+              en: `${classrooms.length} classrooms · Open a classroom to assign practice; manage students in each classroom card.`,
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -152,18 +209,26 @@ function MyClassroomsPage() {
             </div>
           ) : classroomsQuery.isError ? (
             <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
-              <p>课堂列表加载失败。</p>
+              <p>
+                {t({
+                  zh: "课堂列表加载失败。",
+                  en: "Failed to load classrooms.",
+                })}
+              </p>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => void classroomsQuery.refetch()}
               >
-                重试
+                {t({ zh: "重试", en: "Retry" })}
               </Button>
             </div>
           ) : classrooms.length === 0 ? (
             <p className="py-8 text-center text-muted-foreground">
-              还没有课堂，点「新建课堂」开始：课堂码会发给学生配合学号账号使用。
+              {t({
+                zh: "还没有课堂，点「新建课堂」开始：课堂码会发给学生配合学号账号使用。",
+                en: 'No classrooms yet — click "New Classroom" to start. The classroom code is given to students to use with their student ID accounts.',
+              })}
             </p>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
@@ -192,41 +257,61 @@ function MyClassroomsPage() {
             .includes(keyword.trim().toLowerCase()),
         ) && (
           <p className="py-6 text-center text-muted-foreground">
-            没有匹配的课堂。
+            {t({ zh: "没有匹配的课堂。", en: "No matching classrooms." })}
           </p>
         )}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>新建课堂</DialogTitle>
+            <DialogTitle>
+              {t({ zh: "新建课堂", en: "New Classroom" })}
+            </DialogTitle>
             <DialogDescription>
-              创建后生成课堂码；学生用学号账号登录后输入课堂码加入。
+              {t({
+                zh: "创建后生成课堂码；学生用学号账号登录后输入课堂码加入。",
+                en: "A classroom code is generated on creation; students sign in with their student ID account and join with the code.",
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="class-name">课堂名称</Label>
+              <Label htmlFor="class-name">
+                {t({ zh: "课堂名称", en: "Classroom Name" })}
+              </Label>
               <Input
                 id="class-name"
                 value={className}
                 onChange={(e) => setClassName(e.target.value)}
-                placeholder="例如：六年级英语口语"
+                placeholder={t({
+                  zh: "例如：六年级英语口语",
+                  en: "e.g., Grade 6 English Speaking",
+                })}
                 maxLength={120}
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="class-grade">年级 / 班型（可选）</Label>
+                <Label htmlFor="class-grade">
+                  {t({
+                    zh: "年级 / 班型（可选）",
+                    en: "Grade / Class (optional)",
+                  })}
+                </Label>
                 <Input
                   id="class-grade"
                   value={grade}
                   onChange={(e) => setGrade(e.target.value)}
-                  placeholder="例如：六年级 2 班"
+                  placeholder={t({
+                    zh: "例如：六年级 2 班",
+                    en: "e.g., Grade 6, Class 2",
+                  })}
                   maxLength={64}
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="class-size">班级人数上限</Label>
+                <Label htmlFor="class-size">
+                  {t({ zh: "班级人数上限", en: "Class Size Limit" })}
+                </Label>
                 <Input
                   id="class-size"
                   type="number"
@@ -238,12 +323,20 @@ function MyClassroomsPage() {
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="teaching-goal">本阶段教学目标（可选）</Label>
+              <Label htmlFor="teaching-goal">
+                {t({
+                  zh: "本阶段教学目标（可选）",
+                  en: "Teaching Goal (optional)",
+                })}
+              </Label>
               <Textarea
                 id="teaching-goal"
                 value={teachingGoal}
                 onChange={(e) => setTeachingGoal(e.target.value)}
-                placeholder="例如：能用完整句介绍自己的宠物"
+                placeholder={t({
+                  zh: "例如：能用完整句介绍自己的宠物",
+                  en: "e.g., Can introduce their pet in full sentences",
+                })}
                 maxLength={255}
                 rows={2}
               />
@@ -251,7 +344,7 @@ function MyClassroomsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              取消
+              {t({ zh: "取消", en: "Cancel" })}
             </Button>
             <LoadingButton
               loading={createMutation.isPending}
@@ -263,7 +356,7 @@ function MyClassroomsPage() {
               }
               onClick={() => createMutation.mutate()}
             >
-              创建
+              {t({ zh: "创建", en: "Create" })}
             </LoadingButton>
           </DialogFooter>
         </DialogContent>
@@ -288,15 +381,26 @@ function ClassroomCard({
   onInvalidated: () => void
 }) {
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { t } = useI18n()
   const [importOpen, setImportOpen] = useState(false)
   const [rosterOpen, setRosterOpen] = useState(false)
 
   const copyCode = async () => {
     try {
       await navigator.clipboard.writeText(classroom.code)
-      showSuccessToast(`课堂码 ${classroom.code} 已复制`)
+      showSuccessToast(
+        t({
+          zh: `课堂码 ${classroom.code} 已复制`,
+          en: `Classroom code ${classroom.code} copied`,
+        }),
+      )
     } catch {
-      showErrorToast(`复制失败，请手动复制课堂码 ${classroom.code}`)
+      showErrorToast(
+        t({
+          zh: `复制失败，请手动复制课堂码 ${classroom.code}`,
+          en: `Copy failed — please copy the classroom code ${classroom.code} manually`,
+        }),
+      )
     }
   }
 
@@ -304,11 +408,22 @@ function ClassroomCard({
   const deleteMutation = useMutation({
     mutationFn: () => ClassesService.deleteClass({ code: classroom.code }),
     onSuccess: () => {
-      showSuccessToast(`课堂 ${classroom.code} 已删除`)
+      showSuccessToast(
+        t({
+          zh: `课堂 ${classroom.code} 已删除`,
+          en: `Classroom ${classroom.code} deleted`,
+        }),
+      )
       setDeleteOpen(false)
       onInvalidated()
     },
-    onError: (error) => showErrorToast(`删除失败：${error.message}`),
+    onError: (error) =>
+      showErrorToast(
+        t({
+          zh: `删除失败：${error.message}`,
+          en: `Failed to delete: ${error.message}`,
+        }),
+      ),
   })
 
   return (
@@ -316,41 +431,57 @@ function ClassroomCard({
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <div>
           <CardTitle className="text-lg">
-            {classroom.name || "未命名课堂"}
+            {classroom.name ||
+              t({ zh: "未命名课堂", en: "Untitled Classroom" })}
           </CardTitle>
           <CardDescription>
             <span className="font-mono">{classroom.code}</span>
             {classroom.grade && ` · ${classroom.grade}`}
-            {` · 上限 ${classroom.class_size} 人`}
-            {classroom.is_active === false && " · 已停用"}
+            {t({
+              zh: ` · 上限 ${classroom.class_size} 人`,
+              en: ` · Limit ${classroom.class_size}`,
+            })}
+            {classroom.is_active === false &&
+              t({ zh: " · 已停用", en: " · Deactivated" })}
           </CardDescription>
         </div>
         <Badge variant={classroom.is_active ? "outline" : "secondary"}>
-          {classroom.is_active ? "可使用" : "已停用"}
+          {classroom.is_active
+            ? t({ zh: "可使用", en: "Active" })
+            : t({ zh: "已停用", en: "Deactivated" })}
         </Badge>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          {classroom.teaching_goal || "安排本次练习，查看学生作答与录音。"}
+          {classroom.teaching_goal ||
+            t({
+              zh: "安排本次练习，查看学生作答与录音。",
+              en: "Assign practice and review student answers and recordings.",
+            })}
         </p>
         <div className="flex flex-wrap gap-2">
           {classroom.is_active ? (
             <Button asChild>
               <Link to="/t/$code" params={{ code: classroom.code }}>
-                进入课堂 →
+                {t({ zh: "进入课堂 →", en: "Open Classroom →" })}
               </Link>
             </Button>
           ) : (
-            <Button disabled>课堂已停用</Button>
+            <Button disabled>
+              {t({ zh: "课堂已停用", en: "Classroom deactivated" })}
+            </Button>
           )}
           <Button variant="outline" onClick={() => void copyCode()}>
             <Copy className="size-3.5" />
-            复制课堂码
+            {t({ zh: "复制课堂码", en: "Copy Classroom Code" })}
           </Button>
         </div>
         <details className="border-t pt-3">
           <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
-            学生管理 · 名单与账号
+            {t({
+              zh: "学生管理 · 名单与账号",
+              en: "Students · Roster & Accounts",
+            })}
           </summary>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button
@@ -359,14 +490,14 @@ function ClassroomCard({
               onClick={() => setImportOpen(true)}
             >
               <ClipboardPaste className="size-3.5" />
-              导入学生
+              {t({ zh: "导入学生", en: "Import Students" })}
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setRosterOpen(true)}
             >
-              学生名单
+              {t({ zh: "学生名单", en: "Roster" })}
             </Button>
             <Button
               variant="ghost"
@@ -374,7 +505,7 @@ function ClassroomCard({
               className="text-destructive hover:text-destructive"
               onClick={() => setDeleteOpen(true)}
             >
-              删除课堂
+              {t({ zh: "删除课堂", en: "Delete Classroom" })}
             </Button>
           </div>
         </details>
@@ -393,9 +524,15 @@ function ClassroomCard({
       />
       <ConfirmDialog
         open={deleteOpen}
-        title={`删除课堂 ${classroom.code}？`}
-        description="课堂码将立即失效，课堂与学生名单一并删除。仅能删除没有学生作答记录的课堂；已有作答的课堂需管理员停用。"
-        confirmText="删除课堂"
+        title={t({
+          zh: `删除课堂 ${classroom.code}？`,
+          en: `Delete classroom ${classroom.code}?`,
+        })}
+        description={t({
+          zh: "课堂码将立即失效，课堂与学生名单一并删除。仅能删除没有学生作答记录的课堂；已有作答的课堂需管理员停用。",
+          en: "The classroom code stops working immediately, and the classroom and its roster are deleted together. Only classrooms with no student answers can be deleted; classrooms with answers must be deactivated by an admin.",
+        })}
+        confirmText={t({ zh: "删除课堂", en: "Delete Classroom" })}
         onOpenChange={(next) => {
           if (!next) setDeleteOpen(false)
         }}
@@ -421,6 +558,7 @@ function StudentImportDialog({
   onDone: () => void
 }) {
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { t } = useI18n()
   const [text, setText] = useState("")
   const [result, setResult] = useState<StudentImportResult | null>(null)
 
@@ -449,16 +587,28 @@ function StudentImportDialog({
       setResult(res)
       if (res.created + res.merged > 0) {
         showSuccessToast(
-          `导入完成：新建 ${res.created}、绑定历史档案 ${res.merged}${
-            res.skipped ? `、跳过 ${res.skipped}` : ""
-          }`,
+          t({
+            zh: `导入完成：新建 ${res.created}、绑定历史档案 ${res.merged}${res.skipped ? `、跳过 ${res.skipped}` : ""}`,
+            en: `Import done: ${res.created} created, ${res.merged} linked to existing profiles${res.skipped ? `, ${res.skipped} skipped` : ""}`,
+          }),
         )
         onDone()
       } else {
-        showErrorToast("没有导入任何学生，请检查名单")
+        showErrorToast(
+          t({
+            zh: "没有导入任何学生，请检查名单",
+            en: "No students were imported; please check the roster",
+          }),
+        )
       }
     },
-    onError: (error) => showErrorToast(`导入失败：${error.message}`),
+    onError: (error) =>
+      showErrorToast(
+        t({
+          zh: `导入失败：${error.message}`,
+          en: `Import failed: ${error.message}`,
+        }),
+      ),
   })
 
   return (
@@ -474,10 +624,17 @@ function StudentImportDialog({
     >
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>导入学生（{classroomCode}）</DialogTitle>
+          <DialogTitle>
+            {t({
+              zh: `导入学生（${classroomCode}）`,
+              en: `Import Students (${classroomCode})`,
+            })}
+          </DialogTitle>
           <DialogDescription>
-            每行「学号 姓名」（空格或制表符分隔）；账号初始密码统一为默认密码
-            brs123456，与历史匿名学生同名时自动绑定其练习数据。
+            {t({
+              zh: "每行「学号 姓名」（空格或制表符分隔）；账号初始密码统一为默认密码 brs123456，与历史匿名学生同名时自动绑定其练习数据。",
+              en: 'One "Student ID Name" per line (separated by spaces or tabs). Accounts start with the default password brs123456, and names matching past anonymous students are automatically linked to their practice data.',
+            })}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
@@ -485,19 +642,24 @@ function StudentImportDialog({
             rows={8}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={"2026001 李雷\n2026002 韩梅梅\n2026003 林涛"}
-            aria-label="学生名单"
+            placeholder={t({
+              zh: "2026001 李雷\n2026002 韩梅梅\n2026003 林涛",
+              en: "2026001 Li Lei\n2026002 Han Meimei\n2026003 Lin Tao",
+            })}
+            aria-label={t({ zh: "学生名单", en: "Student roster" })}
           />
           <div className="text-sm text-muted-foreground">
-            将导入{" "}
+            {t({ zh: "将导入", en: "Importing" })}{" "}
             <span className="font-medium text-foreground">{lines.length}</span>{" "}
-            名学生
+            {t({ zh: "名学生", en: "student(s)" })}
           </div>
           {result && (
             <div className="rounded-md border bg-muted/40 p-3 text-sm">
               <p>
-                新建 {result.created} · 绑定历史 {result.merged} · 跳过{" "}
-                {result.skipped}
+                {t({
+                  zh: `新建 ${result.created} · 绑定历史 ${result.merged} · 跳过 ${result.skipped}`,
+                  en: `${result.created} created · ${result.merged} linked · ${result.skipped} skipped`,
+                })}
               </p>
               {result.rows.some((r) => r.error) && (
                 <ul className="mt-2 list-inside list-disc text-destructive">
@@ -505,7 +667,10 @@ function StudentImportDialog({
                     .filter((r) => r.error)
                     .map((r) => (
                       <li key={r.username}>
-                        {r.username}：{r.error}
+                        {t({
+                          zh: `${r.username}：${r.error ?? ""}`,
+                          en: `${r.username}: ${r.error ?? ""}`,
+                        })}
                       </li>
                     ))}
                 </ul>
@@ -519,7 +684,7 @@ function StudentImportDialog({
             loading={mutation.isPending}
             onClick={() => mutation.mutate()}
           >
-            导入
+            {t({ zh: "导入", en: "Import" })}
           </LoadingButton>
         </DialogFooter>
       </DialogContent>
@@ -537,6 +702,7 @@ function StudentRosterDialog({
   onOpenChange: (v: boolean) => void
 }) {
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { t } = useI18n()
   const rosterQuery = useQuery({
     queryKey: ["students", classroomId],
     queryFn: () => StudentsService.listStudents({ classroomId }),
@@ -550,9 +716,20 @@ function StudentRosterDialog({
     mutationFn: (studentId: string) =>
       StudentsService.resetStudentPassword({ studentId }),
     onSuccess: () => {
-      showSuccessToast("已重置为默认密码 brs123456")
+      showSuccessToast(
+        t({
+          zh: "已重置为默认密码 brs123456",
+          en: "Password reset to the default brs123456",
+        }),
+      )
     },
-    onError: (error) => showErrorToast(`重置失败：${error.message}`),
+    onError: (error) =>
+      showErrorToast(
+        t({
+          zh: `重置失败：${error.message}`,
+          en: `Reset failed: ${error.message}`,
+        }),
+      ),
   })
 
   const resetPendingId = resetMutation.isPending
@@ -563,20 +740,42 @@ function StudentRosterDialog({
     mutationFn: () => StudentsService.bulkResetPasswords({ classroomId }),
     onSuccess: (res) => {
       setBulkDone(res.reset)
-      showSuccessToast(`已重置 ${res.reset} 个账号为默认密码 brs123456`)
+      showSuccessToast(
+        t({
+          zh: `已重置 ${res.reset} 个账号为默认密码 brs123456`,
+          en: `${res.reset} account(s) reset to the default password brs123456`,
+        }),
+      )
     },
-    onError: (error) => showErrorToast(`批量重置失败：${error.message}`),
+    onError: (error) =>
+      showErrorToast(
+        t({
+          zh: `批量重置失败：${error.message}`,
+          en: `Bulk reset failed: ${error.message}`,
+        }),
+      ),
   })
 
   const removeMutation = useMutation({
     mutationFn: (studentId: string) =>
       StudentsService.removeStudent({ studentId }),
     onSuccess: () => {
-      showSuccessToast("已移出课堂（档案与历史保留）")
+      showSuccessToast(
+        t({
+          zh: "已移出课堂（档案与历史保留）",
+          en: "Removed from the classroom (profile and history kept)",
+        }),
+      )
       setRemoveTarget(null)
       void rosterQuery.refetch()
     },
-    onError: (error) => showErrorToast(`移出失败：${error.message}`),
+    onError: (error) =>
+      showErrorToast(
+        t({
+          zh: `移出失败：${error.message}`,
+          en: `Failed to remove: ${error.message}`,
+        }),
+      ),
   })
 
   const students = rosterQuery.data ?? []
@@ -585,25 +784,39 @@ function StudentRosterDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>学生名单</DialogTitle>
+          <DialogTitle>
+            {t({ zh: "学生名单", en: "Student Roster" })}
+          </DialogTitle>
           <DialogDescription>
-            学号账号与状态；忘记密码时重置为默认密码 brs123456。
+            {t({
+              zh: "学号账号与状态；忘记密码时重置为默认密码 brs123456。",
+              en: "Student ID accounts and status; reset to the default password brs123456 when forgotten.",
+            })}
           </DialogDescription>
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
-              学生可自行修改密码；重置后已修改的密码会被覆盖回默认。
+              {t({
+                zh: "学生可自行修改密码；重置后已修改的密码会被覆盖回默认。",
+                en: "Students can change their own passwords; a reset overwrites changed passwords with the default.",
+              })}
             </p>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setBulkConfirm(true)}
             >
-              全部重置为默认密码
+              {t({
+                zh: "全部重置为默认密码",
+                en: "Reset All to Default Password",
+              })}
             </Button>
           </div>
           {bulkDone !== null && (
             <div className="rounded-md border bg-muted/40 p-3 text-sm">
-              已重置 {bulkDone} 个账号为默认密码 brs123456。
+              {t({
+                zh: `已重置 ${bulkDone} 个账号为默认密码 brs123456。`,
+                en: `${bulkDone} account(s) reset to the default password brs123456.`,
+              })}
             </div>
           )}
         </DialogHeader>
@@ -611,14 +824,17 @@ function StudentRosterDialog({
           <Skeleton className="h-40 w-full" />
         ) : students.length === 0 ? (
           <p className="py-6 text-center text-muted-foreground">
-            还没有学生账号，先「导入学生」。
+            {t({
+              zh: "还没有学生账号，先「导入学生」。",
+              en: 'No student accounts yet — start with "Import Students".',
+            })}
           </p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>姓名</TableHead>
-                <TableHead>学号</TableHead>
+                <TableHead>{t({ zh: "姓名", en: "Name" })}</TableHead>
+                <TableHead>{t({ zh: "学号", en: "Student ID" })}</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -637,7 +853,10 @@ function StudentRosterDialog({
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          aria-label="重置密码"
+                          aria-label={t({
+                            zh: "重置密码",
+                            en: "Reset Password",
+                          })}
                           disabled={resetPendingId === s.student.id}
                           onClick={() => {
                             resetMutation.mutate(s.student.id)
@@ -648,7 +867,10 @@ function StudentRosterDialog({
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          aria-label="移出课堂"
+                          aria-label={t({
+                            zh: "移出课堂",
+                            en: "Remove from classroom",
+                          })}
                           onClick={() => setRemoveTarget(s.student.id)}
                         >
                           <UserMinus className="size-3.5 text-destructive" />
@@ -664,9 +886,18 @@ function StudentRosterDialog({
       </DialogContent>
       <ConfirmDialog
         open={removeTarget !== null}
-        title="把该学生移出课堂？"
-        description="仅解除账号与课堂的绑定；练习档案与作答历史保留，重新导入相同学号可找回。"
-        confirmText="移出课堂"
+        title={t({
+          zh: "把该学生移出课堂？",
+          en: "Remove this student from the classroom?",
+        })}
+        description={t({
+          zh: "仅解除账号与课堂的绑定；练习档案与作答历史保留，重新导入相同学号可找回。",
+          en: "Only unlinks the account from the classroom; practice profiles and answer history are kept, and re-importing the same student ID restores access.",
+        })}
+        confirmText={t({
+          zh: "移出课堂",
+          en: "Remove from Classroom",
+        })}
         onOpenChange={(next) => {
           if (!next) setRemoveTarget(null)
         }}
@@ -684,15 +915,22 @@ function StudentRosterDialog({
       >
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>全部重置为默认密码？</DialogTitle>
+            <DialogTitle>
+              {t({
+                zh: "全部重置为默认密码？",
+                en: "Reset all to the default password?",
+              })}
+            </DialogTitle>
             <DialogDescription>
-              课堂内全部已绑定账号的密码将统一重置为默认密码
-              brs123456（学生自行修改过的密码也会被覆盖）。确定继续？
+              {t({
+                zh: "课堂内全部已绑定账号的密码将统一重置为默认密码 brs123456（学生自行修改过的密码也会被覆盖）。确定继续？",
+                en: "All linked accounts in this classroom will be reset to the default password brs123456 (including passwords students changed themselves). Continue?",
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkConfirm(false)}>
-              取消
+              {t({ zh: "取消", en: "Cancel" })}
             </Button>
             <LoadingButton
               loading={bulkResetMutation.isPending}
@@ -701,7 +939,7 @@ function StudentRosterDialog({
                 setBulkConfirm(false)
               }}
             >
-              重置全部
+              {t({ zh: "重置全部", en: "Reset All" })}
             </LoadingButton>
           </DialogFooter>
         </DialogContent>

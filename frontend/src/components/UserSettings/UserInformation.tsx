@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 
@@ -18,27 +18,38 @@ import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
+import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { handleError } from "@/utils"
 
-const formSchema = z.object({
-  full_name: z.string().max(30).optional(),
-  email: z.union([
-    z.literal(""),
-    z.email({ message: "Invalid email address" }),
-  ]),
-})
+// 校验消息随语言切换：schema 在组件内按当前语言重建
+function buildFormSchema(t: ReturnType<typeof useI18n>["t"]) {
+  return z.object({
+    full_name: z.string().max(30).optional(),
+    email: z.union([
+      z.literal(""),
+      z.email({
+        message: t({
+          zh: "请输入有效的邮箱地址",
+          en: "Enter a valid email address",
+        }),
+      }),
+    ]),
+  })
+}
 
-type FormData = z.infer<typeof formSchema>
+type FormData = z.infer<ReturnType<typeof buildFormSchema>>
 
 const UserInformation = () => {
+  const { t } = useI18n()
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const [editMode, setEditMode] = useState(false)
   const { user: currentUser } = useAuth()
+  const schema = useMemo(() => buildFormSchema(t), [t])
 
   const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(schema),
     mode: "onBlur",
     criteriaMode: "all",
     defaultValues: {
@@ -55,7 +66,9 @@ const UserInformation = () => {
     mutationFn: (data: UserUpdateMe) =>
       UsersService.updateUserMe({ requestBody: data }),
     onSuccess: () => {
-      showSuccessToast("User updated successfully")
+      showSuccessToast(
+        t({ zh: "用户信息已更新", en: "User updated successfully" }),
+      )
       toggleEditMode()
     },
     onError: handleError.bind(showErrorToast),
@@ -85,7 +98,9 @@ const UserInformation = () => {
 
   return (
     <div className="max-w-md">
-      <h3 className="text-lg font-semibold py-4">User Information</h3>
+      <h3 className="text-lg font-semibold py-4">
+        {t({ zh: "个人信息", en: "User Information" })}
+      </h3>
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
@@ -97,7 +112,7 @@ const UserInformation = () => {
             render={({ field }) =>
               editMode ? (
                 <FormItem>
-                  <FormLabel>Full name</FormLabel>
+                  <FormLabel>{t({ zh: "姓名", en: "Full Name" })}</FormLabel>
                   <FormControl>
                     <Input type="text" {...field} />
                   </FormControl>
@@ -105,14 +120,14 @@ const UserInformation = () => {
                 </FormItem>
               ) : (
                 <FormItem>
-                  <FormLabel>Full name</FormLabel>
+                  <FormLabel>{t({ zh: "姓名", en: "Full Name" })}</FormLabel>
                   <p
                     className={cn(
                       "py-2 truncate max-w-sm",
                       !field.value && "text-muted-foreground",
                     )}
                   >
-                    {field.value || "N/A"}
+                    {field.value || t({ zh: "未填写", en: "N/A" })}
                   </p>
                 </FormItem>
               )
@@ -125,7 +140,7 @@ const UserInformation = () => {
             render={({ field }) =>
               editMode ? (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>{t({ zh: "邮箱", en: "Email" })}</FormLabel>
                   <FormControl>
                     <Input type="email" {...field} />
                   </FormControl>
@@ -133,7 +148,7 @@ const UserInformation = () => {
                 </FormItem>
               ) : (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>{t({ zh: "邮箱", en: "Email" })}</FormLabel>
                   <p className="py-2 truncate max-w-sm">{field.value}</p>
                 </FormItem>
               )
@@ -148,7 +163,7 @@ const UserInformation = () => {
                   loading={mutation.isPending}
                   disabled={!form.formState.isDirty}
                 >
-                  Save
+                  {t({ zh: "保存", en: "Save" })}
                 </LoadingButton>
                 <Button
                   type="button"
@@ -156,12 +171,12 @@ const UserInformation = () => {
                   onClick={onCancel}
                   disabled={mutation.isPending}
                 >
-                  Cancel
+                  {t({ zh: "取消", en: "Cancel" })}
                 </Button>
               </>
             ) : (
               <Button type="button" onClick={toggleEditMode}>
-                Edit
+                {t({ zh: "编辑", en: "Edit" })}
               </Button>
             )}
           </div>

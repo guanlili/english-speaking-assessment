@@ -40,11 +40,13 @@ import {
   readWeekGoal,
   writeWeekGoal,
 } from "@/lib/classroom-student"
+import { type BiString, useI18n } from "@/lib/i18n"
+import { TERMS } from "@/lib/terms"
 import { speakEnglish } from "@/lib/tts"
 
 export const Route = createFileRoute("/home/$code")({
   component: HomePage,
-  head: () => ({ meta: [{ title: `学习首页 - ${APP_NAME}` }] }),
+  head: () => ({ meta: [{ title: `学习首页 / Home - ${APP_NAME}` }] }),
 })
 
 const QUOTES = [
@@ -57,7 +59,19 @@ const QUOTES = [
   { en: "Speak from the heart.", zh: "从心里说出来的话，最有力量。" },
 ]
 
+/** 周历表头（周一→周日），双语 */
+const WEEKDAYS: BiString[] = [
+  { zh: "一", en: "M" },
+  { zh: "二", en: "T" },
+  { zh: "三", en: "W" },
+  { zh: "四", en: "T" },
+  { zh: "五", en: "F" },
+  { zh: "六", en: "S" },
+  { zh: "日", en: "S" },
+]
+
 function HomePage() {
+  const { t, lang } = useI18n()
   const { code } = useParams({ from: "/home/$code" })
   const navigate = useNavigate({ from: "/home/$code" })
   const student = loadStudent(code)
@@ -112,7 +126,9 @@ function HomePage() {
     return (
       <StudentShell active="home" wide>
         <div role="status" className="space-y-6">
-          <span className="sr-only">正在加载今日学习计划…</span>
+          <span className="sr-only">
+            {t({ zh: "正在加载今日学习计划…", en: "Loading today's plan…" })}
+          </span>
           <Skeleton className="h-72 rounded-3xl" />
           <Skeleton className="h-64 rounded-3xl" />
           <div className="grid gap-4 sm:grid-cols-3">
@@ -131,16 +147,24 @@ function HomePage() {
         <Card className="items-center px-6 py-12 text-center">
           <Headphones className="size-10 text-primary" />
           <div role="alert" className="space-y-2">
-            <h1 className="text-xl font-semibold">学习计划暂时没有加载成功</h1>
+            <h1 className="text-xl font-semibold">
+              {t({
+                zh: "学习计划暂时没有加载成功",
+                en: "Today's plan failed to load",
+              })}
+            </h1>
             <p className="text-sm text-muted-foreground">
-              请检查网络连接，再试一次。你的练习记录不会丢失。
+              {t({
+                zh: "请检查网络连接，再试一次。你的练习记录不会丢失。",
+                en: "Check your connection and try again. Your practice records are safe.",
+              })}
             </p>
           </div>
           <Button
             onClick={() => void todayQuery.refetch()}
             disabled={todayQuery.isFetching}
           >
-            重新加载
+            {t({ zh: "重新加载", en: "Reload" })}
           </Button>
         </Card>
       </StudentShell>
@@ -162,12 +186,25 @@ function HomePage() {
   const qaCount = countType("question")
   const planSummary =
     [
-      readingCount > 0 && `${readingCount} 篇朗读`,
-      repeatCount > 0 && `${repeatCount} 句复述`,
-      qaCount > 0 && `${qaCount} 道情景问答`,
+      readingCount > 0 &&
+        t({
+          zh: `${readingCount} 篇朗读`,
+          en: `${readingCount} read-aloud`,
+        }),
+      repeatCount > 0 &&
+        t({
+          zh: `${repeatCount} 句复述`,
+          en: `${repeatCount} listen & repeat`,
+        }),
+      qaCount > 0 &&
+        t({
+          zh: `${qaCount} 道情景问答`,
+          en: `${qaCount} scenario Q&A`,
+        }),
     ]
       .filter(Boolean)
-      .join(" + ") || "内容待老师安排"
+      .join(" + ") ||
+    t({ zh: "内容待老师安排", en: "content awaiting your teacher" })
 
   // 周目标：trail 近 7 天有练习的天数
   const weekGoal = readWeekGoal()
@@ -203,14 +240,28 @@ function HomePage() {
               <span className="h-px w-6 bg-[#edc393]" /> YOUR VOICE MATTERS
             </p>
             <h1 className="mt-5 break-words text-2xl font-semibold leading-snug tracking-tight sm:text-3xl lg:text-4xl">
-              Hi，{displayName(student)}。
+              {t({
+                zh: `Hi，${displayName(student)}。`,
+                en: `Hi, ${displayName(student)}.`,
+              })}
               <br />
-              <span className="text-[#edc393]">今天，也勇敢开口。</span>
+              <span className="text-[#edc393]">
+                {t({
+                  zh: "今天，也勇敢开口。",
+                  en: "Be brave and speak up today.",
+                })}
+              </span>
             </h1>
             <p className="mt-4 text-sm leading-6 text-[#d1dfd4]">
               {plan?.assigned_unit_title
-                ? `今日练习 · ${plan.assigned_unit_title}`
-                : "从一次小小的练习，开始你的表达。"}
+                ? t({
+                    zh: `今日练习 · ${plan.assigned_unit_title}`,
+                    en: `Today's Practice · ${plan.assigned_unit_title}`,
+                  })
+                : t({
+                    zh: "从一次小小的练习，开始你的表达。",
+                    en: "Start your speaking journey with one small practice.",
+                  })}
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-4">
               <Button
@@ -222,15 +273,29 @@ function HomePage() {
                 }
               >
                 {totalItems === 0
-                  ? "等待课堂安排"
+                  ? t({ zh: "等待课堂安排", en: "Awaiting today's assignment" })
                   : done >= totalItems
-                    ? "查看今日成果"
+                    ? t({
+                        zh: "查看今日成果",
+                        en: "See today's results",
+                      })
                     : done > 0
-                      ? "继续今日练习"
-                      : "开始今日练习"}
+                      ? t({
+                          zh: "继续今日练习",
+                          en: "Continue today's practice",
+                        })
+                      : t({
+                          zh: "开始今日练习",
+                          en: "Start today's practice",
+                        })}
                 <ArrowRight className="transition-transform group-hover:translate-x-1" />
               </Button>
-              <span className="text-xs text-[#d1dfd4]">轻松开口，不怕说错</span>
+              <span className="text-xs text-[#d1dfd4]">
+                {t({
+                  zh: "轻松开口，不怕说错",
+                  en: "Speak freely — mistakes are welcome",
+                })}
+              </span>
             </div>
           </div>
         </section>
@@ -243,14 +308,24 @@ function HomePage() {
                 <Headphones className="size-5" />
               </span>
               <div>
-                <CardTitle className="text-base">今天的开口计划</CardTitle>
+                <CardTitle className="text-base">
+                  {t({ zh: "今天的开口计划", en: "Today's speaking plan" })}
+                </CardTitle>
                 <CardDescription>
-                  {plan?.assigned_unit_title ?? "自主练习"} · {planSummary}
+                  {plan?.assigned_unit_title
+                    ? plan.assigned_unit_title
+                    : t(TERMS.selfPractice)}{" "}
+                  · {planSummary}
                 </CardDescription>
               </div>
             </div>
             <span className="rounded-full border bg-background px-3 py-1.5 text-xs text-muted-foreground">
-              {totalItems > 0 ? "按自己的节奏完成" : "内容待安排"}
+              {totalItems > 0
+                ? t({
+                    zh: "按自己的节奏完成",
+                    en: "Go at your own pace",
+                  })
+                : t({ zh: "内容待安排", en: "Content to be assigned" })}
             </span>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -259,13 +334,19 @@ function HomePage() {
                 role="status"
                 className="rounded-xl bg-secondary/50 p-4 text-sm leading-6 text-muted-foreground"
               >
-                老师还没有安排练习内容。你可以先检查麦克风，或到主题探索中自主练习。
+                {t({
+                  zh: "老师还没有安排练习内容。你可以先检查麦克风，或到主题探索中自主练习。",
+                  en: "Your teacher hasn't assigned practice yet. You can test your microphone or practice on your own in Explore Topics.",
+                })}
               </p>
             )}
             <div className="flex items-center gap-3">
               <div
                 role="progressbar"
-                aria-label="今日练习完成进度"
+                aria-label={t({
+                  zh: "今日练习完成进度",
+                  en: "Today's practice progress",
+                })}
                 aria-valuemin={0}
                 aria-valuemax={totalItems || 1}
                 aria-valuenow={Math.min(done, totalItems)}
@@ -279,29 +360,59 @@ function HomePage() {
                 />
               </div>
               <span className="text-[11px] text-muted-foreground">
-                {done} / {totalItems} 已完成
+                {t({
+                  zh: `${done} / ${totalItems} 已完成`,
+                  en: `${done} / ${totalItems} done`,
+                })}
               </span>
             </div>
             {[
               readingCount > 0
                 ? {
-                    title: "先读一读，说一说",
-                    sub: "文章朗读 · 自然完整地读出来",
-                    count: `${readingCount} 篇朗读`,
+                    title: t({
+                      zh: "先读一读，说一说",
+                      en: "Read a little, speak a little",
+                    }),
+                    sub: t({
+                      zh: "文章朗读 · 自然完整地读出来",
+                      en: "Read Aloud · Read it through naturally",
+                    }),
+                    count: t({
+                      zh: `${readingCount} 篇朗读`,
+                      en: `${readingCount} passages`,
+                    }),
                   }
                 : null,
               repeatCount > 0
                 ? {
-                    title: "先听一听，再说一说",
-                    sub: "听句复述 · 让熟悉的表达自然说出口",
-                    count: `${repeatCount} 个短句`,
+                    title: t({
+                      zh: "先听一听，再说一说",
+                      en: "Listen first, then speak",
+                    }),
+                    sub: t({
+                      zh: "听句复述 · 让熟悉的表达自然说出口",
+                      en: "Listen & Repeat · Let familiar expressions come out naturally",
+                    }),
+                    count: t({
+                      zh: `${repeatCount} 个短句`,
+                      en: `${repeatCount} sentences`,
+                    }),
                   }
                 : null,
               qaCount > 0
                 ? {
-                    title: "轮到你，分享一点想法",
-                    sub: "情景问答 · 没有标准答案，你的想法很重要",
-                    count: `${qaCount} 个问题`,
+                    title: t({
+                      zh: "轮到你，分享一点想法",
+                      en: "Your turn — share an idea",
+                    }),
+                    sub: t({
+                      zh: "情景问答 · 没有标准答案，你的想法很重要",
+                      en: "Scenario Q&A · No single right answer; your ideas matter",
+                    }),
+                    count: t({
+                      zh: `${qaCount} 个问题`,
+                      en: `${qaCount} questions`,
+                    }),
                   }
                 : null,
             ]
@@ -325,7 +436,10 @@ function HomePage() {
               ))}
             <p className="flex items-center gap-1.5 border-t pt-3 text-xs text-muted-foreground">
               <CheckCircle2 className="size-3.5" />
-              老师会根据课堂目标安排内容；按自己的节奏完成每一步。
+              {t({
+                zh: "老师会根据课堂目标安排内容；按自己的节奏完成每一步。",
+                en: "Your teacher assigns content based on class goals; complete each step at your own pace.",
+              })}
             </p>
           </CardContent>
         </Card>
@@ -335,7 +449,10 @@ function HomePage() {
           <div>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-bold tracking-tight">
-                从感兴趣的事，开始聊
+                {t({
+                  zh: "从感兴趣的事，开始聊",
+                  en: "Start with what interests you",
+                })}
               </h2>
               <Button
                 variant="ghost"
@@ -345,7 +462,7 @@ function HomePage() {
                   void navigate({ to: "/explore/$code", params: { code } })
                 }
               >
-                全部单元 <ArrowRight />
+                {t({ zh: "全部单元", en: "All units" })} <ArrowRight />
               </Button>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -362,8 +479,11 @@ function HomePage() {
                     <TopicArt topic={unit.topic} />
                     <span className="absolute top-2 left-2 rounded-md bg-card/85 px-2 py-0.5 text-[10px] font-semibold text-primary">
                       {(unit.rounds_done ?? 0) > 0
-                        ? `已获 ${unit.best_stars ?? 0} 星`
-                        : "新单元"}
+                        ? t({
+                            zh: `已获 ${unit.best_stars ?? 0} 星`,
+                            en: `Earned ${unit.best_stars ?? 0} stars`,
+                          })
+                        : t({ zh: "新单元", en: "New" })}
                     </span>
                   </div>
                   <div className="p-3">
@@ -372,7 +492,7 @@ function HomePage() {
                       {unit.topic}
                     </p>
                     <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span>约 10 分钟</span>
+                      <span>{t({ zh: "约 10 分钟", en: "About 10 min" })}</span>
                       <ArrowRight className="size-3.5" />
                     </div>
                   </div>
@@ -386,7 +506,9 @@ function HomePage() {
         <div className="grid gap-5 md:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
-              <CardTitle className="text-sm">这周，稳稳前进</CardTitle>
+              <CardTitle className="text-sm">
+                {t({ zh: "这周，稳稳前进", en: "Steady forward this week" })}
+              </CardTitle>
               <Dialog open={goalPicker} onOpenChange={setGoalPicker}>
                 <DialogTrigger asChild>
                   <Button
@@ -394,14 +516,22 @@ function HomePage() {
                     size="sm"
                     className="text-xs text-primary"
                   >
-                    调整目标
+                    {t({ zh: "调整目标", en: "Adjust goal" })}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>找到适合自己的练习节奏</DialogTitle>
+                    <DialogTitle>
+                      {t({
+                        zh: "找到适合自己的练习节奏",
+                        en: "Find your own practice rhythm",
+                      })}
+                    </DialogTitle>
                     <DialogDescription>
-                      选择每周想练习的天数，随时可以调整。不用和别人比。
+                      {t({
+                        zh: "选择每周想练习的天数，随时可以调整。不用和别人比。",
+                        en: "Choose how many days a week you'd like to practice — change it anytime. No need to compare with others.",
+                      })}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid grid-cols-3 gap-3">
@@ -413,16 +543,29 @@ function HomePage() {
                         onClick={() => {
                           writeWeekGoal(n)
                           setGoalPicker(false)
-                          toast.success(`每周目标已调整为 ${n} 天`)
+                          toast.success(
+                            t({
+                              zh: `每周目标已调整为 ${n} 天`,
+                              en: `Weekly goal set to ${n} days`,
+                            }),
+                          )
                         }}
                         className={`rounded-2xl border px-2 py-5 text-center transition-colors ${weekGoal === n ? "border-primary bg-secondary text-primary" : "border-border hover:border-primary/50 hover:bg-secondary/40"}`}
                       >
                         <strong className="block text-3xl tabular-nums">
                           {n}
-                          <span className="ml-1 text-xs font-normal">天</span>
+                          <span className="ml-1 text-xs font-normal">
+                            {t({ zh: "天", en: "days" })}
+                          </span>
                         </strong>
                         <span className="mt-2 block text-xs text-muted-foreground">
-                          {{ 3: "慢慢来", 5: "稳稳进步", 7: "每天一点" }[n]}
+                          {
+                            {
+                              3: t({ zh: "慢慢来", en: "Easy does it" }),
+                              5: t({ zh: "稳稳进步", en: "Steady progress" }),
+                              7: t({ zh: "每天一点", en: "A little daily" }),
+                            }[n]
+                          }
                         </span>
                       </button>
                     ))}
@@ -436,7 +579,10 @@ function HomePage() {
                   viewBox="0 0 150 150"
                   className="absolute inset-0 size-full -rotate-90"
                   role="img"
-                  aria-label={`本周已练习 ${weekDone} 天`}
+                  aria-label={t({
+                    zh: `本周已练习 ${weekDone} 天`,
+                    en: `Practiced ${weekDone} days this week`,
+                  })}
                 >
                   <circle
                     cx="75"
@@ -461,15 +607,15 @@ function HomePage() {
                   <span className="text-3xl font-bold">{weekDone}</span>
                   <span className="text-base text-muted-foreground">
                     {" "}
-                    / {weekGoal} 天
+                    / {weekGoal} {t({ zh: "天", en: "days" })}
                   </span>
                   <span className="block text-[10px] text-muted-foreground">
-                    本周开口目标
+                    {t({ zh: "本周开口目标", en: "This week's speaking goal" })}
                   </span>
                 </p>
               </div>
               <div className="mt-3 grid grid-cols-7 gap-1 text-center">
-                {["一", "二", "三", "四", "五", "六", "日"].map((d, i) => {
+                {WEEKDAYS.map((d, i) => {
                   const now = new Date()
                   const dow = (now.getDay() + 6) % 7
                   const day = new Date(now)
@@ -479,9 +625,9 @@ function HomePage() {
                   const isToday = i === dow
                   const practiced = practicedDates.has(key)
                   return (
-                    <div key={d}>
+                    <div key={key}>
                       <p className="mb-1.5 text-[9px] text-muted-foreground">
-                        {d}
+                        {t(d)}
                       </p>
                       <span
                         className={
@@ -492,7 +638,11 @@ function HomePage() {
                               : "mx-auto grid size-6 place-items-center rounded-full bg-background text-[10px] text-muted-foreground"
                         }
                       >
-                        {practiced ? "✓" : isToday ? "今" : "·"}
+                        {practiced
+                          ? "✓"
+                          : isToday
+                            ? t({ zh: "今", en: "•" })
+                            : "·"}
                       </span>
                     </div>
                   )
@@ -500,15 +650,26 @@ function HomePage() {
               </div>
               <p className="mt-3 text-center text-xs text-muted-foreground">
                 {weekDone >= weekGoal
-                  ? "本周目标已达成，保持自己的节奏"
-                  : `再练 ${weekGoal - weekDone} 天，就完成本周小目标`}
+                  ? t({
+                      zh: "本周目标已达成，保持自己的节奏",
+                      en: "Weekly goal reached — keep your own pace",
+                    })
+                  : t({
+                      zh: `再练 ${weekGoal - weekDone} 天，就完成本周小目标`,
+                      en: `${weekGoal - weekDone} more day(s) to reach this week's goal`,
+                    })}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">你的表达，正在生长</CardTitle>
+              <CardTitle className="text-sm">
+                {t({
+                  zh: "你的表达，正在生长",
+                  en: "Your expressions are growing",
+                })}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="mt-2 text-4xl font-bold tabular-nums">
@@ -518,12 +679,18 @@ function HomePage() {
                 )}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                累计用过的词汇表达
+                {t({
+                  zh: "累计用过的词汇表达",
+                  en: "Expressions used in total",
+                })}
               </p>
               {g && (
                 <p className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
                   <Flame className="size-3.5 text-orange-400" />
-                  连胜 {g.streak_days} 天 · {g.xp} XP
+                  {t({
+                    zh: `连胜 ${g.streak_days} 天 · ${g.xp} XP`,
+                    en: `Streak ${g.streak_days} days · ${g.xp} XP`,
+                  })}
                 </p>
               )}
             </CardContent>
@@ -532,22 +699,28 @@ function HomePage() {
           <Card className="border-accent bg-accent">
             <CardHeader>
               <CardDescription className="flex items-center gap-1.5 !text-accent-foreground">
-                <Sparkles className="size-3.5" /> 给今天的你
+                <Sparkles className="size-3.5" />{" "}
+                {t({ zh: "给今天的你", en: "For you today" })}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <blockquote className="font-serif text-xl leading-relaxed">
                 “{quote.en}”
               </blockquote>
-              <p className="mt-2 text-xs text-accent-foreground/80">
-                {quote.zh}
-              </p>
+              {lang === "zh" && (
+                <p className="mt-2 text-xs text-accent-foreground/80">
+                  {quote.zh}
+                </p>
+              )}
               <div className="mt-3 flex items-center justify-between text-[10px] text-accent-foreground/70">
                 <span>ONE SENTENCE A DAY</span>
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="朗读今日金句"
+                  aria-label={t({
+                    zh: "朗读今日金句",
+                    en: "Read today's quote aloud",
+                  })}
                   onClick={() => {
                     speakEnglish(quote.en)
                   }}
@@ -568,14 +741,14 @@ function HomePage() {
             }
           >
             <Sparkles />
-            主题探索
+            {t({ zh: "主题探索", en: "Explore Topics" })}
           </Button>
           <Button
             variant="secondary"
             onClick={() => void navigate({ to: "/me/$code", params: { code } })}
           >
             <Star />
-            我的成长
+            {t(TERMS.growthPage)}
           </Button>
         </div>
       </div>

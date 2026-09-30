@@ -34,7 +34,8 @@ import { useAttemptSubmit } from "@/hooks/useAttemptSubmit"
 import { MAX_RECORD_SECONDS, useRecorder } from "@/hooks/useRecorder"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { displayName, loadStudent } from "@/lib/classroom-student"
-import { ITEM_TYPE_LABELS } from "@/lib/terms"
+import { useI18n } from "@/lib/i18n"
+import { ITEM_TYPE_LABELS, TERMS } from "@/lib/terms"
 import { randomId } from "@/utils"
 
 export const Route = createFileRoute("/p/$code/")({
@@ -61,7 +62,7 @@ export const Route = createFileRoute("/p/$code/")({
     return result
   },
   head: () => ({
-    meta: [{ title: `今日练习 - ${APP_NAME}` }],
+    meta: [{ title: `今日练习 / Today's Practice - ${APP_NAME}` }],
   }),
 })
 
@@ -75,6 +76,7 @@ function isTerminal(status: string | undefined): boolean {
 }
 
 function ClassroomPracticePage() {
+  const { t } = useI18n()
   const { code } = useParams({ from: "/p/$code/" })
   const {
     focus: focusParam,
@@ -162,9 +164,18 @@ function ClassroomPracticePage() {
         setExtraQuestion(extraItem)
         queryClient.invalidateQueries({ queryKey: todayQueryKey })
       } else {
-        toast.info("这个主题的题已练完", {
-          description: "可以重录上一题继续 polish",
-        })
+        toast.info(
+          t({
+            zh: "这个主题的题已练完",
+            en: "You've finished the questions on this topic",
+          }),
+          {
+            description: t({
+              zh: "可以重录上一题继续 polish",
+              en: "Re-record the last one to keep polishing",
+            }),
+          },
+        )
       }
     },
   })
@@ -187,9 +198,14 @@ function ClassroomPracticePage() {
   // ?next=1 但计划加载失败：提示换题未成功（否则静默无反应）
   useEffect(() => {
     if (nextFlag && todayQuery.isError) {
-      toast.error("换题失败", { description: "练习计划加载失败，请返回重试" })
+      toast.error(t({ zh: "换题失败", en: "Couldn't switch question" }), {
+        description: t({
+          zh: "练习计划加载失败，请返回重试",
+          en: "The practice plan failed to load — please go back and retry",
+        }),
+      })
     }
-  }, [nextFlag, todayQuery.isError])
+  }, [nextFlag, todayQuery.isError, t])
 
   // 追加换来的题（本地状态；完成后随 attempts 展示）
   const [extraQuestion, setExtraQuestion] = useState<PlanItem | null>(null)
@@ -305,10 +321,19 @@ function ClassroomPracticePage() {
         blockerToastRef.current = true
         toast.warning(
           recorder.status === "recording"
-            ? "正在录音，先结束或确认录音后再离开"
+            ? t({
+                zh: "正在录音，先结束或确认录音后再离开",
+                en: "Recording in progress — stop or confirm the recording before leaving",
+              })
             : submitting
-              ? "录音正在上传，请稍候或完成后再离开"
-              : "录音上传失败，请先重传或重录",
+              ? t({
+                  zh: "录音正在上传，请稍候或完成后再离开",
+                  en: "Your recording is uploading — please wait or finish before leaving",
+                })
+              : t({
+                  zh: "录音上传失败，请先重传或重录",
+                  en: "Upload failed — please retry the upload or re-record first",
+                }),
         )
         window.setTimeout(() => {
           blockerToastRef.current = false
@@ -323,16 +348,22 @@ function ClassroomPracticePage() {
     if (submitError) {
       const status = submitErrorData?.status
       if (status === 503) {
-        toast.error("评分队列繁忙", {
-          description: "录音已保留，请稍后点重传",
+        toast.error(t({ zh: "评分队列繁忙", en: "Scoring queue is busy" }), {
+          description: t({
+            zh: "录音已保留，请稍后点重传",
+            en: "Your recording is saved — tap retry in a moment",
+          }),
         })
       } else {
-        toast.error("上传失败", {
-          description: "录音已保留，可以点重传或重新录一次",
+        toast.error(t({ zh: "上传失败", en: "Upload failed" }), {
+          description: t({
+            zh: "录音已保留，可以点重传或重新录一次",
+            en: "Your recording is saved — retry the upload or record again",
+          }),
         })
       }
     }
-  }, [submitError, submitErrorData])
+  }, [submitError, submitErrorData, t])
 
   // 评分状态：上传中或排队/评分中都算「评分中」，期间禁用麦克风
   const attemptStatus = attempt?.status
@@ -347,10 +378,15 @@ function ClassroomPracticePage() {
     if (!attemptTerminal) return
     void queryClient.invalidateQueries({ queryKey: todayQueryKey })
     if (attemptFailed) {
-      toast.error("这次没有评出来", { description: "可以再录一次" })
+      toast.error(t({ zh: "这次没有评出来", en: "No score this time" }), {
+        description: t({
+          zh: "可以再录一次",
+          en: "You can record again",
+        }),
+      })
       return
     }
-  }, [attemptTerminal, attemptFailed, queryClient, todayQueryKey])
+  }, [attemptTerminal, attemptFailed, queryClient, todayQueryKey, t])
 
   // 全部完成后自动进入结果页统一展示（本次停留提交过 + 本地评分已结束 + 服务端计划全部完成）
   useEffect(() => {
@@ -371,7 +407,7 @@ function ClassroomPracticePage() {
   if (todayQuery.isPending) {
     return (
       <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        正在加载今日练习…
+        {t({ zh: "正在加载今日练习…", en: "Loading today's practice…" })}
       </div>
     )
   }
@@ -385,16 +421,25 @@ function ClassroomPracticePage() {
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
         {contentMissing ? (
           <>
-            今天还没有可以练习的内容。
+            {t({
+              zh: "今天还没有可以练习的内容。",
+              en: "No practice content is available today.",
+            })}
             <span className="text-sm">
-              请联系老师在后台配置篇目和复述句，配好后回来刷新即可。
+              {t({
+                zh: "请联系老师在后台配置篇目和复述句，配好后回来刷新即可。",
+                en: "Please ask your teacher to set up passages and repeat sentences; refresh here once they're ready.",
+              })}
             </span>
           </>
         ) : (
-          "练习加载失败，请刷新重试。"
+          t({
+            zh: "练习加载失败，请刷新重试。",
+            en: "Practice failed to load — please refresh and retry.",
+          })
         )}
         <Button variant="outline" onClick={() => todayQuery.refetch()}>
-          重试
+          {t({ zh: "重试", en: "Retry" })}
         </Button>
       </div>
     )
@@ -403,7 +448,7 @@ function ClassroomPracticePage() {
   if (!currentItem) {
     return (
       <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        今天没有练习内容。
+        {t({ zh: "今天没有练习内容。", en: "No practice content today." })}
       </div>
     )
   }
@@ -418,15 +463,33 @@ function ClassroomPracticePage() {
 
   const isPassage = currentItem.type === "passage"
   const itemPromptLabel = isQuestion
-    ? "YOUR TURN · 分享你的想法"
+    ? t({
+        zh: "YOUR TURN · 分享你的想法",
+        en: "YOUR TURN · Share your thoughts",
+      })
     : isPassage
-      ? "READ ALOUD · 大声朗读全文"
-      : "LISTEN & REPEAT · 听一听，再试着说"
+      ? t({
+          zh: "READ ALOUD · 大声朗读全文",
+          en: "READ ALOUD · Read the full text aloud",
+        })
+      : t({
+          zh: "LISTEN & REPEAT · 听一听，再试着说",
+          en: "LISTEN & REPEAT · Listen, then try to say it",
+        })
   const itemHintZh = isQuestion
-    ? "试着说出你的观点，再用一个理由或小例子支持它。"
+    ? t({
+        zh: "试着说出你的观点，再用一个理由或小例子支持它。",
+        en: "State your opinion, then back it up with a reason or a quick example.",
+      })
     : isPassage
-      ? "先扫一眼生词，然后完整朗读。停顿和语调自然比逐词准确更重要。"
-      : "先听完整句子，再跟着节奏说。比起说得快，说得自然更重要。"
+      ? t({
+          zh: "先扫一眼生词，然后完整朗读。停顿和语调自然比逐词准确更重要。",
+          en: "Skim the new words first, then read it through. Natural pauses and intonation matter more than word-by-word accuracy.",
+        })
+      : t({
+          zh: "先听完整句子，再跟着节奏说。比起说得快，说得自然更重要。",
+          en: "Listen to the full sentence first, then follow its rhythm. Sounding natural beats speaking fast.",
+        })
 
   return (
     <StudentShell active="practice">
@@ -435,7 +498,10 @@ function ClassroomPracticePage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold tracking-tight">
-              第 {currentIndex + 1}/{items.length} 题
+              {t({
+                zh: `第 ${currentIndex + 1}/${items.length} 题`,
+                en: `Item ${currentIndex + 1}/${items.length}`,
+              })}
               {plan.assigned_unit_title && (
                 <span className="ml-2 text-sm font-medium text-primary">
                   📌 {plan.assigned_unit_title}
@@ -443,12 +509,19 @@ function ClassroomPracticePage() {
               )}
             </h1>
             <p className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-              {displayName(student)} · 课堂 {plan.classroom_code}
+              {displayName(student)} ·{" "}
+              {t({
+                zh: `课堂 ${plan.classroom_code}`,
+                en: `Classroom ${plan.classroom_code}`,
+              })}
               {plan.gamification && (
                 <>
                   <span className="flex items-center gap-1">
                     <Flame className="size-4 text-orange-500" />
-                    {plan.gamification.streak_days} 天
+                    {t({
+                      zh: `${plan.gamification.streak_days} 天`,
+                      en: `${plan.gamification.streak_days} days`,
+                    })}
                   </span>
                   <span className="flex items-center gap-1 font-medium text-foreground">
                     <Sparkles className="size-4 text-primary" />
@@ -465,7 +538,7 @@ function ClassroomPracticePage() {
                 params={{ code }}
                 search={sessionId ? { session: sessionId } : {}}
               >
-                结果页
+                {t({ zh: "结果页", en: "Results" })}
               </Link>
             </Button>
           </div>
@@ -475,7 +548,7 @@ function ClassroomPracticePage() {
         <div
           role="progressbar"
           className="flex items-center gap-2"
-          aria-label="练习进度"
+          aria-label={t({ zh: "练习进度", en: "Practice progress" })}
         >
           {items.map((item, i) => {
             const status = attemptByItem.get(item.id)?.status
@@ -505,7 +578,12 @@ function ClassroomPracticePage() {
                     {itemPromptLabel}
                   </span>
                   <span className="rounded-md bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
-                    {ITEM_TYPE_LABELS[currentItem.type] ?? currentItem.type}
+                    {t(
+                      ITEM_TYPE_LABELS[currentItem.type] ?? {
+                        zh: currentItem.type,
+                        en: currentItem.type,
+                      },
+                    )}
                     {" · "}
                     {formatSeconds(currentItem.suggested_seconds ?? 20)}
                   </span>
@@ -513,18 +591,27 @@ function ClassroomPracticePage() {
 
                 {currentItem.type === "repeat" ? (
                   <p className="prompt-display min-h-24 text-muted-foreground">
-                    本题不显示文字。点下方「听示范」听语音，听完后复述出来。
+                    {t({
+                      zh: "本题不显示文字。点下方「听示范」听语音，听完后复述出来。",
+                      en: "No text for this item. Tap Listen below to hear it, then repeat what you heard.",
+                    })}
                   </p>
                 ) : (
                   <>
                     <p className="prompt-display min-h-24">
                       {hideText
-                        ? "原文已收起。试着回想刚刚听到的内容。"
+                        ? t({
+                            zh: "原文已收起。试着回想刚刚听到的内容。",
+                            en: "The text is hidden. Try to recall what you just heard.",
+                          })
                         : currentItem.text}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {hideText
-                        ? "想不起来也没关系，随时可以重新看看。"
+                        ? t({
+                            zh: "想不起来也没关系，随时可以重新看看。",
+                            en: "It's fine if you can't remember — you can peek anytime.",
+                          })
                         : (currentItem.translation ?? itemHintZh)}
                     </p>
                   </>
@@ -560,7 +647,12 @@ function ClassroomPracticePage() {
                     className="text-xs text-primary"
                     onClick={() => setHideText(!hideText)}
                   >
-                    {hideText ? "显示原文" : "收起原文（练记忆）"}
+                    {hideText
+                      ? t({ zh: "显示原文", en: "Show text" })
+                      : t({
+                          zh: "收起原文（练记忆）",
+                          en: "Hide text (memory practice)",
+                        })}
                   </Button>
                 )}
                 {isQuestion && (
@@ -571,7 +663,10 @@ function ClassroomPracticePage() {
                     onClick={() => nextQuestionMutation.mutate()}
                     disabled={nextQuestionMutation.isPending}
                   >
-                    换一题（同主题）
+                    {t({
+                      zh: "换一题（同主题）",
+                      en: "Switch question (same topic)",
+                    })}
                   </Button>
                 )}
 
@@ -599,7 +694,7 @@ function ClassroomPracticePage() {
                       <button
                         type="button"
                         onClick={recorder.stop}
-                        aria-label="结束录音"
+                        aria-label={t({ zh: "结束录音", en: "Stop recording" })}
                         className="record-pulse mt-3 grid size-[72px] place-items-center rounded-full bg-destructive text-white shadow-[0_0_0_7px_var(--accent)] transition hover:scale-105"
                       >
                         <Square className="size-7" />
@@ -608,11 +703,16 @@ function ClassroomPracticePage() {
                         <span className="font-mono tabular-nums">
                           {formatSeconds(recorder.elapsed)}
                         </span>{" "}
-                        · 说完后点一下结束
+                        {t({
+                          zh: "· 说完后点一下结束",
+                          en: "· Tap stop when you're done",
+                        })}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        最长 {formatSeconds(MAX_RECORD_SECONDS)} ·
-                        不用着急，按自己的节奏说
+                        {t({
+                          zh: `最长 ${formatSeconds(MAX_RECORD_SECONDS)} · 不用着急，按自己的节奏说`,
+                          en: `Max ${formatSeconds(MAX_RECORD_SECONDS)} · No rush, speak at your own pace`,
+                        })}
                       </p>
                     </>
                   ) : submitError && recorder.recording ? (
@@ -621,22 +721,31 @@ function ClassroomPracticePage() {
                         type="button"
                         onClick={retrySubmit}
                         disabled={submitting}
-                        aria-label="重传录音"
+                        aria-label={t({
+                          zh: "重传录音",
+                          en: "Retry uploading recording",
+                        })}
                         className="mt-1 grid size-[72px] place-items-center rounded-full bg-primary text-white shadow-[0_0_0_7px_var(--secondary)] transition hover:scale-105 disabled:opacity-50"
                       >
                         <ArrowRight className="size-7" />
                       </button>
                       <p className="mt-4 text-sm text-destructive">
-                        上传失败，录音已保留
+                        {t({
+                          zh: "上传失败，录音已保留",
+                          en: "Upload failed — your recording is saved",
+                        })}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        点这里重传 · 或
+                        {t({
+                          zh: "点这里重传 · 或",
+                          en: "Tap to retry · or",
+                        })}
                         <button
                           type="button"
                           onClick={startRecording}
                           className="ml-1 underline text-primary"
                         >
-                          重新录
+                          {t({ zh: "重新录", en: "record again" })}
                         </button>
                       </p>
                     </>
@@ -646,31 +755,55 @@ function ClassroomPracticePage() {
                         type="button"
                         onClick={startRecording}
                         disabled={scoring}
-                        aria-label="开始录音"
+                        aria-label={t({
+                          zh: "开始录音",
+                          en: "Start recording",
+                        })}
                         className="mt-1 grid size-[72px] place-items-center rounded-full bg-primary text-white shadow-[0_0_0_7px_var(--secondary)] transition hover:scale-105 disabled:opacity-50"
                       >
                         <Mic className="size-7" />
                       </button>
                       <p className="mt-4 text-sm">
                         {scoring
-                          ? "已提交，正在出反馈…"
+                          ? t({
+                              zh: "已提交，正在出反馈…",
+                              en: "Submitted — feedback is on its way…",
+                            })
                           : recorder.status === "ready"
-                            ? "这一次开口，已记录"
-                            : "准备好了，就点一下麦克风"}
+                            ? t({
+                                zh: "这一次开口，已记录",
+                                en: "This speaking attempt is recorded",
+                              })
+                            : t({
+                                zh: "准备好了，就点一下麦克风",
+                                en: "When you're ready, tap the microphone",
+                              })}
                       </p>
                       {scoring ? (
                         <p className="text-xs text-muted-foreground">
                           {isLastQuestion
-                            ? "先显示本题分数和转写"
-                            : "先显示本题分数和转写，详细评价最后看"}
+                            ? t({
+                                zh: "先显示本题分数和转写",
+                                en: "Showing this item's score and transcript first",
+                              })
+                            : t({
+                                zh: "先显示本题分数和转写，详细评价最后看",
+                                en: "Score and transcript first — full feedback at the end",
+                              })}
                         </p>
                       ) : attemptFailed ? (
                         <p className="text-xs text-destructive">
-                          这次没有评出来，再录一次就好
+                          {t({
+                            zh: "这次没有评出来，再录一次就好",
+                            en: "No score this time — just record again",
+                          })}
                         </p>
                       ) : (
                         <p className="text-xs text-muted-foreground">
-                          需要麦克风权限 · 每一次练习都有意义
+                          {t({
+                            zh: "需要麦克风权限 · 每一次练习都有意义",
+                            en: "Microphone permission needed · Every practice counts",
+                          })}
                         </p>
                       )}
                     </>
@@ -689,26 +822,39 @@ function ClassroomPracticePage() {
             <Card className="border-secondary bg-secondary/60">
               <CardContent className="space-y-2 py-4">
                 <p className="flex items-center gap-1.5 text-sm font-semibold">
-                  <Sparkles className="size-4 text-primary" /> 一个小小的提示
+                  <Sparkles className="size-4 text-primary" />{" "}
+                  {t({ zh: "一个小小的提示", en: "A little tip" })}
                 </p>
                 {isQuestion ? (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      不用寻找「标准答案」。试试这个顺序，让你的表达更完整。
+                      {t({
+                        zh: "不用寻找「标准答案」。试试这个顺序，让你的表达更完整。",
+                        en: 'There\'s no "right answer" to find. Try this order to make your answer more complete.',
+                      })}
                     </p>
                     <p className="font-serif text-xl">I think… because…</p>
                     <p className="text-xs text-muted-foreground">
-                      我的观点 → 一个理由 → 一个小例子
+                      {t({
+                        zh: "我的观点 → 一个理由 → 一个小例子",
+                        en: "My opinion → one reason → one small example",
+                      })}
                     </p>
                   </>
                 ) : (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      先听完整句子，再跟着意群停顿。比起说得快，说得自然更重要。
+                      {t({
+                        zh: "先听完整句子，再跟着意群停顿。比起说得快，说得自然更重要。",
+                        en: "Listen to the whole sentence first, then pause with its chunks. Sounding natural beats speaking fast.",
+                      })}
                     </p>
                     <p className="font-serif text-xl">Listen. Pause. Speak.</p>
                     <p className="text-xs text-muted-foreground">
-                      听一遍 · 想一想 · 大胆说
+                      {t({
+                        zh: "听一遍 · 想一想 · 大胆说",
+                        en: "Listen once · think · speak boldly",
+                      })}
                     </p>
                   </>
                 )}
@@ -717,24 +863,29 @@ function ClassroomPracticePage() {
 
             <Card className="hidden lg:block">
               <CardContent className="py-4">
-                <p className="mb-3 text-sm font-semibold">今天的路线</p>
+                <p className="mb-3 text-sm font-semibold">
+                  {t({ zh: "今天的路线", en: "Today's route" })}
+                </p>
                 {[
                   {
                     icon: Headphones,
-                    title: "听句复述",
-                    sub: "3 个短句",
+                    title: t(TERMS.typeRepeat),
+                    sub: t({ zh: "3 个短句", en: "3 sentences" }),
                     active: !isQuestion,
                   },
                   {
                     icon: MessageCircle,
-                    title: "情景问答",
-                    sub: "2 个问题",
+                    title: t(TERMS.typeQa),
+                    sub: t({ zh: "2 个问题", en: "2 questions" }),
                     active: isQuestion,
                   },
                   {
                     icon: ChartLine,
-                    title: "看看收获",
-                    sub: "全部完成后一起看",
+                    title: t({ zh: "看看收获", en: "See your gains" }),
+                    sub: t({
+                      zh: "全部完成后一起看",
+                      en: "View together after finishing",
+                    }),
                     active: allDone,
                   },
                 ].map((step) => (
@@ -769,7 +920,10 @@ function ClassroomPracticePage() {
             <Card className="hidden lg:block">
               <CardContent className="flex items-start gap-2 py-3.5 text-xs text-muted-foreground">
                 <Shield className="mt-0.5 size-3.5 shrink-0 text-primary" />
-                每次录音只有你自己和本课授权老师能回听。说错了没关系，再录一次就好。
+                {t({
+                  zh: "每次录音只有你自己和本课授权老师能回听。说错了没关系，再录一次就好。",
+                  en: "Only you and your classroom's authorized teacher can play back your recordings. Mistakes are fine — just record again.",
+                })}
               </CardContent>
             </Card>
           </aside>
@@ -801,7 +955,12 @@ function ClassroomPracticePage() {
                     resetAttempt()
                   }}
                 >
-                  {allDone ? "查看详细总反馈" : "下一题"}
+                  {allDone
+                    ? t({
+                        zh: "查看详细总反馈",
+                        en: "View detailed feedback",
+                      })
+                    : t({ zh: "下一题", en: "Next item" })}
                   <ArrowRight />
                 </Button>
               )
@@ -809,7 +968,10 @@ function ClassroomPracticePage() {
           />
         )}
         <p className="text-center text-sm text-muted-foreground">
-          每题先看分数和转写，完成后查看全面评价与改进建议。
+          {t({
+            zh: "每题先看分数和转写，完成后查看全面评价与改进建议。",
+            en: "See each item's score and transcript first, then view full feedback and tips once you finish.",
+          })}
         </p>
 
         {allDone && (
@@ -819,13 +981,16 @@ function ClassroomPracticePage() {
               params={{ code }}
               search={sessionId ? { session: sessionId } : {}}
             >
-              查看本轮结果
+              {t({ zh: "查看本轮结果", en: "View this round's results" })}
             </Link>
           </Button>
         )}
 
         <p className="pb-6 text-center text-xs text-muted-foreground">
-          分数是参考反馈，不是考试成绩。
+          {t({
+            zh: "分数是参考反馈，不是考试成绩。",
+            en: "Scores are reference feedback, not exam results.",
+          })}
         </p>
       </div>
     </StudentShell>

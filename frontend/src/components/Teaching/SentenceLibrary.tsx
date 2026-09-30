@@ -34,6 +34,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import useCustomToast from "@/hooks/useCustomToast"
+import { useI18n } from "@/lib/i18n"
+import { TERMS } from "@/lib/terms"
 
 const NO_PASSAGE = "__none__"
 
@@ -41,6 +43,7 @@ const NO_PASSAGE = "__none__"
 export function SentenceLibrary() {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { t } = useI18n()
   const [keyword, setKeyword] = useState("")
   const [toDelete, setToDelete] = useState<SentenceWithPassage | null>(null)
 
@@ -61,12 +64,14 @@ export function SentenceLibrary() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => AdminService.deleteSentence({ sentenceId: id }),
     onSuccess: () => {
-      showSuccessToast("复述句已删除")
+      showSuccessToast(t({ zh: "复述句已删除", en: "Repeat sentence deleted" }))
       setToDelete(null)
       invalidate()
     },
     onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(err.body?.detail ?? "删除失败"),
+      showErrorToast(
+        err.body?.detail ?? t({ zh: "删除失败", en: "Failed to delete" }),
+      ),
   })
 
   // ── 编辑（与文章朗读编辑弹窗同款：铅笔入口 + 全字段）──
@@ -103,12 +108,14 @@ export function SentenceLibrary() {
         },
       }),
     onSuccess: () => {
-      showSuccessToast("复述句已更新")
+      showSuccessToast(t({ zh: "复述句已更新", en: "Repeat sentence updated" }))
       setEditing(null)
       invalidate()
     },
     onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(err.body?.detail ?? "更新失败"),
+      showErrorToast(
+        err.body?.detail ?? t({ zh: "更新失败", en: "Failed to update" }),
+      ),
   })
   const editValid =
     editForm.text.trim().length > 0 &&
@@ -127,9 +134,14 @@ export function SentenceLibrary() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">听句复述</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {t(TERMS.typeRepeat)}
+        </h1>
         <p className="text-muted-foreground">
-          复述句独立成题：直接创建、直接在课堂发布时选用。挂到篇目的句子还会出现在学生的自主练习里。
+          {t({
+            zh: "复述句独立成题：直接创建、直接在课堂发布时选用。挂到篇目的句子还会出现在学生的自主练习里。",
+            en: "Repeat sentences are standalone items: create them directly and pick them when publishing to a classroom. Sentences linked to a passage also appear in students' self practice.",
+          })}
         </p>
       </div>
 
@@ -148,8 +160,8 @@ export function SentenceLibrary() {
       />
 
       <Input
-        aria-label="搜索复述句"
-        placeholder="搜索复述句…"
+        aria-label={t({ zh: "搜索复述句", en: "Search repeat sentences" })}
+        placeholder={t({ zh: "搜索复述句…", en: "Search repeat sentences…" })}
         value={keyword}
         onChange={(e) => setKeyword(e.target.value)}
       />
@@ -161,18 +173,26 @@ export function SentenceLibrary() {
         </div>
       ) : sentencesQuery.isError ? (
         <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
-          <p>复述句库加载失败。</p>
+          <p>
+            {t({
+              zh: "复述句库加载失败。",
+              en: "Failed to load the repeat-sentence bank.",
+            })}
+          </p>
           <Button
             variant="outline"
             size="sm"
             onClick={() => void sentencesQuery.refetch()}
           >
-            重试
+            {t({ zh: "重试", en: "Retry" })}
           </Button>
         </div>
       ) : sentences.length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">
-          还没有复述句，点上方新建开始出题。
+          {t({
+            zh: "还没有复述句，点上方新建开始出题。",
+            en: "No repeat sentences yet — create one above to get started.",
+          })}
         </p>
       ) : (
         <div className="space-y-2">
@@ -184,17 +204,29 @@ export function SentenceLibrary() {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm">{s.text}</p>
                 <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span>{s.suggested_seconds} 秒</span>
                   <span>
-                    · 可听
-                    {(s.replay_limit ?? 3) === 0
-                      ? "不限次数"
-                      : ` ${s.replay_limit ?? 3} 次`}
+                    {t({
+                      zh: `${s.suggested_seconds} 秒`,
+                      en: `${s.suggested_seconds}s`,
+                    })}
+                  </span>
+                  <span>
+                    {t({
+                      zh: `· 可听${(s.replay_limit ?? 3) === 0 ? "不限次数" : ` ${s.replay_limit ?? 3} 次`}`,
+                      en: `· ${(s.replay_limit ?? 3) === 0 ? "unlimited replays" : `${s.replay_limit ?? 3} replays`}`,
+                    })}
                   </span>
                   {s.passage_title ? (
-                    <Badge variant="outline">挂篇目：{s.passage_title}</Badge>
+                    <Badge variant="outline">
+                      {t({
+                        zh: `挂篇目：${s.passage_title}`,
+                        en: `Passage: ${s.passage_title}`,
+                      })}
+                    </Badge>
                   ) : (
-                    <Badge variant="secondary">独立题目</Badge>
+                    <Badge variant="secondary">
+                      {t({ zh: "独立题目", en: "Standalone" })}
+                    </Badge>
                   )}
                 </p>
               </div>
@@ -202,7 +234,10 @@ export function SentenceLibrary() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="编辑复述句"
+                  aria-label={t({
+                    zh: "编辑复述句",
+                    en: "Edit repeat sentence",
+                  })}
                   onClick={() => openEdit(s)}
                 >
                   <Pencil className="size-3.5" />
@@ -228,7 +263,10 @@ export function SentenceLibrary() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="删除复述句"
+                  aria-label={t({
+                    zh: "删除复述句",
+                    en: "Delete repeat sentence",
+                  })}
                   onClick={() => setToDelete(s)}
                 >
                   <Trash2 className="size-3.5 text-destructive" />
@@ -245,14 +283,21 @@ export function SentenceLibrary() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>编辑复述句</DialogTitle>
+            <DialogTitle>
+              {t({ zh: "编辑复述句", en: "Edit Repeat Sentence" })}
+            </DialogTitle>
             <DialogDescription>
-              修改即时生效；修改句子后原标准音会失效，需重新配置。
+              {t({
+                zh: "修改即时生效；修改句子后原标准音会失效，需重新配置。",
+                en: "Changes take effect immediately; editing the sentence invalidates its model audio, which must be set again.",
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-sentence-text">英文句子</Label>
+              <Label htmlFor="edit-sentence-text">
+                {t({ zh: "英文句子", en: "English Sentence" })}
+              </Label>
               <Textarea
                 id="edit-sentence-text"
                 rows={3}
@@ -264,7 +309,7 @@ export function SentenceLibrary() {
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="edit-sentence-translation">
-                中文提示（可选）
+                {t({ zh: "中文提示（可选）", en: "Chinese Hint (optional)" })}
               </Label>
               <Input
                 id="edit-sentence-translation"
@@ -276,7 +321,9 @@ export function SentenceLibrary() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="edit-sentence-seconds">作答秒数（3–60）</Label>
+                <Label htmlFor="edit-sentence-seconds">
+                  {t({ zh: "作答秒数（3–60）", en: "Answer Seconds (3–60)" })}
+                </Label>
                 <Input
                   id="edit-sentence-seconds"
                   type="number"
@@ -292,7 +339,9 @@ export function SentenceLibrary() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="edit-sentence-replays">可听次数（0–9）</Label>
+                <Label htmlFor="edit-sentence-replays">
+                  {t({ zh: "可听次数（0–9）", en: "Replays (0–9)" })}
+                </Label>
                 <Input
                   id="edit-sentence-replays"
                   type="number"
@@ -309,7 +358,12 @@ export function SentenceLibrary() {
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <Label>挂到篇目（可选）</Label>
+              <Label>
+                {t({
+                  zh: "挂到篇目（可选）",
+                  en: "Link to Passage (optional)",
+                })}
+              </Label>
               <Select
                 value={editForm.passageId}
                 onValueChange={(v) =>
@@ -320,7 +374,9 @@ export function SentenceLibrary() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NO_PASSAGE}>不挂（独立题目）</SelectItem>
+                  <SelectItem value={NO_PASSAGE}>
+                    {t({ zh: "不挂（独立题目）", en: "None (standalone)" })}
+                  </SelectItem>
                   {passages.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.title}
@@ -332,14 +388,14 @@ export function SentenceLibrary() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>
-              取消
+              {t({ zh: "取消", en: "Cancel" })}
             </Button>
             <LoadingButton
               disabled={!editValid}
               loading={updateMutation.isPending}
               onClick={() => updateMutation.mutate()}
             >
-              保存
+              {t({ zh: "保存", en: "Save" })}
             </LoadingButton>
           </DialogFooter>
         </DialogContent>
@@ -347,9 +403,15 @@ export function SentenceLibrary() {
 
       <ConfirmDialog
         open={toDelete !== null}
-        title={`删除复述句「${toDelete?.text?.slice(0, 20) ?? ""}…」？`}
-        description="删除后课堂发布不再可选，正在练习的学生下次会拿到别的句子。此操作不可撤销。"
-        confirmText="删除复述句"
+        title={t({
+          zh: `删除复述句「${toDelete?.text?.slice(0, 20) ?? ""}…」？`,
+          en: `Delete repeat sentence "${toDelete?.text?.slice(0, 20) ?? ""}…"?`,
+        })}
+        description={t({
+          zh: "删除后课堂发布不再可选，正在练习的学生下次会拿到别的句子。此操作不可撤销。",
+          en: "Once deleted, it can no longer be chosen when publishing; students mid-practice will get a different sentence next time. This cannot be undone.",
+        })}
+        confirmText={t({ zh: "删除复述句", en: "Delete Repeat Sentence" })}
         onOpenChange={(next) => {
           if (!next) setToDelete(null)
         }}
@@ -369,6 +431,7 @@ function AutoSplitCard({
   onCreated: () => void
 }) {
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { t } = useI18n()
   const [passageId, setPassageId] = useState("")
   const ready = passages.filter((p) => p.sentenceCount === 0)
   const selected = ready.find((p) => p.id === passageId)
@@ -376,27 +439,43 @@ function AutoSplitCard({
   const split = useMutation({
     mutationFn: () => AdminService.autoSplitSentences({ passageId }),
     onSuccess: (data) => {
-      showSuccessToast(`已拆分出 ${data.created ?? 0} 句复述句`)
+      showSuccessToast(
+        t({
+          zh: `已拆分出 ${data.created ?? 0} 句复述句`,
+          en: `Split out ${data.created ?? 0} repeat sentences`,
+        }),
+      )
       setPassageId("")
       onCreated()
     },
     onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(err.body?.detail ?? "拆分失败"),
+      showErrorToast(
+        err.body?.detail ?? t({ zh: "拆分失败", en: "Split failed" }),
+      ),
   })
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">从篇目自动拆分复述句</CardTitle>
+        <CardTitle className="text-base">
+          {t({
+            zh: "从篇目自动拆分复述句",
+            en: "Auto-split Repeat Sentences from a Passage",
+          })}
+        </CardTitle>
         <CardDescription>
-          选一篇还没有复述句的朗读材料，按句切分正文、由短到长自动生成 3
-          句；已有复述句的篇目需先删除句子才能再拆分。
+          {t({
+            zh: "选一篇还没有复述句的朗读材料，按句切分正文、由短到长自动生成 3 句；已有复述句的篇目需先删除句子才能再拆分。",
+            en: "Pick a read-aloud passage with no repeat sentences yet; its text is split by sentence and 3 sentences are generated from shortest to longest. Passages that already have repeat sentences must have them deleted before splitting again.",
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <Select value={passageId} onValueChange={setPassageId}>
           <SelectTrigger>
-            <SelectValue placeholder="选择篇目" />
+            <SelectValue
+              placeholder={t({ zh: "选择篇目", en: "Select a passage" })}
+            />
           </SelectTrigger>
           <SelectContent>
             {ready.map((p) => (
@@ -406,7 +485,10 @@ function AutoSplitCard({
             ))}
             {ready.length === 0 && (
               <SelectItem value="__none__" disabled>
-                暂无可拆分的篇目
+                {t({
+                  zh: "暂无可拆分的篇目",
+                  en: "No passages available to split",
+                })}
               </SelectItem>
             )}
           </SelectContent>
@@ -416,7 +498,10 @@ function AutoSplitCard({
           onClick={() => split.mutate()}
         >
           <Scissors />
-          自动拆分复述句
+          {t({
+            zh: "自动拆分复述句",
+            en: "Auto-split Repeat Sentences",
+          })}
         </Button>
       </CardContent>
     </Card>
@@ -431,6 +516,7 @@ function NewSentenceCard({
   onCreated: () => void
 }) {
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { t } = useI18n()
   const [text, setText] = useState("")
   const [seconds, setSeconds] = useState(12)
   const [replays, setReplays] = useState(3)
@@ -450,12 +536,14 @@ function NewSentenceCard({
         },
       }),
     onSuccess: () => {
-      showSuccessToast("复述句已创建")
+      showSuccessToast(t({ zh: "复述句已创建", en: "Repeat sentence created" }))
       setText("")
       onCreated()
     },
     onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(err.body?.detail ?? "创建失败"),
+      showErrorToast(
+        err.body?.detail ?? t({ zh: "创建失败", en: "Failed to create" }),
+      ),
   })
 
   const valid =
@@ -470,15 +558,21 @@ function NewSentenceCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">新建复述句</CardTitle>
+        <CardTitle className="text-base">
+          {t({ zh: "新建复述句", en: "New Repeat Sentence" })}
+        </CardTitle>
         <CardDescription>
-          输入一句英文，设置作答时间与可听次数（0
-          表示不限）。可选挂到某篇朗读材料，供学生自主练习复用。
+          {t({
+            zh: "输入一句英文，设置作答时间与可听次数（0 表示不限）。可选挂到某篇朗读材料，供学生自主练习复用。",
+            en: "Enter an English sentence and set the answer time and replays (0 means unlimited). Optionally link it to a read-aloud passage for students' self practice.",
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="new-sentence-text">英文句子</Label>
+          <Label htmlFor="new-sentence-text">
+            {t({ zh: "英文句子", en: "English Sentence" })}
+          </Label>
           <Input
             id="new-sentence-text"
             value={text}
@@ -488,7 +582,9 @@ function NewSentenceCard({
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-2">
-            <Label htmlFor="new-sentence-seconds">作答秒数（3–60）</Label>
+            <Label htmlFor="new-sentence-seconds">
+              {t({ zh: "作答秒数（3–60）", en: "Answer Seconds (3–60)" })}
+            </Label>
             <Input
               id="new-sentence-seconds"
               type="number"
@@ -499,7 +595,9 @@ function NewSentenceCard({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="new-sentence-replays">可听次数（0–9）</Label>
+            <Label htmlFor="new-sentence-replays">
+              {t({ zh: "可听次数（0–9）", en: "Replays (0–9)" })}
+            </Label>
             <Input
               id="new-sentence-replays"
               type="number"
@@ -510,13 +608,17 @@ function NewSentenceCard({
             />
           </div>
           <div className="space-y-2">
-            <Label>挂到篇目（可选）</Label>
+            <Label>
+              {t({ zh: "挂到篇目（可选）", en: "Link to Passage (optional)" })}
+            </Label>
             <Select value={passageId} onValueChange={setPassageId}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NO_PASSAGE}>不挂（独立题目）</SelectItem>
+                <SelectItem value={NO_PASSAGE}>
+                  {t({ zh: "不挂（独立题目）", en: "None (standalone)" })}
+                </SelectItem>
                 {passages.map((p) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.title}
@@ -531,7 +633,7 @@ function NewSentenceCard({
           onClick={() => create.mutate()}
         >
           <Plus />
-          创建复述句
+          {t({ zh: "创建复述句", en: "Create Repeat Sentence" })}
         </Button>
       </CardContent>
     </Card>

@@ -58,9 +58,13 @@ test("checked type with empty selection is reported per type", () => {
     data,
   )
   assert.equal(problems.length, 3) // 三类勾选了但都没选内容
-  assert.match(problems[0], /朗读/)
-  assert.match(problems[1], /复述/)
-  assert.match(problems[2], /问答/)
+  // problems 现为 BiString：中英两侧都要能定位到对应题型
+  assert.match(problems[0].zh, /朗读/)
+  assert.match(problems[0].en, /Read Aloud/)
+  assert.match(problems[1].zh, /复述/)
+  assert.match(problems[1].en, /Listen & Repeat/)
+  assert.match(problems[2].zh, /问答/)
+  assert.match(problems[2].en, /Q&A/)
 })
 
 test("scenario without questions blocks QA", () => {
@@ -69,7 +73,15 @@ test("scenario without questions blocks QA", () => {
       { reading: false, repeat: false, qa: true },
       { passages: [], sentences: [], scenarioId: "sc2" },
       data,
-    ).problems[0],
+    ).problems[0].zh,
     /有题目/,
+  )
+  assert.match(
+    inspectSelection(
+      { reading: false, repeat: false, qa: true },
+      { passages: [], sentences: [], scenarioId: "sc2" },
+      data,
+    ).problems[0].en,
+    /has questions/,
   )
 })

@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import useAuth from "@/hooks/useAuth"
+import { useI18n } from "@/lib/i18n"
 import DeleteUser from "./DeleteUser"
 import EditUser from "./EditUser"
 
@@ -17,6 +18,7 @@ interface UserActionsMenuProps {
 }
 
 export const UserActionsMenu = ({ user }: UserActionsMenuProps) => {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const { user: currentUser } = useAuth()
 
@@ -30,7 +32,10 @@ export const UserActionsMenu = ({ user }: UserActionsMenuProps) => {
         <Button
           variant="ghost"
           size="icon"
-          aria-label={`用户操作：${user.full_name || user.email}`}
+          aria-label={t({
+            zh: `用户操作：${user.full_name || user.email}`,
+            en: `User actions: ${user.full_name || user.email}`,
+          })}
         >
           <EllipsisVertical />
         </Button>

@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { LoadingButton } from "@/components/ui/loading-button"
+import { useI18n } from "@/lib/i18n"
 
 /**
  * 破坏性操作统一确认框（删除单元/篇目/情景、停用课堂等）。
@@ -18,8 +19,8 @@ export function ConfirmDialog({
   open,
   title,
   description,
-  confirmText = "确认",
-  cancelText = "取消",
+  confirmText,
+  cancelText,
   destructive = true,
   onOpenChange,
   onConfirm,
@@ -33,7 +34,10 @@ export function ConfirmDialog({
   onOpenChange: (open: boolean) => void
   onConfirm: () => void | Promise<void>
 }) {
+  const { t } = useI18n()
   const [pending, setPending] = useState(false)
+  const resolvedConfirmText = confirmText ?? t({ zh: "确认", en: "Confirm" })
+  const resolvedCancelText = cancelText ?? t({ zh: "取消", en: "Cancel" })
 
   const handleConfirm = async () => {
     setPending(true)
@@ -58,14 +62,14 @@ export function ConfirmDialog({
             disabled={pending}
             onClick={() => onOpenChange(false)}
           >
-            {cancelText}
+            {resolvedCancelText}
           </Button>
           <LoadingButton
             variant={destructive ? "destructive" : "default"}
             loading={pending}
             onClick={() => void handleConfirm()}
           >
-            {confirmText}
+            {resolvedConfirmText}
           </LoadingButton>
         </DialogFooter>
       </DialogContent>

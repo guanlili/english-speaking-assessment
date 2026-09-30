@@ -7,9 +7,18 @@ import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { ApiError, ClassesService } from "@/client"
 import { Button } from "@/components/ui/button"
+import type { BiString } from "@/lib/bi"
+import { useI18n } from "@/lib/i18n"
 import { speakEnglish, TTS_RATE_OPTIONS } from "@/lib/tts"
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ""
+
+/** 语速选项双语（TTS_RATE_OPTIONS 的 label 目前是单语，渲染时按 value 映射） */
+const RATE_LABELS: Record<string, BiString> = {
+  "0.5": { zh: "最慢 0.5×", en: "Slowest 0.5×" },
+  "0.8": { zh: "慢速 0.8×", en: "Slow 0.8×" },
+  "1": { zh: "正常 1.0×", en: "Normal 1.0×" },
+}
 
 export default function LimitedListenButton({
   code,
@@ -28,6 +37,7 @@ export default function LimitedListenButton({
   replayLimit: number
   initialUsed: number
 }) {
+  const { t } = useI18n()
   const [used, setUsed] = useState(initialUsed)
   const [rate, setRate] = useState("1")
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -75,10 +85,15 @@ export default function LimitedListenButton({
       return true
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
-        toast.error("可重听次数已用完")
+        toast.error(t({ zh: "可重听次数已用完", en: "No replays left" }))
         setUsed((prev) => Math.max(prev, replayLimit))
       } else {
-        toast.error("听音失败，请检查网络后重试")
+        toast.error(
+          t({
+            zh: "听音失败，请检查网络后重试",
+            en: "Playback failed — check your connection and retry",
+          }),
+        )
       }
       return false
     }
@@ -103,13 +118,20 @@ export default function LimitedListenButton({
         disabled={exhausted}
       >
         <Volume2 />
-        {exhausted ? "重听次数已用完" : "听示范"}
+        {exhausted
+          ? t({ zh: "重听次数已用完", en: "No replays left" })
+          : t({ zh: "听示范", en: "Listen" })}
       </Button>
       <span className="text-xs text-muted-foreground">
-        {unlimited ? "重听不限次" : `还可重听 ${remaining} 次`}
+        {unlimited
+          ? t({ zh: "重听不限次", en: "Unlimited replays" })
+          : t({
+              zh: `还可重听 ${remaining} 次`,
+              en: `${remaining} replays left`,
+            })}
       </span>
       <label className="sr-only" htmlFor={`listen-rate-${itemId}`}>
-        示范语速
+        {t({ zh: "示范语速", en: "Speed" })}
       </label>
       <select
         id={`listen-rate-${itemId}`}
@@ -119,7 +141,12 @@ export default function LimitedListenButton({
       >
         {TTS_RATE_OPTIONS.map((opt) => (
           <option key={opt.value} value={opt.value}>
-            {opt.label}
+            {t(
+              RATE_LABELS[opt.value] ?? {
+                zh: String(opt.label),
+                en: String(opt.label),
+              },
+            )}
           </option>
         ))}
       </select>
