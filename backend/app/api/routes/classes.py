@@ -409,7 +409,7 @@ def _resolve_active_daily_session(
                 if item.get("type") == AttemptItemType.PASSAGE:
                     try:
                         anchor_id = uuid.UUID(str(item["id"]))
-                    except (KeyError, ValueError):
+                    except KeyError, ValueError:
                         pass
                     break
         return get_or_create_today_session(
@@ -505,7 +505,7 @@ def _plan_item_from_snapshot(
         return None
     try:
         item_id = uuid.UUID(str(item.get("id", "")))
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
     text = item.get("text")
     if not isinstance(text, str) or not text.strip():
@@ -517,12 +517,16 @@ def _plan_item_from_snapshot(
         translation=(
             str(item["translation"]) if item.get("translation") is not None else None
         ),
-        audio_url=(str(item["audio_url"]) if item.get("audio_url") is not None else None),
+        audio_url=(
+            str(item["audio_url"]) if item.get("audio_url") is not None else None
+        ),
         suggested_seconds=_snapshot_int(item.get("suggested_seconds"), 20),
         band=(str(item["band"]) if item.get("band") is not None else None),
         replay_limit=_snapshot_optional_int(item.get("replay_limit")),
         listen_used=(
-            (listen_counts or {}).get(item_id, 0) if t == AttemptItemType.REPEAT else None
+            (listen_counts or {}).get(item_id, 0)
+            if t == AttemptItemType.REPEAT
+            else None
         ),
     )
 
@@ -741,7 +745,10 @@ def read_today_plan(
             # 按题指派时，题单由 assigned_items 决定，不再按题型勾选裁剪
             include_reading_build = bool(reading_passages)
         else:
-            if practice_session.mode == "explore" and practice_session.passage_id is not None:
+            if (
+                practice_session.mode == "explore"
+                and practice_session.passage_id is not None
+            ):
                 passage = session.get(Passage, practice_session.passage_id)
                 if passage is None:
                     raise HTTPException(status_code=404, detail="Passage not found")
@@ -993,7 +1000,9 @@ def read_next_question(
                         limit=999,
                         fill_with_done=False,
                     )
-                    excluded = set(exclude_ids) | done_ids | {q.id for q in item_questions}
+                    excluded = (
+                        set(exclude_ids) | done_ids | {q.id for q in item_questions}
+                    )
                     candidates = [q for q in questions if q.id not in excluded]
                     if candidates:
                         return NextQuestion(

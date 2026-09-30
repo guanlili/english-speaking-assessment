@@ -3,6 +3,7 @@
 MUST RUN FIRST (alphabetically). If this fails, later DB tests will silently
 write to the dev/production database instead of `app_test`.
 """
+
 from sqlalchemy import make_url, text
 from sqlmodel import Session
 
@@ -41,7 +42,5 @@ def test_worker_and_deps_use_test_engine() -> None:
     # If a regression introduces an eager `engine = create_engine(...)` at module
     # level in core/db, this will catch it.
     with Session(db_module.engine) as s:
-        result = s.connection().execute(
-            text("SELECT current_database()")
-        ).one()
+        result = s.connection().execute(text("SELECT current_database()")).one()
         assert result[0] == settings.POSTGRES_DB_TEST

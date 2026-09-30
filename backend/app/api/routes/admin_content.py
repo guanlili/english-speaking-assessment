@@ -77,7 +77,8 @@ def _reject_null_non_nullable(
     for field in non_nullable_fields:
         if field in update and update[field] is None:
             raise HTTPException(
-                status_code=422, detail=f"{field} 不能为 null，如需清空请传空字符串或省略"
+                status_code=422,
+                detail=f"{field} 不能为 null，如需清空请传空字符串或省略",
             )
 
 

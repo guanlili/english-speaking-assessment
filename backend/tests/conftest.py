@@ -84,6 +84,7 @@ def db() -> Generator[Session]:
     # 全局 engine 覆盖：worker、startup_recovery、get_db 依赖全部使用测试库
     # （core.db.__getattr__ 动态返回覆盖引擎，避免任何模块级 import 拿到开发库）
     from app.core.db import set_engine
+
     set_engine(engine)
 
     # 关闭生命周期中由 worker 模块可能启动的全局线程池（测试结束时不残留）
