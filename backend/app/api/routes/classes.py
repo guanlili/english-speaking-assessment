@@ -35,6 +35,7 @@ from app.crud import (
 )
 from app.models import (
     AssignmentInfo,
+    AssignmentItemIn,
     Attempt,
     AttemptItemType,
     AttemptStatus,
@@ -1731,13 +1732,6 @@ def read_learning_path(
         ),
         units=result,
     )
-
-
-class AssignmentItemIn(SQLModel):
-    """按题指派的单条题目引用：三种题型互相独立，各自成题。"""
-
-    type: str  # passage | repeat | question
-    id: uuid.UUID
 
 
 class AssignmentRequest(SQLModel):
