@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react"
 import {
   MutationCache,
   QueryCache,
@@ -12,6 +13,16 @@ import { ThemeProvider } from "./components/theme-provider"
 import { Toaster } from "./components/ui/sonner"
 import "./index.css"
 import { routeTree } from "./routeTree.gen"
+
+// 前端错误上报（学生端 JS 异常生产不可见的问题）：默认关闭，
+// 服务器 .env 配置 VITE_SENTRY_DSN 后经 compose build args 在构建期生效
+if (import.meta.env.VITE_SENTRY_DSN) {
+  Sentry.init({
+    dsn: import.meta.env.VITE_SENTRY_DSN,
+    environment: import.meta.env.MODE,
+    tracesSampleRate: 0.1,
+  })
+}
 
 OpenAPI.BASE = import.meta.env.VITE_API_URL
 OpenAPI.TOKEN = async () => {
