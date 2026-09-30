@@ -294,10 +294,23 @@ jobs:
 
             echo "=== 4.5/6 每日数据库备份（幂等注册，保留 14 天） ==="
             mkdir -p backups
-            backup_cmd="cd '$PWD' && docker compose -f compose.yml exec -T db sh -c 'pg_dump -U $${POSTGRES_USER} $${POSTGRES_DB}' | gzip > backups/app-$(date +\%Y\%m\%d-\%H\%M).sql.gz && find backups -name 'app-*.sql.gz' -mtime +14 -delete"
+            # 注意转义层次：backup_cmd 是双引号赋值，\${...} 与 \$(...) 保持字面量进 crontab，
+            # 由 cron 启动的 sh 展开；\% 是 cron 的 % 转义（% 在 crontab 里是换行/stdin 标记）。
+            # pg_dump 的变量在 db 容器内展开（compose 注入的 POSTGRES_USER/POSTGRES_DB），
+            # 不能写成 $$（会被当成 shell PID，此前导致备份全为空归档且退出码被 gzip 掩盖）。
+            # 先落盘再 gzip：pg_dump 失败时 exit 非 0，不会生成假备份文件。
+            backup_cmd="cd '$PWD' && docker compose -f compose.yml exec -T db sh -c 'pg_dump -U \${POSTGRES_USER} \${POSTGRES_DB}' > /tmp/app-backup.sql && gzip -c /tmp/app-backup.sql > backups/app-\$(date +\%Y\%m\%d-\%H\%M).sql.gz && rm -f /tmp/app-backup.sql && find backups -name 'app-*.sql.gz' -mtime +14 -delete"
             (crontab -l 2>/dev/null | grep -v 'app-.*sql.gz'; echo "30 3 * * * $backup_cmd") | crontab -
-            # 部署时顺手做一次当次备份，保证改库前总有快照
-            docker compose -f compose.yml exec -T db sh -c 'pg_dump -U $${POSTGRES_USER} $${POSTGRES_DB}' | gzip > "backups/app-$(date +%Y%m%d-%H%M)-predeploy.sql.gz"
+            # 部署时顺手做一次当次备份，保证改库前总有快照；失败则中止部署（不能无快照改库）
+            dump_tmp="backups/app-$(date +%Y%m%d-%H%M)-predeploy.sql"
+            if docker compose -f compose.yml exec -T db sh -c 'pg_dump -U ${POSTGRES_USER} ${POSTGRES_DB}' > "$dump_tmp"; then
+              gzip -f "$dump_tmp"
+              echo "predeploy 快照完成：${dump_tmp}.gz"
+            else
+              rm -f "$dump_tmp"
+              echo "❌ predeploy 备份失败，中止部署（数据库快照拿不到，不应带着风险改库）"
+              exit 1
+            fi
 
             echo "=== 5/6 构建并重启容器 ==="
             docker compose -f compose.yml up -d --build --remove-orphans || {
