@@ -104,7 +104,7 @@ class Passage(PassageBase, table=True):
     slug: str = Field(unique=True, index=True, max_length=100)
     # 所属学习单元（关卡）；为空时挂全局默认（老数据兼容）
     unit_id: uuid.UUID | None = Field(
-        default=None, foreign_key="unit.id", ondelete="SET NULL"
+        default=None, foreign_key="unit.id", ondelete="SET NULL", index=True
     )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
@@ -201,7 +201,11 @@ class RepeatSentence(SQLModel, table=True):
     # 可空：2026-09-29 起复述句可独立存在（题目库直接创建、指派直接选用）；
     # 挂到篇目时仍随篇目出现在自主练习轮里
     passage_id: uuid.UUID | None = Field(
-        default=None, foreign_key="passage.id", nullable=True, ondelete="CASCADE"
+        default=None,
+        foreign_key="passage.id",
+        nullable=True,
+        ondelete="CASCADE",
+        index=True,
     )
     order_index: int = Field(ge=0)
     text: str = Field(min_length=1)
@@ -239,7 +243,7 @@ class ScenarioQuestion(SQLModel, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     scenario_id: uuid.UUID = Field(
-        foreign_key="scenario.id", nullable=False, ondelete="CASCADE"
+        foreign_key="scenario.id", nullable=False, ondelete="CASCADE", index=True
     )
     # 历史字段：问答已不分级（2026-09-29 产品决策，老师自由编排题目），
     # 抽题与展示均不再使用；保留列兼容存量数据，缺省落 B1
@@ -272,7 +276,7 @@ class Classroom(SQLModel, table=True):
     # 授权教师（User.id）：教师面板/指派/名单必须由本人或管理员访问；
     # 课堂码只用于学生入班，不能凭课堂码查看全班数据
     owner_id: uuid.UUID | None = Field(
-        default=None, foreign_key="user.id", ondelete="SET NULL"
+        default=None, foreign_key="user.id", ondelete="SET NULL", index=True
     )
     # 老师一键解锁全部关卡（默认顺序解锁）
     unlock_all: bool = Field(
@@ -516,11 +520,15 @@ class PracticeSession(SQLModel, table=True):
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    # board/发布历史按课堂查会话；只有以 student_id 开头的部分唯一索引，
+    # 不覆盖"课堂维度拉全部会话"的查询
     classroom_id: uuid.UUID = Field(
-        foreign_key="classroom.id", nullable=False, ondelete="CASCADE"
+        foreign_key="classroom.id", nullable=False, ondelete="CASCADE", index=True
     )
+    # trail/结算/gamification 直查学生全部会话；部分唯一索引的 WHERE 条件
+    # 不含 stars/order 等场景，需要独立的 btree
     student_id: uuid.UUID = Field(
-        foreign_key="student.id", nullable=False, ondelete="CASCADE"
+        foreign_key="student.id", nullable=False, ondelete="CASCADE", index=True
     )
     # 本轮开始时的档位；问答档位见 question_band
     band: str = Field(max_length=10)
@@ -574,6 +582,9 @@ class Attempt(SQLModel, table=True):
     __table_args__ = (
         # 幂等键唯一：同一次录音重传不重复创建作答/扣费（并发安全）
         UniqueConstraint("idempotency_key", name="uq_attempt_idempotency_key"),
+        # board 引擎探测（status=done order by created_at desc limit 1）与
+        # 最新作答排序：单靠 status 索引仍要对全部 done 行排序
+        Index("ix_attempt_status_created_at", "status", "created_at"),
     )
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     # 作答对象：passage（MVP 整篇跟读）/ repeat（复述句）/ question（情景问答）

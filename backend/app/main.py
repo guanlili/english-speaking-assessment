@@ -26,10 +26,14 @@ if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    # 启动时恢复僵尸 scoring 作答（进程崩溃后遗留）
+    # 启动时恢复僵尸 scoring 作答（进程崩溃后遗留）。
+    # 同步全表扫描放线程池：直接在事件循环上跑会拖慢启动，数据量大时
+    # 健康检查窗口内服务不可响应
+    from anyio import to_thread
+
     from app.scoring.worker import startup_recovery
 
-    startup_recovery()
+    await to_thread.run_sync(startup_recovery)
     yield
     # 关闭评分线程池，避免 docker stop 时挂起
     from app.scoring.worker import shutdown_executor
