@@ -627,6 +627,14 @@ class BatchQuestionCreate(SQLModel):
     band: str = "B1"
     items: list[BatchQuestionItem]
 
+    @field_validator("items")
+    @classmethod
+    def _cap_items(cls, v: list[BatchQuestionItem]) -> list[BatchQuestionItem]:
+        # 单事务批量插入上限，防超大粘贴把一个事务撑爆
+        if len(v) > 1000:
+            raise ValueError("单次批量录入最多 1000 条，请分批提交")
+        return v
+
 
 class BatchFailItem(SQLModel):
     index: int
@@ -916,11 +924,14 @@ def update_classroom(
         raise HTTPException(status_code=404, detail="Classroom not found")
     update = classroom_in.model_dump(exclude_unset=True)
     if "owner_id" in update and update["owner_id"] is not None:
-        # 校验被绑定教师真实存在
+        # 校验被绑定教师真实存在且确为教师角色（绑成学生等于授予全班教师权限）
         from app.models import User as _User
 
-        if session.get(_User, update["owner_id"]) is None:
+        owner = session.get(_User, update["owner_id"])
+        if owner is None:
             raise HTTPException(status_code=422, detail="教师账号不存在")
+        if not owner.is_superuser and owner.role != "teacher":
+            raise HTTPException(status_code=422, detail="被绑定账号不是教师角色")
     classroom.sqlmodel_update(update)
     session.add(classroom)
     session.commit()
@@ -968,7 +979,8 @@ def update_scenario(
 class GenerateRequest(SQLModel):
     band: str = "B1"
     count: int = Field(default=3, ge=1, le=10)
-    hint: str | None = None
+    # AI 出题提示限长：数 MB 文本会放大 LLM 费用并长时间占用线程
+    hint: str | None = Field(default=None, max_length=500)
 
 
 class DraftQuestionOut(SQLModel):
@@ -1171,7 +1183,8 @@ def _re_split_title(title: str) -> str:
 
 
 class TtsRequest(SQLModel):
-    text: str
+    # 限长：TTS 按音频时长计费，无上限文本 = 费用放大器（2000 字符远超任何题目文本）
+    text: str = Field(max_length=2000)
     voice: str | None = None
 
 

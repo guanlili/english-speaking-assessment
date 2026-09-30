@@ -221,47 +221,43 @@ def test_update_user_me(
     assert user_db.full_name == full_name
 
 
-def test_update_password_me(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
-) -> None:
+def test_update_password_me(client: TestClient, db: Session) -> None:
+    """改密成功 + 旧 token 失效（pwd 指纹绑定）。
+
+    用独立测试账号而非超级管理员：superuser_token_headers 是 module 级缓存，
+    改掉超管密码会让同模块后续用例的缓存 token 全部失效。
+    """
+    email = random_email()
+    old_password = random_lower_string()
     new_password = random_lower_string()
-    data = {
-        "current_password": settings.FIRST_SUPERUSER_PASSWORD,
-        "new_password": new_password,
-    }
+    crud.create_user(
+        session=db,
+        user_create=UserCreate(email=email, password=old_password, role="teacher"),
+    )
+
+    login = client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data={"username": email, "password": old_password},
+    )
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
     r = client.patch(
         f"{settings.API_V1_STR}/users/me/password",
-        headers=superuser_token_headers,
-        json=data,
+        headers=headers,
+        json={"current_password": old_password, "new_password": new_password},
     )
     assert r.status_code == 200
-    updated_user = r.json()
-    assert updated_user["message"] == "Password updated successfully"
+    assert r.json()["message"] == "Password updated successfully"
 
-    user_query = select(User).where(User.email == settings.FIRST_SUPERUSER)
-    user_db = db.exec(user_query).first()
+    user_db = db.exec(select(User).where(User.email == email)).first()  # type: ignore[attr-defined]
     assert user_db
-    assert user_db.email == settings.FIRST_SUPERUSER
     verified, _ = verify_password(new_password, user_db.hashed_password)
     assert verified
 
-    # Revert to the old password to keep consistency in test
-    old_data = {
-        "current_password": new_password,
-        "new_password": settings.FIRST_SUPERUSER_PASSWORD,
-    }
-    r = client.patch(
-        f"{settings.API_V1_STR}/users/me/password",
-        headers=superuser_token_headers,
-        json=old_data,
-    )
-    db.refresh(user_db)
-
-    assert r.status_code == 200
-    verified, _ = verify_password(
-        settings.FIRST_SUPERUSER_PASSWORD, user_db.hashed_password
-    )
-    assert verified
+    # 旧 token 已失效（改密后须重新登录）
+    stale = client.post(f"{settings.API_V1_STR}/login/test-token", headers=headers)
+    assert stale.status_code == 401
 
 
 def test_update_password_me_incorrect_password(

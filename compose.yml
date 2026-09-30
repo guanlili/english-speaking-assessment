@@ -19,6 +19,10 @@ x-backend-common: &backend-common
     - ${COMPOSE_ENV_FILE:-.env}
   environment:
     POSTGRES_SERVER: db
+    # nginx（frontend 容器）是 backend 唯一上游且 backend 不对外发布端口：
+    # 信任其 X-Forwarded-For，否则 request.client.host 恒为 nginx 容器 IP，
+    # 登录限流会退化成全站共用一个桶（任何人连错 10 次密码全校被锁）
+    FORWARDED_ALLOW_IPS: "*"
     FRONTEND_HOST: ${FRONTEND_HOST?Variable not set}
     SECRET_KEY: ${SECRET_KEY?Variable not set}
     FIRST_SUPERUSER: ${FIRST_SUPERUSER?Variable not set}

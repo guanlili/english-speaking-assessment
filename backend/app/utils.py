@@ -106,7 +106,13 @@ def generate_password_reset_token(email: str, *, password_hash: str = "") -> str
     expires = now + delta
     exp = expires.timestamp()
     encoded_jwt = jwt.encode(
-        {"exp": exp, "nbf": now, "sub": email, "pwd": password_hash[:16]},
+        # 指纹取到盐值区间（[:16] 是 argon2 固定参数头，不同密码相同，绑定无效）
+        {
+            "exp": exp,
+            "nbf": now,
+            "sub": email,
+            "pwd": security.password_fingerprint(password_hash),
+        },
         settings.SECRET_KEY,
         algorithm=security.ALGORITHM,
     )
@@ -119,7 +125,7 @@ def verify_password_reset_token(token: str, *, password_hash: str = "") -> str |
             token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
         )
         token_pwd = str(decoded_token.get("pwd", ""))
-        if password_hash and token_pwd != password_hash[:16]:
+        if password_hash and token_pwd != security.password_fingerprint(password_hash):
             return None
         return str(decoded_token["sub"])
     except InvalidTokenError:

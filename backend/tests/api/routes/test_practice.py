@@ -162,7 +162,9 @@ def test_scoring_failure_keeps_audio(
     assert resp.status_code == 200
     attempt = resp.json()
     assert attempt["status"] == "failed"
-    assert "引擎不可用" in attempt["error"]
+    # error 只暴露通用文案，不泄漏引擎异常原文（可能含上游 endpoint/配额细节）
+    assert "评分服务暂时不可用" in attempt["error"]
+    assert "引擎不可用" not in attempt["error"]
 
     row = db.get(Attempt, uuid.UUID(attempt["id"]))
     assert row is not None and Path(row.audio_path).exists()
@@ -232,3 +234,26 @@ def test_quick_feedback_committed_before_detail(
     assert polled["status"] == "done"
     assert polled["overall"] == data["overall"]
     assert polled["rubric"] == {"status": "unavailable"}
+
+
+def test_anonymous_submit_blocked_outside_local(
+    client: TestClient,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """生产/预发环境关闭匿名演示提交：会真实触发付费评分并占用全站队列。"""
+    from app.api.routes import attempts as attempts_route
+
+    monkeypatch.setattr(attempts_route.settings, "ENVIRONMENT", "production")
+    passage_id = _demo_passage_id(db)
+    resp = client.post(
+        "/api/v1/attempts",
+        files={"audio": wav_upload(2.0)},
+        data={
+            "item_type": "passage",
+            "item_id": passage_id,
+            "duration_s": "2.0",
+        },
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "演示提交未开放，请登录后使用"

@@ -8,7 +8,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import Field
+from pydantic import Field, field_validator
 from sqlmodel import Session, SQLModel, col, select
 
 from app import crud
@@ -43,6 +43,14 @@ class StudentImportLine(SQLModel):
 class StudentImportRequest(SQLModel):
     classroom_id: uuid.UUID
     lines: list[StudentImportLine]
+
+    @field_validator("lines")
+    @classmethod
+    def _cap_lines(cls, v: list[StudentImportLine]) -> list[StudentImportLine]:
+        # 上限防超大名单把单事务撑爆（每行还有哈希+插入）；正常班额远低于此
+        if len(v) > 500:
+            raise ValueError("单次最多导入 500 名学生，请分批导入")
+        return v
 
 
 class StudentImportRow(SQLModel):
@@ -91,6 +99,8 @@ def import_students(
         row = StudentImportRow(username=username, full_name=full_name)
         if not username:
             row.error = "学号为空"
+        elif any(ch.isspace() for ch in username):
+            row.error = "学号不能包含空格等空白字符"
         elif username in seen_usernames:
             row.error = "名单内学号重复"
         elif (
