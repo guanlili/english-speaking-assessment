@@ -1,6 +1,7 @@
 import { Volume2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { speakEnglish, TTS_RATE_OPTIONS } from "@/lib/tts"
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ""
 
@@ -38,27 +39,21 @@ function SpeakButton({
   }
 
   const speak = () => {
-    const synth = window.speechSynthesis
-    if (!synth) return
-    synth.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = "en-US"
-    utterance.rate = Number(rate)
-    const voice = synth.getVoices().find((v) => v.lang.startsWith("en"))
-    if (voice) {
-      utterance.voice = voice
+    const utterance = speakEnglish(text, {
+      rate: Number(rate),
+      onEnd: () => {
+        setPlaying(false)
+        utteranceRef.current = null
+      },
+      onError: () => {
+        setPlaying(false)
+        utteranceRef.current = null
+      },
+    })
+    if (utterance) {
+      utteranceRef.current = utterance
+      setPlaying(true)
     }
-    utterance.onend = () => {
-      setPlaying(false)
-      utteranceRef.current = null
-    }
-    utterance.onerror = () => {
-      setPlaying(false)
-      utteranceRef.current = null
-    }
-    utteranceRef.current = utterance
-    setPlaying(true)
-    synth.speak(utterance)
   }
 
   return (
@@ -77,9 +72,11 @@ function SpeakButton({
           onChange={(e) => setRate(e.target.value)}
           className="h-9 rounded-lg border border-border bg-card px-2 text-xs text-muted-foreground"
         >
-          <option value="0.5">最慢 0.5×</option>
-          <option value="0.8">慢速 0.8×</option>
-          <option value="1">正常 1.0×</option>
+          {TTS_RATE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
         </select>
       </div>
     </div>

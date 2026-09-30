@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
+import { downloadCsv } from "@/lib/csv"
 
 export const Route = createFileRoute("/_layout/admin/wordlist")({
   component: WordlistAdmin,
@@ -136,17 +137,15 @@ function WordlistAdmin() {
   }
 
   const downloadTemplate = () => {
-    const csv = "lemma,band\r\nfriendly,B1\r\ndog,A2\r\ncrucial,B2"
-    const url = URL.createObjectURL(
-      new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }),
+    downloadCsv(
+      [
+        ["lemma", "band"],
+        ["friendly", "B1"],
+        ["dog", "A2"],
+        ["crucial", "B2"],
+      ],
+      "wordlist-template.csv",
     )
-    const link = document.createElement("a")
-    link.href = url
-    link.download = "wordlist-template.csv"
-    document.body.append(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
   }
 
   const stats = statsQuery.data

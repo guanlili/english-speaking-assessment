@@ -16,16 +16,13 @@ import {
   Shield,
   Sparkles,
   Square,
-  Volume2,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { PlanAttempt, PlanItem } from "@/client"
-import { ApiError, ClassesService } from "@/client"
+import { ClassesService } from "@/client"
 import FeedbackCard from "@/components/Practice/FeedbackCard"
-
-const API_BASE = import.meta.env.VITE_API_URL ?? ""
-
+import LimitedListenButton from "@/components/Practice/LimitedListenButton"
 import SpeakButton from "@/components/Practice/SpeakButton"
 import StudentShell from "@/components/Practice/StudentShell"
 import { Button } from "@/components/ui/button"
@@ -35,12 +32,10 @@ import { APP_NAME } from "@/config"
 import type { AttemptSubmitTarget } from "@/hooks/useAttemptSubmit"
 import { useAttemptSubmit } from "@/hooks/useAttemptSubmit"
 import { MAX_RECORD_SECONDS, useRecorder } from "@/hooks/useRecorder"
-import {
-  clearStudent,
-  displayName,
-  isStudentNotFound,
-  loadStudent,
-} from "@/lib/classroom-student"
+import { useStudentGuard } from "@/hooks/useStudentGuard"
+import { displayName, loadStudent } from "@/lib/classroom-student"
+import { ITEM_TYPE_LABELS } from "@/lib/terms"
+import { randomId } from "@/utils"
 
 export const Route = createFileRoute("/p/$code/")({
   component: ClassroomPracticePage,
@@ -69,12 +64,6 @@ export const Route = createFileRoute("/p/$code/")({
     meta: [{ title: `今日练习 - ${APP_NAME}` }],
   }),
 })
-
-const ITEM_TYPE_LABELS: Record<string, string> = {
-  passage: "文章朗读",
-  repeat: "听句复述",
-  question: "情景问答",
-}
 
 function formatSeconds(seconds: number): string {
   const whole = Math.floor(seconds)
@@ -118,11 +107,21 @@ function ClassroomPracticePage() {
 
   // 有效会话：优先钉住的会话（录音/回看期间保持同一轮），其次探索轮
   const sessionId = pinnedSessionId ?? exploreSessionId
+  // 今日计划查询键：sessionId 为空时与 StudentShell 的 NotificationBell 同 key
+  // （共享缓存，避免进练习页后铃铛+页面各拉一次同端点）；有会话时多一位区分数据。
+  // invalidate 用同一变量，避免前缀匹配错位
+  const todayQueryKey = [
+    "classroom",
+    code,
+    "today",
+    student?.id,
+    ...(sessionId ? [sessionId] : []),
+  ] as const
 
   const todayQuery = useQuery({
     retry: 1,
     retryDelay: 500,
-    queryKey: ["classroom", code, "today", student?.id, sessionId],
+    queryKey: todayQueryKey,
     queryFn: () =>
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
@@ -135,20 +134,8 @@ function ClassroomPracticePage() {
         : 30000, // 慢速同步：老师中途指派新单元时学生端最迟 30 秒感知
   })
 
-  // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
-  useEffect(() => {
-    if (todayQuery.isError && isStudentNotFound(todayQuery.error)) {
-      clearStudent(code)
-      void navigate({ to: "/j/$code", params: { code } })
-    }
-  }, [todayQuery.isError, todayQuery.error, code, navigate])
-
-  // 未留名 → 回加入页
-  useEffect(() => {
-    if (student === null) {
-      void navigate({ to: "/j/$code", params: { code } })
-    }
-  }, [student, code, navigate])
+  // 身份守卫：无本地身份跳加入页；查询报"学生不存在"清身份重进（5 页共用 hook）
+  useStudentGuard(code, student, todayQuery)
 
   // 换一题：同主题同档未做过（US-06）；探索轮绑定 session_id
   const nextQuestionMutation = useMutation({
@@ -173,9 +160,7 @@ function ClassroomPracticePage() {
           suggested_seconds: q.suggested_seconds,
         }
         setExtraQuestion(extraItem)
-        queryClient.invalidateQueries({
-          queryKey: ["classroom", code, "today", student?.id, sessionId],
-        })
+        queryClient.invalidateQueries({ queryKey: todayQueryKey })
       } else {
         toast.info("这个主题的题已练完", {
           description: "可以重录上一题继续 polish",
@@ -285,7 +270,7 @@ function ClassroomPracticePage() {
         (currentItem?.type as "passage" | "repeat" | "question") ?? "repeat",
       itemId: currentItem?.id ?? "",
       sessionId: plan?.session_id,
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: randomId(),
     }
     setPinnedSessionId(plan?.session_id ?? null)
     recorder.start()
@@ -360,21 +345,12 @@ function ClassroomPracticePage() {
   // 评分完成：同步今日计划（进度、升降档后的问答）；保留单题简短反馈，学生点击后继续
   useEffect(() => {
     if (!attemptTerminal) return
-    void queryClient.invalidateQueries({
-      queryKey: ["classroom", code, "today", student?.id, sessionId],
-    })
+    void queryClient.invalidateQueries({ queryKey: todayQueryKey })
     if (attemptFailed) {
       toast.error("这次没有评出来", { description: "可以再录一次" })
       return
     }
-  }, [
-    attemptTerminal,
-    attemptFailed,
-    queryClient,
-    code,
-    student?.id,
-    sessionId,
-  ])
+  }, [attemptTerminal, attemptFailed, queryClient, todayQueryKey])
 
   // 全部完成后自动进入结果页统一展示（本次停留提交过 + 本地评分已结束 + 服务端计划全部完成）
   useEffect(() => {
@@ -853,133 +829,5 @@ function ClassroomPracticePage() {
         </p>
       </div>
     </StudentShell>
-  )
-}
-
-/**
- * 限听版标准音：听句复述题专用。每次播放先到服务端计数（防刷真源），
- * 次数用完禁用；replay_limit=0 不限。朗读/问答仍用不限次 SpeakButton。
- */
-function LimitedListenButton({
-  code,
-  sessionId,
-  itemId,
-  text,
-  audioUrl,
-  replayLimit,
-  initialUsed,
-}: {
-  code: string
-  sessionId: string | undefined
-  itemId: string
-  text: string
-  audioUrl?: string | null
-  replayLimit: number
-  initialUsed: number
-}) {
-  const [used, setUsed] = useState(initialUsed)
-  const [rate, setRate] = useState("1")
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const countingRef = useRef(false)
-  const unlimited = replayLimit === 0
-  const remaining = unlimited ? Infinity : Math.max(0, replayLimit - used)
-  const exhausted = !unlimited && remaining <= 0
-
-  useEffect(() => {
-    return () => {
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel()
-      }
-    }
-  }, [])
-
-  const play = async () => {
-    if (exhausted || !sessionId || countingRef.current) return
-    countingRef.current = true
-    try {
-      const counted = await recordListenCount()
-      if (!counted) return
-      if (audioUrl) {
-        if (audioRef.current) {
-          audioRef.current.playbackRate = Number(rate)
-          void audioRef.current.play()
-        }
-        return
-      }
-      // TTS 兜底：浏览器合成没有服务端文件，仍走计数
-      const synth = window.speechSynthesis
-      if (!synth) return
-      synth.cancel()
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.lang = "en-US"
-      utterance.rate = Number(rate)
-      const voice = synth.getVoices().find((v) => v.lang.startsWith("en"))
-      if (voice) {
-        utterance.voice = voice
-      }
-      synth.speak(utterance)
-    } finally {
-      countingRef.current = false
-    }
-  }
-
-  const recordListenCount = async (): Promise<boolean> => {
-    if (!sessionId) return false
-    try {
-      const result = await ClassesService.recordListen({
-        code,
-        requestBody: { session_id: sessionId, item_id: itemId },
-      })
-      setUsed((prev) => Math.max(prev, result.listen_used))
-      return true
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 422) {
-        toast.error("可重听次数已用完")
-        setUsed((prev) => Math.max(prev, replayLimit))
-      } else {
-        toast.error("听音失败，请检查网络后重试")
-      }
-      return false
-    }
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      {audioUrl && (
-        <audio
-          ref={audioRef}
-          src={audioUrl.startsWith("/") ? `${API_BASE}${audioUrl}` : audioUrl}
-          preload="metadata"
-          hidden
-        >
-          <track kind="captions" />
-        </audio>
-      )}
-      <Button
-        variant="secondary"
-        size="lg"
-        onClick={() => void play()}
-        disabled={exhausted}
-      >
-        <Volume2 />
-        {exhausted ? "重听次数已用完" : "听示范"}
-      </Button>
-      <span className="text-xs text-muted-foreground">
-        {unlimited ? "重听不限次" : `还可重听 ${remaining} 次`}
-      </span>
-      <label className="sr-only" htmlFor={`listen-rate-${itemId}`}>
-        示范语速
-      </label>
-      <select
-        id={`listen-rate-${itemId}`}
-        value={rate}
-        onChange={(e) => setRate(e.target.value)}
-        className="h-9 rounded-lg border border-border bg-card px-2 text-xs text-muted-foreground"
-      >
-        <option value="0.5">最慢 0.5×</option>
-        <option value="0.8">慢速 0.8×</option>
-        <option value="1">正常 1.0×</option>
-      </select>
-    </div>
   )
 }

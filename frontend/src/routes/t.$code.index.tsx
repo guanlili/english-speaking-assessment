@@ -40,6 +40,8 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { APP_NAME } from "@/config"
+import { downloadCsv } from "@/lib/csv"
+import { ITEM_TYPE_LABELS } from "@/lib/terms"
 
 export const Route = createFileRoute("/t/$code/")({
   component: TeacherBoardPage,
@@ -47,12 +49,6 @@ export const Route = createFileRoute("/t/$code/")({
     meta: [{ title: `课堂面板 - ${APP_NAME}` }],
   }),
 })
-
-const TYPE_LABELS: Record<string, string> = {
-  passage: "文章朗读",
-  repeat: "听句复述",
-  question: "情景问答",
-}
 
 // 有学生在评分中时的轮询间隔（PRD US-10：最后一人提交后 2 分钟内一致）
 const PENDING_REFRESH_MS = 5000
@@ -185,24 +181,12 @@ function TeacherBoardPage() {
       String(st.streak_days ?? 0),
       STATUS_LABELS[statusOf(st)] ?? "",
     ])
-    const quoteCell = (v: string) => `"${v.replace(/"/g, '""')}"`
-    const csv =
-      "\uFEFF" +
-      [header, ...rows]
-        .map((r) => r.map((c) => quoteCell(String(c))).join(","))
-        .join("\r\n")
-    const url = URL.createObjectURL(
-      new Blob([csv], { type: "text/csv;charset=utf-8" }),
+    downloadCsv(
+      [header, ...rows],
+      `课堂${board.classroom_code}-练习名单-${new Date()
+        .toISOString()
+        .slice(0, 10)}.csv`,
     )
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `课堂${board.classroom_code}-练习名单-${new Date()
-      .toISOString()
-      .slice(0, 10)}.csv`
-    document.body.append(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
   }
 
   const shareLink = async () => {
@@ -641,7 +625,7 @@ function StudentRow({
                   className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2"
                 >
                   <span className="w-20 text-sm text-muted-foreground">
-                    {index + 1}. {TYPE_LABELS[item.type] ?? item.type}
+                    {index + 1}. {ITEM_TYPE_LABELS[item.type] ?? item.type}
                   </span>
                   {item.status === "missing" ? (
                     <span className="text-sm text-muted-foreground">未做</span>
