@@ -477,19 +477,6 @@ def test_unit_passage_count_and_assignment_read_back(
         row = next(p for p in listed.json() if p["id"] == passage["id"])
         assert row["unit_id"] == unit["id"]
 
-        # 老师端单元列表同样带篇目数（指派前完整性检查）
-        classroom = client.post(
-            "/api/v1/classes",
-            json={"class_size": 5},
-            headers=superuser_token_headers,
-        ).json()
-        teacher_units = client.get(
-            f"/api/v1/classes/{classroom['code']}/units",
-            headers=superuser_token_headers,
-        ).json()
-        mine2 = next(u for u in teacher_units if u["unit_id"] == unit["id"])
-        assert mine2["passage_count"] == 1
-
         # 停用篇目不计入（指派前检查按“学生能练到”算）
         client.put(
             f"/api/v1/admin/passages/{passage['id']}",

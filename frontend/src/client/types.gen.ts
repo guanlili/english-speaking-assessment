@@ -980,12 +980,6 @@ export type ClassesRecordListenData = {
 
 export type ClassesRecordListenResponse = (ListenResult);
 
-export type ClassesListUnitsForClassData = {
-    code: string;
-};
-
-export type ClassesListUnitsForClassResponse = (Array<AssignmentInfo>);
-
 export type ClassesListClassroomExercisesData = {
     code: string;
 };

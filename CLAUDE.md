@@ -13,6 +13,9 @@
 - 模拟分（`app/scoring/rubric.py`）：rubric 四维 0-4 映射 0-9（`RUBRIC_TO_SCORE` 表）；LLM 失败降级不出假分，界面显示「建议暂缺」；仅 `SCORING_PROVIDER=ark` 时启用（`ARK_RUBRIC_MODEL` 配置模型）。
 - 词汇分析（`app/scoring/lexicon.py`）：问答作答评分后写入 `attempt.vocab`（命中分档词/覆盖率/CEFR 参考）；只统计问答转写（跟读参考文本不算）；词元匹配支持规则屈折；标签规则：最高稳定档（≥5 命中）即该档，否则降一档。词表未配置时 vocab 为 null，界面显示「未配置词表」（BDD D）。内置演示词表 ~600 词（A2/B1/B2），待学校 CSV 替换。
 - 40 人并发已验证（BDD B）：测试 `test_board.py::test_classroom_40_concurrent_submissions` 用真实线程池跑 40 并发上传 → 全部出分 → board 到齐。
+- **发布快照体系（2026-09-29，`app/services/exercise.py`）**：老师发布（按题选题）生成不可变 `ClassroomExercise`（snapshot_items 深拷贝题目内容、version_no 递增、可命名标题），学生 daily 会话绑 `assignment_id` 后始终按快照出题；作答提交时再存 `attempt.item_snapshot`，worker 评分只读快照——题库编辑不影响已发布练习与历史解释。恢复自主练习会归档练习并解绑当日会话。旧指派路径（单元指派/按题引用）仅作兼容读取，重新发布即转快照；学生历史结果按「发布历史」Tab（`/classes/{code}/exercises/{id}/results`）按当时题单解释。
+- **三题型互相独立（2026-09-29）**：文章朗读（可多篇拆段/自动拆分）/ 听句复述（独立句库 `SentenceLibrary`，可不挂篇目）/ 情景问答（按主题整组，**不分级**——band 字段仅存量兼容，抽题与发布不看档位）。课堂发布 = 三类各选内容写快照，操作条三端统一（编辑→标准音→删除）。
+- **学生账号密码（2026-09-29 决策）**：默认密码统一 `brs123456`，导入/重置/批量重置均用它且**不强制改密**（学生侧边栏有自愿修改入口）；随机初始密码与 CSV 导出已下线。
 
 ### 术语表（2026-09 统一，前端单一事实源 `frontend/src/lib/terms.ts`）
 
