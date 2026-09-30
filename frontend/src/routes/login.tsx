@@ -6,6 +6,7 @@ import {
   redirect,
 } from "@tanstack/react-router"
 import { AlertCircle, ArrowRight, Presentation, UsersRound } from "lucide-react"
+import { useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
@@ -29,23 +30,42 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { APP_NAME } from "@/config"
 import useAuth, { isLoggedIn } from "@/hooks/useAuth"
 import useLoginOptions from "@/hooks/useLoginOptions"
+import { useI18n } from "@/lib/i18n"
 import { extractErrorMessage } from "@/utils"
 
-const formSchema = z.object({
-  username: z
-    .string()
-    .trim()
-    .pipe(z.email({ message: "请输入有效的邮箱地址" })),
-  password: z.string().min(1, { message: "请输入密码" }),
-}) satisfies z.ZodType<AccessToken>
-
-const studentSchema = z.object({
-  username: z.string().min(1, { message: "请输入学号" }),
-  password: z.string().min(1, { message: "请输入密码" }),
-})
-
-type FormData = z.infer<typeof formSchema>
+type FormData = z.infer<ReturnType<typeof buildAccountSchema>>
 type LoginMutation = ReturnType<typeof useAuth>["loginMutation"]
+
+// 校验消息随语言切换：schema 在组件内按当前语言重建
+function buildAccountSchema(t: ReturnType<typeof useI18n>["t"]) {
+  return z.object({
+    username: z
+      .string()
+      .trim()
+      .pipe(
+        z.email({
+          message: t({
+            zh: "请输入有效的邮箱地址",
+            en: "Enter a valid email address",
+          }),
+        }),
+      ),
+    password: z
+      .string()
+      .min(1, { message: t({ zh: "请输入密码", en: "Enter your password" }) }),
+  }) satisfies z.ZodType<AccessToken>
+}
+
+function buildStudentSchema(t: ReturnType<typeof useI18n>["t"]) {
+  return z.object({
+    username: z.string().min(1, {
+      message: t({ zh: "请输入学号", en: "Enter your student ID" }),
+    }),
+    password: z
+      .string()
+      .min(1, { message: t({ zh: "请输入密码", en: "Enter your password" }) }),
+  })
+}
 
 const inputClassName =
   "h-12 rounded-lg border-[#233e34]/20 bg-[#f8f7f2] px-4 shadow-none placeholder:text-muted-foreground/75 focus-visible:bg-white dark:border-input dark:bg-background/50 dark:focus-visible:bg-background"
@@ -61,10 +81,21 @@ export const Route = createFileRoute("/login")({
   beforeLoad: async () => {
     if (isLoggedIn()) throw redirect({ to: "/" })
   },
-  head: () => ({ meta: [{ title: `登录 - ${APP_NAME}` }] }),
+  head: () => ({ meta: [{ title: `登录 / Sign in - ${APP_NAME}` }] }),
 })
 
 function LoginError({ error }: { error: unknown }) {
+  const { t } = useI18n()
+  const detail = extractErrorMessage(error)
+  // 后端 detail 是中文稳定文案；英文环境映射常见错误，其余给通用提示
+  const message = detail.includes("账号或密码不正确")
+    ? t({ zh: detail, en: "Incorrect account or password" })
+    : detail.includes("暂时不可用") || detail.includes("网络连接")
+      ? t({
+          zh: detail,
+          en: "Service temporarily unavailable, please try again",
+        })
+      : t({ zh: detail, en: "Sign-in failed, please try again" })
   return (
     <div
       role="alert"
@@ -72,14 +103,16 @@ function LoginError({ error }: { error: unknown }) {
       className="flex items-start gap-2.5 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-3 text-sm leading-6 text-destructive"
     >
       <AlertCircle className="mt-1 size-4 shrink-0" aria-hidden="true" />
-      <p>{extractErrorMessage(error)}</p>
+      <p>{message}</p>
     </div>
   )
 }
 
 function StudentLogin({ loginMutation }: { loginMutation: LoginMutation }) {
-  const form = useForm<z.infer<typeof studentSchema>>({
-    resolver: zodResolver(studentSchema),
+  const { t } = useI18n()
+  const schema = useMemo(() => buildStudentSchema(t), [t])
+  const form = useForm<z.infer<typeof schema>>({
+    resolver: zodResolver(schema),
     mode: "onBlur",
     defaultValues: { username: "", password: "" },
   })
@@ -87,7 +120,7 @@ function StudentLogin({ loginMutation }: { loginMutation: LoginMutation }) {
     <Form {...form}>
       <form
         className="space-y-5"
-        aria-label="学生登录"
+        aria-label={t({ zh: "学生登录", en: "Student sign-in" })}
         aria-describedby="student-login-description"
         aria-busy={loginMutation.isPending}
         onChange={() => {
@@ -102,19 +135,25 @@ function StudentLogin({ loginMutation }: { loginMutation: LoginMutation }) {
           id="student-login-description"
           className="text-sm leading-6 text-muted-foreground"
         >
-          使用老师发放的学号账号，继续今日练习。
+          {t({
+            zh: "使用老师发放的学号账号，继续今日练习。",
+            en: "Sign in with the student ID from your teacher to continue today's practice.",
+          })}
         </p>
         <FormField
           control={form.control}
           name="username"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>学号</FormLabel>
+              <FormLabel>{t({ zh: "学号", en: "Student ID" })}</FormLabel>
               <FormControl>
                 <Input
                   {...field}
                   data-testid="student-no-input"
-                  placeholder="请输入你的学号"
+                  placeholder={t({
+                    zh: "请输入你的学号",
+                    en: "Enter your student ID",
+                  })}
                   autoComplete="username"
                   autoCapitalize="none"
                   spellCheck={false}
@@ -124,7 +163,10 @@ function StudentLogin({ loginMutation }: { loginMutation: LoginMutation }) {
                 />
               </FormControl>
               <FormDescription className="sr-only">
-                使用老师发放的学号。
+                {t({
+                  zh: "使用老师发放的学号。",
+                  en: "Use the student ID issued by your teacher.",
+                })}
               </FormDescription>
               <FormMessage role="alert" className="text-xs leading-5" />
             </FormItem>
@@ -135,12 +177,15 @@ function StudentLogin({ loginMutation }: { loginMutation: LoginMutation }) {
           name="password"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>密码</FormLabel>
+              <FormLabel>{t({ zh: "密码", en: "Password" })}</FormLabel>
               <FormControl>
                 <PasswordInput
                   {...field}
                   data-testid="student-password-input"
-                  placeholder="请输入密码"
+                  placeholder={t({
+                    zh: "请输入密码",
+                    en: "Enter your password",
+                  })}
                   autoComplete="current-password"
                   required
                   readOnly={loginMutation.isPending}
@@ -148,11 +193,14 @@ function StudentLogin({ loginMutation }: { loginMutation: LoginMutation }) {
                 />
               </FormControl>
               <FormDescription className="text-xs leading-5">
-                初始密码{" "}
+                {t({ zh: "初始密码", en: "Default password" })}{" "}
                 <code className="rounded bg-[#eee9dd] px-1 py-0.5 text-foreground dark:bg-muted">
                   brs123456
                 </code>
-                ，首次登录后请按提示修改。
+                {t({
+                  zh: "，首次登录后请按提示修改。",
+                  en: " — change it after your first sign-in.",
+                })}
               </FormDescription>
               <FormMessage role="alert" className="text-xs leading-5" />
             </FormItem>
@@ -165,7 +213,9 @@ function StudentLogin({ loginMutation }: { loginMutation: LoginMutation }) {
           loading={loginMutation.isPending}
           aria-busy={loginMutation.isPending}
         >
-          {loginMutation.isPending ? "正在登录…" : "登录，开始练习"}
+          {loginMutation.isPending
+            ? t({ zh: "正在登录…", en: "Signing in…" })
+            : t({ zh: "登录，开始练习", en: "Sign in & practice" })}
           {!loginMutation.isPending && (
             <ArrowRight
               className="size-4 motion-safe:transition-transform motion-safe:group-hover:translate-x-1"
@@ -174,7 +224,10 @@ function StudentLogin({ loginMutation }: { loginMutation: LoginMutation }) {
           )}
         </LoadingButton>
         <p className="text-center text-xs leading-5 text-muted-foreground">
-          没有账号或忘记密码？请联系任课老师。
+          {t({
+            zh: "没有账号或忘记密码？请联系任课老师。",
+            en: "No account or forgot your password? Please contact your teacher.",
+          })}
         </p>
       </form>
     </Form>
@@ -182,6 +235,7 @@ function StudentLogin({ loginMutation }: { loginMutation: LoginMutation }) {
 }
 
 function DemoEntry() {
+  const { t } = useI18n()
   const demoMutation = useMutation({
     mutationFn: (_role: "teacher" | "admin") => LoginService.loginDemo(),
     onSuccess: (data, role) => {
@@ -189,12 +243,18 @@ function DemoEntry() {
       window.location.href =
         role === "teacher" ? "/t/DEMO01" : "/admin/passages"
     },
-    onError: () => toast.error("演示入口不可用，请使用账号登录"),
+    onError: () =>
+      toast.error(
+        t({
+          zh: "演示入口不可用，请使用账号登录",
+          en: "Demo sign-in unavailable, please use your account",
+        }),
+      ),
   })
   return (
     <details className="border-t border-[#233e34]/10 pt-4 text-xs text-muted-foreground dark:border-border">
       <summary className="cursor-pointer rounded-sm py-1.5 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
-        本地演示体验（仅开发环境）
+        {t({ zh: "本地演示体验（仅开发环境）", en: "Local demo (dev only)" })}
       </summary>
       <div className="mt-3 flex flex-wrap gap-2">
         <Button asChild variant="outline" size="sm" className="h-9 rounded-lg">
@@ -208,7 +268,7 @@ function DemoEntry() {
               if (demoMutation.isPending) event.preventDefault()
             }}
           >
-            学生演示
+            {t({ zh: "学生演示", en: "Student demo" })}
           </RouterLink>
         </Button>
         {(["teacher", "admin"] as const).map((role) => (
@@ -222,19 +282,27 @@ function DemoEntry() {
             onClick={() => demoMutation.mutate(role)}
           >
             {demoMutation.isPending && demoMutation.variables === role
-              ? "进入中…"
+              ? t({ zh: "进入中…", en: "Entering…" })
               : role === "teacher"
-                ? "教师演示"
-                : "管理员演示"}
+                ? t({ zh: "教师演示", en: "Teacher demo" })
+                : t({ zh: "管理员演示", en: "Admin demo" })}
           </Button>
         ))}
       </div>
       <p role="status" aria-atomic="true" className="sr-only">
-        {demoMutation.isPending ? "正在进入演示，请稍候。" : ""}
+        {demoMutation.isPending
+          ? t({
+              zh: "正在进入演示，请稍候。",
+              en: "Entering demo, please wait.",
+            })
+          : ""}
       </p>
       {demoMutation.isError && (
         <p role="alert" className="mt-3 leading-5 text-destructive">
-          演示入口不可用，请使用账号登录。
+          {t({
+            zh: "演示入口不可用，请使用账号登录。",
+            en: "Demo sign-in unavailable, please use your account.",
+          })}
         </p>
       )}
     </details>
@@ -242,10 +310,12 @@ function DemoEntry() {
 }
 
 function Login() {
+  const { t } = useI18n()
   const { loginMutation } = useAuth()
   const options = useLoginOptions()
+  const schema = useMemo(() => buildAccountSchema(t), [t])
   const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(schema),
     mode: "onBlur",
     defaultValues: { username: "", password: "" },
   })
@@ -264,10 +334,13 @@ function Login() {
             YOUR CLASSROOM AWAITS
           </p>
           <h2 className="text-2xl font-semibold tracking-tight sm:text-[28px]">
-            欢迎来到 SpeakUp
+            {t({ zh: "欢迎来到 SpeakUp", en: "Welcome to SpeakUp" })}
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            选择你的身份，开始今天的口语课堂。
+            {t({
+              zh: "选择你的身份，开始今天的口语课堂。",
+              en: "Choose your role and start today's speaking class.",
+            })}
           </p>
         </div>
         <Tabs
@@ -276,7 +349,7 @@ function Login() {
           onValueChange={() => loginMutation.reset()}
         >
           <TabsList
-            aria-label="选择登录身份"
+            aria-label={t({ zh: "选择登录身份", en: "Choose your role" })}
             className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-[#233e34]/10 bg-[#f0eee6] p-1.5 dark:border-border dark:bg-background/60"
           >
             <TabsTrigger
@@ -285,7 +358,7 @@ function Login() {
               disabled={loginMutation.isPending}
             >
               <UsersRound aria-hidden="true" />
-              学生登录
+              {t({ zh: "学生登录", en: "Student" })}
             </TabsTrigger>
             <TabsTrigger
               value="account"
@@ -293,7 +366,7 @@ function Login() {
               disabled={loginMutation.isPending}
             >
               <Presentation aria-hidden="true" />
-              教师 / 管理员
+              {t({ zh: "教师 / 管理员", en: "Teacher / Admin" })}
             </TabsTrigger>
           </TabsList>
           <TabsContent value="student">
@@ -302,7 +375,10 @@ function Login() {
           <TabsContent value="account">
             <Form {...form}>
               <form
-                aria-label="教师与管理员登录"
+                aria-label={t({
+                  zh: "教师与管理员登录",
+                  en: "Teacher and admin sign-in",
+                })}
                 aria-busy={loginMutation.isPending}
                 onChange={() => {
                   if (loginMutation.isError) loginMutation.reset()
@@ -316,12 +392,17 @@ function Login() {
                   name="username"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>邮箱地址</FormLabel>
+                      <FormLabel>
+                        {t({ zh: "邮箱地址", en: "Email" })}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           {...field}
                           data-testid="email-input"
-                          placeholder="请输入你的邮箱"
+                          placeholder={t({
+                            zh: "请输入你的邮箱",
+                            en: "Enter your email",
+                          })}
                           autoComplete="username"
                           autoCapitalize="none"
                           spellCheck={false}
@@ -332,7 +413,10 @@ function Login() {
                         />
                       </FormControl>
                       <FormDescription className="sr-only">
-                        请输入账号使用的邮箱地址。
+                        {t({
+                          zh: "请输入账号使用的邮箱地址。",
+                          en: "Enter the email address of your account.",
+                        })}
                       </FormDescription>
                       <FormMessage role="alert" className="text-xs leading-5" />
                     </FormItem>
@@ -344,13 +428,15 @@ function Login() {
                   render={({ field }) => (
                     <FormItem>
                       <div className="flex items-center justify-between gap-3">
-                        <FormLabel>密码</FormLabel>
+                        <FormLabel>
+                          {t({ zh: "密码", en: "Password" })}
+                        </FormLabel>
                         {options.data?.password_recovery_enabled && (
                           <RouterLink
                             to="/recover-password"
                             className={`text-xs ${linkClassName}`}
                           >
-                            忘记密码？
+                            {t({ zh: "忘记密码？", en: "Forgot password?" })}
                           </RouterLink>
                         )}
                       </div>
@@ -358,7 +444,10 @@ function Login() {
                         <PasswordInput
                           {...field}
                           data-testid="password-input"
-                          placeholder="请输入密码"
+                          placeholder={t({
+                            zh: "请输入密码",
+                            en: "Enter your password",
+                          })}
                           autoComplete="current-password"
                           className={`${inputClassName} pr-12`}
                           required
@@ -366,7 +455,10 @@ function Login() {
                         />
                       </FormControl>
                       <FormDescription className="sr-only">
-                        请输入账号密码。
+                        {t({
+                          zh: "请输入账号密码。",
+                          en: "Enter your account password.",
+                        })}
                       </FormDescription>
                       <FormMessage role="alert" className="text-xs leading-5" />
                     </FormItem>
@@ -381,7 +473,9 @@ function Login() {
                   loading={loginMutation.isPending}
                   aria-busy={loginMutation.isPending}
                 >
-                  {loginMutation.isPending ? "正在登录…" : "登录工作台"}
+                  {loginMutation.isPending
+                    ? t({ zh: "正在登录…", en: "Signing in…" })
+                    : t({ zh: "登录工作台", en: "Sign in to workspace" })}
                   {!loginMutation.isPending && (
                     <ArrowRight
                       className="size-4 motion-safe:transition-transform motion-safe:group-hover:translate-x-1"
@@ -395,37 +489,57 @@ function Login() {
               <div className="mt-5 space-y-1.5 text-center text-xs leading-5 text-muted-foreground">
                 {options.data.registration_enabled ? (
                   <p>
-                    还没有账号？{" "}
+                    {t({ zh: "还没有账号？", en: "No account yet?" })}{" "}
                     <RouterLink to="/signup" className={linkClassName}>
-                      注册账号
+                      {t({ zh: "注册账号", en: "Sign up" })}
                     </RouterLink>
                   </p>
                 ) : (
-                  <p>教师与管理员账号由学校统一开通。</p>
+                  <p>
+                    {t({
+                      zh: "教师与管理员账号由学校统一开通。",
+                      en: "Teacher and admin accounts are provisioned by the school.",
+                    })}
+                  </p>
                 )}
                 {!options.data.password_recovery_enabled && (
-                  <p>忘记密码？请联系学校管理员重置。</p>
+                  <p>
+                    {t({
+                      zh: "忘记密码？请联系学校管理员重置。",
+                      en: "Forgot your password? Contact your school administrator.",
+                    })}
+                  </p>
                 )}
               </div>
             )}
           </TabsContent>
         </Tabs>
         <p role="status" aria-atomic="true" className="sr-only">
-          {loginMutation.isPending ? "正在验证账号，请稍候。" : ""}
+          {loginMutation.isPending
+            ? t({
+                zh: "正在验证账号，请稍候。",
+                en: "Verifying your account, please wait.",
+              })
+            : ""}
         </p>
         {options.isError && (
           <p
             role="status"
             className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-xs leading-5 text-muted-foreground"
           >
-            入口信息暂未加载，仍可使用学号或邮箱登录。
+            {t({
+              zh: "入口信息暂未加载，仍可使用学号或邮箱登录。",
+              en: "Options failed to load; you can still sign in with your ID or email.",
+            })}
             <button
               type="button"
               className={`ml-1 disabled:opacity-50 ${linkClassName}`}
               disabled={options.isFetching}
               onClick={() => void options.refetch()}
             >
-              {options.isFetching ? "重试中…" : "重试"}
+              {options.isFetching
+                ? t({ zh: "重试中…", en: "Retrying…" })
+                : t({ zh: "重试", en: "Retry" })}
             </button>
           </p>
         )}
