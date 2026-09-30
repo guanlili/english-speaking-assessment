@@ -15,6 +15,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile
+from pydantic import field_validator
 from sqlalchemy import func
 from sqlmodel import Field, Session, SQLModel, col, select
 
@@ -45,6 +46,124 @@ from app.models import (
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 VALID_BANDS = {"A2", "B1", "B2"}
+
+
+def _strip_blank(value: str | None) -> str | None:
+    """可空字符串字段：空白串归 None（前端空输入直接清空语义）。"""
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _strip_nonempty(value: str | None) -> str | None:
+    """非空字符串字段：去空白后仍为空 → 校验失败（更新模型里传 null 走 422）。"""
+    if value is None:
+        return value
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("内容不能为空")
+    return stripped
+
+
+def _reject_null_non_nullable(
+    update: dict[str, Any], non_nullable_fields: set[str]
+) -> None:
+    """更新语义：非空字段不允许显式传 null（传 null 返回 422）。
+
+    允许为空的字段（translation/audio_url/passage_id/unit_id）传 null = 清空，
+    不受此限制。
+    """
+    for field in non_nullable_fields:
+        if field in update and update[field] is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{field} 不能为 null，如需清空请传空字符串或省略",
+            )
+
+
+# ── 内容请求模型（不复用 table=True 模型作请求体）────────────────────
+# 语义约定：
+# - 创建：必填字段缺失/空 → 422；范围越界（秒数/序号/档位）→ 422；非法外键 → 404/422
+# - 更新：缺省字段不修改（exclude_unset）；可空字段（translation/audio_url/
+#   passage_id/unit_id）传 null 清空；非空字段传 null → 422
+
+
+class SentenceCreate(SQLModel):
+    """新建复述句请求（独立创建或挂篇目）。"""
+
+    passage_id: uuid.UUID | None = None
+    order_index: int = Field(default=0, ge=0)
+    text: str = Field(min_length=1, max_length=1024)
+    translation: str | None = Field(default=None, max_length=1024)
+    audio_url: str | None = Field(default=None, max_length=1024)
+    suggested_seconds: int = Field(default=8, ge=3, le=60)
+    replay_limit: int = Field(default=3, ge=0, le=9)
+
+    _text_nonempty = field_validator("text")(_strip_nonempty)
+    _translation_blank = field_validator("translation")(_strip_blank)
+    _audio_blank = field_validator("audio_url")(_strip_blank)
+
+
+class SentenceUpdate(SQLModel):
+    """更新复述句请求：缺省不修改；passage_id/translation/audio_url 可 null 清空。"""
+
+    passage_id: uuid.UUID | None = None
+    order_index: int | None = Field(default=None, ge=0)
+    text: str | None = Field(default=None, min_length=1, max_length=1024)
+    translation: str | None = Field(default=None, max_length=1024)
+    audio_url: str | None = Field(default=None, max_length=1024)
+    suggested_seconds: int | None = Field(default=None, ge=3, le=60)
+    replay_limit: int | None = Field(default=None, ge=0, le=9)
+
+    _text_nonempty = field_validator("text")(_strip_nonempty)
+    _translation_blank = field_validator("translation")(_strip_blank)
+    _audio_blank = field_validator("audio_url")(_strip_blank)
+
+
+class ScenarioCreate(SQLModel):
+    """新建情景请求：主题必填且非空。"""
+
+    topic: str = Field(min_length=1, max_length=100)
+    is_active: bool = True
+
+    _topic_nonempty = field_validator("topic")(_strip_nonempty)
+
+
+class QuestionCreate(SQLModel):
+    """新建问法请求：scenario_id 兼容旧客户端，以路径参数为准。"""
+
+    scenario_id: uuid.UUID | None = None
+    band: str = Field(default="B1", max_length=10)
+    order_index: int = Field(default=0, ge=0)
+    text: str = Field(min_length=1, max_length=512)
+    translation: str | None = Field(default=None, max_length=1024)
+    audio_url: str | None = Field(default=None, max_length=1024)
+    suggested_seconds: int = Field(default=20, ge=10, le=60)
+
+    _text_nonempty = field_validator("text")(_strip_nonempty)
+    _translation_blank = field_validator("translation")(_strip_blank)
+    _audio_blank = field_validator("audio_url")(_strip_blank)
+
+
+class PassageUpdate(SQLModel):
+    """更新篇目请求：缺省不修改；translation/audio_url/unit_id 可 null 清空。"""
+
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    topic: str | None = Field(default=None, max_length=100)
+    cefr_band: str | None = None
+    text: str | None = Field(default=None, min_length=1)
+    translation: str | None = Field(default=None, max_length=1024)
+    audio_url: str | None = Field(default=None, max_length=1024)
+    suggested_seconds: int | None = Field(default=None, ge=10, le=180)
+    is_active: bool | None = None
+    unit_id: uuid.UUID | None = None
+
+    _title_nonempty = field_validator("title")(_strip_nonempty)
+    _text_nonempty = field_validator("text")(_strip_nonempty)
+    _topic_blank = field_validator("topic")(_strip_blank)
+    _translation_blank = field_validator("translation")(_strip_blank)
+    _audio_blank = field_validator("audio_url")(_strip_blank)
 
 
 # ── 篇目与复述句 ─────────────────────────────────────────────────────
@@ -156,13 +275,21 @@ def update_passage(
     session: SessionDep,
     _admin: TeacherUserDep,
     passage_id: uuid.UUID,
-    passage_in: PassageCreate,
+    passage_in: PassageUpdate,
 ) -> Any:
     passage = session.get(Passage, passage_id)
     if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
-    _require_valid_band(passage_in.cefr_band)
     update = passage_in.model_dump(exclude={"slug"}, exclude_unset=True)
+    # 非空字段不允许显式清空（slug 由创建决定，不在此更新）
+    _reject_null_non_nullable(
+        update, {"title", "text", "cefr_band", "suggested_seconds", "is_active"}
+    )
+    if "cefr_band" in update:
+        _require_valid_band(str(update["cefr_band"]))
+    if "unit_id" in update and update["unit_id"] is not None:
+        if session.get(Unit, update["unit_id"]) is None:
+            raise HTTPException(status_code=422, detail="Unit not found")
     passage.sqlmodel_update(update)
     session.add(passage)
     session.commit()
@@ -214,13 +341,11 @@ def create_sentence(
     session: SessionDep,
     _admin: TeacherUserDep,
     passage_id: uuid.UUID,
-    sentence: RepeatSentence,
+    sentence_in: SentenceCreate,
 ) -> Any:
     if session.get(Passage, passage_id) is None:
         raise HTTPException(status_code=404, detail="Passage not found")
-    # 表模型不走字段校验，可重听次数在此显式把关（0=不限，1–9）
-    if not 0 <= sentence.replay_limit <= 9:
-        raise HTTPException(status_code=422, detail="可重听次数需在 0–9 之间（0=不限）")
+    sentence = RepeatSentence.model_validate(sentence_in.model_dump())
     sentence.passage_id = passage_id
     sentence.order_index = next_sentence_order(session, passage_id)
     session.add(sentence)
@@ -255,19 +380,18 @@ def list_sentences_flat(session: SessionDep, _admin: TeacherUserDep) -> Any:
 def create_sentence_standalone(
     session: SessionDep,
     _admin: TeacherUserDep,
-    sentence: RepeatSentence,
+    sentence_in: SentenceCreate,
 ) -> Any:
     """独立创建复述句（不挂篇目）：题目库三题型互相独立后的复述题入口。
 
     传 passage_id 仍可挂到篇目（自主练习轮会随篇目出现）。
     """
-    if not 0 <= sentence.replay_limit <= 9:
-        raise HTTPException(status_code=422, detail="可重听次数需在 0–9 之间（0=不限）")
     if (
-        sentence.passage_id is not None
-        and session.get(Passage, sentence.passage_id) is None
+        sentence_in.passage_id is not None
+        and session.get(Passage, sentence_in.passage_id) is None
     ):
         raise HTTPException(status_code=404, detail="Passage not found")
+    sentence = RepeatSentence.model_validate(sentence_in.model_dump())
     sentence.order_index = next_sentence_order(session, sentence.passage_id)
     session.add(sentence)
     session.commit()
@@ -280,14 +404,19 @@ def update_sentence(
     session: SessionDep,
     _admin: TeacherUserDep,
     sentence_id: uuid.UUID,
-    sentence_in: RepeatSentence,
+    sentence_in: SentenceUpdate,
 ) -> Any:
     sentence = session.get(RepeatSentence, sentence_id)
     if sentence is None:
         raise HTTPException(status_code=404, detail="Sentence not found")
-    update = sentence_in.model_dump(exclude={"id", "passage_id"}, exclude_unset=True)
-    if "replay_limit" in update and not 0 <= update["replay_limit"] <= 9:
-        raise HTTPException(status_code=422, detail="可重听次数需在 0–9 之间（0=不限）")
+    update = sentence_in.model_dump(exclude={"id"}, exclude_unset=True)
+    # 非空字段不允许显式清空（text/order_index/suggested_seconds/replay_limit）
+    _reject_null_non_nullable(
+        update, {"text", "order_index", "suggested_seconds", "replay_limit"}
+    )
+    if "passage_id" in update and update["passage_id"] is not None:
+        if session.get(Passage, update["passage_id"]) is None:
+            raise HTTPException(status_code=422, detail="Passage not found")
     sentence.sqlmodel_update(update)
     session.add(sentence)
     session.commit()
@@ -349,13 +478,14 @@ def list_scenarios(session: SessionDep, _admin: TeacherUserDep) -> Any:
 
 @router.post("/scenarios")
 def create_scenario(
-    session: SessionDep, _admin: TeacherUserDep, scenario: Scenario
+    session: SessionDep, _admin: TeacherUserDep, scenario_in: ScenarioCreate
 ) -> Any:
     duplicate = session.exec(
-        select(Scenario).where(Scenario.topic == scenario.topic)
+        select(Scenario).where(Scenario.topic == scenario_in.topic)
     ).first()
     if duplicate is not None:
         raise HTTPException(status_code=409, detail="主题已存在")
+    scenario = Scenario.model_validate(scenario_in.model_dump())
     session.add(scenario)
     session.commit()
     session.refresh(scenario)
@@ -388,19 +518,24 @@ def create_question(
     session: SessionDep,
     _admin: TeacherUserDep,
     scenario_id: uuid.UUID,
-    question_in: ScenarioQuestion,
+    question_in: QuestionCreate,
 ) -> Any:
     if session.get(Scenario, scenario_id) is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
     if question_in.band not in VALID_BANDS:
         raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
-    question_in.scenario_id = scenario_id
+    question = ScenarioQuestion.model_validate(
+        {
+            **question_in.model_dump(exclude={"scenario_id", "order_index"}),
+            "scenario_id": scenario_id,
+        }
+    )
     # 排序号服务端生成：删过中间题后仍单调递增，不信任前端数组长度
-    question_in.order_index = next_question_order(session, scenario_id)
-    session.add(question_in)
+    question.order_index = next_question_order(session, scenario_id)
+    session.add(question)
     session.commit()
-    session.refresh(question_in)
-    return question_in
+    session.refresh(question)
+    return question
 
 
 @router.delete("/questions/{question_id}")
@@ -707,7 +842,10 @@ def update_unit(
     unit = session.get(Unit, unit_id)
     if unit is None:
         raise HTTPException(status_code=404, detail="Unit not found")
-    unit.sqlmodel_update(unit_in.model_dump(exclude_unset=True))
+    update = unit_in.model_dump(exclude_unset=True)
+    # 非空字段不允许显式清空
+    _reject_null_non_nullable(update, {"title", "order_index", "is_active"})
+    unit.sqlmodel_update(update)
     session.add(unit)
     session.commit()
     session.refresh(unit)
@@ -794,8 +932,10 @@ def update_classroom(
 
 
 class ScenarioUpdate(SQLModel):
-    topic: str | None = None
+    topic: str | None = Field(default=None, min_length=1, max_length=100)
     is_active: bool | None = None
+
+    _topic_nonempty = field_validator("topic")(_strip_nonempty)
 
 
 @router.put("/scenarios/{scenario_id}")
@@ -810,6 +950,8 @@ def update_scenario(
     if scenario is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
     update = scenario_in.model_dump(exclude_unset=True)
+    # 主题非空且不允许显式清空
+    _reject_null_non_nullable(update, {"topic"})
     if "topic" in update:
         duplicate = session.exec(
             select(Scenario).where(Scenario.topic == update["topic"])
@@ -1052,11 +1194,15 @@ def generate_standard_audio(_admin: TeacherUserDep, body: TtsRequest) -> Any:
 
 class QuestionUpdate(SQLModel):
     band: str | None = None
-    text: str | None = None
+    text: str | None = Field(default=None, min_length=1, max_length=512)
     translation: str | None = None
     audio_url: str | None = None
-    suggested_seconds: int | None = None
-    order_index: int | None = None
+    suggested_seconds: int | None = Field(default=None, ge=10, le=60)
+    order_index: int | None = Field(default=None, ge=0)
+
+    _text_nonempty = field_validator("text")(_strip_nonempty)
+    _translation_blank = field_validator("translation")(_strip_blank)
+    _audio_blank = field_validator("audio_url")(_strip_blank)
 
 
 @router.put("/questions/{question_id}", response_model=ScenarioQuestionPublic)
@@ -1070,6 +1216,10 @@ def update_question(
     if question is None:
         raise HTTPException(status_code=404, detail="Question not found")
     update = question_in.model_dump(exclude_unset=True)
+    # 非空字段不允许显式清空（band/text/order_index/suggested_seconds 传 null → 422）
+    _reject_null_non_nullable(
+        update, {"band", "text", "order_index", "suggested_seconds"}
+    )
     if "band" in update and update["band"] not in VALID_BANDS:
         raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
     if "suggested_seconds" in update and not 10 <= update["suggested_seconds"] <= 60:

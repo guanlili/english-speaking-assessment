@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Pencil, Plus, Trash2 } from "lucide-react"
+import { Pencil, Plus, Scissors, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { AdminService, type SentenceWithPassage } from "@/client"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
@@ -135,6 +135,15 @@ export function SentenceLibrary() {
 
       <NewSentenceCard
         passages={passages.map((p) => ({ id: p.id, title: p.title }))}
+        onCreated={invalidate}
+      />
+
+      <AutoSplitCard
+        passages={passages.map((p) => ({
+          id: p.id,
+          title: p.title,
+          sentenceCount: (p.sentences ?? []).length,
+        }))}
         onCreated={invalidate}
       />
 
@@ -349,6 +358,68 @@ export function SentenceLibrary() {
         }}
       />
     </div>
+  )
+}
+
+function AutoSplitCard({
+  passages,
+  onCreated,
+}: {
+  passages: Array<{ id: string; title: string; sentenceCount: number }>
+  onCreated: () => void
+}) {
+  const { showSuccessToast, showErrorToast } = useCustomToast()
+  const [passageId, setPassageId] = useState("")
+  const ready = passages.filter((p) => p.sentenceCount === 0)
+  const selected = ready.find((p) => p.id === passageId)
+
+  const split = useMutation({
+    mutationFn: () => AdminService.autoSplitSentences({ passageId }),
+    onSuccess: (data) => {
+      showSuccessToast(`已拆分出 ${data.created ?? 0} 句复述句`)
+      setPassageId("")
+      onCreated()
+    },
+    onError: (err: { body?: { detail?: string } }) =>
+      showErrorToast(err.body?.detail ?? "拆分失败"),
+  })
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">从篇目自动拆分复述句</CardTitle>
+        <CardDescription>
+          选一篇还没有复述句的朗读材料，按句切分正文、由短到长自动生成 3
+          句；已有复述句的篇目需先删除句子才能再拆分。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Select value={passageId} onValueChange={setPassageId}>
+          <SelectTrigger>
+            <SelectValue placeholder="选择篇目" />
+          </SelectTrigger>
+          <SelectContent>
+            {ready.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.title}
+              </SelectItem>
+            ))}
+            {ready.length === 0 && (
+              <SelectItem value="__none__" disabled>
+                暂无可拆分的篇目
+              </SelectItem>
+            )}
+          </SelectContent>
+        </Select>
+        <Button
+          disabled={!selected || split.isPending}
+          onClick={() => split.mutate()}
+        >
+          <Scissors />
+          自动拆分复述句
+        </Button>
+      </CardContent>
+    </Card>
   )
 }
 

@@ -1,4 +1,3 @@
-import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -47,8 +46,3 @@ def get_password_hash(password: str) -> str:
 
 # 学生账号统一默认密码（学校统一发放，学生登录后可自行修改）
 DEFAULT_STUDENT_PASSWORD = "brs123456"
-
-
-# 密码哈希摘要：导入去重与日志脱敏共用（不存明文）
-def fingerprint(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()[:12]

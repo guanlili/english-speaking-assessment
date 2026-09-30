@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, date, datetime
 
-from pydantic import EmailStr
+from pydantic import EmailStr, field_validator
 from sqlalchemy import JSON, Column, Date, DateTime, Index, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
 
@@ -125,6 +125,22 @@ class PassageCreate(PassageBase):
     slug: str | None = Field(default=None, max_length=100)
     unit_id: uuid.UUID | None = None
 
+    @field_validator("title")
+    @classmethod
+    def _title_nonempty(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("标题不能为空")
+        return stripped
+
+    @field_validator("text")
+    @classmethod
+    def _text_nonempty(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("正文不能为空")
+        return stripped
+
 
 # 学习单元（EIP 教材单元 → 学生端主题探索/学习路径）；顺序解锁 + 老师可全开
 class Unit(SQLModel, table=True):
@@ -151,12 +167,30 @@ class UnitCreate(SQLModel):
     topic: str = Field(max_length=100)
     is_active: bool = True
 
+    @field_validator("title")
+    @classmethod
+    def _title_nonempty(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("标题不能为空")
+        return stripped
+
 
 class UnitUpdate(SQLModel):
     order_index: int | None = None
     title: str | None = None
     topic: str | None = None
     is_active: bool | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _title_nonempty(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("标题不能为空")
+        return stripped
 
 
 # 听后复述句：属于篇目，由短到长排序（PRD §6：一轮 3 句）
@@ -443,51 +477,41 @@ class StudentPublic(SQLModel):
     user_id: uuid.UUID | None = None
 
 
-# 入班响应：登录态即身份，无独立凭证
-StudentJoined = StudentPublic
-
-
 # 一次练习会话：一个学生一天一轮（PRD §8.4：日期、当前档、做到哪一题）
 class PracticeSession(SQLModel, table=True):
     __tablename__ = "practice_session"
     __table_args__ = (
+        # 已发布练习轮：按 (student, date, mode, assignment_id) 唯一。
+        # assignment_id 是不可变锚（从不被 UPDATE SET NULL），内容删后 passage_id SET NULL
+        # 也不会造成唯一键冲突。
         Index(
-            "ix_practice_session_unique",
-            "student_id",
-            "session_date",
-            "passage_id",
-            "mode",
-            "assignment_id",
-            unique=True,
-            postgresql_where=text(
-                "passage_id IS NOT NULL AND assignment_id IS NOT NULL"
-            ),
-        ),
-        Index(
-            "ix_practice_session_unique_legacy_passage",
-            "student_id",
-            "session_date",
-            "passage_id",
-            "mode",
-            unique=True,
-            postgresql_where=text("passage_id IS NOT NULL AND assignment_id IS NULL"),
-        ),
-        Index(
-            "ix_practice_session_unique_null_passage",
+            "ix_practice_session_by_assignment",
             "student_id",
             "session_date",
             "mode",
             "assignment_id",
             unique=True,
-            postgresql_where=text("passage_id IS NULL AND assignment_id IS NOT NULL"),
+            postgresql_where=text("assignment_id IS NOT NULL"),
         ),
+        # 自主练习轮（无发布）：daily 模式下每个学生每天只开一条自主轮；
+        # 删篇导致 passage_id 变 NULL 时仍落在同一条（COALESCE 保证 NULL 不冲突）。
         Index(
-            "ix_practice_session_unique_null_passage_legacy",
+            "ix_practice_session_self_practice",
+            "student_id",
+            "session_date",
+            text("COALESCE(passage_id::text, '')"),
+            unique=True,
+            postgresql_where=text("mode = 'daily' AND assignment_id IS NULL"),
+        ),
+        # 主题探索轮：(student, date, mode, passage_id) 唯一（passage 必非 NULL）
+        Index(
+            "ix_practice_session_explore",
             "student_id",
             "session_date",
             "mode",
+            "passage_id",
             unique=True,
-            postgresql_where=text("passage_id IS NULL AND assignment_id IS NULL"),
+            postgresql_where=text("mode = 'explore' AND passage_id IS NOT NULL"),
         ),
     )
 

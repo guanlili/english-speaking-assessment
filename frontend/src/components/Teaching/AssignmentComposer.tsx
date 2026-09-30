@@ -8,11 +8,12 @@ import {
   MessagesSquare,
   Send,
 } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
   AdminService,
   type AssignmentInfo,
+  type AssignmentItemIn,
   ClassesService,
   type ClassroomExercisePublic,
   type PassageWithSentences,
@@ -255,6 +256,38 @@ function ComposerForm({
   )
   const scenarioQuestions = scenario?.questions ?? []
 
+  // 唯一题单：预览 / 数量摘要 / 提交请求共用同一份「按启用题型过滤后的题单」，
+  // 避免教师取消勾选某题型后，预览或提交仍带上该题型已选内容。
+  const planItems = useMemo(() => {
+    const items: AssignmentItemIn[] = []
+    if (types.reading) {
+      items.push(...selection.passages.map((id) => ({ type: "passage", id })))
+    }
+    if (types.repeat) {
+      items.push(...selection.sentences.map((id) => ({ type: "repeat", id })))
+    }
+    if (types.qa && selection.scenarioId) {
+      items.push(
+        ...scenarioQuestions.map((q) => ({ type: "question", id: q.id })),
+      )
+    }
+    return items
+  }, [types, selection, scenarioQuestions])
+
+  const planCounts = useMemo(
+    () => ({
+      reading: planItems.filter((i) => i.type === "passage").length,
+      repeat: planItems.filter((i) => i.type === "repeat").length,
+      qa: planItems.filter((i) => i.type === "question").length,
+    }),
+    [planItems],
+  )
+
+  // 预览只展示启用题型对应的已选内容
+  const previewPassages = types.reading ? selectedPassages : []
+  const previewSentences = types.repeat ? selectedSentences : []
+  const previewQuestions = types.qa ? scenarioQuestions : []
+
   const changed =
     JSON.stringify(types) !== JSON.stringify(initialTypes) ||
     JSON.stringify(selection) !== JSON.stringify(initialSelection) ||
@@ -267,19 +300,7 @@ function ComposerForm({
         requestBody: clear
           ? { items: [] }
           : {
-              items: [
-                ...selection.passages.map((id) => ({ type: "passage", id })),
-                ...selection.sentences.map((id) => ({ type: "repeat", id })),
-                ...(selection.scenarioId
-                  ? (
-                      scenarios.find((s) => s.id === selection.scenarioId)
-                        ?.questions ?? []
-                    ).map((q) => ({
-                      type: "question",
-                      id: q.id,
-                    }))
-                  : []),
-              ],
+              items: planItems,
               title: title.trim() || undefined,
             },
       }),
@@ -523,10 +544,11 @@ function ComposerForm({
           </p>
           <div className="my-5 space-y-1 border-y py-4 text-sm">
             <p className="font-medium">
-              {types.reading ? `朗读 ${selection.passages.length} 篇` : null}
-              {types.repeat ? `复述 ${selection.sentences.length} 句` : null}
-              {types.qa ? `问答 ${scenarioQuestions.length} 道` : null}
-              {!types.reading && !types.repeat && !types.qa && "尚未选择题型"}
+              {planCounts.reading > 0 ? `朗读 ${planCounts.reading} 篇` : null}
+              {planCounts.repeat > 0 ? `复述 ${planCounts.repeat} 句` : null}
+              {planCounts.qa > 0 ? `问答 ${planCounts.qa} 道` : null}
+              {planCounts.reading + planCounts.repeat + planCounts.qa === 0 &&
+                "尚未选择题型"}
             </p>
           </div>
           {problems.length ? (
@@ -598,12 +620,12 @@ function ComposerForm({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5">
-            {selectedPassages.map((p, index) => (
+            {previewPassages.map((p, index) => (
               <section key={p.id} className="rounded-xl border p-4">
                 <h3 className="font-semibold">
                   文章朗读{" "}
-                  {selectedPassages.length > 1
-                    ? `${index + 1}/${selectedPassages.length}`
+                  {previewPassages.length > 1
+                    ? `${index + 1}/${previewPassages.length}`
                     : ""}{" "}
                   · {p.title} · 建议 {p.suggested_seconds} 秒
                 </h3>
@@ -612,11 +634,11 @@ function ComposerForm({
                 </p>
               </section>
             ))}
-            {selectedSentences.length > 0 && (
+            {previewSentences.length > 0 && (
               <section className="rounded-xl border p-4">
                 <h3 className="font-semibold">听句复述</h3>
                 <ol className="mt-3 space-y-3">
-                  {selectedSentences.map((s, index) => (
+                  {previewSentences.map((s, index) => (
                     <li key={s.id} className="text-sm leading-6">
                       <p>
                         {index + 1}. {s.text}
@@ -633,10 +655,10 @@ function ComposerForm({
                 </ol>
               </section>
             )}
-            {scenarioQuestions.length > 0 && (
+            {previewQuestions.length > 0 && (
               <section className="rounded-xl border p-4">
                 <h3 className="font-semibold">模拟问答 · {scenario?.topic}</h3>
-                {scenarioQuestions.map((q) => (
+                {previewQuestions.map((q) => (
                   <p key={q.id} className="mt-3 text-sm leading-6">
                     {q.text}{" "}
                     <span className="text-muted-foreground">

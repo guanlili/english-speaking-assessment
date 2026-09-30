@@ -27,8 +27,8 @@ import {
   isStudentNotFound,
   loadStudent,
 } from "@/lib/classroom-student"
+import { readSavedExpressions } from "@/lib/favorites"
 import { EXPLAIN } from "@/lib/terms"
-import { safeLocalStorageGet } from "@/utils"
 
 export const Route = createFileRoute("/me/$code")({
   component: MyTrailPage,
@@ -80,10 +80,8 @@ function MyTrailPage() {
 
   if (student === null) return null
 
-  const savedExpressions = safeLocalStorageGet<string[]>(
-    "esa:saved-expressions",
-    [],
-  )
+  // 只读当前登录学生的收藏；旧的无归属收藏不再展示给任何登录者
+  const savedExpressions = readSavedExpressions(student)
 
   return (
     <StudentShell active="me">

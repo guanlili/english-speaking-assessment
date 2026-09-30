@@ -48,11 +48,16 @@ import {
 } from "@/components/ui/tooltip"
 import { APP_NAME } from "@/config"
 import { displayName, loadStudent } from "@/lib/classroom-student"
+import { savedExpressionsKey } from "@/lib/favorites"
 import { EXPLAIN } from "@/lib/terms"
 
 export const Route = createFileRoute("/p/$code/result")({
   component: RoundResultPage,
-  validateSearch: (search: Record<string, unknown>): { explore?: string } => {
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { explore?: string; session?: string } => {
+    // session：练习页在录音/完成时钉住的实际会话，结果绑定该轮而非当前活动计划
+    if (typeof search.session === "string") return { session: search.session }
     if (typeof search.explore === "string") return { explore: search.explore }
     return {}
   },
@@ -69,17 +74,19 @@ const ITEM_TYPE_LABELS: Record<string, string> = {
 
 function RoundResultPage() {
   const { code } = useParams({ from: "/p/$code/result" })
-  const { explore: exploreSessionId } = Route.useSearch()
+  const { explore: exploreSessionId, session: sessionParam } = Route.useSearch()
   const navigate = useNavigate({ from: "/p/$code/result" })
   const student = loadStudent(code)
+  // 结果绑定实际完成会话（练习页在录音/完成时传入的 session；探索轮兼容 explore）
+  const sessionId = sessionParam ?? exploreSessionId
 
   const todayQuery = useQuery({
-    queryKey: ["classroom", code, "today", student?.id, exploreSessionId],
+    queryKey: ["classroom", code, "today", student?.id, sessionId],
     queryFn: () =>
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
-        // 主题探索轮：结果必须属于该轮会话，而不是当日课堂计划
-        ...(exploreSessionId ? { sessionId: exploreSessionId } : {}),
+        // 主题探索轮/回看会话：结果必须属于该轮会话，而不是当日课堂计划
+        ...(sessionId ? { sessionId } : {}),
       }),
     enabled: student !== null,
     refetchInterval: (query) =>
@@ -108,7 +115,7 @@ function RoundResultPage() {
         params: { code },
         search: {
           next: true,
-          ...(exploreSessionId ? { explore: exploreSessionId } : {}),
+          ...(sessionId ? { session: sessionId } : {}),
         },
       })
     },
@@ -510,7 +517,13 @@ function RoundResultPage() {
               )}
               {item.type === "question" && (
                 <>
-                  <RubricBlock rubric={attempt.rubric} engine="" />
+                  <RubricBlock
+                    rubric={attempt.rubric}
+                    engine=""
+                    savedExpressionsKey={
+                      student ? savedExpressionsKey(student) : undefined
+                    }
+                  />
                   <VocabBlock vocab={attempt.vocab} />
                 </>
               )}
@@ -585,9 +598,7 @@ function RoundResultPage() {
                       params: { code },
                       search: {
                         focus: replay.item.id,
-                        ...(exploreSessionId
-                          ? { explore: exploreSessionId }
-                          : {}),
+                        ...(sessionId ? { session: sessionId } : {}),
                       },
                     })
                   }
@@ -610,7 +621,7 @@ function RoundResultPage() {
                   params: { code },
                   search: {
                     focus: weakest,
-                    ...(exploreSessionId ? { explore: exploreSessionId } : {}),
+                    ...(sessionId ? { session: sessionId } : {}),
                   },
                 })
               }
@@ -635,7 +646,7 @@ function RoundResultPage() {
             <Link
               to="/p/$code"
               params={{ code }}
-              search={exploreSessionId ? { explore: exploreSessionId } : {}}
+              search={sessionId ? { session: sessionId } : {}}
             >
               回练习页
               <ArrowRight />

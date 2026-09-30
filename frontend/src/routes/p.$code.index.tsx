@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   createFileRoute,
   Link,
+  useBlocker,
   useNavigate,
   useParams,
 } from "@tanstack/react-router"
@@ -45,12 +46,23 @@ export const Route = createFileRoute("/p/$code/")({
   component: ClassroomPracticePage,
   validateSearch: (
     search: Record<string, unknown>,
-  ): { focus?: string; next?: boolean; explore?: string } => {
+  ): {
+    focus?: string
+    next?: boolean
+    explore?: string
+    session?: string
+  } => {
     // 只序列化真值，避免 URL 出现 ?focus=undefined&next=false
-    const result: { focus?: string; next?: boolean; explore?: string } = {}
+    const result: {
+      focus?: string
+      next?: boolean
+      explore?: string
+      session?: string
+    } = {}
     if (typeof search.focus === "string") result.focus = search.focus
     if (search.next === true) result.next = true
     if (typeof search.explore === "string") result.explore = search.explore
+    if (typeof search.session === "string") result.session = search.session
     return result
   },
   head: () => ({
@@ -79,6 +91,7 @@ function ClassroomPracticePage() {
     focus: focusParam,
     next: nextFlag,
     explore: exploreSessionId,
+    session: sessionParam,
   } = Route.useSearch()
   const navigate = useNavigate({ from: "/p/$code/" })
   const queryClient = useQueryClient()
@@ -89,6 +102,11 @@ function ClassroomPracticePage() {
   )
   // 提交后钉住当前题，直到用户点「下一题」
   const [pinnedItemId, setPinnedItemId] = useState<string | null>(null)
+  // 活动会话边界：录音开始（或从结果页带回 session）时钉住本轮会话，
+  // 期间老师发布新计划也不会把旧反馈/旧题挂到新题；点「下一题」后解除。
+  const [pinnedSessionId, setPinnedSessionId] = useState<string | null>(
+    sessionParam ?? null,
+  )
   // 复述题「收起原文」练记忆（SpeakUp）
   const [hideText, setHideText] = useState(false)
   // 录音开始时钉住 item_id / session_id / 题型：录音期间老师切换指派不影响旧录音
@@ -98,14 +116,17 @@ function ClassroomPracticePage() {
   // 自动跳结果页的闩锁：每次挂载最多跳一次
   const navigatedRef = useRef(false)
 
+  // 有效会话：优先钉住的会话（录音/回看期间保持同一轮），其次探索轮
+  const sessionId = pinnedSessionId ?? exploreSessionId
+
   const todayQuery = useQuery({
     retry: 1,
     retryDelay: 500,
-    queryKey: ["classroom", code, "today", student?.id, exploreSessionId],
+    queryKey: ["classroom", code, "today", student?.id, sessionId],
     queryFn: () =>
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
-        ...(exploreSessionId ? { sessionId: exploreSessionId } : {}),
+        ...(sessionId ? { sessionId } : {}),
       }),
     enabled: student !== null,
     refetchInterval: (query) =>
@@ -134,14 +155,26 @@ function ClassroomPracticePage() {
     mutationFn: () =>
       ClassesService.readNextQuestion({
         code: code.toUpperCase(),
-        ...(plan?.session_id ? { sessionId: plan.session_id } : {}),
+        ...(sessionId ? { sessionId } : {}),
         ...(items.length ? { excludeIds: items.map((i) => i.id) } : {}),
       }),
     onSuccess: (data) => {
       if (data.question) {
-        setExtraQuestion(data.question as PlanItem)
+        // 显式契约转换：ScenarioQuestionPublic → PlanItem(type="question")，
+        // 不使用类型断言冒充数据转换。换来的题必须带 question 题型才能正确
+        // 展示/提交/进结果页，刷新后由后端从 attempt.item_snapshot 恢复。
+        const q = data.question
+        const extraItem: PlanItem = {
+          type: "question",
+          id: q.id,
+          text: q.text,
+          band: q.band,
+          audio_url: q.audio_url,
+          suggested_seconds: q.suggested_seconds,
+        }
+        setExtraQuestion(extraItem)
         queryClient.invalidateQueries({
-          queryKey: ["classroom", code, "today", student?.id],
+          queryKey: ["classroom", code, "today", student?.id, sessionId],
         })
       } else {
         toast.info("这个主题的题已练完", {
@@ -243,7 +276,9 @@ function ClassroomPracticePage() {
     },
   })
 
-  // 开始录音前钉住当前题 / 会话 / 题型 / 幂等键 / 凭证
+  // 开始录音前钉住当前题 / 会话 / 题型 / 幂等键 / 凭证；
+  // 同时钉住会话：录音→上传→反馈期间老师发布新计划，练习页仍保持本轮，
+  // 结果页也绑定这个实际完成的会话，不挂到新题新轮。
   const startRecording = () => {
     recordingTargetRef.current = {
       itemType:
@@ -252,6 +287,7 @@ function ClassroomPracticePage() {
       sessionId: plan?.session_id,
       idempotencyKey: crypto.randomUUID(),
     }
+    setPinnedSessionId(plan?.session_id ?? null)
     recorder.start()
   }
 
@@ -269,15 +305,34 @@ function ClassroomPracticePage() {
     }
   }
 
-  // 录音中离开：刷新/关闭浏览器前确认（录音未提交会被丢弃）
-  useEffect(() => {
-    if (recorder.status !== "recording") return
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-    }
-    window.addEventListener("beforeunload", handler)
-    return () => window.removeEventListener("beforeunload", handler)
-  }, [recorder.status])
+  // 录音/上传/失败待重传期间的离开保护（站内跳转 + 浏览器关闭/刷新）
+  const pendingBlockerActive =
+    recorder.status === "recording" ||
+    submitting ||
+    (submitError && Boolean(recorder.recording))
+  const blockerToastRef = useRef(false)
+  useBlocker({
+    shouldBlockFn: ({ current, next }) => {
+      if (!pendingBlockerActive) return false
+      // 同一课堂内练习页互相跳转不算离开（结果页 / 练习页 / 加入页保留原状）
+      if (current.pathname === next.pathname) return false
+      if (!blockerToastRef.current) {
+        blockerToastRef.current = true
+        toast.warning(
+          recorder.status === "recording"
+            ? "正在录音，先结束或确认录音后再离开"
+            : submitting
+              ? "录音正在上传，请稍候或完成后再离开"
+              : "录音上传失败，请先重传或重录",
+        )
+        window.setTimeout(() => {
+          blockerToastRef.current = false
+        }, 2000)
+      }
+      return true
+    },
+    enableBeforeUnload: () => pendingBlockerActive,
+  })
 
   useEffect(() => {
     if (submitError) {
@@ -306,13 +361,20 @@ function ClassroomPracticePage() {
   useEffect(() => {
     if (!attemptTerminal) return
     void queryClient.invalidateQueries({
-      queryKey: ["classroom", code, "today", student?.id],
+      queryKey: ["classroom", code, "today", student?.id, sessionId],
     })
     if (attemptFailed) {
       toast.error("这次没有评出来", { description: "可以再录一次" })
       return
     }
-  }, [attemptTerminal, attemptFailed, queryClient, code, student?.id])
+  }, [
+    attemptTerminal,
+    attemptFailed,
+    queryClient,
+    code,
+    student?.id,
+    sessionId,
+  ])
 
   // 全部完成后自动进入结果页统一展示（本次停留提交过 + 本地评分已结束 + 服务端计划全部完成）
   useEffect(() => {
@@ -323,9 +385,10 @@ function ClassroomPracticePage() {
     void navigate({
       to: "/p/$code/result",
       params: { code },
-      search: exploreSessionId ? { explore: exploreSessionId } : {},
+      // 结果页绑定实际完成会话（钉住的会话），老师发布新计划也不串轮
+      search: sessionId ? { session: sessionId } : {},
     })
-  }, [allDone, attemptStatus, attemptFailed, navigate, code, exploreSessionId])
+  }, [allDone, attemptStatus, attemptFailed, navigate, code, sessionId])
 
   if (student === null) return null
 
@@ -424,7 +487,7 @@ function ClassroomPracticePage() {
               <Link
                 to="/p/$code/result"
                 params={{ code }}
-                search={exploreSessionId ? { explore: exploreSessionId } : {}}
+                search={sessionId ? { session: sessionId } : {}}
               >
                 结果页
               </Link>
@@ -495,8 +558,10 @@ function ClassroomPracticePage() {
                 )}
 
                 {currentItem.type === "repeat" ? (
+                  // 听音状态按 session_id + item_id 隔离：会话变化时重建计数状态，
+                  // 避免同一道题在新会话里沿用旧会话的已听次数。
                   <LimitedListenButton
-                    key={currentItem.id}
+                    key={`${plan?.session_id ?? ""}:${currentItem.id}`}
                     code={code.toUpperCase()}
                     sessionId={plan?.session_id}
                     itemId={currentItem.id}
@@ -734,10 +799,12 @@ function ClassroomPracticePage() {
           </aside>
         </div>
 
+        {/* 反馈必须绑定实际作答的题型与题目：录音期间老师发布新计划后，
+            旧反馈不会挂到新题（attempt 自带 item_type / item_id）。 */}
         {attempt && attemptTerminal && (
           <FeedbackCard
             attempt={attempt}
-            itemType={currentItem?.type as "passage" | "repeat" | "question"}
+            itemType={attempt.item_type as "passage" | "repeat" | "question"}
             onRepractice={() => {
               // 主动重录：清提交标记，避免重置后 allDone 触发自动跳转结果页
               submittedRef.current = false
@@ -748,8 +815,12 @@ function ClassroomPracticePage() {
               !attemptFailed && (
                 <Button
                   onClick={() => {
+                    // 下一题：解除本轮会话/题目钉住，回到最新活动计划。
+                    // 已全部完成时保留会话钉住，让自动跳结果页仍绑定本轮会话。
+                    if (!allDone) setPinnedSessionId(null)
                     setPinnedItemId(null)
                     setFocusItemId(null)
+                    recordingTargetRef.current = null
                     recorderReset()
                     resetAttempt()
                   }}
@@ -770,7 +841,7 @@ function ClassroomPracticePage() {
             <Link
               to="/p/$code/result"
               params={{ code }}
-              search={exploreSessionId ? { explore: exploreSessionId } : {}}
+              search={sessionId ? { session: sessionId } : {}}
             >
               查看本轮结果
             </Link>

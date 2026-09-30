@@ -335,6 +335,21 @@ export type PassageSplitResult = {
     original_deactivated?: boolean;
 };
 
+/**
+ * 更新篇目请求：缺省不修改；translation/audio_url/unit_id 可 null 清空。
+ */
+export type PassageUpdate = {
+    title?: (string | null);
+    topic?: (string | null);
+    cefr_band?: (string | null);
+    text?: (string | null);
+    translation?: (string | null);
+    audio_url?: (string | null);
+    suggested_seconds?: (number | null);
+    is_active?: (boolean | null);
+    unit_id?: (string | null);
+};
+
 export type PassageWithSentences = {
     title: string;
     topic?: string;
@@ -406,6 +421,19 @@ export type QuestionBankOut = {
     suggested_seconds: number;
 };
 
+/**
+ * 新建问法请求：scenario_id 兼容旧客户端，以路径参数为准。
+ */
+export type QuestionCreate = {
+    scenario_id?: (string | null);
+    band?: string;
+    order_index?: number;
+    text: string;
+    translation?: (string | null);
+    audio_url?: (string | null);
+    suggested_seconds?: number;
+};
+
 export type QuestionUpdate = {
     band?: (string | null);
     text?: (string | null);
@@ -427,8 +455,10 @@ export type RepeatSentence = {
     created_at?: (string | null);
 };
 
-export type Scenario = {
-    id?: string;
+/**
+ * 新建情景请求：主题必填且非空。
+ */
+export type ScenarioCreate = {
     topic: string;
     is_active?: boolean;
 };
@@ -443,17 +473,6 @@ export type ScenarioOut = {
     questions: Array<ScenarioQuestionPublic>;
 };
 
-export type ScenarioQuestion = {
-    id?: string;
-    scenario_id: string;
-    band?: string;
-    order_index?: number;
-    text: string;
-    translation?: (string | null);
-    audio_url?: (string | null);
-    suggested_seconds?: number;
-};
-
 export type ScenarioQuestionPublic = {
     id: string;
     band: string;
@@ -465,6 +484,32 @@ export type ScenarioQuestionPublic = {
 export type ScenarioUpdate = {
     topic?: (string | null);
     is_active?: (boolean | null);
+};
+
+/**
+ * 新建复述句请求（独立创建或挂篇目）。
+ */
+export type SentenceCreate = {
+    passage_id?: (string | null);
+    order_index?: number;
+    text: string;
+    translation?: (string | null);
+    audio_url?: (string | null);
+    suggested_seconds?: number;
+    replay_limit?: number;
+};
+
+/**
+ * 更新复述句请求：缺省不修改；passage_id/translation/audio_url 可 null 清空。
+ */
+export type SentenceUpdate = {
+    passage_id?: (string | null);
+    order_index?: (number | null);
+    text?: (string | null);
+    translation?: (string | null);
+    audio_url?: (string | null);
+    suggested_seconds?: (number | null);
+    replay_limit?: (number | null);
 };
 
 /**
@@ -691,7 +736,7 @@ export type AdminCreatePassageResponse = (PassagePublic);
 
 export type AdminUpdatePassageData = {
     passageId: string;
-    requestBody: PassageCreate;
+    requestBody: PassageUpdate;
 };
 
 export type AdminUpdatePassageResponse = (PassagePublic);
@@ -706,7 +751,7 @@ export type AdminDeletePassageResponse = ({
 
 export type AdminCreateSentenceData = {
     passageId: string;
-    requestBody: RepeatSentence;
+    requestBody: SentenceCreate;
 };
 
 export type AdminCreateSentenceResponse = (RepeatSentence);
@@ -714,13 +759,13 @@ export type AdminCreateSentenceResponse = (RepeatSentence);
 export type AdminListSentencesFlatResponse = (Array<SentenceWithPassage>);
 
 export type AdminCreateSentenceStandaloneData = {
-    requestBody: RepeatSentence;
+    requestBody: SentenceCreate;
 };
 
 export type AdminCreateSentenceStandaloneResponse = (RepeatSentence);
 
 export type AdminUpdateSentenceData = {
-    requestBody: RepeatSentence;
+    requestBody: SentenceUpdate;
     sentenceId: string;
 };
 
@@ -737,7 +782,7 @@ export type AdminDeleteSentenceResponse = ({
 export type AdminListScenariosResponse = (Array<ScenarioOut>);
 
 export type AdminCreateScenarioData = {
-    requestBody: Scenario;
+    requestBody: ScenarioCreate;
 };
 
 export type AdminCreateScenarioResponse = (unknown);
@@ -758,7 +803,7 @@ export type AdminUpdateScenarioData = {
 export type AdminUpdateScenarioResponse = (unknown);
 
 export type AdminCreateQuestionData = {
-    requestBody: ScenarioQuestion;
+    requestBody: QuestionCreate;
     scenarioId: string;
 };
 

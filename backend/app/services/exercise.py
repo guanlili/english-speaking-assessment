@@ -8,7 +8,6 @@ import uuid
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import and_, update
 from sqlmodel import col, select
 
 from app.models import (
@@ -17,7 +16,6 @@ from app.models import (
     Classroom,
     ClassroomExercise,
     Passage,
-    PracticeSession,
     RepeatSentence,
     Scenario,
     ScenarioQuestion,
@@ -173,7 +171,6 @@ def publish_exercise(
 
 def archive_current_exercise(session: Any, classroom: Classroom) -> None:
     # 懒加载避免与 routes.classes 的循环导入（该日历函数真源在路由模块）
-    from app.api.routes.classes import _today_in_practice_tz
 
     previous_id = classroom.current_exercise_id
     if previous_id is None:
@@ -184,18 +181,9 @@ def archive_current_exercise(session: Any, classroom: Classroom) -> None:
         previous.archived_at = get_datetime_utc()
         session.add(previous)
     classroom.current_exercise_id = None
-    # 恢复自主练习时解绑当日已开始的会话：否则学生会一直读到旧快照，
-    # "恢复自主"对当天开练的学生不生效。
-
-    session.execute(
-        update(PracticeSession)
-        .where(
-            and_(
-                PracticeSession.classroom_id == classroom.id,  # ty: ignore[invalid-argument-type]
-                PracticeSession.session_date == _today_in_practice_tz(),  # ty: ignore[invalid-argument-type]
-                PracticeSession.mode == "daily",  # ty: ignore[invalid-argument-type]
-                PracticeSession.assignment_id == previous_id,  # ty: ignore[invalid-argument-type]
-            )
-        )
-        .values(assignment_id=None)
-    )
+    # 不清空任何历史会话的 assignment_id（不可变锚）：
+    # - 旧会话始终绑发布时快照，发布历史回查靠它
+    # - current_exercise_id = None 即入口切换信号，today/board 定位器会走
+    #   assignment_id IS NULL 的自主练习会话（同日新开一轮）
+    # - 并发唯一性由 ix_practice_session_by_assignment /
+    #   自主轮 (student, date, mode) 部分唯一索引保证

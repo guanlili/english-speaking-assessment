@@ -81,12 +81,18 @@ def db() -> Generator[Session]:
     # checkfirst 保证重复运行安全
     SQLModel.metadata.create_all(engine)
 
-    # 让应用请求（TestClient → get_db 依赖）与 fixture 使用同一个测试库
-    def override_get_db() -> Generator[Session]:
+    # 全局 engine 覆盖：worker、startup_recovery、get_db 依赖全部使用测试库
+    # （core.db.__getattr__ 动态返回覆盖引擎，避免任何模块级 import 拿到开发库）
+    from app.core.db import set_engine
+
+    set_engine(engine)
+
+    # 关闭生命周期中由 worker 模块可能启动的全局线程池（测试结束时不残留）
+    def _override_get_db() -> Generator[Session]:
         with Session(engine) as session:
             yield session
 
-    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_readiness_dsn] = lambda: test_uri.replace(
         "postgresql+psycopg://", "postgresql://", 1
     )
@@ -111,6 +117,16 @@ def db() -> Generator[Session]:
 
     app.dependency_overrides.pop(get_db, None)
     app.dependency_overrides.pop(get_readiness_dsn, None)
+
+    # 关闭 worker/feedback 线程池（防止测试进程结束前线程仍在跑 / 持连接）
+    try:
+        from app.scoring import worker as _worker_mod
+
+        _worker_mod.shutdown_executor()
+    except Exception:  # pragma: no cover - 清理阶段兜底
+        pass
+
+    set_engine(None)
     engine.dispose()
 
 
