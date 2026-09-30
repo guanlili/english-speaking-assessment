@@ -59,21 +59,60 @@ def resolve_assigned_items(
     """
     if not classroom.assigned_items:
         return None
+    # 按题型分组的 id 集合：三次 in_() 批量查询替代逐题 session.get
+    # （该函数在 /today、/board、/next-question 学生端热路径上，指派上限 100 题）
+    ids_by_type: dict[str, set[str]] = {
+        "passage": set(),
+        "repeat": set(),
+        "question": set(),
+    }
+    for spec in classroom.assigned_items:
+        kind = spec.get("type")
+        item_id = spec.get("id")
+        if kind in ids_by_type and item_id:
+            ids_by_type[kind].add(str(item_id))
+
+    passages_by_id = {}
+    if ids_by_type["passage"]:
+        for obj in session.exec(
+            select(Passage).where(col(Passage.id).in_(list(ids_by_type["passage"])))
+        ).all():
+            passages_by_id[str(obj.id)] = obj
+    sentences_by_id = {}
+    if ids_by_type["repeat"]:
+        for obj in session.exec(
+            select(RepeatSentence).where(
+                col(RepeatSentence.id).in_(list(ids_by_type["repeat"]))
+            )
+        ).all():
+            sentences_by_id[str(obj.id)] = obj
+    questions_by_id = {}
+    if ids_by_type["question"]:
+        for obj in session.exec(
+            select(ScenarioQuestion).where(
+                col(ScenarioQuestion.id).in_(list(ids_by_type["question"]))
+            )
+        ).all():
+            questions_by_id[str(obj.id)] = obj
+
     passages: list[Passage] = []
     sentences: list[RepeatSentence] = []
     questions: list[ScenarioQuestion] = []
     for spec in classroom.assigned_items:
         kind, item_id = spec.get("type"), spec.get("id")
+        if item_id is None:
+            continue
+        key = str(item_id)
         if kind == "passage":
-            obj = session.get(Passage, uuid.UUID(item_id))
+            obj = passages_by_id.get(key)
             if obj is not None and obj.is_active:
                 passages.append(obj)
         elif kind == "repeat":
-            obj = session.get(RepeatSentence, uuid.UUID(item_id))
+            obj = sentences_by_id.get(key)
             if obj is not None:
                 sentences.append(obj)
         elif kind == "question":
-            obj = session.get(ScenarioQuestion, uuid.UUID(item_id))
+            obj = questions_by_id.get(key)
             if obj is not None:
                 questions.append(obj)
     return passages, sentences, questions

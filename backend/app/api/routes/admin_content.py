@@ -15,6 +15,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import field_validator
 from sqlalchemy import func
 from sqlmodel import Field, Session, SQLModel, col, select
@@ -741,13 +742,15 @@ async def import_wordlist_csv(
     file: UploadFile,
 ) -> Any:
     """导入学校分级词表 CSV（表头 lemma,band；整体替换内置词表）。"""
+    # async 路由里同步 DB/磁盘操作必须卸载到线程池，否则整段逐行 DELETE/INSERT
+    # 期间事件循环被占死，全服务不响应任何请求
     max_bytes = settings.MAX_WORDLIST_CSV_MB * 1024 * 1024
-    raw = b""
+    raw = bytearray()
     while True:
         chunk = await file.read(64 * 1024)
         if not chunk:
             break
-        raw += chunk
+        raw.extend(chunk)
         if len(raw) > max_bytes:
             raise HTTPException(
                 status_code=413,
@@ -774,7 +777,8 @@ async def import_wordlist_csv(
     for lineno, row in enumerate(reader, start=2):
         lemma = (row.get("lemma") or "").strip().lower()
         band = (row.get("band") or "").strip().upper()
-        if not lemma or band not in VALID_BANDS:
+        # 超长词条到 commit 才会炸出 500，行级拦截给干净的 422
+        if not lemma or len(lemma) > 64 or band not in VALID_BANDS:
             invalid_rows.append(lineno)
             continue
         if lemma in seen:
@@ -788,16 +792,22 @@ async def import_wordlist_csv(
             detail=f"没有有效行（示例：friendly,B1）。无效行号：{invalid_rows[:10]}",
         )
 
+    await run_in_threadpool(_apply_wordlist_import, session, staged)
+
+    return WordlistImportResult(imported=len(staged), invalid_rows=invalid_rows[:20])
+
+
+def _apply_wordlist_import(session: Session, staged: list[WordlistEntry]) -> None:
     # 整体替换（学校词表是权威来源）。单事务内先删后插：
     # flush 让 DELETE 先执行（避开 lemma 唯一索引），中途失败整体回滚，不会清空词表
+    # 仓库风格 select + 实例 delete（ty 对批量 delete() 语句报类型错）；
+    # 已在线程池执行，逐行 DELETE 不再阻塞事件循环
     for entry in session.exec(select(WordlistEntry)).all():
         session.delete(entry)
     session.flush()
     for entry in staged:
         session.add(entry)
     session.commit()
-
-    return WordlistImportResult(imported=len(staged), invalid_rows=invalid_rows[:20])
 
 
 # ── 学习单元（关卡）─────────────────────────────────────────────────
@@ -1253,17 +1263,18 @@ async def upload_standard_audio(_admin: TeacherUserDep, file: UploadFile) -> Any
     if suffix not in {".mp3", ".wav", ".m4a", ".ogg", ".webm"}:
         raise HTTPException(status_code=422, detail="仅支持 mp3/wav/m4a/ogg/webm")
     max_bytes = settings.MAX_AUDIO_MB * 1024 * 1024
-    data = b""
+    data = bytearray()
     while True:
         chunk = await file.read(256 * 1024)
         if not chunk:
             break
-        data += chunk
+        data.extend(chunk)
         if len(data) > max_bytes:
             raise HTTPException(
                 status_code=413, detail=f"音频超过 {settings.MAX_AUDIO_MB}MB 上限"
             )
     if not data:
         raise HTTPException(status_code=422, detail="音频为空")
-    path = save_content_audio(data, suffix)
+    # 同步写盘（上限 20MB）放线程池，避免阻塞事件循环
+    path = await run_in_threadpool(save_content_audio, bytes(data), suffix)
     return AudioUrlResult(audio_url=content_audio_url(path.name))

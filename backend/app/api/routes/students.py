@@ -91,6 +91,35 @@ def import_students(
     """
     classroom = _get_classroom_in_scope(session, current_user, body.classroom_id)
     result = StudentImportResult(created=0, merged=0, skipped=0, rows=[])
+
+    # 批量预取，替代逐行点查（50 人名单原来要 ~100 次查询）；
+    # 密码哈希昂贵（argon2 数十毫秒/次），同一默认密码只哈希一次
+    hashed_default_password = get_password_hash(DEFAULT_STUDENT_PASSWORD)
+    wanted_usernames = {line.username.strip() for line in body.lines}
+    existing_usernames = set(
+        session.exec(
+            select(User.username).where(
+                col(User.username).in_(wanted_usernames)  # type: ignore[operator]
+            )
+        ).all()
+    )
+    legacy_by_name: dict[str, Student] = {}
+    wanted_names = {
+        line.full_name.strip() for line in body.lines if line.full_name.strip()
+    }
+    if wanted_names:
+        for legacy in session.exec(
+            select(Student)
+            .where(
+                Student.classroom_id == classroom.id,  # type: ignore[arg-type]
+                col(Student.display_name).in_(wanted_names),  # type: ignore[operator]
+                col(Student.user_id).is_(None),
+            )
+            # 无后缀优先；同后缀名按后缀升序保证确定性
+            .order_by(col(Student.suffix).is_not(None), col(Student.suffix))
+        ).all():
+            legacy_by_name.setdefault(legacy.display_name, legacy)
+
     seen_usernames: set[str] = set()
 
     for line in body.lines:
@@ -103,18 +132,14 @@ def import_students(
             row.error = "学号不能包含空格等空白字符"
         elif username in seen_usernames:
             row.error = "名单内学号重复"
-        elif (
-            session.exec(
-                select(User).where(User.username == username)  # type: ignore[arg-type]
-            ).first()
-            is not None
-        ):
+        elif username in existing_usernames:
             row.error = "该学号已存在（已导入过或与现有账号冲突）"
         if row.error is not None:
             result.skipped += 1
             result.rows.append(row)
             continue
         seen_usernames.add(username)
+        existing_usernames.add(username)
 
         user = User(
             email=None,
@@ -124,22 +149,14 @@ def import_students(
             role="student",
             username=username,
             must_change_password=False,
-            hashed_password=get_password_hash(DEFAULT_STUDENT_PASSWORD),
+            hashed_password=hashed_default_password,
         )
         session.add(user)
         session.flush()  # 拿 user.id 供档案绑定/查询
 
-        # 历史匿名档案匹配：同课堂同名（优先无后缀）→ 绑定；否则新建档案
-        legacy = session.exec(
-            select(Student)
-            .where(
-                Student.classroom_id == classroom.id,  # type: ignore[arg-type]
-                Student.display_name == full_name,  # type: ignore[arg-type]
-                col(Student.user_id).is_(None),
-            )
-            .order_by(col(Student.suffix).is_not(None))  # 无后缀优先
-            .limit(1)
-        ).first()
+        # 历史匿名档案匹配：同课堂同名（优先无后缀）→ 绑定；否则新建档案。
+        # 前一行绑定后从预取表摘除，同名不同学号不会重复绑同一档案
+        legacy = legacy_by_name.pop(full_name, None) if full_name else None
         if legacy is not None:
             legacy.user_id = user.id
             session.add(legacy)

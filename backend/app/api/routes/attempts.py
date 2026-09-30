@@ -212,26 +212,27 @@ def create_attempt_upload(
     if duration_s < MIN_DURATION_S:
         raise HTTPException(status_code=422, detail="录音太短（不足 1 秒），请再录一次")
 
-    # 限量读取：分段读入并即时检查大小上限
+    # 限量读取：分段读入并即时检查大小上限（bytearray 增量拼接，避免 O(n²)）
     max_bytes = settings.MAX_AUDIO_MB * 1024 * 1024
-    data = b""
+    data = bytearray()
     while True:
         chunk = audio.file.read(_CHUNK_SIZE)
         if not chunk:
             break
-        data += chunk
+        data.extend(chunk)
         if len(data) > max_bytes:
             raise HTTPException(
                 status_code=413, detail=f"音频超过 {settings.MAX_AUDIO_MB}MB 上限"
             )
     if not data:
         raise HTTPException(status_code=422, detail="音频为空，请再录一次")
+    audio_bytes = bytes(data)
 
     # 真实格式/音轨/时长校验：ffprobe，不信客户端上报值
     mime_type = audio.content_type or "audio/webm"
     base_mime = mime_type.split(";")[0].strip().lower()
     suffix = _mime_to_suffix(base_mime)
-    probe = probe_audio(data, suffix)
+    probe = probe_audio(audio_bytes, suffix)
     if probe is None:
         raise HTTPException(status_code=422, detail="音频文件无效或损坏，请重新录音")
     if not probe.has_audio:
@@ -260,7 +261,7 @@ def create_attempt_upload(
             detail="评分队列繁忙，请稍后重试",
         )
 
-    audio_path = save_audio_file(data, mime_type)
+    audio_path = save_audio_file(audio_bytes, mime_type)
     attempt = Attempt(
         item_type=item_type,
         item_id=item_id,

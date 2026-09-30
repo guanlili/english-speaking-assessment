@@ -1923,21 +1923,31 @@ def read_exercise_results(
             # 同学生多轮（跨天重发）取最新
             sessions_by_student[ps.student_id] = ps
 
+    # 一次批量预取所有会话的作答（替代逐学生查询的 N+1；按 created_at
+    # 顺序遍历让后到的作答覆盖 latest，与原逐生查询语义一致）
+    latest_by_session: dict[uuid.UUID, dict[uuid.UUID, Attempt]] = {}
+    if sessions_by_student:
+        for attempt in session.exec(
+            select(Attempt)
+            .where(
+                col(Attempt.session_id).in_(  # type: ignore[operator]
+                    [ps.id for ps in sessions_by_student.values()]
+                )
+            )
+            .order_by(col(Attempt.created_at))
+        ).all():
+            sid = attempt.session_id
+            if sid is None:  # in_ 过滤后理论不可达，类型收窄用
+                continue
+            latest_by_session.setdefault(sid, {})[attempt.item_id] = attempt
+
     out: list[ExerciseStudentResult] = []
     for student in students:
         ps = sessions_by_student.get(student.id)
         latest: dict[uuid.UUID, Attempt] = {}
         has_pending = False
         if ps is not None:
-            for attempt in session.exec(
-                select(Attempt)
-                .where(
-                    Attempt.student_id == student.id,  # type: ignore[arg-type]
-                    Attempt.session_id == ps.id,  # type: ignore[arg-type]
-                )
-                .order_by(col(Attempt.created_at))
-            ).all():
-                latest[attempt.item_id] = attempt
+            latest = latest_by_session.get(ps.id, {})
             has_pending = any(
                 a.status in (AttemptStatus.QUEUED, AttemptStatus.SCORING)
                 for a in latest.values()
