@@ -244,17 +244,6 @@ def test_path_and_board_expose_assignment(
     client.put("/api/v1/classes/DEMO01/assignment", json={"unit_id": None})
 
 
-def test_list_units_public_with_code(client: TestClient) -> None:
-    resp = client.get("/api/v1/classes/DEMO01/units")
-    assert resp.status_code == 200
-    titles = [u["title"] for u in resp.json()]
-    assert any("Unit 1" in t for t in titles)
-    assert client.get("/api/v1/classes/NOPE00/units").status_code == 404
-
-
-# ── 主题探索（自由练习）─────────────────────────────────────────────
-
-
 def test_explore_session_lifecycle(
     client: TestClient,
     inline_scoring: None,

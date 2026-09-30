@@ -15,7 +15,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import func, text
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import SQLModel, col, select
 
@@ -68,7 +68,6 @@ from app.models import (
     TrailSession,
     Unit,
     User,
-    get_datetime_utc,
 )
 from app.scoring.bands import BAND_ORDER, adjust_band
 from app.scoring.gamification import (
@@ -76,6 +75,7 @@ from app.scoring.gamification import (
     settle_session,
     student_badges,
 )
+from app.services import exercise as exercise_service
 
 logger = logging.getLogger(__name__)
 
@@ -735,7 +735,7 @@ def read_today_plan(
         expected_items = len(items)
     else:
         # 非发布路径：单元指派或自主练习
-        item_objects = _assigned_item_objects(session, classroom)
+        item_objects = exercise_service.resolve_assigned_items(session, classroom)
         if item_objects is not None and practice_session.mode == "daily":
             # 按题指派但未走快照（兼容旧路径，或尚未发布快照的旧课堂）
             item_passages, item_sentences, item_questions = item_objects
@@ -978,7 +978,7 @@ def read_next_question(
     # assigned_items 与发布快照同步：老师可只指派 1 道题，学生换题从情景题库取新题，
     # 排掉已指派 + 本轮已做（含发布全情景题时即用尽）。
     if session_id is None and classroom.assigned_items:
-        item_objects = _assigned_item_objects(session, classroom)
+        item_objects = exercise_service.resolve_assigned_items(session, classroom)
         if item_objects is not None:
             _, _, item_questions = item_objects
             if item_questions:
@@ -1123,7 +1123,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             snapshot_refs[AttemptItemType.QUESTION],
         )
     else:
-        board_item_objects = _assigned_item_objects(session, classroom)
+        board_item_objects = exercise_service.resolve_assigned_items(session, classroom)
     assigned_unit_board = _assignment_unit(session, classroom)
     include_reading = include_repeat = False
     if board_item_objects is not None:
@@ -1852,39 +1852,6 @@ def record_listen(
     return ListenResult(listen_used=used, replay_limit=replay_limit)
 
 
-@router.get("/{code}/units", response_model=list[AssignmentInfo])
-def list_units_for_class(
-    session: SessionDep, code: str, current_user: CurrentUser
-) -> Any:
-    """课堂的单元列表（老师面板指派选择器用；需要教师身份）。"""
-    classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
-    units = session.exec(
-        select(Unit).where(Unit.is_active).order_by(col(Unit.order_index))
-    ).all()
-    counts = dict(
-        session.exec(
-            select(Passage.unit_id, func.count())
-            .where(
-                Passage.is_active,
-                Passage.unit_id.is_not(None),  # type: ignore
-            )
-            .group_by(Passage.unit_id)  # type: ignore
-        ).all()
-    )
-    return [
-        AssignmentInfo(
-            unit_id=u.id,
-            title=u.title,
-            passage_count=counts.get(u.id, 0),
-            assign_reading=classroom.assign_reading,
-            assign_repeat=classroom.assign_repeat,
-            assign_qa=classroom.assign_qa,
-        )
-        for u in units
-    ]
-
-
 @router.get("/{code}/exercises", response_model=list[ClassroomExercisePublic])
 def list_classroom_exercises(
     session: SessionDep, code: str, current_user: CurrentUser
@@ -1913,6 +1880,113 @@ def list_classroom_exercises(
     ]
 
 
+class ExerciseStudentResult(SQLModel):
+    """单次练习按学生的结果行（发布历史结果页）。"""
+
+    student_id: uuid.UUID
+    display_name: str
+    suffix: str | None = None
+    done_count: int
+    total_count: int
+    has_pending: bool
+    items: list[BoardItem]
+
+
+@router.get(
+    "/{code}/exercises/{exercise_id}/results",
+    response_model=list[ExerciseStudentResult],
+)
+def read_exercise_results(
+    session: SessionDep,
+    code: str,
+    exercise_id: uuid.UUID,
+    current_user: CurrentUser,
+) -> Any:
+    """按发布快照回看每次练习的学生结果（历史结果页）。
+
+    数据源 = 绑定该快照的学生会话上的作答；未开始的学生按快照题位
+    全 missing 展示，老师能看出谁没做。
+    """
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    exercise = session.get(ClassroomExercise, exercise_id)
+    if exercise is None or exercise.classroom_id != classroom.id:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+
+    students = session.exec(
+        select(Student)
+        .where(Student.classroom_id == classroom.id)
+        .order_by(col(Student.display_name))
+    ).all()
+    sessions_by_student: dict[uuid.UUID, PracticeSession] = {}
+    if students:
+        for ps in session.exec(
+            select(PracticeSession).where(
+                PracticeSession.classroom_id == classroom.id,
+                PracticeSession.assignment_id == exercise.id,
+            )
+        ).all():
+            # 同学生多轮（跨天重发）取最新
+            sessions_by_student[ps.student_id] = ps
+
+    out: list[ExerciseStudentResult] = []
+    for student in students:
+        ps = sessions_by_student.get(student.id)
+        latest: dict[uuid.UUID, Attempt] = {}
+        has_pending = False
+        if ps is not None:
+            for attempt in session.exec(
+                select(Attempt)
+                .where(
+                    Attempt.student_id == student.id,  # type: ignore[arg-type]
+                    Attempt.session_id == ps.id,  # type: ignore[arg-type]
+                )
+                .order_by(col(Attempt.created_at))
+            ).all():
+                latest[attempt.item_id] = attempt
+            has_pending = any(
+                a.status in (AttemptStatus.QUEUED, AttemptStatus.SCORING)
+                for a in latest.values()
+            )
+        items: list[BoardItem] = []
+        done = 0
+        for spec in exercise.snapshot_items:
+            item_id = uuid.UUID(str(spec["id"]))
+            attempt = latest.get(item_id)
+            if attempt is None:
+                items.append(
+                    BoardItem(
+                        item_id=item_id,
+                        type=str(spec["type"]),
+                        status="missing",
+                    )
+                )
+                continue
+            if attempt.status == AttemptStatus.DONE:
+                done += 1
+            items.append(
+                BoardItem(
+                    item_id=item_id,
+                    type=str(spec["type"]),
+                    status=attempt.status,
+                    overall=attempt.overall,
+                    attempt_id=attempt.id,
+                )
+            )
+        out.append(
+            ExerciseStudentResult(
+                student_id=student.id,
+                display_name=student.display_name,
+                suffix=student.suffix,
+                done_count=done,
+                total_count=len(exercise.snapshot_items),
+                has_pending=has_pending,
+                items=items,
+            )
+        )
+    return out
+
+
 @router.put("/{code}/assignment", response_model=AssignmentInfo | None)
 def set_assignment(
     session: SessionDep,
@@ -1937,14 +2011,15 @@ def set_assignment(
 
     if body.items is not None:
         if body.items:
-            _validate_assignment_items(session, body.items)
+            exercise_service.validate_assignment_items(session, body.items)
             snapshots = [
-                _snapshot_item(session, item.type, item.id) for item in body.items
+                exercise_service.build_snapshot_item(session, item.type, item.id)
+                for item in body.items
             ]
-            _publish_exercise(
+            exercise_service.publish_exercise(
                 session=session,
                 classroom=classroom,
-                current_user=current_user,
+                created_by=current_user.id,
                 snapshots=snapshots,
                 title=body.title,
             )
@@ -1953,7 +2028,7 @@ def set_assignment(
             # 换题用它排除已指派题目、从情景题库取未做过的新题
             session.commit()
             return None
-        _archive_current_exercise(session, classroom)
+        exercise_service.archive_current_exercise(session, classroom)
         classroom.assigned_items = None
         classroom.current_unit_id = None
         session.add(classroom)
@@ -1964,7 +2039,7 @@ def set_assignment(
     if "unit_id" in body_update:
         if body_update["unit_id"] is None:
             classroom.current_unit_id = None
-            _archive_current_exercise(session, classroom)
+            exercise_service.archive_current_exercise(session, classroom)
             classroom.assigned_items = None
             session.add(classroom)
             session.commit()
@@ -1984,7 +2059,10 @@ def set_assignment(
         snapshots: list[dict[str, object]] = []
         if classroom.assign_reading is True:
             snapshots.extend(
-                _snapshot_item(session, AttemptItemType.PASSAGE, p.id) for p in passages
+                exercise_service.build_snapshot_item(
+                    session, AttemptItemType.PASSAGE, p.id
+                )
+                for p in passages
             )
         if classroom.assign_repeat is not False:
             for passage in passages:
@@ -1994,7 +2072,9 @@ def set_assignment(
                     .order_by(col(RepeatSentence.order_index))
                 ).all()
                 snapshots.extend(
-                    _snapshot_item(session, AttemptItemType.REPEAT, sentence.id)
+                    exercise_service.build_snapshot_item(
+                        session, AttemptItemType.REPEAT, sentence.id
+                    )
                     for sentence in sentences
                 )
         if classroom.assign_qa is not False:
@@ -2005,13 +2085,15 @@ def set_assignment(
                 .order_by(col(ScenarioQuestion.order_index))
             ).all()
             snapshots.extend(
-                _snapshot_item(session, AttemptItemType.QUESTION, question.id)
+                exercise_service.build_snapshot_item(
+                    session, AttemptItemType.QUESTION, question.id
+                )
                 for question in questions
             )
-        _publish_exercise(
+        exercise_service.publish_exercise(
             session=session,
             classroom=classroom,
-            current_user=current_user,
+            created_by=current_user.id,
             snapshots=snapshots,
             title=body.title,
         )
@@ -2029,169 +2111,6 @@ def set_assignment(
     if current is None:
         return None
     return AssignmentInfo(unit_id=current.id, title=current.title)
-
-
-def _validate_assignment_items(session: Any, items: list[AssignmentItemIn]) -> None:
-    """按题指派引用校验：题型合法且对象存在（朗读要求启用）。"""
-    if len(items) > 100:
-        raise HTTPException(status_code=422, detail="一次发布最多包含 100 道题")
-    seen: set[tuple[str, uuid.UUID]] = set()
-    for item in items:
-        if item.type not in {"passage", "repeat", "question"}:
-            raise HTTPException(status_code=422, detail=f"未知题型：{item.type}")
-        if (item.type, item.id) in seen:
-            raise HTTPException(status_code=422, detail="指派清单内有重复题目")
-        seen.add((item.type, item.id))
-        if item.type == "passage":
-            obj = session.get(Passage, item.id)
-            if obj is None or not obj.is_active:
-                raise HTTPException(status_code=404, detail="朗读篇目不存在或已停用")
-        elif item.type == "repeat":
-            if session.get(RepeatSentence, item.id) is None:
-                raise HTTPException(status_code=404, detail="复述句不存在")
-        else:
-            question = session.get(ScenarioQuestion, item.id)
-            if question is None:
-                raise HTTPException(status_code=404, detail="问答题不存在")
-            scenario = session.get(Scenario, question.scenario_id)
-            if scenario is None or not scenario.is_active:
-                raise HTTPException(status_code=422, detail="问答题所属主题已停用")
-
-
-def _assigned_item_objects(
-    session: Any, classroom: Classroom
-) -> tuple[list[Passage], list[RepeatSentence], list[ScenarioQuestion]] | None:
-    """解析按题指派：返回（朗读篇目 / 复述句 / 问答题），对象缺失的自动跳过。
-
-    无按题指派时返回 None（走单元指派路径）。
-    """
-    if not classroom.assigned_items:
-        return None
-    passages: list[Passage] = []
-    sentences: list[RepeatSentence] = []
-    questions: list[ScenarioQuestion] = []
-    for spec in classroom.assigned_items:
-        kind, item_id = spec.get("type"), spec.get("id")
-        if kind == "passage":
-            obj = session.get(Passage, uuid.UUID(item_id))
-            if obj is not None and obj.is_active:
-                passages.append(obj)
-        elif kind == "repeat":
-            obj = session.get(RepeatSentence, uuid.UUID(item_id))
-            if obj is not None:
-                sentences.append(obj)
-        elif kind == "question":
-            obj = session.get(ScenarioQuestion, uuid.UUID(item_id))
-            if obj is not None:
-                questions.append(obj)
-    return passages, sentences, questions
-
-
-def _snapshot_item(
-    session: Any, item_type: str, item_id: uuid.UUID
-) -> dict[str, object]:
-    """把题目当前内容复制进发布快照。题库后续编辑不影响已发布练习。"""
-    if item_type == AttemptItemType.PASSAGE:
-        item = session.get(Passage, item_id)
-        if item is None or not item.is_active:
-            raise HTTPException(status_code=404, detail="朗读篇目不存在或已停用")
-        return {
-            "type": item_type,
-            "id": str(item.id),
-            "text": item.text,
-            "translation": item.translation,
-            "audio_url": item.audio_url,
-            "suggested_seconds": item.suggested_seconds,
-            "title": item.title,
-            "topic": item.topic,
-        }
-    if item_type == AttemptItemType.REPEAT:
-        item = session.get(RepeatSentence, item_id)
-        if item is None:
-            raise HTTPException(status_code=404, detail="复述句不存在")
-        return {
-            "type": item_type,
-            "id": str(item.id),
-            "text": item.text,
-            "translation": item.translation,
-            "audio_url": item.audio_url,
-            "suggested_seconds": item.suggested_seconds,
-            "replay_limit": item.replay_limit,
-        }
-    item = session.get(ScenarioQuestion, item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="问答题不存在")
-    return {
-        "type": item_type,
-        "id": str(item.id),
-        "text": item.text,
-        "translation": item.translation,
-        "audio_url": item.audio_url,
-        "suggested_seconds": item.suggested_seconds,
-        "band": item.band,
-        "scenario_id": str(item.scenario_id),
-    }
-
-
-def _next_exercise_version(session: Any, classroom_id: uuid.UUID) -> int:
-    latest = session.exec(
-        select(ClassroomExercise.version_no)
-        .where(ClassroomExercise.classroom_id == classroom_id)
-        .order_by(col(ClassroomExercise.version_no).desc())
-    ).first()
-    return (latest or 0) + 1
-
-
-def _publish_exercise(
-    session: Any,
-    classroom: Classroom,
-    current_user: User,
-    snapshots: list[dict[str, object]],
-    title: str | None = None,
-) -> ClassroomExercise:
-    if not snapshots:
-        raise HTTPException(status_code=422, detail="练习至少需要包含一道题目")
-    exercise_title = (title or "课堂练习").strip()
-    if len(exercise_title) > 255:
-        raise HTTPException(status_code=422, detail="练习名称不能超过 255 个字符")
-    # 同一课堂并发发布时锁住课堂行，避免版本号重复或互相覆盖当前版本。
-    session.exec(
-        select(Classroom).where(Classroom.id == classroom.id).with_for_update()
-    ).first()
-    exercise = ClassroomExercise(
-        classroom_id=classroom.id,
-        version_no=_next_exercise_version(session, classroom.id),
-        title=exercise_title or "课堂练习",
-        status="published",
-        snapshot_items=snapshots,
-        created_by=current_user.id,
-    )
-    session.add(exercise)
-    session.flush()
-    _archive_current_exercise(session, classroom)
-    classroom.current_exercise_id = exercise.id
-    classroom.assigned_items = [
-        {"type": str(item["type"]), "id": str(item["id"])} for item in snapshots
-    ]
-    session.add(classroom)
-    return exercise
-
-
-def _archive_current_exercise(session: Any, classroom: Classroom) -> None:
-    previous_id = classroom.current_exercise_id
-    if previous_id is None:
-        return
-    previous = session.get(ClassroomExercise, previous_id)
-    if previous is not None and previous.status == "published":
-        previous.status = "archived"
-        previous.archived_at = get_datetime_utc()
-        session.add(previous)
-    classroom.current_exercise_id = None
-    # 重要：不清空任何历史会话的 assignment_id。
-    # - 旧会话始终绑定发布时的快照，回看旧轮能看到正确题单（验收：清除指派后回看旧轮）
-    # - current_exercise_id = None 本身就是入口切换信号，today/board 会走 assignment_id IS NULL 的日常会话
-    # - 需要避免 SET NULL 后 (student, date, passage_id, mode, NULL) 重复，通过专门的唯一索引处理
-    #   （archive 时不在此 UPDATE 里删除历史记录）
 
 
 class ExploreRequest(SQLModel):

@@ -90,7 +90,7 @@ def test_classroom_code_grants_no_teacher_power(
 
     with anonymous(client):
         assert client.get(f"/api/v1/classes/{code}/board").status_code == 401
-        assert client.get(f"/api/v1/classes/{code}/units").status_code == 401
+        assert client.get(f"/api/v1/classes/{code}/board").status_code == 401
         assert (
             client.put(
                 f"/api/v1/classes/{code}/assignment",
@@ -107,7 +107,7 @@ def test_classroom_code_grants_no_teacher_power(
         )
         assert (
             client.get(
-                f"/api/v1/classes/{code}/units", headers=student["headers"]
+                f"/api/v1/classes/{code}/board", headers=student["headers"]
             ).status_code
             == 403
         )

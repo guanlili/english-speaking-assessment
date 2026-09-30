@@ -18,6 +18,7 @@ import type { BoardStudent } from "@/client"
 import { ApiError, ClassesService } from "@/client"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { AssignmentComposer } from "@/components/Teaching/AssignmentComposer"
+import { ExerciseHistory } from "@/components/Teaching/ExerciseHistory"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -300,6 +301,9 @@ function TeacherBoardPage() {
             <TabsTrigger value="results" className="px-6">
               学生结果
             </TabsTrigger>
+            <TabsTrigger value="history" className="px-6">
+              发布历史
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="prepare">
             <AssignmentComposer
@@ -516,6 +520,9 @@ function TeacherBoardPage() {
                 </p>
               </CardContent>
             </Card>
+          </TabsContent>
+          <TabsContent value="history">
+            <ExerciseHistory code={code} />
           </TabsContent>
         </Tabs>
         <p className="pb-6 text-center text-xs text-muted-foreground">

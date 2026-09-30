@@ -170,7 +170,7 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">文章朗读</h1>
         <p className="text-muted-foreground">
-          录入文章或段落，学生朗读并提交录音，系统提供参考反馈。
+          录入文章或段落，学生朗读并提交录音，系统提供参考反馈。听句复述请到「听句复述」题库。
         </p>
       </div>
 
@@ -645,6 +645,12 @@ function PassageCard({
           <p className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">
             {passage.text}
           </p>
+          {(passage.sentences ?? []).length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              本篇挂有 {(passage.sentences ?? []).length}{" "}
+              句复述句，请在「听句复述」题库中管理。
+            </p>
+          )}
         </CardContent>
       )}
 

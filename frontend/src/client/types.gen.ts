@@ -225,6 +225,19 @@ export type DraftQuestionOut = {
     suggested_seconds: number;
 };
 
+/**
+ * 单次练习按学生的结果行（发布历史结果页）。
+ */
+export type ExerciseStudentResult = {
+    student_id: string;
+    display_name: string;
+    suffix?: (string | null);
+    done_count: number;
+    total_count: number;
+    has_pending: boolean;
+    items: Array<BoardItem>;
+};
+
 export type ExploreRequest = {
     unit_id: string;
 };
@@ -1012,17 +1025,18 @@ export type ClassesRecordListenData = {
 
 export type ClassesRecordListenResponse = (ListenResult);
 
-export type ClassesListUnitsForClassData = {
-    code: string;
-};
-
-export type ClassesListUnitsForClassResponse = (Array<AssignmentInfo>);
-
 export type ClassesListClassroomExercisesData = {
     code: string;
 };
 
 export type ClassesListClassroomExercisesResponse = (Array<ClassroomExercisePublic>);
+
+export type ClassesReadExerciseResultsData = {
+    code: string;
+    exerciseId: string;
+};
+
+export type ClassesReadExerciseResultsResponse = (Array<ExerciseStudentResult>);
 
 export type ClassesSetAssignmentData = {
     code: string;
