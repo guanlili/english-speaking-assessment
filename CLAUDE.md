@@ -107,6 +107,18 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 uv run bash scripts/tests-start.sh
 - **后端 API 错误文案**：`detail` 是稳定标识（前端 `main.tsx` 有按文案分流的 401 处理逻辑，**不得随意改措辞**）；面向用户的错误提示一律在前端映射成双语展示，不直接透出 detail。后端返回值的枚举/状态值（如 `status: "done"`）永不做翻译。
 - **不做**：URL 按语言分路由（`/en/...`）；服务端语言协商。一个前端包、客户端切换即可。
 
+## 三端自适应准则（平台级，2026-10-01 起）
+
+平台必须支持电脑 / 手机 / 平板三端，**iPad 是学生上课主力设备**。新页面与改动都要在 390 / 820 / 1180 三档宽度下检查无横向溢出（`tests/e2e/responsive.spec.ts` 已入 CI）。
+
+- **表单控件字号 ≥16px（全断点）**：原生 input/select/textarea 必须 `text-base`——iOS Safari 聚焦小于 16px 的控件会整页自动放大且失焦不还原。禁止用 `maximum-scale=1` 禁缩放来绕过（无障碍红线）。
+- **触控目标**：高频操作 ≥44px，低频至少 40px；相邻的破坏性操作拉开间距。`icon-sm` 已调整为 size-10。
+- **表格**：统一走 `ui/table.tsx`（自带 overflow-x-auto，不会撑破手机屏）；列多的宽表在 `<sm` 屏加「横向滑动」提示（`t.$code.index.tsx` 有范例）。
+- **视口高度**用 `svh/dvh`，不用 `vh`（iOS 工具栏收放导致跳动）。
+- **交互不得仅 hover 可达**（触屏无 hover）；hover 只用于装饰性反馈。
+- **Dialog 滚动**依赖 `ui/dialog.tsx` 模板（dvh 口径 + overflow-y-auto + 小屏按钮纵向堆叠），业务弹窗不要再套自己的 `max-h-[xxvh]`。
+- 学生端壳（StudentShell）<768 走底部 tab + 安全区，≥768 走侧栏；教师端侧栏 <768 走抽屉——断点行为已定型，新页面挂在对应壳下自动获得。
+
 ## 技术规范
 
 详见 `AI_RULES.md`。

@@ -750,7 +750,7 @@ function ComposerForm({
         open={previewOpen}
         onOpenChange={(open) => !publish.isPending && setPreviewOpen(open)}
       >
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
               {t({ zh: "练习预览", en: "Practice Preview" })}

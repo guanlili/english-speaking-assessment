@@ -67,7 +67,7 @@ function MyTrailPage() {
     <StudentShell active="me">
       <div className="flex flex-col gap-6">
         {trailQuery.data && (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             <Card>
               <CardContent className="py-4">
                 <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -237,8 +237,8 @@ function MyTrailPage() {
                     onClick={() => setGrowthTab(v)}
                     className={
                       growthTab === v
-                        ? "rounded-lg bg-card px-3 py-1.5 text-xs font-semibold shadow-sm"
-                        : "rounded-lg px-3 py-1.5 text-xs text-muted-foreground"
+                        ? "rounded-lg bg-card min-h-9 px-3 py-1.5 text-xs font-semibold shadow-sm"
+                        : "rounded-lg min-h-9 px-3 py-1.5 text-xs text-muted-foreground"
                     }
                   >
                     {label}
@@ -254,8 +254,8 @@ function MyTrailPage() {
                       onClick={() => setPeriod(n)}
                       className={
                         period === n
-                          ? "rounded-lg bg-card px-3 py-1.5 text-xs font-semibold shadow-sm"
-                          : "rounded-lg px-3 py-1.5 text-xs text-muted-foreground"
+                          ? "rounded-lg bg-card min-h-9 px-3 py-1.5 text-xs font-semibold shadow-sm"
+                          : "rounded-lg min-h-9 px-3 py-1.5 text-xs text-muted-foreground"
                       }
                     >
                       {t({ zh: `近 ${n} 天`, en: `Last ${n} days` })}

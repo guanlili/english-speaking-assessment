@@ -25,6 +25,15 @@ Follow these guidelines to ensure code stability, consistency, and maintainabili
 
 ## 2. Coding Conventions
 
+### 三端自适应（必须）
+
+桌面/手机/平板（iPad 为主力学生设备）三端可用（CLAUDE.md「三端自适应准则」为权威说明）：
+
+- 原生表单控件字号全断点 `text-base`（≥16px，防 iOS 聚焦放大）
+- 触控目标高频 ≥44px / 低频 ≥40px；操作不得仅 hover 可达
+- 表格走 `ui/table.tsx` + 宽表加滑动提示；高度用 svh/dvh
+- 新页面在 390/820/1180 三档宽度自查无横向溢出
+
 ### 双语（Bilingual UI，必须）
 
 平台有外教使用，所有用户可见文案必须中英双语（CLAUDE.md「双语准则」为权威说明）：

@@ -226,6 +226,12 @@ function ExerciseResults({
                 en: `Items published for "${exercise.title}" (${exercise.item_count} items)`,
               })}
             </CardTitle>
+            <p className="mt-1 block text-xs text-muted-foreground sm:hidden">
+              {t({
+                zh: "横向滑动表格，可以查看完整内容。",
+                en: "Swipe the table sideways to see everything.",
+              })}
+            </p>
           </CardHeader>
           <CardContent>
             <Table>
