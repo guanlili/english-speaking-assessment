@@ -188,6 +188,12 @@ function ClassroomsAdmin() {
               zh: "按创建时间排序；授权教师决定谁能看到这个班的名单和录音。",
               en: "Sorted by creation time; the authorized teacher controls who can see this class's roster and recordings.",
             })}
+            <span className="mt-1 block sm:hidden">
+              {t({
+                zh: "横向滑动表格，可以查看完整内容。",
+                en: "Swipe the table sideways to see everything.",
+              })}
+            </span>
           </CardDescription>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             {t({
@@ -302,8 +308,12 @@ function ClassroomsAdmin() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2 text-sm">
+                        <label
+                          htmlFor={`unlock-all-${c.code}`}
+                          className="flex min-h-9 cursor-pointer items-center gap-2 text-sm"
+                        >
                           <Checkbox
+                            id={`unlock-all-${c.code}`}
                             aria-label={t({
                               zh: `课堂 ${c.code}：一键全开`,
                               en: `Classroom ${c.code}: unlock all`,
@@ -319,7 +329,7 @@ function ClassroomsAdmin() {
                           {(c.unlock_all ?? false)
                             ? t({ zh: "一键全开", en: "Unlock All" })
                             : t({ zh: "顺序解锁", en: "Sequential" })}
-                        </div>
+                        </label>
                       </TableCell>
                       <TableCell>
                         {c.is_active ? (

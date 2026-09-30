@@ -156,7 +156,7 @@ export function RubricBlock({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-xs"
+              className="text-xs"
               disabled={!savedExpressionsKey}
               onClick={() => {
                 if (!savedExpressionsKey) return

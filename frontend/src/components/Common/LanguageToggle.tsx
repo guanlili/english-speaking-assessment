@@ -29,7 +29,7 @@ export function LanguageToggle({ className }: { className?: string }) {
           aria-pressed={lang === choice.value}
           onClick={() => setLang(choice.value)}
           className={cn(
-            "h-6.5 min-w-8 rounded-full px-2 transition-colors hover:text-foreground",
+            "h-7 min-w-9 rounded-full px-2 transition-colors hover:text-foreground",
             lang === choice.value
               ? "bg-foreground text-background"
               : "text-muted-foreground",

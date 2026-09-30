@@ -148,7 +148,7 @@ function ExplorePage() {
               en: "Find a topic you like",
             })}
             aria-label={t({ zh: "搜索主题", en: "Search topics" })}
-            className="ml-auto h-9 rounded-full border border-border bg-card px-4 text-xs"
+            className="ml-auto h-9 rounded-full border border-border bg-card px-4 text-base"
           />
         </div>
 

@@ -332,13 +332,13 @@ function TeacherBoardPage() {
           className="gap-6"
         >
           <TabsList className="h-11">
-            <TabsTrigger value="prepare" className="px-6">
+            <TabsTrigger value="prepare" className="px-4 sm:px-6">
               {t({ zh: "练习安排", en: "Assign Practice" })}
             </TabsTrigger>
-            <TabsTrigger value="results" className="px-6">
+            <TabsTrigger value="results" className="px-4 sm:px-6">
               {t({ zh: "学生结果", en: "Student Results" })}
             </TabsTrigger>
-            <TabsTrigger value="history" className="px-6">
+            <TabsTrigger value="history" className="px-4 sm:px-6">
               {t({ zh: "发布历史", en: "Publish History" })}
             </TabsTrigger>
           </TabsList>
@@ -468,7 +468,7 @@ function TeacherBoardPage() {
                       zh: "练习状态筛选",
                       en: "Filter by practice status",
                     })}
-                    className="h-11 rounded-xl border border-input bg-card px-3 text-sm text-foreground transition-colors hover:border-primary/35"
+                    className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground transition-colors hover:border-primary/35"
                   >
                     {Object.entries(STATUS_LABELS).map(([v, label]) => (
                       <option key={v} value={v}>

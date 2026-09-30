@@ -137,7 +137,7 @@ export default function LimitedListenButton({
         id={`listen-rate-${itemId}`}
         value={rate}
         onChange={(e) => setRate(e.target.value)}
-        className="h-9 rounded-lg border border-border bg-card px-2 text-xs text-muted-foreground"
+        className="h-9 rounded-lg border border-border bg-card px-2 text-base text-muted-foreground"
       >
         {TTS_RATE_OPTIONS.map((opt) => (
           <option key={opt.value} value={opt.value}>

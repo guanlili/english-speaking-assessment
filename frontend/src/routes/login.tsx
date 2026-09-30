@@ -240,6 +240,9 @@ function DemoEntry() {
     mutationFn: (_role: "teacher" | "admin") => LoginService.loginDemo(),
     onSuccess: (data, role) => {
       localStorage.setItem("access_token", data.access_token)
+      // 演示登录走的是超管 token：必须同步角色缓存，否则之前有学生
+      // 登录过的浏览器会被教师路由的 student 守卫误重定向到加入页
+      localStorage.setItem("esa:role", "admin")
       window.location.href =
         role === "teacher" ? "/t/DEMO01" : "/admin/passages"
     },

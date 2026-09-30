@@ -548,7 +548,7 @@ function EditPassageDialog({
         if (!next) onClose()
       }}
     >
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t({ zh: "编辑篇目", en: "Edit Passage" })}</DialogTitle>
           <DialogDescription>
