@@ -647,7 +647,8 @@ function PassageCard({
           </p>
           {(passage.sentences ?? []).length > 0 && (
             <p className="text-xs text-muted-foreground">
-              本篇挂有 {(passage.sentences ?? []).length} 句复述句，请在「听句复述」题库中管理。
+              本篇挂有 {(passage.sentences ?? []).length}{" "}
+              句复述句，请在「听句复述」题库中管理。
             </p>
           )}
         </CardContent>
@@ -665,7 +666,6 @@ function PassageCard({
           await splitPassage.mutateAsync()
         }}
       />
-
     </Card>
   )
 }
