@@ -14,12 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-
-const ITEM_TYPE_LABELS: Record<string, string> = {
-  passage: "朗读",
-  repeat: "复述",
-  question: "问答",
-}
+import { downloadCsv } from "@/lib/csv"
+import { ITEM_TYPE_LABELS } from "@/lib/terms"
 
 /** 发布历史：每次发布的练习（快照）列表 + 按次结果回看与导出。 */
 export function ExerciseHistory({ code }: { code: string }) {
@@ -132,35 +128,26 @@ function ExerciseResults({
   const exportCsv = (rows: ExerciseStudentResult[]) => {
     // 每题一列：分数或未做
     const itemColumns = rows[0]?.items.map((_, idx) => `第${idx + 1}题`) ?? []
-    const lines = [
-      ["姓名", "完成", "总题数", ...itemColumns].join(","),
-      ...rows.map((row) =>
-        [
+    downloadCsv(
+      [
+        ["姓名", "完成", "总题数", ...itemColumns],
+        ...rows.map((row) => [
           row.suffix ? `${row.display_name}·${row.suffix}` : row.display_name,
-          String(row.done_count),
-          String(row.total_count),
+          row.done_count,
+          row.total_count,
           ...row.items.map((item) =>
             item.status === "done"
-              ? String(item.overall ?? "-")
+              ? (item.overall ?? "-")
               : item.status === "missing"
                 ? "未做"
                 : item.status === "failed"
                   ? "未评出"
                   : "评分中",
           ),
-        ].join(","),
-      ),
-    ]
-    const csv = `\uFEFF${lines.join("\r\n")}`
-    const url = URL.createObjectURL(
-      new Blob([csv], { type: "text/csv;charset=utf-8" }),
+        ]),
+      ],
+      `练习v${exercise.version_no}-${exercise.title}.csv`,
     )
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `练习v${exercise.version_no}-${exercise.title}.csv`
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
   }
 
   return (

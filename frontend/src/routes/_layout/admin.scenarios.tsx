@@ -31,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
+import { randomId } from "@/utils"
 
 export const Route = createFileRoute("/_layout/admin/scenarios")({
   component: ScenariosAdmin,
@@ -221,7 +222,7 @@ function ScenarioCard({
     onSuccess: (data) => {
       setDrafts(
         (data ?? []).map((d) => ({
-          id: crypto.randomUUID(),
+          id: randomId(),
           text: d.text ?? "",
           seconds: d.suggested_seconds ?? 30,
         })),

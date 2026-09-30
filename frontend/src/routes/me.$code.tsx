@@ -1,12 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
-import {
-  createFileRoute,
-  Link,
-  useNavigate,
-  useParams,
-} from "@tanstack/react-router"
+import { createFileRoute, Link, useParams } from "@tanstack/react-router"
 import { BookOpen, Flame, Mic, Sparkles, Star, Trophy } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { ClassesService } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
 import StudentShell from "@/components/Practice/StudentShell"
@@ -21,12 +16,8 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { APP_NAME } from "@/config"
-import {
-  clearStudent,
-  displayName,
-  isStudentNotFound,
-  loadStudent,
-} from "@/lib/classroom-student"
+import { useStudentGuard } from "@/hooks/useStudentGuard"
+import { displayName, loadStudent } from "@/lib/classroom-student"
 import { readSavedExpressions } from "@/lib/favorites"
 import { EXPLAIN } from "@/lib/terms"
 
@@ -39,14 +30,7 @@ export const Route = createFileRoute("/me/$code")({
 
 function MyTrailPage() {
   const { code } = useParams({ from: "/me/$code" })
-  const navigate = useNavigate({ from: "/me/$code" })
   const student = loadStudent(code)
-
-  useEffect(() => {
-    if (student === null) {
-      void navigate({ to: "/j/$code", params: { code } })
-    }
-  }, [student, code, navigate])
 
   const [growthTab, setGrowthTab] = useState<"trail" | "saved">("trail")
   const [period, setPeriod] = useState(30)
@@ -70,13 +54,7 @@ function MyTrailPage() {
     enabled: student !== null,
   })
 
-  // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
-  useEffect(() => {
-    if (trailQuery.isError && isStudentNotFound(trailQuery.error)) {
-      clearStudent(code)
-      void navigate({ to: "/j/$code", params: { code } })
-    }
-  }, [trailQuery.isError, trailQuery.error, code, navigate])
+  useStudentGuard(code, student, trailQuery)
 
   if (student === null) return null
 

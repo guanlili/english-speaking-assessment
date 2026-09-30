@@ -39,3 +39,10 @@ export const EXPLAIN = {
     "完成特定练习目标时获得（如首次开口、坚持 3 天等），只在「我的成长」展示。",
   score: "参考分由 AI 语音评测生成，用于指出改进方向，不是考试成绩或官方等级。",
 } as const
+
+/** 题型 → 展示名（学生端/教师端/结果页/发布历史共用，防文案分叉）。 */
+export const ITEM_TYPE_LABELS: Record<string, string> = {
+  passage: TERMS.typeReading,
+  repeat: TERMS.typeRepeat,
+  question: TERMS.typeQa,
+}

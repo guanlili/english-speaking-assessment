@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router"
 import { ArrowRight, Clock, Compass, MessageCircle } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import type { PathUnit } from "@/client"
 import { ClassesService } from "@/client"
@@ -18,11 +18,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { APP_NAME } from "@/config"
-import {
-  clearStudent,
-  isStudentNotFound,
-  loadStudent,
-} from "@/lib/classroom-student"
+import { useStudentGuard } from "@/hooks/useStudentGuard"
+import { loadStudent } from "@/lib/classroom-student"
 
 export const Route = createFileRoute("/explore/$code")({
   component: ExplorePage,
@@ -36,12 +33,6 @@ function ExplorePage() {
   const [selected, setSelected] = useState<PathUnit | null>(null)
   const [statusFilter, setStatusFilter] = useState("all")
   const [query, setQuery] = useState("")
-
-  useEffect(() => {
-    if (student === null) {
-      void navigate({ to: "/j/$code", params: { code } })
-    }
-  }, [student, code, navigate])
 
   const pathQuery = useQuery({
     retry: 1,
@@ -69,13 +60,7 @@ function ExplorePage() {
     })
   }, [pathQuery.data, statusFilter, query])
 
-  // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
-  useEffect(() => {
-    if (pathQuery.isError && isStudentNotFound(pathQuery.error)) {
-      clearStudent(code)
-      void navigate({ to: "/j/$code", params: { code } })
-    }
-  }, [pathQuery.isError, pathQuery.error, code, navigate])
+  useStudentGuard(code, student, pathQuery)
 
   const exploreMutation = useMutation({
     mutationFn: (unitId: string) =>
@@ -144,6 +129,20 @@ function ExplorePage() {
 
         {pathQuery.isPending ? (
           <p className="py-10 text-center text-muted-foreground">正在加载…</p>
+        ) : pathQuery.isError ? (
+          // 加载失败必须与"没有内容"区分开：网络错误提示重试，而不是误导学生去找老师
+          <Card>
+            <CardContent className="flex flex-col items-center gap-3 py-10 text-center text-muted-foreground">
+              主题列表加载失败，请检查网络后重试。
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void pathQuery.refetch()}
+              >
+                重试
+              </Button>
+            </CardContent>
+          </Card>
         ) : units.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center text-muted-foreground">

@@ -49,7 +49,7 @@ import {
 import { APP_NAME } from "@/config"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import { savedExpressionsKey } from "@/lib/favorites"
-import { EXPLAIN } from "@/lib/terms"
+import { EXPLAIN, ITEM_TYPE_LABELS } from "@/lib/terms"
 
 export const Route = createFileRoute("/p/$code/result")({
   component: RoundResultPage,
@@ -65,12 +65,6 @@ export const Route = createFileRoute("/p/$code/result")({
     meta: [{ title: `本轮结果 - ${APP_NAME}` }],
   }),
 })
-
-const ITEM_TYPE_LABELS: Record<string, string> = {
-  passage: "文章朗读",
-  repeat: "听句复述",
-  question: "情景问答",
-}
 
 function RoundResultPage() {
   const { code } = useParams({ from: "/p/$code/result" })

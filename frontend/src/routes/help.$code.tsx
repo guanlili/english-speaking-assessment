@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/card"
 import { APP_NAME } from "@/config"
 import { EXPLAIN } from "@/lib/terms"
+import { speakEnglish } from "@/lib/tts"
 
 export const Route = createFileRoute("/help/$code")({
   component: HelpPage,
@@ -55,20 +56,14 @@ function HelpPage() {
   const [micError, setMicError] = useState<string | null>(null)
 
   const testSpeaker = () => {
-    const synth = window.speechSynthesis
-    if (!synth) {
-      setSpeakerOk(false)
-      return
-    }
-    synth.cancel()
-    const utterance = new SpeechSynthesisUtterance(
-      "Hello! Can you hear me? If you can hear this, your speaker works.",
-    )
-    utterance.lang = "en-US"
-    utterance.onend = () => setSpeakerOk(true)
-    utterance.onerror = () => setSpeakerOk(false)
     setSpeakerOk(null)
-    synth.speak(utterance)
+    const utterance = speakEnglish(
+      "Hello! Can you hear me? If you can hear this, your speaker works.",
+      { onEnd: () => setSpeakerOk(true), onError: () => setSpeakerOk(false) },
+    )
+    if (utterance === null) {
+      setSpeakerOk(false)
+    }
   }
 
   const testMic = async () => {

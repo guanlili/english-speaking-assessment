@@ -7,7 +7,7 @@ import {
   Headphones,
   LogOut,
 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { toast } from "sonner"
 import { ClassesService } from "@/client"
 import StudentShell from "@/components/Practice/StudentShell"
@@ -20,12 +20,8 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { APP_NAME } from "@/config"
-import {
-  clearStudent,
-  displayName,
-  isStudentNotFound,
-  loadStudent,
-} from "@/lib/classroom-student"
+import { useStudentGuard } from "@/hooks/useStudentGuard"
+import { clearStudent, displayName, loadStudent } from "@/lib/classroom-student"
 
 export const Route = createFileRoute("/classroom/$code")({
   component: ClassroomPage,
@@ -50,12 +46,7 @@ function ClassroomPage() {
     staleTime: 60_000,
   })
 
-  useEffect(() => {
-    if (todayQuery.isError && isStudentNotFound(todayQuery.error)) {
-      clearStudent(code)
-      void navigate({ to: "/j/$code", params: { code } })
-    }
-  }, [todayQuery.isError, todayQuery.error, code, navigate])
+  useStudentGuard(code, student, todayQuery)
 
   const copyCode = async () => {
     try {

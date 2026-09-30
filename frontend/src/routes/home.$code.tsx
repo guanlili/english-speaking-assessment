@@ -33,14 +33,14 @@ import {
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
+import { useStudentGuard } from "@/hooks/useStudentGuard"
 import {
-  clearStudent,
   displayName,
-  isStudentNotFound,
   loadStudent,
   readWeekGoal,
   writeWeekGoal,
 } from "@/lib/classroom-student"
+import { speakEnglish } from "@/lib/tts"
 
 export const Route = createFileRoute("/home/$code")({
   component: HomePage,
@@ -62,12 +62,6 @@ function HomePage() {
   const navigate = useNavigate({ from: "/home/$code" })
   const student = loadStudent(code)
 
-  useEffect(() => {
-    if (student === null) {
-      void navigate({ to: "/j/$code", params: { code } })
-    }
-  }, [student, code, navigate])
-
   const [goalPicker, setGoalPicker] = useState(false)
 
   const todayQuery = useQuery({
@@ -82,12 +76,7 @@ function HomePage() {
   })
 
   // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
-  useEffect(() => {
-    if (todayQuery.isError && isStudentNotFound(todayQuery.error)) {
-      clearStudent(code)
-      void navigate({ to: "/j/$code", params: { code } })
-    }
-  }, [todayQuery.isError, todayQuery.error, code, navigate])
+  useStudentGuard(code, student, todayQuery)
 
   // 组件卸载时停止语音合成
   useEffect(() => {
@@ -560,12 +549,7 @@ function HomePage() {
                   size="icon-sm"
                   aria-label="朗读今日金句"
                   onClick={() => {
-                    const synth = window.speechSynthesis
-                    if (!synth) return
-                    synth.cancel()
-                    const u = new SpeechSynthesisUtterance(quote.en)
-                    u.lang = "en-US"
-                    synth.speak(u)
+                    speakEnglish(quote.en)
                   }}
                 >
                   <Volume2 />
