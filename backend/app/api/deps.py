@@ -65,6 +65,13 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
             detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # token 绑定签发时的密码哈希指纹：改密/重置后旧 token 失效（含不带 pwd 声明的旧格式 token）
+    if token_data.pwd != security.password_fingerprint(user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="登录凭证已失效，请重新登录",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Inactive user")
     return user
@@ -125,6 +132,9 @@ def get_optional_current_user(
         return None
     user = session.get(User, token_data.sub)
     if user is None or not user.is_active:
+        return None
+    # 改密后的旧 token 同样按无效处理（与 get_current_user 一致，只是静默降级为匿名）
+    if token_data.pwd != security.password_fingerprint(user.hashed_password):
         return None
     return user
 

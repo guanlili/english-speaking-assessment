@@ -380,7 +380,9 @@ def test_scoring_failure_preserves_attempt(
     )
     attempt = resp.json()
     assert attempt["status"] == "failed"
-    assert "引擎不可用" in attempt["error"]
+    # error 只暴露通用文案，不泄漏引擎异常原文（可能含上游 endpoint/配额细节）
+    assert "评分服务暂时不可用" in attempt["error"]
+    assert "引擎不可用" not in attempt["error"]
 
     row = db.get(Attempt, uuid.UUID(attempt["id"]))
     assert row is not None and Path(row.audio_path).exists()

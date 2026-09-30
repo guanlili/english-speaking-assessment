@@ -25,12 +25,22 @@ _login_attempts: dict[str, list[float]] = defaultdict(list)
 _login_lock = Lock()
 LOGIN_RATE_LIMIT = 10
 LOGIN_RATE_WINDOW_S = 300
+# 防键空间无限膨胀：超过该数量时清理窗口已全过期的键（攻击者随机伪造 username 可制造大量一次性键）
+_LOGIN_KEYS_PRUNE_THRESHOLD = 4096
 
 
-def _check_login_rate_limit(client_ip: str) -> None:
+def _check_login_rate_limit(bucket: str) -> None:
     now = time.monotonic()
     with _login_lock:
-        window = _login_attempts.get(client_ip, [])
+        if len(_login_attempts) > _LOGIN_KEYS_PRUNE_THRESHOLD:
+            cutoff = now - LOGIN_RATE_WINDOW_S
+            for key in [
+                k
+                for k, window in _login_attempts.items()
+                if not window or window[-1] < cutoff
+            ]:
+                _login_attempts.pop(key, None)
+        window = _login_attempts.get(bucket, [])
         cutoff = now - LOGIN_RATE_WINDOW_S
         while window and window[0] < cutoff:
             window.pop(0)
@@ -41,12 +51,12 @@ def _check_login_rate_limit(client_ip: str) -> None:
                 headers={"Retry-After": str(LOGIN_RATE_WINDOW_S)},
             )
         window.append(now)
-        _login_attempts[client_ip] = window
+        _login_attempts[bucket] = window
 
 
-def _record_login_success(client_ip: str) -> None:
+def _record_login_success(bucket: str) -> None:
     with _login_lock:
-        _login_attempts.pop(client_ip, None)
+        _login_attempts.pop(bucket, None)
 
 
 router = APIRouter(tags=["login"])
@@ -78,7 +88,12 @@ def login_access_token(
     OAuth2 compatible token login, get an access token for future requests
     """
     client_ip = request.client.host if request.client else "unknown"
-    _check_login_rate_limit(client_ip)
+    # 双维度限流：IP 桶（NAT 出口共享，防横向刷）+ 账号桶（防针对单账号爆破）。
+    # IP 取自 uvicorn 解析的 X-Forwarded-For（compose 已设 FORWARDED_ALLOW_IPS，
+    # nginx 是唯一上游；多 worker 部署时内存字典各进程独立，限额按 worker 数放大）
+    account = form_data.username.strip().lower()
+    _check_login_rate_limit(f"ip:{client_ip}")
+    _check_login_rate_limit(f"user:{account}")
 
     user = crud.authenticate(
         session=session, account=form_data.username.strip(), password=form_data.password
@@ -88,12 +103,14 @@ def login_access_token(
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    _record_login_success(client_ip)
+    _record_login_success(f"ip:{client_ip}")
+    _record_login_success(f"user:{account}")
     return Token(
         access_token=security.create_access_token(
             user.id,
             expires_delta=access_token_expires,
             role=user.role,
+            password_hash=user.hashed_password,
         )
     )
 
@@ -121,7 +138,10 @@ def login_demo(session: SessionDep) -> Token:
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return Token(
         access_token=security.create_access_token(
-            user.id, expires_delta=access_token_expires
+            user.id,
+            expires_delta=access_token_expires,
+            role=user.role,
+            password_hash=user.hashed_password,
         )
     )
 

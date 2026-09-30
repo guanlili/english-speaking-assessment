@@ -111,7 +111,17 @@ def _resolve_submit_student(
     返回归属的 Student 档案（演示作答返回 None）。
     """
     if session_id is None:
-        # 公开练习页的整篇跟读演示：无归属主体
+        # 公开练习页的整篇跟读演示：无归属主体。
+        # 仅本地环境开放：生产匿名提交会真实触发付费评分、占用全站队列并落盘音频，
+        # 与 demo 登录的 ENVIRONMENT 门禁保持一致（该演示页已下线，正常学生流程必带 session）
+        if settings.ENVIRONMENT != "local":
+            if current_user is None:
+                raise HTTPException(
+                    status_code=403, detail="演示提交未开放，请登录后使用"
+                )
+            raise HTTPException(
+                status_code=422, detail="缺少练习会话，请刷新页面后重试"
+            )
         return None
     if current_user is None:
         raise HTTPException(status_code=401, detail="请先登录后再提交课堂作答")

@@ -849,6 +849,8 @@ class TokenPayload(SQLModel):
     sub: str | None = None
     # 登录角色随 token 下发，前端按角色分流（不作为权限依据，权限查库）
     role: str | None = None
+    # 签发时的密码哈希前缀：与库中不一致（改密/重置过）则 token 失效
+    pwd: str | None = None
 
 
 class NewPassword(SQLModel):

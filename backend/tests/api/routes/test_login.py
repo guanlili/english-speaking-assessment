@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from pwdlib.hashers.bcrypt import BcryptHasher
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.core.security import get_password_hash, verify_password
@@ -276,3 +276,76 @@ def test_demo_login_issues_admin_token(client: TestClient) -> None:
     me = client.get("/api/v1/users/me", headers=headers)
     assert me.status_code == 200
     assert me.json()["is_superuser"] is True
+
+
+def test_password_change_invalidates_old_tokens(
+    client: TestClient, db: Session
+) -> None:
+    """改密后旧 token 立即失效（pwd 声明绑定签发时的密码哈希前缀）。"""
+    from tests.utils.utils import get_superuser_token_headers
+
+    old_headers = get_superuser_token_headers(client)
+    old_password = settings.FIRST_SUPERUSER_PASSWORD
+    new_password = random_lower_string() + "1a!"
+    try:
+        resp = client.patch(
+            f"{settings.API_V1_STR}/users/me/password",
+            headers=old_headers,
+            json={"current_password": old_password, "new_password": new_password},
+        )
+        assert resp.status_code == 200
+        # 旧 token：401（凭证已失效，前端登出重新登录）
+        stale = client.post(
+            f"{settings.API_V1_STR}/login/test-token", headers=old_headers
+        )
+        assert stale.status_code == 401
+        # 新密码可登录，且新 token 可用
+        login = client.post(
+            f"{settings.API_V1_STR}/login/access-token",
+            data={"username": settings.FIRST_SUPERUSER, "password": new_password},
+        )
+        assert login.status_code == 200
+        fresh_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        me = client.get(f"{settings.API_V1_STR}/users/me", headers=fresh_headers)
+        assert me.status_code == 200
+    finally:
+        # 恢复超级管理员密码，避免影响后续用例的 fixture 登录
+        user = db.exec(
+            select(User).where(User.email == settings.FIRST_SUPERUSER)  # type: ignore[attr-defined]
+        ).first()
+        assert user is not None
+        user.hashed_password = get_password_hash(old_password)
+        db.add(user)
+        db.commit()
+
+
+def test_login_rate_limit_per_account(client: TestClient) -> None:
+    """账号维度限流：同一账号连错达到上限后 429，且不影响其他账号。"""
+    from app.api.routes import login as login_route
+
+    try:
+        for _ in range(login_route.LOGIN_RATE_LIMIT):
+            resp = client.post(
+                f"{settings.API_V1_STR}/login/access-token",
+                data={"username": "nobody-unknown", "password": "wrong"},
+            )
+            assert resp.status_code == 400
+        blocked = client.post(
+            f"{settings.API_V1_STR}/login/access-token",
+            data={"username": "nobody-unknown", "password": "wrong"},
+        )
+        assert blocked.status_code == 429
+        # testclient 共享同一 IP，上面的失败也灌满了 IP 桶；
+        # 清掉共享状态以模拟"换一台设备"，验证账号维度的计数不会跨账号生效
+        with login_route._login_lock:
+            login_route._login_attempts.clear()
+        # 其他账号不受该账号的失败计数影响
+        other = client.post(
+            f"{settings.API_V1_STR}/login/access-token",
+            data={"username": settings.FIRST_SUPERUSER, "password": "wrong"},
+        )
+        assert other.status_code == 400
+    finally:
+        # 清理内存限流表，避免污染同会话后续用例（testclient 共享同一 IP 桶）
+        with login_route._login_lock:
+            login_route._login_attempts.clear()

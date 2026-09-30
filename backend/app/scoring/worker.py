@@ -140,7 +140,9 @@ def _score_rubric(prompt: str, band: str, transcript: str) -> dict[str, object] 
             "advice": scores.advice,
         }
     except Exception as exc:  # noqa: BLE001 - rubric 失败不影响作答本体
-        logger.warning("rubric scoring failed: %s", exc)
+        # ERROR 级：Sentry 默认只把 ERROR 转成事件，WARNING 只进 breadcrumb——
+        # 评分降级是需要在面板上看见的事
+        logger.error("rubric scoring failed: %s", exc, exc_info=True)
         return None
 
 
@@ -224,28 +226,31 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
         attempt.engine = engine
     except ContentMissingError as exc:
         # 题目内容已被删除：重试无意义，直接标失败不消耗重试配额
-        logger.warning(
+        logger.error(
             "attempt %s scoring aborted (content missing): %s",
             attempt_id,
             exc,
+            exc_info=True,
         )
         attempt.status = AttemptStatus.FAILED
-        attempt.error = str(exc)[:500]
+        # 学生端可见的 error 只放通用文案；上游异常原文（可能含 endpoint/配额等细节）只进日志
+        attempt.error = "题目内容已不可用，请联系老师重新发布"
     except Exception as exc:  # noqa: BLE001 - 其他引擎异常都按重试/失败处理
-        logger.warning(
+        logger.error(
             "attempt %s scoring failed (retry %d): %s",
             attempt_id,
             attempt.retry_count,
             exc,
+            exc_info=True,
         )
         if attempt.retry_count < MAX_SCORING_RETRIES:
             attempt.retry_count += 1
             attempt.status = AttemptStatus.QUEUED
             attempt.claimed_at = None
-            attempt.error = str(exc)[:500]
+            attempt.error = "评分服务暂时不可用，正在自动重试"
         else:
             attempt.status = AttemptStatus.FAILED
-            attempt.error = str(exc)[:500]
+            attempt.error = "评分服务暂时不可用，请稍后重试或联系老师"
     session.add(attempt)
     session.commit()
 

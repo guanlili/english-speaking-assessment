@@ -15,7 +15,13 @@ def custom_generate_unique_id(route: APIRoute) -> str:
 
 
 if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
-    sentry_sdk.init(dsn=str(settings.SENTRY_DSN), enable_tracing=True)
+    sentry_sdk.init(
+        dsn=str(settings.SENTRY_DSN),
+        enable_tracing=True,
+        # 按环境归因事件；全采样在 40 人课堂并发下会刷配额，0.1 起步
+        environment=settings.ENVIRONMENT,
+        traces_sample_rate=0.1,
+    )
 
 
 @asynccontextmanager
@@ -31,9 +37,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     shutdown_executor()
 
 
+# 生产不对外暴露 /docs、/redoc、/openapi.json（完整 API 面可被匿名枚举）；
+# 本地/CI 保留（客户端生成与调试依赖 app.openapi()，其不受 docs_url 影响）
+_api_docs_enabled = settings.ENVIRONMENT == "local"
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    openapi_url=f"{settings.API_V1_STR}/openapi.json" if _api_docs_enabled else None,
+    docs_url=f"{settings.API_V1_STR}/docs" if _api_docs_enabled else None,
+    redoc_url=f"{settings.API_V1_STR}/redoc" if _api_docs_enabled else None,
     generate_unique_id_function=custom_generate_unique_id,
     lifespan=lifespan,
 )
