@@ -59,17 +59,35 @@ async function loginTeacherDemo(page: import("@playwright/test").Page) {
   })
 }
 
-/** 学生学号登录（本地演示学生 student，标准默认密码）并完成一次幂等入班，
- * 让浏览器建立本课堂的学生身份（词汇页守卫依赖本地身份）。 */
+/** 学生学号登录（本地演示学生 student）并完成一次幂等入班，
+ * 让浏览器建立本课堂的学生身份（词汇页守卫依赖本地身份）。
+ * 密码：CI 种子是 demo1234；本地开发库可能被批量重置为 brs123456，依次尝试。 */
+async function tryStudentPassword(
+  page: import("@playwright/test").Page,
+  password: string,
+): Promise<boolean> {
+  await page.getByTestId("student-password-input").fill(password)
+  await page.getByRole("button", { name: "登录", exact: false }).click()
+  try {
+    await page.waitForURL((url) => !url.pathname.includes("/login"), {
+      timeout: 8_000,
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function loginStudentDemo(page: import("@playwright/test").Page) {
   await page.goto("/login")
   await page.getByRole("tab", { name: "学生登录" }).click()
   await page.getByPlaceholder("请输入你的学号").fill("student")
-  await page.getByTestId("student-password-input").fill("brs123456")
-  await page.getByRole("button", { name: "登录", exact: false }).click()
-  await page.waitForURL((url) => !url.pathname.includes("/login"), {
-    timeout: 15_000,
-  })
+  const signedIn =
+    (await tryStudentPassword(page, "demo1234")) ||
+    (await tryStudentPassword(page, "brs123456"))
+  if (!signedIn) {
+    throw new Error("学生演示登录失败：demo1234 与 brs123456 均未通过")
+  }
   // 登录后先到入班页完成一次幂等入班（已入班会自动建立本地身份），
   // 等到 esa:student:DEMO01 落盘再离开；需要手动点按钮时点它
   await page.goto("/j/DEMO01")
@@ -108,10 +126,12 @@ for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height })
     await loginTeacherDemo(page)
     await page.goto("/t/DEMO01/vocab")
+    // 「发布任务 / 完成情况」切换恒在（有没有进行中任务都能断言页面就绪）
     await expect(
-      page.getByRole("heading", {
-        name: /还没有进行中的词汇任务|No vocabulary task/,
-      }),
+      page.getByRole("button", { name: /发布任务|Assign/ }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: /完成情况|Results/ }),
     ).toBeVisible()
     await expectNoHorizontalOverflow(page)
   })
