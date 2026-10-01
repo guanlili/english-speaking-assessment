@@ -1791,6 +1791,9 @@ export class VocabularyService {
     /**
      * Publish Vocab Assignment
      * 发布词汇任务：固化快照与目标名单，归档旧任务（本班教师/管理员）。
+     *
+     * 词单来源同时受可见性约束：公共词库或本人班级词库（管理员不限），
+     * 显式 word_ids 的词也必须归属可见词库。
      * @param data The data for the request.
      * @param data.code
      * @param data.requestBody
