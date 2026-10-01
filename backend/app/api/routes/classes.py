@@ -76,6 +76,7 @@ from app.scoring.gamification import (
     settle_session,
     student_badges,
 )
+from app.services import exam as exam_service
 from app.services import exercise as exercise_service
 
 logger = logging.getLogger(__name__)
@@ -683,10 +684,18 @@ def read_today_plan(
 
     # 快照优先：发布会话绑定的 exercise 始终作为题单来源（删题也从快照读）
     snapshot_items: list[dict[str, object]] | None = None
+    bound_exercise: ClassroomExercise | None = None
     if practice_session.assignment_id is not None:
-        exercise = session.get(ClassroomExercise, practice_session.assignment_id)
-        if exercise is not None:
-            snapshot_items = exercise.snapshot_items
+        bound_exercise = session.get(ClassroomExercise, practice_session.assignment_id)
+        if bound_exercise is not None:
+            snapshot_items = bound_exercise.snapshot_items
+
+    # 模考生命周期：首次打开即计时（以服务器时间为准），到时惰性交卷
+    exam_info = None
+    if bound_exercise is not None and bound_exercise.is_exam:
+        exam_service.ensure_exam_started(session, practice_session, bound_exercise)
+        exam_service.finalize_if_expired(session, practice_session, bound_exercise)
+        exam_info = exam_service.exam_status_payload(practice_session, bound_exercise)
 
     items: list[PlanItem] = []
     expected_items = 0
@@ -939,6 +948,7 @@ def read_today_plan(
         items=items,
         attempts=plan_attempts,
         questions_exhausted=exhausted,
+        exam=exam_info,
         gamification=GamificationInfo(
             xp=student.xp,
             streak_days=student.streak_days,
@@ -974,6 +984,12 @@ def read_next_question(
         practice_session = _resolve_active_daily_session(
             session, classroom, student, today
         )
+
+    # 模考不允许换题（题单以发布快照为准）
+    if practice_session.assignment_id is not None:
+        bound = session.get(ClassroomExercise, practice_session.assignment_id)
+        if bound is not None and bound.is_exam:
+            raise HTTPException(status_code=422, detail="考试中不能换题")
 
     # 按题指派：换题范围 = 指派问答题所在情景的其余未做题目。
     # assigned_items 与发布快照同步：老师可只指派 1 道题，学生换题从情景题库取新题，
@@ -1444,6 +1460,17 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             < week_ago.date()
         )
         inactive = joined_before_window and student.id not in recent_by_student
+        # 模考监考：当前发布为考试时，给出该生切屏次数/用时/是否交卷
+        exam_switches: int | None = None
+        exam_used: int | None = None
+        exam_ended_flag: bool | None = None
+        if current_exercise is not None and current_exercise.is_exam:
+            ps = session_by_student.get(student.id)
+            if ps is not None and ps.exam_started_at is not None:
+                exam_service.finalize_if_expired(session, ps, current_exercise)
+                exam_switches = ps.tab_switch_count
+                exam_used = exam_service.exam_time_used_seconds(ps)
+                exam_ended_flag = ps.exam_ended_at is not None
         board_students.append(
             BoardStudent(
                 student_id=student.id,
@@ -1462,6 +1489,9 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                     else None
                 ),
                 has_pending=has_pending,
+                exam_tab_switches=exam_switches,
+                exam_time_used_seconds=exam_used,
+                exam_ended=exam_ended_flag,
                 round_status=round_status,
                 inactive_days7=inactive,
                 xp=student.xp,
@@ -1504,6 +1534,8 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                 created_at=current_exercise.created_at,
                 published_at=current_exercise.published_at,
                 archived_at=current_exercise.archived_at,
+                is_exam=current_exercise.is_exam,
+                time_limit_minutes=current_exercise.time_limit_minutes,
             )
             if current_exercise is not None
             else None
@@ -1745,6 +1777,9 @@ class AssignmentRequest(SQLModel):
     items: list[AssignmentItemIn] | None = None
     # 可选练习标题；不传时使用“课堂练习”
     title: str | None = None
+    # 模考模式：整场限时（分钟，5–240）；is_exam=true 时必填
+    is_exam: bool = False
+    time_limit_minutes: int | None = None
 
 
 class ListenRequest(SQLModel):
@@ -1755,6 +1790,43 @@ class ListenRequest(SQLModel):
 class ListenResult(SQLModel):
     listen_used: int
     replay_limit: int  # 0 = 不限
+
+
+class ExamViolationRequest(SQLModel):
+    session_id: uuid.UUID
+
+
+class ExamViolationResult(SQLModel):
+    tab_switch_count: int
+
+
+@router.post("/{code}/exam/violation", response_model=ExamViolationResult)
+def report_exam_violation(
+    session: SessionDep,
+    code: str,
+    body: ExamViolationRequest,
+    current_user: StudentUserDep,
+) -> Any:
+    """防切屏上报：前端 visibilitychange 触发，计数入会话（教师面板可见）。
+
+    仅本人考试会话有效；考试结束后拒绝（不再累计）。
+    """
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(session, classroom, current_user)
+    practice_session = session.get(PracticeSession, body.session_id)
+    if (
+        practice_session is None
+        or practice_session.student_id != student.id
+        or practice_session.classroom_id != classroom.id
+    ):
+        raise HTTPException(status_code=404, detail="Session not found")
+    if practice_session.assignment_id is None:
+        raise HTTPException(status_code=422, detail="该练习不是模考")
+    exercise = session.get(ClassroomExercise, practice_session.assignment_id)
+    if exercise is None or not exercise.is_exam:
+        raise HTTPException(status_code=422, detail="该练习不是模考")
+    count = exam_service.record_tab_switch(session, practice_session, exercise)
+    return ExamViolationResult(tab_switch_count=count)
 
 
 @router.post("/{code}/listens", response_model=ListenResult)
@@ -1869,6 +1941,8 @@ def list_classroom_exercises(
             created_at=exercise.created_at,
             published_at=exercise.published_at,
             archived_at=exercise.archived_at,
+            is_exam=exercise.is_exam,
+            time_limit_minutes=exercise.time_limit_minutes,
         )
         for exercise in exercises
     ]
@@ -1884,6 +1958,10 @@ class ExerciseStudentResult(SQLModel):
     total_count: int
     has_pending: bool
     items: list[BoardItem]
+    # 模考监考（非考试发布为 null）
+    exam_tab_switches: int | None = None
+    exam_time_used_seconds: int | None = None
+    exam_ended: bool | None = None
 
 
 @router.get(
@@ -1977,6 +2055,14 @@ def read_exercise_results(
                     attempt_id=attempt.id,
                 )
             )
+        exam_switches: int | None = None
+        exam_used: int | None = None
+        exam_ended_flag: bool | None = None
+        if exercise.is_exam and ps is not None and ps.exam_started_at is not None:
+            exam_service.finalize_if_expired(session, ps, exercise)
+            exam_switches = ps.tab_switch_count
+            exam_used = exam_service.exam_time_used_seconds(ps)
+            exam_ended_flag = ps.exam_ended_at is not None
         out.append(
             ExerciseStudentResult(
                 student_id=student.id,
@@ -1985,6 +2071,9 @@ def read_exercise_results(
                 done_count=done,
                 total_count=len(exercise.snapshot_items),
                 has_pending=has_pending,
+                exam_tab_switches=exam_switches,
+                exam_time_used_seconds=exam_used,
+                exam_ended=exam_ended_flag,
                 items=items,
             )
         )
@@ -2026,6 +2115,8 @@ def set_assignment(
                 created_by=current_user.id,
                 snapshots=snapshots,
                 title=body.title,
+                is_exam=body.is_exam,
+                time_limit_minutes=body.time_limit_minutes,
             )
             classroom.current_unit_id = None  # 按题模式取代单元指派
             # assigned_items 保留（_publish_exercise 已写入）：读取优先快照，
@@ -2100,6 +2191,8 @@ def set_assignment(
             created_by=current_user.id,
             snapshots=snapshots,
             title=body.title,
+            is_exam=body.is_exam,
+            time_limit_minutes=body.time_limit_minutes,
         )
         classroom.current_unit_id = unit.id
         classroom.assigned_items = None  # 单元模式仍保留旧路径标识，快照为真源

@@ -366,6 +366,10 @@ class ClassroomExercise(SQLModel, table=True):
         default=None,
         sa_type=DateTime(timezone=True),  # type: ignore
     )
+    # 模考模式：整场限时（分钟），学生首次打开即开始计时，到时自动交卷；
+    # 考试中每题只能作答一次，切屏次数上报给教师
+    is_exam: bool = Field(default=False, sa_column_kwargs={"server_default": "false"})
+    time_limit_minutes: int | None = Field(default=None, ge=5, le=240)
 
 
 class ClassroomExercisePublic(SQLModel):
@@ -378,6 +382,8 @@ class ClassroomExercisePublic(SQLModel):
     created_at: datetime | None = None
     published_at: datetime | None = None
     archived_at: datetime | None = None
+    is_exam: bool = False
+    time_limit_minutes: int | None = None
 
 
 # 听句复述的播放计数（防刷）：一个学生一轮里对一道题听了多少次标准音
@@ -556,6 +562,18 @@ class PracticeSession(SQLModel, table=True):
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
     )
+    # 模考计时（仅 is_exam 的发布绑定会话）：首次打开今日计划时落开始时间；
+    # 到时或交卷后落结束时间，此后拒绝继续作答
+    exam_started_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    exam_ended_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    # 防切屏：前端 visibilitychange 上报的离开次数（教师面板可见）
+    tab_switch_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
 
 
 # 作答状态机：上传即返回 queued，后台评分线程推进到 done/failed。
@@ -734,6 +752,17 @@ class GamificationInfo(SQLModel):
     badges: list[BadgePublic] = []
 
 
+class ExamStatus(SQLModel):
+    """考试态信息（学生端倒计时与锁题、教师端监考）。"""
+
+    time_limit_minutes: int
+    # 服务器时间口径的剩余秒数（前端只做展示，作答以服务端校验为准）
+    remaining_seconds: int
+    started: bool
+    ended: bool
+    tab_switch_count: int = 0
+
+
 class TodayPlan(SQLModel):
     session_id: uuid.UUID
     classroom_code: str
@@ -748,6 +777,8 @@ class TodayPlan(SQLModel):
     gamification: GamificationInfo | None = None
     # 老师指派的单元标题（课堂同步练习；null = 个人路径）
     assigned_unit_title: str | None = None
+    # 本轮为模考时的限时与剩余时间（非考试为 null）
+    exam: ExamStatus | None = None
 
 
 class NextQuestion(SQLModel):
@@ -792,6 +823,10 @@ class BoardStudent(SQLModel):
     streak_days: int = 0
     # 每题最新作答，与 BoardData.items 骨架按 item_id 对应
     items: list[BoardItem]
+    # 模考监考信息（非考试发布为 null）：切屏次数与用时
+    exam_tab_switches: int | None = None
+    exam_time_used_seconds: int | None = None
+    exam_ended: bool | None = None
 
 
 class BoardData(SQLModel):

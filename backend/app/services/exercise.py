@@ -179,12 +179,19 @@ def publish_exercise(
     created_by: uuid.UUID | None,
     snapshots: list[dict[str, object]],
     title: str | None = None,
+    is_exam: bool = False,
+    time_limit_minutes: int | None = None,
 ) -> ClassroomExercise:
     if not snapshots:
         raise HTTPException(status_code=422, detail="练习至少需要包含一道题目")
     exercise_title = (title or "课堂练习").strip()
     if len(exercise_title) > 255:
         raise HTTPException(status_code=422, detail="练习名称不能超过 255 个字符")
+    if is_exam:
+        if time_limit_minutes is None:
+            raise HTTPException(status_code=422, detail="模考必须设置整场限时（分钟）")
+        if not (5 <= time_limit_minutes <= 240):
+            raise HTTPException(status_code=422, detail="模考限时须在 5–240 分钟之间")
     # 同一课堂并发发布时锁住课堂行，避免版本号重复或互相覆盖当前版本。
     session.exec(
         select(Classroom).where(Classroom.id == classroom.id).with_for_update()
@@ -196,6 +203,8 @@ def publish_exercise(
         status="published",
         snapshot_items=snapshots,
         created_by=created_by,
+        is_exam=is_exam,
+        time_limit_minutes=time_limit_minutes if is_exam else None,
     )
     session.add(exercise)
     session.flush()
