@@ -1,7 +1,13 @@
 import { useQuery } from "@tanstack/react-query"
-import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router"
+import {
+  createFileRoute,
+  Link,
+  useNavigate,
+  useParams,
+} from "@tanstack/react-router"
 import {
   ArrowRight,
+  BookA,
   CheckCircle2,
   Flame,
   Headphones,
@@ -734,6 +740,12 @@ function HomePage() {
 
         {/* 快捷入口 */}
         <div className="flex flex-wrap gap-3">
+          <Button variant="secondary" asChild>
+            <Link to="/vocab/$code" params={{ code }}>
+              <BookA />
+              {t(TERMS.vocabLearning)}
+            </Link>
+          </Button>
           <Button
             variant="secondary"
             onClick={() =>

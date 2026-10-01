@@ -4,6 +4,7 @@ import {
   ArrowRight,
   AudioLines,
   Bell,
+  BookA,
   ChartLine,
   ChevronDown,
   CircleHelp,
@@ -42,7 +43,11 @@ import { useI18n } from "@/lib/i18n"
 import { TERMS } from "@/lib/terms"
 import { cn } from "@/lib/utils"
 
-/** 导航项：label 为双语，渲染处用 t() 取当前语言 */
+/** 导航项：label 为双语，渲染处用 t() 取当前语言。
+ *
+ * 前 4 项 = 手机底部导航（首页/口语/词汇/成长）；主题探索、课堂与帮助
+ * 收进次级菜单（侧栏下半区与账户菜单）——2026-10 词汇模块设计。
+ */
 const items = [
   {
     key: "home",
@@ -57,16 +62,22 @@ const items = [
     icon: Mic,
   },
   {
-    key: "explore",
-    to: "/explore/$code",
-    label: { zh: "主题探索", en: "Explore Topics" },
-    icon: Sparkles,
+    key: "vocab",
+    to: "/vocab/$code",
+    label: TERMS.vocabLearning,
+    icon: BookA,
   },
   {
     key: "me",
     to: "/me/$code",
     label: TERMS.growthPage,
     icon: ChartLine,
+  },
+  {
+    key: "explore",
+    to: "/explore/$code",
+    label: { zh: "主题探索", en: "Explore Topics" },
+    icon: Sparkles,
   },
   {
     key: "classroom",

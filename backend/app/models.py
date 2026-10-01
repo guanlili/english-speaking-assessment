@@ -879,6 +879,475 @@ class TrailData(SQLModel):
     vocab_counts: dict[str, int] = {}
 
 
+# ── 词汇学习（背单词模块，2026-10-01 设计文档 P0）──────────────────
+# 与口语问答词汇分析用的 WordlistEntry 完全分离：这里存的是可考的
+# 教学词条（词性/释义/可接受拼写），历史作答永远按发布快照判分与展示。
+
+
+class VocabularyWord(SQLModel, table=True):
+    """一条可考的词义；同形异义各有独立行（不共用 lemma 唯一约束）。"""
+
+    __tablename__ = "vocabulary_word"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    # 词形展示与判分主拼写；判分另接受 accepted_spellings 里的显式变体
+    headword: str = Field(max_length=64, index=True)
+    part_of_speech: str | None = Field(default=None, max_length=32)
+    meaning_zh: str = Field(min_length=1, max_length=255)
+    meaning_en: str | None = Field(default=None, max_length=255)
+    # 额外可接受拼写（英美变体等）；判分时与 headword 一起接受，不自动放宽
+    accepted_spellings: list[str] | None = Field(
+        default=None, sa_column=Column("accepted_spellings", JSON, nullable=True)
+    )
+    example_en: str | None = Field(default=None, max_length=512)
+    # 教师上传或已授权的标准音；为空时练习端用浏览器朗读兜底（需标注）
+    audio_url: str | None = Field(default=None, max_length=1024)
+    status: str = Field(default="active", max_length=16, index=True)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class VocabularyBook(SQLModel, table=True):
+    """词库：公共（管理员维护）或班级（教师自建）。版本化编辑不删旧任务。"""
+
+    __tablename__ = "vocabulary_book"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=512)
+    # public = 全体教师可用；classroom = 仅本班教师
+    scope: str = Field(default="classroom", max_length=16, index=True)
+    owner_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL", index=True
+    )
+    # scope=classroom 时的所属课堂
+    classroom_id: uuid.UUID | None = Field(
+        default=None, foreign_key="classroom.id", ondelete="CASCADE", index=True
+    )
+    status: str = Field(default="active", max_length=16)
+    version: int = Field(default=1, ge=1, sa_column_kwargs={"server_default": "1"})
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class VocabularyBookItem(SQLModel, table=True):
+    """词库有序内容；同一词库不重复收词。"""
+
+    __tablename__ = "vocabulary_book_item"
+    __table_args__ = (
+        UniqueConstraint("book_id", "word_id", name="uq_vocab_book_word"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    book_id: uuid.UUID = Field(
+        foreign_key="vocabulary_book.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    word_id: uuid.UUID = Field(
+        foreign_key="vocabulary_word.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+    position: int = Field(default=0, ge=0)
+
+
+class VocabularyAssignment(SQLModel, table=True):
+    """课堂一次发布的词汇任务快照（对齐 ClassroomExercise 的快照体系）。
+
+    词库后续编辑不影响已发布任务与学生历史报告；重发即新版本。
+    """
+
+    __tablename__ = "vocabulary_assignment"
+    __table_args__ = (
+        UniqueConstraint(
+            "classroom_id", "version_no", name="uq_vocab_assignment_version"
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    classroom_id: uuid.UUID = Field(
+        foreign_key="classroom.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    created_by: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL"
+    )
+    title: str = Field(default="词汇练习", max_length=255)
+    # practice = 可重试、首答计成绩；quiz = 一次提交（P1 落地，P0 只发练习）
+    mode: str = Field(
+        default="practice",
+        max_length=16,
+        sa_column_kwargs={"server_default": "practice"},
+    )
+    # 出题方式：meaning = 看义拼词；audio = 听音拼词（练习可用设备朗读兜底）
+    prompt_types: list[str] = Field(
+        default=lambda: ["meaning"], sa_column=Column("prompt_types", JSON)
+    )
+    # [{word_id, headword, part_of_speech, meaning_zh, meaning_en,
+    #   accepted_spellings, audio_url, prompt_types}]
+    snapshot_items: list[dict[str, object]] = Field(
+        sa_column=Column("snapshot_items", JSON, nullable=False)
+    )
+    version_no: int = Field(default=1, ge=1)
+    status: str = Field(default="published", max_length=16, index=True)
+    opens_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    due_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    published_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    archived_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+
+
+class VocabularyAssignmentTarget(SQLModel, table=True):
+    """发布时固定的目标学生名单：完成率分母不随后续入班漂移。"""
+
+    __tablename__ = "vocabulary_assignment_target"
+    __table_args__ = (
+        UniqueConstraint("assignment_id", "student_id", name="uq_vocab_target_student"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    assignment_id: uuid.UUID = Field(
+        foreign_key="vocabulary_assignment.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+    student_id: uuid.UUID = Field(
+        foreign_key="student.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class VocabularySession(SQLModel, table=True):
+    """一次词汇作答会话（与口语 PracticeSession 分表，互不影响）。"""
+
+    __tablename__ = "vocabulary_session"
+    __table_args__ = (
+        # 一个学生对一个任务只有一份会话（练习中断续做，刷新恢复）
+        Index(
+            "ix_vocab_session_assignment_student",
+            "assignment_id",
+            "student_id",
+            unique=True,
+            postgresql_where=text("assignment_id IS NOT NULL"),
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    classroom_id: uuid.UUID = Field(
+        foreign_key="classroom.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    student_id: uuid.UUID = Field(
+        foreign_key="student.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    assignment_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="vocabulary_assignment.id",
+        ondelete="SET NULL",
+        index=True,
+    )
+    mode: str = Field(
+        default="practice",
+        max_length=16,
+        sa_column_kwargs={"server_default": "practice"},
+    )
+    # in_progress → submitted（全部题答过即完成；练习重试不回退状态）
+    status: str = Field(
+        default="in_progress",
+        max_length=16,
+        sa_column_kwargs={"server_default": "in_progress"},
+    )
+    started_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    submitted_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    # 切屏计数（沿用模考思路；P0 练习模式仅记录不启用，P1 测验接入）
+    tab_switch_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+
+
+class VocabularyAnswer(SQLModel, table=True):
+    """可审计的作答：原始输入 + 规范化结果 + 确定性判分。
+
+    练习保留多次尝试（attempt_no 递增），教师统计与错词本默认看首答。
+    """
+
+    __tablename__ = "vocabulary_answer"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id", "item_index", "attempt_no", name="uq_vocab_answer_slot"
+        ),
+        UniqueConstraint("idempotency_key", name="uq_vocab_answer_idempotency_key"),
+        Index("ix_vocab_answer_session_item", "session_id", "item_index"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    session_id: uuid.UUID = Field(
+        foreign_key="vocabulary_session.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+    # 题号 = assignment.snapshot_items 下标（快照不可变，下标稳定）
+    item_index: int = Field(ge=0)
+    attempt_no: int = Field(default=1, ge=1)
+    # meaning = 看义拼词；audio = 听音拼词
+    prompt_type: str = Field(default="meaning", max_length=16)
+    answer_raw: str = Field(max_length=255)
+    answer_normalized: str = Field(max_length=255)
+    is_correct: bool
+    # 快照词标识（无外键：判分与展示永远按发布时内容，词库后续可归档）
+    word_id: uuid.UUID = Field(index=True)
+    # 答题时快照内容的冗余（错词本展示不再反查快照）
+    headword: str = Field(max_length=64)
+    meaning_zh: str = Field(max_length=255)
+    answered_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    idempotency_key: str | None = Field(default=None, max_length=64)
+
+
+# ── 词汇模块 API schema（请求/响应体，非表）────────────────────────
+
+VOCAB_PROMPT_TYPES = ("meaning", "audio")
+
+
+class VocabularyWordIn(SQLModel):
+    """创建/导入词条的请求体（词库内新增词）。"""
+
+    headword: str = Field(min_length=1, max_length=64)
+    part_of_speech: str | None = Field(default=None, max_length=32)
+    meaning_zh: str = Field(min_length=1, max_length=255)
+    meaning_en: str | None = Field(default=None, max_length=255)
+    accepted_spellings: list[str] | None = None
+    example_en: str | None = Field(default=None, max_length=512)
+    audio_url: str | None = Field(default=None, max_length=1024)
+
+
+class VocabularyWordUpdate(SQLModel):
+    """编辑词条：缺省不修改；可空字段传 null 清空。"""
+
+    part_of_speech: str | None = None
+    meaning_zh: str | None = Field(default=None, min_length=1, max_length=255)
+    meaning_en: str | None = None
+    accepted_spellings: list[str] | None = None
+    example_en: str | None = None
+    audio_url: str | None = None
+    status: str | None = None
+
+
+class VocabularyWordPublic(SQLModel):
+    id: uuid.UUID
+    headword: str
+    part_of_speech: str | None = None
+    meaning_zh: str
+    meaning_en: str | None = None
+    accepted_spellings: list[str] | None = None
+    example_en: str | None = None
+    audio_url: str | None = None
+    status: str = "active"
+
+
+class VocabularyBookCreate(SQLModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=512)
+    scope: str = Field(default="classroom", max_length=16)
+    # scope=classroom 时必填；scope=public 仅管理员
+    classroom_id: uuid.UUID | None = None
+    # 创建时一并入库的词条（来自导入预览或手动录入）
+    words: list[VocabularyWordIn] = []
+
+
+class VocabularyBookUpdate(SQLModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    status: str | None = None
+
+
+class VocabularyBookPublic(SQLModel):
+    id: uuid.UUID
+    title: str
+    description: str | None = None
+    scope: str
+    classroom_id: uuid.UUID | None = None
+    owner_id: uuid.UUID | None = None
+    status: str
+    word_count: int = 0
+    created_at: datetime | None = None
+
+
+class VocabularyBookDetail(VocabularyBookPublic):
+    words: list[VocabularyWordPublic] = []
+
+
+class VocabularyImportRow(SQLModel):
+    """导入预览里解析成功的一行（已规范化）。"""
+
+    line: int
+    word: VocabularyWordIn
+
+
+class VocabularyImportIssue(SQLModel):
+    line: int
+    reason: str
+
+
+class VocabularyImportPreview(SQLModel):
+    rows: list[VocabularyImportRow]
+    invalid: list[VocabularyImportIssue]
+    duplicates: list[VocabularyImportIssue]
+
+
+class VocabularyAssignmentCreate(SQLModel):
+    title: str | None = Field(default=None, max_length=255)
+    # 二选一：整本词库（active 词）或显式词清单
+    book_id: uuid.UUID | None = None
+    word_ids: list[uuid.UUID] | None = None
+    prompt_types: list[str] = ["meaning"]
+    mode: str = "practice"
+    due_at: datetime | None = None
+
+
+class VocabularyAssignmentPublic(SQLModel):
+    id: uuid.UUID
+    classroom_id: uuid.UUID
+    title: str
+    mode: str
+    prompt_types: list[str] = []
+    status: str
+    version_no: int
+    word_count: int
+    due_at: datetime | None = None
+    published_at: datetime | None = None
+    archived_at: datetime | None = None
+    created_by: uuid.UUID | None = None
+
+
+class VocabularyTodayItem(SQLModel):
+    """学生题单条目：未作答的词不透露拼写（headword=None）。"""
+
+    item_index: int
+    prompt_type: str
+    part_of_speech: str | None = None
+    meaning_zh: str
+    meaning_en: str | None = None
+    audio_url: str | None = None
+    # 已答（首答存在）才回填拼写与对错
+    headword: str | None = None
+    answered: bool = False
+    is_correct: bool | None = None
+    attempt_count: int = 0
+
+
+class VocabularyTodayPlan(SQLModel):
+    """GET /classes/{code}/vocabulary/today 的学生视图。"""
+
+    assignment: VocabularyAssignmentPublic | None = None
+    session_id: uuid.UUID | None = None
+    session_status: str | None = None
+    items: list[VocabularyTodayItem] = []
+    answered_count: int = 0
+    correct_first_count: int = 0
+    wrong_word_count: int = 0
+
+
+class VocabularySessionCreate(SQLModel):
+    """创建/恢复作答会话：缺省 assignment_id = 当前进行中的任务。"""
+
+    assignment_id: uuid.UUID | None = None
+
+
+class VocabularyAnswerRequest(SQLModel):
+    item_index: int = Field(ge=0)
+    prompt_type: str = Field(default="meaning", max_length=16)
+    answer: str = Field(min_length=1, max_length=255)
+    idempotency_key: str | None = Field(default=None, max_length=64)
+
+
+class VocabularyAnswerResult(SQLModel):
+    item_index: int
+    attempt_no: int
+    is_correct: bool
+    # 标准拼写（首答后即揭示；练习重试对错即时反馈）
+    correct_spelling: str
+    meaning_zh: str
+    session_status: str
+    answered_count: int
+    correct_first_count: int
+
+
+class VocabularyStudentResultRow(SQLModel):
+    """教师结果面板的学生行（按目标名单，含未开始）。"""
+
+    student_id: uuid.UUID
+    display_name: str
+    suffix: str | None = None
+    status: str  # not_started / in_progress / completed
+    answered_count: int
+    correct_first_count: int
+    total_count: int
+    submitted_at: datetime | None = None
+
+
+class VocabularyWordMisspelling(SQLModel):
+    answer: str
+    count: int
+
+
+class VocabularyWordStatRow(SQLModel):
+    """逐词错误分布（教师据此安排复习）。"""
+
+    item_index: int
+    word_id: uuid.UUID
+    headword: str
+    meaning_zh: str
+    answered_count: int
+    correct_first_count: int
+    error_count: int
+    misspellings: list[VocabularyWordMisspelling] = []
+
+
+class VocabularyClassResults(SQLModel):
+    """GET /classes/{code}/vocabulary/results。"""
+
+    assignment: VocabularyAssignmentPublic | None = None
+    target_count: int = 0
+    completed_count: int = 0
+    in_progress_count: int = 0
+    not_started_count: int = 0
+    students: list[VocabularyStudentResultRow] = []
+    words: list[VocabularyWordStatRow] = []
+
+
+class VocabularyWrongWordItem(SQLModel):
+    """错词本条目：首答判错的词，按快照内容展示。"""
+
+    word_id: uuid.UUID
+    headword: str
+    meaning_zh: str
+    part_of_speech: str | None = None
+    wrong_count: int
+    last_wrong_at: datetime | None = None
+
+
+class VocabularyWrongWords(SQLModel):
+    classroom_code: str
+    items: list[VocabularyWrongWordItem] = []
+
+
 # Generic message
 class Message(SQLModel):
     message: str

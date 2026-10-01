@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminListSentencesFlatResponse, AdminCreateSentenceStandaloneData, AdminCreateSentenceStandaloneResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminUpdateScenarioData, AdminUpdateScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminListQuestionBankData, AdminListQuestionBankResponse, AdminCreateQuestionsBatchData, AdminCreateQuestionsBatchResponse, AdminWordlistStatsResponse, AdminImportWordlistCsvData, AdminImportWordlistCsvResponse, AdminListUnitsResponse, AdminCreateUnitData, AdminCreateUnitResponse, AdminUpdateUnitData, AdminUpdateUnitResponse, AdminDeleteUnitData, AdminDeleteUnitResponse, AdminListTopicsResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminUpdateClassroomData, AdminUpdateClassroomResponse, AdminGenerateQuestionsData, AdminGenerateQuestionsResponse, AdminAutoSplitSentencesData, AdminAutoSplitSentencesResponse, AdminSplitPassageIntoReadingsData, AdminSplitPassageIntoReadingsResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ClassesListMyClassroomsResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesDeleteClassData, ClassesDeleteClassResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, ClassesReadLearningPathData, ClassesReadLearningPathResponse, ClassesReportExamViolationData, ClassesReportExamViolationResponse, ClassesRecordListenData, ClassesRecordListenResponse, ClassesListClassroomExercisesData, ClassesListClassroomExercisesResponse, ClassesReadExerciseResultsData, ClassesReadExerciseResultsResponse, ClassesSetAssignmentData, ClassesSetAssignmentResponse, ClassesStartExploreData, ClassesStartExploreResponse, LoginReadLoginOptionsResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginLoginDemoResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, StudentsImportStudentsData, StudentsImportStudentsResponse, StudentsListStudentsData, StudentsListStudentsResponse, StudentsResetStudentPasswordData, StudentsResetStudentPasswordResponse, StudentsRemoveStudentData, StudentsRemoveStudentResponse, StudentsBulkResetPasswordsData, StudentsBulkResetPasswordsResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse } from './types.gen';
+import type { AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminListSentencesFlatResponse, AdminCreateSentenceStandaloneData, AdminCreateSentenceStandaloneResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminUpdateScenarioData, AdminUpdateScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminListQuestionBankData, AdminListQuestionBankResponse, AdminCreateQuestionsBatchData, AdminCreateQuestionsBatchResponse, AdminWordlistStatsResponse, AdminImportWordlistCsvData, AdminImportWordlistCsvResponse, AdminListUnitsResponse, AdminCreateUnitData, AdminCreateUnitResponse, AdminUpdateUnitData, AdminUpdateUnitResponse, AdminDeleteUnitData, AdminDeleteUnitResponse, AdminListTopicsResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminUpdateClassroomData, AdminUpdateClassroomResponse, AdminGenerateQuestionsData, AdminGenerateQuestionsResponse, AdminAutoSplitSentencesData, AdminAutoSplitSentencesResponse, AdminSplitPassageIntoReadingsData, AdminSplitPassageIntoReadingsResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ClassesListMyClassroomsResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesDeleteClassData, ClassesDeleteClassResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, ClassesReadLearningPathData, ClassesReadLearningPathResponse, ClassesReportExamViolationData, ClassesReportExamViolationResponse, ClassesRecordListenData, ClassesRecordListenResponse, ClassesListClassroomExercisesData, ClassesListClassroomExercisesResponse, ClassesReadExerciseResultsData, ClassesReadExerciseResultsResponse, ClassesSetAssignmentData, ClassesSetAssignmentResponse, ClassesStartExploreData, ClassesStartExploreResponse, LoginReadLoginOptionsResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginLoginDemoResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, StudentsImportStudentsData, StudentsImportStudentsResponse, StudentsListStudentsData, StudentsListStudentsResponse, StudentsResetStudentPasswordData, StudentsResetStudentPasswordResponse, StudentsRemoveStudentData, StudentsRemoveStudentResponse, StudentsBulkResetPasswordsData, StudentsBulkResetPasswordsResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse, VocabularyImportVocabPreviewData, VocabularyImportVocabPreviewResponse, VocabularyListBooksResponse, VocabularyCreateBookData, VocabularyCreateBookResponse, VocabularyReadBookData, VocabularyReadBookResponse, VocabularyUpdateBookData, VocabularyUpdateBookResponse, VocabularyAddBookWordsData, VocabularyAddBookWordsResponse, VocabularyRemoveBookWordData, VocabularyRemoveBookWordResponse, VocabularyUpdateWordData, VocabularyUpdateWordResponse, VocabularyListAssignmentsData, VocabularyListAssignmentsResponse, VocabularyPublishVocabAssignmentData, VocabularyPublishVocabAssignmentResponse, VocabularyArchiveVocabAssignmentData, VocabularyArchiveVocabAssignmentResponse, VocabularyReadVocabResultsData, VocabularyReadVocabResultsResponse, VocabularyReadVocabTodayData, VocabularyReadVocabTodayResponse, VocabularyStartVocabSessionData, VocabularyStartVocabSessionResponse, VocabularySubmitVocabAnswerData, VocabularySubmitVocabAnswerResponse, VocabularyReadWrongWordsData, VocabularyReadWrongWordsResponse } from './types.gen';
 
 export class AdminService {
     /**
@@ -1596,6 +1596,356 @@ export class UtilsService {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/api/v1/utils/ready-check/'
+        });
+    }
+}
+
+export class VocabularyService {
+    /**
+     * Import Vocab Preview
+     * CSV 导入预览：解析与校验，不写库；确认后在创建词库/加词时提交。
+     * @param data The data for the request.
+     * @param data.formData
+     * @returns VocabularyImportPreview Successful Response
+     * @throws ApiError
+     */
+    public static importVocabPreview(data: VocabularyImportVocabPreviewData): CancelablePromise<VocabularyImportVocabPreviewResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/vocabulary/books/import-preview',
+            formData: data.formData,
+            mediaType: 'multipart/form-data',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * List Books
+     * 词库列表：公共词库全体教师可见；班级词库仅本班教师（管理员全见）。
+     * @returns VocabularyBookPublic Successful Response
+     * @throws ApiError
+     */
+    public static listBooks(): CancelablePromise<VocabularyListBooksResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/vocabulary/books'
+        });
+    }
+    
+    /**
+     * Create Book
+     * 创建词库：公共词库仅管理员；班级词库为本班任课教师或管理员。
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns VocabularyBookDetail Successful Response
+     * @throws ApiError
+     */
+    public static createBook(data: VocabularyCreateBookData): CancelablePromise<VocabularyCreateBookResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/vocabulary/books',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Book
+     * @param data The data for the request.
+     * @param data.bookId
+     * @returns VocabularyBookDetail Successful Response
+     * @throws ApiError
+     */
+    public static readBook(data: VocabularyReadBookData): CancelablePromise<VocabularyReadBookResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/vocabulary/books/{book_id}',
+            path: {
+                book_id: data.bookId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Book
+     * @param data The data for the request.
+     * @param data.bookId
+     * @param data.requestBody
+     * @returns VocabularyBookPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateBook(data: VocabularyUpdateBookData): CancelablePromise<VocabularyUpdateBookResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/vocabulary/books/{book_id}',
+            path: {
+                book_id: data.bookId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Add Book Words
+     * 词库加词（手动录入或导入确认）；重复词跳过并按新增数递增版本。
+     * @param data The data for the request.
+     * @param data.bookId
+     * @param data.requestBody
+     * @returns VocabularyBookDetail Successful Response
+     * @throws ApiError
+     */
+    public static addBookWords(data: VocabularyAddBookWordsData): CancelablePromise<VocabularyAddBookWordsResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/vocabulary/books/{book_id}/words',
+            path: {
+                book_id: data.bookId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Remove Book Word
+     * 从词库移除词条（不改词本身；已发布任务按快照不受影响）。
+     * @param data The data for the request.
+     * @param data.bookId
+     * @param data.wordId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static removeBookWord(data: VocabularyRemoveBookWordData): CancelablePromise<VocabularyRemoveBookWordResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/vocabulary/books/{book_id}/words/{word_id}',
+            path: {
+                book_id: data.bookId,
+                word_id: data.wordId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Word
+     * 编辑词条（词库内容版本化更新；历史任务与报告仍按发布快照）。
+     * @param data The data for the request.
+     * @param data.wordId
+     * @param data.requestBody
+     * @returns VocabularyWordPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateWord(data: VocabularyUpdateWordData): CancelablePromise<VocabularyUpdateWordResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/vocabulary/words/{word_id}',
+            path: {
+                word_id: data.wordId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * List Assignments
+     * @param data The data for the request.
+     * @param data.code
+     * @returns VocabularyAssignmentPublic Successful Response
+     * @throws ApiError
+     */
+    public static listAssignments(data: VocabularyListAssignmentsData): CancelablePromise<VocabularyListAssignmentsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/classes/{code}/vocabulary/assignments',
+            path: {
+                code: data.code
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Publish Vocab Assignment
+     * 发布词汇任务：固化快照与目标名单，归档旧任务（本班教师/管理员）。
+     * @param data The data for the request.
+     * @param data.code
+     * @param data.requestBody
+     * @returns VocabularyAssignmentPublic Successful Response
+     * @throws ApiError
+     */
+    public static publishVocabAssignment(data: VocabularyPublishVocabAssignmentData): CancelablePromise<VocabularyPublishVocabAssignmentResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/classes/{code}/vocabulary/assignments',
+            path: {
+                code: data.code
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Archive Vocab Assignment
+     * @param data The data for the request.
+     * @param data.code
+     * @param data.assignmentId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static archiveVocabAssignment(data: VocabularyArchiveVocabAssignmentData): CancelablePromise<VocabularyArchiveVocabAssignmentResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/classes/{code}/vocabulary/assignments/{assignment_id}/archive',
+            path: {
+                code: data.code,
+                assignment_id: data.assignmentId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Vocab Results
+     * 班级完成统计：默认当前任务；逐学生完成状态 + 逐词错误分布（首答口径）。
+     * @param data The data for the request.
+     * @param data.code
+     * @param data.assignmentId
+     * @returns VocabularyClassResults Successful Response
+     * @throws ApiError
+     */
+    public static readVocabResults(data: VocabularyReadVocabResultsData): CancelablePromise<VocabularyReadVocabResultsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/classes/{code}/vocabulary/results',
+            path: {
+                code: data.code
+            },
+            query: {
+                assignment_id: data.assignmentId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Vocab Today
+     * 学生词汇任务视图：当前任务 + 个人进度（未答题不透露拼写）。
+     * @param data The data for the request.
+     * @param data.code
+     * @returns VocabularyTodayPlan Successful Response
+     * @throws ApiError
+     */
+    public static readVocabToday(data: VocabularyReadVocabTodayData): CancelablePromise<VocabularyReadVocabTodayResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/classes/{code}/vocabulary/today',
+            path: {
+                code: data.code
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Start Vocab Session
+     * 创建/恢复作答会话（幂等）。仅目标名单内的本班学生。
+     * @param data The data for the request.
+     * @param data.code
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static startVocabSession(data: VocabularyStartVocabSessionData): CancelablePromise<VocabularyStartVocabSessionResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/classes/{code}/vocabulary/sessions',
+            path: {
+                code: data.code
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Submit Vocab Answer
+     * 提交拼写作答：服务端规范化判分；幂等键重放返回同一结果。
+     * @param data The data for the request.
+     * @param data.sessionId
+     * @param data.requestBody
+     * @returns VocabularyAnswerResult Successful Response
+     * @throws ApiError
+     */
+    public static submitVocabAnswer(data: VocabularySubmitVocabAnswerData): CancelablePromise<VocabularySubmitVocabAnswerResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/vocabulary/sessions/{session_id}/answers',
+            path: {
+                session_id: data.sessionId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Wrong Words
+     * 错词本：本课堂学生档案下全部词汇任务的首答错词（跨任务聚合）。
+     * @param data The data for the request.
+     * @param data.code
+     * @returns VocabularyWrongWords Successful Response
+     * @throws ApiError
+     */
+    public static readWrongWords(data: VocabularyReadWrongWordsData): CancelablePromise<VocabularyReadWrongWordsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/classes/{code}/vocabulary/wrong-words',
+            path: {
+                code: data.code
+            },
+            errors: {
+                422: 'Validation Error'
+            }
         });
     }
 }

@@ -96,6 +96,16 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 uv run bash scripts/tests-start.sh
 3. **前端 API 客户端**：后端改完后重新生成 → `cd frontend && npm run generate-client`（脚本会从运行中的 backend 容器导出最新 OpenAPI 规范再生成）
 4. **前端页面**：在 `routes/_layout/` 加新页面，在 `frontend/src/components/Sidebar/AppSidebar.tsx` 的 `baseItems` 里加导航链接（Admin 入口已按 `is_superuser` 条件展示，可参考）
 
+## 背单词模块（2026-10-01 起，P0 已上线）
+
+独立「词汇学习」模块（设计文档 `docs/vocabulary-module-design.md`），与口语分析用的 `WordlistEntry` 完全分离，沿用现有账号/课堂/学生档案：
+
+- **数据模型**：`VocabularyWord`（词条：拼写/词性/中英释义/可接受拼写）→ `VocabularyBook`（public=管理员维护 / classroom=本班教师自建）→ `VocabularyBookItem`；发布走 `VocabularyAssignment`（snapshot_items 深拷贝 + version_no）+ `VocabularyAssignmentTarget`（发布时固定名单，完成率分母不漂移）；作答 `VocabularySession`/`VocabularyAnswer`（幂等键唯一，练习重试 attempt_no 递增）。
+- **判分**（`app/services/vocabulary.py`）：NFKC + 首尾空白 + casefold 规范化；只认快照拼写与显式 `accepted_spellings` 变体，不自动放宽复数/连字符。统计与错词本一律看**首答**；未答题不向学生端泄露拼写。
+- **API**：`app/api/routes/vocabulary.py`（`/vocabulary/books…` 词库 CRUD + CSV 导入预览；`/classes/{code}/vocabulary/…` 发布/结果/学生任务/错词本；`/vocabulary/sessions/{id}/answers` 作答）。域逻辑在 services，路由只做权限。
+- **前端**：学生端 `/vocab/$code`（任务首页 + `/practice` 拼写练习 + 错词本），手机底部导航为「首页/口语/词汇/成长」；教师端 `/t/$code/vocab`（选词发布 + 完成情况），课堂面板可切换口语/词汇；管理端 `/admin/vocabbooks`（公共词库 CSV 导入预览）。无标准音的词练习用浏览器朗读兜底并标注「设备合成语音」。
+- 测试 `tests/api/routes/test_vocabulary.py`（权限/快照/判分/幂等/名单/统计）；响应式 e2e 覆盖词汇两页三档宽度。
+
 ## 模考模式（2026-10-01 起）
 
 发布练习时可开启「模考」（`is_exam` + `time_limit_minutes` 5–240）：

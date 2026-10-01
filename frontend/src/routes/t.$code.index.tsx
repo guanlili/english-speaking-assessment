@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link, useParams } from "@tanstack/react-router"
 import {
+  BookA,
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
@@ -318,17 +319,25 @@ function TeacherBoardPage() {
               </Badge>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => boardQuery.refetch()}
-            disabled={boardQuery.isFetching}
-          >
-            <RefreshCw
-              className={boardQuery.isFetching ? "animate-spin" : ""}
-            />
-            {t({ zh: "刷新", en: "Refresh" })}
-          </Button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/t/$code/vocab" params={{ code }}>
+                <BookA />
+                {t(TERMS.vocabLearning)}
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => boardQuery.refetch()}
+              disabled={boardQuery.isFetching}
+            >
+              <RefreshCw
+                className={boardQuery.isFetching ? "animate-spin" : ""}
+              />
+              {t({ zh: "刷新", en: "Refresh" })}
+            </Button>
+          </div>
         </div>
 
         <Tabs

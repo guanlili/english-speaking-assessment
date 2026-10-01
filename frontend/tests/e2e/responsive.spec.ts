@@ -48,3 +48,82 @@ test("iPad 竖屏下进入课堂页布局正常", async ({ page }) => {
   )
   expect(overflow).toBeLessThanOrEqual(1)
 })
+
+/** 教师演示登录（本地超管 token），供词汇任务页复用 */
+async function loginTeacherDemo(page: import("@playwright/test").Page) {
+  await page.goto("/login")
+  await page.getByText("本地演示体验", { exact: false }).click()
+  await page.getByRole("button", { name: "教师演示" }).click()
+  await page.waitForURL((url) => !url.pathname.includes("/login"), {
+    timeout: 15_000,
+  })
+}
+
+/** 学生学号登录（本地演示学生 student，标准默认密码）并完成一次幂等入班，
+ * 让浏览器建立本课堂的学生身份（词汇页守卫依赖本地身份）。 */
+async function loginStudentDemo(page: import("@playwright/test").Page) {
+  await page.goto("/login")
+  await page.getByRole("tab", { name: "学生登录" }).click()
+  await page.getByPlaceholder("请输入你的学号").fill("student")
+  await page.getByTestId("student-password-input").fill("brs123456")
+  await page.getByRole("button", { name: "登录", exact: false }).click()
+  await page.waitForURL((url) => !url.pathname.includes("/login"), {
+    timeout: 15_000,
+  })
+  // 登录后先到入班页完成一次幂等入班（已入班会自动建立本地身份），
+  // 等到 esa:student:DEMO01 落盘再离开；需要手动点按钮时点它
+  await page.goto("/j/DEMO01")
+  const hasIdentity = () =>
+    page.waitForFunction(
+      () => localStorage.getItem("esa:student:DEMO01") !== null,
+      undefined,
+      { timeout: 8_000, polling: 250 },
+    )
+  if (
+    !(await hasIdentity().then(
+      () => true,
+      () => false,
+    ))
+  ) {
+    const joinButton = page.getByRole("button", { name: /进入课堂|Join class/ })
+    await joinButton.waitFor({ state: "visible", timeout: 10_000 })
+    await joinButton.click()
+    await hasIdentity()
+  }
+}
+
+async function expectNoHorizontalOverflow(
+  page: import("@playwright/test").Page,
+) {
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  )
+  expect(overflow).toBeLessThanOrEqual(1)
+}
+
+for (const vp of VIEWPORTS) {
+  test(`教师词汇任务页在${vp.name}无横向溢出`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height })
+    await loginTeacherDemo(page)
+    await page.goto("/t/DEMO01/vocab")
+    await expect(
+      page.getByRole("heading", {
+        name: /还没有进行中的词汇任务|No vocabulary task/,
+      }),
+    ).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+  })
+
+  test(`学生词汇学习页在${vp.name}无横向溢出`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height })
+    await loginStudentDemo(page)
+    await page.goto("/vocab/DEMO01")
+    await expect(
+      page.getByRole("heading", { name: /词汇学习|Vocabulary/ }),
+    ).toBeVisible()
+    await expect(page.getByText(/错词本|Wrong Words/).first()).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+  })
+}
