@@ -481,7 +481,9 @@ def submit_answer(
     try:
         session.commit()
     except Exception:
-        # 并发同幂等键：唯一索引兜底，重放返回既有作答
+        # 并发同幂等键：唯一索引兜底，重放返回既有作答。
+        # 回退命中同样要过归属校验——并发里另一会话/题目先落库时，
+        # 不能把别人的判分结果混进当前请求的回包。
         session.rollback()
         if idempotency_key:
             existing = session.exec(
@@ -490,6 +492,14 @@ def submit_answer(
                 )
             ).first()
             if existing is not None:
+                if (
+                    existing.session_id != vocab_session.id
+                    or existing.item_index != item_index
+                ):
+                    raise HTTPException(
+                        status_code=422,
+                        detail="幂等键已用于其他作答，请刷新后重新提交",
+                    )
                 return existing
         raise
     session.refresh(answer)

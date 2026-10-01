@@ -735,3 +735,93 @@ def test_audio_only_requires_standard_audio(
     by_meaning = {item["meaning_zh"]: item["prompt_type"] for item in plan["items"]}
     assert by_meaning["狗"] == "audio"
     assert by_meaning["猫"] == "meaning"
+
+
+def test_results_after_archiving_last_round(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """归档最后一期且未发新任务：默认结果为空，但按 id 仍可回看历史快照成绩。"""
+    teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    code = classroom["code"]
+    student = make_student(db, client, code, "历史学生")
+
+    book = _make_public_book(client, superuser_token_headers, WORDS_3[:2])
+    word_ids = [word["id"] for word in book["words"]]
+    assignment = _publish(client, headers, code, word_ids)
+    session_id = _start_session(client, student["headers"], code)
+    _answer(client, student["headers"], session_id, 0, "apple")
+    _answer(client, student["headers"], session_id, 1, "banana")
+
+    # 结束任务（唯一一期被归档）
+    assert (
+        client.post(
+            f"/api/v1/classes/{code}/vocabulary/assignments/{assignment['id']}/archive",
+            headers=headers,
+        ).status_code
+        == 200
+    )
+    # 默认结果：无进行中任务 → assignment 为空
+    default_results = client.get(
+        f"/api/v1/classes/{code}/vocabulary/results", headers=headers
+    ).json()
+    assert default_results["assignment"] is None
+    # 按 id 回看：归档期数的成绩完整
+    archived = client.get(
+        f"/api/v1/classes/{code}/vocabulary/results",
+        params={"assignment_id": assignment["id"]},
+        headers=headers,
+    ).json()
+    assert archived["assignment"]["id"] == assignment["id"]
+    assert archived["assignment"]["status"] == "archived"
+    assert archived["completed_count"] == 1
+    row = next(r for r in archived["students"] if r["display_name"] == "历史学生")
+    assert row["status"] == "completed"
+    assert row["correct_first_count"] == 2
+
+
+def test_concurrent_same_key_different_items(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """并发同幂等键跨题：任何成功回包都必须属于请求自己的题号（归属不混淆）。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    code = classroom["code"]
+    student = make_student(db, client, code, "并发学生")
+
+    book = _make_public_book(client, superuser_token_headers, WORDS_3[:2])
+    word_ids = [word["id"] for word in book["words"]]
+    _publish(client, headers, code, word_ids)
+    session_id = _start_session(client, student["headers"], code)
+    token = student["headers"]["Authorization"]
+    key = f"concurrent-{random_lower_string()}"
+
+    def submit(item_index: int) -> tuple[int, dict | None]:
+        resp = client.post(
+            f"{VOCAB}/sessions/{session_id}/answers",
+            json={
+                "item_index": item_index,
+                "prompt_type": "meaning",
+                "answer": "apple" if item_index == 0 else "banana",
+                "idempotency_key": key,
+            },
+            headers={"Authorization": token},
+        )
+        return resp.status_code, (resp.json() if resp.status_code == 200 else None)
+
+    # 同键同时打两道题：两请求都过预检查时，唯一索引只放行一个；
+    # 另一个走回退分支，必须 422 而不是拿到别人的判分结果
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(submit, 0), pool.submit(submit, 1)]
+        results_pair = [future.result() for future in futures]
+
+    # 同键唯一约束：必然恰好一个成功、一个被拒（预检查或并发回退拦截）
+    statuses = sorted(status for status, _ in results_pair)
+    assert statuses == [200, 422]
+    for status, body in results_pair:
+        if status == 200:
+            assert body is not None
+            assert body["attempt_no"] == 1
+            assert body["item_index"] in (0, 1)

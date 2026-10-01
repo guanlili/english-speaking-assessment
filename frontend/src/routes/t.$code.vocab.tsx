@@ -14,7 +14,7 @@ import {
   SpellCheck,
   Upload,
 } from "lucide-react"
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { ApiError, ClassesService, VocabularyService } from "@/client"
 import { Badge } from "@/components/ui/badge"
@@ -410,7 +410,24 @@ function AssignPanel({
                     en: `Pick words to test (${selectedCount}/${activeCount} selected)`,
                   })}
                 </p>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  {detailQuery.data?.scope === "classroom" ? (
+                    <AddWordsToBook
+                      bookId={bookId}
+                      onAdded={() => {
+                        queryClient.invalidateQueries({
+                          queryKey: ["vocab-teacher", "book", bookId],
+                        })
+                      }}
+                    />
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {t({
+                        zh: "公共词库由管理员在「词库管理」维护；要自己加词可新建班级词库。",
+                        en: "Public books are maintained by admins; create a classroom book to add your own words.",
+                      })}
+                    </p>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -427,6 +444,14 @@ function AssignPanel({
                   </Button>
                 </div>
               </div>
+              {activeCount === 0 && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  {t({
+                    zh: "这个词库还没有词：点上面的「CSV 加词」导入，或回到第一步新建词库。",
+                    en: "This book is empty — import via “Add words via CSV” above, or go back and create a book.",
+                  })}
+                </p>
+              )}
               {selectedCount > MAX_PUBLISH_WORDS && (
                 <p role="alert" className="text-sm text-destructive">
                   {t({
@@ -567,6 +592,57 @@ function AssignPanel({
 }
 
 /** 结果面板：完成统计 + 学生明细 + 逐词错误分布 */
+/** 期数选择器：当前任务 / 历史期数（含已归档）；无历史时不渲染。 */
+function RoundSelector({
+  assignments,
+  selectedAssignmentId,
+  onSelect,
+  className,
+}: {
+  assignments: Array<{
+    id: string
+    version_no: number
+    title: string
+    status: string
+    word_count: number
+  }>
+  selectedAssignmentId: string | null
+  onSelect: (id: string | null) => void
+  className?: string
+}) {
+  const { t } = useI18n()
+  if (assignments.length === 0) return null
+  return (
+    <div className={`flex flex-wrap items-center gap-2 ${className ?? ""}`}>
+      <label
+        htmlFor="vocab-round"
+        className="text-xs font-medium text-muted-foreground"
+      >
+        {t({ zh: "查看期数：", en: "Round:" })}
+      </label>
+      <select
+        id="vocab-round"
+        value={selectedAssignmentId ?? ""}
+        onChange={(event) => onSelect(event.target.value || null)}
+        className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground transition-colors hover:border-primary/35"
+      >
+        <option value="">
+          {t({ zh: "当前进行中的任务", en: "Current task in progress" })}
+        </option>
+        {assignments.map((item) => (
+          <option key={item.id} value={item.id}>
+            {`#${item.version_no} ${item.title}（${item.word_count} ${t({ zh: "词", en: "words" })} · ${
+              item.status === "published"
+                ? t({ zh: "进行中", en: "active" })
+                : t({ zh: "已归档", en: "archived" })
+            }）`}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 function ResultsPanel({
   code,
   assignments,
@@ -609,6 +685,17 @@ function ResultsPanel({
 
   const results = resultsQuery.data
   const assignment = results?.assignment ?? null
+  // 没有当前任务但有历史期数（如刚结束最后一期）→ 默认选中最近一期，
+  // 保证归档成绩始终能从选择器进入（hook 必须在条件 return 之前）
+  useEffect(() => {
+    if (
+      !assignment &&
+      selectedAssignmentId === null &&
+      assignments.length > 0
+    ) {
+      setSelectedAssignmentId(assignments[0].id)
+    }
+  }, [assignment, selectedAssignmentId, assignments])
   const students = useMemo(
     () =>
       [...(results?.students ?? [])].sort((a, b) =>
@@ -658,14 +745,26 @@ function ResultsPanel({
 
   if (!assignment) {
     return (
-      <Card>
-        <CardContent className="py-10 text-center text-muted-foreground">
-          {t({
-            zh: "还没有进行中的词汇任务，先到「发布任务」安排一期。",
-            en: "No vocabulary task in progress yet — assign one first.",
-          })}
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <RoundSelector
+          assignments={assignments}
+          selectedAssignmentId={selectedAssignmentId}
+          onSelect={setSelectedAssignmentId}
+        />
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">
+            {selectedAssignmentId === null
+              ? t({
+                  zh: "还没有词汇任务，先到「发布任务」安排一期。",
+                  en: "No vocabulary tasks yet — assign one first.",
+                })
+              : t({
+                  zh: "该期数没有结果数据。",
+                  en: "No result data for this round.",
+                })}
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
@@ -735,40 +834,12 @@ function ResultsPanel({
                 en: "Stats use each item's first answer; practice retries don't inflate accuracy.",
               })}
             </p>
-            {assignments.length > 0 && (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <label
-                  htmlFor="vocab-round"
-                  className="text-xs font-medium text-muted-foreground"
-                >
-                  {t({ zh: "查看期数：", en: "Round:" })}
-                </label>
-                <select
-                  id="vocab-round"
-                  value={selectedAssignmentId ?? ""}
-                  onChange={(event) =>
-                    setSelectedAssignmentId(event.target.value || null)
-                  }
-                  className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground transition-colors hover:border-primary/35"
-                >
-                  <option value="">
-                    {t({
-                      zh: "当前进行中的任务",
-                      en: "Current task in progress",
-                    })}
-                  </option>
-                  {assignments.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {`#${item.version_no} ${item.title}（${item.word_count} ${t({ zh: "词", en: "words" })} · ${
-                        item.status === "published"
-                          ? t({ zh: "进行中", en: "active" })
-                          : t({ zh: "已归档", en: "archived" })
-                      }）`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <RoundSelector
+              assignments={assignments}
+              selectedAssignmentId={selectedAssignmentId}
+              onSelect={setSelectedAssignmentId}
+              className="mt-2"
+            />
           </div>
           <Button
             variant="outline"
@@ -986,6 +1057,144 @@ type BookWordInput = {
   meaning_en?: string | null
   accepted_spellings?: Array<string> | null
   example_en?: string | null
+}
+
+/** 向已有班级词库补词：CSV 预览确认后调用 addBookWords（库里已有的自动跳过）。 */
+function AddWordsToBook({
+  bookId,
+  onAdded,
+}: {
+  bookId: string
+  onAdded: () => void
+}) {
+  const { t } = useI18n()
+  const queryClient = useQueryClient()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [preview, setPreview] = useState<{ words: BookWordInput[] } | null>(
+    null,
+  )
+
+  const importPreview = useMutation({
+    mutationFn: (file: File) =>
+      VocabularyService.importVocabPreview({
+        formData: { file: file as unknown as string },
+      }),
+    onSuccess: (data) => {
+      setPreview({
+        words: (data.rows ?? []).map((row) => ({
+          headword: row.word.headword,
+          part_of_speech: row.word.part_of_speech ?? null,
+          meaning_zh: row.word.meaning_zh,
+          meaning_en: row.word.meaning_en ?? null,
+          accepted_spellings: row.word.accepted_spellings ?? null,
+          example_en: row.word.example_en ?? null,
+        })),
+      })
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          error.status === 422
+            ? t({
+                zh: "CSV 格式有误：需要表头 headword,meaning_zh（UTF-8）。",
+                en: "Bad CSV: header row headword,meaning_zh required (UTF-8).",
+              })
+            : t({
+                zh: "解析失败，请重试。",
+                en: "Preview failed — please retry.",
+              }),
+        )
+      }
+    },
+  })
+
+  const addWords = useMutation({
+    mutationFn: () =>
+      VocabularyService.addBookWords({
+        bookId,
+        requestBody: preview?.words ?? [],
+      }),
+    onSuccess: (data) => {
+      toast.success(
+        t({
+          zh: `已加入 ${data.words?.length ?? 0} 个词条（重复词自动跳过）。`,
+          en: `Added ${data.words?.length ?? 0} words (duplicates skipped).`,
+        }),
+      )
+      setPreview(null)
+      queryClient.invalidateQueries({ queryKey: ["vocab-teacher", "books"] })
+      onAdded()
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          error.status === 403
+            ? t({
+                zh: "没有权限编辑这个词库（公共词库请在管理端维护）。",
+                en: "No permission to edit this book (public books are maintained by admins).",
+              })
+            : t({
+                zh: "加词失败，请重试。",
+                en: "Failed to add words — please retry.",
+              }),
+        )
+      }
+    },
+  })
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => fileRef.current?.click()}
+        disabled={importPreview.isPending}
+      >
+        {importPreview.isPending ? (
+          <Loader2 className="animate-spin" />
+        ) : (
+          <Upload />
+        )}
+        {t({ zh: "CSV 加词", en: "Add words via CSV" })}
+      </Button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) importPreview.mutate(file)
+          event.target.value = ""
+        }}
+      />
+      {preview && preview.words.length > 0 && (
+        <>
+          <span className="text-xs text-muted-foreground">
+            {t({
+              zh: `预览 ${preview.words.length} 词：`,
+              en: `Preview ${preview.words.length} words:`,
+            })}
+            {preview.words
+              .slice(0, 6)
+              .map((word) => word.headword)
+              .join("、")}
+          </span>
+          <Button
+            size="sm"
+            disabled={addWords.isPending}
+            onClick={() => addWords.mutate()}
+          >
+            {addWords.isPending ? <Loader2 className="animate-spin" /> : null}
+            {t({ zh: "确认加入", en: "Confirm" })}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setPreview(null)}>
+            {t({ zh: "取消", en: "Cancel" })}
+          </Button>
+        </>
+      )}
+    </div>
+  )
 }
 
 /** 新建班级词库：标题 + 可选 CSV 预览导入，绑定当前课堂（scope=classroom）。 */
