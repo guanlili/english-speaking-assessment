@@ -275,6 +275,13 @@ function TeacherBoardPage() {
             </p>
             <h1 className="break-words text-2xl font-semibold tracking-tight sm:text-3xl">
               {board.classroom_name}
+              {board.current_exercise?.is_exam && (
+                <Badge variant="destructive" className="ml-2 align-middle">
+                  {t({ zh: "模考", en: "Exam" })} ·{" "}
+                  {board.current_exercise.time_limit_minutes}
+                  {t({ zh: " 分钟", en: " min" })}
+                </Badge>
+              )}
             </h1>
             <p className="text-sm text-muted-foreground">
               {board.classroom_grade && `${board.classroom_grade} · `}
@@ -595,6 +602,9 @@ function TeacherBoardPage() {
                           key={student.student_id}
                           student={student}
                           code={code}
+                          isExamPublish={
+                            board.current_exercise?.is_exam === true
+                          }
                           expanded={expandedId === student.student_id}
                           onToggle={() =>
                             setExpandedId(
@@ -649,11 +659,13 @@ function StudentRow({
   code,
   expanded,
   onToggle,
+  isExamPublish,
 }: {
   student: BoardStudent
   code: string
   expanded: boolean
   onToggle: () => void
+  isExamPublish: boolean
 }) {
   const { t } = useI18n()
   const name = student.suffix
@@ -698,6 +710,22 @@ function StudentRow({
         <TableCell>{student.repeat_avg ?? "–"}</TableCell>
         <TableCell>{student.question_avg ?? "–"}</TableCell>
         <TableCell className="space-x-1 whitespace-nowrap">
+          {isExamPublish && (
+            <Badge
+              variant={student.exam_tab_switches ? "destructive" : "outline"}
+            >
+              {student.exam_tab_switches === null || undefined
+                ? t({ zh: "未开考", en: "Not started" })
+                : `${t({ zh: "切屏", en: "Switches" })} ${student.exam_tab_switches}`}
+            </Badge>
+          )}
+          {isExamPublish && student.exam_time_used_seconds != null && (
+            <Badge variant="secondary">
+              {student.exam_ended
+                ? `${t({ zh: "已交卷", en: "Submitted" })} · ${formatExamUsed(student.exam_time_used_seconds)}`
+                : `${t({ zh: "用时", en: "Elapsed" })} ${formatExamUsed(student.exam_time_used_seconds)}`}
+            </Badge>
+          )}
           {student.inactive_days7 && (
             <Badge variant="destructive">
               {t({ zh: "7 日未练", en: "Inactive 7 Days" })}
@@ -828,4 +856,10 @@ function StudentRow({
       )}
     </>
   )
+}
+
+function formatExamUsed(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return `${m}:${String(s).padStart(2, "0")}`
 }

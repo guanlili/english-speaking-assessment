@@ -96,6 +96,16 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 uv run bash scripts/tests-start.sh
 3. **前端 API 客户端**：后端改完后重新生成 → `cd frontend && npm run generate-client`（脚本会从运行中的 backend 容器导出最新 OpenAPI 规范再生成）
 4. **前端页面**：在 `routes/_layout/` 加新页面，在 `frontend/src/components/Sidebar/AppSidebar.tsx` 的 `baseItems` 里加导航链接（Admin 入口已按 `is_superuser` 条件展示，可参考）
 
+## 模考模式（2026-10-01 起）
+
+发布练习时可开启「模考」（`is_exam` + `time_limit_minutes` 5–240）：
+
+- **限时以服务器时间为准**：学生首次打开今日计划即落 `exam_started_at`，倒计时只是展示；到时任何读写触碰会话都会惰性落 `exam_ended_at`（= 自动交卷），此后提交一律 422。
+- **每题一次作答**：考试会话内同题第二个作答 422（幂等键重传不受影响，断网重试安全）。
+- **防切屏**：前端 `visibilitychange` 上报 `POST /classes/{code}/exam/violation`，计数入 `practice_session.tab_switch_count`（封顶 999），教师面板与发布历史可见。
+- 考试中禁换题（next-question 422）、不展示逐题反馈（分数在结果页统一看）、题面 `select-none`。
+- 实现在 `app/services/exam.py`（域逻辑）+ `attempts.py`（作答门禁）+ 练习页考试态 UI。测试 `tests/api/routes/test_exam.py`。
+
 ## 双语准则（平台级，2026-09-30 起）
 
 平台有外教使用，**所有用户可见文案必须中英双语**。这是硬性开发准则，不是可选项。

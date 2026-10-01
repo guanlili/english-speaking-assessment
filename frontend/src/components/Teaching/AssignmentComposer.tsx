@@ -223,6 +223,9 @@ function ComposerForm({
   const [types, setTypes] = useState<LessonTypes>(initialTypes)
   const [selection, setSelection] = useState<LessonSelection>(initialSelection)
   const [title, setTitle] = useState(initialTitle)
+  // 模考模式：整场限时（分钟），学生首次打开开考、到时自动交卷、切屏记录
+  const [isExam, setIsExam] = useState(false)
+  const [examMinutes, setExamMinutes] = useState("30")
   const [previewOpen, setPreviewOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
   const dirtyRef = useRef(false)
@@ -325,6 +328,9 @@ function ComposerForm({
           : {
               items: planItems,
               title: title.trim() || undefined,
+              ...(isExam
+                ? { is_exam: true, time_limit_minutes: Number(examMinutes) }
+                : {}),
             },
       }),
     onSuccess: async (_, clear) => {
@@ -427,6 +433,61 @@ function ComposerForm({
                 en: "e.g., Week 3 | Travel-themed speaking",
               })}
             />
+          </section>
+
+          <section>
+            <h2 className="font-semibold">
+              {t({ zh: "模考模式", en: "Exam Mode" })}
+            </h2>
+            <p className="mb-3 mt-2 text-sm text-muted-foreground">
+              {t({
+                zh: "开启后整场限时：学生首次打开即开考，到时自动交卷；考试中每题只能作答一次，切屏会被记录到教师面板。",
+                en: "Time-limited for the whole exam: the clock starts when a student first opens it and auto-submits at zero. One attempt per item; screen switches are recorded for the teacher.",
+              })}
+            </p>
+            <div className="flex flex-wrap items-center gap-4">
+              <label
+                htmlFor="exam-toggle"
+                className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"
+              >
+                <Checkbox
+                  id="exam-toggle"
+                  checked={isExam}
+                  onCheckedChange={(checked) => {
+                    dirtyRef.current = true
+                    setIsExam(checked === true)
+                  }}
+                />
+                {t({ zh: "作为模考发布", en: "Publish as exam" })}
+              </label>
+              {isExam && (
+                <label
+                  htmlFor="exam-minutes"
+                  className="flex items-center gap-2 text-sm"
+                >
+                  <span className="sr-only">
+                    {t({ zh: "限时（分钟）", en: "Time limit (minutes)" })}
+                  </span>
+                  <Input
+                    id="exam-minutes"
+                    type="number"
+                    min={5}
+                    max={240}
+                    value={examMinutes}
+                    onChange={(event) => {
+                      dirtyRef.current = true
+                      setExamMinutes(event.target.value)
+                    }}
+                    className="w-24"
+                    aria-label={t({
+                      zh: "限时（分钟，5–240）",
+                      en: "Time limit (minutes, 5–240)",
+                    })}
+                  />
+                  {t({ zh: "分钟（5–240）", en: "minutes (5–240)" })}
+                </label>
+              )}
+            </div>
           </section>
           <section>
             <h2 className="font-semibold">

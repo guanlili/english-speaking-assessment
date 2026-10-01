@@ -24,6 +24,8 @@ export type AssignmentRequest = {
     assign_qa?: (boolean | null);
     items?: (Array<AssignmentItemIn> | null);
     title?: (string | null);
+    is_exam?: boolean;
+    time_limit_minutes?: (number | null);
 };
 
 export type AttemptPublic = {
@@ -133,6 +135,9 @@ export type BoardStudent = {
     xp?: number;
     streak_days?: number;
     items: Array<BoardItem>;
+    exam_tab_switches?: (number | null);
+    exam_time_used_seconds?: (number | null);
+    exam_ended?: (boolean | null);
 };
 
 export type Body_admin_import_wordlist_csv = {
@@ -192,6 +197,8 @@ export type ClassroomExercisePublic = {
     created_at?: (string | null);
     published_at?: (string | null);
     archived_at?: (string | null);
+    is_exam?: boolean;
+    time_limit_minutes?: (number | null);
 };
 
 export type ClassroomPublic = {
@@ -226,6 +233,25 @@ export type DraftQuestionOut = {
 };
 
 /**
+ * 考试态信息（学生端倒计时与锁题、教师端监考）。
+ */
+export type ExamStatus = {
+    time_limit_minutes: number;
+    remaining_seconds: number;
+    started: boolean;
+    ended: boolean;
+    tab_switch_count?: number;
+};
+
+export type ExamViolationRequest = {
+    session_id: string;
+};
+
+export type ExamViolationResult = {
+    tab_switch_count: number;
+};
+
+/**
  * 单次练习按学生的结果行（发布历史结果页）。
  */
 export type ExerciseStudentResult = {
@@ -236,6 +262,9 @@ export type ExerciseStudentResult = {
     total_count: number;
     has_pending: boolean;
     items: Array<BoardItem>;
+    exam_tab_switches?: (number | null);
+    exam_time_used_seconds?: (number | null);
+    exam_ended?: (boolean | null);
 };
 
 export type ExploreRequest = {
@@ -593,6 +622,7 @@ export type TodayPlan = {
     questions_exhausted?: boolean;
     gamification?: (GamificationInfo | null);
     assigned_unit_title?: (string | null);
+    exam?: (ExamStatus | null);
 };
 
 export type Token = {
@@ -1017,6 +1047,13 @@ export type ClassesReadLearningPathData = {
 };
 
 export type ClassesReadLearningPathResponse = (LearningPath);
+
+export type ClassesReportExamViolationData = {
+    code: string;
+    requestBody: ExamViolationRequest;
+};
+
+export type ClassesReportExamViolationResponse = (ExamViolationResult);
 
 export type ClassesRecordListenData = {
     code: string;

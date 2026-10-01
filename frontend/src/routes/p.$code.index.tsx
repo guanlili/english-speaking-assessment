@@ -71,6 +71,12 @@ function formatSeconds(seconds: number): string {
   return `${String(Math.floor(whole / 60)).padStart(1, "0")}:${String(whole % 60).padStart(2, "0")}`
 }
 
+function formatExamCountdown(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+}
+
 function isTerminal(status: string | undefined): boolean {
   return status === "done" || status === "failed"
 }
@@ -268,7 +274,8 @@ function ClassroomPracticePage() {
   const recorder = useRecorder({
     onComplete: (rec) => {
       submittedRef.current = true
-      if (currentItem) setPinnedItemId(currentItem.id)
+      // 模考不钉住题目：提交后自动推进到下一道未做题（也不展示本题反馈）
+      if (currentItem && !examActive) setPinnedItemId(currentItem.id)
       // 使用录音开始时钉住的目标，避免录音期间计划刷新导致提交到新题新轮
       submit(
         { blob: rec.blob, duration: rec.duration },
@@ -369,6 +376,72 @@ function ClassroomPracticePage() {
   const attemptStatus = attempt?.status
   const attemptTerminal = isTerminal(attemptStatus)
   const attemptFailed = attemptStatus === "failed"
+
+  // ── 模考态 ──
+  const exam = plan?.exam ?? null
+  const examActive = exam !== null && !exam.ended
+  const examEnded = exam?.ended ?? false
+  // 当前题是否已作答（考试一次性口径：有终态作答即锁定）
+  const currentItemDone = currentItem
+    ? isTerminal(attemptByItem.get(currentItem.id)?.status)
+    : false
+
+  // 本地倒计时：以服务端 remaining_seconds 为准心，每秒递减仅作展示
+  const examServerRemaining = exam?.remaining_seconds
+  const [examRemaining, setExamRemaining] = useState<number | null>(null)
+  useEffect(() => {
+    if (examServerRemaining !== undefined) setExamRemaining(examServerRemaining)
+  }, [examServerRemaining])
+  const examTimerActive = examRemaining !== null
+  useEffect(() => {
+    if (!examTimerActive) return
+    const timer = setInterval(() => {
+      setExamRemaining((v) => (v === null ? v : Math.max(0, v - 1)))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [examTimerActive])
+  // 倒计时归零：拉取服务端终态（惰性交卷在那边落库）
+  useEffect(() => {
+    if (examRemaining === 0 && examActive) {
+      void queryClient.invalidateQueries({ queryKey: todayQueryKey })
+    }
+  }, [examRemaining, examActive, queryClient, todayQueryKey])
+  // 考试结束（到时/服务端判定）：自动进结果页（= 交卷）
+  const examNavigatedRef = useRef(false)
+  useEffect(() => {
+    if (!examEnded || examNavigatedRef.current) return
+    examNavigatedRef.current = true
+    void navigate({
+      to: "/p/$code/result",
+      params: { code },
+      search: sessionId ? { session: sessionId } : {},
+    })
+  }, [examEnded, navigate, code, sessionId])
+
+  // 防切屏：考试期间离开页面（切 tab/最小化）上报并提示
+  useEffect(() => {
+    if (!examActive || !plan?.session_id) return
+    const onVisibility = () => {
+      if (document.visibilityState !== "hidden") return
+      void ClassesService.reportExamViolation({
+        code: code.toUpperCase(),
+        requestBody: { session_id: plan.session_id },
+      }).catch(() => {
+        /* 上报失败不打断考试 */
+      })
+      toast.warning(
+        t({ zh: "考试中请勿切屏", en: "Stay on this screen during the exam" }),
+        {
+          description: t({
+            zh: "本次切屏已被记录，老师可见",
+            en: "This switch has been recorded and is visible to your teacher",
+          }),
+        },
+      )
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => document.removeEventListener("visibilitychange", onVisibility)
+  }, [examActive, plan?.session_id, code, t])
   const scoring =
     submitting || (attemptStatus !== undefined && !attemptTerminal)
   const recorderReset = recorder.reset
@@ -544,6 +617,39 @@ function ClassroomPracticePage() {
           </div>
         </div>
 
+        {exam && (
+          <div
+            role="status"
+            className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 ${
+              examEnded
+                ? "border-destructive/30 bg-destructive/5"
+                : "border-orange-300/50 bg-orange-50 dark:bg-orange-950/30"
+            }`}
+          >
+            <p className="text-sm font-semibold">
+              {examEnded
+                ? t({ zh: "考试已结束", en: "The exam has ended" })
+                : t({ zh: "模考进行中", en: "Exam in progress" })}
+              {examActive && (
+                <span className="ml-2 font-mono text-base tabular-nums">
+                  {formatExamCountdown(examRemaining ?? exam.remaining_seconds)}
+                </span>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {examEnded
+                ? t({
+                    zh: "时间到已自动交卷，正在进入结果页…",
+                    en: "Time is up — auto-submitted. Opening results…",
+                  })
+                : t({
+                    zh: "整场限时 · 每题只能作答一次 · 切屏会被记录",
+                    en: "Time-limited · one attempt per item · screen switches are recorded",
+                  })}
+            </p>
+          </div>
+        )}
+
         {/* 步骤条 */}
         <div
           role="progressbar"
@@ -598,7 +704,9 @@ function ClassroomPracticePage() {
                   </p>
                 ) : (
                   <>
-                    <p className="prompt-display min-h-24">
+                    <p
+                      className={`prompt-display min-h-24 ${exam ? "select-none" : ""}`}
+                    >
                       {hideText
                         ? t({
                             zh: "原文已收起。试着回想刚刚听到的内容。",
@@ -655,7 +763,7 @@ function ClassroomPracticePage() {
                         })}
                   </Button>
                 )}
-                {isQuestion && (
+                {isQuestion && !exam && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -754,7 +862,11 @@ function ClassroomPracticePage() {
                       <button
                         type="button"
                         onClick={startRecording}
-                        disabled={scoring}
+                        disabled={
+                          scoring ||
+                          (examActive && currentItemDone) ||
+                          examEnded
+                        }
                         aria-label={t({
                           zh: "开始录音",
                           en: "Start recording",
@@ -764,20 +876,27 @@ function ClassroomPracticePage() {
                         <Mic className="size-7" />
                       </button>
                       <p className="mt-4 text-sm">
-                        {scoring
-                          ? t({
-                              zh: "已提交，正在出反馈…",
-                              en: "Submitted — feedback is on its way…",
-                            })
-                          : recorder.status === "ready"
+                        {examEnded
+                          ? t({ zh: "考试已结束", en: "The exam has ended" })
+                          : examActive && currentItemDone
                             ? t({
-                                zh: "这一次开口，已记录",
-                                en: "This speaking attempt is recorded",
+                                zh: "本题已作答，考试中不能重录",
+                                en: "Already answered — one attempt per item",
                               })
-                            : t({
-                                zh: "准备好了，就点一下麦克风",
-                                en: "When you're ready, tap the microphone",
-                              })}
+                            : scoring
+                              ? t({
+                                  zh: "已提交，正在出反馈…",
+                                  en: "Submitted — feedback is on its way…",
+                                })
+                              : recorder.status === "ready"
+                                ? t({
+                                    zh: "这一次开口，已记录",
+                                    en: "This speaking attempt is recorded",
+                                  })
+                                : t({
+                                    zh: "准备好了，就点一下麦克风",
+                                    en: "When you're ready, tap the microphone",
+                                  })}
                       </p>
                       {scoring ? (
                         <p className="text-xs text-muted-foreground">
@@ -931,7 +1050,7 @@ function ClassroomPracticePage() {
 
         {/* 反馈必须绑定实际作答的题型与题目：录音期间老师发布新计划后，
             旧反馈不会挂到新题（attempt 自带 item_type / item_id）。 */}
-        {attempt && attemptTerminal && (
+        {attempt && attemptTerminal && !exam && (
           <FeedbackCard
             attempt={attempt}
             itemType={attempt.item_type as "passage" | "repeat" | "question"}

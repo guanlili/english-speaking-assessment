@@ -225,6 +225,13 @@ function ExerciseResults({
                 zh: `按「${exercise.title}」发布的题单解释（${exercise.item_count} 道题）`,
                 en: `Items published for "${exercise.title}" (${exercise.item_count} items)`,
               })}
+              {exercise.is_exam && (
+                <Badge variant="destructive" className="ml-2 align-middle">
+                  {t({ zh: "模考", en: "Exam" })} ·{" "}
+                  {exercise.time_limit_minutes}
+                  {t({ zh: " 分钟", en: " min" })}
+                </Badge>
+              )}
             </CardTitle>
             <p className="mt-1 block text-xs text-muted-foreground sm:hidden">
               {t({
@@ -264,6 +271,25 @@ function ExerciseResults({
                           {t({ zh: "评分中", en: "Scoring" })}
                         </Badge>
                       )}
+                      {exercise.is_exam && row.exam_tab_switches != null && (
+                        <Badge
+                          variant={
+                            row.exam_tab_switches ? "destructive" : "outline"
+                          }
+                          className="ml-2"
+                        >
+                          {t({ zh: "切屏", en: "Switches" })}{" "}
+                          {row.exam_tab_switches}
+                        </Badge>
+                      )}
+                      {exercise.is_exam &&
+                        row.exam_time_used_seconds != null && (
+                          <Badge variant="secondary" className="ml-2">
+                            {row.exam_ended
+                              ? t({ zh: "已交卷", en: "Submitted" })
+                              : t({ zh: "进行中", en: "In progress" })}
+                          </Badge>
+                        )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
                       {row.done_count}/{row.total_count}

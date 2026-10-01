@@ -33,6 +33,7 @@ from app.models import (
     User,
 )
 from app.scoring.audio_convert import probe_audio
+from app.services import exam as exam_service
 
 router = APIRouter(tags=["attempts"])
 
@@ -206,6 +207,25 @@ def create_attempt_upload(
             _require_attempt_access(session, existing, current_user)
             session.refresh(existing)
             return existing
+
+    # 模考门禁：整场限时（服务端强约束）+ 每题一次作答。
+    # 放在幂等检查之后：同一次录音断网重试（同幂等键）不受影响
+    if session_id is not None:
+        exam_session = session.get(PracticeSession, session_id)
+        if exam_session is not None and exam_session.assignment_id is not None:
+            bound_exercise = session.get(ClassroomExercise, exam_session.assignment_id)
+            if bound_exercise is not None and bound_exercise.is_exam:
+                exam_service.require_exam_open(session, exam_session, bound_exercise)
+                already = session.exec(
+                    select(Attempt.id).where(
+                        Attempt.session_id == session_id,  # type: ignore[arg-type]
+                        Attempt.item_id == item_id,
+                    )
+                ).first()
+                if already is not None:
+                    raise HTTPException(
+                        status_code=422, detail="考试中每题只能作答一次"
+                    )
 
     item_snapshot = _snapshot_attempt_item(session, item_type, item_id, session_id)
 
