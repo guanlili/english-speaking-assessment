@@ -185,15 +185,20 @@ function VocabPracticePage() {
     },
   })
 
-  // 出题方式切换：任务含听音时，学生可在此题用「听音拼词」
-  const audioAvailable = (assignment?.prompt_types ?? []).includes("audio")
-  const [useAudio, setUseAudio] = useState(false)
-  useEffect(() => {
-    setUseAudio(false)
-  }, [])
-
+  // 出题方式：任务允许的题型决定初始模式（纯听音任务默认听音）；
+  // 听音在当前题可用 = 有标准音，或该词已作答（拼写已揭示，可设备朗读）
+  const taskPromptTypes = assignment?.prompt_types ?? ["meaning"]
+  const meaningInTask = taskPromptTypes.includes("meaning")
+  const audioInTask = taskPromptTypes.includes("audio")
   const item: VocabularyTodayItem | undefined = items[current]
   const answer = item ? answers[item.item_index] : undefined
+  const audioUsableHere =
+    audioInTask && Boolean(item?.audio_url || answer !== undefined)
+  const [useAudio, setUseAudio] = useState(false)
+  useEffect(() => {
+    setUseAudio(audioInTask && !meaningInTask && audioUsableHere)
+  }, [audioInTask, meaningInTask, audioUsableHere])
+
   const answeredCount = Object.keys(answers).length
   const correctFirst = items.filter(
     (it) => it.answered && it.is_correct === true,
@@ -209,8 +214,8 @@ function VocabPracticePage() {
       })
       return
     }
-    // 无标准音的词：练习允许浏览器朗读兜底（界面标明设备合成语音）
-    const word = item.headword ?? ""
+    // 无标准音的词：仅已作答（拼写已揭示）时允许浏览器朗读兜底，界面标明设备合成语音
+    const word = answer?.correctSpelling ?? item.headword ?? ""
     if (word) {
       const utterance = speakEnglish(word)
       if (utterance === null) {
@@ -416,27 +421,40 @@ function VocabPracticePage() {
               </div>
             )}
 
-            {/* 听音切换（任务含听音题型时） */}
-            {audioAvailable && (
-              <div className="flex items-center gap-2">
+            {/* 题型切换：任务同时允许看义/听音时学生可自选；
+                无标准音且未作答的词禁用听音（设计文档：不进入听音题并说明原因） */}
+            {audioInTask && (
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   variant={useAudio ? "default" : "outline"}
                   size="sm"
+                  disabled={!audioUsableHere}
+                  aria-disabled={!audioUsableHere}
                   onClick={() => setUseAudio(true)}
                 >
                   <Headphones />
                   {t(TERMS.promptAudio)}
                 </Button>
-                <Button
-                  type="button"
-                  variant={!useAudio ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setUseAudio(false)}
-                >
-                  <SpellCheck />
-                  {t(TERMS.promptMeaning)}
-                </Button>
+                {meaningInTask && (
+                  <Button
+                    type="button"
+                    variant={!useAudio ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setUseAudio(false)}
+                  >
+                    <SpellCheck />
+                    {t(TERMS.promptMeaning)}
+                  </Button>
+                )}
+                {!audioUsableHere && (
+                  <p className="text-xs text-muted-foreground">
+                    {t({
+                      zh: "这个词还没有标准音，先用看义拼词；答过后可用设备语音再听。",
+                      en: "No standard audio for this word yet — spell from meaning first; after answering you can replay it with device voice.",
+                    })}
+                  </p>
+                )}
               </div>
             )}
 

@@ -603,11 +603,17 @@ def publish_vocab_assignment(
     current_user: TeacherUserDep,
     body: VocabularyAssignmentCreate,
 ) -> Any:
-    """发布词汇任务：固化快照与目标名单，归档旧任务（本班教师/管理员）。"""
+    """发布词汇任务：固化快照与目标名单，归档旧任务（本班教师/管理员）。
+
+    词单来源同时受可见性约束：公共词库或本人班级词库（管理员不限），
+    显式 word_ids 的词也必须归属可见词库。
+    """
     classroom = _get_classroom(session, code)
     _require_classroom_teacher(classroom, current_user)
     prompt_types = vocab_service.validate_prompt_types(body.prompt_types)
-    words = vocab_service.resolve_publish_words(session, body.book_id, body.word_ids)
+    words = vocab_service.resolve_publish_words(
+        session, body.book_id, body.word_ids, viewer=current_user
+    )
     assignment = vocab_service.publish_assignment(
         session=session,
         classroom_id=classroom.id,
@@ -702,14 +708,13 @@ def _today_plan_payload(
             answered_count += 1
             if first.is_correct:
                 correct_first += 1
-        item_prompt_types = snapshot_item.get("prompt_types")
-        prompt_type = (
-            "audio"
-            if "audio" in (assignment.prompt_types or [])
-            and isinstance(item_prompt_types, list)
-            and "audio" in [str(entry) for entry in item_prompt_types]
-            else "meaning"
+        # 听音口径（设计文档 §5）：任务含 audio 且该词有稳定标准音；
+        # 已作答的词拼写已揭示，可退回设备朗读练耳。其余一律看义拼词，
+        # 避免播音按钮无内容可放。
+        audio_allowed = "audio" in (assignment.prompt_types or []) and (
+            snapshot_item.get("audio_url") is not None or first is not None
         )
+        prompt_type = "audio" if audio_allowed else "meaning"
         items.append(
             VocabularyTodayItem(
                 item_index=idx,
@@ -778,8 +783,7 @@ def start_vocab_session(
         assignment = session.get(VocabularyAssignment, body.assignment_id)
     if assignment is None or assignment.classroom_id != classroom.id:
         raise HTTPException(status_code=404, detail="词汇任务不存在")
-    if assignment.status != "published":
-        raise HTTPException(status_code=422, detail="该任务已结束")
+    vocab_service.ensure_assignment_open(assignment)
     if not vocab_service.student_targeted(session, assignment, student.id):
         raise HTTPException(
             status_code=403,
@@ -820,8 +824,7 @@ def submit_vocab_answer(
     )
     if assignment is None:
         raise HTTPException(status_code=422, detail="会话没有绑定任务，不能作答")
-    if assignment.status != "published":
-        raise HTTPException(status_code=422, detail="该任务已结束，不能继续作答")
+    vocab_service.ensure_assignment_open(assignment)
     if vocab_session.mode == "quiz" and vocab_session.status == "submitted":
         raise HTTPException(status_code=422, detail="测验已交卷，不能继续作答")
 

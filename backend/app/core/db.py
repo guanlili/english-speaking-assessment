@@ -270,6 +270,8 @@ def _seed_practice_content(session: Session) -> None:
 
 
 # 自写演示词条（词汇学习模块 P0）：与教材无关，学校 CSV 可在管理端覆盖。
+# accepted_spellings 只收真正的拼写变体（如英美 favourite/favorite），不收同义词
+# ——同义词会把没掌握目标词的答案误判为正确。
 # (headword, part_of_speech, meaning_zh, meaning_en, accepted_spellings, example_en)
 DEMO_VOCAB_WORDS: list[
     tuple[str, str, str, str | None, tuple[str, ...], str | None]
@@ -295,7 +297,7 @@ DEMO_VOCAB_WORDS: list[
         "n.",
         "兔子",
         "a small animal with long ears",
-        ("bunny",),
+        (),
         "The rabbit eats carrots.",
     ),
     (
@@ -327,7 +329,7 @@ DEMO_VOCAB_WORDS: list[
         "adj.",
         "聪明的",
         "quick at learning and understanding",
-        ("smart",),
+        (),
         "Crows are clever birds.",
     ),
     (
@@ -359,7 +361,7 @@ DEMO_VOCAB_WORDS: list[
         "n.",
         "课程表",
         "a plan that shows the times of classes",
-        ("schedule",),
+        (),
         "Check the timetable before you go.",
     ),
     (
@@ -399,7 +401,7 @@ DEMO_VOCAB_WORDS: list[
         "adj.",
         "美味的",
         "tasting very good",
-        ("yummy",),
+        (),
         "The dumplings are delicious.",
     ),
     (

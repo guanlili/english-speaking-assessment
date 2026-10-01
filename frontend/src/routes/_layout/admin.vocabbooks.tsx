@@ -43,13 +43,18 @@ export const Route = createFileRoute("/_layout/admin/vocabbooks")({
   }),
 })
 
+/** CSV 预览行（导入确认用；保留全部支持字段，避免 meaning_en/example_en 静默丢失） */
+type PreviewWord = {
+  headword: string
+  part_of_speech?: string | null
+  meaning_zh: string
+  meaning_en?: string | null
+  accepted_spellings?: Array<string> | null
+  example_en?: string | null
+}
+
 type PreviewState = {
-  rows: Array<{
-    headword: string
-    meaning_zh: string
-    part_of_speech?: string | null
-    accepted_spellings?: Array<string> | null
-  }>
+  rows: PreviewWord[]
   invalid: Array<{ line: number; reason: string }>
   duplicates: Array<{ line: number; reason: string }>
 }
@@ -89,7 +94,9 @@ function VocabBooksAdmin() {
           headword: row.word.headword,
           meaning_zh: row.word.meaning_zh,
           part_of_speech: row.word.part_of_speech,
+          meaning_en: row.word.meaning_en,
           accepted_spellings: row.word.accepted_spellings,
+          example_en: row.word.example_en,
         })),
         invalid: data.invalid ?? [],
         duplicates: data.duplicates ?? [],
@@ -119,12 +126,7 @@ function VocabBooksAdmin() {
           title: payload.title,
           scope: "public",
           description: null,
-          words: payload.words.map((row) => ({
-            headword: row.headword,
-            part_of_speech: row.part_of_speech ?? null,
-            meaning_zh: row.meaning_zh,
-            accepted_spellings: row.accepted_spellings ?? null,
-          })),
+          words: payload.words,
         },
       }),
     onSuccess: () => {
@@ -167,12 +169,7 @@ function VocabBooksAdmin() {
     mutationFn: (payload: { bookId: string; words: PreviewState["rows"] }) =>
       VocabularyService.addBookWords({
         bookId: payload.bookId,
-        requestBody: payload.words.map((row) => ({
-          headword: row.headword,
-          part_of_speech: row.part_of_speech ?? null,
-          meaning_zh: row.meaning_zh,
-          accepted_spellings: row.accepted_spellings ?? null,
-        })),
+        requestBody: payload.words,
       }),
     onSuccess: (data) => {
       toast.success(

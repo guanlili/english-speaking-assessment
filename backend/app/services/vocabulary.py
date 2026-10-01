@@ -20,6 +20,7 @@ from sqlmodel import Session, col, select
 from app.models import (
     VOCAB_PROMPT_TYPES,
     Student,
+    User,
     VocabularyAnswer,
     VocabularyAssignment,
     VocabularyAssignmentTarget,
@@ -87,21 +88,45 @@ def validate_prompt_types(prompt_types: list[str]) -> list[str]:
     return cleaned
 
 
+def visible_book_ids_for(session: Session, user_id: uuid.UUID) -> set[uuid.UUID]:
+    """教师可用的词库 id 集合：全部公共词库 + 自己名下的班级词库（管理员另走全通过）。"""
+    rows = session.exec(
+        select(VocabularyBook.id).where(
+            (VocabularyBook.scope == "public") | (VocabularyBook.owner_id == user_id)  # type: ignore[operator]
+        )
+    ).all()
+    return set(rows)
+
+
 def resolve_publish_words(
     session: Session,
     book_id: uuid.UUID | None,
     word_ids: list[uuid.UUID] | None,
+    viewer: User,
 ) -> list[VocabularyWord]:
     """发布词单解析：整本词库（active 词、按 position）或显式词清单。
+
+    权限：来源词库必须对发布教师可见（公共库或本人班级库；管理员不限），
+    显式 word_ids 的每个词也必须归属至少一本可见词库——否则可借发布/结果
+    接口读到其他教师私有词条的拼写与释义。
 
     发布校验三口径：所选词数、可出题数、最终题数一致（题量不允许
     超过实际可出题量——清单里多余/归档词直接 422，避免静默缩水）。
     """
+    allowed_book_ids: set[uuid.UUID] | None = (
+        None if viewer.is_superuser else visible_book_ids_for(session, viewer.id)
+    )
+
+    def _book_allowed(book: VocabularyBook) -> bool:
+        return allowed_book_ids is None or book.id in allowed_book_ids
+
     words: list[VocabularyWord]
     if book_id is not None:
         book = session.get(VocabularyBook, book_id)
         if book is None or book.status != "active":
             raise HTTPException(status_code=404, detail="词库不存在或已归档")
+        if not _book_allowed(book):
+            raise HTTPException(status_code=403, detail="没有权限使用这个词库")
         words = list(
             session.exec(
                 select(VocabularyWord)
@@ -144,6 +169,24 @@ def resolve_publish_words(
             status_code=422,
             detail=f"词清单包含不存在或已归档的词条（{len(missing_or_inactive)} 个），请重新选择",
         )
+    if allowed_book_ids is not None:
+        # 显式清单同样要核验归属：每个词必须出现在至少一本可见词库里
+        owning_book_rows = session.exec(
+            select(VocabularyBookItem.word_id, VocabularyBookItem.book_id).where(
+                col(VocabularyBookItem.word_id).in_(word_ids)  # type: ignore[operator]
+            )
+        ).all()
+        visible_word_ids = {
+            word_id
+            for word_id, book_id_of_item in owning_book_rows
+            if book_id_of_item in allowed_book_ids
+        }
+        not_allowed = [str(wid) for wid in word_ids if wid not in visible_word_ids]
+        if not_allowed:
+            raise HTTPException(
+                status_code=403,
+                detail=f"词清单包含你没有权限使用的词条（{len(not_allowed)} 个），请从自己的词库重新选择",
+            )
     # 保持请求顺序（教师预览里看到的顺序即学生作答顺序）
     return [found[wid] for wid in word_ids]
 
@@ -203,6 +246,18 @@ def publish_assignment(
             status_code=422,
             detail="课堂还没有学生，发布后无人可作答；请先让学生进入课堂",
         )
+    # 纯听音任务：无标准音的词既不能听也不能走看义（快照题型只有 audio），
+    # 发布前拦下；混合题型不受限（无音词回落看义）
+    if prompt_types == ["audio"]:
+        missing_audio = [w.headword for w in words if not w.audio_url]
+        if missing_audio:
+            raise HTTPException(
+                status_code=422,
+                detail=f"纯听音任务要求每个词都有标准音（{len(missing_audio)} 个缺少，"
+                "如 {0}）；请先上传音频，或同时勾选看义拼词".format(
+                    "、".join(missing_audio[:3])
+                ),
+            )
 
     assignment_title = (title or "词汇练习").strip() or "词汇练习"
     snapshots = [build_word_snapshot(w, prompt_types) for w in words]
@@ -259,6 +314,17 @@ def archive_assignment(session: Session, assignment: VocabularyAssignment) -> No
     assignment.archived_at = get_datetime_utc()
     session.add(assignment)
     session.commit()
+
+
+def ensure_assignment_open(assignment: VocabularyAssignment) -> None:
+    """作答门禁：任务在发布中且未到截止时间（截止以服务器时间为准）。
+
+    已开始的练习不因截止中断历史数据——只是不再接受新的会话与作答。
+    """
+    if assignment.status != "published":
+        raise HTTPException(status_code=422, detail="该任务已结束，不能继续作答")
+    if assignment.due_at is not None and datetime.now(UTC) >= assignment.due_at:
+        raise HTTPException(status_code=422, detail="该任务已到截止时间，不能再作答")
 
 
 def student_targeted(
@@ -354,7 +420,11 @@ def submit_answer(
     answer_raw: str,
     idempotency_key: str | None,
 ) -> VocabularyAnswer:
-    """判分与落库：幂等键重放返回原作答；练习允许重试（attempt_no 递增）。"""
+    """判分与落库：幂等键重放返回原作答；练习允许重试（attempt_no 递增）。
+
+    幂等键绑定会话与题号：命中其它会话/题目的键属于客户端误用，按 422
+    拒绝（避免把别人的旧作答当成当前学生的提交返回）。
+    """
     if idempotency_key:
         existing = session.exec(
             select(VocabularyAnswer).where(
@@ -362,6 +432,14 @@ def submit_answer(
             )
         ).first()
         if existing is not None:
+            if (
+                existing.session_id != vocab_session.id
+                or existing.item_index != item_index
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="幂等键已用于其他作答，请刷新后重新提交",
+                )
             return existing
 
     if not 0 <= item_index < len(assignment.snapshot_items):

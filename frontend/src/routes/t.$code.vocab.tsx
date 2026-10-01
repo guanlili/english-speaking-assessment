@@ -9,12 +9,14 @@ import {
   ListChecks,
   Loader2,
   Mic,
+  Plus,
   RefreshCw,
   SpellCheck,
+  Upload,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
-import { ApiError, VocabularyService } from "@/client"
+import { ApiError, ClassesService, VocabularyService } from "@/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -70,6 +72,10 @@ function TeacherVocabPage() {
     queryFn: () =>
       VocabularyService.readVocabResults({ code: code.toUpperCase() }),
   })
+  const classroomsQuery = useQuery({
+    queryKey: ["teacher", "classrooms"],
+    queryFn: () => ClassesService.listMyClassrooms(),
+  })
 
   if (assignmentsQuery.isPending || resultsQuery.isPending) {
     return (
@@ -107,6 +113,11 @@ function TeacherVocabPage() {
   const assignments = assignmentsQuery.data ?? []
   const current =
     assignments.find((item) => item.status === "published") ?? null
+  // 建班级词库需要课堂 id：从我的课堂列表按码匹配（管理员也从这里拿）
+  const classroomId =
+    classroomsQuery.data?.find(
+      (classroom) => classroom.code === code.toUpperCase(),
+    )?.id ?? null
 
   return (
     <div className="space-y-6">
@@ -190,21 +201,21 @@ function TeacherVocabPage() {
       </div>
 
       {tab === "assign" ? (
-        <AssignPanel code={code} currentDue={current?.due_at ?? null} />
+        <AssignPanel code={code} classroomId={classroomId} />
       ) : (
-        <ResultsPanel code={code} />
+        <ResultsPanel code={code} assignments={assignments} />
       )}
     </div>
   )
 }
 
-/** 发布面板：选词库 → 勾词 → 预览题量 → 发布快照 */
+/** 发布面板：选词库（可现场新建班级词库）→ 勾词 → 预览题量 → 发布快照 */
 function AssignPanel({
   code,
-  currentDue,
+  classroomId,
 }: {
   code: string
-  currentDue: string | null
+  classroomId: string | null
 }) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
@@ -229,6 +240,7 @@ function AssignPanel({
   const [meaningPrompt, setMeaningPrompt] = useState(true)
   const [audioPrompt, setAudioPrompt] = useState(false)
   const [dueLocal, setDueLocal] = useState("")
+  const [showCreateBook, setShowCreateBook] = useState(false)
 
   const selectBook = (id: string | null) => {
     setBookId(id)
@@ -273,20 +285,25 @@ function AssignPanel({
         }),
       )
       queryClient.invalidateQueries({ queryKey: ["vocab-teacher", code] })
-      setDueLocal(currentDue ?? "")
+      setDueLocal("")
     },
     onError: (error) => {
       if (error instanceof ApiError) {
         toast.error(
           error.status === 422
             ? t({
-                zh: "发布内容有误：请检查所选词数与出题方式。",
-                en: "Cannot publish: check the selected words and prompt types.",
+                zh: "发布内容有误：请检查所选词数与出题方式（纯听音要求全部词有标准音）。",
+                en: "Cannot publish: check the words and prompt types (audio-only requires standard audio for every word).",
               })
-            : t({
-                zh: "发布失败，请重试。",
-                en: "Publish failed — please retry.",
-              }),
+            : error.status === 403
+              ? t({
+                  zh: "没有权限使用这些词条，请从自己的词库重新选择。",
+                  en: "No permission to use some of these words — pick from your own books.",
+                })
+              : t({
+                  zh: "发布失败，请重试。",
+                  en: "Publish failed — please retry.",
+                }),
         )
       }
     },
@@ -344,10 +361,32 @@ function AssignPanel({
             {books.length === 0 && !booksQuery.isPending && (
               <p className="text-xs text-muted-foreground">
                 {t({
-                  zh: "还没有可用词库：公共词库由管理员在「词库管理」维护，也可以在题目库创建班级词库。",
-                  en: "No books yet: admins maintain public books in Word Books; classroom books can be created from the Question Bank.",
+                  zh: "还没有可用词库：可以用下面的「新建班级词库」导入一份，公共词库由管理员维护。",
+                  en: "No books yet: create a classroom book below, or ask an admin for public books.",
                 })}
               </p>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-primary"
+              aria-expanded={showCreateBook}
+              onClick={() => setShowCreateBook(!showCreateBook)}
+            >
+              <Plus />
+              {t({ zh: "新建班级词库", en: "New classroom book" })}
+            </Button>
+            {showCreateBook && (
+              <CreateClassroomBook
+                classroomId={classroomId}
+                onCreated={(newBookId) => {
+                  setShowCreateBook(false)
+                  queryClient.invalidateQueries({
+                    queryKey: ["vocab-teacher", "books"],
+                  })
+                  selectBook(newBookId)
+                }}
+              />
             )}
           </div>
 
@@ -490,8 +529,8 @@ function AssignPanel({
                 {t(TERMS.promptAudio)}
                 <span className="text-xs text-muted-foreground">
                   {t({
-                    zh: "（无标准音的词用设备朗读兜底，仅练习）",
-                    en: "(words without audio fall back to device voice, practice only)",
+                    zh: "（无标准音的词自动走看义；纯听音任务要求全部词有标准音）",
+                    en: "(words without audio fall back to meaning; audio-only tasks need audio for every word)",
                   })}
                 </span>
               </label>
@@ -528,13 +567,32 @@ function AssignPanel({
 }
 
 /** 结果面板：完成统计 + 学生明细 + 逐词错误分布 */
-function ResultsPanel({ code }: { code: string }) {
+function ResultsPanel({
+  code,
+  assignments,
+}: {
+  code: string
+  assignments: Array<{
+    id: string
+    version_no: number
+    title: string
+    status: string
+    word_count: number
+  }>
+}) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
+  // 查看哪一期：null = 当前进行中；归档/重发后可切换历史期数按快照回看
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<
+    string | null
+  >(null)
   const resultsQuery = useQuery({
-    queryKey: ["vocab-teacher", code, "results"],
+    queryKey: ["vocab-teacher", code, "results", selectedAssignmentId],
     queryFn: () =>
-      VocabularyService.readVocabResults({ code: code.toUpperCase() }),
+      VocabularyService.readVocabResults({
+        code: code.toUpperCase(),
+        assignmentId: selectedAssignmentId ?? undefined,
+      }),
     refetchInterval: 20_000,
   })
   const archive = useMutation({
@@ -677,6 +735,40 @@ function ResultsPanel({ code }: { code: string }) {
                 en: "Stats use each item's first answer; practice retries don't inflate accuracy.",
               })}
             </p>
+            {assignments.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <label
+                  htmlFor="vocab-round"
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  {t({ zh: "查看期数：", en: "Round:" })}
+                </label>
+                <select
+                  id="vocab-round"
+                  value={selectedAssignmentId ?? ""}
+                  onChange={(event) =>
+                    setSelectedAssignmentId(event.target.value || null)
+                  }
+                  className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground transition-colors hover:border-primary/35"
+                >
+                  <option value="">
+                    {t({
+                      zh: "当前进行中的任务",
+                      en: "Current task in progress",
+                    })}
+                  </option>
+                  {assignments.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {`#${item.version_no} ${item.title}（${item.word_count} ${t({ zh: "词", en: "words" })} · ${
+                        item.status === "published"
+                          ? t({ zh: "进行中", en: "active" })
+                          : t({ zh: "已归档", en: "archived" })
+                      }）`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <Button
             variant="outline"
@@ -693,15 +785,17 @@ function ResultsPanel({ code }: { code: string }) {
             <Download />
             {t({ zh: "导出", en: "Export" })}
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={archive.isPending}
-            onClick={() => archive.mutate(assignment.id)}
-          >
-            <Archive />
-            {t({ zh: "结束任务", en: "End task" })}
-          </Button>
+          {assignment.status === "published" && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={archive.isPending}
+              onClick={() => archive.mutate(assignment.id)}
+            >
+              <Archive />
+              {t({ zh: "结束任务", en: "End task" })}
+            </Button>
+          )}
         </CardContent>
       </Card>
 
@@ -879,6 +973,223 @@ function ResultsPanel({ code }: { code: string }) {
           en: "Stats reflect each item's first answer, showing students' real starting points. Practice data supports teaching — it doesn't define students.",
         })}
       </p>
+    </div>
+  )
+}
+
+/** CSV 预览行（导入确认用；保留全部支持字段，避免 meaning_en/example_en 静默丢失） */
+
+type BookWordInput = {
+  headword: string
+  part_of_speech?: string | null
+  meaning_zh: string
+  meaning_en?: string | null
+  accepted_spellings?: Array<string> | null
+  example_en?: string | null
+}
+
+/** 新建班级词库：标题 + 可选 CSV 预览导入，绑定当前课堂（scope=classroom）。 */
+function CreateClassroomBook({
+  classroomId,
+  onCreated,
+}: {
+  classroomId: string | null
+  onCreated: (bookId: string) => void
+}) {
+  const { t } = useI18n()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [title, setTitle] = useState("")
+  const [preview, setPreview] = useState<{
+    words: BookWordInput[]
+    invalid: Array<{ line: number; reason: string }>
+    duplicates: Array<{ line: number; reason: string }>
+  } | null>(null)
+
+  const importPreview = useMutation({
+    mutationFn: (file: File) =>
+      VocabularyService.importVocabPreview({
+        formData: { file: file as unknown as string },
+      }),
+    onSuccess: (data) => {
+      setPreview({
+        words: (data.rows ?? []).map((row) => ({
+          headword: row.word.headword,
+          part_of_speech: row.word.part_of_speech ?? null,
+          meaning_zh: row.word.meaning_zh,
+          meaning_en: row.word.meaning_en ?? null,
+          accepted_spellings: row.word.accepted_spellings ?? null,
+          example_en: row.word.example_en ?? null,
+        })),
+        invalid: data.invalid ?? [],
+        duplicates: data.duplicates ?? [],
+      })
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          error.status === 422
+            ? t({
+                zh: "CSV 格式有误：需要表头 headword,meaning_zh（UTF-8）。",
+                en: "Bad CSV: header row headword,meaning_zh required (UTF-8).",
+              })
+            : t({
+                zh: "解析失败，请重试。",
+                en: "Preview failed — please retry.",
+              }),
+        )
+      }
+    },
+  })
+
+  const create = useMutation({
+    mutationFn: () =>
+      VocabularyService.createBook({
+        requestBody: {
+          title: title.trim() || t({ zh: "班级词库", en: "Classroom book" }),
+          scope: "classroom",
+          classroom_id: classroomId,
+          description: null,
+          words: preview?.words ?? [],
+        },
+      }),
+    onSuccess: (book) => {
+      toast.success(
+        t({
+          zh: `班级词库已创建（${book.word_count ?? 0} 词）。`,
+          en: `Classroom book created (${book.word_count ?? 0} words).`,
+        }),
+      )
+      onCreated(book.id)
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          error.status === 403
+            ? t({
+                zh: "只有本班任课教师能创建班级词库。",
+                en: "Only this classroom's teacher can create its books.",
+              })
+            : t({
+                zh: "创建失败，请重试。",
+                en: "Create failed — please retry.",
+              }),
+        )
+      }
+    },
+  })
+
+  if (classroomId === null) {
+    return (
+      <p role="status" className="text-xs text-muted-foreground">
+        {t({
+          zh: "课堂信息加载中，稍后即可新建…",
+          en: "Loading classroom info — creation will be available shortly…",
+        })}
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border border-dashed border-primary/40 bg-secondary/40 p-4">
+      <div className="space-y-2">
+        <label htmlFor="class-book-title" className="text-sm font-medium">
+          {t({ zh: "词库名称", en: "Book title" })}
+        </label>
+        <Input
+          id="class-book-title"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder={t({
+            zh: "如：Unit 1-2 单词（本班专属）",
+            en: "e.g. Units 1-2 words (class only)",
+          })}
+          className="h-11 max-w-md text-base"
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => fileRef.current?.click()}
+          disabled={importPreview.isPending}
+        >
+          {importPreview.isPending ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <Upload />
+          )}
+          {t({ zh: "选择 CSV 预览", en: "Choose CSV to preview" })}
+        </Button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file) importPreview.mutate(file)
+            event.target.value = ""
+          }}
+        />
+        <Button
+          size="sm"
+          disabled={
+            create.isPending || (preview !== null && title.trim() === "")
+          }
+          onClick={() => create.mutate()}
+        >
+          {create.isPending ? <Loader2 className="animate-spin" /> : null}
+          {preview && preview.words.length > 0
+            ? t({
+                zh: `创建（含 ${preview.words.length} 词）`,
+                en: `Create (${preview.words.length} words)`,
+              })
+            : t({ zh: "创建空词库", en: "Create empty book" })}
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {t({
+            zh: "CSV 表头：headword,meaning_zh（可选 part_of_speech/meaning_en/accepted_spellings/example_en）",
+            en: "CSV header: headword,meaning_zh (optional part_of_speech/meaning_en/accepted_spellings/example_en)",
+          })}
+        </span>
+      </div>
+      {preview && (
+        <div>
+          <p className="text-sm">
+            {t({ zh: "预览：有效 ", en: "Preview: " })}
+            <strong>{preview.words.length}</strong>
+            {t({ zh: " 行", en: " valid rows" })}
+            {preview.invalid.length > 0 &&
+              t({
+                zh: `，无效 ${preview.invalid.length} 行`,
+                en: `, ${preview.invalid.length} invalid`,
+              })}
+            {preview.duplicates.length > 0 &&
+              t({
+                zh: `，文件内重复 ${preview.duplicates.length} 行（将跳过）`,
+                en: `, ${preview.duplicates.length} duplicates (skipped)`,
+              })}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {preview.words.slice(0, 10).map((word) => (
+              <span
+                key={`${word.headword}-${word.meaning_zh}`}
+                className="rounded bg-secondary px-2 py-0.5 text-xs text-primary"
+              >
+                {word.headword} · {word.meaning_zh}
+              </span>
+            ))}
+            {preview.words.length > 10 && (
+              <span className="text-xs text-muted-foreground">
+                {t({
+                  zh: `…共 ${preview.words.length} 个`,
+                  en: `…${preview.words.length} in total`,
+                })}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

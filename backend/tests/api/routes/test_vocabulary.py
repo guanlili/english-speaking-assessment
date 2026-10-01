@@ -544,3 +544,194 @@ def test_word_edit_permission_scoped(
         ).status_code
         == 404
     )
+
+
+# ── 评审修复项回归 ──────────────────────────────────────────────────
+
+
+def test_publish_cannot_use_other_teachers_words(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """发布词单受可见性约束：他人班级词库（整本或词清单）→ 403；公共库正常。"""
+    teacher_a, headers_a = _login_teacher(db, client)
+    teacher_b, headers_b = _login_teacher(db, client)
+    classroom_a = _create_classroom(client, headers_a)
+    classroom_b = _create_classroom(client, headers_b)
+    # B 班要有学生（发布校验要求名单非空）
+    make_student(db, client, classroom_b["code"], "B班学生")
+
+    # A 建班级词库
+    resp = client.post(
+        f"{VOCAB}/books",
+        json={
+            "title": "A 的班级词库",
+            "scope": "classroom",
+            "classroom_id": classroom_a["id"],
+            "words": WORDS_3[:2],
+        },
+        headers=headers_a,
+    )
+    assert resp.status_code == 200, resp.text
+    book_a = resp.json()
+    word_ids_a = [word["id"] for word in book_a["words"]]
+
+    # B 整本引用 A 的班级词库 → 403
+    assert (
+        client.post(
+            f"/api/v1/classes/{classroom_b['code']}/vocabulary/assignments",
+            json={"book_id": book_a["id"]},
+            headers=headers_b,
+        ).status_code
+        == 403
+    )
+    # B 用 A 库里的词清单发布到自己班 → 403（防借结果接口读拼写释义）
+    assert (
+        client.post(
+            f"/api/v1/classes/{classroom_b['code']}/vocabulary/assignments",
+            json={"word_ids": word_ids_a},
+            headers=headers_b,
+        ).status_code
+        == 403
+    )
+    # B 用公共词库发布 → 正常（_publish 内部断言 200）
+    public = _make_public_book(client, superuser_token_headers, WORDS_3[:1])
+    public_ids = [word["id"] for word in public["words"]]
+    _publish(client, headers_b, classroom_b["code"], public_ids)
+    # 管理员不受限（可以用 A 的班级词库发布到 B 班）
+    assert (
+        client.post(
+            f"/api/v1/classes/{classroom_b['code']}/vocabulary/assignments",
+            json={"book_id": book_a["id"]},
+            headers=superuser_token_headers,
+        ).status_code
+        == 200
+    )
+
+
+def test_due_at_enforced_server_side(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """截止时间以服务器时间为准：过期后不能开会话、不能继续作答。"""
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import VocabularyAssignment
+
+    teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    code = classroom["code"]
+    student = make_student(db, client, code, "赶时间学生")
+
+    book = _make_public_book(client, superuser_token_headers, WORDS_3[:2])
+    word_ids = [word["id"] for word in book["words"]]
+    # 截止时间必须晚于现在 → 设过去直接 422
+    assert (
+        client.post(
+            f"/api/v1/classes/{code}/vocabulary/assignments",
+            json={
+                "word_ids": word_ids,
+                "due_at": (datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
+            },
+            headers=headers,
+        ).status_code
+        == 422
+    )
+
+    assignment = _publish(
+        client,
+        headers,
+        code,
+        word_ids,
+        due_at=(datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+    )
+    session_id = _start_session(client, student["headers"], code)
+    _answer(client, student["headers"], session_id, 0, "apple")
+
+    # 把截止时间拨到过去 → 开会话（另一学生）与作答均被拒
+    row = db.get(VocabularyAssignment, uuid.UUID(assignment["id"]))
+    assert row is not None
+    row.due_at = datetime.now(UTC) - timedelta(minutes=1)
+    db.add(row)
+    db.commit()
+
+    late_student = make_student(db, client, code, "迟到赶时间")
+    resp = client.post(
+        f"/api/v1/classes/{code}/vocabulary/sessions",
+        json={"assignment_id": assignment["id"]},
+        headers=late_student["headers"],
+    )
+    assert resp.status_code == 422
+    assert "截止" in resp.json()["detail"]
+    assert _answer_code(client, student["headers"], session_id, 1, "banana") == 422
+
+
+def test_idempotency_key_bound_to_item(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """幂等键复用到另一题：422 明确拒绝，不返回旧作答。"""
+    teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    code = classroom["code"]
+    student = make_student(db, client, code, "幂等学生")
+
+    book = _make_public_book(client, superuser_token_headers, WORDS_3[:2])
+    word_ids = [word["id"] for word in book["words"]]
+    _publish(client, headers, code, word_ids)
+    session_id = _start_session(client, student["headers"], code)
+
+    key = f"bound-{random_lower_string()}"
+    first = _answer(client, student["headers"], session_id, 0, "apple", key)
+    assert first["item_index"] == 0
+
+    # 同键同题 → 幂等重放
+    replay = _answer(client, student["headers"], session_id, 0, "apple", key)
+    assert replay == first
+    # 同键异题 → 422
+    resp = client.post(
+        f"{VOCAB}/sessions/{session_id}/answers",
+        json={
+            "item_index": 1,
+            "prompt_type": "meaning",
+            "answer": "banana",
+            "idempotency_key": key,
+        },
+        headers=student["headers"],
+    )
+    assert resp.status_code == 422
+    assert "幂等键" in resp.json()["detail"]
+
+
+def test_audio_only_requires_standard_audio(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """纯听音任务要求全部词有标准音；混合题型无音词回落看义。"""
+    teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    code = classroom["code"]
+    # 先入班（目标名单在发布时固定）
+    student = make_student(db, client, code, "听音学生")
+
+    # 一个有音、一个无音
+    words = [
+        {"headword": "dog", "meaning_zh": "狗", "audio_url": "/audio/dog.mp3"},
+        {"headword": "cat", "meaning_zh": "猫"},
+    ]
+    book = _make_public_book(client, superuser_token_headers, words)
+    word_ids = [word["id"] for word in book["words"]]
+
+    # 纯听音 → 422（cat 无标准音）
+    resp = client.post(
+        f"/api/v1/classes/{code}/vocabulary/assignments",
+        json={"word_ids": word_ids, "prompt_types": ["audio"]},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+    assert "标准音" in resp.json()["detail"]
+
+    # 混合题型发布成功；today 里无音词=meaning、有音词=audio
+    _publish(client, headers, code, word_ids, prompt_types=["meaning", "audio"])
+    plan = client.get(
+        f"/api/v1/classes/{code}/vocabulary/today", headers=student["headers"]
+    ).json()
+    by_meaning = {item["meaning_zh"]: item["prompt_type"] for item in plan["items"]}
+    assert by_meaning["狗"] == "audio"
+    assert by_meaning["猫"] == "meaning"

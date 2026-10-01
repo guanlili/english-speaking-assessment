@@ -101,7 +101,8 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 uv run bash scripts/tests-start.sh
 独立「词汇学习」模块（设计文档 `docs/vocabulary-module-design.md`），与口语分析用的 `WordlistEntry` 完全分离，沿用现有账号/课堂/学生档案：
 
 - **数据模型**：`VocabularyWord`（词条：拼写/词性/中英释义/可接受拼写）→ `VocabularyBook`（public=管理员维护 / classroom=本班教师自建）→ `VocabularyBookItem`；发布走 `VocabularyAssignment`（snapshot_items 深拷贝 + version_no）+ `VocabularyAssignmentTarget`（发布时固定名单，完成率分母不漂移）；作答 `VocabularySession`/`VocabularyAnswer`（幂等键唯一，练习重试 attempt_no 递增）。
-- **判分**（`app/services/vocabulary.py`）：NFKC + 首尾空白 + casefold 规范化；只认快照拼写与显式 `accepted_spellings` 变体，不自动放宽复数/连字符。统计与错词本一律看**首答**；未答题不向学生端泄露拼写。
+- **判分**（`app/services/vocabulary.py`）：NFKC + 首尾空白 + casefold 规范化；只认快照拼写与显式 `accepted_spellings` 变体（**只收英美拼写变体，不收同义词**），不自动放宽复数/连字符。统计与错词本一律看**首答**；未答题不向学生端泄露拼写。
+- **边界规则**：发布词单受可见性约束（公共库或本人班级库，word_ids 逐词核验归属，管理员不限）；`due_at` 以服务器时间强制（过期开会话/作答均 422）；幂等键绑定会话+题号（跨题复用 422）；纯听音任务要求全部词有标准音（发布 422），无标准音且未作答的词自动回落看义拼词。
 - **API**：`app/api/routes/vocabulary.py`（`/vocabulary/books…` 词库 CRUD + CSV 导入预览；`/classes/{code}/vocabulary/…` 发布/结果/学生任务/错词本；`/vocabulary/sessions/{id}/answers` 作答）。域逻辑在 services，路由只做权限。
 - **前端**：学生端 `/vocab/$code`（任务首页 + `/practice` 拼写练习 + 错词本），手机底部导航为「首页/口语/词汇/成长」；教师端 `/t/$code/vocab`（选词发布 + 完成情况），课堂面板可切换口语/词汇；管理端 `/admin/vocabbooks`（公共词库 CSV 导入预览）。无标准音的词练习用浏览器朗读兜底并标注「设备合成语音」。
 - 测试 `tests/api/routes/test_vocabulary.py`（权限/快照/判分/幂等/名单/统计）；响应式 e2e 覆盖词汇两页三档宽度。
