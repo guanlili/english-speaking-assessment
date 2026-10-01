@@ -412,7 +412,11 @@ function AssignPanel({
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {detailQuery.data?.scope === "classroom" ? (
+                    // key=bookId：切换词库即重挂载，清掉未确认的 CSV 预览，
+                    // 防止 A 库的预览词条被确认进 B 库（飞行中的预览请求
+                    // 回来后 setState 到已卸载组件是 no-op，同样安全）
                     <AddWordsToBook
+                      key={bookId}
                       bookId={bookId}
                       onAdded={() => {
                         queryClient.invalidateQueries({
@@ -1070,9 +1074,12 @@ function AddWordsToBook({
   const { t } = useI18n()
   const queryClient = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
-  const [preview, setPreview] = useState<{ words: BookWordInput[] } | null>(
-    null,
-  )
+  // 预览同时保留问题行（无效/文件内重复），确认前让教师看清会跳过哪些
+  const [preview, setPreview] = useState<{
+    words: BookWordInput[]
+    invalid: Array<{ line: number; reason: string }>
+    duplicates: Array<{ line: number; reason: string }>
+  } | null>(null)
 
   const importPreview = useMutation({
     mutationFn: (file: File) =>
@@ -1089,6 +1096,8 @@ function AddWordsToBook({
           accepted_spellings: row.word.accepted_spellings ?? null,
           example_en: row.word.example_en ?? null,
         })),
+        invalid: data.invalid ?? [],
+        duplicates: data.duplicates ?? [],
       })
     },
     onError: (error) => {
@@ -1115,10 +1124,11 @@ function AddWordsToBook({
         requestBody: preview?.words ?? [],
       }),
     onSuccess: (data) => {
+      const submitted = preview?.words.length ?? 0
       toast.success(
         t({
-          zh: `已加入 ${data.words?.length ?? 0} 个词条（重复词自动跳过）。`,
-          en: `Added ${data.words?.length ?? 0} words (duplicates skipped).`,
+          zh: `已处理 ${submitted} 行（库里已有的自动跳过），词库现有 ${data.word_count ?? 0} 词。`,
+          en: `Processed ${submitted} rows (existing words skipped); the book now has ${data.word_count ?? 0} words.`,
         }),
       )
       setPreview(null)
@@ -1168,8 +1178,8 @@ function AddWordsToBook({
           event.target.value = ""
         }}
       />
-      {preview && preview.words.length > 0 && (
-        <>
+      {preview && (
+        <div className="flex w-full flex-col gap-1.5 rounded-lg bg-secondary/60 px-3 py-2">
           <span className="text-xs text-muted-foreground">
             {t({
               zh: `预览 ${preview.words.length} 词：`,
@@ -1179,19 +1189,48 @@ function AddWordsToBook({
               .slice(0, 6)
               .map((word) => word.headword)
               .join("、")}
+            {preview.words.length > 6 &&
+              t({
+                zh: ` 等 ${preview.words.length} 词`,
+                en: ` …${preview.words.length} in total`,
+              })}
+            {preview.invalid.length > 0 &&
+              t({
+                zh: `；无效 ${preview.invalid.length} 行将跳过`,
+                en: `; ${preview.invalid.length} invalid rows will be skipped`,
+              })}
+            {preview.duplicates.length > 0 &&
+              t({
+                zh: `；文件内重复 ${preview.duplicates.length} 行将跳过`,
+                en: `; ${preview.duplicates.length} duplicate rows will be skipped`,
+              })}
           </span>
-          <Button
-            size="sm"
-            disabled={addWords.isPending}
-            onClick={() => addWords.mutate()}
-          >
-            {addWords.isPending ? <Loader2 className="animate-spin" /> : null}
-            {t({ zh: "确认加入", en: "Confirm" })}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setPreview(null)}>
-            {t({ zh: "取消", en: "Cancel" })}
-          </Button>
-        </>
+          {(preview.invalid.length > 0 || preview.duplicates.length > 0) && (
+            <ul className="text-xs text-muted-foreground">
+              {[...preview.invalid, ...preview.duplicates]
+                .slice(0, 4)
+                .map((issue) => (
+                  <li key={`${issue.line}-${issue.reason}`}>
+                    {t({ zh: "第", en: "Line" })} {issue.line}{" "}
+                    {t({ zh: "行", en: "" })}：{issue.reason}
+                  </li>
+                ))}
+            </ul>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              disabled={addWords.isPending || preview.words.length === 0}
+              onClick={() => addWords.mutate()}
+            >
+              {addWords.isPending ? <Loader2 className="animate-spin" /> : null}
+              {t({ zh: "确认加入", en: "Confirm" })}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setPreview(null)}>
+              {t({ zh: "取消", en: "Cancel" })}
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   )

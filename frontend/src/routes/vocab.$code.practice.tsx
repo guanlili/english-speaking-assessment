@@ -143,22 +143,30 @@ function VocabPracticePage() {
 
   const [input, setInput] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
+  // 幂等键跟随「一次作答意图」：提交前生成，网络失败保留（断网重试原样重发、
+  // 服务端重放返回同一判分）；成功或学生开始新意图（换题/重练）时清除
+  const pendingKeyRef = useRef<string | null>(null)
   const submitAnswer = useMutation({
     mutationFn: (payload: {
       itemIndex: number
       promptType: string
       answer: string
-    }) =>
-      VocabularyService.submitVocabAnswer({
+    }) => {
+      if (pendingKeyRef.current === null) {
+        pendingKeyRef.current = crypto.randomUUID()
+      }
+      return VocabularyService.submitVocabAnswer({
         sessionId: sessionId as string,
         requestBody: {
           item_index: payload.itemIndex,
           prompt_type: payload.promptType,
           answer: payload.answer,
-          idempotency_key: crypto.randomUUID(),
+          idempotency_key: pendingKeyRef.current,
         },
-      }),
+      })
+    },
     onSuccess: (result) => {
+      pendingKeyRef.current = null
       setAnswers((prev) => ({
         ...prev,
         [result.item_index]: {
@@ -170,6 +178,8 @@ function VocabPracticePage() {
     },
     onError: (error) => {
       if (error instanceof ApiError) {
+        // 422 幂等键冲突等业务拒绝：作答意图已无效，清键换新意图重试
+        pendingKeyRef.current = null
         toast.error(
           error.status === 422
             ? t({
@@ -177,9 +187,17 @@ function VocabPracticePage() {
                 en: "This item can't be answered this way — refresh and retry.",
               })
             : t({
-                zh: "提交失败，请重试。",
-                en: "Submit failed — please retry.",
+                zh: "提交失败，请重试（同一作答不会重复记分）。",
+                en: "Submit failed — please retry (the same answer won't be scored twice).",
               }),
+        )
+      } else {
+        // 网络错误：保留幂等键，重试复用同一判分
+        toast.error(
+          t({
+            zh: "网络不稳定，请重试；已送达的作答不会重复计分。",
+            en: "Network hiccup — please retry; a delivered answer won't be double-counted.",
+          }),
         )
       }
     },
@@ -242,6 +260,7 @@ function VocabPracticePage() {
 
   const retry = () => {
     if (!item) return
+    pendingKeyRef.current = null // 重练是一次新作答意图
     setAnswers((prev) => {
       const next = { ...prev }
       delete next[item.item_index]
@@ -253,6 +272,7 @@ function VocabPracticePage() {
 
   const goNext = () => {
     setInput("")
+    pendingKeyRef.current = null
     if (current < items.length - 1) {
       setCurrent(current + 1)
       window.setTimeout(() => inputRef.current?.focus(), 50)
@@ -346,6 +366,7 @@ function VocabPracticePage() {
                   onClick={() => {
                     setCurrent(index)
                     setInput("")
+                    pendingKeyRef.current = null // 换题 = 新作答意图
                   }}
                   className={`size-11 rounded-xl border text-sm font-semibold transition-colors ${
                     index === current
