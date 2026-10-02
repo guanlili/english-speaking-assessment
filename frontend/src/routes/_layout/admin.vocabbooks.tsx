@@ -35,6 +35,7 @@ import {
 import { APP_NAME } from "@/config"
 import { downloadCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
+import { localizeImportIssue } from "@/lib/vocabImport"
 
 export const Route = createFileRoute("/_layout/admin/vocabbooks")({
   component: VocabBooksAdmin,
@@ -597,7 +598,8 @@ function VocabBooksAdmin() {
                       .map((issue) => (
                         <li key={`${issue.line}-${issue.reason}`}>
                           {t({ zh: "第", en: "Line" })} {issue.line}{" "}
-                          {t({ zh: "行", en: "" })}：{issue.reason}
+                          {t({ zh: "行", en: "" })}：
+                          {t(localizeImportIssue(issue.reason))}
                         </li>
                       ))}
                   </ul>

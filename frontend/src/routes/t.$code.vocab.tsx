@@ -40,6 +40,7 @@ import { APP_NAME } from "@/config"
 import { downloadCsv } from "@/lib/csv"
 import { type BiString, useI18n } from "@/lib/i18n"
 import { TERMS } from "@/lib/terms"
+import { localizeImportIssue } from "@/lib/vocabImport"
 
 export const Route = createFileRoute("/t/$code/vocab")({
   component: TeacherVocabPage,
@@ -1212,7 +1213,8 @@ function AddWordsToBook({
                 .map((issue) => (
                   <li key={`${issue.line}-${issue.reason}`}>
                     {t({ zh: "第", en: "Line" })} {issue.line}{" "}
-                    {t({ zh: "行", en: "" })}：{issue.reason}
+                    {t({ zh: "行", en: "" })}：
+                    {t(localizeImportIssue(issue.reason))}
                   </li>
                 ))}
             </ul>
@@ -1436,6 +1438,19 @@ function CreateClassroomBook({
               </span>
             )}
           </div>
+          {(preview.invalid.length > 0 || preview.duplicates.length > 0) && (
+            <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+              {[...preview.invalid, ...preview.duplicates]
+                .slice(0, 4)
+                .map((issue) => (
+                  <li key={`${issue.line}-${issue.reason}`}>
+                    {t({ zh: "第", en: "Line" })} {issue.line}{" "}
+                    {t({ zh: "行", en: "" })}：
+                    {t(localizeImportIssue(issue.reason))}
+                  </li>
+                ))}
+            </ul>
+          )}
         </div>
       )}
     </div>
