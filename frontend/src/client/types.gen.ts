@@ -175,6 +175,10 @@ export type Body_login_login_access_token = {
     client_secret?: (string | null);
 };
 
+export type Body_vocabulary_import_vocab_preview = {
+    file: string;
+};
+
 export type BulkResetResult = {
     reset: number;
     rows: Array<StudentResetRow>;
@@ -743,6 +747,243 @@ export type ValidationError = {
     };
 };
 
+export type VocabularyAnswerRequest = {
+    item_index: number;
+    prompt_type?: string;
+    answer: string;
+    idempotency_key?: (string | null);
+};
+
+export type VocabularyAnswerResult = {
+    item_index: number;
+    attempt_no: number;
+    is_correct: boolean;
+    correct_spelling: string;
+    meaning_zh: string;
+    session_status: string;
+    answered_count: number;
+    correct_first_count: number;
+};
+
+export type VocabularyAssignmentCreate = {
+    title?: (string | null);
+    book_id?: (string | null);
+    word_ids?: (Array<(string)> | null);
+    prompt_types?: Array<(string)>;
+    mode?: string;
+    due_at?: (string | null);
+};
+
+export type VocabularyAssignmentPublic = {
+    id: string;
+    classroom_id: string;
+    title: string;
+    mode: string;
+    prompt_types?: Array<(string)>;
+    status: string;
+    version_no: number;
+    word_count: number;
+    due_at?: (string | null);
+    published_at?: (string | null);
+    archived_at?: (string | null);
+    created_by?: (string | null);
+};
+
+export type VocabularyBookCreate = {
+    title: string;
+    description?: (string | null);
+    scope?: string;
+    classroom_id?: (string | null);
+    words?: Array<VocabularyWordIn>;
+};
+
+export type VocabularyBookDetail = {
+    id: string;
+    title: string;
+    description?: (string | null);
+    scope: string;
+    classroom_id?: (string | null);
+    owner_id?: (string | null);
+    status: string;
+    word_count?: number;
+    created_at?: (string | null);
+    words?: Array<VocabularyWordPublic>;
+};
+
+export type VocabularyBookPublic = {
+    id: string;
+    title: string;
+    description?: (string | null);
+    scope: string;
+    classroom_id?: (string | null);
+    owner_id?: (string | null);
+    status: string;
+    word_count?: number;
+    created_at?: (string | null);
+};
+
+export type VocabularyBookUpdate = {
+    title?: (string | null);
+    description?: (string | null);
+    status?: (string | null);
+};
+
+/**
+ * GET /classes/{code}/vocabulary/results。
+ */
+export type VocabularyClassResults = {
+    assignment?: (VocabularyAssignmentPublic | null);
+    target_count?: number;
+    completed_count?: number;
+    in_progress_count?: number;
+    not_started_count?: number;
+    students?: Array<VocabularyStudentResultRow>;
+    words?: Array<VocabularyWordStatRow>;
+};
+
+export type VocabularyImportIssue = {
+    line: number;
+    reason: string;
+};
+
+export type VocabularyImportPreview = {
+    rows: Array<VocabularyImportRow>;
+    invalid: Array<VocabularyImportIssue>;
+    duplicates: Array<VocabularyImportIssue>;
+};
+
+/**
+ * 导入预览里解析成功的一行（已规范化）。
+ */
+export type VocabularyImportRow = {
+    line: number;
+    word: VocabularyWordIn;
+};
+
+/**
+ * 创建/恢复作答会话：缺省 assignment_id = 当前进行中的任务。
+ */
+export type VocabularySessionCreate = {
+    assignment_id?: (string | null);
+};
+
+/**
+ * 教师结果面板的学生行（按目标名单，含未开始）。
+ */
+export type VocabularyStudentResultRow = {
+    student_id: string;
+    display_name: string;
+    suffix?: (string | null);
+    status: string;
+    answered_count: number;
+    correct_first_count: number;
+    total_count: number;
+    submitted_at?: (string | null);
+};
+
+/**
+ * 学生题单条目：未作答的词不透露拼写（headword=None）。
+ */
+export type VocabularyTodayItem = {
+    item_index: number;
+    prompt_type: string;
+    part_of_speech?: (string | null);
+    meaning_zh: string;
+    meaning_en?: (string | null);
+    audio_url?: (string | null);
+    headword?: (string | null);
+    answered?: boolean;
+    is_correct?: (boolean | null);
+    attempt_count?: number;
+};
+
+/**
+ * GET /classes/{code}/vocabulary/today 的学生视图。
+ */
+export type VocabularyTodayPlan = {
+    assignment?: (VocabularyAssignmentPublic | null);
+    session_id?: (string | null);
+    session_status?: (string | null);
+    items?: Array<VocabularyTodayItem>;
+    answered_count?: number;
+    correct_first_count?: number;
+    wrong_word_count?: number;
+};
+
+/**
+ * 创建/导入词条的请求体（词库内新增词）。
+ */
+export type VocabularyWordIn = {
+    headword: string;
+    part_of_speech?: (string | null);
+    meaning_zh: string;
+    meaning_en?: (string | null);
+    accepted_spellings?: (Array<(string)> | null);
+    example_en?: (string | null);
+    audio_url?: (string | null);
+};
+
+export type VocabularyWordMisspelling = {
+    answer: string;
+    count: number;
+};
+
+export type VocabularyWordPublic = {
+    id: string;
+    headword: string;
+    part_of_speech?: (string | null);
+    meaning_zh: string;
+    meaning_en?: (string | null);
+    accepted_spellings?: (Array<(string)> | null);
+    example_en?: (string | null);
+    audio_url?: (string | null);
+    status?: string;
+};
+
+/**
+ * 逐词错误分布（教师据此安排复习）。
+ */
+export type VocabularyWordStatRow = {
+    item_index: number;
+    word_id: string;
+    headword: string;
+    meaning_zh: string;
+    answered_count: number;
+    correct_first_count: number;
+    error_count: number;
+    misspellings?: Array<VocabularyWordMisspelling>;
+};
+
+/**
+ * 编辑词条：缺省不修改；可空字段传 null 清空。
+ */
+export type VocabularyWordUpdate = {
+    part_of_speech?: (string | null);
+    meaning_zh?: (string | null);
+    meaning_en?: (string | null);
+    accepted_spellings?: (Array<(string)> | null);
+    example_en?: (string | null);
+    audio_url?: (string | null);
+    status?: (string | null);
+};
+
+/**
+ * 错词本条目：首答判错的词，按快照内容展示。
+ */
+export type VocabularyWrongWordItem = {
+    word_id: string;
+    headword: string;
+    meaning_zh: string;
+    part_of_speech?: (string | null);
+    wrong_count: number;
+    last_wrong_at?: (string | null);
+};
+
+export type VocabularyWrongWords = {
+    classroom_code: string;
+    items?: Array<VocabularyWrongWordItem>;
+};
+
 export type WordlistImportResult = {
     imported: number;
     invalid_rows?: Array<(number)>;
@@ -1216,3 +1457,104 @@ export type UtilsTestEmailResponse = (Message);
 export type UtilsHealthCheckResponse = (boolean);
 
 export type UtilsReadyCheckResponse = (Message);
+
+export type VocabularyImportVocabPreviewData = {
+    formData: Body_vocabulary_import_vocab_preview;
+};
+
+export type VocabularyImportVocabPreviewResponse = (VocabularyImportPreview);
+
+export type VocabularyListBooksResponse = (Array<VocabularyBookPublic>);
+
+export type VocabularyCreateBookData = {
+    requestBody: VocabularyBookCreate;
+};
+
+export type VocabularyCreateBookResponse = (VocabularyBookDetail);
+
+export type VocabularyReadBookData = {
+    bookId: string;
+};
+
+export type VocabularyReadBookResponse = (VocabularyBookDetail);
+
+export type VocabularyUpdateBookData = {
+    bookId: string;
+    requestBody: VocabularyBookUpdate;
+};
+
+export type VocabularyUpdateBookResponse = (VocabularyBookPublic);
+
+export type VocabularyAddBookWordsData = {
+    bookId: string;
+    requestBody: Array<VocabularyWordIn>;
+};
+
+export type VocabularyAddBookWordsResponse = (VocabularyBookDetail);
+
+export type VocabularyRemoveBookWordData = {
+    bookId: string;
+    wordId: string;
+};
+
+export type VocabularyRemoveBookWordResponse = (unknown);
+
+export type VocabularyUpdateWordData = {
+    requestBody: VocabularyWordUpdate;
+    wordId: string;
+};
+
+export type VocabularyUpdateWordResponse = (VocabularyWordPublic);
+
+export type VocabularyListAssignmentsData = {
+    code: string;
+};
+
+export type VocabularyListAssignmentsResponse = (Array<VocabularyAssignmentPublic>);
+
+export type VocabularyPublishVocabAssignmentData = {
+    code: string;
+    requestBody: VocabularyAssignmentCreate;
+};
+
+export type VocabularyPublishVocabAssignmentResponse = (VocabularyAssignmentPublic);
+
+export type VocabularyArchiveVocabAssignmentData = {
+    assignmentId: string;
+    code: string;
+};
+
+export type VocabularyArchiveVocabAssignmentResponse = (unknown);
+
+export type VocabularyReadVocabResultsData = {
+    assignmentId?: (string | null);
+    code: string;
+};
+
+export type VocabularyReadVocabResultsResponse = (VocabularyClassResults);
+
+export type VocabularyReadVocabTodayData = {
+    code: string;
+};
+
+export type VocabularyReadVocabTodayResponse = (VocabularyTodayPlan);
+
+export type VocabularyStartVocabSessionData = {
+    code: string;
+    requestBody: VocabularySessionCreate;
+};
+
+export type VocabularyStartVocabSessionResponse = (unknown);
+
+export type VocabularySubmitVocabAnswerData = {
+    requestBody: VocabularyAnswerRequest;
+    sessionId: string;
+};
+
+export type VocabularySubmitVocabAnswerResponse = (VocabularyAnswerResult);
+
+export type VocabularyReadWrongWordsData = {
+    code: string;
+};
+
+export type VocabularyReadWrongWordsResponse = (VocabularyWrongWords);

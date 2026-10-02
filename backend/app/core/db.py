@@ -266,6 +266,218 @@ def _seed_practice_content(session: Session) -> None:
 
     _seed_school_life_questions(session)
     _seed_wordlist(session)
+    _seed_vocabulary_demo(session)
+
+
+# 自写演示词条（词汇学习模块 P0）：与教材无关，学校 CSV 可在管理端覆盖。
+# accepted_spellings 只收真正的拼写变体（如英美 favourite/favorite），不收同义词
+# ——同义词会把没掌握目标词的答案误判为正确。
+# (headword, part_of_speech, meaning_zh, meaning_en, accepted_spellings, example_en)
+DEMO_VOCAB_WORDS: list[
+    tuple[str, str, str, str | None, tuple[str, ...], str | None]
+] = [
+    (
+        "dog",
+        "n.",
+        "狗",
+        "a common animal that people keep as a pet",
+        (),
+        "My dog greets me at the door.",
+    ),
+    (
+        "cat",
+        "n.",
+        "猫",
+        "a small furry animal often kept as a pet",
+        (),
+        "The cat is sleeping on the sofa.",
+    ),
+    (
+        "rabbit",
+        "n.",
+        "兔子",
+        "a small animal with long ears",
+        (),
+        "The rabbit eats carrots.",
+    ),
+    (
+        "parrot",
+        "n.",
+        "鹦鹉",
+        "a bird that can copy human speech",
+        (),
+        "Our parrot says hello every morning.",
+    ),
+    (
+        "friendly",
+        "adj.",
+        "友好的",
+        "kind and pleasant to others",
+        (),
+        "She is friendly to new classmates.",
+    ),
+    (
+        "gentle",
+        "adj.",
+        "温柔的",
+        "calm and kind, not rough",
+        (),
+        "The panda is a gentle animal.",
+    ),
+    (
+        "clever",
+        "adj.",
+        "聪明的",
+        "quick at learning and understanding",
+        (),
+        "Crows are clever birds.",
+    ),
+    (
+        "feed",
+        "v.",
+        "喂食",
+        "to give food to a person or animal",
+        (),
+        "I feed my cat twice a day.",
+    ),
+    (
+        "borrow",
+        "v.",
+        "借入",
+        "to take something and return it later",
+        (),
+        "May I borrow your pen?",
+    ),
+    (
+        "library",
+        "n.",
+        "图书馆",
+        "a place where you can read and borrow books",
+        (),
+        "We study in the library after class.",
+    ),
+    (
+        "timetable",
+        "n.",
+        "课程表",
+        "a plan that shows the times of classes",
+        (),
+        "Check the timetable before you go.",
+    ),
+    (
+        "homework",
+        "n.",
+        "作业",
+        "schoolwork you do at home",
+        (),
+        "I finish my homework before dinner.",
+    ),
+    (
+        "practice",
+        "n.",
+        "练习",
+        "repeated exercise to improve a skill",
+        (),
+        "Practice makes progress.",
+    ),
+    (
+        "careful",
+        "adj.",
+        "仔细的",
+        "paying attention to avoid mistakes",
+        (),
+        "Be careful with the glass.",
+    ),
+    (
+        "healthy",
+        "adj.",
+        "健康的",
+        "physically strong and not ill",
+        (),
+        "Fresh fruit keeps us healthy.",
+    ),
+    (
+        "delicious",
+        "adj.",
+        "美味的",
+        "tasting very good",
+        (),
+        "The dumplings are delicious.",
+    ),
+    (
+        "weather",
+        "n.",
+        "天气",
+        "the conditions outside, like sun or rain",
+        (),
+        "The weather is sunny today.",
+    ),
+    (
+        "umbrella",
+        "n.",
+        "雨伞",
+        "a thing you hold to keep off rain",
+        (),
+        "Take an umbrella in case it rains.",
+    ),
+    (
+        "weekend",
+        "n.",
+        "周末",
+        "Saturday and Sunday",
+        (),
+        "We visit my grandparents on the weekend.",
+    ),
+    (
+        "favorite",
+        "adj.",
+        "最喜欢的",
+        "liked more than all others",
+        ("favourite",),
+        "Blue is my favorite color.",
+    ),
+]
+
+
+def _seed_vocabulary_demo(session: Session) -> None:
+    """公共演示词库（20 个自写词条）：已存在任何词库时不重复种入。"""
+    from app.models import (
+        VocabularyBook,
+        VocabularyBookItem,
+        VocabularyWord,
+    )
+
+    if session.exec(select(VocabularyBook).limit(1)).first() is not None:
+        return
+    book = VocabularyBook(
+        title="演示词库 · Pets & School",
+        description="自写演示词条（20 词），供词汇任务发布试用；学校词库可在管理端导入替换。",
+        scope="public",
+    )
+    session.add(book)
+    session.flush()
+    for position, (
+        headword,
+        pos,
+        meaning_zh,
+        meaning_en,
+        accepted,
+        example,
+    ) in enumerate(DEMO_VOCAB_WORDS, start=1):
+        word = VocabularyWord(
+            headword=headword,
+            part_of_speech=pos,
+            meaning_zh=meaning_zh,
+            meaning_en=meaning_en,
+            accepted_spellings=list(accepted) or None,
+            example_en=example,
+        )
+        session.add(word)
+        session.flush()
+        session.add(
+            VocabularyBookItem(book_id=book.id, word_id=word.id, position=position)
+        )
+    session.commit()
 
 
 def _seed_school_life_questions(session: Session) -> None:

@@ -24,6 +24,18 @@ export const TERMS = {
   selfPractice: { zh: "自主练习", en: "Self Practice" },
   /** 老师把单元下发给全班的动作（教师端按钮用「发布」） */
   publish: { zh: "发布", en: "Publish" },
+  /** 词汇学习模块（学生端导航与页面标题） */
+  vocabLearning: { zh: "词汇学习", en: "Vocabulary" },
+  /** 词汇任务（教师发布给全班的单词练习） */
+  vocabTask: { zh: "词汇任务", en: "Vocabulary Task" },
+  /** 词库（教师/管理端维护的单词集合） */
+  vocabBook: { zh: "词库", en: "Word Book" },
+  /** 错词本（学生首答判错的词自动归集） */
+  wrongWords: { zh: "错词本", en: "Wrong Words" },
+  /** 看义拼词（出题方式） */
+  promptMeaning: { zh: "看义拼词", en: "Spell from Meaning" },
+  /** 听音拼词（出题方式） */
+  promptAudio: { zh: "听音拼词", en: "Spell from Audio" },
   /** 系统给学生的分数口径：不是考试成绩 */
   score: { zh: "参考分", en: "Reference Score" },
   /** 学生成长页（导航与页面标题一致） */

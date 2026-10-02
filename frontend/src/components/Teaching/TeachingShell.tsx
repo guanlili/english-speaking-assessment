@@ -78,6 +78,14 @@ const workspaceRoutes: Record<string, WorkspaceContext> = {
       en: "Maintain the reference word lists used by vocabulary analysis.",
     },
   },
+  "/admin/vocabbooks": {
+    title: { zh: "词库管理", en: "Word Books" },
+    section: { zh: "平台设置", en: "Platform Settings" },
+    description: {
+      zh: "维护公共词库，供教师发布词汇任务。",
+      en: "Maintain public word books for teachers to publish vocabulary tasks.",
+    },
+  },
   "/admin/classrooms": {
     title: { zh: "课堂管理", en: "Classroom Management" },
     section: { zh: "平台设置", en: "Platform Settings" },
@@ -100,20 +108,28 @@ function getWorkspaceContext(pathname: string): WorkspaceContext {
   const path = pathname.replace(/\/+$/, "") || "/"
   if (path.startsWith("/t/")) {
     const isStudentDetail = path.split("/")[3] === "s"
+    const isVocab = path.split("/")[3] === "vocab"
     return {
       title: isStudentDetail
         ? TERMS.trailPage
-        : { zh: "课堂面板", en: "Class Dashboard" },
+        : isVocab
+          ? TERMS.vocabLearning
+          : { zh: "课堂面板", en: "Class Dashboard" },
       section: { zh: "我的课堂", en: "My Classrooms" },
       description: isStudentDetail
         ? {
             zh: "看见每一位学生的练习与进步。",
             en: "See each student's practice and progress.",
           }
-        : {
-            zh: "安排今日练习，听见课堂里的进步。",
-            en: "Assign today's practice and hear the class improve.",
-          },
+        : isVocab
+          ? {
+              zh: "发布词汇任务，看见全班的拼写与错词。",
+              en: "Publish vocabulary tasks and see the class's spelling and wrong words.",
+            }
+          : {
+              zh: "安排今日练习，听见课堂里的进步。",
+              en: "Assign today's practice and hear the class improve.",
+            },
     }
   }
   return (
