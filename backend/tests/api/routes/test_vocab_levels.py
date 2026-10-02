@@ -337,7 +337,6 @@ def test_speaking_uses_same_level_source(
     assert hits["KET"] == 1  # cats → cat（规则屈折）
     assert hits["CET4"] == 1
     assert "PET" not in hits  # needs_review 不计入
-    unmatched = stats["unmatched"]
     unmatched_raw = stats.get("unmatched")
     unmatched_count = unmatched_raw if isinstance(unmatched_raw, int) else 0
     assert unmatched_count >= 3  # i/like/they/happiness/alike/the/word/stays… 未命中
