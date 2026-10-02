@@ -175,6 +175,18 @@ export type Body_login_login_access_token = {
     client_secret?: (string | null);
 };
 
+export type Body_vocab_levels_vocab_level_import_confirm = {
+    file: string;
+    level: string;
+    source_label: string;
+};
+
+export type Body_vocab_levels_vocab_level_import_preview = {
+    file: string;
+    level: string;
+    source_label: string;
+};
+
 export type Body_vocabulary_import_vocab_preview = {
     file: string;
 };
@@ -860,6 +872,74 @@ export type VocabularyImportRow = {
     word: VocabularyWordIn;
 };
 
+export type VocabularyLevelEntryPublic = {
+    id: string;
+    headword: string;
+    level: string;
+    sense_no: number;
+    part_of_speech?: (string | null);
+    meaning_zh?: (string | null);
+    is_phrase?: boolean;
+    needs_review?: boolean;
+    note?: (string | null);
+    sources?: Array<(string)>;
+    status?: string;
+};
+
+/**
+ * 人工核对修正：缺省不修改；needs_review=False 即「已核对」。
+ */
+export type VocabularyLevelEntryUpdate = {
+    part_of_speech?: (string | null);
+    meaning_zh?: (string | null);
+    note?: (string | null);
+    needs_review?: (boolean | null);
+    status?: (string | null);
+};
+
+/**
+ * 导入预览的问题行。kind: invalid | duplicate_in_file | cross_level_conflict
+ */
+export type VocabularyLevelImportIssue = {
+    kind: string;
+    line: number;
+    headword: string;
+    reason: string;
+    existing_level?: (string | null);
+};
+
+export type VocabularyLevelImportPreview = {
+    level: string;
+    source_label: string;
+    valid_rows: Array<VocabularyWordIn>;
+    invalid: Array<VocabularyLevelImportIssue>;
+    duplicates_in_file: Array<VocabularyLevelImportIssue>;
+    cross_level_conflicts: Array<VocabularyLevelImportIssue>;
+    new_count: number;
+    merge_count: number;
+    counts_after: Array<VocabularyLevelLevelCount>;
+};
+
+export type VocabularyLevelImportResult = {
+    imported_new: number;
+    merged_existing: number;
+    skipped_invalid: number;
+    counts: Array<VocabularyLevelLevelCount>;
+};
+
+export type VocabularyLevelLevelCount = {
+    level: string;
+    entry_count?: number;
+    phrase_count?: number;
+    needs_review_count?: number;
+};
+
+export type VocabularyLevelStats = {
+    levels?: Array<VocabularyLevelLevelCount>;
+    total_entries?: number;
+    total_sources?: number;
+};
+
 /**
  * 创建/恢复作答会话：缺省 assignment_id = 当前进行中的任务。
  */
@@ -938,6 +1018,8 @@ export type VocabularyWordPublic = {
     example_en?: (string | null);
     audio_url?: (string | null);
     status?: string;
+    level?: (string | null);
+    all_levels?: Array<(string)>;
 };
 
 /**
@@ -1458,6 +1540,45 @@ export type UtilsHealthCheckResponse = (boolean);
 
 export type UtilsReadyCheckResponse = (Message);
 
+export type VocabLevelsVocabLevelStatsResponse = (VocabularyLevelStats);
+
+export type VocabLevelsVocabLevelImportPreviewData = {
+    formData: Body_vocab_levels_vocab_level_import_preview;
+};
+
+export type VocabLevelsVocabLevelImportPreviewResponse = (VocabularyLevelImportPreview);
+
+export type VocabLevelsVocabLevelImportConfirmData = {
+    formData: Body_vocab_levels_vocab_level_import_confirm;
+};
+
+export type VocabLevelsVocabLevelImportConfirmResponse = (VocabularyLevelImportResult);
+
+export type VocabLevelsListVocabLevelEntriesData = {
+    headword?: (string | null);
+    level?: (string | null);
+    limit?: number;
+    needsReview?: (boolean | null);
+    offset?: number;
+};
+
+export type VocabLevelsListVocabLevelEntriesResponse = (Array<VocabularyLevelEntryPublic>);
+
+export type VocabLevelsUpdateVocabLevelEntryData = {
+    entryId: string;
+    requestBody: VocabularyLevelEntryUpdate;
+};
+
+export type VocabLevelsUpdateVocabLevelEntryResponse = (VocabularyLevelEntryPublic);
+
+export type VocabLevelsListTeachingWordsByLevelData = {
+    level: string;
+    limit?: number;
+    offset?: number;
+};
+
+export type VocabLevelsListTeachingWordsByLevelResponse = (Array<VocabularyWordPublic>);
+
 export type VocabularyImportVocabPreviewData = {
     formData: Body_vocabulary_import_vocab_preview;
 };
@@ -1474,6 +1595,7 @@ export type VocabularyCreateBookResponse = (VocabularyBookDetail);
 
 export type VocabularyReadBookData = {
     bookId: string;
+    level?: (string | null);
 };
 
 export type VocabularyReadBookResponse = (VocabularyBookDetail);

@@ -36,6 +36,18 @@ export const TERMS = {
   promptMeaning: { zh: "看义拼词", en: "Spell from Meaning" },
   /** 听音拼词（出题方式） */
   promptAudio: { zh: "听音拼词", en: "Spell from Audio" },
+  /** 五级词库（口语与背单词共用的统一分级数据源） */
+  vocabLevels: { zh: "五级词库", en: "Leveled Word Source" },
+  /** 用词来源级别（口语命中统计标题；明确不是能力等级） */
+  wordSourceLevel: {
+    zh: "用词来源级别",
+    en: "Word Source Levels",
+  },
+  /** 用词来源级别的口径说明（触点小字共用，防口径漂移） */
+  wordSourceLevelNote: {
+    zh: "按五级词库统计本次实际用到的词来自哪些级别；词表命中只说明用词来源，不代表能力等级。",
+    en: "Shows which levels the words you actually used come from. Wordlist hits indicate word source only — not a proficiency level.",
+  },
   /** 系统给学生的分数口径：不是考试成绩 */
   score: { zh: "参考分", en: "Reference Score" },
   /** 学生成长页（导航与页面标题一致） */
@@ -73,4 +85,24 @@ export const ITEM_TYPE_LABELS: Record<string, BiString> = {
   passage: TERMS.typeReading,
   repeat: TERMS.typeRepeat,
   question: TERMS.typeQa,
+}
+
+/** 五级固定顺序（越靠前越容易）；与后端 VOCAB_LEVEL_ORDER 一致 */
+export const VOCAB_LEVEL_ORDER = [
+  "KET",
+  "PET",
+  "ACADEMIC",
+  "CET4",
+  "IELTS_TOEFL",
+] as const
+
+export type VocabLevel = (typeof VOCAB_LEVEL_ORDER)[number]
+
+/** 级别代码 → 双语名称 */
+export const VOCAB_LEVEL_LABELS: Record<VocabLevel, BiString> = {
+  KET: { zh: "KET 词汇", en: "KET" },
+  PET: { zh: "PET 词汇", en: "PET" },
+  ACADEMIC: { zh: "学术词汇", en: "Academic" },
+  CET4: { zh: "四级词汇", en: "CET-4" },
+  IELTS_TOEFL: { zh: "雅思&托福词汇", en: "IELTS & TOEFL" },
 }

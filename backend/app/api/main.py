@@ -9,6 +9,7 @@ from app.api.routes import (
     students,
     users,
     utils,
+    vocab_levels,
     vocabulary,
 )
 
@@ -22,3 +23,4 @@ api_router.include_router(students.router)
 api_router.include_router(admin_content.router)
 api_router.include_router(audio.router)
 api_router.include_router(vocabulary.router)
+api_router.include_router(vocab_levels.router)

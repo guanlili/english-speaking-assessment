@@ -96,6 +96,14 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 uv run bash scripts/tests-start.sh
 3. **前端 API 客户端**：后端改完后重新生成 → `cd frontend && npm run generate-client`（脚本会从运行中的 backend 容器导出最新 OpenAPI 规范再生成）
 4. **前端页面**：在 `routes/_layout/` 加新页面，在 `frontend/src/components/Sidebar/AppSidebar.tsx` 的 `baseItems` 里加导航链接（Admin 入口已按 `is_superuser` 条件展示，可参考）
 
+## 五级词库（2026-10-03 起，口语与背单词共用分级数据源）
+
+KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定顺序（`VOCAB_LEVEL_ORDER`），同词多级时**实际难度取最早（最易）一级**。表 `vocab_level_entry`：同形异义按 (headword, level, sense_no) 各占一行；来源标签存 `sources` JSON（KET 跨天/学术双文件/雅思场景分别保留）；`is_phrase` 标记词组（口语逐词命中暂不计入）；`needs_review` 标记 OCR 待核对行（核对后才计入分级）。
+
+- **导入**：管理端 `/admin/vocablevels`（预览→确认，单事务回滚；无效/批内重复/跨级冲突提示）+ 本地提取工具 `backend/scripts/vocab_level_import/`（学校资料清洗，**原始教材与完整提取词表不入仓库**，质量报告见 `docs/five-level-vocab-quality-report.md`；未确认线上使用授权前不得导入生产库）。
+- **两模块同源**：背单词教师选词按 `level` 过滤（`/vocabulary/words?level=`、词库详情 `?level=`，词条带 `level`/`all_levels`）；口语问答评分在 attempt.vocab 新增独立 `level_stats`（用词来源级别），与旧 A2/B1/B2 命中口径并存、互不改写。
+- **历史不漂移**：五级导入只新增分级行；已发布任务快照与历史 attempt.vocab 一律不回填、不重算；needs_review 行不参与两模块统计。
+
 ## 背单词模块（2026-10-01 起，P0 已上线）
 
 独立「词汇学习」模块（设计文档 `docs/vocabulary-module-design.md`），与口语分析用的 `WordlistEntry` 完全分离，沿用现有账号/课堂/学生档案：

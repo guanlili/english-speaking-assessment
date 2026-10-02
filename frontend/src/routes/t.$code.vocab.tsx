@@ -39,7 +39,12 @@ import {
 import { APP_NAME } from "@/config"
 import { downloadCsv } from "@/lib/csv"
 import { type BiString, useI18n } from "@/lib/i18n"
-import { TERMS } from "@/lib/terms"
+import {
+  TERMS,
+  VOCAB_LEVEL_LABELS,
+  VOCAB_LEVEL_ORDER,
+  type VocabLevel,
+} from "@/lib/terms"
 import { localizeImportIssue } from "@/lib/vocabImport"
 
 export const Route = createFileRoute("/t/$code/vocab")({
@@ -229,9 +234,15 @@ function AssignPanel({
   )
 
   const [bookId, setBookId] = useState<string | null>(null)
+  // 按实际难度筛选词条（五级词库；未命中分级的词只在「全部」出现）
+  const [levelFilter, setLevelFilter] = useState<string>("all")
   const detailQuery = useQuery({
-    queryKey: ["vocab-teacher", "book", bookId],
-    queryFn: () => VocabularyService.readBook({ bookId: bookId as string }),
+    queryKey: ["vocab-teacher", "book", bookId, levelFilter],
+    queryFn: () =>
+      VocabularyService.readBook({
+        bookId: bookId as string,
+        level: levelFilter === "all" ? undefined : levelFilter,
+      }),
     enabled: bookId !== null,
   })
   const words = detailQuery.data?.words ?? []
@@ -247,6 +258,7 @@ function AssignPanel({
     setBookId(id)
     setSelected(new Set())
     setTitle("")
+    setLevelFilter("all")
   }
   const toggleAll = (checked: boolean) => {
     setSelected(
@@ -412,6 +424,24 @@ function AssignPanel({
                   })}
                 </p>
                 <div className="flex flex-wrap gap-2">
+                  <select
+                    value={levelFilter}
+                    onChange={(event) => {
+                      setLevelFilter(event.target.value)
+                      setSelected(new Set())
+                    }}
+                    aria-label={t({ zh: "按级别筛选", en: "Filter by level" })}
+                    className="h-9 rounded-lg border border-input bg-card px-2 text-sm text-foreground"
+                  >
+                    <option value="all">
+                      {t({ zh: "全部级别", en: "All levels" })}
+                    </option>
+                    {VOCAB_LEVEL_ORDER.map((level) => (
+                      <option key={level} value={level}>
+                        {t(VOCAB_LEVEL_LABELS[level])}
+                      </option>
+                    ))}
+                  </select>
                   {detailQuery.data?.scope === "classroom" ? (
                     // key=bookId：切换词库即重挂载，清掉未确认的 CSV 预览，
                     // 防止 A 库的预览词条被确认进 B 库（飞行中的预览请求
@@ -493,6 +523,19 @@ function AssignPanel({
                       <span className="ml-2 text-muted-foreground">
                         {word.meaning_zh}
                       </span>
+                      {word.level && (
+                        <Badge
+                          variant="outline"
+                          className="ml-1.5 shrink-0 text-[10px]"
+                        >
+                          {t(
+                            VOCAB_LEVEL_LABELS[word.level as VocabLevel] ?? {
+                              zh: word.level,
+                              en: word.level,
+                            },
+                          )}
+                        </Badge>
+                      )}
                     </span>
                     {word.status === "archived" && (
                       <Badge variant="outline">

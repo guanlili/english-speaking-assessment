@@ -60,6 +60,11 @@ const adminOnlyItems: Item[] = [
   },
   {
     icon: BookA,
+    title: { zh: "五级词库", en: "Leveled Word Source" },
+    path: "/admin/vocablevels",
+  },
+  {
+    icon: BookA,
     title: { zh: "词库管理", en: "Word Books" },
     path: "/admin/vocabbooks",
   },
