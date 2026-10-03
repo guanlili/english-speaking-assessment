@@ -862,7 +862,6 @@ export type VocabularyFromLevelsRequest = {
     classroom_id?: (string | null);
     new_book_title?: (string | null);
     limit?: number;
-    offset?: number;
 };
 
 /**

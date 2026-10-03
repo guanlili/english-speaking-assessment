@@ -220,8 +220,7 @@ def list_teaching_words_by_level(
     for word in words:
         deduped.setdefault(word.id, word)
     words = list(deduped.values())
-    words = session.exec(stmt).all()
-    matched = levels_service.attach_word_levels(session, list(words))
+    matched = levels_service.attach_word_levels(session, words)
     matched = [word for word in matched if word.level == level]
     return matched[offset : offset + limit]
 
@@ -234,7 +233,6 @@ class VocabularyFromLevelsRequest(SQLModel):
     classroom_id: uuid.UUID | None = None
     new_book_title: str | None = Field(default=None, max_length=255)
     limit: int = Field(default=200, ge=1, le=500)
-    offset: int = Field(default=0, ge=0)
 
 
 class VocabularyFromLevelsResult(VocabularyBookDetail):
@@ -267,6 +265,8 @@ def import_words_from_levels(
     if body.book_id is not None:
         book = _get_book(session, body.book_id)
         _require_book_editor(book, current_user)
+        if book.status != "active":
+            raise HTTPException(status_code=422, detail="词库已归档，不能继续加词")
     else:
         if body.classroom_id is None:
             raise HTTPException(
@@ -331,7 +331,8 @@ def import_words_from_levels(
         for headword in sorted(candidates)
         if headword not in existing_headwords
     ]
-    page_headwords = remaining[body.offset : body.offset + body.limit]
+    # 续导语义：先排除已入库再限量——重复请求自然取「下一批」，无 offset
+    page_headwords = remaining[: body.limit]
 
     position = session.exec(
         select(VocabularyBookItem.position)

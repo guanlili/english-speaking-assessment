@@ -872,3 +872,89 @@ def test_sense_allocation_counts_archived_rows(
     assert [m.sense_no for m in mangos] == [1, 2]
     assert mangos[0].status == "archived"
     assert mangos[1].status == "active"
+
+
+def test_word_in_two_visible_books_deduped(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """同一词行挂在两本可见词库（两个 VocabularyBookItem）：级别查询按 id
+    去重只返回一次，不占重复分页位。"""
+    teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    # 公共库放词（产生词行 + 词条目）
+    public = _make_public_book(
+        client, superuser_token_headers, [{"headword": "twin", "meaning_zh": "双"}]
+    )
+    word = public["words"][0]
+    # 教师班级库直接复用同一词行（再挂一个词条目）
+    resp = client.post(
+        f"{VOCAB}/books",
+        json={
+            "title": "班级重复库",
+            "scope": "classroom",
+            "classroom_id": classroom["id"],
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    class_book_id = resp.json()["id"]
+    from app.models import VocabularyBookItem
+
+    db.add(VocabularyBookItem(book_id=uuid.UUID(class_book_id), word_id=word["id"]))
+    db.commit()
+    _upload(
+        client,
+        superuser_token_headers,
+        "KET",
+        [["headword", "meaning_zh"], ["twin", "双"]],
+        confirm=True,
+    )
+
+    words = client.get(
+        "/api/v1/vocabulary/words",
+        params={"level": "KET", "limit": 10, "offset": 0},
+        headers=headers,
+    ).json()
+    twins = [word for word in words if word["headword"] == "twin"]
+    assert len(twins) == 1
+
+
+def test_from_levels_rejects_archived_book(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """归档词库禁写：from-levels 对已归档 book_id 返回 422（与加词接口同门禁）。"""
+    classroom = _create_classroom(client, superuser_token_headers)
+    make_student(db, client, classroom["code"], "归档学生")
+    book = client.post(
+        f"{VOCAB}/books",
+        json={
+            "title": "将归档的库",
+            "scope": "classroom",
+            "classroom_id": classroom["id"],
+        },
+        headers=superuser_token_headers,
+    ).json()
+    resp = client.patch(
+        f"{VOCAB}/books/{book['id']}",
+        json={"status": "archived"},
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    db.add(
+        VocabularyLevelEntry(
+            headword="archivedword",
+            level="KET",
+            meaning_zh="归档测试",
+            sources=["测试"],
+        )
+    )
+    db.commit()
+
+    resp = client.post(
+        "/api/v1/vocabulary/words/from-levels",
+        json={"level": "KET", "book_id": book["id"]},
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 422
+    assert "归档" in resp.json()["detail"]
