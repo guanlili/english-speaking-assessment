@@ -267,17 +267,19 @@ function ClassroomPracticePage() {
   const isIeltsPart2 = examKind === "ielts_p2"
   const cueBullets = currentItem?.cue_card_bullets ?? []
   const prepSeconds = isIeltsPart2 ? (currentItem?.prep_seconds ?? 60) : 0
-  const currentItemId = currentItem?.id ?? null
   const [prepLeft, setPrepLeft] = useState(0)
   const [prepDone, setPrepDone] = useState(true)
+  const [prepForItem, setPrepForItem] = useState<string | null>(null)
+  // 切题即重置准备计时（渲染期比较是 React 官方认可的 state 调整模式，
+  // 避免 biome 判定 effect 依赖多余）
+  const itemId = currentItem?.id ?? null
+  if (itemId !== prepForItem) {
+    setPrepForItem(itemId)
+    setPrepLeft(isIeltsPart2 ? prepSeconds : 0)
+    setPrepDone(!isIeltsPart2 || prepSeconds <= 0)
+  }
   useEffect(() => {
-    if (!isIeltsPart2 || prepSeconds <= 0) {
-      setPrepDone(true)
-      setPrepLeft(0)
-      return
-    }
-    setPrepDone(false)
-    setPrepLeft(prepSeconds)
+    if (prepDone) return
     const timer = window.setInterval(() => {
       setPrepLeft((left) => {
         if (left <= 1) {
@@ -289,7 +291,7 @@ function ClassroomPracticePage() {
       })
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [currentItemId, isIeltsPart2, prepSeconds])
+  }, [prepDone])
   const skipPrep = () => {
     setPrepDone(true)
     setPrepLeft(0)
