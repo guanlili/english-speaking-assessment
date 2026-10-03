@@ -666,9 +666,13 @@ def test_five_level_stats_independent_of_old_wordlist(
     db.commit()
     try:
         payload = scoring_worker._analyze_vocab(db, "the ocean is big")
-        assert payload is not None
+        assert isinstance(payload, dict)
         assert "wordlist" not in payload  # 旧词表空：无 A2/B1/B2 口径
-        assert payload["level_stats"]["hits_by_level"] == {"PET": 1}
+        level_stats = payload.get("level_stats")
+        assert isinstance(level_stats, dict)
+        hits_raw = level_stats.get("hits_by_level")
+        assert isinstance(hits_raw, dict)
+        assert hits_raw == {"PET": 1}
     finally:
         # 恢复旧词表（后续 test_vocab_trail 的「未配置词表/命中分析」场景依赖）
         for lemma, band in saved_wordlist:
