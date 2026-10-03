@@ -1069,12 +1069,10 @@ def read_next_question(
                     )
                 ).all()
             }
-            assigned_question_ids = {
-                uuid.UUID(str(spec["id"]))
-                for spec in classroom.assigned_items or []
-                if spec.get("type") == AttemptItemType.QUESTION
-            }
-            excluded = set(exclude_ids) | done_ids | assigned_question_ids
+            excluded = set(exclude_ids) | done_ids
+            # 换题优先换到「快照内其他未做题」（分级题型训练：老师选的题都
+            # 是有效题，轮内换题不跳过其他未做题）；快照内取完再 exhausted，
+            # 上层 assigned_items 回退分支会继续从情景题库补新题
             candidate = next(
                 (
                     item

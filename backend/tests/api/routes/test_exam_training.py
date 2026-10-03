@@ -9,9 +9,11 @@
 
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
+from app.main import app
 from app.models import (
     RepeatSentence,
     Scenario,
@@ -46,6 +48,19 @@ def _admin(client: TestClient, superuser_token_headers: dict) -> dict:
 
 
 # ── 题库：考试字段校验 ──────────────────────────────────────────────
+
+
+@pytest.fixture
+def noop_scoring():
+    """换题用例真实提交录音但不跑评分线程，避免清理时与 worker 死锁。"""
+
+    from app.api.deps import get_scoring_submitter
+
+    app.dependency_overrides[get_scoring_submitter] = lambda: (
+        lambda attempt_id: None  # noqa: ARG005
+    )
+    yield
+    app.dependency_overrides.pop(get_scoring_submitter, None)
 
 
 def test_question_exam_field_validation(
@@ -332,10 +347,15 @@ def test_partial_update_merges_with_existing(
     assert body["cue_card_bullets"] is None
     assert body["prep_seconds"] is None
 
-    # Part 2 长回答秒数：更新 120 秒不被 60 上限拒绝
+    # Part 2 长回答秒数：重建题型需完整标注（级别必选），120 秒不被 60 拒绝
     resp = client.put(
         f"/api/v1/admin/questions/{question['id']}",
-        json={"exam_kind": "ielts_p2", "suggested_seconds": 120},
+        json={
+            "exam_kind": "ielts_p2",
+            "exam_level": "KET",
+            "cue_card_bullets": ["新要点"],
+            "suggested_seconds": 120,
+        },
         headers=admin,
     )
     assert resp.status_code == 200, resp.text
@@ -380,7 +400,10 @@ def test_sentence_partial_update_merges(
 
 
 def test_next_question_carries_exam_fields(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    noop_scoring,
 ) -> None:
     """换一题：快照内另一题的考试字段原样返回（话题卡不丢）。"""
     from tests.utils.credential import make_student
@@ -403,35 +426,68 @@ def test_next_question_carries_exam_fields(
         cue_card_bullets=["要点一"],
         prep_seconds=30,
     )
-    _create_question(
+    q2 = _create_question(
         client,
         superuser_token_headers,
         scenario_id,
         text="Part 2 second topic.",
+        suggested_seconds=120,
         exam_kind="ielts_p2",
         exam_level="KET",
         cue_card_bullets=["要点二"],
         prep_seconds=30,
     )
+    # 双题都进发布快照
     client.put(
         f"/api/v1/classes/{code}/assignment",
         json={
             "items": [
                 {"type": "question", "id": q1["id"]},
+                {"type": "question", "id": q2["id"]},
             ]
         },
         headers=superuser_token_headers,
     )
-    # 换一题：排除 q1 → 返回另一道 Part 2，考试字段齐全
+    # 学生打开计划（建立会话）并作答第一题
+    plan = _resp_json(
+        client.get(f"/api/v1/classes/{code}/today", headers=student["headers"])
+    )
+    first = plan["items"][0]
+    from tests.utils.audio import wav_upload
+
+    client.post(
+        "/api/v1/attempts",
+        files={"audio": wav_upload(3.0)},
+        data={
+            "item_type": first["type"],
+            "item_id": first["id"],
+            "duration_s": "3.0",
+            "session_id": plan["session_id"],
+        },
+        headers=student["headers"],
+    )
+
+    # 发布后修改题库 q2 的话题卡（快照不受影响）
+    client.put(
+        f"/api/v1/admin/questions/{q2['id']}",
+        json={"cue_card_bullets": ["被改掉的要点"]},
+        headers=superuser_token_headers,
+    )
+    # 显式带旧会话 session_id 走「从快照换题」分支：
+    # 返回的是快照字段（发布后改题库不影响），考试字段与话题卡齐全
     nxt = _resp_json(
         client.get(
             f"/api/v1/classes/{code}/next-question",
-            params={"excludeIds": q1["id"]},
+            params={
+                "session_id": plan["session_id"],
+                "excludeIds": first["id"],
+            },
             headers=student["headers"],
         )
     )
     assert nxt["question"] is not None
     q = nxt["question"]
+    assert q["id"] == q2["id"]
     assert q["exam_kind"] == "ielts_p2"
     assert q["exam_level"] == "KET"
     assert q["cue_card_bullets"] == ["要点二"]

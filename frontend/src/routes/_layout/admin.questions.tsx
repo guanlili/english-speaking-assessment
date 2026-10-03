@@ -290,10 +290,13 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
   const rows = bankQuery.data ?? []
   // 秒数上限按题型：考试题（长回答）≤300；普通题 ≤60
   const secondsLimit = editForm.exam_kind ? 300 : 60
+  // 分级题型必须标注级别（后端同口径：有题型无级别 → 422）
+  const examLevelMissing = Boolean(editForm.exam_kind) && !editForm.exam_level
   const editValid =
     editForm.text.trim().length > 0 &&
     editForm.suggested_seconds >= 10 &&
     editForm.suggested_seconds <= secondsLimit &&
+    !examLevelMissing &&
     (editForm.exam_kind !== "ielts_p2" ||
       editForm.cue_card_bullets.trim().length > 0)
 
@@ -652,7 +655,9 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="q-exam-level">
-                  {t({ zh: "级别（可选）", en: "Level (optional)" })}
+                  {editForm.exam_kind
+                    ? t({ zh: "级别（必选）", en: "Level (required)" })
+                    : t({ zh: "级别（可选）", en: "Level (optional)" })}
                 </Label>
                 <select
                   id="q-exam-level"

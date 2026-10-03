@@ -231,7 +231,11 @@ def validate_exam_fields(
         return
     if exam_kind not in allowed.get(table, ()):
         raise HTTPException(status_code=422, detail="未知考试题型")
-    if exam_level is not None and exam_level not in VOCAB_LEVEL_ORDER:
+    if exam_level is None:
+        # 明确禁止「有题型、无级别」的记录：分级题型训练的题必须标注级别，
+        # 否则教师端编辑会把它误降级为普通题
+        raise HTTPException(status_code=422, detail="选择考试题型时需同时标注级别")
+    if exam_level not in VOCAB_LEVEL_ORDER:
         raise HTTPException(
             status_code=422,
             detail="考试级别无效，可选：" + "/".join(VOCAB_LEVEL_ORDER),
