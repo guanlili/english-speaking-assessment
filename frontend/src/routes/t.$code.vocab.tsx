@@ -16,7 +16,12 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
-import { ApiError, ClassesService, VocabularyService } from "@/client"
+import {
+  ApiError,
+  ClassesService,
+  VocabLevelsService,
+  VocabularyService,
+} from "@/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -431,7 +436,7 @@ function AssignPanel({
                       setSelected(new Set())
                     }}
                     aria-label={t({ zh: "按级别筛选", en: "Filter by level" })}
-                    className="h-9 rounded-lg border border-input bg-card px-2 text-sm text-foreground"
+                    className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
                   >
                     <option value="all">
                       {t({ zh: "全部级别", en: "All levels" })}
@@ -1292,6 +1297,42 @@ function CreateClassroomBook({
   const { t } = useI18n()
   const fileRef = useRef<HTMLInputElement>(null)
   const [title, setTitle] = useState("")
+  // 从五级词库导入：只取已核对且有释义的词条（未核对/缺释义自动跳过）
+  const [fromLevel, setFromLevel] = useState<VocabLevel | null>(null)
+  const fromLevels = useMutation({
+    mutationFn: () =>
+      VocabLevelsService.importWordsFromLevels({
+        requestBody: {
+          level: fromLevel as string,
+          classroom_id: classroomId,
+          new_book_title: title.trim() || null,
+        },
+      }),
+    onSuccess: (book) => {
+      toast.success(
+        t({
+          zh: `已从五级词库转入 ${book.created_count ?? 0} 个已核对词条（跳过 ${book.skipped_existing ?? 0} 个已有词）。`,
+          en: `Imported ${book.created_count ?? 0} reviewed entries from the leveled source (skipped ${book.skipped_existing ?? 0} existing).`,
+        }),
+      )
+      onCreated(book.id)
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          error.status === 403
+            ? t({
+                zh: "只有本班任课教师能创建班级词库。",
+                en: "Only this classroom's teacher can create its books.",
+              })
+            : t({
+                zh: "导入失败，请重试。",
+                en: "Import failed — please retry.",
+              }),
+        )
+      }
+    },
+  })
   const [preview, setPreview] = useState<{
     words: BookWordInput[]
     invalid: Array<{ line: number; reason: string }>
@@ -1398,6 +1439,50 @@ function CreateClassroomBook({
           })}
           className="h-11 max-w-md text-base"
         />
+      </div>
+      <div className="space-y-2">
+        <label htmlFor="from-level-select" className="text-sm font-medium">
+          {t({
+            zh: "从五级词库导入（可选）",
+            en: "Import from leveled source (optional)",
+          })}
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            id="from-level-select"
+            value={fromLevel ?? ""}
+            onChange={(event) =>
+              setFromLevel((event.target.value || null) as VocabLevel | null)
+            }
+            className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+          >
+            <option value="">{t({ zh: "不导入", en: "Don't import" })}</option>
+            {VOCAB_LEVEL_ORDER.map((level) => (
+              <option key={level} value={level}>
+                {t(VOCAB_LEVEL_LABELS[level])}
+                {t({ zh: "（仅已核对词条）", en: " (reviewed only)" })}
+              </option>
+            ))}
+          </select>
+          {fromLevel && (
+            <Button
+              size="sm"
+              disabled={fromLevels.isPending}
+              onClick={() => fromLevels.mutate()}
+            >
+              {fromLevels.isPending ? (
+                <Loader2 className="animate-spin" />
+              ) : null}
+              {t({ zh: "建库并导入", en: "Create & import" })}
+            </Button>
+          )}
+          <span className="text-xs text-muted-foreground">
+            {t({
+              zh: "只转入已人工核对且有释义的词条；词库管理页可继续核对其余词条。",
+              en: "Only reviewed entries with meanings are imported; review the rest in Word Books admin.",
+            })}
+          </span>
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button

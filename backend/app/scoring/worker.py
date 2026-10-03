@@ -64,6 +64,8 @@ def _get_five_level_cache(session: Session) -> dict[str, set[str]]:
             VocabularyLevelEntry.status == "active",
             VocabularyLevelEntry.is_phrase.is_(False),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
             VocabularyLevelEntry.needs_review.is_(False),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
+            VocabularyLevelEntry.meaning_zh.is_not(None),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
+            VocabularyLevelEntry.meaning_zh != "",  # type: ignore[union-attr]
         )
     ).all():
         levels.setdefault(level, set()).add(headword)
@@ -108,27 +110,29 @@ def _five_level_stats(session: Session, transcript: str) -> dict[str, object] | 
 
 
 def _analyze_vocab(session: Session, transcript: str) -> dict[str, object] | None:
-    """词表命中分析；未配置词表时返回 None（界面显示「未配置词表」，BDD D）。
+    """词汇分析：旧 A2/B1/B2 命中与五级来源统计分别独立计算后组合。
 
-    五级来源统计（level_stats）是新增的独立块：只标注用词来源级别，
-    不影响既有 hits/cefr 口径；历史 attempt 的 vocab JSON 不回填、不重算。
+    - 任一数据源有内容即产出 payload（两套口径互不依赖）；
+    - 旧词表为空时不含 wordlist/hits/cefr 键（界面按缺省渲染），五级统计照常；
+    - 两者皆空 → None（界面显示「未配置词表」）；
+    - 历史 attempt 的 vocab JSON 不回填、不重算。
     """
     entries, lemmas_by_band = _get_wordlist_cache(session)
-    if not entries:
-        return None
-    analysis = analyze_transcript(transcript, lemmas_by_band)
-    from app.core.db import WORDLIST_NAME
+    payload: dict[str, object] = {}
+    if entries:
+        analysis = analyze_transcript(transcript, lemmas_by_band)
+        from app.core.db import WORDLIST_NAME
 
-    payload: dict[str, object] = {
-        "wordlist": WORDLIST_NAME,
-        "hits": {band: words for band, words in analysis.hits_by_band.items() if words},
-        "coverage": analysis.coverage_ratio,
-        "cefr": analysis.cefr_label,
-    }
+        payload["wordlist"] = WORDLIST_NAME
+        payload["hits"] = {
+            band: words for band, words in analysis.hits_by_band.items() if words
+        }
+        payload["coverage"] = analysis.coverage_ratio
+        payload["cefr"] = analysis.cefr_label
     level_stats = _five_level_stats(session, transcript)
     if level_stats is not None:
         payload["level_stats"] = level_stats
-    return payload
+    return payload or None
 
 
 def build_asr_provider() -> AsrProvider:

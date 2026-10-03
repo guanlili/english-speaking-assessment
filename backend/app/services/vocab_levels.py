@@ -12,6 +12,7 @@
 
 import csv
 import io
+import re
 import uuid
 from dataclasses import dataclass, field
 
@@ -52,6 +53,9 @@ class ParsedRow:
     headword: str  # 已规范化
     part_of_speech: str | None = None
     meaning_zh: str | None = None
+    needs_review: bool = False
+    sources: list[str] = field(default_factory=list)  # 行级来源（如场景/章节/天）
+    note: str | None = None
     line: int = 0
 
 
@@ -77,10 +81,16 @@ def parse_upload(text: str) -> list[ParsedRow]:
                 col_map.setdefault("part_of_speech", idx)
             elif name in ("meaning_zh", "释义", "中文释义", "meaning"):
                 col_map.setdefault("meaning_zh", idx)
+            elif name in ("needs_review", "待核对", "待人工核对"):
+                col_map.setdefault("needs_review", idx)
+            elif name in ("sources", "来源"):
+                col_map.setdefault("sources", idx)
+            elif name == "note":
+                col_map.setdefault("note", idx)
         if "headword" not in col_map:
             raise HTTPException(
                 status_code=422,
-                detail="CSV 需要表头：headword[,part_of_speech][,meaning_zh]",
+                detail="CSV 需要表头：headword[,part_of_speech][,meaning_zh][,needs_review][,sources]",
             )
         data_rows = raw_rows[1:]
     else:
@@ -110,11 +120,35 @@ def parse_upload(text: str) -> list[ParsedRow]:
             if "meaning_zh" in col_map and col_map["meaning_zh"] < len(cells)
             else ""
         )
+        needs_review = (
+            cells[col_map["needs_review"]].strip().casefold()
+            in ("true", "1", "yes", "是")
+            if "needs_review" in col_map and col_map["needs_review"] < len(cells)
+            else False
+        )
+        row_sources = (
+            [
+                part.strip()
+                for part in re.split(r"[;；]", cells[col_map["sources"]])
+                if part.strip()
+            ]
+            if "sources" in col_map and col_map["sources"] < len(cells)
+            else []
+        )
+        note = (
+            cells[col_map["note"]].strip()
+            if "note" in col_map and col_map["note"] < len(cells)
+            else ""
+        )
+        # 安全默认：缺释义的行强制待核对（不参与两模块统计，人工核对后才生效）
         rows.append(
             ParsedRow(
                 headword=normalize_spelling(headword_raw),
                 part_of_speech=pos or None,
                 meaning_zh=meaning or None,
+                needs_review=needs_review or not meaning,
+                sources=row_sources,
+                note=note or None,
                 line=line_no,
             )
         )
@@ -125,9 +159,8 @@ def _validate_rows(
     rows: list[ParsedRow],
 ) -> tuple[list[ParsedRow], list[VocabularyLevelImportIssue]]:
     """结构有效性：headword 必须是拉丁词形（词/词组），长度 ≤64。"""
-    import re
-
-    valid_re = re.compile(r"^[a-zA-Z][a-zA-Z'\-]*(?: [a-zA-Z][a-zA-Z'\-]*)*$")
+    # 允许词内数字（如 b2/OCR 噪声），首字符必须是字母
+    valid_re = re.compile(r"^[a-zA-Z][a-zA-Z0-9'\-]*(?: [a-zA-Z0-9][a-zA-Z0-9'\-]*)*$")
     valid: list[ParsedRow] = []
     invalid: list[VocabularyLevelImportIssue] = []
     for row in rows:
@@ -163,33 +196,118 @@ class ImportPlan:
     merge_count: int = 0
 
 
+def _meaning_key(meaning: str | None) -> str:
+    return normalize_spelling(meaning or "")
+
+
+@dataclass
+class _BatchGroup:
+    """批内聚合组：同 (headword, 规范化释义) 的行合并来源后再与库比对。"""
+
+    headword: str
+    meaning_key: str
+    meaning_zh: str | None
+    part_of_speech: str | None
+    needs_review: bool
+    note: str | None
+    sources: list[str]
+    first_line: int
+    lines: list[int]
+
+
 def plan_import(
     session: Session,
     level: str,
     source_label: str,
     rows: list[ParsedRow],
 ) -> ImportPlan:
-    """构建导入计划（不写库）：批内去重、既有匹配、跨级冲突提示。
+    """构建导入计划（不写库）。
 
-    匹配口径：(headword, level, 规范化释义)。
-    - 批内同键 → duplicate_in_file（来源将合并）
-    - 批内同 (headword, level) 不同释义 → 同形异义，各成一行
-    - 与库中同键 → merge（来源追加，空位补齐）
-    - headword 存在于其他级别 → cross_level_conflict 提示（不阻断：
-      实际难度自动取更早一级）
+    聚合与匹配口径：
+    1. 批内先按 (headword, 规范化释义) 聚合——同键重复合并来源（duplicate_in_file
+       提示）；同词不同释义 = 同形异义，各成一组；
+    2. 每组与库中 (headword, level, 规范化释义) 匹配：命中 → merge（来源追加、
+       空位补齐）；未命中 → 新建行，sense_no 按「库中该词头已有最大 sense_no +
+       批内顺序」连续分配（绝不撞 uq_vocab_level_sense）；
+    3. headword 存在于其他级别 → cross_level_conflict 提示（不阻断，实际难度
+       自动取更早一级）。
     """
     plan = ImportPlan()
-    seen_batch: dict[str, ParsedRow] = {}
-    batch_entries: list[tuple[ParsedRow, VocabularyLevelEntry]] = []
-    headwords = {row.headword for row in rows}
 
-    # 库中既有：同 headword 的本级别行 + 其他级别行（跨级冲突用）
+    # 1) 批内聚合（保持首次出现顺序）
+    groups: dict[tuple[str, str], _BatchGroup] = {}
+    group_order: list[tuple[str, str]] = []
+    first_line_by_headword: dict[str, int] = {}
+    for row in rows:
+        key = (row.headword, _meaning_key(row.meaning_zh))
+        group = groups.get(key)
+        # 行级来源（工具产物带 sources 列）优先；为空才用 source_label 兜底
+        row_sources = list(row.sources) or (
+            [source_label] if source_label else ["未命名来源"]
+        )
+        if group is None:
+            groups[key] = _BatchGroup(
+                headword=row.headword,
+                meaning_key=key[1],
+                meaning_zh=row.meaning_zh,
+                part_of_speech=row.part_of_speech,
+                needs_review=row.needs_review,
+                note=row.note,
+                sources=row_sources,
+                first_line=row.line,
+                lines=[row.line],
+            )
+            group_order.append(key)
+        else:
+            group.lines.append(row.line)
+            for source in row_sources:
+                if source not in group.sources:
+                    group.sources.append(source)
+            group.needs_review = group.needs_review or row.needs_review
+            if not group.part_of_speech and row.part_of_speech:
+                group.part_of_speech = row.part_of_speech
+            if not group.note and row.note:
+                group.note = row.note
+        if row.headword not in first_line_by_headword:
+            first_line_by_headword[row.headword] = row.line
+
+    # 批内重复/同形异义提示
+    headword_groups: dict[str, list[_BatchGroup]] = {}
+    for key in group_order:
+        headword_groups.setdefault(key[0], []).append(groups[key])
+    for headword, word_groups in headword_groups.items():
+        if len(word_groups) > 1:
+            # 同词多组：每组与第一组互为「同词不同释义」
+            first = word_groups[0]
+            for group in word_groups[1:]:
+                plan.duplicates_in_file.append(
+                    VocabularyLevelImportIssue(
+                        kind="duplicate_in_file",
+                        line=group.first_line,
+                        headword=headword,
+                        reason=f"与第 {first.first_line} 行同词不同释义，按同形异义各自成行",
+                    )
+                )
+        for group in word_groups:
+            if len(group.lines) > 1:
+                plan.duplicates_in_file.append(
+                    VocabularyLevelImportIssue(
+                        kind="duplicate_in_file",
+                        line=group.lines[1],
+                        headword=headword,
+                        reason=f"与第 {group.lines[0]} 行重复（同词同释义），来源将合并",
+                    )
+                )
+
+    # 2) 库中既有行
+    headwords = list(headword_groups.keys())
     existing_same_level: dict[tuple[str, str], VocabularyLevelEntry] = {}
+    existing_sense_max: dict[str, int] = {}
     other_levels: dict[str, set[str]] = {}
     if headwords:
         for entry in session.exec(
             select(VocabularyLevelEntry).where(
-                col(VocabularyLevelEntry.headword).in_(list(headwords)),  # type: ignore[operator]
+                col(VocabularyLevelEntry.headword).in_(headwords),  # type: ignore[operator]
                 VocabularyLevelEntry.status == "active",
             )
         ).all():
@@ -197,86 +315,60 @@ def plan_import(
                 existing_same_level[
                     (entry.headword, _meaning_key(entry.meaning_zh))
                 ] = entry
+                existing_sense_max[entry.headword] = max(
+                    existing_sense_max.get(entry.headword, 0), entry.sense_no
+                )
             else:
                 other_levels.setdefault(entry.headword, set()).add(entry.level)
 
-    for row in rows:
-        source = f"{source_label}" if source_label else "未命名来源"
-        existing = existing_same_level.get((row.headword, _meaning_key(row.meaning_zh)))
+    # 3) 逐组生成计划：merge 或新建（sense_no 连续分配）
+    for key in group_order:
+        group = groups[key]
+        existing = existing_same_level.get(key)
         if existing is not None:
             plan.merge_count += 1
-            plan.merges.append((existing, [source], row.part_of_speech, row.meaning_zh))
-            if row.headword in seen_batch:
-                plan.duplicates_in_file.append(
-                    VocabularyLevelImportIssue(
-                        kind="duplicate_in_file",
-                        line=row.line,
-                        headword=row.headword,
-                        reason=f"与第 {seen_batch[row.headword].line} 行重复（同词同释义），来源将合并",
-                    )
+            plan.merges.append(
+                (
+                    existing,
+                    list(group.sources) if group.sources else [],
+                    group.part_of_speech,
+                    group.meaning_zh,
                 )
+            )
             continue
-        if row.headword in seen_batch:
-            # 同词不同释义：同形异义，各成一行（不是重复）
-            plan.duplicates_in_file.append(
-                VocabularyLevelImportIssue(
-                    kind="duplicate_in_file",
-                    line=row.line,
-                    headword=row.headword,
-                    reason=f"与第 {seen_batch[row.headword].line} 行同词不同释义，按同形异义各自成行",
-                )
-            )
-        seen_batch.setdefault(row.headword, row)
-        if row.headword in other_levels:
-            easier = min(
-                other_levels[row.headword] | {level}, key=VOCAB_LEVEL_ORDER.index
-            )
+
+        headword = group.headword
+        if headword in other_levels:
+            easier = min(other_levels[headword] | {level}, key=VOCAB_LEVEL_ORDER.index)
             plan.cross_level_conflicts.append(
                 VocabularyLevelImportIssue(
                     kind="cross_level_conflict",
-                    line=row.line,
-                    headword=row.headword,
+                    line=group.first_line,
+                    headword=headword,
                     reason="该词已存在于其他级别，实际难度将取最早（最易）一级",
                     existing_level=easier if easier != level else None,
                 )
             )
-        sense_no = _next_sense_no(
-            [
-                entry
-                for key, entry in existing_same_level.items()
-                if key[0] == row.headword
-            ]
+        new_sense_no = existing_sense_max.get(headword, 0) + 1
+        existing_sense_max[headword] = new_sense_no
+        sources = group.sources or ([source_label] if source_label else ["未命名来源"])
+        plan.new_entries.append(
+            VocabularyLevelEntry(
+                headword=headword,
+                level=level,
+                sense_no=new_sense_no,
+                part_of_speech=group.part_of_speech,
+                meaning_zh=group.meaning_zh,
+                # 安全默认：缺释义的行强制待核对（不参与两模块统计）
+                needs_review=group.needs_review or not group.meaning_zh,
+                is_phrase=" " in headword,
+                note=group.note,
+                sources=sources,
+            )
         )
-        entry = VocabularyLevelEntry(
-            headword=row.headword,
-            level=level,
-            sense_no=sense_no,
-            part_of_speech=row.part_of_speech,
-            meaning_zh=row.meaning_zh,
-            is_phrase=" " in row.headword,
-            sources=[source],
-        )
-        batch_entries.append((row, entry))
 
-    # 批内同 (headword, level) 多义：sense_no 在新建行之间也要错开
-    sense_counter: dict[str, int] = {}
-    for _row, entry in batch_entries:
-        if entry.sense_no == 1 and entry.headword in sense_counter:
-            sense_counter[entry.headword] += 1
-            entry.sense_no = sense_counter[entry.headword]
-        else:
-            sense_counter.setdefault(entry.headword, entry.sense_no)
-    plan.new_entries = [entry for _row, entry in batch_entries]
     plan.new_count = len(plan.new_entries)
     return plan
-
-
-def _meaning_key(meaning: str | None) -> str:
-    return normalize_spelling(meaning or "")
-
-
-def _next_sense_no(existing_entries: list[VocabularyLevelEntry]) -> int:
-    return max((entry.sense_no for entry in existing_entries), default=0) + 1
 
 
 def preview_import(
@@ -331,7 +423,7 @@ def apply_import(
         for entry in plan.new_entries:
             session.add(entry)
         for existing, sources, pos, meaning in plan.merges:
-            for source in sources:
+            for source in sources or []:
                 if source not in (existing.sources or []):
                     existing.sources = list(existing.sources or []) + [source]
             if not existing.part_of_speech and pos:
@@ -397,6 +489,8 @@ def effective_level_map(
             col(VocabularyLevelEntry.headword).in_(normalized),  # type: ignore[operator]
             VocabularyLevelEntry.status == "active",
             VocabularyLevelEntry.needs_review.is_(False),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
+            col(VocabularyLevelEntry.meaning_zh).is_not(None),  # type: ignore[union-attr]
+            col(VocabularyLevelEntry.meaning_zh) != "",  # type: ignore[union-attr]
         )
     ).all():
         levels_by_word.setdefault(entry[0], []).append(entry[1])

@@ -16,10 +16,20 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Query, UploadFile
-from sqlmodel import col, select
+from sqlmodel import Field, SQLModel, col, select
 
 from app.api.deps import SessionDep, SuperUserDep, TeacherUserDep
+from app.api.routes.classes import _require_classroom_teacher
+from app.api.routes.vocabulary import (
+    VocabularyWordIn,
+    _book_public,
+    _create_word,
+    _get_book,
+    _require_book_editor,
+)
 from app.models import (
+    Classroom,
+    VocabularyBookDetail,
     VocabularyLevelEntry,
     VocabularyLevelEntryPublic,
     VocabularyLevelEntryUpdate,
@@ -146,6 +156,11 @@ def update_vocab_level_entry(
     if "note" in update:
         entry.note = (update["note"] or "").strip() or None
     if update.get("needs_review") is not None:
+        if not update["needs_review"] and not (entry.meaning_zh or "").strip():
+            raise HTTPException(
+                status_code=422,
+                detail="释义为空时不能标记已核对：请先补录中文释义",
+            )
         entry.needs_review = update["needs_review"]
     if update.get("status") is not None:
         if update["status"] not in {"active", "archived"}:
@@ -171,12 +186,150 @@ def list_teaching_words_by_level(
     实际难度 = 该词全部级别中最早（最易）一级。
     """
     levels_service.validate_level(level)
+    # 先全量附加级别再过滤，最后分页——避免「先截取后过滤」漏词/空页
     words = session.exec(
         select(VocabularyWord)
         .where(VocabularyWord.status == "active")
         .order_by(col(VocabularyWord.headword))
-        .offset(offset)
-        .limit(limit)
     ).all()
     matched = levels_service.attach_word_levels(session, list(words))
-    return [word for word in matched if word.level == level]
+    matched = [word for word in matched if word.level == level]
+    return matched[offset : offset + limit]
+
+
+class VocabularyFromLevelsRequest(SQLModel):
+    """从五级词库导入教学词条到词库（仅已核对、有释义的词条）。"""
+
+    level: str
+    book_id: uuid.UUID | None = None  # 省略则新建班级词库（需 classroom_id）
+    classroom_id: uuid.UUID | None = None
+    new_book_title: str | None = Field(default=None, max_length=255)
+    limit: int = Field(default=200, ge=1, le=500)
+
+
+class VocabularyFromLevelsResult(VocabularyBookDetail):
+    """建库/并库结果 + 本次从分级库转入的统计。"""
+
+    created_count: int = 0
+    skipped_existing: int = 0
+
+
+@router.post("/vocabulary/words/from-levels", response_model=VocabularyFromLevelsResult)
+def import_words_from_levels(
+    session: SessionDep,
+    current_user: TeacherUserDep,
+    body: VocabularyFromLevelsRequest,
+) -> Any:
+    """教师把五级词库中**已核对且有释义**的词条转为教学词条并入词库。
+
+    - 已有同词头教学词条：跳过（不重复建词）；
+    - 未核对（needs_review）或缺释义的分级词条：跳过并在结果中说明；
+    - 生成的教学词条与既有发布流程一致（按 word_ids 发布 → 快照），快照语义不变。
+    """
+    from app.models import (
+        VocabularyBook,
+        VocabularyBookItem,
+    )
+
+    levels_service.validate_level(body.level)
+    if body.book_id is not None:
+        book = _get_book(session, body.book_id)
+        _require_book_editor(book, current_user)
+    else:
+        if body.classroom_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail="需要指定已有词库（book_id）或课堂（classroom_id）新建",
+            )
+        classroom = session.get(Classroom, body.classroom_id)
+        if classroom is None:
+            raise HTTPException(status_code=404, detail="课堂不存在")
+        _require_classroom_teacher(classroom, current_user)
+        book = VocabularyBook(
+            title=(body.new_book_title or "").strip() or f"五级词库 · {body.level}",
+            scope="classroom",
+            owner_id=current_user.id,
+            classroom_id=classroom.id,
+        )
+        session.add(book)
+        session.flush()
+
+    # 已核对且有释义的分级词条（active）
+    entries = session.exec(
+        select(VocabularyLevelEntry)
+        .where(
+            VocabularyLevelEntry.level == body.level,  # type: ignore[arg-type]
+            VocabularyLevelEntry.status == "active",
+            VocabularyLevelEntry.needs_review == False,  # noqa: E712
+            col(VocabularyLevelEntry.meaning_zh).is_not(None),  # type: ignore[union-attr]
+            col(VocabularyLevelEntry.meaning_zh) != "",  # type: ignore[union-attr]
+        )
+        .order_by(
+            col(VocabularyLevelEntry.headword), col(VocabularyLevelEntry.sense_no)
+        )
+        .limit(body.limit)
+    ).all()
+
+    existing_headwords = {
+        normalize_spelling(word.headword)
+        for word in session.exec(
+            select(VocabularyWord)
+            .join(
+                VocabularyBookItem,
+                VocabularyBookItem.word_id == VocabularyWord.id,  # ty: ignore[invalid-argument-type]
+            )
+            .where(VocabularyBookItem.book_id == book.id)  # type: ignore[arg-type]
+        ).all()
+    }
+
+    created = 0
+    skipped_existing = 0
+    position = session.exec(
+        select(VocabularyBookItem.position)
+        .where(VocabularyBookItem.book_id == book.id)  # type: ignore[arg-type]
+        .order_by(col(VocabularyBookItem.position).desc())
+    ).first()
+    position = (position or 0) + 1
+    seen_this_batch: set[str] = set()
+    for entry in entries:
+        if normalize_spelling(entry.headword) in existing_headwords:
+            skipped_existing += 1
+            continue
+        if entry.headword in seen_this_batch:
+            continue  # 同形异义只取第一条释义作教学词条
+        seen_this_batch.add(entry.headword)
+        word = _create_word(
+            session,
+            VocabularyWordIn(
+                headword=entry.headword,
+                part_of_speech=entry.part_of_speech,
+                meaning_zh=entry.meaning_zh or "",
+            ),
+        )
+        session.flush()
+        session.add(
+            VocabularyBookItem(book_id=book.id, word_id=word.id, position=position)
+        )
+        position += 1
+        created += 1
+    if created:
+        book.version += 1
+        session.add(book)
+    session.commit()
+    session.refresh(book)
+
+    items = session.exec(
+        select(VocabularyWord)
+        .join(
+            VocabularyBookItem,
+            VocabularyBookItem.word_id == VocabularyWord.id,  # ty: ignore[invalid-argument-type]
+        )
+        .where(VocabularyBookItem.book_id == book.id)  # type: ignore[arg-type]
+        .order_by(col(VocabularyBookItem.position))
+    ).all()
+    return VocabularyFromLevelsResult(
+        **_book_public(book, len(items)).model_dump(),
+        words=levels_service.attach_word_levels(session, list(items)),
+        created_count=created,
+        skipped_existing=skipped_existing,
+    )

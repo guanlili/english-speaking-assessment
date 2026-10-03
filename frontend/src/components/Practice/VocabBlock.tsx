@@ -49,6 +49,8 @@ function VocabBlock({ vocab }: { vocab: unknown }) {
     )
   }
 
+  const hasWordlist = Boolean(data.wordlist)
+
   const hits = data.hits ?? {}
   const hitWords = Array.from(new Set(Object.values(hits).flat())).slice(0, 24)
 
@@ -67,6 +69,7 @@ function VocabBlock({ vocab }: { vocab: unknown }) {
           </span>
         )}
       </div>
+
       {hitWords.length > 0 && (
         <div className="space-y-1 text-sm">
           <p>
@@ -100,12 +103,14 @@ function VocabBlock({ vocab }: { vocab: unknown }) {
             </p>
           </div>
         )}
-      <p className="text-xs text-muted-foreground">
-        {t({
-          zh: `词表来源：${data.wordlist ?? "未命名"} · 仅用于发现可继续使用的表达`,
-          en: `Wordlist: ${data.wordlist ?? "Unnamed"} · used only to spot expressions you can keep using`,
-        })}
-      </p>
+      {hasWordlist && (
+        <p className="text-xs text-muted-foreground">
+          {t({
+            zh: `词表来源：${data.wordlist} · 仅用于发现可继续使用的表达`,
+            en: `Wordlist: ${data.wordlist} · used only to spot expressions you can keep using`,
+          })}
+        </p>
+      )}
     </div>
   )
 }

@@ -80,29 +80,40 @@ function VocabLevelsAdmin() {
     queryFn: () => VocabLevelsService.vocabLevelStats(),
   })
 
-  // 导入表单状态
+  // 导入表单状态。预览与参数绑定（P2-5）：级别/来源/文件任一变化即作废预览，
+  // 确认导入只能使用预览时固定的 file+level+source_label，杜绝错级导入
   const [importLevel, setImportLevel] = useState<VocabLevel>("KET")
   const [sourceLabel, setSourceLabel] = useState("")
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<LevelPreview | null>(null)
-
-  const readUploadedText = async (file: File): Promise<string> => file.text()
-
-  const buildPreviewLocally = async (file: File, level: VocabLevel) => {
-    // 预览走后端（跨级冲突要查库）：用 FormData 上传同一份文件
-    return VocabLevelsService.vocabLevelImportPreview({
-      formData: {
-        file: file as unknown as string,
-        level,
-        source_label: sourceLabel.trim() || file.name.replace(/\.[^.]+$/, ""),
-      },
-    })
+  const [previewParams, setPreviewParams] = useState<{
+    file: File
+    level: VocabLevel
+    sourceLabel: string
+  } | null>(null)
+  const discardPreview = () => {
+    setPreview(null)
+    setPreviewParams(null)
   }
 
   const previewMutation = useMutation({
     mutationFn: async () => {
       if (!pendingFile) throw new Error("no file")
-      return buildPreviewLocally(pendingFile, importLevel)
+      const params = {
+        file: pendingFile,
+        level: importLevel,
+        sourceLabel:
+          sourceLabel.trim() || pendingFile.name.replace(/\.[^.]+$/, ""),
+      }
+      const data = await VocabLevelsService.vocabLevelImportPreview({
+        formData: {
+          file: pendingFile as unknown as string,
+          level: params.level,
+          source_label: params.sourceLabel,
+        },
+      })
+      setPreviewParams(params)
+      return data
     },
     onSuccess: (data) => setPreview(data as LevelPreview),
     onError: (error) => {
@@ -124,13 +135,13 @@ function VocabLevelsAdmin() {
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
-      if (!pendingFile) throw new Error("no file")
+      // 用预览时固定的参数（评审 P2-5）
+      if (!previewParams) throw new Error("no preview")
       return VocabLevelsService.vocabLevelImportConfirm({
         formData: {
-          file: pendingFile as unknown as string,
-          level: importLevel,
-          source_label:
-            sourceLabel.trim() || pendingFile.name.replace(/\.[^.]+$/, ""),
+          file: previewParams.file as unknown as string,
+          level: previewParams.level,
+          source_label: previewParams.sourceLabel,
         },
       })
     },
@@ -141,7 +152,7 @@ function VocabLevelsAdmin() {
           en: `Imported: ${data.imported_new} new, ${data.merged_existing} merged, ${data.skipped_invalid} invalid rows skipped.`,
         }),
       )
-      setPreview(null)
+      discardPreview()
       setPendingFile(null)
       queryClient.invalidateQueries({ queryKey: ["admin", "vocab-levels"] })
     },
@@ -162,31 +173,81 @@ function VocabLevelsAdmin() {
     },
   })
 
-  // 待人工核对词条
+  // 待人工核对词条（分页 + 补录释义）
+  const PAGE_SIZE = 50
   const [reviewFilter, setReviewFilter] = useState<"all" | "needs_review">(
     "needs_review",
   )
+  const [page, setPage] = useState(0)
+  const [editing, setEditing] = useState<{
+    id: string
+    headword: string
+    meaning: string
+    pos: string
+  } | null>(null)
+
   const entriesQuery = useQuery({
-    queryKey: ["admin", "vocab-levels", "entries", reviewFilter],
+    queryKey: ["admin", "vocab-levels", "entries", reviewFilter, page],
     queryFn: () =>
       VocabLevelsService.listVocabLevelEntries({
         needsReview: reviewFilter === "needs_review" ? true : undefined,
-        limit: 200,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
       }),
   })
 
-  const markReviewed = useMutation({
-    mutationFn: (entryId: string) =>
+  const saveReview = useMutation({
+    mutationFn: (payload: {
+      id: string
+      meaning: string
+      pos: string
+      markReviewed: boolean
+    }) =>
       VocabLevelsService.updateVocabLevelEntry({
-        entryId,
-        requestBody: { needs_review: false },
+        entryId: payload.id,
+        requestBody: {
+          meaning_zh: payload.meaning.trim() || null,
+          part_of_speech: payload.pos.trim() || null,
+          needs_review: payload.markReviewed ? false : undefined,
+        },
       }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["admin", "vocab-levels"] }),
+    onSuccess: () => {
+      toast.success(t({ zh: "已保存。", en: "Saved." }))
+      setEditing(null)
+      queryClient.invalidateQueries({ queryKey: ["admin", "vocab-levels"] })
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          error.status === 422
+            ? t({
+                zh: "保存失败：释义为空时不能标记已核对。",
+                en: "Save failed: an entry without a meaning can't be marked reviewed.",
+              })
+            : t({
+                zh: "保存失败，请重试。",
+                en: "Save failed — please retry.",
+              }),
+        )
+      }
+    },
   })
 
-  const exportNeedsReview = () => {
-    const rows = entriesQuery.data ?? []
+  const exportButtonDisabled = entriesQuery.isPending
+
+  const exportNeedsReview = async () => {
+    // 导出全部（按页拉取，不受单页 50 条限制）
+    const all: NonNullable<typeof entriesQuery.data> = []
+    for (let offset = 0; ; offset += 500) {
+      const batch = await VocabLevelsService.listVocabLevelEntries({
+        needsReview: reviewFilter === "needs_review" ? true : undefined,
+        limit: 500,
+        offset,
+      })
+      all.push(...batch)
+      if (batch.length < 500) break
+    }
+    const rows = all
     downloadCsv(
       [
         [
@@ -302,7 +363,10 @@ function VocabLevelsAdmin() {
               <Input
                 id="source-label"
                 value={sourceLabel}
-                onChange={(event) => setSourceLabel(event.target.value)}
+                onChange={(event) => {
+                  setSourceLabel(event.target.value)
+                  discardPreview()
+                }}
                 placeholder={t({
                   zh: "如：KET整理版（默认用文件名）",
                   en: "e.g. KET wordlist (defaults to filename)",
@@ -338,18 +402,15 @@ function VocabLevelsAdmin() {
                   onChange={async (event) => {
                     const file = event.target.files?.[0] ?? null
                     setPendingFile(file)
-                    setPreview(null)
-                    if (file) {
-                      const text = await readUploadedText(file)
-                      if (text.length > 5 * 1024 * 1024) {
-                        toast.error(
-                          t({
-                            zh: "文件超过 5MB 上限",
-                            en: "File exceeds the 5MB limit",
-                          }),
-                        )
-                        setPendingFile(null)
-                      }
+                    discardPreview()
+                    if (file && file.size > 5 * 1024 * 1024) {
+                      toast.error(
+                        t({
+                          zh: "文件超过 5MB 上限",
+                          en: "File exceeds the 5MB limit",
+                        }),
+                      )
+                      setPendingFile(null)
                     }
                     event.target.value = ""
                   }}
@@ -367,6 +428,14 @@ function VocabLevelsAdmin() {
               ) : null}
               {t({ zh: "生成预览", en: "Preview" })}
             </Button>
+            {pendingFile && previewParams === null && preview === null && (
+              <span className="self-center text-xs text-muted-foreground">
+                {t({
+                  zh: "请先生成预览，确认无误后再导入。",
+                  en: "Generate a preview first; import only after review.",
+                })}
+              </span>
+            )}
           </div>
 
           {preview && (
@@ -429,6 +498,7 @@ function VocabLevelsAdmin() {
                   size="sm"
                   disabled={
                     confirmMutation.isPending ||
+                    previewParams === null ||
                     preview.new_count + preview.merge_count === 0
                   }
                   onClick={() => confirmMutation.mutate()}
@@ -484,7 +554,12 @@ function VocabLevelsAdmin() {
                 {t({ zh: "全部词条", en: "All entries" })}
               </option>
             </select>
-            <Button variant="outline" size="sm" onClick={exportNeedsReview}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={exportButtonDisabled}
+              onClick={() => void exportNeedsReview()}
+            >
               <Download />
               {t({ zh: "导出", en: "Export" })}
             </Button>
@@ -556,30 +631,179 @@ function VocabLevelsAdmin() {
                         {(entry.sources ?? []).join("；")}
                       </TableCell>
                       <TableCell>
-                        {entry.needs_review ? (
+                        <div className="flex flex-wrap gap-1.5">
                           <Button
                             variant="outline"
                             size="sm"
-                            disabled={markReviewed.isPending}
-                            onClick={() => markReviewed.mutate(entry.id)}
+                            onClick={() =>
+                              setEditing({
+                                id: entry.id,
+                                headword: entry.headword,
+                                meaning: entry.meaning_zh ?? "",
+                                pos: entry.part_of_speech ?? "",
+                              })
+                            }
                           >
-                            <BookA />
-                            {t({ zh: "标记已核对", en: "Mark reviewed" })}
+                            {entry.meaning_zh
+                              ? t({ zh: "编辑释义", en: "Edit meaning" })
+                              : t({ zh: "补录释义", en: "Add meaning" })}
                           </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            {t({ zh: "已核对", en: "Reviewed" })}
-                          </span>
-                        )}
+                          {entry.needs_review && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={
+                                saveReview.isPending ||
+                                !entry.meaning_zh?.trim()
+                              }
+                              title={
+                                entry.meaning_zh?.trim()
+                                  ? undefined
+                                  : t({
+                                      zh: "补录释义后才能标记已核对",
+                                      en: "Add a meaning first",
+                                    })
+                              }
+                              onClick={() =>
+                                saveReview.mutate({
+                                  id: entry.id,
+                                  meaning: entry.meaning_zh ?? "",
+                                  pos: entry.part_of_speech ?? "",
+                                  markReviewed: true,
+                                })
+                              }
+                            >
+                              <BookA />
+                              {t({ zh: "标记已核对", en: "Mark reviewed" })}
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              <div className="flex items-center justify-between gap-3 py-4">
+                <span className="text-xs text-muted-foreground">
+                  {t({
+                    zh: `第 ${page + 1} 页（每页 ${PAGE_SIZE} 条）`,
+                    en: `Page ${page + 1} (${PAGE_SIZE} per page)`,
+                  })}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page === 0}
+                    onClick={() => setPage(page - 1)}
+                  >
+                    {t({ zh: "上一页", en: "Previous" })}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={(entriesQuery.data ?? []).length < PAGE_SIZE}
+                    onClick={() => setPage(page + 1)}
+                  >
+                    {t({ zh: "下一页", en: "Next" })}
+                  </Button>
+                </div>
+              </div>
             </>
           )}
         </CardContent>
       </Card>
+
+      {/* 补录/编辑释义对话框（服务端禁止空释义直接标记已核对） */}
+      {editing && (
+        <Card className="border-primary/30">
+          <CardHeader>
+            <CardTitle className="text-base">
+              {t({ zh: "核对词条：", en: "Review entry: " })}
+              <span className="font-mono">{editing.headword}</span>
+            </CardTitle>
+            <CardDescription>
+              {t({
+                zh: "补录中文释义与词性后，可标记为已核对（该词才开始参与两模块的分级统计）。",
+                en: "Fill in the Chinese meaning and POS, then mark reviewed (the word then counts toward both modules' leveling).",
+              })}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label htmlFor="edit-meaning" className="text-sm font-medium">
+                  {t({ zh: "中文释义", en: "Chinese meaning" })}
+                </label>
+                <Input
+                  id="edit-meaning"
+                  value={editing.meaning}
+                  onChange={(event) =>
+                    setEditing({ ...editing, meaning: event.target.value })
+                  }
+                  className="h-11 text-base"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="edit-pos" className="text-sm font-medium">
+                  {t({ zh: "词性（可选）", en: "POS (optional)" })}
+                </label>
+                <Input
+                  id="edit-pos"
+                  value={editing.pos}
+                  onChange={(event) =>
+                    setEditing({ ...editing, pos: event.target.value })
+                  }
+                  className="h-11 text-base"
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                disabled={saveReview.isPending || editing.meaning.trim() === ""}
+                onClick={() =>
+                  saveReview.mutate({
+                    id: editing.id,
+                    meaning: editing.meaning,
+                    pos: editing.pos,
+                    markReviewed: true,
+                  })
+                }
+              >
+                {saveReview.isPending ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <CheckCircle2 />
+                )}
+                {t({ zh: "保存并标记已核对", en: "Save & mark reviewed" })}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={saveReview.isPending || editing.meaning.trim() === ""}
+                onClick={() =>
+                  saveReview.mutate({
+                    id: editing.id,
+                    meaning: editing.meaning,
+                    pos: editing.pos,
+                    markReviewed: false,
+                  })
+                }
+              >
+                {t({ zh: "仅保存", en: "Save only" })}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setEditing(null)}
+              >
+                {t({ zh: "取消", en: "Cancel" })}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <p className="pb-6 text-center text-xs text-muted-foreground">
         {t({

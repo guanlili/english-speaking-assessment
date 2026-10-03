@@ -148,7 +148,11 @@ def _parse_pet_ocr(path: Path) -> list[Row]:
                     headword = variants[0]
                     note = f"拼法变体（OCR）：{'/'.join(variants)}"
                 if rest.strip():
-                    note = f"{note}；OCR尾注：{rest.strip()}" if note else f"OCR尾注：{rest.strip()}"
+                    note = (
+                        f"{note}；OCR尾注：{rest.strip()}"
+                        if note
+                        else f"OCR尾注：{rest.strip()}"
+                    )
                 if not VALID_HEADWORD_RE.match(headword):
                     continue
                 rows_out.append(
@@ -164,7 +168,9 @@ def _parse_pet_ocr(path: Path) -> list[Row]:
     return rows_out
 
 
-def _parse_academic(path: Path, sheet: str, source_label: str, skip_rows: int) -> list[Row]:
+def _parse_academic(
+    path: Path, sheet: str, source_label: str, skip_rows: int
+) -> list[Row]:
     """学术词汇：两个 xlsx 是同一份表的两个整理版本（合并来源去重）。"""
     import openpyxl
 
@@ -305,7 +311,7 @@ def _parse_toefl_phrases(path: Path) -> list[Row]:
         if len(joined) > 60 or not any(cells):
             continue
         phrase = next((c for c in cells if c), "")
-        if not phrase or not " " in phrase.strip():
+        if not phrase or " " not in phrase.strip():
             continue  # 词组表里混入的单词行：跳过（词组表只收词组）
         meaning = next((c for c in cells[1:] if CJK_RE.search(c)), "")
         rows_out.append(
@@ -345,7 +351,10 @@ def extract_all(source_dir: Path) -> dict[str, list[Row]]:
 
     academic_a = dedupe(
         _parse_academic(
-            source_dir / "3.基础学术词汇-整理版.xlsx", "词汇总表", "基础学术词汇·整理版", skip_rows=2
+            source_dir / "3.基础学术词汇-整理版.xlsx",
+            "词汇总表",
+            "基础学术词汇·整理版",
+            skip_rows=2,
         )
     )
     academic_b = dedupe(
@@ -415,7 +424,13 @@ def build_report(by_level: dict[str, list[Row]], conflicts: list[dict]) -> str:
     for i, level in enumerate(LEVEL_ORDER, start=1):
         lines.append(f"| {i} | `{level}` | {labels[level]} |")
 
-    lines += ["", "## 各级提取统计", "", "| 级别 | 去重后词条 | 词组 | 待人工核对 | 来源文件 |", "|---|---|---|---|---|"]
+    lines += [
+        "",
+        "## 各级提取统计",
+        "",
+        "| 级别 | 去重后词条 | 词组 | 待人工核对 | 来源文件 |",
+        "|---|---|---|---|---|",
+    ]
     source_files = {
         "KET": "1.KET单词表14天-整理版 副本.xlsx（总表 623 词条口径，跨天重复词已合并）",
         "PET": "2. PET高频词汇表-新.pdf（42 页扫描件，OCR；xlsx 为空文件）",
@@ -431,15 +446,30 @@ def build_report(by_level: dict[str, list[Row]], conflicts: list[dict]) -> str:
             f"| {labels[level]} | {len(rows)} | {phrases} | {review} | {source_files[level]} |"
         )
 
-    lines += ["", "## 同级重复与来源保留", "", "同 (级别, 单词, 释义) 的重复行已合并，来源标签保留在 `sources` 列表（如 KET 跨天重复：apartment 同时出现在 DAY9/DAY10 → sources 含两天标签）。同词同级不同释义 = 同形异义，各留一行（sense 区分）。", ""]
+    lines += [
+        "",
+        "## 同级重复与来源保留",
+        "",
+        "同 (级别, 单词, 释义) 的重复行已合并，来源标签保留在 `sources` 列表（如 KET 跨天重复：apartment 同时出现在 DAY9/DAY10 → sources 含两天标签）。同词同级不同释义 = 同形异义，各留一行（sense 区分）。",
+        "",
+    ]
 
-    lines += ["## 跨级冲突（实际难度取最早一级）", "", f"共 **{len(conflicts)}** 个词出现在多个级别。前 30 个：", "", "| 单词 | 出现级别 | 实际难度 |", "|---|---|---|"]
+    lines += [
+        "## 跨级冲突（实际难度取最早一级）",
+        "",
+        f"共 **{len(conflicts)}** 个词出现在多个级别。前 30 个：",
+        "",
+        "| 单词 | 出现级别 | 实际难度 |",
+        "|---|---|---|",
+    ]
     for conflict in conflicts[:30]:
         lines.append(
             f"| {conflict['headword']} | {'、'.join(conflict['levels'])} | **{conflict['effective_level']}** |"
         )
     if len(conflicts) > 30:
-        lines.append(f"| … | 共 {len(conflicts)} 个，完整清单见 output/cross-level-conflicts.json（本地） | |")
+        lines.append(
+            f"| … | 共 {len(conflicts)} 个，完整清单见 output/cross-level-conflicts.json（本地） | |"
+        )
 
     lines += ["", "## 待人工核对（needs_review）", ""]
     pet_rows = by_level["PET"]

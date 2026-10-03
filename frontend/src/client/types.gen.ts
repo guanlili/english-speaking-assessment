@@ -853,6 +853,35 @@ export type VocabularyClassResults = {
     words?: Array<VocabularyWordStatRow>;
 };
 
+/**
+ * 从五级词库导入教学词条到词库（仅已核对、有释义的词条）。
+ */
+export type VocabularyFromLevelsRequest = {
+    level: string;
+    book_id?: (string | null);
+    classroom_id?: (string | null);
+    new_book_title?: (string | null);
+    limit?: number;
+};
+
+/**
+ * 建库/并库结果 + 本次从分级库转入的统计。
+ */
+export type VocabularyFromLevelsResult = {
+    id: string;
+    title: string;
+    description?: (string | null);
+    scope: string;
+    classroom_id?: (string | null);
+    owner_id?: (string | null);
+    status: string;
+    word_count?: number;
+    created_at?: (string | null);
+    words?: Array<VocabularyWordPublic>;
+    created_count?: number;
+    skipped_existing?: number;
+};
+
 export type VocabularyImportIssue = {
     line: number;
     reason: string;
@@ -1578,6 +1607,12 @@ export type VocabLevelsListTeachingWordsByLevelData = {
 };
 
 export type VocabLevelsListTeachingWordsByLevelResponse = (Array<VocabularyWordPublic>);
+
+export type VocabLevelsImportWordsFromLevelsData = {
+    requestBody: VocabularyFromLevelsRequest;
+};
+
+export type VocabLevelsImportWordsFromLevelsResponse = (VocabularyFromLevelsResult);
 
 export type VocabularyImportVocabPreviewData = {
     formData: Body_vocabulary_import_vocab_preview;
