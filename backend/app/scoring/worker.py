@@ -31,7 +31,7 @@ from app.scoring.asr import ArkResponsesAsr, MockAsr
 from app.scoring.audio_convert import convert_to_wav, ensure_ark_supported
 from app.scoring.base import AsrProvider, ContentMissingError, ScoringError
 from app.scoring.heuristic import score_open_response, score_read_aloud
-from app.scoring.lexicon import analyze_transcript
+from app.scoring.lexicon import _TOKEN_RE, _lemma_variants, analyze_transcript
 from app.scoring.volc_flash import VolcFlashAsr
 
 logger = logging.getLogger(__name__)
@@ -54,20 +54,85 @@ def _get_wordlist_cache(
     return entries, lemmas_by_band
 
 
-def _analyze_vocab(session: Session, transcript: str) -> dict[str, object] | None:
-    """词表命中分析；未配置词表时返回 None（界面显示「未配置词表」，BDD D）。"""
-    entries, lemmas_by_band = _get_wordlist_cache(session)
-    if not entries:
-        return None
-    analysis = analyze_transcript(transcript, lemmas_by_band)
-    from app.core.db import WORDLIST_NAME
+def _get_five_level_cache(session: Session) -> dict[str, set[str]]:
+    """五级分级词条缓存（active 且已人工核对）：level → 词头集合。词组不计入逐词命中。"""
+    from app.models import VocabularyLevelEntry
 
+    levels: dict[str, set[str]] = {}
+    for headword, level in session.exec(
+        select(VocabularyLevelEntry.headword, VocabularyLevelEntry.level).where(
+            VocabularyLevelEntry.status == "active",
+            VocabularyLevelEntry.is_phrase.is_(False),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
+            VocabularyLevelEntry.needs_review.is_(False),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
+            VocabularyLevelEntry.meaning_zh.is_not(None),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
+            VocabularyLevelEntry.meaning_zh != "",  # type: ignore[union-attr]
+        )
+    ).all():
+        levels.setdefault(level, set()).add(headword)
+    return levels
+
+
+def _five_level_stats(session: Session, transcript: str) -> dict[str, object] | None:
+    """用词来源级别统计（与 A2/B1/B2 分析同一段转写、彼此独立）。
+
+    只陈述「实际用到的词来自哪些级别」（按五级固定顺序取最易一级归类），
+    不代表学生能力等级。五级数据未导入时返回 None（界面不显示该块）。
+    """
+    levels = _get_five_level_cache(session)
+    if not any(levels.values()):
+        return None
+    tokens = set(_TOKEN_RE.findall(transcript.lower()))
+    if not tokens:
+        return None
+    from app.models import VOCAB_LEVEL_ORDER
+
+    hits_by_level: dict[str, int] = {}
+    unmatched = 0
+    for token in sorted(tokens):
+        hit_levels = [
+            level
+            for level in VOCAB_LEVEL_ORDER
+            if any(
+                variant in levels.get(level, set())
+                for variant in _lemma_variants(token)
+            )
+        ]
+        if not hit_levels:
+            unmatched += 1
+            continue
+        effective = min(hit_levels, key=VOCAB_LEVEL_ORDER.index)
+        hits_by_level[effective] = hits_by_level.get(effective, 0) + 1
     return {
-        "wordlist": WORDLIST_NAME,
-        "hits": {band: words for band, words in analysis.hits_by_band.items() if words},
-        "coverage": analysis.coverage_ratio,
-        "cefr": analysis.cefr_label,
+        "hits_by_level": hits_by_level,
+        "unmatched": unmatched,
+        "distinct_words": len(tokens),
     }
+
+
+def _analyze_vocab(session: Session, transcript: str) -> dict[str, object] | None:
+    """词汇分析：旧 A2/B1/B2 命中与五级来源统计分别独立计算后组合。
+
+    - 任一数据源有内容即产出 payload（两套口径互不依赖）；
+    - 旧词表为空时不含 wordlist/hits/cefr 键（界面按缺省渲染），五级统计照常；
+    - 两者皆空 → None（界面显示「未配置词表」）；
+    - 历史 attempt 的 vocab JSON 不回填、不重算。
+    """
+    entries, lemmas_by_band = _get_wordlist_cache(session)
+    payload: dict[str, object] = {}
+    if entries:
+        analysis = analyze_transcript(transcript, lemmas_by_band)
+        from app.core.db import WORDLIST_NAME
+
+        payload["wordlist"] = WORDLIST_NAME
+        payload["hits"] = {
+            band: words for band, words in analysis.hits_by_band.items() if words
+        }
+        payload["coverage"] = analysis.coverage_ratio
+        payload["cefr"] = analysis.cefr_label
+    level_stats = _five_level_stats(session, transcript)
+    if level_stats is not None:
+        payload["level_stats"] = level_stats
+    return payload or None
 
 
 def build_asr_provider() -> AsrProvider:

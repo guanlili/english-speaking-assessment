@@ -37,6 +37,7 @@ import { Route as LayoutAdminQuestionsRouteImport } from './routes/_layout/admin
 import { Route as LayoutAdminScenariosRouteImport } from './routes/_layout/admin.scenarios'
 import { Route as LayoutAdminUnitsRouteImport } from './routes/_layout/admin.units'
 import { Route as LayoutAdminVocabbooksRouteImport } from './routes/_layout/admin.vocabbooks'
+import { Route as LayoutAdminVocablevelsRouteImport } from './routes/_layout/admin.vocablevels'
 import { Route as LayoutAdminWordlistRouteImport } from './routes/_layout/admin.wordlist'
 import { Route as PCodeIndexRouteImport } from './routes/p.$code.index'
 import { Route as PCodeResultRouteImport } from './routes/p.$code.result'
@@ -185,6 +186,11 @@ const LayoutAdminVocabbooksRoute = LayoutAdminVocabbooksRouteImport.update({
   path: '/vocabbooks',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
+const LayoutAdminVocablevelsRoute = LayoutAdminVocablevelsRouteImport.update({
+  id: '/vocablevels',
+  path: '/vocablevels',
+  getParentRoute: () => LayoutAdminRoute,
+} as any)
 const LayoutAdminWordlistRoute = LayoutAdminWordlistRouteImport.update({
   id: '/wordlist',
   path: '/wordlist',
@@ -253,6 +259,7 @@ export interface FileRoutesByFullPath {
   '/admin/scenarios': typeof LayoutAdminScenariosRoute
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
+  '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
   '/admin/wordlist': typeof LayoutAdminWordlistRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
@@ -286,6 +293,7 @@ export interface FileRoutesByTo {
   '/admin/scenarios': typeof LayoutAdminScenariosRoute
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
+  '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
   '/admin/wordlist': typeof LayoutAdminWordlistRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
@@ -325,6 +333,7 @@ export interface FileRoutesById {
   '/_layout/admin/scenarios': typeof LayoutAdminScenariosRoute
   '/_layout/admin/units': typeof LayoutAdminUnitsRoute
   '/_layout/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
+  '/_layout/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
   '/_layout/admin/wordlist': typeof LayoutAdminWordlistRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
@@ -364,6 +373,7 @@ export interface FileRouteTypes {
     | '/admin/scenarios'
     | '/admin/units'
     | '/admin/vocabbooks'
+    | '/admin/vocablevels'
     | '/admin/wordlist'
     | '/p/$code/result'
     | '/t/$code/vocab'
@@ -397,6 +407,7 @@ export interface FileRouteTypes {
     | '/admin/scenarios'
     | '/admin/units'
     | '/admin/vocabbooks'
+    | '/admin/vocablevels'
     | '/admin/wordlist'
     | '/p/$code/result'
     | '/t/$code/vocab'
@@ -435,6 +446,7 @@ export interface FileRouteTypes {
     | '/_layout/admin/scenarios'
     | '/_layout/admin/units'
     | '/_layout/admin/vocabbooks'
+    | '/_layout/admin/vocablevels'
     | '/_layout/admin/wordlist'
     | '/p/$code/result'
     | '/t/$code/vocab'
@@ -663,6 +675,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminVocabbooksRouteImport
       parentRoute: typeof LayoutAdminRoute
     }
+    '/_layout/admin/vocablevels': {
+      id: '/_layout/admin/vocablevels'
+      path: '/vocablevels'
+      fullPath: '/admin/vocablevels'
+      preLoaderRoute: typeof LayoutAdminVocablevelsRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
     '/_layout/admin/wordlist': {
       id: '/_layout/admin/wordlist'
       path: '/wordlist'
@@ -729,6 +748,7 @@ interface LayoutAdminRouteChildren {
   LayoutAdminScenariosRoute: typeof LayoutAdminScenariosRoute
   LayoutAdminUnitsRoute: typeof LayoutAdminUnitsRoute
   LayoutAdminVocabbooksRoute: typeof LayoutAdminVocabbooksRoute
+  LayoutAdminVocablevelsRoute: typeof LayoutAdminVocablevelsRoute
   LayoutAdminWordlistRoute: typeof LayoutAdminWordlistRoute
   LayoutAdminIndexRoute: typeof LayoutAdminIndexRoute
 }
@@ -740,6 +760,7 @@ const LayoutAdminRouteChildren: LayoutAdminRouteChildren = {
   LayoutAdminScenariosRoute: LayoutAdminScenariosRoute,
   LayoutAdminUnitsRoute: LayoutAdminUnitsRoute,
   LayoutAdminVocabbooksRoute: LayoutAdminVocabbooksRoute,
+  LayoutAdminVocablevelsRoute: LayoutAdminVocablevelsRoute,
   LayoutAdminWordlistRoute: LayoutAdminWordlistRoute,
   LayoutAdminIndexRoute: LayoutAdminIndexRoute,
 }

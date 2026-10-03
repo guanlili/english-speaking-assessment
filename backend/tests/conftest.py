@@ -34,6 +34,7 @@ from app.models import (
     VocabularyAssignmentTarget,
     VocabularyBook,
     VocabularyBookItem,
+    VocabularyLevelEntry,
     VocabularySession,
     VocabularyWord,
     WordlistEntry,
@@ -108,6 +109,7 @@ def db() -> Generator[Session]:
         init_db(session)
         yield session
         # 清理测试库数据（独立库内，无开发数据风险；按外键依赖倒序）
+        session.exec(delete(VocabularyLevelEntry))  # type: ignore[call-overload]
         session.exec(delete(VocabularyAnswer))  # type: ignore[call-overload]
         session.exec(delete(VocabularySession))  # type: ignore[call-overload]
         session.exec(delete(VocabularyAssignmentTarget))  # type: ignore[call-overload]

@@ -16,7 +16,12 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
-import { ApiError, ClassesService, VocabularyService } from "@/client"
+import {
+  ApiError,
+  ClassesService,
+  VocabLevelsService,
+  VocabularyService,
+} from "@/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -39,7 +44,12 @@ import {
 import { APP_NAME } from "@/config"
 import { downloadCsv } from "@/lib/csv"
 import { type BiString, useI18n } from "@/lib/i18n"
-import { TERMS } from "@/lib/terms"
+import {
+  TERMS,
+  VOCAB_LEVEL_LABELS,
+  VOCAB_LEVEL_ORDER,
+  type VocabLevel,
+} from "@/lib/terms"
 import { localizeImportIssue } from "@/lib/vocabImport"
 
 export const Route = createFileRoute("/t/$code/vocab")({
@@ -229,9 +239,15 @@ function AssignPanel({
   )
 
   const [bookId, setBookId] = useState<string | null>(null)
+  // 按实际难度筛选词条（五级词库；未命中分级的词只在「全部」出现）
+  const [levelFilter, setLevelFilter] = useState<string>("all")
   const detailQuery = useQuery({
-    queryKey: ["vocab-teacher", "book", bookId],
-    queryFn: () => VocabularyService.readBook({ bookId: bookId as string }),
+    queryKey: ["vocab-teacher", "book", bookId, levelFilter],
+    queryFn: () =>
+      VocabularyService.readBook({
+        bookId: bookId as string,
+        level: levelFilter === "all" ? undefined : levelFilter,
+      }),
     enabled: bookId !== null,
   })
   const words = detailQuery.data?.words ?? []
@@ -247,6 +263,7 @@ function AssignPanel({
     setBookId(id)
     setSelected(new Set())
     setTitle("")
+    setLevelFilter("all")
   }
   const toggleAll = (checked: boolean) => {
     setSelected(
@@ -412,6 +429,24 @@ function AssignPanel({
                   })}
                 </p>
                 <div className="flex flex-wrap gap-2">
+                  <select
+                    value={levelFilter}
+                    onChange={(event) => {
+                      setLevelFilter(event.target.value)
+                      setSelected(new Set())
+                    }}
+                    aria-label={t({ zh: "按级别筛选", en: "Filter by level" })}
+                    className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+                  >
+                    <option value="all">
+                      {t({ zh: "全部级别", en: "All levels" })}
+                    </option>
+                    {VOCAB_LEVEL_ORDER.map((level) => (
+                      <option key={level} value={level}>
+                        {t(VOCAB_LEVEL_LABELS[level])}
+                      </option>
+                    ))}
+                  </select>
                   {detailQuery.data?.scope === "classroom" ? (
                     // key=bookId：切换词库即重挂载，清掉未确认的 CSV 预览，
                     // 防止 A 库的预览词条被确认进 B 库（飞行中的预览请求
@@ -493,6 +528,19 @@ function AssignPanel({
                       <span className="ml-2 text-muted-foreground">
                         {word.meaning_zh}
                       </span>
+                      {word.level && (
+                        <Badge
+                          variant="outline"
+                          className="ml-1.5 shrink-0 text-[10px]"
+                        >
+                          {t(
+                            VOCAB_LEVEL_LABELS[word.level as VocabLevel] ?? {
+                              zh: word.level,
+                              en: word.level,
+                            },
+                          )}
+                        </Badge>
+                      )}
                     </span>
                     {word.status === "archived" && (
                       <Badge variant="outline">
@@ -1249,6 +1297,61 @@ function CreateClassroomBook({
   const { t } = useI18n()
   const fileRef = useRef<HTMLInputElement>(null)
   const [title, setTitle] = useState("")
+  // 从五级词库导入：只取已核对且有释义的词条（未核对/缺释义自动跳过）
+  const [fromLevel, setFromLevel] = useState<VocabLevel | null>(null)
+  const fromLevels = useMutation({
+    // 续导口径：服务端每次先排除已入库词再限量 → offset 恒为 0 循环拉完
+    mutationFn: async () => {
+      let totalCreated = 0
+      let totalSkipped = 0
+      let bookId: string | null = null
+      let finalBookId = ""
+      for (let round = 0; round < 40; round += 1) {
+        const data = await VocabLevelsService.importWordsFromLevels({
+          requestBody: {
+            level: fromLevel as string,
+            classroom_id: bookId ? null : classroomId,
+            book_id: bookId,
+            new_book_title: title.trim() || null,
+          },
+        })
+        totalCreated += data.created_count ?? 0
+        totalSkipped += data.skipped_existing ?? 0
+        bookId = data.id
+        finalBookId = data.id
+        if (
+          (data.remaining_count ?? 0) === 0 ||
+          (data.created_count ?? 0) === 0
+        )
+          break
+      }
+      return { id: finalBookId, totalCreated, totalSkipped }
+    },
+    onSuccess: (book) => {
+      toast.success(
+        t({
+          zh: `已从五级词库转入 ${book.totalCreated ?? 0} 个已核对词条（跳过 ${book.totalSkipped ?? 0} 个已有词）。`,
+          en: `Imported ${book.totalCreated ?? 0} reviewed entries from the leveled source (skipped ${book.totalSkipped ?? 0} existing).`,
+        }),
+      )
+      onCreated(book.id)
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        toast.error(
+          error.status === 403
+            ? t({
+                zh: "只有本班任课教师能创建班级词库。",
+                en: "Only this classroom's teacher can create its books.",
+              })
+            : t({
+                zh: "导入失败，请重试。",
+                en: "Import failed — please retry.",
+              }),
+        )
+      }
+    },
+  })
   const [preview, setPreview] = useState<{
     words: BookWordInput[]
     invalid: Array<{ line: number; reason: string }>
@@ -1355,6 +1458,50 @@ function CreateClassroomBook({
           })}
           className="h-11 max-w-md text-base"
         />
+      </div>
+      <div className="space-y-2">
+        <label htmlFor="from-level-select" className="text-sm font-medium">
+          {t({
+            zh: "从五级词库导入（可选）",
+            en: "Import from leveled source (optional)",
+          })}
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            id="from-level-select"
+            value={fromLevel ?? ""}
+            onChange={(event) =>
+              setFromLevel((event.target.value || null) as VocabLevel | null)
+            }
+            className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+          >
+            <option value="">{t({ zh: "不导入", en: "Don't import" })}</option>
+            {VOCAB_LEVEL_ORDER.map((level) => (
+              <option key={level} value={level}>
+                {t(VOCAB_LEVEL_LABELS[level])}
+                {t({ zh: "（仅已核对词条）", en: " (reviewed only)" })}
+              </option>
+            ))}
+          </select>
+          {fromLevel && (
+            <Button
+              size="sm"
+              disabled={fromLevels.isPending}
+              onClick={() => fromLevels.mutate()}
+            >
+              {fromLevels.isPending ? (
+                <Loader2 className="animate-spin" />
+              ) : null}
+              {t({ zh: "建库并导入", en: "Create & import" })}
+            </Button>
+          )}
+          <span className="text-xs text-muted-foreground">
+            {t({
+              zh: "只转入已人工核对且有释义的词条；词库管理页可继续核对其余词条。",
+              en: "Only reviewed entries with meanings are imported; review the rest in Word Books admin.",
+            })}
+          </span>
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button

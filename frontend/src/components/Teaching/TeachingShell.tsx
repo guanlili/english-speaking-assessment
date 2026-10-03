@@ -78,6 +78,14 @@ const workspaceRoutes: Record<string, WorkspaceContext> = {
       en: "Maintain the reference word lists used by vocabulary analysis.",
     },
   },
+  "/admin/vocablevels": {
+    title: { zh: "五级词库", en: "Leveled Word Source" },
+    section: { zh: "平台设置", en: "Platform Settings" },
+    description: {
+      zh: "口语与背单词共用的五级分级数据源。",
+      en: "The shared five-level source for speaking and vocabulary.",
+    },
+  },
   "/admin/vocabbooks": {
     title: { zh: "词库管理", en: "Word Books" },
     section: { zh: "平台设置", en: "Platform Settings" },

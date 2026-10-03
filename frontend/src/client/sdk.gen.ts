@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminListSentencesFlatResponse, AdminCreateSentenceStandaloneData, AdminCreateSentenceStandaloneResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminUpdateScenarioData, AdminUpdateScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminListQuestionBankData, AdminListQuestionBankResponse, AdminCreateQuestionsBatchData, AdminCreateQuestionsBatchResponse, AdminWordlistStatsResponse, AdminImportWordlistCsvData, AdminImportWordlistCsvResponse, AdminListUnitsResponse, AdminCreateUnitData, AdminCreateUnitResponse, AdminUpdateUnitData, AdminUpdateUnitResponse, AdminDeleteUnitData, AdminDeleteUnitResponse, AdminListTopicsResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminUpdateClassroomData, AdminUpdateClassroomResponse, AdminGenerateQuestionsData, AdminGenerateQuestionsResponse, AdminAutoSplitSentencesData, AdminAutoSplitSentencesResponse, AdminSplitPassageIntoReadingsData, AdminSplitPassageIntoReadingsResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ClassesListMyClassroomsResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesDeleteClassData, ClassesDeleteClassResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, ClassesReadLearningPathData, ClassesReadLearningPathResponse, ClassesReportExamViolationData, ClassesReportExamViolationResponse, ClassesRecordListenData, ClassesRecordListenResponse, ClassesListClassroomExercisesData, ClassesListClassroomExercisesResponse, ClassesReadExerciseResultsData, ClassesReadExerciseResultsResponse, ClassesSetAssignmentData, ClassesSetAssignmentResponse, ClassesStartExploreData, ClassesStartExploreResponse, LoginReadLoginOptionsResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginLoginDemoResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, StudentsImportStudentsData, StudentsImportStudentsResponse, StudentsListStudentsData, StudentsListStudentsResponse, StudentsResetStudentPasswordData, StudentsResetStudentPasswordResponse, StudentsRemoveStudentData, StudentsRemoveStudentResponse, StudentsBulkResetPasswordsData, StudentsBulkResetPasswordsResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse, VocabularyImportVocabPreviewData, VocabularyImportVocabPreviewResponse, VocabularyListBooksResponse, VocabularyCreateBookData, VocabularyCreateBookResponse, VocabularyReadBookData, VocabularyReadBookResponse, VocabularyUpdateBookData, VocabularyUpdateBookResponse, VocabularyAddBookWordsData, VocabularyAddBookWordsResponse, VocabularyRemoveBookWordData, VocabularyRemoveBookWordResponse, VocabularyUpdateWordData, VocabularyUpdateWordResponse, VocabularyListAssignmentsData, VocabularyListAssignmentsResponse, VocabularyPublishVocabAssignmentData, VocabularyPublishVocabAssignmentResponse, VocabularyArchiveVocabAssignmentData, VocabularyArchiveVocabAssignmentResponse, VocabularyReadVocabResultsData, VocabularyReadVocabResultsResponse, VocabularyReadVocabTodayData, VocabularyReadVocabTodayResponse, VocabularyStartVocabSessionData, VocabularyStartVocabSessionResponse, VocabularySubmitVocabAnswerData, VocabularySubmitVocabAnswerResponse, VocabularyReadWrongWordsData, VocabularyReadWrongWordsResponse } from './types.gen';
+import type { AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminListSentencesFlatResponse, AdminCreateSentenceStandaloneData, AdminCreateSentenceStandaloneResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminUpdateScenarioData, AdminUpdateScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminListQuestionBankData, AdminListQuestionBankResponse, AdminCreateQuestionsBatchData, AdminCreateQuestionsBatchResponse, AdminWordlistStatsResponse, AdminImportWordlistCsvData, AdminImportWordlistCsvResponse, AdminListUnitsResponse, AdminCreateUnitData, AdminCreateUnitResponse, AdminUpdateUnitData, AdminUpdateUnitResponse, AdminDeleteUnitData, AdminDeleteUnitResponse, AdminListTopicsResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminUpdateClassroomData, AdminUpdateClassroomResponse, AdminGenerateQuestionsData, AdminGenerateQuestionsResponse, AdminAutoSplitSentencesData, AdminAutoSplitSentencesResponse, AdminSplitPassageIntoReadingsData, AdminSplitPassageIntoReadingsResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ClassesListMyClassroomsResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesDeleteClassData, ClassesDeleteClassResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, ClassesReadLearningPathData, ClassesReadLearningPathResponse, ClassesReportExamViolationData, ClassesReportExamViolationResponse, ClassesRecordListenData, ClassesRecordListenResponse, ClassesListClassroomExercisesData, ClassesListClassroomExercisesResponse, ClassesReadExerciseResultsData, ClassesReadExerciseResultsResponse, ClassesSetAssignmentData, ClassesSetAssignmentResponse, ClassesStartExploreData, ClassesStartExploreResponse, LoginReadLoginOptionsResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginLoginDemoResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, StudentsImportStudentsData, StudentsImportStudentsResponse, StudentsListStudentsData, StudentsListStudentsResponse, StudentsResetStudentPasswordData, StudentsResetStudentPasswordResponse, StudentsRemoveStudentData, StudentsRemoveStudentResponse, StudentsBulkResetPasswordsData, StudentsBulkResetPasswordsResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse, VocabLevelsVocabLevelStatsResponse, VocabLevelsVocabLevelImportPreviewData, VocabLevelsVocabLevelImportPreviewResponse, VocabLevelsVocabLevelImportConfirmData, VocabLevelsVocabLevelImportConfirmResponse, VocabLevelsListVocabLevelEntriesData, VocabLevelsListVocabLevelEntriesResponse, VocabLevelsUpdateVocabLevelEntryData, VocabLevelsUpdateVocabLevelEntryResponse, VocabLevelsListTeachingWordsByLevelData, VocabLevelsListTeachingWordsByLevelResponse, VocabLevelsImportWordsFromLevelsData, VocabLevelsImportWordsFromLevelsResponse, VocabularyImportVocabPreviewData, VocabularyImportVocabPreviewResponse, VocabularyListBooksResponse, VocabularyCreateBookData, VocabularyCreateBookResponse, VocabularyReadBookData, VocabularyReadBookResponse, VocabularyUpdateBookData, VocabularyUpdateBookResponse, VocabularyAddBookWordsData, VocabularyAddBookWordsResponse, VocabularyRemoveBookWordData, VocabularyRemoveBookWordResponse, VocabularyUpdateWordData, VocabularyUpdateWordResponse, VocabularyListAssignmentsData, VocabularyListAssignmentsResponse, VocabularyPublishVocabAssignmentData, VocabularyPublishVocabAssignmentResponse, VocabularyArchiveVocabAssignmentData, VocabularyArchiveVocabAssignmentResponse, VocabularyReadVocabResultsData, VocabularyReadVocabResultsResponse, VocabularyReadVocabTodayData, VocabularyReadVocabTodayResponse, VocabularyStartVocabSessionData, VocabularyStartVocabSessionResponse, VocabularySubmitVocabAnswerData, VocabularySubmitVocabAnswerResponse, VocabularyReadWrongWordsData, VocabularyReadWrongWordsResponse } from './types.gen';
 
 export class AdminService {
     /**
@@ -1600,6 +1600,171 @@ export class UtilsService {
     }
 }
 
+export class VocabLevelsService {
+    /**
+     * Vocab Level Stats
+     * 各级数量、词组数、待人工核对数与来源统计。
+     * @returns VocabularyLevelStats Successful Response
+     * @throws ApiError
+     */
+    public static vocabLevelStats(): CancelablePromise<VocabLevelsVocabLevelStatsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/admin/vocab-levels/stats'
+        });
+    }
+    
+    /**
+     * Vocab Level Import Preview
+     * 分级导入预览：解析、无效行、批内重复、跨级冲突与导入后各级数量。
+     * @param data The data for the request.
+     * @param data.formData
+     * @returns VocabularyLevelImportPreview Successful Response
+     * @throws ApiError
+     */
+    public static vocabLevelImportPreview(data: VocabLevelsVocabLevelImportPreviewData): CancelablePromise<VocabLevelsVocabLevelImportPreviewResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/admin/vocab-levels/import-preview',
+            formData: data.formData,
+            mediaType: 'multipart/form-data',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Vocab Level Import Confirm
+     * 确认导入：单事务，任何失败整体回滚。
+     * @param data The data for the request.
+     * @param data.formData
+     * @returns VocabularyLevelImportResult Successful Response
+     * @throws ApiError
+     */
+    public static vocabLevelImportConfirm(data: VocabLevelsVocabLevelImportConfirmData): CancelablePromise<VocabLevelsVocabLevelImportConfirmResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/admin/vocab-levels/import-confirm',
+            formData: data.formData,
+            mediaType: 'multipart/form-data',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * List Vocab Level Entries
+     * 词条浏览：人工核对工作流按 needs_review / level / 词头过滤。
+     * @param data The data for the request.
+     * @param data.level
+     * @param data.needsReview
+     * @param data.headword
+     * @param data.limit
+     * @param data.offset
+     * @returns VocabularyLevelEntryPublic Successful Response
+     * @throws ApiError
+     */
+    public static listVocabLevelEntries(data: VocabLevelsListVocabLevelEntriesData = {}): CancelablePromise<VocabLevelsListVocabLevelEntriesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/admin/vocab-levels/entries',
+            query: {
+                level: data.level,
+                needs_review: data.needsReview,
+                headword: data.headword,
+                limit: data.limit,
+                offset: data.offset
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Vocab Level Entry
+     * 人工核对修正：补释义/词性、标记核对完成或归档。
+     * @param data The data for the request.
+     * @param data.entryId
+     * @param data.requestBody
+     * @returns VocabularyLevelEntryPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateVocabLevelEntry(data: VocabLevelsUpdateVocabLevelEntryData): CancelablePromise<VocabLevelsUpdateVocabLevelEntryResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/admin/vocab-levels/entries/{entry_id}',
+            path: {
+                entry_id: data.entryId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * List Teaching Words By Level
+     * 背单词模块按实际难度选教学词条（含五级归属信息）。
+     *
+     * 可见性：只返回当前教师可见词库（公共库或本人班级库；管理员全看）中的
+     * 词条——防止借级别查询读到其他教师班级词库的词头与释义。只返回有教学
+     * 释义且已启用、且词头命中五级数据源（不含待核对行）的词条；实际难度 =
+     * 该词全部级别中最早（最易）一级。先过滤后分页，避免漏词/空页。
+     * @param data The data for the request.
+     * @param data.level
+     * @param data.limit
+     * @param data.offset
+     * @returns VocabularyWordPublic Successful Response
+     * @throws ApiError
+     */
+    public static listTeachingWordsByLevel(data: VocabLevelsListTeachingWordsByLevelData): CancelablePromise<VocabLevelsListTeachingWordsByLevelResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/vocabulary/words',
+            query: {
+                level: data.level,
+                limit: data.limit,
+                offset: data.offset
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Import Words From Levels
+     * 教师把五级词库中**已核对且有释义**的词条转为教学词条并入词库。
+     *
+     * 口径：
+     * - **按实际难度筛选**：只转入「实际难度（最易级）恰好为所选级别」的词条，
+     * 与教师词库按级别筛选的口径一致（来源级别 ≠ 实际难度）；
+     * - **先排除目标词库已有词，再限量**：重复调用按 offset 续导不会卡在同一批；
+     * - 未核对（needs_review）或缺释义的分级词条跳过；
+     * - 生成的教学词条与既有发布流程一致（按 word_ids 发布 → 快照），快照语义不变。
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns VocabularyFromLevelsResult Successful Response
+     * @throws ApiError
+     */
+    public static importWordsFromLevels(data: VocabLevelsImportWordsFromLevelsData): CancelablePromise<VocabLevelsImportWordsFromLevelsResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/vocabulary/words/from-levels',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
 export class VocabularyService {
     /**
      * Import Vocab Preview
@@ -1656,8 +1821,12 @@ export class VocabularyService {
     
     /**
      * Read Book
+     * 词库详情：词条附五级归属（实际难度/全部级别）；level 传入时按实际难度过滤。
+     *
+     * 级别数据来自两模块共用的 vocab_level_entry（不含待核对行）；未命中分级的词 level 为 null。
      * @param data The data for the request.
      * @param data.bookId
+     * @param data.level
      * @returns VocabularyBookDetail Successful Response
      * @throws ApiError
      */
@@ -1667,6 +1836,9 @@ export class VocabularyService {
             url: '/api/v1/vocabulary/books/{book_id}',
             path: {
                 book_id: data.bookId
+            },
+            query: {
+                level: data.level
             },
             errors: {
                 422: 'Validation Error'

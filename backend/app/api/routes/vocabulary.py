@@ -17,7 +17,7 @@ import logging
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlmodel import Session, col, func, select
 
@@ -57,6 +57,7 @@ from app.models import (
     VocabularyWordUpdate,
     VocabularyWrongWords,
 )
+from app.services import vocab_levels as vocab_levels_service
 from app.services import vocabulary as vocab_service
 
 logger = logging.getLogger(__name__)
@@ -406,8 +407,17 @@ def create_book(
 
 @router.get("/vocabulary/books/{book_id}", response_model=VocabularyBookDetail)
 def read_book(
-    session: SessionDep, current_user: TeacherUserDep, book_id: uuid.UUID
+    session: SessionDep,
+    current_user: TeacherUserDep,
+    book_id: uuid.UUID,
+    level: str | None = Query(default=None),
 ) -> Any:
+    """词库详情：词条附五级归属（实际难度/全部级别）；level 传入时按实际难度过滤。
+
+    级别数据来自两模块共用的 vocab_level_entry（不含待核对行）；未命中分级的词 level 为 null。
+    """
+    if level is not None:
+        vocab_levels_service.validate_level(level)
     book = _get_book(session, book_id)
     if not _book_visible(book, current_user):
         raise HTTPException(status_code=403, detail="没有权限查看这个词库")
@@ -420,9 +430,12 @@ def read_book(
         .where(VocabularyBookItem.book_id == book.id)  # type: ignore[arg-type]
         .order_by(col(VocabularyBookItem.position))
     ).all()
+    words = vocab_levels_service.attach_word_levels(session, list(items))
+    if level is not None:
+        words = [word for word in words if word.level == level]
     return VocabularyBookDetail(
         **_book_public(book, len(items)).model_dump(),
-        words=[_word_public(w) for w in items],
+        words=words,
     )
 
 
