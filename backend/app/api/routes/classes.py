@@ -1085,6 +1085,7 @@ def read_next_question(
             )
             if candidate is None:
                 return NextQuestion(question=None, exhausted=True)
+            cue_bullets = candidate.get("cue_card_bullets")
             return NextQuestion(
                 question=ScenarioQuestionPublic(
                     id=uuid.UUID(str(candidate["id"])),
@@ -1098,6 +1099,23 @@ def read_next_question(
                     suggested_seconds=_snapshot_int(
                         candidate.get("suggested_seconds"), 20
                     ),
+                    # 分级题型训练：换一题同样透传（话题卡/准备时间不丢）
+                    exam_kind=(
+                        str(candidate["exam_kind"])
+                        if candidate.get("exam_kind") is not None
+                        else None
+                    ),
+                    exam_level=(
+                        str(candidate["exam_level"])
+                        if candidate.get("exam_level") is not None
+                        else None
+                    ),
+                    cue_card_bullets=(
+                        [str(b) for b in cue_bullets]
+                        if isinstance(cue_bullets, list) and cue_bullets
+                        else None
+                    ),
+                    prep_seconds=_snapshot_optional_int(candidate.get("prep_seconds")),
                 ),
                 exhausted=False,
             )

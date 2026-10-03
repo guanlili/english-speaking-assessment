@@ -173,6 +173,11 @@ function ClassroomPracticePage() {
           band: q.band,
           audio_url: q.audio_url,
           suggested_seconds: q.suggested_seconds,
+          // 分级题型训练：换一题保留考试字段（话题卡/准备时间不丢）
+          exam_kind: q.exam_kind ?? null,
+          exam_level: q.exam_level ?? null,
+          cue_card_bullets: q.cue_card_bullets ?? null,
+          prep_seconds: q.prep_seconds ?? null,
         }
         setExtraQuestion(extraItem)
         queryClient.invalidateQueries({ queryKey: todayQueryKey })

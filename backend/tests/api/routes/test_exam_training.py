@@ -20,12 +20,11 @@ from app.models import (
 
 
 def _create_scenario(client: TestClient, admin_headers: dict) -> str:
+    # 唯一主题：避免用例间共享情景导致「换一题」候选互相污染
+    topic = f"考试题型测试-{uuid.uuid4().hex[:8]}"
     resp = client.post(
-        "/api/v1/admin/scenarios", json={"topic": "考试题型测试"}, headers=admin_headers
+        "/api/v1/admin/scenarios", json={"topic": topic}, headers=admin_headers
     )
-    if resp.status_code == 409:
-        scenario = client.get("/api/v1/admin/scenarios", headers=admin_headers).json()
-        return next(s["id"] for s in scenario if s["topic"] == "考试题型测试")
     assert resp.status_code == 200, resp.text
     return resp.json()["id"]
 
@@ -284,4 +283,157 @@ def test_plain_items_keep_old_meaning(
     assert q_item["cue_card_bullets"] is None
     r_item = next(item for item in plan["items"] if item["type"] == "repeat")
     assert r_item["exam_kind"] is None
+    _cleanup_classroom(db, classroom["id"])
+
+
+# ── 四审修复回归 ────────────────────────────────────────────────────
+
+
+def test_partial_update_merges_with_existing(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """部分更新与原记录合并后校验：仅改话题卡不误拒；清题型级联清关联字段。"""
+    admin = _admin(client, superuser_token_headers)
+    scenario_id = _create_scenario(client, admin)
+    question = _create_question(
+        client,
+        admin,
+        scenario_id,
+        text="Part 2 partial update",
+        suggested_seconds=120,
+        exam_kind="ielts_p2",
+        exam_level="KET",
+        cue_card_bullets=["原要点"],
+        prep_seconds=45,
+    )
+
+    # 仅改话题卡（不传题型/级别）→ 不误拒，其余字段保留
+    resp = client.put(
+        f"/api/v1/admin/questions/{question['id']}",
+        json={"cue_card_bullets": ["新要点"]},
+        headers=admin,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["exam_kind"] == "ielts_p2"
+    assert body["cue_card_bullets"] == ["新要点"]
+    assert body["prep_seconds"] == 45
+
+    # 仅清除题型 → 级别/话题卡/准备时间级联清空（不留不一致数据）
+    resp = client.put(
+        f"/api/v1/admin/questions/{question['id']}",
+        json={"exam_kind": None},
+        headers=admin,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["exam_kind"] is None
+    assert body["exam_level"] is None
+    assert body["cue_card_bullets"] is None
+    assert body["prep_seconds"] is None
+
+    # Part 2 长回答秒数：更新 120 秒不被 60 上限拒绝
+    resp = client.put(
+        f"/api/v1/admin/questions/{question['id']}",
+        json={"exam_kind": "ielts_p2", "suggested_seconds": 120},
+        headers=admin,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["suggested_seconds"] == 120
+
+
+def test_sentence_partial_update_merges(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """复述句部分更新：仅清题型级联清级别；仅改级别不误拒。"""
+    created = _resp_json(
+        client.post(
+            "/api/v1/admin/sentences",
+            json={
+                "text": "Listen and repeat this sentence.",
+                "exam_kind": "toefl_lnr",
+                "exam_level": "KET",
+            },
+            headers=superuser_token_headers,
+        )
+    )
+
+    # 仅改级别（不传题型）→ 保留题型
+    resp = client.put(
+        f"/api/v1/admin/sentences/{created['id']}",
+        json={"exam_level": "PET"},
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["exam_kind"] == "toefl_lnr"
+    assert resp.json()["exam_level"] == "PET"
+
+    # 仅清题型 → 级联清级别
+    resp = client.put(
+        f"/api/v1/admin/sentences/{created['id']}",
+        json={"exam_kind": None},
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["exam_kind"] is None
+    assert resp.json()["exam_level"] is None
+
+
+def test_next_question_carries_exam_fields(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """换一题：快照内另一题的考试字段原样返回（话题卡不丢）。"""
+    from tests.utils.credential import make_student
+
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 5}, headers=superuser_token_headers
+        )
+    )
+    code = classroom["code"]
+    student = make_student(db, client, code, "换题学生")
+    scenario_id = _create_scenario(client, superuser_token_headers)
+    q1 = _create_question(
+        client,
+        superuser_token_headers,
+        scenario_id,
+        text="Part 2 first topic.",
+        exam_kind="ielts_p2",
+        exam_level="KET",
+        cue_card_bullets=["要点一"],
+        prep_seconds=30,
+    )
+    _create_question(
+        client,
+        superuser_token_headers,
+        scenario_id,
+        text="Part 2 second topic.",
+        exam_kind="ielts_p2",
+        exam_level="KET",
+        cue_card_bullets=["要点二"],
+        prep_seconds=30,
+    )
+    client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={
+            "items": [
+                {"type": "question", "id": q1["id"]},
+            ]
+        },
+        headers=superuser_token_headers,
+    )
+    # 换一题：排除 q1 → 返回另一道 Part 2，考试字段齐全
+    nxt = _resp_json(
+        client.get(
+            f"/api/v1/classes/{code}/next-question",
+            params={"excludeIds": q1["id"]},
+            headers=student["headers"],
+        )
+    )
+    assert nxt["question"] is not None
+    q = nxt["question"]
+    assert q["exam_kind"] == "ielts_p2"
+    assert q["exam_level"] == "KET"
+    assert q["cue_card_bullets"] == ["要点二"]
+    assert q["prep_seconds"] == 30
     _cleanup_classroom(db, classroom["id"])

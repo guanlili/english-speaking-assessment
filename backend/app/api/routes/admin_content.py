@@ -440,7 +440,14 @@ def update_sentence(
     if "passage_id" in update and update["passage_id"] is not None:
         if session.get(Passage, update["passage_id"]) is None:
             raise HTTPException(status_code=422, detail="Passage not found")
-    validate_exam_fields("repeat", update.get("exam_kind"), update.get("exam_level"))
+    # 部分更新：与原记录合并出完整状态再校验；显式清题型级联清级别
+    merged_kind = update.get("exam_kind", sentence.exam_kind)
+    merged_level = update.get("exam_level", sentence.exam_level)
+    if "exam_kind" in update and update["exam_kind"] is None:
+        merged_level = None
+    validate_exam_fields("repeat", merged_kind, merged_level)
+    if "exam_kind" in update and update["exam_kind"] is None:
+        update["exam_level"] = None
     sentence.sqlmodel_update(update)
     session.add(sentence)
     session.commit()
@@ -1268,7 +1275,8 @@ class QuestionUpdate(SQLModel):
     text: str | None = Field(default=None, min_length=1, max_length=512)
     translation: str | None = None
     audio_url: str | None = None
-    suggested_seconds: int | None = Field(default=None, ge=10, le=60)
+    # 上限 300：考试题（IELTS Part 2 长回答）；普通题 ≤60 由校验函数按合并后状态把关
+    suggested_seconds: int | None = Field(default=None, ge=10, le=300)
     order_index: int | None = Field(default=None, ge=0)
     exam_kind: str | None = None
     exam_level: str | None = None
@@ -1297,17 +1305,31 @@ def update_question(
     )
     if "band" in update and update["band"] not in VALID_BANDS:
         raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
-    if "suggested_seconds" in update:
-        validate_question_suggested_seconds(
-            update["suggested_seconds"], update.get("exam_kind") or question.exam_kind
-        )
+    # 部分更新：先与原记录合并出完整状态，再校验（仅改话题卡/仅清题型等
+    # 单字段请求不能因「另一个字段缺失」被误拒，也不能留下不一致数据）
+    merged_kind = update.get("exam_kind", question.exam_kind)
+    merged_level = update.get("exam_level", question.exam_level)
+    merged_bullets = update.get("cue_card_bullets", question.cue_card_bullets)
+    merged_prep = update.get("prep_seconds", question.prep_seconds)
+    if "exam_kind" in update and update["exam_kind"] is None:
+        # 显式清空题型 → 级联清空关联字段；作答秒数超出普通口径则收敛到 60
+        merged_level = None
+        merged_bullets = None
+        merged_prep = None
+        merged_seconds = update.get("suggested_seconds", question.suggested_seconds)
+        if merged_seconds is not None and merged_seconds > 60:
+            update["suggested_seconds"] = 60
     validate_exam_fields(
-        "question",
-        update.get("exam_kind"),
-        update.get("exam_level"),
-        update.get("cue_card_bullets"),
-        update.get("prep_seconds"),
+        "question", merged_kind, merged_level, merged_bullets, merged_prep
     )
+    merged_seconds = update.get("suggested_seconds", question.suggested_seconds)
+    validate_question_suggested_seconds(
+        merged_seconds if merged_seconds is not None else 20, merged_kind
+    )
+    if "exam_kind" in update and update["exam_kind"] is None:
+        update["exam_level"] = None
+        update["cue_card_bullets"] = None
+        update["prep_seconds"] = None
     question.sqlmodel_update(update)
     session.add(question)
     session.commit()

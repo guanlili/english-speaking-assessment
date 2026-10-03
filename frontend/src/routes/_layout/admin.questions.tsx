@@ -288,10 +288,14 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
 
   const topics = (scenariosQuery.data ?? []).map((s) => s.topic)
   const rows = bankQuery.data ?? []
+  // 秒数上限按题型：考试题（长回答）≤300；普通题 ≤60
+  const secondsLimit = editForm.exam_kind ? 300 : 60
   const editValid =
     editForm.text.trim().length > 0 &&
     editForm.suggested_seconds >= 10 &&
-    editForm.suggested_seconds <= 60
+    editForm.suggested_seconds <= secondsLimit &&
+    (editForm.exam_kind !== "ielts_p2" ||
+      editForm.cue_card_bullets.trim().length > 0)
 
   return (
     <div className="flex flex-col gap-6">
