@@ -1300,19 +1300,38 @@ function CreateClassroomBook({
   // 从五级词库导入：只取已核对且有释义的词条（未核对/缺释义自动跳过）
   const [fromLevel, setFromLevel] = useState<VocabLevel | null>(null)
   const fromLevels = useMutation({
-    mutationFn: () =>
-      VocabLevelsService.importWordsFromLevels({
-        requestBody: {
-          level: fromLevel as string,
-          classroom_id: classroomId,
-          new_book_title: title.trim() || null,
-        },
-      }),
+    // 续导口径：服务端每次先排除已入库词再限量 → offset 恒为 0 循环拉完
+    mutationFn: async () => {
+      let totalCreated = 0
+      let totalSkipped = 0
+      let bookId: string | null = null
+      let finalBookId = ""
+      for (let round = 0; round < 40; round += 1) {
+        const data = await VocabLevelsService.importWordsFromLevels({
+          requestBody: {
+            level: fromLevel as string,
+            classroom_id: bookId ? null : classroomId,
+            book_id: bookId,
+            new_book_title: title.trim() || null,
+          },
+        })
+        totalCreated += data.created_count ?? 0
+        totalSkipped += data.skipped_existing ?? 0
+        bookId = data.id
+        finalBookId = data.id
+        if (
+          (data.remaining_count ?? 0) === 0 ||
+          (data.created_count ?? 0) === 0
+        )
+          break
+      }
+      return { id: finalBookId, totalCreated, totalSkipped }
+    },
     onSuccess: (book) => {
       toast.success(
         t({
-          zh: `已从五级词库转入 ${book.created_count ?? 0} 个已核对词条（跳过 ${book.skipped_existing ?? 0} 个已有词）。`,
-          en: `Imported ${book.created_count ?? 0} reviewed entries from the leveled source (skipped ${book.skipped_existing ?? 0} existing).`,
+          zh: `已从五级词库转入 ${book.totalCreated ?? 0} 个已核对词条（跳过 ${book.totalSkipped ?? 0} 个已有词）。`,
+          en: `Imported ${book.totalCreated ?? 0} reviewed entries from the leveled source (skipped ${book.totalSkipped ?? 0} existing).`,
         }),
       )
       onCreated(book.id)

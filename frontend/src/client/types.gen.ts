@@ -862,6 +862,7 @@ export type VocabularyFromLevelsRequest = {
     classroom_id?: (string | null);
     new_book_title?: (string | null);
     limit?: number;
+    offset?: number;
 };
 
 /**
@@ -880,6 +881,7 @@ export type VocabularyFromLevelsResult = {
     words?: Array<VocabularyWordPublic>;
     created_count?: number;
     skipped_existing?: number;
+    remaining_count?: number;
 };
 
 export type VocabularyImportIssue = {

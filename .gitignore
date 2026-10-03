@@ -34,3 +34,4 @@ backups/
 frontend/test-results/
 frontend/playwright-report/
 backend/scripts/vocab_level_import/output/
+gui-test-screenshots/

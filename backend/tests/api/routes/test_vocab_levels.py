@@ -25,8 +25,10 @@ from app.models import (
 )
 from app.scoring import worker as scoring_worker
 from app.services import vocab_levels as levels_service
+from tests.utils.credential import make_student
 from tests.utils.utils import random_email, random_lower_string
 
+VOCAB = "/api/v1/vocabulary"
 LEVELS = "/api/v1/admin/vocab-levels"
 
 
@@ -37,6 +39,27 @@ def _cleanup_level_entries_after(db: Session):
     yield
     db.exec(delete(VocabularyLevelEntry))  # type: ignore[call-overload]
     db.commit()
+
+
+def _make_public_book(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    words: list[dict],
+    title: str = "测试公共词库",
+) -> dict:
+    resp = client.post(
+        f"{VOCAB}/books",
+        json={"title": title, "scope": "public", "words": words},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _create_classroom(client: TestClient, headers: dict[str, str]) -> dict:
+    resp = client.post("/api/v1/classes", json={"class_size": 10}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    return resp.json()
 
 
 def _login_teacher(db: Session, client: TestClient) -> tuple[User, dict[str, str]]:
@@ -532,9 +555,7 @@ def test_teacher_imports_from_levels(
     classroom = client.post(
         "/api/v1/classes", json={"class_size": 5}, headers=superuser_token_headers
     ).json()
-    student = __import__(
-        "tests.utils.credential", fromlist=["make_student"]
-    ).make_student(db, client, classroom["code"], "分级学生")
+    student = make_student(db, client, classroom["code"], "分级学生")
 
     # 分级词条：quiet 已核对有释义；alike 未核对；cloudy 缺释义已核对
     for headword, level, meaning, review in [
@@ -678,3 +699,176 @@ def test_five_level_stats_independent_of_old_wordlist(
         for lemma, band in saved_wordlist:
             db.add(WordlistEntry(lemma=lemma, band=band))
         db.commit()
+
+
+# ── 三审修复回归 ────────────────────────────────────────────────────
+
+
+def test_level_words_scoped_to_visible_books(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """按级别选词的可见性：教师只能看到公共库/自己词库的词，读不到他人班级词库。"""
+    teacher_a, headers_a = _login_teacher(db, client)
+    teacher_b, headers_b = _login_teacher(db, client)
+    classroom_a = _create_classroom(client, headers_a)
+
+    # A 建班级词库（私有）
+    resp = client.post(
+        f"{VOCAB}/books",
+        json={
+            "title": "A 私有库",
+            "scope": "classroom",
+            "classroom_id": classroom_a["id"],
+            "words": [{"headword": "privet", "meaning_zh": "女贞"}],
+        },
+        headers=headers_a,
+    )
+    assert resp.status_code == 200, resp.text
+    # 公共库放一个对照词
+    _make_public_book(
+        client, superuser_token_headers, [{"headword": "pubword", "meaning_zh": "公共"}]
+    )
+    # 分级数据：两个词都在 KET
+    _upload(
+        client,
+        superuser_token_headers,
+        "KET",
+        [["headword", "meaning_zh"], ["privet", "女贞"], ["pubword", "公共"]],
+        confirm=True,
+    )
+
+    # B 的级别查询：只见公共库词，不见 A 的班级词
+    words_b = client.get(
+        "/api/v1/vocabulary/words",
+        params={"level": "KET"},
+        headers=headers_b,
+    ).json()
+    headwords_b = {word["headword"] for word in words_b}
+    assert "pubword" in headwords_b
+    assert "privet" not in headwords_b
+    # A 自己能看到
+    words_a = client.get(
+        "/api/v1/vocabulary/words",
+        params={"level": "KET"},
+        headers=headers_a,
+    ).json()
+    assert {"privet", "pubword"} <= {word["headword"] for word in words_a}
+    # 管理员全看
+    words_admin = client.get(
+        "/api/v1/vocabulary/words",
+        params={"level": "KET"},
+        headers=superuser_token_headers,
+    ).json()
+    assert {"privet", "pubword"} <= {word["headword"] for word in words_admin}
+
+
+def test_from_levels_paginates_and_filters_effective_level(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """从分级建库：先排除已入库再限量（多页续导）；按实际难度筛选（来源级别≠实际难度）。"""
+    classroom = _create_classroom(client, superuser_token_headers)
+    make_student(db, client, classroom["code"], "分级学生乙")
+
+    # 分级：lemon 在 KET+CET4（实际难度 KET）；cet4only 仅 CET4
+    _upload(
+        client,
+        superuser_token_headers,
+        "KET",
+        [["headword", "meaning_zh"], ["lemon", "柠檬"]],
+        confirm=True,
+    )
+    _upload(
+        client,
+        superuser_token_headers,
+        "CET4",
+        [["headword", "meaning_zh"], ["lemon", "柠檬"], ["cet4only", "仅四级"]],
+        confirm=True,
+    )
+
+    # 选「四级」建库：lemon 实际难度是 KET → 不应导入（口径一致）
+    first = client.post(
+        "/api/v1/vocabulary/words/from-levels",
+        json={
+            "level": "CET4",
+            "classroom_id": classroom["id"],
+            "new_book_title": "四级实际",
+            "limit": 1,
+        },
+        headers=superuser_token_headers,
+    )
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["created_count"] == 1
+    assert {word["headword"] for word in body["words"]} == {"cet4only"}
+    assert all(word["level"] == "CET4" for word in body["words"])
+    assert body["remaining_count"] == 0  # lemon 被实际难度过滤，无剩余
+
+    # 多页续导：3 个候选 + limit=1 → 三批全部入book，无遗漏
+    _upload(
+        client,
+        superuser_token_headers,
+        "CET4",
+        [
+            ["headword", "meaning_zh"],
+            ["onlyfour1", "一"],
+            ["onlyfour2", "二"],
+            ["onlyfour3", "三"],
+        ],
+        confirm=True,
+    )
+    book_id = body["id"]
+    total_created = 0
+    # 续导口径：先排除已入库再限量 → 恒用 offset=0，每次拿到「下一个」未导入词
+    for _ in range(10):
+        page = client.post(
+            "/api/v1/vocabulary/words/from-levels",
+            json={"level": "CET4", "book_id": book_id, "limit": 1, "offset": 0},
+            headers=superuser_token_headers,
+        )
+        assert page.status_code == 200, page.text
+        total_created += page.json()["created_count"]
+        if page.json()["remaining_count"] == 0:
+            break
+    final = client.get(
+        f"{VOCAB}/books/{book_id}", headers=superuser_token_headers
+    ).json()
+    assert final["word_count"] == 4  # cet4only + onlyfour1-3
+    assert total_created == 3
+
+
+def test_sense_allocation_counts_archived_rows(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """归档行占用 sense 序号：归档 sense1 后重新导入同词 → 新行 sense2，不撞约束。"""
+    resp = _upload(
+        client,
+        superuser_token_headers,
+        "KET",
+        [["headword", "meaning_zh"], ["mango", "芒果"]],
+        confirm=True,
+    )
+    assert resp.status_code == 200, resp.text
+    first = db.exec(
+        select(VocabularyLevelEntry).where(VocabularyLevelEntry.headword == "mango")
+    ).one()
+    first.status = "archived"
+    db.add(first)
+    db.commit()
+
+    # 同词同释义重新导入：不再匹配 active 行 → 新建；sense 计入归档行 → sense 2
+    resp = _upload(
+        client,
+        superuser_token_headers,
+        "KET",
+        [["headword", "meaning_zh"], ["mango", "芒果"]],
+        confirm=True,
+    )
+    assert resp.status_code == 200, resp.text
+    mangos = db.exec(
+        select(VocabularyLevelEntry)
+        .where(VocabularyLevelEntry.headword == "mango")
+        .order_by(col(VocabularyLevelEntry.sense_no))
+    ).all()
+    assert [m.sense_no for m in mangos] == [1, 2]
+    assert mangos[0].status == "archived"
+    assert mangos[1].status == "active"

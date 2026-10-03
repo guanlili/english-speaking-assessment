@@ -299,7 +299,8 @@ def plan_import(
                     )
                 )
 
-    # 2) 库中既有行
+    # 2) 库中既有行（含归档：sense_no 的唯一约束覆盖全部状态，
+    #    分配新序号必须计入归档行，否则重新导入会同号撞约束）
     headwords = list(headword_groups.keys())
     existing_same_level: dict[tuple[str, str], VocabularyLevelEntry] = {}
     existing_sense_max: dict[str, int] = {}
@@ -308,16 +309,16 @@ def plan_import(
         for entry in session.exec(
             select(VocabularyLevelEntry).where(
                 col(VocabularyLevelEntry.headword).in_(headwords),  # type: ignore[operator]
-                VocabularyLevelEntry.status == "active",
             )
         ).all():
             if entry.level == level:
-                existing_same_level[
-                    (entry.headword, _meaning_key(entry.meaning_zh))
-                ] = entry
                 existing_sense_max[entry.headword] = max(
                     existing_sense_max.get(entry.headword, 0), entry.sense_no
                 )
+                if entry.status == "active":
+                    existing_same_level[
+                        (entry.headword, _meaning_key(entry.meaning_zh))
+                    ] = entry
             else:
                 other_levels.setdefault(entry.headword, set()).add(entry.level)
 

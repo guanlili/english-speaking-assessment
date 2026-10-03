@@ -1711,8 +1711,10 @@ export class VocabLevelsService {
      * List Teaching Words By Level
      * 背单词模块按实际难度选教学词条（含五级归属信息）。
      *
-     * 只返回有教学释义且已启用、且词头命中五级数据源（不含待核对行）的词条；
-     * 实际难度 = 该词全部级别中最早（最易）一级。
+     * 可见性：只返回当前教师可见词库（公共库或本人班级库；管理员全看）中的
+     * 词条——防止借级别查询读到其他教师班级词库的词头与释义。只返回有教学
+     * 释义且已启用、且词头命中五级数据源（不含待核对行）的词条；实际难度 =
+     * 该词全部级别中最早（最易）一级。先过滤后分页，避免漏词/空页。
      * @param data The data for the request.
      * @param data.level
      * @param data.limit
@@ -1739,8 +1741,11 @@ export class VocabLevelsService {
      * Import Words From Levels
      * 教师把五级词库中**已核对且有释义**的词条转为教学词条并入词库。
      *
-     * - 已有同词头教学词条：跳过（不重复建词）；
-     * - 未核对（needs_review）或缺释义的分级词条：跳过并在结果中说明；
+     * 口径：
+     * - **按实际难度筛选**：只转入「实际难度（最易级）恰好为所选级别」的词条，
+     * 与教师词库按级别筛选的口径一致（来源级别 ≠ 实际难度）；
+     * - **先排除目标词库已有词，再限量**：重复调用按 offset 续导不会卡在同一批；
+     * - 未核对（needs_review）或缺释义的分级词条跳过；
      * - 生成的教学词条与既有发布流程一致（按 word_ids 发布 → 快照），快照语义不变。
      * @param data The data for the request.
      * @param data.requestBody

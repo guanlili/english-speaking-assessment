@@ -16,7 +16,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Query, UploadFile
-from sqlmodel import Field, SQLModel, col, select
+from sqlmodel import Field, Session, SQLModel, col, select
 
 from app.api.deps import SessionDep, SuperUserDep, TeacherUserDep
 from app.api.routes.classes import _require_classroom_teacher
@@ -29,7 +29,10 @@ from app.api.routes.vocabulary import (
 )
 from app.models import (
     Classroom,
+    User,
+    VocabularyBook,
     VocabularyBookDetail,
+    VocabularyBookItem,
     VocabularyLevelEntry,
     VocabularyLevelEntryPublic,
     VocabularyLevelEntryUpdate,
@@ -172,26 +175,52 @@ def update_vocab_level_entry(
     return levels_service.entry_public(entry)
 
 
+def _visible_book_ids(session: Session, current_user: User) -> list[uuid.UUID] | None:
+    """当前教师可见的词库 id（公共库或本人班级库）；管理员返回 None 表示不限。"""
+    if current_user.is_superuser:
+        return None
+    rows = session.exec(
+        select(VocabularyBook.id).where(
+            (VocabularyBook.scope == "public")
+            | (VocabularyBook.owner_id == current_user.id)  # type: ignore[operator]
+        )
+    ).all()
+    return list(rows)
+
+
 @router.get("/vocabulary/words", response_model=list[VocabularyWordPublic])
 def list_teaching_words_by_level(
     session: SessionDep,
-    current_user: TeacherUserDep,  # noqa: ARG001 — 权限门（教师/管理员可读），本体不用用户对象
+    current_user: TeacherUserDep,
     level: str = Query(...),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> Any:
     """背单词模块按实际难度选教学词条（含五级归属信息）。
 
-    只返回有教学释义且已启用、且词头命中五级数据源（不含待核对行）的词条；
-    实际难度 = 该词全部级别中最早（最易）一级。
+    可见性：只返回当前教师可见词库（公共库或本人班级库；管理员全看）中的
+    词条——防止借级别查询读到其他教师班级词库的词头与释义。只返回有教学
+    释义且已启用、且词头命中五级数据源（不含待核对行）的词条；实际难度 =
+    该词全部级别中最早（最易）一级。先过滤后分页，避免漏词/空页。
     """
     levels_service.validate_level(level)
-    # 先全量附加级别再过滤，最后分页——避免「先截取后过滤」漏词/空页
-    words = session.exec(
-        select(VocabularyWord)
-        .where(VocabularyWord.status == "active")
-        .order_by(col(VocabularyWord.headword))
-    ).all()
+    visible_ids = _visible_book_ids(session, current_user)
+    stmt = select(VocabularyWord).where(VocabularyWord.status == "active")
+    if visible_ids is not None:
+        # 同词可在多本可见词库：JSON 列不支持 SQL DISTINCT，按 id 在 Python 去重
+        stmt = stmt.join(
+            VocabularyBookItem,
+            VocabularyBookItem.word_id == VocabularyWord.id,  # ty: ignore[invalid-argument-type]
+        ).where(
+            col(VocabularyBookItem.book_id).in_(visible_ids)  # type: ignore[operator]
+        )
+    stmt = stmt.order_by(col(VocabularyWord.headword))
+    words = session.exec(stmt).all()
+    deduped: dict[uuid.UUID, VocabularyWord] = {}
+    for word in words:
+        deduped.setdefault(word.id, word)
+    words = list(deduped.values())
+    words = session.exec(stmt).all()
     matched = levels_service.attach_word_levels(session, list(words))
     matched = [word for word in matched if word.level == level]
     return matched[offset : offset + limit]
@@ -205,6 +234,7 @@ class VocabularyFromLevelsRequest(SQLModel):
     classroom_id: uuid.UUID | None = None
     new_book_title: str | None = Field(default=None, max_length=255)
     limit: int = Field(default=200, ge=1, le=500)
+    offset: int = Field(default=0, ge=0)
 
 
 class VocabularyFromLevelsResult(VocabularyBookDetail):
@@ -212,6 +242,8 @@ class VocabularyFromLevelsResult(VocabularyBookDetail):
 
     created_count: int = 0
     skipped_existing: int = 0
+    # 过滤（实际难度 + 排除已入库）后剩余未导入的候选数：>0 时可继续下一批
+    remaining_count: int = 0
 
 
 @router.post("/vocabulary/words/from-levels", response_model=VocabularyFromLevelsResult)
@@ -222,14 +254,14 @@ def import_words_from_levels(
 ) -> Any:
     """教师把五级词库中**已核对且有释义**的词条转为教学词条并入词库。
 
-    - 已有同词头教学词条：跳过（不重复建词）；
-    - 未核对（needs_review）或缺释义的分级词条：跳过并在结果中说明；
+    口径：
+    - **按实际难度筛选**：只转入「实际难度（最易级）恰好为所选级别」的词条，
+      与教师词库按级别筛选的口径一致（来源级别 ≠ 实际难度）；
+    - **先排除目标词库已有词，再限量**：重复调用按 offset 续导不会卡在同一批；
+    - 未核对（needs_review）或缺释义的分级词条跳过；
     - 生成的教学词条与既有发布流程一致（按 word_ids 发布 → 快照），快照语义不变。
     """
-    from app.models import (
-        VocabularyBook,
-        VocabularyBookItem,
-    )
+    from app.models import VocabularyBookItem
 
     levels_service.validate_level(body.level)
     if body.book_id is not None:
@@ -254,7 +286,7 @@ def import_words_from_levels(
         session.add(book)
         session.flush()
 
-    # 已核对且有释义的分级词条（active）
+    # 该级别全部可导入词条（active + 已核对 + 有释义），按词头取第一条释义
     entries = session.exec(
         select(VocabularyLevelEntry)
         .where(
@@ -267,9 +299,22 @@ def import_words_from_levels(
         .order_by(
             col(VocabularyLevelEntry.headword), col(VocabularyLevelEntry.sense_no)
         )
-        .limit(body.limit)
     ).all()
+    first_by_headword: dict[str, VocabularyLevelEntry] = {}
+    for entry in entries:
+        first_by_headword.setdefault(entry.headword, entry)
 
+    # 实际难度口径：只保留「最易级 == 所选级别」的词头
+    effective = levels_service.effective_level_map(
+        session, list(first_by_headword.keys())
+    )
+    candidates = [
+        headword
+        for headword in first_by_headword
+        if effective.get(headword, ("", []))[0] == body.level
+    ]
+
+    # 先排除目标词库已有词，再分页（重复调用按 offset 续导）
     existing_headwords = {
         normalize_spelling(word.headword)
         for word in session.exec(
@@ -281,23 +326,23 @@ def import_words_from_levels(
             .where(VocabularyBookItem.book_id == book.id)  # type: ignore[arg-type]
         ).all()
     }
+    remaining = [
+        headword
+        for headword in sorted(candidates)
+        if headword not in existing_headwords
+    ]
+    page_headwords = remaining[body.offset : body.offset + body.limit]
 
-    created = 0
-    skipped_existing = 0
     position = session.exec(
         select(VocabularyBookItem.position)
         .where(VocabularyBookItem.book_id == book.id)  # type: ignore[arg-type]
         .order_by(col(VocabularyBookItem.position).desc())
     ).first()
     position = (position or 0) + 1
-    seen_this_batch: set[str] = set()
-    for entry in entries:
-        if normalize_spelling(entry.headword) in existing_headwords:
-            skipped_existing += 1
-            continue
-        if entry.headword in seen_this_batch:
-            continue  # 同形异义只取第一条释义作教学词条
-        seen_this_batch.add(entry.headword)
+    created = 0
+    skipped_existing = len(candidates) - len(remaining)
+    for headword in page_headwords:
+        entry = first_by_headword[headword]
         word = _create_word(
             session,
             VocabularyWordIn(
@@ -332,4 +377,5 @@ def import_words_from_levels(
         words=levels_service.attach_word_levels(session, list(items)),
         created_count=created,
         skipped_existing=skipped_existing,
+        remaining_count=max(0, len(remaining) - created),
     )
