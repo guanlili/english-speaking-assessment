@@ -267,6 +267,7 @@ function ClassroomPracticePage() {
   const isIeltsPart2 = examKind === "ielts_p2"
   const cueBullets = currentItem?.cue_card_bullets ?? []
   const prepSeconds = isIeltsPart2 ? (currentItem?.prep_seconds ?? 60) : 0
+  const currentItemId = currentItem?.id ?? null
   const [prepLeft, setPrepLeft] = useState(0)
   const [prepDone, setPrepDone] = useState(true)
   useEffect(() => {
@@ -288,7 +289,7 @@ function ClassroomPracticePage() {
       })
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [currentItem?.id, isIeltsPart2, prepSeconds])
+  }, [currentItemId, isIeltsPart2, prepSeconds])
   const skipPrep = () => {
     setPrepDone(true)
     setPrepLeft(0)
