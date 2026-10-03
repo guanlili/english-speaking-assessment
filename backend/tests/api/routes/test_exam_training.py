@@ -437,7 +437,19 @@ def test_next_question_carries_exam_fields(
         cue_card_bullets=["要点二"],
         prep_seconds=30,
     )
-    # 双题都进发布快照
+    # q3：同情景的计划外题（页面换题=追加计划外新题时从这里取）
+    q3 = _create_question(
+        client,
+        superuser_token_headers,
+        scenario_id,
+        text="Part 2 spare topic.",
+        suggested_seconds=120,
+        exam_kind="ielts_p2",
+        exam_level="KET",
+        cue_card_bullets=["要点三"],
+        prep_seconds=30,
+    )
+    # q1、q2 进发布快照
     client.put(
         f"/api/v1/classes/{code}/assignment",
         json={
@@ -473,23 +485,23 @@ def test_next_question_carries_exam_fields(
         json={"cue_card_bullets": ["被改掉的要点"]},
         headers=superuser_token_headers,
     )
-    # 显式带旧会话 session_id 走「从快照换题」分支：
-    # 返回的是快照字段（发布后改题库不影响），考试字段与话题卡齐全
+    # 页面真实参数：前端把计划内全部题目 id 作为 excludeIds 发送
+    # （换题语义 = 追加一道计划外新题，结算仍按原题单）；换来的 q3 带考试字段
     nxt = _resp_json(
         client.get(
             f"/api/v1/classes/{code}/next-question",
             params={
                 "session_id": plan["session_id"],
-                "excludeIds": first["id"],
+                "excludeIds": [first["id"], q2["id"]],
             },
             headers=student["headers"],
         )
     )
     assert nxt["question"] is not None
     q = nxt["question"]
-    assert q["id"] == q2["id"]
+    assert q["id"] == q3["id"]
     assert q["exam_kind"] == "ielts_p2"
     assert q["exam_level"] == "KET"
-    assert q["cue_card_bullets"] == ["要点二"]
+    assert q["cue_card_bullets"] == ["要点三"]
     assert q["prep_seconds"] == 30
     _cleanup_classroom(db, classroom["id"])

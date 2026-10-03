@@ -1012,10 +1012,13 @@ def read_next_question(
         if bound is not None and bound.is_exam:
             raise HTTPException(status_code=422, detail="考试中不能换题")
 
-    # 按题指派：换题范围 = 指派问答题所在情景的其余未做题目。
-    # assigned_items 与发布快照同步：老师可只指派 1 道题，学生换题从情景题库取新题，
-    # 排掉已指派 + 本轮已做（含发布全情景题时即用尽）。
-    if session_id is None and classroom.assigned_items:
+    # 按题指派：换题语义 = 追加一道**计划外新题**（学生可再答，结算仍按原
+    # 题单；换来的题经 attempt.item_snapshot 进结果页）。assigned_items 与
+    # 发布快照同步：从指派问答题所在情景的题库取未做题，排掉已指派 + 本轮
+    # 已做 + 前端传来的全部计划题（含发布全情景题时即用尽）。
+    # 不再限制 session_id 为空：旧会话（已作答过的轮）同样换题，
+    # ScenarioQuestionPublic 透传考试字段（题型/级别/话题卡/准备时间）。
+    if classroom.assigned_items:
         item_objects = exercise_service.resolve_assigned_items(session, classroom)
         if item_objects is not None:
             _, _, item_questions = item_objects
