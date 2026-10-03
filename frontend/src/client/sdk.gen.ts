@@ -885,6 +885,8 @@ export class ClassesService {
      * 传 session_id 时使用该会话（explore / 回看旧轮）；否则用当日当前活动会话。
      * 发布会话优先从快照里取问答题（删题也能换），非发布会话走题库。
      * 返回的 question 字段统一是 question 类型，后端补全 item_type。
+     * 发布会话优先从快照里取问答题（删题也能换），非发布会话走题库。
+     * 返回的 question 字段统一是 question 类型，后端补全 item_type。
      * @param data The data for the request.
      * @param data.code
      * @param data.sessionId

@@ -1416,7 +1416,7 @@ export type ClassesReadTodayPlanResponse = (TodayPlan);
 
 export type ClassesReadNextQuestionData = {
     code: string;
-    excludeIds?: Array<(string)>;
+    excludeIds?: (Array<(string)> | null);
     sessionId?: (string | null);
 };
 
