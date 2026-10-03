@@ -42,6 +42,8 @@ from app.models import (
     UnitPublic,
     UnitUpdate,
     WordlistEntry,
+    validate_exam_fields,
+    validate_question_suggested_seconds,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -100,6 +102,9 @@ class SentenceCreate(SQLModel):
     audio_url: str | None = Field(default=None, max_length=1024)
     suggested_seconds: int = Field(default=8, ge=3, le=60)
     replay_limit: int = Field(default=3, ge=0, le=9)
+    # 分级题型训练（可空=普通课堂内容）：题型与级别分别建模
+    exam_kind: str | None = None
+    exam_level: str | None = None
 
     _text_nonempty = field_validator("text")(_strip_nonempty)
     _translation_blank = field_validator("translation")(_strip_blank)
@@ -116,6 +121,8 @@ class SentenceUpdate(SQLModel):
     audio_url: str | None = Field(default=None, max_length=1024)
     suggested_seconds: int | None = Field(default=None, ge=3, le=60)
     replay_limit: int | None = Field(default=None, ge=0, le=9)
+    exam_kind: str | None = None
+    exam_level: str | None = None
 
     _text_nonempty = field_validator("text")(_strip_nonempty)
     _translation_blank = field_validator("translation")(_strip_blank)
@@ -140,7 +147,13 @@ class QuestionCreate(SQLModel):
     text: str = Field(min_length=1, max_length=512)
     translation: str | None = Field(default=None, max_length=1024)
     audio_url: str | None = Field(default=None, max_length=1024)
-    suggested_seconds: int = Field(default=20, ge=10, le=60)
+    # 上限 300：考试题（IELTS Part 2 长回答）；普通题 ≤60 由校验函数把关
+    suggested_seconds: int = Field(default=20, ge=10, le=300)
+    # 分级题型训练（可空=普通情景问法）：话题卡仅 IELTS Part 2
+    exam_kind: str | None = None
+    exam_level: str | None = None
+    cue_card_bullets: list[str] | None = None
+    prep_seconds: int | None = None
 
     _text_nonempty = field_validator("text")(_strip_nonempty)
     _translation_blank = field_validator("translation")(_strip_blank)
@@ -358,15 +371,23 @@ def create_sentence(
 class SentenceWithPassage(RepeatSentence):
     """平铺复述句库视图：带所属篇目标题（独立句为 null）。"""
 
-    passage_title: str | None = None
+    passage_title: str | None = None  # 考试字段自 RepeatSentence 继承
 
 
 @router.get("/sentences", response_model=list[SentenceWithPassage])
-def list_sentences_flat(session: SessionDep, _admin: TeacherUserDep) -> Any:
+def list_sentences_flat(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    exam_kind: str | None = Query(default=None, description="考试题型过滤"),
+    exam_level: str | None = Query(default=None, description="考试级别过滤"),
+) -> Any:
     """复述句独立题库：全部复述句平铺（含挂篇目的），按创建顺序。"""
-    sentences = session.exec(
-        select(RepeatSentence).order_by(col(RepeatSentence.created_at))
-    ).all()
+    stmt = select(RepeatSentence).order_by(col(RepeatSentence.created_at))
+    if exam_kind is not None:
+        stmt = stmt.where(RepeatSentence.exam_kind == exam_kind)  # type: ignore[arg-type]
+    if exam_level is not None:
+        stmt = stmt.where(RepeatSentence.exam_level == exam_level)  # type: ignore[arg-type]
+    sentences = session.exec(stmt).all()
     passage_titles = dict(session.exec(select(Passage.id, Passage.title)).all())
     return [
         SentenceWithPassage(
@@ -392,6 +413,7 @@ def create_sentence_standalone(
         and session.get(Passage, sentence_in.passage_id) is None
     ):
         raise HTTPException(status_code=404, detail="Passage not found")
+    validate_exam_fields("repeat", sentence_in.exam_kind, sentence_in.exam_level)
     sentence = RepeatSentence.model_validate(sentence_in.model_dump())
     sentence.order_index = next_sentence_order(session, sentence.passage_id)
     session.add(sentence)
@@ -418,6 +440,7 @@ def update_sentence(
     if "passage_id" in update and update["passage_id"] is not None:
         if session.get(Passage, update["passage_id"]) is None:
             raise HTTPException(status_code=422, detail="Passage not found")
+    validate_exam_fields("repeat", update.get("exam_kind"), update.get("exam_level"))
     sentence.sqlmodel_update(update)
     session.add(sentence)
     session.commit()
@@ -525,6 +548,16 @@ def create_question(
         raise HTTPException(status_code=404, detail="Scenario not found")
     if question_in.band not in VALID_BANDS:
         raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
+    validate_exam_fields(
+        "question",
+        question_in.exam_kind,
+        question_in.exam_level,
+        question_in.cue_card_bullets,
+        question_in.prep_seconds,
+    )
+    validate_question_suggested_seconds(
+        question_in.suggested_seconds, question_in.exam_kind
+    )
     question = ScenarioQuestion.model_validate(
         {
             **question_in.model_dump(exclude={"scenario_id", "order_index"}),
@@ -566,6 +599,11 @@ class QuestionBankOut(SQLModel):
     text: str
     translation: str | None = None
     suggested_seconds: int
+    # 分级题型训练（可空=普通情景问法）
+    exam_kind: str | None = None
+    exam_level: str | None = None
+    cue_card_bullets: list[str] | None = None
+    prep_seconds: int | None = None
 
 
 @router.get("/questions", response_model=list[QuestionBankOut])
@@ -575,6 +613,8 @@ def list_question_bank(
     topic: str | None = Query(default=None, description="按主题精确过滤"),
     band: str | None = Query(default=None, description="A2/B1/B2"),
     q: str | None = Query(default=None, description="题目/中文提示关键词"),
+    exam_kind: str | None = Query(default=None, description="考试题型过滤"),
+    exam_level: str | None = Query(default=None, description="考试级别过滤"),
 ) -> Any:
     stmt = (
         select(ScenarioQuestion, Scenario.topic)
@@ -597,6 +637,10 @@ def list_question_bank(
             col(ScenarioQuestion.text).icontains(needle)
             | col(ScenarioQuestion.translation).icontains(needle)  # type: ignore[operator]
         )
+    if exam_kind is not None:
+        stmt = stmt.where(ScenarioQuestion.exam_kind == exam_kind)  # type: ignore[arg-type]
+    if exam_level is not None:
+        stmt = stmt.where(ScenarioQuestion.exam_level == exam_level)  # type: ignore[arg-type]
     rows = session.exec(stmt).all()
     return [
         QuestionBankOut(
@@ -608,6 +652,10 @@ def list_question_bank(
             text=question.text,
             translation=question.translation,
             suggested_seconds=question.suggested_seconds,
+            exam_kind=question.exam_kind,
+            exam_level=question.exam_level,
+            cue_card_bullets=question.cue_card_bullets,
+            prep_seconds=question.prep_seconds,
         )
         for question, topic_name in rows
     ]
@@ -1222,6 +1270,10 @@ class QuestionUpdate(SQLModel):
     audio_url: str | None = None
     suggested_seconds: int | None = Field(default=None, ge=10, le=60)
     order_index: int | None = Field(default=None, ge=0)
+    exam_kind: str | None = None
+    exam_level: str | None = None
+    cue_card_bullets: list[str] | None = None
+    prep_seconds: int | None = None
 
     _text_nonempty = field_validator("text")(_strip_nonempty)
     _translation_blank = field_validator("translation")(_strip_blank)
@@ -1245,8 +1297,17 @@ def update_question(
     )
     if "band" in update and update["band"] not in VALID_BANDS:
         raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
-    if "suggested_seconds" in update and not 10 <= update["suggested_seconds"] <= 60:
-        raise HTTPException(status_code=422, detail="建议秒数需在 10–60 之间")
+    if "suggested_seconds" in update:
+        validate_question_suggested_seconds(
+            update["suggested_seconds"], update.get("exam_kind") or question.exam_kind
+        )
+    validate_exam_fields(
+        "question",
+        update.get("exam_kind"),
+        update.get("exam_level"),
+        update.get("cue_card_bullets"),
+        update.get("prep_seconds"),
+    )
     question.sqlmodel_update(update)
     session.add(question)
     session.commit()

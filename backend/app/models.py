@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC, date, datetime
 
+from fastapi import HTTPException
 from pydantic import EmailStr, field_validator
 from sqlalchemy import JSON, Column, Date, DateTime, Index, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
@@ -194,6 +195,67 @@ class UnitUpdate(SQLModel):
 
 
 # 听后复述句：属于篇目，由短到长排序（PRD §6：一轮 3 句）
+# ── 分级题型训练（2026-10-03，PR A：题库与练习流程）────────────────
+# 考试式题型 × 共享五级，两维分别建模（exam_kind 与 exam_level 两个独立
+# 可空列）：旧数据两列为 NULL，含义与流程完全不变、不重新解释。
+# 复用 RepeatSentence（听令复述类）与 ScenarioQuestion（问答类）两表。
+EXAM_KIND_REPEAT = ("toefl_lnr",)  # TOEFL Listen and Repeat（复述表）
+EXAM_KIND_QUESTION = (
+    "interview",  # Take an Interview（问答题表）
+    "ielts_p1",  # IELTS Part 1
+    "ielts_p2",  # IELTS Part 2（话题卡 + 准备时间 + 长回答）
+    "ielts_p3",  # IELTS Part 3
+)
+# 各级别均为课堂版本：KET/PET 级的题型靠内容本身降低语言难度与作答要求
+# （更短 suggested_seconds、更简文本、prep_seconds 可更短），无需单独题型值
+
+
+def validate_exam_fields(
+    table: str,
+    exam_kind: str | None,
+    exam_level: str | None,
+    cue_card_bullets: list[str] | None = None,
+    prep_seconds: int | None = None,
+) -> None:
+    """考试字段校验：题型/级别合法、按表匹配、话题卡仅 Part 2。"""
+    allowed = {
+        "repeat": EXAM_KIND_REPEAT,
+        "question": EXAM_KIND_QUESTION,
+    }
+    if exam_kind is None:
+        if exam_level is not None or cue_card_bullets or prep_seconds is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="未选择考试题型时不能单独设置级别/话题卡/准备时间",
+            )
+        return
+    if exam_kind not in allowed.get(table, ()):
+        raise HTTPException(status_code=422, detail="未知考试题型")
+    if exam_level is not None and exam_level not in VOCAB_LEVEL_ORDER:
+        raise HTTPException(
+            status_code=422,
+            detail="考试级别无效，可选：" + "/".join(VOCAB_LEVEL_ORDER),
+        )
+    if cue_card_bullets is not None and exam_kind != "ielts_p2":
+        raise HTTPException(
+            status_code=422, detail="话题卡要点仅支持 IELTS Part 2 题型"
+        )
+    if prep_seconds is not None and not (10 <= prep_seconds <= 180):
+        raise HTTPException(status_code=422, detail="准备时间须在 10–180 秒之间")
+
+
+def validate_question_suggested_seconds(
+    suggested_seconds: int, exam_kind: str | None
+) -> None:
+    """作答时长口径：普通情景问法 ≤60 秒；考试题（长回答）≤300 秒。"""
+    limit = 300 if exam_kind else 60
+    if not (10 <= suggested_seconds <= limit):
+        raise HTTPException(
+            status_code=422,
+            detail=f"建议秒数需在 10–{limit} 之间（考试题型支持长回答）",
+        )
+
+
 class RepeatSentence(SQLModel, table=True):
     __tablename__ = "repeat_sentence"
 
@@ -216,6 +278,9 @@ class RepeatSentence(SQLModel, table=True):
     replay_limit: int = Field(
         default=3, ge=0, le=9, sa_column_kwargs={"server_default": "3"}
     )
+    # 分级题型训练（可空=普通课堂内容，含义不变）：题型与级别分别建模
+    exam_kind: str | None = Field(default=None, max_length=24)
+    exam_level: str | None = Field(default=None, max_length=16)
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -252,7 +317,17 @@ class ScenarioQuestion(SQLModel, table=True):
     text: str = Field(min_length=1)
     translation: str | None = Field(default=None, max_length=1024)
     audio_url: str | None = Field(default=None, max_length=1024)
-    suggested_seconds: int = Field(default=20, ge=10, le=60)
+    # 长回答（IELTS Part 2）上限 300 秒；普通问法仍 ≤60（由校验函数按题型把关）
+    suggested_seconds: int = Field(default=20, ge=10, le=300)
+    # 分级题型训练（可空=普通情景问法）：interview / ielts_p1/p2/p3 × 五级
+    exam_kind: str | None = Field(default=None, max_length=24)
+    exam_level: str | None = Field(default=None, max_length=16)
+    # IELTS Part 2 话题卡要点（仅 ielts_p2；提示学生可展开的要点）
+    cue_card_bullets: list[str] | None = Field(
+        default=None, sa_column=Column("cue_card_bullets", JSON, nullable=True)
+    )
+    # 准备时间（秒）：Part 2 话题卡准备（默认建议 60，可按级别缩短）
+    prep_seconds: int | None = Field(default=None, ge=10, le=180)
 
 
 class ScenarioQuestionPublic(SQLModel):
@@ -261,6 +336,11 @@ class ScenarioQuestionPublic(SQLModel):
     text: str
     audio_url: str | None = None
     suggested_seconds: int
+    # 分级题型训练（可空=普通情景问法）
+    exam_kind: str | None = None
+    exam_level: str | None = None
+    cue_card_bullets: list[str] | None = None
+    prep_seconds: int | None = None
 
 
 # 课堂码即弱密码（PRD §8.5）：无账号体系，泄露只影响一个班的成绩可见性
@@ -687,6 +767,12 @@ class PlanItem(SQLModel):
     # 听句复述的可重听次数与已听次数（仅 repeat 项；0=不限）
     replay_limit: int | None = None
     listen_used: int | None = None
+    # 分级题型训练（可空=普通课堂内容）：快照与题库行同构透传
+    exam_kind: str | None = None
+    exam_level: str | None = None
+    # IELTS Part 2 话题卡要点与准备时间
+    cue_card_bullets: list[str] | None = None
+    prep_seconds: int | None = None
 
 
 class PlanAttempt(SQLModel):

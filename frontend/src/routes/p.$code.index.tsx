@@ -25,6 +25,7 @@ import FeedbackCard from "@/components/Practice/FeedbackCard"
 import LimitedListenButton from "@/components/Practice/LimitedListenButton"
 import SpeakButton from "@/components/Practice/SpeakButton"
 import StudentShell from "@/components/Practice/StudentShell"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -35,7 +36,13 @@ import { MAX_RECORD_SECONDS, useRecorder } from "@/hooks/useRecorder"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
-import { ITEM_TYPE_LABELS, TERMS } from "@/lib/terms"
+import {
+  EXAM_KIND_LABELS,
+  EXAM_LEVEL_LABELS,
+  EXAM_PRACTICE_NOTE,
+  ITEM_TYPE_LABELS,
+  TERMS,
+} from "@/lib/terms"
 import { randomId } from "@/utils"
 
 export const Route = createFileRoute("/p/$code/")({
@@ -253,6 +260,39 @@ function ClassroomPracticePage() {
   }, [items, attemptByItem, focusItemId, pinnedItemId])
 
   const currentItem = items[currentIndex]
+  // 分级题型训练：exam_kind（考试式题型）× exam_level（五级）两维分别建模；
+  // 可空 = 普通课堂内容，展示与流程不变。hook 必须在条件 return 之前。
+  const examKind = currentItem?.exam_kind ?? null
+  const examLevel = currentItem?.exam_level ?? null
+  const isIeltsPart2 = examKind === "ielts_p2"
+  const cueBullets = currentItem?.cue_card_bullets ?? []
+  const prepSeconds = isIeltsPart2 ? (currentItem?.prep_seconds ?? 60) : 0
+  const [prepLeft, setPrepLeft] = useState(0)
+  const [prepDone, setPrepDone] = useState(true)
+  useEffect(() => {
+    if (!isIeltsPart2 || prepSeconds <= 0) {
+      setPrepDone(true)
+      setPrepLeft(0)
+      return
+    }
+    setPrepDone(false)
+    setPrepLeft(prepSeconds)
+    const timer = window.setInterval(() => {
+      setPrepLeft((left) => {
+        if (left <= 1) {
+          window.clearInterval(timer)
+          setPrepDone(true)
+          return 0
+        }
+        return left - 1
+      })
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [currentItem?.id, isIeltsPart2, prepSeconds])
+  const skipPrep = () => {
+    setPrepDone(true)
+    setPrepLeft(0)
+  }
   const allDone =
     items.length > 0 &&
     items.every((item) => isTerminal(attemptByItem.get(item.id)?.status))
@@ -535,20 +575,22 @@ function ClassroomPracticePage() {
   )
 
   const isPassage = currentItem.type === "passage"
-  const itemPromptLabel = isQuestion
-    ? t({
-        zh: "YOUR TURN · 分享你的想法",
-        en: "YOUR TURN · Share your thoughts",
-      })
-    : isPassage
+  const itemPromptLabel = examKind
+    ? t(EXAM_KIND_LABELS[examKind] ?? { zh: examKind, en: examKind })
+    : isQuestion
       ? t({
-          zh: "READ ALOUD · 大声朗读全文",
-          en: "READ ALOUD · Read the full text aloud",
+          zh: "YOUR TURN · 分享你的想法",
+          en: "YOUR TURN · Share your thoughts",
         })
-      : t({
-          zh: "LISTEN & REPEAT · 听一听，再试着说",
-          en: "LISTEN & REPEAT · Listen, then try to say it",
-        })
+      : isPassage
+        ? t({
+            zh: "READ ALOUD · 大声朗读全文",
+            en: "READ ALOUD · Read the full text aloud",
+          })
+        : t({
+            zh: "LISTEN & REPEAT · 听一听，再试着说",
+            en: "LISTEN & REPEAT · Listen, then try to say it",
+          })
   const itemHintZh = isQuestion
     ? t({
         zh: "试着说出你的观点，再用一个理由或小例子支持它。",
@@ -695,6 +737,74 @@ function ClassroomPracticePage() {
                   </span>
                 </div>
 
+                {/* 分级题型徽标：题型 × 级别（两维分别建模） */}
+                {examKind && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge variant="secondary">
+                      {t(
+                        EXAM_KIND_LABELS[examKind] ?? {
+                          zh: examKind,
+                          en: examKind,
+                        },
+                      )}
+                    </Badge>
+                    {examLevel && (
+                      <Badge variant="outline">
+                        {t(
+                          EXAM_LEVEL_LABELS[examLevel] ?? {
+                            zh: examLevel,
+                            en: examLevel,
+                          },
+                        )}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+
+                {/* IELTS Part 2 话题卡 */}
+                {isIeltsPart2 && cueBullets.length > 0 && (
+                  <div className="rounded-xl border border-dashed border-primary/40 bg-secondary/40 p-4">
+                    <p className="text-xs font-semibold tracking-wide text-primary">
+                      {t({
+                        zh: "话题卡 · 你可以谈到这些要点",
+                        en: "Cue card · points you can cover",
+                      })}
+                    </p>
+                    <ul className="mt-2 space-y-1 text-sm">
+                      {cueBullets.map((bullet) => (
+                        <li key={bullet} className="flex items-start gap-2">
+                          <span
+                            aria-hidden
+                            className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary/60"
+                          />
+                          <span>{bullet}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Part 2 准备时间倒计时（结束或跳过后才能开始录音） */}
+                {isIeltsPart2 && !prepDone && (
+                  <div
+                    role="timer"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-secondary/60 px-4 py-3"
+                  >
+                    <p className="text-sm">
+                      <span className="font-mono text-lg font-bold tabular-nums">
+                        {formatSeconds(prepLeft)}
+                      </span>{" "}
+                      {t({
+                        zh: "· 准备时间：先想好要说的要点，不用开口",
+                        en: "· Prep time: plan your points, no need to speak yet",
+                      })}
+                    </p>
+                    <Button variant="ghost" size="sm" onClick={skipPrep}>
+                      {t({ zh: "跳过准备，直接开始", en: "Skip prep" })}
+                    </Button>
+                  </div>
+                )}
+
                 {currentItem.type === "repeat" ? (
                   <p className="prompt-display min-h-24 text-muted-foreground">
                     {t({
@@ -782,6 +892,11 @@ function ClassroomPracticePage() {
 
                 {/* 录音区（SpeakUp：大圆钮 + 波形） */}
                 <div className="flex flex-col items-center gap-1 border-t pt-5 text-center">
+                  {examKind && (
+                    <p className="mb-2 text-[11px] text-muted-foreground">
+                      {t(EXAM_PRACTICE_NOTE)}
+                    </p>
+                  )}
                   {recorder.status === "recording" ? (
                     <>
                       <div
@@ -865,7 +980,8 @@ function ClassroomPracticePage() {
                         disabled={
                           scoring ||
                           (examActive && currentItemDone) ||
-                          examEnded
+                          examEnded ||
+                          !prepDone
                         }
                         aria-label={t({
                           zh: "开始录音",
@@ -893,10 +1009,15 @@ function ClassroomPracticePage() {
                                     zh: "这一次开口，已记录",
                                     en: "This speaking attempt is recorded",
                                   })
-                                : t({
-                                    zh: "准备好了，就点一下麦克风",
-                                    en: "When you're ready, tap the microphone",
-                                  })}
+                                : !prepDone
+                                  ? t({
+                                      zh: "先利用准备时间组织思路",
+                                      en: "Use the prep time to organise your ideas",
+                                    })
+                                  : t({
+                                      zh: "准备好了，就点一下麦克风",
+                                      en: "When you're ready, tap the microphone",
+                                    })}
                       </p>
                       {scoring ? (
                         <p className="text-xs text-muted-foreground">

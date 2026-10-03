@@ -512,6 +512,8 @@ def _plan_item_from_snapshot(
     text = item.get("text")
     if not isinstance(text, str) or not text.strip():
         return None
+    cue_bullets = item.get("cue_card_bullets")
+    prep = _snapshot_optional_int(item.get("prep_seconds"))
     return PlanItem(
         type=t,
         id=item_id,
@@ -530,6 +532,19 @@ def _plan_item_from_snapshot(
             if t == AttemptItemType.REPEAT
             else None
         ),
+        # 分级题型训练（可空=普通课堂内容）
+        exam_kind=(
+            str(item["exam_kind"]) if item.get("exam_kind") is not None else None
+        ),
+        exam_level=(
+            str(item["exam_level"]) if item.get("exam_level") is not None else None
+        ),
+        cue_card_bullets=(
+            [str(b) for b in cue_bullets]
+            if isinstance(cue_bullets, list) and cue_bullets
+            else None
+        ),
+        prep_seconds=prep,
     )
 
 
@@ -838,6 +853,8 @@ def read_today_plan(
                 suggested_seconds=s.suggested_seconds,
                 replay_limit=s.replay_limit,
                 listen_used=listen_counts.get(s.id, 0),
+                exam_kind=s.exam_kind,
+                exam_level=s.exam_level,
             )
             for s in sentences
         ]
@@ -849,6 +866,10 @@ def read_today_plan(
                 translation=q.translation,
                 audio_url=q.audio_url,
                 suggested_seconds=q.suggested_seconds,
+                exam_kind=q.exam_kind,
+                exam_level=q.exam_level,
+                cue_card_bullets=q.cue_card_bullets,
+                prep_seconds=q.prep_seconds,
             )
             for q in questions
         ]

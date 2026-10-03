@@ -104,6 +104,16 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **两模块同源**：背单词教师选词按 `level` 过滤（`/vocabulary/words?level=`、词库详情 `?level=`，词条带 `level`/`all_levels`）；口语问答评分在 attempt.vocab 新增独立 `level_stats`（用词来源级别），与旧 A2/B1/B2 命中口径并存、互不改写。
 - **历史不漂移**：五级导入只新增分级行；已发布任务快照与历史 attempt.vocab 一律不回填、不重算；needs_review 行不参与两模块统计。
 
+## 分级题型训练（2026-10-03 起，PR A：题库与练习流程）
+
+考试式题型 × 共享五级，**两维分别建模**（`exam_kind` 与 `exam_level` 两个独立可空列），复用既有两表：`RepeatSentence`（`toefl_lnr`＝TOEFL Listen and Repeat）与 `ScenarioQuestion`（`interview`＝Take an Interview、`ielts_p1/p2/p3`）。KET/PET 为课堂版本：语言难度与作答要求靠内容本身承担（更短秒数、更简文本），无需单独题型值。
+
+- **IELTS Part 2**：`cue_card_bullets`（话题卡要点 JSON）+ `prep_seconds`（准备时间 10–180s）；`suggested_seconds` 考试题上限 300（普通问法仍 ≤60，由 `validate_question_suggested_seconds` 按题型把关）。
+- **旧数据不漂移**：两列为 NULL 的题目含义与流程完全不变；发布快照深拷贝考试字段（`exercise.build_snapshot_item`），已发布任务与历史作答不随题库改动重解释。
+- **发布**：走既有 `PUT /classes/{code}/assignment`（items 选 id → 快照），学生 today 经 `PlanItem.exam_kind/exam_level/cue_card_bullets/prep_seconds` 透传。
+- **前端**：练习页题型徽标（`EXAM_KIND_LABELS`）+ Part 2 话题卡与准备倒计时（录音门禁，可跳过）+ 免责声明「课堂练习反馈，非官方考试成绩」；题目库编辑表单加题型/级别/话题卡字段；发布面板条目带题型/级别徽标。
+- **PR B（待做）**：句型推荐（按级别与表达用途分类的可替换句型）+ 学生单条收藏（跨设备）。
+
 ## 背单词模块（2026-10-01 起，P0 已上线）
 
 独立「词汇学习」模块（设计文档 `docs/vocabulary-module-design.md`），与口语分析用的 `WordlistEntry` 完全分离，沿用现有账号/课堂/学生档案：
