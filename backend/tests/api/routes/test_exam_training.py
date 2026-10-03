@@ -485,14 +485,14 @@ def test_next_question_carries_exam_fields(
         json={"cue_card_bullets": ["被改掉的要点"]},
         headers=superuser_token_headers,
     )
-    # 页面真实参数：前端把计划内全部题目 id 作为 excludeIds 发送
+    # 页面真实参数：生成客户端把前端 excludeIds 映射为查询键 exclude_ids
     # （换题语义 = 追加一道计划外新题，结算仍按原题单）；换来的 q3 带考试字段
     nxt = _resp_json(
         client.get(
             f"/api/v1/classes/{code}/next-question",
             params={
                 "session_id": plan["session_id"],
-                "excludeIds": [first["id"], q2["id"]],
+                "exclude_ids": [first["id"], q2["id"]],
             },
             headers=student["headers"],
         )
@@ -504,4 +504,124 @@ def test_next_question_carries_exam_fields(
     assert q["exam_level"] == "KET"
     assert q["cue_card_bullets"] == ["要点三"]
     assert q["prep_seconds"] == 30
+
+    # 提交 q3 录音：会话换题授权放行（不再 422「题目不在本次发布练习内」）
+    from tests.utils.audio import wav_upload
+
+    submitted = client.post(
+        "/api/v1/attempts",
+        files={"audio": wav_upload(3.0)},
+        data={
+            "item_type": "question",
+            "item_id": q3["id"],
+            "duration_s": "3.0",
+            "session_id": plan["session_id"],
+        },
+        headers=student["headers"],
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    # 结果找回：today 计划含 q3（经 attempt.item_snapshot 恢复，考试字段齐全）
+    plan2 = _resp_json(
+        client.get(
+            f"/api/v1/classes/{code}/today",
+            params={"sessionId": plan["session_id"]},
+            headers=student["headers"],
+        )
+    )
+    q3_item = next((item for item in plan2["items"] if item["id"] == q3["id"]), None)
+    assert q3_item is not None, "换来的题应在计划中找回"
+    assert q3_item["exam_kind"] == "ielts_p2"
+    assert q3_item["cue_card_bullets"] == ["要点三"]
+    attempt_entry = next(
+        (a for a in plan2["attempts"] if a["item_id"] == q3["id"]), None
+    )
+    assert attempt_entry is not None
+    _cleanup_classroom(db, classroom["id"])
+
+
+def test_old_session_exchange_stays_on_bound_topic(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """老师重新发布另一主题后，旧会话换题仍按其绑定练习的情景取题。"""
+    from tests.utils.credential import make_student
+
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 5}, headers=superuser_token_headers
+        )
+    )
+    code = classroom["code"]
+    student = make_student(db, client, code, "旧会话学生")
+
+    topic_a = f"主题A-{uuid.uuid4().hex[:6]}"
+    scenario_a = _resp_json(
+        client.post(
+            "/api/v1/admin/scenarios",
+            json={"topic": topic_a},
+            headers=superuser_token_headers,
+        )
+    )
+    q1 = _create_question(
+        client,
+        superuser_token_headers,
+        scenario_a["id"],
+        text="Topic A question one.",
+        exam_kind="ielts_p1",
+        exam_level="PET",
+    )
+    _create_question(
+        client,
+        superuser_token_headers,
+        scenario_a["id"],
+        text="Topic A question two.",
+        exam_kind="ielts_p1",
+        exam_level="PET",
+    )
+    client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": [{"type": "question", "id": q1["id"]}]},
+        headers=superuser_token_headers,
+    )
+    plan = _resp_json(
+        client.get(f"/api/v1/classes/{code}/today", headers=student["headers"])
+    )
+
+    # 老师重新发布主题 B（换掉当前指派）
+    topic_b = f"主题B-{uuid.uuid4().hex[:6]}"
+    scenario_b = _resp_json(
+        client.post(
+            "/api/v1/admin/scenarios",
+            json={"topic": topic_b},
+            headers=superuser_token_headers,
+        )
+    )
+    qb = _create_question(
+        client,
+        superuser_token_headers,
+        scenario_b["id"],
+        text="Topic B question.",
+        exam_kind="ielts_p1",
+        exam_level="PET",
+    )
+    client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": [{"type": "question", "id": qb["id"]}]},
+        headers=superuser_token_headers,
+    )
+
+    # 旧会话带 session_id 换题 → 仍按主题 A 的情景取题，不漂移到主题 B
+    nxt = _resp_json(
+        client.get(
+            f"/api/v1/classes/{code}/next-question",
+            params={
+                "session_id": plan["session_id"],
+                "exclude_ids": [q1["id"]],
+            },
+            headers=student["headers"],
+        )
+    )
+    assert nxt["question"] is not None
+    # 仍是主题 A 的题（不漂移到重发后的主题 B）
+    assert nxt["question"]["text"] == "Topic A question two."
     _cleanup_classroom(db, classroom["id"])

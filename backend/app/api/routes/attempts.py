@@ -34,6 +34,7 @@ from app.models import (
 )
 from app.scoring.audio_convert import probe_audio
 from app.services import exam as exam_service
+from app.services import exercise as exercise_service
 
 router = APIRouter(tags=["attempts"])
 
@@ -70,6 +71,12 @@ def _snapshot_attempt_item(
                         item_id
                     ):
                         return item
+            # 换题授权：学生点「换一题」得到的计划外题目视同并入本会话题单，
+            # 从题库行构建提交快照（评分与结果页读同一份内容，含考试字段）
+            if item_type == AttemptItemType.QUESTION and str(item_id) in (
+                practice_session.exchanged_item_ids or []
+            ):
+                return exercise_service.build_snapshot_item(session, item_type, item_id)
             raise HTTPException(status_code=422, detail="题目不在本次发布练习内")
 
     if item_type == AttemptItemType.PASSAGE:

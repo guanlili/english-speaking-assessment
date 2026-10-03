@@ -656,6 +656,11 @@ class PracticeSession(SQLModel, table=True):
         default=None,
         sa_type=DateTime(timezone=True),  # type: ignore
     )
+    # 换题授权（分级题型训练）：学生点「换一题」时返回的计划外题目 id，
+    # 提交校验据此放行（相当于把该题临时并入本会话的授权题单）
+    exchanged_item_ids: list[str] | None = Field(
+        default=None, sa_column=Column("exchanged_item_ids", JSON, nullable=True)
+    )
     # 防切屏：前端 visibilitychange 上报的离开次数（教师面板可见）
     tab_switch_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
 
