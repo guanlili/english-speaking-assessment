@@ -985,16 +985,11 @@ def read_next_question(
     code: str,
     current_user: StudentUserDep,
     session_id: uuid.UUID | None = Query(default=None),
-    # default=None：list 类型的共享可变默认在本环境会把单值请求解析成空表
     exclude_ids: list[uuid.UUID] | None = Query(default=None),
 ) -> Any:
     """换一题：同主题、未做过的问题（US-06）。用尽时 exhausted=true。
 
     传 session_id 时使用该会话（explore / 回看旧轮）；否则用当日当前活动会话。
-    发布会话优先从快照里取问答题（删题也能换），非发布会话走题库。
-    返回的 question 字段统一是 question 类型，后端补全 item_type。
-    发布会话优先从快照里取问答题（删题也能换），非发布会话走题库。
-    返回的 question 字段统一是 question 类型，后端补全 item_type。
     """
     exclude_id_set = set(exclude_ids or [])
     classroom = _get_classroom(session, code)
@@ -1017,13 +1012,15 @@ def read_next_question(
             raise HTTPException(status_code=422, detail="考试中不能换题")
 
     # 按题指派：换题语义 = 追加一道**计划外新题**（学生可再答，结算仍按原
-    # 题单）。三步口径：
-    # 1) 情景优先取**旧会话绑定的练习**——老师重新发布另一主题后，旧会话
-    #    换题不漂移到新主题；绑定练习缺失/停用才回退课堂当前指派；
-    # 2) 候选 = 该情景题库中未做过且不在计划内/未被前端排除的题；
-    # 3) 返回前把题目 id 记入会话「换题授权」——提交接口据此放行并从题库
-    #    行构建 item_snapshot（评分与结果页读同一份内容，含考试字段）。
+    # 题单；换来的题经 attempt.item_snapshot 进结果页）。assigned_items 与
+    # 发布快照同步：从指派问答题所在情景的题库取未做题，排掉已指派 + 本轮
+    # 已做 + 前端传来的全部计划题（含发布全情景题时即用尽）。
+    # 不再限制 session_id 为空：旧会话（已作答过的轮）同样换题，
+    # ScenarioQuestionPublic 透传考试字段（题型/级别/话题卡/准备时间）。
     if classroom.assigned_items:
+        # 情景口径优先用**旧会话绑定的练习**——老师重新发布另一主题后，旧
+        # 会话换题不漂移到新主题；绑定情景缺失/停用则明确禁止换题；绑定
+        # 练习缺失（历史数据）才回退课堂当前指派
         scenario = None
         bound_exercise = (
             session.get(ClassroomExercise, practice_session.assignment_id)
@@ -1037,18 +1034,12 @@ def read_next_question(
                         Scenario, uuid.UUID(str(item.get("scenario_id")))
                     )
                     break
-        if scenario is not None and not scenario.is_active:
-            # 绑定练习的情景已被停用：明确禁止旧会话继续换题（不漂移到新主题）
+        # 绑定练习存在：情景缺失（被删）或停用都明确禁止换题——不漂移到
+        # 重发后的新主题
+        if scenario is None or not scenario.is_active:
             return NextQuestion(question=None, exhausted=True)
-        if scenario is None:
-            # 绑定练习缺失（历史数据）才回退课堂当前指派
-            item_objects = exercise_service.resolve_assigned_items(session, classroom)
-            if item_objects is not None:
-                _, _, item_questions = item_objects
-                if item_questions:
-                    scenario = session.get(Scenario, item_questions[0].scenario_id)
-        if scenario is None:
-            return NextQuestion(question=None, exhausted=True)
+        item_objects = exercise_service.resolve_assigned_items(session, classroom)
+        item_questions = item_objects[2] if item_objects else []
 
         done_ids = {
             attempt.item_id
@@ -1066,18 +1057,19 @@ def read_next_question(
             limit=999,
             fill_with_done=False,
         )
-        assigned_question_ids = {
-            uuid.UUID(str(spec["id"]))
-            for spec in classroom.assigned_items or []
-            if spec.get("type") == AttemptItemType.QUESTION
-        }
-        excluded = exclude_id_set | done_ids | assigned_question_ids
+        excluded = exclude_id_set | done_ids | {q.id for q in item_questions}
         candidates = [q for q in questions if q.id not in excluded]
         if candidates:
             chosen = candidates[0]
-            exchanged = list(practice_session.exchanged_item_ids or [])
-            if str(chosen.id) not in exchanged:
-                practice_session.exchanged_item_ids = exchanged + [str(chosen.id)]
+            # 授权快照：换题返回的同时把该题**完整快照**（发布时刻内容，含
+            # 考试字段）绑定到会话——提交与结果页读这份内容，老师此后改
+            # 题干/话题卡或删题均不影响学生已看到的题目
+            snapshot = exercise_service.build_snapshot_item(
+                session, AttemptItemType.QUESTION, chosen.id
+            )
+            exchanged = list(practice_session.exchanged_items or [])
+            if not any(item.get("id") == snapshot["id"] for item in exchanged):
+                practice_session.exchanged_items = exchanged + [snapshot]
                 session.add(practice_session)
                 session.commit()
             return NextQuestion(
@@ -1104,7 +1096,7 @@ def read_next_question(
                     )
                 ).all()
             }
-            excluded = exclude_id_set | done_ids
+            excluded = set(exclude_ids or []) | done_ids
             # 换题优先换到「快照内其他未做题」（分级题型训练：老师选的题都
             # 是有效题，轮内换题不跳过其他未做题）；快照内取完再 exhausted，
             # 上层 assigned_items 回退分支会继续从情景题库补新题
@@ -1165,7 +1157,7 @@ def read_next_question(
     questions, exhausted = _pick_questions(
         session, scenario, student.id, limit=999, fill_with_done=False
     )
-    excluded = exclude_id_set
+    excluded = set(exclude_ids or [])
     candidates = [q for q in questions if q.id not in excluded]
     if not candidates:
         return NextQuestion(question=None, exhausted=exhausted)

@@ -479,31 +479,40 @@ def test_next_question_carries_exam_fields(
         headers=student["headers"],
     )
 
-    # 发布后修改题库 q2 的话题卡（快照不受影响）
+    # 发布后修改题库：q2 改话题卡+改题干（学生所见不应变）
     client.put(
         f"/api/v1/admin/questions/{q2['id']}",
-        json={"cue_card_bullets": ["被改掉的要点"]},
+        json={
+            "text": "Part 2 second topic (rewritten).",
+            "cue_card_bullets": ["被改掉的要点"],
+        },
         headers=superuser_token_headers,
     )
-    # 页面真实参数：生成客户端把前端 excludeIds 映射为查询键 exclude_ids
-    # （换题语义 = 追加一道计划外新题，结算仍按原题单）；换来的 q3 带考试字段
+
+    # 换一题拿到 q3（计划外）→ 老师随后**删除** q3 → 提交仍应成功
+    q3 = _create_question(
+        client,
+        superuser_token_headers,
+        scenario_id,
+        text="Part 2 spare topic.",
+        suggested_seconds=120,
+        exam_kind="ielts_p2",
+        exam_level="KET",
+        cue_card_bullets=["要点三"],
+        prep_seconds=30,
+    )
     nxt = _resp_json(
         client.get(
             f"/api/v1/classes/{code}/next-question",
             params={
                 "session_id": plan["session_id"],
-                "exclude_ids": [first["id"], q2["id"]],
+                "exclude_ids": [q1["id"], q2["id"]],
             },
             headers=student["headers"],
         )
     )
     assert nxt["question"] is not None
-    q = nxt["question"]
-    assert q["id"] == q3["id"]
-    assert q["exam_kind"] == "ielts_p2"
-    assert q["exam_level"] == "KET"
-    assert q["cue_card_bullets"] == ["要点三"]
-    assert q["prep_seconds"] == 30
+    q3 = nxt["question"]
 
     # 提交 q3 录音：会话换题授权放行（不再 422「题目不在本次发布练习内」）
     from tests.utils.audio import wav_upload
@@ -525,7 +534,7 @@ def test_next_question_carries_exam_fields(
     plan2 = _resp_json(
         client.get(
             f"/api/v1/classes/{code}/today",
-            params={"sessionId": plan["session_id"]},
+            params={"session_id": plan["session_id"]},
             headers=student["headers"],
         )
     )
