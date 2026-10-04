@@ -437,19 +437,7 @@ def test_next_question_carries_exam_fields(
         cue_card_bullets=["要点二"],
         prep_seconds=30,
     )
-    # q3：同情景的计划外题（页面换题=追加计划外新题时从这里取）
-    q3 = _create_question(
-        client,
-        superuser_token_headers,
-        scenario_id,
-        text="Part 2 spare topic.",
-        suggested_seconds=120,
-        exam_kind="ielts_p2",
-        exam_level="KET",
-        cue_card_bullets=["要点三"],
-        prep_seconds=30,
-    )
-    # q1、q2 进发布快照
+    # q1、q2 进发布快照（q3 稍后创建：计划外题，换题时从这里取）
     client.put(
         f"/api/v1/classes/{code}/assignment",
         json={
@@ -519,7 +507,7 @@ def test_next_question_carries_exam_fields(
     assert q3["cue_card_bullets"] == ["要点三"]
 
     # 老师先改题干与话题卡、再删除题库题
-    client.put(
+    rewritten = client.put(
         f"/api/v1/admin/questions/{q3['id']}",
         json={
             "text": "Part 2 spare topic (rewritten).",
@@ -527,9 +515,11 @@ def test_next_question_carries_exam_fields(
         },
         headers=superuser_token_headers,
     )
-    client.delete(
+    assert rewritten.status_code == 200, rewritten.text
+    deleted = client.delete(
         f"/api/v1/admin/questions/{q3['id']}", headers=superuser_token_headers
     )
+    assert deleted.status_code == 200, deleted.text
 
     # 提交 q3 录音：会话换题授权放行（不再 422「题目不在本次发布练习内」）
     from tests.utils.audio import wav_upload
