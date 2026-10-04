@@ -1017,11 +1017,13 @@ def read_next_question(
     # 已做 + 前端传来的全部计划题（含发布全情景题时即用尽）。
     # 不再限制 session_id 为空：旧会话（已作答过的轮）同样换题，
     # ScenarioQuestionPublic 透传考试字段（题型/级别/话题卡/准备时间）。
-    if classroom.assigned_items:
-        # 情景口径优先用**旧会话绑定的练习**——老师重新发布另一主题后，旧
-        # 会话换题不漂移到新主题；绑定情景缺失/停用则明确禁止换题；绑定
-        # 练习缺失（历史数据）才回退课堂当前指派
+    # 入口与排除集均以**旧会话绑定的练习**为准——老师清除指派后旧会话仍
+    # 可换题；重新指派其他题也不会把旧会话的候选错误排除。情景口径同样
+    # 优先绑定练习：重发另一主题后旧会话不漂移；绑定情景缺失/停用则明确
+    # 禁止换题；仅绑定练习本身缺失（历史数据）才回退当前指派。
+    if practice_session.assignment_id is not None or classroom.assigned_items:
         scenario = None
+        assigned_question_ids: set[uuid.UUID] = set()
         bound_exercise = (
             session.get(ClassroomExercise, practice_session.assignment_id)
             if practice_session.assignment_id is not None
@@ -1030,16 +1032,26 @@ def read_next_question(
         if bound_exercise is not None:
             for item in bound_exercise.snapshot_items:
                 if item.get("type") == AttemptItemType.QUESTION:
-                    scenario = session.get(
-                        Scenario, uuid.UUID(str(item.get("scenario_id")))
-                    )
-                    break
+                    assigned_question_ids.add(uuid.UUID(str(item.get("id"))))
+                    if scenario is None:
+                        scenario = session.get(
+                            Scenario, uuid.UUID(str(item.get("scenario_id")))
+                        )
         # 绑定练习存在：情景缺失（被删）或停用都明确禁止换题——不漂移到
         # 重发后的新主题
         if scenario is None or not scenario.is_active:
-            return NextQuestion(question=None, exhausted=True)
-        item_objects = exercise_service.resolve_assigned_items(session, classroom)
-        item_questions = item_objects[2] if item_objects else []
+            if bound_exercise is not None:
+                return NextQuestion(question=None, exhausted=True)
+            item_objects = exercise_service.resolve_assigned_items(session, classroom)
+            if item_objects is not None:
+                _, _, item_questions = item_objects
+                for q in item_questions:
+                    assigned_question_ids.add(q.id)
+                    if scenario is None:
+                        scenario = session.get(Scenario, q.scenario_id)
+                if scenario is None or not scenario.is_active:
+                    return NextQuestion(question=None, exhausted=True)
+        assert scenario is not None  # 上方两个分支已保证非空
 
         done_ids = {
             attempt.item_id
@@ -1057,7 +1069,7 @@ def read_next_question(
             limit=999,
             fill_with_done=False,
         )
-        excluded = exclude_id_set | done_ids | {q.id for q in item_questions}
+        excluded = exclude_id_set | done_ids | assigned_question_ids
         candidates = [q for q in questions if q.id not in excluded]
         if candidates:
             chosen = candidates[0]

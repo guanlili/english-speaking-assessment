@@ -489,18 +489,21 @@ def test_next_question_carries_exam_fields(
         headers=superuser_token_headers,
     )
 
-    # 换一题拿到 q3（计划外）→ 老师随后**删除** q3 → 提交仍应成功
-    q3 = _create_question(
-        client,
-        superuser_token_headers,
-        scenario_id,
-        text="Part 2 spare topic.",
-        suggested_seconds=120,
-        exam_kind="ielts_p2",
-        exam_level="KET",
-        cue_card_bullets=["要点三"],
-        prep_seconds=30,
+    # 换一题拿到 q3（计划外）→ 老师随后**修改并删除** q3 → 提交仍应成功，
+    # 且评分/结果快照保持为取题时的内容
+    q3_created = client.post(
+        f"/api/v1/admin/scenarios/{scenario_id}/questions",
+        json={
+            "text": "Part 2 spare topic.",
+            "suggested_seconds": 120,
+            "exam_kind": "ielts_p2",
+            "exam_level": "KET",
+            "cue_card_bullets": ["要点三"],
+            "prep_seconds": 30,
+        },
+        headers=superuser_token_headers,
     )
+    assert q3_created.status_code == 200, q3_created.text
     nxt = _resp_json(
         client.get(
             f"/api/v1/classes/{code}/next-question",
@@ -513,6 +516,20 @@ def test_next_question_carries_exam_fields(
     )
     assert nxt["question"] is not None
     q3 = nxt["question"]
+    assert q3["cue_card_bullets"] == ["要点三"]
+
+    # 老师先改题干与话题卡、再删除题库题
+    client.put(
+        f"/api/v1/admin/questions/{q3['id']}",
+        json={
+            "text": "Part 2 spare topic (rewritten).",
+            "cue_card_bullets": ["被改掉的要点"],
+        },
+        headers=superuser_token_headers,
+    )
+    client.delete(
+        f"/api/v1/admin/questions/{q3['id']}", headers=superuser_token_headers
+    )
 
     # 提交 q3 录音：会话换题授权放行（不再 422「题目不在本次发布练习内」）
     from tests.utils.audio import wav_upload
@@ -633,4 +650,95 @@ def test_old_session_exchange_stays_on_bound_topic(
     assert nxt["question"] is not None
     # 仍是主题 A 的题（不漂移到重发后的主题 B）
     assert nxt["question"]["text"] == "Topic A question two."
+    _cleanup_classroom(db, classroom["id"])
+
+
+def test_old_session_exchange_ignores_current_assignment_changes(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """旧会话换题的入口与排除集都来自其绑定练习：清除指派后仍可换题；
+    重发同主题其他题也不会把旧会话候选错误排除。"""
+    from tests.utils.credential import make_student
+
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 5}, headers=superuser_token_headers
+        )
+    )
+    code = classroom["code"]
+    student = make_student(db, client, code, "指派变化学生")
+
+    # 主题 A：q1 进快照，q2 仅在题库（旧会话的候选）
+    topic_a = f"主题A-{uuid.uuid4().hex[:6]}"
+    scenario_a = _resp_json(
+        client.post(
+            "/api/v1/admin/scenarios",
+            json={"topic": topic_a},
+            headers=superuser_token_headers,
+        )
+    )
+    q1 = _create_question(
+        client,
+        superuser_token_headers,
+        scenario_a["id"],
+        text="Topic A question one.",
+        exam_kind="ielts_p1",
+        exam_level="PET",
+    )
+    q2 = _create_question(
+        client,
+        superuser_token_headers,
+        scenario_a["id"],
+        text="Topic A question two.",
+        exam_kind="ielts_p1",
+        exam_level="PET",
+    )
+    client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": [{"type": "question", "id": q1["id"]}]},
+        headers=superuser_token_headers,
+    )
+    plan = _resp_json(
+        client.get(f"/api/v1/classes/{code}/today", headers=student["headers"])
+    )
+
+    # 场景 b：老师重新指派**同主题的另一题 q2**——旧会话候选不应把 q2 排除
+    client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": [{"type": "question", "id": q2["id"]}]},
+        headers=superuser_token_headers,
+    )
+    nxt = _resp_json(
+        client.get(
+            f"/api/v1/classes/{code}/next-question",
+            params={
+                "session_id": plan["session_id"],
+                "exclude_ids": [q1["id"]],
+            },
+            headers=student["headers"],
+        )
+    )
+    assert nxt["question"] is not None
+    # 排除集来自绑定练习（q1），不受当前指派（q2）影响：仍能返回 q2
+    assert nxt["question"]["id"] == q2["id"]
+
+    # 场景 a：老师**清除指派**——旧会话仍按绑定练习换题，不因无指派而失效
+    client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": []},
+        headers=superuser_token_headers,
+    )
+    nxt = _resp_json(
+        client.get(
+            f"/api/v1/classes/{code}/next-question",
+            params={
+                "session_id": plan["session_id"],
+                "exclude_ids": [q1["id"]],
+            },
+            headers=student["headers"],
+        )
+    )
+    assert nxt["question"] is not None
+    # 排除已作答的 q1 后返回另一题 q2
+    assert nxt["question"]["id"] == q2["id"]
     _cleanup_classroom(db, classroom["id"])
