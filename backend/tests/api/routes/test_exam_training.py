@@ -887,3 +887,61 @@ def test_frame_recommendation_and_favorites(
     )
     assert resp.status_code == 422
     _cleanup_classroom(db, classroom["id"])
+
+
+def test_sentence_frames_batch_import(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """批量导入：无效行跳过并报告；同 (级别,用途,英文) 去重；有题型缺级别 422 不需要——batch 逐行校验。"""
+    items = [
+        {
+            "level": "KET",
+            "purpose": "opinion",
+            "text_en": "I think ...",
+            "text_zh": "我觉得……",
+        },
+        {
+            "level": "KET",
+            "purpose": "opinion",
+            "text_en": "I think ...",
+            "text_zh": "我觉得……",
+        },  # 重复
+        {
+            "level": "BAD",
+            "purpose": "opinion",
+            "text_en": "bad level",
+            "text_zh": "x",
+        },  # 无效
+        {
+            "level": "PET",
+            "purpose": "reason",
+            "text_en": "The reason is ...",
+            "text_zh": "原因是……",
+        },
+    ]
+    resp = client.post(
+        "/api/v1/admin/sentence-frames/batch",
+        json=items,
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["created"] == 2
+    assert body["skipped_duplicates"] == 1
+    assert len(body["invalid"]) == 1 and body["invalid"][0]["index"] == 2
+
+    # 再导一批（不同句型）→ created 累加；重复跨请求也跳过
+    resp = client.post(
+        "/api/v1/admin/sentence-frames/batch",
+        json=items[:1],
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["created"] == 0
+
+    stats = client.get(
+        "/api/v1/admin/sentence-frames", headers=superuser_token_headers
+    ).json()
+    # 种子句型存在：只断言本测试创建的句型都在（不依赖库总量）
+    created_texts = {"I think ...", "The reason is ..."}
+    assert created_texts <= {frame["text_en"] for frame in stats}

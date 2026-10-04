@@ -1477,6 +1477,82 @@ def update_sentence_frame(
     return frame
 
 
+class SentenceFrameBatchItem(SQLModel):
+    """批量导入的单条：校验放处理器逐条做，避免一条非法整批 422。"""
+
+    level: str = ""
+    purpose: str = ""
+    exam_kind: str | None = ""
+    text_en: str = ""
+    text_zh: str = ""
+
+
+class SentenceFrameBatchIssue(SQLModel):
+    index: int
+    reason: str
+
+
+class SentenceFrameBatchResult(SQLModel):
+    created: int
+    skipped_duplicates: int
+    invalid: list[SentenceFrameBatchIssue]
+
+
+@router.post("/sentence-frames/batch", response_model=SentenceFrameBatchResult)
+def create_sentence_frames_batch(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    items: list[SentenceFrameBatchItem],
+) -> Any:
+    """批量创建句型：无效行跳过并报告；同 (级别, 用途, 英文) 重复跳过。"""
+    created = 0
+    skipped = 0
+    invalid: list[SentenceFrameBatchIssue] = []
+    # 跨请求去重：数据库已有的 (级别, 用途, 英文) 视为重复跳过
+    seen: set[tuple[str, str, str]] = {
+        (frame.level, frame.purpose, frame.text_en.casefold())
+        for frame in session.exec(select(SentenceFrame)).all()
+    }
+    for index, item in enumerate(items):
+        text_en = item.text_en.strip()
+        text_zh = item.text_zh.strip()
+        level = item.level.strip()
+        purpose = item.purpose.strip()
+        exam_kind = (item.exam_kind or "").strip() or None
+        if not text_en or not text_zh or not level or not purpose:
+            invalid.append(
+                SentenceFrameBatchIssue(
+                    index=index, reason="缺少必填字段（level/purpose/text_en/text_zh）"
+                )
+            )
+            continue
+        try:
+            _validate_frame_fields(level, purpose, exam_kind)
+        except HTTPException as exc:
+            invalid.append(SentenceFrameBatchIssue(index=index, reason=str(exc.detail)))
+            continue
+        key = (level, purpose, text_en.casefold())
+        if key in seen:
+            skipped += 1
+            continue
+        seen.add(key)
+        session.add(
+            SentenceFrame(
+                level=level,
+                purpose=purpose,
+                exam_kind=exam_kind,
+                text_en=text_en,
+                text_zh=text_zh,
+            )
+        )
+        created += 1
+    if created:
+        session.commit()
+    return SentenceFrameBatchResult(
+        created=created, skipped_duplicates=skipped, invalid=invalid
+    )
+
+
 @router.delete("/sentence-frames/{frame_id}")
 def delete_sentence_frame(
     session: SessionDep, _admin: TeacherUserDep, frame_id: uuid.UUID

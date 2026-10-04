@@ -1116,10 +1116,16 @@ def read_next_question(
             snapshot = exercise_service.build_snapshot_item(
                 session, AttemptItemType.QUESTION, chosen.id
             )
-            exchanged = list(practice_session.exchanged_items or [])
+            # 行级锁后追加：并发连点换一题不会互相覆盖丢授权
+            locked_session = session.exec(
+                select(PracticeSession)
+                .where(PracticeSession.id == practice_session.id)
+                .with_for_update()
+            ).one()
+            exchanged = list(locked_session.exchanged_items or [])
             if not any(item.get("id") == snapshot["id"] for item in exchanged):
-                practice_session.exchanged_items = exchanged + [snapshot]
-                session.add(practice_session)
+                locked_session.exchanged_items = exchanged + [snapshot]
+                session.add(locked_session)
                 session.commit()
             return NextQuestion(
                 question=ScenarioQuestionPublic.model_validate(chosen),

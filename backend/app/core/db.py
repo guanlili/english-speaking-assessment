@@ -267,6 +267,7 @@ def _seed_practice_content(session: Session) -> None:
     _seed_school_life_questions(session)
     _seed_wordlist(session)
     _seed_vocabulary_demo(session)
+    _seed_sentence_frames(session)
 
 
 # 自写演示词条（词汇学习模块 P0）：与教材无关，学校 CSV 可在管理端覆盖。
@@ -499,6 +500,61 @@ def _seed_school_life_questions(session: Session) -> None:
                 text=text,
                 translation=translation,
                 suggested_seconds=seconds,
+            )
+        )
+    session.commit()
+
+
+# 内置示例句型（分级题型训练 PR B）：仅句型表为空时种入，学校可自行增删。
+# 覆盖常见表达用途与 KET/PET/IELTS 级别；KET/PET 为课堂版（语言更简单）。
+DEMO_SENTENCE_FRAMES: list[tuple[str, str, str | None, str, str]] = [
+    # (level, purpose, exam_kind, text_en, text_zh)
+    ("KET", "opinion", None, "I think ... is really fun.", "我觉得……很有意思。"),
+    ("KET", "describe", None, "My ... is small and cute.", "我的……很小很可爱。"),
+    ("KET", "past", None, "Last weekend, I went to ...", "上周末我去了……"),
+    (
+        "PET",
+        "opinion",
+        None,
+        "In my opinion, ... is worth trying.",
+        "在我看来，……值得一试。",
+    ),
+    ("PET", "reason", None, "The main reason is that ...", "主要原因是……"),
+    ("PET", "past", "ielts_p1", "I remember when I first ...", "我记得我第一次……"),
+    (
+        "ACADEMIC",
+        "compare",
+        "ielts_p3",
+        "Compared with ..., ... is more ...",
+        "与……相比，……更……",
+    ),
+    ("ACADEMIC", "example", "ielts_p2", "Take ... as an example, ...", "以……为例，……"),
+    ("CET4", "opinion", None, "From my perspective, ...", "从我的角度来看，……"),
+    ("CET4", "future", "toefl_lnr", "In the future, I plan to ...", "将来我打算……"),
+    ("IELTS_TOEFL", "speculate", "ielts_p3", "It is possible that ...", "有可能……"),
+    (
+        "IELTS_TOEFL",
+        "compare",
+        "toefl_lnr",
+        "There is a sharp contrast between ... and ...",
+        "……与……形成鲜明对比。",
+    ),
+]
+
+
+def _seed_sentence_frames(session: Session) -> None:
+    from app.models import SentenceFrame
+
+    if session.exec(select(SentenceFrame).limit(1)).first() is not None:
+        return
+    for level, purpose, exam_kind, text_en, text_zh in DEMO_SENTENCE_FRAMES:
+        session.add(
+            SentenceFrame(
+                level=level,
+                purpose=purpose,
+                exam_kind=exam_kind,
+                text_en=text_en,
+                text_zh=text_zh,
             )
         )
     session.commit()
