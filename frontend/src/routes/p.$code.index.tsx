@@ -980,8 +980,8 @@ function ClassroomPracticePage() {
                     disabled={nextQuestionMutation.isPending}
                   >
                     {t({
-                      zh: "换一题（同主题）",
-                      en: "Switch question (same topic)",
+                      zh: "再来一题（同主题，追加到本轮）",
+                      en: "One more question (same topic)",
                     })}
                   </Button>
                 )}

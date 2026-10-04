@@ -11,6 +11,7 @@ import {
   SpellCheck,
 } from "lucide-react"
 import { VocabularyService } from "@/client"
+import InfoHint from "@/components/Common/InfoHint"
 import StudentShell from "@/components/Practice/StudentShell"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -34,7 +35,7 @@ import { APP_NAME } from "@/config"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
-import { TERMS } from "@/lib/terms"
+import { EXPLAIN_FIRST_TRY, EXPLAIN_MASKED_WORDS, TERMS } from "@/lib/terms"
 
 export const Route = createFileRoute("/vocab/$code/")({
   component: VocabHomePage,
@@ -200,6 +201,7 @@ function VocabHomePage() {
                       zh: `${total} 个词 · 已答 ${answered} · 首答正确 ${correctFirst}`,
                       en: `${total} words · ${answered} answered · ${correctFirst} correct on first try`,
                     })}
+                    <InfoHint label={t(EXPLAIN_FIRST_TRY)} />
                     {accuracy !== null &&
                       ` · ${t({ zh: "首答正确率", en: "first-try accuracy" })} ${accuracy}%`}
                   </CardDescription>
@@ -237,6 +239,9 @@ function VocabHomePage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                {t(EXPLAIN_MASKED_WORDS)}
+              </p>
               <div className="flex items-center gap-3">
                 <div
                   role="progressbar"
