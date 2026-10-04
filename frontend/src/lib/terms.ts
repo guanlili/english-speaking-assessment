@@ -135,3 +135,15 @@ export const FRAME_PURPOSE_LABELS: Record<string, BiString> = {
   past: { zh: "回忆经历", en: "Past experience" },
   future: { zh: "展望计划", en: "Plans ahead" },
 }
+
+/** 「首答正确」口径：按每题第一次作答计，重试不冲高（练习页/成长页触点共用） */
+export const EXPLAIN_FIRST_TRY = {
+  zh: "首答正确按每题第一次作答计算，重试不改变统计。",
+  en: "First-try correct counts each item's first answer; retries don't change the stats.",
+} as const satisfies BiString
+
+/** 词列表「?」遮盖的说明（词汇首页触点共用） */
+export const EXPLAIN_MASKED_WORDS = {
+  zh: "作答后这里会显示单词；先看中文释义，回忆拼写。",
+  en: "Words appear here after you answer. Read the meaning first and recall the spelling.",
+} as const satisfies BiString

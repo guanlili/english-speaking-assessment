@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { MessageSquareQuote, Pencil, Plus, Trash2 } from "lucide-react"
+import { MessageSquareQuote, Pencil, Plus, Trash2, Upload } from "lucide-react"
 import { useState } from "react"
 import { AdminService, ApiError, type SentenceFramePublic } from "@/client"
 import { Badge } from "@/components/ui/badge"
@@ -139,6 +139,52 @@ function SentenceFramesAdmin() {
       showErrorToast(t({ zh: "删除失败", en: "Failed to delete" })),
   })
 
+  // 批量导入：CSV 每行 level,purpose,exam_kind,text_en,text_zh
+  const [batchText, setBatchText] = useState("")
+  const [batchOpen, setBatchOpen] = useState(false)
+  const parseBatchCsv = (text: string) => {
+    const rows: Array<Record<string, string>> = []
+    const lines = text
+      .replace(/^\uFEFF/, "")
+      .split(/\r?\n/)
+      .filter((l) => l.trim())
+    for (const line of lines) {
+      const cells = line.split(",").map((cell) => cell.trim())
+      rows.push({
+        level: cells[0] ?? "",
+        purpose: cells[1] ?? "",
+        exam_kind: cells[2] ?? "",
+        text_en: cells[3] ?? "",
+        text_zh: cells[4] ?? "",
+      })
+    }
+    return rows
+  }
+  const batchMutation = useMutation({
+    mutationFn: () =>
+      AdminService.createSentenceFramesBatch({
+        requestBody: parseBatchCsv(batchText),
+      }),
+    onSuccess: (data) => {
+      showSuccessToast(
+        t({
+          zh: `已导入 ${data.created} 条（重复跳过 ${data.skipped_duplicates}、无效 ${data.invalid.length}）。`,
+          en: `Imported ${data.created} frames (${data.skipped_duplicates} duplicates skipped, ${data.invalid.length} invalid).`,
+        }),
+      )
+      setBatchText("")
+      setBatchOpen(false)
+      invalidate()
+    },
+    onError: (error) =>
+      showErrorToast(
+        error instanceof ApiError
+          ? ((error.body as { detail?: string } | undefined)?.detail ??
+              t({ zh: "导入失败", en: "Import failed" }))
+          : t({ zh: "导入失败", en: "Import failed" }),
+      ),
+  })
+
   const filtered = frames.filter(
     (frame) =>
       (!filterLevel || frame.level === filterLevel) &&
@@ -216,6 +262,15 @@ function SentenceFramesAdmin() {
             </option>
           ))}
         </select>
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          onClick={() => setBatchOpen(true)}
+        >
+          <Upload />
+          {t({ zh: "批量导入", en: "Batch Import" })}
+        </Button>
         <Button className="ml-auto" size="sm" onClick={openCreate}>
           <Plus />
           {t({ zh: "新建句型", en: "New Frame" })}
@@ -469,6 +524,59 @@ function SentenceFramesAdmin() {
             </Button>
             <Button disabled={!formValid} onClick={submitDialog}>
               {t({ zh: "保存", en: "Save" })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 批量导入 */}
+      <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t({ zh: "批量导入句型", en: "Batch import frames" })}
+            </DialogTitle>
+            <DialogDescription>
+              {t({
+                zh: "每行一条：级别,用途,题型,英文句型,中文（用途与题型代码见下表；题型留空=通用）。无效行会跳过并在结果中说明。",
+                en: "One frame per line: level,purpose,task,english,chinese (see codes below; empty task = general). Invalid rows are skipped and reported.",
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            rows={8}
+            value={batchText}
+            onChange={(e) => setBatchText(e.target.value)}
+            placeholder={
+              "KET,opinion,,I think ... is fun.,我觉得……很有意思。\nPET,reason,,The main reason is that ...,主要原因是……"
+            }
+            className="font-mono text-sm"
+          />
+          <div className="flex flex-wrap gap-1 text-[11px] text-muted-foreground">
+            <span>{t({ zh: "级别：", en: "Levels: " })}</span>
+            {VOCAB_LEVEL_ORDER.map((level) => (
+              <span key={level} className="rounded bg-secondary px-1.5 py-0.5">
+                {level}
+              </span>
+            ))}
+            <span className="ml-2">
+              {t({ zh: "用途：", en: "Purposes: " })}
+            </span>
+            {Object.entries(FRAME_PURPOSE_LABELS).map(([value, label]) => (
+              <span key={value} className="rounded bg-secondary px-1.5 py-0.5">
+                {value}={t(label)}
+              </span>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBatchOpen(false)}>
+              {t({ zh: "取消", en: "Cancel" })}
+            </Button>
+            <Button
+              disabled={!batchText.trim() || batchMutation.isPending}
+              onClick={() => batchMutation.mutate()}
+            >
+              {t({ zh: "导入", en: "Import" })}
             </Button>
           </DialogFooter>
         </DialogContent>

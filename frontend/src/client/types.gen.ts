@@ -573,6 +573,28 @@ export type SentenceCreate = {
     exam_level?: (string | null);
 };
 
+export type SentenceFrameBatchIssue = {
+    index: number;
+    reason: string;
+};
+
+/**
+ * 批量导入的单条：校验放处理器逐条做，避免一条非法整批 422。
+ */
+export type SentenceFrameBatchItem = {
+    level?: string;
+    purpose?: string;
+    exam_kind?: (string | null);
+    text_en?: string;
+    text_zh?: string;
+};
+
+export type SentenceFrameBatchResult = {
+    created: number;
+    skipped_duplicates: number;
+    invalid: Array<SentenceFrameBatchIssue>;
+};
+
 export type SentenceFrameCreate = {
     level: string;
     purpose: string;
@@ -1431,6 +1453,12 @@ export type AdminDeleteSentenceFrameData = {
 export type AdminDeleteSentenceFrameResponse = ({
     [key: string]: (string);
 });
+
+export type AdminCreateSentenceFramesBatchData = {
+    requestBody: Array<SentenceFrameBatchItem>;
+};
+
+export type AdminCreateSentenceFramesBatchResponse = (SentenceFrameBatchResult);
 
 export type AttemptsCreateAttemptUploadData = {
     formData: Body_attempts_create_attempt_upload;

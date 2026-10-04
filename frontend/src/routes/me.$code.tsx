@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link, useParams } from "@tanstack/react-router"
 import { BookOpen, Flame, Mic, Sparkles, Star, Trophy } from "lucide-react"
 import { useState } from "react"
@@ -20,7 +20,7 @@ import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import { readSavedExpressions } from "@/lib/favorites"
 import { useI18n } from "@/lib/i18n"
-import { EXPLAIN, TERMS } from "@/lib/terms"
+import { EXPLAIN, FRAME_PURPOSE_LABELS, TERMS } from "@/lib/terms"
 
 export const Route = createFileRoute("/me/$code")({
   component: MyTrailPage,
@@ -42,6 +42,26 @@ function MyTrailPage() {
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
       }),
+    enabled: student !== null,
+  })
+
+  // 句型收藏（PR B）：挂课堂档案，跨设备可见
+  const queryClient = useQueryClient()
+  const removeFavorite = useMutation({
+    mutationFn: (frameId: string) =>
+      ClassesService.removeFrameFavorite({
+        code: code.toUpperCase(),
+        frameId,
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["classroom", code, "frame-favorites"],
+      }),
+  })
+  const frameFavoritesQuery = useQuery({
+    queryKey: ["classroom", code, "frame-favorites", student?.id],
+    queryFn: () =>
+      ClassesService.listMyFrameFavorites({ code: code.toUpperCase() }),
     enabled: student !== null,
   })
 
@@ -161,6 +181,63 @@ function MyTrailPage() {
                   en: "The more expressions you've used, the more naturally they come out in real conversations.",
                 })}
               </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 句型收藏（PR B）：跨设备可见，可取消 */}
+        {frameFavoritesQuery.data && frameFavoritesQuery.data.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-1.5 text-base">
+                <Star className="size-4 text-primary" />{" "}
+                {t({
+                  zh: "我的句型收藏",
+                  en: "My favorite sentence frames",
+                })}
+              </CardTitle>
+              <CardDescription>
+                {t({
+                  zh: "练习中收藏的表达句型，跨设备同步；点星标可取消。",
+                  en: "Frames you favorited during practice, synced across devices. Tap the star to remove.",
+                })}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {frameFavoritesQuery.data.map((frame) => (
+                <div
+                  key={frame.id}
+                  className="flex items-start justify-between gap-2 rounded-lg border px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {frame.text_en}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {frame.text_zh}
+                      {" · "}
+                      {t(
+                        FRAME_PURPOSE_LABELS[frame.purpose] ?? {
+                          zh: frame.purpose,
+                          en: frame.purpose,
+                        },
+                      )}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t({
+                      zh: "取消收藏",
+                      en: "Remove from favorites",
+                    })}
+                    disabled={removeFavorite.isPending}
+                    onClick={() => removeFavorite.mutate(frame.id)}
+                  >
+                    <Star className="size-4 fill-amber-400 text-amber-400" />
+                  </Button>
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}
