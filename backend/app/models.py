@@ -260,6 +260,78 @@ def validate_question_suggested_seconds(
         )
 
 
+# ── 句型推荐与收藏（PR B）──────────────────────────────────────────
+# 可替换句型：按共享五级 + 表达用途分类，供学生答题时套用/替换。
+# exam_kind 可空=通用句型（任何考试式题型均推荐）；收藏挂学生课堂档案
+# （跨设备：同账号任何设备登录后可见同一份收藏）。
+FRAME_PURPOSES = (
+    "opinion",  # 表达观点
+    "reason",  # 给出理由
+    "example",  # 举例说明
+    "compare",  # 比较对比
+    "describe",  # 描述人/物/事
+    "past",  # 回忆经历
+    "future",  # 展望计划
+)
+
+
+class SentenceFrame(SQLModel, table=True):
+    __tablename__ = "sentence_frame"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    # 共享五级（必填）：推荐时按题目实际难度匹配
+    level: str = Field(max_length=16, index=True)
+    # 表达用途（FRAME_PURPOSES 之一）
+    purpose: str = Field(max_length=24, index=True)
+    # 关联考试题型（可空=通用，任何考试式题型均推荐）
+    exam_kind: str | None = Field(default=None, max_length=24)
+    text_en: str = Field(min_length=1, max_length=255)
+    text_zh: str = Field(min_length=1, max_length=255)
+    status: str = Field(default="active", max_length=16, index=True)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class StudentFrameFavorite(SQLModel, table=True):
+    __tablename__ = "student_frame_favorite"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    # 挂学生课堂档案：跨设备（同账号任何设备登录可见同一份收藏）
+    student_id: uuid.UUID = Field(
+        foreign_key="student.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+    frame_id: uuid.UUID = Field(
+        foreign_key="sentence_frame.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    __table_args__ = (
+        UniqueConstraint("student_id", "frame_id", name="uq_student_frame_favorite"),
+    )
+
+
+class SentenceFramePublic(SQLModel):
+    id: uuid.UUID
+    level: str
+    purpose: str
+    exam_kind: str | None = None
+    text_en: str
+    text_zh: str
+    status: str = "active"
+    # 学生视角：是否已收藏（管理端恒 false）
+    favorited: bool = False
+
+
 class RepeatSentence(SQLModel, table=True):
     __tablename__ = "repeat_sentence"
 
@@ -783,6 +855,8 @@ class PlanItem(SQLModel):
     # IELTS Part 2 话题卡要点与准备时间
     cue_card_bullets: list[str] | None = None
     prep_seconds: int | None = None
+    # 可替换句型推荐（按题目实际难度与用途分类；仅考试题注入）
+    frames: list[SentenceFramePublic] | None = None
 
 
 class PlanAttempt(SQLModel):

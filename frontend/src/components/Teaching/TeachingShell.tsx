@@ -86,6 +86,14 @@ const workspaceRoutes: Record<string, WorkspaceContext> = {
       en: "The shared five-level source for speaking and vocabulary.",
     },
   },
+  "/admin/sentenceframes": {
+    title: { zh: "句型库", en: "Sentence Frames" },
+    section: { zh: "平台设置", en: "Platform Settings" },
+    description: {
+      zh: "按级别与表达用途分类的可替换句型。",
+      en: "Replaceable sentence frames by level and purpose.",
+    },
+  },
   "/admin/vocabbooks": {
     title: { zh: "词库管理", en: "Word Books" },
     section: { zh: "平台设置", en: "Platform Settings" },

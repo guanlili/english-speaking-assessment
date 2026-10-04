@@ -25,6 +25,7 @@ from app.api.deps import SessionDep, SuperUserDep, TeacherUserDep
 from app.core.config import settings
 from app.core.storage import content_audio_url, save_content_audio
 from app.models import (
+    EXAM_KIND_QUESTION,
     Attempt,
     AttemptItemType,
     AttemptStatus,
@@ -37,6 +38,8 @@ from app.models import (
     Scenario,
     ScenarioQuestion,
     ScenarioQuestionPublic,
+    SentenceFrame,
+    SentenceFramePublic,
     Unit,
     UnitCreate,
     UnitPublic,
@@ -1361,3 +1364,126 @@ async def upload_standard_audio(_admin: TeacherUserDep, file: UploadFile) -> Any
     # 同步写盘（上限 20MB）放线程池，避免阻塞事件循环
     path = await run_in_threadpool(save_content_audio, bytes(data), suffix)
     return AudioUrlResult(audio_url=content_audio_url(path.name))
+
+
+# ── 句型推荐（PR B）：按级别与表达用途分类的可替换句型 ───────────────
+
+
+class SentenceFrameCreate(SQLModel):
+    level: str = Field(max_length=16)
+    purpose: str = Field(max_length=24)
+    exam_kind: str | None = None
+    text_en: str = Field(min_length=1, max_length=255)
+    text_zh: str = Field(min_length=1, max_length=255)
+    status: str = Field(default="active", max_length=16)
+
+
+class SentenceFrameUpdate(SQLModel):
+    level: str | None = None
+    purpose: str | None = None
+    exam_kind: str | None = None
+    text_en: str | None = Field(default=None, min_length=1, max_length=255)
+    text_zh: str | None = Field(default=None, min_length=1, max_length=255)
+    status: str | None = None
+
+
+def _validate_frame_fields(
+    level: str | None,
+    purpose: str | None,
+    exam_kind: str | None,
+    status: str | None = None,
+) -> None:
+    from app.models import FRAME_PURPOSES, VOCAB_LEVEL_ORDER
+    from app.services.exercise import AttemptItemType  # noqa: F401 占位
+
+    del AttemptItemType
+    if level is not None and level not in VOCAB_LEVEL_ORDER:
+        raise HTTPException(
+            status_code=422, detail="级别无效，可选：" + "/".join(VOCAB_LEVEL_ORDER)
+        )
+    if purpose is not None and purpose not in FRAME_PURPOSES:
+        raise HTTPException(
+            status_code=422, detail="表达用途无效，可选：" + "/".join(FRAME_PURPOSES)
+        )
+    if exam_kind is not None and exam_kind not in EXAM_KIND_QUESTION:
+        raise HTTPException(
+            status_code=422,
+            detail="句型关联题型无效（可空=通用）：" + "/".join(EXAM_KIND_QUESTION),
+        )
+    # 句型同样遵循「有题型必配级别」（与题型训练一致，避免歧义记录）
+    if exam_kind is not None and level is None:
+        raise HTTPException(status_code=422, detail="选择考试题型时需同时标注级别")
+    if status is not None and status not in {"active", "archived"}:
+        raise HTTPException(status_code=422, detail="状态只能是 active/archived")
+
+
+@router.get("/sentence-frames", response_model=list[SentenceFramePublic])
+def list_sentence_frames(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    level: str | None = Query(default=None, description="五级筛选"),
+    purpose: str | None = Query(default=None, description="表达用途筛选"),
+    exam_kind: str | None = Query(default=None, description="题型筛选"),
+) -> Any:
+    stmt = select(SentenceFrame).order_by(
+        col(SentenceFrame.purpose), col(SentenceFrame.text_en)
+    )
+    if level is not None:
+        stmt = stmt.where(SentenceFrame.level == level)  # type: ignore[arg-type]
+    if purpose is not None:
+        stmt = stmt.where(SentenceFrame.purpose == purpose)  # type: ignore[arg-type]
+    if exam_kind is not None:
+        stmt = stmt.where(SentenceFrame.exam_kind == exam_kind)  # type: ignore[arg-type]
+    return session.exec(stmt).all()
+
+
+@router.post("/sentence-frames", response_model=SentenceFramePublic)
+def create_sentence_frame(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    frame_in: SentenceFrameCreate,
+) -> Any:
+    _validate_frame_fields(
+        frame_in.level, frame_in.purpose, frame_in.exam_kind, frame_in.status
+    )
+    frame = SentenceFrame.model_validate(frame_in.model_dump())
+    session.add(frame)
+    session.commit()
+    session.refresh(frame)
+    return frame
+
+
+@router.put("/sentence-frames/{frame_id}", response_model=SentenceFramePublic)
+def update_sentence_frame(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    frame_id: uuid.UUID,
+    frame_in: SentenceFrameUpdate,
+) -> Any:
+    frame = session.get(SentenceFrame, frame_id)
+    if frame is None:
+        raise HTTPException(status_code=404, detail="Sentence frame not found")
+    update = frame_in.model_dump(exclude_unset=True)
+    _validate_frame_fields(
+        update.get("level", frame.level),
+        update.get("purpose", frame.purpose),
+        update.get("exam_kind", frame.exam_kind),
+        update.get("status", frame.status),
+    )
+    frame.sqlmodel_update(update)
+    session.add(frame)
+    session.commit()
+    session.refresh(frame)
+    return frame
+
+
+@router.delete("/sentence-frames/{frame_id}")
+def delete_sentence_frame(
+    session: SessionDep, _admin: TeacherUserDep, frame_id: uuid.UUID
+) -> dict[str, str]:
+    frame = session.get(SentenceFrame, frame_id)
+    if frame is None:
+        raise HTTPException(status_code=404, detail="Sentence frame not found")
+    session.delete(frame)
+    session.commit()
+    return {"message": "deleted"}
