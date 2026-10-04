@@ -450,6 +450,10 @@ export type PlanItem = {
     band?: (string | null);
     replay_limit?: (number | null);
     listen_used?: (number | null);
+    exam_kind?: (string | null);
+    exam_level?: (string | null);
+    cue_card_bullets?: (Array<(string)> | null);
+    prep_seconds?: (number | null);
 };
 
 /**
@@ -464,6 +468,10 @@ export type QuestionBankOut = {
     text: string;
     translation?: (string | null);
     suggested_seconds: number;
+    exam_kind?: (string | null);
+    exam_level?: (string | null);
+    cue_card_bullets?: (Array<(string)> | null);
+    prep_seconds?: (number | null);
 };
 
 /**
@@ -477,6 +485,10 @@ export type QuestionCreate = {
     translation?: (string | null);
     audio_url?: (string | null);
     suggested_seconds?: number;
+    exam_kind?: (string | null);
+    exam_level?: (string | null);
+    cue_card_bullets?: (Array<(string)> | null);
+    prep_seconds?: (number | null);
 };
 
 export type QuestionUpdate = {
@@ -486,6 +498,10 @@ export type QuestionUpdate = {
     audio_url?: (string | null);
     suggested_seconds?: (number | null);
     order_index?: (number | null);
+    exam_kind?: (string | null);
+    exam_level?: (string | null);
+    cue_card_bullets?: (Array<(string)> | null);
+    prep_seconds?: (number | null);
 };
 
 export type RepeatSentence = {
@@ -497,6 +513,8 @@ export type RepeatSentence = {
     audio_url?: (string | null);
     suggested_seconds?: number;
     replay_limit?: number;
+    exam_kind?: (string | null);
+    exam_level?: (string | null);
     created_at?: (string | null);
 };
 
@@ -524,6 +542,10 @@ export type ScenarioQuestionPublic = {
     text: string;
     audio_url?: (string | null);
     suggested_seconds: number;
+    exam_kind?: (string | null);
+    exam_level?: (string | null);
+    cue_card_bullets?: (Array<(string)> | null);
+    prep_seconds?: (number | null);
 };
 
 export type ScenarioUpdate = {
@@ -542,6 +564,8 @@ export type SentenceCreate = {
     audio_url?: (string | null);
     suggested_seconds?: number;
     replay_limit?: number;
+    exam_kind?: (string | null);
+    exam_level?: (string | null);
 };
 
 /**
@@ -555,6 +579,8 @@ export type SentenceUpdate = {
     audio_url?: (string | null);
     suggested_seconds?: (number | null);
     replay_limit?: (number | null);
+    exam_kind?: (string | null);
+    exam_level?: (string | null);
 };
 
 /**
@@ -569,6 +595,8 @@ export type SentenceWithPassage = {
     audio_url?: (string | null);
     suggested_seconds?: number;
     replay_limit?: number;
+    exam_kind?: (string | null);
+    exam_level?: (string | null);
     created_at?: (string | null);
     passage_title?: (string | null);
 };
@@ -1139,6 +1167,17 @@ export type AdminCreateSentenceData = {
 
 export type AdminCreateSentenceResponse = (RepeatSentence);
 
+export type AdminListSentencesFlatData = {
+    /**
+     * 考试题型过滤
+     */
+    examKind?: (string | null);
+    /**
+     * 考试级别过滤
+     */
+    examLevel?: (string | null);
+};
+
 export type AdminListSentencesFlatResponse = (Array<SentenceWithPassage>);
 
 export type AdminCreateSentenceStandaloneData = {
@@ -1212,6 +1251,14 @@ export type AdminListQuestionBankData = {
      * A2/B1/B2
      */
     band?: (string | null);
+    /**
+     * 考试题型过滤
+     */
+    examKind?: (string | null);
+    /**
+     * 考试级别过滤
+     */
+    examLevel?: (string | null);
     /**
      * 题目/中文提示关键词
      */
@@ -1369,7 +1416,7 @@ export type ClassesReadTodayPlanResponse = (TodayPlan);
 
 export type ClassesReadNextQuestionData = {
     code: string;
-    excludeIds?: Array<(string)>;
+    excludeIds?: (Array<(string)> | null);
     sessionId?: (string | null);
 };
 

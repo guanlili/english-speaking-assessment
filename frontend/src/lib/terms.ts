@@ -106,3 +106,21 @@ export const VOCAB_LEVEL_LABELS: Record<VocabLevel, BiString> = {
   CET4: { zh: "四级词汇", en: "CET-4" },
   IELTS_TOEFL: { zh: "雅思&托福词汇", en: "IELTS & TOEFL" },
 }
+
+/** 分级题型训练：考试式题型（与级别两维分别建模） */
+export const EXAM_KIND_LABELS: Record<string, BiString> = {
+  toefl_lnr: { zh: "TOEFL · 听令复述", en: "TOEFL · Listen & Repeat" },
+  interview: { zh: "TOEFL · 情景访谈", en: "TOEFL · Take an Interview" },
+  ielts_p1: { zh: "IELTS · Part 1", en: "IELTS · Part 1" },
+  ielts_p2: { zh: "IELTS · Part 2", en: "IELTS · Part 2" },
+  ielts_p3: { zh: "IELTS · Part 3", en: "IELTS · Part 3" },
+}
+
+/** 题型级别徽标的级别名（复用五级） */
+export const EXAM_LEVEL_LABELS: Record<string, BiString> = VOCAB_LEVEL_LABELS
+
+/** 课堂考试反馈免责声明（触点共用，防口径漂移） */
+export const EXAM_PRACTICE_NOTE = {
+  zh: "这是课堂分级练习反馈，帮助练习考试题型；不是官方考试成绩，也不预测考试得分。",
+  en: "This is classroom practice feedback for exam-style tasks. It is not an official exam score and does not predict exam results.",
+} as const satisfies BiString

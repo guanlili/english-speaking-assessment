@@ -44,6 +44,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
+import {
+  EXAM_KIND_LABELS,
+  EXAM_LEVEL_LABELS,
+  VOCAB_LEVEL_ORDER,
+} from "@/lib/terms"
 
 export const Route = createFileRoute("/_layout/admin/questions")({
   component: QuestionsAdmin,
@@ -207,6 +212,10 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
     text: "",
     translation: "",
     suggested_seconds: 20,
+    exam_kind: "",
+    exam_level: "",
+    cue_card_bullets: "",
+    prep_seconds: "",
   })
   const [toDelete, setToDelete] = useState<QuestionBankOut | null>(null)
 
@@ -216,6 +225,10 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
       text: row.text,
       translation: row.translation ?? "",
       suggested_seconds: row.suggested_seconds,
+      exam_kind: row.exam_kind ?? "",
+      exam_level: row.exam_level ?? "",
+      cue_card_bullets: (row.cue_card_bullets ?? []).join("\n"),
+      prep_seconds: row.prep_seconds ? String(row.prep_seconds) : "",
     })
   }
 
@@ -227,6 +240,20 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
           text: editForm.text.trim(),
           translation: editForm.translation.trim() || null,
           suggested_seconds: editForm.suggested_seconds,
+          exam_kind: editForm.exam_kind || null,
+          exam_level: editForm.exam_level || null,
+          cue_card_bullets:
+            editForm.exam_kind === "ielts_p2" &&
+            editForm.cue_card_bullets.trim()
+              ? editForm.cue_card_bullets
+                  .split("\n")
+                  .map((line) => line.trim())
+                  .filter(Boolean)
+              : null,
+          prep_seconds:
+            editForm.exam_kind === "ielts_p2" && editForm.prep_seconds
+              ? Number(editForm.prep_seconds)
+              : null,
         },
       }),
     onSuccess: () => {
@@ -261,10 +288,17 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
 
   const topics = (scenariosQuery.data ?? []).map((s) => s.topic)
   const rows = bankQuery.data ?? []
+  // 秒数上限按题型：考试题（长回答）≤300；普通题 ≤60
+  const secondsLimit = editForm.exam_kind ? 300 : 60
+  // 分级题型必须标注级别（后端同口径：有题型无级别 → 422）
+  const examLevelMissing = Boolean(editForm.exam_kind) && !editForm.exam_level
   const editValid =
     editForm.text.trim().length > 0 &&
     editForm.suggested_seconds >= 10 &&
-    editForm.suggested_seconds <= 60
+    editForm.suggested_seconds <= secondsLimit &&
+    !examLevelMissing &&
+    (editForm.exam_kind !== "ielts_p2" ||
+      editForm.cue_card_bullets.trim().length > 0)
 
   return (
     <div className="flex flex-col gap-6">
@@ -565,16 +599,21 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="q-seconds">
-                {t({
-                  zh: "建议秒数（10–60）",
-                  en: "Suggested Seconds (10–60)",
-                })}
+                {editForm.exam_kind
+                  ? t({
+                      zh: "作答秒数（10–300，考试题支持长回答）",
+                      en: "Answer Seconds (10–300, exam tasks allow long answers)",
+                    })
+                  : t({
+                      zh: "建议秒数（10–60）",
+                      en: "Suggested Seconds (10–60)",
+                    })}
               </Label>
               <Input
                 id="q-seconds"
                 type="number"
                 min={10}
-                max={60}
+                max={editForm.exam_kind ? 300 : 60}
                 value={editForm.suggested_seconds}
                 onChange={(e) =>
                   setEditForm((f) => ({
@@ -584,6 +623,102 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                 }
               />
             </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="q-exam-kind">
+                  {t({ zh: "考试题型（可选）", en: "Exam task (optional)" })}
+                </Label>
+                <select
+                  id="q-exam-kind"
+                  value={editForm.exam_kind}
+                  onChange={(e) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      exam_kind: e.target.value,
+                      cue_card_bullets:
+                        e.target.value === "ielts_p2" ? f.cue_card_bullets : "",
+                      prep_seconds:
+                        e.target.value === "ielts_p2" ? f.prep_seconds : "",
+                    }))
+                  }
+                  className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+                >
+                  <option value="">
+                    {t({ zh: "普通情景问法", en: "Regular question" })}
+                  </option>
+                  {Object.entries(EXAM_KIND_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {t(label)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="q-exam-level">
+                  {editForm.exam_kind
+                    ? t({ zh: "级别（必选）", en: "Level (required)" })
+                    : t({ zh: "级别（可选）", en: "Level (optional)" })}
+                </Label>
+                <select
+                  id="q-exam-level"
+                  value={editForm.exam_level}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, exam_level: e.target.value }))
+                  }
+                  className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+                >
+                  <option value="">
+                    {t({ zh: "不标注", en: "Unlabeled" })}
+                  </option>
+                  {VOCAB_LEVEL_ORDER.map((level) => (
+                    <option key={level} value={level}>
+                      {t(EXAM_LEVEL_LABELS[level])}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {editForm.exam_kind === "ielts_p2" && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="q-cue-card">
+                  {t({
+                    zh: "话题卡要点（每行一条）",
+                    en: "Cue card points (one per line)",
+                  })}
+                </Label>
+                <Textarea
+                  id="q-cue-card"
+                  rows={3}
+                  value={editForm.cue_card_bullets}
+                  onChange={(e) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      cue_card_bullets: e.target.value,
+                    }))
+                  }
+                  placeholder={t({
+                    zh: "如：它在哪里\n你和谁一起过",
+                    en: "e.g. Where it is\nWho you spend it with",
+                  })}
+                />
+                <Label htmlFor="q-prep" className="mt-1">
+                  {t({
+                    zh: "准备时间秒数（10–180）",
+                    en: "Prep seconds (10–180)",
+                  })}
+                </Label>
+                <Input
+                  id="q-prep"
+                  type="number"
+                  min={10}
+                  max={180}
+                  value={editForm.prep_seconds}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, prep_seconds: e.target.value }))
+                  }
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>

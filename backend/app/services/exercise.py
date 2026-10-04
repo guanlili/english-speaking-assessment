@@ -148,6 +148,9 @@ def build_snapshot_item(
             "audio_url": item.audio_url,
             "suggested_seconds": item.suggested_seconds,
             "replay_limit": item.replay_limit,
+            # 分级题型训练（可空=普通课堂内容；快照不可变，透传题库行）
+            "exam_kind": item.exam_kind,
+            "exam_level": item.exam_level,
         }
     item = session.get(ScenarioQuestion, item_id)
     if item is None:
@@ -161,6 +164,11 @@ def build_snapshot_item(
         "suggested_seconds": item.suggested_seconds,
         "band": item.band,
         "scenario_id": str(item.scenario_id),
+        # 分级题型训练（可空=普通情景问法；Part 2 话题卡要点/准备时间）
+        "exam_kind": item.exam_kind,
+        "exam_level": item.exam_level,
+        "cue_card_bullets": item.cue_card_bullets,
+        "prep_seconds": item.prep_seconds,
     }
 
 

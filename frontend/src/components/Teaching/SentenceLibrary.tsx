@@ -35,7 +35,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
-import { TERMS } from "@/lib/terms"
+import { EXAM_LEVEL_LABELS, TERMS, VOCAB_LEVEL_ORDER } from "@/lib/terms"
 
 const NO_PASSAGE = "__none__"
 
@@ -82,6 +82,7 @@ export function SentenceLibrary() {
     seconds: 12,
     replays: 3,
     passageId: NO_PASSAGE,
+    examLevel: "",
   })
   const openEdit = (s: SentenceWithPassage) => {
     setEditing(s)
@@ -91,6 +92,7 @@ export function SentenceLibrary() {
       seconds: s.suggested_seconds ?? 12,
       replays: s.replay_limit ?? 3,
       passageId: s.passage_id ?? NO_PASSAGE,
+      examLevel: s.exam_level ?? "",
     })
   }
   const updateMutation = useMutation({
@@ -105,6 +107,8 @@ export function SentenceLibrary() {
           replay_limit: editForm.replays,
           passage_id:
             editForm.passageId === NO_PASSAGE ? null : editForm.passageId,
+          exam_kind: editForm.examLevel ? "toefl_lnr" : null,
+          exam_level: editForm.examLevel || null,
         },
       }),
     onSuccess: () => {
@@ -385,6 +389,29 @@ export function SentenceLibrary() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-sentence-exam-level">
+                {t({ zh: "考试级别（可选）", en: "Exam level (optional)" })}
+              </Label>
+              <select
+                id="edit-sentence-exam-level"
+                value={editForm.examLevel}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, examLevel: e.target.value }))
+                }
+                className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+              >
+                <option value="">
+                  {t({ zh: "普通听令复述", en: "Regular listen & repeat" })}
+                </option>
+                {VOCAB_LEVEL_ORDER.map((level) => (
+                  <option key={level} value={level}>
+                    {t(EXAM_LEVEL_LABELS[level])}
+                    {t({ zh: "（课堂版）", en: " (classroom)" })}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)}>
@@ -521,6 +548,8 @@ function NewSentenceCard({
   const [seconds, setSeconds] = useState(12)
   const [replays, setReplays] = useState(3)
   const [passageId, setPassageId] = useState(NO_PASSAGE)
+  // 分级题型训练：选了级别即创建为 TOEFL Listen and Repeat 分级题
+  const [examLevel, setExamLevel] = useState("")
 
   const create = useMutation({
     mutationFn: () =>
@@ -530,6 +559,9 @@ function NewSentenceCard({
           text: text.trim(),
           suggested_seconds: seconds,
           replay_limit: replays,
+          ...(examLevel
+            ? { exam_kind: "toefl_lnr", exam_level: examLevel }
+            : {}),
           ...(passageId === NO_PASSAGE
             ? {}
             : { passage_id: passageId, order_index: 999 }),
@@ -538,6 +570,7 @@ function NewSentenceCard({
     onSuccess: () => {
       showSuccessToast(t({ zh: "复述句已创建", en: "Repeat sentence created" }))
       setText("")
+      setExamLevel("")
       onCreated()
     },
     onError: (err: { body?: { detail?: string } }) =>
@@ -580,7 +613,7 @@ function NewSentenceCard({
             placeholder="I would like to talk about a boring place I visited."
           />
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-2">
             <Label htmlFor="new-sentence-seconds">
               {t({ zh: "作答秒数（3–60）", en: "Answer Seconds (3–60)" })}
@@ -626,6 +659,33 @@ function NewSentenceCard({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="new-sentence-exam-level">
+              {t({ zh: "考试级别（可选）", en: "Exam level (optional)" })}
+            </Label>
+            <select
+              id="new-sentence-exam-level"
+              value={examLevel}
+              onChange={(e) => setExamLevel(e.target.value)}
+              className="h-11 w-full rounded-xl border border-input bg-card px-3 text-base text-foreground"
+            >
+              <option value="">
+                {t({ zh: "普通听令复述", en: "Regular listen & repeat" })}
+              </option>
+              {VOCAB_LEVEL_ORDER.map((level) => (
+                <option key={level} value={level}>
+                  {t(EXAM_LEVEL_LABELS[level])}
+                  {t({ zh: "（课堂版）", en: " (classroom)" })}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] leading-4 text-muted-foreground">
+              {t({
+                zh: "选级别即创建为 TOEFL 听令复述分级题；KET/PET 为课堂版，语言与作答要求更低。",
+                en: "Choosing a level creates a TOEFL Listen & Repeat item; KET/PET are classroom versions with easier language and shorter answers.",
+              })}
+            </p>
           </div>
         </div>
         <Button

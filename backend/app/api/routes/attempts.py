@@ -70,6 +70,14 @@ def _snapshot_attempt_item(
                         item_id
                     ):
                         return item
+            # 换题授权：学生点「换一题」时绑定的**完整快照**（换题时刻内容，
+            # 含考试字段）视同并入本会话题单——老师此后改题干/话题卡或删题，
+            # 评分与学生所见保持一致（不再从实时题库重建）
+            for exchanged in practice_session.exchanged_items or []:
+                if exchanged.get("type") == item_type and str(
+                    exchanged.get("id")
+                ) == str(item_id):
+                    return exchanged
             raise HTTPException(status_code=422, detail="题目不在本次发布练习内")
 
     if item_type == AttemptItemType.PASSAGE:

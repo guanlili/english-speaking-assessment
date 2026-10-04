@@ -45,7 +45,7 @@ import {
   type LessonSelection,
   type LessonTypes,
 } from "@/lib/lesson-readiness"
-import { TERMS } from "@/lib/terms"
+import { EXAM_KIND_LABELS, EXAM_LEVEL_LABELS, TERMS } from "@/lib/terms"
 
 const questionTypes = [
   {
@@ -626,6 +626,28 @@ function ComposerForm({
                           en: `${s.suggested_seconds}s · ${(s.replay_limit ?? 3) === 0 ? "unlimited replays" : `${s.replay_limit ?? 3} replays`}${s.passage_title ? ` · Passage: ${s.passage_title}` : " · Standalone"}`,
                         })}
                       </span>
+                      {s.exam_kind && (
+                        <span className="mt-1 flex flex-wrap gap-1">
+                          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                            {t(
+                              EXAM_KIND_LABELS[s.exam_kind] ?? {
+                                zh: s.exam_kind,
+                                en: s.exam_kind,
+                              },
+                            )}
+                          </span>
+                          {s.exam_level && (
+                            <span className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                              {t(
+                                EXAM_LEVEL_LABELS[s.exam_level] ?? {
+                                  zh: s.exam_level,
+                                  en: s.exam_level,
+                                },
+                              )}
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </span>
                   </label>
                 ))}
@@ -694,6 +716,28 @@ function ComposerForm({
                           en: `${q.suggested_seconds}s`,
                         })}
                       </span>
+                      {q.exam_kind && (
+                        <span className="ml-1.5 inline-flex gap-1 align-middle">
+                          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                            {t(
+                              EXAM_KIND_LABELS[q.exam_kind] ?? {
+                                zh: q.exam_kind,
+                                en: q.exam_kind,
+                              },
+                            )}
+                          </span>
+                          {q.exam_level && (
+                            <span className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                              {t(
+                                EXAM_LEVEL_LABELS[q.exam_level] ?? {
+                                  zh: q.exam_level,
+                                  en: q.exam_level,
+                                },
+                              )}
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </p>
                   ))}
                 </div>
