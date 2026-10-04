@@ -35,6 +35,7 @@ import { Route as LayoutAdminClassroomsRouteImport } from './routes/_layout/admi
 import { Route as LayoutAdminPassagesRouteImport } from './routes/_layout/admin.passages'
 import { Route as LayoutAdminQuestionsRouteImport } from './routes/_layout/admin.questions'
 import { Route as LayoutAdminScenariosRouteImport } from './routes/_layout/admin.scenarios'
+import { Route as LayoutAdminSentenceframesRouteImport } from './routes/_layout/admin.sentenceframes'
 import { Route as LayoutAdminUnitsRouteImport } from './routes/_layout/admin.units'
 import { Route as LayoutAdminVocabbooksRouteImport } from './routes/_layout/admin.vocabbooks'
 import { Route as LayoutAdminVocablevelsRouteImport } from './routes/_layout/admin.vocablevels'
@@ -176,6 +177,12 @@ const LayoutAdminScenariosRoute = LayoutAdminScenariosRouteImport.update({
   path: '/scenarios',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
+const LayoutAdminSentenceframesRoute =
+  LayoutAdminSentenceframesRouteImport.update({
+    id: '/sentenceframes',
+    path: '/sentenceframes',
+    getParentRoute: () => LayoutAdminRoute,
+  } as any)
 const LayoutAdminUnitsRoute = LayoutAdminUnitsRouteImport.update({
   id: '/units',
   path: '/units',
@@ -257,6 +264,7 @@ export interface FileRoutesByFullPath {
   '/admin/passages': typeof LayoutAdminPassagesRoute
   '/admin/questions': typeof LayoutAdminQuestionsRoute
   '/admin/scenarios': typeof LayoutAdminScenariosRoute
+  '/admin/sentenceframes': typeof LayoutAdminSentenceframesRoute
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
@@ -291,6 +299,7 @@ export interface FileRoutesByTo {
   '/admin/passages': typeof LayoutAdminPassagesRoute
   '/admin/questions': typeof LayoutAdminQuestionsRoute
   '/admin/scenarios': typeof LayoutAdminScenariosRoute
+  '/admin/sentenceframes': typeof LayoutAdminSentenceframesRoute
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
@@ -331,6 +340,7 @@ export interface FileRoutesById {
   '/_layout/admin/passages': typeof LayoutAdminPassagesRoute
   '/_layout/admin/questions': typeof LayoutAdminQuestionsRoute
   '/_layout/admin/scenarios': typeof LayoutAdminScenariosRoute
+  '/_layout/admin/sentenceframes': typeof LayoutAdminSentenceframesRoute
   '/_layout/admin/units': typeof LayoutAdminUnitsRoute
   '/_layout/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/_layout/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
@@ -371,6 +381,7 @@ export interface FileRouteTypes {
     | '/admin/passages'
     | '/admin/questions'
     | '/admin/scenarios'
+    | '/admin/sentenceframes'
     | '/admin/units'
     | '/admin/vocabbooks'
     | '/admin/vocablevels'
@@ -405,6 +416,7 @@ export interface FileRouteTypes {
     | '/admin/passages'
     | '/admin/questions'
     | '/admin/scenarios'
+    | '/admin/sentenceframes'
     | '/admin/units'
     | '/admin/vocabbooks'
     | '/admin/vocablevels'
@@ -444,6 +456,7 @@ export interface FileRouteTypes {
     | '/_layout/admin/passages'
     | '/_layout/admin/questions'
     | '/_layout/admin/scenarios'
+    | '/_layout/admin/sentenceframes'
     | '/_layout/admin/units'
     | '/_layout/admin/vocabbooks'
     | '/_layout/admin/vocablevels'
@@ -661,6 +674,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminScenariosRouteImport
       parentRoute: typeof LayoutAdminRoute
     }
+    '/_layout/admin/sentenceframes': {
+      id: '/_layout/admin/sentenceframes'
+      path: '/sentenceframes'
+      fullPath: '/admin/sentenceframes'
+      preLoaderRoute: typeof LayoutAdminSentenceframesRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
     '/_layout/admin/units': {
       id: '/_layout/admin/units'
       path: '/units'
@@ -746,6 +766,7 @@ interface LayoutAdminRouteChildren {
   LayoutAdminPassagesRoute: typeof LayoutAdminPassagesRoute
   LayoutAdminQuestionsRoute: typeof LayoutAdminQuestionsRoute
   LayoutAdminScenariosRoute: typeof LayoutAdminScenariosRoute
+  LayoutAdminSentenceframesRoute: typeof LayoutAdminSentenceframesRoute
   LayoutAdminUnitsRoute: typeof LayoutAdminUnitsRoute
   LayoutAdminVocabbooksRoute: typeof LayoutAdminVocabbooksRoute
   LayoutAdminVocablevelsRoute: typeof LayoutAdminVocablevelsRoute
@@ -758,6 +779,7 @@ const LayoutAdminRouteChildren: LayoutAdminRouteChildren = {
   LayoutAdminPassagesRoute: LayoutAdminPassagesRoute,
   LayoutAdminQuestionsRoute: LayoutAdminQuestionsRoute,
   LayoutAdminScenariosRoute: LayoutAdminScenariosRoute,
+  LayoutAdminSentenceframesRoute: LayoutAdminSentenceframesRoute,
   LayoutAdminUnitsRoute: LayoutAdminUnitsRoute,
   LayoutAdminVocabbooksRoute: LayoutAdminVocabbooksRoute,
   LayoutAdminVocablevelsRoute: LayoutAdminVocablevelsRoute,

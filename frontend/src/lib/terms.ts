@@ -124,3 +124,14 @@ export const EXAM_PRACTICE_NOTE = {
   zh: "这是课堂分级练习反馈，帮助练习考试题型；不是官方考试成绩，也不预测考试得分。",
   en: "This is classroom practice feedback for exam-style tasks. It is not an official exam score and does not predict exam results.",
 } as const satisfies BiString
+
+/** 表达用途（句型推荐分类） */
+export const FRAME_PURPOSE_LABELS: Record<string, BiString> = {
+  opinion: { zh: "表达观点", en: "Opinion" },
+  reason: { zh: "给出理由", en: "Reason" },
+  example: { zh: "举例说明", en: "Example" },
+  compare: { zh: "比较对比", en: "Compare" },
+  describe: { zh: "描述人/物/事", en: "Describe" },
+  past: { zh: "回忆经历", en: "Past experience" },
+  future: { zh: "展望计划", en: "Plans ahead" },
+}

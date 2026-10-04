@@ -292,6 +292,10 @@ export type ExploreStarted = {
     unit_title: string;
 };
 
+export type FrameFavoriteRequest = {
+    frame_id: string;
+};
+
 export type GamificationInfo = {
     xp?: number;
     streak_days?: number;
@@ -454,6 +458,7 @@ export type PlanItem = {
     exam_level?: (string | null);
     cue_card_bullets?: (Array<(string)> | null);
     prep_seconds?: (number | null);
+    frames?: (Array<SentenceFramePublic> | null);
 };
 
 /**
@@ -566,6 +571,35 @@ export type SentenceCreate = {
     replay_limit?: number;
     exam_kind?: (string | null);
     exam_level?: (string | null);
+};
+
+export type SentenceFrameCreate = {
+    level: string;
+    purpose: string;
+    exam_kind?: (string | null);
+    text_en: string;
+    text_zh: string;
+    status?: string;
+};
+
+export type SentenceFramePublic = {
+    id: string;
+    level: string;
+    purpose: string;
+    exam_kind?: (string | null);
+    text_en: string;
+    text_zh: string;
+    status?: string;
+    favorited?: boolean;
+};
+
+export type SentenceFrameUpdate = {
+    level?: (string | null);
+    purpose?: (string | null);
+    exam_kind?: (string | null);
+    text_en?: (string | null);
+    text_zh?: (string | null);
+    status?: (string | null);
 };
 
 /**
@@ -1360,6 +1394,44 @@ export type AdminUploadStandardAudioData = {
 
 export type AdminUploadStandardAudioResponse = (AudioUrlResult);
 
+export type AdminListSentenceFramesData = {
+    /**
+     * 题型筛选
+     */
+    examKind?: (string | null);
+    /**
+     * 五级筛选
+     */
+    level?: (string | null);
+    /**
+     * 表达用途筛选
+     */
+    purpose?: (string | null);
+};
+
+export type AdminListSentenceFramesResponse = (Array<SentenceFramePublic>);
+
+export type AdminCreateSentenceFrameData = {
+    requestBody: SentenceFrameCreate;
+};
+
+export type AdminCreateSentenceFrameResponse = (SentenceFramePublic);
+
+export type AdminUpdateSentenceFrameData = {
+    frameId: string;
+    requestBody: SentenceFrameUpdate;
+};
+
+export type AdminUpdateSentenceFrameResponse = (SentenceFramePublic);
+
+export type AdminDeleteSentenceFrameData = {
+    frameId: string;
+};
+
+export type AdminDeleteSentenceFrameResponse = ({
+    [key: string]: (string);
+});
+
 export type AttemptsCreateAttemptUploadData = {
     formData: Body_attempts_create_attempt_upload;
 };
@@ -1488,6 +1560,26 @@ export type ClassesStartExploreData = {
 };
 
 export type ClassesStartExploreResponse = (ExploreStarted);
+
+export type ClassesListMyFrameFavoritesData = {
+    code: string;
+};
+
+export type ClassesListMyFrameFavoritesResponse = (Array<SentenceFramePublic>);
+
+export type ClassesAddFrameFavoriteData = {
+    code: string;
+    requestBody: FrameFavoriteRequest;
+};
+
+export type ClassesAddFrameFavoriteResponse = (Array<SentenceFramePublic>);
+
+export type ClassesRemoveFrameFavoriteData = {
+    code: string;
+    frameId: string;
+};
+
+export type ClassesRemoveFrameFavoriteResponse = (Array<SentenceFramePublic>);
 
 export type LoginReadLoginOptionsResponse = (LoginOptions);
 

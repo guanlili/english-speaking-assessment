@@ -5,6 +5,7 @@ import {
   GraduationCap,
   Layers,
   Library,
+  MessageSquareQuote,
   School,
   Users,
   UsersRound,
@@ -67,6 +68,11 @@ const adminOnlyItems: Item[] = [
     icon: BookA,
     title: { zh: "词库管理", en: "Word Books" },
     path: "/admin/vocabbooks",
+  },
+  {
+    icon: MessageSquareQuote,
+    title: { zh: "句型库", en: "Sentence Frames" },
+    path: "/admin/sentenceframes",
   },
   {
     icon: UsersRound,

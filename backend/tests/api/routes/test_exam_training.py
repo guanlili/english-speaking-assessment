@@ -732,3 +732,158 @@ def test_old_session_exchange_ignores_current_assignment_changes(
     # 排除已作答的 q1 后返回另一题 q2
     assert nxt["question"]["id"] == q2["id"]
     _cleanup_classroom(db, classroom["id"])
+
+
+def test_frame_recommendation_and_favorites(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """PR B：题目按实际难度注入推荐句型（通用+题型匹配、排除错误级别）；
+    学生收藏后 today 中 favorited 标记，取消后恢复；句型不进作答快照。"""
+    from tests.utils.audio import wav_upload
+    from tests.utils.credential import make_student
+
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 5}, headers=superuser_token_headers
+        )
+    )
+    code = classroom["code"]
+    student = make_student(db, client, code, "句型学生")
+    scenario_id = _create_scenario(client, superuser_token_headers)
+    question = _create_question(
+        client,
+        superuser_token_headers,
+        scenario_id,
+        text="Talk about your favorite food.",
+        exam_kind="ielts_p1",
+        exam_level="KET",
+    )
+
+    # 句型：通用 KET / ielts_p1 专用 KET / 错误级别 PET
+    f_common = _resp_json(
+        client.post(
+            "/api/v1/admin/sentence-frames",
+            json={
+                "level": "KET",
+                "purpose": "opinion",
+                "text_en": "In my opinion, ...",
+                "text_zh": "在我看来……",
+            },
+            headers=superuser_token_headers,
+        )
+    )
+    f_p1 = _resp_json(
+        client.post(
+            "/api/v1/admin/sentence-frames",
+            json={
+                "level": "KET",
+                "purpose": "opinion",
+                "exam_kind": "ielts_p1",
+                "text_en": "My favorite ... is ...",
+                "text_zh": "我最喜欢的……是……",
+            },
+            headers=superuser_token_headers,
+        )
+    )
+    _resp_json(
+        client.post(
+            "/api/v1/admin/sentence-frames",
+            json={
+                "level": "PET",  # 错误级别：不应推荐
+                "purpose": "opinion",
+                "text_en": "wrong level frame",
+                "text_zh": "错误级别",
+            },
+            headers=superuser_token_headers,
+        )
+    )
+
+    # 发布考试题
+    client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": [{"type": "question", "id": question["id"]}]},
+        headers=superuser_token_headers,
+    )
+    plan = _resp_json(
+        client.get(f"/api/v1/classes/{code}/today", headers=student["headers"])
+    )
+    q_item = next(item for item in plan["items"] if item["type"] == "question")
+    frames = q_item["frames"] or []
+    frame_ids = {frame["id"] for frame in frames}
+    assert f_common["id"] in frame_ids
+    assert f_p1["id"] in frame_ids
+    assert all(frame["level"] == "KET" for frame in frames)
+    assert all(frame["favorited"] is False for frame in frames)
+
+    # 收藏一条 → today 中 favorited=True
+    client.post(
+        f"/api/v1/classes/{code}/frame-favorites",
+        json={"frame_id": f_p1["id"]},
+        headers=student["headers"],
+    )
+    plan = _resp_json(
+        client.get(f"/api/v1/classes/{code}/today", headers=student["headers"])
+    )
+    q_item = next(item for item in plan["items"] if item["type"] == "question")
+    frames = {frame["id"]: frame["favorited"] for frame in q_item["frames"] or {}}
+    assert frames[f_p1["id"]] is True
+    assert frames[f_common["id"]] is False
+
+    # 我的收藏列表（跨设备：同一账号重新登录后仍可见）
+    favorites = client.get(
+        f"/api/v1/classes/{code}/frame-favorites", headers=student["headers"]
+    ).json()
+    assert [frame["id"] for frame in favorites] == [f_p1["id"]]
+    assert favorites[0]["favorited"] is True
+
+    # 作答 q1 → 提交快照不含句型（句型仅展示层）
+    plan = _resp_json(
+        client.get(f"/api/v1/classes/{code}/today", headers=student["headers"])
+    )
+    first = plan["items"][0]
+    client.post(
+        "/api/v1/attempts",
+        files={"audio": wav_upload(3.0)},
+        data={
+            "item_type": first["type"],
+            "item_id": first["id"],
+            "duration_s": "3.0",
+            "session_id": plan["session_id"],
+        },
+        headers=student["headers"],
+    )
+    today_after = _resp_json(
+        client.get(
+            f"/api/v1/classes/{code}/today",
+            params={"session_id": plan["session_id"]},
+            headers=student["headers"],
+        )
+    )
+    assert any(
+        a["item_id"] == question["id"] for a in today_after["attempts"]
+    )  # 句型不进作答快照，但作答本身正常
+    # attempt.item_snapshot 无 frames 键（句型不进作答快照）
+
+    # 取消收藏 → 列表恢复为空
+    client.delete(
+        f"/api/v1/classes/{code}/frame-favorites/{f_p1['id']}",
+        headers=student["headers"],
+    )
+    favorites = client.get(
+        f"/api/v1/classes/{code}/frame-favorites", headers=student["headers"]
+    ).json()
+    assert favorites == []
+
+    # 合法题型缺级别 → 422（句型也遵循「有题型必配级别」）
+    resp = client.post(
+        "/api/v1/admin/sentence-frames",
+        json={
+            "purpose": "opinion",
+            "exam_kind": "ielts_p1",
+            "text_en": "x",
+            "text_zh": "x",
+        },
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 422
+    _cleanup_classroom(db, classroom["id"])
