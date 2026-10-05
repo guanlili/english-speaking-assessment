@@ -198,8 +198,17 @@ test("多任务练习：完成 A 后刷新仍固定 A，进入 B 作答不串任
   await rowA.click()
   await page.waitForURL(/assignment=/, { timeout: 10_000 })
   expect(page.url()).toContain(`assignment=${assignments["E2E 任务A"]}`)
-  await answerCurrentItem(page, "apple")
-  await answerCurrentItem(page, "banana")
+  // 重跑幂等：等「输入框」（可作答）或「本轮完成」出现再分支——
+  // today 未加载完时两者都不可见，直接判分支会误判
+  const practiceInput = page.getByPlaceholder("在这里输入英文单词…")
+  await practiceInput
+    .or(page.getByText(/这一轮完成了|Round complete/))
+    .first()
+    .waitFor({ state: "visible", timeout: 15_000 })
+  if (await practiceInput.isVisible()) {
+    await answerCurrentItem(page, "apple")
+    await answerCurrentItem(page, "banana")
+  }
 
   // 完成后刷新：仍固定在任务 A，题面不切换到任务 B（修复前这里会漂移）
   await page.reload()
@@ -215,16 +224,29 @@ test("多任务练习：完成 A 后刷新仍固定 A，进入 B 作答不串任
   await rowB.click()
   await page.waitForURL(/assignment=/, { timeout: 10_000 })
   expect(page.url()).toContain(`assignment=${assignments["E2E 任务B"]}`)
-  await answerCurrentItem(page, "dog")
+  // 重跑幂等：B 的当前轮可能已被上次运行答完 → 先开新轮再作答
+  const taskBInput = page.getByPlaceholder("在这里输入英文单词…")
+  await taskBInput
+    .or(page.getByRole("button", { name: /再练一轮|New round/ }))
+    .first()
+    .waitFor({ state: "visible", timeout: 15_000 })
+  if (!(await taskBInput.isVisible())) {
+    await page.getByRole("button", { name: /再练一轮|New round/ }).click()
+  }
+  // 核心断言：作答必须用 B 自己的会话——判对反馈只会出现在正确的会话里
+  await answerCurrentItemCorrectly(page)
 
-  // 教师端统计：A 完成不受 B 影响，B 记录进 B 自己的会话
-  const results = await (
+  // 教师端统计：A/B 各自记账（重跑会推进 B 的轮次状态，因此断言
+  // 「B 名单内有作答记录」而非具体进行中/完成态）
+  const resultsB = await (
     await request.get(`${API}/classes/DEMO01/vocabulary/results`, {
       headers: authHeaders(teacherToken),
       params: { assignment_id: assignments["E2E 任务B"] },
     })
   ).json()
-  expect(results.in_progress_count).toBeGreaterThanOrEqual(1)
+  expect(
+    resultsB.completed_count + resultsB.in_progress_count,
+  ).toBeGreaterThanOrEqual(1)
   const done = await (
     await request.get(`${API}/classes/DEMO01/vocabulary/results`, {
       headers: authHeaders(teacherToken),
@@ -267,4 +289,224 @@ test("教师词汇页真实任务在英文界面三档宽度无横向溢出", as
     await expect(page.getByText(/Round:/).first()).toBeVisible()
     await expectNoHorizontalOverflow(page)
   }
+})
+
+/** 幂等造「E2E 回看任务」（apple/banana 两词，轮 1 故意留一个首答错词） */
+async function ensureReviewTask(
+  request: Page["request"],
+  token: string,
+): Promise<string> {
+  const headers = authHeaders(token)
+  const classrooms = await (
+    await request.get(`${API}/classes`, { headers })
+  ).json()
+  const demo = (classrooms as Array<{ code: string; id: string }>).find(
+    (c) => c.code === "DEMO01",
+  )
+  if (!demo) throw new Error("DEMO01 课堂不存在")
+  const books = (await (
+    await request.get(`${API}/vocabulary/books`, { headers })
+  ).json()) as Array<{ title: string; id: string }>
+  let bookId = books.find((b) => b.title === "E2E 回看词库")?.id
+  if (!bookId) {
+    const created = await request.post(`${API}/vocabulary/books`, {
+      headers,
+      data: {
+        title: "E2E 回看词库",
+        scope: "classroom",
+        classroom_id: demo.id,
+        words: [
+          { headword: "apple", meaning_zh: "苹果" },
+          { headword: "banana", meaning_zh: "香蕉" },
+        ],
+      },
+    })
+    if (!created.ok()) throw new Error(`建词库失败: ${await created.text()}`)
+    bookId = ((await created.json()) as { id: string }).id
+  }
+  const detail = await (
+    await request.get(`${API}/vocabulary/books/${bookId}`, { headers })
+  ).json()
+  const ids = Object.fromEntries(
+    (detail as { words: Array<{ id: string; headword: string }> }).words.map(
+      (w) => [w.headword, w.id],
+    ),
+  )
+  const existing = (await (
+    await request.get(`${API}/classes/DEMO01/vocabulary/assignments`, {
+      headers,
+    })
+  ).json()) as Array<{ assignment: { title: string; id: string } }>
+  const found = existing.find((a) => a.assignment.title === "E2E 回看任务")
+  if (found) return found.assignment.id
+  const created = await request.post(
+    `${API}/classes/DEMO01/vocabulary/assignments`,
+    {
+      headers,
+      data: {
+        title: "E2E 回看任务",
+        prompt_types: ["meaning"],
+        word_ids: [ids.apple, ids.banana],
+      },
+    },
+  )
+  if (!created.ok()) throw new Error(`发布任务失败: ${await created.text()}`)
+  return ((await created.json()) as { id: string }).id
+}
+
+/** 任务已完成时点击「再练一轮」开新轮，返回是否点了 */
+async function startNewRoundIfCompleted(page: Page): Promise<boolean> {
+  const button = page.getByRole("button", { name: /再练一轮|New round/ })
+  if (await button.isVisible().catch(() => false)) {
+    await button.click()
+    return true
+  }
+  return false
+}
+
+/**
+ * 把「当前轮」作答到完成：每题固定答 "apple"——题面是苹果判对、
+ * 香蕉判错（首答错正好留下「再试一次」/错误反馈的历史），
+ * 判对判错都点下一个词。对任何遗留进度幂等，终止于「再练一轮」出现。
+ */
+async function finishCurrentRound(page: Page) {
+  for (let guard = 0; guard < 8; guard++) {
+    const newRound = page.getByRole("button", { name: /再练一轮|New round/ })
+    if (await newRound.isVisible().catch(() => false)) return
+    const input = page.getByPlaceholder("在这里输入英文单词…")
+    if (!(await input.isVisible().catch(() => false))) {
+      const next = page.getByRole("button", { name: /下一个词|完成练习/ })
+      if (await next.isVisible().catch(() => false)) {
+        await next.click()
+        continue
+      }
+      await page.waitForTimeout(300)
+      continue
+    }
+    await expect(input).toBeEnabled()
+    await input.fill("apple")
+    await page.getByRole("button", { name: "提交" }).click()
+    await expect(page.getByText(/拼对了！|差一点点/).first()).toBeVisible({
+      timeout: 10_000,
+    })
+    await page.getByRole("button", { name: /下一个词|完成练习/ }).click()
+  }
+  throw new Error("finishCurrentRound: 8 轮守卫内未到达轮次完成")
+}
+
+/** 当前题按题面作答正确拼写（词面→拼写映射），用于「判对」断言场景 */
+const PROMPT_WORDS: Array<[string, string]> = [
+  ["苹果", "apple"],
+  ["香蕉", "banana"],
+  ["狗", "dog"],
+  ["猫", "cat"],
+]
+
+async function answerCurrentItemCorrectly(page: Page) {
+  const input = page.getByPlaceholder("在这里输入英文单词…")
+  await input.waitFor({ state: "visible", timeout: 10_000 })
+  await expect(input).toBeEnabled()
+  // 只读题面元素（题干是 text-xl font-semibold）；侧边栏激励语同为
+  // text-xl 但无 font-semibold，必须排除
+  const promptText = await page
+    .locator("p.text-xl.font-semibold")
+    .first()
+    .textContent()
+    .catch(() => "")
+  const match = PROMPT_WORDS.find(([meaning]) => promptText?.includes(meaning))
+  await input.fill(match?.[1] ?? "apple")
+  await page.getByRole("button", { name: "提交" }).click()
+  await expect(page.getByText("拼对了！")).toBeVisible({ timeout: 15_000 })
+}
+
+test("历史轮回看只读：无再试入口、重复点击不跳走、再练入口隐藏", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000)
+  const teacherToken = await loginTeacherDemo(page)
+  await ensureReviewTask(request, teacherToken)
+
+  await loginStudentDemo(page)
+  const row = page.getByRole("button", { name: /E2E 回看任务/ })
+  await page.goto("/vocab/DEMO01")
+  await row.waitFor({ state: "visible", timeout: 15_000 })
+  await row.click()
+  await page.waitForURL(/assignment=/, { timeout: 10_000 })
+  // 先把当前轮答完（首答含错），再开一轮走完：得到「历史轮 + 已完成当前轮」
+  await finishCurrentRound(page)
+  await expect(
+    page.getByRole("button", { name: /再练一轮|New round/ }),
+  ).toBeVisible({ timeout: 10_000 })
+  await startNewRoundIfCompleted(page)
+  await finishCurrentRound(page)
+
+  // 切回第一个历史轮：只读视图
+  const firstChip = page.getByRole("button", { name: /第 1 轮|R1 / }).first()
+  await firstChip.waitFor({ state: "visible", timeout: 10_000 })
+  await firstChip.click()
+  // TanStack Router 会把字符串 search 值序列化为带引号形式（round=%221%22）
+  await page.waitForURL(/round=/, { timeout: 10_000 })
+  await expect(
+    page.getByText(/正在回看这一轮|Viewing this round/),
+  ).toBeVisible()
+
+  // 只读兑现：历史轮不提供「再试一次」，也不能开新一轮
+  await expect(
+    page.getByRole("button", { name: /再试一次|Try again/ }),
+  ).toBeHidden()
+  await expect(
+    page.getByRole("button", { name: /再练一轮|New round/ }),
+  ).toBeHidden()
+  await expect(page.getByPlaceholder("在这里输入英文单词…")).toBeHidden()
+
+  // 重复点击已选中的历史轮：保持在轮 1，不跳最新轮
+  await page
+    .getByRole("button", { name: /第 1 轮|R1 / })
+    .first()
+    .click()
+  await page.waitForTimeout(500)
+  expect(page.url()).toContain("round=")
+})
+
+test("迟到的提交响应不覆盖历史轮反馈", async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const teacherToken = await loginTeacherDemo(page)
+  await ensureReviewTask(request, teacherToken)
+
+  await loginStudentDemo(page)
+  const row = page.getByRole("button", { name: /E2E 回看任务/ })
+  await page.goto("/vocab/DEMO01")
+  await row.waitFor({ state: "visible", timeout: 15_000 })
+  await row.click()
+  await page.waitForURL(/assignment=/, { timeout: 10_000 })
+
+  // 开新轮，按题面答对当前词，响应人为延迟 3 秒（保证迟到响应是「拼对了」）
+  await startNewRoundIfCompleted(page)
+  await page.route("**/vocabulary/sessions/*/answers", async (route) => {
+    const response = await route.fetch()
+    await new Promise((resolve) => setTimeout(resolve, 3000))
+    await route.fulfill({ response })
+  })
+  await answerCurrentItemCorrectly(page)
+
+  // 提交未返回时切回含错答的历史轮（轮 2 摘要定格 1/2：banana 首答错）
+  await page
+    .getByRole("button", { name: /第 2 轮 1\/2/ })
+    .first()
+    .click()
+  await page.waitForURL(/round=/, { timeout: 10_000 })
+  await expect(
+    page.getByText(/正在回看这一轮|Viewing this round/),
+  ).toBeVisible()
+  // 错答在第 2 题（banana 首答错）：切到该题看反馈
+  await page.getByRole("button", { name: /第 2 题/ }).click()
+  await expect(page.getByText(/差一点点|So close/)).toBeVisible()
+
+  // 迟到响应（判对）到达后：历史轮的「错」反馈不得被「拼对了」覆盖
+  await page.waitForTimeout(4000)
+  await expect(
+    page.getByText(/正在回看这一轮|Viewing this round/),
+  ).toBeVisible()
+  await expect(page.getByText(/差一点点|So close/)).toBeVisible()
 })

@@ -736,6 +736,8 @@ def test_view_specific_round_readonly(
     assert resp.status_code == 200, resp.text
     plan = resp.json()
     assert plan["session_round"] == 1
+    # 展示轮 ≠ 当前可练轮：回看历史轮时 current_round 仍是最新轮（前端只读判定依据）
+    assert plan["current_round"] == 2
     assert plan["session_status"] == "submitted"
     assert plan["answered_count"] == 2
     assert plan["correct_first_count"] == 1
@@ -746,9 +748,10 @@ def test_view_specific_round_readonly(
         (2, 2),
     ]
 
-    # 缺省（无 round_no）= 未结束轮优先，否则最新轮 → 轮 2
+    # 缺省（无 round_no）= 未结束轮优先，否则最新轮 → 轮 2；此时展示轮=可练轮
     plan_default = _today(client, student["headers"], code)
     assert plan_default["session_round"] == 2
+    assert plan_default["current_round"] == 2
 
     # 不存在的轮次 → 404
     assert _today_round("99", student["headers"]).status_code == 404

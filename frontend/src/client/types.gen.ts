@@ -1154,6 +1154,7 @@ export type VocabularyTodayPlan = {
     session_id?: (string | null);
     session_status?: (string | null);
     session_round?: (number | null);
+    current_round?: (number | null);
     session_closed_reason?: (string | null);
     items?: Array<VocabularyTodayItem>;
     answered_count?: number;

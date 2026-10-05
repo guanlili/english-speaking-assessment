@@ -773,6 +773,9 @@ def _today_plan_payload(
     if round_no is not None and vocab_session is None:
         # 显式回看不存在的轮次（含他学生的轮次）：404，不回落
         raise HTTPException(status_code=404, detail="轮次不存在")
+    # 当前可练轮独立于展示轮计算：未结束轮优先，否则最新轮
+    practice_session = _focused_vocab_session(session, assignment.id, student_id)
+    current_round = practice_session.round_no if practice_session is not None else None
     grouped = (
         vocab_service.answers_by_item(session, vocab_session.id)
         if vocab_session is not None
@@ -828,6 +831,7 @@ def _today_plan_payload(
         session_id=vocab_session.id if vocab_session is not None else None,
         session_status=vocab_session.status if vocab_session is not None else None,
         session_round=vocab_session.round_no if vocab_session is not None else None,
+        current_round=current_round,
         session_closed_reason=_session_closed_reason(assignment),
         items=items,
         # 展示轮的进度（回看历史轮时是该轮的记录）；任务整体进度看 assignments（首轮口径）

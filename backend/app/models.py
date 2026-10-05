@@ -1464,7 +1464,11 @@ class VocabularyTodayPlan(SQLModel):
     assignment: VocabularyAssignmentPublic | None = None
     session_id: uuid.UUID | None = None
     session_status: str | None = None
+    # 展示轮的轮号（round_no 参数指定的回看轮，缺省=当前可练轮）
     session_round: int | None = None
+    # 当前可练轮（未结束轮优先，否则最新轮；独立于展示轮参数）——
+    # 前端据此判定「回看的是不是当前轮」，不能拿展示轮自比
+    current_round: int | None = None
     # 任务级作答门禁原因（独立于会话状态，未开始/进行中/已完成统一计算）：
     # due_passed / archived；任务开放作答为 None
     session_closed_reason: str | None = None

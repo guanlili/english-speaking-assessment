@@ -95,9 +95,11 @@ function VocabPracticePage() {
   // 任务级作答门禁（截止/归档）；回看历史轮同样只读
   const closedReason = todayQuery.data?.session_closed_reason ?? null
   const viewingRoundNo = roundParam ? Number(roundParam) : null
+  // 当前可练轮由后端独立下发（current_round）：展示轮号（session_round）
+  // 是回看轮自己的轮号，不能拿来判断「我看的是不是当前轮」
+  const currentRoundNo = todayQuery.data?.current_round ?? null
   const isCurrentRound =
-    viewingRoundNo === null ||
-    viewingRoundNo === (todayQuery.data?.session_round ?? null)
+    viewingRoundNo === null || viewingRoundNo === currentRoundNo
   const readOnly = closedReason !== null || !isCurrentRound
   const rounds = todayQuery.data?.rounds ?? []
   const activeRoundNo = viewingRoundNo ?? todayQuery.data?.session_round ?? null
@@ -239,6 +241,7 @@ function VocabPracticePage() {
       itemIndex: number
       promptType: string
       answer: string
+      binding: string
     }) => {
       const pending = pendingRef.current
       const sameIntent =
@@ -262,7 +265,9 @@ function VocabPracticePage() {
         },
       })
     },
-    onSuccess: (result) => {
+    onSuccess: (result, variables) => {
+      // 迟到响应隔离：提交后已切换任务/轮次的响应只丢弃不落当前视图
+      if (variables.binding !== bindingKey) return
       pendingRef.current = null
       setAnswers((prev) => ({
         ...prev,
@@ -273,7 +278,8 @@ function VocabPracticePage() {
         },
       }))
     },
-    onError: (error) => {
+    onError: (error, variables) => {
+      if (variables.binding !== bindingKey) return
       if (error instanceof ApiError && error.status < 500) {
         // 4xx 业务拒绝（422 幂等冲突等）：作答已被服务端明确拒绝，清键换新意图
         pendingRef.current = null
@@ -358,6 +364,7 @@ function VocabPracticePage() {
       itemIndex: item.item_index,
       promptType: useAudio ? "audio" : "meaning",
       answer: input.trim(),
+      binding: bindingKey,
     })
   }
 
@@ -494,8 +501,7 @@ function VocabPracticePage() {
                         params: { code },
                         search: {
                           assignment: assignmentParam ?? assignment?.id ?? "",
-                          ...(round.round_no ===
-                          (todayQuery.data?.session_round ?? -1)
+                          ...(round.round_no === currentRoundNo
                             ? {}
                             : { round: String(round.round_no) }),
                         },
