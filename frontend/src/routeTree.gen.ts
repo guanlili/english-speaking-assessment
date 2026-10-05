@@ -34,7 +34,10 @@ import { Route as VocabCodeIndexRouteImport } from './routes/vocab.$code.index'
 import { Route as TCodeIndexRouteImport } from './routes/t.$code.index'
 import { Route as PCodeIndexRouteImport } from './routes/p.$code.index'
 import { Route as LayoutAdminIndexRouteImport } from './routes/_layout/admin.index'
+import { Route as VocabCodeSelfRouteImport } from './routes/vocab.$code.self'
+import { Route as VocabCodeRecordsRouteImport } from './routes/vocab.$code.records'
 import { Route as VocabCodePracticeRouteImport } from './routes/vocab.$code.practice'
+import { Route as VocabCodeBooksRouteImport } from './routes/vocab.$code.books'
 import { Route as TCodeVocabRouteImport } from './routes/t.$code.vocab'
 import { Route as PCodeResultRouteImport } from './routes/p.$code.result'
 import { Route as LayoutAdminWordlistRouteImport } from './routes/_layout/admin.wordlist'
@@ -172,9 +175,24 @@ const LayoutAdminIndexRoute = LayoutAdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
+const VocabCodeSelfRoute = VocabCodeSelfRouteImport.update({
+  id: '/self',
+  path: '/self',
+  getParentRoute: () => VocabCodeRoute,
+} as any)
+const VocabCodeRecordsRoute = VocabCodeRecordsRouteImport.update({
+  id: '/records',
+  path: '/records',
+  getParentRoute: () => VocabCodeRoute,
+} as any)
 const VocabCodePracticeRoute = VocabCodePracticeRouteImport.update({
   id: '/practice',
   path: '/practice',
+  getParentRoute: () => VocabCodeRoute,
+} as any)
+const VocabCodeBooksRoute = VocabCodeBooksRouteImport.update({
+  id: '/books',
+  path: '/books',
   getParentRoute: () => VocabCodeRoute,
 } as any)
 const TCodeVocabRoute = TCodeVocabRouteImport.update({
@@ -271,7 +289,10 @@ export interface FileRoutesByFullPath {
   '/admin/wordlist': typeof LayoutAdminWordlistRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
+  '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
+  '/vocab/$code/records': typeof VocabCodeRecordsRoute
+  '/vocab/$code/self': typeof VocabCodeSelfRoute
   '/admin/': typeof LayoutAdminIndexRoute
   '/p/$code/': typeof PCodeIndexRoute
   '/t/$code/': typeof TCodeIndexRoute
@@ -306,7 +327,10 @@ export interface FileRoutesByTo {
   '/admin/wordlist': typeof LayoutAdminWordlistRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
+  '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
+  '/vocab/$code/records': typeof VocabCodeRecordsRoute
+  '/vocab/$code/self': typeof VocabCodeSelfRoute
   '/admin': typeof LayoutAdminIndexRoute
   '/p/$code': typeof PCodeIndexRoute
   '/t/$code': typeof TCodeIndexRoute
@@ -347,7 +371,10 @@ export interface FileRoutesById {
   '/_layout/admin/wordlist': typeof LayoutAdminWordlistRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
+  '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
+  '/vocab/$code/records': typeof VocabCodeRecordsRoute
+  '/vocab/$code/self': typeof VocabCodeSelfRoute
   '/_layout/admin/': typeof LayoutAdminIndexRoute
   '/p/$code/': typeof PCodeIndexRoute
   '/t/$code/': typeof TCodeIndexRoute
@@ -388,7 +415,10 @@ export interface FileRouteTypes {
     | '/admin/wordlist'
     | '/p/$code/result'
     | '/t/$code/vocab'
+    | '/vocab/$code/books'
     | '/vocab/$code/practice'
+    | '/vocab/$code/records'
+    | '/vocab/$code/self'
     | '/admin/'
     | '/p/$code/'
     | '/t/$code/'
@@ -423,7 +453,10 @@ export interface FileRouteTypes {
     | '/admin/wordlist'
     | '/p/$code/result'
     | '/t/$code/vocab'
+    | '/vocab/$code/books'
     | '/vocab/$code/practice'
+    | '/vocab/$code/records'
+    | '/vocab/$code/self'
     | '/admin'
     | '/p/$code'
     | '/t/$code'
@@ -463,7 +496,10 @@ export interface FileRouteTypes {
     | '/_layout/admin/wordlist'
     | '/p/$code/result'
     | '/t/$code/vocab'
+    | '/vocab/$code/books'
     | '/vocab/$code/practice'
+    | '/vocab/$code/records'
+    | '/vocab/$code/self'
     | '/_layout/admin/'
     | '/p/$code/'
     | '/t/$code/'
@@ -667,11 +703,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminIndexRouteImport
       parentRoute: typeof LayoutAdminRoute
     }
+    '/vocab/$code/self': {
+      id: '/vocab/$code/self'
+      path: '/self'
+      fullPath: '/vocab/$code/self'
+      preLoaderRoute: typeof VocabCodeSelfRouteImport
+      parentRoute: typeof VocabCodeRoute
+    }
+    '/vocab/$code/records': {
+      id: '/vocab/$code/records'
+      path: '/records'
+      fullPath: '/vocab/$code/records'
+      preLoaderRoute: typeof VocabCodeRecordsRouteImport
+      parentRoute: typeof VocabCodeRoute
+    }
     '/vocab/$code/practice': {
       id: '/vocab/$code/practice'
       path: '/practice'
       fullPath: '/vocab/$code/practice'
       preLoaderRoute: typeof VocabCodePracticeRouteImport
+      parentRoute: typeof VocabCodeRoute
+    }
+    '/vocab/$code/books': {
+      id: '/vocab/$code/books'
+      path: '/books'
+      fullPath: '/vocab/$code/books'
+      preLoaderRoute: typeof VocabCodeBooksRouteImport
       parentRoute: typeof VocabCodeRoute
     }
     '/t/$code/vocab': {
@@ -837,12 +894,18 @@ const TCodeRouteChildren: TCodeRouteChildren = {
 const TCodeRouteWithChildren = TCodeRoute._addFileChildren(TCodeRouteChildren)
 
 interface VocabCodeRouteChildren {
+  VocabCodeBooksRoute: typeof VocabCodeBooksRoute
   VocabCodePracticeRoute: typeof VocabCodePracticeRoute
+  VocabCodeRecordsRoute: typeof VocabCodeRecordsRoute
+  VocabCodeSelfRoute: typeof VocabCodeSelfRoute
   VocabCodeIndexRoute: typeof VocabCodeIndexRoute
 }
 
 const VocabCodeRouteChildren: VocabCodeRouteChildren = {
+  VocabCodeBooksRoute: VocabCodeBooksRoute,
   VocabCodePracticeRoute: VocabCodePracticeRoute,
+  VocabCodeRecordsRoute: VocabCodeRecordsRoute,
+  VocabCodeSelfRoute: VocabCodeSelfRoute,
   VocabCodeIndexRoute: VocabCodeIndexRoute,
 }
 

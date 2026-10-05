@@ -32,6 +32,12 @@ export const TERMS = {
   vocabBook: { zh: "词库", en: "Word Book" },
   /** 错词本（学生首答判错的词自动归集） */
   wrongWords: { zh: "错词本", en: "Wrong Words" },
+  /** 错词专项复习（错词本直接进入、限定当前可练范围的练习） */
+  vocabReview: { zh: "错词复习", en: "Wrong-word Review" },
+  /** 练习记录（个人历史列表与正确率趋势） */
+  practiceRecords: { zh: "练习记录", en: "Practice Records" },
+  /** 混入错词（自主练习选项：按 30% 目标混入所选词库内的历史错词） */
+  mixWrongWords: { zh: "混入错词", en: "Mix in Wrong Words" },
   /** 看义拼词（出题方式） */
   promptMeaning: { zh: "看义拼词", en: "Spell from Meaning" },
   /** 听音拼词（出题方式） */
@@ -146,4 +152,28 @@ export const EXPLAIN_FIRST_TRY = {
 export const EXPLAIN_MASKED_WORDS = {
   zh: "作答后这里会显示单词；先看中文释义，回忆拼写。",
   en: "Words appear here after you answer. Read the meaning first and recall the spelling.",
+} as const satisfies BiString
+
+/** 错词本口径：不删除、非掌握度评估（词汇首页/记录页触点共用） */
+export const EXPLAIN_WRONG_WORDS_POLICY = {
+  zh: "错词不会因为答对一次就移除。这里分开展示历史错误次数、最近独立首答和最近练对时间，只用于安排复习，不是科学掌握度评估。",
+  en: "A word stays in this book even after you get it right once. Historical misses, your latest first try, and your latest correct answer are shown separately — for review planning only, not a scientific mastery score.",
+} as const satisfies BiString
+
+/** 首答正确率口径：分母为已答题数（自主练习报告/记录页触点共用） */
+export const EXPLAIN_FIRST_TRY_ACCURACY = {
+  zh: "首答正确率 = 首答正确的题数 ÷ 已答题数。没答的题不计入分母，也不算作答错。",
+  en: "First-try accuracy = items correct on the first try ÷ items answered. Unanswered items are excluded — not counted as wrong.",
+} as const satisfies BiString
+
+/** 轮次时间口径：只展示起止时间，不折算学习时长（报告页触点共用） */
+export const EXPLAIN_ROUND_TIMES = {
+  zh: "这里展示本轮的开始与结束时间。不折算「学习时长」——离开页面的时间无法区分，不做虚假统计。",
+  en: "This shows the round's start and end times. No study-duration is derived — time away from the page can't be separated out, so we don't fake it.",
+} as const satisfies BiString
+
+/** 混入错词选项说明（词库浏览页触点共用） */
+export const EXPLAIN_MIX_WRONG = {
+  zh: "开启后，本轮约 30% 的词来自你在本词库拼错过的词（最近错的优先）；错词不够就用其他词补足。题单和顺序在开始后固定。",
+  en: "When on, about 30% of this round comes from words you previously misspelled in this book (most recent misses first); other words fill the rest. The list and its order are fixed once the round starts.",
 } as const satisfies BiString

@@ -146,4 +146,45 @@ for (const vp of VIEWPORTS) {
     await expect(page.getByText(/错词本|Wrong Words/).first()).toBeVisible()
     await expectNoHorizontalOverflow(page)
   })
+
+  test(`学生词库浏览页在${vp.name}无横向溢出`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height })
+    await loginStudentDemo(page)
+    await page.goto("/vocab/DEMO01/books")
+    await expect(
+      page.getByRole("heading", { name: /词库浏览|Word Books/ }),
+    ).toBeVisible()
+    // 搜索框与词库列表（或空态）就绪；有演示词库时至少一本可见
+    await expect(
+      page.getByPlaceholder(/搜索词库名称|Search word books/),
+    ).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+  })
+
+  test(`学生练习记录页在${vp.name}无横向溢出`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height })
+    await loginStudentDemo(page)
+    await page.goto("/vocab/DEMO01/records")
+    await expect(
+      page.getByRole("heading", { name: /练习记录|Practice Records/ }),
+    ).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+  })
 }
+
+test("学生自主练习页（无 session 参数）在手机宽度显示空态引导", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await loginStudentDemo(page)
+  await page.goto("/vocab/DEMO01/self")
+  await expect(
+    page.getByRole("heading", { name: /还没有选择练习|No practice selected/ }),
+  ).toBeVisible()
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  )
+  expect(overflow).toBeLessThanOrEqual(1)
+})
