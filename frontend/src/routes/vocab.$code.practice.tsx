@@ -39,6 +39,14 @@ import { speakEnglish } from "@/lib/tts"
 
 export const Route = createFileRoute("/vocab/$code/practice")({
   component: VocabPracticePage,
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { assignment?: string } => {
+    const assignment = search.assignment
+    return typeof assignment === "string" && assignment !== ""
+      ? { assignment }
+      : {}
+  },
   head: () => ({
     meta: [{ title: `拼写练习 / Spelling Practice - ${APP_NAME}` }],
   }),
@@ -54,6 +62,7 @@ interface AnswerState {
 function VocabPracticePage() {
   const { t } = useI18n()
   const { code } = useParams({ from: "/vocab/$code/practice" })
+  const { assignment: assignmentParam } = Route.useSearch()
   const navigate = useNavigate({ from: "/vocab/$code/practice" })
   const queryClient = useQueryClient()
   const student = loadStudent(code)
@@ -61,13 +70,18 @@ function VocabPracticePage() {
   const todayQuery = useQuery({
     retry: 1,
     retryDelay: 500,
-    queryKey: ["vocab", code, "today", student?.id],
+    queryKey: ["vocab", code, "today", student?.id, assignmentParam ?? ""],
     queryFn: () =>
-      VocabularyService.readVocabToday({ code: code.toUpperCase() }),
+      VocabularyService.readVocabToday({
+        code: code.toUpperCase(),
+        assignmentId: assignmentParam,
+      }),
     enabled: student !== null,
   })
 
   const assignment = todayQuery.data?.assignment ?? null
+  // 截止/归档关闭了聚焦轮：只读回看，不再接受新作答
+  const closedReason = todayQuery.data?.session_closed_reason ?? null
   const items = useMemo(
     () =>
       [...(todayQuery.data?.items ?? [])].sort(
@@ -93,26 +107,37 @@ function VocabPracticePage() {
     setAnswers(restored)
   }, [todayQuery.data])
 
-  // 进入时定位到第一道未作答的题
+  // 进入时/轮次切换时定位到第一道未作答的题（「再练一轮」换轮后同样生效）
   const [current, setCurrent] = useState(0)
-  const initialized = useRef(false)
+  const initializedSession = useRef<string | null>(null)
   useEffect(() => {
-    if (initialized.current || items.length === 0) return
-    initialized.current = true
+    const sessionId = todayQuery.data?.session_id ?? null
+    if (sessionId === initializedSession.current || items.length === 0) return
+    initializedSession.current = sessionId
     const firstUnanswered = items.findIndex((item) => !item.answered)
     setCurrent(firstUnanswered >= 0 ? firstUnanswered : 0)
-  }, [items])
+    setInput("")
+  }, [items, todayQuery.data])
 
   // 会话创建（幂等）：任务就绪且尚无会话时自动开始
   const [sessionId, setSessionId] = useState<string | null>(null)
   const startSession = useMutation({
-    mutationFn: (assignmentId: string) =>
+    mutationFn: (payload: { assignmentId: string; round?: string }) =>
       VocabularyService.startVocabSession({
         code: code.toUpperCase(),
-        requestBody: { assignment_id: assignmentId },
+        requestBody: {
+          assignment_id: payload.assignmentId,
+          ...(payload.round ? { round: payload.round } : {}),
+        },
       }),
-    onSuccess: (data) => {
+    onSuccess: (data, payload) => {
       setSessionId((data as { session_id: string }).session_id)
+      if (payload.round === "new") {
+        // 新复习轮已开：重拉 today 拿到新轮的题目与首答状态
+        void queryClient.invalidateQueries({
+          queryKey: ["vocab", code, "today"],
+        })
+      }
     },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 403) {
@@ -137,7 +162,7 @@ function VocabPracticePage() {
       !startSession.isPending &&
       !startSession.isError
     ) {
-      startSession.mutate(assignment.id)
+      startSession.mutate({ assignmentId: assignment.id })
     }
   }, [assignment, sessionId, startSession, todayQuery.data])
 
@@ -264,7 +289,13 @@ function VocabPracticePage() {
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    if (!item || !sessionId || input.trim() === "" || submitAnswer.isPending)
+    if (
+      !item ||
+      !sessionId ||
+      input.trim() === "" ||
+      submitAnswer.isPending ||
+      closedReason
+    )
       return
     submitAnswer.mutate({
       itemIndex: item.item_index,
@@ -356,11 +387,31 @@ function VocabPracticePage() {
           </Button>
           <p className="text-xs text-muted-foreground">
             {t({
-              zh: `第 ${current + 1} / ${items.length} 题 · 首答正确 ${correctFirst}`,
-              en: `Item ${current + 1} / ${items.length} · ${correctFirst} correct on first try`,
+              zh: `${assignment?.title ?? ""} · 第 ${todayQuery.data?.session_round ?? 1} 轮 · 第 ${current + 1} / ${items.length} 题 · 首答正确 ${correctFirst}`,
+              en: `${assignment?.title ?? ""} · Round ${todayQuery.data?.session_round ?? 1} · Item ${current + 1} / ${items.length} · ${correctFirst} correct on first try`,
             })}
           </p>
         </div>
+
+        {/* 截止/归档关闭提示：本轮锁定，历史可回看 */}
+        {closedReason && (
+          <div
+            role="status"
+            className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm"
+          >
+            <p className="font-semibold">
+              {closedReason === "archived"
+                ? t({
+                    zh: "老师已结束这个任务，本轮不能再作答；下面的记录可以回看。",
+                    en: "Your teacher ended this task — this round is read-only, but your records below stay viewable.",
+                  })
+                : t({
+                    zh: "这个任务已过截止时间，本轮不能再作答；下面的记录可以回看。",
+                    en: "This task is past its due time — this round is read-only, but your records below stay viewable.",
+                  })}
+            </p>
+          </div>
+        )}
 
         {/* 进度点：点选跳题；对=主色、错=灰、当前=实心 */}
         <ul
@@ -516,13 +567,18 @@ function VocabPracticePage() {
                   autoCapitalize="off"
                   spellCheck={false}
                   className="h-12 flex-1 text-base"
-                  disabled={!sessionId || startSession.isPending}
+                  disabled={
+                    !sessionId || startSession.isPending || !!closedReason
+                  }
                 />
                 <Button
                   type="submit"
                   className="h-12 px-6"
                   disabled={
-                    input.trim() === "" || submitAnswer.isPending || !sessionId
+                    input.trim() === "" ||
+                    submitAnswer.isPending ||
+                    !sessionId ||
+                    !!closedReason
                   }
                 >
                   {submitAnswer.isPending
@@ -608,16 +664,34 @@ function VocabPracticePage() {
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {t({
-                    zh: "错词已收进错词本；点上面的数字方块可以回来重练任意词。",
-                    en: "Missed words are in your Wrong Words book; tap any number above to re-practice it.",
+                    zh: "这一轮已单独记录，不改变任务成绩（任务成绩始终看第一轮）。想再练可以开新的一轮。",
+                    en: "This round is recorded separately — task scores always come from the first round. Start a new round to practice again.",
                   })}
                 </p>
-                <Button asChild size="sm" className="mt-3">
-                  <Link to="/vocab/$code" params={{ code }}>
-                    {t({ zh: "回词汇首页", en: "Back to Vocabulary home" })}
-                    <ArrowRight />
-                  </Link>
-                </Button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button asChild size="sm" variant="outline">
+                    <Link to="/vocab/$code" params={{ code }}>
+                      {t({ zh: "回词汇首页", en: "Back to Vocabulary home" })}
+                      <ArrowRight />
+                    </Link>
+                  </Button>
+                  {assignment?.mode === "practice" && !closedReason && (
+                    <Button
+                      size="sm"
+                      disabled={startSession.isPending}
+                      onClick={() => {
+                        pendingRef.current = null
+                        startSession.mutate({
+                          assignmentId: assignment.id,
+                          round: "new",
+                        })
+                      }}
+                    >
+                      <RotateCcw />
+                      {t({ zh: "再练一轮", en: "New round" })}
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </CardContent>

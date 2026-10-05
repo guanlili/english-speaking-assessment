@@ -15,6 +15,7 @@ import csv
 import io
 import logging
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile
@@ -49,6 +50,7 @@ from app.models import (
     VocabularyImportRow,
     VocabularySession,
     VocabularySessionCreate,
+    VocabularyTeacherAssignmentRow,
     VocabularyTodayItem,
     VocabularyTodayPlan,
     VocabularyWord,
@@ -112,20 +114,7 @@ def _book_public(book: VocabularyBook, word_count: int) -> VocabularyBookPublic:
 
 
 def _assignment_public(assignment: VocabularyAssignment) -> VocabularyAssignmentPublic:
-    return VocabularyAssignmentPublic(
-        id=assignment.id,
-        classroom_id=assignment.classroom_id,
-        title=assignment.title,
-        mode=assignment.mode,
-        prompt_types=assignment.prompt_types,
-        status=assignment.status,
-        version_no=assignment.version_no,
-        word_count=len(assignment.snapshot_items),
-        due_at=assignment.due_at,
-        published_at=assignment.published_at,
-        archived_at=assignment.archived_at,
-        created_by=assignment.created_by,
-    )
+    return vocab_service.assignment_public(assignment)
 
 
 def _get_book(session: Session, book_id: uuid.UUID) -> VocabularyBook:
@@ -592,19 +581,15 @@ def _get_assignment(
 
 @router.get(
     "/classes/{code}/vocabulary/assignments",
-    response_model=list[VocabularyAssignmentPublic],
+    response_model=list[VocabularyTeacherAssignmentRow],
 )
 def list_assignments(
     session: SessionDep, code: str, current_user: TeacherUserDep
 ) -> Any:
+    """教师任务列表：全部任务（含已结束）+ 名单进度汇总，按发布倒序。"""
     classroom = _get_classroom(session, code)
     _require_classroom_teacher(classroom, current_user)
-    assignments = session.exec(
-        select(VocabularyAssignment)
-        .where(VocabularyAssignment.classroom_id == classroom.id)
-        .order_by(col(VocabularyAssignment.version_no).desc())
-    ).all()
-    return [_assignment_public(a) for a in assignments]
+    return vocab_service.teacher_assignment_rows(session, classroom.id)
 
 
 @router.post(
@@ -688,24 +673,64 @@ def read_vocab_results(
 # ── 学生端 ─────────────────────────────────────────────────────────
 
 
+def _focused_vocab_session(
+    session: Session, assignment_id: uuid.UUID, student_id: uuid.UUID
+) -> VocabularySession | None:
+    """聚焦轮次：未结束轮优先（同任务至多一个），否则最新一轮供回看。"""
+    rounds = session.exec(
+        select(VocabularySession)
+        .where(
+            VocabularySession.assignment_id == assignment_id,  # type: ignore[arg-type]
+            VocabularySession.student_id == student_id,  # type: ignore[arg-type]
+        )
+        .order_by(col(VocabularySession.round_no).desc())
+    ).all()
+    unfinished = next((r for r in rounds if r.status == "in_progress"), None)
+    return unfinished if unfinished is not None else (rounds[0] if rounds else None)
+
+
+def _session_closed_reason(
+    assignment: VocabularyAssignment, vocab_session: VocabularySession | None
+) -> str | None:
+    """截止/归档关闭了未结束轮次时的原因标记（可继续作答为 None）。"""
+    if vocab_session is None or vocab_session.status != "in_progress":
+        return None
+    if assignment.status != "published":
+        return "archived"
+    if assignment.due_at is not None and datetime.now(UTC) >= assignment.due_at:
+        return "due_passed"
+    return None
+
+
 def _today_plan_payload(
     session: Session,
     classroom_id: uuid.UUID,
     student_id: uuid.UUID,
+    assignment_id: uuid.UUID | None = None,
 ) -> VocabularyTodayPlan:
-    assignment = vocab_service.current_published_assignment(session, classroom_id)
-    if assignment is None or not vocab_service.student_targeted(
-        session, assignment, student_id
-    ):
-        wrong = vocab_service.wrong_words(session, student_id)
-        return VocabularyTodayPlan(wrong_word_count=len(wrong))
+    assignments = vocab_service.student_assignment_rows(
+        session, classroom_id, student_id
+    )
+    if assignment_id is not None:
+        # 显式指定任务：不存在/非本班/不在名单一律 404，不静默回落
+        assignment = session.get(VocabularyAssignment, assignment_id)
+        if (
+            assignment is None
+            or assignment.classroom_id != classroom_id
+            or not vocab_service.student_targeted(session, assignment, student_id)
+        ):
+            raise HTTPException(status_code=404, detail="词汇任务不存在")
+    else:
+        assignment = vocab_service.focused_assignment(session, classroom_id, student_id)
+        if assignment is None or not vocab_service.student_targeted(
+            session, assignment, student_id
+        ):
+            wrong = vocab_service.wrong_words(session, student_id)
+            return VocabularyTodayPlan(
+                assignments=assignments, wrong_word_count=len(wrong)
+            )
 
-    vocab_session = session.exec(
-        select(VocabularySession).where(
-            VocabularySession.assignment_id == assignment.id,  # type: ignore[arg-type]
-            VocabularySession.student_id == student_id,  # type: ignore[arg-type]
-        )
-    ).first()
+    vocab_session = _focused_vocab_session(session, assignment.id, student_id)
     grouped = (
         vocab_service.answers_by_item(session, vocab_session.id)
         if vocab_session is not None
@@ -760,21 +785,32 @@ def _today_plan_payload(
         assignment=_assignment_public(assignment),
         session_id=vocab_session.id if vocab_session is not None else None,
         session_status=vocab_session.status if vocab_session is not None else None,
+        session_round=vocab_session.round_no if vocab_session is not None else None,
+        session_closed_reason=_session_closed_reason(assignment, vocab_session),
         items=items,
+        # 聚焦轮的进度（复习轮独立）；任务整体进度看 assignments 列表（首轮口径）
         answered_count=answered_count,
         correct_first_count=correct_first,
+        assignments=assignments,
         wrong_word_count=len(wrong),
     )
 
 
 @router.get("/classes/{code}/vocabulary/today", response_model=VocabularyTodayPlan)
 def read_vocab_today(
-    session: SessionDep, code: str, current_user: StudentUserDep
+    session: SessionDep,
+    code: str,
+    current_user: StudentUserDep,
+    assignment_id: uuid.UUID | None = None,
 ) -> Any:
-    """学生词汇任务视图：当前任务 + 个人进度（未答题不透露拼写）。"""
+    """学生词汇任务视图：任务列表 + 聚焦任务进度（未答题不透露拼写）。
+
+    assignment_id 缺省 = 聚焦任务（最早截止的未完成者）；显式指定时
+    返回该任务的聚焦轮次（多任务切换练习用）。
+    """
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
-    return _today_plan_payload(session, classroom.id, student.id)
+    return _today_plan_payload(session, classroom.id, student.id, assignment_id)
 
 
 @router.post("/classes/{code}/vocabulary/sessions")
@@ -784,12 +820,18 @@ def start_vocab_session(
     current_user: StudentUserDep,
     body: VocabularySessionCreate,
 ) -> Any:
-    """创建/恢复作答会话（幂等）。仅目标名单内的本班学生。"""
+    """创建/恢复作答轮次（幂等）。仅目标名单内的本班学生。
+
+    缺省 assignment_id = 聚焦任务；未结束轮存在时一律续做（重复点击
+    不产生重复轮次），全部轮次已结束则开新一轮（「再练一轮」）。
+    """
+    if body.round not in (None, "continue", "new"):
+        raise HTTPException(status_code=422, detail="未知的轮次请求参数")
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
     if body.assignment_id is None:
-        # 缺省 = 当前进行中的任务
-        assignment = vocab_service.current_published_assignment(session, classroom.id)
+        # 缺省 = 聚焦任务（最早截止的未完成进行中任务）
+        assignment = vocab_service.focused_assignment(session, classroom.id, student.id)
         if assignment is None:
             raise HTTPException(status_code=404, detail="当前没有进行中的词汇任务")
     else:
@@ -805,7 +847,11 @@ def start_vocab_session(
     vocab_session = vocab_service.get_or_create_session(
         session, classroom.id, student.id, assignment
     )
-    return {"session_id": str(vocab_session.id), "status": vocab_session.status}
+    return {
+        "session_id": str(vocab_session.id),
+        "status": vocab_session.status,
+        "round_no": vocab_session.round_no,
+    }
 
 
 @router.post(

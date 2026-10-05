@@ -23,10 +23,15 @@ from app.models import (
     User,
     VocabularyAnswer,
     VocabularyAssignment,
+    VocabularyAssignmentPublic,
     VocabularyAssignmentTarget,
     VocabularyBook,
     VocabularyBookItem,
     VocabularySession,
+    VocabularyStudentAssignment,
+    VocabularyStudentResultRow,
+    VocabularyStudentRoundRow,
+    VocabularyTeacherAssignmentRow,
     VocabularyWord,
     get_datetime_utc,
 )
@@ -223,7 +228,10 @@ def publish_assignment(
     mode: str = "practice",
     due_at: datetime | None = None,
 ) -> VocabularyAssignment:
-    """发布：快照写入、目标名单固化、旧任务归档，同一事务内完成。"""
+    """发布：快照写入、目标名单固化，同一事务内完成。
+
+    多任务并存：新发布不归档其他任务（教师可手动结束单个任务）。
+    """
     if not words:
         raise HTTPException(status_code=422, detail="词汇任务至少需要一个词")
     if len(words) > MAX_TASK_WORDS:
@@ -262,7 +270,7 @@ def publish_assignment(
     assignment_title = (title or "词汇练习").strip() or "词汇练习"
     snapshots = [build_word_snapshot(w, prompt_types) for w in words]
 
-    # 同一课堂并发发布时锁住课堂行，避免版本号互撞或归档竞态
+    # 同一课堂并发发布时锁住课堂行，避免版本号互撞
     # （与练习模块 publish_exercise 同口径）
     from app.models import Classroom
 
@@ -283,19 +291,6 @@ def publish_assignment(
     )
     session.add(assignment)
     session.flush()
-
-    # 归档旧的 published（同一课堂同时只有一个进行中任务）
-    for previous in session.exec(
-        select(VocabularyAssignment).where(
-            VocabularyAssignment.classroom_id == classroom_id,  # type: ignore[arg-type]
-            VocabularyAssignment.status == "published",
-        )
-    ).all():
-        if previous.id == assignment.id:
-            continue
-        previous.status = "archived"
-        previous.archived_at = get_datetime_utc()
-        session.add(previous)
 
     # 目标名单 = 发布时的全班学生（完成率分母固定）
     for student in students:
@@ -341,40 +336,173 @@ def student_targeted(
     )
 
 
+def _assignment_sort_key(a: VocabularyAssignment) -> tuple:
+    """任务排序：有截止升序在前，无截止按发布倒序在后。"""
+    return (a.due_at is None, a.due_at.timestamp() if a.due_at else 0.0, -a.version_no)
+
+
+def progress_of_round1(total: int, item_firsts: dict[int, VocabularyAnswer]) -> str:
+    """任务进度状态机（锁定首轮首答）：not_started / in_progress / completed。"""
+    answered = len(item_firsts)
+    if answered == 0:
+        return "not_started"
+    return "completed" if answered >= total else "in_progress"
+
+
+def is_overdue(assignment: VocabularyAssignment, progress: str) -> bool:
+    """逾期与进度两维独立：过了截止且任务未完成才算逾期。"""
+    return (
+        assignment.due_at is not None
+        and datetime.now(UTC) > assignment.due_at
+        and (progress != "completed")
+    )
+
+
+def student_assignment_rows(
+    session: Session, classroom_id: uuid.UUID, student_id: uuid.UUID
+) -> list[VocabularyStudentAssignment]:
+    """学生名单内全部任务（含已结束）的摘要行，按 due 升序、无 due 发布倒序。
+
+    进度锁定首轮首答；round_count 含复习轮。
+    """
+    assignments = [
+        a
+        for a, _t in session.exec(
+            select(VocabularyAssignment, VocabularyAssignmentTarget)
+            .join(
+                VocabularyAssignmentTarget,
+                VocabularyAssignmentTarget.assignment_id == VocabularyAssignment.id,  # ty: ignore[invalid-argument-type]
+            )
+            .where(
+                VocabularyAssignment.classroom_id == classroom_id,  # type: ignore[arg-type]
+                VocabularyAssignmentTarget.student_id == student_id,  # type: ignore[arg-type]
+            )
+        ).all()
+    ]
+    rounds_by_assignment: dict[uuid.UUID, list[VocabularySession]] = {}
+    if assignments:
+        for vs in session.exec(
+            select(VocabularySession).where(
+                VocabularySession.student_id == student_id,  # type: ignore[arg-type]
+                col(VocabularySession.assignment_id).in_(  # type: ignore[operator]
+                    [a.id for a in assignments]
+                ),
+            )
+        ).all():
+            if vs.assignment_id is None:
+                continue
+            rounds_by_assignment.setdefault(vs.assignment_id, []).append(vs)
+    all_round_ids = [vs.id for rounds in rounds_by_assignment.values() for vs in rounds]
+    firsts = first_answers_by_session(session, all_round_ids)
+
+    rows: list[VocabularyStudentAssignment] = []
+    for assignment in sorted(assignments, key=_assignment_sort_key):
+        rounds = sorted(
+            rounds_by_assignment.get(assignment.id, []),
+            key=lambda r: r.round_no,
+        )
+        first_round = rounds[0] if rounds else None
+        item_firsts = firsts.get(first_round.id, {}) if first_round else {}
+        progress = progress_of_round1(len(assignment.snapshot_items), item_firsts)
+        rows.append(
+            VocabularyStudentAssignment(
+                assignment_id=assignment.id,
+                title=assignment.title,
+                word_count=len(assignment.snapshot_items),
+                due_at=assignment.due_at,
+                progress=progress,
+                overdue=is_overdue(assignment, progress),
+                answered_count=len(item_firsts),
+                correct_first_count=sum(
+                    1 for a in item_firsts.values() if a.is_correct
+                ),
+                round_count=len(rounds),
+            )
+        )
+    return rows
+
+
+def focused_assignment(
+    session: Session, classroom_id: uuid.UUID, student_id: uuid.UUID
+) -> VocabularyAssignment | None:
+    """学生聚焦任务（多任务并存时的默认选中）：名单内进行中任务里
+    最早截止的未完成者；全部完成（或无未完成）则最近发布的进行中任务。
+    """
+    targeted = session.exec(
+        select(VocabularyAssignment)
+        .join(
+            VocabularyAssignmentTarget,
+            VocabularyAssignmentTarget.assignment_id == VocabularyAssignment.id,  # ty: ignore[invalid-argument-type]
+        )
+        .where(
+            VocabularyAssignment.classroom_id == classroom_id,  # type: ignore[arg-type]
+            VocabularyAssignmentTarget.student_id == student_id,  # type: ignore[arg-type]
+            VocabularyAssignment.status == "published",
+        )
+    ).all()
+    if not targeted:
+        return None
+    rows = {
+        r.assignment_id: r
+        for r in student_assignment_rows(session, classroom_id, student_id)
+    }
+    unfinished = [
+        a for a in targeted if rows.get(a.id) and rows[a.id].progress != "completed"
+    ]
+    pool = unfinished or list(targeted)
+    pool.sort(key=_assignment_sort_key)
+    return pool[0]
+
+
 def get_or_create_session(
     session: Session,
     classroom_id: uuid.UUID,
     student_id: uuid.UUID,
     assignment: VocabularyAssignment,
 ) -> VocabularySession:
-    """练习会话幂等创建：一个学生一个任务一份会话，中断续做。"""
-    existing = session.exec(
-        select(VocabularySession).where(
+    """轮次幂等创建：续做未结束轮，无未结束轮则新开一轮（round_no=max+1）。
+
+    同学生同任务最多一个未结束轮次（唯一索引 (assignment_id, student_id,
+    round_no) 兜底并发）。未结束轮存在时一律返回它——重复点击/并发开练
+    不会产生重复轮次（请求体 round="new" 的「再练一轮」也是这一分支）；
+    全部轮次已结束则开 max+1 新轮。首轮成绩锁定 round_no=1。
+    """
+    existing_rounds = session.exec(
+        select(VocabularySession)
+        .where(
             VocabularySession.assignment_id == assignment.id,  # type: ignore[arg-type]
             VocabularySession.student_id == student_id,  # type: ignore[arg-type]
         )
-    ).first()
-    if existing is not None:
-        return existing
+        .order_by(col(VocabularySession.round_no).desc())
+    ).all()
+    unfinished = next((r for r in existing_rounds if r.status == "in_progress"), None)
+    if unfinished is not None:
+        return unfinished
+    next_round_no = (existing_rounds[0].round_no if existing_rounds else 0) + 1
     vocab_session = VocabularySession(
         classroom_id=classroom_id,
         student_id=student_id,
         assignment_id=assignment.id,
         mode=assignment.mode,
+        round_no=next_round_no,
     )
     session.add(vocab_session)
     try:
         session.commit()
     except Exception:
+        # 并发开练撞唯一索引：回滚后重查，返回赢家轮次
         session.rollback()
-        existing = session.exec(
-            select(VocabularySession).where(
+        again = session.exec(
+            select(VocabularySession)
+            .where(
                 VocabularySession.assignment_id == assignment.id,  # type: ignore[arg-type]
                 VocabularySession.student_id == student_id,  # type: ignore[arg-type]
             )
-        ).first()
-        if existing is not None:
-            return existing
+            .order_by(col(VocabularySession.round_no).desc())
+        ).all()
+        unfinished = next((r for r in again if r.status == "in_progress"), None)
+        if unfinished is not None:
+            return unfinished
         raise
     session.refresh(vocab_session)
     return vocab_session
@@ -533,12 +661,98 @@ def session_progress(
     return len(firsts), sum(1 for a in firsts.values() if a.is_correct)
 
 
+def assignment_public(assignment: VocabularyAssignment) -> VocabularyAssignmentPublic:
+    """任务对外快照字段（学生/教师共用）。"""
+    return VocabularyAssignmentPublic(
+        id=assignment.id,
+        classroom_id=assignment.classroom_id,
+        title=assignment.title,
+        mode=assignment.mode,
+        prompt_types=assignment.prompt_types,
+        status=assignment.status,
+        version_no=assignment.version_no,
+        word_count=len(assignment.snapshot_items),
+        due_at=assignment.due_at,
+        published_at=assignment.published_at,
+        archived_at=assignment.archived_at,
+        created_by=assignment.created_by,
+    )
+
+
+def teacher_assignment_rows(
+    session: Session, classroom_id: uuid.UUID
+) -> list[VocabularyTeacherAssignmentRow]:
+    """教师任务列表：名单进度汇总（首轮首答口径），按发布倒序。"""
+    assignments = session.exec(
+        select(VocabularyAssignment)
+        .where(VocabularyAssignment.classroom_id == classroom_id)  # type: ignore[arg-type]
+        .order_by(col(VocabularyAssignment.version_no).desc())
+    ).all()
+    if not assignments:
+        return []
+    # 按任务分组的轮次（含全部学生），首轮首答决定进度
+    rounds_by_assignment: dict[uuid.UUID, list[VocabularySession]] = {}
+    for vs in session.exec(
+        select(VocabularySession).where(
+            VocabularySession.classroom_id == classroom_id,  # type: ignore[arg-type]
+            col(VocabularySession.assignment_id).in_([a.id for a in assignments]),  # type: ignore[operator]
+        )
+    ).all():
+        if vs.assignment_id is not None:
+            rounds_by_assignment.setdefault(vs.assignment_id, []).append(vs)
+    all_round_ids = [vs.id for rounds in rounds_by_assignment.values() for vs in rounds]
+    firsts = first_answers_by_session(session, all_round_ids)
+    targets_by_assignment: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for target in session.exec(
+        select(VocabularyAssignmentTarget).where(
+            col(VocabularyAssignmentTarget.assignment_id).in_(  # type: ignore[operator]
+                [a.id for a in assignments]
+            )
+        )
+    ).all():
+        targets_by_assignment.setdefault(target.assignment_id, set()).add(
+            target.student_id
+        )
+
+    rows: list[VocabularyTeacherAssignmentRow] = []
+    for assignment in assignments:
+        total = len(assignment.snapshot_items)
+        rounds_by_student: dict[uuid.UUID, list[VocabularySession]] = {}
+        for vs in rounds_by_assignment.get(assignment.id, []):
+            rounds_by_student.setdefault(vs.student_id, []).append(vs)
+        counters = {"completed": 0, "in_progress": 0, "not_started": 0}
+        overdue_count = 0
+        for student_id in targets_by_assignment.get(assignment.id, set()):
+            student_rounds = sorted(
+                rounds_by_student.get(student_id, []), key=lambda r: r.round_no
+            )
+            item_firsts = firsts.get(student_rounds[0].id, {}) if student_rounds else {}
+            progress = progress_of_round1(total, item_firsts)
+            counters[progress] += 1
+            if is_overdue(assignment, progress):
+                overdue_count += 1
+        rows.append(
+            VocabularyTeacherAssignmentRow(
+                assignment=assignment_public(assignment),
+                target_count=len(targets_by_assignment.get(assignment.id, set())),
+                completed_count=counters["completed"],
+                in_progress_count=counters["in_progress"],
+                not_started_count=counters["not_started"],
+                overdue_count=overdue_count,
+            )
+        )
+    return rows
+
+
 def class_results(
     session: Session, assignment: VocabularyAssignment
 ) -> tuple[list, list]:
-    """按目标名单聚合：学生行（含未开始）+ 逐词错误分布（首答口径）。"""
+    """按目标名单聚合：学生行（含未开始）+ 逐词错误分布（首轮首答口径）。
+
+    任务成绩锁定 round_no=1 的首答；复习轮只进 rounds 汇总，不改写
+    完成度与正确率。
+    """
     from app.models import (
-        VocabularyStudentResultRow,
         VocabularyWordMisspelling,
         VocabularyWordStatRow,
     )
@@ -550,23 +764,29 @@ def class_results(
         .order_by(col(Student.display_name))
     ).all()
 
-    sessions_by_student: dict[uuid.UUID, VocabularySession] = {}
+    rounds_by_student: dict[uuid.UUID, list[VocabularySession]] = {}
     if targets:
         for vs in session.exec(
-            select(VocabularySession).where(
-                VocabularySession.assignment_id == assignment.id  # type: ignore[arg-type]
-            )
+            select(VocabularySession)
+            .where(VocabularySession.assignment_id == assignment.id)  # type: ignore[arg-type]
+            .order_by(col(VocabularySession.round_no))
         ).all():
-            sessions_by_student[vs.student_id] = vs
-    firsts = first_answers_by_session(
-        session, [vs.id for vs in sessions_by_student.values()]
-    )
+            rounds_by_student.setdefault(vs.student_id, []).append(vs)
+    all_rounds = [vs for rounds in rounds_by_student.values() for vs in rounds]
+    firsts = first_answers_by_session(session, [vs.id for vs in all_rounds])
+
+    def first_round(rounds: list[VocabularySession]) -> VocabularySession | None:
+        # 存量数据迁移后恒有 round_no=1；防御性回落到最早轮
+        return rounds[0] if rounds else None
 
     student_rows: list[VocabularyStudentResultRow] = []
     word_firsts: dict[int, list[VocabularyAnswer]] = {}
     for _target, student in targets:
-        vocab_session = sessions_by_student.get(student.id)
-        item_firsts = firsts.get(vocab_session.id, {}) if vocab_session else {}
+        rounds = rounds_by_student.get(student.id, [])
+        first_round_session = first_round(rounds)
+        item_firsts = (
+            firsts.get(first_round_session.id, {}) if first_round_session else {}
+        )
         for idx, answer in item_firsts.items():
             word_firsts.setdefault(idx, []).append(answer)
         answered = len(item_firsts)
@@ -579,6 +799,18 @@ def class_results(
             if answered >= total
             else "in_progress"
         )
+        round_rows = [
+            VocabularyStudentRoundRow(
+                round_no=vs.round_no,
+                status=vs.status,
+                answered_count=len(firsts.get(vs.id, {})),
+                correct_first_count=sum(
+                    1 for a in firsts.get(vs.id, {}).values() if a.is_correct
+                ),
+                submitted_at=vs.submitted_at,
+            )
+            for vs in rounds
+        ]
         student_rows.append(
             VocabularyStudentResultRow(
                 student_id=student.id,
@@ -588,7 +820,11 @@ def class_results(
                 answered_count=answered,
                 correct_first_count=correct,
                 total_count=total,
-                submitted_at=vocab_session.submitted_at if vocab_session else None,
+                submitted_at=(
+                    first_round_session.submitted_at if first_round_session else None
+                ),
+                round_count=len(rounds),
+                rounds=round_rows,
             )
         )
 

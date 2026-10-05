@@ -1059,10 +1059,29 @@ export type VocabularyLevelStats = {
  */
 export type VocabularySessionCreate = {
     assignment_id?: (string | null);
+    round?: (string | null);
+};
+
+/**
+ * 学生任务列表条目：进度与时间（逾期）两维分别展示。
+ */
+export type VocabularyStudentAssignment = {
+    assignment_id: string;
+    title: string;
+    word_count: number;
+    due_at?: (string | null);
+    progress?: string;
+    overdue?: boolean;
+    answered_count?: number;
+    correct_first_count?: number;
+    round_count?: number;
 };
 
 /**
  * 教师结果面板的学生行（按目标名单，含未开始）。
+ *
+ * 任务成绩锁定首轮（round_no=1 的首答）；rounds 为各轮次独立汇总，
+ * 供教师查看复习轮，不参与完成度与正确率统计。
  */
 export type VocabularyStudentResultRow = {
     student_id: string;
@@ -1073,6 +1092,31 @@ export type VocabularyStudentResultRow = {
     correct_first_count: number;
     total_count: number;
     submitted_at?: (string | null);
+    round_count?: number;
+    rounds?: Array<VocabularyStudentRoundRow>;
+};
+
+/**
+ * 单个轮次的独立汇总（首轮=任务成绩；复习轮单独记录）。
+ */
+export type VocabularyStudentRoundRow = {
+    round_no: number;
+    status: string;
+    answered_count: number;
+    correct_first_count: number;
+    submitted_at?: (string | null);
+};
+
+/**
+ * 教师任务列表行：任务 + 名单进度汇总（首轮首答口径，逾期独立计数）。
+ */
+export type VocabularyTeacherAssignmentRow = {
+    assignment: VocabularyAssignmentPublic;
+    target_count?: number;
+    completed_count?: number;
+    in_progress_count?: number;
+    not_started_count?: number;
+    overdue_count?: number;
 };
 
 /**
@@ -1098,10 +1142,13 @@ export type VocabularyTodayPlan = {
     assignment?: (VocabularyAssignmentPublic | null);
     session_id?: (string | null);
     session_status?: (string | null);
+    session_round?: (number | null);
+    session_closed_reason?: (string | null);
     items?: Array<VocabularyTodayItem>;
     answered_count?: number;
     correct_first_count?: number;
     wrong_word_count?: number;
+    assignments?: Array<VocabularyStudentAssignment>;
 };
 
 /**
@@ -1835,7 +1882,7 @@ export type VocabularyListAssignmentsData = {
     code: string;
 };
 
-export type VocabularyListAssignmentsResponse = (Array<VocabularyAssignmentPublic>);
+export type VocabularyListAssignmentsResponse = (Array<VocabularyTeacherAssignmentRow>);
 
 export type VocabularyPublishVocabAssignmentData = {
     code: string;
@@ -1859,6 +1906,7 @@ export type VocabularyReadVocabResultsData = {
 export type VocabularyReadVocabResultsResponse = (VocabularyClassResults);
 
 export type VocabularyReadVocabTodayData = {
+    assignmentId?: (string | null);
     code: string;
 };
 

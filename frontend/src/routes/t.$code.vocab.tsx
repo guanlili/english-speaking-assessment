@@ -72,6 +72,10 @@ function TeacherVocabPage() {
   const { t } = useI18n()
   const { code } = useParams({ from: "/t/$code/vocab" })
   const [tab, setTab] = useState<"assign" | "results">("assign")
+  // 查看哪一期：null = 当前进行中（后端默认最新发布）；任务列表点击后切换
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<
+    string | null
+  >(null)
 
   const assignmentsQuery = useQuery({
     queryKey: ["vocab-teacher", code, "assignments"],
@@ -123,12 +127,18 @@ function TeacherVocabPage() {
 
   const assignments = assignmentsQuery.data ?? []
   const current =
-    assignments.find((item) => item.status === "published") ?? null
+    assignments.find((item) => item.assignment.status === "published") ?? null
   // 建班级词库需要课堂 id：从我的课堂列表按码匹配（管理员也从这里拿）
   const classroomId =
     classroomsQuery.data?.find(
       (classroom) => classroom.code === code.toUpperCase(),
     )?.id ?? null
+  const activeTasks = assignments.filter(
+    (item) => item.assignment.status === "published",
+  )
+  const endedTasks = assignments.filter(
+    (item) => item.assignment.status !== "published",
+  )
 
   return (
     <div className="space-y-6">
@@ -159,21 +169,30 @@ function TeacherVocabPage() {
         {current ? (
           <>
             <h1 className="break-words text-xl font-semibold tracking-tight sm:text-2xl">
-              {current.title}
+              {current.assignment.title}
               <Badge variant="secondary" className="ml-2 align-middle">
                 {t({
-                  zh: `第 ${current.version_no} 期 · ${current.word_count} 词`,
-                  en: `#${current.version_no} · ${current.word_count} words`,
+                  zh: `第 ${current.assignment.version_no} 期 · ${current.assignment.word_count} 词`,
+                  en: `#${current.assignment.version_no} · ${current.assignment.word_count} words`,
                 })}
               </Badge>
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {t({
-                zh: `发布于 ${current.published_at ? new Date(current.published_at).toLocaleString() : "–"}`,
-                en: `Published ${current.published_at ? new Date(current.published_at).toLocaleString() : "–"}`,
+                zh: `发布于 ${current.assignment.published_at ? new Date(current.assignment.published_at).toLocaleString() : "–"}`,
+                en: `Published ${current.assignment.published_at ? new Date(current.assignment.published_at).toLocaleString() : "–"}`,
               })}
-              {current.due_at &&
-                ` · ${t({ zh: "截止", en: "Due" })} ${new Date(current.due_at).toLocaleString()}`}
+              {current.assignment.due_at &&
+                ` · ${t({ zh: "截止", en: "Due" })} ${new Date(current.assignment.due_at).toLocaleString()}`}
+              {` · ${t({
+                zh: `已完成 ${current.completed_count ?? 0}/${current.target_count ?? 0}`,
+                en: `${current.completed_count ?? 0}/${current.target_count ?? 0} completed`,
+              })}`}
+              {(current.overdue_count ?? 0) > 0 &&
+                ` · ${t({
+                  zh: `${current.overdue_count ?? 0} 人逾期未完成`,
+                  en: `${current.overdue_count ?? 0} overdue`,
+                })}`}
             </p>
           </>
         ) : (
@@ -185,6 +204,74 @@ function TeacherVocabPage() {
           </h1>
         )}
       </div>
+
+      {/* 任务列表（多任务并存：进行中 + 已结束分组；点击查看该任务结果） */}
+      {assignments.length > 0 && (
+        <section
+          aria-label={t({ zh: "全部词汇任务", en: "All vocabulary tasks" })}
+        >
+          <p className="mb-2 text-xs font-medium text-muted-foreground">
+            {t({
+              zh: "全部任务（新发布不再结束旧任务；点任务查看首轮成绩与复习轮）",
+              en: "All tasks (publishing no longer ends older ones; tap a task for first-round scores and review rounds)",
+            })}
+          </p>
+          <ul className="grid gap-2 lg:grid-cols-2">
+            {[...activeTasks, ...endedTasks].map((row) => (
+              <li key={row.assignment.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedAssignmentId(row.assignment.id)
+                    setTab("results")
+                  }}
+                  aria-current={
+                    selectedAssignmentId === row.assignment.id
+                      ? "true"
+                      : undefined
+                  }
+                  className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border px-4 py-3 text-left transition-colors hover:border-primary/40 ${
+                    selectedAssignmentId === row.assignment.id
+                      ? "border-primary/60 bg-primary/5"
+                      : "border-border bg-card"
+                  }`}
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                    {row.assignment.title}
+                  </span>
+                  <Badge
+                    variant={
+                      row.assignment.status === "published"
+                        ? "secondary"
+                        : "outline"
+                    }
+                  >
+                    {row.assignment.status === "published"
+                      ? t({ zh: "进行中", en: "Active" })
+                      : t({ zh: "已结束", en: "Ended" })}
+                  </Badge>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {t({
+                      zh: `${row.completed_count ?? 0}/${row.target_count ?? 0} 完成`,
+                      en: `${row.completed_count ?? 0}/${row.target_count ?? 0} done`,
+                    })}
+                    {(row.in_progress_count ?? 0) > 0 &&
+                      ` · ${t({
+                        zh: `${row.in_progress_count ?? 0} 进行中`,
+                        en: `${row.in_progress_count ?? 0} active`,
+                      })}`}
+                    {(row.overdue_count ?? 0) > 0 &&
+                      ` · ${t({
+                        zh: `${row.overdue_count ?? 0} 逾期`,
+                        en: `${row.overdue_count ?? 0} overdue`,
+                      })}`}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div
         className="flex gap-2"
@@ -214,7 +301,12 @@ function TeacherVocabPage() {
       {tab === "assign" ? (
         <AssignPanel code={code} classroomId={classroomId} />
       ) : (
-        <ResultsPanel code={code} assignments={assignments} />
+        <ResultsPanel
+          code={code}
+          assignments={assignments.map((row) => row.assignment)}
+          selectedAssignmentId={selectedAssignmentId}
+          onSelectAssignment={setSelectedAssignmentId}
+        />
       )}
     </div>
   )
@@ -699,6 +791,8 @@ function RoundSelector({
 function ResultsPanel({
   code,
   assignments,
+  selectedAssignmentId,
+  onSelectAssignment,
 }: {
   code: string
   assignments: Array<{
@@ -708,13 +802,12 @@ function ResultsPanel({
     status: string
     word_count: number
   }>
+  selectedAssignmentId: string | null
+  onSelectAssignment: (id: string | null) => void
 }) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
   // 查看哪一期：null = 当前进行中；归档/重发后可切换历史期数按快照回看
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<
-    string | null
-  >(null)
   const resultsQuery = useQuery({
     queryKey: ["vocab-teacher", code, "results", selectedAssignmentId],
     queryFn: () =>
@@ -746,9 +839,9 @@ function ResultsPanel({
       selectedAssignmentId === null &&
       assignments.length > 0
     ) {
-      setSelectedAssignmentId(assignments[0].id)
+      onSelectAssignment(assignments[0].id)
     }
-  }, [assignment, selectedAssignmentId, assignments])
+  }, [assignment, selectedAssignmentId, assignments, onSelectAssignment])
   const students = useMemo(
     () =>
       [...(results?.students ?? [])].sort((a, b) =>
@@ -767,6 +860,7 @@ function ResultsPanel({
       t({ zh: "已答/总词数", en: "Answered/Total" }),
       t({ zh: "首答正确", en: "First-try correct" }),
       t({ zh: "首答正确率", en: "First-try accuracy" }),
+      t({ zh: "各轮首答正确", en: "First-try correct per round" }),
     ]
     const rows = students.map((row) => [
       row.display_name,
@@ -777,6 +871,13 @@ function ResultsPanel({
       row.answered_count > 0
         ? `${Math.round((row.correct_first_count / row.answered_count) * 100)}%`
         : "-",
+      // 任务成绩锁定首轮；复习轮单独列出，不影响上列成绩
+      (row.rounds ?? [])
+        .map(
+          (round) =>
+            `R${round.round_no} ${round.correct_first_count}/${round.answered_count}`,
+        )
+        .join("; "),
     ])
     downloadCsv(
       [header, ...rows],
@@ -802,7 +903,7 @@ function ResultsPanel({
         <RoundSelector
           assignments={assignments}
           selectedAssignmentId={selectedAssignmentId}
-          onSelect={setSelectedAssignmentId}
+          onSelect={onSelectAssignment}
         />
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
@@ -890,7 +991,7 @@ function ResultsPanel({
             <RoundSelector
               assignments={assignments}
               selectedAssignmentId={selectedAssignmentId}
-              onSelect={setSelectedAssignmentId}
+              onSelect={onSelectAssignment}
               className="mt-2"
             />
           </div>
@@ -1037,6 +1138,7 @@ function ResultsPanel({
                 <TableHead>
                   {t({ zh: "首答正确率", en: "First-try accuracy" })}
                 </TableHead>
+                <TableHead>{t({ zh: "轮次", en: "Rounds" })}</TableHead>
                 <TableHead>
                   {t({ zh: "交卷时间", en: "Submitted at" })}
                 </TableHead>
@@ -1077,6 +1179,30 @@ function ResultsPanel({
                       {row.answered_count > 0
                         ? `${Math.round((row.correct_first_count / row.answered_count) * 100)}%`
                         : "–"}
+                    </TableCell>
+                    <TableCell>
+                      {(row.rounds ?? []).length > 1 ? (
+                        <span className="flex flex-wrap gap-1">
+                          {(row.rounds ?? []).map((round) => (
+                            <Badge
+                              key={round.round_no}
+                              variant={
+                                round.round_no === 1 ? "secondary" : "outline"
+                              }
+                              className="tabular-nums"
+                              title={t({
+                                zh: `第 ${round.round_no} 轮：首答 ${round.correct_first_count}/${round.answered_count}${round.status === "submitted" ? "（已完成）" : "（未完成）"}`,
+                                en: `Round ${round.round_no}: ${round.correct_first_count}/${round.answered_count} first-try${round.status === "submitted" ? " (finished)" : " (unfinished)"}`,
+                              })}
+                            >
+                              R{round.round_no} {round.correct_first_count}/
+                              {round.answered_count}
+                            </Badge>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">–</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {row.submitted_at

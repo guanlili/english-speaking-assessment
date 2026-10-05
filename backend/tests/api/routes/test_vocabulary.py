@@ -289,15 +289,24 @@ def test_publish_validation_and_snapshot_immutability(
     apple_item = next(i for i in plan["items"] if i["meaning_zh"] == "苹果")
     assert apple_item["headword"] is None  # 未作答不透露拼写
 
-    # 教师重发新任务 → 旧任务归档
+    # 教师重发新任务 → 多任务并存：两个任务都保持发布中，互不归档
     second = _publish(client, headers, code, word_ids, title="第二期")
     assert second["version_no"] == 2
-    assignments = client.get(
+    rows = client.get(
         f"/api/v1/classes/{code}/vocabulary/assignments", headers=headers
     ).json()
-    statuses = {a["id"]: a["status"] for a in assignments}
-    assert statuses[assignment["id"]] == "archived"
-    assert statuses[second["id"]] == "published"
+    by_id = {r["assignment"]["id"]: r for r in rows}
+    assert by_id[assignment["id"]]["assignment"]["status"] == "published"
+    assert by_id[second["id"]]["assignment"]["status"] == "published"
+    assert by_id[second["id"]]["target_count"] == 1
+    assert by_id[second["id"]]["not_started_count"] == 1
+
+    # 学生任务列表含两个任务；无 due 时聚焦最近发布的
+    plan2 = _today(client, student["headers"], code)
+    student_rows = {r["assignment_id"]: r for r in plan2["assignments"]}
+    assert student_rows[assignment["id"]]["progress"] == "not_started"
+    assert student_rows[second["id"]]["progress"] == "not_started"
+    assert plan2["assignment"]["id"] == second["id"]
 
 
 # ── 判分 / 幂等 / 重试 ──────────────────────────────────────────────

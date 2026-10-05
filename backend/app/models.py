@@ -1201,15 +1201,20 @@ class VocabularyAssignmentTarget(SQLModel, table=True):
 
 
 class VocabularySession(SQLModel, table=True):
-    """一次词汇作答会话（与口语 PracticeSession 分表，互不影响）。"""
+    """词汇练习轮次（与口语 PracticeSession 分表，互不影响）。
+
+    一个学生对一个任务可有多个轮次：round_no=1 为首轮（任务成绩锁定首轮
+    的首答），后续轮次为复习（「再练一轮」），独立记录不改写首轮成绩。
+    """
 
     __tablename__ = "vocabulary_session"
     __table_args__ = (
-        # 一个学生对一个任务只有一份会话（练习中断续做，刷新恢复）
+        # 同学生同任务同轮次唯一；并发「再练一轮」由唯一索引兜底
         Index(
-            "ix_vocab_session_assignment_student",
+            "ix_vocab_session_assignment_student_round",
             "assignment_id",
             "student_id",
+            "round_no",
             unique=True,
             postgresql_where=text("assignment_id IS NOT NULL"),
         ),
@@ -1244,6 +1249,8 @@ class VocabularySession(SQLModel, table=True):
         sa_type=DateTime(timezone=True),  # type: ignore
     )
     submitted_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    # 轮次序号：1=首轮（教师任务成绩），>1 为「再练一轮」的复习轮
+    round_no: int = Field(default=1, sa_column_kwargs={"server_default": "1"})
     # 切屏计数（沿用模考思路；P0 练习模式仅记录不启用，P1 测验接入）
     tab_switch_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
 
@@ -1425,22 +1432,46 @@ class VocabularyTodayItem(SQLModel):
     attempt_count: int = 0
 
 
+class VocabularyStudentAssignment(SQLModel):
+    """学生任务列表条目：进度与时间（逾期）两维分别展示。"""
+
+    assignment_id: uuid.UUID
+    title: str
+    word_count: int
+    due_at: datetime | None = None
+    # 进度维度：not_started / in_progress / completed
+    progress: str = "not_started"
+    # 时间维度（独立于进度）：now > due_at 且任务未完成
+    overdue: bool = False
+    answered_count: int = 0
+    correct_first_count: int = 0
+    round_count: int = 1
+
+
 class VocabularyTodayPlan(SQLModel):
     """GET /classes/{code}/vocabulary/today 的学生视图。"""
 
     assignment: VocabularyAssignmentPublic | None = None
     session_id: uuid.UUID | None = None
     session_status: str | None = None
+    session_round: int | None = None
+    # 聚焦轮因截止/归档被关闭时的原因：due_passed / archived；可继续作答为 None
+    session_closed_reason: str | None = None
     items: list[VocabularyTodayItem] = []
     answered_count: int = 0
     correct_first_count: int = 0
     wrong_word_count: int = 0
+    # 名单内全部任务（按 due 升序、无 due 按发布倒序）
+    assignments: list[VocabularyStudentAssignment] = []
 
 
 class VocabularySessionCreate(SQLModel):
     """创建/恢复作答会话：缺省 assignment_id = 当前进行中的任务。"""
 
     assignment_id: uuid.UUID | None = None
+    # round="new"：上一轮已完成时开新的复习轮（round_no=max+1）；
+    # 缺省=续做最新未完成轮，无未完成轮则新开
+    round: str | None = Field(default=None, max_length=8)
 
 
 class VocabularyAnswerRequest(SQLModel):
@@ -1462,8 +1493,22 @@ class VocabularyAnswerResult(SQLModel):
     correct_first_count: int
 
 
+class VocabularyStudentRoundRow(SQLModel):
+    """单个轮次的独立汇总（首轮=任务成绩；复习轮单独记录）。"""
+
+    round_no: int
+    status: str  # in_progress / submitted
+    answered_count: int
+    correct_first_count: int
+    submitted_at: datetime | None = None
+
+
 class VocabularyStudentResultRow(SQLModel):
-    """教师结果面板的学生行（按目标名单，含未开始）。"""
+    """教师结果面板的学生行（按目标名单，含未开始）。
+
+    任务成绩锁定首轮（round_no=1 的首答）；rounds 为各轮次独立汇总，
+    供教师查看复习轮，不参与完成度与正确率统计。
+    """
 
     student_id: uuid.UUID
     display_name: str
@@ -1473,6 +1518,8 @@ class VocabularyStudentResultRow(SQLModel):
     correct_first_count: int
     total_count: int
     submitted_at: datetime | None = None
+    round_count: int = 0
+    rounds: list[VocabularyStudentRoundRow] = []
 
 
 class VocabularyWordMisspelling(SQLModel):
@@ -1503,6 +1550,17 @@ class VocabularyClassResults(SQLModel):
     not_started_count: int = 0
     students: list[VocabularyStudentResultRow] = []
     words: list[VocabularyWordStatRow] = []
+
+
+class VocabularyTeacherAssignmentRow(SQLModel):
+    """教师任务列表行：任务 + 名单进度汇总（首轮首答口径，逾期独立计数）。"""
+
+    assignment: VocabularyAssignmentPublic
+    target_count: int = 0
+    completed_count: int = 0
+    in_progress_count: int = 0
+    not_started_count: int = 0
+    overdue_count: int = 0
 
 
 class VocabularyWrongWordItem(SQLModel):
