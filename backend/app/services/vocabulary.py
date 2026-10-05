@@ -1020,7 +1020,7 @@ def student_book_word_counts(
             col(VocabularyBookItem.book_id).in_(book_ids),  # type: ignore[operator]
             VocabularyWord.status == "active",
         )
-        .group_by(col(VocabularyBookItem.book_id))  # ty: ignore[invalid-argument-type]
+        .group_by(col(VocabularyBookItem.book_id))
     ).all()
     return dict(rows)
 
@@ -1268,8 +1268,11 @@ def student_plan(session: Session, vocab_session: VocabularySession) -> object:
             answered_count += 1
             if first.is_correct:
                 correct_first += 1
-        audio_allowed = "audio" in (snapshot_item.get("prompt_types") or []) and (
-            snapshot_item.get("audio_url") is not None or first is not None
+        item_prompt_types = snapshot_item.get("prompt_types")
+        audio_allowed = (
+            isinstance(item_prompt_types, list)
+            and "audio" in item_prompt_types
+            and (snapshot_item.get("audio_url") is not None or first is not None)
         )
         items.append(
             VocabularyStudentItem(
