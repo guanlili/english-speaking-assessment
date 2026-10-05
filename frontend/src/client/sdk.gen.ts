@@ -2128,9 +2128,10 @@ export class VocabularyService {
     
     /**
      * List Assignments
+     * 教师任务列表：全部任务（含已结束）+ 名单进度汇总，按发布倒序。
      * @param data The data for the request.
      * @param data.code
-     * @returns VocabularyAssignmentPublic Successful Response
+     * @returns VocabularyTeacherAssignmentRow Successful Response
      * @throws ApiError
      */
     public static listAssignments(data: VocabularyListAssignmentsData): CancelablePromise<VocabularyListAssignmentsResponse> {
@@ -2222,9 +2223,15 @@ export class VocabularyService {
     
     /**
      * Read Vocab Today
-     * 学生词汇任务视图：当前任务 + 个人进度（未答题不透露拼写）。
+     * 学生词汇任务视图：任务列表 + 聚焦任务进度（未答题不透露拼写）。
+     *
+     * assignment_id 缺省 = 聚焦任务（最早截止的未完成者）；显式指定时返回
+     * 该任务的聚焦轮次（多任务切换练习用）。round_no 显式回看指定轮次
+     * （只读，归属校验：只允许本人轮次，不存在 404）。
      * @param data The data for the request.
      * @param data.code
+     * @param data.assignmentId
+     * @param data.roundNo
      * @returns VocabularyTodayPlan Successful Response
      * @throws ApiError
      */
@@ -2235,6 +2242,10 @@ export class VocabularyService {
             path: {
                 code: data.code
             },
+            query: {
+                assignment_id: data.assignmentId,
+                round_no: data.roundNo
+            },
             errors: {
                 422: 'Validation Error'
             }
@@ -2243,7 +2254,10 @@ export class VocabularyService {
     
     /**
      * Start Vocab Session
-     * 创建/恢复作答会话（幂等）。仅目标名单内的本班学生。
+     * 创建/恢复作答轮次（幂等）。仅目标名单内的本班学生。
+     *
+     * 缺省 assignment_id = 聚焦任务；未结束轮存在时一律续做（重复点击
+     * 不产生重复轮次），全部轮次已结束则开新一轮（「再练一轮」）。
      * @param data The data for the request.
      * @param data.code
      * @param data.requestBody

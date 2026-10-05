@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router"
 import {
   ArrowRight,
@@ -6,10 +6,12 @@ import {
   BookOpenCheck,
   CheckCircle2,
   Circle,
+  Clock,
   ListChecks,
   RefreshCw,
   SpellCheck,
 } from "lucide-react"
+import { toast } from "sonner"
 import { VocabularyService } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
 import StudentShell from "@/components/Practice/StudentShell"
@@ -37,6 +39,13 @@ import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
 import { EXPLAIN_FIRST_TRY, EXPLAIN_MASKED_WORDS, TERMS } from "@/lib/terms"
 
+/** 任务进度 → 双语徽标（进度与逾期两维独立展示） */
+const PROGRESS_LABEL: Record<string, { zh: string; en: string }> = {
+  not_started: { zh: "未开始", en: "Not started" },
+  in_progress: { zh: "进行中", en: "In progress" },
+  completed: { zh: "已完成", en: "Completed" },
+}
+
 export const Route = createFileRoute("/vocab/$code/")({
   component: VocabHomePage,
   head: () => ({
@@ -48,6 +57,7 @@ function VocabHomePage() {
   const { t } = useI18n()
   const { code } = useParams({ from: "/vocab/$code/" })
   const navigate = useNavigate({ from: "/vocab/$code/" })
+  const queryClient = useQueryClient()
   const student = loadStudent(code)
 
   const todayQuery = useQuery({
@@ -57,6 +67,35 @@ function VocabHomePage() {
     queryFn: () =>
       VocabularyService.readVocabToday({ code: code.toUpperCase() }),
     enabled: student !== null,
+  })
+
+  // 「再练一轮」：上一轮已完成后开新的复习轮（round_no=max+1），
+  // 历史轮次与首轮任务成绩保持不变
+  const newRound = useMutation({
+    mutationFn: (assignmentId: string) =>
+      VocabularyService.startVocabSession({
+        code: code.toUpperCase(),
+        requestBody: { assignment_id: assignmentId, round: "new" },
+      }),
+    onSuccess: (_data, assignmentId) => {
+      void queryClient.invalidateQueries({ queryKey: ["vocab", code] })
+      // 固定新开的任务 ID 进入练习，避免聚焦漂移到其他任务
+      void navigate({
+        to: "/vocab/$code/practice",
+        params: { code },
+        search: { assignment: assignmentId },
+      })
+    },
+    onError: (error) => {
+      if (error instanceof Error) {
+        toast.error(
+          t({
+            zh: "暂时不能开始新一轮：任务可能已结束或已过截止时间。",
+            en: "Can't start a new round: the task may have ended or passed its due time.",
+          }),
+        )
+      }
+    },
   })
 
   const wrongQuery = useQuery({
@@ -128,6 +167,9 @@ function VocabHomePage() {
   const accuracy =
     answered > 0 ? Math.round((correctFirst / answered) * 100) : null
   const wrongWords = wrongQuery.data?.items ?? []
+  const taskRows = plan.assignments ?? []
+  // 聚焦轮因截止/归档被关闭：不能再作答（历史仍可回看）
+  const closedReason = plan.session_closed_reason ?? null
 
   return (
     <StudentShell active="vocab" wide>
@@ -147,7 +189,84 @@ function VocabHomePage() {
           </p>
         </section>
 
-        {/* 当前词汇任务 */}
+        {/* 我的任务列表（多任务并存：进行中与已结束都在，可切换练习） */}
+        {taskRows.length > 0 && (
+          <section
+            aria-label={t({ zh: "我的词汇任务", en: "My vocabulary tasks" })}
+          >
+            <p className="mb-2 text-xs font-medium text-muted-foreground">
+              {t({
+                zh: "我的任务（老师新发布的不会再结束旧任务）",
+                en: "My tasks (new ones no longer end older tasks)",
+              })}
+            </p>
+            <ul className="grid gap-2 md:grid-cols-2">
+              {taskRows.map((row) => (
+                <li key={row.assignment_id}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void navigate({
+                        to: "/vocab/$code/practice",
+                        params: { code },
+                        search: { assignment: row.assignment_id },
+                      })
+                    }
+                    className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border bg-card px-4 py-3.5 text-left transition-colors hover:border-primary/40"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {row.title}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        {t({
+                          zh: `${row.word_count} 词 · 首答 ${row.correct_first_count}/${row.word_count}`,
+                          en: `${row.word_count} words · ${row.correct_first_count}/${row.word_count} first-try`,
+                        })}
+                        {(row.round_count ?? 0) > 1 &&
+                          ` · ${t({
+                            zh: `已练 ${row.round_count ?? 0} 轮`,
+                            en: `${row.round_count ?? 0} rounds`,
+                          })}`}
+                        {row.due_at &&
+                          ` · ${t({ zh: "截止", en: "Due" })} ${new Date(row.due_at).toLocaleDateString()}`}
+                      </span>
+                    </span>
+                    {row.overdue && (
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 text-amber-600"
+                      >
+                        <Clock className="size-3" />
+                        {t({ zh: "已逾期", en: "Overdue" })}
+                      </Badge>
+                    )}
+                    <Badge
+                      variant={
+                        row.progress === "completed" ? "secondary" : "outline"
+                      }
+                      className={
+                        row.progress === "completed"
+                          ? "shrink-0 text-primary"
+                          : "shrink-0"
+                      }
+                    >
+                      {t(
+                        PROGRESS_LABEL[row.progress ?? ""] ?? {
+                          zh: row.progress ?? "",
+                          en: row.progress ?? "",
+                        },
+                      )}
+                    </Badge>
+                    <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {/* 聚焦任务练习卡 */}
         {assignment === null ? (
           <Card>
             <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
@@ -221,21 +340,39 @@ function VocabHomePage() {
                     {t({ zh: "刷新", en: "Refresh" })}
                   </span>
                 </Button>
-                <Button
-                  onClick={() =>
-                    void navigate({
-                      to: "/vocab/$code/practice",
-                      params: { code },
-                    })
-                  }
-                >
-                  {answered === 0
-                    ? t({ zh: "开始练习", en: "Start practice" })
-                    : finished
-                      ? t({ zh: "再练一遍", en: "Practice again" })
+                {closedReason ? (
+                  <Badge variant="outline" className="shrink-0 text-amber-600">
+                    <Clock className="size-3" />
+                    {closedReason === "archived"
+                      ? t({ zh: "老师已结束任务", en: "Ended by teacher" })
+                      : t({ zh: "已过截止时间", en: "Past due" })}
+                  </Badge>
+                ) : finished ? (
+                  <Button
+                    onClick={() => newRound.mutate(assignment.id)}
+                    disabled={newRound.isPending}
+                  >
+                    {newRound.isPending
+                      ? t({ zh: "开新一轮…", en: "Starting…" })
+                      : t({ zh: "再练一轮", en: "New round" })}
+                    <ArrowRight />
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() =>
+                      void navigate({
+                        to: "/vocab/$code/practice",
+                        params: { code },
+                        search: { assignment: assignment.id },
+                      })
+                    }
+                  >
+                    {answered === 0
+                      ? t({ zh: "开始练习", en: "Start practice" })
                       : t({ zh: "继续练习", en: "Continue practice" })}
-                  <ArrowRight />
-                </Button>
+                    <ArrowRight />
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent className="space-y-4">

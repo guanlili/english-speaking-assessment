@@ -39,6 +39,18 @@ import { speakEnglish } from "@/lib/tts"
 
 export const Route = createFileRoute("/vocab/$code/practice")({
   component: VocabPracticePage,
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { assignment?: string; round?: string } => {
+    const assignment = search.assignment
+    const round = search.round
+    return {
+      ...(typeof assignment === "string" && assignment !== ""
+        ? { assignment }
+        : {}),
+      ...(typeof round === "string" && /^\d+$/.test(round) ? { round } : {}),
+    }
+  },
   head: () => ({
     meta: [{ title: `拼写练习 / Spelling Practice - ${APP_NAME}` }],
   }),
@@ -54,6 +66,7 @@ interface AnswerState {
 function VocabPracticePage() {
   const { t } = useI18n()
   const { code } = useParams({ from: "/vocab/$code/practice" })
+  const { assignment: assignmentParam, round: roundParam } = Route.useSearch()
   const navigate = useNavigate({ from: "/vocab/$code/practice" })
   const queryClient = useQueryClient()
   const student = loadStudent(code)
@@ -61,13 +74,35 @@ function VocabPracticePage() {
   const todayQuery = useQuery({
     retry: 1,
     retryDelay: 500,
-    queryKey: ["vocab", code, "today", student?.id],
+    queryKey: [
+      "vocab",
+      code,
+      "today",
+      student?.id,
+      assignmentParam ?? "",
+      roundParam ?? "",
+    ],
     queryFn: () =>
-      VocabularyService.readVocabToday({ code: code.toUpperCase() }),
+      VocabularyService.readVocabToday({
+        code: code.toUpperCase(),
+        assignmentId: assignmentParam,
+        roundNo: roundParam ? Number(roundParam) : undefined,
+      }),
     enabled: student !== null,
   })
 
   const assignment = todayQuery.data?.assignment ?? null
+  // 任务级作答门禁（截止/归档）；回看历史轮同样只读
+  const closedReason = todayQuery.data?.session_closed_reason ?? null
+  const viewingRoundNo = roundParam ? Number(roundParam) : null
+  // 当前可练轮由后端独立下发（current_round）：展示轮号（session_round）
+  // 是回看轮自己的轮号，不能拿来判断「我看的是不是当前轮」
+  const currentRoundNo = todayQuery.data?.current_round ?? null
+  const isCurrentRound =
+    viewingRoundNo === null || viewingRoundNo === currentRoundNo
+  const readOnly = closedReason !== null || !isCurrentRound
+  const rounds = todayQuery.data?.rounds ?? []
+  const activeRoundNo = viewingRoundNo ?? todayQuery.data?.session_round ?? null
   const items = useMemo(
     () =>
       [...(todayQuery.data?.items ?? [])].sort(
@@ -76,8 +111,34 @@ function VocabPracticePage() {
     [todayQuery.data],
   )
 
-  // 已答状态（刷新恢复：服务端 plan 里带回首答结果）
+  // 进入练习即固定任务：聚焦任务加载后写入 URL（replace），
+  // 之后作答/刷新/完成都不会再漂移到其他任务
+  useEffect(() => {
+    if (assignmentParam || !assignment || todayQuery.isFetching) return
+    void navigate({
+      to: "/vocab/$code/practice",
+      params: { code },
+      search: { assignment: assignment.id },
+      replace: true,
+    })
+  }, [assignment, assignmentParam, code, navigate, todayQuery.isFetching])
+
+  // 任务/轮次绑定键：任一变化即清空本地作答状态——禁止新题面沿用旧会话的
+  // 会话号、题号、输入与反馈（跨任务/跨轮切换的唯一重置入口）。
+  // 渲染期重置模式（React 官方推荐）：绑定键变化时在渲染中重置 state
+  const bindingKey = `${assignment?.id ?? ""}:${todayQuery.data?.session_id ?? ""}:${activeRoundNo ?? ""}`
   const [answers, setAnswers] = useState<Record<number, AnswerState>>({})
+  const [current, setCurrent] = useState(0)
+  const [input, setInput] = useState("")
+  const [renderedBinding, setRenderedBinding] = useState(bindingKey)
+  if (renderedBinding !== bindingKey) {
+    setRenderedBinding(bindingKey)
+    setAnswers({})
+    setCurrent(0)
+    setInput("")
+  }
+
+  // 服务端恢复已答状态（刷新/换端进入：plan 里带回首答结果）
   useEffect(() => {
     if (!todayQuery.data) return
     const restored: Record<number, AnswerState> = {}
@@ -91,28 +152,45 @@ function VocabPracticePage() {
       }
     }
     setAnswers(restored)
+    const firstUnanswered = (todayQuery.data.items ?? []).findIndex(
+      (item) => !item.answered,
+    )
+    setCurrent(firstUnanswered >= 0 ? firstUnanswered : 0)
   }, [todayQuery.data])
 
-  // 进入时定位到第一道未作答的题
-  const [current, setCurrent] = useState(0)
-  const initialized = useRef(false)
-  useEffect(() => {
-    if (initialized.current || items.length === 0) return
-    initialized.current = true
-    const firstUnanswered = items.findIndex((item) => !item.answered)
-    setCurrent(firstUnanswered >= 0 ? firstUnanswered : 0)
-  }, [items])
-
-  // 会话创建（幂等）：任务就绪且尚无会话时自动开始
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  // 会话号与任务强绑定：优先用 today 返回（key 已含任务 ID），
+  // 自动开练的窗口期用 createdSession（记着它属于哪个任务），
+  // 任务切换后旧任务的会话号永远不会被用来提交新任务的题目
+  const [createdSession, setCreatedSession] = useState<{
+    assignmentId: string
+    sessionId: string
+  } | null>(null)
+  const remoteSessionId = todayQuery.data?.session_id ?? null
+  const sessionId =
+    remoteSessionId ??
+    (createdSession && createdSession.assignmentId === (assignment?.id ?? "")
+      ? createdSession.sessionId
+      : null)
   const startSession = useMutation({
-    mutationFn: (assignmentId: string) =>
+    mutationFn: (payload: { assignmentId: string; round?: string }) =>
       VocabularyService.startVocabSession({
         code: code.toUpperCase(),
-        requestBody: { assignment_id: assignmentId },
+        requestBody: {
+          assignment_id: payload.assignmentId,
+          ...(payload.round ? { round: payload.round } : {}),
+        },
       }),
-    onSuccess: (data) => {
-      setSessionId((data as { session_id: string }).session_id)
+    onSuccess: (data, payload) => {
+      setCreatedSession({
+        assignmentId: payload.assignmentId,
+        sessionId: (data as { session_id: string }).session_id,
+      })
+      if (payload.round === "new") {
+        // 新复习轮已开：重拉 today 拿到新轮的题目与首答状态
+        void queryClient.invalidateQueries({
+          queryKey: ["vocab", code, "today"],
+        })
+      }
     },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 403) {
@@ -123,25 +201,31 @@ function VocabPracticePage() {
           }),
         )
         void navigate({ to: "/vocab/$code", params: { code } })
+        return
+      }
+      if (error instanceof ApiError && error.status === 422) {
+        // 任务已结束/已过截止/没有可续做的轮次：明确提示而非静默
+        toast.error(
+          t({
+            zh: "这个任务已结束或本轮已完成，不能开始作答。",
+            en: "This task has ended or the round is already finished — can't start.",
+          }),
+        )
       }
     },
   })
   useEffect(() => {
-    if (todayQuery.data?.session_id) {
-      setSessionId(todayQuery.data.session_id)
-      return
-    }
+    if (remoteSessionId || readOnly) return
     if (
       assignment &&
       !sessionId &&
       !startSession.isPending &&
       !startSession.isError
     ) {
-      startSession.mutate(assignment.id)
+      startSession.mutate({ assignmentId: assignment.id })
     }
-  }, [assignment, sessionId, startSession, todayQuery.data])
+  }, [assignment, readOnly, remoteSessionId, sessionId, startSession])
 
-  const [input, setInput] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
   // 幂等键跟随「一次作答意图」：键与题号/题型/作答内容绑定——只有原样重试
   // （断网、5xx 等送达不确定的失败）才复用同键，服务端重放返回同一判分；
@@ -157,6 +241,7 @@ function VocabPracticePage() {
       itemIndex: number
       promptType: string
       answer: string
+      binding: string
     }) => {
       const pending = pendingRef.current
       const sameIntent =
@@ -180,7 +265,9 @@ function VocabPracticePage() {
         },
       })
     },
-    onSuccess: (result) => {
+    onSuccess: (result, variables) => {
+      // 迟到响应隔离：提交后已切换任务/轮次的响应只丢弃不落当前视图
+      if (variables.binding !== bindingKey) return
       pendingRef.current = null
       setAnswers((prev) => ({
         ...prev,
@@ -191,7 +278,8 @@ function VocabPracticePage() {
         },
       }))
     },
-    onError: (error) => {
+    onError: (error, variables) => {
+      if (variables.binding !== bindingKey) return
       if (error instanceof ApiError && error.status < 500) {
         // 4xx 业务拒绝（422 幂等冲突等）：作答已被服务端明确拒绝，清键换新意图
         pendingRef.current = null
@@ -264,12 +352,19 @@ function VocabPracticePage() {
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    if (!item || !sessionId || input.trim() === "" || submitAnswer.isPending)
+    if (
+      !item ||
+      !sessionId ||
+      input.trim() === "" ||
+      submitAnswer.isPending ||
+      readOnly
+    )
       return
     submitAnswer.mutate({
       itemIndex: item.item_index,
       promptType: useAudio ? "audio" : "meaning",
       answer: input.trim(),
+      binding: bindingKey,
     })
   }
 
@@ -356,11 +451,78 @@ function VocabPracticePage() {
           </Button>
           <p className="text-xs text-muted-foreground">
             {t({
-              zh: `第 ${current + 1} / ${items.length} 题 · 首答正确 ${correctFirst}`,
-              en: `Item ${current + 1} / ${items.length} · ${correctFirst} correct on first try`,
+              zh: `${assignment?.title ?? ""} · 第 ${activeRoundNo ?? 1} 轮 · 第 ${current + 1} / ${items.length} 题 · 首答正确 ${correctFirst}`,
+              en: `${assignment?.title ?? ""} · Round ${activeRoundNo ?? 1} · Item ${current + 1} / ${items.length} · ${correctFirst} correct on first try`,
             })}
           </p>
         </div>
+
+        {/* 只读提示：截止/归档/回看历史轮 */}
+        {readOnly && (
+          <div
+            role="status"
+            className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm"
+          >
+            <p className="font-semibold">
+              {!isCurrentRound
+                ? t({
+                    zh: "正在回看这一轮的记录（只读）；切回最新轮可继续练习。",
+                    en: "Viewing this round's records (read-only); switch back to the latest round to keep practicing.",
+                  })
+                : closedReason === "archived"
+                  ? t({
+                      zh: "老师已结束这个任务，不能再作答；下面的记录可以回看。",
+                      en: "Your teacher ended this task — no more answering, but your records below stay viewable.",
+                    })
+                  : t({
+                      zh: "这个任务已过截止时间，不能再作答；下面的记录可以回看。",
+                      en: "This task is past its due time — no more answering, but your records below stay viewable.",
+                    })}
+            </p>
+          </div>
+        )}
+
+        {/* 轮次切换：回看各轮记录；当前展示轮高亮 */}
+        {rounds.length > 1 && (
+          <ul
+            className="flex flex-wrap gap-1.5"
+            aria-label={t({ zh: "轮次列表", en: "Round list" })}
+          >
+            {rounds.map((round) => {
+              const isActive = round.round_no === activeRoundNo
+              return (
+                <li key={round.round_no}>
+                  <button
+                    type="button"
+                    aria-current={isActive ? "true" : undefined}
+                    onClick={() =>
+                      void navigate({
+                        to: "/vocab/$code/practice",
+                        params: { code },
+                        search: {
+                          assignment: assignmentParam ?? assignment?.id ?? "",
+                          ...(round.round_no === currentRoundNo
+                            ? {}
+                            : { round: String(round.round_no) }),
+                        },
+                      })
+                    }
+                    className={`h-11 rounded-xl border px-3 text-sm font-semibold transition-colors ${
+                      isActive
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-card text-muted-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    {t({
+                      zh: `第 ${round.round_no} 轮 ${round.correct_first_count}/${round.answered_count}${round.status === "submitted" ? "" : " · 进行中"}`,
+                      en: `R${round.round_no} ${round.correct_first_count}/${round.answered_count}${round.status === "submitted" ? "" : " · open"}`,
+                    })}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
 
         {/* 进度点：点选跳题；对=主色、错=灰、当前=实心 */}
         <ul
@@ -516,13 +678,16 @@ function VocabPracticePage() {
                   autoCapitalize="off"
                   spellCheck={false}
                   className="h-12 flex-1 text-base"
-                  disabled={!sessionId || startSession.isPending}
+                  disabled={!sessionId || startSession.isPending || readOnly}
                 />
                 <Button
                   type="submit"
                   className="h-12 px-6"
                   disabled={
-                    input.trim() === "" || submitAnswer.isPending || !sessionId
+                    input.trim() === "" ||
+                    submitAnswer.isPending ||
+                    !sessionId ||
+                    readOnly
                   }
                 >
                   {submitAnswer.isPending
@@ -608,16 +773,36 @@ function VocabPracticePage() {
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {t({
-                    zh: "错词已收进错词本；点上面的数字方块可以回来重练任意词。",
-                    en: "Missed words are in your Wrong Words book; tap any number above to re-practice it.",
+                    zh: "这一轮已单独记录，不改变任务成绩（任务成绩始终看第一轮）。想再练可以开新的一轮。",
+                    en: "This round is recorded separately — task scores always come from the first round. Start a new round to practice again.",
                   })}
                 </p>
-                <Button asChild size="sm" className="mt-3">
-                  <Link to="/vocab/$code" params={{ code }}>
-                    {t({ zh: "回词汇首页", en: "Back to Vocabulary home" })}
-                    <ArrowRight />
-                  </Link>
-                </Button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button asChild size="sm" variant="outline">
+                    <Link to="/vocab/$code" params={{ code }}>
+                      {t({ zh: "回词汇首页", en: "Back to Vocabulary home" })}
+                      <ArrowRight />
+                    </Link>
+                  </Button>
+                  {assignment?.mode === "practice" &&
+                    !readOnly &&
+                    isCurrentRound && (
+                      <Button
+                        size="sm"
+                        disabled={startSession.isPending}
+                        onClick={() => {
+                          pendingRef.current = null
+                          startSession.mutate({
+                            assignmentId: assignment.id,
+                            round: "new",
+                          })
+                        }}
+                      >
+                        <RotateCcw />
+                        {t({ zh: "再练一轮", en: "New round" })}
+                      </Button>
+                    )}
+                </div>
               </div>
             )}
           </CardContent>
