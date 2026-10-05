@@ -48,6 +48,7 @@ from app.models import (
     VocabularyImportIssue,
     VocabularyImportPreview,
     VocabularyImportRow,
+    VocabularyRoundSummaryRow,
     VocabularySession,
     VocabularySessionCreate,
     VocabularyTeacherAssignmentRow,
@@ -673,28 +674,41 @@ def read_vocab_results(
 # ── 学生端 ─────────────────────────────────────────────────────────
 
 
-def _focused_vocab_session(
+def _student_rounds(
     session: Session, assignment_id: uuid.UUID, student_id: uuid.UUID
+) -> list[VocabularySession]:
+    """该学生在此任务的全部轮次（round_no 升序；归属由 student_id 过滤）。"""
+    return list(
+        session.exec(
+            select(VocabularySession)
+            .where(
+                VocabularySession.assignment_id == assignment_id,  # type: ignore[arg-type]
+                VocabularySession.student_id == student_id,  # type: ignore[arg-type]
+            )
+            .order_by(col(VocabularySession.round_no))
+        ).all()
+    )
+
+
+def _focused_vocab_session(
+    session: Session,
+    assignment_id: uuid.UUID,
+    student_id: uuid.UUID,
+    round_no: int | None = None,
 ) -> VocabularySession | None:
-    """聚焦轮次：未结束轮优先（同任务至多一个），否则最新一轮供回看。"""
-    rounds = session.exec(
-        select(VocabularySession)
-        .where(
-            VocabularySession.assignment_id == assignment_id,  # type: ignore[arg-type]
-            VocabularySession.student_id == student_id,  # type: ignore[arg-type]
-        )
-        .order_by(col(VocabularySession.round_no).desc())
-    ).all()
+    """展示轮次：显式 round_no 回看指定轮；缺省未结束轮优先，否则最新轮。"""
+    rounds = _student_rounds(session, assignment_id, student_id)
+    if round_no is not None:
+        return next((r for r in rounds if r.round_no == round_no), None)
     unfinished = next((r for r in rounds if r.status == "in_progress"), None)
-    return unfinished if unfinished is not None else (rounds[0] if rounds else None)
+    return unfinished if unfinished is not None else (rounds[-1] if rounds else None)
 
 
-def _session_closed_reason(
-    assignment: VocabularyAssignment, vocab_session: VocabularySession | None
-) -> str | None:
-    """截止/归档关闭了未结束轮次时的原因标记（可继续作答为 None）。"""
-    if vocab_session is None or vocab_session.status != "in_progress":
-        return None
+def _session_closed_reason(assignment: VocabularyAssignment) -> str | None:
+    """任务级作答门禁原因（独立于会话状态）：due_passed / archived；开放为 None。
+
+    已完成会话同样计算——「是否还能开练/作答」只取决于任务本身。
+    """
     if assignment.status != "published":
         return "archived"
     if assignment.due_at is not None and datetime.now(UTC) >= assignment.due_at:
@@ -702,11 +716,33 @@ def _session_closed_reason(
     return None
 
 
+def _round_summary_rows(
+    session: Session, rounds: list[VocabularySession]
+) -> list[VocabularyRoundSummaryRow]:
+    """各轮首答摘要（口径与教师统计一致：attempt_no=1）。"""
+    if not rounds:
+        return []
+    firsts = vocab_service.first_answers_by_session(session, [vs.id for vs in rounds])
+    return [
+        VocabularyRoundSummaryRow(
+            round_no=vs.round_no,
+            status=vs.status,
+            answered_count=len(firsts.get(vs.id, {})),
+            correct_first_count=sum(
+                1 for a in firsts.get(vs.id, {}).values() if a.is_correct
+            ),
+            submitted_at=vs.submitted_at,
+        )
+        for vs in rounds
+    ]
+
+
 def _today_plan_payload(
     session: Session,
     classroom_id: uuid.UUID,
     student_id: uuid.UUID,
     assignment_id: uuid.UUID | None = None,
+    round_no: int | None = None,
 ) -> VocabularyTodayPlan:
     assignments = vocab_service.student_assignment_rows(
         session, classroom_id, student_id
@@ -730,7 +766,13 @@ def _today_plan_payload(
                 assignments=assignments, wrong_word_count=len(wrong)
             )
 
-    vocab_session = _focused_vocab_session(session, assignment.id, student_id)
+    rounds = _student_rounds(session, assignment.id, student_id)
+    vocab_session = _focused_vocab_session(
+        session, assignment.id, student_id, round_no=round_no
+    )
+    if round_no is not None and vocab_session is None:
+        # 显式回看不存在的轮次（含他学生的轮次）：404，不回落
+        raise HTTPException(status_code=404, detail="轮次不存在")
     grouped = (
         vocab_service.answers_by_item(session, vocab_session.id)
         if vocab_session is not None
@@ -786,11 +828,12 @@ def _today_plan_payload(
         session_id=vocab_session.id if vocab_session is not None else None,
         session_status=vocab_session.status if vocab_session is not None else None,
         session_round=vocab_session.round_no if vocab_session is not None else None,
-        session_closed_reason=_session_closed_reason(assignment, vocab_session),
+        session_closed_reason=_session_closed_reason(assignment),
         items=items,
-        # 聚焦轮的进度（复习轮独立）；任务整体进度看 assignments 列表（首轮口径）
+        # 展示轮的进度（回看历史轮时是该轮的记录）；任务整体进度看 assignments（首轮口径）
         answered_count=answered_count,
         correct_first_count=correct_first,
+        rounds=_round_summary_rows(session, rounds),
         assignments=assignments,
         wrong_word_count=len(wrong),
     )
@@ -802,15 +845,19 @@ def read_vocab_today(
     code: str,
     current_user: StudentUserDep,
     assignment_id: uuid.UUID | None = None,
+    round_no: int | None = None,
 ) -> Any:
     """学生词汇任务视图：任务列表 + 聚焦任务进度（未答题不透露拼写）。
 
-    assignment_id 缺省 = 聚焦任务（最早截止的未完成者）；显式指定时
-    返回该任务的聚焦轮次（多任务切换练习用）。
+    assignment_id 缺省 = 聚焦任务（最早截止的未完成者）；显式指定时返回
+    该任务的聚焦轮次（多任务切换练习用）。round_no 显式回看指定轮次
+    （只读，归属校验：只允许本人轮次，不存在 404）。
     """
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
-    return _today_plan_payload(session, classroom.id, student.id, assignment_id)
+    return _today_plan_payload(
+        session, classroom.id, student.id, assignment_id, round_no
+    )
 
 
 @router.post("/classes/{code}/vocabulary/sessions")
@@ -845,7 +892,7 @@ def start_vocab_session(
             detail="你不在此任务的名单内（任务发布后加入的同学请联系老师补派）",
         )
     vocab_session = vocab_service.get_or_create_session(
-        session, classroom.id, student.id, assignment
+        session, classroom.id, student.id, assignment, round_request=body.round
     )
     return {
         "session_id": str(vocab_session.id),

@@ -2225,11 +2225,13 @@ export class VocabularyService {
      * Read Vocab Today
      * 学生词汇任务视图：任务列表 + 聚焦任务进度（未答题不透露拼写）。
      *
-     * assignment_id 缺省 = 聚焦任务（最早截止的未完成者）；显式指定时
-     * 返回该任务的聚焦轮次（多任务切换练习用）。
+     * assignment_id 缺省 = 聚焦任务（最早截止的未完成者）；显式指定时返回
+     * 该任务的聚焦轮次（多任务切换练习用）。round_no 显式回看指定轮次
+     * （只读，归属校验：只允许本人轮次，不存在 404）。
      * @param data The data for the request.
      * @param data.code
      * @param data.assignmentId
+     * @param data.roundNo
      * @returns VocabularyTodayPlan Successful Response
      * @throws ApiError
      */
@@ -2241,7 +2243,8 @@ export class VocabularyService {
                 code: data.code
             },
             query: {
-                assignment_id: data.assignmentId
+                assignment_id: data.assignmentId,
+                round_no: data.roundNo
             },
             errors: {
                 422: 'Validation Error'

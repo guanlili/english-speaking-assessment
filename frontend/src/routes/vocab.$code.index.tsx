@@ -77,9 +77,14 @@ function VocabHomePage() {
         code: code.toUpperCase(),
         requestBody: { assignment_id: assignmentId, round: "new" },
       }),
-    onSuccess: () => {
+    onSuccess: (_data, assignmentId) => {
       void queryClient.invalidateQueries({ queryKey: ["vocab", code] })
-      void navigate({ to: "/vocab/$code/practice", params: { code } })
+      // 固定新开的任务 ID 进入练习，避免聚焦漂移到其他任务
+      void navigate({
+        to: "/vocab/$code/practice",
+        params: { code },
+        search: { assignment: assignmentId },
+      })
     },
     onError: (error) => {
       if (error instanceof Error) {
@@ -358,6 +363,7 @@ function VocabHomePage() {
                       void navigate({
                         to: "/vocab/$code/practice",
                         params: { code },
+                        search: { assignment: assignment.id },
                       })
                     }
                   >

@@ -459,13 +459,18 @@ def get_or_create_session(
     classroom_id: uuid.UUID,
     student_id: uuid.UUID,
     assignment: VocabularyAssignment,
+    round_request: str | None = None,
 ) -> VocabularySession:
-    """轮次幂等创建：续做未结束轮，无未结束轮则新开一轮（round_no=max+1）。
+    """轮次幂等解析：续做未结束轮；只有显式 round="new" 才能新建轮次。
 
-    同学生同任务最多一个未结束轮次（唯一索引 (assignment_id, student_id,
-    round_no) 兜底并发）。未结束轮存在时一律返回它——重复点击/并发开练
-    不会产生重复轮次（请求体 round="new" 的「再练一轮」也是这一分支）；
-    全部轮次已结束则开 max+1 新轮。首轮成绩锁定 round_no=1。
+    - 未结束轮存在（同任务至多一个）：任何请求都返回它——重复点击/并发
+      开练不会产生重复轮次；
+    - 无任何轮次（首次开练）：开 round_no=1；
+    - 全部轮次已结束：round="new"（「再练一轮」）开 max+1 复习轮；
+      round="continue"/缺省 **不新建**（422）——继续/恢复绝不偷偷增加轮次，
+      防止旧客户端或重复请求意外产生新轮。
+    并发由唯一索引 (assignment_id, student_id, round_no) 兜底。
+    首轮成绩锁定 round_no=1。
     """
     existing_rounds = session.exec(
         select(VocabularySession)
@@ -478,6 +483,11 @@ def get_or_create_session(
     unfinished = next((r for r in existing_rounds if r.status == "in_progress"), None)
     if unfinished is not None:
         return unfinished
+    if existing_rounds and round_request != "new":
+        raise HTTPException(
+            status_code=422,
+            detail="没有进行中的轮次；请开始新的复习轮",
+        )
     next_round_no = (existing_rounds[0].round_no if existing_rounds else 0) + 1
     vocab_session = VocabularySession(
         classroom_id=classroom_id,

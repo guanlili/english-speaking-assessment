@@ -1448,6 +1448,16 @@ class VocabularyStudentAssignment(SQLModel):
     round_count: int = 1
 
 
+class VocabularyRoundSummaryRow(SQLModel):
+    """学生侧轮次摘要：轮次回看入口（只读查看指定轮）。"""
+
+    round_no: int
+    status: str  # in_progress / submitted
+    answered_count: int
+    correct_first_count: int
+    submitted_at: datetime | None = None
+
+
 class VocabularyTodayPlan(SQLModel):
     """GET /classes/{code}/vocabulary/today 的学生视图。"""
 
@@ -1455,22 +1465,25 @@ class VocabularyTodayPlan(SQLModel):
     session_id: uuid.UUID | None = None
     session_status: str | None = None
     session_round: int | None = None
-    # 聚焦轮因截止/归档被关闭时的原因：due_passed / archived；可继续作答为 None
+    # 任务级作答门禁原因（独立于会话状态，未开始/进行中/已完成统一计算）：
+    # due_passed / archived；任务开放作答为 None
     session_closed_reason: str | None = None
     items: list[VocabularyTodayItem] = []
     answered_count: int = 0
     correct_first_count: int = 0
     wrong_word_count: int = 0
+    # 聚焦任务的全部轮次摘要（回看入口；items 展示哪一轮由 round_no 参数决定）
+    rounds: list[VocabularyRoundSummaryRow] = []
     # 名单内全部任务（按 due 升序、无 due 按发布倒序）
     assignments: list[VocabularyStudentAssignment] = []
 
 
 class VocabularySessionCreate(SQLModel):
-    """创建/恢复作答会话：缺省 assignment_id = 当前进行中的任务。"""
+    """创建/恢复作答会话：缺省 assignment_id = 聚焦任务。"""
 
     assignment_id: uuid.UUID | None = None
-    # round="new"：上一轮已完成时开新的复习轮（round_no=max+1）；
-    # 缺省=续做最新未完成轮，无未完成轮则新开
+    # round="new"：全部轮次已结束时开新的复习轮（round_no=max+1）；
+    # continue/缺省=续做未结束轮（全结后 422，不新建）
     round: str | None = Field(default=None, max_length=8)
 
 

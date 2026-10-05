@@ -1055,7 +1055,18 @@ export type VocabularyLevelStats = {
 };
 
 /**
- * 创建/恢复作答会话：缺省 assignment_id = 当前进行中的任务。
+ * 学生侧轮次摘要：轮次回看入口（只读查看指定轮）。
+ */
+export type VocabularyRoundSummaryRow = {
+    round_no: number;
+    status: string;
+    answered_count: number;
+    correct_first_count: number;
+    submitted_at?: (string | null);
+};
+
+/**
+ * 创建/恢复作答会话：缺省 assignment_id = 聚焦任务。
  */
 export type VocabularySessionCreate = {
     assignment_id?: (string | null);
@@ -1148,6 +1159,7 @@ export type VocabularyTodayPlan = {
     answered_count?: number;
     correct_first_count?: number;
     wrong_word_count?: number;
+    rounds?: Array<VocabularyRoundSummaryRow>;
     assignments?: Array<VocabularyStudentAssignment>;
 };
 
@@ -1908,6 +1920,7 @@ export type VocabularyReadVocabResultsResponse = (VocabularyClassResults);
 export type VocabularyReadVocabTodayData = {
     assignmentId?: (string | null);
     code: string;
+    roundNo?: (number | null);
 };
 
 export type VocabularyReadVocabTodayResponse = (VocabularyTodayPlan);

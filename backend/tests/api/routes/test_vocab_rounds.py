@@ -13,6 +13,7 @@
 import threading
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session, col, select
@@ -80,8 +81,23 @@ def _publish(
     return resp.json()
 
 
-def _today(client: TestClient, headers: dict[str, str], code: str) -> dict:
-    resp = client.get(f"/api/v1/classes/{code}/vocabulary/today", headers=headers)
+def _today(
+    client: TestClient,
+    headers: dict[str, str],
+    code: str,
+    assignment_id: str | None = None,
+    round_no: str | None = None,
+) -> dict:
+    params: dict[str, str] = {}
+    if assignment_id is not None:
+        params["assignment_id"] = assignment_id
+    if round_no is not None:
+        params["round_no"] = round_no
+    resp = client.get(
+        f"/api/v1/classes/{code}/vocabulary/today",
+        params=params or None,
+        headers=headers,
+    )
     assert resp.status_code == 200, resp.text
     return resp.json()
 
@@ -136,6 +152,16 @@ def _results(
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
+
+
+def _rounds_of(db: Session, assignment_id: str) -> list[VocabularySession]:
+    return list(
+        db.exec(
+            select(VocabularySession).where(
+                col(VocabularySession.assignment_id) == uuid.UUID(assignment_id)
+            )
+        ).all()
+    )
 
 
 def _finish_round(
@@ -237,12 +263,23 @@ def test_rounds_continue_and_new_round(
     assert third["session_id"] == first_start["session_id"]
     _finish_round(client, student["headers"], first_start["session_id"], correct=True)
 
-    # 任务完成（锁定首轮判定）后再开练 → 新复习轮 round_no=2
+    # 任务完成（锁定首轮判定）后再开练：缺省/continue 不新建轮次（422）
     plan = _today(client, student["headers"], code)
     rows = {r["assignment_id"]: r for r in plan["assignments"]}
     assert rows[assignment["id"]]["progress"] == "completed"
     assert rows[assignment["id"]]["round_count"] == 1
-    second_round = _start(client, student["headers"], code, assignment["id"])
+    resp = client.post(
+        f"/api/v1/classes/{code}/vocabulary/sessions",
+        json={"assignment_id": assignment["id"], "round": "continue"},
+        headers=student["headers"],
+    )
+    assert resp.status_code == 422, resp.text
+    assert len(_rounds_of(db, assignment["id"])) == 1
+
+    # 显式 round="new"（「再练一轮」）才开新复习轮 round_no=2
+    second_round = _start(
+        client, student["headers"], code, assignment["id"], round_="new"
+    )
     assert second_round["session_id"] != first_start["session_id"]
     assert second_round["round_no"] == 2
 
@@ -281,7 +318,7 @@ def test_first_round_locked_word_stats_and_wrong_words(
     assert banana["error_count"] == 1
 
     # 复习轮把 banana 答对、apple 答错 → 逐词统计仍是首轮口径
-    round2 = _start(client, student["headers"], code, assignment["id"])
+    round2 = _start(client, student["headers"], code, assignment["id"], round_="new")
     assert round2["round_no"] == 2
     _answer(client, student["headers"], round2["session_id"], 0, "zzz")  # apple 错
     _answer(client, student["headers"], round2["session_id"], 1, "banana")  # 对
@@ -535,3 +572,187 @@ def test_concurrent_start_single_unfinished_round(
         )
     ).all()
     assert len(sessions) == 1
+
+
+def test_continue_never_creates_rounds_and_concurrent_new(
+    db: Session, client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    """全结后：continue/缺省绝不新建轮次（422）；并发 round="new" 只产生一轮。"""
+    import threading
+
+    teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    code = classroom["code"]
+    student = make_student(db, client, code, "续做学生")
+    book = _make_public_book(client, superuser_token_headers, WORDS_2)
+    word_ids = [w["id"] for w in book["words"]]
+    assignment = _publish(client, headers, code, word_ids)
+
+    # 完成第一轮
+    round1 = _start(client, student["headers"], code, assignment["id"])
+    _finish_round(client, student["headers"], round1["session_id"], correct=True)
+    assert len(_rounds_of(db, assignment["id"])) == 1
+
+    # continue / 缺省多次请求 → 全部 422，轮次数不变
+    for body in (
+        {"assignment_id": assignment["id"], "round": "continue"},
+        {"assignment_id": assignment["id"]},
+    ):
+        for _ in range(2):
+            resp = client.post(
+                f"/api/v1/classes/{code}/vocabulary/sessions",
+                json=body,
+                headers=student["headers"],
+            )
+            assert resp.status_code == 422, resp.text
+    assert len(_rounds_of(db, assignment["id"])) == 1
+
+    # 并发 round="new" ×4 → 只产生一个第二轮
+    results: list[dict] = []
+    errors: list[Exception] = []
+
+    def worker() -> None:
+        try:
+            with TestClient(client.app) as thread_client:
+                results.append(
+                    _start(
+                        thread_client,
+                        student["headers"],
+                        code,
+                        assignment["id"],
+                        round_="new",
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert not errors, errors
+    round_ids = {r["session_id"] for r in results}
+    assert len(round_ids) == 1
+    assert all(r["round_no"] == 2 for r in results)
+    rounds = _rounds_of(db, assignment["id"])
+    assert len(rounds) == 2
+
+    # 第二轮完成后 continue 仍 422（不悄悄出现第三轮）
+    _finish_round(client, student["headers"], results[0]["session_id"], correct=False)
+    resp = client.post(
+        f"/api/v1/classes/{code}/vocabulary/sessions",
+        json={"assignment_id": assignment["id"], "round": "continue"},
+        headers=student["headers"],
+    )
+    assert resp.status_code == 422, resp.text
+    assert len(_rounds_of(db, assignment["id"])) == 2
+
+
+def test_closed_reason_for_all_session_states(
+    db: Session, client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    """关闭原因是任务级：未开始/进行中/已完成三种状态统一计算。"""
+    teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    code = classroom["code"]
+    student = make_student(db, client, code, "三态学生")
+    book = _make_public_book(client, superuser_token_headers, WORDS_2)
+    word_ids = [w["id"] for w in book["words"]]
+    assignment = _publish(client, headers, code, word_ids)
+
+    # 进行中：任务开放 → None
+    session_id = _start(client, student["headers"], code, assignment["id"])[
+        "session_id"
+    ]
+    _answer(client, student["headers"], session_id, 0, "apple")
+    plan = _today(client, student["headers"], code)
+    assert plan["session_closed_reason"] is None
+
+    # 已完成：完成任务后 due 未过 → 仍 None（可再练一轮）
+    _finish_round(client, student["headers"], session_id, correct=True)
+    plan = _today(client, student["headers"], code)
+    assert plan["session_closed_reason"] is None
+    assert plan["session_status"] == "submitted"
+
+    # 已完成 + 截止已过 → due_passed（此前只对 in_progress 计算会漏）
+    assignment_row = db.get(VocabularyAssignment, uuid.UUID(assignment["id"]))
+    assert assignment_row is not None
+    assignment_row.due_at = datetime.now(UTC) - timedelta(minutes=1)
+    db.add(assignment_row)
+    db.commit()
+    plan = _today(client, student["headers"], code)
+    assert plan["session_closed_reason"] == "due_passed"
+
+    # 已完成 + 已归档 → archived（归档任务退出聚焦池，显式指定回看）
+    resp = client.post(
+        f"/api/v1/classes/{code}/vocabulary/assignments/{assignment['id']}/archive",
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    plan = _today(
+        client,
+        student["headers"],
+        code,
+        assignment_id=assignment["id"],
+    )
+    assert plan["session_closed_reason"] == "archived"
+    assert plan["session_status"] == "submitted"
+
+
+def test_view_specific_round_readonly(
+    db: Session, client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    """today?round_no 回看指定轮（归属校验）；他学生轮次 404。"""
+    teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    code = classroom["code"]
+    student = make_student(db, client, code, "回看学生")
+    other = make_student(db, client, code, "同学乙")
+    book = _make_public_book(client, superuser_token_headers, WORDS_2)
+    word_ids = [w["id"] for w in book["words"]]
+    assignment = _publish(client, headers, code, word_ids)
+
+    # 轮 1：apple 对、banana 错
+    round1 = _start(client, student["headers"], code, assignment["id"])["session_id"]
+    _answer(client, student["headers"], round1, 0, "apple")
+    _answer(client, student["headers"], round1, 1, "bananas")
+    # 轮 2：全对
+    round2 = _start(client, student["headers"], code, assignment["id"], round_="new")[
+        "session_id"
+    ]
+    _finish_round(client, student["headers"], round2, correct=True)
+
+    def _today_round(round_no: str, headers_: dict[str, str]) -> Any:
+        resp = client.get(
+            f"/api/v1/classes/{code}/vocabulary/today",
+            params={"assignment_id": assignment["id"], "round_no": round_no},
+            headers=headers_,
+        )
+        return resp
+
+    # 回看轮 1：展示第一轮首答口径（banana 错已揭示拼写），轮次列表 2 行
+    resp = _today_round("1", student["headers"])
+    assert resp.status_code == 200, resp.text
+    plan = resp.json()
+    assert plan["session_round"] == 1
+    assert plan["session_status"] == "submitted"
+    assert plan["answered_count"] == 2
+    assert plan["correct_first_count"] == 1
+    banana = next(i for i in plan["items"] if i["headword"] == "banana")
+    assert banana["is_correct"] is False
+    assert [(r["round_no"], r["correct_first_count"]) for r in plan["rounds"]] == [
+        (1, 1),
+        (2, 2),
+    ]
+
+    # 缺省（无 round_no）= 未结束轮优先，否则最新轮 → 轮 2
+    plan_default = _today(client, student["headers"], code)
+    assert plan_default["session_round"] == 2
+
+    # 不存在的轮次 → 404
+    assert _today_round("99", student["headers"]).status_code == 404
+
+    # 他学生的轮次（同学乙的名单内有任务但没有轮次）→ 404
+    assert _today_round("1", other["headers"]).status_code == 404
+    assert _today_round("2", other["headers"]).status_code == 404
