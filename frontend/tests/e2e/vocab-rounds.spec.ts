@@ -490,11 +490,22 @@ test("迟到的提交响应不覆盖历史轮反馈", async ({ page, request }) 
   })
   await answerCurrentItemCorrectly(page)
 
-  // 提交未返回时切回含错答的历史轮（轮 2 摘要定格 1/2：banana 首答错）
-  await page
-    .getByRole("button", { name: /第 2 轮 1\/2/ })
-    .first()
-    .click()
+  // 提交未返回时切回含错首答的历史轮（摘要 c/a 且 c<a；排除进行中轮，
+  // 不硬编码轮号——干净库与脏数据下的轮次分布不同）
+  const wrongChipLabel = await page
+    .getByRole("list", { name: /轮次列表|Round list/ })
+    .getByRole("button")
+    .evaluateAll((buttons) => {
+      const hit = buttons
+        .map((b) => (b.textContent ?? "").trim())
+        .find((label) => {
+          const m = label.match(/(\d+)\s*\/\s*(\d+)/)
+          return !/进行中|open/.test(label) && m && Number(m[1]) < Number(m[2])
+        })
+      return hit ?? null
+    })
+  if (!wrongChipLabel) throw new Error("没有含错首答的历史轮可切")
+  await page.getByRole("button", { name: wrongChipLabel }).first().click()
   await page.waitForURL(/round=/, { timeout: 10_000 })
   await expect(
     page.getByText(/正在回看这一轮|Viewing this round/),
