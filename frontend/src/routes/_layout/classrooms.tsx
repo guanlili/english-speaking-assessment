@@ -29,6 +29,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
+import { NumberInput } from "@/components/ui/number-input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -312,13 +313,12 @@ function MyClassroomsPage() {
                 <Label htmlFor="class-size">
                   {t({ zh: "班级人数上限", en: "Class Size Limit" })}
                 </Label>
-                <Input
+                <NumberInput
                   id="class-size"
-                  type="number"
                   min={1}
                   max={100}
                   value={classSize}
-                  onChange={(e) => setClassSize(Number(e.target.value))}
+                  onValueChange={setClassSize}
                 />
               </div>
             </div>

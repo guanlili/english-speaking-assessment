@@ -40,6 +40,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { NumberInput } from "@/components/ui/number-input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -750,21 +751,15 @@ function AssignPanel({
                   >
                     {t(TERMS.passLine)}
                   </label>
-                  <Input
+                  <NumberInput
                     id="quiz-pass-line"
-                    type="number"
                     min={0}
                     max={100}
                     value={passLine}
-                    onChange={(event) =>
-                      setPassLine(
-                        Math.max(
-                          0,
-                          Math.min(100, Number(event.target.value) || 0),
-                        ),
-                      )
+                    onValueChange={(v) =>
+                      setPassLine(Math.max(0, Math.min(100, v)))
                     }
-                    className="h-11 max-w-xs text-base"
+                    className="max-w-xs"
                   />
                 </div>
                 <div className="space-y-2">

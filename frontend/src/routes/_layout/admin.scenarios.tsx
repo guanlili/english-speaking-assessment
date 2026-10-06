@@ -27,6 +27,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
+import { NumberInput } from "@/components/ui/number-input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
@@ -493,14 +494,10 @@ function ScenarioCard({
               </div>
               <div className="w-24 space-y-1">
                 <Label>{t({ zh: "秒数", en: "Seconds" })}</Label>
-                <Input
-                  type="number"
+                <NumberInput
                   value={question.seconds}
-                  onChange={(e) =>
-                    setQuestion({
-                      ...question,
-                      seconds: Number(e.target.value),
-                    })
+                  onValueChange={(seconds) =>
+                    setQuestion({ ...question, seconds })
                   }
                 />
               </div>
@@ -523,14 +520,11 @@ function ScenarioCard({
               <div className="flex flex-wrap items-end gap-2">
                 <div className="w-24 space-y-1">
                   <Label>{t({ zh: "数量", en: "Count" })}</Label>
-                  <Input
-                    type="number"
+                  <NumberInput
                     min={1}
                     max={10}
                     value={gen.count}
-                    onChange={(e) =>
-                      setGen({ ...gen, count: Number(e.target.value) })
-                    }
+                    onValueChange={(count) => setGen({ ...gen, count })}
                   />
                 </div>
                 <div className="min-w-48 flex-1 space-y-1">
@@ -585,13 +579,12 @@ function ScenarioCard({
                           setDrafts(next)
                         }}
                       />
-                      <Input
+                      <NumberInput
                         className="w-16"
-                        type="number"
                         value={d.seconds}
-                        onChange={(e) => {
+                        onValueChange={(seconds) => {
                           const next = [...drafts]
-                          next[i] = { ...d, seconds: Number(e.target.value) }
+                          next[i] = { ...d, seconds }
                           setDrafts(next)
                         }}
                       />
@@ -674,17 +667,13 @@ function ScenarioCard({
                   en: "Suggested Seconds (10–60)",
                 })}
               </Label>
-              <Input
+              <NumberInput
                 id="scn-q-seconds"
-                type="number"
                 min={10}
                 max={60}
                 value={editForm.seconds}
-                onChange={(e) =>
-                  setEditForm((f) => ({
-                    ...f,
-                    seconds: Number(e.target.value),
-                  }))
+                onValueChange={(seconds) =>
+                  setEditForm((f) => ({ ...f, seconds }))
                 }
               />
             </div>

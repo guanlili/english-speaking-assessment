@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
+import { NumberInput } from "@/components/ui/number-input"
 import {
   Select,
   SelectContent,
@@ -328,17 +329,13 @@ export function SentenceLibrary() {
                 <Label htmlFor="edit-sentence-seconds">
                   {t({ zh: "作答秒数（3–60）", en: "Answer Seconds (3–60)" })}
                 </Label>
-                <Input
+                <NumberInput
                   id="edit-sentence-seconds"
-                  type="number"
                   min={3}
                   max={60}
                   value={editForm.seconds}
-                  onChange={(e) =>
-                    setEditForm((f) => ({
-                      ...f,
-                      seconds: Number(e.target.value),
-                    }))
+                  onValueChange={(seconds) =>
+                    setEditForm((f) => ({ ...f, seconds }))
                   }
                 />
               </div>
@@ -346,17 +343,13 @@ export function SentenceLibrary() {
                 <Label htmlFor="edit-sentence-replays">
                   {t({ zh: "可听次数（0–9）", en: "Replays (0–9)" })}
                 </Label>
-                <Input
+                <NumberInput
                   id="edit-sentence-replays"
-                  type="number"
                   min={0}
                   max={9}
                   value={editForm.replays}
-                  onChange={(e) =>
-                    setEditForm((f) => ({
-                      ...f,
-                      replays: Number(e.target.value),
-                    }))
+                  onValueChange={(replays) =>
+                    setEditForm((f) => ({ ...f, replays }))
                   }
                 />
               </div>
@@ -618,26 +611,24 @@ function NewSentenceCard({
             <Label htmlFor="new-sentence-seconds">
               {t({ zh: "作答秒数（3–60）", en: "Answer Seconds (3–60)" })}
             </Label>
-            <Input
+            <NumberInput
               id="new-sentence-seconds"
-              type="number"
               min={3}
               max={60}
               value={seconds}
-              onChange={(e) => setSeconds(Number(e.target.value))}
+              onValueChange={setSeconds}
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="new-sentence-replays">
               {t({ zh: "可听次数（0–9）", en: "Replays (0–9)" })}
             </Label>
-            <Input
+            <NumberInput
               id="new-sentence-replays"
-              type="number"
               min={0}
               max={9}
               value={replays}
-              onChange={(e) => setReplays(Number(e.target.value))}
+              onValueChange={setReplays}
             />
           </div>
           <div className="space-y-2">

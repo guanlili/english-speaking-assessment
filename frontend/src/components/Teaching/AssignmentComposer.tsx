@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
+import { NumberInput } from "@/components/ui/number-input"
 import {
   Select,
   SelectContent,
@@ -225,7 +226,7 @@ function ComposerForm({
   const [title, setTitle] = useState(initialTitle)
   // 模考模式：整场限时（分钟），学生首次打开开考、到时自动交卷、切屏记录
   const [isExam, setIsExam] = useState(false)
-  const [examMinutes, setExamMinutes] = useState("30")
+  const [examMinutes, setExamMinutes] = useState(30)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
   const dirtyRef = useRef(false)
@@ -329,7 +330,7 @@ function ComposerForm({
               items: planItems,
               title: title.trim() || undefined,
               ...(isExam
-                ? { is_exam: true, time_limit_minutes: Number(examMinutes) }
+                ? { is_exam: true, time_limit_minutes: examMinutes }
                 : {}),
             },
       }),
@@ -468,15 +469,14 @@ function ComposerForm({
                   <span className="sr-only">
                     {t({ zh: "限时（分钟）", en: "Time limit (minutes)" })}
                   </span>
-                  <Input
+                  <NumberInput
                     id="exam-minutes"
-                    type="number"
                     min={5}
                     max={240}
                     value={examMinutes}
-                    onChange={(event) => {
+                    onValueChange={(value) => {
                       dirtyRef.current = true
-                      setExamMinutes(event.target.value)
+                      setExamMinutes(value)
                     }}
                     className="w-24"
                     aria-label={t({

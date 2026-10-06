@@ -26,6 +26,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
+import { NumberInput } from "@/components/ui/number-input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -318,16 +319,12 @@ export function UnitsAdmin() {
                 <Label htmlFor="unit-order">
                   {t({ zh: "排列顺序", en: "Order" })}
                 </Label>
-                <Input
+                <NumberInput
                   id="unit-order"
-                  type="number"
                   min={0}
                   value={form.order_index}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      order_index: Number(e.target.value),
-                    }))
+                  onValueChange={(order_index) =>
+                    setForm((f) => ({ ...f, order_index }))
                   }
                 />
               </div>
