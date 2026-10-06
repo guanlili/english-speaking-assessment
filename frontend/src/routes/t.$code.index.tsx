@@ -61,7 +61,9 @@ function TeacherBoardPage() {
   const { t } = useI18n()
   const { code } = useParams({ from: "/t/$code/" })
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<"prepare" | "results">("prepare")
+  const [activeTab, setActiveTab] = useState<
+    "prepare" | "results" | "history"
+  >("prepare")
 
   const [statusFilter, setStatusFilter] = useState("all")
   const [nameQuery, setNameQuery] = useState("")
@@ -343,7 +345,12 @@ function TeacherBoardPage() {
         <Tabs
           value={activeTab}
           onValueChange={(value) => {
-            if (value === "prepare" || value === "results") setActiveTab(value)
+            if (
+              value === "prepare" ||
+              value === "results" ||
+              value === "history"
+            )
+              setActiveTab(value)
           }}
           className="gap-6"
         >
