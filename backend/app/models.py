@@ -1045,8 +1045,10 @@ class TrailData(SQLModel):
     band_change: str | None = None
     # 累计开口分钟（Σ作答时长；SpeakUp 成长页统计）
     total_minutes: int = 0
-    # 累计词汇命中次数按档（SpeakUp 词汇生长条形图）
+    # 累计词汇命中次数按档（老词表 A2/B1/B2 口径；仅历史作答携带，零变化保留）
     vocab_counts: dict[str, int] = {}
+    # 五级词库口径的用词来源命中（现行为标准；来自 attempt.vocab.level_stats）
+    level_counts: dict[str, int] = {}
 
 
 # ── 词汇学习（背单词模块，2026-10-01 设计文档 P0）──────────────────

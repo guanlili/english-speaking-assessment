@@ -140,10 +140,6 @@ export type BoardStudent = {
     exam_ended?: (boolean | null);
 };
 
-export type Body_admin_import_wordlist_csv = {
-    file: string;
-};
-
 export type Body_admin_upload_standard_audio = {
     file: string;
 };
@@ -739,6 +735,9 @@ export type TrailData = {
     band_change?: (string | null);
     total_minutes?: number;
     vocab_counts?: {
+        [key: string]: (number);
+    };
+    level_counts?: {
         [key: string]: (number);
     };
 };
@@ -1535,11 +1534,6 @@ export type VocabularyWrongWords = {
     items?: Array<VocabularyWrongWordItem>;
 };
 
-export type WordlistImportResult = {
-    imported: number;
-    invalid_rows?: Array<(number)>;
-};
-
 export type WordlistStats = {
     total: number;
     by_band: {
@@ -1691,11 +1685,7 @@ export type AdminCreateQuestionsBatchResponse = (BatchQuestionResult);
 
 export type AdminWordlistStatsResponse = (WordlistStats);
 
-export type AdminImportWordlistCsvData = {
-    formData: Body_admin_import_wordlist_csv;
-};
-
-export type AdminImportWordlistCsvResponse = (WordlistImportResult);
+export type AdminWordlistImportOfflineResponse = (unknown);
 
 export type AdminListUnitsResponse = (Array<UnitPublic>);
 

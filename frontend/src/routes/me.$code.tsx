@@ -20,7 +20,12 @@ import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import { readSavedExpressions } from "@/lib/favorites"
 import { useI18n } from "@/lib/i18n"
-import { EXPLAIN, FRAME_PURPOSE_LABELS, TERMS } from "@/lib/terms"
+import {
+  EXPLAIN,
+  FRAME_PURPOSE_LABELS,
+  TERMS,
+  VOCAB_LEVEL_LABELS,
+} from "@/lib/terms"
 
 export const Route = createFileRoute("/me/$code")({
   component: MyTrailPage,
@@ -158,27 +163,103 @@ function MyTrailPage() {
               </CardTitle>
               <CardDescription>
                 {t({
-                  zh: "累计命中表达次数 · 来源：词表分析",
-                  en: "Total expression hits · source: wordlist analysis",
+                  zh: "用词来源级别（五级词库口径） · 不代表能力等级",
+                  en: "Word source levels (five-level standard) · not a proficiency level",
                 })}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2.5">
-              <div className="flex items-end gap-3">
-                <span className="text-4xl font-bold tabular-nums">
-                  {Object.values(trailQuery.data.vocab_counts ?? {}).reduce(
-                    (sum, count) => sum + count,
-                    0,
-                  )}
-                </span>
-                <span className="pb-1 text-xs text-muted-foreground">
-                  {t({ zh: "次命中", en: "hits" })}
-                </span>
-              </div>
+            <CardContent className="space-y-3">
+              {(() => {
+                const levelCounts = Object.entries(
+                  trailQuery.data.level_counts ?? {},
+                ).filter(([, n]) => n > 0)
+                const oldCounts = Object.entries(
+                  trailQuery.data.vocab_counts ?? {},
+                ).filter(([, n]) => n > 0)
+                const oldTotal = oldCounts.reduce(
+                  (sum, [, count]) => sum + count,
+                  0,
+                )
+                if (levelCounts.length === 0 && oldTotal === 0) {
+                  return (
+                    <p className="text-sm text-muted-foreground">
+                      {t({
+                        zh: "还没有口语问答记录，暂无用词统计。",
+                        en: "No speaking Q&A records yet — stats will appear here.",
+                      })}
+                    </p>
+                  )
+                }
+                if (levelCounts.length === 0) {
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex items-end gap-3">
+                        <span className="text-4xl font-bold tabular-nums">
+                          {oldTotal}
+                        </span>
+                        <span className="pb-1 text-xs text-muted-foreground">
+                          {t({
+                            zh: "次命中（老词表口径）",
+                            en: "hits (old wordlist)",
+                          })}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {t({
+                          zh: "老词表（A2/B1/B2）已退役：以上为历史数据保留展示，新的口语作答将按五级词库统计。",
+                          en: "The old A2/B1/B2 wordlist is retired: this is preserved history. New speaking answers use the five-level standard.",
+                        })}
+                      </p>
+                    </div>
+                  )
+                }
+                const levelTotal = levelCounts.reduce((s, [, n]) => s + n, 0)
+                return (
+                  <div className="space-y-2.5">
+                    <div className="flex items-end gap-3">
+                      <span className="text-4xl font-bold tabular-nums">
+                        {levelTotal}
+                      </span>
+                      <span className="pb-1 text-xs text-muted-foreground">
+                        {t({
+                          zh: "次用词（可分级）",
+                          en: "leveled words used",
+                        })}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {levelCounts
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([level, n]) => (
+                          <div key={level} className="flex items-center gap-2">
+                            <span className="w-24 shrink-0 text-xs text-muted-foreground">
+                              {t(
+                                VOCAB_LEVEL_LABELS[
+                                  level as keyof typeof VOCAB_LEVEL_LABELS
+                                ] ?? { zh: level, en: level },
+                              )}
+                            </span>
+                            <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-secondary">
+                              <div
+                                className="h-full rounded-full bg-primary"
+                                style={{
+                                  width: `${Math.max(Math.round((n / levelTotal) * 100), 4)}%`,
+                                }}
+                              />
+                            </div>
+                            <span className="w-8 shrink-0 text-right text-xs tabular-nums">
+                              {n}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )
+              })()}
               <p className="pt-1 text-xs text-muted-foreground">
                 {t({
-                  zh: "用过的表达越多，越容易在真实交流中自然说出来。",
-                  en: "The more expressions you've used, the more naturally they come out in real conversations.",
+                  zh: "用过的表达越多，越容易在真实交流中自然说出来；统计只描述用词来源，不是能力等级。",
+                  en: "The more expressions you use, the more naturally they come out. Stats describe word sources only — not proficiency.",
                 })}
               </p>
             </CardContent>

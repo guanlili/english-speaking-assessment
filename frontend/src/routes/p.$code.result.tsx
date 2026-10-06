@@ -380,11 +380,11 @@ function RoundResultPage() {
                   [
                     t({ zh: "词汇覆盖", en: "Vocabulary" }),
                     roundStats.vocabCefr
-                      ? t({ zh: "已分析", en: "Analyzed" })
+                      ? t({ zh: "已分析（历史口径）", en: "Analyzed (legacy)" })
                       : "–",
                     t({
-                      zh: "最近有效问答 · 词表分析",
-                      en: "Latest valid Q&A · wordlist analysis",
+                      zh: "老词表口径仅历史作答保留；现行为五级词库口径",
+                      en: "Legacy wordlist kept for past answers; current standard is five-level",
                     }),
                   ],
                 ] as const

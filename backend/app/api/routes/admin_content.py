@@ -9,8 +9,6 @@ EIP 文本只进数据库，不进 git。
     /admin/classrooms          课堂码列表 / 停用
 """
 
-import csv
-import io
 import uuid
 from typing import Any
 
@@ -784,7 +782,7 @@ def wordlist_stats(session: SessionDep, _admin: SuperUserDep) -> Any:
     return {
         "total": len(entries),
         "by_band": by_band,
-        "name": "内置演示词表（待学校分级词表 CSV 替换）" if entries else None,
+        "name": ("老词表（A2/B1/B2）已退役，仅保留历史统计" if entries else None),
     }
 
 
@@ -793,82 +791,17 @@ class WordlistImportResult(SQLModel):
     invalid_rows: list[int] = []
 
 
-@router.post("/wordlist/import", response_model=WordlistImportResult)
-async def import_wordlist_csv(
-    session: SessionDep,
-    _admin: SuperUserDep,
-    file: UploadFile,
-) -> Any:
-    """导入学校分级词表 CSV（表头 lemma,band；整体替换内置词表）。"""
-    # async 路由里同步 DB/磁盘操作必须卸载到线程池，否则整段逐行 DELETE/INSERT
-    # 期间事件循环被占死，全服务不响应任何请求
-    max_bytes = settings.MAX_WORDLIST_CSV_MB * 1024 * 1024
-    raw = bytearray()
-    while True:
-        chunk = await file.read(64 * 1024)
-        if not chunk:
-            break
-        raw.extend(chunk)
-        if len(raw) > max_bytes:
-            raise HTTPException(
-                status_code=413,
-                detail=f"CSV 超过 {settings.MAX_WORDLIST_CSV_MB}MB 上限",
-            )
-    try:
-        text = raw.decode("utf-8-sig")  # 兼容 Excel 导出的 BOM
-    except UnicodeDecodeError as exc:
-        raise HTTPException(status_code=422, detail="CSV 必须是 UTF-8 编码") from exc
+@router.post("/wordlist/import")
+def wordlist_import_offline(_admin: SuperUserDep) -> Any:
+    """老词表（A2/B1/B2）导入已下线：全系统现行为五级词库口径。
 
-    reader = csv.DictReader(io.StringIO(text))
-    if (
-        not reader.fieldnames
-        or "lemma" not in reader.fieldnames
-        or "band" not in reader.fieldnames
-    ):
-        raise HTTPException(
-            status_code=422, detail="CSV 需要表头：lemma,band（第一行）"
-        )
-
-    seen: set[str] = set()
-    staged: list[WordlistEntry] = []
-    invalid_rows: list[int] = []
-    for lineno, row in enumerate(reader, start=2):
-        lemma = (row.get("lemma") or "").strip().lower()
-        band = (row.get("band") or "").strip().upper()
-        # 超长词条到 commit 才会炸出 500，行级拦截给干净的 422
-        if not lemma or len(lemma) > 64 or band not in VALID_BANDS:
-            invalid_rows.append(lineno)
-            continue
-        if lemma in seen:
-            continue
-        seen.add(lemma)
-        staged.append(WordlistEntry(lemma=lemma, band=band))
-
-    if not staged:
-        raise HTTPException(
-            status_code=422,
-            detail=f"没有有效行（示例：friendly,B1）。无效行号：{invalid_rows[:10]}",
-        )
-
-    await run_in_threadpool(_apply_wordlist_import, session, staged)
-
-    return WordlistImportResult(imported=len(staged), invalid_rows=invalid_rows[:20])
-
-
-def _apply_wordlist_import(session: Session, staged: list[WordlistEntry]) -> None:
-    # 整体替换（学校词表是权威来源）。单事务内先删后插：
-    # flush 让 DELETE 先执行（避开 lemma 唯一索引），中途失败整体回滚，不会清空词表
-    # 仓库风格 select + 实例 delete（ty 对批量 delete() 语句报类型错）；
-    # 已在线程池执行，逐行 DELETE 不再阻塞事件循环
-    for entry in session.exec(select(WordlistEntry)).all():
-        session.delete(entry)
-    session.flush()
-    for entry in staged:
-        session.add(entry)
-    session.commit()
-
-
-# ── 学习单元（关卡）─────────────────────────────────────────────────
+    历史 attempt 中的旧口径统计原样保留展示（不回填不重算）；
+    本端点仅为让残留调用得到明确响应，不再接受任何导入。
+    """
+    raise HTTPException(
+        status_code=410,
+        detail="老词表（A2/B1/B2）导入已下线：全系统现行为五级词库口径",
+    )
 
 
 @router.get("/units", response_model=list[UnitPublic])

@@ -133,7 +133,7 @@ class Settings(BaseSettings):
     AUDIO_STORAGE_DIR: str = "./audio"
     MAX_AUDIO_MB: int = 20
     # 词表 CSV 导入上限（MB），防止超大文件打挂内存
-    MAX_WORDLIST_CSV_MB: int = 5
+    MAX_VOCAB_CSV_MB: int = 5
     # 练习日切分时区（教室在国内；UTC 会在早八点切日）
     PRACTICE_TZ: str = "Asia/Shanghai"
     # 是否开放自助注册。代码默认关（安全兜底）；本地 .env.example 开着便于开发演示，
