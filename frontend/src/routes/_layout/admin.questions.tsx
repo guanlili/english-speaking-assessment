@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
+import { NumberInput } from "@/components/ui/number-input"
 import {
   Select,
   SelectContent,
@@ -609,17 +610,13 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                       en: "Suggested Seconds (10–60)",
                     })}
               </Label>
-              <Input
+              <NumberInput
                 id="q-seconds"
-                type="number"
                 min={10}
                 max={editForm.exam_kind ? 300 : 60}
                 value={editForm.suggested_seconds}
-                onChange={(e) =>
-                  setEditForm((f) => ({
-                    ...f,
-                    suggested_seconds: Number(e.target.value),
-                  }))
+                onValueChange={(suggested_seconds) =>
+                  setEditForm((f) => ({ ...f, suggested_seconds }))
                 }
               />
             </div>

@@ -30,6 +30,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
+import { NumberInput } from "@/components/ui/number-input"
 import {
   Select,
   SelectContent,
@@ -395,12 +396,11 @@ function PassageFields({
           <Label htmlFor={`${idPrefix}seconds`}>
             {t({ zh: "建议秒数", en: "Suggested Seconds" })}
           </Label>
-          <Input
+          <NumberInput
             id={`${idPrefix}seconds`}
-            type="number"
             value={form.suggested_seconds}
-            onChange={(e) =>
-              setForm({ ...form, suggested_seconds: Number(e.target.value) })
+            onValueChange={(suggested_seconds) =>
+              setForm({ ...form, suggested_seconds })
             }
           />
         </div>
