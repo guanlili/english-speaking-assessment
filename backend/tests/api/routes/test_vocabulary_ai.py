@@ -181,6 +181,7 @@ def test_word_drafts_generation_and_validation(
 ) -> None:
     """草稿生成：JSON 栅栏剥离、缺字段丢弃、去重、数量截断、超长截断。"""
     _teacher, teacher_headers = _login_teacher(db, client)
+    _fake_ai_key(monkeypatch)
     huge = "x" * 500
     mock_items = [
         {
