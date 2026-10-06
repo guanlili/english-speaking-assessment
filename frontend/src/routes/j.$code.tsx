@@ -82,8 +82,8 @@ function JoinPage() {
         <section>
           <span className="inline-flex rounded-full border border-primary/15 bg-secondary px-3 py-1.5 text-xs font-semibold text-primary">
             {t({
-              zh: "SpeakUp · 你的口语课堂",
-              en: "SpeakUp · Your speaking class",
+              zh: "Charcoal · 你的口语课堂",
+              en: "Charcoal · Your speaking class",
             })}
           </span>
           <h1 className="mt-4 text-3xl lg:mt-6 font-bold leading-tight tracking-tight md:text-5xl">
@@ -195,8 +195,8 @@ function JoinPage() {
       </main>
       <footer className="px-6 py-6 text-center text-xs text-muted-foreground">
         {t({
-          zh: "SpeakUp 开口说 · 参考反馈仅用于学习，不代表官方考试成绩",
-          en: "SpeakUp · Reference feedback is for learning only, not official exam results",
+          zh: "Charcoal 开口说 · 参考反馈仅用于学习，不代表官方考试成绩",
+          en: "Charcoal · Reference feedback is for learning only, not official exam results",
         })}
       </footer>
     </div>

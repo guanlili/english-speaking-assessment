@@ -113,7 +113,7 @@ function ClassroomPracticePage() {
   const [pinnedSessionId, setPinnedSessionId] = useState<string | null>(
     sessionParam ?? null,
   )
-  // 复述题「收起原文」练记忆（SpeakUp）
+  // 复述题「收起原文」练记忆（Charcoal）
   const [hideText, setHideText] = useState(false)
   // 录音开始时钉住 item_id / session_id / 题型：录音期间老师切换指派不影响旧录音
   const recordingTargetRef = useRef<AttemptSubmitTarget | null>(null)
@@ -988,7 +988,7 @@ function ClassroomPracticePage() {
 
                 <Separator />
 
-                {/* 录音区（SpeakUp：大圆钮 + 波形） */}
+                {/* 录音区（Charcoal：大圆钮 + 波形） */}
                 <div className="flex flex-col items-center gap-1 border-t pt-5 text-center">
                   {examKind && (
                     <p className="mb-2 text-[11px] text-muted-foreground">

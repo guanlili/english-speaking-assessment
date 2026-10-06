@@ -26,7 +26,7 @@ export function Logo({
           )}
         >
           <span className="block text-xl font-bold tracking-tight">
-            SpeakUp<span className="text-primary">.</span>
+            Charcoal<span className="text-primary">.</span>
           </span>
           <span className="block whitespace-nowrap text-[10px] font-medium tracking-[0.1em] text-muted-foreground">
             开口说 · 英语口语课堂
@@ -36,7 +36,7 @@ export function Logo({
     </span>
   )
   return asLink ? (
-    <Link to="/" aria-label="SpeakUp 首页">
+    <Link to="/" aria-label="Charcoal 首页">
       {content}
     </Link>
   ) : (

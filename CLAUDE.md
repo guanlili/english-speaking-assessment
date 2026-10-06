@@ -1,6 +1,6 @@
 # CLAUDE.md — 项目规范
 
-> 本项目为「SpeakUp 开口说」英语口语学习平台（视觉与交互参照 prototypes/speakup 原型），基于 lili-full-stack 模板创建。
+> 本项目为「Charcoal 开口说」英语口语学习平台（视觉与交互参照 prototypes/speakup 原型），基于 lili-full-stack 模板创建。品牌 2026-10 由 SpeakUp 更名而来（Charcoal 为暂定名，规避与市面雅思口语平台重名）；品牌名统一定义在 `frontend/src/config.ts` 的 APP_NAME，改名只需动文案层，视觉素材（Logo 图形/插画）暂不重做。
 
 ## 业务上下文
 

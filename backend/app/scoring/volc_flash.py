@@ -35,7 +35,7 @@ class VolcFlashAsr:
                     "X-Api-Sequence": "-1",
                 },
                 json={
-                    "user": {"uid": "speakup"},
+                    "user": {"uid": "charcoal"},
                     "audio": {"data": base64.b64encode(audio).decode()},
                     # 不删口头词/重复，不做数字规范化，保留学生实际表达。
                     "request": {
