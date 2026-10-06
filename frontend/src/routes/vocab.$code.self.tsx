@@ -104,12 +104,16 @@ function VocabSelfPracticePage() {
   const [answers, setAnswers] = useState<Record<number, AnswerState>>({})
   const [current, setCurrent] = useState(0)
   const [input, setInput] = useState("")
+  // 重试覆盖：刷新后 plan 里该题 answered 仍为真（那是首答记录），
+  // 点「再试一次」时用它放行作答输入框，覆盖首答的已答展示
+  const [retryOverrides, setRetryOverrides] = useState<Record<number, true>>({})
   // 轮次绑定键：plan 换轮/换会话时清空本地反馈（防旧反馈沿用新题面）
   const bindingKey = plan?.session_id ?? ""
   const [renderedBinding, setRenderedBinding] = useState(bindingKey)
   if (renderedBinding !== bindingKey) {
     setRenderedBinding(bindingKey)
     setAnswers({})
+    setRetryOverrides({})
     setCurrent(0)
     setInput("")
   }
@@ -221,6 +225,8 @@ function VocabSelfPracticePage() {
   const item = items[current]
   const answer = item ? answers[item.item_index] : undefined
   const planItemAnswered = item?.answered ?? false
+  // 本题正在重练（覆盖首答的已答展示，放行输入框）
+  const isRetrying = item ? retryOverrides[item.item_index] === true : false
   // 听音在当前题可用 = 有标准音，或该词已作答（拼写已揭示，可设备朗读）
   const audioUsableNow = Boolean(
     item && (item.audio_url || answer || planItemAnswered),
@@ -284,8 +290,9 @@ function VocabSelfPracticePage() {
   }
 
   const retry = () => {
-    if (!item) return
+    if (!item || readOnly) return
     pendingRef.current = null // 重练是一次新作答意图
+    setRetryOverrides((prev) => ({ ...prev, [item.item_index]: true }))
     setAnswers((prev) => {
       const next = { ...prev }
       delete next[item.item_index]
@@ -528,7 +535,8 @@ function VocabSelfPracticePage() {
             )}
 
             {/* 作答区 */}
-            {!answer && !planItemAnswered ? (
+            {/* 作答区：首答未答或正在重练时放行输入框；已答展示首答反馈 */}
+            {!answer && (!planItemAnswered || isRetrying) ? (
               <form
                 onSubmit={handleSubmit}
                 className="flex flex-col gap-3 sm:flex-row"
@@ -595,12 +603,15 @@ function VocabSelfPracticePage() {
                       </span>
                     </p>
                     {!(answer ? answer.isCorrect : item.is_correct) &&
-                      (item.first_answer ?? (answer ? input.trim() : "")) !==
-                        "" && (
+                      (answer && input.trim() !== ""
+                        ? input.trim()
+                        : (item.first_answer ?? "")) !== "" && (
                         <p className="text-sm text-muted-foreground">
                           {t({ zh: "你拼的是：", en: "You typed: " })}
                           <span className="font-mono">
-                            {item.first_answer ?? input.trim()}
+                            {answer && input.trim() !== ""
+                              ? input.trim()
+                              : item.first_answer}
                           </span>
                         </p>
                       )}
@@ -615,7 +626,8 @@ function VocabSelfPracticePage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {!answer?.isCorrect && (
+                  {/* 已完成的轮只读回看：不再提供重练入口（成绩锁定首答） */}
+                  {!answer?.isCorrect && !readOnly && (
                     <Button variant="outline" onClick={retry}>
                       <RotateCcw />
                       {t({ zh: "再试一次", en: "Try again" })}
@@ -759,14 +771,16 @@ function RoundReport({
               {wrongItems.map((it) => (
                 <li
                   key={it.item_index}
-                  className="flex items-baseline gap-2 rounded-xl border px-3 py-2"
+                  className="min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-xl border px-3 py-2"
                 >
-                  <span className="text-sm font-semibold">{it.headword}</span>
-                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  <span className="max-w-full break-all text-sm font-semibold">
+                    {it.headword}
+                  </span>
+                  <span className="min-w-0 flex-1 basis-24 truncate text-xs text-muted-foreground">
                     {it.meaning_zh}
                   </span>
                   {it.first_answer && (
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground line-through">
+                    <span className="max-w-full truncate font-mono text-xs text-muted-foreground line-through">
                       {it.first_answer}
                     </span>
                   )}

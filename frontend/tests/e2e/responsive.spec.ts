@@ -159,6 +159,15 @@ for (const vp of VIEWPORTS) {
       page.getByPlaceholder(/搜索词库名称|Search word books/),
     ).toBeVisible()
     await expectNoHorizontalOverflow(page)
+    // 选中词库展开词条列表：长词/长释义不得撑破布局（评审 390px 溢出）
+    const anyBook = page.locator("main ul button").first()
+    if ((await anyBook.count()) > 0) {
+      await anyBook.click()
+      await expect(
+        page.getByPlaceholder(/搜库内单词|Search words or meanings/),
+      ).toBeVisible()
+      await expectNoHorizontalOverflow(page)
+    }
   })
 
   test(`学生练习记录页在${vp.name}无横向溢出`, async ({ page }) => {

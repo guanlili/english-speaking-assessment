@@ -392,9 +392,10 @@ function VocabBooksPage() {
                     {bookWords.slice(0, WORD_LIST_RENDER_LIMIT).map((word) => (
                       <li
                         key={word.id}
-                        className="flex items-baseline gap-2 rounded-xl border px-3 py-2"
+                        className="min-w-0 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-xl border px-3 py-2"
                       >
-                        <span className="shrink-0 text-sm font-semibold">
+                        {/* 长词可换行（break-all），不把行撑出容器 */}
+                        <span className="max-w-full break-all text-sm font-semibold">
                           {word.headword}
                         </span>
                         {word.part_of_speech && (
@@ -402,7 +403,7 @@ function VocabBooksPage() {
                             {word.part_of_speech}
                           </span>
                         )}
-                        <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+                        <span className="min-w-0 flex-1 basis-24 truncate text-sm text-muted-foreground">
                           {word.meaning_zh}
                         </span>
                       </li>

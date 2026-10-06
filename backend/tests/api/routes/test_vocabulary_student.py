@@ -873,3 +873,280 @@ def test_history_list_and_detail(
     assert plan["correct_first_count"] == 1
     assert plan["total_count"] == 3
     assert plan["started_at"] is not None
+
+
+# ── 评审回归（PR#74 第一轮审核）────────────────────────────────────
+
+
+def _seed_many_wrong_via_task(
+    client: TestClient,
+    teacher_headers: dict[str, str],
+    student_headers: dict[str, str],
+    code: str,
+    book_id: str,
+    wrong_headwords: set[str],
+) -> None:
+    """发布一个任务并把其中指定词的首答全部拼错（一轮制造多个错词）。"""
+    word_ids = [
+        w["id"]
+        for w in client.get(f"{VOCAB}/books/{book_id}", headers=teacher_headers).json()[
+            "words"
+        ]
+    ]
+    resp = client.post(
+        f"/api/v1/classes/{code}/vocabulary/assignments",
+        json={"word_ids": word_ids, "prompt_types": ["meaning"]},
+        headers=teacher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    resp = client.post(
+        f"/api/v1/classes/{code}/vocabulary/sessions", json={}, headers=student_headers
+    )
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+    plan = client.get(TODAY.format(code=code), headers=student_headers).json()
+    spelling = _spelling_by_meaning(client, student_headers, code, book_id)
+    for item in plan["items"]:
+        headword = spelling[item["meaning_zh"]]
+        answer = f"z{headword}" if headword in wrong_headwords else headword
+        _answer(client, student_headers, session_id, item["item_index"], answer)
+
+
+def test_concurrent_self_start_creates_single_round(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """并发开同款自主轮：部分唯一索引兜底，只产生一个进行中会话。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    _teacher, teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, teacher_headers)
+    student = make_student(db, client, classroom["code"])
+    book = _make_class_book(client, teacher_headers, classroom["id"], _words(25))
+    base = STUDENT.format(code=classroom["code"])
+
+    def start() -> dict:
+        resp = client.post(
+            f"{base}/sessions",
+            json={"kind": "self", "book_id": book["id"]},
+            headers=student["headers"],
+        )
+        return {"status": resp.status_code, "body": resp.json()}
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: start(), range(2)))
+    assert all(o["status"] == 200 for o in outcomes), outcomes
+    assert len({o["body"]["session_id"] for o in outcomes}) == 1
+
+
+def test_concurrent_review_start_creates_single_round(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """并发开错词复习：同样只有一个进行中会话。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    _teacher, teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, teacher_headers)
+    student = make_student(db, client, classroom["code"])
+    book = _make_class_book(client, teacher_headers, classroom["id"], _words(5))
+    _seed_wrong_words(
+        client, student["headers"], classroom["code"], book["id"], ["w01"]
+    )
+    base = STUDENT.format(code=classroom["code"])
+
+    def start() -> dict:
+        resp = client.post(
+            f"{base}/sessions",
+            json={"kind": "review"},
+            headers=student["headers"],
+        )
+        return {"status": resp.status_code, "body": resp.json()}
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: start(), range(2)))
+    assert all(o["status"] == 200 for o in outcomes), outcomes
+    assert len({o["body"]["session_id"] for o in outcomes}) == 1
+
+
+def test_mix_wrong_fill_prefers_plain_words(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """混练补位优先非错词：普通词充足时，混入占比恒等于目标、不多不少。"""
+    _teacher, teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, teacher_headers)
+    student = make_student(db, client, classroom["code"])
+    book = _make_class_book(client, teacher_headers, classroom["id"], _words(20, "x"))
+    # 一轮任务把 x01..x10 全部拼错（历史错词池 10 个），x11..x20 从未错过
+    _seed_many_wrong_via_task(
+        client,
+        teacher_headers,
+        student["headers"],
+        classroom["code"],
+        book["id"],
+        {f"x{i:02d}" for i in range(1, 11)},
+    )
+    spelling = _spelling_by_meaning(
+        client, student["headers"], classroom["code"], book["id"]
+    )
+    wrong_meanings = {
+        m for m, h in spelling.items() if h in {f"x{i:02d}" for i in range(1, 11)}
+    }
+
+    created = _start_self(
+        client,
+        student["headers"],
+        classroom["code"],
+        book["id"],
+        word_count=10,
+        mix_wrong=True,
+    )
+    # 目标 30% → 恰好 3 个错词；其余 7 个必须是普通词（不得混入其余错词）
+    assert created["total_count"] == 10
+    assert created["wrong_word_count"] == 3
+    plan = _plan(client, student["headers"], classroom["code"], created["session_id"])
+    marked = [i for i in plan["items"] if i["from_wrong"]]
+    plain = [i for i in plan["items"] if not i["from_wrong"]]
+    assert len(marked) == 3
+    assert all(i["meaning_zh"] in wrong_meanings for i in marked)
+    assert len(plain) == 7
+    assert all(i["meaning_zh"] not in wrong_meanings for i in plain)
+
+
+def test_mix_wrong_overflow_marks_extra_wrong(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """非错词不足时用其余错词补足，且这些词同样计入错词标记（口径一致）。"""
+    _teacher, teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, teacher_headers)
+    student = make_student(db, client, classroom["code"])
+    book = _make_class_book(client, teacher_headers, classroom["id"], _words(4, "y"))
+    # 3 个错词 + 1 个普通词；请求 4 题、开混练：目标 30% → 1 个，
+    # 普通词只有 1 个，剩余 2 题只能用其余错词补足（应标记 from_wrong）
+    _seed_many_wrong_via_task(
+        client,
+        teacher_headers,
+        student["headers"],
+        classroom["code"],
+        book["id"],
+        {"y01", "y02", "y03"},
+    )
+    spelling = _spelling_by_meaning(
+        client, student["headers"], classroom["code"], book["id"]
+    )
+    wrong_meanings = {m for m, h in spelling.items() if h in {"y01", "y02", "y03"}}
+
+    created = _start_self(
+        client,
+        student["headers"],
+        classroom["code"],
+        book["id"],
+        word_count=4,
+        mix_wrong=True,
+    )
+    assert created["total_count"] == 4
+    assert created["wrong_word_count"] == 3  # 1 个目标错词 + 2 个补足错词
+    plan = _plan(client, student["headers"], classroom["code"], created["session_id"])
+    marked = [i for i in plan["items"] if i["from_wrong"]]
+    assert len(marked) == 3
+    assert {i["meaning_zh"] for i in marked} == wrong_meanings
+    assert len([i for i in plan["items"] if not i["from_wrong"]]) == 1
+
+
+def test_archived_word_not_practiceable_and_not_in_review(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """已归档词条不能再进复习轮：practiceable=false，复习池排除它。"""
+    _teacher, teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, teacher_headers)
+    student = make_student(db, client, classroom["code"])
+    book = _make_class_book(client, teacher_headers, classroom["id"], _words(2, "a"))
+    _seed_wrong_words(
+        client, student["headers"], classroom["code"], book["id"], ["a01"]
+    )
+    _seed_wrong_words(
+        client, student["headers"], classroom["code"], book["id"], ["a02"]
+    )
+    # 归档词条 a01（词库仍 active）
+    words = client.get(f"{VOCAB}/books/{book['id']}", headers=teacher_headers).json()[
+        "words"
+    ]
+    a01_id = next(w["id"] for w in words if w["headword"] == "a01")
+    resp = client.patch(
+        f"{VOCAB}/words/{a01_id}",
+        json={"status": "archived"},
+        headers=teacher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    # 词库浏览不再返回 a01
+    remaining = client.get(
+        f"{STUDENT.format(code=classroom['code'])}/books/{book['id']}",
+        headers=student["headers"],
+    ).json()["words"]
+    assert {w["headword"] for w in remaining} == {"a02"}
+
+    items = {
+        w["headword"]: w
+        for w in _wrong_words(client, student["headers"], classroom["code"])
+    }
+    assert items["a01"]["practiceable"] is False  # 历史错词保留，只标不可练
+    assert items["a02"]["practiceable"] is True
+
+    # 新复习轮只含 a02
+    review = _start_review(client, student["headers"], classroom["code"])
+    plan = _plan(client, student["headers"], classroom["code"], review["session_id"])
+    assert {i["meaning_zh"] for i in plan["items"]} == {"词2"}
+
+
+def test_last_correct_at_includes_history_before_first_wrong(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """首次判错之前的答对记录也是「最近练对」证据（单词条先对后错）。"""
+    _teacher, _teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, _teacher_headers)
+    student = make_student(db, client, classroom["code"])
+    book = _make_class_book(
+        client,
+        _teacher_headers,
+        classroom["id"],
+        [{"headword": "orbit", "meaning_zh": "轨道"}],
+    )
+    # 第一轮首答答对（不进错词本）
+    first = _start_self(client, student["headers"], classroom["code"], book["id"])
+    plan = _plan(client, student["headers"], classroom["code"], first["session_id"])
+    _answer(
+        client,
+        student["headers"],
+        first["session_id"],
+        plan["items"][0]["item_index"],
+        "orbit",
+    )
+    # 第二轮首答判错（进错词本）
+    second = _start_self(client, student["headers"], classroom["code"], book["id"])
+    plan2 = _plan(client, student["headers"], classroom["code"], second["session_id"])
+    _answer(
+        client,
+        student["headers"],
+        second["session_id"],
+        plan2["items"][0]["item_index"],
+        "oribt",
+    )
+    items = _wrong_words(client, student["headers"], classroom["code"])
+    assert len(items) == 1
+    entry = items[0]
+    assert entry["headword"] == "orbit"
+    assert entry["wrong_count"] == 1
+    assert entry["last_first_is_correct"] is False
+    # 第一轮的答对时间不能丢
+    assert entry["last_correct_at"] is not None

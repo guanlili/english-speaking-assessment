@@ -1223,6 +1223,26 @@ class VocabularySession(SQLModel, table=True):
             unique=True,
             postgresql_where=text("assignment_id IS NOT NULL"),
         ),
+        # 自主/复习轮 assignment_id 为空，不走上面的索引——并发开轮由两个
+        # 部分唯一索引兜底：每学生每词库至多一个进行中自主轮、每学生至多
+        # 一个进行中复习轮（轮次结束即退出索引谓词，不阻止开新一轮）
+        Index(
+            "uq_vocab_session_self_active",
+            "student_id",
+            "source_book_id",
+            unique=True,
+            postgresql_where=text(
+                "assignment_id IS NULL AND kind = 'self' AND status = 'in_progress'"
+            ),
+        ),
+        Index(
+            "uq_vocab_session_review_active",
+            "student_id",
+            unique=True,
+            postgresql_where=text(
+                "assignment_id IS NULL AND kind = 'review' AND status = 'in_progress'"
+            ),
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

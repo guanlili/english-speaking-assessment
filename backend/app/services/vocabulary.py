@@ -894,14 +894,16 @@ def wrong_word_items(
 ) -> list[VocabularyWrongWordItem]:
     """错词本聚合：该学生全部词汇轮次里首答判错的词（跨任务/自主聚合）。
 
-    三个维度分列、互不改写（不宣称掌握度评估）：
+    先聚合完整作答证据，再筛出进入错词本的词（评审口径：一个词在首次
+    判错之前的答对记录同样算「最近练对」证据，不能只看进本之后的）：
     - wrong_count 只统计独立首答（attempt_no=1）判错次数，一次答对不删除
       错词、不冲抵历史错误次数；
     - last_first_* 是最近一次独立首答的时间与对错（复盘过的词显示已纠正
       的首答，历史错误次数保持不变）；
-    - last_correct_at 是最近一次答对时间（任意尝试），仅作复习证据。
-    practiceable_ids 传入时标注词条是否仍在可练词库（active 公共/本班库）
-    内——词库归档只影响能否再练，不删历史错词。
+    - last_correct_at 是最近一次答对时间（任意尝试，含首次判错之前），
+      仅作复习证据。
+    practiceable_ids 传入时标注词条是否仍在可练范围（active 公共/本班库
+    内的 active 词条）——归档只影响能否再练，不删历史错词。
     """
     answers = session.exec(
         select(VocabularyAnswer)
@@ -914,6 +916,11 @@ def wrong_word_items(
         )
         .order_by(col(VocabularyAnswer.answered_at), col(VocabularyAnswer.attempt_no))
     ).all()
+    # 全量作答证据：每个词条最近一次答对时间（时间序遍历，后写覆盖先写）
+    last_correct_at: dict[uuid.UUID, datetime] = {}
+    for answer in answers:
+        if answer.is_correct and answer.answered_at is not None:
+            last_correct_at[answer.word_id] = answer.answered_at
     by_word: dict[uuid.UUID, VocabularyWrongWordItem] = {}
     for answer in answers:
         item = by_word.get(answer.word_id)
@@ -922,7 +929,6 @@ def wrong_word_items(
             if item is not None:
                 item.last_first_at = answer.answered_at
                 item.last_first_is_correct = True
-                item.last_correct_at = answer.answered_at
             continue
         if answer.attempt_no == 1:
             # 独立首答判错：累计历史错误次数（只增不减）
@@ -940,10 +946,9 @@ def wrong_word_items(
             item.last_wrong_at = answer.answered_at
             item.last_first_at = answer.answered_at
             item.last_first_is_correct = False
-        elif item is not None and answer.is_correct:
-            # 复盘重试答对：只留「最近练对」证据，不改首答统计
-            item.last_correct_at = answer.answered_at
     items = sorted(by_word.values(), key=lambda i: (-i.wrong_count, i.headword))
+    for item in items:
+        item.last_correct_at = last_correct_at.get(item.word_id)
     if practiceable_ids is not None:
         for item in items:
             item.practiceable = item.word_id in practiceable_ids
@@ -982,10 +987,11 @@ def student_book_ids(session: Session, classroom_id: uuid.UUID) -> set[uuid.UUID
 def student_practiceable_word_ids(
     session: Session, classroom_id: uuid.UUID
 ) -> set[uuid.UUID]:
-    """当前可练词库（active 公共/本班库）内的词条 id 集合。
+    """当前可练词库（active 公共/本班库）内的 active 词条 id 集合。
 
-    错词「能否再练」的口径：词条仍在至少一本可练词库里；词库归档只影响
-    能否再练，不删历史错词。
+    错词「能否再练」的口径：词条仍在至少一本可练词库里，且词条本身是
+    active（已归档词条不进新复习轮）；词库/词条归档只影响能否再练，
+    不删历史错词。
     """
     rows = session.exec(
         select(VocabularyBookItem.word_id)
@@ -993,8 +999,13 @@ def student_practiceable_word_ids(
             VocabularyBook,
             VocabularyBook.id == VocabularyBookItem.book_id,  # ty: ignore[invalid-argument-type]
         )
+        .join(
+            VocabularyWord,
+            VocabularyWord.id == VocabularyBookItem.word_id,  # ty: ignore[invalid-argument-type]
+        )
         .where(
             VocabularyBook.status == "active",
+            VocabularyWord.status == "active",
             (VocabularyBook.scope == "public")  # type: ignore[operator]
             | (VocabularyBook.classroom_id == classroom_id),  # type: ignore[operator,arg-type]
         )
@@ -1093,20 +1104,41 @@ def create_student_session(
         return resume, title, _snapshot_wrong_count(resume)
 
     if kind == "review":
-        return _create_review_session(
+        vocab_session, title, wrong_used = _build_review_session(
             session,
             classroom_id=classroom_id,
             student_id=student_id,
             word_count=word_count,
         )
-    return _create_self_session(
-        session,
-        classroom_id=classroom_id,
-        student_id=student_id,
-        book_id=book_id,
-        word_count=word_count,
-        mix_wrong=mix_wrong,
-    )
+    else:
+        vocab_session, title, wrong_used = _build_self_session(
+            session,
+            classroom_id=classroom_id,
+            student_id=student_id,
+            book_id=book_id,
+            word_count=word_count,
+            mix_wrong=mix_wrong,
+        )
+    session.add(vocab_session)
+    try:
+        session.commit()
+    except Exception:
+        # 并发开轮撞部分唯一索引（uq_vocab_session_self_active /
+        # uq_vocab_session_review_active）：回滚后重查，返回赢家轮次，
+        # 保证并发请求也只产生一个进行中轮次
+        session.rollback()
+        winner = session.exec(
+            select(VocabularySession).where(*resume_conditions)
+        ).first()
+        if winner is None:
+            raise
+        return (
+            winner,
+            _student_session_title(session, winner),
+            _snapshot_wrong_count(winner),
+        )
+    session.refresh(vocab_session)
+    return vocab_session, title, wrong_used
 
 
 def _student_session_title(session: Session, vocab_session: VocabularySession) -> str:
@@ -1142,7 +1174,7 @@ def _self_snapshot_item(word: VocabularyWord, from_wrong: bool) -> dict[str, obj
     return item
 
 
-def _create_self_session(
+def _build_self_session(
     session: Session,
     *,
     classroom_id: uuid.UUID,
@@ -1151,6 +1183,12 @@ def _create_self_session(
     word_count: int,
     mix_wrong: bool,
 ) -> tuple[VocabularySession, str, int]:
+    """构建自主轮（不落库；提交与并发兜底在 create_student_session）。
+
+    混错词补位规则：先按最近错误优先取目标数量的错词，再优先用非错词
+    补足到目标词数（保证混入占比不超过目标）；非错词不足时才用其余错词
+    补足，且这些词同样标记 from_wrong——题单标记与报告口径永远一致。
+    """
     if book_id is None:
         raise HTTPException(status_code=422, detail="自主练习需要选择一个词库")
     book = session.get(VocabularyBook, book_id)
@@ -1164,6 +1202,7 @@ def _create_self_session(
     total = min(word_count, len(words))
 
     picked_wrong: list[VocabularyWord] = []
+    wrong_pool_ids: set[uuid.UUID] = set()
     if mix_wrong:
         # 只取所选词库内的历史错词，最近错误优先；按词条 ID 去重
         book_word_ids = {w.id for w in words}
@@ -1176,14 +1215,25 @@ def _create_self_session(
             key=lambda i: i.last_wrong_at or datetime.min.replace(tzinfo=UTC),
             reverse=True,
         )  # type: ignore[arg-type,operator]
+        wrong_pool_ids = {item.word_id for item in wrong_pool}
         wrong_target = int(total * SELF_PRACTICE_MIX_WRONG_RATIO + 0.5)
         wanted = {item.word_id for item in wrong_pool[:wrong_target]}
         picked_wrong = [w for w in words if w.id in wanted]
 
-    # 错词不足以其他词补足（按词库顺序），总词数不足按实际数量
     picked_ids = {w.id for w in picked_wrong}
-    fill = [w for w in words if w.id not in picked_ids][: total - len(picked_wrong)]
-    items = picked_wrong + fill
+    remaining = total - len(picked_wrong)
+    # 优先非错词补位（普通词充足时混入占比恒 ≤ 目标）
+    plain_fill = [
+        w for w in words if w.id not in picked_ids and w.id not in wrong_pool_ids
+    ][:remaining]
+    extra_wrong: list[VocabularyWord] = []
+    if len(plain_fill) < remaining:
+        # 非错词不足：用其余错词补足，并同样计入错词标记
+        extra_wrong = [
+            w for w in words if w.id not in picked_ids and w.id in wrong_pool_ids
+        ][: remaining - len(plain_fill)]
+    items = picked_wrong + plain_fill + extra_wrong
+    wrong_marked_ids = picked_ids | {w.id for w in extra_wrong}
     random.shuffle(items)  # 题序创建时一次性定死，本轮内不再变化
 
     vocab_session = VocabularySession(
@@ -1192,25 +1242,28 @@ def _create_self_session(
         assignment_id=None,
         kind="self",
         source_book_id=book_id,
-        snapshot_items=[_self_snapshot_item(w, w.id in picked_ids) for w in items],
+        snapshot_items=[
+            _self_snapshot_item(w, w.id in wrong_marked_ids) for w in items
+        ],
         mix_wrong=mix_wrong,
         mode="practice",
         round_no=1,
     )
-    session.add(vocab_session)
-    session.commit()
-    session.refresh(vocab_session)
-    return vocab_session, book.title, len(picked_wrong)
+    return vocab_session, book.title, len(wrong_marked_ids)
 
 
-def _create_review_session(
+def _build_review_session(
     session: Session,
     *,
     classroom_id: uuid.UUID,
     student_id: uuid.UUID,
     word_count: int,
 ) -> tuple[VocabularySession, str, int]:
-    """错词专项复习：限定当前可练词库内的历史错词，最近错误优先。"""
+    """错词专项复习：限定当前可练词库内的历史错词，最近错误优先。
+
+    可练口径 = 词库 active 且词条 active（已归档词条不进新复习轮，
+    历史错词记录保留）。构建不落库；提交与并发兜底在 create_student_session。
+    """
     practiceable_ids = student_practiceable_word_ids(session, classroom_id)
     pool = [
         item
@@ -1227,7 +1280,8 @@ def _create_review_session(
         w.id: w
         for w in session.exec(
             select(VocabularyWord).where(
-                col(VocabularyWord.id).in_([i.word_id for i in pool])  # type: ignore[operator]
+                col(VocabularyWord.id).in_([i.word_id for i in pool]),  # type: ignore[operator]
+                VocabularyWord.status == "active",
             )
         ).all()
     }
@@ -1243,9 +1297,6 @@ def _create_review_session(
         mode="practice",
         round_no=1,
     )
-    session.add(vocab_session)
-    session.commit()
-    session.refresh(vocab_session)
     return vocab_session, "错词复习", len(items)
 
 
