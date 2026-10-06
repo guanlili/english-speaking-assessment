@@ -44,7 +44,7 @@ def __getattr__(name):
 
 
 # 内置演示词表（PRD §7.4：学校没给 CSV 前先用公开分级词的子集，界面标明来源）
-WORDLIST_NAME = "内置演示词表（待学校分级词表 CSV 替换）"
+WORDLIST_NAME = "老词表（A2/B1/B2）已退役，仅保留历史统计"
 
 # 2 天演示用自写短文（PRD §4：EIP 原文不进仓库，内容后换）
 DEMO_PASSAGE_TEXT = (

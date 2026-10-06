@@ -6,6 +6,7 @@ PRD 不可协商 #4：上传接口立即返回，评分在线程池里异步完�
 """
 
 import logging
+import re
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -25,13 +26,11 @@ from app.models import (
     Passage,
     RepeatSentence,
     ScenarioQuestion,
-    WordlistEntry,
 )
 from app.scoring.asr import ArkResponsesAsr, MockAsr
 from app.scoring.audio_convert import convert_to_wav, ensure_ark_supported
 from app.scoring.base import AsrProvider, ContentMissingError, ScoringError
 from app.scoring.heuristic import score_open_response, score_read_aloud
-from app.scoring.lexicon import _TOKEN_RE, _lemma_variants, analyze_transcript
 from app.scoring.volc_flash import VolcFlashAsr
 
 logger = logging.getLogger(__name__)
@@ -41,17 +40,42 @@ _detail_executor: ThreadPoolExecutor | None = None
 _executor_lock = threading.Lock()
 
 
-def _get_wordlist_cache(
-    session: Session,
-) -> tuple[list[WordlistEntry], dict[str, set[str]]]:
-    """查询词表条目。"""
-    entries = list(session.exec(select(WordlistEntry)).all())
-    if not entries:
-        return entries, {}
-    lemmas_by_band: dict[str, set[str]] = {"A2": set(), "B1": set(), "B2": set()}
-    for entry in entries:
-        lemmas_by_band.setdefault(entry.band, set()).add(entry.lemma)
-    return entries, lemmas_by_band
+_TOKEN_RE = re.compile(r"[a-z']+")
+_CONSONANTS = set("bcdfghjklmnpqrstvwxyz")
+
+
+def _lemma_variants(token: str) -> list[str]:
+    """轻量词元归一：处理规则屈折（复数/进行时/过去式），不规则形式由词表直接收录。"""
+    variants = [token]
+    if token.endswith("ies") and len(token) > 4:
+        variants.append(token[:-3] + "y")
+    if token.endswith("es") and len(token) > 3:
+        variants.append(token[:-2])
+    if token.endswith("s") and len(token) > 2:
+        variants.append(token[:-1])
+    if token.endswith("ing") and len(token) > 5:
+        stem = token[:-3]
+        variants.append(stem)
+        variants.append(stem + "e")  # making → make
+        if (
+            len(stem) > 2 and stem[-1] == stem[-2] and stem[-1] in _CONSONANTS
+        ):  # running → run
+            variants.append(stem[:-1])
+    if token.endswith("ed") and len(token) > 4:
+        stem = token[:-2]
+        variants.append(stem)
+        variants.append(token[:-1])  # hoped → hope
+        if (
+            len(stem) > 2 and stem[-1] == stem[-2] and stem[-1] in _CONSONANTS
+        ):  # stopped → stop
+            variants.append(stem[:-1])
+    if token.endswith("er") and len(token) > 4:
+        variants.append(token[:-2])
+        variants.append(token[:-1])
+    if token.endswith("est") and len(token) > 5:
+        variants.append(token[:-3])
+        variants.append(token[:-2])
+    return list(dict.fromkeys(variants))
 
 
 def _get_five_level_cache(session: Session) -> dict[str, set[str]]:
@@ -110,29 +134,17 @@ def _five_level_stats(session: Session, transcript: str) -> dict[str, object] | 
 
 
 def _analyze_vocab(session: Session, transcript: str) -> dict[str, object] | None:
-    """词汇分析：旧 A2/B1/B2 命中与五级来源统计分别独立计算后组合。
+    """词汇分析（2026-10 起：五级词库唯一口径）。
 
-    - 任一数据源有内容即产出 payload（两套口径互不依赖）；
-    - 旧词表为空时不含 wordlist/hits/cefr 键（界面按缺省渲染），五级统计照常；
-    - 两者皆空 → None（界面显示「未配置词表」）；
-    - 历史 attempt 的 vocab JSON 不回填、不重算。
+    - 只产出五级「用词来源级别」统计（level_stats）；老 A2/B1/B2 词表口径
+      已退役，仅历史 attempt.vocab 中的旧 JSON 原样保留展示（不回填不重算）；
+    - 五级数据未导入时返回 None（界面显示「分级词库未导入」），作答与
+      判分完全不受影响。
     """
-    entries, lemmas_by_band = _get_wordlist_cache(session)
-    payload: dict[str, object] = {}
-    if entries:
-        analysis = analyze_transcript(transcript, lemmas_by_band)
-        from app.core.db import WORDLIST_NAME
-
-        payload["wordlist"] = WORDLIST_NAME
-        payload["hits"] = {
-            band: words for band, words in analysis.hits_by_band.items() if words
-        }
-        payload["coverage"] = analysis.coverage_ratio
-        payload["cefr"] = analysis.cefr_label
     level_stats = _five_level_stats(session, transcript)
-    if level_stats is not None:
-        payload["level_stats"] = level_stats
-    return payload or None
+    if level_stats is None:
+        return None
+    return {"level_stats": level_stats}
 
 
 def build_asr_provider() -> AsrProvider:

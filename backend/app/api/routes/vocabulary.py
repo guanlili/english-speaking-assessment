@@ -242,7 +242,7 @@ IMPORT_HEADERS = [
 
 
 async def _read_csv_upload(file: UploadFile) -> str:
-    max_bytes = settings.MAX_WORDLIST_CSV_MB * 1024 * 1024
+    max_bytes = settings.MAX_VOCAB_CSV_MB * 1024 * 1024
     raw = bytearray()
     while True:
         chunk = await file.read(64 * 1024)
@@ -252,7 +252,7 @@ async def _read_csv_upload(file: UploadFile) -> str:
         if len(raw) > max_bytes:
             raise HTTPException(
                 status_code=413,
-                detail=f"CSV 超过 {settings.MAX_WORDLIST_CSV_MB}MB 上限",
+                detail=f"CSV 超过 {settings.MAX_VOCAB_CSV_MB}MB 上限",
             )
     try:
         return raw.decode("utf-8-sig")  # 兼容 Excel 导出的 BOM

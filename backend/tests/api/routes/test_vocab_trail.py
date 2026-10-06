@@ -16,7 +16,7 @@ from sqlmodel import Session, select
 from app.api.deps import get_scoring_submitter
 from app.core.config import settings
 from app.main import app
-from app.models import Attempt, AttemptStatus, WordlistEntry
+from app.models import Attempt, AttemptStatus
 from app.scoring import worker
 from app.scoring.base import ScoringError
 from tests.utils.audio import wav_upload
@@ -108,11 +108,34 @@ def teacher_auth(client: TestClient, superuser_token_headers: dict[str, str]) ->
 def test_question_attempt_has_vocab_analysis(
     client: TestClient, scripted_scoring: Callable[[str], None], db: Session
 ) -> None:
-    """问答作答评分后带词汇分析：命中词/覆盖率/CEFR 参考标签。"""
+    """问答作答评分后带五级用词来源统计（2026-10 起唯一口径）。
+
+    老 A2/B1/B2 词表口径已退役：新作答不再产出 wordlist/hits/coverage/cefr。
+    """
+    from app.models import VocabularyLevelEntry
+
+    # 五级词库：prefer/loyal/relax/effort/independent 记 KET，dog 记 PET
+    # （dogs 经词元归一命中 dog）
+    for headword, level in [
+        ("prefer", "KET"),
+        ("loyal", "KET"),
+        ("relax", "KET"),
+        ("effort", "KET"),
+        ("independent", "KET"),
+        ("dog", "PET"),
+    ]:
+        db.add(
+            VocabularyLevelEntry(
+                headword=headword,
+                level=level,
+                sense_no=1,
+                meaning_zh=f"{headword} 的释义",
+            )
+        )
+    db.commit()
     student = _join(db, client, "词汇同学")
     plan = _plan(client, student["headers"])
     question = next(i for i in plan["items"] if i["type"] == "question")
-    # 转写含多个 B1 词：prefer loyal independent relax effort
     scripted_scoring(
         "i prefer loyal dogs because they help me relax with effort and "
         "independent habits at home"
@@ -121,12 +144,19 @@ def test_question_attempt_has_vocab_analysis(
     assert attempt["status"] == "done"
     vocab = attempt["vocab"]
     assert vocab is not None
-    assert vocab["wordlist"]
-    assert vocab["cefr"] in ("A2", "B1", "B2")
-    hits: dict = vocab["hits"]
-    assert "B1" in hits
-    assert "prefer" in hits["B1"]
-    assert 0 <= vocab["coverage"] <= 1
+    # 新口径：只有 level_stats；老字段全部不再产出
+    assert "wordlist" not in vocab
+    assert "hits" not in vocab
+    assert "coverage" not in vocab
+    assert "cefr" not in vocab
+    level_stats: dict = vocab["level_stats"]
+    hits_by_level: dict = level_stats["hits_by_level"]
+    assert hits_by_level["KET"] == 5  # prefer/loyal/relax/effort/independent
+    assert hits_by_level["PET"] == 1  # dogs → dog
+    assert level_stats["distinct_words"] >= 6
+    for cleanup in db.exec(select(VocabularyLevelEntry)).all():
+        db.delete(cleanup)
+    db.commit()
 
 
 def test_repeat_attempt_has_no_vocab(
@@ -140,16 +170,16 @@ def test_repeat_attempt_has_no_vocab(
     assert attempt["vocab"] is None
 
 
-def test_no_wordlist_shows_null_not_fabricated(
+def test_no_level_data_shows_null_not_fabricated(
     client: TestClient,
     scripted_scoring: Callable[[str], None],
     db: Session,
 ) -> None:
-    """BDD D：词表未配置 → vocab 为 null，界面显示「未配置词表」，不编造等级。"""
-    from app.core.db import _seed_wordlist
+    """五级数据未导入 → vocab 为 null（界面显示「分级词库未导入」），不编造等级。"""
+    from app.models import VocabularyLevelEntry
 
-    # 清空词表（测试库独立，安全），结束后恢复种子
-    entries = db.exec(select(WordlistEntry)).all()
+    # 清空五级表（测试库独立，安全），结束后恢复种子
+    entries = db.exec(select(VocabularyLevelEntry)).all()
     for entry in entries:
         db.delete(entry)
     db.commit()
@@ -161,7 +191,8 @@ def test_no_wordlist_shows_null_not_fabricated(
         assert attempt["status"] == "done"
         assert attempt["vocab"] is None
     finally:
-        _seed_wordlist(db)
+        # 留空即可：其余用例各自播种自己的五级词条
+        pass
 
 
 # ── US-09 学生进步轨迹 ──────────────────────────────────────────────
@@ -170,6 +201,25 @@ def test_no_wordlist_shows_null_not_fabricated(
 def test_trail_aggregates_by_day(
     client: TestClient, scripted_scoring: Callable[[str], None], db: Session
 ) -> None:
+    from app.models import VocabularyLevelEntry
+
+    for headword, level in [
+        ("prefer", "KET"),
+        ("loyal", "KET"),
+        ("relax", "KET"),
+        ("effort", "KET"),
+        ("independent", "KET"),
+        ("dog", "PET"),
+    ]:
+        db.add(
+            VocabularyLevelEntry(
+                headword=headword,
+                level=level,
+                sense_no=1,
+                meaning_zh=f"{headword} 的释义",
+            )
+        )
+    db.commit()
     student = _join(db, client, "轨迹同学")
     plan = _plan(client, student["headers"])
     # 答一题问答 + 一句复述
@@ -191,8 +241,12 @@ def test_trail_aggregates_by_day(
     day = trail["sessions"][0]
     assert day["speaking_avg"] is not None  # 问答总评
     assert day["repeat_completeness_avg"] is not None  # 跟读完整度独立成列
-    assert day["vocab_cefr"] in ("A2", "B1", "B2")
+    # 老口径 cefr 已退役 → 新作答当天为 None（历史作答保留展示）
+    assert day["vocab_cefr"] is None
     assert day["attempt_count"] == 2
+    # 五级口径聚合进整体学情（仅问答作答携带 level_stats）
+    assert trail["level_counts"]["KET"] == 5
+    assert trail["level_counts"]["PET"] == 1
 
 
 def test_trail_requires_own_credential(client: TestClient, db: Session) -> None:

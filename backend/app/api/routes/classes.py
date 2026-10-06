@@ -1787,10 +1787,13 @@ def read_student_trail(
             else:
                 band_change = "down"
 
-    # 累计开口分钟 + 词汇命中按档（与轨迹窗口一致，只统计已完成作答）
+    # 累计开口分钟 + 词汇命中（与轨迹窗口一致，只统计已完成作答）。
+    # vocab_counts = 老词表 A2/B1/B2 口径（仅历史作答携带，零变化保留）；
+    # level_counts = 五级词库口径（现行为标准，来自 level_stats）。
     done_attempts = [a for a in attempts if a.status == AttemptStatus.DONE]
     total_minutes = round(sum(a.duration_s for a in done_attempts) / 60)
     vocab_counts: dict[str, int] = {}
+    level_counts: dict[str, int] = {}
     for a in done_attempts:
         vocab = a.vocab if isinstance(a.vocab, dict) else None
         if not vocab:
@@ -1801,6 +1804,14 @@ def read_student_trail(
                 if not isinstance(band, str) or not isinstance(words, list):
                     continue
                 vocab_counts[band] = vocab_counts.get(band, 0) + len(words)
+        level_stats = vocab.get("level_stats")
+        if isinstance(level_stats, dict):
+            hits_by_level = level_stats.get("hits_by_level")
+            if isinstance(hits_by_level, dict):
+                for level, count in hits_by_level.items():
+                    if not isinstance(level, str) or not isinstance(count, int):
+                        continue
+                    level_counts[level] = level_counts.get(level, 0) + count
 
     return TrailData(
         classroom_code=classroom.code,
@@ -1811,6 +1822,7 @@ def read_student_trail(
         band_change=band_change,
         total_minutes=total_minutes,
         vocab_counts=vocab_counts,
+        level_counts=level_counts,
     )
 
 

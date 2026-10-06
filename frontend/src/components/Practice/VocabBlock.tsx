@@ -1,10 +1,9 @@
 /**
- * 词汇分析块（PRD US-07）：展示命中的表达和词表覆盖率。
- * 档位仅作为后台词表元数据，不向学生展示，避免把练习反馈误解成能力等级。
+ * 词汇分析块：展示用词来源级别（五级词库，唯一现行口径）。
  *
- * 2026-10 起追加「用词来源级别」（五级词库）：只陈述实际用到的词来自哪些
- * 级别（两模块共用的分级数据源），明确标注不代表能力等级；历史作答没有
- * level_stats 字段则不显示该块（不回填、不重算）。
+ * 历史分支：2026-10 前的作答携带老词表 A2/B1/B2 口径（wordlist/hits/
+ * coverage/cefr），仅对历史作答保留展示并标注「老词表已退役」；不回填
+ * 不重算。新作答只产出 level_stats（不代表能力等级）。
  */
 
 import { Badge } from "@/components/ui/badge"
@@ -42,8 +41,8 @@ function VocabBlock({ vocab }: { vocab: unknown }) {
     return (
       <div className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
         {t({
-          zh: "词汇：未配置词表",
-          en: "Vocabulary: no wordlist configured",
+          zh: "词汇：分级词库未导入，暂无用词统计",
+          en: "Vocabulary: leveled word source not imported — no stats yet",
         })}
       </div>
     )
@@ -54,8 +53,18 @@ function VocabBlock({ vocab }: { vocab: unknown }) {
   const hits = data.hits ?? {}
   const hitWords = Array.from(new Set(Object.values(hits).flat())).slice(0, 24)
 
+  const historical = hasWordlist // 老词表口径仅历史作答携带
+
   return (
     <div className="space-y-2 rounded-md border px-3 py-2">
+      {historical && (
+        <p className="text-xs text-amber-600">
+          {t({
+            zh: "老词表（A2/B1/B2）口径已退役——以下为历史作答的保留展示。",
+            en: "The old A2/B1/B2 wordlist is retired — this is a preserved historical view.",
+          })}
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-muted-foreground">
           {t({ zh: "词汇使用", en: "Vocabulary use" })}
@@ -103,11 +112,11 @@ function VocabBlock({ vocab }: { vocab: unknown }) {
             </p>
           </div>
         )}
-      {hasWordlist && (
+      {historical && (
         <p className="text-xs text-muted-foreground">
           {t({
-            zh: `词表来源：${data.wordlist} · 仅用于发现可继续使用的表达`,
-            en: `Wordlist: ${data.wordlist} · used only to spot expressions you can keep using`,
+            zh: `词表来源：${data.wordlist}（已退役，仅历史展示）`,
+            en: `Wordlist: ${data.wordlist} (retired, historical only)`,
           })}
         </p>
       )}

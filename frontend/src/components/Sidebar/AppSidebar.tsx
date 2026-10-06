@@ -1,8 +1,8 @@
 import { useRouterState } from "@tanstack/react-router"
 import {
+  Archive,
   BookA,
   ChevronDown,
-  GraduationCap,
   Layers,
   Library,
   MessageSquareQuote,
@@ -55,8 +55,8 @@ const adminOnlyItems: Item[] = [
     path: "/admin",
   },
   {
-    icon: GraduationCap,
-    title: { zh: "分级词表", en: "Word List" },
+    icon: Archive,
+    title: { zh: "老词表（已退役）", en: "Word List (retired)" },
     path: "/admin/wordlist",
   },
   {

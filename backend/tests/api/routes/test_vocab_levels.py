@@ -665,10 +665,13 @@ def test_level_filter_pagination_across_pages(
     assert [word["headword"] for word in page2] == ["ketword2"]
 
 
-def test_five_level_stats_independent_of_old_wordlist(
+def test_old_wordlist_retired_no_old_block_even_with_data(
     client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
-    """旧词表为空、五级表有数据：level_stats 照常产出（两套口径独立）。"""
+    """老词表口径退役：即便老词表仍有数据，新作答也不再产出 A2/B1/B2 字段。
+
+    历史 attempt.vocab 中的旧 JSON 由数据库原样保留（不回填不重算）。
+    """
     _clear_level_entries(db)
     from sqlmodel import delete
 
@@ -688,14 +691,19 @@ def test_five_level_stats_independent_of_old_wordlist(
     try:
         payload = scoring_worker._analyze_vocab(db, "the ocean is big")
         assert isinstance(payload, dict)
-        assert "wordlist" not in payload  # 旧词表空：无 A2/B1/B2 口径
+        # 老口径退役：不再产出 A2/B1/B2 字段（与老词表是否有数据无关）
+        assert "wordlist" not in payload
+        assert "hits" not in payload
+        assert "coverage" not in payload
+        assert "cefr" not in payload
         level_stats = payload.get("level_stats")
         assert isinstance(level_stats, dict)
         hits_raw = level_stats.get("hits_by_level")
         assert isinstance(hits_raw, dict)
         assert hits_raw == {"PET": 1}
     finally:
-        # 恢复旧词表（后续 test_vocab_trail 的「未配置词表/命中分析」场景依赖）
+        # 恢复老词表（历史统计仍由 /admin/wordlist 只读展示）
+        db.exec(delete(WordlistEntry))  # type: ignore[call-overload]
         for lemma, band in saved_wordlist:
             db.add(WordlistEntry(lemma=lemma, band=band))
         db.commit()
