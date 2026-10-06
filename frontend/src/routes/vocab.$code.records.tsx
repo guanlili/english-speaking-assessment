@@ -276,7 +276,11 @@ function VocabRecordsPage() {
                     }
                   >
                     {row.status === "submitted"
-                      ? t({ zh: "已完成", en: "Completed" })
+                      ? row.end_reason === "timeout"
+                        ? t(TERMS.quizTimedOut)
+                        : row.masked
+                          ? t(TERMS.quizSubmitted)
+                          : t({ zh: "已完成", en: "Completed" })
                       : t({ zh: "进行中", en: "In progress" })}
                   </Badge>
                   <ArrowRight className="size-4 shrink-0 text-muted-foreground" />

@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
+import type { VocabularyStudentResultRow } from "@/client"
 import {
   ApiError,
   ClassesService,
@@ -31,6 +32,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -45,6 +53,7 @@ import { APP_NAME } from "@/config"
 import { downloadCsv } from "@/lib/csv"
 import { type BiString, useI18n } from "@/lib/i18n"
 import {
+  EXPLAIN_QUIZ_TAB_SWITCH,
   TERMS,
   VOCAB_LEVEL_LABELS,
   VOCAB_LEVEL_ORDER,
@@ -350,6 +359,11 @@ function AssignPanel({
   const [audioPrompt, setAudioPrompt] = useState(false)
   const [dueLocal, setDueLocal] = useState("")
   const [showCreateBook, setShowCreateBook] = useState(false)
+  // 测验模式：限时 + 及格线 + 可选开放时间（服务端强约束）
+  const [isQuiz, setIsQuiz] = useState(false)
+  const [durationMinutes, setDurationMinutes] = useState(30)
+  const [passLine, setPassLine] = useState(60)
+  const [opensLocal, setOpensLocal] = useState("")
 
   const selectBook = (id: string | null) => {
     setBookId(id)
@@ -385,6 +399,10 @@ function AssignPanel({
             ...(audioPrompt ? ["audio"] : []),
           ],
           due_at: dueLocal ? new Date(dueLocal).toISOString() : null,
+          mode: isQuiz ? "quiz" : "practice",
+          duration_minutes: isQuiz ? durationMinutes : null,
+          pass_line: isQuiz ? passLine : 60,
+          opens_at: opensLocal ? new Date(opensLocal).toISOString() : null,
         },
       }),
     onSuccess: () => {
@@ -426,6 +444,7 @@ function AssignPanel({
     selectedCount > 0 &&
     selectedCount <= MAX_PUBLISH_WORDS &&
     (meaningPrompt || audioPrompt) &&
+    !(isQuiz && !(durationMinutes >= 5 && durationMinutes <= 240)) &&
     !publish.isPending
 
   return (
@@ -675,6 +694,105 @@ function AssignPanel({
               />
             </div>
           </div>
+          <div className="space-y-3 rounded-2xl border border-primary/15 bg-secondary/30 p-4">
+            <p className="text-sm font-medium">
+              {t({ zh: "任务模式", en: "Task mode" })}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={!isQuiz ? "default" : "outline"}
+                aria-pressed={!isQuiz}
+                onClick={() => setIsQuiz(false)}
+              >
+                {t({ zh: "练习（可重试）", en: "Practice (retries allowed)" })}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={isQuiz ? "default" : "outline"}
+                aria-pressed={isQuiz}
+                onClick={() => setIsQuiz(true)}
+              >
+                {t(TERMS.vocabQuiz)}
+              </Button>
+            </div>
+            {isQuiz && (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <label
+                    htmlFor="quiz-duration"
+                    className="text-sm font-medium"
+                  >
+                    {t(TERMS.quizDuration)}
+                  </label>
+                  <select
+                    id="quiz-duration"
+                    value={String(durationMinutes)}
+                    onChange={(event) =>
+                      setDurationMinutes(Number(event.target.value))
+                    }
+                    className="h-11 w-full max-w-xs rounded-xl border border-input bg-card px-3 text-base text-foreground"
+                  >
+                    {[10, 15, 20, 30, 45, 60, 90, 120].map((minutes) => (
+                      <option key={minutes} value={minutes}>
+                        {minutes} {t({ zh: "分钟", en: "min" })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label
+                    htmlFor="quiz-pass-line"
+                    className="text-sm font-medium"
+                  >
+                    {t(TERMS.passLine)}
+                  </label>
+                  <Input
+                    id="quiz-pass-line"
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={passLine}
+                    onChange={(event) =>
+                      setPassLine(
+                        Math.max(
+                          0,
+                          Math.min(100, Number(event.target.value) || 0),
+                        ),
+                      )
+                    }
+                    className="h-11 max-w-xs text-base"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="quiz-opens" className="text-sm font-medium">
+                    {t({ zh: "开放时间（可选）", en: "Open time (optional)" })}
+                  </label>
+                  <Input
+                    id="quiz-opens"
+                    type="datetime-local"
+                    value={opensLocal}
+                    onChange={(event) => setOpensLocal(event.target.value)}
+                    className="h-11 max-w-xs text-base"
+                  />
+                </div>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {isQuiz
+                ? t({
+                    zh: "测验：学生在规则页点「开始测验」才计时（服务器计时，刷新/换设备不重置）；每题只能提交一次；到时自动交卷；默认一次参与，可单独授权补考；成绩与答案由你分别公布。",
+                    en: "Quiz: the timer starts only when the student taps Start (server time; refresh/device switch won't reset). One submission per item; auto-submit at time-up. One attempt by default, retakes granted per student; grades and answers are published separately.",
+                  })
+                : t({
+                    zh: "练习：可反复重试，统计按每题第一次作答计。",
+                    en: "Practice: retries allowed; stats count each item's first answer.",
+                  })}
+            </p>
+          </div>
+
           <div className="space-y-2">
             <p className="text-sm font-medium">
               4. {t({ zh: "出题方式", en: "Prompt types" })}
@@ -698,10 +816,17 @@ function AssignPanel({
                 />
                 {t(TERMS.promptAudio)}
                 <span className="text-xs text-muted-foreground">
-                  {t({
-                    zh: "（无标准音的词自动走看义；纯听音任务要求全部词有标准音）",
-                    en: "(words without audio fall back to meaning; audio-only tasks need audio for every word)",
-                  })}
+                  <span className="text-xs text-muted-foreground">
+                    {isQuiz
+                      ? t({
+                          zh: "（测验含听音时要求全部词有稳定标准音，浏览器语音不能作题源）",
+                          en: "(quizzes with audio need standard audio for every word — device voice can't be a question source)",
+                        })
+                      : t({
+                          zh: "（无标准音的词自动走看义；纯听音任务要求全部词有标准音）",
+                          en: "(words without audio fall back to meaning; audio-only tasks need audio for every word)",
+                        })}
+                  </span>
                 </span>
               </label>
             </div>
@@ -718,10 +843,17 @@ function AssignPanel({
               ) : (
                 <CheckCircle2 />
               )}
-              {t({
-                zh: `发布（${selectedCount} 词）`,
-                en: `Publish (${selectedCount} words)`,
-              })}
+              {t(
+                isQuiz
+                  ? {
+                      zh: `发布测验（${selectedCount} 词）`,
+                      en: `Publish quiz (${selectedCount} words)`,
+                    }
+                  : {
+                      zh: `发布（${selectedCount} 词）`,
+                      en: `Publish (${selectedCount} words)`,
+                    },
+              )}
             </Button>
             <p className="text-xs text-muted-foreground">
               {t({
@@ -833,6 +965,56 @@ function ResultsPanel({
 
   const results = resultsQuery.data
   const assignment = results?.assignment ?? null
+  const isQuiz = assignment?.mode === "quiz"
+  const publishGrades = useMutation({
+    mutationFn: (assignmentId: string) =>
+      VocabularyService.publishQuizGrades({
+        code: code.toUpperCase(),
+        assignmentId,
+      }),
+    onSuccess: () => {
+      toast.success(t({ zh: "成绩已公布。", en: "Grades published." }))
+      void queryClient.invalidateQueries({
+        queryKey: ["vocab-teacher", code, "results"],
+      })
+    },
+  })
+  const publishAnswers = useMutation({
+    mutationFn: (assignmentId: string) =>
+      VocabularyService.publishQuizAnswers({
+        code: code.toUpperCase(),
+        assignmentId,
+      }),
+    onSuccess: () => {
+      toast.success(
+        t({
+          zh: "答案已公布，错词本开始收录。",
+          en: "Answers published; wrong words now flow into student books.",
+        }),
+      )
+      void queryClient.invalidateQueries({
+        queryKey: ["vocab-teacher", code, "results"],
+      })
+    },
+  })
+  const grantRetake = useMutation({
+    mutationFn: (payload: { assignmentId: string; studentId: string }) =>
+      VocabularyService.grantQuizRetake({
+        code: code.toUpperCase(),
+        assignmentId: payload.assignmentId,
+        studentId: payload.studentId,
+      }),
+    onSuccess: () => {
+      toast.success(t({ zh: "已授权补考一次。", en: "One retake granted." }))
+      void queryClient.invalidateQueries({
+        queryKey: ["vocab-teacher", code, "results"],
+      })
+    },
+  })
+  // 答卷查看：按学生拉取（最新一份；可切轮次在对话框内）
+  const [sheetStudent, setSheetStudent] =
+    useState<VocabularyStudentResultRow | null>(null)
+  const [sheetRoundNo, setSheetRoundNo] = useState<number | null>(null)
   // 没有当前任务但有历史期数（如刚结束最后一期）→ 默认选中最近一期，
   // 保证归档成绩始终能从选择器进入（hook 必须在条件 return 之前）
   useEffect(() => {
@@ -853,8 +1035,28 @@ function ResultsPanel({
   )
   const words = results?.words ?? []
 
-  const exportCsv = () => {
-    if (!results) return
+  const exportCsv = async () => {
+    if (!results || !assignment) return
+    if (isQuiz) {
+      // 测验用服务端导出（固定名单 + 成绩/切屏/终结方式口径）
+      const csv = await VocabularyService.exportQuizResults({
+        code: code.toUpperCase(),
+        assignmentId: assignment.id,
+      })
+      const blob = new Blob([csv as string], {
+        type: "text/csv;charset=utf-8",
+      })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = t({
+        zh: `课堂${code}-词汇测验-v${assignment.version_no}.csv`,
+        en: `classroom-${code}-vocab-quiz-v${assignment.version_no}.csv`,
+      })
+      anchor.click()
+      URL.revokeObjectURL(url)
+      return
+    }
     const header = [
       t({ zh: "姓名", en: "Name" }),
       t({ zh: "区分码", en: "Suffix" }),
@@ -932,7 +1134,9 @@ function ResultsPanel({
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div
+        className={`grid grid-cols-2 gap-3 ${isQuiz ? "md:grid-cols-3 lg:grid-cols-6" : "md:grid-cols-4"}`}
+      >
         <Card>
           <CardContent className="py-4">
             <p className="text-xs text-muted-foreground">
@@ -944,11 +1148,27 @@ function ResultsPanel({
         <Card>
           <CardContent className="py-4">
             <p className="text-xs text-muted-foreground">
-              {t({ zh: "已完成", en: "Completed" })}
+              {t(
+                isQuiz
+                  ? { zh: "已交卷", en: "Submitted" }
+                  : { zh: "已完成", en: "Completed" },
+              )}
             </p>
             <p className="mt-1 text-2xl font-bold text-primary">{completed}</p>
           </CardContent>
         </Card>
+        {isQuiz && (
+          <Card>
+            <CardContent className="py-4">
+              <p className="text-xs text-muted-foreground">
+                {t({ zh: "超时结束", en: "Timed out" })}
+              </p>
+              <p className="mt-1 text-2xl font-bold text-amber-600">
+                {results?.timed_out_count ?? 0}
+              </p>
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardContent className="py-4">
             <p className="text-xs text-muted-foreground">
@@ -967,6 +1187,37 @@ function ResultsPanel({
             </p>
           </CardContent>
         </Card>
+        {isQuiz && (
+          <Card>
+            <CardContent className="py-4">
+              <p className="text-xs text-muted-foreground">
+                {t({ zh: "平均分", en: "Average" })}
+              </p>
+              <p className="mt-1 text-2xl font-bold">
+                {results?.avg_score ?? "–"}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+        {isQuiz && (
+          <Card>
+            <CardContent className="py-4">
+              <p className="text-xs text-muted-foreground">
+                {t({ zh: "及格", en: "Passed" })}
+              </p>
+              <p className="mt-1 text-2xl font-bold text-primary">
+                {results?.passed_count ?? 0}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                  /
+                  {t({
+                    zh: `线 ${results?.pass_line ?? 60}`,
+                    en: `of ${results?.pass_line ?? 60}`,
+                  })}
+                </span>
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Card className="border-primary/20 bg-secondary/30">
@@ -985,10 +1236,17 @@ function ResultsPanel({
               </span>
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {t({
-                zh: "成绩按每题第一次作答统计；练习重试不冲高正确率。",
-                en: "Stats use each item's first answer; practice retries don't inflate accuracy.",
-              })}
+              {t(
+                isQuiz
+                  ? {
+                      zh: "成绩 = 首答正确 ÷ 总题数（未答按 0 分计入）；有补考取最好成绩；切屏仅记录供参考。",
+                      en: "Score = first-try correct ÷ total (unanswered counts as zero); best attempt applies with retakes; tab switches are recorded only.",
+                    }
+                  : {
+                      zh: "成绩按每题第一次作答统计；练习重试不冲高正确率。",
+                      en: "Stats use each item's first answer; practice retries don't inflate accuracy.",
+                    },
+              )}
             </p>
             <RoundSelector
               assignments={assignments}
@@ -1008,10 +1266,38 @@ function ResultsPanel({
             />
             {t({ zh: "刷新", en: "Refresh" })}
           </Button>
-          <Button variant="outline" size="sm" onClick={exportCsv}>
+          <Button variant="outline" size="sm" onClick={() => void exportCsv()}>
             <Download />
             {t({ zh: "导出", en: "Export" })}
           </Button>
+          {isQuiz && (
+            <Button
+              size="sm"
+              variant={results?.grades_published ? "outline" : "default"}
+              disabled={results?.grades_published === true}
+              onClick={() => publishGrades.mutate(assignment.id)}
+            >
+              {t(
+                results?.grades_published
+                  ? { zh: "成绩已公布", en: "Grades published" }
+                  : { zh: "公布成绩", en: "Publish grades" },
+              )}
+            </Button>
+          )}
+          {isQuiz && (
+            <Button
+              size="sm"
+              variant={results?.answers_published ? "outline" : "default"}
+              disabled={results?.answers_published === true}
+              onClick={() => publishAnswers.mutate(assignment.id)}
+            >
+              {t(
+                results?.answers_published
+                  ? { zh: "答案已公布", en: "Answers published" }
+                  : { zh: "公布答案", en: "Publish answers" },
+              )}
+            </Button>
+          )}
           {assignment.status === "published" && (
             <Button
               variant="outline"
@@ -1133,17 +1419,38 @@ function ResultsPanel({
               <TableRow>
                 <TableHead>{t({ zh: "姓名", en: "Name" })}</TableHead>
                 <TableHead>{t({ zh: "状态", en: "Status" })}</TableHead>
-                <TableHead>{t({ zh: "已答", en: "Answered" })}</TableHead>
-                <TableHead>
-                  {t({ zh: "首答正确", en: "First-try correct" })}
-                </TableHead>
-                <TableHead>
-                  {t({ zh: "首答正确率", en: "First-try accuracy" })}
-                </TableHead>
-                <TableHead>{t({ zh: "轮次", en: "Rounds" })}</TableHead>
+                {isQuiz ? (
+                  <>
+                    <TableHead>
+                      {t({
+                        zh: "答对/答错/未答",
+                        en: "Right/Wrong/Unanswered",
+                      })}
+                    </TableHead>
+                    <TableHead>
+                      {t({ zh: "成绩（最好）", en: "Score (best)" })}
+                    </TableHead>
+                    <TableHead>
+                      {t({ zh: "参与/切屏", en: "Attempts/Tab switches" })}
+                    </TableHead>
+                  </>
+                ) : (
+                  <>
+                    <TableHead>{t({ zh: "已答", en: "Answered" })}</TableHead>
+                    <TableHead>
+                      {t({ zh: "首答正确", en: "First-try correct" })}
+                    </TableHead>
+                    <TableHead>
+                      {t({ zh: "首答正确率", en: "First-try accuracy" })}
+                    </TableHead>
+                  </>
+                )}
                 <TableHead>
                   {t({ zh: "交卷时间", en: "Submitted at" })}
                 </TableHead>
+                {isQuiz && (
+                  <TableHead>{t({ zh: "操作", en: "Actions" })}</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1151,6 +1458,124 @@ function ResultsPanel({
                 const name = row.suffix
                   ? `${row.display_name}·${row.suffix}`
                   : row.display_name
+                if (isQuiz) {
+                  const wrong = Math.max(
+                    0,
+                    row.answered_count - row.correct_first_count,
+                  )
+                  const unanswered = Math.max(
+                    0,
+                    row.total_count - row.answered_count,
+                  )
+                  return (
+                    <TableRow key={row.student_id}>
+                      <TableCell className="font-medium">
+                        {name}
+                        {row.retake_granted && (
+                          <Badge
+                            variant="outline"
+                            className="ml-1.5 text-muted-foreground"
+                          >
+                            {t(TERMS.quizRetake)}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {row.status === "completed" ? (
+                          row.quiz_end_reason === "timeout" ? (
+                            <Badge
+                              variant="outline"
+                              className="text-amber-600"
+                              title={t(EXPLAIN_QUIZ_TAB_SWITCH)}
+                            >
+                              <CircleDashed className="size-3" />
+                              {t(TERMS.quizTimedOut)}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-primary">
+                              <CheckCircle2 className="size-3" />
+                              {t(TERMS.quizSubmitted)}
+                            </Badge>
+                          )
+                        ) : row.status === "in_progress" ? (
+                          <Badge variant="secondary">
+                            <CircleDashed className="size-3" />
+                            {t(STUDENT_STATUS.in_progress)}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            {t(STUDENT_STATUS.not_started)}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {row.correct_first_count} / {wrong} /{" "}
+                        <span className="text-muted-foreground">
+                          {unanswered}
+                        </span>
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {row.score !== null && row.score !== undefined ? (
+                          <span>
+                            <span
+                              className={`font-semibold ${row.passed ? "text-primary" : "text-amber-600"}`}
+                            >
+                              {row.score}
+                            </span>
+                            <span className="ml-1 text-xs text-muted-foreground">
+                              {row.passed
+                                ? t({ zh: "及格", en: "pass" })
+                                : t({ zh: "不及格", en: "below" })}
+                            </span>
+                          </span>
+                        ) : (
+                          "–"
+                        )}
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">
+                        {row.attempt_count ?? 0} / {row.tab_switch_count ?? 0}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {row.submitted_at
+                          ? new Date(row.submitted_at).toLocaleTimeString()
+                          : "–"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={
+                              (row.attempt_count ?? 0) === 0 &&
+                              row.status === "not_started"
+                            }
+                            onClick={() => {
+                              setSheetRoundNo(null)
+                              setSheetStudent(row)
+                            }}
+                          >
+                            {t({ zh: "答卷", en: "Answers" })}
+                          </Button>
+                          {!row.retake_granted && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={grantRetake.isPending}
+                              onClick={() =>
+                                grantRetake.mutate({
+                                  assignmentId: assignment.id,
+                                  studentId: row.student_id,
+                                })
+                              }
+                            >
+                              {t({ zh: "授权补考", en: "Grant retake" })}
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                }
                 return (
                   <TableRow key={row.student_id}>
                     <TableCell className="font-medium">{name}</TableCell>
@@ -1225,7 +1650,171 @@ function ResultsPanel({
           en: "Stats reflect each item's first answer, showing students' real starting points. Practice data supports teaching — it doesn't define students.",
         })}
       </p>
+
+      {isQuiz && (
+        <QuizAnswerSheetDialog
+          code={code}
+          assignmentId={assignment.id}
+          student={sheetStudent}
+          roundNo={sheetRoundNo}
+          onClose={() => setSheetStudent(null)}
+        />
+      )}
     </div>
+  )
+}
+
+/** 学生答卷查看（教师端，不受公布规则约束；可切换补考轮次） */
+function QuizAnswerSheetDialog({
+  code,
+  assignmentId,
+  student,
+  roundNo,
+  onClose,
+}: {
+  code: string
+  assignmentId: string
+  student: VocabularyStudentResultRow | null
+  roundNo: number | null
+  onClose: () => void
+}) {
+  const { t } = useI18n()
+  const [selectedRound, setSelectedRound] = useState<number | null>(roundNo)
+  const effectiveRound = selectedRound ?? roundNo
+  const sheetQuery = useQuery({
+    queryKey: [
+      "vocab-teacher",
+      code,
+      "answer-sheet",
+      student?.student_id,
+      effectiveRound,
+    ],
+    queryFn: () =>
+      VocabularyService.readQuizAnswerSheet({
+        code: code.toUpperCase(),
+        assignmentId,
+        studentId: student?.student_id as string,
+        roundNo: effectiveRound ?? undefined,
+      }),
+    enabled: student !== null,
+  })
+  if (student === null) return null
+  const plan = sheetQuery.data
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            {t({ zh: "学生答卷", en: "Student answer sheet" })} ·{" "}
+            {student.display_name}
+            {student.suffix ? `·${student.suffix}` : ""}
+          </DialogTitle>
+          <DialogDescription>
+            {t({
+              zh: "教师视角全量揭示，不受公布规则影响；此处成绩按该份答卷计。",
+              en: "Teacher view reveals everything regardless of publishing; the score shown is for this attempt.",
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        {(student.rounds ?? []).length > 1 && (
+          <div className="flex flex-wrap gap-1.5">
+            {(student.rounds ?? []).map((round) => (
+              <Button
+                key={round.round_no}
+                size="sm"
+                variant={
+                  (effectiveRound ?? round.round_no) === round.round_no
+                    ? "default"
+                    : "outline"
+                }
+                onClick={() => setSelectedRound(round.round_no)}
+              >
+                R{round.round_no}
+              </Button>
+            ))}
+          </div>
+        )}
+        {sheetQuery.isPending ? (
+          <div role="status" className="py-6 text-sm text-muted-foreground">
+            {t({ zh: "正在加载答卷…", en: "Loading answer sheet…" })}
+          </div>
+        ) : sheetQuery.isError || !plan ? (
+          <p role="alert" className="py-6 text-sm text-muted-foreground">
+            {t({
+              zh: "答卷加载失败。",
+              en: "Failed to load the answer sheet.",
+            })}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-2xl bg-secondary/50 p-4">
+              <p className="text-sm font-semibold">
+                {t({ zh: "成绩", en: "Score" })}{" "}
+                {plan.is_quiz ? (
+                  <span className="text-muted-foreground">
+                    {t({
+                      zh: `（本份答卷，第 ${plan.round_no ?? 1} 轮）`,
+                      en: ` (this attempt, round ${plan.round_no ?? 1})`,
+                    })}
+                  </span>
+                ) : null}
+              </p>
+              <p className="mt-1 text-2xl font-bold tabular-nums">
+                {(plan.total_count ?? 0) > 0
+                  ? Math.round(
+                      ((plan.correct_first_count ?? 0) /
+                        (plan.total_count ?? 1)) *
+                        100,
+                    )
+                  : 0}
+                %{" "}
+                <span className="text-sm font-normal text-muted-foreground">
+                  {t({
+                    zh: `首答正确 ${plan.correct_first_count ?? 0}/${plan.total_count ?? 0} · 已答 ${plan.answered_count ?? 0}`,
+                    en: `first-try ${plan.correct_first_count ?? 0}/${plan.total_count ?? 0} · answered ${plan.answered_count ?? 0}`,
+                  })}
+                </span>
+              </p>
+            </div>
+            <ul className="space-y-1.5">
+              {(plan.items ?? []).map((item) => (
+                <li
+                  key={item.item_index}
+                  className="flex flex-wrap items-baseline gap-x-2 rounded-xl border px-3 py-2"
+                >
+                  <span className="text-xs text-muted-foreground">
+                    #{item.item_index + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {item.meaning_zh}
+                  </span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {item.first_answer ?? "–"}
+                  </span>
+                  <span className="font-mono text-sm font-semibold">
+                    {item.headword ?? "–"}
+                  </span>
+                  {item.answered ? (
+                    item.is_correct ? (
+                      <CheckCircle2 className="size-4 shrink-0 text-primary" />
+                    ) : (
+                      <span className="text-xs text-amber-600">
+                        {t({ zh: "错", en: "miss" })}
+                      </span>
+                    )
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      {t({ zh: "未答", en: "none" })}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

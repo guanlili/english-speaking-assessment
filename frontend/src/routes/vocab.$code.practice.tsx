@@ -34,7 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
-import { TERMS } from "@/lib/terms"
+import { EXPLAIN_QUIZ_PUBLISH, EXPLAIN_QUIZ_RULES, TERMS } from "@/lib/terms"
 import { speakEnglish } from "@/lib/tts"
 
 export const Route = createFileRoute("/vocab/$code/practice")({
@@ -61,6 +61,13 @@ interface AnswerState {
   isCorrect: boolean
   correctSpelling: string
   attemptNo: number
+}
+
+/** 测验进度点的提交态占位：只表示已提交，不携带对错 */
+const QUIZ_SUBMITTED_DOT: AnswerState = {
+  isCorrect: false,
+  correctSpelling: "",
+  attemptNo: 1,
 }
 
 function VocabPracticePage() {
@@ -100,9 +107,14 @@ function VocabPracticePage() {
   const currentRoundNo = todayQuery.data?.current_round ?? null
   const isCurrentRound =
     viewingRoundNo === null || viewingRoundNo === currentRoundNo
-  const readOnly = closedReason !== null || !isCurrentRound
   const rounds = todayQuery.data?.rounds ?? []
   const activeRoundNo = viewingRoundNo ?? todayQuery.data?.session_round ?? null
+  // 测验模式：规则先行（未开始不自动开轮）、服务端计时、每题一次、回执不泄露
+  const quiz = todayQuery.data?.quiz ?? null
+  const isQuiz = quiz !== null
+  const quizFinished =
+    isQuiz && (quiz.status === "submitted" || quiz.status === "timed_out")
+  const readOnly = closedReason !== null || !isCurrentRound || quizFinished
   const items = useMemo(
     () =>
       [...(todayQuery.data?.items ?? [])].sort(
@@ -128,6 +140,16 @@ function VocabPracticePage() {
   // 渲染期重置模式（React 官方推荐）：绑定键变化时在渲染中重置 state
   const bindingKey = `${assignment?.id ?? ""}:${todayQuery.data?.session_id ?? ""}:${activeRoundNo ?? ""}`
   const [answers, setAnswers] = useState<Record<number, AnswerState>>({})
+  // 测验本地提交标记（乐观）：plan 换轮/换会话时清空
+  const [quizLocalSubmitted, setQuizLocalSubmitted] = useState<
+    Record<number, true>
+  >({})
+  const quizLocalRenderedRef = useRef<string | null>(null)
+  const quizRenderedSession = quiz?.status ?? ""
+  if (quizRenderedSession !== (quizLocalRenderedRef.current ?? "")) {
+    quizLocalRenderedRef.current = quizRenderedSession
+    setQuizLocalSubmitted({})
+  }
   const [current, setCurrent] = useState(0)
   const [input, setInput] = useState("")
   const [renderedBinding, setRenderedBinding] = useState(bindingKey)
@@ -185,12 +207,11 @@ function VocabPracticePage() {
         assignmentId: payload.assignmentId,
         sessionId: (data as { session_id: string }).session_id,
       })
-      if (payload.round === "new") {
-        // 新复习轮已开：重拉 today 拿到新轮的题目与首答状态
-        void queryClient.invalidateQueries({
-          queryKey: ["vocab", code, "today"],
-        })
-      }
+      // 练习「再练一轮」/ 测验「明确开始」后都要重拉 today：
+      // 测验开始后 today 才带答卷与题面（未开始不下发题面）
+      void queryClient.invalidateQueries({
+        queryKey: ["vocab", code, "today"],
+      })
     },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 403) {
@@ -215,7 +236,8 @@ function VocabPracticePage() {
     },
   })
   useEffect(() => {
-    if (remoteSessionId || readOnly) return
+    // 测验：规则页明确「开始测验」才创建答卷（本页不自动开轮）
+    if (remoteSessionId || readOnly || isQuiz) return
     if (
       assignment &&
       !sessionId &&
@@ -224,7 +246,47 @@ function VocabPracticePage() {
     ) {
       startSession.mutate({ assignmentId: assignment.id })
     }
-  }, [assignment, readOnly, remoteSessionId, sessionId, startSession])
+  }, [assignment, readOnly, remoteSessionId, sessionId, startSession, isQuiz])
+
+  // 测验倒计时：以服务器下发的剩余秒数为基准本地递减（只是展示；
+  // 到时由服务端结算判定，改客户端时间无法影响交卷与判分）
+  const [serverRemaining, setServerRemaining] = useState<number | null>(
+    quiz?.remaining_seconds ?? null,
+  )
+  useEffect(() => {
+    setServerRemaining(quiz?.remaining_seconds ?? null)
+  }, [quiz?.remaining_seconds])
+  useEffect(() => {
+    if (!isQuiz || quiz?.status !== "in_progress") return
+    const timer = window.setInterval(() => {
+      setServerRemaining((prev) =>
+        prev === null ? null : Math.max(0, prev - 1),
+      )
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [isQuiz, quiz?.status])
+  // 倒计时归零触发一次重拉（服务端结算收口；幂等）
+  useEffect(() => {
+    if (isQuiz && quiz?.status === "in_progress" && serverRemaining === 0) {
+      void queryClient.invalidateQueries({
+        queryKey: ["vocab", code, "today"],
+      })
+    }
+  }, [isQuiz, quiz?.status, serverRemaining, queryClient, code])
+
+  // 测验切屏上报：只计事件，不阻断作答（教师参考，不自动认定作弊）
+  useEffect(() => {
+    if (!isQuiz || quiz?.status !== "in_progress" || !sessionId) return
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        void VocabularyService.reportQuizTabSwitch({
+          sessionId: sessionId as string,
+        }).catch(() => undefined)
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => document.removeEventListener("visibilitychange", onVisibility)
+  }, [isQuiz, quiz?.status, sessionId])
 
   const inputRef = useRef<HTMLInputElement>(null)
   // 幂等键跟随「一次作答意图」：键与题号/题型/作答内容绑定——只有原样重试
@@ -269,12 +331,26 @@ function VocabPracticePage() {
       // 迟到响应隔离：提交后已切换任务/轮次的响应只丢弃不落当前视图
       if (variables.binding !== bindingKey) return
       pendingRef.current = null
+      const receipt = result as { item_index: number; received: boolean }
+      const graded = result as {
+        is_correct: boolean
+        correct_spelling: string
+        attempt_no: number
+      }
+      if ("received" in result) {
+        // 测验回执：只确认接收，不提前返回答案与正误（公布前零泄露）
+        setQuizLocalSubmitted((prev) => ({
+          ...prev,
+          [receipt.item_index]: true,
+        }))
+        return
+      }
       setAnswers((prev) => ({
         ...prev,
-        [result.item_index]: {
-          isCorrect: result.is_correct,
-          correctSpelling: result.correct_spelling,
-          attemptNo: result.attempt_no,
+        [variables.itemIndex]: {
+          isCorrect: graded.is_correct,
+          correctSpelling: graded.correct_spelling,
+          attemptNo: graded.attempt_no,
         },
       }))
     },
@@ -314,7 +390,10 @@ function VocabPracticePage() {
   const item: VocabularyTodayItem | undefined = items[current]
   const answer = item ? answers[item.item_index] : undefined
   const audioUsableHere =
-    audioInTask && Boolean(item?.audio_url || answer !== undefined)
+    audioInTask &&
+    (isQuiz
+      ? Boolean(item?.audio_url) // 测验：浏览器合成语音不能作题源
+      : Boolean(item?.audio_url || answer !== undefined))
   const [useAudio, setUseAudio] = useState(false)
   useEffect(() => {
     setUseAudio(audioInTask && !meaningInTask && audioUsableHere)
@@ -324,7 +403,17 @@ function VocabPracticePage() {
   const correctFirst = items.filter(
     (it) => it.answered && it.is_correct === true,
   ).length
-  const allDone = items.length > 0 && answeredCount >= items.length
+  // 测验口径：提交态来自 plan（刷新恢复）+ 本地乐观标记；不显示对错
+  const quizAnsweredCount = items.filter(
+    (it) => it.answered || quizLocalSubmitted[it.item_index],
+  ).length
+  const allDone =
+    items.length > 0 &&
+    (isQuiz ? quizAnsweredCount >= items.length : answeredCount >= items.length)
+  const itemQuizSubmitted =
+    isQuiz &&
+    Boolean(item?.answered || quizLocalSubmitted[item?.item_index ?? -1])
+  const quizItemSubmitted = itemQuizSubmitted
 
   const playAudio = () => {
     if (!item) return
@@ -407,6 +496,98 @@ function VocabPracticePage() {
     )
   }
 
+  // 测验规则页：未明确开始不下发题面；这里给出规则与「开始测验」入口
+  if (isQuiz && quiz?.status === "not_started" && assignment) {
+    return (
+      <StudentShell active="vocab">
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/vocab/$code" params={{ code }}>
+                <ArrowLeft />
+                {t({ zh: "返回词汇学习", en: "Back to Vocabulary" })}
+              </Link>
+            </Button>
+          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                {t(TERMS.vocabQuiz)} · {assignment.title}
+              </CardTitle>
+              <CardDescription>{t(EXPLAIN_QUIZ_RULES)}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-secondary/50 p-4">
+                  <dt className="text-xs text-muted-foreground">
+                    {t(TERMS.quizDuration)}
+                  </dt>
+                  <dd className="mt-1 text-lg font-semibold">
+                    {quiz.duration_minutes} {t({ zh: "分钟", en: "min" })}
+                  </dd>
+                </div>
+                <div className="rounded-2xl bg-secondary/50 p-4">
+                  <dt className="text-xs text-muted-foreground">
+                    {t(TERMS.passLine)}
+                  </dt>
+                  <dd className="mt-1 text-lg font-semibold">
+                    {quiz.pass_line}
+                    {t({ zh: " 分", en: " pts" })}
+                  </dd>
+                </div>
+                <div className="rounded-2xl bg-secondary/50 p-4">
+                  <dt className="text-xs text-muted-foreground">
+                    {t({ zh: "开放 / 截止", en: "Opens / Due" })}
+                  </dt>
+                  <dd className="mt-1 text-sm font-medium leading-5">
+                    {quiz.opens_at
+                      ? new Date(quiz.opens_at).toLocaleString()
+                      : t({ zh: "已开放", en: "Open now" })}
+                    <br />
+                    {quiz.due_at
+                      ? new Date(quiz.due_at).toLocaleString()
+                      : t({ zh: "无截止", en: "No due" })}
+                  </dd>
+                </div>
+                <div className="rounded-2xl bg-secondary/50 p-4">
+                  <dt className="text-xs text-muted-foreground">
+                    {t({ zh: "参与次数", en: "Attempts" })}
+                  </dt>
+                  <dd className="mt-1 text-lg font-semibold">
+                    {quiz.attempts_used} / {quiz.attempts_allowed}
+                    {quiz.retake_granted && (
+                      <span className="ml-2 text-sm text-muted-foreground">
+                        {t({ zh: "老师已授权补考", en: "retake granted" })}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              <Button
+                size="lg"
+                className="h-12 w-full sm:w-auto"
+                disabled={startSession.isPending}
+                onClick={() => {
+                  startSession.mutate({ assignmentId: assignment.id })
+                }}
+              >
+                {startSession.isPending
+                  ? t({ zh: "正在开始…", en: "Starting…" })
+                  : t(TERMS.startQuiz)}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                {t({
+                  zh: "点击开始后计时开始：有效结束时间取个人时长与任务截止中较早者。",
+                  en: "The timer starts on tap: your deadline is the earlier of your time limit and the task due time.",
+                })}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </StudentShell>
+    )
+  }
+
   if (
     todayQuery.isError ||
     assignment === null ||
@@ -449,12 +630,50 @@ function VocabPracticePage() {
               {t({ zh: "返回词汇学习", en: "Back to Vocabulary" })}
             </Link>
           </Button>
-          <p className="text-xs text-muted-foreground">
-            {t({
-              zh: `${assignment?.title ?? ""} · 第 ${activeRoundNo ?? 1} 轮 · 第 ${current + 1} / ${items.length} 题 · 首答正确 ${correctFirst}`,
-              en: `${assignment?.title ?? ""} · Round ${activeRoundNo ?? 1} · Item ${current + 1} / ${items.length} · ${correctFirst} correct on first try`,
-            })}
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            {isQuiz && quiz?.status === "in_progress" && (
+              <span
+                role="timer"
+                aria-label={t({ zh: "剩余时间", en: "Time remaining" })}
+                className={`rounded-xl px-3 py-1.5 font-mono text-sm font-semibold tabular-nums ${
+                  (serverRemaining ?? 0) <= 60
+                    ? "bg-amber-500/15 text-amber-600"
+                    : "bg-secondary text-primary"
+                }`}
+              >
+                {t({ zh: "剩余", en: "Left" })}{" "}
+                {String(Math.floor((serverRemaining ?? 0) / 60)).padStart(
+                  2,
+                  "0",
+                )}
+                :{String((serverRemaining ?? 0) % 60).padStart(2, "0")}
+              </span>
+            )}
+            {isQuiz && quiz?.status === "in_progress" && (
+              <SubmitQuizButton
+                sessionId={sessionId}
+                disabled={!sessionId}
+                onDone={() => {
+                  void queryClient.invalidateQueries({
+                    queryKey: ["vocab", code, "today"],
+                  })
+                }}
+              />
+            )}
+            <p className="text-xs text-muted-foreground">
+              {t(
+                isQuiz
+                  ? {
+                      zh: `${assignment?.title ?? ""} · 第 ${current + 1} / ${items.length} 题（每题一次，提交后不能修改）`,
+                      en: `${assignment?.title ?? ""} · Item ${current + 1} / ${items.length} (one submission per item)`,
+                    }
+                  : {
+                      zh: `${assignment?.title ?? ""} · 第 ${activeRoundNo ?? 1} 轮 · 第 ${current + 1} / ${items.length} 题 · 首答正确 ${correctFirst}`,
+                      en: `${assignment?.title ?? ""} · Round ${activeRoundNo ?? 1} · Item ${current + 1} / ${items.length} · ${correctFirst} correct on first try`,
+                    },
+              )}
+            </p>
+          </div>
         </div>
 
         {/* 只读提示：截止/归档/回看历史轮 */}
@@ -469,15 +688,17 @@ function VocabPracticePage() {
                     zh: "正在回看这一轮的记录（只读）；切回最新轮可继续练习。",
                     en: "Viewing this round's records (read-only); switch back to the latest round to keep practicing.",
                   })
-                : closedReason === "archived"
-                  ? t({
-                      zh: "老师已结束这个任务，不能再作答；下面的记录可以回看。",
-                      en: "Your teacher ended this task — no more answering, but your records below stay viewable.",
-                    })
-                  : t({
-                      zh: "这个任务已过截止时间，不能再作答；下面的记录可以回看。",
-                      en: "This task is past its due time — no more answering, but your records below stay viewable.",
-                    })}
+                : quizFinished
+                  ? t(EXPLAIN_QUIZ_PUBLISH)
+                  : closedReason === "archived"
+                    ? t({
+                        zh: "老师已结束这个任务，不能再作答；下面的记录可以回看。",
+                        en: "Your teacher ended this task — no more answering, but your records below stay viewable.",
+                      })
+                    : t({
+                        zh: "这个任务已过截止时间，不能再作答；下面的记录可以回看。",
+                        en: "This task is past its due time — no more answering, but your records below stay viewable.",
+                      })}
             </p>
           </div>
         )}
@@ -530,14 +751,18 @@ function VocabPracticePage() {
           aria-label={t({ zh: "作答进度", en: "Answer progress" })}
         >
           {items.map((it, index) => {
-            const state = answers[it.item_index]
+            const state =
+              answers[it.item_index] ??
+              (isQuiz && (it.answered || quizLocalSubmitted[it.item_index])
+                ? QUIZ_SUBMITTED_DOT
+                : undefined)
             return (
               <li key={it.item_index}>
                 <button
                   type="button"
                   aria-label={t({
-                    zh: `第 ${index + 1} 题${state ? (state.isCorrect ? "（对）" : "（错）") : "（未答）"}`,
-                    en: `Item ${index + 1}${state ? (state.isCorrect ? " (correct)" : " (missed)") : " (not answered)"}`,
+                    zh: `第 ${index + 1} 题${state ? (isQuiz ? "（已提交）" : state.isCorrect ? "（对）" : "（错）") : "（未答）"}`,
+                    en: `Item ${index + 1}${state ? (isQuiz ? " (submitted)" : state.isCorrect ? " (correct)" : " (missed)") : " (not answered)"}`,
                   })}
                   aria-current={index === current ? "true" : undefined}
                   onClick={() => {
@@ -549,7 +774,7 @@ function VocabPracticePage() {
                     index === current
                       ? "border-primary bg-primary text-primary-foreground"
                       : state
-                        ? state.isCorrect
+                        ? state.isCorrect && !isQuiz
                           ? "border-primary/30 bg-secondary text-primary"
                           : "border-border bg-secondary/60 text-muted-foreground"
                         : "border-border text-muted-foreground hover:border-primary/40"
@@ -656,8 +881,8 @@ function VocabPracticePage() {
               </div>
             )}
 
-            {/* 作答区 */}
-            {!answer ? (
+            {/* 作答区：练习=即时反馈；测验=只确认接收（不提前泄露答案） */}
+            {!answer && !quizItemSubmitted ? (
               <form
                 onSubmit={handleSubmit}
                 className="flex flex-col gap-3 sm:flex-row"
@@ -692,10 +917,56 @@ function VocabPracticePage() {
                 >
                   {submitAnswer.isPending
                     ? t({ zh: "判分中…", en: "Checking…" })
-                    : t({ zh: "提交", en: "Submit" })}
+                    : t(
+                        isQuiz
+                          ? { zh: "提交答案", en: "Submit answer" }
+                          : { zh: "提交", en: "Submit" },
+                      )}
                 </Button>
               </form>
-            ) : (
+            ) : isQuiz && quizItemSubmitted ? (
+              <div
+                role="status"
+                className="flex items-start gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4"
+              >
+                <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-primary" />
+                <div className="min-w-0 space-y-1">
+                  <p className="font-semibold">
+                    {t({ zh: "答案已提交", en: "Answer submitted" })}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {t(EXPLAIN_QUIZ_PUBLISH)}
+                  </p>
+                </div>
+                <div className="ml-auto flex shrink-0 gap-2 self-center">
+                  {current < items.length - 1 ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setInput("")
+                        pendingRef.current = null
+                        setCurrent(current + 1)
+                      }}
+                    >
+                      {t({ zh: "下一题", en: "Next item" })}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setInput("")
+                        pendingRef.current = null
+                        void queryClient.invalidateQueries({
+                          queryKey: ["vocab", code, "today"],
+                        })
+                      }}
+                    >
+                      {t({ zh: "刷新状态", en: "Refresh status" })}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : answer ? (
               <div className="space-y-4">
                 <div
                   role="status"
@@ -760,10 +1031,45 @@ function VocabPracticePage() {
                   </Button>
                 </div>
               </div>
-            )}
+            ) : null}
 
-            {/* 走完全部题后的收尾提示 */}
-            {allDone && answer && (
+            {/* 走完全部题后的收尾提示：测验=交卷提醒；练习=完成统计 */}
+            {isQuiz && allDone && (
+              <div className="rounded-2xl border border-primary/20 bg-secondary/40 p-4">
+                <p className="text-sm font-semibold">
+                  {quiz?.status === "in_progress"
+                    ? t({
+                        zh: "全部题目已提交。确认无误就交卷；到时间也会自动交卷。",
+                        en: "All items submitted. Submit to finish — auto-submit at time-up either way.",
+                      })
+                    : t(EXPLAIN_QUIZ_PUBLISH)}
+                </p>
+                {quiz?.status === "in_progress" && (
+                  <div className="mt-3">
+                    <SubmitQuizButton
+                      sessionId={sessionId}
+                      disabled={!sessionId}
+                      onDone={() => {
+                        void queryClient.invalidateQueries({
+                          queryKey: ["vocab", code, "today"],
+                        })
+                      }}
+                    />
+                  </div>
+                )}
+                {quiz?.status !== "in_progress" && (
+                  <div className="mt-3">
+                    <Button asChild size="sm" variant="outline">
+                      <Link to="/vocab/$code" params={{ code }}>
+                        {t({ zh: "回词汇首页", en: "Back to Vocabulary home" })}
+                        <ArrowRight />
+                      </Link>
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+            {!isQuiz && allDone && answer && (
               <div className="rounded-2xl border border-primary/20 bg-secondary/40 p-4">
                 <p className="text-sm font-semibold">
                   {t({
@@ -809,12 +1115,56 @@ function VocabPracticePage() {
         </Card>
 
         <p className="pb-4 text-center text-xs text-muted-foreground">
-          {t({
-            zh: "练习里可以反复重试；成绩统计按每题第一次作答计算。",
-            en: "Practice allows retries; your stats count the first answer of each item.",
-          })}
+          {t(
+            isQuiz
+              ? {
+                  zh: "测验每题只能提交一次；到时自动交卷，成绩与答案由老师公布。",
+                  en: "Each item accepts one submission. Auto-submit at time-up; grades and answers are published by your teacher.",
+                }
+              : {
+                  zh: "练习里可以反复重试；成绩统计按每题第一次作答计算。",
+                  en: "Practice allows retries; your stats count the first answer of each item.",
+                },
+          )}
         </p>
       </div>
     </StudentShell>
+  )
+}
+
+/** 主动交卷按钮（测验）：终结答卷，幂等 */
+function SubmitQuizButton({
+  sessionId,
+  disabled,
+  onDone,
+}: {
+  sessionId: string | null
+  disabled?: boolean
+  onDone: () => void
+}) {
+  const { t } = useI18n()
+  const submit = useMutation({
+    mutationFn: () =>
+      VocabularyService.submitQuizSession({ sessionId: sessionId as string }),
+    onSuccess: () => {
+      toast.success(t({ zh: "已交卷。", en: "Submitted." }))
+      onDone()
+    },
+    onError: () => {
+      toast.error(
+        t({ zh: "交卷失败，请重试。", en: "Submit failed — please retry." }),
+      )
+    },
+  })
+  return (
+    <Button
+      size="sm"
+      disabled={disabled || submit.isPending}
+      onClick={() => submit.mutate()}
+    >
+      {submit.isPending
+        ? t({ zh: "交卷中…", en: "Submitting…" })
+        : t(TERMS.submitQuiz)}
+    </Button>
   )
 }
