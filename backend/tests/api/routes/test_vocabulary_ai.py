@@ -472,9 +472,6 @@ def test_session_insight_evidence_and_fingerprint(
     classroom = _create_classroom(client, teacher_headers)
     student = make_student(db, client, classroom["code"])
     book = _make_class_book(client, teacher_headers, classroom["id"], _words(3, "s"))
-    spelling = _spelling_by_meaning(
-        client, student["headers"], classroom["code"], book["id"]
-    )
     created = _start_self(client, student["headers"], classroom["code"], book["id"])
     plan = _self_plan(
         client, student["headers"], classroom["code"], created["session_id"]
@@ -634,9 +631,6 @@ def test_overall_insight_scope_and_publish_guard(
     classroom = _create_classroom(client, teacher_headers)
     student = make_student(db, client, classroom["code"])
     book = _make_class_book(client, teacher_headers, classroom["id"], _words(4, "o"))
-    spelling = _spelling_by_meaning(
-        client, student["headers"], classroom["code"], book["id"]
-    )
     # 自主轮：错 o01
     created = _start_self(client, student["headers"], classroom["code"], book["id"])
     plan = _self_plan(
