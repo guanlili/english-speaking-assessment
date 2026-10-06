@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
+from app.core.config import settings
 from app.services import vocab_ai
 from tests.api.routes.test_vocabulary_student import (
     _create_classroom,
@@ -30,6 +31,12 @@ from tests.api.routes.test_vocabulary_student import (
     _plan as _self_plan,
 )
 from tests.utils.credential import make_student
+
+
+def _fake_ai_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """模拟“已配置 AI”（CI 无 ARK_API_KEY；模型调用仍由 _chat 模拟）。"""
+    monkeypatch.setattr(settings, "ARK_API_KEY", "test-key")
+
 
 VOCAB = "/api/v1/vocabulary"
 AI = "/api/v1/vocabulary/ai"
@@ -306,6 +313,7 @@ def test_word_drafts_rate_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """限流：同一教师超过阈值 429；另一教师不受影响。"""
+    _fake_ai_key(monkeypatch)
     monkeypatch.setattr(
         vocab_ai,
         "_chat",
@@ -368,6 +376,7 @@ def test_word_explanation_cache_and_privacy(
             ensure_ascii=False,
         )
 
+    _fake_ai_key(monkeypatch)
     monkeypatch.setattr(vocab_ai, "_chat", fake_chat)
     body = {"headword": "apple", "meaning_zh": "苹果"}
     resp = client.post(
@@ -426,6 +435,7 @@ def test_explanation_blocked_for_unpublished_quiz_word(
     _answer(client, student["headers"], session_id, 0, "wrong")
     _submit_quiz(client, student["headers"], session_id)
 
+    _fake_ai_key(monkeypatch)
     monkeypatch.setattr(
         vocab_ai,
         "_chat",
@@ -512,6 +522,7 @@ def test_session_insight_evidence_and_fingerprint(
             ensure_ascii=False,
         )
 
+    _fake_ai_key(monkeypatch)
     monkeypatch.setattr(vocab_ai, "_chat", fake_chat)
     resp = client.post(
         f"{AI}/session-insight",
@@ -582,6 +593,7 @@ def test_session_insight_permission_and_quiz_guard(
     _answer(client, student["headers"], session_id, 0, "wrong")
     _submit_quiz(client, student["headers"], session_id)
 
+    _fake_ai_key(monkeypatch)
     monkeypatch.setattr(
         vocab_ai,
         "_chat",
@@ -679,6 +691,7 @@ def test_overall_insight_scope_and_publish_guard(
             ensure_ascii=False,
         )
 
+    _fake_ai_key(monkeypatch)
     monkeypatch.setattr(vocab_ai, "_chat", fake_chat)
     resp = client.post(
         f"{AI}/overall-insight",
