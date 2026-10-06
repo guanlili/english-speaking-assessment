@@ -80,7 +80,7 @@ function TrailChart({
               />
             )
           })}
-          {/* 渐变填充（SpeakUp 成长页样式） */}
+          {/* 渐变填充（Charcoal 成长页样式） */}
           <defs>
             <linearGradient id="trail-fill" x1="0" y1="0" x2="0" y2="1">
               <stop stopColor="currentColor" stopOpacity={0.25} />

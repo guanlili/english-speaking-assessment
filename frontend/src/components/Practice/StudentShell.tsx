@@ -198,7 +198,7 @@ function StudentShell({
             </Link>
             <div>
               <p className="hidden text-[10px] tracking-[0.14em] text-muted-foreground md:block">
-                SPEAKUP / {t({ zh: "学习空间", en: "Learning Space" })}
+                CHARCOAL / {t({ zh: "学习空间", en: "Learning Space" })}
               </p>
               <p className="whitespace-nowrap text-sm font-semibold md:mt-1">
                 {current ? t(current.label) : ""}
@@ -285,7 +285,7 @@ function StudentShell({
           {children}
         </main>
         <footer className="px-6 pb-6 pt-4 text-center text-[11px] tracking-wide text-muted-foreground">
-          SpeakUp ·{" "}
+          Charcoal ·{" "}
           {t({
             zh: "每一种声音，都值得被听见。",
             en: "Every voice deserves to be heard.",

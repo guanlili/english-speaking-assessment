@@ -1,5 +1,6 @@
-# SpeakUp 开口说 · 英语口语学习平台
+# Charcoal 开口说 · 英语口语学习平台
 
+> 品牌更名：SpeakUp → **Charcoal**（暂定名，2026-10；规避与市面雅思口语平台重名）。纯展示层改名，域名、账号、登录均不受影响；正式名待结合「全题型英语模考学习平台」新定位定稿。
 
 基于 [guanlili/lili-full-stack](https://github.com/guanlili/lili-full-stack) 创建的独立项目仓库。
 

@@ -1043,7 +1043,7 @@ class TrailData(SQLModel):
     sessions: list[TrailSession]
     # 最近一轮的档位动向（PRD US-10：维持/升/降）；不足一轮为 null
     band_change: str | None = None
-    # 累计开口分钟（Σ作答时长；SpeakUp 成长页统计）
+    # 累计开口分钟（Σ作答时长；Charcoal 成长页统计）
     total_minutes: int = 0
     # 累计词汇命中次数按档（老词表 A2/B1/B2 口径；仅历史作答携带，零变化保留）
     vocab_counts: dict[str, int] = {}
