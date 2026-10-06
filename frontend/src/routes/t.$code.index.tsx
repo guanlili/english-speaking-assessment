@@ -61,9 +61,9 @@ function TeacherBoardPage() {
   const { t } = useI18n()
   const { code } = useParams({ from: "/t/$code/" })
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<
-    "prepare" | "results" | "history"
-  >("prepare")
+  const [activeTab, setActiveTab] = useState<"prepare" | "results" | "history">(
+    "prepare",
+  )
 
   const [statusFilter, setStatusFilter] = useState("all")
   const [nameQuery, setNameQuery] = useState("")
