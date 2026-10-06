@@ -8,7 +8,6 @@ import {
   type UserRegister,
   UsersService,
 } from "@/client"
-import { lastJoinedCode } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
 import { extractErrorMessage } from "@/utils"
 import useCustomToast from "./useCustomToast"
@@ -87,11 +86,8 @@ const useAuth = () => {
         return
       }
       if (me.role === "student") {
-        const code = lastJoinedCode()
-        navigate({
-          to: code ? "/home/$code" : "/join",
-          params: code ? { code } : undefined,
-        })
+        // 多班归属：登录后进「我的班级」选班，不自动跳最近一次的班
+        navigate({ to: "/join" })
       } else {
         navigate({ to: "/" })
       }

@@ -660,6 +660,23 @@ export type StudentAccountOut = {
     must_change_password?: boolean;
 };
 
+/**
+ * 学生在班概览（多班归属）：选班入口的班级卡片数据。
+ */
+export type StudentClassroomOut = {
+    classroom_id: string;
+    code: string;
+    name: string;
+    grade?: (string | null);
+    is_active: boolean;
+    student_id: string;
+    display_name: string;
+    suffix?: (string | null);
+    xp: number;
+    streak_days: number;
+    has_published_task?: boolean;
+};
+
 export type StudentImportLine = {
     username: string;
     full_name: string;
@@ -673,6 +690,8 @@ export type StudentImportRequest = {
 export type StudentImportResult = {
     created: number;
     merged: number;
+    joined?: number;
+    already_enrolled?: number;
     skipped: number;
     rows: Array<StudentImportRow>;
 };
@@ -686,6 +705,7 @@ export type StudentImportRow = {
     initial_password?: (string | null);
     student_id?: (string | null);
     merged_existing?: boolean;
+    status?: (string | null);
     error?: (string | null);
 };
 
@@ -1995,6 +2015,8 @@ export type StudentsListStudentsData = {
 };
 
 export type StudentsListStudentsResponse = (Array<StudentAccountOut>);
+
+export type StudentsListMyEnrollmentsResponse = (Array<StudentClassroomOut>);
 
 export type StudentsResetStudentPasswordData = {
     studentId: string;

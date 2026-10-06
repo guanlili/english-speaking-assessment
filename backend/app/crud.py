@@ -5,7 +5,7 @@ from datetime import date
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, func, select
 
 from app.core.security import get_password_hash, verify_password
 from app.models import (
@@ -131,12 +131,18 @@ def get_classroom_by_code(*, session: Session, code: str) -> Classroom | None:
     return session.exec(select(Classroom).where(Classroom.code == code)).first()
 
 
+class ClassroomFullError(Exception):
+    """入班被拒：班内学生档案数已达课堂容量上限（class_size）。"""
+
+
 def join_classroom(
     *, session: Session, classroom: Classroom, user: User, display_name: str | None
 ) -> Student:
     """账号制入班：一个账号一间课堂一份学生档案（幂等，重复入班返回已有档案）。
 
-    并发用 IntegrityError 重试（user/classroom 唯一索引与显示名唯一约束）。
+    多班归属：同一账号可加入多间课堂，各班档案独立。
+    并发用 IntegrityError 重试（user/classroom 唯一索引与显示名唯一约束）；
+    班内档案数达到 class_size 时抛 ClassroomFullError（路由转 409）。
     """
     existing = session.exec(
         select(Student).where(
@@ -159,6 +165,14 @@ def join_classroom(
                 Student.display_name == name,
             )
         ).first()
+        # 容量按班内档案数（含被移出后的孤儿档案，仍在花名册上）计算
+        enrolled_count = session.exec(
+            select(func.count())
+            .select_from(Student)
+            .where(Student.classroom_id == classroom.id)  # type: ignore[arg-type]
+        ).one()
+        if enrolled_count >= classroom.class_size:
+            raise ClassroomFullError()
         suffix = None if duplicate is None else f"{random.randint(1000, 9999)}"  # noqa: S311
         student = Student(
             classroom_id=classroom.id,

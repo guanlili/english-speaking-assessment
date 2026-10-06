@@ -14,7 +14,6 @@ export interface StoredStudent {
 }
 
 const keyFor = (code: string) => `esa:student:${code.toUpperCase()}`
-const LAST_CODE_KEY = "esa:student:last-code"
 
 export function saveStudent(code: string, student: StudentPublic): void {
   const stored: StoredStudent = {
@@ -24,7 +23,6 @@ export function saveStudent(code: string, student: StudentPublic): void {
     user_id: student.user_id ?? null,
   }
   localStorage.setItem(keyFor(code), JSON.stringify(stored))
-  localStorage.setItem(LAST_CODE_KEY, code.toUpperCase())
 }
 
 export function loadStudent(code: string): StoredStudent | null {
@@ -35,10 +33,6 @@ export function loadStudent(code: string): StoredStudent | null {
   } catch {
     return null
   }
-}
-
-export function lastJoinedCode(): string | null {
-  return localStorage.getItem(LAST_CODE_KEY)
 }
 
 export function clearStudent(code: string): void {
