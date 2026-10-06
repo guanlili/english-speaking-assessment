@@ -40,6 +40,8 @@ from app.models import (
     VocabularyWrongWordItem,
     get_datetime_utc,
 )
+from app.services import vocab_quiz
+from app.services.vocab_quiz import DEFAULT_PASS_LINE
 
 MAX_TASK_WORDS = 100
 
@@ -232,10 +234,15 @@ def publish_assignment(
     prompt_types: list[str],
     mode: str = "practice",
     due_at: datetime | None = None,
+    opens_at: datetime | None = None,
+    duration_minutes: int | None = None,
+    pass_line: int = DEFAULT_PASS_LINE,
 ) -> VocabularyAssignment:
     """发布：快照写入、目标名单固化，同一事务内完成。
 
     多任务并存：新发布不归档其他任务（教师可手动结束单个任务）。
+    quiz = 限时测验：时长/开放/截止/及格线与听音题源校验收口在
+    vocab_quiz.validate_quiz_publish；练习模式不接受考试时长。
     """
     if not words:
         raise HTTPException(status_code=422, detail="词汇任务至少需要一个词")
@@ -245,12 +252,21 @@ def publish_assignment(
         )
     if mode not in {"practice", "quiz"}:
         raise HTTPException(status_code=422, detail="未知任务模式")
-    if mode == "quiz":
-        raise HTTPException(
-            status_code=422, detail="测验模式将在下一阶段开放，请先使用练习模式"
-        )
     if due_at is not None and due_at <= datetime.now(UTC):
         raise HTTPException(status_code=422, detail="截止时间必须晚于现在")
+    if mode == "quiz":
+        vocab_quiz.validate_quiz_publish(
+            duration_minutes=duration_minutes,
+            pass_line=pass_line,
+            opens_at=opens_at,
+            due_at=due_at,
+            prompt_types=prompt_types,
+            words_have_audio=all(w.audio_url for w in words),
+        )
+    elif duration_minutes is not None:
+        raise HTTPException(
+            status_code=422, detail="考试时长只用于测验模式（练习任务不需要）"
+        )
     students = session.exec(
         select(Student).where(Student.classroom_id == classroom_id)  # type: ignore[arg-type]
     ).all()
@@ -293,6 +309,9 @@ def publish_assignment(
         version_no=next_assignment_version(session, classroom_id),
         status="published",
         due_at=due_at,
+        opens_at=opens_at,
+        duration_minutes=duration_minutes if mode == "quiz" else None,
+        pass_line=pass_line if mode == "quiz" else DEFAULT_PASS_LINE,
     )
     session.add(assignment)
     session.flush()
@@ -317,12 +336,14 @@ def archive_assignment(session: Session, assignment: VocabularyAssignment) -> No
 
 
 def ensure_assignment_open(assignment: VocabularyAssignment) -> None:
-    """作答门禁：任务在发布中且未到截止时间（截止以服务器时间为准）。
+    """作答门禁：任务在发布中、已开放且未到截止时间（服务器时间口径）。
 
     已开始的练习不因截止中断历史数据——只是不再接受新的会话与作答。
     """
     if assignment.status != "published":
         raise HTTPException(status_code=422, detail="该任务已结束，不能继续作答")
+    if assignment.opens_at is not None and datetime.now(UTC) < assignment.opens_at:
+        raise HTTPException(status_code=422, detail="该任务尚未开放，不能作答")
     if assignment.due_at is not None and datetime.now(UTC) >= assignment.due_at:
         raise HTTPException(status_code=422, detail="该任务已到截止时间，不能再作答")
 
@@ -409,6 +430,18 @@ def student_assignment_rows(
         first_round = rounds[0] if rounds else None
         item_firsts = firsts.get(first_round.id, {}) if first_round else {}
         progress = progress_of_round1(len(assignment.snapshot_items), item_firsts)
+        is_quiz = assignment.mode == "quiz"
+        if is_quiz:
+            # 测验进度按答卷终结状态（不按答题完成度）：未参加/进行中/已终结
+            quiz_rounds = [r for r in rounds if r.quiz_started_at is not None]
+            if not quiz_rounds:
+                progress = "not_started"
+            elif any(r.status == "in_progress" for r in quiz_rounds):
+                progress = "in_progress"
+            else:
+                progress = "completed"
+        # 答案可见规则：测验成绩未公布时不下发正确数（前端隐藏成绩维度）
+        masked = is_quiz and assignment.grades_published_at is None
         rows.append(
             VocabularyStudentAssignment(
                 assignment_id=assignment.id,
@@ -418,10 +451,12 @@ def student_assignment_rows(
                 progress=progress,
                 overdue=is_overdue(assignment, progress),
                 answered_count=len(item_firsts),
-                correct_first_count=sum(
-                    1 for a in item_firsts.values() if a.is_correct
-                ),
+                correct_first_count=0
+                if masked
+                else sum(1 for a in item_firsts.values() if a.is_correct),
                 round_count=len(rounds),
+                masked=masked,
+                is_quiz=is_quiz,
             )
         )
     return rows
@@ -580,12 +615,15 @@ def submit_answer(
     prompt_type: str,
     answer_raw: str,
     idempotency_key: str | None,
+    one_attempt_per_item: bool = False,
 ) -> VocabularyAnswer:
     """判分与落库：幂等键重放返回原作答；练习允许重试（attempt_no 递增）。
 
     幂等键绑定会话与题号：命中其它会话/题目的键属于客户端误用，按 422
     拒绝（避免把别人的旧作答当成当前学生的提交返回）。
     题单由 session_snapshot 统一解析（任务快照或自主轮固化题单）。
+    one_attempt_per_item（测验口径）：同题第二次提交 422；断网重传走
+    幂等键重放，不受一次性限制误伤。
     """
     if idempotency_key:
         existing = session.exec(
@@ -624,6 +662,11 @@ def submit_answer(
             VocabularyAnswer.item_index == item_index,
         )
     ).all()
+    if one_attempt_per_item and existing_attempts:
+        # 测验每题一次；能走到这里说明不是幂等键重放（前面已返回原作答）
+        raise HTTPException(
+            status_code=422, detail="测验每题只能作答一次，不能修改答案"
+        )
     attempt_no = len(existing_attempts) + 1
 
     answer = VocabularyAnswer(
@@ -666,19 +709,22 @@ def submit_answer(
         raise
     session.refresh(answer)
 
-    # 全部题至少答过一次 → 会话完成（练习重试不回退状态）
-    answered_slots = {
-        a.item_index
-        for a in session.exec(
-            select(VocabularyAnswer).where(
-                VocabularyAnswer.session_id == vocab_session.id  # type: ignore[arg-type]
-            )
-        ).all()
-    }
-    if vocab_session.status == "in_progress" and answered_slots == set(
-        range(len(snapshot_items))
-    ):
-        vocab_session.status = "submitted"
+    # 全部题至少答过一次 → 会话完成（练习重试不回退状态）。
+    # 测验不自动交卷：只有主动交卷或到时结算两种终结方式
+    # （end_reason 由 submit_quiz_session / settle_due_sessions 落）。
+    if not one_attempt_per_item:
+        answered_slots = {
+            a.item_index
+            for a in session.exec(
+                select(VocabularyAnswer).where(
+                    VocabularyAnswer.session_id == vocab_session.id  # type: ignore[arg-type]
+                )
+            ).all()
+        }
+        if vocab_session.status == "in_progress" and answered_slots == set(
+            range(len(snapshot_items))
+        ):
+            vocab_session.status = "submitted"
         vocab_session.submitted_at = get_datetime_utc()
         session.add(vocab_session)
         session.commit()
@@ -707,6 +753,11 @@ def assignment_public(assignment: VocabularyAssignment) -> VocabularyAssignmentP
         version_no=assignment.version_no,
         word_count=len(assignment.snapshot_items),
         due_at=assignment.due_at,
+        opens_at=assignment.opens_at,
+        duration_minutes=assignment.duration_minutes,
+        pass_line=assignment.pass_line,
+        grades_published_at=assignment.grades_published_at,
+        answers_published_at=assignment.answers_published_at,
         published_at=assignment.published_at,
         archived_at=assignment.archived_at,
         created_by=assignment.created_by,
@@ -781,15 +832,22 @@ def teacher_assignment_rows(
 def class_results(
     session: Session, assignment: VocabularyAssignment
 ) -> tuple[list, list]:
-    """按目标名单聚合：学生行（含未开始）+ 逐词错误分布（首轮首答口径）。
+    """按目标名单聚合：学生行（含未开始）+ 逐词错误分布。
 
-    任务成绩锁定 round_no=1 的首答；复习轮只进 rounds 汇总，不改写
-    完成度与正确率。
+    练习：任务成绩锁定 round_no=1 的首答；复习轮只进 rounds 汇总。
+    测验：先到时结算（不依赖学生在线），统计覆盖全部答卷的首答
+    （错误分布含补考），学生行附成绩/及格/终结方式/切屏/补考授权；
+    有效成绩默认取最好成绩（best）并按答卷明细可回溯。
     """
     from app.models import (
         VocabularyWordMisspelling,
         VocabularyWordStatRow,
     )
+
+    is_quiz = assignment.mode == "quiz"
+    if is_quiz:
+        # 教师侧触碰即完成到时结算（结果不依赖学生页面在线）
+        vocab_quiz.settle_due_sessions(session, assignment)
 
     targets = session.exec(
         select(VocabularyAssignmentTarget, Student)
@@ -813,14 +871,29 @@ def class_results(
         # 存量数据迁移后恒有 round_no=1；防御性回落到最早轮
         return rounds[0] if rounds else None
 
+    retake_by_student: dict[uuid.UUID, bool] = {
+        target.student_id: target.retake_granted_at is not None
+        for target, _student in targets
+    }
+
     student_rows: list[VocabularyStudentResultRow] = []
     word_firsts: dict[int, list[VocabularyAnswer]] = {}
     for _target, student in targets:
         rounds = rounds_by_student.get(student.id, [])
         first_round_session = first_round(rounds)
-        item_firsts = (
-            firsts.get(first_round_session.id, {}) if first_round_session else {}
+        # 练习：统计锁定首轮首答；测验：覆盖全部答卷的首答（含补考）
+        stat_rounds = (
+            rounds
+            if is_quiz
+            else ([first_round_session] if first_round_session else [])
         )
+        item_firsts: dict[int, VocabularyAnswer] = {}
+        for stat_round in stat_rounds:
+            # 同一题在多份答卷中取最好的一次首答（有效成绩口径）
+            for idx, answer in (firsts.get(stat_round.id, {}) or {}).items():
+                existing = item_firsts.get(idx)
+                if existing is None or (not existing.is_correct and answer.is_correct):
+                    item_firsts[idx] = answer
         for idx, answer in item_firsts.items():
             word_firsts.setdefault(idx, []).append(answer)
         answered = len(item_firsts)
@@ -828,11 +901,27 @@ def class_results(
         total = len(assignment.snapshot_items)
         status = (
             "not_started"
-            if answered == 0
+            if answered == 0 and not rounds
             else "completed"
             if answered >= total
             else "in_progress"
         )
+        if is_quiz:
+            # 测验状态以答卷终结方式判定：全部答卷已终结 = completed
+            latest = rounds[-1] if rounds else None
+            if not rounds or all(r.quiz_started_at is None for r in rounds):
+                status = "not_started"
+            elif latest is not None and latest.status == "in_progress":
+                status = "in_progress"
+            else:
+                status = "completed"
+        quiz_rounds = [r for r in rounds if r.quiz_started_at is not None]
+        best_score = None
+        passed = None
+        if is_quiz and quiz_rounds:
+            best_score, passed, _attempts = vocab_quiz.effective_quiz_grade(
+                session, assignment, student.id
+            )
         round_rows = [
             VocabularyStudentRoundRow(
                 round_no=vs.round_no,
@@ -842,6 +931,7 @@ def class_results(
                     1 for a in firsts.get(vs.id, {}).values() if a.is_correct
                 ),
                 submitted_at=vs.submitted_at,
+                end_reason=vs.end_reason,
             )
             for vs in rounds
         ]
@@ -859,6 +949,14 @@ def class_results(
                 ),
                 round_count=len(rounds),
                 rounds=round_rows,
+                quiz_end_reason=(quiz_rounds[-1].end_reason if quiz_rounds else None),
+                score=best_score if is_quiz else None,
+                passed=passed if is_quiz else None,
+                tab_switch_count=sum(vs.tab_switch_count for vs in quiz_rounds)
+                if is_quiz
+                else 0,
+                retake_granted=retake_by_student.get(student.id, False),
+                attempt_count=len(quiz_rounds),
             )
         )
 
@@ -894,6 +992,9 @@ def wrong_word_items(
 ) -> list[VocabularyWrongWordItem]:
     """错词本聚合：该学生全部词汇轮次里首答判错的词（跨任务/自主聚合）。
 
+    测验答卷在教师公布答案之前不进错词本（答案可见规则：提前收录等于
+    泄露对错）；公布后照常收录。练习与自主/复习轮不受影响。
+
     先聚合完整作答证据，再筛出进入错词本的词（评审口径：一个词在首次
     判错之前的答对记录同样算「最近练对」证据，不能只看进本之后的）：
     - wrong_count 只统计独立首答（attempt_no=1）判错次数，一次答对不删除
@@ -911,8 +1012,16 @@ def wrong_word_items(
             VocabularySession,
             VocabularySession.id == VocabularyAnswer.session_id,  # ty: ignore[invalid-argument-type]
         )
+        .outerjoin(
+            VocabularyAssignment,
+            VocabularyAssignment.id == VocabularySession.assignment_id,  # ty: ignore[invalid-argument-type]
+        )
         .where(
             VocabularySession.student_id == student_id,  # type: ignore[arg-type]
+            # 答案可见规则：测验答卷在答案公布前不进错词本
+            (col(VocabularySession.assignment_id).is_(None))  # type: ignore[union-attr]
+            | (col(VocabularyAssignment.mode) != "quiz")  # type: ignore[operator]
+            | col(VocabularyAssignment.answers_published_at).is_not(None),  # type: ignore[union-attr]
         )
         .order_by(col(VocabularyAnswer.answered_at), col(VocabularyAnswer.attempt_no))
     ).all()
@@ -1300,14 +1409,36 @@ def _build_review_session(
     return vocab_session, "错词复习", len(items)
 
 
-def student_plan(session: Session, vocab_session: VocabularySession) -> object:
+def student_plan(
+    session: Session, vocab_session: VocabularySession, reveal: bool = False
+) -> object:
     """自主轮/历史单次的作答视图：未答题不透露拼写，已答回填首答输入。
 
     任务轮同样支持（历史详情三类轮次统一入口）。
+    测验答卷受公布规则约束：答案未公布 → 已答题也不揭示正确拼写与对错
+    （first_answer 仍回填本人输入）；成绩未公布 → correct_first_count
+    置 0 并打 masked 标记（前端隐藏成绩维度，不显示"首答 0"）。
+    reveal=True（教师查看答卷）不受公布规则约束，全量揭示。
     """
     from app.models import VocabularyStudentItem, VocabularyStudentPlan
 
+    assignment = (
+        session.get(VocabularyAssignment, vocab_session.assignment_id)
+        if vocab_session.assignment_id is not None
+        else None
+    )
+    is_quiz = assignment is not None and assignment.mode == "quiz"
+    if is_quiz and assignment is not None:
+        # 触碰答卷即结算到时答卷（不依赖学生页面在线）
+        vocab_quiz.settle_due_sessions(session, assignment)
+        session.refresh(vocab_session)
     snapshot_items = session_snapshot(session, vocab_session)
+    answers_visible = reveal or not (
+        is_quiz and assignment is not None and assignment.answers_published_at is None
+    )
+    score_visible = reveal or not (
+        is_quiz and assignment is not None and assignment.grades_published_at is None
+    )
     grouped = answers_by_item(session, vocab_session.id)
     items: list[VocabularyStudentItem] = []
     answered_count = 0
@@ -1345,16 +1476,27 @@ def student_plan(session: Session, vocab_session: VocabularySession) -> object:
                     if snapshot_item.get("audio_url") is not None
                     else None
                 ),
-                # 未作答不透露拼写；已答回填本人首答输入（错误输入可见）
-                headword=first.headword if first is not None else None,
+                # 未作答不透露拼写；测验答案未公布时已答也不揭示
+                headword=(first.headword if first is not None else None)
+                if answers_visible
+                else None,
                 answered=first is not None,
-                is_correct=first.is_correct if first is not None else None,
+                is_correct=(first.is_correct if first is not None else None)
+                if answers_visible
+                else None,
                 attempt_count=len(attempts),
                 from_wrong=snapshot_item.get("from_wrong") is True,
                 first_answer=first.answer_raw if first is not None else None,
             )
         )
     title = _student_session_title(session, vocab_session)
+    deadline = None
+    remaining = None
+    if is_quiz and assignment is not None:
+        deadline = vocab_quiz.quiz_deadline(vocab_session, assignment)
+        if vocab_session.status == "in_progress" and deadline is not None:
+            remaining = max(0, int((deadline - datetime.now(UTC)).total_seconds()))
+    masked = is_quiz and not score_visible
     plan = VocabularyStudentPlan(
         session_id=vocab_session.id,
         kind=vocab_session.kind,
@@ -1369,8 +1511,15 @@ def student_plan(session: Session, vocab_session: VocabularySession) -> object:
         submitted_at=vocab_session.submitted_at,
         total_count=len(snapshot_items),
         answered_count=answered_count,
-        correct_first_count=correct_first,
+        correct_first_count=0 if masked else correct_first,
         items=items,
+        is_quiz=is_quiz,
+        end_reason=vocab_session.end_reason,
+        deadline=deadline,
+        remaining_seconds=remaining,
+        answers_visible=answers_visible,
+        score_visible=score_visible,
+        masked=masked,
     )
     return plan
 
@@ -1409,13 +1558,25 @@ def history_rows(
     rows: list[Row] = []
     for r in rounds:
         item_firsts = firsts.get(r.id, {})
+        assignment = assignments.get(r.assignment_id) if r.assignment_id else None
         if r.assignment_id is not None:
-            assignment = assignments.get(r.assignment_id)
             title = assignment.title if assignment else "词汇任务"
             total = len(assignment.snapshot_items) if assignment else 0
         else:
             title = _student_session_title(session, r)
             total = len(r.snapshot_items or [])
+        is_quiz = assignment is not None and assignment.mode == "quiz"
+        # 测验结算不依赖学生在线：触碰历史时把到时答卷收口
+        if is_quiz and r.status == "in_progress" and assignment is not None:
+            vocab_quiz.settle_due_sessions(session, assignment)
+            session.refresh(r)
+        # 答案可见规则：测验成绩未公布 → 只下发提交状态（correct 置 0 +
+        # masked 标记，前端隐藏成绩维度，不显示"首答 0"）
+        masked = (
+            is_quiz
+            and assignment is not None
+            and (assignment.grades_published_at is None)
+        )
         rows.append(
             Row(
                 session_id=r.id,
@@ -1425,13 +1586,16 @@ def history_rows(
                 round_no=r.round_no if r.assignment_id is not None else None,
                 total_count=total,
                 answered_count=len(item_firsts),
-                correct_first_count=sum(
-                    1 for a in item_firsts.values() if a.is_correct
-                ),
+                correct_first_count=0
+                if masked
+                else sum(1 for a in item_firsts.values() if a.is_correct),
                 started_at=r.started_at,
                 submitted_at=r.submitted_at,
                 book_id=r.source_book_id,
                 assignment_id=r.assignment_id,
+                masked=masked,
+                is_quiz=is_quiz,
+                end_reason=r.end_reason,
             )
         )
     return rows

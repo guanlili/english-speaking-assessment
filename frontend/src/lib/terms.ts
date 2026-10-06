@@ -38,6 +38,27 @@ export const TERMS = {
   practiceRecords: { zh: "练习记录", en: "Practice Records" },
   /** 混入错词（自主练习选项：按 30% 目标混入所选词库内的历史错词） */
   mixWrongWords: { zh: "混入错词", en: "Mix in Wrong Words" },
+  /** 词汇测验（限时、服务端计时的测验模式） */
+  vocabQuiz: { zh: "词汇测验", en: "Vocabulary Quiz" },
+  /** 考试时长（个人计时） */
+  quizDuration: { zh: "考试时长", en: "Time limit" },
+  /** 及格线（百分制） */
+  passLine: { zh: "及格线", en: "Pass line" },
+  /** 开始测验（规则页明确动作：点击后才计时） */
+  startQuiz: { zh: "开始测验", en: "Start quiz" },
+  /** 交卷（主动终结答卷） */
+  submitQuiz: { zh: "交卷", en: "Submit" },
+  /** 已交卷（主动交卷的终态） */
+  quizSubmitted: { zh: "已交卷", en: "Submitted" },
+  /** 超时结束（服务端到时结算的终态） */
+  quizTimedOut: { zh: "超时结束", en: "Timed out" },
+  /** 补考（教师单独授权一次） */
+  quizRetake: { zh: "补考", en: "Retake" },
+  /** 公布成绩 / 公布答案（教师分别控制） */
+  publishGrades: { zh: "公布成绩", en: "Publish grades" },
+  publishAnswers: { zh: "公布答案", en: "Publish answers" },
+  /** 切屏次数（仅记录的异常事件） */
+  tabSwitchCount: { zh: "切屏次数", en: "Tab switches" },
   /** 看义拼词（出题方式） */
   promptMeaning: { zh: "看义拼词", en: "Spell from Meaning" },
   /** 听音拼词（出题方式） */
@@ -176,4 +197,28 @@ export const EXPLAIN_ROUND_TIMES = {
 export const EXPLAIN_MIX_WRONG = {
   zh: "开启后，本轮约 30% 的词来自你在本词库拼错过的词（最近错的优先）；错词不够就用其他词补足。题单和顺序在开始后固定。",
   en: "When on, about 30% of this round comes from words you previously misspelled in this book (most recent misses first); other words fill the rest. The list and its order are fixed once the round starts.",
+} as const satisfies BiString
+
+/** 测验规则口径（学生规则页/作答页触点共用） */
+export const EXPLAIN_QUIZ_RULES = {
+  zh: "点「开始测验」才开始计时；时间以服务器为准，刷新或换设备不会重置。每题只能提交一次；到时间会自动交卷。",
+  en: "The timer starts only when you tap Start. Time is kept by the server — refreshing or switching devices won't reset it. Each item accepts one submission; time-up auto-submits.",
+} as const satisfies BiString
+
+/** 测验判分口径（报告/成绩触点共用） */
+export const EXPLAIN_QUIZ_SCORING = {
+  zh: "成绩 = 首答正确数 ÷ 总题数（未答按 0 分计入，与答错分开展示）；有补考时取最好成绩并标注。",
+  en: "Score = first-try correct ÷ total items (unanswered count as zero, shown separately from wrong). With a retake, the best score applies and is labeled.",
+} as const satisfies BiString
+
+/** 测验切屏口径（教师端触点共用） */
+export const EXPLAIN_QUIZ_TAB_SWITCH = {
+  zh: "切屏只记录次数供教师参考，不自动认定作弊。",
+  en: "Tab switches are counted for teacher reference only — never treated as cheating automatically.",
+} as const satisfies BiString
+
+/** 测验公布口径（学生端提交状态/成绩触点共用） */
+export const EXPLAIN_QUIZ_PUBLISH = {
+  zh: "交卷后成绩与答案由老师分别公布；公布前这里只显示提交状态，不显示对错。",
+  en: "Grades and answers are released separately by your teacher. Until then, only your submission status shows here — no right/wrong.",
 } as const satisfies BiString

@@ -18,7 +18,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile
+from fastapi import APIRouter, HTTPException, Query, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlmodel import Session, col, func, select
 
@@ -39,6 +39,7 @@ from app.models import (
     VocabularyAssignment,
     VocabularyAssignmentCreate,
     VocabularyAssignmentPublic,
+    VocabularyAssignmentTarget,
     VocabularyBook,
     VocabularyBookCreate,
     VocabularyBookDetail,
@@ -49,6 +50,8 @@ from app.models import (
     VocabularyImportIssue,
     VocabularyImportPreview,
     VocabularyImportRow,
+    VocabularyQuizAnswerReceipt,
+    VocabularyQuizState,
     VocabularyRoundSummaryRow,
     VocabularySession,
     VocabularySessionCreate,
@@ -64,8 +67,10 @@ from app.models import (
     VocabularyWordPublic,
     VocabularyWordUpdate,
     VocabularyWrongWords,
+    get_datetime_utc,
 )
 from app.services import vocab_levels as vocab_levels_service
+from app.services import vocab_quiz
 from app.services import vocabulary as vocab_service
 
 logger = logging.getLogger(__name__)
@@ -627,6 +632,9 @@ def publish_vocab_assignment(
         prompt_types=prompt_types,
         mode=body.mode,
         due_at=body.due_at,
+        opens_at=body.opens_at,
+        duration_minutes=body.duration_minutes,
+        pass_line=body.pass_line,
     )
     return _assignment_public(assignment)
 
@@ -654,26 +662,19 @@ def read_vocab_results(
     current_user: TeacherUserDep,
     assignment_id: uuid.UUID | None = None,
 ) -> Any:
-    """班级完成统计：默认当前任务；逐学生完成状态 + 逐词错误分布（首答口径）。"""
+    """班级完成统计：默认当前任务；逐学生完成状态 + 逐词错误分布（首答口径）。
+
+    测验任务先到时结算（结果不依赖学生页面在线），并附成绩/及格/切屏/
+    补考授权等扩展字段。
+    """
+    if assignment_id is not None:
+        return read_vocab_results_payload(session, code, assignment_id, current_user)
     classroom = _get_classroom(session, code)
     _require_classroom_teacher(classroom, current_user)
-    assignment = (
-        _get_assignment(session, classroom.id, assignment_id)
-        if assignment_id is not None
-        else vocab_service.current_published_assignment(session, classroom.id)
-    )
+    assignment = vocab_service.current_published_assignment(session, classroom.id)
     if assignment is None:
         return VocabularyClassResults(assignment=None)
-    student_rows, word_rows = vocab_service.class_results(session, assignment)
-    return VocabularyClassResults(
-        assignment=_assignment_public(assignment),
-        target_count=len(student_rows),
-        completed_count=sum(1 for r in student_rows if r.status == "completed"),
-        in_progress_count=sum(1 for r in student_rows if r.status == "in_progress"),
-        not_started_count=sum(1 for r in student_rows if r.status == "not_started"),
-        students=student_rows,
-        words=word_rows,
-    )
+    return read_vocab_results_payload(session, code, assignment.id, current_user)
 
 
 # ── 学生端 ─────────────────────────────────────────────────────────
@@ -710,21 +711,28 @@ def _focused_vocab_session(
 
 
 def _session_closed_reason(assignment: VocabularyAssignment) -> str | None:
-    """任务级作答门禁原因（独立于会话状态）：due_passed / archived；开放为 None。
+    """任务级作答门禁原因（独立于会话状态）：not_open / due_passed / archived。
 
     已完成会话同样计算——「是否还能开练/作答」只取决于任务本身。
     """
     if assignment.status != "published":
         return "archived"
-    if assignment.due_at is not None and datetime.now(UTC) >= assignment.due_at:
+    now = datetime.now(UTC)
+    if assignment.opens_at is not None and now < assignment.opens_at:
+        return "not_open"
+    if assignment.due_at is not None and now >= assignment.due_at:
         return "due_passed"
     return None
 
 
 def _round_summary_rows(
-    session: Session, rounds: list[VocabularySession]
+    session: Session, rounds: list[VocabularySession], masked: bool = False
 ) -> list[VocabularyRoundSummaryRow]:
-    """各轮首答摘要（口径与教师统计一致：attempt_no=1）。"""
+    """各轮首答摘要（口径与教师统计一致：attempt_no=1）。
+
+    测验成绩未公布时 masked=True：correct_first_count 置 0 不下发，
+    前端只展示轮次与状态，不显示对错数。
+    """
     if not rounds:
         return []
     firsts = vocab_service.first_answers_by_session(session, [vs.id for vs in rounds])
@@ -733,13 +741,72 @@ def _round_summary_rows(
             round_no=vs.round_no,
             status=vs.status,
             answered_count=len(firsts.get(vs.id, {})),
-            correct_first_count=sum(
-                1 for a in firsts.get(vs.id, {}).values() if a.is_correct
+            correct_first_count=(
+                0
+                if masked
+                else sum(1 for a in firsts.get(vs.id, {}).values() if a.is_correct)
             ),
             submitted_at=vs.submitted_at,
+            masked=masked,
+            end_reason=vs.end_reason,
         )
         for vs in rounds
     ]
+
+
+def _quiz_state(
+    session: Session,
+    assignment: VocabularyAssignment,
+    student_id: uuid.UUID,
+    rounds: list[VocabularySession],
+) -> VocabularyQuizState:
+    """学生侧测验状态（规则 + 个人计时 + 参与/公布进度）。"""
+    from app.services import vocab_quiz
+
+    quiz_rounds = [r for r in rounds if r.quiz_started_at is not None]
+    latest = quiz_rounds[-1] if quiz_rounds else None
+    if latest is None:
+        status = "not_started"
+    elif latest.status == "in_progress":
+        status = "in_progress"
+    else:
+        status = "timed_out" if latest.end_reason == "timeout" else "submitted"
+    started_at = latest.quiz_started_at if latest else None
+    deadline = (
+        vocab_quiz.quiz_deadline(latest, assignment) if latest is not None else None
+    )
+    remaining = None
+    if status == "in_progress" and deadline is not None:
+        remaining = max(0, int((deadline - datetime.now(UTC)).total_seconds()))
+    score_visible = assignment.grades_published_at is not None
+    score: int | None = None
+    passed: bool | None = None
+    if score_visible and quiz_rounds:
+        score, passed, _attempts = vocab_quiz.effective_quiz_grade(
+            session, assignment, student_id
+        )
+    return VocabularyQuizState(
+        status=status,
+        attempts_used=len(quiz_rounds),
+        attempts_allowed=vocab_quiz.attempts_allowed(
+            session, assignment.id, student_id
+        ),
+        retake_granted=vocab_quiz.retake_granted(session, assignment.id, student_id),
+        duration_minutes=assignment.duration_minutes,
+        pass_line=assignment.pass_line,
+        opens_at=assignment.opens_at,
+        due_at=assignment.due_at,
+        started_at=started_at,
+        deadline=deadline,
+        remaining_seconds=remaining,
+        submitted_at=latest.submitted_at if latest else None,
+        end_reason=latest.end_reason if latest else None,
+        score_visible=score_visible,
+        answers_visible=assignment.answers_published_at is not None,
+        score=score,
+        passed=passed,
+        tab_switch_count=latest.tab_switch_count if latest else 0,
+    )
 
 
 def _today_plan_payload(
@@ -771,6 +838,11 @@ def _today_plan_payload(
                 assignments=assignments, wrong_word_count=len(wrong)
             )
 
+    is_quiz = assignment.mode == "quiz"
+    if is_quiz:
+        # 到时结算不依赖学生页面在线：触碰任务视图即收口到时答卷
+        vocab_quiz.settle_due_sessions(session, assignment)
+
     rounds = _student_rounds(session, assignment.id, student_id)
     vocab_session = _focused_vocab_session(
         session, assignment.id, student_id, round_no=round_no
@@ -781,9 +853,15 @@ def _today_plan_payload(
     # 当前可练轮独立于展示轮计算：未结束轮优先，否则最新轮
     practice_session = _focused_vocab_session(session, assignment.id, student_id)
     current_round = practice_session.round_no if practice_session is not None else None
+    # 答案可见规则：测验在答案公布前，已答题也不揭示拼写与对错
+    answers_visible = not (is_quiz and assignment.answers_published_at is None)
+    # 测验未开始（无答卷）只下发规则，不下发题面内容
+    quiz_rounds = (
+        [r for r in rounds if r.quiz_started_at is not None] if is_quiz else rounds
+    )
     grouped = (
         vocab_service.answers_by_item(session, vocab_session.id)
-        if vocab_session is not None
+        if vocab_session is not None and (not is_quiz or quiz_rounds)
         else {}
     )
     items: list[VocabularyTodayItem] = []
@@ -799,9 +877,16 @@ def _today_plan_payload(
         # 听音口径（设计文档 §5）：任务含 audio 且该词有稳定标准音；
         # 已作答的词拼写已揭示，可退回设备朗读练耳。其余一律看义拼词，
         # 避免播音按钮无内容可放。
-        audio_allowed = "audio" in (assignment.prompt_types or []) and (
-            snapshot_item.get("audio_url") is not None or first is not None
-        )
+        # 测验更严：设备合成语音不作题源——听音仅限有标准音的词
+        # （无论是否已答，避免借设备朗读泄露未公布答案）。
+        if is_quiz:
+            audio_allowed = "audio" in (assignment.prompt_types or []) and (
+                snapshot_item.get("audio_url") is not None
+            )
+        else:
+            audio_allowed = "audio" in (assignment.prompt_types or []) and (
+                snapshot_item.get("audio_url") is not None or first is not None
+            )
         prompt_type = "audio" if audio_allowed else "meaning"
         items.append(
             VocabularyTodayItem(
@@ -823,13 +908,24 @@ def _today_plan_payload(
                     if snapshot_item.get("audio_url") is not None
                     else None
                 ),
-                # 未作答不透露拼写（防看 API 直接抄）
-                headword=first.headword if first is not None else None,
+                # 未作答不透露拼写（防看 API 直接抄）；测验答案未公布时
+                # 已答题同样不揭示拼写与对错
+                headword=(first.headword if first is not None else None)
+                if answers_visible
+                else None,
                 answered=first is not None,
-                is_correct=first.is_correct if first is not None else None,
+                is_correct=(first.is_correct if first is not None else None)
+                if answers_visible
+                else None,
                 attempt_count=len(attempts),
             )
         )
+    if is_quiz and not quiz_rounds:
+        # 规则页：未开始不下发题面
+        items = []
+        answered_count = 0
+        correct_first = 0
+    grades_masked = is_quiz and assignment.grades_published_at is None
     wrong = vocab_service.wrong_word_items(session, student_id)
     return VocabularyTodayPlan(
         assignment=_assignment_public(assignment),
@@ -841,8 +937,11 @@ def _today_plan_payload(
         items=items,
         # 展示轮的进度（回看历史轮时是该轮的记录）；任务整体进度看 assignments（首轮口径）
         answered_count=answered_count,
-        correct_first_count=correct_first,
-        rounds=_round_summary_rows(session, rounds),
+        correct_first_count=0 if grades_masked else correct_first,
+        quiz=(
+            _quiz_state(session, assignment, student_id, rounds) if is_quiz else None
+        ),
+        rounds=_round_summary_rows(session, rounds, masked=grades_masked),
         assignments=assignments,
         wrong_word_count=len(wrong),
     )
@@ -900,9 +999,19 @@ def start_vocab_session(
             status_code=403,
             detail="你不在此任务的名单内（任务发布后加入的同学请联系老师补派）",
         )
-    vocab_session = vocab_service.get_or_create_session(
-        session, classroom.id, student.id, assignment, round_request=body.round
-    )
+    if assignment.mode == "quiz":
+        # 测验：明确开始才计时（服务端落 quiz_started_at；续做不重置）。
+        # 准入（开放/截止/参与次数/补考授权）全部服务端校验。
+        vocab_session = vocab_quiz.start_quiz_session(
+            session,
+            classroom_id=classroom.id,
+            student_id=student.id,
+            assignment=assignment,
+        )
+    else:
+        vocab_session = vocab_service.get_or_create_session(
+            session, classroom.id, student.id, assignment, round_request=body.round
+        )
     return {
         "session_id": str(vocab_session.id),
         "status": vocab_session.status,
@@ -911,7 +1020,8 @@ def start_vocab_session(
 
 
 @router.post(
-    "/vocabulary/sessions/{session_id}/answers", response_model=VocabularyAnswerResult
+    "/vocabulary/sessions/{session_id}/answers",
+    response_model=VocabularyAnswerResult | VocabularyQuizAnswerReceipt,
 )
 def submit_vocab_answer(
     session: SessionDep,
@@ -923,6 +1033,8 @@ def submit_vocab_answer(
 
     任务轮校验任务开放（截止/归档门禁）；自主/复习轮题单创建时已固化，
     随时可作答，不依赖任务状态。
+    测验答卷：到时先结算；每题只收一次（幂等键重传不误伤）；回执只确认
+    已接收，不返回答案与正误（公布规则之外零泄露）。
     """
     vocab_session = session.get(VocabularySession, session_id)
     if vocab_session is None:
@@ -936,13 +1048,21 @@ def submit_vocab_answer(
     ).first()
     if student is None:
         raise HTTPException(status_code=404, detail="作答会话不存在")
+    assignment = (
+        session.get(VocabularyAssignment, vocab_session.assignment_id)
+        if vocab_session.assignment_id is not None
+        else None
+    )
+    is_quiz = assignment is not None and assignment.mode == "quiz"
     if vocab_session.assignment_id is not None:
-        assignment = session.get(VocabularyAssignment, vocab_session.assignment_id)
         if assignment is None:
             raise HTTPException(status_code=422, detail="会话没有绑定任务，不能作答")
         vocab_service.ensure_assignment_open(assignment)
-        if vocab_session.mode == "quiz" and vocab_session.status == "submitted":
-            raise HTTPException(status_code=422, detail="测验已交卷，不能继续作答")
+    if is_quiz and assignment is not None:
+        # 测验门禁：到时先结算，再拒绝已终结答卷（交卷/超时都不能续答）
+        vocab_quiz.ensure_quiz_answerable(session, vocab_session, assignment)
+    elif vocab_session.mode == "quiz" and vocab_session.status == "submitted":
+        raise HTTPException(status_code=422, detail="测验已交卷，不能继续作答")
     snapshot_items = vocab_service.session_snapshot(session, vocab_session)
 
     answer = vocab_service.submit_answer(
@@ -953,11 +1073,26 @@ def submit_vocab_answer(
         prompt_type=body.prompt_type,
         answer_raw=body.answer,
         idempotency_key=body.idempotency_key,
+        one_attempt_per_item=is_quiz,
     )
     session.refresh(vocab_session)
-    answered_count, correct_first = vocab_service.session_progress(
+    answered_count, _correct_first = vocab_service.session_progress(
         session, vocab_session
     )
+    if is_quiz:
+        # 回执只确认已接收；剩余时间由服务器计算下发
+        deadline = vocab_quiz.quiz_deadline(vocab_session, assignment)  # type: ignore[arg-type]
+        remaining = (
+            max(0, int((deadline - datetime.now(UTC)).total_seconds()))
+            if deadline is not None and vocab_session.status == "in_progress"
+            else None
+        )
+        return VocabularyQuizAnswerReceipt(
+            item_index=answer.item_index,
+            answered_count=answered_count,
+            session_status=vocab_session.status,
+            remaining_seconds=remaining,
+        )
     snapshot_item = snapshot_items[body.item_index]
     return VocabularyAnswerResult(
         item_index=answer.item_index,
@@ -967,7 +1102,294 @@ def submit_vocab_answer(
         meaning_zh=str(snapshot_item["meaning_zh"]),
         session_status=vocab_session.status,
         answered_count=answered_count,
-        correct_first_count=correct_first,
+        correct_first_count=_correct_first,
+    )
+
+
+@router.post("/vocabulary/sessions/{session_id}/submit")
+def submit_quiz_session(
+    session: SessionDep,
+    session_id: uuid.UUID,
+    current_user: StudentUserDep,
+) -> Any:
+    """主动交卷（测验）：终结答卷，幂等；到时答卷已由结算先行终结。"""
+    vocab_session = session.get(VocabularySession, session_id)
+    if vocab_session is None:
+        raise HTTPException(status_code=404, detail="作答会话不存在")
+    student = session.exec(
+        select(Student).where(
+            Student.id == vocab_session.student_id,  # type: ignore[arg-type]
+            Student.user_id == current_user.id,  # type: ignore[arg-type]
+        )
+    ).first()
+    if student is None:
+        raise HTTPException(status_code=404, detail="作答会话不存在")
+    assignment = (
+        session.get(VocabularyAssignment, vocab_session.assignment_id)
+        if vocab_session.assignment_id is not None
+        else None
+    )
+    if assignment is None or assignment.mode != "quiz":
+        raise HTTPException(status_code=422, detail="只有测验可以手动交卷")
+    vocab_session = vocab_quiz.submit_quiz_session(session, vocab_session, assignment)
+    return {
+        "session_id": str(vocab_session.id),
+        "status": vocab_session.status,
+        "end_reason": vocab_session.end_reason,
+        "submitted_at": vocab_session.submitted_at,
+    }
+
+
+@router.post("/vocabulary/sessions/{session_id}/tab-switch")
+def report_quiz_tab_switch(
+    session: SessionDep,
+    session_id: uuid.UUID,
+    current_user: StudentUserDep,
+) -> Any:
+    """测验切屏上报：只计异常事件次数供教师参考，不自动认定作弊。"""
+    vocab_session = session.get(VocabularySession, session_id)
+    if vocab_session is None:
+        raise HTTPException(status_code=404, detail="作答会话不存在")
+    student = session.exec(
+        select(Student).where(
+            Student.id == vocab_session.student_id,  # type: ignore[arg-type]
+            Student.user_id == current_user.id,  # type: ignore[arg-type]
+        )
+    ).first()
+    if student is None:
+        raise HTTPException(status_code=404, detail="作答会话不存在")
+    assignment = (
+        session.get(VocabularyAssignment, vocab_session.assignment_id)
+        if vocab_session.assignment_id is not None
+        else None
+    )
+    if assignment is None or assignment.mode != "quiz":
+        raise HTTPException(status_code=422, detail="只有测验记录切屏事件")
+    count = vocab_quiz.record_tab_switch(session, vocab_session, assignment)
+    return {"tab_switch_count": count}
+
+
+def _get_quiz_assignment(
+    session: Session, classroom_id: uuid.UUID, assignment_id: uuid.UUID
+) -> VocabularyAssignment:
+    assignment = _get_assignment(session, classroom_id, assignment_id)
+    if assignment.mode != "quiz":
+        raise HTTPException(status_code=422, detail="该任务不是测验")
+    return assignment
+
+
+@router.post("/classes/{code}/vocabulary/assignments/{assignment_id}/publish-grades")
+def publish_quiz_grades(
+    session: SessionDep,
+    code: str,
+    assignment_id: uuid.UUID,
+    current_user: TeacherUserDep,
+) -> Any:
+    """公布测验成绩：未公布前学生只能看到提交状态（幂等，可重复调用）。"""
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    assignment = _get_quiz_assignment(session, classroom.id, assignment_id)
+    if assignment.grades_published_at is None:
+        assignment.grades_published_at = get_datetime_utc()
+        session.add(assignment)
+        session.commit()
+    return {
+        "message": "测验成绩已公布",
+        "grades_published_at": assignment.grades_published_at,
+    }
+
+
+@router.post("/classes/{code}/vocabulary/assignments/{assignment_id}/publish-answers")
+def publish_quiz_answers(
+    session: SessionDep,
+    code: str,
+    assignment_id: uuid.UUID,
+    current_user: TeacherUserDep,
+) -> Any:
+    """公布测验答案：答卷揭示拼写与对错，错词进入错词本（独立于成绩公布）。"""
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    assignment = _get_quiz_assignment(session, classroom.id, assignment_id)
+    if assignment.answers_published_at is None:
+        assignment.answers_published_at = get_datetime_utc()
+        session.add(assignment)
+        session.commit()
+    return {
+        "message": "测验答案已公布",
+        "answers_published_at": assignment.answers_published_at,
+    }
+
+
+@router.post(
+    "/classes/{code}/vocabulary/assignments/{assignment_id}/students/{student_id}/grant-retake"
+)
+def grant_quiz_retake(
+    session: SessionDep,
+    code: str,
+    assignment_id: uuid.UUID,
+    student_id: uuid.UUID,
+    current_user: TeacherUserDep,
+) -> Any:
+    """单独授权一次补考：该学生可再开一份答卷（原答卷保留）。"""
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    assignment = _get_quiz_assignment(session, classroom.id, assignment_id)
+    target = session.exec(
+        select(VocabularyAssignmentTarget).where(
+            VocabularyAssignmentTarget.assignment_id == assignment.id,  # type: ignore[arg-type]
+            VocabularyAssignmentTarget.student_id == student_id,  # type: ignore[arg-type]
+        )
+    ).first()
+    if target is None:
+        raise HTTPException(status_code=404, detail="该学生不在此测验的名单内")
+    if target.retake_granted_at is None:
+        target.retake_granted_at = get_datetime_utc()
+        session.add(target)
+        session.commit()
+    return {"message": "已授权补考一次", "retake_granted_at": target.retake_granted_at}
+
+
+@router.get(
+    "/classes/{code}/vocabulary/assignments/{assignment_id}/students/{student_id}/answer-sheet",
+    response_model=VocabularyStudentPlan,
+)
+def read_quiz_answer_sheet(
+    session: SessionDep,
+    code: str,
+    assignment_id: uuid.UUID,
+    student_id: uuid.UUID,
+    current_user: TeacherUserDep,
+    round_no: int | None = None,
+) -> Any:
+    """教师查看学生答卷（不受公布规则约束，全量揭示；默认最新一份答卷）。"""
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    assignment = _get_quiz_assignment(session, classroom.id, assignment_id)
+    rounds = session.exec(
+        select(VocabularySession)
+        .where(
+            VocabularySession.assignment_id == assignment.id,  # type: ignore[arg-type]
+            VocabularySession.student_id == student_id,  # type: ignore[arg-type]
+            col(VocabularySession.quiz_started_at).is_not(None),  # type: ignore[union-attr]
+        )
+        .order_by(col(VocabularySession.round_no))
+    ).all()
+    if round_no is not None:
+        vocab_session = next((r for r in rounds if r.round_no == round_no), None)
+    else:
+        vocab_session = rounds[-1] if rounds else None
+    if vocab_session is None:
+        raise HTTPException(status_code=404, detail="该学生还没有答卷")
+    return vocab_service.student_plan(session, vocab_session, reveal=True)
+
+
+@router.get("/classes/{code}/vocabulary/assignments/{assignment_id}/results-export")
+def export_quiz_results(
+    session: SessionDep,
+    code: str,
+    assignment_id: uuid.UUID,
+    current_user: TeacherUserDep,
+) -> Any:
+    """导出测验成绩 CSV（固定应考名单 + 状态/成绩/切屏等，UTF-8 BOM 兼容 Excel）。"""
+    import csv
+    import io
+
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    assignment = _get_quiz_assignment(session, classroom.id, assignment_id)
+    results = read_vocab_results_payload(session, code, assignment_id, current_user)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "姓名",
+            "状态",
+            "成绩",
+            "及格",
+            "答对",
+            "答错",
+            "未答",
+            "参与次数",
+            "切屏次数",
+            "终结方式",
+            "交卷/结束时间",
+        ]
+    )
+    status_labels = {
+        "not_started": "未开始",
+        "in_progress": "进行中",
+        "completed": "已交卷" if assignment.mode == "quiz" else "已完成",
+    }
+    for row in results.students:
+        end_label = ""
+        if row.quiz_end_reason == "timeout":
+            end_label = "超时结束"
+        elif row.quiz_end_reason == "manual":
+            end_label = "主动交卷"
+        writer.writerow(
+            [
+                row.display_name,
+                status_labels.get(row.status, row.status)
+                + (f"（{end_label}）" if end_label else ""),
+                row.score if row.score is not None else "",
+                ("是" if row.passed else "否") if row.passed is not None else "",
+                row.correct_first_count,
+                max(0, row.answered_count - row.correct_first_count),
+                max(0, row.total_count - row.answered_count),
+                row.attempt_count,
+                row.tab_switch_count,
+                end_label,
+                row.submitted_at or "",
+            ]
+        )
+    buffer.seek(0)
+    filename = f"quiz-v{assignment.version_no}-{classroom.code}.csv"
+    return Response(
+        content=("\ufeff" + buffer.getvalue()).encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def read_vocab_results_payload(
+    session: SessionDep, code: str, assignment_id: uuid.UUID, current_user: User
+) -> VocabularyClassResults:
+    """教师结果载荷（results 路由与 CSV 导出共用）。"""
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    assignment = _get_assignment(session, classroom.id, assignment_id)
+    student_rows, word_rows = vocab_service.class_results(session, assignment)
+    quiz_rounds_states = [r.status for r in student_rows]
+    finished = (
+        [r for r in student_rows if r.quiz_end_reason is not None]
+        if assignment.mode == "quiz"
+        else []
+    )
+    scores = [r.score for r in finished if r.score is not None]
+    return VocabularyClassResults(
+        assignment=_assignment_public(assignment),
+        target_count=len(student_rows),
+        completed_count=sum(1 for s in quiz_rounds_states if s == "completed"),
+        in_progress_count=sum(1 for s in quiz_rounds_states if s == "in_progress"),
+        not_started_count=sum(1 for s in quiz_rounds_states if s == "not_started"),
+        timed_out_count=(
+            sum(1 for r in finished if r.quiz_end_reason == "timeout")
+            if assignment.mode == "quiz"
+            else 0
+        ),
+        students=student_rows,
+        words=word_rows,
+        pass_line=assignment.pass_line if assignment.mode == "quiz" else None,
+        passed_count=(
+            sum(1 for s in scores if assignment.pass_line <= s)
+            if assignment.mode == "quiz"
+            else 0
+        ),
+        avg_score=(int(sum(scores) / len(scores) + 0.5) if scores else None)
+        if assignment.mode == "quiz"
+        else None,
+        grades_published=assignment.grades_published_at is not None,
+        answers_published=assignment.answers_published_at is not None,
     )
 
 

@@ -181,12 +181,19 @@ function VocabSelfPracticePage() {
     },
     onSuccess: (result) => {
       pendingRef.current = null
+      // 自主/复习轮永远是练习口径（即时反馈）；测验只发生在任务轮
+      const graded = result as {
+        item_index: number
+        is_correct: boolean
+        correct_spelling: string
+        attempt_no: number
+      }
       setAnswers((prev) => ({
         ...prev,
-        [result.item_index]: {
-          isCorrect: result.is_correct,
-          correctSpelling: result.correct_spelling,
-          attemptNo: result.attempt_no,
+        [graded.item_index]: {
+          isCorrect: graded.is_correct,
+          correctSpelling: graded.correct_spelling,
+          attemptNo: graded.attempt_no,
         },
       }))
       // 全部答完即重拉计划：报告需要服务端的 submitted_at 与逐词首答

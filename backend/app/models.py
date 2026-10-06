@@ -1163,6 +1163,22 @@ class VocabularyAssignment(SQLModel, table=True):
     )
     version_no: int = Field(default=1, ge=1)
     status: str = Field(default="published", max_length=16, index=True)
+    # 测验（quiz）专用：个人时长（分钟）；开放/截止以服务器时间为准
+    duration_minutes: int | None = Field(default=None, ge=5, le=240)
+    # 及格线（百分制，score >= pass_line 即及格）；练习模式不用
+    pass_line: int = Field(
+        default=60, ge=0, le=100, sa_column_kwargs={"server_default": "60"}
+    )
+    # 成绩公布 / 答案公布分别控制（默认 None = 教师未公布）：
+    # 未公布成绩前学生只能看到提交状态；未公布答案前不揭示拼写与对错
+    grades_published_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    answers_published_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
     opens_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
     due_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
     created_at: datetime | None = Field(
@@ -1196,6 +1212,11 @@ class VocabularyAssignmentTarget(SQLModel, table=True):
     )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    # 教师单独授权一次补考的时间（默认一次参与；授权后允许第二轮答卷）
+    retake_granted_at: datetime | None = Field(
+        default=None,
         sa_type=DateTime(timezone=True),  # type: ignore
     )
 
@@ -1293,8 +1314,17 @@ class VocabularySession(SQLModel, table=True):
     submitted_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
     # 轮次序号：1=首轮（教师任务成绩），>1 为「再练一轮」的复习轮
     round_no: int = Field(default=1, sa_column_kwargs={"server_default": "1"})
-    # 切屏计数（沿用模考思路；P0 练习模式仅记录不启用，P1 测验接入）
+    # 切屏计数（沿用模考思路；练习仅记录不启用，测验计入异常事件供教师判断）
     tab_switch_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    # 测验个人计时起点：学生明确点「开始测验」才落（服务器时间，不随刷新/
+    # 多端/客户端时间改变）；练习轮为空
+    quiz_started_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    # 终结方式：manual = 主动交卷；timeout = 到时服务端结算。status 仍为
+    # submitted（终结态），教师端据此区分「已交卷 / 超时结束」
+    end_reason: str | None = Field(default=None, max_length=16)
 
 
 class VocabularyAnswer(SQLModel, table=True):
@@ -1439,8 +1469,14 @@ class VocabularyAssignmentCreate(SQLModel):
     book_id: uuid.UUID | None = None
     word_ids: list[uuid.UUID] | None = None
     prompt_types: list[str] = ["meaning"]
+    # practice = 可重试、首答计成绩；quiz = 限时测验（见发布校验）
     mode: str = "practice"
+    # 测验参数：开放时间 / 截止时间（服务器时间口径）、个人时长（分钟）、
+    # 及格线（百分制）。有效结束时间 = 个人开始 + 时长 与 due_at 较早者
+    opens_at: datetime | None = None
     due_at: datetime | None = None
+    duration_minutes: int | None = Field(default=None, ge=5, le=240)
+    pass_line: int = Field(default=60, ge=0, le=100)
 
 
 class VocabularyAssignmentPublic(SQLModel):
@@ -1453,9 +1489,45 @@ class VocabularyAssignmentPublic(SQLModel):
     version_no: int
     word_count: int
     due_at: datetime | None = None
+    opens_at: datetime | None = None
+    # 测验字段（练习模式为缺省值）
+    duration_minutes: int | None = None
+    pass_line: int = 60
+    grades_published_at: datetime | None = None
+    answers_published_at: datetime | None = None
     published_at: datetime | None = None
     archived_at: datetime | None = None
     created_by: uuid.UUID | None = None
+
+
+class VocabularyQuizState(SQLModel):
+    """学生侧测验状态：规则展示 + 个人计时 + 参与/公布进度。
+
+    未开始也返回本对象（status=not_started），前端据此渲染规则页；
+    剩余时间一律由服务器计算下发，客户端时间不可影响。
+    """
+
+    status: str  # not_started / in_progress / submitted / timed_out
+    attempts_used: int = 0
+    attempts_allowed: int = 1
+    retake_granted: bool = False
+    duration_minutes: int | None = None
+    pass_line: int = 60
+    opens_at: datetime | None = None
+    due_at: datetime | None = None
+    # in_progress：个人截止（min(开始+时长, due_at)）与剩余秒数
+    started_at: datetime | None = None
+    deadline: datetime | None = None
+    remaining_seconds: int | None = None
+    # 已终结：交卷时间与方式（manual=已交卷 / timeout=超时结束）
+    submitted_at: datetime | None = None
+    end_reason: str | None = None
+    # 公布进度：未公布成绩前学生只能看到提交状态（score=None）
+    score_visible: bool = False
+    answers_visible: bool = False
+    score: int | None = None
+    passed: bool | None = None
+    tab_switch_count: int = 0
 
 
 class VocabularyTodayItem(SQLModel):
@@ -1488,16 +1560,26 @@ class VocabularyStudentAssignment(SQLModel):
     answered_count: int = 0
     correct_first_count: int = 0
     round_count: int = 1
+    # 测验且成绩未公布：correct_first_count 置 0 不下发，前端隐藏成绩维度
+    masked: bool = False
+    # 测验标记（前端区分练习/测验展示）
+    is_quiz: bool = False
 
 
 class VocabularyRoundSummaryRow(SQLModel):
-    """学生侧轮次摘要：轮次回看入口（只读查看指定轮）。"""
+    """学生侧轮次摘要：轮次回看入口（只读查看指定轮）。
+
+    测验成绩未公布时 masked=True：correct_first_count 置 0 不下发。
+    """
 
     round_no: int
     status: str  # in_progress / submitted
     answered_count: int
     correct_first_count: int
     submitted_at: datetime | None = None
+    masked: bool = False
+    # 测验答卷终结方式：manual=已交卷 / timeout=超时结束
+    end_reason: str | None = None
 
 
 class VocabularyTodayPlan(SQLModel):
@@ -1518,6 +1600,8 @@ class VocabularyTodayPlan(SQLModel):
     answered_count: int = 0
     correct_first_count: int = 0
     wrong_word_count: int = 0
+    # 测验状态（practice 任务为 None）；items 的揭示规则受其公布字段约束
+    quiz: VocabularyQuizState | None = None
     # 聚焦任务的全部轮次摘要（回看入口；items 展示哪一轮由 round_no 参数决定）
     rounds: list[VocabularyRoundSummaryRow] = []
     # 名单内全部任务（按 due 升序、无 due 按发布倒序）
@@ -1552,14 +1636,31 @@ class VocabularyAnswerResult(SQLModel):
     correct_first_count: int
 
 
+class VocabularyQuizAnswerReceipt(SQLModel):
+    """测验作答回执：只确认已接收，不返回答案与正误（防提前泄露）。"""
+
+    item_index: int
+    received: bool = True
+    answered_count: int
+    session_status: str
+    # 服务器计算的剩余秒数（客户端倒计时只是展示）
+    remaining_seconds: int | None = None
+
+
 class VocabularyStudentRoundRow(SQLModel):
-    """单个轮次的独立汇总（首轮=任务成绩；复习轮单独记录）。"""
+    """单个轮次的独立汇总（首轮=任务成绩；复习轮单独记录）。
+
+    测验成绩未公布时 masked=True：correct_first_count 置 0 不下发。
+    """
 
     round_no: int
     status: str  # in_progress / submitted
     answered_count: int
     correct_first_count: int
     submitted_at: datetime | None = None
+    masked: bool = False
+    # 测验答卷终结方式：manual=已交卷 / timeout=超时结束
+    end_reason: str | None = None
 
 
 class VocabularyStudentResultRow(SQLModel):
@@ -1579,6 +1680,15 @@ class VocabularyStudentResultRow(SQLModel):
     submitted_at: datetime | None = None
     round_count: int = 0
     rounds: list[VocabularyStudentRoundRow] = []
+    # ── 测验扩展（practice 任务为缺省值）──
+    # 终结方式：None=未结束，manual=已交卷，timeout=超时结束
+    quiz_end_reason: str | None = None
+    # 百分制成绩（correct/total，未答计 0）；参与次数 = 已开考的答卷数
+    score: int | None = None
+    passed: bool | None = None
+    tab_switch_count: int = 0
+    retake_granted: bool = False
+    attempt_count: int = 0
 
 
 class VocabularyWordMisspelling(SQLModel):
@@ -1609,6 +1719,14 @@ class VocabularyClassResults(SQLModel):
     not_started_count: int = 0
     students: list[VocabularyStudentResultRow] = []
     words: list[VocabularyWordStatRow] = []
+    # ── 测验扩展 ──
+    # timed_out（超时结束）单列统计；及格/公布进度与平均分（已交卷口径）
+    timed_out_count: int = 0
+    pass_line: int | None = None
+    passed_count: int = 0
+    avg_score: int | None = None
+    grades_published: bool = False
+    answers_published: bool = False
 
 
 class VocabularyTeacherAssignmentRow(SQLModel):
@@ -1695,6 +1813,9 @@ class VocabularyStudentPlan(SQLModel):
 
     兼容三类轮次（task/self/review）：题单口径一致——未答题不透露拼写；
     首答正确率分母为已答题数（前端计算），完成进度分母为 total_count。
+    测验答卷受公布规则约束：answers_visible=False 时已答题也不揭示
+    拼写与对错（first_answer 仍回填本人输入）；score_visible=False 时
+    correct_first_count 置 0 不下发（masked 提示前端隐藏成绩维度）。
     """
 
     session_id: uuid.UUID
@@ -1710,6 +1831,14 @@ class VocabularyStudentPlan(SQLModel):
     answered_count: int = 0
     correct_first_count: int = 0
     items: list[VocabularyStudentItem] = []
+    # ── 测验扩展（非测验轮为缺省值）──
+    is_quiz: bool = False
+    end_reason: str | None = None
+    deadline: datetime | None = None
+    remaining_seconds: int | None = None
+    answers_visible: bool = True
+    score_visible: bool = True
+    masked: bool = False
 
 
 class VocabularyStudentHistoryRow(SQLModel):
@@ -1717,6 +1846,8 @@ class VocabularyStudentHistoryRow(SQLModel):
 
     正确率口径在行内不自算（避免画成能力成绩）：前端用
     correct_first_count / answered_count 展示首答正确率，零作答显示未作答。
+    测验成绩未公布时 masked=True：correct_first_count 置 0 不下发，
+    前端只展示提交状态（已交卷 / 进行中 / 超时结束）。
     """
 
     session_id: uuid.UUID
@@ -1731,6 +1862,9 @@ class VocabularyStudentHistoryRow(SQLModel):
     submitted_at: datetime | None = None
     book_id: uuid.UUID | None = None
     assignment_id: uuid.UUID | None = None
+    masked: bool = False
+    is_quiz: bool = False
+    end_reason: str | None = None
 
 
 class VocabularyStudentHistory(SQLModel):

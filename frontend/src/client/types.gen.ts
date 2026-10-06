@@ -867,7 +867,10 @@ export type VocabularyAssignmentCreate = {
     word_ids?: (Array<(string)> | null);
     prompt_types?: Array<(string)>;
     mode?: string;
+    opens_at?: (string | null);
     due_at?: (string | null);
+    duration_minutes?: (number | null);
+    pass_line?: number;
 };
 
 export type VocabularyAssignmentPublic = {
@@ -880,6 +883,11 @@ export type VocabularyAssignmentPublic = {
     version_no: number;
     word_count: number;
     due_at?: (string | null);
+    opens_at?: (string | null);
+    duration_minutes?: (number | null);
+    pass_line?: number;
+    grades_published_at?: (string | null);
+    answers_published_at?: (string | null);
     published_at?: (string | null);
     archived_at?: (string | null);
     created_by?: (string | null);
@@ -935,6 +943,12 @@ export type VocabularyClassResults = {
     not_started_count?: number;
     students?: Array<VocabularyStudentResultRow>;
     words?: Array<VocabularyWordStatRow>;
+    timed_out_count?: number;
+    pass_line?: (number | null);
+    passed_count?: number;
+    avg_score?: (number | null);
+    grades_published?: boolean;
+    answers_published?: boolean;
 };
 
 /**
@@ -1055,7 +1069,47 @@ export type VocabularyLevelStats = {
 };
 
 /**
+ * 测验作答回执：只确认已接收，不返回答案与正误（防提前泄露）。
+ */
+export type VocabularyQuizAnswerReceipt = {
+    item_index: number;
+    received?: boolean;
+    answered_count: number;
+    session_status: string;
+    remaining_seconds?: (number | null);
+};
+
+/**
+ * 学生侧测验状态：规则展示 + 个人计时 + 参与/公布进度。
+ *
+ * 未开始也返回本对象（status=not_started），前端据此渲染规则页；
+ * 剩余时间一律由服务器计算下发，客户端时间不可影响。
+ */
+export type VocabularyQuizState = {
+    status: string;
+    attempts_used?: number;
+    attempts_allowed?: number;
+    retake_granted?: boolean;
+    duration_minutes?: (number | null);
+    pass_line?: number;
+    opens_at?: (string | null);
+    due_at?: (string | null);
+    started_at?: (string | null);
+    deadline?: (string | null);
+    remaining_seconds?: (number | null);
+    submitted_at?: (string | null);
+    end_reason?: (string | null);
+    score_visible?: boolean;
+    answers_visible?: boolean;
+    score?: (number | null);
+    passed?: (boolean | null);
+    tab_switch_count?: number;
+};
+
+/**
  * 学生侧轮次摘要：轮次回看入口（只读查看指定轮）。
+ *
+ * 测验成绩未公布时 masked=True：correct_first_count 置 0 不下发。
  */
 export type VocabularyRoundSummaryRow = {
     round_no: number;
@@ -1063,6 +1117,8 @@ export type VocabularyRoundSummaryRow = {
     answered_count: number;
     correct_first_count: number;
     submitted_at?: (string | null);
+    masked?: boolean;
+    end_reason?: (string | null);
 };
 
 /**
@@ -1086,6 +1142,8 @@ export type VocabularyStudentAssignment = {
     answered_count?: number;
     correct_first_count?: number;
     round_count?: number;
+    masked?: boolean;
+    is_quiz?: boolean;
 };
 
 export type VocabularyStudentHistory = {
@@ -1097,6 +1155,8 @@ export type VocabularyStudentHistory = {
  *
  * 正确率口径在行内不自算（避免画成能力成绩）：前端用
  * correct_first_count / answered_count 展示首答正确率，零作答显示未作答。
+ * 测验成绩未公布时 masked=True：correct_first_count 置 0 不下发，
+ * 前端只展示提交状态（已交卷 / 进行中 / 超时结束）。
  */
 export type VocabularyStudentHistoryRow = {
     session_id: string;
@@ -1111,6 +1171,9 @@ export type VocabularyStudentHistoryRow = {
     submitted_at?: (string | null);
     book_id?: (string | null);
     assignment_id?: (string | null);
+    masked?: boolean;
+    is_quiz?: boolean;
+    end_reason?: (string | null);
 };
 
 /**
@@ -1136,6 +1199,9 @@ export type VocabularyStudentItem = {
  *
  * 兼容三类轮次（task/self/review）：题单口径一致——未答题不透露拼写；
  * 首答正确率分母为已答题数（前端计算），完成进度分母为 total_count。
+ * 测验答卷受公布规则约束：answers_visible=False 时已答题也不揭示
+ * 拼写与对错（first_answer 仍回填本人输入）；score_visible=False 时
+ * correct_first_count 置 0 不下发（masked 提示前端隐藏成绩维度）。
  */
 export type VocabularyStudentPlan = {
     session_id: string;
@@ -1151,6 +1217,13 @@ export type VocabularyStudentPlan = {
     answered_count?: number;
     correct_first_count?: number;
     items?: Array<VocabularyStudentItem>;
+    is_quiz?: boolean;
+    end_reason?: (string | null);
+    deadline?: (string | null);
+    remaining_seconds?: (number | null);
+    answers_visible?: boolean;
+    score_visible?: boolean;
+    masked?: boolean;
 };
 
 /**
@@ -1170,10 +1243,18 @@ export type VocabularyStudentResultRow = {
     submitted_at?: (string | null);
     round_count?: number;
     rounds?: Array<VocabularyStudentRoundRow>;
+    quiz_end_reason?: (string | null);
+    score?: (number | null);
+    passed?: (boolean | null);
+    tab_switch_count?: number;
+    retake_granted?: boolean;
+    attempt_count?: number;
 };
 
 /**
  * 单个轮次的独立汇总（首轮=任务成绩；复习轮单独记录）。
+ *
+ * 测验成绩未公布时 masked=True：correct_first_count 置 0 不下发。
  */
 export type VocabularyStudentRoundRow = {
     round_no: number;
@@ -1181,6 +1262,8 @@ export type VocabularyStudentRoundRow = {
     answered_count: number;
     correct_first_count: number;
     submitted_at?: (string | null);
+    masked?: boolean;
+    end_reason?: (string | null);
 };
 
 /**
@@ -1245,6 +1328,7 @@ export type VocabularyTodayPlan = {
     answered_count?: number;
     correct_first_count?: number;
     wrong_word_count?: number;
+    quiz?: (VocabularyQuizState | null);
     rounds?: Array<VocabularyRoundSummaryRow>;
     assignments?: Array<VocabularyStudentAssignment>;
 };
@@ -2032,7 +2116,57 @@ export type VocabularySubmitVocabAnswerData = {
     sessionId: string;
 };
 
-export type VocabularySubmitVocabAnswerResponse = (VocabularyAnswerResult);
+export type VocabularySubmitVocabAnswerResponse = ((VocabularyAnswerResult | VocabularyQuizAnswerReceipt));
+
+export type VocabularySubmitQuizSessionData = {
+    sessionId: string;
+};
+
+export type VocabularySubmitQuizSessionResponse = (unknown);
+
+export type VocabularyReportQuizTabSwitchData = {
+    sessionId: string;
+};
+
+export type VocabularyReportQuizTabSwitchResponse = (unknown);
+
+export type VocabularyPublishQuizGradesData = {
+    assignmentId: string;
+    code: string;
+};
+
+export type VocabularyPublishQuizGradesResponse = (unknown);
+
+export type VocabularyPublishQuizAnswersData = {
+    assignmentId: string;
+    code: string;
+};
+
+export type VocabularyPublishQuizAnswersResponse = (unknown);
+
+export type VocabularyGrantQuizRetakeData = {
+    assignmentId: string;
+    code: string;
+    studentId: string;
+};
+
+export type VocabularyGrantQuizRetakeResponse = (unknown);
+
+export type VocabularyReadQuizAnswerSheetData = {
+    assignmentId: string;
+    code: string;
+    roundNo?: (number | null);
+    studentId: string;
+};
+
+export type VocabularyReadQuizAnswerSheetResponse = (VocabularyStudentPlan);
+
+export type VocabularyExportQuizResultsData = {
+    assignmentId: string;
+    code: string;
+};
+
+export type VocabularyExportQuizResultsResponse = (unknown);
 
 export type VocabularyReadWrongWordsData = {
     code: string;

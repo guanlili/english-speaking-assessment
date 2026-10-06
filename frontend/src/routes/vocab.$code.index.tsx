@@ -47,6 +47,8 @@ import { useI18n } from "@/lib/i18n"
 import {
   EXPLAIN_FIRST_TRY,
   EXPLAIN_MASKED_WORDS,
+  EXPLAIN_QUIZ_PUBLISH,
+  EXPLAIN_QUIZ_RULES,
   EXPLAIN_WRONG_WORDS_POLICY,
   TERMS,
 } from "@/lib/terms"
@@ -200,7 +202,12 @@ function VocabHomePage() {
   const total = items.length
   const answered = plan.answered_count ?? 0
   const correctFirst = plan.correct_first_count ?? 0
-  const finished = assignment !== null && answered >= total && total > 0
+  const quiz = plan.quiz ?? null
+  const isQuiz = quiz !== null
+  const quizFinished =
+    isQuiz && (quiz.status === "submitted" || quiz.status === "timed_out")
+  const finished =
+    assignment !== null && answered >= total && total > 0 && !isQuiz
   const accuracy =
     answered > 0 ? Math.round((correctFirst / answered) * 100) : null
   const wrongWords = wrongQuery.data?.items ?? []
@@ -297,9 +304,13 @@ function VocabHomePage() {
                       <span className="mt-0.5 block text-xs text-muted-foreground">
                         {t({
                           zh: `${row.word_count} 词 · 首答 ${row.correct_first_count}/${row.word_count}`,
-                          en: `${row.word_count} words · ${row.correct_first_count}/${row.word_count} first-try`,
+                          en: row.masked
+                            ? `${row.word_count} words`
+                            : `${row.word_count} words · ${row.correct_first_count}/${row.word_count} first-try`,
                         })}
+                        {row.is_quiz && ` · ${t({ zh: "测验", en: "quiz" })}`}
                         {(row.round_count ?? 0) > 1 &&
+                          !row.masked &&
                           ` · ${t({
                             zh: `已练 ${row.round_count ?? 0} 轮`,
                             en: `${row.round_count ?? 0} rounds`,
@@ -385,6 +396,18 @@ function VocabHomePage() {
                 <div className="min-w-0">
                   <CardTitle className="truncate text-base">
                     {assignment.title}
+                    {isQuiz && (
+                      <Badge variant="secondary" className="ml-2 align-middle">
+                        {t(TERMS.vocabQuiz)}
+                      </Badge>
+                    )}
+                    {quizFinished && (
+                      <Badge variant="outline" className="ml-2 align-middle">
+                        {quiz.status === "timed_out"
+                          ? t(TERMS.quizTimedOut)
+                          : t(TERMS.quizSubmitted)}
+                      </Badge>
+                    )}
                     {finished && (
                       <Badge variant="secondary" className="ml-2 align-middle">
                         {t({ zh: "已完成", en: "Completed" })}
@@ -392,12 +415,18 @@ function VocabHomePage() {
                     )}
                   </CardTitle>
                   <CardDescription>
-                    {t({
-                      zh: `${total} 个词 · 已答 ${answered} · 首答正确 ${correctFirst}`,
-                      en: `${total} words · ${answered} answered · ${correctFirst} correct on first try`,
-                    })}
-                    <InfoHint label={t(EXPLAIN_FIRST_TRY)} />
-                    {accuracy !== null &&
+                    {isQuiz
+                      ? t({
+                          zh: `${assignment.word_count ?? total} 个词 · 时长 ${quiz.duration_minutes} 分钟 · 及格线 ${quiz.pass_line}`,
+                          en: `${assignment.word_count ?? total} words · ${quiz.duration_minutes} min · pass ${quiz.pass_line}`,
+                        })
+                      : t({
+                          zh: `${total} 个词 · 已答 ${answered} · 首答正确 ${correctFirst}`,
+                          en: `${total} words · ${answered} answered · ${correctFirst} correct on first try`,
+                        })}
+                    {!isQuiz && <InfoHint label={t(EXPLAIN_FIRST_TRY)} />}
+                    {!isQuiz &&
+                      accuracy !== null &&
                       ` · ${t({ zh: "首答正确率", en: "first-try accuracy" })} ${accuracy}%`}
                   </CardDescription>
                 </div>
@@ -421,8 +450,36 @@ function VocabHomePage() {
                     <Clock className="size-3" />
                     {closedReason === "archived"
                       ? t({ zh: "老师已结束任务", en: "Ended by teacher" })
-                      : t({ zh: "已过截止时间", en: "Past due" })}
+                      : closedReason === "not_open"
+                        ? t({ zh: "尚未开放", en: "Not open yet" })
+                        : t({ zh: "已过截止时间", en: "Past due" })}
                   </Badge>
+                ) : isQuiz && quiz?.status === "not_started" ? (
+                  <Button
+                    onClick={() =>
+                      void navigate({
+                        to: "/vocab/$code/practice",
+                        params: { code },
+                        search: { assignment: assignment.id },
+                      })
+                    }
+                  >
+                    {t(TERMS.startQuiz)}
+                    <ArrowRight />
+                  </Button>
+                ) : isQuiz && quiz?.status === "in_progress" ? (
+                  <Button
+                    onClick={() =>
+                      void navigate({
+                        to: "/vocab/$code/practice",
+                        params: { code },
+                        search: { assignment: assignment.id },
+                      })
+                    }
+                  >
+                    {t({ zh: "继续测验", en: "Continue quiz" })}
+                    <ArrowRight />
+                  </Button>
                 ) : finished ? (
                   <Button
                     onClick={() => newRound.mutate(assignment.id)}
@@ -452,71 +509,145 @@ function VocabHomePage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-xs text-muted-foreground">
-                {t(EXPLAIN_MASKED_WORDS)}
-              </p>
-              <div className="flex items-center gap-3">
-                <div
-                  role="progressbar"
-                  aria-label={t({
-                    zh: "词汇任务完成进度",
-                    en: "Vocabulary task progress",
-                  })}
-                  aria-valuemin={0}
-                  aria-valuemax={total || 1}
-                  aria-valuenow={Math.min(answered, total)}
-                  className="h-2 flex-1 overflow-hidden rounded-full bg-secondary"
-                >
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{
-                      width: `${total === 0 ? 0 : Math.min((answered / total) * 100, 100).toFixed(0)}%`,
-                    }}
-                  />
-                </div>
-                <span className="text-[11px] text-muted-foreground">
-                  {t({
-                    zh: `${answered} / ${total} 已作答`,
-                    en: `${answered} / ${total} answered`,
-                  })}
-                </span>
-              </div>
-              <ul className="grid gap-2 sm:grid-cols-2">
-                {items.map((item) => (
-                  <li
-                    key={item.item_index}
-                    className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5"
-                  >
-                    {item.answered ? (
-                      item.is_correct ? (
-                        <CheckCircle2 className="size-4 shrink-0 text-primary" />
-                      ) : (
-                        <Circle className="size-4 shrink-0 text-muted-foreground" />
-                      )
+              {isQuiz ? (
+                quiz?.status === "not_started" ? (
+                  <>
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      {t(EXPLAIN_QUIZ_RULES)}
+                    </p>
+                    <p className="rounded-xl bg-secondary/50 p-4 text-sm text-muted-foreground">
+                      {t({
+                        zh: "进入测验后先看规则，点「开始测验」才开始计时。",
+                        en: "You'll see the rules first — the timer starts only after you tap Start.",
+                      })}
+                    </p>
+                  </>
+                ) : quizFinished ? (
+                  <>
+                    <p className="rounded-xl bg-secondary/50 p-4 text-sm">
+                      {t({
+                        zh: `已${quiz.status === "timed_out" ? "超时结束" : "交卷"}${
+                          quiz.submitted_at
+                            ? ` · ${new Date(quiz.submitted_at).toLocaleString()}`
+                            : ""
+                        }；参与 ${quiz.attempts_used}/${quiz.attempts_allowed} 次。`,
+                        en: `${quiz.status === "timed_out" ? "Timed out" : "Submitted"}${
+                          quiz.submitted_at
+                            ? ` · ${new Date(quiz.submitted_at).toLocaleString()}`
+                            : ""
+                        }; attempts ${quiz.attempts_used}/${quiz.attempts_allowed}.`,
+                      })}
+                    </p>
+                    {quiz.score_visible ? (
+                      <p className="text-sm">
+                        <span className="font-semibold">
+                          {t({ zh: "成绩（最好）", en: "Score (best)" })}{" "}
+                          {quiz.score}
+                        </span>
+                        <span className="ml-2 text-muted-foreground">
+                          {quiz.passed
+                            ? t({ zh: "及格", en: "passed" })
+                            : t({ zh: "不及格", en: "below pass line" })}
+                          {" · "}
+                          {t({
+                            zh: `及格线 ${quiz.pass_line}`,
+                            en: `pass ${quiz.pass_line}`,
+                          })}
+                        </span>
+                      </p>
                     ) : (
-                      <Circle className="size-4 shrink-0 text-border" />
+                      <p className="text-sm text-muted-foreground">
+                        {t(EXPLAIN_QUIZ_PUBLISH)}
+                      </p>
                     )}
-                    <span className="min-w-0 flex-1 truncate text-sm">
-                      {item.answered && item.headword ? (
-                        <span className="font-semibold">{item.headword}</span>
-                      ) : (
-                        <span className="text-muted-foreground">?</span>
-                      )}
-                      <span className="ml-2 text-muted-foreground">
-                        {item.meaning_zh}
-                      </span>
-                    </span>
-                    {item.attempt_count && item.attempt_count > 1 ? (
-                      <Badge variant="outline" className="shrink-0">
+                    {quiz.answers_visible && (
+                      <p className="text-xs text-muted-foreground">
                         {t({
-                          zh: `练 ${item.attempt_count} 次`,
-                          en: `${item.attempt_count} tries`,
+                          zh: "答案已公布，错词本已收录本次错词。",
+                          en: "Answers published — missed words are in your Wrong Words book.",
                         })}
-                      </Badge>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="rounded-xl bg-secondary/50 p-4 text-sm">
+                    {t({
+                      zh: `测验进行中：已提交 ${quiz.status === "in_progress" ? answered : 0}/${total} 题。继续作答请点「继续测验」。`,
+                      en: `Quiz in progress: ${quiz.status === "in_progress" ? answered : 0}/${total} submitted. Tap Continue quiz to keep going.`,
+                    })}
+                  </p>
+                )
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    {t(EXPLAIN_MASKED_WORDS)}
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <div
+                      role="progressbar"
+                      aria-label={t({
+                        zh: "词汇任务完成进度",
+                        en: "Vocabulary task progress",
+                      })}
+                      aria-valuemin={0}
+                      aria-valuemax={total || 1}
+                      aria-valuenow={Math.min(answered, total)}
+                      className="h-2 flex-1 overflow-hidden rounded-full bg-secondary"
+                    >
+                      <div
+                        className="h-full rounded-full bg-primary transition-all"
+                        style={{
+                          width: `${total === 0 ? 0 : Math.min((answered / total) * 100, 100).toFixed(0)}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
+                      {t({
+                        zh: `${answered} / ${total} 已作答`,
+                        en: `${answered} / ${total} answered`,
+                      })}
+                    </span>
+                  </div>
+                  <ul className="grid gap-2 sm:grid-cols-2">
+                    {items.map((item) => (
+                      <li
+                        key={item.item_index}
+                        className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5"
+                      >
+                        {item.answered ? (
+                          item.is_correct ? (
+                            <CheckCircle2 className="size-4 shrink-0 text-primary" />
+                          ) : (
+                            <Circle className="size-4 shrink-0 text-muted-foreground" />
+                          )
+                        ) : (
+                          <Circle className="size-4 shrink-0 text-border" />
+                        )}
+                        <span className="min-w-0 flex-1 truncate text-sm">
+                          {item.answered && item.headword ? (
+                            <span className="font-semibold">
+                              {item.headword}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">?</span>
+                          )}
+                          <span className="ml-2 text-muted-foreground">
+                            {item.meaning_zh}
+                          </span>
+                        </span>
+                        {item.attempt_count && item.attempt_count > 1 ? (
+                          <Badge variant="outline" className="shrink-0">
+                            {t({
+                              zh: `练 ${item.attempt_count} 次`,
+                              en: `${item.attempt_count} tries`,
+                            })}
+                          </Badge>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
