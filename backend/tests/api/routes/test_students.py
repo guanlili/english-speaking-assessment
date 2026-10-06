@@ -528,15 +528,17 @@ def test_class_size_cap_blocks_import_and_self_join(
 
         # 课堂码自加入：满员 409（detail 稳定标识，前端做双语映射）
         student_password = random_lower_string()
+        student_email = random_email()
         student_user = crud.create_user(
             session=db,
             user_create=UserCreate(
-                email=random_email(),
+                email=student_email,
                 password=student_password,
                 full_name="王五",
                 role="student",
             ),
         )
+        assert student_user.email is not None
         login = client.post(
             "/api/v1/login/access-token",
             data={"username": student_user.email, "password": student_password},
@@ -558,10 +560,12 @@ def test_class_size_cap_blocks_import_and_self_join(
             )
         ).first()
         assert first_profile is not None and first_profile.user_id is not None
+        first_user = db.get(User, first_profile.user_id)
+        assert first_user is not None and first_user.username is not None
         first_login = client.post(
             "/api/v1/login/access-token",
             data={
-                "username": db.get(User, first_profile.user_id).username,  # type: ignore[arg-type]
+                "username": first_user.username,
                 "password": DEFAULT_STUDENT_PASSWORD,
             },
         )
