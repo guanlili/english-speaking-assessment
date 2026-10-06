@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { WordExplanationDialog } from "@/components/Vocabulary/VocabAi"
 import { APP_NAME } from "@/config"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { loadStudent } from "@/lib/classroom-student"
@@ -104,6 +105,7 @@ function VocabSelfPracticePage() {
   const [answers, setAnswers] = useState<Record<number, AnswerState>>({})
   const [current, setCurrent] = useState(0)
   const [input, setInput] = useState("")
+  const [explainOpen, setExplainOpen] = useState(false)
   // 重试覆盖：刷新后 plan 里该题 answered 仍为真（那是首答记录），
   // 点「再试一次」时用它放行作答输入框，覆盖首答的已答展示
   const [retryOverrides, setRetryOverrides] = useState<Record<number, true>>({})
@@ -640,6 +642,14 @@ function VocabSelfPracticePage() {
                       {t({ zh: "再试一次", en: "Try again" })}
                     </Button>
                   )}
+                  {item.headword && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => setExplainOpen(true)}
+                    >
+                      {t(TERMS.aiWordExplanation)}
+                    </Button>
+                  )}
                   <Button onClick={goNext}>
                     {current < items.length - 1
                       ? t({ zh: "下一个词", en: "Next word" })
@@ -668,6 +678,17 @@ function VocabSelfPracticePage() {
             en: "Practice allows retries; stats count the first answer of each item.",
           })}
         </p>
+
+        {explainOpen && item?.headword && (
+          <WordExplanationDialog
+            code={code}
+            headword={item.headword}
+            meaningZh={item.meaning_zh}
+            partOfSpeech={item.part_of_speech}
+            open={explainOpen}
+            onClose={() => setExplainOpen(false)}
+          />
+        )}
       </div>
     </StudentShell>
   )

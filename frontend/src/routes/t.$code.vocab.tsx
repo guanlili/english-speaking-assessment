@@ -49,6 +49,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { AiDraftPanel } from "@/components/Vocabulary/AiDraftPanel"
 import { APP_NAME } from "@/config"
 import { downloadCsv } from "@/lib/csv"
 import { type BiString, useI18n } from "@/lib/i18n"
@@ -864,6 +865,11 @@ function AssignPanel({
           </div>
         </CardContent>
       </Card>
+
+      <AiDraftPanel
+        bookId={bookId}
+        bookTitle={books.find((b) => b.id === bookId)?.title ?? null}
+      />
     </div>
   )
 }

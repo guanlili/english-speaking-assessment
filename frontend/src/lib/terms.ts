@@ -59,6 +59,18 @@ export const TERMS = {
   publishAnswers: { zh: "公布答案", en: "Publish answers" },
   /** 切屏次数（仅记录的异常事件） */
   tabSwitchCount: { zh: "切屏次数", en: "Tab switches" },
+  /** AI 备课（教师生成词条草稿） */
+  aiPrep: { zh: "AI 备课", en: "AI Prep" },
+  /** AI 生成草稿（按钮） */
+  aiGenerateDrafts: { zh: "AI 生成词条草稿", en: "Generate drafts with AI" },
+  /** 单词讲解（学生，AI） */
+  aiWordExplanation: { zh: "AI 讲解", en: "AI explain" },
+  /** 学情分析（单次，AI） */
+  aiSessionInsight: { zh: "本次学情分析", en: "Analyze this round" },
+  /** 整体学习建议（AI） */
+  aiOverallInsight: { zh: "整体学习建议", en: "Overall suggestions" },
+  /** 重新生成 */
+  aiRegenerate: { zh: "重新生成", en: "Regenerate" },
   /** 看义拼词（出题方式） */
   promptMeaning: { zh: "看义拼词", en: "Spell from Meaning" },
   /** 听音拼词（出题方式） */
@@ -215,6 +227,18 @@ export const EXPLAIN_QUIZ_SCORING = {
 export const EXPLAIN_QUIZ_TAB_SWITCH = {
   zh: "切屏只记录次数供教师参考，不自动认定作弊。",
   en: "Tab switches are counted for teacher reference only — never treated as cheating automatically.",
+} as const satisfies BiString
+
+/** AI 输出口径（讲解/学情触点共用；红线：判分是确定性规则） */
+export const EXPLAIN_AI_CONTENT = {
+  zh: "以下内容由 AI 生成，仅供参考，可能不准确；拼写对错始终由系统规则判定。",
+  en: "AI-generated content for reference only and may be inaccurate. Spelling right/wrong is always decided by the system's rules.",
+} as const satisfies BiString
+
+/** 学情范围口径（AI 学情触点共用） */
+export const EXPLAIN_AI_SCOPE = {
+  zh: "分析只使用你的真实作答记录；薄弱词都有对应证据（你的拼写 vs 正确拼写）。",
+  en: "Analysis uses only your real answers; every weak word comes with evidence (your spelling vs the correct one).",
 } as const satisfies BiString
 
 /** 测验公布口径（学生端提交状态/成绩触点共用） */

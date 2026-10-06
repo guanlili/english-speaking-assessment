@@ -13,7 +13,7 @@ import {
   RotateCcw,
   SpellCheck,
 } from "lucide-react"
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import type { VocabularyStudentHistoryRow } from "@/client"
 import { VocabularyService } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
@@ -28,6 +28,10 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  OverallInsightDialog,
+  SessionInsightDialog,
+} from "@/components/Vocabulary/VocabAi"
 import { APP_NAME } from "@/config"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { loadStudent } from "@/lib/classroom-student"
@@ -55,6 +59,8 @@ function VocabRecordsPage() {
   const { code } = useParams({ from: "/vocab/$code/records" })
   const navigate = useNavigate({ from: "/vocab/$code/records" })
   const student = loadStudent(code)
+  const [overallOpen, setOverallOpen] = useState(false)
+  const [insightSessionId, setInsightSessionId] = useState<string | null>(null)
 
   const historyQuery = useQuery({
     retry: 1,
@@ -117,12 +123,17 @@ function VocabRecordsPage() {
               {t({ zh: "返回词汇学习", en: "Back to Vocabulary" })}
             </Link>
           </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/vocab/$code/books" params={{ code }}>
-              <LibraryBig />
-              {t({ zh: "去词库挑词", en: "Browse Word Books" })}
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/vocab/$code/books" params={{ code }}>
+                <LibraryBig />
+                {t({ zh: "去词库挑词", en: "Browse Word Books" })}
+              </Link>
+            </Button>
+            <Button size="sm" onClick={() => setOverallOpen(true)}>
+              {t(TERMS.aiOverallInsight)}
+            </Button>
+          </div>
         </div>
 
         <section className="rounded-3xl border border-primary/10 bg-secondary/40 p-6 sm:p-8">
@@ -283,7 +294,19 @@ function VocabRecordsPage() {
                           : t({ zh: "已完成", en: "Completed" })
                       : t({ zh: "进行中", en: "In progress" })}
                   </Badge>
-                  <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="flex shrink-0 items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setInsightSessionId(row.session_id)
+                      }}
+                    >
+                      {t(TERMS.aiSessionInsight)}
+                    </Button>
+                    <ArrowRight className="size-4 text-muted-foreground" />
+                  </span>
                 </button>
               </li>
             ))}
@@ -296,6 +319,18 @@ function VocabRecordsPage() {
             en: "Counts only here — no ability curve. First-try accuracy divides by answered items.",
           })}
         </p>
+
+        <OverallInsightDialog
+          code={code}
+          open={overallOpen}
+          onClose={() => setOverallOpen(false)}
+        />
+        <SessionInsightDialog
+          code={code}
+          sessionId={insightSessionId}
+          open={insightSessionId !== null}
+          onClose={() => setInsightSessionId(null)}
+        />
       </div>
     </StudentShell>
   )

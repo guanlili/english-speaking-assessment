@@ -843,6 +843,123 @@ export type ValidationError = {
     };
 };
 
+export type VocabularyAiExplanationRequest = {
+    headword: string;
+    meaning_zh: string;
+    part_of_speech?: (string | null);
+    force?: boolean;
+};
+
+export type VocabularyAiInsightScope = {
+    answered_count?: number;
+    total_count?: number;
+    rounds?: (number | null);
+    days?: (number | null);
+    from_time?: (string | null);
+    to_time?: (string | null);
+};
+
+/**
+ * 整体学习建议：基于明确范围内的历史记录；不给学生贴标签。
+ */
+export type VocabularyAiOverallInsight = {
+    summary: string;
+    weak_words?: Array<VocabularyAiWeakWord>;
+    suggestions?: Array<(string)>;
+    scope: VocabularyAiInsightScope;
+    generated_at: string;
+    cached?: boolean;
+    stale?: boolean;
+};
+
+export type VocabularyAiOverallInsightRequest = {
+    limit?: number;
+    days?: number;
+    force?: boolean;
+};
+
+/**
+ * 单次练习学情：只用本轮真实作答；薄弱词逐条对应证据。
+ */
+export type VocabularyAiSessionInsight = {
+    summary: string;
+    weak_words?: Array<VocabularyAiWeakWord>;
+    suggestions?: Array<(string)>;
+    scope: VocabularyAiInsightScope;
+    generated_at: string;
+    cached?: boolean;
+    stale?: boolean;
+};
+
+export type VocabularyAiSessionInsightRequest = {
+    session_id: string;
+    force?: boolean;
+};
+
+/**
+ * 薄弱词：必须对应真实作答证据（学生首答输入 + 正确拼写）。
+ */
+export type VocabularyAiWeakWord = {
+    headword: string;
+    meaning_zh: string;
+    your_answer: string;
+    correct_spelling: string;
+};
+
+/**
+ * AI 词条草稿（教师预览/编辑后确认入库；不自动发布任务）。
+ *
+ * 不包含 accepted_spellings——可接受拼写变体只能由教师显式维护，
+ * 不让 AI 自行生成。
+ */
+export type VocabularyAiWordDraft = {
+    headword: string;
+    part_of_speech?: (string | null);
+    meaning_zh: string;
+    meaning_en?: (string | null);
+    example_en?: (string | null);
+};
+
+export type VocabularyAiWordDraftImportRequest = {
+    book_id: string;
+    drafts: Array<VocabularyAiWordDraft>;
+};
+
+export type VocabularyAiWordDraftImportResult = {
+    added: number;
+    skipped: number;
+    book_word_count: number;
+};
+
+export type VocabularyAiWordDraftsRequest = {
+    theme: string;
+    level?: (string | null);
+    count?: number;
+    hint?: (string | null);
+};
+
+export type VocabularyAiWordDraftsResponse = {
+    drafts?: Array<VocabularyAiWordDraft>;
+    requested_count: number;
+    generated_at: string;
+    dropped_count?: number;
+};
+
+/**
+ * 单词结构化讲解：词义/常见误拼/记忆提示/例句（非聊天，单轮）。
+ */
+export type VocabularyAiWordExplanation = {
+    headword: string;
+    meaning_zh: string;
+    meanings?: Array<(string)>;
+    common_misspellings?: Array<(string)>;
+    memory_tips?: Array<(string)>;
+    examples?: Array<(string)>;
+    generated_at: string;
+    cached?: boolean;
+    stale?: boolean;
+};
+
 export type VocabularyAnswerRequest = {
     item_index: number;
     prompt_type?: string;
@@ -2209,3 +2326,36 @@ export type VocabularyReadStudentHistoryData = {
 };
 
 export type VocabularyReadStudentHistoryResponse = (VocabularyStudentHistory);
+
+export type VocabularyAiGenerateWordDraftsData = {
+    requestBody: VocabularyAiWordDraftsRequest;
+};
+
+export type VocabularyAiGenerateWordDraftsResponse = (VocabularyAiWordDraftsResponse);
+
+export type VocabularyAiImportWordDraftsData = {
+    requestBody: VocabularyAiWordDraftImportRequest;
+};
+
+export type VocabularyAiImportWordDraftsResponse = (VocabularyAiWordDraftImportResult);
+
+export type VocabularyAiWordExplanationData = {
+    code: string;
+    requestBody: VocabularyAiExplanationRequest;
+};
+
+export type VocabularyAiWordExplanationResponse = (VocabularyAiWordExplanation);
+
+export type VocabularyAiSessionInsightData = {
+    code: string;
+    requestBody: VocabularyAiSessionInsightRequest;
+};
+
+export type VocabularyAiSessionInsightResponse = (VocabularyAiSessionInsight);
+
+export type VocabularyAiOverallInsightData = {
+    code: string;
+    requestBody: VocabularyAiOverallInsightRequest;
+};
+
+export type VocabularyAiOverallInsightResponse = (VocabularyAiOverallInsight);

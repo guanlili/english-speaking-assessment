@@ -31,6 +31,10 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  SessionInsightDialog,
+  WordExplanationDialog,
+} from "@/components/Vocabulary/VocabAi"
 import { APP_NAME } from "@/config"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
@@ -288,6 +292,8 @@ function VocabPracticePage() {
     return () => document.removeEventListener("visibilitychange", onVisibility)
   }, [isQuiz, quiz?.status, sessionId])
 
+  const [explainOpen, setExplainOpen] = useState(false)
+  const [insightOpen, setInsightOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   // 幂等键跟随「一次作答意图」：键与题号/题型/作答内容绑定——只有原样重试
   // （断网、5xx 等送达不确定的失败）才复用同键，服务端重放返回同一判分；
@@ -1021,6 +1027,14 @@ function VocabPracticePage() {
                       {t({ zh: "再试一次", en: "Try again" })}
                     </Button>
                   )}
+                  {item.headword && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => setExplainOpen(true)}
+                    >
+                      {t(TERMS.aiWordExplanation)}
+                    </Button>
+                  )}
                   <Button onClick={goNext}>
                     {current < items.length - 1
                       ? t({ zh: "下一个词", en: "Next word" })
@@ -1034,6 +1048,11 @@ function VocabPracticePage() {
             ) : null}
 
             {/* 走完全部题后的收尾提示：测验=交卷提醒；练习=完成统计 */}
+            {isQuiz && quizFinished && (
+              <Button variant="outline" onClick={() => setInsightOpen(true)}>
+                {t(TERMS.aiSessionInsight)}
+              </Button>
+            )}
             {isQuiz && allDone && (
               <div className="rounded-2xl border border-primary/20 bg-secondary/40 p-4">
                 <p className="text-sm font-semibold">
@@ -1068,6 +1087,15 @@ function VocabPracticePage() {
                   </div>
                 )}
               </div>
+            )}
+            {!isQuiz && allDone && answer && (
+              <Button
+                variant="outline"
+                className="w-fit"
+                onClick={() => setInsightOpen(true)}
+              >
+                {t(TERMS.aiSessionInsight)}
+              </Button>
             )}
             {!isQuiz && allDone && answer && (
               <div className="rounded-2xl border border-primary/20 bg-secondary/40 p-4">
@@ -1127,6 +1155,24 @@ function VocabPracticePage() {
                 },
           )}
         </p>
+        {explainOpen && item?.headword && (
+          <WordExplanationDialog
+            code={code}
+            headword={item.headword}
+            meaningZh={item.meaning_zh}
+            partOfSpeech={item.part_of_speech}
+            open={explainOpen}
+            onClose={() => setExplainOpen(false)}
+          />
+        )}
+        {!isQuiz && (
+          <SessionInsightDialog
+            code={code}
+            sessionId={remoteSessionId}
+            open={insightOpen}
+            onClose={() => setInsightOpen(false)}
+          />
+        )}
       </div>
     </StudentShell>
   )
