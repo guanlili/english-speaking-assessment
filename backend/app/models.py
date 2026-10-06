@@ -1205,6 +1205,11 @@ class VocabularySession(SQLModel, table=True):
 
     一个学生对一个任务可有多个轮次：round_no=1 为首轮（任务成绩锁定首轮
     的首答），后续轮次为复习（「再练一轮」），独立记录不改写首轮成绩。
+
+    kind 区分轮次来源：task = 教师任务（assignment_id 必有，题单读任务
+    快照）；self = 词库自主练习；review = 错词专项复习。自主/复习轮的
+    assignment_id 为空、题单固化在自身 snapshot_items（创建后不可变），
+    不参与教师任务统计——练过相同词库不会自动完成教师任务。
     """
 
     __tablename__ = "vocabulary_session"
@@ -1217,6 +1222,26 @@ class VocabularySession(SQLModel, table=True):
             "round_no",
             unique=True,
             postgresql_where=text("assignment_id IS NOT NULL"),
+        ),
+        # 自主/复习轮 assignment_id 为空，不走上面的索引——并发开轮由两个
+        # 部分唯一索引兜底：每学生每词库至多一个进行中自主轮、每学生至多
+        # 一个进行中复习轮（轮次结束即退出索引谓词，不阻止开新一轮）
+        Index(
+            "uq_vocab_session_self_active",
+            "student_id",
+            "source_book_id",
+            unique=True,
+            postgresql_where=text(
+                "assignment_id IS NULL AND kind = 'self' AND status = 'in_progress'"
+            ),
+        ),
+        Index(
+            "uq_vocab_session_review_active",
+            "student_id",
+            unique=True,
+            postgresql_where=text(
+                "assignment_id IS NULL AND kind = 'review' AND status = 'in_progress'"
+            ),
         ),
     )
 
@@ -1233,6 +1258,23 @@ class VocabularySession(SQLModel, table=True):
         ondelete="SET NULL",
         index=True,
     )
+    # 轮次来源：task = 教师任务；self = 词库自主练习；review = 错词专项复习
+    kind: str = Field(
+        default="task", max_length=16, sa_column_kwargs={"server_default": "task"}
+    )
+    # kind=self 时的来源词库（review 无单一来源词库；历史报告展示用）
+    source_book_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="vocabulary_book.id",
+        ondelete="SET NULL",
+    )
+    # kind=self/review 的固定题单（条目结构与任务快照一致，另带 from_wrong
+    # 标记）；创建后不可变，刷新/换端进入同一题单与题序
+    snapshot_items: list[dict[str, object]] | None = Field(
+        default=None, sa_column=Column("snapshot_items", JSON, nullable=True)
+    )
+    # kind=self 时是否按 30% 目标混入了历史错词
+    mix_wrong: bool = Field(default=False, sa_column_kwargs={"server_default": "false"})
     mode: str = Field(
         default="practice",
         max_length=16,
@@ -1581,7 +1623,13 @@ class VocabularyTeacherAssignmentRow(SQLModel):
 
 
 class VocabularyWrongWordItem(SQLModel):
-    """错词本条目：首答判错的词，按快照内容展示。"""
+    """错词本条目：首答判错的词，按快照内容展示。
+
+    三个维度分开、互不改写：wrong_count 只增不减（一次答对不删除错词、
+    不冲抵历史错误次数）；last_first_* 是最近一次独立首答（每轮第一次
+    作答）的结果；last_correct_at 是最近一次答对时间。不是科学掌握度
+    评估，只用于安排复习。
+    """
 
     word_id: uuid.UUID
     headword: str
@@ -1589,11 +1637,104 @@ class VocabularyWrongWordItem(SQLModel):
     part_of_speech: str | None = None
     wrong_count: int
     last_wrong_at: datetime | None = None
+    # 最近独立首答（attempt_no=1）的时间与对错；从未复盘过为 None
+    last_first_at: datetime | None = None
+    last_first_is_correct: bool | None = None
+    # 最近一次答对的时间（任意尝试；从未答对为 None）
+    last_correct_at: datetime | None = None
+    # 词条是否仍在当前可练词库（active 公共库/本班库）内；不在则不能进复习
+    practiceable: bool = True
 
 
 class VocabularyWrongWords(SQLModel):
     classroom_code: str
     items: list[VocabularyWrongWordItem] = []
+
+
+# ── 学生自主练习与学习报告（词库浏览 / 自主开轮 / 历史趋势）────────
+
+SELF_PRACTICE_DEFAULT_WORDS = 20
+SELF_PRACTICE_MAX_WORDS = 100
+SELF_PRACTICE_MIX_WRONG_RATIO = 0.3
+
+
+class VocabularyStudentSessionCreate(SQLModel):
+    """学生自主开轮请求：kind=self 从词库选题，kind=review 练历史错词。"""
+
+    kind: str = "self"
+    # kind=self 必填；kind=review 忽略该参数
+    book_id: uuid.UUID | None = None
+    # 目标词数：词库/错词不足时按实际数量出题（开始前明确展示实际数量）
+    word_count: int = Field(default=SELF_PRACTICE_DEFAULT_WORDS, ge=1)
+    # 仅 kind=self：按 30% 目标混入所选词库内的历史错词（最近错误优先）
+    mix_wrong: bool = False
+
+
+class VocabularyStudentSessionCreated(SQLModel):
+    session_id: uuid.UUID
+    kind: str
+    title: str
+    book_id: uuid.UUID | None = None
+    total_count: int
+    # 混入的历史错词数（kind=self 且 mix_wrong 时 > 0；review = 全部）
+    wrong_word_count: int = 0
+    started_at: datetime | None = None
+
+
+class VocabularyStudentItem(VocabularyTodayItem):
+    """自主练习/历史详情的题单条目（在任务题单结构上加来源与本人首答）。"""
+
+    # 是否选自历史错词（self+mix_wrong 混入的词 / review 全部词条）
+    from_wrong: bool = False
+    # 本人首次作答的原始输入（已答才返回；未答不透露任何拼写）
+    first_answer: str | None = None
+
+
+class VocabularyStudentPlan(SQLModel):
+    """GET /vocabulary/student/sessions/{id}：自主练习作答与单次详情视图。
+
+    兼容三类轮次（task/self/review）：题单口径一致——未答题不透露拼写；
+    首答正确率分母为已答题数（前端计算），完成进度分母为 total_count。
+    """
+
+    session_id: uuid.UUID
+    kind: str
+    status: str  # in_progress / submitted
+    title: str
+    book_id: uuid.UUID | None = None
+    round_no: int | None = None
+    mix_wrong: bool = False
+    started_at: datetime | None = None
+    submitted_at: datetime | None = None
+    total_count: int = 0
+    answered_count: int = 0
+    correct_first_count: int = 0
+    items: list[VocabularyStudentItem] = []
+
+
+class VocabularyStudentHistoryRow(SQLModel):
+    """练习历史行：一次轮次一行，kind 区分教师任务/自主练习/错词复习。
+
+    正确率口径在行内不自算（避免画成能力成绩）：前端用
+    correct_first_count / answered_count 展示首答正确率，零作答显示未作答。
+    """
+
+    session_id: uuid.UUID
+    kind: str
+    title: str
+    status: str
+    round_no: int | None = None
+    total_count: int = 0
+    answered_count: int = 0
+    correct_first_count: int = 0
+    started_at: datetime | None = None
+    submitted_at: datetime | None = None
+    book_id: uuid.UUID | None = None
+    assignment_id: uuid.UUID | None = None
+
+
+class VocabularyStudentHistory(SQLModel):
+    items: list[VocabularyStudentHistoryRow] = []
 
 
 # Generic message

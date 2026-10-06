@@ -1088,6 +1088,71 @@ export type VocabularyStudentAssignment = {
     round_count?: number;
 };
 
+export type VocabularyStudentHistory = {
+    items?: Array<VocabularyStudentHistoryRow>;
+};
+
+/**
+ * 练习历史行：一次轮次一行，kind 区分教师任务/自主练习/错词复习。
+ *
+ * 正确率口径在行内不自算（避免画成能力成绩）：前端用
+ * correct_first_count / answered_count 展示首答正确率，零作答显示未作答。
+ */
+export type VocabularyStudentHistoryRow = {
+    session_id: string;
+    kind: string;
+    title: string;
+    status: string;
+    round_no?: (number | null);
+    total_count?: number;
+    answered_count?: number;
+    correct_first_count?: number;
+    started_at?: (string | null);
+    submitted_at?: (string | null);
+    book_id?: (string | null);
+    assignment_id?: (string | null);
+};
+
+/**
+ * 自主练习/历史详情的题单条目（在任务题单结构上加来源与本人首答）。
+ */
+export type VocabularyStudentItem = {
+    item_index: number;
+    prompt_type: string;
+    part_of_speech?: (string | null);
+    meaning_zh: string;
+    meaning_en?: (string | null);
+    audio_url?: (string | null);
+    headword?: (string | null);
+    answered?: boolean;
+    is_correct?: (boolean | null);
+    attempt_count?: number;
+    from_wrong?: boolean;
+    first_answer?: (string | null);
+};
+
+/**
+ * GET /vocabulary/student/sessions/{id}：自主练习作答与单次详情视图。
+ *
+ * 兼容三类轮次（task/self/review）：题单口径一致——未答题不透露拼写；
+ * 首答正确率分母为已答题数（前端计算），完成进度分母为 total_count。
+ */
+export type VocabularyStudentPlan = {
+    session_id: string;
+    kind: string;
+    status: string;
+    title: string;
+    book_id?: (string | null);
+    round_no?: (number | null);
+    mix_wrong?: boolean;
+    started_at?: (string | null);
+    submitted_at?: (string | null);
+    total_count?: number;
+    answered_count?: number;
+    correct_first_count?: number;
+    items?: Array<VocabularyStudentItem>;
+};
+
 /**
  * 教师结果面板的学生行（按目标名单，含未开始）。
  *
@@ -1116,6 +1181,26 @@ export type VocabularyStudentRoundRow = {
     answered_count: number;
     correct_first_count: number;
     submitted_at?: (string | null);
+};
+
+/**
+ * 学生自主开轮请求：kind=self 从词库选题，kind=review 练历史错词。
+ */
+export type VocabularyStudentSessionCreate = {
+    kind?: string;
+    book_id?: (string | null);
+    word_count?: number;
+    mix_wrong?: boolean;
+};
+
+export type VocabularyStudentSessionCreated = {
+    session_id: string;
+    kind: string;
+    title: string;
+    book_id?: (string | null);
+    total_count: number;
+    wrong_word_count?: number;
+    started_at?: (string | null);
 };
 
 /**
@@ -1225,6 +1310,11 @@ export type VocabularyWordUpdate = {
 
 /**
  * 错词本条目：首答判错的词，按快照内容展示。
+ *
+ * 三个维度分开、互不改写：wrong_count 只增不减（一次答对不删除错词、
+ * 不冲抵历史错误次数）；last_first_* 是最近一次独立首答（每轮第一次
+ * 作答）的结果；last_correct_at 是最近一次答对时间。不是科学掌握度
+ * 评估，只用于安排复习。
  */
 export type VocabularyWrongWordItem = {
     word_id: string;
@@ -1233,6 +1323,10 @@ export type VocabularyWrongWordItem = {
     part_of_speech?: (string | null);
     wrong_count: number;
     last_wrong_at?: (string | null);
+    last_first_at?: (string | null);
+    last_first_is_correct?: (boolean | null);
+    last_correct_at?: (string | null);
+    practiceable?: boolean;
 };
 
 export type VocabularyWrongWords = {
@@ -1945,3 +2039,39 @@ export type VocabularyReadWrongWordsData = {
 };
 
 export type VocabularyReadWrongWordsResponse = (VocabularyWrongWords);
+
+export type VocabularyListStudentBooksData = {
+    code: string;
+    search?: (string | null);
+};
+
+export type VocabularyListStudentBooksResponse = (Array<VocabularyBookPublic>);
+
+export type VocabularyReadStudentBookData = {
+    bookId: string;
+    code: string;
+    search?: (string | null);
+};
+
+export type VocabularyReadStudentBookResponse = (VocabularyBookDetail);
+
+export type VocabularyStartStudentSessionData = {
+    code: string;
+    requestBody: VocabularyStudentSessionCreate;
+};
+
+export type VocabularyStartStudentSessionResponse = (VocabularyStudentSessionCreated);
+
+export type VocabularyReadStudentSessionData = {
+    code: string;
+    sessionId: string;
+};
+
+export type VocabularyReadStudentSessionResponse = (VocabularyStudentPlan);
+
+export type VocabularyReadStudentHistoryData = {
+    code: string;
+    limit?: number;
+};
+
+export type VocabularyReadStudentHistoryResponse = (VocabularyStudentHistory);

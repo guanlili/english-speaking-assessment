@@ -30,6 +30,7 @@ from app.api.routes.classes import (
 )
 from app.core.config import settings
 from app.models import (
+    SELF_PRACTICE_MAX_WORDS,
     Classroom,
     Student,
     User,
@@ -51,6 +52,10 @@ from app.models import (
     VocabularyRoundSummaryRow,
     VocabularySession,
     VocabularySessionCreate,
+    VocabularyStudentHistory,
+    VocabularyStudentPlan,
+    VocabularyStudentSessionCreate,
+    VocabularyStudentSessionCreated,
     VocabularyTeacherAssignmentRow,
     VocabularyTodayItem,
     VocabularyTodayPlan,
@@ -761,7 +766,7 @@ def _today_plan_payload(
         if assignment is None or not vocab_service.student_targeted(
             session, assignment, student_id
         ):
-            wrong = vocab_service.wrong_words(session, student_id)
+            wrong = vocab_service.wrong_word_items(session, student_id)
             return VocabularyTodayPlan(
                 assignments=assignments, wrong_word_count=len(wrong)
             )
@@ -825,7 +830,7 @@ def _today_plan_payload(
                 attempt_count=len(attempts),
             )
         )
-    wrong = vocab_service.wrong_words(session, student_id)
+    wrong = vocab_service.wrong_word_items(session, student_id)
     return VocabularyTodayPlan(
         assignment=_assignment_public(assignment),
         session_id=vocab_session.id if vocab_session is not None else None,
@@ -914,7 +919,11 @@ def submit_vocab_answer(
     current_user: StudentUserDep,
     body: VocabularyAnswerRequest,
 ) -> Any:
-    """提交拼写作答：服务端规范化判分；幂等键重放返回同一结果。"""
+    """提交拼写作答：服务端规范化判分；幂等键重放返回同一结果。
+
+    任务轮校验任务开放（截止/归档门禁）；自主/复习轮题单创建时已固化，
+    随时可作答，不依赖任务状态。
+    """
     vocab_session = session.get(VocabularySession, session_id)
     if vocab_session is None:
         raise HTTPException(status_code=404, detail="作答会话不存在")
@@ -927,21 +936,19 @@ def submit_vocab_answer(
     ).first()
     if student is None:
         raise HTTPException(status_code=404, detail="作答会话不存在")
-    assignment = (
-        session.get(VocabularyAssignment, vocab_session.assignment_id)
-        if vocab_session.assignment_id is not None
-        else None
-    )
-    if assignment is None:
-        raise HTTPException(status_code=422, detail="会话没有绑定任务，不能作答")
-    vocab_service.ensure_assignment_open(assignment)
-    if vocab_session.mode == "quiz" and vocab_session.status == "submitted":
-        raise HTTPException(status_code=422, detail="测验已交卷，不能继续作答")
+    if vocab_session.assignment_id is not None:
+        assignment = session.get(VocabularyAssignment, vocab_session.assignment_id)
+        if assignment is None:
+            raise HTTPException(status_code=422, detail="会话没有绑定任务，不能作答")
+        vocab_service.ensure_assignment_open(assignment)
+        if vocab_session.mode == "quiz" and vocab_session.status == "submitted":
+            raise HTTPException(status_code=422, detail="测验已交卷，不能继续作答")
+    snapshot_items = vocab_service.session_snapshot(session, vocab_session)
 
     answer = vocab_service.submit_answer(
         session=session,
         vocab_session=vocab_session,
-        assignment=assignment,
+        snapshot_items=snapshot_items,
         item_index=body.item_index,
         prompt_type=body.prompt_type,
         answer_raw=body.answer,
@@ -951,7 +958,7 @@ def submit_vocab_answer(
     answered_count, correct_first = vocab_service.session_progress(
         session, vocab_session
     )
-    snapshot_item = assignment.snapshot_items[body.item_index]
+    snapshot_item = snapshot_items[body.item_index]
     return VocabularyAnswerResult(
         item_index=answer.item_index,
         attempt_no=answer.attempt_no,
@@ -970,10 +977,175 @@ def submit_vocab_answer(
 def read_wrong_words(
     session: SessionDep, code: str, current_user: StudentUserDep
 ) -> Any:
-    """错词本：本课堂学生档案下全部词汇任务的首答错词（跨任务聚合）。"""
+    """错词本：本课堂学生档案下全部词汇轮次的首答错词（跨任务/自主聚合）。
+
+    历史错误次数、最近独立首答、最近答对三个维度分列（一次答对不删词）；
+    practiceable 标注词条是否仍在当前可练词库内，可直接进错词专项复习。
+    """
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
-    return VocabularyWrongWords(
-        classroom_code=classroom.code,
-        items=vocab_service.wrong_words(session, student.id),
+    items = vocab_service.wrong_word_items(
+        session,
+        student.id,
+        vocab_service.student_practiceable_word_ids(session, classroom.id),
+    )
+    pos_map = vocab_service.pos_by_word_ids(session, [i.word_id for i in items])
+    for item in items:
+        item.part_of_speech = pos_map.get(item.word_id)
+    return VocabularyWrongWords(classroom_code=classroom.code, items=items)
+
+
+# ── 学生自主练习与学习报告 ─────────────────────────────────────────
+
+
+@router.get(
+    "/classes/{code}/vocabulary/student/books",
+    response_model=list[VocabularyBookPublic],
+)
+def list_student_books(
+    session: SessionDep,
+    code: str,
+    current_user: StudentUserDep,
+    search: str | None = Query(default=None, max_length=64),
+) -> Any:
+    """学生可浏览的词库：active 公共词库 + 本班词库，支持按词库名称搜索。"""
+    classroom = _get_classroom(session, code)
+    _student_profile_of(session, classroom, current_user)
+    books = session.exec(
+        select(VocabularyBook)
+        .where(
+            VocabularyBook.status == "active",
+            (VocabularyBook.scope == "public")  # type: ignore[operator]
+            | (VocabularyBook.classroom_id == classroom.id),  # type: ignore[operator,arg-type]
+        )
+        .order_by(col(VocabularyBook.created_at))
+    ).all()
+    if search:
+        needle = search.strip().casefold()
+        if needle:
+            books = [b for b in books if needle in b.title.casefold()]
+    counts = vocab_service.student_book_word_counts(session, [b.id for b in books])
+    return [_book_public(b, counts.get(b.id, 0)) for b in books]
+
+
+@router.get(
+    "/classes/{code}/vocabulary/student/books/{book_id}",
+    response_model=VocabularyBookDetail,
+)
+def read_student_book(
+    session: SessionDep,
+    code: str,
+    book_id: uuid.UUID,
+    current_user: StudentUserDep,
+    search: str | None = Query(default=None, max_length=64),
+) -> Any:
+    """词库详情（学生）：active 词条附词性与释义，支持库内单词/释义搜索。
+
+    搜索在拼写、中文释义、英文释义上不区分大小写匹配。
+    """
+    classroom = _get_classroom(session, code)
+    _student_profile_of(session, classroom, current_user)
+    book = _get_book(session, book_id)
+    if book.status != "active" or book.id not in vocab_service.student_book_ids(
+        session, classroom.id
+    ):
+        raise HTTPException(status_code=403, detail="没有权限查看这个词库")
+    # word_count 始终为全库 active 词条数（开练前的词数预告不受搜索影响）；
+    # words 为搜索过滤后的列表（search 缺省 = 全部）
+    all_words = vocab_service.student_book_words(session, book.id)
+    words = (
+        vocab_service.student_book_words(session, book.id, search)
+        if search
+        else all_words
+    )
+    return VocabularyBookDetail(
+        **_book_public(book, len(all_words)).model_dump(),
+        words=[_word_public(w) for w in words],
+    )
+
+
+@router.post(
+    "/classes/{code}/vocabulary/student/sessions",
+    response_model=VocabularyStudentSessionCreated,
+)
+def start_student_session(
+    session: SessionDep,
+    code: str,
+    current_user: StudentUserDep,
+    body: VocabularyStudentSessionCreate,
+) -> Any:
+    """学生自主开轮：kind=self 从词库练（可混 30% 错词），kind=review 错词专项。
+
+    - 同款未结束轮直接续做（刷新/重复点击不产生重复轮次）；
+    - 题单与题序创建后固化；词数不足按实际数量出题（响应里 total_count
+      即实际题数，前端开练前明确展示）；
+    - 自主轮与教师任务完全独立，不产生任务进度与成绩。
+    """
+    if body.word_count > SELF_PRACTICE_MAX_WORDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"一次练习最多 {SELF_PRACTICE_MAX_WORDS} 个词",
+        )
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(session, classroom, current_user)
+    vocab_session, title, wrong_used = vocab_service.create_student_session(
+        session,
+        classroom_id=classroom.id,
+        student_id=student.id,
+        kind=body.kind,
+        book_id=body.book_id,
+        word_count=body.word_count,
+        mix_wrong=body.mix_wrong,
+    )
+    return VocabularyStudentSessionCreated(
+        session_id=vocab_session.id,
+        kind=vocab_session.kind,
+        title=title,
+        book_id=vocab_session.source_book_id,
+        total_count=len(vocab_session.snapshot_items or []),
+        wrong_word_count=wrong_used,
+        started_at=vocab_session.started_at,
+    )
+
+
+@router.get(
+    "/classes/{code}/vocabulary/student/sessions/{session_id}",
+    response_model=VocabularyStudentPlan,
+)
+def read_student_session(
+    session: SessionDep,
+    code: str,
+    session_id: uuid.UUID,
+    current_user: StudentUserDep,
+) -> Any:
+    """单次练习详情（三类轮次统一）：作答视图 + 单轮报告数据。
+
+    未答题不透露拼写；已答回填本人首答输入。首答正确率口径 =
+    correct_first_count / answered_count（分母为已答题数），完成进度
+    分母为 total_count，由前端分别展示。
+    """
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(session, classroom, current_user)
+    vocab_session = session.get(VocabularySession, session_id)
+    if vocab_session is None or vocab_session.student_id != student.id:
+        # 他人的/不存在的一律 404，不区分报错
+        raise HTTPException(status_code=404, detail="练习记录不存在")
+    return vocab_service.student_plan(session, vocab_session)
+
+
+@router.get(
+    "/classes/{code}/vocabulary/student/history",
+    response_model=VocabularyStudentHistory,
+)
+def read_student_history(
+    session: SessionDep,
+    code: str,
+    current_user: StudentUserDep,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> Any:
+    """练习历史列表：任务轮/自主轮/复习轮统一（kind 区分），按开始倒序。"""
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(session, classroom, current_user)
+    return VocabularyStudentHistory(
+        items=vocab_service.history_rows(session, student.id, limit=limit)
     )

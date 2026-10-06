@@ -1,5 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router"
+import {
+  createFileRoute,
+  Link,
+  useNavigate,
+  useParams,
+} from "@tanstack/react-router"
 import {
   ArrowRight,
   BookA,
@@ -7,8 +12,10 @@ import {
   CheckCircle2,
   Circle,
   Clock,
+  LibraryBig,
   ListChecks,
   RefreshCw,
+  RotateCcw,
   SpellCheck,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -37,7 +44,12 @@ import { APP_NAME } from "@/config"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
-import { EXPLAIN_FIRST_TRY, EXPLAIN_MASKED_WORDS, TERMS } from "@/lib/terms"
+import {
+  EXPLAIN_FIRST_TRY,
+  EXPLAIN_MASKED_WORDS,
+  EXPLAIN_WRONG_WORDS_POLICY,
+  TERMS,
+} from "@/lib/terms"
 
 /** 任务进度 → 双语徽标（进度与逾期两维独立展示） */
 const PROGRESS_LABEL: Record<string, { zh: string; en: string }> = {
@@ -95,6 +107,31 @@ function VocabHomePage() {
           }),
         )
       }
+    },
+  })
+
+  // 错词专项复习：从错词本直接开一轮（后端限定当前可练词库内的错词）
+  const startReview = useMutation({
+    mutationFn: () =>
+      VocabularyService.startStudentSession({
+        code: code.toUpperCase(),
+        requestBody: { kind: "review" },
+      }),
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: ["vocab", code] })
+      void navigate({
+        to: "/vocab/$code/self",
+        params: { code },
+        search: { session: (data as { session_id: string }).session_id },
+      })
+    },
+    onError: () => {
+      toast.error(
+        t({
+          zh: "暂时没有可复习的错词。",
+          en: "No wrong words to review yet.",
+        }),
+      )
     },
   })
 
@@ -187,6 +224,45 @@ function VocabHomePage() {
               en: "Read the Chinese meaning and spell the English word; misspelled words go to your Wrong Words book.",
             })}
           </p>
+        </section>
+
+        {/* 自主练习入口：从词库挑词，与教师任务分开记录 */}
+        <section
+          aria-label={t({ zh: "自主练习", en: "Self practice" })}
+          className="rounded-3xl border bg-card p-5 sm:p-6"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                <LibraryBig className="size-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-base font-semibold">
+                  {t({ zh: "自主练习", en: "Self Practice" })}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {t({
+                    zh: "从公共词库或本班词库挑词，自己开一轮（不占老师任务的成绩）。",
+                    en: "Pick a public or class word book and start a round on your own — it never counts toward teacher tasks.",
+                  })}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button asChild>
+                <Link to="/vocab/$code/books" params={{ code }}>
+                  <LibraryBig />
+                  {t({ zh: "去词库挑词", en: "Browse Word Books" })}
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link to="/vocab/$code/records" params={{ code }}>
+                  {t(TERMS.practiceRecords)}
+                  <ArrowRight />
+                </Link>
+              </Button>
+            </div>
+          </div>
         </section>
 
         {/* 我的任务列表（多任务并存：进行中与已结束都在，可切换练习） */}
@@ -458,15 +534,27 @@ function VocabHomePage() {
                   <span className="text-sm font-normal text-muted-foreground">
                     {wrongWords.length > 0 && `· ${wrongWords.length}`}
                   </span>
+                  <InfoHint label={t(EXPLAIN_WRONG_WORDS_POLICY)} />
                 </CardTitle>
                 <CardDescription>
                   {t({
-                    zh: "第一次没拼对的词都在这里，多看几眼就熟了。",
-                    en: "Words you missed on the first try live here — a few looks and they're yours.",
+                    zh: "第一次没拼对的词都在这里，答对了也不会被移除。",
+                    en: "Words you missed on the first try live here — they stay even after you get them right.",
                   })}
                 </CardDescription>
               </div>
             </div>
+            {wrongWords.some((word) => word.practiceable !== false) && (
+              <Button
+                onClick={() => startReview.mutate()}
+                disabled={startReview.isPending}
+              >
+                <RotateCcw />
+                {startReview.isPending
+                  ? t({ zh: "开一轮复习…", en: "Starting…" })
+                  : t({ zh: "复习错词", en: "Review Wrong Words" })}
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="pb-0">
             {wrongQuery.isPending ? (
@@ -494,10 +582,21 @@ function VocabHomePage() {
                       <TableHead>{t({ zh: "单词", en: "Word" })}</TableHead>
                       <TableHead>{t({ zh: "释义", en: "Meaning" })}</TableHead>
                       <TableHead>
-                        {t({ zh: "拼错次数", en: "Missed" })}
+                        <span className="inline-flex items-center gap-1">
+                          {t({ zh: "历史错误", en: "Misses" })}
+                          <InfoHint
+                            label={t({
+                              zh: "按每轮第一次作答拼错累计；一次答对不删除、不冲抵。",
+                              en: "Counts first-try misses across rounds. Getting it right once removes nothing.",
+                            })}
+                          />
+                        </span>
                       </TableHead>
                       <TableHead>
-                        {t({ zh: "最近拼错", en: "Last missed" })}
+                        {t({ zh: "最近首答", en: "Latest first try" })}
+                      </TableHead>
+                      <TableHead>
+                        {t({ zh: "最近练对", en: "Last correct" })}
                       </TableHead>
                     </TableRow>
                   </TableHeader>
@@ -511,6 +610,17 @@ function VocabHomePage() {
                               {word.part_of_speech}
                             </span>
                           )}
+                          {word.practiceable === false && (
+                            <Badge
+                              variant="outline"
+                              className="ml-1.5 text-muted-foreground"
+                            >
+                              {t({
+                                zh: "已不在可练词库",
+                                en: "Not in active books",
+                              })}
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {word.meaning_zh}
@@ -519,8 +629,29 @@ function VocabHomePage() {
                           {word.wrong_count}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {word.last_wrong_at
-                            ? new Date(word.last_wrong_at).toLocaleDateString()
+                          {word.last_first_is_correct === null ||
+                          word.last_first_is_correct === undefined ? (
+                            "–"
+                          ) : (
+                            <span className="inline-flex items-center gap-1">
+                              {word.last_first_is_correct ? (
+                                <CheckCircle2 className="size-3.5 text-primary" />
+                              ) : (
+                                <Circle className="size-3.5 text-muted-foreground" />
+                              )}
+                              {word.last_first_at
+                                ? new Date(
+                                    word.last_first_at,
+                                  ).toLocaleDateString()
+                                : ""}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {word.last_correct_at
+                            ? new Date(
+                                word.last_correct_at,
+                              ).toLocaleDateString()
                             : "–"}
                         </TableCell>
                       </TableRow>
