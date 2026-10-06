@@ -16,7 +16,6 @@ import { Input } from "@/components/ui/input"
 import { APP_NAME } from "@/config"
 import { isLoggedIn } from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
-import { lastJoinedCode } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
 
 export const Route = createFileRoute("/change-password")({
@@ -47,11 +46,7 @@ function ChangePasswordPage() {
     onSuccess: () => {
       localStorage.setItem("esa:must-change-pw", "0")
       showSuccessToast(t({ zh: "密码已修改", en: "Password changed" }))
-      const code = lastJoinedCode()
-      void navigate({
-        to: code ? "/home/$code" : "/join",
-        params: code ? { code } : undefined,
-      })
+      void navigate({ to: "/join" })
     },
     onError: (err: { body?: { detail?: string } }) =>
       setError(

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Link, useParams } from "@tanstack/react-router"
 import {
   ArrowRight,
+  ArrowRightLeft,
   AudioLines,
   Bell,
   BookA,
@@ -147,6 +148,14 @@ function StudentShell({
               )}
             </Link>
           ))}
+          {/* 多班归属：跨班切换入口（/join = 我的班级 hub，无 $code 参数） */}
+          <Link
+            to="/join"
+            className="mt-6 flex min-h-12 items-center gap-3 rounded-xl px-3.5 text-sm text-muted-foreground transition-colors hover:bg-secondary/70 hover:text-foreground"
+          >
+            <ArrowRightLeft className="size-[18px]" />
+            {t({ zh: "我的班级", en: "My Classes" })}
+          </Link>
         </nav>
         <div className="mt-auto pt-8">
           <div className="relative overflow-hidden rounded-2xl border border-primary/10 bg-secondary/60 p-4">
@@ -246,6 +255,12 @@ function StudentShell({
                     </Link>
                   </DropdownMenuItem>
                 ))}
+                <DropdownMenuItem asChild>
+                  <Link to="/join">
+                    <ArrowRightLeft />
+                    {t({ zh: "我的班级", en: "My Classes" })}
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <a href="/change-password">
                     <KeyRound />

@@ -9,13 +9,9 @@ export const Route = createFileRoute("/_layout")({
     if (!isLoggedIn()) {
       throw redirect({ to: "/login" })
     }
-    // 学生不进教学管理区：回学生流程（已入班回课堂，否则加入页）
+    // 学生不进教学管理区：回「我的班级」选班（多班归属）
     if (cachedRole() === "student") {
-      const { lastJoinedCode } = await import("@/lib/classroom-student")
-      const code = lastJoinedCode()
-      throw redirect(
-        code ? { to: "/home/$code", params: { code } } : { to: "/join" },
-      )
+      throw redirect({ to: "/join" })
     }
   },
 })

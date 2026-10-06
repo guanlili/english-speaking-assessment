@@ -42,6 +42,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
+import { localizedDetail } from "@/utils"
 
 export const Route = createFileRoute("/_layout/classrooms")({
   component: MyClassroomsPage,
@@ -585,11 +586,21 @@ function StudentImportDialog({
       }),
     onSuccess: (res) => {
       setResult(res)
-      if (res.created + res.merged > 0) {
+      const joined = res.joined ?? 0
+      const already = res.already_enrolled ?? 0
+      if (res.created + res.merged + joined > 0) {
         showSuccessToast(
           t({
-            zh: `导入完成：新建 ${res.created}、绑定历史档案 ${res.merged}${res.skipped ? `、跳过 ${res.skipped}` : ""}`,
-            en: `Import done: ${res.created} created, ${res.merged} linked to existing profiles${res.skipped ? `, ${res.skipped} skipped` : ""}`,
+            zh: `导入完成：新建 ${res.created}、绑定历史档案 ${res.merged}、加入本班 ${joined}${res.skipped ? `、跳过 ${res.skipped}` : ""}`,
+            en: `Import done: ${res.created} created, ${res.merged} linked to existing profiles, ${joined} joined this class${res.skipped ? `, ${res.skipped} skipped` : ""}`,
+          }),
+        )
+        onDone()
+      } else if (already > 0 && res.skipped === 0) {
+        showSuccessToast(
+          t({
+            zh: "名单内学生都已在班级中，无需改动",
+            en: "Everyone on the roster is already in this class",
           }),
         )
         onDone()
@@ -632,8 +643,8 @@ function StudentImportDialog({
           </DialogTitle>
           <DialogDescription>
             {t({
-              zh: "每行「学号 姓名」（空格或制表符分隔）；账号初始密码统一为默认密码 brs123456，与历史匿名学生同名时自动绑定其练习数据。",
-              en: 'One "Student ID Name" per line (separated by spaces or tabs). Accounts start with the default password brs123456, and names matching past anonymous students are automatically linked to their practice data.',
+              zh: "每行「学号 姓名」（空格或制表符分隔）；账号初始密码统一为默认密码 brs123456，与历史匿名学生同名时自动绑定其练习数据。学号已在其他班的：姓名一致即同一学生，将加入本班且不重置密码；姓名不一致会拒绝，请先核对名单。",
+              en: 'One "Student ID Name" per line (separated by spaces or tabs). Accounts start with the default password brs123456, and names matching past anonymous students are automatically linked to their practice data. If a student ID already exists in another class with the same name, the student joins this class and their password is untouched; mismatched names are rejected — double-check the roster first.',
             })}
           </DialogDescription>
         </DialogHeader>
@@ -657,10 +668,37 @@ function StudentImportDialog({
             <div className="rounded-md border bg-muted/40 p-3 text-sm">
               <p>
                 {t({
-                  zh: `新建 ${result.created} · 绑定历史 ${result.merged} · 跳过 ${result.skipped}`,
-                  en: `${result.created} created · ${result.merged} linked · ${result.skipped} skipped`,
+                  zh: `新建 ${result.created} · 绑定历史 ${result.merged} · 加入本班 ${result.joined ?? 0} · 已在班内 ${result.already_enrolled ?? 0} · 跳过 ${result.skipped}`,
+                  en: `${result.created} created · ${result.merged} linked · ${result.joined ?? 0} joined this class · ${result.already_enrolled ?? 0} already in class · ${result.skipped} skipped`,
                 })}
               </p>
+              {result.rows.some(
+                (r) =>
+                  r.status === "joined_existing" ||
+                  r.status === "already_enrolled",
+              ) && (
+                <ul className="mt-2 list-inside list-disc text-muted-foreground">
+                  {result.rows
+                    .filter(
+                      (r) =>
+                        r.status === "joined_existing" ||
+                        r.status === "already_enrolled",
+                    )
+                    .map((r) => (
+                      <li key={r.username}>
+                        {r.status === "joined_existing"
+                          ? t({
+                              zh: `${r.username}（${r.full_name}）：使用原有账号加入本班，密码不变`,
+                              en: `${r.username} (${r.full_name}): joined this class with the existing account; password unchanged`,
+                            })
+                          : t({
+                              zh: `${r.username}（${r.full_name}）：已在本班，未改动`,
+                              en: `${r.username} (${r.full_name}): already in this class, unchanged`,
+                            })}
+                      </li>
+                    ))}
+                </ul>
+              )}
               {result.rows.some((r) => r.error) && (
                 <ul className="mt-2 list-inside list-disc text-destructive">
                   {result.rows
@@ -668,8 +706,8 @@ function StudentImportDialog({
                     .map((r) => (
                       <li key={r.username}>
                         {t({
-                          zh: `${r.username}：${r.error ?? ""}`,
-                          en: `${r.username}: ${r.error ?? ""}`,
+                          zh: `${r.username}：${localizedDetail(r.error ?? "")}`,
+                          en: `${r.username}: ${localizedDetail(r.error ?? "")}`,
                         })}
                       </li>
                     ))}

@@ -87,14 +87,29 @@ const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
   "邮件找回暂不可用，请联系学校管理员重置密码": {
     en: "Email recovery is unavailable. Please ask your school administrator to reset your password.",
   },
-  该学号已存在: { en: "This student ID already exists." },
-  "有正在评分中的作答，请稍后再删除": {
-    en: "Some submissions are still scoring. Please delete later.",
+  // 学生导入逐行报错（多班归属：同名加入本班，异名/非学生账号仍阻断）
+  "该学号已存在，但姓名与已有账号不一致": {
+    en: "This student ID already exists with a different name. Please check the roster.",
+  },
+  该学号已被非学生账号使用: {
+    en: "This student ID is taken by a non-student account.",
+  },
+  班级人数已满: {
+    en: "This class is full. Ask the teacher to adjust the class size.",
+  },
+  学号为空: { en: "Student ID is empty." },
+  学号不能包含空格等空白字符: {
+    en: "Student ID cannot contain spaces or other whitespace.",
+  },
+  名单内学号重复: { en: "Duplicate student ID in the list." },
+  "班级人数已满，请联系老师调整课堂容量": {
+    en: "This class is full. Ask the teacher to adjust the class size.",
   },
   "Not Found": { zh: "资源不存在", en: "Not found." },
 }
 
-function localizedDetail(detail: string): string {
+/** 后端文案（detail/导入行错误）→ 当前语言展示文案；双语准则的前端映射点。 */
+export function localizedDetail(detail: string): string {
   const lang = readStoredLang()
   const exact = DETAIL_MESSAGES[detail]
   if (exact) {

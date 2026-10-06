@@ -27,6 +27,7 @@ from app.api.deps import (
 )
 from app.core.config import settings
 from app.crud import (
+    ClassroomFullError,
     create_classroom,
     get_classroom_by_code,
     get_or_create_today_session,
@@ -346,14 +347,23 @@ def join_class(
     code: str,
     join_in: StudentJoin,
 ) -> Any:
-    """学生（登录态）凭课堂码加入；显示名缺省用账号姓名，重复入班幂等。"""
+    """学生（登录态）凭课堂码加入；显示名缺省用账号姓名，重复入班幂等。
+
+    班内档案数达到课堂容量（class_size）→ 409。
+    """
     classroom = _get_classroom(session, code)
-    return join_classroom(
-        session=session,
-        classroom=classroom,
-        user=current_user,
-        display_name=join_in.display_name,
-    )
+    try:
+        return join_classroom(
+            session=session,
+            classroom=classroom,
+            user=current_user,
+            display_name=join_in.display_name,
+        )
+    except ClassroomFullError:
+        raise HTTPException(
+            status_code=409,
+            detail="班级人数已满，请联系老师调整课堂容量",
+        ) from None
 
 
 def _latest_done_attempts(
