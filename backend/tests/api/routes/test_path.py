@@ -153,6 +153,16 @@ def test_sequential_unlock_and_advance(
     assert updated.status_code == 200
     assert updated.json()["unlock_all"] is True
 
+    # 复位全开开关：unlock_all 会改变 _active_passage 的选篇逻辑
+    # （units[-1]），不复位会污染本文件之后所有依赖默认路径的用例
+    reset = client.put(
+        f"/api/v1/admin/classrooms/{classroom_id}",
+        json={"unlock_all": False},
+        headers=superuser_token_headers,
+    )
+    assert reset.status_code == 200
+    assert reset.json()["unlock_all"] is False
+
 
 def test_unit_crud(client: TestClient, superuser_token_headers: dict[str, str]) -> None:
     created = client.post(
@@ -235,7 +245,12 @@ def test_path_and_board_expose_assignment(
     )
     path = client.get("/api/v1/classes/DEMO01/path", headers=student["headers"]).json()
     assert path["assignment"]["title"] == "Unit 2"
-    assert path["units"][1]["locked"] is False  # 指派豁免锁定
+    # 指派豁免锁定：按 id 定位被指派单元（文件内前面的用例会留下同名同序的
+    # "Unit 2"，按位置取 units[1] 拿到的未必是本用例指派的那个）
+    assigned_unit = next(
+        u for u in path["units"] if u["unit_id"] == second["unit"]["id"]
+    )
+    assert assigned_unit["locked"] is False
 
     board = client.get("/api/v1/classes/DEMO01/board").json()
     assert board["assignment"]["title"] == "Unit 2"
