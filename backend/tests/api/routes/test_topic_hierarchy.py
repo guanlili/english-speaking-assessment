@@ -6,9 +6,9 @@
 """
 
 import uuid
-from typing import Any
 
 from fastapi.testclient import TestClient
+from sqlmodel import Session
 
 from tests.utils.credential import make_student
 
@@ -121,9 +121,7 @@ def test_split_passage_carries_unit_topic(
     unit = _make_unit(client, headers, "Travel", "Split Unit", order=92)
     passage = _make_passage(client, headers, "Long Trip", "WRONG", unit["id"])
 
-    resp = client.post(
-        f"/api/v1/admin/passages/{passage['id']}/split", headers=headers
-    )
+    resp = client.post(f"/api/v1/admin/passages/{passage['id']}/split", headers=headers)
     assert resp.status_code == 200
     created_ids = set(resp.json()["passage_ids"])
     assert len(created_ids) >= 2
