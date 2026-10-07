@@ -33,10 +33,11 @@ import { Separator } from "@/components/ui/separator"
 import { APP_NAME } from "@/config"
 import type { AttemptSubmitTarget } from "@/hooks/useAttemptSubmit"
 import { useAttemptSubmit } from "@/hooks/useAttemptSubmit"
-import { MAX_RECORD_SECONDS, useRecorder } from "@/hooks/useRecorder"
+import { useRecorder } from "@/hooks/useRecorder"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
+import { resolveRecordLimitSeconds } from "@/lib/recording-limit"
 import {
   EXAM_KIND_LABELS,
   EXAM_LEVEL_LABELS,
@@ -291,6 +292,9 @@ function ClassroomPracticePage() {
   }, [items, attemptByItem, focusItemId, pinnedItemId])
 
   const currentItem = items[currentIndex]
+  const recordLimitSeconds = resolveRecordLimitSeconds(
+    currentItem?.suggested_seconds,
+  )
   // 句型收藏（PR B）：按单条表达收藏/取消，挂课堂档案跨设备可见
   const frameFavorite = useMutation({
     mutationFn: (frameId: string) =>
@@ -366,6 +370,7 @@ function ClassroomPracticePage() {
   })
 
   const recorder = useRecorder({
+    maxSeconds: recordLimitSeconds,
     onComplete: (rec) => {
       submittedRef.current = true
       // 模考不钉住题目：提交后自动推进到下一道未做题（也不展示本题反馈）
@@ -870,7 +875,8 @@ function ClassroomPracticePage() {
                       },
                     )}
                     {" · "}
-                    {formatSeconds(currentItem.suggested_seconds ?? 20)}
+                    {t({ zh: "作答限时", en: "Answer limit" })}{" "}
+                    {formatSeconds(recordLimitSeconds)}
                   </span>
                 </div>
 
@@ -1138,8 +1144,8 @@ function ClassroomPracticePage() {
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {t({
-                          zh: `最长 ${formatSeconds(MAX_RECORD_SECONDS)} · 不用着急，按自己的节奏说`,
-                          en: `Max ${formatSeconds(MAX_RECORD_SECONDS)} · No rush, speak at your own pace`,
+                          zh: `本题限时 ${formatSeconds(recordLimitSeconds)} · 到时自动结束录音`,
+                          en: `This item's limit is ${formatSeconds(recordLimitSeconds)} · recording stops automatically`,
                         })}
                       </p>
                     </>
