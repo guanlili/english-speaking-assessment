@@ -224,7 +224,7 @@ function ComposerForm({
   const [types, setTypes] = useState<LessonTypes>(initialTypes)
   const [selection, setSelection] = useState<LessonSelection>(initialSelection)
   const [title, setTitle] = useState(initialTitle)
-  // 模考模式：整场限时（分钟），学生首次打开开考、到时自动交卷、切屏记录
+  // 模考模式：整场限时（分钟），确认页点「开始考试」后计时、到时自动交卷、切屏记录
   const [isExam, setIsExam] = useState(false)
   const [examMinutes, setExamMinutes] = useState(30)
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -442,8 +442,8 @@ function ComposerForm({
             </h2>
             <p className="mb-3 mt-2 text-sm text-muted-foreground">
               {t({
-                zh: "开启后整场限时：学生首次打开即开考，到时自动交卷；考试中每题只能作答一次，切屏会被记录到教师面板。",
-                en: "Time-limited for the whole exam: the clock starts when a student first opens it and auto-submits at zero. One attempt per item; screen switches are recorded for the teacher.",
+                zh: "开启后整场限时：学生在确认页点「开始考试」后计时，到时自动交卷；考试中每题只能作答一次，切屏次数与离屏时长会被记录到教师面板。",
+                en: 'Time-limited for the whole exam: the clock starts when a student taps "Start exam" on the confirmation screen and auto-submits at zero. One attempt per item; screen switches and away time are recorded for the teacher.',
               })}
             </p>
             <div className="flex flex-wrap items-center gap-4">

@@ -1,7 +1,8 @@
-"""模考域逻辑：整场限时、每题一次作答、防切屏计数。
+"""模考域逻辑：整场限时、每题一次作答、防切屏计数与离屏时长。
 
-时间口径全部以服务器为准（学生端倒计时只是展示）；到时采用惰性终结——
-任何读写在触碰考试会话时发现超时即落 exam_ended_at，此后拒绝继续作答。
+时间口径全部以服务器为准（学生端倒计时只是展示）；开考由学生在确认页
+显式触发（防误触打开即烧时间）；到时采用惰性终结——任何读写在触碰考试
+会话时发现超时即落 exam_ended_at，此后拒绝继续作答。
 """
 
 from datetime import UTC, datetime, timedelta
@@ -29,7 +30,7 @@ def exam_deadline(
 def ensure_exam_started(
     db: Any, practice_session: PracticeSession, exercise: ClassroomExercise
 ) -> None:
-    """学生首次打开考试（今日计划）即开始计时；只落一次。"""
+    """学生在开考确认页点「开始考试」即开始计时；只落一次（幂等）。"""
     if not exercise.is_exam or practice_session.exam_started_at is not None:
         return
     practice_session.exam_started_at = _now()
@@ -91,23 +92,50 @@ def require_exam_open(
     if not exercise.is_exam:
         return
     if practice_session.exam_started_at is None:
-        # 防御：未经今日计划入口直接提交（正常流程 today 已落开始时间）
-        ensure_exam_started(db, practice_session, exercise)
+        # 开考必须经确认页显式触发（POST /exam/start），防止误触打开即计时
+        raise HTTPException(status_code=422, detail="考试尚未开始")
     finalize_if_expired(db, practice_session, exercise)
     if practice_session.exam_ended_at is not None:
         raise HTTPException(status_code=422, detail="考试时间已到，已自动交卷")
 
 
-def record_tab_switch(
+def _ensure_switch_open(
     db: Session, practice_session: PracticeSession, exercise: ClassroomExercise
-) -> int:
-    """前端切屏上报：计数并返回最新值（封顶防刷）。"""
-    if not exercise.is_exam:
-        raise HTTPException(status_code=422, detail="该练习不是模考")
+) -> None:
+    """切屏上报前置：未开考/已结束一律不再累计。"""
+    if practice_session.exam_started_at is None:
+        raise HTTPException(status_code=422, detail="考试尚未开始")
     finalize_if_expired(db, practice_session, exercise)
     if practice_session.exam_ended_at is not None:
         raise HTTPException(status_code=422, detail="考试已结束")
+
+
+def record_tab_switch(
+    db: Session, practice_session: PracticeSession, exercise: ClassroomExercise
+) -> int:
+    """前端切屏上报（hidden 相位）：计数并返回最新值（封顶防刷）。"""
+    _ensure_switch_open(db, practice_session, exercise)
     practice_session.tab_switch_count = min(999, practice_session.tab_switch_count + 1)
     db.add(practice_session)
     db.commit()
     return practice_session.tab_switch_count
+
+
+def record_tab_return(
+    db: Session,
+    practice_session: PracticeSession,
+    exercise: ClassroomExercise,
+    away_seconds: int,
+) -> tuple[int, int]:
+    """前端切回上报（visible 相位）：累计离屏时长，返回最新（次数, 秒）。
+
+    单次封顶 1 小时、累计封顶 1 天，负数按 0 计，防异常值刷爆。
+    """
+    _ensure_switch_open(db, practice_session, exercise)
+    practice_session.tab_switch_seconds = min(
+        86400,
+        practice_session.tab_switch_seconds + max(0, min(away_seconds, 3600)),
+    )
+    db.add(practice_session)
+    db.commit()
+    return practice_session.tab_switch_count, practice_session.tab_switch_seconds

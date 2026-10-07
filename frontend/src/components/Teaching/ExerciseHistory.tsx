@@ -18,6 +18,18 @@ import { downloadCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
 import { ITEM_TYPE_LABELS } from "@/lib/terms"
 
+/** 时长标签：60 秒内显示秒，超过显示「分 秒」（中英文各自习惯格式）。 */
+function formatDurationLabel(
+  t: (bi: { zh: string; en: string }) => string,
+  seconds: number,
+): string {
+  if (seconds < 60) return t({ zh: `${seconds} 秒`, en: `${seconds}s` })
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  if (s === 0) return t({ zh: `${m} 分钟`, en: `${m}m` })
+  return t({ zh: `${m} 分 ${s} 秒`, en: `${m}m${s}s` })
+}
+
 /** 发布历史：每次发布的练习（快照）列表 + 按次结果回看与导出。 */
 export function ExerciseHistory({ code }: { code: string }) {
   const { t } = useI18n()
@@ -144,21 +156,43 @@ function ExerciseResults({
   })
 
   const exportCsv = (rows: ExerciseStudentResult[]) => {
-    // 每题一列：分数或未做
+    // 每题一列：分数或未做；模考发布附监考列（紧跟姓名，方便老师先看异常）
     const itemColumns =
       rows[0]?.items.map((_, idx) =>
         t({ zh: `第${idx + 1}题`, en: `Item ${idx + 1}` }),
       ) ?? []
+    const isExam = exercise.is_exam
+    const examHeaders = isExam
+      ? [
+          t({ zh: "切屏次数", en: "Switches" }),
+          t({ zh: "离屏秒数", en: "Away seconds" }),
+          t({ zh: "用时秒数", en: "Time used (s)" }),
+          t({ zh: "交卷状态", en: "Submission" }),
+        ]
+      : []
     downloadCsv(
       [
         [
           t({ zh: "姓名", en: "Name" }),
+          ...examHeaders,
           t({ zh: "完成", en: "Done" }),
           t({ zh: "总题数", en: "Total Items" }),
           ...itemColumns,
         ],
         ...rows.map((row) => [
           row.suffix ? `${row.display_name}·${row.suffix}` : row.display_name,
+          ...(isExam
+            ? [
+                row.exam_tab_switches ?? "",
+                row.exam_tab_switch_seconds ?? "",
+                row.exam_time_used_seconds ?? "",
+                row.exam_ended == null
+                  ? ""
+                  : row.exam_ended
+                    ? t({ zh: "已交卷", en: "Submitted" })
+                    : t({ zh: "进行中", en: "In progress" }),
+              ]
+            : []),
           row.done_count,
           row.total_count,
           ...row.items.map((item) =>
@@ -280,6 +314,9 @@ function ExerciseResults({
                         >
                           {t({ zh: "切屏", en: "Switches" })}{" "}
                           {row.exam_tab_switches}
+                          {row.exam_tab_switch_seconds
+                            ? ` · ${formatDurationLabel(t, row.exam_tab_switch_seconds)}`
+                            : ""}
                         </Badge>
                       )}
                       {exercise.is_exam &&
@@ -288,6 +325,7 @@ function ExerciseResults({
                             {row.exam_ended
                               ? t({ zh: "已交卷", en: "Submitted" })
                               : t({ zh: "进行中", en: "In progress" })}
+                            {` · ${formatDurationLabel(t, row.exam_time_used_seconds)}`}
                           </Badge>
                         )}
                     </TableCell>
