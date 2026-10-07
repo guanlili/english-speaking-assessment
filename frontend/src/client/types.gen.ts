@@ -780,7 +780,6 @@ export type TrailSession = {
 
 export type TtsRequest = {
     text: string;
-    voice?: (string | null);
 };
 
 export type UnitCreate = {
@@ -1562,14 +1561,6 @@ export type VocabularyWrongWords = {
     items?: Array<VocabularyWrongWordItem>;
 };
 
-export type WordlistStats = {
-    total: number;
-    by_band: {
-        [key: string]: (number);
-    };
-    name?: (string | null);
-};
-
 export type AdminListPassagesResponse = (Array<PassageWithSentences>);
 
 export type AdminCreatePassageData = {
@@ -1710,10 +1701,6 @@ export type AdminCreateQuestionsBatchData = {
 };
 
 export type AdminCreateQuestionsBatchResponse = (BatchQuestionResult);
-
-export type AdminWordlistStatsResponse = (WordlistStats);
-
-export type AdminWordlistImportOfflineResponse = (unknown);
 
 export type AdminListUnitsResponse = (Array<UnitPublic>);
 

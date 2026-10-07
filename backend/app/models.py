@@ -372,15 +372,6 @@ class Scenario(SQLModel, table=True):
     is_active: bool = True
 
 
-# 分级词表（PRD §8.4：词条、词元、CEFR 档；学校 CSV 替换内置演示词表）
-class WordlistEntry(SQLModel, table=True):
-    __tablename__ = "wordlist_entry"
-
-    id: int | None = Field(default=None, primary_key=True)
-    lemma: str = Field(unique=True, index=True, max_length=64)
-    band: str = Field(max_length=10, index=True)
-
-
 class ScenarioQuestion(SQLModel, table=True):
     __tablename__ = "scenario_question"
 
@@ -759,6 +750,10 @@ class AttemptItemType:
 
 MAX_SCORING_RETRIES = 2
 SCORING_STALE_TIMEOUT_S = 120  # 超过此时间的 scoring 视为僵尸
+# QUEUED 超过此时间无人领取视为孤儿（线程池 future 丢失等）；
+# 取值需大于队列打满时的最长排队时间（200 条 / 8 worker × ~60s ≈ 25min 的量级），
+# 重投本身幂等，宁可晚投不可错杀
+QUEUED_STALE_TIMEOUT_S = 30 * 60
 
 
 class Attempt(SQLModel, table=True):
@@ -1057,7 +1052,7 @@ class TrailData(SQLModel):
 
 
 # ── 词汇学习（背单词模块，2026-10-01 设计文档 P0）──────────────────
-# 与口语问答词汇分析用的 WordlistEntry 完全分离：这里存的是可考的
+# 与口语问答词汇分析用的五级词库完全分离：这里存的是可考的
 # 教学词条（词性/释义/可接受拼写），历史作答永远按发布快照判分与展示。
 
 
@@ -2064,7 +2059,7 @@ class NewPassword(SQLModel):
 
 # ── 五级词库（口语与背单词共用的统一分级数据源，2026-10-03）────────
 # 级别固定顺序（越靠前越容易）；实际难度默认取最早、最易一级。
-# 与口语分析用的 WordlistEntry（A2/B1/B2，整表替换）完全独立：
+# 与口语分析用的五级词库（vocab_level_entry）完全独立：
 # 历史作答的 A2/B1/B2 词汇结果不因五级导入被重新解释。
 VOCAB_LEVEL_ORDER = ("KET", "PET", "ACADEMIC", "CET4", "IELTS_TOEFL")
 

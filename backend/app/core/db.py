@@ -12,7 +12,6 @@ from app.models import (
     Student,
     User,
     UserCreate,
-    WordlistEntry,
 )
 
 _engine_override: object | None = None
@@ -25,7 +24,15 @@ def set_engine(engine_obj: object | None) -> None:
 
 
 def _make_default_engine():
-    return create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
+    # pool_pre_ping：PG 重启/连接被防火墙掐断后，借出前先探活，避免整批
+    # "server closed the connection" 直到应用重启才恢复；
+    # 池上限对齐「40 人班级齐交」的同步路由线程池峰值（默认 5+10 偏紧）
+    return create_engine(
+        str(settings.SQLALCHEMY_DATABASE_URI),
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
+    )
 
 
 _default_engine = _make_default_engine()
@@ -265,7 +272,6 @@ def _seed_practice_content(session: Session) -> None:
             session.commit()
 
     _seed_school_life_questions(session)
-    _seed_wordlist(session)
     _seed_vocabulary_demo(session)
     _seed_sentence_frames(session)
 
@@ -581,106 +587,3 @@ def init_db(session: Session) -> None:
         user = crud.create_user(session=session, user_create=user_in)
 
     _seed_practice_content(session)
-
-
-_WORDLIST_A2 = """
-animal answer apple baby ball beautiful because bed before begin best better
-bird book box bread breakfast busy buy call car cheap child city clean clothes
-color cook cool country dance delicious dinner dirty doctor dog easy enjoy
-every expensive far fast favorite feel fine fish food foot free fresh friend
-fun funny game garden girl glad great hair half hand happy hard head healthy
-hear heavy high holiday home homework hope horse hour hungry idea important
-interesting joke keep kind kitchen know lake last late laugh learn leave light
-listen long look love lunch make many market meal meet milk minute money
-month moon morning mother mountain mouth move music name near never nice night
-often old open orange outside park party people person pet piano picture place
-plan play please police poor popular practice pretty problem quick quiet rain
-read ready real remember rest rice rich right river room round run safe say
-school sea season seat see sell share shirt shoe shop short show sing sister
-sit sleep slow small smile snow song soon sorry sound south speak sport spring
-stand start stay stop store story street strong study summer sun sweet swim
-table talk teach teacher tell thank thin thing think thirsty tired today
-together tomorrow town train travel tree trip under use useful vegetable very
-visit voice wait wake walk want warm wash watch water way wear weather week
-welcome wet what wheel white wide wind window winter wish woman word work
-world write year yellow yesterday young zoo
-"""
-
-_WORDLIST_B1 = """
-ability accept accident achieve active actually advice afford agreement allow
-alone although amazing announce annoy anxious apply argue arrange artist
-attempt attend available average avoid award aware balance belong benefit
-blame brave breath brief calm cancel cause celebrate certain chance charge
-choice communicate community compare compete complain concentrate confidence
-confirm connect consider contain convenient convince corner couple courage
-crazy create crowd curious damage decide defend degree deliver depend describe
-design desire destroy develop diet difference difficult disappoint discover
-discuss disease distance divide double doubt draw dream drop eager encourage
-effort emotion energetic escape especially event exact examine excellent exist
-expect experience experiment explain explore express extremely failure
-familiar famous fault fear figure final focus foreign forget forgive fortune
-freedom frequent generous gentle genuine goal grateful habit handle harm hate
-hesitate honest huge humor imagine immediately impress improve independent
-individual influence inform insist inspire instant instead intend interest
-interrupt introduce invent invite involve journey judge kindness lack launch
-lazy leader lonely loyal luck main manage manner meanwhile measure mention
-message mind modest moment mood mostly motivate mystery narrow nation natural
-necessary negative nervous normal notice nowhere obvious occasion offer
-operate opinion opportunity organize outcome overcome pain particular passion
-patient peace perform perhaps period permit personal persuade physical plain
-pleasure plenty polite positive possibility postpone potential praise prefer
-prepare present pressure pretend prevent pride private process progress
-promise proper protect proud prove provide public punish purpose pursue
-quality quantity quit rare rate realize reason recall recognize recommend
-reduce refuse regret regular relate relax release rely remain remind remote
-repair repeat replace reply require rescue research respect responsible
-result return reveal reward rise risk role rough routine rude rush sacrifice
-safety satisfy scene simple skill smart solve suffer suggest support suppose
-survive task technique technology tendency thick threaten tiny tool tourist
-treat trust unlike usual various victim violence virtue warn waste weak
-wealthy weird willing wise wonder worried
-"""
-
-_WORDLIST_B2 = """
-abandon accurate adequate adjust admire adopt advocate ambitious anticipate
-apparent appeal approach appropriate aspect assess assume assure attitude
-attribute authentic authority automatic await bias blend boost brilliant
-campaign capable capacity channel chaos coherent commit compel compensate
-competent complex comply compose comprehensive comprise compromise concede
-conclude conflict consent considerable consistent constitute consult contest
-contradict credible crucial cultivate curb decline dedicate deliberate depict
-deprive deserve desirable desperate devise devote diminish discipline dispute
-distinct distort diverse domain dominate drastic dwell elaborate eliminate
-embrace endeavor endure enforce enhance enquire ensure entitle equivalent
-erode essential establish esteem ethic evaluate evoke exceed exclusive
-execute exhaust exhibit expand expertise explicit expose extensive facilitate
-feasible flaw flourish foundation framework halt hazard highlight hostile
-hypothesis illustrate immerse impair imperative implement implication
-implicit incentive incline inevitable infer inherent inhibit initiate
-innovative insight intact integral intense intimate intricate intrinsic invoke
-irrelevant legitimate leverage likewise maintain manipulate mediate
-meticulous mitigate modify monitor negotiate notable notion nurture obscure
-obsolete obstacle optimistic originate overwhelm paradox parallel perceive
-plausible portray precede precise predominant preliminary prerequisite
-preserve prevail profound reconcile refine regulate reinforce reluctant render
-reputation reside resolve restore restrain retain retrieve reverse rigid robust
-rural scrutiny secure sequence shallow shrink significant simultaneous
-skeptical sole sophisticated specify stance strive substantial subtle suffice
-summon superficial surplus sustain tangible tedious terminate thorough
-tolerate trait transition tremendous trivial turbulent ultimate undermine
-undertake utilize vague vast verge vigorous virtual vivid vulnerable
-widespread yield
-"""
-
-
-def _seed_wordlist(session: Session) -> None:
-    if session.exec(select(WordlistEntry).limit(1)).first() is not None:
-        return
-    for band, blob in (
-        ("A2", _WORDLIST_A2),
-        ("B1", _WORDLIST_B1),
-        ("B2", _WORDLIST_B2),
-    ):
-        for lemma in sorted(set(blob.split())):
-            session.add(WordlistEntry(lemma=lemma, band=band))
-    session.commit()

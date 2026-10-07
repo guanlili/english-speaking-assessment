@@ -1,11 +1,10 @@
 """管理员内容管理接口（PRD：内容槽由校方录入，软件只留槽位）。
 
-篇目、情景和问法允许教师/管理员维护；词表和课堂平台配置仅超级管理员可操作。
+篇目、情景和问法允许教师/管理员维护；课堂平台配置仅超级管理员可操作。
 EIP 文本只进数据库，不进 git。
 
     /admin/passages            篇目 CRUD（含复述句子路由）
     /admin/scenarios           情景 + 分档问法 CRUD
-    /admin/wordlist            词表统计 / CSV 导入（学校分级词表）
     /admin/classrooms          课堂码列表 / 停用
 """
 
@@ -21,7 +20,12 @@ from sqlmodel import Field, Session, SQLModel, col, select
 from app import crud
 from app.api.deps import SessionDep, SuperUserDep, TeacherUserDep
 from app.core.config import settings
-from app.core.storage import content_audio_url, save_content_audio
+from app.core.storage import (
+    content_audio_path,
+    content_audio_url,
+    save_content_audio,
+    save_content_audio_named,
+)
 from app.models import (
     EXAM_KIND_QUESTION,
     Attempt,
@@ -42,7 +46,6 @@ from app.models import (
     UnitCreate,
     UnitPublic,
     UnitUpdate,
-    WordlistEntry,
     validate_exam_fields,
     validate_question_suggested_seconds,
 )
@@ -774,46 +777,6 @@ def create_questions_batch(
     return BatchQuestionResult(created=created, failed=failed)
 
 
-# ── 词表 ─────────────────────────────────────────────────────────────
-
-
-class WordlistStats(SQLModel):
-    total: int
-    by_band: dict[str, int]
-    name: str | None = None
-
-
-@router.get("/wordlist", response_model=WordlistStats)
-def wordlist_stats(session: SessionDep, _admin: SuperUserDep) -> Any:
-    entries = session.exec(select(WordlistEntry)).all()
-    by_band: dict[str, int] = dict.fromkeys(sorted(VALID_BANDS), 0)
-    for entry in entries:
-        by_band[entry.band] = by_band.get(entry.band, 0) + 1
-    return {
-        "total": len(entries),
-        "by_band": by_band,
-        "name": ("老词表（A2/B1/B2）已退役，仅保留历史统计" if entries else None),
-    }
-
-
-class WordlistImportResult(SQLModel):
-    imported: int
-    invalid_rows: list[int] = []
-
-
-@router.post("/wordlist/import")
-def wordlist_import_offline(_admin: SuperUserDep) -> Any:
-    """老词表（A2/B1/B2）导入已下线：全系统现行为五级词库口径。
-
-    历史 attempt 中的旧口径统计原样保留展示（不回填不重算）；
-    本端点仅为让残留调用得到明确响应，不再接受任何导入。
-    """
-    raise HTTPException(
-        status_code=410,
-        detail="老词表（A2/B1/B2）导入已下线：全系统现行为五级词库口径",
-    )
-
-
 @router.get("/units", response_model=list[UnitPublic])
 def list_units(session: SessionDep, _admin: TeacherUserDep) -> Any:
     units = session.exec(select(Unit).order_by(col(Unit.order_index))).all()
@@ -1228,7 +1191,6 @@ def _re_split_title(title: str) -> str:
 class TtsRequest(SQLModel):
     # 限长：TTS 按音频时长计费，无上限文本 = 费用放大器（2000 字符远超任何题目文本）
     text: str = Field(max_length=2000)
-    voice: str | None = None
 
 
 class AudioUrlResult(SQLModel):
@@ -1237,14 +1199,25 @@ class AudioUrlResult(SQLModel):
 
 @router.post("/audio/tts", response_model=AudioUrlResult)
 def generate_standard_audio(_admin: TeacherUserDep, body: TtsRequest) -> Any:
-    """用语音合成生成标准音并落盘，返回可回放的相对 URL。"""
-    from app.scoring.tts import TtsError, build_tts_provider
+    """用语音合成生成标准音并落盘，返回可回放的相对 URL。
 
+    内容寻址缓存：同 (模型, 音色, 文本) 命中已有文件直接返回，不重复合成扣费。
+    """
+    from app.scoring.tts import TtsError, build_tts_provider, cache_key
+
+    provider = build_tts_provider()
+    stem = cache_key(provider.model, provider.voice, body.text)
+    cached = content_audio_path(f"{stem}.mp3")
+    if cached is not None:
+        return AudioUrlResult(audio_url=content_audio_url(cached.name))
     try:
-        audio = build_tts_provider().synthesize(body.text)
+        audio = provider.synthesize(body.text)
     except TtsError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    path = save_content_audio(audio, ".mp3")
+    if not audio:
+        # 网关对不存在的音色返回 200 + 0 字节：不落缓存文件（否则空文件永久命中）
+        raise HTTPException(status_code=502, detail="TTS 返回空音频，请检查音色配置")
+    path = save_content_audio_named(audio, ".mp3", stem)
     return AudioUrlResult(audio_url=content_audio_url(path.name))
 
 

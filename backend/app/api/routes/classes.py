@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import load_only
 from sqlmodel import SQLModel, col, select
 
 from app.api.deps import (
@@ -1399,23 +1400,25 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
     )
     week_ago_utc = week_ago.astimezone(ZoneInfo("UTC"))
     student_ids = [s.id for s in students]
-    recent_attempts = session.exec(
-        select(Attempt).where(
-            Attempt.student_id.in_(student_ids),  # type: ignore
-            Attempt.created_at >= week_ago_utc,  # type: ignore
-        )
-    ).all()
-    recent_by_student: dict[uuid.UUID, list[Attempt]] = {}
-    for attempt in recent_attempts:
-        if attempt.student_id is None:
-            continue
-        recent_by_student.setdefault(attempt.student_id, []).append(attempt)
+    # 7 日活跃判定只需「谁有过作答」：单列 distinct，不整行加载（含大 JSON 列）
+    recent_student_ids = set(
+        session.exec(
+            select(Attempt.student_id)
+            .where(
+                Attempt.student_id.in_(student_ids),  # type: ignore
+                Attempt.created_at >= week_ago_utc,  # type: ignore
+            )
+            .distinct()
+        ).all()
+    )
 
     board_students: list[BoardStudent] = []
     submitted_count = 0
     completed_count = 0
     pending_count = 0
-    # 预取所有学生的作答（一次查询替代 N+1）
+    # 预取所有学生的作答（一次查询替代 N+1）。
+    # load_only 只取看板用到的列：item_snapshot/transcript/rubric 等 JSON 大列
+    # 不进内存（轮询热路径，全班 × 多题时每行可省数 KB）
     practice_session_ids = [
         ps.id for ps in session_by_student.values() if ps is not None
     ]
@@ -1423,6 +1426,17 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
     if practice_session_ids:
         all_attempts = session.exec(
             select(Attempt)
+            .options(
+                load_only(
+                    Attempt.id,  # ty: ignore[invalid-argument-type]
+                    Attempt.student_id,  # ty: ignore[invalid-argument-type]
+                    Attempt.session_id,  # ty: ignore[invalid-argument-type]
+                    Attempt.item_id,  # ty: ignore[invalid-argument-type]
+                    Attempt.item_type,  # ty: ignore[invalid-argument-type]
+                    Attempt.status,  # ty: ignore[invalid-argument-type]
+                    Attempt.overall,  # ty: ignore[invalid-argument-type]
+                )
+            )
             .where(
                 Attempt.student_id.in_(student_ids),  # type: ignore
                 Attempt.session_id.in_(practice_session_ids),  # type: ignore
@@ -1594,7 +1608,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             and student.created_at.astimezone(ZoneInfo(settings.PRACTICE_TZ)).date()
             < week_ago.date()
         )
-        inactive = joined_before_window and student.id not in recent_by_student
+        inactive = joined_before_window and student.id not in recent_student_ids
         # 模考监考：当前发布为考试时，给出该生切屏次数/离屏时长/用时/是否交卷
         exam_switches: int | None = None
         exam_switch_seconds: int | None = None

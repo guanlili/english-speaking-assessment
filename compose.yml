@@ -67,6 +67,9 @@ services:
   backend:
     <<: *backend-common
     restart: always
+    # 评分线程在途 LLM 调用可达 60-120s：默认 10s 宽限必被 SIGKILL，
+    # 拉长到 120s 给在评作答完成落库的机会（进程自身退出快时不等待满额）
+    stop_grace_period: 120s
     depends_on:
       db:
         condition: service_healthy

@@ -6,6 +6,7 @@ OpenAI 兼容 /audio/speech 接口：POST {ARK_TTS_BASE_URL}/audio/speech 返回
 无网关密钥/未选音色时生成不可用（503），上传现成音频文件的通道始终可用。
 """
 
+import hashlib
 import logging
 
 import httpx
@@ -19,6 +20,15 @@ _shared_client = httpx.Client(timeout=120)
 
 class TtsError(Exception):
     """TTS 不可用或生成失败（界面提示改用上传或 speechSynthesis 兜底）。"""
+
+
+def cache_key(model: str | None, voice: str | None, text: str) -> str:
+    """内容寻址缓存键：同 (模型, 音色, 文本) 的合成结果完全一致，命中免二次扣费。
+
+    同文本换音色/换模型是不同的音频，必须全部进键。
+    """
+    digest = hashlib.sha256(f"{model}|{voice}|{text}".encode()).hexdigest()
+    return f"tts-{digest[:40]}"
 
 
 class ArkTtsProvider:

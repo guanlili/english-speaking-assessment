@@ -1,6 +1,5 @@
 import { useRouterState } from "@tanstack/react-router"
 import {
-  Archive,
   BookA,
   ChevronDown,
   Layers,
@@ -53,11 +52,6 @@ const adminOnlyItems: Item[] = [
     icon: Users,
     title: { zh: "用户与权限", en: "Users & Permissions" },
     path: "/admin",
-  },
-  {
-    icon: Archive,
-    title: { zh: "老词表（已退役）", en: "Word List (retired)" },
-    path: "/admin/wordlist",
   },
   {
     icon: BookA,

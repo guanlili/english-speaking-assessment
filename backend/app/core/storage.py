@@ -43,6 +43,18 @@ def save_content_audio(data: bytes, suffix: str) -> Path:
     return path
 
 
+def save_content_audio_named(data: bytes, suffix: str, stem: str) -> Path:
+    """内容寻址落盘（TTS 缓存）：同 (模型,音色,文本) 生成结果复用同一文件名，
+    命中即免二次合成扣费。stem 必须是调用方传入的安全标识（hex 摘要）。"""
+    if suffix not in CONTENT_AUDIO_SUFFIXES:
+        raise ValueError(f"不支持的内容音频格式：{suffix}")
+    directory = Path(settings.AUDIO_STORAGE_DIR) / "content"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{stem}{suffix}"
+    path.write_bytes(data)
+    return path
+
+
 def content_audio_url(filename: str) -> str:
     return f"{CONTENT_AUDIO_URL_PREFIX}/{filename}"
 

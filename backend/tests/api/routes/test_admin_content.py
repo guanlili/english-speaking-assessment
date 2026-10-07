@@ -234,28 +234,6 @@ def test_school_life_seed_preserves_teacher_changes(db: Session) -> None:
         db.commit()
 
 
-def test_wordlist_import_offline_stats_readonly(
-    client: TestClient, superuser_token_headers: dict[str, str]
-) -> None:
-    """老词表（A2/B1/B2）导入已下线：导入 410、统计只读保留（退役口径文案）。"""
-    # 导入端点已下线：明确 410（老调用方得到确定响应，而非静默 404）
-    resp = client.post(
-        "/api/v1/admin/wordlist/import",
-        files={"file": ("wordlist.csv", b"lemma,band\nfriendly,B1\n", "text/csv")},
-        headers=superuser_token_headers,
-    )
-    assert resp.status_code == 410, resp.text
-    assert "五级" in resp.json()["detail"]
-    # 旧词表数据本身不被清除（历史统计保留）
-    stats = client.get("/api/v1/admin/wordlist", headers=superuser_token_headers).json()
-    assert stats["total"] > 0
-
-    # 只读统计保留：历史词表数据仍可查看（演示种子）
-    stats = client.get("/api/v1/admin/wordlist", headers=superuser_token_headers).json()
-    assert stats["total"] > 0
-    assert "退役" in stats["name"]
-
-
 def test_classroom_admin(
     client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:

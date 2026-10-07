@@ -665,50 +665,6 @@ def test_level_filter_pagination_across_pages(
     assert [word["headword"] for word in page2] == ["ketword2"]
 
 
-def test_old_wordlist_retired_no_old_block_even_with_data(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
-) -> None:
-    """老词表口径退役：即便老词表仍有数据，新作答也不再产出 A2/B1/B2 字段。
-
-    历史 attempt.vocab 中的旧 JSON 由数据库原样保留（不回填不重算）。
-    """
-    _clear_level_entries(db)
-    from sqlmodel import delete
-
-    from app.models import WordlistEntry
-
-    # 捕获原始字段：删除提交后 ORM 实例不可复用，恢复需按字段重建
-    saved_wordlist = [
-        (entry.lemma, entry.band) for entry in db.exec(select(WordlistEntry)).all()
-    ]
-    db.exec(delete(WordlistEntry))  # type: ignore[call-overload]
-    db.add(
-        VocabularyLevelEntry(
-            headword="ocean", level="PET", meaning_zh="海洋", sources=["测试"]
-        )
-    )
-    db.commit()
-    try:
-        payload = scoring_worker._analyze_vocab(db, "the ocean is big")
-        assert isinstance(payload, dict)
-        # 老口径退役：不再产出 A2/B1/B2 字段（与老词表是否有数据无关）
-        assert "wordlist" not in payload
-        assert "hits" not in payload
-        assert "coverage" not in payload
-        assert "cefr" not in payload
-        level_stats = payload.get("level_stats")
-        assert isinstance(level_stats, dict)
-        hits_raw = level_stats.get("hits_by_level")
-        assert isinstance(hits_raw, dict)
-        assert hits_raw == {"PET": 1}
-    finally:
-        # 恢复老词表（历史统计仍由 /admin/wordlist 只读展示）
-        db.exec(delete(WordlistEntry))  # type: ignore[call-overload]
-        for lemma, band in saved_wordlist:
-            db.add(WordlistEntry(lemma=lemma, band=band))
-        db.commit()
-
-
 # ── 三审修复回归 ────────────────────────────────────────────────────
 
 

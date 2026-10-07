@@ -27,10 +27,6 @@ import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
 import { handleError } from "@/utils"
 
-const searchSchema = z.object({
-  token: z.string().catch(""),
-})
-
 // 校验消息随语言切换：schema 在组件内按当前语言重建
 function buildFormSchema(t: ReturnType<typeof useI18n>["t"]) {
   return z
@@ -66,7 +62,11 @@ type FormData = z.infer<ReturnType<typeof buildFormSchema>>
 
 export const Route = createFileRoute("/reset-password")({
   component: ResetPassword,
-  validateSearch: searchSchema,
+  // 普通函数而非 zod schema：validateSearch 留在不被 code-split 的路由定义里，
+  // 用 zod 会把整个 zod 拖进首屏 entry（此处只需读一个字符串）
+  validateSearch: (search: Record<string, unknown>): { token: string } => ({
+    token: typeof search.token === "string" ? search.token : "",
+  }),
   beforeLoad: async ({ search }) => {
     if (isLoggedIn()) {
       throw redirect({ to: "/" })
