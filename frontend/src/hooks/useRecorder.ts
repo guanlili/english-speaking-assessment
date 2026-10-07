@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useI18n } from "@/lib/i18n"
+import { resolveRecordLimitSeconds } from "@/lib/recording-limit"
 
 export type RecorderStatus = "idle" | "recording" | "ready"
 
@@ -11,10 +12,10 @@ export interface Recording {
 export interface UseRecorderOptions {
   /** 一条有效录音完成时触发，恰好一次（在 onstop 里调用）。 */
   onComplete?: (recording: Recording) => void
+  /** 当前题目的作答秒数；开始录音时固定，切题不会改变进行中的录音。 */
+  maxSeconds?: number
 }
 
-// PRD §9：单条音频上限 60 秒，超时自动停
-export const MAX_RECORD_SECONDS = 60
 // PRD US-02：短于 1 秒不打分
 export const MIN_RECORD_SECONDS = 1
 
@@ -81,6 +82,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     if (startingRef.current) return
     if (recorderRef.current?.state === "recording") return
     startingRef.current = true
+    const limitSeconds = resolveRecordLimitSeconds(options.maxSeconds)
     setError(null)
     setRecording(null)
     setElapsed(0)
@@ -141,7 +143,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       timerRef.current = window.setInterval(() => {
         const seconds = (Date.now() - startedAtRef.current) / 1000
         setElapsed(seconds)
-        if (seconds >= MAX_RECORD_SECONDS) {
+        if (seconds >= limitSeconds) {
           stop()
         }
       }, 250)
@@ -168,7 +170,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     } finally {
       startingRef.current = false
     }
-  }, [cleanup, stop, t])
+  }, [cleanup, options.maxSeconds, stop, t])
 
   // 卸载时释放麦克风。注意 StrictMode 会先「挂载→清理→再挂载」：
   // 清理里置 disposed=true，再挂载时必须复位为 false，否则 start 会误判为已卸载。
