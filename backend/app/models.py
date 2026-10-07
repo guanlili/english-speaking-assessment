@@ -89,7 +89,9 @@ class UsersPublic(SQLModel):
 
 class PassageBase(SQLModel):
     title: str = Field(min_length=1, max_length=255)
-    topic: str = Field(default="Pets", max_length=100)
+    # 主题单一事实源是所属单元：挂单元时由服务端派生为 unit.topic（见
+    # crud.derive_passage_topic），此字段只在「未归属」篇目上由教师显式给定
+    topic: str = Field(default="", max_length=100)
     cefr_band: str = Field(default="B1", max_length=10)
     text: str = Field(min_length=1)
     # 中文提示（可选）：学生端题干下方展示；空则回退题型固定提示

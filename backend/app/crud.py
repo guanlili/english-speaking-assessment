@@ -15,6 +15,7 @@ from app.models import (
     PassageCreate,
     PracticeSession,
     Student,
+    Unit,
     User,
     UserCreate,
     UserUpdate,
@@ -100,12 +101,27 @@ def unique_passage_slug(session: Session, base: str) -> str:
     return f"{base[:90]}-{uuid.uuid4().hex[:8]}"
 
 
+def derive_passage_topic(
+    session: Session, unit_id: uuid.UUID | None, topic: str
+) -> str:
+    """篇目主题单一事实源：挂单元时以单元主题为准，未挂单元才用传入值。"""
+    if unit_id is not None:
+        unit = session.get(Unit, unit_id)
+        if unit is not None:
+            return unit.topic
+    return topic
+
+
 def create_passage(*, session: Session, passage_in: PassageCreate) -> Passage:
     # slug 未填时自动生成（管理端/脚本共用同一套规则）
     slug = passage_in.slug or unique_passage_slug(
         session, slugify_title(passage_in.title)
     )
     payload = passage_in.model_dump(exclude={"slug"}) | {"slug": slug}
+    # 挂单元的篇目主题跟随单元（题库三层：主题→篇目→句子）
+    payload["topic"] = derive_passage_topic(
+        session, passage_in.unit_id, passage_in.topic
+    )
     db_passage = Passage.model_validate(payload)
     session.add(db_passage)
     session.commit()

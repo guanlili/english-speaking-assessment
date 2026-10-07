@@ -9,6 +9,7 @@ import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { TopicPicker } from "@/components/Admin/TopicPicker"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import AudioSetter from "@/components/Practice/AudioSetter"
+import { PassageSentences } from "@/components/Teaching/PassageSentences"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -81,6 +82,7 @@ const emptyForm: PassageForm = {
 interface UnitOption {
   id: string
   title: string
+  topic: string
 }
 
 function toRequestBody(form: PassageForm) {
@@ -117,6 +119,10 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
   const topicsQuery = useQuery({
     queryKey: ["admin", "topics"],
     queryFn: () => AdminService.listTopics(),
+  })
+  const scenariosQuery = useQuery({
+    queryKey: ["admin", "scenarios"],
+    queryFn: () => AdminService.listScenarios(),
   })
 
   const invalidate = () => {
@@ -170,25 +176,25 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
   const units = (unitsQuery.data ?? []).map((u) => ({
     id: u.id,
     title: u.title,
+    topic: u.topic,
   }))
-  const unitTitle = (id?: string | null) =>
-    units.find((u) => u.id === id)?.title ??
-    t({ zh: "未归属", en: "Unassigned" })
 
   return (
     <div className="flex flex-col gap-6">
       {!embedded && <ContentNavigation />}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          {t(TERMS.typeReading)}
-        </h1>
-        <p className="text-muted-foreground">
-          {t({
-            zh: "录入文章或段落，学生朗读并提交录音，系统提供参考反馈。听句复述请到「听句复述」题库。",
-            en: "Add articles or paragraphs for students to read aloud and submit recordings, with reference feedback from the system. For Listen & Repeat, use its own question bank.",
-          })}
-        </p>
-      </div>
+      {!embedded && (
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {t(TERMS.typeReading)}
+          </h1>
+          <p className="text-muted-foreground">
+            {t({
+              zh: "录入文章或段落，学生朗读并提交录音，系统提供参考反馈。展开篇目可直接管理它名下的听句复述。",
+              en: "Add articles or paragraphs for students to read aloud and submit recordings, with reference feedback from the system. Expand a passage to manage its repeat sentences inline.",
+            })}
+          </p>
+        </div>
+      )}
 
       <details className="rounded-xl border bg-card p-4">
         <summary className="cursor-pointer font-medium text-primary">
@@ -198,6 +204,9 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
           <NewPassageForm
             topics={topicsQuery.data ?? []}
             units={units}
+            scenarioTopics={
+              new Set((scenariosQuery.data ?? []).map((s) => s.topic ?? ""))
+            }
             pending={createMutation.isPending}
             onSubmit={(form) => createMutation.mutateAsync(form)}
           />
@@ -239,26 +248,19 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
           })}
         </p>
       ) : (
-        (passagesQuery.data ?? [])
-          .filter((passage) =>
+        <TopicGroups
+          passages={(passagesQuery.data ?? []).filter((passage) =>
             `${passage.title} ${passage.topic}`
               .toLowerCase()
               .includes(keyword.trim().toLowerCase()),
-          )
-          .map((passage) => (
-            <PassageCard
-              key={passage.id}
-              passage={passage}
-              unitTitle={unitTitle(passage.unit_id)}
-              expanded={expandedId === passage.id}
-              onToggle={() =>
-                setExpandedId(expandedId === passage.id ? null : passage.id)
-              }
-              onEdit={() => setEditing(passage)}
-              onDelete={() => setToDelete(passage)}
-              onMutated={invalidate}
-            />
-          ))
+          )}
+          units={unitsQuery.data ?? []}
+          expandedId={expandedId}
+          onToggle={setExpandedId}
+          onEdit={setEditing}
+          onDelete={setToDelete}
+          onMutated={invalidate}
+        />
       )}
 
       {passagesQuery.isSuccess &&
@@ -279,6 +281,9 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
         passage={editing}
         topics={topicsQuery.data ?? []}
         units={units}
+        scenarioTopics={
+          new Set((scenariosQuery.data ?? []).map((s) => s.topic ?? ""))
+        }
         pending={updateMutation.isPending}
         onClose={() => setEditing(null)}
         onSubmit={(form) => {
@@ -313,16 +318,19 @@ function PassageFields({
   setForm,
   topics,
   units,
+  scenarioTopics,
   idPrefix = "passage-",
 }: {
   form: PassageForm
   setForm: (next: PassageForm) => void
   topics: string[]
   units: UnitOption[]
+  scenarioTopics: Set<string>
   /** 新建表单与编辑弹窗同时在页面上，用前缀避免重复 id。 */
   idPrefix?: string
 }) {
   const { t } = useI18n()
+  const attachedUnit = units.find((u) => u.id === form.unit_id)
   return (
     <>
       <div className="space-y-1">
@@ -336,27 +344,14 @@ function PassageFields({
         />
       </div>
       <div className="space-y-1">
-        <Label>{t({ zh: "配套问答主题", en: "Paired Q&A Topic" })}</Label>
-        <TopicPicker
-          value={form.topic}
-          topics={topics}
-          onChange={(topic) => setForm({ ...form, topic })}
-        />
-      </div>
-      <div className="space-y-1">
-        <Label>
-          {t({
-            zh: "所属单元（用于课堂指派）",
-            en: "Unit (for class assignment)",
-          })}
-        </Label>
+        <Label>{t({ zh: "所属主题（单元）", en: "Topic (Unit)" })}</Label>
         <Select
           value={form.unit_id}
           onValueChange={(next) => setForm({ ...form, unit_id: next })}
         >
           <SelectTrigger className="w-full">
             <SelectValue
-              placeholder={t({ zh: "选择单元", en: "Select unit" })}
+              placeholder={t({ zh: "选择主题", en: "Select topic" })}
             />
           </SelectTrigger>
           <SelectContent>
@@ -365,12 +360,47 @@ function PassageFields({
             </SelectItem>
             {units.map((u) => (
               <SelectItem key={u.id} value={u.id}>
-                {u.title}
+                {u.title} · {u.topic}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        <p className="text-xs text-muted-foreground">
+          {t({
+            zh: "题库按「主题 → 篇目 → 句子」组织；归属后篇目主题自动跟随单元。",
+            en: "The bank is organized topic → passage → sentences; once assigned, the passage topic follows its unit.",
+          })}
+        </p>
       </div>
+      {attachedUnit ? (
+        <div className="space-y-1">
+          <Label>{t({ zh: "配套问答主题", en: "Paired Q&A Topic" })}</Label>
+          <Input value={attachedUnit.topic} disabled readOnly />
+          <p className="text-xs text-muted-foreground">
+            {t({
+              zh: "跟随所属单元，改单元主题即可调整。",
+              en: "Follows the unit — change the unit's topic to adjust.",
+            })}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          <Label>{t({ zh: "配套问答主题", en: "Paired Q&A Topic" })}</Label>
+          <TopicPicker
+            value={form.topic}
+            topics={topics}
+            onChange={(topic) => setForm({ ...form, topic })}
+          />
+          {form.topic && !scenarioTopics.has(form.topic) && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              {t({
+                zh: "该主题还没有情景问答题：学生自主练习将跳过问答环节。",
+                en: "No Scenario Q&A exists for this topic yet — self practice will skip Q&A.",
+              })}
+            </p>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label htmlFor={`${idPrefix}band`}>
@@ -448,16 +478,123 @@ function PassageFields({
   )
 }
 
+/** 题库树中间层：按主题（单元）分组的篇目列表，「未归属」置底兜底。 */
+function TopicGroups({
+  passages,
+  units,
+  expandedId,
+  onToggle,
+  onEdit,
+  onDelete,
+  onMutated,
+}: {
+  passages: PassageWithSentences[]
+  units: Array<{
+    id: string
+    title: string
+    topic: string
+    is_active: boolean
+  }>
+  expandedId: string | null
+  onToggle: (id: string | null) => void
+  onEdit: (passage: PassageWithSentences) => void
+  onDelete: (passage: PassageWithSentences) => void
+  onMutated: () => void
+}) {
+  const { t } = useI18n()
+  const unassigned = passages.filter((p) => !p.unit_id)
+  return (
+    <div className="space-y-7">
+      {units.map((unit) => {
+        const group = passages.filter((p) => p.unit_id === unit.id)
+        return (
+          <section key={unit.id} className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2 border-b pb-2">
+              <h2 className="text-sm font-semibold">{unit.title}</h2>
+              <Badge variant="secondary">{unit.topic}</Badge>
+              {unit.is_active === false && (
+                <Badge variant="outline">
+                  {t({ zh: "已停用", en: "Disabled" })}
+                </Badge>
+              )}
+              <span className="text-xs text-muted-foreground">
+                {t({
+                  zh: `${group.length} 篇`,
+                  en: `${group.length} passage${group.length === 1 ? "" : "s"}`,
+                })}
+              </span>
+            </div>
+            {group.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {t({
+                  zh: "该主题下还没有篇目，可在上方新建时选择本主题。",
+                  en: "No passages under this topic yet — pick it when creating a passage above.",
+                })}
+              </p>
+            ) : (
+              group.map((passage) => (
+                <PassageCard
+                  key={passage.id}
+                  passage={passage}
+                  unitTitle={unit.title}
+                  expanded={expandedId === passage.id}
+                  onToggle={() =>
+                    onToggle(expandedId === passage.id ? null : passage.id)
+                  }
+                  onEdit={() => onEdit(passage)}
+                  onDelete={() => onDelete(passage)}
+                  onMutated={onMutated}
+                />
+              ))
+            )}
+          </section>
+        )
+      })}
+      {unassigned.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2 border-b pb-2">
+            <h2 className="text-sm font-semibold">
+              {t({ zh: "未归属", en: "Unassigned" })}
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              {t({
+                zh: `${unassigned.length} 篇 · 建议在编辑里归入主题`,
+                en: `${unassigned.length} · assign a topic when editing`,
+              })}
+            </span>
+          </div>
+          {unassigned.map((passage) => (
+            <PassageCard
+              key={passage.id}
+              passage={passage}
+              unitTitle={t({ zh: "未归属", en: "Unassigned" })}
+              expanded={expandedId === passage.id}
+              onToggle={() =>
+                onToggle(expandedId === passage.id ? null : passage.id)
+              }
+              onEdit={() => onEdit(passage)}
+              onDelete={() => onDelete(passage)}
+              onMutated={onMutated}
+            />
+          ))}
+        </section>
+      )}
+    </div>
+  )
+}
+
 function NewPassageForm({
   onSubmit,
   pending,
   topics,
   units,
+  scenarioTopics,
 }: {
   onSubmit: (form: PassageForm) => Promise<unknown>
   pending: boolean
   topics: string[]
   units: UnitOption[]
+  scenarioTopics: Set<string>
 }) {
   const { t } = useI18n()
   const [form, setForm] = useState<PassageForm>(emptyForm)
@@ -471,8 +608,8 @@ function NewPassageForm({
         </CardTitle>
         <CardDescription>
           {t({
-            zh: "填写篇目并选择主题；相同主题的情景问答会用于配套练习。",
-            en: "Fill in the passage and pick a topic; Scenario Q&A under the same topic is used as paired practice.",
+            zh: "选择所属主题（单元）后，配套问答主题自动跟随单元；未归属时可单独设主题。",
+            en: "Pick a topic (unit) and the paired Q&A topic follows it; set one manually only for unassigned passages.",
           })}
         </CardDescription>
       </CardHeader>
@@ -482,6 +619,7 @@ function NewPassageForm({
           setForm={setForm}
           topics={topics}
           units={units}
+          scenarioTopics={scenarioTopics}
         />
         <div className="md:col-span-2">
           <Button
@@ -508,6 +646,7 @@ function EditPassageDialog({
   passage,
   topics,
   units,
+  scenarioTopics,
   pending,
   onClose,
   onSubmit,
@@ -515,6 +654,7 @@ function EditPassageDialog({
   passage: PassageWithSentences | null
   topics: string[]
   units: UnitOption[]
+  scenarioTopics: Set<string>
   pending: boolean
   onClose: () => void
   onSubmit: (form: PassageForm) => void
@@ -565,6 +705,7 @@ function EditPassageDialog({
             setForm={setForm}
             topics={topics}
             units={units}
+            scenarioTopics={scenarioTopics}
             idPrefix="edit-passage-"
           />
         </div>
@@ -737,14 +878,7 @@ function PassageCard({
           <p className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">
             {passage.text}
           </p>
-          {(passage.sentences ?? []).length > 0 && (
-            <p className="text-xs text-muted-foreground">
-              {t({
-                zh: `本篇挂有 ${(passage.sentences ?? []).length} 句复述句，请在「听句复述」题库中管理。`,
-                en: `This passage has ${(passage.sentences ?? []).length} repeat sentences — manage them in the Listen & Repeat bank.`,
-              })}
-            </p>
-          )}
+          <PassageSentences passage={passage} onMutated={onMutated} />
         </CardContent>
       )}
 

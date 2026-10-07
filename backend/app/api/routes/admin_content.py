@@ -276,6 +276,8 @@ def create_passage(
     session: SessionDep, _admin: TeacherUserDep, passage_in: PassageCreate
 ) -> Any:
     _require_valid_band(passage_in.cefr_band)
+    if passage_in.unit_id is not None and session.get(Unit, passage_in.unit_id) is None:
+        raise HTTPException(status_code=422, detail="Unit not found")
     if passage_in.slug:
         duplicate = session.exec(
             select(Passage).where(Passage.slug == passage_in.slug)
@@ -305,7 +307,15 @@ def update_passage(
     if "unit_id" in update and update["unit_id"] is not None:
         if session.get(Unit, update["unit_id"]) is None:
             raise HTTPException(status_code=422, detail="Unit not found")
+    if "topic" in update and update["topic"] is None:
+        # topic 非空列：显式清空/空串归一为空串（挂单元时反正会被派生值覆盖）
+        update["topic"] = ""
     passage.sqlmodel_update(update)
+    # 主题单一事实源：挂单元的篇目 topic 一律跟随单元，显式传入值不生效
+    if passage.unit_id is not None:
+        passage.topic = crud.derive_passage_topic(
+            session, passage.unit_id, passage.topic
+        )
     session.add(passage)
     session.commit()
     session.refresh(passage)
@@ -853,9 +863,16 @@ def update_unit(
         raise HTTPException(status_code=404, detail="Unit not found")
     update = unit_in.model_dump(exclude_unset=True)
     # 非空字段不允许显式清空
-    _reject_null_non_nullable(update, {"title", "order_index", "is_active"})
+    _reject_null_non_nullable(update, {"title", "topic", "order_index", "is_active"})
     unit.sqlmodel_update(update)
     session.add(unit)
+    # 主题单一事实源：单元改主题后，属下篇目的 topic 级联跟随
+    if "topic" in update:
+        for passage in session.exec(
+            select(Passage).where(Passage.unit_id == unit.id)
+        ).all():
+            passage.topic = update["topic"]
+            session.add(passage)
     session.commit()
     session.refresh(unit)
     return unit
