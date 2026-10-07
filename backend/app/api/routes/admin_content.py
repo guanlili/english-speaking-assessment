@@ -10,7 +10,7 @@ EIP 文本只进数据库，不进 git。
 """
 
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -1133,6 +1133,20 @@ def _split_reading_segments(text: str, max_words: int = 90) -> list[str]:
     return segments
 
 
+def _split_reading_sentences(text: str) -> list[str]:
+    """按正文顺序生成逐句朗读题，保留句末标点。"""
+    import re as _re
+
+    sentences: list[str] = []
+    for paragraph in _re.split(r"\n+", text):
+        sentences.extend(
+            sentence.strip()
+            for sentence in _re.split(r"(?<=[.!?])\s+", paragraph.strip())
+            if sentence.strip()
+        )
+    return sentences
+
+
 class PassageSplitResult(SQLModel):
     created: int
     passage_ids: list[uuid.UUID] = []
@@ -1144,20 +1158,31 @@ def split_passage_into_readings(
     session: SessionDep,
     _admin: TeacherUserDep,
     passage_id: uuid.UUID,
+    mode: Literal["paragraph", "sentence"] = "paragraph",
 ) -> Any:
-    """把长文一键拆成多篇朗读材料（参考复述句自动拆分；本地算法非 AI）。
+    """把长文按段或按句拆成多道文章朗读题（本地算法非 AI）。
 
-    按段落切分，超长段再按句聚合；新篇目沿用原标题/主题/难度/分组，
+    按段落切分时超长段再按句聚合；按句切分时每句生成一道题。
+    新篇目沿用原标题/主题/难度/分组，
     标题追加（一）（二）…；原长文自动停用（历史与挂靠复述句保留，可再启用）。
     """
     passage = session.get(Passage, passage_id)
     if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
 
-    segments = _split_reading_segments(passage.text or "")
+    segments = (
+        _split_reading_sentences(passage.text or "")
+        if mode == "sentence"
+        else _split_reading_segments(passage.text or "")
+    )
     if len(segments) < 2:
         raise HTTPException(
-            status_code=422, detail="正文只有一个段落，无需拆分；请先用换行分段"
+            status_code=422,
+            detail=(
+                "正文不足两句，无法按句拆分"
+                if mode == "sentence"
+                else "正文只有一个段落，无需拆分；请先用换行分段"
+            ),
         )
 
     base_title = _re_split_title(passage.title or "Reading")

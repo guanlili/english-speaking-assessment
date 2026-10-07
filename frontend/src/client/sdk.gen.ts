@@ -610,12 +610,14 @@ export class AdminService {
     
     /**
      * Split Passage Into Readings
-     * 把长文一键拆成多篇朗读材料（参考复述句自动拆分；本地算法非 AI）。
+     * 把长文按段或按句拆成多道文章朗读题（本地算法非 AI）。
      *
-     * 按段落切分，超长段再按句聚合；新篇目沿用原标题/主题/难度/分组，
+     * 按段落切分时超长段再按句聚合；按句切分时每句生成一道题。
+     * 新篇目沿用原标题/主题/难度/分组，
      * 标题追加（一）（二）…；原长文自动停用（历史与挂靠复述句保留，可再启用）。
      * @param data The data for the request.
      * @param data.passageId
+     * @param data.mode
      * @returns PassageSplitResult Successful Response
      * @throws ApiError
      */
@@ -625,6 +627,9 @@ export class AdminService {
             url: '/api/v1/admin/passages/{passage_id}/split',
             path: {
                 passage_id: data.passageId
+            },
+            query: {
+                mode: data.mode
             },
             errors: {
                 422: 'Validation Error'

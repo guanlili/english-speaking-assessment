@@ -56,15 +56,18 @@ export function PassageSentences({
     onSuccess: (data) => {
       showSuccessToast(
         t({
-          zh: `已拆分出 ${data.created ?? 0} 句复述句`,
-          en: `Split out ${data.created ?? 0} repeat sentences`,
+          zh: `已生成 ${data.created ?? 0} 道听句复述题`,
+          en: `Created ${data.created ?? 0} listen-and-repeat items`,
         }),
       )
       invalidate()
     },
-    onError: (err: { body?: { detail?: string } }) =>
+    onError: () =>
       showErrorToast(
-        err.body?.detail ?? t({ zh: "拆分失败", en: "Split failed" }),
+        t({
+          zh: "生成失败，请确认正文至少有 3 句且尚无听句复述题",
+          en: "Couldn't generate items. Check that the text has at least 3 sentences and no existing listen-and-repeat items.",
+        }),
       ),
   })
 
@@ -87,13 +90,16 @@ export function PassageSentences({
               size="sm"
               disabled={autoSplit.isPending}
               title={t({
-                zh: "按句切分正文、由短到长自动生成 3 句",
-                en: "Split the text into 3 sentences from shortest to longest",
+                zh: "从正文选出 3 句，生成听音后复述的题目；学生作答时不显示文字",
+                en: "Select 3 sentences for listen-and-repeat items; students won't see the text while answering",
               })}
               onClick={() => autoSplit.mutate()}
             >
               <Scissors />
-              {t({ zh: "自动拆分", en: "Auto-split" })}
+              {t({
+                zh: "生成听句复述题",
+                en: "Create listen-and-repeat items",
+              })}
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
@@ -105,8 +111,8 @@ export function PassageSentences({
       {sentences.length === 0 ? (
         <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
           {t({
-            zh: "本篇还没有复述句：可以手动添加，或从正文自动拆分。",
-            en: "No repeat sentences yet — add one manually or auto-split from the text.",
+            zh: "本篇还没有听句复述题：可以手动添加，或从正文选出 3 句生成。",
+            en: "No listen-and-repeat items yet — add one manually or generate 3 from the text.",
           })}
         </p>
       ) : (

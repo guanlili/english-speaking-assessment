@@ -1772,6 +1772,7 @@ export type AdminAutoSplitSentencesData = {
 export type AdminAutoSplitSentencesResponse = (AutoSplitResult);
 
 export type AdminSplitPassageIntoReadingsData = {
+    mode?: 'paragraph' | 'sentence';
     passageId: string;
 };
 

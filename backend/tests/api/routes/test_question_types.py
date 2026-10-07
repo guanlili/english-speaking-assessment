@@ -472,6 +472,49 @@ def test_split_passage_into_readings(
         client.delete(f"/api/v1/admin/passages/{pid}", headers=superuser_token_headers)
 
 
+def test_split_passage_into_sentence_readings(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+) -> None:
+    """单段文章也能按句生成独立的文章朗读题，保留顺序和标点。"""
+    sentences = ["What is your favorite food?", "I enjoy mooncakes.", "They are sweet!"]
+    created = client.post(
+        "/api/v1/admin/passages",
+        json={
+            "title": "Food Story",
+            "topic": "Food",
+            "text": " ".join(sentences),
+        },
+        headers=superuser_token_headers,
+    )
+    assert created.status_code == 200, created.text
+    original_id = created.json()["id"]
+
+    split = client.post(
+        f"/api/v1/admin/passages/{original_id}/split?mode=sentence",
+        headers=superuser_token_headers,
+    )
+    assert split.status_code == 200, split.text
+    result = split.json()
+    assert result["created"] == len(sentences)
+
+    passages = client.get(
+        "/api/v1/admin/passages", headers=superuser_token_headers
+    ).json()
+    by_id = {passage["id"]: passage for passage in passages}
+    assert [by_id[pid]["text"] for pid in result["passage_ids"]] == sentences
+    assert [by_id[pid]["title"] for pid in result["passage_ids"]] == [
+        "Food Story（一）",
+        "Food Story（二）",
+        "Food Story（三）",
+    ]
+    assert all(by_id[pid]["is_active"] for pid in result["passage_ids"])
+    assert by_id[original_id]["is_active"] is False
+
+    for pid in [*result["passage_ids"], original_id]:
+        client.delete(f"/api/v1/admin/passages/{pid}", headers=superuser_token_headers)
+
+
 def test_delete_classroom_guards(
     client: TestClient,
     superuser_token_headers: dict[str, str],

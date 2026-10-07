@@ -744,28 +744,36 @@ function PassageCard({
   onMutated: () => void
 }) {
   const { t } = useI18n()
-  const [splitConfirm, setSplitConfirm] = useState(false)
+  const [splitMode, setSplitMode] = useState<"paragraph" | "sentence" | null>(
+    null,
+  )
   const splitPassage = useMutation({
-    mutationFn: () =>
-      AdminService.splitPassageIntoReadings({ passageId: passage.id }),
-    onSuccess: (data) => {
+    mutationFn: (mode: "paragraph" | "sentence") =>
+      AdminService.splitPassageIntoReadings({ passageId: passage.id, mode }),
+    onSuccess: (data, mode) => {
       toast.success(
         t({
-          zh: `已拆分为 ${data.created} 篇朗读材料，原长文已停用（可再启用）`,
-          en: `Split into ${data.created} reading passages; the original long text is now disabled (can be re-enabled)`,
+          zh: `已按${mode === "sentence" ? "句" : "段"}生成 ${data.created} 道文章朗读题，原文已停用（可再启用）`,
+          en: `Created ${data.created} read-aloud items by ${mode === "sentence" ? "sentence" : "paragraph"}; the original is disabled (you can re-enable it)`,
         }),
       )
-      setSplitConfirm(false)
+      setSplitMode(null)
       onMutated()
     },
-    onError: (err: { body?: { detail?: string } }) =>
+    onError: () =>
       toast.error(
-        err.body?.detail ?? t({ zh: "拆分失败", en: "Split failed" }),
+        t({
+          zh: "拆分失败，请检查正文后重试",
+          en: "Couldn't split. Check the text and try again.",
+        }),
       ),
   })
   const paragraphCount = (passage.text ?? "")
     .split(/\n+/)
     .filter((p) => p.trim()).length
+  const sentenceCount = (passage.text ?? "")
+    .split(/\n+|(?<=[.!?])\s+/)
+    .filter((sentence) => sentence.trim()).length
 
   return (
     <Card>
@@ -776,7 +784,7 @@ function PassageCard({
             <span className="font-normal text-muted-foreground">
               · {passage.topic} · {passage.cefr_band} ·{" "}
               {(passage.sentences ?? []).length}{" "}
-              {t({ zh: "句复述", en: "repeat sentences" })}
+              {t({ zh: "听句复述", en: "listen-and-repeat items" })}
             </span>
           </CardTitle>
           <CardDescription className="mt-1 flex flex-wrap items-center gap-2">
@@ -807,18 +815,33 @@ function PassageCard({
               title={
                 paragraphCount < 2
                   ? t({
-                      zh: "正文只有一个段落：请先用换行分段，再拆分",
-                      en: "Only one paragraph: separate paragraphs with line breaks before splitting",
+                      zh: "按段落拆成朗读题：请先用换行分段",
+                      en: "Split into read-aloud items by paragraph: add line breaks first",
                     })
                   : t({
-                      zh: "按段落拆成多篇朗读材料，原长文停用",
-                      en: "Split by paragraph into multiple readings; the original is disabled",
+                      zh: "按段落生成多道文章朗读题，原长文停用",
+                      en: "Create read-aloud items from paragraphs; the original is disabled",
                     })
               }
-              onClick={() => setSplitConfirm(true)}
+              onClick={() => setSplitMode("paragraph")}
             >
               <Scissors />
-              {t({ zh: "拆分为多篇", en: "Split" })}
+              {t({ zh: "按段拆朗读题", en: "Split into read-aloud items" })}
+            </Button>
+          )}
+          {passage.is_active !== false && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={sentenceCount < 2 || splitPassage.isPending}
+              title={t({
+                zh: "按句生成文章朗读题，每句单独录音；原长文停用",
+                en: "Create one read-aloud item per sentence; the original is disabled",
+              })}
+              onClick={() => setSplitMode("sentence")}
+            >
+              <Scissors />
+              {t({ zh: "按句拆朗读题", en: "Split by sentence" })}
             </Button>
           )}
           <Button
@@ -883,21 +906,27 @@ function PassageCard({
       )}
 
       <ConfirmDialog
-        open={splitConfirm}
+        open={splitMode !== null}
         title={t({
-          zh: `把「${passage.title}」拆分为多篇朗读材料？`,
-          en: `Split "${passage.title}" into multiple readings?`,
+          zh: `把「${passage.title}」按${splitMode === "sentence" ? "句" : "段"}拆成文章朗读题？`,
+          en: `Split "${passage.title}" into read-aloud items by ${splitMode === "sentence" ? "sentence" : "paragraph"}?`,
         })}
         description={t({
-          zh: `按段落拆成 ${paragraphCount} 篇（超长段会再按句聚合），新篇沿用标题、主题与分组并自动编号；原长文将停用，历史与挂靠的复述句保留。`,
-          en: `Split into ${paragraphCount} passages by paragraph (very long paragraphs are regrouped by sentence); new passages reuse the title, topic, and group with automatic numbering. The original long text is disabled; history and attached repeat sentences are kept.`,
+          zh:
+            splitMode === "sentence"
+              ? `预计生成 ${sentenceCount} 道逐句朗读题，每句单独录音。原长文将停用；已发布练习和挂靠的听句复述题保留。`
+              : `按段落拆成约 ${paragraphCount} 道朗读题（超长段会再按句聚合）。原长文将停用；已发布练习和挂靠的听句复述题保留。`,
+          en:
+            splitMode === "sentence"
+              ? `About ${sentenceCount} read-aloud items will be created, one recording per sentence. The original will be disabled; published exercises and linked listen-and-repeat items are kept.`
+              : `About ${paragraphCount} read-aloud items will be created by paragraph (long paragraphs may be split further). The original will be disabled; published exercises and linked listen-and-repeat items are kept.`,
         })}
         confirmText={t({ zh: "拆分", en: "Split" })}
         onOpenChange={(next) => {
-          if (!next) setSplitConfirm(false)
+          if (!next) setSplitMode(null)
         }}
         onConfirm={async () => {
-          await splitPassage.mutateAsync()
+          if (splitMode) await splitPassage.mutateAsync(splitMode)
         }}
       />
     </Card>
