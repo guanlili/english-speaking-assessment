@@ -276,6 +276,8 @@ def create_passage(
     session: SessionDep, _admin: TeacherUserDep, passage_in: PassageCreate
 ) -> Any:
     _require_valid_band(passage_in.cefr_band)
+    if passage_in.unit_id is not None and session.get(Unit, passage_in.unit_id) is None:
+        raise HTTPException(status_code=422, detail="Unit not found")
     if passage_in.slug:
         duplicate = session.exec(
             select(Passage).where(Passage.slug == passage_in.slug)
@@ -861,7 +863,7 @@ def update_unit(
         raise HTTPException(status_code=404, detail="Unit not found")
     update = unit_in.model_dump(exclude_unset=True)
     # 非空字段不允许显式清空
-    _reject_null_non_nullable(update, {"title", "order_index", "is_active"})
+    _reject_null_non_nullable(update, {"title", "topic", "order_index", "is_active"})
     unit.sqlmodel_update(update)
     session.add(unit)
     # 主题单一事实源：单元改主题后，属下篇目的 topic 级联跟随

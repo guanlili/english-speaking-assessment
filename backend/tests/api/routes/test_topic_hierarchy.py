@@ -76,6 +76,29 @@ def test_passage_topic_derives_from_unit(
     }
     assert topics[passage["id"]] == "Food"
 
+    # 单元主题不可设为 null，否则属下篇目会跟着写入非空列而触发 500。
+    invalid = client.put(
+        f"/api/v1/admin/units/{unit['id']}",
+        json={"topic": None},
+        headers=headers,
+    )
+    assert invalid.status_code == 422
+
+
+def test_passage_rejects_unknown_unit(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    response = client.post(
+        "/api/v1/admin/passages",
+        json={
+            "title": "Missing unit",
+            "text": "A short passage.",
+            "unit_id": str(uuid.uuid4()),
+        },
+        headers=superuser_token_headers,
+    )
+    assert response.status_code == 422
+
 
 def test_unattached_passage_topic_is_free(
     client: TestClient, superuser_token_headers: dict[str, str]
