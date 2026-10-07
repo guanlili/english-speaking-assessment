@@ -37,6 +37,7 @@ import { MAX_RECORD_SECONDS, useRecorder } from "@/hooks/useRecorder"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
+import { nextUnansweredIndex } from "@/lib/practice-navigation"
 import {
   EXAM_KIND_LABELS,
   EXAM_LEVEL_LABELS,
@@ -347,10 +348,6 @@ function ClassroomPracticePage() {
     setPrepDone(true)
     setPrepLeft(0)
   }
-  const allDone =
-    items.length > 0 &&
-    items.every((item) => isTerminal(attemptByItem.get(item.id)?.status))
-
   const {
     submit,
     submitting,
@@ -364,6 +361,14 @@ function ClassroomPracticePage() {
     itemId: currentItem?.id ?? "",
     sessionId: plan?.session_id,
   })
+
+  const allDone =
+    items.length > 0 &&
+    items.every(
+      (item) =>
+        (item.id === attempt?.item_id && isTerminal(attempt?.status)) ||
+        isTerminal(attemptByItem.get(item.id)?.status),
+    )
 
   const recorder = useRecorder({
     onComplete: (rec) => {
@@ -1390,11 +1395,34 @@ function ClassroomPracticePage() {
               !attemptFailed && (
                 <Button
                   onClick={() => {
-                    // 下一题：解除本轮会话/题目钉住，回到最新活动计划。
-                    // 已全部完成时保留会话钉住，让自动跳结果页仍绑定本轮会话。
-                    if (!allDone) setPinnedSessionId(null)
+                    // 先在当前题单里选定下一道未完成题：计划缓存尚未刷新时，
+                    // 仅清空 pinnedItemId 会再次定位到刚完成的旧题。
+                    const completedIds = new Set(
+                      items
+                        .filter(
+                          (item) =>
+                            (item.id === attempt?.item_id &&
+                              isTerminal(attempt?.status)) ||
+                            isTerminal(attemptByItem.get(item.id)?.status),
+                        )
+                        .map((item) => item.id),
+                    )
+                    const nextIndex = nextUnansweredIndex(
+                      items.map((item) => item.id),
+                      currentIndex,
+                      completedIds,
+                    )
+                    if (nextIndex >= 0) {
+                      setFocusItemId(items[nextIndex].id)
+                    } else {
+                      navigatedRef.current = true
+                      void navigate({
+                        to: "/p/$code/result",
+                        params: { code },
+                        search: sessionId ? { session: sessionId } : {},
+                      })
+                    }
                     setPinnedItemId(null)
-                    setFocusItemId(null)
                     recordingTargetRef.current = null
                     recorderReset()
                     resetAttempt()
