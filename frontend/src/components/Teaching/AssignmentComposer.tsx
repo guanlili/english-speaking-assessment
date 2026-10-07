@@ -36,13 +36,6 @@ import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { NumberInput } from "@/components/ui/number-input"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   assignmentItemKey,
   defaultAssignmentOrder,
   moveAssignmentItem,
@@ -174,9 +167,9 @@ export function AssignmentComposer({
   const currentQuestionIds = new Set(
     currentItems.filter((i) => i.type === "question").map((i) => i.id),
   )
-  const currentScenario = scenarios.find((s) =>
-    s.questions.some((q) => currentQuestionIds.has(q.id)),
-  )
+  const currentScenarioIds = scenarios
+    .filter((s) => s.questions.some((q) => currentQuestionIds.has(q.id)))
+    .map((s) => s.id)
 
   const initialTypes: LessonTypes = {
     reading: currentPassages.length > 0,
@@ -186,7 +179,7 @@ export function AssignmentComposer({
   const initialSelection: LessonSelection = {
     passages: currentPassages,
     sentences: currentSentences,
-    scenarioId: currentScenario?.id ?? null,
+    scenarioIds: currentScenarioIds,
   }
 
   return (
@@ -297,10 +290,14 @@ function ComposerForm({
     setSelection(next)
   }
 
-  const { scenario, problems } = inspectSelection(types, selection, {
-    sentences,
-    scenarios,
-  })
+  const { scenarios: selectedScenarios, problems } = inspectSelection(
+    types,
+    selection,
+    {
+      sentences,
+      scenarios,
+    },
+  )
 
   const selectedPassages = passages.filter((p) =>
     selection.passages.includes(p.id ?? ""),
@@ -308,7 +305,9 @@ function ComposerForm({
   const selectedSentences = sentences.filter((s) =>
     selection.sentences.includes(s.id ?? ""),
   )
-  const scenarioQuestions = scenario?.questions ?? []
+  const scenarioQuestions = selectedScenarios.flatMap(
+    (scenario) => scenario.questions,
+  )
 
   // 唯一题单：预览 / 数量摘要 / 提交请求共用同一份「按启用题型过滤后的题单」，
   // 避免教师取消勾选某题型后，预览或提交仍带上该题型已选内容。
@@ -320,7 +319,7 @@ function ComposerForm({
       types.repeat
         ? selection.sentences.map((id) => ({ type: "repeat", id }))
         : [],
-      types.qa && selection.scenarioId
+      types.qa && selection.scenarioIds.length > 0
         ? scenarioQuestions.map((q) => ({ type: "question", id: q.id }))
         : [],
     )
@@ -696,47 +695,47 @@ function ComposerForm({
               </h2>
               <p className="mb-3 mt-2 text-sm text-muted-foreground">
                 {t({
-                  zh: "选一个主题，该主题下全部题目按序进入本次练习。",
-                  en: "Pick one topic; all its questions join this practice in order.",
+                  zh: "可多选主题；选中主题下的全部题目进入本次练习。",
+                  en: "Select multiple topics; all questions in each selected topic join this practice.",
                 })}
               </p>
-              <Select
-                value={selection.scenarioId ?? ""}
-                onValueChange={(id) =>
-                  setSelectionDirty((cur) => ({
-                    ...cur,
-                    scenarioId: id || null,
-                  }))
-                }
-              >
-                <SelectTrigger
-                  aria-label={t({
-                    zh: "选择问答主题",
-                    en: "Select a Q&A topic",
-                  })}
-                >
-                  <SelectValue
-                    placeholder={t({
-                      zh: "选择问答主题",
-                      en: "Select a Q&A topic",
-                    })}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {scenarios
-                    .filter((s) => s.is_active)
-                    .map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
+              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                {scenarios
+                  .filter((s) => s.is_active)
+                  .map((scenario) => (
+                    <label
+                      key={scenario.id}
+                      htmlFor={`pick-scenario-${scenario.id}`}
+                      className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 ${selection.scenarioIds.includes(scenario.id) ? "border-primary/50 bg-primary/5" : ""}`}
+                    >
+                      <Checkbox
+                        id={`pick-scenario-${scenario.id}`}
+                        checked={selection.scenarioIds.includes(scenario.id)}
+                        onCheckedChange={() =>
+                          setSelectionDirty((cur) => ({
+                            ...cur,
+                            scenarioIds: toggleInList(
+                              cur.scenarioIds,
+                              scenario.id,
+                            ),
+                          }))
+                        }
+                      />
+                      <span className="min-w-0 flex-1 text-sm">
                         {t({
-                          zh: `${s.topic}（${s.questions.length} 题）`,
-                          en: `${s.topic} (${s.questions.length} questions)`,
+                          zh: `${scenario.topic}（${scenario.questions.length} 题）`,
+                          en: `${scenario.topic} (${scenario.questions.length} questions)`,
                         })}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              {scenario && (
-                <div className="mt-3 space-y-1 rounded-lg border p-3 text-sm">
+                      </span>
+                    </label>
+                  ))}
+              </div>
+              {selectedScenarios.map((scenario) => (
+                <div
+                  key={scenario.id}
+                  className="mt-3 space-y-1 rounded-lg border p-3 text-sm"
+                >
+                  <p className="font-medium">{scenario.topic}</p>
                   {scenario.questions.map((q) => (
                     <p key={q.id} className="truncate">
                       · {q.text}{" "}
@@ -746,32 +745,10 @@ function ComposerForm({
                           en: `${q.suggested_seconds}s`,
                         })}
                       </span>
-                      {q.exam_kind && (
-                        <span className="ml-1.5 inline-flex gap-1 align-middle">
-                          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                            {t(
-                              EXAM_KIND_LABELS[q.exam_kind] ?? {
-                                zh: q.exam_kind,
-                                en: q.exam_kind,
-                              },
-                            )}
-                          </span>
-                          {q.exam_level && (
-                            <span className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                              {t(
-                                EXAM_LEVEL_LABELS[q.exam_level] ?? {
-                                  zh: q.exam_level,
-                                  en: q.exam_level,
-                                },
-                              )}
-                            </span>
-                          )}
-                        </span>
-                      )}
                     </p>
                   ))}
                 </div>
-              )}
+              ))}
             </section>
           )}
           {planItems.length > 0 && (
@@ -1072,7 +1049,7 @@ function currentQuestionCount(
   scenarios: ScenarioOut[],
   selection: LessonSelection,
 ): number {
-  return (
-    scenarios.find((s) => s.id === selection.scenarioId)?.questions.length ?? 0
-  )
+  return scenarios
+    .filter((scenario) => selection.scenarioIds.includes(scenario.id))
+    .reduce((count, scenario) => count + scenario.questions.length, 0)
 }

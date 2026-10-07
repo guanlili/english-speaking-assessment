@@ -10,7 +10,7 @@ export interface LessonTypes {
 export interface LessonSelection {
   passages: string[]
   sentences: string[]
-  scenarioId: string | null
+  scenarioIds: string[]
 }
 
 export interface LessonData {
@@ -25,9 +25,9 @@ export function inspectSelection(
   picked: LessonSelection,
   data: LessonData,
 ) {
-  const scenario = picked.scenarioId
-    ? data.scenarios.find((s) => s.id === picked.scenarioId)
-    : undefined
+  const scenarios = picked.scenarioIds.map((id) =>
+    data.scenarios.find((scenario) => scenario.id === id),
+  )
   const problems: BiString[] = []
   if (!types.reading && !types.repeat && !types.qa)
     problems.push({
@@ -44,10 +44,19 @@ export function inspectSelection(
       zh: "勾选了听句复述，请选择要发布的复述句。",
       en: "Listen & Repeat is checked — select sentences to publish.",
     })
-  if (types.qa && (!scenario || scenario.questions.length === 0))
+  if (
+    types.qa &&
+    (scenarios.length === 0 ||
+      scenarios.some(
+        (scenario) => !scenario?.is_active || scenario.questions.length === 0,
+      ))
+  )
     problems.push({
-      zh: "勾选了模拟问答，请选择一个有题目的问答主题。",
-      en: "Scenario Q&A is checked — pick a topic that has questions.",
+      zh: "勾选了情景问答，请选择至少一个启用且有题目的问答主题。",
+      en: "Scenario Q&A is checked — pick at least one active topic with questions.",
     })
-  return { scenario, problems }
+  return {
+    scenarios: scenarios.filter((scenario) => scenario !== undefined),
+    problems,
+  }
 }
