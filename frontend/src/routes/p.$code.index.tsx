@@ -154,6 +154,30 @@ function ClassroomPracticePage() {
   // 身份守卫：无本地身份跳加入页；查询报"学生不存在"清身份重进（5 页共用 hook）
   useStudentGuard(code, student, todayQuery)
 
+  // 模考开考：确认页「开始考试」显式触发计时（后端幂等，重复点击不重置）
+  const startExamMutation = useMutation({
+    mutationFn: async () => {
+      const sid = todayQuery.data?.session_id
+      if (sid !== undefined) {
+        await ClassesService.startExam({
+          code: code.toUpperCase(),
+          requestBody: { session_id: sid },
+        })
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: todayQueryKey })
+    },
+    onError: () => {
+      toast.error(
+        t({
+          zh: "开始考试失败，请重试",
+          en: "Could not start the exam — please try again",
+        }),
+      )
+    },
+  })
+
   // 换一题：同主题同档未做过（US-06）；探索轮绑定 session_id
   const nextQuestionMutation = useMutation({
     mutationFn: () =>
@@ -449,6 +473,8 @@ function ClassroomPracticePage() {
 
   // ── 模考态 ──
   const exam = plan?.exam ?? null
+  // started=false 表示还在开考确认页：不计时、不挂切屏监听、不作答
+  const examStarted = exam?.started ?? false
   const examActive = exam !== null && !exam.ended
   const examEnded = exam?.ended ?? false
   // 当前题是否已作答（考试一次性口径：有终态作答即锁定）
@@ -456,12 +482,15 @@ function ClassroomPracticePage() {
     ? isTerminal(attemptByItem.get(currentItem.id)?.status)
     : false
 
-  // 本地倒计时：以服务端 remaining_seconds 为准心，每秒递减仅作展示
+  // 本地倒计时：以服务端 remaining_seconds 为准心，每秒递减仅作展示；
+  // 未开考（确认页）不启动——服务端此刻也还没计时
   const examServerRemaining = exam?.remaining_seconds
   const [examRemaining, setExamRemaining] = useState<number | null>(null)
   useEffect(() => {
-    if (examServerRemaining !== undefined) setExamRemaining(examServerRemaining)
-  }, [examServerRemaining])
+    if (examServerRemaining !== undefined && examStarted) {
+      setExamRemaining(examServerRemaining)
+    }
+  }, [examServerRemaining, examStarted])
   const examTimerActive = examRemaining !== null
   useEffect(() => {
     if (!examTimerActive) return
@@ -488,30 +517,50 @@ function ClassroomPracticePage() {
     })
   }, [examEnded, navigate, code, sessionId])
 
-  // 防切屏：考试期间离开页面（切 tab/最小化）上报并提示
+  // 防切屏：开考后离开页面（切 tab/最小化）计数并提示；切回时补报离屏时长
+  const hiddenAtRef = useRef<number | null>(null)
   useEffect(() => {
-    if (!examActive || !plan?.session_id) return
+    if (!examActive || !examStarted || !plan?.session_id) return
+    const sessionId = plan.session_id
     const onVisibility = () => {
-      if (document.visibilityState !== "hidden") return
+      if (document.visibilityState === "hidden") {
+        hiddenAtRef.current = Date.now()
+        void ClassesService.reportExamViolation({
+          code: code.toUpperCase(),
+          requestBody: { session_id: sessionId },
+        }).catch(() => {
+          /* 上报失败不打断考试 */
+        })
+        toast.warning(
+          t({
+            zh: "考试中请勿切屏",
+            en: "Stay on this screen during the exam",
+          }),
+          {
+            description: t({
+              zh: "本次切屏已被记录，老师可见",
+              en: "This switch has been recorded and is visible to your teacher",
+            }),
+          },
+        )
+        return
+      }
+      // visible 相位：带上本次离屏秒数（服务端封顶 1 小时/次）
+      const hiddenAt = hiddenAtRef.current
+      hiddenAtRef.current = null
+      const awaySeconds =
+        hiddenAt === null ? 0 : Math.round((Date.now() - hiddenAt) / 1000)
+      if (awaySeconds <= 0) return
       void ClassesService.reportExamViolation({
         code: code.toUpperCase(),
-        requestBody: { session_id: plan.session_id },
+        requestBody: { session_id: sessionId, away_seconds: awaySeconds },
       }).catch(() => {
-        /* 上报失败不打断考试 */
+        /* 时长补报失败仅损失该次时长，次数已记 */
       })
-      toast.warning(
-        t({ zh: "考试中请勿切屏", en: "Stay on this screen during the exam" }),
-        {
-          description: t({
-            zh: "本次切屏已被记录，老师可见",
-            en: "This switch has been recorded and is visible to your teacher",
-          }),
-        },
-      )
     }
     document.addEventListener("visibilitychange", onVisibility)
     return () => document.removeEventListener("visibilitychange", onVisibility)
-  }, [examActive, plan?.session_id, code, t])
+  }, [examActive, examStarted, plan?.session_id, code, t])
   const scoring =
     submitting || (attemptStatus !== undefined && !attemptTerminal)
   const recorderReset = recorder.reset
@@ -593,6 +642,64 @@ function ClassroomPracticePage() {
       <div className="flex min-h-screen items-center justify-center text-muted-foreground">
         {t({ zh: "今天没有练习内容。", en: "No practice content today." })}
       </div>
+    )
+  }
+
+  // 模考开考确认页：计时以显式确认为准（服务端落时间），防止误触打开即烧时间。
+  // 只渲染确认卡，题目/录音在开考前一律不可触达。
+  if (exam !== null && !examStarted) {
+    return (
+      <StudentShell active="practice">
+        <div className="flex min-h-[70vh] items-center justify-center px-4">
+          <Card className="w-full max-w-md">
+            <CardContent className="space-y-5 pt-6 text-center">
+              <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950/40">
+                <Shield className="size-6 text-orange-600" aria-hidden />
+              </div>
+              <div className="space-y-1">
+                <h1 className="text-lg font-bold">
+                  {t({ zh: "准备开始考试", en: "Ready to start the exam" })}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  {t({
+                    zh: `本场考试整场限时 ${exam.time_limit_minutes} 分钟，点「开始考试」后即开始计时。`,
+                    en: `This exam is limited to ${exam.time_limit_minutes} minutes in total. Timing starts when you tap "Start exam".`,
+                  })}
+                </p>
+              </div>
+              <ul className="mx-auto max-w-xs space-y-2 text-left text-sm text-muted-foreground">
+                <li>
+                  {t({
+                    zh: "· 每题只能作答一次，不能重录",
+                    en: "· One attempt per item — no re-recording",
+                  })}
+                </li>
+                <li>
+                  {t({
+                    zh: "· 考试中切屏会被记录，老师可见",
+                    en: "· Screen switches during the exam are recorded and visible to your teacher",
+                  })}
+                </li>
+                <li>
+                  {t({
+                    zh: "· 时间一到将自动交卷并进入结果页",
+                    en: "· When time is up, the exam auto-submits and opens your results",
+                  })}
+                </li>
+              </ul>
+              <Button
+                className="min-h-11 w-full text-base"
+                disabled={startExamMutation.isPending}
+                onClick={() => startExamMutation.mutate()}
+              >
+                {startExamMutation.isPending
+                  ? t({ zh: "正在开始…", en: "Starting…" })
+                  : t({ zh: "开始考试", en: "Start exam" })}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </StudentShell>
     )
   }
 

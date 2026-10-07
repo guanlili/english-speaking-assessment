@@ -718,8 +718,8 @@ class PracticeSession(SQLModel, table=True):
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
     )
-    # 模考计时（仅 is_exam 的发布绑定会话）：首次打开今日计划时落开始时间；
-    # 到时或交卷后落结束时间，此后拒绝继续作答
+    # 模考计时（仅 is_exam 的发布绑定会话）：学生在开考确认页点「开始考试」
+    # 时落开始时间（防误触打开即烧时间）；到时或交卷后落结束时间，此后拒绝继续作答
     exam_started_at: datetime | None = Field(
         default=None,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -736,6 +736,8 @@ class PracticeSession(SQLModel, table=True):
     )
     # 防切屏：前端 visibilitychange 上报的离开次数（教师面板可见）
     tab_switch_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    # 防切屏：切回时上报的累计离屏秒数（教师面板可见；单次封顶 1 小时）
+    tab_switch_seconds: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
 
 
 # 作答状态机：上传即返回 queued，后台评分线程推进到 done/failed。
@@ -993,8 +995,9 @@ class BoardStudent(SQLModel):
     streak_days: int = 0
     # 每题最新作答，与 BoardData.items 骨架按 item_id 对应
     items: list[BoardItem]
-    # 模考监考信息（非考试发布为 null）：切屏次数与用时
+    # 模考监考信息（非考试发布为 null）：切屏次数、离屏时长与用时
     exam_tab_switches: int | None = None
+    exam_tab_switch_seconds: int | None = None
     exam_time_used_seconds: int | None = None
     exam_ended: bool | None = None
 

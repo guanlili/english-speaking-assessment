@@ -49,6 +49,7 @@ from app.models import (
     ClassroomExercise,
     ClassroomExercisePublic,
     ClassroomPublic,
+    ExamStatus,
     GamificationInfo,
     ItemListen,
     LearningPath,
@@ -718,10 +719,10 @@ def read_today_plan(
         if bound_exercise is not None:
             snapshot_items = bound_exercise.snapshot_items
 
-    # 模考生命周期：首次打开即计时（以服务器时间为准），到时惰性交卷
+    # 模考生命周期：开考由学生在确认页显式触发（POST /exam/start），
+    # today 只做到时惰性终结与状态透出（未开考不计时）
     exam_info = None
     if bound_exercise is not None and bound_exercise.is_exam:
-        exam_service.ensure_exam_started(session, practice_session, bound_exercise)
         exam_service.finalize_if_expired(session, practice_session, bound_exercise)
         exam_info = exam_service.exam_status_payload(practice_session, bound_exercise)
 
@@ -1589,8 +1590,9 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             < week_ago.date()
         )
         inactive = joined_before_window and student.id not in recent_by_student
-        # 模考监考：当前发布为考试时，给出该生切屏次数/用时/是否交卷
+        # 模考监考：当前发布为考试时，给出该生切屏次数/离屏时长/用时/是否交卷
         exam_switches: int | None = None
+        exam_switch_seconds: int | None = None
         exam_used: int | None = None
         exam_ended_flag: bool | None = None
         if current_exercise is not None and current_exercise.is_exam:
@@ -1598,6 +1600,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             if ps is not None and ps.exam_started_at is not None:
                 exam_service.finalize_if_expired(session, ps, current_exercise)
                 exam_switches = ps.tab_switch_count
+                exam_switch_seconds = ps.tab_switch_seconds
                 exam_used = exam_service.exam_time_used_seconds(ps)
                 exam_ended_flag = ps.exam_ended_at is not None
         board_students.append(
@@ -1619,6 +1622,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                 ),
                 has_pending=has_pending,
                 exam_tab_switches=exam_switches,
+                exam_tab_switch_seconds=exam_switch_seconds,
                 exam_time_used_seconds=exam_used,
                 exam_ended=exam_ended_flag,
                 round_status=round_status,
@@ -1933,28 +1937,29 @@ class ListenResult(SQLModel):
     replay_limit: int  # 0 = 不限
 
 
+class ExamStartRequest(SQLModel):
+    session_id: uuid.UUID
+
+
 class ExamViolationRequest(SQLModel):
     session_id: uuid.UUID
+    # 切回（visible 相位）携带本次离屏秒数；缺省 = 离开（hidden 相位）计数
+    away_seconds: int | None = None
 
 
 class ExamViolationResult(SQLModel):
     tab_switch_count: int
+    tab_switch_seconds: int = 0
 
 
-@router.post("/{code}/exam/violation", response_model=ExamViolationResult)
-def report_exam_violation(
+def _exam_session_of(
     session: SessionDep,
-    code: str,
-    body: ExamViolationRequest,
-    current_user: StudentUserDep,
-) -> Any:
-    """防切屏上报：前端 visibilitychange 触发，计数入会话（教师面板可见）。
-
-    仅本人考试会话有效；考试结束后拒绝（不再累计）。
-    """
-    classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
-    practice_session = session.get(PracticeSession, body.session_id)
+    classroom: Classroom,
+    student: Student,
+    exam_session_id: uuid.UUID,
+) -> tuple[PracticeSession, ClassroomExercise]:
+    """定位本人绑定当前发布的考试会话；不存在/非模考一律 4xx。"""
+    practice_session = session.get(PracticeSession, exam_session_id)
     if (
         practice_session is None
         or practice_session.student_id != student.id
@@ -1966,8 +1971,56 @@ def report_exam_violation(
     exercise = session.get(ClassroomExercise, practice_session.assignment_id)
     if exercise is None or not exercise.is_exam:
         raise HTTPException(status_code=422, detail="该练习不是模考")
-    count = exam_service.record_tab_switch(session, practice_session, exercise)
-    return ExamViolationResult(tab_switch_count=count)
+    return practice_session, exercise
+
+
+@router.post("/{code}/exam/start", response_model=ExamStatus)
+def start_exam(
+    session: SessionDep,
+    code: str,
+    body: ExamStartRequest,
+    current_user: StudentUserDep,
+) -> Any:
+    """开考确认页显式开考：落开始时间并返回考试状态（幂等，重复调用不重置计时）。
+
+    仅本人考试会话有效；到时后再调用返回已结束状态。
+    """
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(session, classroom, current_user)
+    practice_session, exercise = _exam_session_of(
+        session, classroom, student, body.session_id
+    )
+    exam_service.ensure_exam_started(session, practice_session, exercise)
+    exam_service.finalize_if_expired(session, practice_session, exercise)
+    return exam_service.exam_status_payload(practice_session, exercise)
+
+
+@router.post("/{code}/exam/violation", response_model=ExamViolationResult)
+def report_exam_violation(
+    session: SessionDep,
+    code: str,
+    body: ExamViolationRequest,
+    current_user: StudentUserDep,
+) -> Any:
+    """防切屏上报：hidden 相位计数 +1；visible 相位带 away_seconds 累计离屏时长。
+
+    仅本人考试会话有效；未开考/考试结束后拒绝（不再累计）。
+    """
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(session, classroom, current_user)
+    practice_session, exercise = _exam_session_of(
+        session, classroom, student, body.session_id
+    )
+    if body.away_seconds is None:
+        count = exam_service.record_tab_switch(session, practice_session, exercise)
+        return ExamViolationResult(
+            tab_switch_count=count,
+            tab_switch_seconds=practice_session.tab_switch_seconds,
+        )
+    count, seconds = exam_service.record_tab_return(
+        session, practice_session, exercise, body.away_seconds
+    )
+    return ExamViolationResult(tab_switch_count=count, tab_switch_seconds=seconds)
 
 
 @router.post("/{code}/listens", response_model=ListenResult)
@@ -2101,6 +2154,7 @@ class ExerciseStudentResult(SQLModel):
     items: list[BoardItem]
     # 模考监考（非考试发布为 null）
     exam_tab_switches: int | None = None
+    exam_tab_switch_seconds: int | None = None
     exam_time_used_seconds: int | None = None
     exam_ended: bool | None = None
 
@@ -2197,11 +2251,13 @@ def read_exercise_results(
                 )
             )
         exam_switches: int | None = None
+        exam_switch_seconds: int | None = None
         exam_used: int | None = None
         exam_ended_flag: bool | None = None
         if exercise.is_exam and ps is not None and ps.exam_started_at is not None:
             exam_service.finalize_if_expired(session, ps, exercise)
             exam_switches = ps.tab_switch_count
+            exam_switch_seconds = ps.tab_switch_seconds
             exam_used = exam_service.exam_time_used_seconds(ps)
             exam_ended_flag = ps.exam_ended_at is not None
         out.append(
@@ -2213,6 +2269,7 @@ def read_exercise_results(
                 total_count=len(exercise.snapshot_items),
                 has_pending=has_pending,
                 exam_tab_switches=exam_switches,
+                exam_tab_switch_seconds=exam_switch_seconds,
                 exam_time_used_seconds=exam_used,
                 exam_ended=exam_ended_flag,
                 items=items,

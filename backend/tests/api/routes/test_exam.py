@@ -1,4 +1,4 @@
-"""模考模式：整场限时（服务端强约束）+ 每题一次作答 + 防切屏计数 + 监考展示。"""
+"""模考模式：确认页显式开考 + 整场限时（服务端强约束）+ 每题一次作答 + 防切屏（次数/离屏时长）+ 监考展示。"""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -115,7 +115,7 @@ def _cleanup_classroom(db: Session, classroom_id: str) -> None:
 def test_exam_lifecycle_and_one_shot(
     client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
-    """开考计时 → 每题一次作答（幂等重试不受影响）→ 到时拒绝继续。"""
+    """确认页开考计时 → 每题一次作答（幂等重试不受影响）→ 到时拒绝继续。"""
     classroom = _resp_json(
         client.post(
             "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
@@ -130,16 +130,43 @@ def test_exam_lifecycle_and_one_shot(
         resp = _publish_exam(client, superuser_token_headers, code, items)
         assert resp.status_code == 200, resp.text
 
-        # 学生打开今日计划 = 开考（服务器时间落 exam_started_at）
+        # today 只透出考试状态，不自动开考（防止误触打开即烧时间）
         plan = _today(client, headers, code)
         assert plan["exam"] is not None
-        assert plan["exam"]["started"] is True
+        assert plan["exam"]["started"] is False
         assert plan["exam"]["ended"] is False
-        assert 0 < plan["exam"]["remaining_seconds"] <= 30 * 60
         assert plan["exam"]["time_limit_minutes"] == 30
 
-        # 首题作答成功；同题第二次（新幂等键）被拒
+        # 未开考直接作答被拒
         item = plan["items"][0]
+        early = _submit(client, headers, code, item, plan["session_id"], "early-key")
+        assert early.status_code == 422
+        assert "尚未开始" in early.json()["detail"]
+
+        # 确认页显式开考：落服务器时间；重复调用幂等不重置
+        start = client.post(
+            f"/api/v1/classes/{code}/exam/start",
+            json={"session_id": plan["session_id"]},
+            headers=headers,
+        )
+        assert start.status_code == 200, start.text
+        assert start.json()["started"] is True
+        assert start.json()["ended"] is False
+        assert 0 < start.json()["remaining_seconds"] <= 30 * 60
+        restart = client.post(
+            f"/api/v1/classes/{code}/exam/start",
+            json={"session_id": plan["session_id"]},
+            headers=headers,
+        )
+        assert restart.status_code == 200
+        assert restart.json()["started"] is True
+        assert restart.json()["remaining_seconds"] <= start.json()["remaining_seconds"]
+
+        plan = _today(client, headers, code)
+        assert plan["exam"]["started"] is True
+        assert 0 < plan["exam"]["remaining_seconds"] <= 30 * 60
+
+        # 首题作答成功；同题第二次（新幂等键）被拒
         key = f"exam-{random_lower_string()}"
         first = _submit(client, headers, code, item, plan["session_id"], key)
         assert first.status_code == 200, first.text
@@ -188,7 +215,7 @@ def test_exam_lifecycle_and_one_shot(
 def test_tab_switch_reporting_and_board(
     client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
-    """切屏上报计数（非考试拒绝）；教师面板与发布历史展示监考信息。"""
+    """切屏上报计数与离屏时长（非考试/未开考拒绝）；教师面板与发布历史展示。"""
     classroom = _resp_json(
         client.post(
             "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
@@ -205,26 +232,66 @@ def test_tab_switch_reporting_and_board(
             == 200
         )
         plan = _today(client, headers, code)
+        violation_url = f"/api/v1/classes/{code}/exam/violation"
 
+        # 未开考不可上报（确认页阶段切 tab 不算作弊）
+        early = client.post(
+            violation_url,
+            json={"session_id": plan["session_id"]},
+            headers=headers,
+        )
+        assert early.status_code == 422
+        assert "尚未开始" in early.json()["detail"]
+
+        start = client.post(
+            f"/api/v1/classes/{code}/exam/start",
+            json={"session_id": plan["session_id"]},
+            headers=headers,
+        )
+        assert start.status_code == 200
+
+        # hidden 相位：只计数；visible 相位：带离屏秒数累计时长
         report = client.post(
-            f"/api/v1/classes/{code}/exam/violation",
+            violation_url,
             json={"session_id": plan["session_id"]},
             headers=headers,
         )
         assert report.status_code == 200, report.text
         assert report.json()["tab_switch_count"] == 1
+        assert report.json()["tab_switch_seconds"] == 0
         report = client.post(
-            f"/api/v1/classes/{code}/exam/violation",
+            violation_url,
+            json={"session_id": plan["session_id"], "away_seconds": 90},
+            headers=headers,
+        )
+        assert report.json()["tab_switch_count"] == 1
+        assert report.json()["tab_switch_seconds"] == 90
+        report = client.post(
+            violation_url,
             json={"session_id": plan["session_id"]},
             headers=headers,
         )
         assert report.json()["tab_switch_count"] == 2
+        report = client.post(
+            violation_url,
+            json={"session_id": plan["session_id"], "away_seconds": 45},
+            headers=headers,
+        )
+        assert report.json()["tab_switch_count"] == 2
+        assert report.json()["tab_switch_seconds"] == 135
+        # 单次上报封顶 1 小时（异常值防刷）
+        report = client.post(
+            violation_url,
+            json={"session_id": plan["session_id"], "away_seconds": 999_999},
+            headers=headers,
+        )
+        assert report.json()["tab_switch_seconds"] == 135 + 3600
 
         # 他人会话不可上报
         stranger = make_student(db, client, code, "无关学生")
         assert (
             client.post(
-                f"/api/v1/classes/{code}/exam/violation",
+                violation_url,
                 json={"session_id": plan["session_id"]},
                 headers=stranger["headers"],
             ).status_code
@@ -237,6 +304,7 @@ def test_tab_switch_reporting_and_board(
         ).json()
         row = next(s for s in board["students"] if s["display_name"] == "考生乙")
         assert row["exam_tab_switches"] == 2
+        assert row["exam_tab_switch_seconds"] == 135 + 3600
         assert row["exam_time_used_seconds"] is not None
         assert row["exam_ended"] is False
 
@@ -251,6 +319,7 @@ def test_tab_switch_reporting_and_board(
         ).json()
         rrow = next(r for r in results if r["display_name"] == "考生乙")
         assert rrow["exam_tab_switches"] == 2
+        assert rrow["exam_tab_switch_seconds"] == 135 + 3600
 
         # 非考试会话上报被拒（自主练习轮）
         ps_self = db.exec(
@@ -262,7 +331,7 @@ def test_tab_switch_reporting_and_board(
         if ps_self is not None:
             assert (
                 client.post(
-                    f"/api/v1/classes/{code}/exam/violation",
+                    violation_url,
                     json={"session_id": str(ps_self.id)},
                     headers=headers,
                 ).status_code

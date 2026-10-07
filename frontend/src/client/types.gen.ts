@@ -136,6 +136,7 @@ export type BoardStudent = {
     streak_days?: number;
     items: Array<BoardItem>;
     exam_tab_switches?: (number | null);
+    exam_tab_switch_seconds?: (number | null);
     exam_time_used_seconds?: (number | null);
     exam_ended?: (boolean | null);
 };
@@ -244,6 +245,10 @@ export type DraftQuestionOut = {
     suggested_seconds: number;
 };
 
+export type ExamStartRequest = {
+    session_id: string;
+};
+
 /**
  * 考试态信息（学生端倒计时与锁题、教师端监考）。
  */
@@ -257,10 +262,12 @@ export type ExamStatus = {
 
 export type ExamViolationRequest = {
     session_id: string;
+    away_seconds?: (number | null);
 };
 
 export type ExamViolationResult = {
     tab_switch_count: number;
+    tab_switch_seconds?: number;
 };
 
 /**
@@ -275,6 +282,7 @@ export type ExerciseStudentResult = {
     has_pending: boolean;
     items: Array<BoardItem>;
     exam_tab_switches?: (number | null);
+    exam_tab_switch_seconds?: (number | null);
     exam_time_used_seconds?: (number | null);
     exam_ended?: (boolean | null);
 };
@@ -1912,6 +1920,13 @@ export type ClassesReadLearningPathData = {
 };
 
 export type ClassesReadLearningPathResponse = (LearningPath);
+
+export type ClassesStartExamData = {
+    code: string;
+    requestBody: ExamStartRequest;
+};
+
+export type ClassesStartExamResponse = (ExamStatus);
 
 export type ClassesReportExamViolationData = {
     code: string;
