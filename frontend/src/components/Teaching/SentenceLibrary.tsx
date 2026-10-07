@@ -40,8 +40,16 @@ import { EXAM_LEVEL_LABELS, TERMS, VOCAB_LEVEL_ORDER } from "@/lib/terms"
 
 const NO_PASSAGE = "__none__"
 
-/** 听句复述独立题库：句子直接创建与管理，挂篇目仅为自主练习复用。 */
-export function SentenceLibrary() {
+/** 听句复述独立题库：句子直接创建与管理，挂篇目仅为自主练习复用。
+ *
+ * standaloneOnly=true 时作为题库底部的「独立题（分级考试用）」小节：
+ * 只列出/新建不挂篇目的分级考试复述句（挂篇目的句子在篇目卡里管理）。
+ */
+export function SentenceLibrary({
+  standaloneOnly = false,
+}: {
+  standaloneOnly?: boolean
+}) {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const { t } = useI18n()
@@ -132,37 +140,49 @@ export function SentenceLibrary() {
     editForm.replays <= 9
 
   const passages = passagesQuery.data ?? []
-  const sentences = (sentencesQuery.data ?? []).filter((s) =>
-    (s.text ?? "").toLowerCase().includes(keyword.trim().toLowerCase()),
-  )
+  const sentences = (sentencesQuery.data ?? [])
+    .filter((s) => (standaloneOnly ? !s.passage_id : true))
+    .filter((s) =>
+      (s.text ?? "").toLowerCase().includes(keyword.trim().toLowerCase()),
+    )
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">
-          {t(TERMS.typeRepeat)}
+          {standaloneOnly
+            ? t({ zh: "独立题（分级考试用）", en: "Standalone Exam Items" })
+            : t(TERMS.typeRepeat)}
         </h1>
         <p className="text-muted-foreground">
-          {t({
-            zh: "复述句独立成题：直接创建、直接在课堂发布时选用。挂到篇目的句子还会出现在学生的自主练习里。",
-            en: "Repeat sentences are standalone items: create them directly and pick them when publishing to a classroom. Sentences linked to a passage also appear in students' self practice.",
-          })}
+          {standaloneOnly
+            ? t({
+                zh: "不挂篇目的听令复述句：按五级标注难度，供分级题型训练与课堂发布直接选用。",
+                en: "Listen & repeat items not tied to a passage: level-tagged for graded exam training and direct use when publishing.",
+              })
+            : t({
+                zh: "复述句独立成题：直接创建、直接在课堂发布时选用。挂到篇目的句子还会出现在学生的自主练习里。",
+                en: "Repeat sentences are standalone items: create them directly and pick them when publishing to a classroom. Sentences linked to a passage also appear in students' self practice.",
+              })}
         </p>
       </div>
 
       <NewSentenceCard
         passages={passages.map((p) => ({ id: p.id, title: p.title }))}
+        standaloneOnly={standaloneOnly}
         onCreated={invalidate}
       />
 
-      <AutoSplitCard
-        passages={passages.map((p) => ({
-          id: p.id,
-          title: p.title,
-          sentenceCount: (p.sentences ?? []).length,
-        }))}
-        onCreated={invalidate}
-      />
+      {!standaloneOnly && (
+        <AutoSplitCard
+          passages={passages.map((p) => ({
+            id: p.id,
+            title: p.title,
+            sentenceCount: (p.sentences ?? []).length,
+          }))}
+          onCreated={invalidate}
+        />
+      )}
 
       <Input
         aria-label={t({ zh: "搜索复述句", en: "Search repeat sentences" })}
@@ -530,9 +550,11 @@ function AutoSplitCard({
 
 function NewSentenceCard({
   passages,
+  standaloneOnly = false,
   onCreated,
 }: {
   passages: Array<{ id: string; title: string }>
+  standaloneOnly?: boolean
   onCreated: () => void
 }) {
   const { showSuccessToast, showErrorToast } = useCustomToast()
@@ -588,10 +610,15 @@ function NewSentenceCard({
           {t({ zh: "新建复述句", en: "New Repeat Sentence" })}
         </CardTitle>
         <CardDescription>
-          {t({
-            zh: "输入一句英文，设置作答时间与可听次数（0 表示不限）。可选挂到某篇朗读材料，供学生自主练习复用。",
-            en: "Enter an English sentence and set the answer time and replays (0 means unlimited). Optionally link it to a read-aloud passage for students' self practice.",
-          })}
+          {standaloneOnly
+            ? t({
+                zh: "输入英文句子并标注考试级别；这类题不挂篇目，只在课堂发布和分级训练里使用。",
+                en: "Enter an English sentence and tag its exam level; standalone items skip passages and are used in publishing and graded training.",
+              })
+            : t({
+                zh: "输入一句英文，设置作答时间与可听次数（0 表示不限）。可选挂到某篇朗读材料，供学生自主练习复用。",
+                en: "Enter an English sentence and set the answer time and replays (0 means unlimited). Optionally link it to a read-aloud passage for students' self practice.",
+              })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -606,7 +633,9 @@ function NewSentenceCard({
             placeholder="I would like to talk about a boring place I visited."
           />
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div
+          className={`grid gap-4 ${standaloneOnly ? "sm:grid-cols-3" : "sm:grid-cols-2 lg:grid-cols-4"}`}
+        >
           <div className="space-y-2">
             <Label htmlFor="new-sentence-seconds">
               {t({ zh: "作答秒数（3–60）", en: "Answer Seconds (3–60)" })}
@@ -631,26 +660,31 @@ function NewSentenceCard({
               onValueChange={setReplays}
             />
           </div>
-          <div className="space-y-2">
-            <Label>
-              {t({ zh: "挂到篇目（可选）", en: "Link to Passage (optional)" })}
-            </Label>
-            <Select value={passageId} onValueChange={setPassageId}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_PASSAGE}>
-                  {t({ zh: "不挂（独立题目）", en: "None (standalone)" })}
-                </SelectItem>
-                {passages.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.title}
+          {!standaloneOnly && (
+            <div className="space-y-2">
+              <Label>
+                {t({
+                  zh: "挂到篇目（可选）",
+                  en: "Link to Passage (optional)",
+                })}
+              </Label>
+              <Select value={passageId} onValueChange={setPassageId}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PASSAGE}>
+                    {t({ zh: "不挂（独立题目）", en: "None (standalone)" })}
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+                  {passages.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="new-sentence-exam-level">
               {t({ zh: "考试级别（可选）", en: "Exam level (optional)" })}

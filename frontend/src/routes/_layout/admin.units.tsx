@@ -56,7 +56,7 @@ interface UnitRow {
 
 const emptyForm = { order_index: 0, title: "", topic: "", is_active: true }
 
-export function UnitsAdmin() {
+export function UnitsAdmin({ embedded = false }: { embedded?: boolean }) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
@@ -156,23 +156,39 @@ export function UnitsAdmin() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {t({ zh: "单元管理", en: "Unit Management" })}
-          </h1>
-          <p className="text-muted-foreground">
+      {!embedded && (
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {t({ zh: "单元管理", en: "Unit Management" })}
+            </h1>
+            <p className="text-muted-foreground">
+              {t({
+                zh: "把一个单元的配套内容整理为一组，课堂里选中该单元即可安排练习。每个单元建议只保留一篇启用的篇目。",
+                en: "Group a unit's content together so a class can pick the unit and start practicing. Keep one enabled passage per unit.",
+              })}
+            </p>
+          </div>
+          <Button onClick={openCreate}>
+            <Plus />
+            {t({ zh: "新建单元", en: "New Unit" })}
+          </Button>
+        </div>
+      )}
+      {embedded && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
             {t({
-              zh: "把一个单元的配套内容整理为一组，课堂里选中该单元即可安排练习。每个单元建议只保留一篇启用的篇目。",
-              en: "Group a unit's content together so a class can pick the unit and start practicing. Keep one enabled passage per unit.",
+              zh: "主题（单元）是题库顶层：主题 → 篇目 → 句子。每个单元建议只保留一篇启用的篇目。",
+              en: "Topics (units) sit at the top of the bank: topic → passage → sentences. Keep one enabled passage per unit.",
             })}
           </p>
+          <Button size="sm" onClick={openCreate}>
+            <Plus />
+            {t({ zh: "新建主题", en: "New Topic" })}
+          </Button>
         </div>
-        <Button onClick={openCreate}>
-          <Plus />
-          {t({ zh: "新建单元", en: "New Unit" })}
-        </Button>
-      </div>
+      )}
 
       <Card>
         <CardHeader>

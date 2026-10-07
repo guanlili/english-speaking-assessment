@@ -3,6 +3,8 @@ import { Link } from "@tanstack/react-router"
 import {
   BookOpenText,
   Check,
+  ChevronDown,
+  ChevronUp,
   Ear,
   Eye,
   MessagesSquare,
@@ -34,19 +36,23 @@ import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { NumberInput } from "@/components/ui/number-input"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+  assignmentItemKey,
+  defaultAssignmentOrder,
+  moveAssignmentItem,
+  reconcileAssignmentOrder,
+} from "@/lib/assignment-order"
 import { useI18n } from "@/lib/i18n"
 import {
   inspectSelection,
   type LessonSelection,
   type LessonTypes,
 } from "@/lib/lesson-readiness"
-import { EXAM_KIND_LABELS, EXAM_LEVEL_LABELS, TERMS } from "@/lib/terms"
+import {
+  EXAM_KIND_LABELS,
+  EXAM_LEVEL_LABELS,
+  ITEM_TYPE_LABELS,
+  TERMS,
+} from "@/lib/terms"
 
 const questionTypes = [
   {
@@ -161,9 +167,9 @@ export function AssignmentComposer({
   const currentQuestionIds = new Set(
     currentItems.filter((i) => i.type === "question").map((i) => i.id),
   )
-  const currentScenario = scenarios.find((s) =>
-    s.questions.some((q) => currentQuestionIds.has(q.id)),
-  )
+  const currentScenarioIds = scenarios
+    .filter((s) => s.questions.some((q) => currentQuestionIds.has(q.id)))
+    .map((s) => s.id)
 
   const initialTypes: LessonTypes = {
     reading: currentPassages.length > 0,
@@ -173,7 +179,7 @@ export function AssignmentComposer({
   const initialSelection: LessonSelection = {
     passages: currentPassages,
     sentences: currentSentences,
-    scenarioId: currentScenario?.id ?? null,
+    scenarioIds: currentScenarioIds,
   }
 
   return (
@@ -187,6 +193,7 @@ export function AssignmentComposer({
       scenarios={scenarios}
       initialTypes={initialTypes}
       initialSelection={initialSelection}
+      initialItems={currentItems as AssignmentItemIn[]}
       initialTitle={
         currentExercise?.title ?? t({ zh: "课堂练习", en: "Class Practice" })
       }
@@ -205,6 +212,7 @@ function ComposerForm({
   scenarios,
   initialTypes,
   initialSelection,
+  initialItems,
   initialTitle,
   exerciseHistory,
 }: {
@@ -217,12 +225,16 @@ function ComposerForm({
   scenarios: ScenarioOut[]
   initialTypes: LessonTypes
   initialSelection: LessonSelection
+  initialItems: AssignmentItemIn[]
   initialTitle: string
   exerciseHistory: ClassroomExercisePublic[]
 }) {
   const { t } = useI18n()
   const [types, setTypes] = useState<LessonTypes>(initialTypes)
   const [selection, setSelection] = useState<LessonSelection>(initialSelection)
+  const [orderedKeys, setOrderedKeys] = useState<string[] | null>(
+    initialItems.length ? initialItems.map(assignmentItemKey) : null,
+  )
   const [title, setTitle] = useState(initialTitle)
   // 模考模式：整场限时（分钟），确认页点「开始考试」后计时、到时自动交卷、切屏记录
   const [isExam, setIsExam] = useState(false)
@@ -233,6 +245,7 @@ function ComposerForm({
   const prevServerTypesRef = useRef(initialTypes)
   const prevServerSelectionRef = useRef(initialSelection)
   const prevServerTitleRef = useRef(initialTitle)
+  const prevServerItemsRef = useRef(initialItems)
   const queryClient = useQueryClient()
 
   // 服务端指派变更时同步本地表单（如老师在另一设备改了指派）
@@ -246,16 +259,23 @@ function ComposerForm({
       JSON.stringify(initialSelection) ===
       JSON.stringify(prevServerSelectionRef.current)
     const titleSame = initialTitle === prevServerTitleRef.current
-    if (typesSame && selectionSame && titleSame) return
+    const itemsSame =
+      JSON.stringify(initialItems) ===
+      JSON.stringify(prevServerItemsRef.current)
+    if (typesSame && selectionSame && titleSame && itemsSame) return
     prevServerTypesRef.current = initialTypes
     prevServerSelectionRef.current = initialSelection
     prevServerTitleRef.current = initialTitle
+    prevServerItemsRef.current = initialItems
     if (!dirtyRef.current) {
       setTypes(initialTypes)
       setSelection(initialSelection)
       setTitle(initialTitle)
+      setOrderedKeys(
+        initialItems.length ? initialItems.map(assignmentItemKey) : null,
+      )
     }
-  }, [initialTypes, initialSelection, initialTitle])
+  }, [initialTypes, initialSelection, initialTitle, initialItems])
 
   const setTypesDirty = (
     next: LessonTypes | ((prev: LessonTypes) => LessonTypes),
@@ -270,10 +290,14 @@ function ComposerForm({
     setSelection(next)
   }
 
-  const { scenario, problems } = inspectSelection(types, selection, {
-    sentences,
-    scenarios,
-  })
+  const { scenarios: selectedScenarios, problems } = inspectSelection(
+    types,
+    selection,
+    {
+      sentences,
+      scenarios,
+    },
+  )
 
   const selectedPassages = passages.filter((p) =>
     selection.passages.includes(p.id ?? ""),
@@ -281,25 +305,33 @@ function ComposerForm({
   const selectedSentences = sentences.filter((s) =>
     selection.sentences.includes(s.id ?? ""),
   )
-  const scenarioQuestions = scenario?.questions ?? []
+  const scenarioQuestions = selectedScenarios.flatMap(
+    (scenario) => scenario.questions,
+  )
 
   // 唯一题单：预览 / 数量摘要 / 提交请求共用同一份「按启用题型过滤后的题单」，
   // 避免教师取消勾选某题型后，预览或提交仍带上该题型已选内容。
   const planItems = useMemo(() => {
-    const items: AssignmentItemIn[] = []
-    if (types.reading) {
-      items.push(...selection.passages.map((id) => ({ type: "passage", id })))
-    }
-    if (types.repeat) {
-      items.push(...selection.sentences.map((id) => ({ type: "repeat", id })))
-    }
-    if (types.qa && selection.scenarioId) {
-      items.push(
-        ...scenarioQuestions.map((q) => ({ type: "question", id: q.id })),
-      )
-    }
-    return items
-  }, [types, selection, scenarioQuestions])
+    const available = defaultAssignmentOrder(
+      types.reading
+        ? selection.passages.map((id) => ({ type: "passage", id }))
+        : [],
+      types.repeat
+        ? selection.sentences.map((id) => ({ type: "repeat", id }))
+        : [],
+      types.qa && selection.scenarioIds.length > 0
+        ? scenarioQuestions.map((q) => ({ type: "question", id: q.id }))
+        : [],
+    )
+    return reconcileAssignmentOrder(available, orderedKeys)
+  }, [types, selection, scenarioQuestions, orderedKeys])
+
+  const moveItem = (index: number, direction: -1 | 1) => {
+    dirtyRef.current = true
+    setOrderedKeys(
+      moveAssignmentItem(planItems, index, direction).map(assignmentItemKey),
+    )
+  }
 
   const planCounts = useMemo(
     () => ({
@@ -310,15 +342,12 @@ function ComposerForm({
     [planItems],
   )
 
-  // 预览只展示启用题型对应的已选内容
-  const previewPassages = types.reading ? selectedPassages : []
-  const previewSentences = types.repeat ? selectedSentences : []
-  const previewQuestions = types.qa ? scenarioQuestions : []
-
   const changed =
     JSON.stringify(types) !== JSON.stringify(initialTypes) ||
     JSON.stringify(selection) !== JSON.stringify(initialSelection) ||
-    title.trim() !== initialTitle.trim()
+    title.trim() !== initialTitle.trim() ||
+    JSON.stringify(planItems.map(assignmentItemKey)) !==
+      JSON.stringify(initialItems.map(assignmentItemKey))
 
   const publish = useMutation({
     mutationFn: (clear: boolean) =>
@@ -666,47 +695,47 @@ function ComposerForm({
               </h2>
               <p className="mb-3 mt-2 text-sm text-muted-foreground">
                 {t({
-                  zh: "选一个主题，该主题下全部题目按序进入本次练习。",
-                  en: "Pick one topic; all its questions join this practice in order.",
+                  zh: "可多选主题；选中主题下的全部题目进入本次练习。",
+                  en: "Select multiple topics; all questions in each selected topic join this practice.",
                 })}
               </p>
-              <Select
-                value={selection.scenarioId ?? ""}
-                onValueChange={(id) =>
-                  setSelectionDirty((cur) => ({
-                    ...cur,
-                    scenarioId: id || null,
-                  }))
-                }
-              >
-                <SelectTrigger
-                  aria-label={t({
-                    zh: "选择问答主题",
-                    en: "Select a Q&A topic",
-                  })}
-                >
-                  <SelectValue
-                    placeholder={t({
-                      zh: "选择问答主题",
-                      en: "Select a Q&A topic",
-                    })}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {scenarios
-                    .filter((s) => s.is_active)
-                    .map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
+              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                {scenarios
+                  .filter((s) => s.is_active)
+                  .map((scenario) => (
+                    <label
+                      key={scenario.id}
+                      htmlFor={`pick-scenario-${scenario.id}`}
+                      className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 ${selection.scenarioIds.includes(scenario.id) ? "border-primary/50 bg-primary/5" : ""}`}
+                    >
+                      <Checkbox
+                        id={`pick-scenario-${scenario.id}`}
+                        checked={selection.scenarioIds.includes(scenario.id)}
+                        onCheckedChange={() =>
+                          setSelectionDirty((cur) => ({
+                            ...cur,
+                            scenarioIds: toggleInList(
+                              cur.scenarioIds,
+                              scenario.id,
+                            ),
+                          }))
+                        }
+                      />
+                      <span className="min-w-0 flex-1 text-sm">
                         {t({
-                          zh: `${s.topic}（${s.questions.length} 题）`,
-                          en: `${s.topic} (${s.questions.length} questions)`,
+                          zh: `${scenario.topic}（${scenario.questions.length} 题）`,
+                          en: `${scenario.topic} (${scenario.questions.length} questions)`,
                         })}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              {scenario && (
-                <div className="mt-3 space-y-1 rounded-lg border p-3 text-sm">
+                      </span>
+                    </label>
+                  ))}
+              </div>
+              {selectedScenarios.map((scenario) => (
+                <div
+                  key={scenario.id}
+                  className="mt-3 space-y-1 rounded-lg border p-3 text-sm"
+                >
+                  <p className="font-medium">{scenario.topic}</p>
                   {scenario.questions.map((q) => (
                     <p key={q.id} className="truncate">
                       · {q.text}{" "}
@@ -716,32 +745,76 @@ function ComposerForm({
                           en: `${q.suggested_seconds}s`,
                         })}
                       </span>
-                      {q.exam_kind && (
-                        <span className="ml-1.5 inline-flex gap-1 align-middle">
-                          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                            {t(
-                              EXAM_KIND_LABELS[q.exam_kind] ?? {
-                                zh: q.exam_kind,
-                                en: q.exam_kind,
-                              },
-                            )}
-                          </span>
-                          {q.exam_level && (
-                            <span className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                              {t(
-                                EXAM_LEVEL_LABELS[q.exam_level] ?? {
-                                  zh: q.exam_level,
-                                  en: q.exam_level,
-                                },
-                              )}
-                            </span>
-                          )}
-                        </span>
-                      )}
                     </p>
                   ))}
                 </div>
-              )}
+              ))}
+            </section>
+          )}
+          {planItems.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="font-semibold">
+                {t({ zh: "调整作答顺序", en: "Arrange Answer Order" })}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {t({
+                  zh: "默认按复述句、问答交替；用上下按钮调整，学生会按此顺序练习。",
+                  en: "Repeat sentences and Q&A alternate by default. Use the arrows to set the order students follow.",
+                })}
+              </p>
+              <ol className="space-y-2">
+                {planItems.map((item, index) => {
+                  const label =
+                    item.type === "passage"
+                      ? passages.find((p) => p.id === item.id)?.title
+                      : item.type === "repeat"
+                        ? sentences.find((s) => s.id === item.id)?.text
+                        : scenarioQuestions.find((q) => q.id === item.id)?.text
+                  return (
+                    <li
+                      key={assignmentItemKey(item)}
+                      className="flex min-w-0 items-center gap-2 rounded-lg border px-3 py-2"
+                    >
+                      <span className="w-6 shrink-0 text-sm font-medium">
+                        {index + 1}.
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm">
+                        {t(
+                          ITEM_TYPE_LABELS[item.type] ?? {
+                            zh: item.type,
+                            en: item.type,
+                          },
+                        )}{" "}
+                        · {label}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon-sm"
+                        disabled={index === 0}
+                        aria-label={t({
+                          zh: `第 ${index + 1} 题上移`,
+                          en: `Move item ${index + 1} up`,
+                        })}
+                        onClick={() => moveItem(index, -1)}
+                      >
+                        <ChevronUp />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon-sm"
+                        disabled={index === planItems.length - 1}
+                        aria-label={t({
+                          zh: `第 ${index + 1} 题下移`,
+                          en: `Move item ${index + 1} down`,
+                        })}
+                        onClick={() => moveItem(index, 1)}
+                      >
+                        <ChevronDown />
+                      </Button>
+                    </li>
+                  )
+                })}
+              </ol>
             </section>
           )}
         </div>
@@ -867,66 +940,44 @@ function ComposerForm({
               })}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-5">
-            {previewPassages.map((p, index) => (
-              <section key={p.id} className="rounded-xl border p-4">
-                <h3 className="font-semibold">
-                  {t(TERMS.typeReading)}{" "}
-                  {previewPassages.length > 1
-                    ? `${index + 1}/${previewPassages.length}`
-                    : ""}{" "}
-                  {t({
-                    zh: `· ${p.title} · 建议 ${p.suggested_seconds} 秒`,
-                    en: `· ${p.title} · suggested ${p.suggested_seconds}s`,
-                  })}
-                </h3>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-7">
-                  {p.text}
-                </p>
-              </section>
-            ))}
-            {previewSentences.length > 0 && (
-              <section className="rounded-xl border p-4">
-                <h3 className="font-semibold">{t(TERMS.typeRepeat)}</h3>
-                <ol className="mt-3 space-y-3">
-                  {previewSentences.map((s, index) => (
-                    <li key={s.id} className="text-sm leading-6">
-                      <p>
-                        {index + 1}. {s.text}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {t({
-                          zh: `建议 ${s.suggested_seconds} 秒 · 可听 ${(s.replay_limit ?? 3) === 0 ? "不限次数" : `${s.replay_limit ?? 3} 次`} · ${s.audio_url ? "已配标准音" : "使用浏览器语音"}`,
-                          en: `Suggested ${s.suggested_seconds}s · ${(s.replay_limit ?? 3) === 0 ? "unlimited replays" : `${s.replay_limit ?? 3} replays`} · ${s.audio_url ? "model audio attached" : "browser voice"}`,
-                        })}
-                      </p>
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            )}
-            {previewQuestions.length > 0 && (
-              <section className="rounded-xl border p-4">
-                <h3 className="font-semibold">
-                  {t({
-                    zh: `模拟问答 · ${scenario?.topic}`,
-                    en: `Scenario Q&A · ${scenario?.topic}`,
-                  })}
-                </h3>
-                {previewQuestions.map((q) => (
-                  <p key={q.id} className="mt-3 text-sm leading-6">
-                    {q.text}{" "}
-                    <span className="text-muted-foreground">
-                      {t({
-                        zh: `· ${q.suggested_seconds} 秒`,
-                        en: `· ${q.suggested_seconds}s`,
-                      })}
-                    </span>
+          <ol className="space-y-3">
+            {planItems.map((item, index) => {
+              const source =
+                item.type === "passage"
+                  ? selectedPassages.find((p) => p.id === item.id)
+                  : item.type === "repeat"
+                    ? selectedSentences.find((s) => s.id === item.id)
+                    : scenarioQuestions.find((q) => q.id === item.id)
+              return (
+                <li
+                  key={assignmentItemKey(item)}
+                  className="rounded-xl border p-4"
+                >
+                  <h3 className="font-semibold">
+                    {index + 1}.{" "}
+                    {t(
+                      ITEM_TYPE_LABELS[item.type] ?? {
+                        zh: item.type,
+                        en: item.type,
+                      },
+                    )}
+                    {item.type === "passage" && source && "title" in source
+                      ? ` · ${source.title}`
+                      : ""}
+                  </h3>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
+                    {source?.text}
                   </p>
-                ))}
-              </section>
-            )}
-          </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t({
+                      zh: `建议 ${source?.suggested_seconds ?? 0} 秒`,
+                      en: `Suggested ${source?.suggested_seconds ?? 0}s`,
+                    })}
+                  </p>
+                </li>
+              )
+            })}
+          </ol>
           <DialogFooter>
             <Button
               variant="outline"
@@ -998,7 +1049,7 @@ function currentQuestionCount(
   scenarios: ScenarioOut[],
   selection: LessonSelection,
 ): number {
-  return (
-    scenarios.find((s) => s.id === selection.scenarioId)?.questions.length ?? 0
-  )
+  return scenarios
+    .filter((scenario) => selection.scenarioIds.includes(scenario.id))
+    .reduce((count, scenario) => count + scenario.questions.length, 0)
 }

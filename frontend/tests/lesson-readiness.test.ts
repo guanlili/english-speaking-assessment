@@ -24,7 +24,7 @@ test("each type only requires its own selection", () => {
   assert.deepEqual(
     inspectSelection(
       { reading: true, repeat: false, qa: false },
-      { passages: ["p1"], sentences: [], scenarioId: null },
+      { passages: ["p1"], sentences: [], scenarioIds: [] },
       data,
     ).problems,
     [],
@@ -32,7 +32,7 @@ test("each type only requires its own selection", () => {
   assert.deepEqual(
     inspectSelection(
       { reading: false, repeat: true, qa: false },
-      { passages: [], sentences: ["s1", "s2"], scenarioId: null },
+      { passages: [], sentences: ["s1", "s2"], scenarioIds: [] },
       data,
     ).problems,
     [],
@@ -40,7 +40,7 @@ test("each type only requires its own selection", () => {
   assert.deepEqual(
     inspectSelection(
       { reading: false, repeat: false, qa: true },
-      { passages: [], sentences: [], scenarioId: "sc1" },
+      { passages: [], sentences: [], scenarioIds: ["sc1"] },
       data,
     ).problems,
     [],
@@ -53,7 +53,7 @@ test("checked type with empty selection is reported per type", () => {
     {
       passages: [],
       sentences: [],
-      scenarioId: null,
+      scenarioIds: [],
     },
     data,
   )
@@ -71,7 +71,7 @@ test("scenario without questions blocks QA", () => {
   assert.match(
     inspectSelection(
       { reading: false, repeat: false, qa: true },
-      { passages: [], sentences: [], scenarioId: "sc2" },
+      { passages: [], sentences: [], scenarioIds: ["sc2"] },
       data,
     ).problems[0].zh,
     /有题目/,
@@ -79,9 +79,23 @@ test("scenario without questions blocks QA", () => {
   assert.match(
     inspectSelection(
       { reading: false, repeat: false, qa: true },
-      { passages: [], sentences: [], scenarioId: "sc2" },
+      { passages: [], sentences: [], scenarioIds: ["sc2"] },
       data,
     ).problems[0].en,
-    /has questions/,
+    /with questions/,
+  )
+})
+
+test("multiple active QA topics can be selected together", () => {
+  const second = { ...scenario, id: "sc3", topic: "Travel" }
+  const result = inspectSelection(
+    { reading: false, repeat: false, qa: true },
+    { passages: [], sentences: [], scenarioIds: ["sc1", "sc3"] },
+    { ...data, scenarios: [...data.scenarios, second] },
+  )
+  assert.deepEqual(result.problems, [])
+  assert.deepEqual(
+    result.scenarios.map((item) => item.id),
+    ["sc1", "sc3"],
   )
 })

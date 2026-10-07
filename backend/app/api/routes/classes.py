@@ -205,11 +205,9 @@ def _active_passage(session: Any, student: Student | None = None) -> Passage:
     return passage
 
 
-def _scenario_for_topic(session: Any, topic: str) -> Scenario:
-    scenario = session.exec(select(Scenario).where(Scenario.topic == topic)).first()
-    if scenario is None:
-        raise HTTPException(status_code=404, detail="No scenario configured")
-    return scenario
+def _scenario_for_topic(session: Any, topic: str) -> Scenario | None:
+    """按主题取情景；主题未配置情景时返回 None（调用方降级，不阻断练习）。"""
+    return session.exec(select(Scenario).where(Scenario.topic == topic)).first()
 
 
 def _get_classroom(session: SessionDep, code: str) -> Classroom:
@@ -824,13 +822,17 @@ def read_today_plan(
             questions = []
             exhausted = False
             if include_qa:
-                # 用锚点篇目确定 topic 取情景题
+                # 用锚点篇目确定 topic 取情景题；主题未配情景时降级为无问答，
+                # 不让整轮题单 404（朗读/复述照常）
                 anchor = reading_passages[0]
                 scenario = _scenario_for_topic(session, anchor.topic)
                 band = _question_band_for_session(session, practice_session, student)
-                questions, exhausted = _pick_questions(
-                    session, scenario, student.id, QUESTIONS_PER_ROUND
-                )
+                if scenario is None:
+                    exhausted = True
+                else:
+                    questions, exhausted = _pick_questions(
+                        session, scenario, student.id, QUESTIONS_PER_ROUND
+                    )
             include_reading_build = include_reading
 
         # 重听计数
@@ -1220,6 +1222,9 @@ def read_next_question(
         return NextQuestion(question=None, exhausted=True)
 
     scenario = _scenario_for_topic(session, passage.topic)
+    if scenario is None:
+        # 主题未配情景：与「题库为空」同口径，优雅返回无题而非 404
+        return NextQuestion(question=None, exhausted=True)
     questions, exhausted = _pick_questions(
         session, scenario, student.id, limit=999, fill_with_done=False
     )
@@ -2371,18 +2376,20 @@ def set_assignment(
                     for sentence in sentences
                 )
         if classroom.assign_qa is not False:
+            # 主题未配情景时跳过问答快照，朗读/复述照常发布（不阻断发布）
             scenario = _scenario_for_topic(session, passages[0].topic)
-            questions = session.exec(
-                select(ScenarioQuestion)
-                .where(ScenarioQuestion.scenario_id == scenario.id)
-                .order_by(col(ScenarioQuestion.order_index))
-            ).all()
-            snapshots.extend(
-                exercise_service.build_snapshot_item(
-                    session, AttemptItemType.QUESTION, question.id
+            if scenario is not None:
+                questions = session.exec(
+                    select(ScenarioQuestion)
+                    .where(ScenarioQuestion.scenario_id == scenario.id)
+                    .order_by(col(ScenarioQuestion.order_index))
+                ).all()
+                snapshots.extend(
+                    exercise_service.build_snapshot_item(
+                        session, AttemptItemType.QUESTION, question.id
+                    )
+                    for question in questions
                 )
-                for question in questions
-            )
         exercise_service.publish_exercise(
             session=session,
             classroom=classroom,
