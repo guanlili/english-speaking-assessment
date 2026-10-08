@@ -145,6 +145,28 @@ def _assigned_active_passages(session: Any, classroom: Classroom) -> list[Passag
     )
 
 
+def _repeat_sentences_of_passages(
+    session: Any, passages: list[Passage]
+) -> dict[uuid.UUID, list[RepeatSentence]]:
+    """按篇目批量取复述句（单条 in_ 查询替代逐篇 N+1；句序保持 order_index）。
+
+    调用方按自己的篇目顺序消费分组结果（today 题单/board 骨架/发布快照
+    都在学生端或教师发布热路径上）。
+    """
+    if not passages:
+        return {}
+    rows = session.exec(
+        select(RepeatSentence)
+        .where(col(RepeatSentence.passage_id).in_([p.id for p in passages]))
+        .order_by(col(RepeatSentence.passage_id), col(RepeatSentence.order_index))
+    ).all()
+    grouped: dict[uuid.UUID, list[RepeatSentence]] = {}
+    for sentence in rows:
+        if sentence.passage_id is not None:
+            grouped.setdefault(sentence.passage_id, []).append(sentence)
+    return grouped
+
+
 def _active_passage(session: Any, student: Student | None = None) -> Passage:
     """课堂练习篇目（优先级）：老师指派单元 > 学生路径 > 全局第一篇。"""
     units = session.exec(
@@ -184,7 +206,17 @@ def _active_passage(session: Any, student: Student | None = None) -> Passage:
         )
     ).all()
     passage_ids = {ps.passage_id for ps in settled if ps.passage_id}
-    passages = session.exec(select(Passage)).all()
+    # 全表扫描只为算「单元完成度」与选中篇目：load_only 裁掉正文等大列，
+    # 选中后 refresh 补全整行（调用方还要用 text/title 组题单）
+    passages = session.exec(
+        select(Passage).options(
+            load_only(
+                Passage.id,  # ty: ignore[invalid-argument-type]
+                Passage.unit_id,  # ty: ignore[invalid-argument-type]
+                Passage.is_active,  # ty: ignore[invalid-argument-type]
+            )
+        )
+    ).all()
     unit_done: dict = {}
     for passage in passages:
         if passage.unit_id is not None and passage.id in passage_ids:
@@ -206,6 +238,7 @@ def _active_passage(session: Any, student: Student | None = None) -> Passage:
     )
     if passage is None:
         raise HTTPException(status_code=404, detail="No active passage")
+    session.refresh(passage)
     return passage
 
 
@@ -555,7 +588,9 @@ def _snapshot_uuid(value: object | None) -> uuid.UUID | None:
         return None
     try:
         return uuid.UUID(str(value))
-    except ValueError, TypeError:
+    # fmt: skip：括号必须保留——ruff 对 py314 会把括号格式化掉，
+    # 而 PEP 758 裸逗号写法 ≤3.13 的工具链（含系统 python3）无法解析
+    except (ValueError, TypeError):  # fmt: skip
         return None
 
 
@@ -876,14 +911,11 @@ def read_today_plan(
             include_qa = _include_type(classroom, "qa")
             sentences = []
             if include_repeat:
+                sentences_by_passage = _repeat_sentences_of_passages(
+                    session, reading_passages
+                )
                 for p in reading_passages:
-                    sentences.extend(
-                        session.exec(
-                            select(RepeatSentence)
-                            .where(RepeatSentence.passage_id == p.id)
-                            .order_by(col(RepeatSentence.order_index))
-                        ).all()
-                    )
+                    sentences.extend(sentences_by_passage.get(p.id, []))
             questions = []
             exhausted = False
             if include_qa:
@@ -1389,14 +1421,11 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         board_questions = []
         board_repeat_sentences = []
         if include_repeat:
+            board_sentences_by_passage = _repeat_sentences_of_passages(
+                session, board_passages
+            )
             for p in board_passages:
-                board_repeat_sentences.extend(
-                    session.exec(
-                        select(RepeatSentence)
-                        .where(RepeatSentence.passage_id == p.id)
-                        .order_by(col(RepeatSentence.order_index))
-                    ).all()
-                )
+                board_repeat_sentences.extend(board_sentences_by_passage.get(p.id, []))
         skeleton = [
             BoardItem(
                 item_id=s.id,
@@ -1799,6 +1828,19 @@ def read_student_trail(
 
     attempts = session.exec(
         select(Attempt)
+        .options(
+            # 学习足迹只要聚合小列：item_snapshot/rubric 等 JSON 大列不进内存
+            # （窗口可达 30 天 × 全部作答）
+            load_only(
+                Attempt.id,  # ty: ignore[invalid-argument-type]
+                Attempt.created_at,  # ty: ignore[invalid-argument-type]
+                Attempt.item_type,  # ty: ignore[invalid-argument-type]
+                Attempt.status,  # ty: ignore[invalid-argument-type]
+                Attempt.overall,  # ty: ignore[invalid-argument-type]
+                Attempt.completeness,  # ty: ignore[invalid-argument-type]
+                Attempt.vocab,  # ty: ignore[invalid-argument-type]
+            )
+        )
         .where(
             Attempt.student_id == student.id,
             Attempt.created_at >= window_start_utc,  # type: ignore
@@ -1931,7 +1973,16 @@ def read_learning_path(
     units = session.exec(
         select(Unit).where(Unit.is_active).order_by(col(Unit.order_index))
     ).all()
-    passages = session.exec(select(Passage)).all()
+    # 全表只为建 passage→unit 映射与各单元首篇：裁掉正文等大列
+    passages = session.exec(
+        select(Passage).options(
+            load_only(
+                Passage.id,  # ty: ignore[invalid-argument-type]
+                Passage.unit_id,  # ty: ignore[invalid-argument-type]
+                Passage.is_active,  # ty: ignore[invalid-argument-type]
+            )
+        )
+    ).all()
     settled = session.exec(
         select(PracticeSession).where(
             PracticeSession.student_id == student.id,
@@ -2449,17 +2500,13 @@ def set_assignment(
                 # 拆句篇目逐句展开，未拆分整篇一条（与按题发布同口径）
                 snapshots.extend(reading.expand_reading_items(p))
         if classroom.assign_repeat is not False:
+            unit_sentences_by_passage = _repeat_sentences_of_passages(session, passages)
             for passage in passages:
-                sentences = session.exec(
-                    select(RepeatSentence)
-                    .where(RepeatSentence.passage_id == passage.id)
-                    .order_by(col(RepeatSentence.order_index))
-                ).all()
                 snapshots.extend(
                     exercise_service.build_snapshot_item(
                         session, AttemptItemType.REPEAT, sentence.id
                     )
-                    for sentence in sentences
+                    for sentence in unit_sentences_by_passage.get(passage.id, [])
                 )
         if classroom.assign_qa is not False:
             # 主题未配情景时跳过问答快照，朗读/复述照常发布（不阻断发布）
