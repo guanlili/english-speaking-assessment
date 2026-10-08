@@ -242,8 +242,8 @@ function HomePage() {
             <HeroArt />
           </div>
           <div className="relative z-10 lg:max-w-[65%]">
-            <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.2em] text-[#d1dfd4]">
-              <span className="h-px w-6 bg-[#edc393]" /> YOUR VOICE MATTERS
+            <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.2em] text-mint">
+              <span className="h-px w-6 bg-tan-gold" /> YOUR VOICE MATTERS
             </p>
             <h1 className="mt-5 break-words text-2xl font-semibold leading-snug tracking-tight sm:text-3xl lg:text-4xl">
               {t({
@@ -251,14 +251,14 @@ function HomePage() {
                 en: `Hi, ${displayName(student)}.`,
               })}
               <br />
-              <span className="text-[#edc393]">
+              <span className="text-tan-gold">
                 {t({
                   zh: "今天，也勇敢开口。",
                   en: "Be brave and speak up today.",
                 })}
               </span>
             </h1>
-            <p className="mt-4 text-sm leading-6 text-[#d1dfd4]">
+            <p className="mt-4 text-sm leading-6 text-mint">
               {plan?.assigned_unit_title
                 ? t({
                     zh: `今日练习 · ${plan.assigned_unit_title}`,
@@ -272,7 +272,7 @@ function HomePage() {
             <div className="mt-7 flex flex-wrap items-center gap-4">
               <Button
                 size="lg"
-                className="group bg-[#f2d1a8] text-[#204f40] shadow-none hover:bg-[#ffe2be]"
+                className="group bg-tan-soft text-brand-pine shadow-none hover:bg-tan-pale"
                 disabled={totalItems === 0}
                 onClick={() =>
                   void navigate({ to: "/p/$code", params: { code } })
@@ -296,7 +296,7 @@ function HomePage() {
                         })}
                 <ArrowRight className="transition-transform group-hover:translate-x-1" />
               </Button>
-              <span className="text-xs text-[#d1dfd4]">
+              <span className="text-xs text-mint">
                 {t({
                   zh: "轻松开口，不怕说错",
                   en: "Speak freely — mistakes are welcome",

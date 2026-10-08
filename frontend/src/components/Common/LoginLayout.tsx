@@ -26,11 +26,11 @@ export function LoginLayout({ children }: { children: ReactNode }) {
     },
   ]
   return (
-    <div className="min-h-svh bg-[#f7f4ed] font-['Avenir_Next','PingFang_SC','Hiragino_Sans_GB','Microsoft_YaHei',sans-serif] text-[#233e34] dark:bg-background dark:text-foreground">
+    <div className="min-h-svh bg-paper font-['Avenir_Next','PingFang_SC','Hiragino_Sans_GB','Microsoft_YaHei',sans-serif] text-brand-ink dark:bg-background dark:text-foreground">
       <header className="mx-auto flex max-w-[1440px] items-center justify-between px-5 py-5 sm:px-10 lg:px-16 lg:py-6">
         <Logo asLink={false} />
         <div className="flex items-center gap-6">
-          <span className="hidden border-r border-[#233e34]/15 pr-6 text-xs tracking-wider text-muted-foreground sm:block dark:border-border">
+          <span className="hidden border-r border-brand-ink/15 pr-6 text-xs tracking-wider text-muted-foreground sm:block dark:border-border">
             {t({ zh: "每一次开口，都是进步", en: "Every voice counts" })}
           </span>
           <LanguageToggle />
@@ -45,7 +45,7 @@ export function LoginLayout({ children }: { children: ReactNode }) {
         >
           <p className="mb-3 flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.16em] text-muted-foreground lg:mb-5">
             <span
-              className="h-px w-7 bg-[#ac7048] dark:bg-[#efbd94]"
+              className="h-px w-7 bg-tan-umber dark:bg-tan"
               aria-hidden="true"
             />
             {t({
@@ -69,13 +69,13 @@ export function LoginLayout({ children }: { children: ReactNode }) {
             })}
           </p>
 
-          <div className="relative mt-7 hidden overflow-hidden rounded-2xl bg-[#204f40] p-7 text-[#fbf6eb] lg:block xl:p-8 dark:bg-[#193f33]">
+          <div className="relative mt-7 hidden overflow-hidden rounded-2xl bg-brand-pine p-7 text-paper-ivory lg:block xl:p-8 dark:bg-brand-pine-dark">
             <div
-              className="pointer-events-none absolute -right-20 top-10 size-72 rounded-full border border-[#e9c6a2]/15 before:absolute before:inset-7 before:rounded-full before:border before:border-[#e9c6a2]/15 after:absolute after:inset-14 after:rounded-full after:border after:border-[#e9c6a2]/15"
+              className="pointer-events-none absolute -right-20 top-10 size-72 rounded-full border border-tan-linen/15 before:absolute before:inset-7 before:rounded-full before:border before:border-tan-linen/15 after:absolute after:inset-14 after:rounded-full after:border after:border-tan-linen/15"
               aria-hidden="true"
             />
             <p
-              className="relative flex items-center gap-2 text-[10px] font-medium tracking-[0.2em] text-[#d0ded3]"
+              className="relative flex items-center gap-2 text-[10px] font-medium tracking-[0.2em] text-mint-soft"
               lang="en"
             >
               <AudioLines className="size-4" aria-hidden="true" />
@@ -87,20 +87,20 @@ export function LoginLayout({ children }: { children: ReactNode }) {
             >
               Find your
               <br />
-              <span className="italic text-[#efbd94]">own voice.</span>
+              <span className="italic text-tan">own voice.</span>
             </p>
             <div
               className="relative mt-7 flex items-center gap-5 border-t border-white/20 pt-5"
               aria-hidden="true"
             >
-              <span className="grid size-10 shrink-0 place-items-center rounded-full border border-[#efbd94]/50 text-[#efbd94]">
+              <span className="grid size-10 shrink-0 place-items-center rounded-full border border-tan/50 text-tan">
                 <Mic className="size-4" />
               </span>
               <div className="flex h-10 flex-1 items-center justify-between gap-1">
                 {Array.from({ length: 31 }, (_, index) => (
                   <span
                     key={`wave-${index}`}
-                    className={`w-1 rounded-full ${index > 10 && index < 20 ? "bg-[#efbd94]" : "bg-[#c9decf]/65"} ${["h-2", "h-4", "h-6", "h-3", "h-8", "h-10", "h-5"][index % 7]}`}
+                    className={`w-1 rounded-full ${index > 10 && index < 20 ? "bg-tan" : "bg-mint-mist/65"} ${["h-2", "h-4", "h-6", "h-3", "h-8", "h-10", "h-5"][index % 7]}`}
                   />
                 ))}
               </div>
@@ -117,10 +117,10 @@ export function LoginLayout({ children }: { children: ReactNode }) {
             {classroomSteps.map((step) => (
               <li
                 key={step.number}
-                className="border-l border-[#233e34]/15 pl-4 first:border-0 first:pl-0 dark:border-border"
+                className="border-l border-brand-ink/15 pl-4 first:border-0 first:pl-0 dark:border-border"
               >
                 <span
-                  className="font-['Iowan_Old_Style',Georgia,serif] text-xl italic text-[#99603d] dark:text-[#efbd94]"
+                  className="font-['Iowan_Old_Style',Georgia,serif] text-xl italic text-tan-sepia dark:text-tan"
                   aria-hidden="true"
                 >
                   {step.number}
@@ -136,7 +136,7 @@ export function LoginLayout({ children }: { children: ReactNode }) {
 
         <section
           aria-label={t({ zh: "登录 Charcoal", en: "Sign in to Charcoal" })}
-          className="relative mx-auto w-full max-w-[480px] rounded-2xl border border-[#233e34]/12 bg-[#fffdf8] p-5 shadow-[0_20px_70px_-36px_rgba(32,79,64,0.28)] before:absolute before:-top-px before:left-6 before:h-[3px] before:w-12 before:bg-[#dba77b] sm:p-8 sm:before:left-9 lg:mx-0 lg:justify-self-end xl:p-10 dark:border-border dark:bg-card dark:shadow-none"
+          className="relative mx-auto w-full max-w-[480px] rounded-2xl border border-brand-ink/12 bg-paper-card p-5 shadow-[0_20px_70px_-36px_rgba(32,79,64,0.28)] before:absolute before:-top-px before:left-6 before:h-[3px] before:w-12 before:bg-tan-clay sm:p-8 sm:before:left-9 lg:mx-0 lg:justify-self-end xl:p-10 dark:border-border dark:bg-card dark:shadow-none"
         >
           {children}
         </section>

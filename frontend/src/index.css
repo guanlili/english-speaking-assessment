@@ -39,6 +39,32 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* 品牌纸感调色板（登录页/学习首页/learning-hero 专用，值见 :root 注释） */
+  --color-brand-pine: var(--brand-pine);
+  --color-brand-pine-deep: var(--brand-pine-deep);
+  --color-brand-pine-dark: var(--brand-pine-dark);
+  --color-brand-pine-mist: var(--brand-pine-mist);
+  --color-brand-ink: var(--brand-ink);
+  --color-paper: var(--paper);
+  --color-paper-soft: var(--paper-soft);
+  --color-paper-warm: var(--paper-warm);
+  --color-paper-sand: var(--paper-sand);
+  --color-paper-card: var(--paper-card);
+  --color-paper-cream: var(--paper-cream);
+  --color-paper-ivory: var(--paper-ivory);
+  --color-paper-hero: var(--paper-hero);
+  --color-tan: var(--tan);
+  --color-tan-gold: var(--tan-gold);
+  --color-tan-soft: var(--tan-soft);
+  --color-tan-pale: var(--tan-pale);
+  --color-tan-pale-hover: var(--tan-pale-hover);
+  --color-tan-clay: var(--tan-clay);
+  --color-tan-linen: var(--tan-linen);
+  --color-tan-umber: var(--tan-umber);
+  --color-tan-sepia: var(--tan-sepia);
+  --color-mint: var(--mint);
+  --color-mint-soft: var(--mint-soft);
+  --color-mint-mist: var(--mint-mist);
 }
 
 :root {
@@ -74,6 +100,33 @@
   --sidebar-accent-foreground: hsl(158 41% 29%);
   --sidebar-border: hsl(100 15% 88%);
   --sidebar-ring: hsl(158 41% 29%);
+  /* ── 品牌纸感调色板：登录页/学习首页/learning-hero 的固定配色。
+     学生端锁定 light；dark: 变体里的引用取同一组值，不新增暗色适配。── */
+  --brand-pine: hsl(161 42% 22%); /* #204f40 深松绿：主 CTA / hero 底 */
+  --brand-pine-deep: hsl(161 47% 17%); /* #173f32 CTA hover */
+  --brand-pine-dark: hsl(161 43% 17%); /* #193f33 暗色面板底 */
+  --brand-pine-mist: hsl(158 29% 35%); /* #3f7360 hero 渐变内圈 */
+  --brand-ink: hsl(158 28% 19%); /* #233e34 墨绿文字/描边 */
+  --paper: hsl(42 38% 95%); /* #f7f4ed 登录页底 */
+  --paper-soft: hsl(50 30% 96%); /* #f8f7f2 输入框底 */
+  --paper-warm: hsl(48 25% 92%); /* #f0eee6 分段控件底 */
+  --paper-sand: hsl(42 33% 90%); /* #eee9dd 行内代码底 */
+  --paper-card: hsl(43 100% 99%); /* #fffdf8 卡片底 */
+  --paper-cream: hsl(40 100% 97%); /* #fffaf0 CTA 文字 */
+  --paper-ivory: hsl(41 67% 95%); /* #fbf6eb 深底面板文字 */
+  --paper-hero: hsl(47 100% 98%); /* #fffdf6 learning-hero 文字 */
+  --tan: hsl(27 74% 76%); /* #efbd94 强调杏色（暗色变体主 CTA） */
+  --tan-gold: hsl(32 71% 75%); /* #edc393 hero 点缀 */
+  --tan-soft: hsl(33 74% 80%); /* #f2d1a8 首页 CTA 底 */
+  --tan-pale: hsl(33 100% 87%); /* #ffe2be 首页 CTA hover */
+  --tan-pale-hover: hsl(28 77% 81%); /* #f4cca9 暗色 CTA hover */
+  --tan-clay: hsl(28 57% 67%); /* #dba77b 卡片顶条 */
+  --tan-linen: hsl(30 62% 77%); /* #e9c6a2 圆环描边 */
+  --tan-umber: hsl(24 41% 48%); /* #ac7048 分隔线 */
+  --tan-sepia: hsl(23 43% 42%); /* #99603d 引言文字 */
+  --mint: hsl(133 18% 85%); /* #d1dfd4 深底浅绿文字 */
+  --mint-soft: hsl(133 18% 84%); /* #d0ded3 深底浅绿文字（面板） */
+  --mint-mist: hsl(137 24% 83%); /* #c9decf 波形条 */
 }
 
 .dark {
@@ -222,13 +275,13 @@
 }
 
 .learning-hero {
-  background-color: #204f40;
+  background-color: var(--brand-pine);
   background-image: radial-gradient(
     ellipse at 85% 30%,
-    #3f7360 0%,
+    var(--brand-pine-mist) 0%,
     transparent 65%
   );
-  color: #fffdf6;
+  color: var(--paper-hero);
 }
 
 @layer base {
