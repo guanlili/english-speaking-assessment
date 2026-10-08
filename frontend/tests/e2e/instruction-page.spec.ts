@@ -81,10 +81,7 @@ async function mockPlan(page: Page, isExam: boolean) {
         classroom_code: "INS",
         band: "B1",
         // 深拷贝防跨用例泄漏（acked_at 只反映本用例的 ack 状态）
-        items: [
-          { ...instruction, acked_at: state.ackedAt },
-          { ...passage },
-        ],
+        items: [{ ...instruction, acked_at: state.ackedAt }, { ...passage }],
         attempts: state.attempts,
         exam: isExam
           ? {
@@ -123,16 +120,12 @@ for (const width of [390, 820, 1180]) {
     // 说明卡：标题 + 文案 + 继续按钮；没有录音按钮
     await expect(page.getByText(instruction.title)).toBeVisible()
     await expect(page.getByText(instruction.text)).toBeVisible()
-    await expect(
-      page.getByRole("button", { name: /开始录音/ }),
-    ).toHaveCount(0)
+    await expect(page.getByRole("button", { name: /开始录音/ })).toHaveCount(0)
     await noOverflow(page)
     await page.getByRole("button", { name: /继续/ }).click()
     // 乐观推进到朗读题；ack 已上报
     await expect(page.getByText(passage.text)).toBeVisible()
-    await expect(
-      page.getByRole("button", { name: /开始录音/ }),
-    ).toBeVisible()
+    await expect(page.getByRole("button", { name: /开始录音/ })).toBeVisible()
     expect(state.acks).toBe(1)
     await noOverflow(page)
   })

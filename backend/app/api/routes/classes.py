@@ -2397,7 +2397,10 @@ def record_instruction_ack(
         session.rollback()
     else:
         session.refresh(ack)
-        return AckResult(acked=True, acked_at=ack.created_at.isoformat())
+        return AckResult(
+            acked=True,
+            acked_at=(ack.created_at or get_datetime_utc()).isoformat(),
+        )
     existing = session.exec(
         select(InstructionAck).where(
             InstructionAck.student_id == student.id,  # type: ignore[arg-type]
