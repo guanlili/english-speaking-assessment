@@ -824,7 +824,9 @@ function StudentRow({
                   </Button>
                 </div>
               </div>
-              {student.items.every((i) => i.status === "missing") && (
+              {student.items
+                .filter((i) => i.type !== "instruction")
+                .every((i) => i.status === "missing") && (
                 <p className="text-sm text-muted-foreground">
                   {t({ zh: "还没有作答。", en: "No answers yet." })}
                 </p>
@@ -843,7 +845,17 @@ function StudentRow({
                       },
                     )}
                   </span>
-                  {item.status === "missing" ? (
+                  {item.type === "instruction" ? (
+                    item.status === "done" ? (
+                      <span className="text-sm font-medium text-primary">
+                        {t({ zh: "已读", en: "Read" })}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        {t({ zh: "未读", en: "Unread" })}
+                      </span>
+                    )
+                  ) : item.status === "missing" ? (
                     <span className="text-sm text-muted-foreground">
                       {t({ zh: "未做", en: "Missing" })}
                     </span>

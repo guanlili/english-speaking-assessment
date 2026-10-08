@@ -419,6 +419,56 @@ class ScenarioQuestionPublic(SQLModel):
     prep_seconds: int | None = None
 
 
+# 题目说明（第四种题型）：纯文字引导页，组卷时插入题与题之间。
+# 学生阅读后点「继续」进入下一题，无录音作答——模考里占一个计时窗口
+# （时长=suggested_seconds，可提前点继续，到时自动翻页），普通练习不强制停留。
+class Instruction(SQLModel, table=True):
+    __tablename__ = "instruction"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    # 可选小标题：说明卡与组卷列表里作题头区分用途（如「Part B 开始」）
+    title: str | None = Field(default=None, max_length=100)
+    text: str = Field(min_length=1, max_length=2000)
+    # 建议停留秒数：模考窗口时长（普通练习仅作提示，不强制）
+    suggested_seconds: int = Field(default=20, ge=5, le=300)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class InstructionPublic(SQLModel):
+    id: uuid.UUID
+    title: str | None = None
+    text: str
+    suggested_seconds: int
+
+
+# 学生点「继续」的确认记录：说明无作答，用 ack 表达「已读」——
+# 普通练习里驱动题单流转，模考里驱动题窗推进，教师面板显示已读状态
+class InstructionAck(SQLModel, table=True):
+    __tablename__ = "instruction_ack"
+    __table_args__ = (
+        UniqueConstraint(
+            "student_id", "session_id", "item_id", name="uq_instruction_ack_scope"
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    student_id: uuid.UUID = Field(foreign_key="student.id", ondelete="CASCADE")
+    session_id: uuid.UUID = Field(foreign_key="practice_session.id", ondelete="CASCADE")
+    # 指向 instruction.id（快照已深拷贝文字，题库删除不影响历史练习）
+    item_id: uuid.UUID = Field(index=True)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
 # 课堂码即弱密码（PRD §8.5）：无账号体系，泄露只影响一个班的成绩可见性
 class Classroom(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -753,6 +803,9 @@ class AttemptItemType:
     PASSAGE = "passage"
     REPEAT = "repeat"
     QUESTION = "question"
+    # 题目说明：纯文字引导页，无作答（学生点「继续」后进入下一题），
+    # 永远不进 POST /attempts 的 item_type 白名单
+    INSTRUCTION = "instruction"
 
 
 MAX_SCORING_RETRIES = 2
@@ -845,9 +898,11 @@ class AttemptPublic(SQLModel):
 
 # 今日练习计划（GET /classes/{code}/today）：3 句复述 + 2 道该档问答
 class PlanItem(SQLModel):
-    type: str  # passage（整篇朗读）| repeat | question
+    type: str  # passage（整篇朗读）| repeat | question | instruction（说明页）
     id: uuid.UUID
     text: str
+    # 题目说明的小标题（仅 instruction 项有值）
+    title: str | None = None
     translation: str | None = None
     audio_url: str | None = None
     suggested_seconds: int
@@ -855,6 +910,8 @@ class PlanItem(SQLModel):
     # 听句复述的可重听次数与已听次数（仅 repeat 项；0=不限）
     replay_limit: int | None = None
     listen_used: int | None = None
+    # 题目说明的「继续」确认时间（仅 instruction 项；null=未读）
+    acked_at: str | None = None
     # 分级题型训练（可空=普通课堂内容）：快照与题库行同构透传
     exam_kind: str | None = None
     exam_level: str | None = None
@@ -973,9 +1030,9 @@ class NextQuestion(SQLModel):
 # 老师名单表（GET /classes/{code}/board，PRD §8.5 2 周形态）：
 # 谁交了、每题分数、音频可点开，允许先显示「评分中」
 class AssignmentItemIn(SQLModel):
-    """按题指派的单条题目引用：三种题型互相独立，各自成题。"""
+    """按题指派的单条题目引用：各题型互相独立，各自成题。"""
 
-    type: str  # passage | repeat | question
+    type: str  # passage | repeat | question | instruction
     id: uuid.UUID
 
 

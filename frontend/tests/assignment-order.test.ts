@@ -24,6 +24,22 @@ test("default order alternates repeat and question after passages", () => {
   ])
 })
 
+test("instructions default to the front of the paper", () => {
+  const ordered = defaultAssignmentOrder(
+    [item("passage", "p")],
+    [item("repeat", "r1")],
+    [item("question", "q1")],
+    [item("instruction", "i1"), item("instruction", "i2")],
+  )
+  assert.deepEqual(ordered.map(assignmentItemKey), [
+    "instruction:i1",
+    "instruction:i2",
+    "passage:p",
+    "repeat:r1",
+    "question:q1",
+  ])
+})
+
 test("manual order survives selection changes and moves across types", () => {
   const available = defaultAssignmentOrder(
     [],

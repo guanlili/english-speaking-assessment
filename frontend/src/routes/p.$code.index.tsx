@@ -18,7 +18,7 @@ import {
   Square,
   Star,
 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
@@ -290,6 +290,16 @@ function ClassroomPracticePage() {
     return map
   }, [plan])
 
+  // 题目说明「已读」：服务端 acked_at + 本地乐观 ack 集合（点「继续」立即生效）
+  const [ackedIds, setAckedIds] = useState<ReadonlySet<string>>(new Set())
+  const isItemDone = useCallback(
+    (item: PlanItem) =>
+      item.type === "instruction"
+        ? ackedIds.has(item.id) || item.acked_at != null
+        : isTerminal(attemptByItem.get(item.id)?.status),
+    [ackedIds, attemptByItem],
+  )
+
   const currentIndex = useMemo(() => {
     // 查看反馈期间钉在当前题（避免评分完成后的计划刷新把视图拽走）
     if (pinnedItemId) {
@@ -301,12 +311,10 @@ function ClassroomPracticePage() {
       const focusIndex = items.findIndex((i) => i.id === focusItemId)
       if (focusIndex >= 0) return focusIndex
     }
-    const firstUndone = items.findIndex(
-      (item) => !isTerminal(attemptByItem.get(item.id)?.status),
-    )
+    const firstUndone = items.findIndex((item) => !isItemDone(item))
     if (firstUndone === -1) return items.length - 1
     return firstUndone
-  }, [items, attemptByItem, focusItemId, pinnedItemId, exam])
+  }, [items, focusItemId, pinnedItemId, exam, isItemDone])
 
   const currentItem = items[currentIndex]
   const recordLimitSeconds = resolveRecordLimitSeconds(
@@ -390,7 +398,7 @@ function ClassroomPracticePage() {
     items.every(
       (item) =>
         (item.id === attempt?.item_id && isTerminal(attempt?.status)) ||
-        isTerminal(attemptByItem.get(item.id)?.status),
+        isItemDone(item),
     )
 
   const recorder = useRecorder({
@@ -556,13 +564,84 @@ function ClassroomPracticePage() {
   // ── 模考态 ──
   // 模考任何已接收的提交都锁定，包含 queued/failed。
   const currentItemDone = currentItem
-    ? exam
-      ? attemptByItem.has(currentItem.id) ||
-        acceptedExamItemsRef.current.has(
-          `${plan?.session_id}:${currentItem.id}`,
-        )
-      : isTerminal(attemptByItem.get(currentItem.id)?.status)
+    ? currentItem.type === "instruction"
+      ? ackedIds.has(currentItem.id) || currentItem.acked_at != null
+      : exam
+        ? attemptByItem.has(currentItem.id) ||
+          acceptedExamItemsRef.current.has(
+            `${plan?.session_id}:${currentItem.id}`,
+          )
+        : isTerminal(attemptByItem.get(currentItem.id)?.status)
     : false
+
+  // 题目说明「继续」：普通练习乐观推进（ack 失败不阻塞，下次 today 校准）；
+  // 模考必须等 ack 落库——服务端题窗靠它推进，提前刷新会被锁在说明页
+  const ackPendingRef = useRef(false)
+  const ackMutation = useMutation({
+    mutationFn: (itemId: string) =>
+      ClassesService.recordInstructionAck({
+        code: code.toUpperCase(),
+        requestBody: {
+          session_id: plan?.session_id ?? "",
+          item_id: itemId,
+        },
+      }),
+  })
+  const continueFromInstruction = async () => {
+    if (!currentItem || ackPendingRef.current) return
+    ackPendingRef.current = true
+    const itemId = currentItem.id
+    try {
+      if (exam) {
+        try {
+          await ackMutation.mutateAsync(itemId)
+        } catch {
+          toast.error(
+            t({
+              zh: "确认失败，请稍候再点「继续」",
+              en: "Couldn't confirm — tap Continue again in a moment",
+            }),
+          )
+          return
+        }
+        setAckedIds((prev) => new Set(prev).add(itemId))
+        await queryClient.invalidateQueries({ queryKey: todayQueryKey })
+        return
+      }
+      setAckedIds((prev) => new Set(prev).add(itemId))
+      ackMutation.mutate(itemId, {
+        onError: () =>
+          toast.error(
+            t({
+              zh: "「继续」确认未记录成功，练习进度不受影响",
+              en: "Recording the Continue tap failed — your progress is unaffected",
+            }),
+          ),
+      })
+      const completedIds = new Set(
+        items
+          .filter((item) => isItemDone(item) || item.id === itemId)
+          .map((item) => item.id),
+      )
+      const nextIndex = nextUnansweredIndex(
+        items.map((item) => item.id),
+        currentIndex,
+        completedIds,
+      )
+      if (nextIndex >= 0) {
+        setFocusItemId(items[nextIndex].id)
+      } else {
+        navigatedRef.current = true
+        void navigate({
+          to: "/p/$code/result",
+          params: { code },
+          search: sessionId ? { session: sessionId } : {},
+        })
+      }
+    } finally {
+      ackPendingRef.current = false
+    }
+  }
 
   // 本地倒计时：以服务端 remaining_seconds 为准心，每秒递减仅作展示；
   // 未开考（确认页）不启动——服务端此刻也还没计时
@@ -825,12 +904,12 @@ function ClassroomPracticePage() {
   const isQuestion = currentItem.type === "question"
   // 其余题都已完成 → 当前是最后一题（评分完成后直接进结果页）
   const isLastQuestion = items.every(
-    (item) =>
-      item.id === currentItem.id ||
-      isTerminal(attemptByItem.get(item.id)?.status),
+    (item) => item.id === currentItem.id || isItemDone(item),
   )
 
   const isPassage = currentItem.type === "passage"
+  // 题目说明：无作答的引导页，学生点「继续」进入下一题
+  const isInstruction = currentItem.type === "instruction"
   // 文章拆句展开的逐句条目：标出句序，提示语与整篇朗读区分
   const isSentenceItem = isPassage && currentItem.sentence_index != null
   const sentenceProgress =
@@ -842,44 +921,54 @@ function ClassroomPracticePage() {
       : null
   const itemPromptLabel = examKind
     ? t(EXAM_KIND_LABELS[examKind] ?? { zh: examKind, en: examKind })
+    : isInstruction
+      ? t({
+          zh: "INSTRUCTIONS · 读一读再继续",
+          en: "INSTRUCTIONS · Read before continuing",
+        })
+      : isQuestion
+        ? t({
+            zh: "YOUR TURN · 分享你的想法",
+            en: "YOUR TURN · Share your thoughts",
+          })
+        : isSentenceItem
+          ? `${t({
+              zh: "READ ALOUD · 逐句朗读",
+              en: "READ ALOUD · Sentence by sentence",
+            })} · ${sentenceProgress}`
+          : isPassage
+            ? t({
+                zh: "READ ALOUD · 大声朗读全文",
+                en: "READ ALOUD · Read the full text aloud",
+              })
+            : t({
+                zh: "LISTEN & REPEAT · 听一听，再试着说",
+                en: "LISTEN & REPEAT · Listen, then try to say it",
+              })
+  const itemHintZh = isInstruction
+    ? t({
+        zh: "读完这段说明，点「继续」进入下一题。这一页不用录音。",
+        en: "Read this, then tap Continue for the next item. No recording on this page.",
+      })
     : isQuestion
       ? t({
-          zh: "YOUR TURN · 分享你的想法",
-          en: "YOUR TURN · Share your thoughts",
+          zh: "试着说出你的观点，再用一个理由或小例子支持它。",
+          en: "State your opinion, then back it up with a reason or a quick example.",
         })
       : isSentenceItem
-        ? `${t({
-            zh: "READ ALOUD · 逐句朗读",
-            en: "READ ALOUD · Sentence by sentence",
-          })} · ${sentenceProgress}`
+        ? t({
+            zh: "把这一句读清楚。停顿和语调自然比逐词准确更重要。",
+            en: "Read this sentence clearly. Natural pauses and intonation matter more than word-by-word accuracy.",
+          })
         : isPassage
           ? t({
-              zh: "READ ALOUD · 大声朗读全文",
-              en: "READ ALOUD · Read the full text aloud",
+              zh: "先扫一眼生词，然后完整朗读。停顿和语调自然比逐词准确更重要。",
+              en: "Skim the new words first, then read it through. Natural pauses and intonation matter more than word-by-word accuracy.",
             })
           : t({
-              zh: "LISTEN & REPEAT · 听一听，再试着说",
-              en: "LISTEN & REPEAT · Listen, then try to say it",
+              zh: "先听完整句子，再跟着节奏说。比起说得快，说得自然更重要。",
+              en: "Listen to the full sentence first, then follow its rhythm. Sounding natural beats speaking fast.",
             })
-  const itemHintZh = isQuestion
-    ? t({
-        zh: "试着说出你的观点，再用一个理由或小例子支持它。",
-        en: "State your opinion, then back it up with a reason or a quick example.",
-      })
-    : isSentenceItem
-      ? t({
-          zh: "把这一句读清楚。停顿和语调自然比逐词准确更重要。",
-          en: "Read this sentence clearly. Natural pauses and intonation matter more than word-by-word accuracy.",
-        })
-      : isPassage
-        ? t({
-            zh: "先扫一眼生词，然后完整朗读。停顿和语调自然比逐词准确更重要。",
-            en: "Skim the new words first, then read it through. Natural pauses and intonation matter more than word-by-word accuracy.",
-          })
-        : t({
-            zh: "先听完整句子，再跟着节奏说。比起说得快，说得自然更重要。",
-            en: "Listen to the full sentence first, then follow its rhythm. Sounding natural beats speaking fast.",
-          })
 
   return (
     <StudentShell active="practice">
@@ -974,8 +1063,7 @@ function ClassroomPracticePage() {
           aria-label={t({ zh: "练习进度", en: "Practice progress" })}
         >
           {items.map((item, i) => {
-            const status = attemptByItem.get(item.id)?.status
-            const done = status === "done" || status === "failed"
+            const done = isItemDone(item)
             return (
               <span
                 key={item.id}
@@ -1187,6 +1275,11 @@ function ClassroomPracticePage() {
                   </p>
                 ) : (
                   <>
+                    {isInstruction && currentItem.title && (
+                      <p className="text-sm font-semibold text-foreground">
+                        {currentItem.title}
+                      </p>
+                    )}
                     <p
                       className={`prompt-display min-h-24 whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${exam ? "select-none" : ""}`}
                     >
@@ -1203,7 +1296,9 @@ function ClassroomPracticePage() {
                             zh: "想不起来也没关系，随时可以重新看看。",
                             en: "It's fine if you can't remember — you can peek anytime.",
                           })
-                        : (currentItem.translation ?? itemHintZh)}
+                        : isInstruction
+                          ? itemHintZh
+                          : (currentItem.translation ?? itemHintZh)}
                     </p>
                   </>
                 )}
@@ -1211,26 +1306,27 @@ function ClassroomPracticePage() {
                   <p className="text-xs text-muted-foreground">{itemHintZh}</p>
                 )}
 
-                {currentItem.type === "repeat" ? (
-                  // 听音状态按 session_id + item_id 隔离：会话变化时重建计数状态，
-                  // 避免同一道题在新会话里沿用旧会话的已听次数。
-                  <LimitedListenButton
-                    key={`${plan?.session_id ?? ""}:${currentItem.id}`}
-                    code={code.toUpperCase()}
-                    sessionId={plan?.session_id}
-                    itemId={currentItem.id}
-                    text={currentItem.text}
-                    audioUrl={currentItem.audio_url}
-                    replayLimit={currentItem.replay_limit ?? 3}
-                    initialUsed={currentItem.listen_used ?? 0}
-                  />
-                ) : (
-                  <SpeakButton
-                    key={currentItem.id}
-                    text={currentItem.text}
-                    audioUrl={currentItem.audio_url}
-                  />
-                )}
+                {!isInstruction &&
+                  (currentItem.type === "repeat" ? (
+                    // 听音状态按 session_id + item_id 隔离：会话变化时重建计数状态，
+                    // 避免同一道题在新会话里沿用旧会话的已听次数。
+                    <LimitedListenButton
+                      key={`${plan?.session_id ?? ""}:${currentItem.id}`}
+                      code={code.toUpperCase()}
+                      sessionId={plan?.session_id}
+                      itemId={currentItem.id}
+                      text={currentItem.text}
+                      audioUrl={currentItem.audio_url}
+                      replayLimit={currentItem.replay_limit ?? 3}
+                      initialUsed={currentItem.listen_used ?? 0}
+                    />
+                  ) : (
+                    <SpeakButton
+                      key={currentItem.id}
+                      text={currentItem.text}
+                      audioUrl={currentItem.audio_url}
+                    />
+                  ))}
                 {isPassage && (
                   <Button
                     variant="ghost"
@@ -1261,203 +1357,250 @@ function ClassroomPracticePage() {
                   </Button>
                 )}
 
-                <Separator />
-
-                {/* 录音区（Charcoal：大圆钮 + 波形） */}
-                <div className="flex flex-col items-center gap-1 border-t pt-5 text-center">
-                  {examKind && (
-                    <p className="mb-2 text-[11px] text-muted-foreground">
-                      {t(EXAM_PRACTICE_NOTE)}
+                {isInstruction ? (
+                  /* 说明页无作答：大「继续」按钮代替录音区（触控目标 ≥44px） */
+                  <div className="flex flex-col items-center gap-3 border-t pt-6 text-center">
+                    <p className="text-xs text-muted-foreground">
+                      {t({
+                        zh: `建议停留 ${currentItem.suggested_seconds} 秒`,
+                        en: `Suggested ${currentItem.suggested_seconds}s on this page`,
+                      })}
                     </p>
-                  )}
-                  {recorder.status === "recording" ? (
-                    <>
-                      <div
-                        className="flex h-8 items-center justify-center gap-1"
-                        aria-hidden
+                    {exam && examClock.itemRemaining > 0 && (
+                      <p
+                        role="timer"
+                        className="font-mono text-lg font-bold tabular-nums"
                       >
-                        {Array.from({ length: 25 }).map((_, i) => (
-                          <i
-                            key={i}
-                            className="wave-bar block w-[3px] rounded bg-primary"
-                            style={{
-                              height: `${[7, 20, 29, 13, 18, 24, 10, 16, 28, 12][i % 10]}px`,
-                              animationDelay: `${(i % 5) * -0.2}s`,
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={recorder.stop}
-                        aria-label={t({ zh: "结束录音", en: "Stop recording" })}
-                        className="record-pulse mt-3 grid size-[72px] place-items-center rounded-full bg-destructive text-white shadow-[0_0_0_7px_var(--accent)] transition hover:scale-105"
-                      >
-                        <Square className="size-7" />
-                      </button>
-                      <p className="mt-4 text-sm">
-                        <span className="font-mono tabular-nums">
-                          {formatSeconds(recorder.elapsed)}
-                        </span>{" "}
-                        {t({
-                          zh: "· 说完后点一下结束",
-                          en: "· Tap stop when you're done",
-                        })}
+                        {formatSeconds(examClock.itemRemaining)}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        {t({
-                          zh: `本题限时 ${formatSeconds(recordLimitSeconds)} · 到时自动结束录音${exam ? "并进入下一题" : ""}`,
-                          en: `This item's limit is ${formatSeconds(recordLimitSeconds)} · recording stops automatically${exam ? " and the next item opens" : ""}`,
-                        })}
-                      </p>
-                    </>
-                  ) : submitError && recorder.recording ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={retrySubmit}
-                        disabled={submitting}
-                        aria-label={t({
-                          zh: "重传录音",
-                          en: "Retry uploading recording",
-                        })}
-                        className="mt-1 grid size-[72px] place-items-center rounded-full bg-primary text-white shadow-[0_0_0_7px_var(--secondary)] transition hover:scale-105 disabled:opacity-50"
-                      >
-                        <ArrowRight className="size-7" />
-                      </button>
-                      <p className="mt-4 text-sm text-destructive">
-                        {t({
-                          zh: "上传失败，录音已保留",
-                          en: "Upload failed — your recording is saved",
-                        })}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {t({
-                          zh: exam
-                            ? "仅可重传原录音，不能重新作答"
-                            : "点这里重传 · 或",
-                          en: exam
-                            ? "Retry the original upload; this item cannot be answered again"
-                            : "Tap to retry · or",
-                        })}
-                        {!exam && (
+                    )}
+                    <Button
+                      size="lg"
+                      className="min-h-11 px-10 text-base"
+                      disabled={currentItemDone || ackMutation.isPending}
+                      onClick={() => void continueFromInstruction()}
+                    >
+                      {currentItemDone
+                        ? t({ zh: "已继续", en: "Continued" })
+                        : t({ zh: "继续 · 进入下一题", en: "Continue" })}
+                      <ArrowRight className="size-4" />
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      {exam
+                        ? t({
+                            zh: "模考中本页按秒数计时，可提前继续，到时自动翻页",
+                            en: "Timed in this exam — continue early or it advances automatically",
+                          })
+                        : itemHintZh}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <Separator />
+                    {/* 录音区（Charcoal：大圆钮 + 波形） */}
+                    <div className="flex flex-col items-center gap-1 border-t pt-5 text-center">
+                      {examKind && (
+                        <p className="mb-2 text-[11px] text-muted-foreground">
+                          {t(EXAM_PRACTICE_NOTE)}
+                        </p>
+                      )}
+                      {recorder.status === "recording" ? (
+                        <>
+                          <div
+                            className="flex h-8 items-center justify-center gap-1"
+                            aria-hidden
+                          >
+                            {Array.from({ length: 25 }).map((_, i) => (
+                              <i
+                                key={i}
+                                className="wave-bar block w-[3px] rounded bg-primary"
+                                style={{
+                                  height: `${[7, 20, 29, 13, 18, 24, 10, 16, 28, 12][i % 10]}px`,
+                                  animationDelay: `${(i % 5) * -0.2}s`,
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={recorder.stop}
+                            aria-label={t({
+                              zh: "结束录音",
+                              en: "Stop recording",
+                            })}
+                            className="record-pulse mt-3 grid size-[72px] place-items-center rounded-full bg-destructive text-white shadow-[0_0_0_7px_var(--accent)] transition hover:scale-105"
+                          >
+                            <Square className="size-7" />
+                          </button>
+                          <p className="mt-4 text-sm">
+                            <span className="font-mono tabular-nums">
+                              {formatSeconds(recorder.elapsed)}
+                            </span>{" "}
+                            {t({
+                              zh: "· 说完后点一下结束",
+                              en: "· Tap stop when you're done",
+                            })}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {t({
+                              zh: `本题限时 ${formatSeconds(recordLimitSeconds)} · 到时自动结束录音${exam ? "并进入下一题" : ""}`,
+                              en: `This item's limit is ${formatSeconds(recordLimitSeconds)} · recording stops automatically${exam ? " and the next item opens" : ""}`,
+                            })}
+                          </p>
+                        </>
+                      ) : submitError && recorder.recording ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={retrySubmit}
+                            disabled={submitting}
+                            aria-label={t({
+                              zh: "重传录音",
+                              en: "Retry uploading recording",
+                            })}
+                            className="mt-1 grid size-[72px] place-items-center rounded-full bg-primary text-white shadow-[0_0_0_7px_var(--secondary)] transition hover:scale-105 disabled:opacity-50"
+                          >
+                            <ArrowRight className="size-7" />
+                          </button>
+                          <p className="mt-4 text-sm text-destructive">
+                            {t({
+                              zh: "上传失败，录音已保留",
+                              en: "Upload failed — your recording is saved",
+                            })}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {t({
+                              zh: exam
+                                ? "仅可重传原录音，不能重新作答"
+                                : "点这里重传 · 或",
+                              en: exam
+                                ? "Retry the original upload; this item cannot be answered again"
+                                : "Tap to retry · or",
+                            })}
+                            {!exam && (
+                              <button
+                                type="button"
+                                onClick={startRecording}
+                                className="ml-1 underline text-primary"
+                              >
+                                {t({ zh: "重新录", en: "record again" })}
+                              </button>
+                            )}
+                          </p>
+                          {exam && examClock.itemRemaining === 0 && (
+                            <Button
+                              variant="outline"
+                              className="min-h-11"
+                              onClick={() => {
+                                recorder.reset()
+                                resetAttempt()
+                                setPinnedItemId(null)
+                                void queryClient.invalidateQueries({
+                                  queryKey: ["classroom", code, "today"],
+                                })
+                              }}
+                            >
+                              {t({
+                                zh: "本题已到时，继续考试",
+                                en: "Time is up — continue the exam",
+                              })}
+                            </Button>
+                          )}
+                        </>
+                      ) : (
+                        <>
                           <button
                             type="button"
                             onClick={startRecording}
-                            className="ml-1 underline text-primary"
+                            disabled={
+                              scoring ||
+                              (examActive && currentItemDone) ||
+                              examEnded ||
+                              (Boolean(exam) &&
+                                examClock.itemRemaining === 0) ||
+                              !prepDone
+                            }
+                            aria-label={t({
+                              zh: "开始录音",
+                              en: "Start recording",
+                            })}
+                            className="mt-1 grid size-[72px] place-items-center rounded-full bg-primary text-white shadow-[0_0_0_7px_var(--secondary)] transition hover:scale-105 disabled:opacity-50"
                           >
-                            {t({ zh: "重新录", en: "record again" })}
+                            <Mic className="size-7" />
                           </button>
-                        )}
-                      </p>
-                      {exam && examClock.itemRemaining === 0 && (
-                        <Button
-                          variant="outline"
-                          className="min-h-11"
-                          onClick={() => {
-                            recorder.reset()
-                            resetAttempt()
-                            setPinnedItemId(null)
-                            void queryClient.invalidateQueries({
-                              queryKey: ["classroom", code, "today"],
-                            })
-                          }}
-                        >
-                          {t({
-                            zh: "本题已到时，继续考试",
-                            en: "Time is up — continue the exam",
-                          })}
-                        </Button>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={startRecording}
-                        disabled={
-                          scoring ||
-                          (examActive && currentItemDone) ||
-                          examEnded ||
-                          (Boolean(exam) && examClock.itemRemaining === 0) ||
-                          !prepDone
-                        }
-                        aria-label={t({
-                          zh: "开始录音",
-                          en: "Start recording",
-                        })}
-                        className="mt-1 grid size-[72px] place-items-center rounded-full bg-primary text-white shadow-[0_0_0_7px_var(--secondary)] transition hover:scale-105 disabled:opacity-50"
-                      >
-                        <Mic className="size-7" />
-                      </button>
-                      <p className="mt-4 text-sm">
-                        {examEnded
-                          ? t({ zh: "考试已结束", en: "The exam has ended" })
-                          : examActive && currentItemDone
-                            ? t({
-                                zh: "本题已作答，考试中不能重录",
-                                en: "Already answered — one attempt per item",
-                              })
-                            : scoring
+                          <p className="mt-4 text-sm">
+                            {examEnded
                               ? t({
-                                  zh: "已提交，正在出反馈…",
-                                  en: "Submitted — feedback is on its way…",
+                                  zh: "考试已结束",
+                                  en: "The exam has ended",
                                 })
-                              : recorder.status === "ready"
+                              : examActive && currentItemDone
                                 ? t({
-                                    zh: "这一次开口，已记录",
-                                    en: "This speaking attempt is recorded",
+                                    zh: "本题已作答，考试中不能重录",
+                                    en: "Already answered — one attempt per item",
                                   })
-                                : !prepDone
+                                : scoring
                                   ? t({
-                                      zh: "先利用准备时间组织思路",
-                                      en: "Use the prep time to organise your ideas",
+                                      zh: "已提交，正在出反馈…",
+                                      en: "Submitted — feedback is on its way…",
+                                    })
+                                  : recorder.status === "ready"
+                                    ? t({
+                                        zh: "这一次开口，已记录",
+                                        en: "This speaking attempt is recorded",
+                                      })
+                                    : !prepDone
+                                      ? t({
+                                          zh: "先利用准备时间组织思路",
+                                          en: "Use the prep time to organise your ideas",
+                                        })
+                                      : t({
+                                          zh: "准备好了，就点一下麦克风",
+                                          en: "When you're ready, tap the microphone",
+                                        })}
+                          </p>
+                          {scoring ? (
+                            <p className="text-xs text-muted-foreground">
+                              {exam
+                                ? t({
+                                    zh: "正在上传录音，上传后自动继续；反馈将在考试结束后汇总",
+                                    en: "Uploading your recording, then continuing automatically. Feedback appears after the exam.",
+                                  })
+                                : isLastQuestion
+                                  ? t({
+                                      zh: "先显示本题分数和转写",
+                                      en: "Showing this item's score and transcript first",
                                     })
                                   : t({
-                                      zh: "准备好了，就点一下麦克风",
-                                      en: "When you're ready, tap the microphone",
+                                      zh: "先显示本题分数和转写，详细评价最后看",
+                                      en: "Score and transcript first — full feedback at the end",
                                     })}
-                      </p>
-                      {scoring ? (
-                        <p className="text-xs text-muted-foreground">
-                          {exam
-                            ? t({
-                                zh: "正在上传录音，上传后自动继续；反馈将在考试结束后汇总",
-                                en: "Uploading your recording, then continuing automatically. Feedback appears after the exam.",
-                              })
-                            : isLastQuestion
-                              ? t({
-                                  zh: "先显示本题分数和转写",
-                                  en: "Showing this item's score and transcript first",
-                                })
-                              : t({
-                                  zh: "先显示本题分数和转写，详细评价最后看",
-                                  en: "Score and transcript first — full feedback at the end",
-                                })}
-                        </p>
-                      ) : attemptFailed && !exam ? (
-                        <p className="text-xs text-destructive">
-                          {t({
-                            zh: "这次没有评出来，再录一次就好",
-                            en: "No score this time — just record again",
-                          })}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">
-                          {t({
-                            zh: "需要麦克风权限 · 每一次练习都有意义",
-                            en: "Microphone permission needed · Every practice counts",
-                          })}
+                            </p>
+                          ) : attemptFailed && !exam ? (
+                            <p className="text-xs text-destructive">
+                              {t({
+                                zh: "这次没有评出来，再录一次就好",
+                                en: "No score this time — just record again",
+                              })}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              {t({
+                                zh: "需要麦克风权限 · 每一次练习都有意义",
+                                en: "Microphone permission needed · Every practice counts",
+                              })}
+                            </p>
+                          )}
+                        </>
+                      )}
+                      {recorder.error && (
+                        <p className="mt-1 text-sm text-destructive">
+                          {recorder.error}
                         </p>
                       )}
-                    </>
-                  )}
-                  {recorder.error && (
-                    <p className="mt-1 text-sm text-destructive">
-                      {recorder.error}
-                    </p>
-                  )}
-                </div>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>
