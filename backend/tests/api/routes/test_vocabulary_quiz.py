@@ -371,9 +371,14 @@ def test_quiz_timeout_settlement_without_student(
     code = classroom["code"]
     resp = _start_quiz(client, student["headers"], code, assignment["id"])
     session_id = resp.json()["session_id"]
-    # 答对 1 题、答错 1 题、留 2 题未答（未答按零分计入分母）
-    assert _answer(client, student["headers"], session_id, 0, "w01").json() is not None
-    _answer(client, student["headers"], session_id, 1, "wrong-input")
+    # 答对 1 题、答错 1 题、留 2 题未答（未答按零分计入分母）。
+    # 作答回执必须断言成功：否则被拒的作答会在结算断言处才爆（score=0），
+    # 失败点远离真实原因（2026-10-08 CI 全量跑实际踩过）
+    assert _answer(client, student["headers"], session_id, 0, "w01").status_code == 200
+    assert (
+        _answer(client, student["headers"], session_id, 1, "wrong-input").status_code
+        == 200
+    )
 
     # 时间流逝 40 分钟（时长 30）——学生不再发任何请求
     _expire_started_quiz(db, session_id, minutes_ago=40)
@@ -491,8 +496,13 @@ def test_quiz_publish_grades_and_answers(
     code = classroom["code"]
     resp = _start_quiz(client, student["headers"], code, assignment["id"])
     session_id = resp.json()["session_id"]
-    _answer(client, student["headers"], session_id, 0, "w01")
-    _answer(client, student["headers"], session_id, 1, "bad-input")
+    # 作答必须成功落库：回执弱断言会把 422 吞成下游「成绩为 0 / 错词缺失」
+    # 的漂移失败，失败点远离真实原因（2026-10-08 CI 全量跑实际踩过）
+    assert _answer(client, student["headers"], session_id, 0, "w01").status_code == 200
+    assert (
+        _answer(client, student["headers"], session_id, 1, "bad-input").status_code
+        == 200
+    )
     _submit_quiz(client, student["headers"], session_id)
 
     # 未公布：错词本不含测验作答（bad-input 对应的 w02 不出现）

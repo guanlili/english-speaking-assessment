@@ -295,7 +295,18 @@ jobs:
             echo "=== 1/5 checkout 到本次 CI 验证过的提交 ==="
             # 不用 git pull：pull 拿到的是"部署时刻的最新 master"，连续 push 时可能部署到还没过 CI 的提交。
             # reset --hard 到 github.sha 保证部署的永远是这个 run 测过的代码，也兼容紧急回滚后的服务器状态。
-            git fetch origin
+            # 服务器 origin 走 gh-proxy.com 镜像，偶发 403/429 限流（2026-09-28 / 2026-10-08
+            # 两次部署即因此失败）：指数退避重试，总等待约 5 分钟，仍失败才判红。
+            fetch_ok=0
+            for attempt in 1 2 3 4 5; do
+              if git fetch origin; then fetch_ok=1; break; fi
+              echo "git fetch 失败（第 ${attempt} 次），$((attempt * 30)) 秒后重试"
+              sleep $((attempt * 30))
+            done
+            if [ "$fetch_ok" != "1" ]; then
+              echo "git fetch 重试 5 次后仍失败（gh-proxy 镜像限流？稍后手动 rerun）"
+              exit 1
+            fi
             if [ "$DEPLOY_SHA" != "$(git rev-parse origin/master)" ]; then
               echo "Skipping superseded commit; deploy the current master through its own CI run."
               exit 0
