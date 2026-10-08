@@ -1,7 +1,7 @@
 """drop wordlist_entry（老 A2/B1/B2 词表整表退役）
 
 Revision ID: b7e2d4c9a1f3
-Revises: f7a3c9e25b41
+Revises: 60b66752e050
 Create Date: 2026-10-07 21:30:00.000000
 
 五级词库统一（PR#77）后的收尾：导入端点已 410、启动种子已删、
@@ -17,7 +17,9 @@ import sqlmodel.sql.sqltypes as sqltypes
 from alembic import op
 
 revision = "b7e2d4c9a1f3"
-down_revision = "a6b1c3d5e7f9"
+# 60b66752e050（master #88 阅读句子挂父篇目）与本迁移原同挂 a6b1c3d5e7f9
+# 形成双 head；本迁移尚未部署，改挂到已上线的 60b66752e050 之后
+down_revision = "60b66752e050"
 branch_labels = None
 depends_on = None
 

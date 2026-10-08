@@ -43,7 +43,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
-import { localizedDetail } from "@/utils"
+import { extractErrorMessage, localizedDetail } from "@/utils"
 
 export const Route = createFileRoute("/_layout/classrooms")({
   component: MyClassroomsPage,
@@ -407,7 +407,8 @@ function ClassroomCard({
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const deleteMutation = useMutation({
-    mutationFn: () => ClassesService.deleteClass({ code: classroom.code }),
+    mutationFn: () =>
+      ClassesService.deleteClass({ code: classroom.code, deleteHistory: true }),
     onSuccess: () => {
       showSuccessToast(
         t({
@@ -418,13 +419,7 @@ function ClassroomCard({
       setDeleteOpen(false)
       onInvalidated()
     },
-    onError: (error) =>
-      showErrorToast(
-        t({
-          zh: `删除失败：${error.message}`,
-          en: `Failed to delete: ${error.message}`,
-        }),
-      ),
+    onError: (error) => showErrorToast(extractErrorMessage(error)),
   })
 
   return (
@@ -530,8 +525,8 @@ function ClassroomCard({
           en: `Delete classroom ${classroom.code}?`,
         })}
         description={t({
-          zh: "课堂码将立即失效，课堂与学生名单一并删除。仅能删除没有学生作答记录的课堂；已有作答的课堂需管理员停用。",
-          en: "The classroom code stops working immediately, and the classroom and its roster are deleted together. Only classrooms with no student answers can be deleted; classrooms with answers must be deactivated by an admin.",
+          zh: "确认后将永久删除该课堂、学生名单、发布记录及全部口语/词汇作答，包括已移出学生的历史。课堂码立即失效；学生账号和其他课堂的数据保留。正在评分时请等待评分结束再删除。",
+          en: "Confirming permanently deletes this classroom, its roster, published assignments and all speaking/vocabulary answers, including history from removed students. The code stops working immediately. Student accounts and other classrooms are preserved. Wait for any scoring to finish before deleting.",
         })}
         confirmText={t({ zh: "删除课堂", en: "Delete Classroom" })}
         onOpenChange={(next) => {

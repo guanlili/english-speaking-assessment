@@ -59,13 +59,21 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
   })
 
   // useCallback：reset 会作为练习页自动推进 effect 的依赖，必须保持引用稳定
-  const reset = useCallback(() => setAttemptId(null), [])
+  const resetMutation = submitMutation.reset
+  const reset = useCallback(() => {
+    setAttemptId(null)
+    resetMutation()
+  }, [resetMutation])
 
   return {
     submit: (
       variables: { blob: Blob; duration: number },
       targetOverride?: AttemptSubmitTarget,
     ) => submitMutation.mutate({ ...variables, targetOverride }),
+    submitAsync: (
+      variables: { blob: Blob; duration: number },
+      targetOverride?: AttemptSubmitTarget,
+    ) => submitMutation.mutateAsync({ ...variables, targetOverride }),
     submitting: submitMutation.isPending,
     submitError: submitMutation.isError,
     submitErrorData: submitMutation.error as {

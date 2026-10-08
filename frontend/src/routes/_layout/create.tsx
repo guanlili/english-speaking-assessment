@@ -89,8 +89,8 @@ function QuestionLibrary() {
         </h2>
         <p className="text-sm text-muted-foreground">
           {t({
-            zh: "展开一篇篇目，可直接管理它名下的听句复述。",
-            en: "Expand a passage to manage its Listen & Repeat sentences inline.",
+            zh: "每篇文章是一道题。展开文章查看朗读分句，组卷时直接选择整篇文章；听句复述作为配套题单独管理。",
+            en: "Each article is one question. Expand it to view reading sentences, and select the whole article when composing practice. Paired Listen & Repeat items are managed separately.",
           })}
         </p>
         <PassagesAdmin key="bank" embedded />

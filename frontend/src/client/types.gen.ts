@@ -258,6 +258,9 @@ export type ExamStatus = {
     started: boolean;
     ended: boolean;
     tab_switch_count?: number;
+    current_item_index?: number;
+    item_remaining_seconds?: number;
+    prep_remaining_seconds?: number;
 };
 
 export type ExamViolationRequest = {
@@ -378,6 +381,7 @@ export type PassagePublic = {
     is_active?: boolean;
     id: string;
     slug: string;
+    reading_split?: boolean;
     unit_id?: (string | null);
     created_at?: (string | null);
 };
@@ -414,9 +418,12 @@ export type PassageWithSentences = {
     is_active?: boolean;
     id: string;
     slug: string;
+    reading_split?: boolean;
     unit_id?: (string | null);
     created_at?: (string | null);
     sentences?: Array<RepeatSentence>;
+    reading_segments?: Array<(string)>;
+    reading_child_ids?: Array<(string)>;
 };
 
 export type PathUnit = {
@@ -1855,6 +1862,7 @@ export type ClassesCreateClassResponse = (ClassroomPublic);
 
 export type ClassesDeleteClassData = {
     code: string;
+    deleteHistory?: boolean;
 };
 
 export type ClassesDeleteClassResponse = ({

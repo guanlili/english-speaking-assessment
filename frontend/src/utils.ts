@@ -84,6 +84,12 @@ const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
   "课堂内已有学生作答记录，不能删除；如需停用请联系管理员在后台操作": {
     en: "This classroom has student submissions and cannot be deleted. Ask an administrator to deactivate it instead.",
   },
+  "有正在评分中的作答，请稍后再删除": {
+    en: "Answers are still being scored. Wait for scoring to finish before deleting.",
+  },
+  本题作答时间已结束或尚未开始: {
+    en: "This item's answer window has ended or has not started yet.",
+  },
   "邮件找回暂不可用，请联系学校管理员重置密码": {
     en: "Email recovery is unavailable. Please ask your school administrator to reset your password.",
   },

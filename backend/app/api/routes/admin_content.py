@@ -189,6 +189,8 @@ class PassageUpdate(SQLModel):
 
 class PassageWithSentences(PassagePublic):
     sentences: list[RepeatSentence] = []
+    reading_segments: list[str] = []
+    reading_child_ids: list[uuid.UUID] = []
 
 
 def _require_valid_band(band: str) -> None:
@@ -267,9 +269,21 @@ def list_passages(session: SessionDep, _admin: TeacherUserDep) -> Any:
             if s.passage_id is not None:
                 sentences_by_passage.setdefault(s.passage_id, []).append(s)
     result = []
+    children_by_passage: dict[uuid.UUID, list[uuid.UUID]] = {}
     for passage in passages:
+        if passage.parent_passage_id is not None:
+            children_by_passage.setdefault(passage.parent_passage_id, []).append(
+                passage.id
+            )
+    for passage in passages:
+        if passage.parent_passage_id is not None:
+            continue
         item = PassageWithSentences.model_validate(passage)
         item.sentences = sentences_by_passage.get(passage.id, [])
+        item.reading_segments = (
+            _split_reading_sentences(passage.text) if passage.reading_split else []
+        )
+        item.reading_child_ids = children_by_passage.get(passage.id, [])
         result.append(item)
     return result
 
@@ -335,9 +349,24 @@ def delete_passage(
     sentence_ids = session.exec(
         select(RepeatSentence.id).where(RepeatSentence.passage_id == passage_id)
     ).all()
+    child_ids = list(
+        session.exec(
+            select(Passage.id).where(Passage.parent_passage_id == passage_id)
+        ).all()
+    )
+    if child_ids:
+        sentence_ids = [
+            *sentence_ids,
+            *session.exec(
+                select(RepeatSentence.id).where(
+                    col(RepeatSentence.passage_id).in_(child_ids)
+                )
+            ).all(),
+        ]
     _reject_delete_items_queued(
         session,
         [(passage_id, AttemptItemType.PASSAGE)]
+        + [(pid, AttemptItemType.PASSAGE) for pid in child_ids]
         + [(sid, AttemptItemType.REPEAT) for sid in sentence_ids],
     )
     session.delete(passage)  # 复述句/作答按外键级联
@@ -1061,39 +1090,13 @@ def auto_split_sentences(
     return AutoSplitResult(created=len(created))
 
 
-_CN_NUMS = "一二三四五六七八九十"
+def _split_reading_sentences(text: str) -> list[str]:
+    """保留标点、按原文顺序展示全部句子；分句不生成独立题目。"""
+    import re
 
-
-def _reading_seconds(words: int) -> int:
-    """朗读建议秒数：学生慢速朗读约 0.9 秒/词，5 秒取整，夹在 15–180。"""
-    import math
-
-    return max(15, min(180, math.ceil(words * 0.9 / 5) * 5))
-
-
-def _split_reading_segments(text: str, max_words: int = 90) -> list[str]:
-    """长文拆段：优先按段落切；超长段再按句聚合成不超过 max_words 词的段。"""
-    import re as _re
-
-    paragraphs = [p.strip() for p in _re.split(r"\n+", text) if p.strip()]
-    segments: list[str] = []
-    for para in paragraphs:
-        if len(para.split()) <= max_words:
-            segments.append(para)
-            continue
-        sentences = _re.split(r"(?<=[.!?])\s+", para)
-        buf: list[str] = []
-        buf_words = 0
-        for s in sentences:
-            w = len(s.split())
-            if buf and buf_words + w > max_words:
-                segments.append(" ".join(buf))
-                buf, buf_words = [], 0
-            buf.append(s)
-            buf_words += w
-        if buf:
-            segments.append(" ".join(buf))
-    return segments
+    return [
+        part.strip() for part in re.split(r"(?<=[.!?])\s+|\n+", text) if part.strip()
+    ]
 
 
 def _split_reading_sentences(text: str) -> list[str]:
@@ -1113,7 +1116,7 @@ def _split_reading_sentences(text: str) -> list[str]:
 class PassageSplitResult(SQLModel):
     created: int
     passage_ids: list[uuid.UUID] = []
-    original_deactivated: bool = True
+    original_deactivated: bool = False
 
 
 @router.post("/passages/{passage_id}/split", response_model=PassageSplitResult)
@@ -1121,23 +1124,16 @@ def split_passage_into_readings(
     session: SessionDep,
     _admin: TeacherUserDep,
     passage_id: uuid.UUID,
-    mode: Literal["paragraph", "sentence"] = "paragraph",
+    mode: Literal["paragraph", "sentence"] = "sentence",
 ) -> Any:
-    """把长文按段或按句拆成多道文章朗读题（本地算法非 AI）。
-
-    按段落切分时超长段再按句聚合；按句切分时每句生成一道题。
-    新篇目沿用原标题/主题/难度/分组，
-    标题追加（一）（二）…；原长文自动停用（历史与挂靠复述句保留，可再启用）。
-    """
+    """启用文章内部的折叠分句展示；整篇文章仍是唯一的朗读题。"""
     passage = session.get(Passage, passage_id)
     if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
 
-    segments = (
-        _split_reading_sentences(passage.text or "")
-        if mode == "sentence"
-        else _split_reading_segments(passage.text or "")
-    )
+    if passage.parent_passage_id is not None:
+        raise HTTPException(status_code=422, detail="请在原文章下拆分句子")
+    segments = _split_reading_sentences(passage.text)
     if len(segments) < 2:
         raise HTTPException(
             status_code=422,
@@ -1148,41 +1144,10 @@ def split_passage_into_readings(
             ),
         )
 
-    base_title = _re_split_title(passage.title or "Reading")
-    created: list[Passage] = []
-    for index, segment in enumerate(segments):
-        num = _CN_NUMS[index] if index < 10 else str(index + 1)
-        words = len(segment.split())
-        new_passage = crud.create_passage(
-            session=session,
-            passage_in=PassageCreate(
-                title=f"{base_title}（{num}）",
-                topic=passage.topic,
-                cefr_band=passage.cefr_band,
-                text=segment,
-                suggested_seconds=_reading_seconds(words),
-                is_active=True,
-                unit_id=passage.unit_id,
-            ),
-        )
-        created.append(new_passage)
-
-    passage.is_active = False
+    passage.reading_split = True
     session.add(passage)
     session.commit()
-    for p in created:
-        session.refresh(p)
-    return PassageSplitResult(
-        created=len(created),
-        passage_ids=[p.id for p in created],
-    )
-
-
-def _re_split_title(title: str) -> str:
-    """去掉标题上已有的（一）（二）类后缀，避免重复拆分时叠加。"""
-    import re as _re
-
-    return _re.sub(r"（[一二三四五六七八九十\d]+）$", "", title).strip() or title
+    return PassageSplitResult(created=len(segments))
 
 
 # ── 内容标准音 ───────────────────────────────────────────────────────

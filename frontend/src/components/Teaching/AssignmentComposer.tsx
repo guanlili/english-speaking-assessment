@@ -22,6 +22,7 @@ import {
   type ScenarioOut,
   type SentenceWithPassage,
 } from "@/client"
+import { ReadingPassagePicker } from "@/components/Teaching/ReadingPassagePicker"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -47,6 +48,7 @@ import {
   type LessonSelection,
   type LessonTypes,
 } from "@/lib/lesson-readiness"
+import { normalizeReadingSelection } from "@/lib/reading-selection"
 import {
   EXAM_KIND_LABELS,
   EXAM_LEVEL_LABELS,
@@ -157,7 +159,17 @@ export function AssignmentComposer({
   const scenarios = scenariosQuery.data
 
   // 当前按题指派回显
-  const currentItems = assignedItems ?? []
+  const currentItems = normalizeReadingSelection(
+    (assignedItems ?? []).map((item) => ({ type: item.type, id: item.id })),
+    passages,
+  )
+  const hasLegacyReadingSelection = (assignedItems ?? []).some(
+    (item) =>
+      item.type === "passage" &&
+      !currentItems.some(
+        (current) => current.type === "passage" && current.id === item.id,
+      ),
+  )
   const currentPassages = currentItems
     .filter((i) => i.type === "passage")
     .map((i) => i.id)
@@ -194,6 +206,7 @@ export function AssignmentComposer({
       initialTypes={initialTypes}
       initialSelection={initialSelection}
       initialItems={currentItems as AssignmentItemIn[]}
+      hasLegacyReadingSelection={hasLegacyReadingSelection}
       initialTitle={
         currentExercise?.title ?? t({ zh: "课堂练习", en: "Class Practice" })
       }
@@ -213,6 +226,7 @@ function ComposerForm({
   initialTypes,
   initialSelection,
   initialItems,
+  hasLegacyReadingSelection,
   initialTitle,
   exerciseHistory,
 }: {
@@ -226,6 +240,7 @@ function ComposerForm({
   initialTypes: LessonTypes
   initialSelection: LessonSelection
   initialItems: AssignmentItemIn[]
+  hasLegacyReadingSelection: boolean
   initialTitle: string
   exerciseHistory: ClassroomExercisePublic[]
 }) {
@@ -406,31 +421,41 @@ function ComposerForm({
             {t({ zh: "学生当前练习", en: "Students are currently practicing" })}
           </p>
           <p className="mt-1 font-semibold">
-            {hasItemAssignment
+            {hasLegacyReadingSelection
               ? t({
-                  zh: `按题指派 · ${initialSelection.passages.length} 篇朗读 · ${initialSelection.sentences.length} 句复述 · ${currentQuestionCount(scenarios, initialSelection)} 道问答`,
-                  en: `Item-based assignment · ${initialSelection.passages.length} read-aloud · ${initialSelection.sentences.length} repeat · ${currentQuestionCount(scenarios, initialSelection)} Q&A`,
+                  zh: "原分段练习 · 保留已发布题单",
+                  en: "Legacy segment practice · published items preserved",
                 })
-              : unitTitle
+              : hasItemAssignment
                 ? t({
-                    zh: `单元指派 · ${unitTitle}（旧版，重新发布后转为按题指派）`,
-                    en: `Unit assignment · ${unitTitle} (legacy; republish to convert to item-based)`,
+                    zh: `按题指派 · ${initialSelection.passages.length} 篇朗读 · ${initialSelection.sentences.length} 句复述 · ${currentQuestionCount(scenarios, initialSelection)} 道问答`,
+                    en: `Item-based assignment · ${initialSelection.passages.length} read-aloud · ${initialSelection.sentences.length} repeat · ${currentQuestionCount(scenarios, initialSelection)} Q&A`,
                   })
-                : t({
-                    zh: "自主练习 · 尚未安排统一内容",
-                    en: "Self Practice · no shared content assigned yet",
-                  })}
+                : unitTitle
+                  ? t({
+                      zh: `单元指派 · ${unitTitle}（旧版，重新发布后转为按题指派）`,
+                      en: `Unit assignment · ${unitTitle} (legacy; republish to convert to item-based)`,
+                    })
+                  : t({
+                      zh: "自主练习 · 尚未安排统一内容",
+                      en: "Self Practice · no shared content assigned yet",
+                    })}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {hasItemAssignment || unitTitle
+            {hasLegacyReadingSelection
               ? t({
-                  zh: "发布后，全班按本次设置练习。",
-                  en: "After publishing, the whole class practices with these settings.",
+                  zh: "下方选题已归回文章，重新发布后按整篇文章练习。",
+                  en: "Selections below now refer to whole articles. Republish to practice complete articles.",
                 })
-              : t({
-                  zh: "发布后，全班按本次设置练习。",
-                  en: "After publishing, the whole class practices with these settings.",
-                })}
+              : hasItemAssignment || unitTitle
+                ? t({
+                    zh: "发布后，全班按本次设置练习。",
+                    en: "After publishing, the whole class practices with these settings.",
+                  })
+                : t({
+                    zh: "发布后，全班按本次设置练习。",
+                    en: "After publishing, the whole class practices with these settings.",
+                  })}
           </p>
         </div>
         {(hasItemAssignment || hasUnitAssignment) && (
@@ -440,7 +465,7 @@ function ComposerForm({
         )}
       </div>
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
-        <div className="space-y-6 rounded-2xl border bg-card p-6">
+        <div className="min-w-0 space-y-6 rounded-2xl border bg-card p-4 sm:p-6">
           <section>
             <h2 className="font-semibold">
               {t({ zh: "练习名称", en: "Practice Name" })}
@@ -565,8 +590,8 @@ function ComposerForm({
               </h2>
               <p className="mb-3 mt-2 text-sm text-muted-foreground">
                 {t({
-                  zh: "可多选：长文拆成几篇时学生按顺序分别朗读。",
-                  en: "Multi-select: when a long text is split into passages, students read them in order.",
+                  zh: "每篇文章算一道题，可多选。展开查看分句，选择整篇文章即可。",
+                  en: "Each article counts as one question. Expand to view its sentences and select the whole article.",
                 })}
               </p>
               <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
@@ -579,33 +604,17 @@ function ComposerForm({
                   </p>
                 )}
                 {passages.map((p) => (
-                  <label
+                  <ReadingPassagePicker
                     key={p.id}
-                    htmlFor={`pick-passage-${p.id}`}
-                    className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${selection.passages.includes(p.id ?? "") ? "border-primary/50 bg-primary/5" : ""}`}
-                  >
-                    <Checkbox
-                      id={`pick-passage-${p.id}`}
-                      checked={selection.passages.includes(p.id ?? "")}
-                      onCheckedChange={() =>
-                        setSelectionDirty((cur) => ({
-                          ...cur,
-                          passages: toggleInList(cur.passages, p.id ?? ""),
-                        }))
-                      }
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium">
-                        {p.title}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {t({
-                          zh: `${p.topic} · 建议 ${p.suggested_seconds} 秒`,
-                          en: `${p.topic} · suggested ${p.suggested_seconds}s`,
-                        })}
-                      </span>
-                    </span>
-                  </label>
+                    passage={p}
+                    checked={selection.passages.includes(p.id)}
+                    onCheckedChange={() =>
+                      setSelectionDirty((cur) => ({
+                        ...cur,
+                        passages: toggleInList(cur.passages, p.id),
+                      }))
+                    }
+                  />
                 ))}
               </div>
             </section>
@@ -818,7 +827,7 @@ function ComposerForm({
             </section>
           )}
         </div>
-        <aside className="self-start rounded-2xl border bg-card p-6">
+        <aside className="min-w-0 self-start rounded-2xl border bg-card p-4 sm:p-6">
           <h2 className="font-semibold">
             {t({ zh: "检查并发布", en: "Review & Publish" })}
           </h2>
