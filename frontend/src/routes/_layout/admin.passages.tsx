@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { Pencil, Plus, Scissors, Trash2 } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  Pencil,
+  Plus,
+  Scissors,
+  Trash2,
+} from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import type { PassageWithSentences } from "@/client"
@@ -10,6 +17,7 @@ import { TopicPicker } from "@/components/Admin/TopicPicker"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import AudioSetter from "@/components/Practice/AudioSetter"
 import { PassageSentences } from "@/components/Teaching/PassageSentences"
+import { ReadingSentences } from "@/components/Teaching/ReadingSentences"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -45,6 +53,7 @@ import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
 import { TERMS } from "@/lib/terms"
+import { extractErrorMessage } from "@/utils"
 
 export const Route = createFileRoute("/_layout/admin/passages")({
   component: PassagesAdmin,
@@ -137,10 +146,7 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
       showSuccessToast(t({ zh: "篇目已创建", en: "Passage created" }))
       invalidate()
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(
-        err.body?.detail ?? t({ zh: "创建失败", en: "Create failed" }),
-      ),
+    onError: (err) => showErrorToast(extractErrorMessage(err)),
   })
 
   const updateMutation = useMutation({
@@ -154,10 +160,7 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
       setEditing(null)
       invalidate()
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(
-        err.body?.detail ?? t({ zh: "更新失败", en: "Update failed" }),
-      ),
+    onError: (err) => showErrorToast(extractErrorMessage(err)),
   })
 
   const deleteMutation = useMutation({
@@ -167,10 +170,7 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
       setToDelete(null)
       invalidate()
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(
-        err.body?.detail ?? t({ zh: "删除失败", en: "Delete failed" }),
-      ),
+    onError: (err) => showErrorToast(extractErrorMessage(err)),
   })
 
   const units = (unitsQuery.data ?? []).map((u) => ({
@@ -189,8 +189,8 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
           </h1>
           <p className="text-muted-foreground">
             {t({
-              zh: "录入文章或段落，学生朗读并提交录音，系统提供参考反馈。展开篇目可直接管理它名下的听句复述。",
-              en: "Add articles or paragraphs for students to read aloud and submit recordings, with reference feedback from the system. Expand a passage to manage its repeat sentences inline.",
+              zh: "每篇文章是一道朗读题。展开文章可查看正文和拆分句子，也可管理配套的听句复述。",
+              en: "Each article is one read-aloud question. Expand it to view the full text and reading sentences, or manage its paired Listen & Repeat items.",
             })}
           </p>
         </div>
@@ -744,51 +744,73 @@ function PassageCard({
   onMutated: () => void
 }) {
   const { t } = useI18n()
-  const [splitMode, setSplitMode] = useState<"paragraph" | "sentence" | null>(
-    null,
-  )
+  const [splitConfirm, setSplitConfirm] = useState(false)
   const splitPassage = useMutation({
-    mutationFn: (mode: "paragraph" | "sentence") =>
-      AdminService.splitPassageIntoReadings({ passageId: passage.id, mode }),
-    onSuccess: (data, mode) => {
+    mutationFn: () =>
+      AdminService.splitPassageIntoReadings({ passageId: passage.id }),
+    onSuccess: (data) => {
       toast.success(
         t({
-          zh: `已按${mode === "sentence" ? "句" : "段"}生成 ${data.created} 道文章朗读题，原文已停用（可再启用）`,
-          en: `Created ${data.created} read-aloud items by ${mode === "sentence" ? "sentence" : "paragraph"}; the original is disabled (you can re-enable it)`,
+          zh: `已在文章下拆分出 ${data.created} 句，组卷仍选择整篇文章`,
+          en: `Added ${data.created} sentences under the article; select the whole article when composing practice`,
         }),
       )
-      setSplitMode(null)
+      setSplitConfirm(false)
+      if (!expanded) onToggle()
       onMutated()
     },
-    onError: () =>
+    onError: (err: { body?: { detail?: string } }) =>
       toast.error(
-        t({
-          zh: "拆分失败，请检查正文后重试",
-          en: "Couldn't split. Check the text and try again.",
-        }),
+        err.body?.detail === "正文只有一个段落，无需拆分；请先用换行分段" ||
+          err.body?.detail === "正文不足两句，无法按句拆分"
+          ? t({
+              zh: "正文至少需要两句才能拆分。",
+              en: "The text needs at least two sentences to split.",
+            })
+          : extractErrorMessage(err),
       ),
   })
-  const paragraphCount = (passage.text ?? "")
-    .split(/\n+/)
-    .filter((p) => p.trim()).length
-  const sentenceCount = (passage.text ?? "")
-    .split(/\n+|(?<=[.!?])\s+/)
-    .filter((sentence) => sentence.trim()).length
-
   return (
-    <Card>
+    <Card data-testid={`passage-${passage.id}`}>
       <CardHeader className="flex flex-wrap items-start justify-between gap-3 space-y-0">
-        <div className="min-w-0">
-          <CardTitle className="break-words text-base leading-relaxed">
-            {passage.title}{" "}
-            <span className="font-normal text-muted-foreground">
-              · {passage.topic} · {passage.cefr_band} ·{" "}
-              {(passage.sentences ?? []).length}{" "}
-              {t({ zh: "听句复述", en: "listen-and-repeat items" })}
-            </span>
+        <div className="min-w-0 flex-1">
+          <CardTitle className="text-base leading-relaxed">
+            <button
+              type="button"
+              className="flex min-h-11 w-full items-center gap-2 text-left"
+              aria-expanded={expanded}
+              aria-controls={`passage-content-${passage.id}`}
+              onClick={onToggle}
+            >
+              {expanded ? (
+                <ChevronDown className="size-4 shrink-0" />
+              ) : (
+                <ChevronRight className="size-4 shrink-0" />
+              )}
+              <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                {passage.title}
+              </span>
+            </button>
           </CardTitle>
           <CardDescription className="mt-1 flex flex-wrap items-center gap-2">
             <Badge variant="outline">{unitTitle}</Badge>
+            <span>
+              {t({ zh: "1 道文章朗读题", en: "1 read-aloud question" })}
+            </span>
+            {(passage.reading_segments ?? []).length > 0 && (
+              <span>
+                {t({
+                  zh: `${(passage.reading_segments ?? []).length} 句朗读分句`,
+                  en: `${(passage.reading_segments ?? []).length} reading sentences`,
+                })}
+              </span>
+            )}
+            <span>
+              {t({
+                zh: `${(passage.sentences ?? []).length} 句复述`,
+                en: `${(passage.sentences ?? []).length} repeat sentences`,
+              })}
+            </span>
             {passage.is_active === false && (
               <Badge variant="secondary">
                 {t({ zh: "已停用", en: "Disabled" })}
@@ -800,6 +822,7 @@ function PassageCard({
           <Button
             variant="outline"
             size="sm"
+            className="min-h-11"
             aria-expanded={expanded}
             onClick={onToggle}
           >
@@ -807,41 +830,20 @@ function PassageCard({
               ? t({ zh: "收起", en: "Collapse" })
               : t({ zh: "查看文章", en: "View Text" })}
           </Button>
-          {passage.is_active !== false && (
+          {!passage.reading_split && (
             <Button
               variant="outline"
               size="sm"
-              disabled={paragraphCount < 2 || splitPassage.isPending}
-              title={
-                paragraphCount < 2
-                  ? t({
-                      zh: "按段落拆成朗读题：请先用换行分段",
-                      en: "Split into read-aloud items by paragraph: add line breaks first",
-                    })
-                  : t({
-                      zh: "按段落生成多道文章朗读题，原长文停用",
-                      en: "Create read-aloud items from paragraphs; the original is disabled",
-                    })
-              }
-              onClick={() => setSplitMode("paragraph")}
-            >
-              <Scissors />
-              {t({ zh: "按段拆朗读题", en: "Split into read-aloud items" })}
-            </Button>
-          )}
-          {passage.is_active !== false && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={sentenceCount < 2 || splitPassage.isPending}
+              className="min-h-11"
+              disabled={splitPassage.isPending}
               title={t({
-                zh: "按句生成文章朗读题，每句单独录音；原长文停用",
-                en: "Create one read-aloud item per sentence; the original is disabled",
+                zh: "按原文顺序拆句，作为文章下的子内容",
+                en: "Split sentences in source order as content within this article",
               })}
-              onClick={() => setSplitMode("sentence")}
+              onClick={() => setSplitConfirm(true)}
             >
               <Scissors />
-              {t({ zh: "按句拆朗读题", en: "Split by sentence" })}
+              {t({ zh: "自动拆分句子", en: "Auto-split Sentences" })}
             </Button>
           )}
           <Button
@@ -897,36 +899,31 @@ function PassageCard({
         </div>
       </CardHeader>
       {expanded && (
-        <CardContent className="space-y-4">
-          <p className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">
+        <CardContent id={`passage-content-${passage.id}`} className="space-y-4">
+          <p className="whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-sm [overflow-wrap:anywhere]">
             {passage.text}
           </p>
+          <ReadingSentences segments={passage.reading_segments ?? []} />
           <PassageSentences passage={passage} onMutated={onMutated} />
         </CardContent>
       )}
 
       <ConfirmDialog
-        open={splitMode !== null}
+        open={splitConfirm}
         title={t({
-          zh: `把「${passage.title}」按${splitMode === "sentence" ? "句" : "段"}拆成文章朗读题？`,
-          en: `Split "${passage.title}" into read-aloud items by ${splitMode === "sentence" ? "sentence" : "paragraph"}?`,
+          zh: `拆分「${passage.title}」的朗读句子？`,
+          en: `Split reading sentences for "${passage.title}"?`,
         })}
         description={t({
-          zh:
-            splitMode === "sentence"
-              ? `预计生成 ${sentenceCount} 道逐句朗读题，每句单独录音。原长文将停用；已发布练习和挂靠的听句复述题保留。`
-              : `按段落拆成约 ${paragraphCount} 道朗读题（超长段会再按句聚合）。原长文将停用；已发布练习和挂靠的听句复述题保留。`,
-          en:
-            splitMode === "sentence"
-              ? `About ${sentenceCount} read-aloud items will be created, one recording per sentence. The original will be disabled; published exercises and linked listen-and-repeat items are kept.`
-              : `About ${paragraphCount} read-aloud items will be created by paragraph (long paragraphs may be split further). The original will be disabled; published exercises and linked listen-and-repeat items are kept.`,
+          zh: "按原文顺序拆分全部句子，折叠在文章下。组卷时整篇文章算一道题；修改正文后分句展示自动更新，听句复述单独管理。",
+          en: "All sentences appear in source order under the collapsible article. The whole article counts as one question. Sentence views update with the text; Listen & Repeat items are managed separately.",
         })}
         confirmText={t({ zh: "拆分", en: "Split" })}
         onOpenChange={(next) => {
-          if (!next) setSplitMode(null)
+          if (!next) setSplitConfirm(false)
         }}
         onConfirm={async () => {
-          if (splitMode) await splitPassage.mutateAsync(splitMode)
+          await splitPassage.mutateAsync()
         }}
       />
     </Card>

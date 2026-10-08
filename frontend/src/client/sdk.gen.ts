@@ -610,11 +610,7 @@ export class AdminService {
     
     /**
      * Split Passage Into Readings
-     * 把长文按段或按句拆成多道文章朗读题（本地算法非 AI）。
-     *
-     * 按段落切分时超长段再按句聚合；按句切分时每句生成一道题。
-     * 新篇目沿用原标题/主题/难度/分组，
-     * 标题追加（一）（二）…；原长文自动停用（历史与挂靠复述句保留，可再启用）。
+     * 启用文章内部的折叠分句展示；整篇文章仍是唯一的朗读题。
      * @param data The data for the request.
      * @param data.passageId
      * @param data.mode

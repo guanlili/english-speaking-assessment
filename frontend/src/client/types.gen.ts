@@ -378,6 +378,7 @@ export type PassagePublic = {
     is_active?: boolean;
     id: string;
     slug: string;
+    reading_split?: boolean;
     unit_id?: (string | null);
     created_at?: (string | null);
 };
@@ -414,9 +415,12 @@ export type PassageWithSentences = {
     is_active?: boolean;
     id: string;
     slug: string;
+    reading_split?: boolean;
     unit_id?: (string | null);
     created_at?: (string | null);
     sentences?: Array<RepeatSentence>;
+    reading_segments?: Array<(string)>;
+    reading_child_ids?: Array<(string)>;
 };
 
 export type PathUnit = {
