@@ -2408,10 +2408,10 @@ def record_instruction_ack(
             InstructionAck.item_id == body.item_id,  # type: ignore[arg-type]
         )
     ).first()
-    return AckResult(
-        acked=True,
-        acked_at=(existing.created_at if existing else get_datetime_utc()).isoformat(),
-    )
+    fallback_at = (
+        existing.created_at if existing is not None and existing.created_at else None
+    ) or get_datetime_utc()
+    return AckResult(acked=True, acked_at=fallback_at.isoformat())
 
 
 @router.get("/{code}/exercises", response_model=list[ClassroomExercisePublic])
