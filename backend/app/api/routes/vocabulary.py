@@ -384,10 +384,15 @@ def create_book(
     )
     session.add(book)
     session.flush()
-    for word_in in book_in.words:
+    # position 必须连续赋值：全部默认 0 会让 ORDER BY position 全平局，
+    # Postgres 平局返回顺序不定——教师预览词序与学生测验词序可能不一致
+    # （CI 与本地实测就返回不同顺序）
+    for position, word_in in enumerate(book_in.words, start=1):
         word = _create_word(session, word_in)
         session.flush()
-        session.add(VocabularyBookItem(book_id=book.id, word_id=word.id))
+        session.add(
+            VocabularyBookItem(book_id=book.id, word_id=word.id, position=position)
+        )
     session.commit()
     session.refresh(book)
     items = session.exec(

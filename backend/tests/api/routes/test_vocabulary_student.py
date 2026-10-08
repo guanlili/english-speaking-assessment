@@ -209,6 +209,40 @@ def _seed_wrong_words(
 # ── 词库浏览与搜索（权限） ─────────────────────────────────────────
 
 
+def test_create_book_words_have_stable_position_order(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """建库带词：position 连续赋值，词序按导入顺序稳定。
+
+    曾漏传 position 全默认 0 → ORDER BY position 全平局 → Postgres 返回
+    顺序不定（教师预览词序 ≠ 学生测验词序；CI 与本地实测顺序不同，
+    vocab quiz 两测例在 CI 确定性翻车即此因）。
+    """
+    teacher, teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, teacher_headers)
+    book = _make_class_book(client, teacher_headers, classroom["id"], _words(4, "pos"))
+    words = client.get(f"{VOCAB}/books/{book['id']}", headers=teacher_headers).json()[
+        "words"
+    ]
+    assert [w["headword"] for w in words] == [
+        "pos01",
+        "pos02",
+        "pos03",
+        "pos04",
+    ]
+    from sqlmodel import col
+    from sqlmodel import select as sm_select
+
+    from app.models import VocabularyBookItem
+
+    positions = db.exec(
+        sm_select(VocabularyBookItem.position).where(
+            col(VocabularyBookItem.book_id) == uuid.UUID(book["id"])  # type: ignore[arg-type]
+        )
+    ).all()
+    assert sorted(positions) == [1, 2, 3, 4]
+
+
 def test_student_book_browse_scope_and_search(
     client: TestClient,
     superuser_token_headers: dict[str, str],
