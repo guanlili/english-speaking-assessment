@@ -1,18 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Link } from "@tanstack/react-router"
-import {
-  BookOpenText,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Ear,
-  Eye,
-  Info,
-  MessagesSquare,
-  Plus,
-  Send,
-  Trash2,
-} from "lucide-react"
+import { BookOpenText, Ear, Info, MessagesSquare } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
@@ -26,8 +13,16 @@ import {
   type ScenarioOut,
   type SentenceWithPassage,
 } from "@/client"
-import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
-import { ReadingPassagePicker } from "@/components/Teaching/ReadingPassagePicker"
+import InstructionsSection from "@/components/Teaching/AssignmentComposer/InstructionsSection"
+import OrderSection from "@/components/Teaching/AssignmentComposer/OrderSection"
+import PassagesSection from "@/components/Teaching/AssignmentComposer/PassagesSection"
+import {
+  PreviewDialog,
+  PublishHistory,
+} from "@/components/Teaching/AssignmentComposer/PreviewDialog"
+import PublishSidebar from "@/components/Teaching/AssignmentComposer/PublishSidebar"
+import ScenariosSection from "@/components/Teaching/AssignmentComposer/ScenariosSection"
+import SentencesSection from "@/components/Teaching/AssignmentComposer/SentencesSection"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -41,7 +36,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { NumberInput } from "@/components/ui/number-input"
-import { Textarea } from "@/components/ui/textarea"
 import {
   assignmentItemKey,
   defaultAssignmentOrder,
@@ -55,12 +49,7 @@ import {
   type LessonTypes,
 } from "@/lib/lesson-readiness"
 import { normalizeReadingSelection } from "@/lib/reading-selection"
-import {
-  EXAM_KIND_LABELS,
-  EXAM_LEVEL_LABELS,
-  ITEM_TYPE_LABELS,
-  TERMS,
-} from "@/lib/terms"
+import { TERMS } from "@/lib/terms"
 
 const questionTypes = [
   {
@@ -291,13 +280,6 @@ function ComposerForm({
   const [examMinutes, setExamMinutes] = useState(30)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
-  // 说明内联新建表单（组卷时当场写一条说明，免跳题目库）
-  const [newTitle, setNewTitle] = useState("")
-  const [newText, setNewText] = useState("")
-  const [newSeconds, setNewSeconds] = useState(20)
-  const [deleteTarget, setDeleteTarget] = useState<InstructionPublic | null>(
-    null,
-  )
   const dirtyRef = useRef(false)
   const prevServerTypesRef = useRef(initialTypes)
   const prevServerSelectionRef = useRef(initialSelection)
@@ -412,54 +394,6 @@ function ComposerForm({
     }),
     [planItems, selectedPassages],
   )
-
-  const createInstruction = useMutation({
-    mutationFn: () =>
-      AdminService.createInstruction({
-        requestBody: {
-          text: newText.trim(),
-          title: newTitle.trim() || null,
-          suggested_seconds: newSeconds,
-        },
-      }),
-    onSuccess: async (created) => {
-      setNewTitle("")
-      setNewText("")
-      setNewSeconds(20)
-      setSelectionDirty((cur) => ({
-        ...cur,
-        instructions: [...cur.instructions, created.id],
-      }))
-      toast.success(
-        t({
-          zh: "说明已创建并加入本次练习",
-          en: "Instruction created and added to this lesson",
-        }),
-      )
-      await queryClient.invalidateQueries({
-        queryKey: ["admin", "instructions"],
-      })
-    },
-    onError: () =>
-      toast.error(
-        t({ zh: "创建失败，请重试", en: "Failed to create, please retry" }),
-      ),
-  })
-
-  const deleteInstruction = useMutation({
-    mutationFn: (id: string) =>
-      AdminService.deleteInstruction({ instructionId: id }),
-    onSuccess: async () => {
-      setDeleteTarget(null)
-      await queryClient.invalidateQueries({
-        queryKey: ["admin", "instructions"],
-      })
-    },
-    onError: () =>
-      toast.error(
-        t({ zh: "删除失败，请重试", en: "Failed to delete, please retry" }),
-      ),
-  })
 
   const changed =
     JSON.stringify(types) !== JSON.stringify(initialTypes) ||
@@ -697,630 +631,107 @@ function ComposerForm({
             </div>
           </section>
           {types.reading && (
-            <section>
-              <h2 className="font-semibold">
-                {readingNo}. {t({ zh: "朗读篇目", en: "Read Aloud Passages" })}
-              </h2>
-              <p className="mb-3 mt-2 text-sm text-muted-foreground">
-                {t({
-                  zh: "可多选：未拆分的文章整篇一道题；拆分过的文章按句出题，学生逐句朗读。",
-                  en: "Multi-select: unsplit articles count as one question; split articles become one question per sentence, read aloud sentence by sentence.",
-                })}
-              </p>
-              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                {passages.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    {t({
-                      zh: "还没有朗读篇目，去题目库创建。",
-                      en: "No read-aloud passages yet — create some in the Question Bank.",
-                    })}
-                  </p>
-                )}
-                {passages.map((p) => (
-                  <ReadingPassagePicker
-                    key={p.id}
-                    passage={p}
-                    checked={selection.passages.includes(p.id)}
-                    onCheckedChange={() =>
-                      setSelectionDirty((cur) => ({
-                        ...cur,
-                        passages: toggleInList(cur.passages, p.id),
-                      }))
-                    }
-                  />
-                ))}
-              </div>
-            </section>
+            <PassagesSection
+              sectionNo={readingNo ?? 0}
+              passages={passages}
+              selectedIds={selection.passages}
+              onToggle={(id) =>
+                setSelectionDirty((cur) => ({
+                  ...cur,
+                  passages: toggleInList(cur.passages, id),
+                }))
+              }
+            />
           )}
           {types.repeat && (
-            <section>
-              <h2 className="font-semibold">
-                {repeatNo}. {t({ zh: "复述句", en: "Repeat Sentences" })}
-              </h2>
-              <p className="mb-3 mt-2 text-sm text-muted-foreground">
-                {t({
-                  zh: "从复述句题库多选，学生只能听语音复述。",
-                  en: "Multi-select from the repeat-sentence bank; students repeat what they hear.",
-                })}
-              </p>
-              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                {sentences.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    {t({
-                      zh: "还没有复述句，去题目库创建。",
-                      en: "No repeat sentences yet — create some in the Question Bank.",
-                    })}
-                  </p>
-                )}
-                {sentences.map((s) => (
-                  <label
-                    key={s.id}
-                    htmlFor={`pick-sentence-${s.id}`}
-                    className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${selection.sentences.includes(s.id ?? "") ? "border-primary/50 bg-primary/5" : ""}`}
-                  >
-                    <Checkbox
-                      id={`pick-sentence-${s.id}`}
-                      checked={selection.sentences.includes(s.id ?? "")}
-                      onCheckedChange={() =>
-                        setSelectionDirty((cur) => ({
-                          ...cur,
-                          sentences: toggleInList(cur.sentences, s.id ?? ""),
-                        }))
-                      }
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm">{s.text}</span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {t({
-                          zh: `${s.suggested_seconds} 秒 · 可听 ${(s.replay_limit ?? 3) === 0 ? "不限" : `${s.replay_limit ?? 3} 次`}${s.passage_title ? ` · 挂篇目：${s.passage_title}` : " · 独立题"}`,
-                          en: `${s.suggested_seconds}s · ${(s.replay_limit ?? 3) === 0 ? "unlimited replays" : `${s.replay_limit ?? 3} replays`}${s.passage_title ? ` · Passage: ${s.passage_title}` : " · Standalone"}`,
-                        })}
-                      </span>
-                      {s.exam_kind && (
-                        <span className="mt-1 flex flex-wrap gap-1">
-                          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                            {t(
-                              EXAM_KIND_LABELS[s.exam_kind] ?? {
-                                zh: s.exam_kind,
-                                en: s.exam_kind,
-                              },
-                            )}
-                          </span>
-                          {s.exam_level && (
-                            <span className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                              {t(
-                                EXAM_LEVEL_LABELS[s.exam_level] ?? {
-                                  zh: s.exam_level,
-                                  en: s.exam_level,
-                                },
-                              )}
-                            </span>
-                          )}
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </section>
+            <SentencesSection
+              sectionNo={repeatNo ?? 0}
+              sentences={sentences}
+              selectedIds={selection.sentences}
+              onToggle={(id) =>
+                setSelectionDirty((cur) => ({
+                  ...cur,
+                  sentences: toggleInList(cur.sentences, id),
+                }))
+              }
+            />
           )}
           {types.qa && (
-            <section>
-              <h2 className="font-semibold">
-                {qaNo}. {t({ zh: "问答主题", en: "Q&A Topic" })}
-              </h2>
-              <p className="mb-3 mt-2 text-sm text-muted-foreground">
-                {t({
-                  zh: "可多选主题；选中主题下的全部题目进入本次练习。",
-                  en: "Select multiple topics; all questions in each selected topic join this practice.",
-                })}
-              </p>
-              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                {scenarios
-                  .filter((s) => s.is_active)
-                  .map((scenario) => (
-                    <label
-                      key={scenario.id}
-                      htmlFor={`pick-scenario-${scenario.id}`}
-                      className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 ${selection.scenarioIds.includes(scenario.id) ? "border-primary/50 bg-primary/5" : ""}`}
-                    >
-                      <Checkbox
-                        id={`pick-scenario-${scenario.id}`}
-                        checked={selection.scenarioIds.includes(scenario.id)}
-                        onCheckedChange={() =>
-                          setSelectionDirty((cur) => ({
-                            ...cur,
-                            scenarioIds: toggleInList(
-                              cur.scenarioIds,
-                              scenario.id,
-                            ),
-                          }))
-                        }
-                      />
-                      <span className="min-w-0 flex-1 text-sm">
-                        {t({
-                          zh: `${scenario.topic}（${scenario.questions.length} 题）`,
-                          en: `${scenario.topic} (${scenario.questions.length} questions)`,
-                        })}
-                      </span>
-                    </label>
-                  ))}
-              </div>
-              {selectedScenarios.map((scenario) => (
-                <div
-                  key={scenario.id}
-                  className="mt-3 space-y-1 rounded-lg border p-3 text-sm"
-                >
-                  <p className="font-medium">{scenario.topic}</p>
-                  {scenario.questions.map((q) => (
-                    <p key={q.id} className="truncate">
-                      · {q.text}{" "}
-                      <span className="text-xs text-muted-foreground">
-                        {t({
-                          zh: `${q.suggested_seconds} 秒`,
-                          en: `${q.suggested_seconds}s`,
-                        })}
-                      </span>
-                    </p>
-                  ))}
-                </div>
-              ))}
-            </section>
+            <ScenariosSection
+              sectionNo={qaNo ?? 0}
+              scenarios={scenarios}
+              selectedIds={selection.scenarioIds}
+              selectedScenarios={selectedScenarios}
+              onToggle={(id) =>
+                setSelectionDirty((cur) => ({
+                  ...cur,
+                  scenarioIds: toggleInList(cur.scenarioIds, id),
+                }))
+              }
+            />
           )}
           {types.instruction && (
-            <section>
-              <h2 className="font-semibold">
-                {instructionNo}. {t(TERMS.typeInstruction)}
-              </h2>
-              <p className="mb-3 mt-2 text-sm text-muted-foreground">
-                {t({
-                  zh: "纯文字引导页，可插在任意两题之间（默认排在最前，用下方顺序区调整）；学生读完点「继续」进入下一题。模考中按秒数倒计时，可提前继续。说明不能单独作为练习内容。",
-                  en: "Text-only intro pages you can slot between any two items (they default to the front — reorder below). Students tap Continue after reading. In exams they are timed by seconds but can be skipped early. Instructions alone can't form a lesson.",
-                })}
-              </p>
-              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                {instructions.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    {t({
-                      zh: "说明库还是空的，用下方表单新建一条。",
-                      en: "The instruction bank is empty — create one with the form below.",
-                    })}
-                  </p>
-                )}
-                {instructions.map((ins) => (
-                  <div
-                    key={ins.id}
-                    className={`flex items-start gap-3 rounded-lg border p-3 ${selection.instructions.includes(ins.id) ? "border-primary/50 bg-primary/5" : ""}`}
-                  >
-                    <Checkbox
-                      id={`pick-instruction-${ins.id}`}
-                      className="mt-0.5"
-                      checked={selection.instructions.includes(ins.id)}
-                      onCheckedChange={() =>
-                        setSelectionDirty((cur) => ({
-                          ...cur,
-                          instructions: toggleInList(cur.instructions, ins.id),
-                        }))
-                      }
-                    />
-                    <label
-                      htmlFor={`pick-instruction-${ins.id}`}
-                      className="min-w-0 flex-1 cursor-pointer"
-                    >
-                      <span className="block truncate text-sm">
-                        {ins.title ? `${ins.title} · ` : ""}
-                        {ins.text}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {t({
-                          zh: `${ins.suggested_seconds} 秒`,
-                          en: `${ins.suggested_seconds}s`,
-                        })}
-                      </span>
-                    </label>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-muted-foreground hover:text-destructive"
-                      aria-label={t({
-                        zh: "删除这条说明",
-                        en: "Delete this instruction",
-                      })}
-                      onClick={() => setDeleteTarget(ins)}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 space-y-2 rounded-lg border border-dashed p-3">
-                <p className="text-sm font-medium">
-                  {t({ zh: "新建说明", en: "New instruction" })}
-                </p>
-                <Input
-                  value={newTitle}
-                  maxLength={100}
-                  className="text-base"
-                  placeholder={t({
-                    zh: "小标题（可选，如「Part B 开始」）",
-                    en: "Heading (optional, e.g., Part B)",
-                  })}
-                  onChange={(event) => {
-                    dirtyRef.current = true
-                    setNewTitle(event.target.value)
-                  }}
-                />
-                <Textarea
-                  value={newText}
-                  maxLength={2000}
-                  className="min-h-20 text-base"
-                  placeholder={t({
-                    zh: "说明文字（学生会在下一题前看到这段内容）",
-                    en: "Instruction text (students see this before the next item)",
-                  })}
-                  onChange={(event) => {
-                    dirtyRef.current = true
-                    setNewText(event.target.value)
-                  }}
-                />
-                <div className="flex flex-wrap items-center gap-2">
-                  <NumberInput
-                    id="instruction-seconds"
-                    min={5}
-                    max={300}
-                    value={newSeconds}
-                    onValueChange={(value) => {
-                      dirtyRef.current = true
-                      setNewSeconds(value)
-                    }}
-                    className="w-24 text-base"
-                    aria-label={t({
-                      zh: "建议停留秒数（5–300）",
-                      en: "Suggested seconds (5–300)",
-                    })}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {t({
-                      zh: "秒（5–300，模考窗口时长）",
-                      en: "seconds (5–300, exam window length)",
-                    })}
-                  </span>
-                  <LoadingButton
-                    className="ml-auto"
-                    loading={createInstruction.isPending}
-                    disabled={!newText.trim()}
-                    onClick={() => createInstruction.mutate()}
-                  >
-                    <Plus className="size-4" />
-                    {t({ zh: "创建并加入", en: "Create & add" })}
-                  </LoadingButton>
-                </div>
-              </div>
-            </section>
+            <InstructionsSection
+              sectionNo={instructionNo ?? 0}
+              instructions={instructions}
+              selectedIds={selection.instructions}
+              onToggle={(id) =>
+                setSelectionDirty((cur) => ({
+                  ...cur,
+                  instructions: toggleInList(cur.instructions, id),
+                }))
+              }
+              onAddCreated={(id) =>
+                setSelectionDirty((cur) => ({
+                  ...cur,
+                  instructions: [...cur.instructions, id],
+                }))
+              }
+              onRemoveDeleted={(id) =>
+                setSelectionDirty((cur) => ({
+                  ...cur,
+                  instructions: cur.instructions.filter((x) => x !== id),
+                }))
+              }
+              onDirty={() => {
+                dirtyRef.current = true
+              }}
+            />
           )}
           {planItems.length > 0 && (
-            <section className="space-y-3">
-              <h2 className="font-semibold">
-                {t({ zh: "调整作答顺序", en: "Arrange Answer Order" })}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {t({
-                  zh: "默认按复述句、问答交替；用上下按钮调整，学生会按此顺序练习。",
-                  en: "Repeat sentences and Q&A alternate by default. Use the arrows to set the order students follow.",
-                })}
-              </p>
-              <ol className="space-y-2">
-                {planItems.map((item, index) => {
-                  const label =
-                    item.type === "passage"
-                      ? passages.find((p) => p.id === item.id)?.title
-                      : item.type === "repeat"
-                        ? sentences.find((s) => s.id === item.id)?.text
-                        : item.type === "instruction"
-                          ? (instructions.find((i) => i.id === item.id)
-                              ?.title ??
-                            instructions.find((i) => i.id === item.id)?.text)
-                          : scenarioQuestions.find((q) => q.id === item.id)
-                              ?.text
-                  return (
-                    <li
-                      key={assignmentItemKey(item)}
-                      className="flex min-w-0 items-center gap-2 rounded-lg border px-3 py-2"
-                    >
-                      <span className="w-6 shrink-0 text-sm font-medium">
-                        {index + 1}.
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-sm">
-                        {t(
-                          ITEM_TYPE_LABELS[item.type] ?? {
-                            zh: item.type,
-                            en: item.type,
-                          },
-                        )}{" "}
-                        · {label}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="icon-sm"
-                        disabled={index === 0}
-                        aria-label={t({
-                          zh: `第 ${index + 1} 题上移`,
-                          en: `Move item ${index + 1} up`,
-                        })}
-                        onClick={() => moveItem(index, -1)}
-                      >
-                        <ChevronUp />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon-sm"
-                        disabled={index === planItems.length - 1}
-                        aria-label={t({
-                          zh: `第 ${index + 1} 题下移`,
-                          en: `Move item ${index + 1} down`,
-                        })}
-                        onClick={() => moveItem(index, 1)}
-                      >
-                        <ChevronDown />
-                      </Button>
-                    </li>
-                  )
-                })}
-              </ol>
-            </section>
+            <OrderSection
+              planItems={planItems}
+              passages={passages}
+              sentences={sentences}
+              instructions={instructions}
+              scenarioQuestions={scenarioQuestions}
+              onMove={moveItem}
+            />
           )}
         </div>
-        <aside className="min-w-0 self-start rounded-2xl border bg-card p-4 sm:p-6">
-          <h2 className="font-semibold">
-            {t({ zh: "检查并发布", en: "Review & Publish" })}
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            {t({
-              zh: "选好内容和题型后，先预览学生将看到的内容，再确认发布。",
-              en: "After choosing content and types, preview what students will see, then confirm the publish.",
-            })}
-          </p>
-          <div className="my-5 space-y-1 border-y py-4 text-sm">
-            <p className="font-medium">
-              {planCounts.reading > 0
-                ? t({
-                    zh: `朗读 ${planCounts.reading} 篇${
-                      planCounts.readingSentences > 0
-                        ? ` · 逐句 ${planCounts.readingSentences} 题`
-                        : ""
-                    }`,
-                    en: `${planCounts.reading} Read Aloud${
-                      planCounts.readingSentences > 0
-                        ? ` · ${planCounts.readingSentences} sentence questions`
-                        : ""
-                    }`,
-                  })
-                : null}
-              {planCounts.repeat > 0
-                ? t({
-                    zh: `复述 ${planCounts.repeat} 句`,
-                    en: `${planCounts.repeat} Listen & Repeat`,
-                  })
-                : null}
-              {planCounts.qa > 0
-                ? t({
-                    zh: `问答 ${planCounts.qa} 道`,
-                    en: `${planCounts.qa} Scenario Q&A`,
-                  })
-                : null}
-              {planCounts.instruction > 0
-                ? t({
-                    zh: `说明 ${planCounts.instruction} 条`,
-                    en: `${planCounts.instruction} Instructions`,
-                  })
-                : null}
-              {planCounts.reading + planCounts.repeat + planCounts.qa === 0 &&
-                t({ zh: "尚未选择题型", en: "No question types selected" })}
-            </p>
-          </div>
-          {problems.length ? (
-            <ul className="space-y-3 text-sm leading-6 text-muted-foreground">
-              {problems.map((problem) => (
-                <li key={problem.zh}>{t(problem)}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="flex items-center gap-2 text-sm text-primary">
-              <Check className="size-4" />
-              {t({
-                zh: "内容已齐备，可以预览",
-                en: "Everything is ready — you can preview",
-              })}
-            </p>
-          )}
-          <Button
-            className="mt-5 w-full"
-            disabled={problems.length > 0 || publish.isPending}
-            onClick={() => setPreviewOpen(true)}
-          >
-            <Eye className="size-4" />
-            {t({ zh: "预览练习", en: "Preview Practice" })}
-          </Button>
-          <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            {t({
-              zh: "当前选择尚未发布。只有确认发布后，才会更新学生练习。",
-              en: "Your current selections aren't published yet. Student practice updates only after you confirm the publish.",
-            })}
-          </p>
-          <Button variant="link" className="mt-2 h-auto px-0" asChild>
-            <Link to="/create" search={{ kind: "reading", classroom: code }}>
-              {t({
-                zh: "到题目库补充内容 →",
-                en: "Add content in the Question Bank →",
-              })}
-            </Link>
-          </Button>
-        </aside>
+        <PublishSidebar
+          code={code}
+          planCounts={planCounts}
+          problems={problems}
+          publishPending={publish.isPending}
+          onPreview={() => setPreviewOpen(true)}
+        />
       </div>
-      {exerciseHistory.length > 0 && (
-        <details className="rounded-2xl border bg-card px-5 py-4">
-          <summary className="cursor-pointer text-sm font-semibold">
-            {t({
-              zh: `发布历史（${exerciseHistory.length} 个版本）`,
-              en: `Publish History (${exerciseHistory.length} versions)`,
-            })}
-          </summary>
-          <div className="mt-4 divide-y text-sm">
-            {exerciseHistory.map((exercise) => (
-              <div
-                key={exercise.id}
-                className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0"
-              >
-                <span>
-                  {t({
-                    zh: `v${exercise.version_no} · ${exercise.title} · ${exercise.item_count} 道题`,
-                    en: `v${exercise.version_no} · ${exercise.title} · ${exercise.item_count} items`,
-                  })}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {exercise.status === "published"
-                    ? t({ zh: "当前发布", en: "Current publish" })
-                    : t({ zh: "已归档", en: "Archived" })}
-                  {exercise.published_at
-                    ? ` · ${new Date(exercise.published_at).toLocaleString()}`
-                    : ""}
-                </span>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-      <Dialog
+      <PublishHistory exerciseHistory={exerciseHistory} />
+      <PreviewDialog
+        code={code}
         open={previewOpen}
         onOpenChange={(open) => !publish.isPending && setPreviewOpen(open)}
-      >
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {t({ zh: "练习预览", en: "Practice Preview" })}
-            </DialogTitle>
-            <DialogDescription>
-              {t({
-                zh: `发布到课堂 ${code}。学生按以下顺序作答；已有作答的处理沿用当前课堂规则。`,
-                en: `Will be published to classroom ${code}. Students answer in the order below; existing answers follow the classroom's current rules.`,
-              })}
-            </DialogDescription>
-          </DialogHeader>
-          <ol className="space-y-3">
-            {planItems.map((item, index) => {
-              const source =
-                item.type === "passage"
-                  ? selectedPassages.find((p) => p.id === item.id)
-                  : item.type === "repeat"
-                    ? selectedSentences.find((s) => s.id === item.id)
-                    : item.type === "instruction"
-                      ? selectedInstructions.find((i) => i.id === item.id)
-                      : scenarioQuestions.find((q) => q.id === item.id)
-              // 拆分文章：预览展示学生将逐句作答的句子清单（句序固定按原文）
-              const splitSegments =
-                item.type === "passage" &&
-                source &&
-                "reading_segments" in source &&
-                source.reading_split
-                  ? (source.reading_segments ?? [])
-                  : []
-              return (
-                <li
-                  key={assignmentItemKey(item)}
-                  className="rounded-xl border p-4"
-                >
-                  <h3 className="font-semibold">
-                    {index + 1}.{" "}
-                    {t(
-                      ITEM_TYPE_LABELS[item.type] ?? {
-                        zh: item.type,
-                        en: item.type,
-                      },
-                    )}
-                    {item.type === "passage" && source && "title" in source
-                      ? ` · ${source.title}`
-                      : ""}
-                    {item.type === "instruction" &&
-                    source &&
-                    "title" in source &&
-                    source.title
-                      ? ` · ${source.title}`
-                      : ""}
-                    {item.type === "passage" && splitSegments.length > 0
-                      ? t({
-                          zh: ` · 逐句 ${splitSegments.length} 题`,
-                          en: ` · ${splitSegments.length} sentence questions`,
-                        })
-                      : ""}
-                  </h3>
-                  {splitSegments.length > 0 ? (
-                    <ol className="mt-2 space-y-1.5">
-                      {splitSegments.map((segment, si) => (
-                        <li
-                          key={`${si}-${segment}`}
-                          className="flex min-w-0 gap-2 text-sm leading-6"
-                        >
-                          <span className="shrink-0 text-xs leading-6 text-muted-foreground">
-                            {si + 1}.
-                          </span>
-                          <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-                            {segment}
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
-                      {source?.text}
-                    </p>
-                  )}
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {item.type === "instruction"
-                      ? t({
-                          zh: `学生读完点「继续」进入下一题；模考中按 ${source?.suggested_seconds ?? 20} 秒倒计时，可提前继续`,
-                          en: `Students tap Continue to move on; timed ${source?.suggested_seconds ?? 20}s in exams, skippable early`,
-                        })
-                      : splitSegments.length > 0
-                        ? t({
-                            zh: "学生将逐句朗读，每句单独录音评分",
-                            en: "Students read aloud sentence by sentence, one recording each",
-                          })
-                        : t({
-                            zh: `建议 ${source?.suggested_seconds ?? 0} 秒`,
-                            en: `Suggested ${source?.suggested_seconds ?? 0}s`,
-                          })}
-                  </p>
-                </li>
-              )
-            })}
-          </ol>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={publish.isPending}
-              onClick={() => setPreviewOpen(false)}
-            >
-              {t({ zh: "返回修改", en: "Back to Edit" })}
-            </Button>
-            <LoadingButton
-              loading={publish.isPending}
-              disabled={problems.length > 0 || !changed}
-              onClick={() => publish.mutate(false)}
-            >
-              <Send className="size-4" />
-              {changed
-                ? t({
-                    zh: "确认发布到课堂",
-                    en: "Confirm Publish to Classroom",
-                  })
-                : t({
-                    zh: "与当前发布一致",
-                    en: "Same as current publish",
-                  })}
-            </LoadingButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        planItems={planItems}
+        selectedPassages={selectedPassages}
+        selectedSentences={selectedSentences}
+        selectedInstructions={selectedInstructions}
+        scenarioQuestions={scenarioQuestions}
+        publishPending={publish.isPending}
+        changed={changed}
+        problemsCount={problems.length}
+        onPublish={() => publish.mutate(false)}
+      />
       <Dialog
         open={clearOpen}
         onOpenChange={(open) => !publish.isPending && setClearOpen(open)}
@@ -1357,28 +768,6 @@ function ComposerForm({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <ConfirmDialog
-        open={deleteTarget !== null}
-        title={t({
-          zh: "删除这条题目说明？",
-          en: "Delete this instruction?",
-        })}
-        description={t({
-          zh: "已发布练习里的说明文字不受影响（发布时已快照）；本次选择中也会一并移除。",
-          en: "Published lessons keep their copy (snapshotted at publish); it will also be removed from the current selection.",
-        })}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        onConfirm={async () => {
-          if (!deleteTarget) return
-          setSelectionDirty((cur) => ({
-            ...cur,
-            instructions: cur.instructions.filter(
-              (id) => id !== deleteTarget.id,
-            ),
-          }))
-          await deleteInstruction.mutateAsync(deleteTarget.id)
-        }}
-      />
     </div>
   )
 }
