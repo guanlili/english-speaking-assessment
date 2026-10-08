@@ -900,7 +900,7 @@ function PassageCard({
             <Pencil />
           </Button>
           <AudioSetter
-            hasAudio={Boolean(passage.audio_url)}
+            audioUrl={passage.audio_url}
             text={passage.text ?? ""}
             stopPropagation
             onSet={async (audio_url) => {

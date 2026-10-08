@@ -460,7 +460,7 @@ function ScenarioCard({
                       <Pencil className="size-3.5" />
                     </Button>
                     <AudioSetter
-                      hasAudio={Boolean(q.audio_url)}
+                      audioUrl={q.audio_url}
                       text={q.text ?? ""}
                       onSet={async (audio_url) => {
                         await AdminService.updateQuestion({
