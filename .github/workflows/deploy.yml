@@ -16,6 +16,8 @@ jobs:
   backend:
     name: 后端 Lint + 测试
     runs-on: ubuntu-latest
+    # 挂起保护：无 timeout 时挂起的 job 会占住 runner 直到 GitHub 默认 6 小时
+    timeout-minutes: 30
     services:
       db:
         image: postgres:18
@@ -103,6 +105,7 @@ jobs:
   frontend:
     name: 前端 Lint + 构建 + 客户端一致性
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -150,13 +153,21 @@ jobs:
   e2e:
     name: E2E 冒烟（主干道）
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: 准备环境变量（local 环境，演示登录可用）
         run: cp .env.example .env
+      # type=gha 构建缓存需要 docker-container 驱动的构建器；compose 不跟随
+      # buildx 的 --use 全局切换，必须导出 BUILDX_BUILDER 显式指定
+      - name: 启用 GHA 构建缓存构建器
+        run: |
+          docker buildx create --use --driver docker-container --name gha-cache-builder
+          echo "BUILDX_BUILDER=gha-cache-builder" >> "$GITHUB_ENV"
       - name: 启动完整栈（db + backend + prestart + frontend）
-        # -f 跳过本地开发的 compose.override.yml（5173 映射），用生产端口形态
-        run: docker compose -f compose.yml up -d --build
+        # -f 跳过本地开发的 compose.override.yml（5173 映射），用生产端口形态；
+        # 追加 compose.ci-build-cache.yml 启用 GHA 层缓存（仅本 job，服务器部署不加载）
+        run: docker compose -f compose.yml -f compose.ci-build-cache.yml up -d --build
       - name: 等待就绪（prestart 迁移 + backend 健康检查，首次较慢）
         run: |
           port=$(grep -E '^APP_PORT=' .env | cut -d= -f2 | tr -d '"')
@@ -208,6 +219,8 @@ jobs:
       group: production-deploy
       cancel-in-progress: false
     runs-on: ubuntu-latest
+    # 覆盖 SSH 步骤本身（command_timeout 30m）之外的编排开销
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - name: 从 Secrets 生成 .env（base64 中转，值不进入 shell 源码）

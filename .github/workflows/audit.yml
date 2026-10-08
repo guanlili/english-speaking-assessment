@@ -8,10 +8,16 @@ on:
     - cron: "0 2 * * 1" # 每周一 10:00（北京时间）
   workflow_dispatch:
 
+# 定时与手动触发撞车时只跑一份，避免重复审计占用 runner
+concurrency:
+  group: dependency-audit
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: 后端 pip-audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -23,6 +29,7 @@ jobs:
   frontend:
     name: 前端 npm audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6

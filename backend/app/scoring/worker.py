@@ -14,7 +14,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
 
-from sqlmodel import Session, col, select
+from sqlalchemy.orm import load_only
+from sqlmodel import Session, col, func, select
 
 from app.core.config import settings
 from app.models import (
@@ -79,22 +80,52 @@ def _lemma_variants(token: str) -> list[str]:
     return list(dict.fromkeys(variants))
 
 
+# 进程内五级词库缓存：签名 = 过滤集 (count, max(created_at))。
+# 词表可发生的变更（导入插入、人工核对、启停用）都会改变过滤集 count，
+# 而 headword/level 不可编辑，故签名一致即可复用，无需 updated_at 列。
+# 多进程部署时各进程独立校验签名，天然一致。
+_five_level_cache_lock = threading.Lock()
+_five_level_cache: tuple[tuple[int, datetime | None], dict[str, set[str]]] | None = None
+
+
 def _get_five_level_cache(session: Session) -> dict[str, set[str]]:
-    """五级分级词条缓存（active 且已人工核对）：level → 词头集合。词组不计入逐词命中。"""
+    """五级分级词条缓存（active 且已人工核对）：level → 词头集合。词组不计入逐词命中。
+
+    评分热路径每条词汇作答都会调用，全表约 8k 行；签名命中时直接复用，
+    未命中才全量重建（聚合签名查询远轻于拖 8k 行回 Python）。
+    """
+    global _five_level_cache
     from app.models import VocabularyLevelEntry
 
-    levels: dict[str, set[str]] = {}
-    for headword, level in session.exec(
-        select(VocabularyLevelEntry.headword, VocabularyLevelEntry.level).where(
-            VocabularyLevelEntry.status == "active",
-            VocabularyLevelEntry.is_phrase.is_(False),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
-            VocabularyLevelEntry.needs_review.is_(False),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
-            VocabularyLevelEntry.meaning_zh.is_not(None),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
-            VocabularyLevelEntry.meaning_zh != "",  # type: ignore[union-attr]
+    active_filter = (
+        VocabularyLevelEntry.status == "active",
+        col(VocabularyLevelEntry.is_phrase).is_(False),
+        col(VocabularyLevelEntry.needs_review).is_(False),
+        col(VocabularyLevelEntry.meaning_zh).is_not(None),
+        col(VocabularyLevelEntry.meaning_zh) != "",
+    )
+    row = session.exec(
+        select(func.count(), func.max(VocabularyLevelEntry.created_at)).where(
+            *active_filter
         )
-    ).all():
-        levels.setdefault(level, set()).add(headword)
-    return levels
+    ).one()
+    signature = (int(row[0]), row[1])
+    cached = _five_level_cache
+    if cached is not None and cached[0] == signature:
+        return cached[1]
+    with _five_level_cache_lock:
+        cached = _five_level_cache
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        levels: dict[str, set[str]] = {}
+        for headword, level in session.exec(
+            select(VocabularyLevelEntry.headword, VocabularyLevelEntry.level).where(
+                *active_filter
+            )
+        ).all():
+            levels.setdefault(level, set()).add(headword)
+        _five_level_cache = (signature, levels)
+        return levels
 
 
 def _five_level_stats(session: Session, transcript: str) -> dict[str, object] | None:
@@ -485,8 +516,17 @@ def sweep_orphans(session: Session) -> int:
             submit_attempt_scoring(attempt_id)
             resubmitted += 1
     stale_cutoff = datetime.now(UTC) - timedelta(seconds=SCORING_STALE_TIMEOUT_S)
+    # load_only 只取 rubric：DONE 量随学期累积，整行加载会把 transcript/item_snapshot
+    # 等大 JSON 列也拖进来，60s 一轮的清扫扛不住
     pending = session.exec(
-        select(Attempt).where(
+        select(Attempt)
+        .options(
+            load_only(
+                Attempt.id,  # ty: ignore[invalid-argument-type]
+                Attempt.rubric,  # ty: ignore[invalid-argument-type]
+            )
+        )
+        .where(
             Attempt.status == AttemptStatus.DONE,
             col(Attempt.created_at) < stale_cutoff,  # type: ignore[operator]
         )
@@ -504,8 +544,16 @@ def startup_recovery() -> None:
     from app.core.db import engine
 
     with Session(engine) as session:
+        # 同 sweep_orphans：只取 rubric 判挂起，避免启动时全行加载大 JSON 列
         for attempt in session.exec(
-            select(Attempt).where(Attempt.status == AttemptStatus.DONE)
+            select(Attempt)
+            .options(
+                load_only(
+                    Attempt.id,  # ty: ignore[invalid-argument-type]
+                    Attempt.rubric,  # ty: ignore[invalid-argument-type]
+                )
+            )
+            .where(Attempt.status == AttemptStatus.DONE)
         ).all():
             if attempt.rubric and attempt.rubric.get("status") == "pending":
                 attempt.rubric = {"status": "unavailable"}

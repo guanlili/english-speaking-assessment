@@ -424,7 +424,9 @@ def _resolve_active_daily_session(
                 if item.get("type") == AttemptItemType.PASSAGE:
                     try:
                         anchor_id = uuid.UUID(str(item["id"]))
-                    except KeyError, ValueError:
+                    # fmt: skip：括号必须保留——ruff 对 py314 会把括号格式化掉，
+                    # 而 PEP 758 裸逗号写法 ≤3.13 的工具链（含系统 python3）无法解析
+                    except (KeyError, ValueError):  # fmt: skip
                         pass
                     break
         return get_or_create_today_session(
@@ -520,7 +522,8 @@ def _plan_item_from_snapshot(
         return None
     try:
         item_id = uuid.UUID(str(item.get("id", "")))
-    except ValueError, TypeError:
+    # fmt: skip：同上，括号保留兼容 ≤3.13 工具链
+    except (ValueError, TypeError):  # fmt: skip
         return None
     text = item.get("text")
     if not isinstance(text, str) or not text.strip():

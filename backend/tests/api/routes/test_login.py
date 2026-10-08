@@ -69,6 +69,28 @@ def test_password_recovery_disabled_without_email(
         send_email.assert_not_called()
 
 
+def test_password_recovery_rate_limit(client: TestClient) -> None:
+    """找回密码限流：匿名刷发信达到上限后 429（在 503 判定之前先挡，防邮件轰炸）。"""
+    from app.api.routes import login as login_route
+
+    def _clear_rate_table() -> None:
+        # testclient 共享同一 IP，必须先清残留计数，否则其他用例的调用会把
+        # 本用例的 503 断言顶成 429（共享内存限流表的用例间污染）
+        with login_route._login_lock:
+            login_route._login_attempts.clear()
+
+    _clear_rate_table()
+    try:
+        email = random_email()
+        for _ in range(login_route.LOGIN_RATE_LIMIT):
+            resp = client.post(f"/api/v1/password-recovery/{email}")
+            assert resp.status_code == 503  # 测试环境未配 SMTP，走服务不可用分支
+        blocked = client.post(f"/api/v1/password-recovery/{email}")
+        assert blocked.status_code == 429
+    finally:
+        _clear_rate_table()
+
+
 def test_get_access_token(client: TestClient) -> None:
     login_data = {
         "username": settings.FIRST_SUPERUSER,

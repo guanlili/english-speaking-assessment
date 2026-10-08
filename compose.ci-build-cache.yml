@@ -1,0 +1,22 @@
+# 仅 CI（deploy.yml 的 e2e job）加载的构建缓存覆写，本地与服务器部署不用：
+# 把镜像构建层导入导出 GitHub Actions 缓存（type=gha）。lockfile 不变时
+# 依赖安装层（uv sync / npm ci）整层命中，省去 ephemeral runner 上每轮全量装依赖。
+#
+# 前置条件：type=gha 只在 docker-container 驱动的 buildx 构建器上可用，
+# e2e job 里已配套 `docker buildx create --use --driver docker-container`
+# 并导出 BUILDX_BUILDER（compose 不跟随 --use 全局切换，必须显式指定）。
+# scope 按 Dockerfile 划分：backend/prestart 同一镜像同一 scope，
+# 第二个服务构建时全部命中缓存，不会重复导出。
+services:
+  prestart:
+    build:
+      cache_from: ["type=gha,scope=backend"]
+      cache_to: ["type=gha,scope=backend,mode=max"]
+  backend:
+    build:
+      cache_from: ["type=gha,scope=backend"]
+      cache_to: ["type=gha,scope=backend,mode=max"]
+  frontend:
+    build:
+      cache_from: ["type=gha,scope=frontend"]
+      cache_to: ["type=gha,scope=frontend,mode=max"]
