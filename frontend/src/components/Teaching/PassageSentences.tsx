@@ -158,7 +158,7 @@ export function PassageSentences({
                   <Pencil className="size-3.5" />
                 </Button>
                 <AudioSetter
-                  hasAudio={Boolean(s.audio_url)}
+                  audioUrl={s.audio_url}
                   text={s.text ?? ""}
                   onSet={async (audio_url) => {
                     await AdminService.updateSentence({
