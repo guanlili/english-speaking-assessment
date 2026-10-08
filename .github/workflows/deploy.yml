@@ -241,6 +241,8 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           APP_PORT: ${{ secrets.APP_PORT }}
           WORKERS: ${{ secrets.WORKERS || '1' }}
+          # 未设 Secret 时为空串，generate-deploy-env.sh 会落默认值 8
+          SCORING_WORKERS: ${{ secrets.SCORING_WORKERS }}
           USERS_OPEN_REGISTRATION: ${{ secrets.USERS_OPEN_REGISTRATION || 'false' }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
