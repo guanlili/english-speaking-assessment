@@ -7,8 +7,11 @@ import {
   ChevronUp,
   Ear,
   Eye,
+  Info,
   MessagesSquare,
+  Plus,
   Send,
+  Trash2,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
@@ -18,10 +21,12 @@ import {
   type AssignmentItemIn,
   ClassesService,
   type ClassroomExercisePublic,
+  type InstructionPublic,
   type PassageWithSentences,
   type ScenarioOut,
   type SentenceWithPassage,
 } from "@/client"
+import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import { ReadingPassagePicker } from "@/components/Teaching/ReadingPassagePicker"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -36,6 +41,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { NumberInput } from "@/components/ui/number-input"
+import { Textarea } from "@/components/ui/textarea"
 import {
   assignmentItemKey,
   defaultAssignmentOrder,
@@ -84,6 +90,15 @@ const questionTypes = [
     },
     icon: MessagesSquare,
   },
+  {
+    key: "instruction",
+    title: TERMS.typeInstruction,
+    description: {
+      zh: "纯文字引导页：学生读完点「继续」进入下一题，模考中按秒数计时",
+      en: "A text-only intro page: students tap Continue to move on; timed in exams",
+    },
+    icon: Info,
+  },
 ] as const
 
 type AssignedItemRef = { [key: string]: string }
@@ -100,7 +115,7 @@ export function AssignmentComposer({
   currentExercise?: ClassroomExercisePublic | null
 }) {
   const { t } = useI18n()
-  // 三种题型互相独立：各自的题库列表分别加载
+  // 各题型互相独立：各自的题库列表分别加载
   const passagesQuery = useQuery({
     queryKey: ["admin", "passages"],
     queryFn: () => AdminService.listPassages(),
@@ -113,12 +128,21 @@ export function AssignmentComposer({
     queryKey: ["admin", "scenarios"],
     queryFn: () => AdminService.listScenarios(),
   })
+  const instructionsQuery = useQuery({
+    queryKey: ["admin", "instructions"],
+    queryFn: () => AdminService.listInstructions(),
+  })
   const exercisesQuery = useQuery({
     queryKey: ["teacher", "exercises", code],
     queryFn: () => ClassesService.listClassroomExercises({ code }),
   })
 
-  if (passagesQuery.isError || sentencesQuery.isError || scenariosQuery.isError)
+  if (
+    passagesQuery.isError ||
+    sentencesQuery.isError ||
+    scenariosQuery.isError ||
+    instructionsQuery.isError
+  )
     return (
       <div className="rounded-2xl border p-6">
         <p>
@@ -134,6 +158,7 @@ export function AssignmentComposer({
             void passagesQuery.refetch()
             void sentencesQuery.refetch()
             void scenariosQuery.refetch()
+            void instructionsQuery.refetch()
           }}
         >
           {t({ zh: "重新加载", en: "Reload" })}
@@ -143,7 +168,8 @@ export function AssignmentComposer({
   if (
     passagesQuery.isPending ||
     sentencesQuery.isPending ||
-    scenariosQuery.isPending
+    scenariosQuery.isPending ||
+    instructionsQuery.isPending
   )
     return (
       <p className="rounded-2xl border p-6 text-muted-foreground">
@@ -157,6 +183,7 @@ export function AssignmentComposer({
   const passages = passagesQuery.data
   const sentences = sentencesQuery.data
   const scenarios = scenariosQuery.data
+  const instructions = instructionsQuery.data
 
   // 当前按题指派回显
   const currentItems = normalizeReadingSelection(
@@ -182,16 +209,21 @@ export function AssignmentComposer({
   const currentScenarioIds = scenarios
     .filter((s) => s.questions.some((q) => currentQuestionIds.has(q.id)))
     .map((s) => s.id)
+  const currentInstructionIds = currentItems
+    .filter((i) => i.type === "instruction")
+    .map((i) => i.id)
 
   const initialTypes: LessonTypes = {
     reading: currentPassages.length > 0,
     repeat: currentSentences.length > 0,
     qa: currentQuestionIds.size > 0,
+    instruction: currentInstructionIds.length > 0,
   }
   const initialSelection: LessonSelection = {
     passages: currentPassages,
     sentences: currentSentences,
     scenarioIds: currentScenarioIds,
+    instructions: currentInstructionIds,
   }
 
   return (
@@ -203,6 +235,7 @@ export function AssignmentComposer({
       passages={passages}
       sentences={sentences}
       scenarios={scenarios}
+      instructions={instructions}
       initialTypes={initialTypes}
       initialSelection={initialSelection}
       initialItems={currentItems as AssignmentItemIn[]}
@@ -223,6 +256,7 @@ function ComposerForm({
   passages,
   sentences,
   scenarios,
+  instructions,
   initialTypes,
   initialSelection,
   initialItems,
@@ -237,6 +271,7 @@ function ComposerForm({
   passages: PassageWithSentences[]
   sentences: SentenceWithPassage[]
   scenarios: ScenarioOut[]
+  instructions: InstructionPublic[]
   initialTypes: LessonTypes
   initialSelection: LessonSelection
   initialItems: AssignmentItemIn[]
@@ -256,6 +291,13 @@ function ComposerForm({
   const [examMinutes, setExamMinutes] = useState(30)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
+  // 说明内联新建表单（组卷时当场写一条说明，免跳题目库）
+  const [newTitle, setNewTitle] = useState("")
+  const [newText, setNewText] = useState("")
+  const [newSeconds, setNewSeconds] = useState(20)
+  const [deleteTarget, setDeleteTarget] = useState<InstructionPublic | null>(
+    null,
+  )
   const dirtyRef = useRef(false)
   const prevServerTypesRef = useRef(initialTypes)
   const prevServerSelectionRef = useRef(initialSelection)
@@ -311,6 +353,7 @@ function ComposerForm({
     {
       sentences,
       scenarios,
+      instructions,
     },
   )
 
@@ -319,6 +362,9 @@ function ComposerForm({
   )
   const selectedSentences = sentences.filter((s) =>
     selection.sentences.includes(s.id ?? ""),
+  )
+  const selectedInstructions = instructions.filter((i) =>
+    selection.instructions.includes(i.id),
   )
   const scenarioQuestions = selectedScenarios.flatMap(
     (scenario) => scenario.questions,
@@ -336,6 +382,9 @@ function ComposerForm({
         : [],
       types.qa && selection.scenarioIds.length > 0
         ? scenarioQuestions.map((q) => ({ type: "question", id: q.id }))
+        : [],
+      types.instruction
+        ? selection.instructions.map((id) => ({ type: "instruction", id }))
         : [],
     )
     return reconcileAssignmentOrder(available, orderedKeys)
@@ -359,9 +408,58 @@ function ComposerForm({
       ),
       repeat: planItems.filter((i) => i.type === "repeat").length,
       qa: planItems.filter((i) => i.type === "question").length,
+      instruction: planItems.filter((i) => i.type === "instruction").length,
     }),
     [planItems, selectedPassages],
   )
+
+  const createInstruction = useMutation({
+    mutationFn: () =>
+      AdminService.createInstruction({
+        requestBody: {
+          text: newText.trim(),
+          title: newTitle.trim() || null,
+          suggested_seconds: newSeconds,
+        },
+      }),
+    onSuccess: async (created) => {
+      setNewTitle("")
+      setNewText("")
+      setNewSeconds(20)
+      setSelectionDirty((cur) => ({
+        ...cur,
+        instructions: [...cur.instructions, created.id],
+      }))
+      toast.success(
+        t({
+          zh: "说明已创建并加入本次练习",
+          en: "Instruction created and added to this lesson",
+        }),
+      )
+      await queryClient.invalidateQueries({
+        queryKey: ["admin", "instructions"],
+      })
+    },
+    onError: () =>
+      toast.error(
+        t({ zh: "创建失败，请重试", en: "Failed to create, please retry" }),
+      ),
+  })
+
+  const deleteInstruction = useMutation({
+    mutationFn: (id: string) =>
+      AdminService.deleteInstruction({ instructionId: id }),
+    onSuccess: async () => {
+      setDeleteTarget(null)
+      await queryClient.invalidateQueries({
+        queryKey: ["admin", "instructions"],
+      })
+    },
+    onError: () =>
+      toast.error(
+        t({ zh: "删除失败，请重试", en: "Failed to delete, please retry" }),
+      ),
+  })
 
   const changed =
     JSON.stringify(types) !== JSON.stringify(initialTypes) ||
@@ -405,6 +503,7 @@ function ComposerForm({
           queryKey: ["teacher", "exercises", code],
         }),
         queryClient.invalidateQueries({ queryKey: ["admin", "sentences"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "instructions"] }),
       ])
     },
     onError: () =>
@@ -418,6 +517,14 @@ function ComposerForm({
 
   const toggleInList = (list: string[], id: string) =>
     list.includes(id) ? list.filter((x) => x !== id) : [...list, id]
+
+  // 章节号按已启用题型动态编号（「选择题型」恒为 1，选题区按显示顺序递增）
+  let sectionCounter = 1
+  const nextSectionNo = () => ++sectionCounter
+  const readingNo = types.reading ? nextSectionNo() : null
+  const repeatNo = types.repeat ? nextSectionNo() : null
+  const qaNo = types.qa ? nextSectionNo() : null
+  const instructionNo = types.instruction ? nextSectionNo() : null
 
   return (
     <div className="space-y-5">
@@ -434,8 +541,8 @@ function ComposerForm({
                 })
               : hasItemAssignment
                 ? t({
-                    zh: `按题指派 · ${initialSelection.passages.length} 篇朗读 · ${initialSelection.sentences.length} 句复述 · ${currentQuestionCount(scenarios, initialSelection)} 道问答`,
-                    en: `Item-based assignment · ${initialSelection.passages.length} read-aloud · ${initialSelection.sentences.length} repeat · ${currentQuestionCount(scenarios, initialSelection)} Q&A`,
+                    zh: `按题指派 · ${initialSelection.passages.length} 篇朗读 · ${initialSelection.sentences.length} 句复述 · ${currentQuestionCount(scenarios, initialSelection)} 道问答${initialSelection.instructions.length > 0 ? ` · ${initialSelection.instructions.length} 条说明` : ""}`,
+                    en: `Item-based assignment · ${initialSelection.passages.length} read-aloud · ${initialSelection.sentences.length} repeat · ${currentQuestionCount(scenarios, initialSelection)} Q&A${initialSelection.instructions.length > 0 ? ` · ${initialSelection.instructions.length} instructions` : ""}`,
                   })
                 : unitTitle
                   ? t({
@@ -555,8 +662,8 @@ function ComposerForm({
             </h2>
             <p className="mb-4 mt-2 text-sm text-muted-foreground">
               {t({
-                zh: "三种题型互相独立：勾选后在下方为该题型挑选内容。",
-                en: "The three types are independent: check one, then pick its content below.",
+                zh: "各题型互相独立：勾选后在下方为该题型挑选内容。",
+                en: "The types are independent: check one, then pick its content below.",
               })}
             </p>
             <div className="space-y-3">
@@ -592,7 +699,7 @@ function ComposerForm({
           {types.reading && (
             <section>
               <h2 className="font-semibold">
-                {t({ zh: "2. 朗读篇目", en: "2. Read Aloud Passages" })}
+                {readingNo}. {t({ zh: "朗读篇目", en: "Read Aloud Passages" })}
               </h2>
               <p className="mb-3 mt-2 text-sm text-muted-foreground">
                 {t({
@@ -628,8 +735,7 @@ function ComposerForm({
           {types.repeat && (
             <section>
               <h2 className="font-semibold">
-                {types.reading ? "3" : "2"}.{" "}
-                {t({ zh: "复述句", en: "Repeat Sentences" })}
+                {repeatNo}. {t({ zh: "复述句", en: "Repeat Sentences" })}
               </h2>
               <p className="mb-3 mt-2 text-sm text-muted-foreground">
                 {t({
@@ -701,12 +807,7 @@ function ComposerForm({
           {types.qa && (
             <section>
               <h2 className="font-semibold">
-                {types.reading && types.repeat
-                  ? "4"
-                  : types.reading || types.repeat
-                    ? "3"
-                    : "2"}
-                . {t({ zh: "问答主题", en: "Q&A Topic" })}
+                {qaNo}. {t({ zh: "问答主题", en: "Q&A Topic" })}
               </h2>
               <p className="mb-3 mt-2 text-sm text-muted-foreground">
                 {t({
@@ -766,6 +867,137 @@ function ComposerForm({
               ))}
             </section>
           )}
+          {types.instruction && (
+            <section>
+              <h2 className="font-semibold">
+                {instructionNo}. {t(TERMS.typeInstruction)}
+              </h2>
+              <p className="mb-3 mt-2 text-sm text-muted-foreground">
+                {t({
+                  zh: "纯文字引导页，可插在任意两题之间（默认排在最前，用下方顺序区调整）；学生读完点「继续」进入下一题。模考中按秒数倒计时，可提前继续。说明不能单独作为练习内容。",
+                  en: "Text-only intro pages you can slot between any two items (they default to the front — reorder below). Students tap Continue after reading. In exams they are timed by seconds but can be skipped early. Instructions alone can't form a lesson.",
+                })}
+              </p>
+              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                {instructions.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    {t({
+                      zh: "说明库还是空的，用下方表单新建一条。",
+                      en: "The instruction bank is empty — create one with the form below.",
+                    })}
+                  </p>
+                )}
+                {instructions.map((ins) => (
+                  <div
+                    key={ins.id}
+                    className={`flex items-start gap-3 rounded-lg border p-3 ${selection.instructions.includes(ins.id) ? "border-primary/50 bg-primary/5" : ""}`}
+                  >
+                    <Checkbox
+                      id={`pick-instruction-${ins.id}`}
+                      className="mt-0.5"
+                      checked={selection.instructions.includes(ins.id)}
+                      onCheckedChange={() =>
+                        setSelectionDirty((cur) => ({
+                          ...cur,
+                          instructions: toggleInList(cur.instructions, ins.id),
+                        }))
+                      }
+                    />
+                    <label
+                      htmlFor={`pick-instruction-${ins.id}`}
+                      className="min-w-0 flex-1 cursor-pointer"
+                    >
+                      <span className="block truncate text-sm">
+                        {ins.title ? `${ins.title} · ` : ""}
+                        {ins.text}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        {t({
+                          zh: `${ins.suggested_seconds} 秒`,
+                          en: `${ins.suggested_seconds}s`,
+                        })}
+                      </span>
+                    </label>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground hover:text-destructive"
+                      aria-label={t({
+                        zh: "删除这条说明",
+                        en: "Delete this instruction",
+                      })}
+                      onClick={() => setDeleteTarget(ins)}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 space-y-2 rounded-lg border border-dashed p-3">
+                <p className="text-sm font-medium">
+                  {t({ zh: "新建说明", en: "New instruction" })}
+                </p>
+                <Input
+                  value={newTitle}
+                  maxLength={100}
+                  className="text-base"
+                  placeholder={t({
+                    zh: "小标题（可选，如「Part B 开始」）",
+                    en: "Heading (optional, e.g., Part B)",
+                  })}
+                  onChange={(event) => {
+                    dirtyRef.current = true
+                    setNewTitle(event.target.value)
+                  }}
+                />
+                <Textarea
+                  value={newText}
+                  maxLength={2000}
+                  className="min-h-20 text-base"
+                  placeholder={t({
+                    zh: "说明文字（学生会在下一题前看到这段内容）",
+                    en: "Instruction text (students see this before the next item)",
+                  })}
+                  onChange={(event) => {
+                    dirtyRef.current = true
+                    setNewText(event.target.value)
+                  }}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <NumberInput
+                    id="instruction-seconds"
+                    min={5}
+                    max={300}
+                    value={newSeconds}
+                    onValueChange={(value) => {
+                      dirtyRef.current = true
+                      setNewSeconds(value)
+                    }}
+                    className="w-24 text-base"
+                    aria-label={t({
+                      zh: "建议停留秒数（5–300）",
+                      en: "Suggested seconds (5–300)",
+                    })}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    {t({
+                      zh: "秒（5–300，模考窗口时长）",
+                      en: "seconds (5–300, exam window length)",
+                    })}
+                  </span>
+                  <LoadingButton
+                    className="ml-auto"
+                    loading={createInstruction.isPending}
+                    disabled={!newText.trim()}
+                    onClick={() => createInstruction.mutate()}
+                  >
+                    <Plus className="size-4" />
+                    {t({ zh: "创建并加入", en: "Create & add" })}
+                  </LoadingButton>
+                </div>
+              </div>
+            </section>
+          )}
           {planItems.length > 0 && (
             <section className="space-y-3">
               <h2 className="font-semibold">
@@ -784,7 +1016,12 @@ function ComposerForm({
                       ? passages.find((p) => p.id === item.id)?.title
                       : item.type === "repeat"
                         ? sentences.find((s) => s.id === item.id)?.text
-                        : scenarioQuestions.find((q) => q.id === item.id)?.text
+                        : item.type === "instruction"
+                          ? (instructions.find((i) => i.id === item.id)
+                              ?.title ??
+                            instructions.find((i) => i.id === item.id)?.text)
+                          : scenarioQuestions.find((q) => q.id === item.id)
+                              ?.text
                   return (
                     <li
                       key={assignmentItemKey(item)}
@@ -869,6 +1106,12 @@ function ComposerForm({
                 ? t({
                     zh: `问答 ${planCounts.qa} 道`,
                     en: `${planCounts.qa} Scenario Q&A`,
+                  })
+                : null}
+              {planCounts.instruction > 0
+                ? t({
+                    zh: `说明 ${planCounts.instruction} 条`,
+                    en: `${planCounts.instruction} Instructions`,
                   })
                 : null}
               {planCounts.reading + planCounts.repeat + planCounts.qa === 0 &&
@@ -970,7 +1213,9 @@ function ComposerForm({
                   ? selectedPassages.find((p) => p.id === item.id)
                   : item.type === "repeat"
                     ? selectedSentences.find((s) => s.id === item.id)
-                    : scenarioQuestions.find((q) => q.id === item.id)
+                    : item.type === "instruction"
+                      ? selectedInstructions.find((i) => i.id === item.id)
+                      : scenarioQuestions.find((q) => q.id === item.id)
               // 拆分文章：预览展示学生将逐句作答的句子清单（句序固定按原文）
               const splitSegments =
                 item.type === "passage" &&
@@ -993,6 +1238,12 @@ function ComposerForm({
                       },
                     )}
                     {item.type === "passage" && source && "title" in source
+                      ? ` · ${source.title}`
+                      : ""}
+                    {item.type === "instruction" &&
+                    source &&
+                    "title" in source &&
+                    source.title
                       ? ` · ${source.title}`
                       : ""}
                     {item.type === "passage" && splitSegments.length > 0
@@ -1024,15 +1275,20 @@ function ComposerForm({
                     </p>
                   )}
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {splitSegments.length > 0
+                    {item.type === "instruction"
                       ? t({
-                          zh: "学生将逐句朗读，每句单独录音评分",
-                          en: "Students read aloud sentence by sentence, one recording each",
+                          zh: `学生读完点「继续」进入下一题；模考中按 ${source?.suggested_seconds ?? 20} 秒倒计时，可提前继续`,
+                          en: `Students tap Continue to move on; timed ${source?.suggested_seconds ?? 20}s in exams, skippable early`,
                         })
-                      : t({
-                          zh: `建议 ${source?.suggested_seconds ?? 0} 秒`,
-                          en: `Suggested ${source?.suggested_seconds ?? 0}s`,
-                        })}
+                      : splitSegments.length > 0
+                        ? t({
+                            zh: "学生将逐句朗读，每句单独录音评分",
+                            en: "Students read aloud sentence by sentence, one recording each",
+                          })
+                        : t({
+                            zh: `建议 ${source?.suggested_seconds ?? 0} 秒`,
+                            en: `Suggested ${source?.suggested_seconds ?? 0}s`,
+                          })}
                   </p>
                 </li>
               )
@@ -1101,6 +1357,28 @@ function ComposerForm({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={t({
+          zh: "删除这条题目说明？",
+          en: "Delete this instruction?",
+        })}
+        description={t({
+          zh: "已发布练习里的说明文字不受影响（发布时已快照）；本次选择中也会一并移除。",
+          en: "Published lessons keep their copy (snapshotted at publish); it will also be removed from the current selection.",
+        })}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onConfirm={async () => {
+          if (!deleteTarget) return
+          setSelectionDirty((cur) => ({
+            ...cur,
+            instructions: cur.instructions.filter(
+              (id) => id !== deleteTarget.id,
+            ),
+          }))
+          await deleteInstruction.mutateAsync(deleteTarget.id)
+        }}
+      />
     </div>
   )
 }

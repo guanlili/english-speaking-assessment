@@ -33,6 +33,8 @@ from app.models import (
     AttemptStatus,
     Classroom,
     ClassroomPublic,
+    Instruction,
+    InstructionPublic,
     Passage,
     PassageCreate,
     PassagePublic,
@@ -46,6 +48,7 @@ from app.models import (
     UnitCreate,
     UnitPublic,
     UnitUpdate,
+    get_datetime_utc,
     validate_exam_fields,
     validate_question_suggested_seconds,
 )
@@ -132,6 +135,28 @@ class SentenceUpdate(SQLModel):
     _text_nonempty = field_validator("text")(_strip_nonempty)
     _translation_blank = field_validator("translation")(_strip_blank)
     _audio_blank = field_validator("audio_url")(_strip_blank)
+
+
+class InstructionCreate(SQLModel):
+    """新建题目说明请求：说明文字必填，停留秒数默认 20。"""
+
+    title: str | None = Field(default=None, max_length=100)
+    text: str = Field(min_length=1, max_length=2000)
+    suggested_seconds: int = Field(default=20, ge=5, le=300)
+
+    _title_blank = field_validator("title")(_strip_blank)
+    _text_nonempty = field_validator("text")(_strip_nonempty)
+
+
+class InstructionUpdate(SQLModel):
+    """更新题目说明请求：缺省不修改；title 可 null 清空，text 不允许 null。"""
+
+    title: str | None = Field(default=None, max_length=100)
+    text: str | None = Field(default=None, min_length=1, max_length=2000)
+    suggested_seconds: int | None = Field(default=None, ge=5, le=300)
+
+    _title_blank = field_validator("title")(_strip_blank)
+    _text_nonempty = field_validator("text")(_strip_nonempty)
 
 
 class ScenarioCreate(SQLModel):
@@ -508,6 +533,64 @@ def delete_sentence(
         raise HTTPException(status_code=404, detail="Sentence not found")
     _reject_delete_with_queued_attempts(session, sentence_id, AttemptItemType.REPEAT)
     session.delete(sentence)
+    session.commit()
+    return {"message": "deleted"}
+
+
+# ── 题目说明（第四种题型：无作答的纯文字引导页） ────────────────────
+
+
+@router.get("/instructions", response_model=list[InstructionPublic])
+def list_instructions(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+) -> Any:
+    """题目说明库：组卷时可勾选复用的全部说明，按创建顺序。"""
+    return session.exec(select(Instruction).order_by(col(Instruction.created_at))).all()
+
+
+@router.post("/instructions", response_model=InstructionPublic)
+def create_instruction(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    instruction_in: InstructionCreate,
+) -> Any:
+    instruction = Instruction.model_validate(instruction_in.model_dump())
+    session.add(instruction)
+    session.commit()
+    session.refresh(instruction)
+    return instruction
+
+
+@router.put("/instructions/{instruction_id}", response_model=InstructionPublic)
+def update_instruction(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    instruction_id: uuid.UUID,
+    instruction_in: InstructionUpdate,
+) -> Any:
+    instruction = session.get(Instruction, instruction_id)
+    if instruction is None:
+        raise HTTPException(status_code=404, detail="Instruction not found")
+    update = instruction_in.model_dump(exclude_unset=True)
+    _reject_null_non_nullable(update, {"text", "suggested_seconds"})
+    instruction.sqlmodel_update(update)
+    instruction.updated_at = get_datetime_utc()
+    session.add(instruction)
+    session.commit()
+    session.refresh(instruction)
+    return instruction
+
+
+@router.delete("/instructions/{instruction_id}")
+def delete_instruction(
+    session: SessionDep, _admin: TeacherUserDep, instruction_id: uuid.UUID
+) -> dict[str, str]:
+    """删除安全：发布快照深拷贝文字，历史练习不受影响。"""
+    instruction = session.get(Instruction, instruction_id)
+    if instruction is None:
+        raise HTTPException(status_code=404, detail="Instruction not found")
+    session.delete(instruction)
     session.commit()
     return {"message": "deleted"}
 

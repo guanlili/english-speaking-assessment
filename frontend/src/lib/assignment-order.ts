@@ -4,13 +4,15 @@ export function assignmentItemKey(item: AssignmentItemIn): string {
   return `${item.type}:${item.id}`
 }
 
-/** 朗读篇目先行；复述句与问答题默认交替出现。 */
+/** 朗读篇目先行；复述句与问答题默认交替出现。
+ *  题目说明默认放在最前（「开考说明」是最常见用法），其余位置由老师手动调整。 */
 export function defaultAssignmentOrder(
   passages: AssignmentItemIn[],
   sentences: AssignmentItemIn[],
   questions: AssignmentItemIn[],
+  instructions: AssignmentItemIn[] = [],
 ): AssignmentItemIn[] {
-  const result = [...passages]
+  const result = [...instructions, ...passages]
   for (
     let index = 0;
     index < Math.max(sentences.length, questions.length);

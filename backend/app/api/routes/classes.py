@@ -52,6 +52,7 @@ from app.models import (
     ClassroomPublic,
     ExamStatus,
     GamificationInfo,
+    InstructionAck,
     ItemListen,
     LearningPath,
     NextQuestion,
@@ -77,6 +78,7 @@ from app.models import (
     User,
     VocabularyAnswer,
     VocabularySession,
+    get_datetime_utc,
 )
 from app.scoring.bands import BAND_ORDER, adjust_band
 from app.scoring.gamification import (
@@ -597,6 +599,7 @@ def _snapshot_uuid(value: object | None) -> uuid.UUID | None:
 def _plan_item_from_snapshot(
     item: dict[str, object],
     listen_counts: dict[uuid.UUID, int] | None = None,
+    ack_times: dict[uuid.UUID, datetime] | None = None,
 ) -> PlanItem | None:
     """把快照条目 / 作答题目快照转成 PlanItem，不依赖活题库。
 
@@ -608,6 +611,7 @@ def _plan_item_from_snapshot(
         AttemptItemType.PASSAGE,
         AttemptItemType.REPEAT,
         AttemptItemType.QUESTION,
+        AttemptItemType.INSTRUCTION,
     }:
         return None
     try:
@@ -620,10 +624,16 @@ def _plan_item_from_snapshot(
         return None
     cue_bullets = item.get("cue_card_bullets")
     prep = _snapshot_optional_int(item.get("prep_seconds"))
+    acked_at = (ack_times or {}).get(item_id)
     return PlanItem(
         type=t,
         id=item_id,
         text=text,
+        title=(
+            str(item["title"])
+            if t == AttemptItemType.INSTRUCTION and item.get("title") is not None
+            else None
+        ),
         translation=(
             str(item["translation"]) if item.get("translation") is not None else None
         ),
@@ -636,6 +646,12 @@ def _plan_item_from_snapshot(
         listen_used=(
             (listen_counts or {}).get(item_id, 0)
             if t == AttemptItemType.REPEAT
+            else None
+        ),
+        # 题目说明的「继续」确认时间（null=未读）
+        acked_at=(
+            acked_at.isoformat()
+            if t == AttemptItemType.INSTRUCTION and acked_at is not None
             else None
         ),
         # 分级题型训练（可空=普通课堂内容）
@@ -860,16 +876,36 @@ def read_today_plan(
                 done_repeat_override=done_repeats,
             )
 
+        # 题目说明的「继续」确认时间（按快照中的说明 ID 查本会话 ack）
+        instruction_ids = [
+            uuid.UUID(str(it["id"]))
+            for it in snapshot_items
+            if str(it.get("type", "")) == AttemptItemType.INSTRUCTION and it.get("id")
+        ]
+        ack_times: dict[uuid.UUID, datetime] = {}
+        if instruction_ids:
+            acks = session.exec(
+                select(InstructionAck).where(
+                    InstructionAck.student_id == student.id,  # type: ignore[arg-type]
+                    InstructionAck.session_id == practice_session.id,  # type: ignore[arg-type]
+                    col(InstructionAck.item_id).in_(instruction_ids),  # type: ignore[operator]
+                )
+            ).all()
+            ack_times = {ack.item_id: ack.created_at for ack in acks if ack.created_at}
+
         items = [
             item
             for item in (
-                _plan_item_from_snapshot(snapshot_item, listen_counts)
+                _plan_item_from_snapshot(snapshot_item, listen_counts, ack_times)
                 for snapshot_item in snapshot_items
             )
             if item is not None
         ]
-        # 结算必做数 = 实际可用题单（快照条目可能因缺 id/文本被过滤）
-        expected_items = len(items)
+        # 结算必做数 = 实际可用题单（快照条目可能因缺 id/文本被过滤）；
+        # 题目说明无作答，不进结算分母
+        expected_items = len(
+            [item for item in items if item.type != AttemptItemType.INSTRUCTION]
+        )
     else:
         # 非发布路径：单元指派或自主练习
         item_objects = exercise_service.resolve_assigned_items(session, classroom)
@@ -984,8 +1020,9 @@ def read_today_plan(
         expected_items = len(items)
 
     # 激励结算（幂等）：本轮全部终态时计算星/XP/连胜/徽章
-    # expected_items 严格按本轮题单，额外换题/问答题不顶替必做题
-    required_ids = {it.id for it in items}
+    # expected_items 严格按本轮题单，额外换题/问答题不顶替必做题；
+    # 题目说明无作答，不进必做集合
+    required_ids = {it.id for it in items if it.type != AttemptItemType.INSTRUCTION}
     settle_session(
         session,
         practice_session,
@@ -1351,6 +1388,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             AttemptItemType.PASSAGE: [],
             AttemptItemType.REPEAT: [],
             AttemptItemType.QUESTION: [],
+            AttemptItemType.INSTRUCTION: [],
         }
         for item in current_exercise.snapshot_items:
             item_type = str(item.get("type", ""))
@@ -1365,13 +1403,21 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             snapshot_refs[AttemptItemType.PASSAGE],
             snapshot_refs[AttemptItemType.REPEAT],
             snapshot_refs[AttemptItemType.QUESTION],
+            snapshot_refs[AttemptItemType.INSTRUCTION],
         )
     else:
-        board_item_objects = exercise_service.resolve_assigned_items(session, classroom)
+        resolved = exercise_service.resolve_assigned_items(session, classroom)
+        # 说明只随按题发布进卷子；旧路径（单元指派）补空桶保持四元组同构
+        board_item_objects = (*resolved, []) if resolved is not None else None
     assigned_unit_board = _assignment_unit(session, classroom)
     include_reading = include_repeat = False
     if board_item_objects is not None:
-        board_passages, board_sentences, board_questions = board_item_objects
+        (
+            board_passages,
+            board_sentences,
+            board_questions,
+            board_instructions,
+        ) = board_item_objects
         board_passage = board_passages[0] if board_passages else None
         include_reading = True
         include_repeat = True
@@ -1400,6 +1446,14 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                 )
                 for q in board_questions
             ]
+            + [
+                BoardItem(
+                    item_id=i.id,
+                    type=AttemptItemType.INSTRUCTION,
+                    status="missing",
+                )
+                for i in board_instructions
+            ]
         )
         # 按题轮的学生行渲染需要这些集合
         board_repeat_sentences = board_sentences
@@ -1420,6 +1474,8 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         include_repeat = _include_type(classroom, "repeat")
         board_questions = []
         board_repeat_sentences = []
+        # 说明只随按题发布进卷子，单元指派/自主路径永远没有说明题位
+        board_instructions = []
         if include_repeat:
             board_sentences_by_passage = _repeat_sentences_of_passages(
                 session, board_passages
@@ -1538,6 +1594,16 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             if key not in attempts_map:
                 attempts_map[key] = []
             attempts_map[key].append(attempt)
+
+    # 说明「已读」预取：本面板各学生会话的 ack（学生, 题目）集合
+    ack_keys: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    if practice_session_ids and board_instructions:
+        acks = session.exec(
+            select(InstructionAck).where(
+                InstructionAck.session_id.in_(practice_session_ids)  # type: ignore
+            )
+        ).all()
+        ack_keys = {(ack.student_id, ack.item_id) for ack in acks}
 
     for student in students:
         practice_session = session_by_student.get(student.id)
@@ -1667,25 +1733,42 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                         attempt_id=attempt.id,
                     )
                 )
+            # 说明题位：已读=done / 未读=missing；不进评分与提交统计
+            for board_i in board_instructions:
+                items.append(
+                    BoardItem(
+                        item_id=board_i.id,
+                        type=AttemptItemType.INSTRUCTION,
+                        status=(
+                            AttemptStatus.DONE
+                            if (student.id, board_i.id) in ack_keys
+                            else "missing"
+                        ),
+                    )
+                )
 
         # 统一统计口径：not_started / scoring / in_progress / all_done / has_failures
-        non_missing = [i for i in items if i.status != "missing"]
+        # 说明无作答，不参与统计（只展示已读状态）
+        stat_items = [i for i in items if i.type != AttemptItemType.INSTRUCTION]
+        non_missing = [i for i in stat_items if i.status != "missing"]
         terminal = [
-            i for i in items if i.status in (AttemptStatus.DONE, AttemptStatus.FAILED)
+            i
+            for i in stat_items
+            if i.status in (AttemptStatus.DONE, AttemptStatus.FAILED)
         ]
         if not non_missing:
             round_status = "not_started"
         elif has_pending:
             round_status = "scoring"
-        elif len(terminal) < len(items):
+        elif len(terminal) < len(stat_items):
             round_status = "in_progress"
         elif all(i.status == AttemptStatus.DONE for i in terminal):
             round_status = "all_done"
         else:
             round_status = "has_failures"
 
-        done_count = sum(1 for i in items if i.status == AttemptStatus.DONE)
-        if any(i.status != "missing" for i in items):
+        done_count = sum(1 for i in stat_items if i.status == AttemptStatus.DONE)
+        if any(i.status != "missing" for i in stat_items):
             submitted_count += 1
         if round_status in ("all_done", "has_failures"):
             completed_count += 1
@@ -1716,7 +1799,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                 display_name=student.display_name,
                 suffix=student.suffix,
                 done_count=done_count,
-                total_count=len(items),
+                total_count=len(stat_items),
                 repeat_avg=(
                     round(sum(repeat_scores) / len(repeat_scores), 1)
                     if repeat_scores
@@ -2066,6 +2149,18 @@ class ListenResult(SQLModel):
     replay_limit: int  # 0 = 不限
 
 
+class AckRequest(SQLModel):
+    """题目说明「继续」确认请求。"""
+
+    session_id: uuid.UUID
+    item_id: uuid.UUID
+
+
+class AckResult(SQLModel):
+    acked: bool
+    acked_at: str
+
+
 class ExamStartRequest(SQLModel):
     session_id: uuid.UUID
 
@@ -2239,6 +2334,81 @@ def record_listen(
     used = result
     session.commit()
     return ListenResult(listen_used=used, replay_limit=replay_limit)
+
+
+@router.post("/{code}/acks", response_model=AckResult)
+def record_instruction_ack(
+    session: SessionDep,
+    current_user: StudentUserDep,
+    code: str,
+    body: AckRequest,
+) -> Any:
+    """题目说明「继续」确认：幂等记录已读；模考下校验说明窗口已开（防跳读）。"""
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(session, classroom, current_user)
+    practice_session = session.get(PracticeSession, body.session_id)
+    if practice_session is None or practice_session.student_id != student.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    # 说明只随按题发布进卷子：必须在会话绑定的发布快照里
+    if practice_session.assignment_id is None:
+        raise HTTPException(status_code=422, detail="题目说明不在本轮练习内")
+    exercise = session.get(ClassroomExercise, practice_session.assignment_id)
+    snapshot = next(
+        (
+            item
+            for item in (exercise.snapshot_items if exercise is not None else [])
+            if item.get("type") == AttemptItemType.INSTRUCTION
+            and str(item.get("id")) == str(body.item_id)
+        ),
+        None,
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=422, detail="题目说明不在本轮练习内")
+
+    existing = session.exec(
+        select(InstructionAck).where(
+            InstructionAck.student_id == student.id,  # type: ignore[arg-type]
+            InstructionAck.session_id == practice_session.id,  # type: ignore[arg-type]
+            InstructionAck.item_id == body.item_id,  # type: ignore[arg-type]
+        )
+    ).first()
+    if existing is not None:
+        # 幂等：已确认过的说明直接返回（不再过模考窗口门禁）
+        return AckResult(
+            acked=True,
+            acked_at=(existing.created_at or get_datetime_utc()).isoformat(),
+        )
+
+    if exercise is not None and exercise.is_exam:
+        exam_service.require_instruction_current(
+            session, practice_session, exercise, body.item_id
+        )
+
+    ack = InstructionAck(
+        student_id=student.id,
+        session_id=practice_session.id,
+        item_id=body.item_id,
+    )
+    session.add(ack)
+    try:
+        session.commit()
+    except IntegrityError:
+        # 并发双击：唯一约束兜底，按已确认处理
+        session.rollback()
+    else:
+        session.refresh(ack)
+        return AckResult(acked=True, acked_at=ack.created_at.isoformat())
+    existing = session.exec(
+        select(InstructionAck).where(
+            InstructionAck.student_id == student.id,  # type: ignore[arg-type]
+            InstructionAck.session_id == practice_session.id,  # type: ignore[arg-type]
+            InstructionAck.item_id == body.item_id,  # type: ignore[arg-type]
+        )
+    ).first()
+    return AckResult(
+        acked=True,
+        acked_at=(existing.created_at if existing else get_datetime_utc()).isoformat(),
+    )
 
 
 @router.get("/{code}/exercises", response_model=list[ClassroomExercisePublic])

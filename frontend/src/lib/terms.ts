@@ -18,6 +18,8 @@ export const TERMS = {
   typeReading: { zh: "文章朗读", en: "Read Aloud" },
   typeRepeat: { zh: "听句复述", en: "Listen & Repeat" },
   typeQa: { zh: "情景问答", en: "Scenario Q&A" },
+  /** 第四种题型：无作答的纯文字引导页（学生点「继续」进入下一题） */
+  typeInstruction: { zh: "题目说明", en: "Instructions" },
   /** 学生端每日练习入口（与导航一致） */
   todayPractice: { zh: "今日练习", en: "Today's Practice" },
   /** 老师未发布统一内容时，学生按单元顺序自行练习 */
@@ -124,6 +126,7 @@ export const ITEM_TYPE_LABELS: Record<string, BiString> = {
   passage: TERMS.typeReading,
   repeat: TERMS.typeRepeat,
   question: TERMS.typeQa,
+  instruction: TERMS.typeInstruction,
 }
 
 /** 五级固定顺序（越靠前越容易）；与后端 VOCAB_LEVEL_ORDER 一致 */

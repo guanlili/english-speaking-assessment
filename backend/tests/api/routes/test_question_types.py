@@ -1,13 +1,23 @@
-"""三种题型体系测试：可重听次数、播放计数防刷、题型指派组卷、内容接口教师化。"""
+"""题型体系测试：可重听次数、播放计数防刷、题型指派组卷、题目说明（第四题型）、内容接口教师化。"""
 
+import time
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, col
 
 from app import crud
-from app.models import ScenarioQuestion, User, UserCreate
+from app.models import (
+    Classroom,
+    ClassroomExercise,
+    ScenarioQuestion,
+    User,
+    UserCreate,
+)
+from app.services import exam as exam_service
 from tests.utils.audio import wav_upload
 from tests.utils.credential import make_student
 from tests.utils.utils import random_email, random_lower_string
@@ -876,3 +886,386 @@ def test_question_order_index_monotonic_after_delete(
         f"/api/v1/admin/scenarios/{scenario_id}",
         headers=superuser_token_headers,
     )
+
+
+# ── 题目说明（第四种题型：无作答的纯文字引导页） ──────────────────────
+
+
+def _today_plan(client: TestClient, headers: dict[str, str], code: str) -> dict:
+    resp = client.get(f"/api/v1/classes/{code}/today", headers=headers)
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _cleanup_classroom(db: Session, classroom_id: str) -> None:
+    row = db.get(Classroom, uuid.UUID(classroom_id))
+    if row is not None:
+        db.delete(row)
+    db.commit()
+
+
+def _make_instruction(
+    client: TestClient,
+    headers: dict[str, str],
+    text: str = "Part B：听后复述。请先读题，点击继续后开始作答。",
+    title: str | None = "Part B 开始",
+    seconds: int = 15,
+) -> dict:
+    resp = client.post(
+        "/api/v1/admin/instructions",
+        json={
+            "text": text,
+            "suggested_seconds": seconds,
+            **({"title": title} if title is not None else {}),
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def test_instruction_crud_and_validation(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    """说明库 CRUD：空文字 422、秒数范围 422、title 空串归 null、删除后 404。"""
+    blank = client.post(
+        "/api/v1/admin/instructions",
+        json={"text": "   "},
+        headers=superuser_token_headers,
+    )
+    assert blank.status_code == 422
+    bad_seconds = client.post(
+        "/api/v1/admin/instructions",
+        json={"text": "ok", "suggested_seconds": 301},
+        headers=superuser_token_headers,
+    )
+    assert bad_seconds.status_code == 422
+
+    created = _make_instruction(client, superuser_token_headers)
+    assert created["title"] == "Part B 开始"
+    assert created["suggested_seconds"] == 15
+
+    listed = client.get("/api/v1/admin/instructions", headers=superuser_token_headers)
+    assert listed.status_code == 200
+    assert any(i["id"] == created["id"] for i in listed.json())
+
+    # title 空串归 null；text 显式 null 422
+    updated = client.put(
+        f"/api/v1/admin/instructions/{created['id']}",
+        json={"title": "   "},
+        headers=superuser_token_headers,
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["title"] is None
+    null_text = client.put(
+        f"/api/v1/admin/instructions/{created['id']}",
+        json={"text": None},
+        headers=superuser_token_headers,
+    )
+    assert null_text.status_code == 422
+
+    deleted = client.delete(
+        f"/api/v1/admin/instructions/{created['id']}",
+        headers=superuser_token_headers,
+    )
+    assert deleted.status_code == 200
+    missing = client.get(
+        "/api/v1/admin/instructions", headers=superuser_token_headers
+    ).json()
+    assert all(i["id"] != created["id"] for i in missing)
+
+
+def test_instruction_assignment_ack_and_board(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """说明穿插进卷：today 顺序与内容、ack 幂等、面板已读、attempts 拒收说明。"""
+    classroom = _classroom(client, superuser_token_headers)
+    made = make_student(db, client, classroom["code"], "说明学生")
+    code = classroom["code"]
+
+    instruction = _make_instruction(client, superuser_token_headers)
+    sentence = client.post(
+        "/api/v1/admin/sentences",
+        json={"order_index": 0, "text": "Repeat after me.", "replay_limit": 1},
+        headers=superuser_token_headers,
+    )
+    assert sentence.status_code == 200, sentence.text
+
+    resp = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={
+            "items": [
+                {"type": "instruction", "id": instruction["id"]},
+                {"type": "repeat", "id": sentence.json()["id"]},
+            ]
+        },
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    plan = client.get(f"/api/v1/classes/{code}/today", headers=made["headers"]).json()
+    assert [i["type"] for i in plan["items"]] == ["instruction", "repeat"]
+    ins_item = plan["items"][0]
+    assert ins_item["title"] == "Part B 开始"
+    assert "Part B" in ins_item["text"]
+    assert ins_item["suggested_seconds"] == 15
+    assert ins_item["acked_at"] is None
+
+    # 说明不允许走音频作答
+    bad_attempt = client.post(
+        "/api/v1/attempts",
+        files={"audio": wav_upload(3.0)},
+        data={
+            "item_type": "instruction",
+            "item_id": instruction["id"],
+            "duration_s": "3.0",
+            "session_id": plan["session_id"],
+        },
+        headers=made["headers"],
+    )
+    assert bad_attempt.status_code == 422
+
+    # 面板：说明题位未读 missing，且不占 total_count
+    board = client.get(
+        f"/api/v1/classes/{code}/board", headers=superuser_token_headers
+    ).json()
+    row = next(s for s in board["students"] if s["student_id"] == made["student"]["id"])
+    ins_board = next(i for i in row["items"] if i["type"] == "instruction")
+    assert ins_board["status"] == "missing"
+    assert row["total_count"] == 1
+
+    # 点「继续」：ack 落库且幂等（时间戳不变）
+    ack = client.post(
+        f"/api/v1/classes/{code}/acks",
+        json={"session_id": plan["session_id"], "item_id": instruction["id"]},
+        headers=made["headers"],
+    )
+    assert ack.status_code == 200, ack.text
+    assert ack.json()["acked"] is True
+    acked_at = ack.json()["acked_at"]
+    again = client.post(
+        f"/api/v1/classes/{code}/acks",
+        json={"session_id": plan["session_id"], "item_id": instruction["id"]},
+        headers=made["headers"],
+    )
+    assert again.status_code == 200
+    assert again.json()["acked_at"] == acked_at
+
+    refreshed = client.get(
+        f"/api/v1/classes/{code}/today", headers=made["headers"]
+    ).json()
+    assert refreshed["items"][0]["acked_at"] == acked_at
+
+    # 面板已读
+    board2 = client.get(
+        f"/api/v1/classes/{code}/board", headers=superuser_token_headers
+    ).json()
+    row2 = next(
+        s for s in board2["students"] if s["student_id"] == made["student"]["id"]
+    )
+    ins_board2 = next(i for i in row2["items"] if i["type"] == "instruction")
+    assert ins_board2["status"] == "done"
+
+    # 不在快照里的说明 ack 被拒
+    stranger = _make_instruction(client, superuser_token_headers, text="别的说明")
+    stranger_ack = client.post(
+        f"/api/v1/classes/{code}/acks",
+        json={"session_id": plan["session_id"], "item_id": stranger["id"]},
+        headers=made["headers"],
+    )
+    assert stranger_ack.status_code == 422
+
+
+def test_instruction_only_or_missing_rejected(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    """只有说明不能成卷；不存在的说明 404。"""
+    classroom = _classroom(client, superuser_token_headers)
+    code = classroom["code"]
+    instruction = _make_instruction(client, superuser_token_headers)
+
+    only = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": [{"type": "instruction", "id": instruction["id"]}]},
+        headers=superuser_token_headers,
+    )
+    assert only.status_code == 422
+    assert "可作答" in only.json()["detail"]
+
+    sentence = client.post(
+        "/api/v1/admin/sentences",
+        json={"order_index": 0, "text": "Existence check sentence.", "replay_limit": 1},
+        headers=superuser_token_headers,
+    )
+    assert sentence.status_code == 200, sentence.text
+    missing = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={
+            "items": [
+                {"type": "instruction", "id": str(uuid.uuid4())},
+                {"type": "repeat", "id": sentence.json()["id"]},
+            ]
+        },
+        headers=superuser_token_headers,
+    )
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "题目说明不存在"
+
+
+def test_instruction_excluded_from_settlement(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """说明不进结算分母：卷内唯一可作答题答完即结算星/XP。"""
+    classroom = _classroom(client, superuser_token_headers)
+    made = make_student(db, client, classroom["code"], "结算学生")
+    code = classroom["code"]
+
+    instruction = _make_instruction(client, superuser_token_headers)
+    sentence = client.post(
+        "/api/v1/admin/sentences",
+        json={"order_index": 0, "text": "Settlement sentence.", "replay_limit": 1},
+        headers=superuser_token_headers,
+    )
+    assert sentence.status_code == 200, sentence.text
+    client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={
+            "items": [
+                {"type": "repeat", "id": sentence.json()["id"]},
+                {"type": "instruction", "id": instruction["id"]},
+            ]
+        },
+        headers=superuser_token_headers,
+    )
+    plan = client.get(f"/api/v1/classes/{code}/today", headers=made["headers"]).json()
+    assert plan["gamification"]["session_stars"] is None
+
+    repeat_item = next(i for i in plan["items"] if i["type"] == "repeat")
+    attempt = client.post(
+        "/api/v1/attempts",
+        files={"audio": wav_upload(4.0)},
+        data={
+            "item_type": "repeat",
+            "item_id": repeat_item["id"],
+            "duration_s": "4.0",
+            "session_id": plan["session_id"],
+        },
+        headers=made["headers"],
+    )
+    assert attempt.status_code == 200, attempt.text
+
+    # mock 评分异步：轮询到终态后 today 应已结算（说明未 ack 不阻塞）
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        plan = client.get(
+            f"/api/v1/classes/{code}/today", headers=made["headers"]
+        ).json()
+        if plan["gamification"]["session_stars"] is not None:
+            break
+        time.sleep(0.2)
+    assert plan["gamification"]["session_stars"] is not None
+
+
+def test_exam_instruction_window(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """模考：说明占计时窗（未开考/提前 ack 后面的说明被拒，到时自动翻页）。"""
+    classroom = _classroom(client, superuser_token_headers)
+    code = classroom["code"]
+    made = make_student(db, client, code, "模考说明生")
+    headers = made["headers"]
+
+    ids = [uuid.uuid4() for _ in range(2)]
+    snapshot: list[dict[str, object]] = [
+        {
+            "type": "instruction",
+            "id": str(ids[0]),
+            "title": "开考说明",
+            "text": "Read the instructions carefully.",
+            "suggested_seconds": 15,
+        },
+        {
+            "type": "question",
+            "id": str(ids[1]),
+            "text": "Describe your room.",
+            "suggested_seconds": 20,
+        },
+    ]
+    exercise = ClassroomExercise(
+        classroom_id=uuid.UUID(classroom["id"]),
+        snapshot_items=snapshot,
+        is_exam=True,
+        time_limit_minutes=30,
+    )
+    db.add(exercise)
+    db.flush()
+    row = db.get(Classroom, exercise.classroom_id)
+    assert row is not None
+    row.current_exercise_id = exercise.id
+    db.add(row)
+    db.commit()
+
+    now = datetime.now(UTC)
+    monkeypatch.setattr(exam_service, "_now", lambda: now)
+    try:
+        plan = _today_plan(client, headers, code)
+        assert plan["exam"]["started"] is False
+
+        # 未开考：ack 被拒
+        pre = client.post(
+            f"/api/v1/classes/{code}/acks",
+            json={"session_id": plan["session_id"], "item_id": str(ids[0])},
+            headers=headers,
+        )
+        assert pre.status_code == 422
+
+        start = client.post(
+            f"/api/v1/classes/{code}/exam/start",
+            json={"session_id": plan["session_id"]},
+            headers=headers,
+        )
+        assert start.status_code == 200
+        assert start.json()["current_item_index"] == 0
+
+        # 说明窗内 ack 第二道题？说明只认 instruction 条目，先确认后面的题不能 ack
+        future_q = client.post(
+            f"/api/v1/classes/{code}/acks",
+            json={"session_id": plan["session_id"], "item_id": str(ids[1])},
+            headers=headers,
+        )
+        assert future_q.status_code == 422
+
+        # 提前确认（点继续）→ 题窗推进到问答题
+        ack = client.post(
+            f"/api/v1/classes/{code}/acks",
+            json={"session_id": plan["session_id"], "item_id": str(ids[0])},
+            headers=headers,
+        )
+        assert ack.status_code == 200, ack.text
+        refreshed = _today_plan(client, headers, code)
+        assert refreshed["exam"]["current_item_index"] == 1
+        ins_item = next(i for i in refreshed["items"] if i["type"] == "instruction")
+        assert ins_item["acked_at"] is not None
+
+        # 已确认过的说明再 ack（幂等）仍然 200
+        again = client.post(
+            f"/api/v1/classes/{code}/acks",
+            json={"session_id": plan["session_id"], "item_id": str(ids[0])},
+            headers=headers,
+        )
+        assert again.status_code == 200
+
+        # 不 ack 问答题、到时自动推进并惰性交卷
+        now += timedelta(seconds=25)
+        finished = _today_plan(client, headers, code)
+        assert finished["exam"]["current_item_index"] == 2
+        assert finished["exam"]["ended"] is True
+    finally:
+        _cleanup_classroom(db, classroom["id"])

@@ -15,6 +15,7 @@ from app.models import (
     AttemptItemType,
     Classroom,
     ClassroomExercise,
+    Instruction,
     Passage,
     RepeatSentence,
     Scenario,
@@ -32,9 +33,11 @@ def validate_assignment_items(session: Any, items: list[AssignmentItemIn]) -> No
     """
     if len(items) > 100:
         raise HTTPException(status_code=422, detail="一次发布最多包含 100 道题")
+    if items and all(item.type == AttemptItemType.INSTRUCTION for item in items):
+        raise HTTPException(status_code=422, detail="练习至少需要一道可作答的题目")
     seen: set[tuple[str, uuid.UUID]] = set()
     for item in items:
-        if item.type not in {"passage", "repeat", "question"}:
+        if item.type not in {"passage", "repeat", "question", "instruction"}:
             raise HTTPException(status_code=422, detail=f"未知题型：{item.type}")
         if (item.type, item.id) in seen:
             raise HTTPException(status_code=422, detail="指派清单内有重复题目")
@@ -69,6 +72,13 @@ def validate_assignment_items(session: Any, items: list[AssignmentItemIn]) -> No
             select(Scenario).where(col(Scenario.id).in_(scenario_ids))
         ).all():
             scenarios_by_id[obj.id] = obj
+    instruction_ids = [i.id for i in items if i.type == AttemptItemType.INSTRUCTION]
+    instructions_by_id: dict[uuid.UUID, Instruction] = {}
+    if instruction_ids:
+        for obj in session.exec(
+            select(Instruction).where(col(Instruction.id).in_(instruction_ids))
+        ).all():
+            instructions_by_id[obj.id] = obj
 
     for item in items:
         if item.type == "passage":
@@ -80,6 +90,9 @@ def validate_assignment_items(session: Any, items: list[AssignmentItemIn]) -> No
         elif item.type == "repeat":
             if sentences_by_id.get(item.id) is None:
                 raise HTTPException(status_code=404, detail="复述句不存在")
+        elif item.type == AttemptItemType.INSTRUCTION:
+            if instructions_by_id.get(item.id) is None:
+                raise HTTPException(status_code=404, detail="题目说明不存在")
         else:
             question = questions_by_id.get(item.id)
             if question is None:
@@ -190,6 +203,17 @@ def build_snapshot_item(
             # 分级题型训练（可空=普通课堂内容；快照不可变，透传题库行）
             "exam_kind": item.exam_kind,
             "exam_level": item.exam_level,
+        }
+    if item_type == AttemptItemType.INSTRUCTION:
+        item = session.get(Instruction, item_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="题目说明不存在")
+        return {
+            "type": item_type,
+            "id": str(item.id),
+            "text": item.text,
+            "title": item.title,
+            "suggested_seconds": item.suggested_seconds,
         }
     item = session.get(ScenarioQuestion, item_id)
     if item is None:

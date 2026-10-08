@@ -14,7 +14,14 @@ from datetime import UTC, datetime, timedelta
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from app.models import Attempt, ClassroomExercise, ExamStatus, PracticeSession
+from app.models import (
+    Attempt,
+    AttemptItemType,
+    ClassroomExercise,
+    ExamStatus,
+    InstructionAck,
+    PracticeSession,
+)
 
 # 题目到时立即推进；仅允许截止前录完的音频有短暂传输时间。
 UPLOAD_GRACE_SECONDS = 15
@@ -61,12 +68,32 @@ def item_windows(
             first_submitted[key] = min(
                 first_submitted.get(key, attempt.created_at), attempt.created_at
             )
+    # 题目说明无作答：学生点「继续」的 ack 等价于首答时间（提前确认即开下一题窗）
+    acks = db.exec(
+        select(InstructionAck).where(
+            InstructionAck.session_id == practice_session.id  # type: ignore[arg-type]
+        )
+    ).all()
+    for ack in acks:
+        if ack.created_at is not None:
+            key = (AttemptItemType.INSTRUCTION, ack.item_id)
+            first_submitted[key] = min(
+                first_submitted.get(key, ack.created_at), ack.created_at
+            )
     windows = []
     for item in exercise.snapshot_items:
         item_type = str(item.get("type", ""))
         text = item.get("text")
+        # 过滤规则必须与 classes._plan_item_from_snapshot 一致：
+        # 两边都按同一白名单与「text 非空」裁剪，current_item_index 才与题单对齐
         if (
-            item_type not in {"passage", "repeat", "question"}
+            item_type
+            not in {
+                "passage",
+                "repeat",
+                "question",
+                AttemptItemType.INSTRUCTION,
+            }
             or not isinstance(text, str)
             or not text.strip()
         ):
@@ -136,6 +163,43 @@ def require_current_item(
             <= now
             <= window.deadline + timedelta(seconds=UPLOAD_GRACE_SECONDS)
         ):
+            return
+    raise HTTPException(status_code=422, detail="本题作答时间已结束或尚未开始")
+
+
+def require_instruction_current(
+    db: Session,
+    practice_session: PracticeSession,
+    exercise: ClassroomExercise,
+    item_id: uuid.UUID,
+) -> None:
+    """说明「继续」的模考门禁：只能确认当前窗口（或刚到时上一窗）内的说明。
+
+    防直调 API 提前确认后面的说明跳读；普通练习不经过本函数。
+    """
+    if practice_session.exam_ended_at is not None:
+        raise HTTPException(status_code=422, detail="考试时间已到，已自动交卷")
+    windows = item_windows(db, practice_session, exercise)
+    now = _now()
+    index = next(
+        (
+            i
+            for i, window in enumerate(windows)
+            if not window.submitted and now < window.deadline
+        ),
+        len(windows),
+    )
+    for candidate in (index, index - 1):
+        if candidate < 0 or candidate >= len(windows):
+            continue
+        window = windows[candidate]
+        if (
+            window.item_type != AttemptItemType.INSTRUCTION
+            or window.item_id != item_id
+            or window.submitted
+        ):
+            continue
+        if now <= window.deadline + timedelta(seconds=UPLOAD_GRACE_SECONDS):
             return
     raise HTTPException(status_code=422, detail="本题作答时间已结束或尚未开始")
 
