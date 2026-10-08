@@ -81,12 +81,18 @@ def test_password_recovery_rate_limit(client: TestClient) -> None:
 
     _clear_rate_table()
     try:
-        email = random_email()
-        for _ in range(login_route.LOGIN_RATE_LIMIT):
-            resp = client.post(f"/api/v1/password-recovery/{email}")
-            assert resp.status_code == 503  # 测试环境未配 SMTP，走服务不可用分支
-        blocked = client.post(f"/api/v1/password-recovery/{email}")
-        assert blocked.status_code == 429
+        # 本地 .env 无 SMTP 时走 503，但 CI 配了 mailcatcher 会真发信；
+        # patch 掉统一走 503 分支，断言不耦合环境且无发信副作用
+        with (
+            patch.object(settings, "SMTP_HOST", None),
+            patch.object(settings, "EMAILS_FROM_EMAIL", None),
+        ):
+            email = random_email()
+            for _ in range(login_route.LOGIN_RATE_LIMIT):
+                resp = client.post(f"/api/v1/password-recovery/{email}")
+                assert resp.status_code == 503
+            blocked = client.post(f"/api/v1/password-recovery/{email}")
+            assert blocked.status_code == 429
     finally:
         _clear_rate_table()
 
