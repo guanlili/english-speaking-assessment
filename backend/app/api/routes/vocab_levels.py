@@ -16,6 +16,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Query, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from sqlmodel import Field, Session, SQLModel, col, select
 
 from app.api.deps import SessionDep, SuperUserDep, TeacherUserDep
@@ -78,9 +79,14 @@ async def vocab_level_import_preview(
 ) -> Any:
     """分级导入预览：解析、无效行、批内重复、跨级冲突与导入后各级数量。"""
     text = await _read_upload(file)
-    rows = levels_service.parse_upload(text)
-    return levels_service.preview_import(
-        session, level, source_label.strip() or "未命名来源", rows
+    # 解析（5MB/2 万行 CPU 级）与库内比对都放线程池：async 路由里同步跑会
+    # 卡住整个事件循环，导入期间学生端所有请求无响应
+    return await run_in_threadpool(
+        levels_service.preview_import,
+        session,
+        level,
+        source_label.strip() or "未命名来源",
+        await run_in_threadpool(levels_service.parse_upload, text),
     )
 
 
@@ -96,9 +102,12 @@ async def vocab_level_import_confirm(
 ) -> Any:
     """确认导入：单事务，任何失败整体回滚。"""
     text = await _read_upload(file)
-    rows = levels_service.parse_upload(text)
-    imported_new, merged_existing, skipped = levels_service.apply_import(
-        session, level, source_label.strip() or "未命名来源", rows
+    imported_new, merged_existing, skipped = await run_in_threadpool(
+        levels_service.apply_import,
+        session,
+        level,
+        source_label.strip() or "未命名来源",
+        await run_in_threadpool(levels_service.parse_upload, text),
     )
     return VocabularyLevelImportResult(
         imported_new=imported_new,
@@ -202,27 +211,45 @@ def list_teaching_words_by_level(
     词条——防止借级别查询读到其他教师班级词库的词头与释义。只返回有教学
     释义且已启用、且词头命中五级数据源（不含待核对行）的词条；实际难度 =
     该词全部级别中最早（最易）一级。先过滤后分页，避免漏词/空页。
+
+    性能：先取候选词头（单列）→ 五级映射筛出目标级别词头 → 只取命中词
+    的词行分页；避免全量词行 + 全量分级附加后在 Python 过滤切片（词库
+    增长后每次请求都是全表扫描 + 大内存）。
     """
     levels_service.validate_level(level)
     visible_ids = _visible_book_ids(session, current_user)
-    stmt = select(VocabularyWord).where(VocabularyWord.status == "active")
+    headword_stmt = select(VocabularyWord.headword).where(
+        VocabularyWord.status == "active"
+    )
     if visible_ids is not None:
-        # 同词可在多本可见词库：JSON 列不支持 SQL DISTINCT，按 id 在 Python 去重
-        stmt = stmt.join(
+        headword_stmt = headword_stmt.join(
             VocabularyBookItem,
             VocabularyBookItem.word_id == VocabularyWord.id,  # ty: ignore[invalid-argument-type]
         ).where(
             col(VocabularyBookItem.book_id).in_(visible_ids)  # type: ignore[operator]
         )
-    stmt = stmt.order_by(col(VocabularyWord.headword))
+    candidate_headwords = set(session.exec(headword_stmt).all())
+    level_map = levels_service.effective_level_map(session, list(candidate_headwords))
+    matched_headwords = {
+        raw
+        for raw in candidate_headwords
+        if level_map.get(normalize_spelling(raw), ("", []))[0] == level
+    }
+    stmt = (
+        select(VocabularyWord)
+        .where(
+            VocabularyWord.status == "active",
+            col(VocabularyWord.headword).in_(matched_headwords),  # type: ignore[operator]
+        )
+        .order_by(col(VocabularyWord.headword))
+    )
     words = session.exec(stmt).all()
+    # 同词可在多本可见词库：JSON 列不支持 SQL DISTINCT，按 id 在 Python 去重
     deduped: dict[uuid.UUID, VocabularyWord] = {}
     for word in words:
         deduped.setdefault(word.id, word)
-    words = list(deduped.values())
-    matched = levels_service.attach_word_levels(session, words)
-    matched = [word for word in matched if word.level == level]
-    return matched[offset : offset + limit]
+    page = list(deduped.values())[offset : offset + limit]
+    return levels_service.attach_word_levels(session, page)
 
 
 class VocabularyFromLevelsRequest(SQLModel):

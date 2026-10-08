@@ -40,8 +40,14 @@ export function ReadingPassagePicker({
             </span>
             <span className="mt-0.5 block text-xs text-muted-foreground">
               {t({
-                zh: `${passage.topic} · 建议 ${passage.suggested_seconds} 秒 · 1 道题`,
-                en: `${passage.topic} · suggested ${passage.suggested_seconds}s · 1 question`,
+                zh: `${passage.topic} · 建议 ${passage.suggested_seconds} 秒 · ${
+                  segments.length > 0 ? `逐句 ${segments.length} 题` : "1 道题"
+                }`,
+                en: `${passage.topic} · suggested ${passage.suggested_seconds}s · ${
+                  segments.length > 0
+                    ? `${segments.length} sentence questions`
+                    : "1 question"
+                }`,
               })}
               {passage.is_active === false &&
                 t({ zh: " · 已停用", en: " · Disabled" })}

@@ -469,6 +469,9 @@ export type PlanItem = {
     exam_level?: (string | null);
     cue_card_bullets?: (Array<(string)> | null);
     prep_seconds?: (number | null);
+    parent_id?: (string | null);
+    sentence_index?: (number | null);
+    sentence_total?: (number | null);
     frames?: (Array<SentenceFramePublic> | null);
 };
 
@@ -787,7 +790,6 @@ export type TrailSession = {
 
 export type TtsRequest = {
     text: string;
-    voice?: (string | null);
 };
 
 export type UnitCreate = {
@@ -1569,14 +1571,6 @@ export type VocabularyWrongWords = {
     items?: Array<VocabularyWrongWordItem>;
 };
 
-export type WordlistStats = {
-    total: number;
-    by_band: {
-        [key: string]: (number);
-    };
-    name?: (string | null);
-};
-
 export type AdminListPassagesResponse = (Array<PassageWithSentences>);
 
 export type AdminCreatePassageData = {
@@ -1718,10 +1712,6 @@ export type AdminCreateQuestionsBatchData = {
 
 export type AdminCreateQuestionsBatchResponse = (BatchQuestionResult);
 
-export type AdminWordlistStatsResponse = (WordlistStats);
-
-export type AdminWordlistImportOfflineResponse = (unknown);
-
 export type AdminListUnitsResponse = (Array<UnitPublic>);
 
 export type AdminCreateUnitData = {
@@ -1784,6 +1774,12 @@ export type AdminSplitPassageIntoReadingsData = {
 };
 
 export type AdminSplitPassageIntoReadingsResponse = (PassageSplitResult);
+
+export type AdminUnsplitPassageReadingsData = {
+    passageId: string;
+};
+
+export type AdminUnsplitPassageReadingsResponse = (PassagePublic);
 
 export type AdminGenerateStandardAudioData = {
     requestBody: TtsRequest;

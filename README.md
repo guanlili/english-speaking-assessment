@@ -261,14 +261,20 @@ HTTP 明文意味着 JWT token 和登录密码裸奔公网、浏览器标"不安
 
 ### 数据库备份
 
-生产数据只存在 Docker volume 里，服务器磁盘损坏即全部丢失。上线后在服务器配置定时备份：
+生产数据只存在 Docker volume 里，服务器磁盘损坏即全部丢失。**部署流水线会自动注册每日备份 cron**（每天 3:30，保留 14 天，`backups/` 目录），**不要手动再注册备份 crontab**（会双跑双清理）。备份内容：
+
+- `app-*.sql.gz`：pg_dump 全量数据库；
+- `env-*.env`：当次 `.env` 快照（SECRET_KEY、数据库密码、方舟密钥——灾后重建必需）。
+
+失败排查：备份失败会追加一行时间戳到 `backups/backup-failure.log`。
+
+> ⚠️ 备份仍只落在服务器本地盘：服务器整体报废时数据与备份同归于尽。异地容灾（对象存储/另一台机器）需要提供云凭证后另行配置。
+
+恢复（用户名/库名以服务器 `.env` 中的 `POSTGRES_USER`/`POSTGRES_DB` 为准）：
 
 ```bash
-# crontab -e，每天凌晨 3 点备份，保留最近 7 天
-0 3 * * * docker compose -f 部署路径/compose.yml exec -T db pg_dump -U postgres app | gzip > /备份目录/db-$(date +\%w).sql.gz
+gunzip -c 备份文件.sql.gz | docker compose exec -T db psql -U $POSTGRES_USER $POSTGRES_DB
 ```
-
-恢复：`gunzip -c 备份文件.sql.gz | docker compose exec -T db psql -U postgres app`
 
 ### 回滚
 

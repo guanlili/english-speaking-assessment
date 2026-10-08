@@ -34,6 +34,7 @@ from app.models import (
 )
 from app.scoring.audio_convert import probe_audio
 from app.services import exam as exam_service
+from app.services import reading
 
 router = APIRouter(tags=["attempts"])
 
@@ -83,6 +84,11 @@ def _snapshot_attempt_item(
     if item_type == AttemptItemType.PASSAGE:
         item = session.get(Passage, item_id)
         if item is None:
+            # 非发布会话（单元指派/自主练习）的逐句条目是合成 ID：
+            # 对拆分中的活动篇目重做展开按 ID 匹配
+            sentence_item = reading.find_reading_item_by_id(session, item_id)
+            if sentence_item is not None:
+                return sentence_item
             raise HTTPException(status_code=404, detail="题目不存在")
         return {
             "type": item_type,
@@ -218,6 +224,7 @@ def create_attempt_upload(
 
     # 模考门禁：整场限时（服务端强约束）+ 每题一次作答。
     # 放在幂等检查之后：同一次录音断网重试（同幂等键）不受影响
+    exam_one_attempt = False
     if session_id is not None:
         exam_session = session.get(PracticeSession, session_id)
         if exam_session is not None and exam_session.assignment_id is not None:
@@ -248,6 +255,7 @@ def create_attempt_upload(
                 exam_service.require_current_item(
                     session, exam_session, bound_exercise, item_type, item_id
                 )
+                exam_one_attempt = True
 
     item_snapshot = _snapshot_attempt_item(session, item_type, item_id, session_id)
 
@@ -304,6 +312,25 @@ def create_attempt_upload(
         )
 
     audio_path = save_audio_file(audio_bytes, mime_type)
+    # 模考同题并发兜底：上面的 already 检查是 check-then-insert，双击/断网重试
+    # 并发时两个请求都能通过预检查。对考试会话行加锁后复查——锁只包住
+    # 「复查 + 插入」的毫秒级临界区（音频校验在锁外），第二个请求在锁内
+    # 看到首个作答后 422，不会产生双份作答/双倍评分费
+    if exam_one_attempt and session_id is not None:
+        locked_session = session.exec(
+            select(PracticeSession)
+            .where(PracticeSession.id == session_id)
+            .with_for_update()
+        ).first()
+        if locked_session is not None:
+            already = session.exec(
+                select(Attempt.id).where(
+                    Attempt.session_id == session_id,  # type: ignore[arg-type]
+                    Attempt.item_id == item_id,
+                )
+            ).first()
+            if already is not None:
+                raise HTTPException(status_code=422, detail="考试中每题只能作答一次")
     attempt = Attempt(
         item_type=item_type,
         item_id=item_id,

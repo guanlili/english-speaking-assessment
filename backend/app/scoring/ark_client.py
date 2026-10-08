@@ -17,9 +17,15 @@ logger = logging.getLogger(__name__)
 _shared_client = httpx.Client(timeout=60)
 
 
+# Seed Lite 家族前缀：API 调用名带日期后缀（-260428 等），按前缀匹配才能
+# 覆盖未来升级的快照名——精确匹配旧模型串时，换模型即静默失去
+# max_tokens/thinking 抑制这两道费用护栏
+_SEED_LITE_PREFIX = "doubao-seed-2-0-lite-"
+
+
 def fast_chat_options(model: str | None) -> dict[str, object]:
     """已验证的 Seed Lite 快速模式；其他模型不发送专有参数。"""
-    if model == "doubao-seed-2-0-lite-260428":
+    if model and model.startswith(_SEED_LITE_PREFIX):
         return {"thinking": {"type": "disabled"}, "max_tokens": 2048}
     return {}
 

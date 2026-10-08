@@ -189,9 +189,16 @@ def publish_exercise(
     title: str | None = None,
     is_exam: bool = False,
     time_limit_minutes: int | None = None,
+    assignment_items: list[dict[str, object]] | None = None,
 ) -> ClassroomExercise:
     if not snapshots:
         raise HTTPException(status_code=422, detail="练习至少需要包含一道题目")
+    if len(snapshots) > 100:
+        # 拆句展开在快照层发生，上限按展开后的题数把关
+        raise HTTPException(
+            status_code=422,
+            detail=f"拆句展开后共 {len(snapshots)} 道题，超过单次发布上限 100 道；请减少篇目或缩短文章",
+        )
     exercise_title = (title or "课堂练习").strip()
     if len(exercise_title) > 255:
         raise HTTPException(status_code=422, detail="练习名称不能超过 255 个字符")
@@ -218,8 +225,11 @@ def publish_exercise(
     session.flush()
     archive_current_exercise(session, classroom)
     classroom.current_exercise_id = exercise.id
+    # 指派镜像只存真实题目 ID：拆句展开只进快照（assigned_items 上的合成 ID
+    # 会被旧兼容路径静默丢弃、指派页回显也无法解析）
+    mirror_source = assignment_items if assignment_items is not None else snapshots
     classroom.assigned_items = [
-        {"type": str(item["type"]), "id": str(item["id"])} for item in snapshots
+        {"type": str(item["type"]), "id": str(item["id"])} for item in mirror_source
     ]
     session.add(classroom)
     return exercise

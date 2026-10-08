@@ -70,14 +70,6 @@ const workspaceRoutes: Record<string, WorkspaceContext> = {
       en: "Manage platform members and access.",
     },
   },
-  "/admin/wordlist": {
-    title: { zh: "老词表（已退役）", en: "Word List (retired)" },
-    section: { zh: "平台设置", en: "Platform Settings" },
-    description: {
-      zh: "老词表（A2/B1/B2）只读历史统计；现行五级词库见「五级词库」。",
-      en: "Read-only stats for the retired A2/B1/B2 list; see Leveled Word Source for the current standard.",
-    },
-  },
   "/admin/vocablevels": {
     title: { zh: "五级词库", en: "Leveled Word Source" },
     section: { zh: "平台设置", en: "Platform Settings" },

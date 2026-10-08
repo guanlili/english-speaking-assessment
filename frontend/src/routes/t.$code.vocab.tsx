@@ -950,7 +950,9 @@ function ResultsPanel({
         code: code.toUpperCase(),
         assignmentId: selectedAssignmentId ?? undefined,
       }),
-    refetchInterval: 20_000,
+    // 进行中的任务才轮询；历史期数是归档快照不可变，null(无任务) 由指派后失效刷新
+    refetchInterval: (query) =>
+      query.state.data?.assignment?.status === "active" ? 20_000 : false,
   })
   const archive = useMutation({
     mutationFn: (assignmentId: string) =>

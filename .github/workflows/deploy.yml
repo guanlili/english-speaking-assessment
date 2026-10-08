@@ -16,6 +16,8 @@ jobs:
   backend:
     name: 后端 Lint + 测试
     runs-on: ubuntu-latest
+    # 挂起保护：无 timeout 时挂起的 job 会占住 runner 直到 GitHub 默认 6 小时
+    timeout-minutes: 30
     services:
       db:
         image: postgres:18
@@ -103,6 +105,7 @@ jobs:
   frontend:
     name: 前端 Lint + 构建 + 客户端一致性
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -150,13 +153,21 @@ jobs:
   e2e:
     name: E2E 冒烟（主干道）
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: 准备环境变量（local 环境，演示登录可用）
         run: cp .env.example .env
+      # type=gha 构建缓存需要 docker-container 驱动的构建器；compose 不跟随
+      # buildx 的 --use 全局切换，必须导出 BUILDX_BUILDER 显式指定
+      - name: 启用 GHA 构建缓存构建器
+        run: |
+          docker buildx create --use --driver docker-container --name gha-cache-builder
+          echo "BUILDX_BUILDER=gha-cache-builder" >> "$GITHUB_ENV"
       - name: 启动完整栈（db + backend + prestart + frontend）
-        # -f 跳过本地开发的 compose.override.yml（5173 映射），用生产端口形态
-        run: docker compose -f compose.yml up -d --build
+        # -f 跳过本地开发的 compose.override.yml（5173 映射），用生产端口形态；
+        # 追加 compose.ci-build-cache.yml 启用 GHA 层缓存（仅本 job，服务器部署不加载）
+        run: docker compose -f compose.yml -f compose.ci-build-cache.yml up -d --build
       - name: 等待就绪（prestart 迁移 + backend 健康检查，首次较慢）
         run: |
           port=$(grep -E '^APP_PORT=' .env | cut -d= -f2 | tr -d '"')
@@ -177,6 +188,11 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      # Chromium ~150MB 每轮全量下载：按 lockfile 缓存浏览器目录，通常省 1-2 分钟
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
       - name: 安装依赖与 Chromium
         working-directory: frontend
         run: npm ci && npx playwright install --with-deps chromium
@@ -203,6 +219,8 @@ jobs:
       group: production-deploy
       cancel-in-progress: false
     runs-on: ubuntu-latest
+    # 覆盖 SSH 步骤本身（command_timeout 30m）之外的编排开销
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - name: 从 Secrets 生成 .env（base64 中转，值不进入 shell 源码）
@@ -223,6 +241,8 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           APP_PORT: ${{ secrets.APP_PORT }}
           WORKERS: ${{ secrets.WORKERS || '1' }}
+          # 未设 Secret 时为空串，generate-deploy-env.sh 会落默认值 8
+          SCORING_WORKERS: ${{ secrets.SCORING_WORKERS }}
           USERS_OPEN_REGISTRATION: ${{ secrets.USERS_OPEN_REGISTRATION || 'false' }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -325,12 +345,15 @@ jobs:
 
             echo "=== 4.5/6 每日数据库备份（幂等注册，保留 14 天） ==="
             mkdir -p backups
+            chmod 700 backups
             # 注意转义层次：backup_cmd 是双引号赋值，\${...} 与 \$(...) 保持字面量进 crontab，
             # 由 cron 启动的 sh 展开；\% 是 cron 的 % 转义（% 在 crontab 里是换行/stdin 标记）。
             # pg_dump 的变量在 db 容器内展开（compose 注入的 POSTGRES_USER/POSTGRES_DB），
             # 不能写成 $$（会被当成 shell PID，此前导致备份全为空归档且退出码被 gzip 掩盖）。
             # 先落盘再 gzip：pg_dump 失败时 exit 非 0，不会生成假备份文件。
-            backup_cmd="cd '$PWD' && docker compose -f compose.yml exec -T db sh -c 'pg_dump -U \${POSTGRES_USER} \${POSTGRES_DB}' > /tmp/app-backup.sql && gzip -c /tmp/app-backup.sql > backups/app-\$(date +\%Y\%m\%d-\%H\%M).sql.gz && rm -f /tmp/app-backup.sql && find backups -name 'app-*.sql.gz' -mtime +14 -delete"
+            # 同时快照 .env（SECRET_KEY/ARK 密钥等——只有 pg_dump 的话服务器报废后
+            # 无法完整重建系统）；失败追加一行时间戳到 backup-failure.log，巡检可见。
+            backup_cmd="(cd '$PWD' && docker compose -f compose.yml exec -T db sh -c 'pg_dump -U \${POSTGRES_USER} \${POSTGRES_DB}' > /tmp/app-backup.sql && gzip -c /tmp/app-backup.sql > backups/app-\$(date +\%Y\%m\%d-\%H\%M).sql.gz && rm -f /tmp/app-backup.sql && cp .env backups/env-\$(date +\%Y\%m\%d-\%H\%M).env && find backups \\( -name 'app-*.sql.gz' -o -name 'env-*.env' \\) -mtime +14 -delete) || date >> '$PWD/backups/backup-failure.log'"
             (crontab -l 2>/dev/null | grep -v 'app-.*sql.gz'; echo "30 3 * * * $backup_cmd") | crontab -
             # 部署时顺手做一次当次备份，保证改库前总有快照；失败则中止部署（不能无快照改库）
             dump_tmp="backups/app-$(date +%Y%m%d-%H%M)-predeploy.sql"

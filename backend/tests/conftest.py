@@ -39,7 +39,6 @@ from app.models import (
     VocabularyLevelEntry,
     VocabularySession,
     VocabularyWord,
-    WordlistEntry,
 )
 from tests.utils.user import authentication_token_from_email
 from tests.utils.utils import get_superuser_token_headers
@@ -130,7 +129,6 @@ def db() -> Generator[Session]:
         session.exec(delete(Scenario))  # type: ignore[call-overload]
         session.exec(delete(RepeatSentence))  # type: ignore[call-overload]
         session.exec(delete(Passage))  # type: ignore[call-overload]
-        session.exec(delete(WordlistEntry))  # type: ignore[call-overload]
         session.exec(delete(Unit))  # type: ignore[call-overload]
         session.exec(delete(User))  # type: ignore[call-overload]
         session.commit()

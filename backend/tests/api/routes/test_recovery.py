@@ -414,3 +414,75 @@ def test_queue_full_returns_503(
     )
     assert resp.status_code == 503
     assert "繁忙" in resp.json()["detail"]
+
+
+def test_startup_recovery_resubmits_queued_without_stale_scoring(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, db: Session
+) -> None:
+    """启动恢复无条件重投所有 QUEUED：旧逻辑只在存在僵尸 SCORING 时才重投，
+    「落库后、线程领取前进程崩溃」的作答重启后无人再投，永久占坑直到
+    队列攒满 200 条触发全站 503。"""
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+    from app.core.storage import save_audio_file
+
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
+    with Session(db.get_bind()) as session:
+        path = save_audio_file(b"fake", "audio/wav")
+        for _ in range(2):
+            session.add(
+                Attempt(
+                    item_type="repeat",
+                    item_id=uuid.uuid4(),
+                    student_id=uuid.UUID(student["student"]["id"]),
+                    session_id=uuid.UUID(plan["session_id"]),
+                    audio_path=str(path),
+                    duration_s=5.0,
+                    status=AttemptStatus.QUEUED,
+                )
+            )
+        session.commit()
+
+    submitted: list[uuid.UUID] = []
+    monkeypatch.setattr(
+        worker, "submit_attempt_scoring", lambda aid: submitted.append(aid)
+    )
+    worker.startup_recovery()
+    assert len(submitted) == 2  # 没有任何僵尸 SCORING，QUEUED 仍被重投
+
+
+def test_stale_recovery_does_not_burn_retry_quota(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, db: Session
+) -> None:
+    """僵尸恢复不消耗 retry_count：重启/部署是进程级事件，
+    不该把在评作答推向重试上限（否则连续两次部署期间在评的会变 FAILED）。"""
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+    from app.core.storage import save_audio_file
+
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
+    with Session(db.get_bind()) as session:
+        path = save_audio_file(b"fake", "audio/wav")
+        attempt = Attempt(
+            item_type="repeat",
+            item_id=uuid.uuid4(),
+            student_id=uuid.UUID(student["student"]["id"]),
+            session_id=uuid.UUID(plan["session_id"]),
+            audio_path=str(path),
+            duration_s=5.0,
+            status=AttemptStatus.SCORING,
+            retry_count=1,
+            claimed_at=datetime.now(UTC) - timedelta(seconds=300),
+        )
+        session.add(attempt)
+        session.commit()
+        attempt_id = attempt.id
+
+    with Session(db.get_bind()) as session:
+        recovered = worker.recover_stale_attempts(session)
+    assert recovered == 1
+    with Session(db.get_bind()) as check:
+        after = check.get(Attempt, attempt_id)
+    assert after is not None
+    assert after.status == AttemptStatus.QUEUED
+    assert after.retry_count == 1  # 恢复不再 +1

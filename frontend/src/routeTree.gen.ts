@@ -40,7 +40,6 @@ import { Route as VocabCodePracticeRouteImport } from './routes/vocab.$code.prac
 import { Route as VocabCodeBooksRouteImport } from './routes/vocab.$code.books'
 import { Route as TCodeVocabRouteImport } from './routes/t.$code.vocab'
 import { Route as PCodeResultRouteImport } from './routes/p.$code.result'
-import { Route as LayoutAdminWordlistRouteImport } from './routes/_layout/admin.wordlist'
 import { Route as LayoutAdminVocablevelsRouteImport } from './routes/_layout/admin.vocablevels'
 import { Route as LayoutAdminVocabbooksRouteImport } from './routes/_layout/admin.vocabbooks'
 import { Route as LayoutAdminUnitsRouteImport } from './routes/_layout/admin.units'
@@ -205,11 +204,6 @@ const PCodeResultRoute = PCodeResultRouteImport.update({
   path: '/result',
   getParentRoute: () => PCodeRoute,
 } as any)
-const LayoutAdminWordlistRoute = LayoutAdminWordlistRouteImport.update({
-  id: '/wordlist',
-  path: '/wordlist',
-  getParentRoute: () => LayoutAdminRoute,
-} as any)
 const LayoutAdminVocablevelsRoute = LayoutAdminVocablevelsRouteImport.update({
   id: '/vocablevels',
   path: '/vocablevels',
@@ -286,7 +280,6 @@ export interface FileRoutesByFullPath {
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
-  '/admin/wordlist': typeof LayoutAdminWordlistRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
@@ -324,7 +317,6 @@ export interface FileRoutesByTo {
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
-  '/admin/wordlist': typeof LayoutAdminWordlistRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
@@ -368,7 +360,6 @@ export interface FileRoutesById {
   '/_layout/admin/units': typeof LayoutAdminUnitsRoute
   '/_layout/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/_layout/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
-  '/_layout/admin/wordlist': typeof LayoutAdminWordlistRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
@@ -412,7 +403,6 @@ export interface FileRouteTypes {
     | '/admin/units'
     | '/admin/vocabbooks'
     | '/admin/vocablevels'
-    | '/admin/wordlist'
     | '/p/$code/result'
     | '/t/$code/vocab'
     | '/vocab/$code/books'
@@ -450,7 +440,6 @@ export interface FileRouteTypes {
     | '/admin/units'
     | '/admin/vocabbooks'
     | '/admin/vocablevels'
-    | '/admin/wordlist'
     | '/p/$code/result'
     | '/t/$code/vocab'
     | '/vocab/$code/books'
@@ -493,7 +482,6 @@ export interface FileRouteTypes {
     | '/_layout/admin/units'
     | '/_layout/admin/vocabbooks'
     | '/_layout/admin/vocablevels'
-    | '/_layout/admin/wordlist'
     | '/p/$code/result'
     | '/t/$code/vocab'
     | '/vocab/$code/books'
@@ -745,13 +733,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PCodeResultRouteImport
       parentRoute: typeof PCodeRoute
     }
-    '/_layout/admin/wordlist': {
-      id: '/_layout/admin/wordlist'
-      path: '/wordlist'
-      fullPath: '/admin/wordlist'
-      preLoaderRoute: typeof LayoutAdminWordlistRouteImport
-      parentRoute: typeof LayoutAdminRoute
-    }
     '/_layout/admin/vocablevels': {
       id: '/_layout/admin/vocablevels'
       path: '/vocablevels'
@@ -827,7 +808,6 @@ interface LayoutAdminRouteChildren {
   LayoutAdminUnitsRoute: typeof LayoutAdminUnitsRoute
   LayoutAdminVocabbooksRoute: typeof LayoutAdminVocabbooksRoute
   LayoutAdminVocablevelsRoute: typeof LayoutAdminVocablevelsRoute
-  LayoutAdminWordlistRoute: typeof LayoutAdminWordlistRoute
   LayoutAdminIndexRoute: typeof LayoutAdminIndexRoute
 }
 
@@ -840,7 +820,6 @@ const LayoutAdminRouteChildren: LayoutAdminRouteChildren = {
   LayoutAdminUnitsRoute: LayoutAdminUnitsRoute,
   LayoutAdminVocabbooksRoute: LayoutAdminVocabbooksRoute,
   LayoutAdminVocablevelsRoute: LayoutAdminVocablevelsRoute,
-  LayoutAdminWordlistRoute: LayoutAdminWordlistRoute,
   LayoutAdminIndexRoute: LayoutAdminIndexRoute,
 }
 

@@ -622,17 +622,3 @@ def save_insight_cache(
     row.created_at = get_datetime_utc()
     session.add(row)
     session.commit()
-
-
-def build_insight_response(
-    payload: dict, generated_at: datetime | None, cached: bool, stale: bool
-) -> dict[str, object]:
-    return {
-        "summary": payload.get("summary", ""),
-        "weak_words": payload.get("weak_words", []),
-        "suggestions": payload.get("suggestions", []),
-        "scope": payload.get("scope", {}),
-        "generated_at": (generated_at or get_datetime_utc()).isoformat(),
-        "cached": cached,
-        "stale": stale,
-    }

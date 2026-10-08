@@ -144,3 +144,77 @@ def test_convert_webm_to_wav(tmp_path) -> None:
     assert (data2, mime2) == (b"raw", "audio/mpeg")
     data3, mime3 = ensure_ark_supported(webm.read_bytes(), "audio/webm")
     assert mime3 == "audio/wav"
+
+
+def test_tts_endpoint_caches_by_content(
+    client, superuser_token_headers, monkeypatch, tmp_path
+) -> None:
+    """内容寻址缓存：同文本两次生成只调一次 API，命中返回同一 URL；
+    空音频（音色无效时网关返回 200+0 字节）不落缓存。"""
+    from app.core import storage
+    from app.scoring import tts as tts_mod
+
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "ARK_TTS_API_KEY", "key")
+    monkeypatch.setattr(settings, "ARK_TTS_VOICE", "en_voice")
+    calls = {"n": 0}
+
+    class FakeProvider:
+        name = "ark"
+
+        def __init__(self):
+            self.model = settings.ARK_TTS_MODEL
+            self.voice = settings.ARK_TTS_VOICE
+
+        def synthesize(self, text):
+            calls["n"] += 1
+            return b"mp3-bytes"
+
+    monkeypatch.setattr(tts_mod, "build_tts_provider", lambda: FakeProvider())
+
+    r1 = client.post(
+        "/api/v1/admin/audio/tts",
+        json={"text": "Dogs are friendly."},
+        headers=superuser_token_headers,
+    )
+    assert r1.status_code == 200, r1.text
+    r2 = client.post(
+        "/api/v1/admin/audio/tts",
+        json={"text": "Dogs are friendly."},
+        headers=superuser_token_headers,
+    )
+    assert r2.status_code == 200
+    assert calls["n"] == 1  # 第二次命中缓存未再合成
+    assert r1.json()["audio_url"] == r2.json()["audio_url"]
+
+    # 不同文本 → 不同缓存键 → 再次合成
+    r3 = client.post(
+        "/api/v1/admin/audio/tts",
+        json={"text": "Cats are quiet."},
+        headers=superuser_token_headers,
+    )
+    assert r3.status_code == 200
+    assert calls["n"] == 2
+
+    # 空音频不落缓存文件（防止 0 字节文件永久命中）
+    class EmptyProvider(FakeProvider):
+        def synthesize(self, text):
+            calls["n"] += 1
+            return b""
+
+    monkeypatch.setattr(tts_mod, "build_tts_provider", lambda: EmptyProvider())
+    r4 = client.post(
+        "/api/v1/admin/audio/tts",
+        json={"text": "Silence."},
+        headers=superuser_token_headers,
+    )
+    assert r4.status_code == 502
+    assert (
+        storage.content_audio_path(
+            __import__("app.scoring.tts", fromlist=["cache_key"]).cache_key(
+                settings.ARK_TTS_MODEL, settings.ARK_TTS_VOICE, "Silence."
+            )
+            + ".mp3"
+        )
+        is None
+    )

@@ -618,8 +618,14 @@ function RoundResultPage() {
                     en: item.type,
                   },
                 )}
+                {item.sentence_index != null &&
+                  item.sentence_total != null &&
+                  ` · ${t({
+                    zh: `第 ${item.sentence_index}/${item.sentence_total} 句`,
+                    en: `Sentence ${item.sentence_index}/${item.sentence_total}`,
+                  })}`}
               </CardDescription>
-              <CardTitle className="text-sm leading-relaxed font-medium">
+              <CardTitle className="text-sm leading-relaxed font-medium whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                 {item.text}
               </CardTitle>
             </CardHeader>

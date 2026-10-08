@@ -6,16 +6,16 @@
 
 - 需求来源：甲方 PRD《独立英语口语评测平台 v0.1》（2026-09-25，王府学校）。三阶段累计工期：2 天演示（周一 2026-09-28）→ 2 周（课堂码+问答）→ 3 周（词汇/CEFR/教师面板）。
 - **产品定位（2026-09-26 与甲方对齐）：课堂教学工具**——老师在前面授课、全班电脑登录学生端同步练习；不是多邻国式自学产品。内容节奏由老师主导：老师面板「今日课堂指派」设定当前单元，全班 /today 即时同步；学生个人关卡路径仅作为课后自主练习的兜底。
-- 当前阶段：**PRD 功能全部就绪 + 增强版（多邻国式激励层 + AI 出题）**——学生端全流程（US-04/05/06）+ 词汇分析（US-07）+ 模拟分骨架（US-08，ark 引擎下 LLM rubric 四维 + 0-9 映射 + 升级表达；mock 不出假分）+ 学生进步轨迹（US-09）+ 教师面板（US-10）+ 管理端内容管理（`/admin/passages|scenarios|wordlist|classrooms`：篇目与复述句、情景问法、词表 CSV 导入、课堂码生成/停用）。课堂支持教师自定义名称、年级/班型和教学目标；课堂难度由教师选择的内容决定，A2/B1/B2 仅作内部评分/词表元数据，不出现在课堂教学流程。内容标准音：TTS 生成（`app/scoring/tts.py`，需方舟密钥）或上传现成音频，回放走 `GET /audio/content/{name}`；无密钥时前端 speechSynthesis 兜底。模板 Items 已删除。演示重置：`bash scripts/reset-demo.sh`。
+- 当前阶段：**PRD 功能全部就绪 + 增强版（多邻国式激励层 + AI 出题）**——学生端全流程（US-04/05/06）+ 词汇分析（US-07）+ 模拟分骨架（US-08，ark 引擎下 LLM rubric 四维 + 0-9 映射 + 升级表达；mock 不出假分）+ 学生进步轨迹（US-09）+ 教师面板（US-10）+ 管理端内容管理（`/admin/passages|scenarios|classrooms`：篇目与复述句、情景问法、课堂码生成/停用）。课堂支持教师自定义名称、年级/班型和教学目标；课堂难度由教师选择的内容决定，A2/B1/B2 仅作内部评分/词表元数据，不出现在课堂教学流程。内容标准音：TTS 生成（`app/scoring/tts.py`，需方舟密钥）或上传现成音频，回放走 `GET /audio/content/{name}`；无密钥时前端 speechSynthesis 兜底。模板 Items 已删除。演示重置：`bash scripts/reset-demo.sh`。
 - 激励层（P1，`app/scoring/gamification.py`）：星级（均分 ≥85→3/≥70→2/完成 1）、XP（题×10+星×5+连胜≥3 奖 10）、连胜、5 枚徽章；结算幂等挂在 /today；只和自己比（学生端无排名，老师面板可看 XP/连胜）。
 - 学习路径（P2）：Unit 表 + Passage.unit_id + Classroom.unlock_all（顺序解锁默认开，老师可全开）；/classes/{code}/path；今日篇目=路径上第一个未完成单元（无单元数据回退全局第一篇）。原 /map/:code 关卡地图页与 MVP 演示页 /practice 已删除（2026-09 精简）。
 - AI 出题（P3，`app/scoring/ark_client.py` + `question_gen.py`）：chat/completions 公共客户端；/admin/scenarios/{id}/questions/generate 只出草稿不入库（老师审改后采纳）；自动拆句 /admin/passages/{id}/sentences/auto-split（本地算法幂等）；无密钥 503。
 - 模拟分（`app/scoring/rubric.py`）：rubric 四维 0-4 映射 0-9（`RUBRIC_TO_SCORE` 表）；LLM 失败降级不出假分，界面显示「建议暂缺」；仅 `SCORING_PROVIDER=ark` 时启用（`ARK_RUBRIC_MODEL` 配置模型）。
-- 词汇分析（`app/scoring/lexicon.py`）：问答作答评分后写入 `attempt.vocab`（命中分档词/覆盖率/CEFR 参考）；只统计问答转写（跟读参考文本不算）；词元匹配支持规则屈折；标签规则：最高稳定档（≥5 命中）即该档，否则降一档。2026-10-06 起老词表（A2/B1/B2）退役：新作答只产出五级 level_stats（未导入五级数据时 vocab 为 null）；历史 attempt 中的旧口径 JSON 原样保留展示（不回填不重算）；/admin/wordlist 导入已下线（410），仅只读历史统计；内置演示词表 ~600 词（A2/B1/B2）仍保留供历史统计展示。
+- 词汇分析（worker 内 `_analyze_vocab`）：问答作答评分后写入 `attempt.vocab`；只统计问答转写（跟读参考文本不算）；词元匹配支持规则屈折。2026-10-06 起老词表（A2/B1/B2）退役，2026-10-07 整表删除（wordlist_entry 已 drop）：新作答只产出五级 level_stats（未导入五级数据时 vocab 为 null）；历史 attempt 中的旧口径 JSON 原样保留展示（不回填不重算）。
 - 40 人并发已验证（BDD B）：测试 `test_board.py::test_classroom_40_concurrent_submissions` 用真实线程池跑 40 并发上传 → 全部出分 → board 到齐。
 - **发布快照体系（2026-09-29，`app/services/exercise.py`）**：老师发布（按题选题）生成不可变 `ClassroomExercise`（snapshot_items 深拷贝题目内容、version_no 递增、可命名标题），学生 daily 会话绑 `assignment_id` 后始终按快照出题；作答提交时再存 `attempt.item_snapshot`，worker 评分只读快照——题库编辑不影响已发布练习与历史解释。恢复自主练习会归档练习并解绑当日会话。旧指派路径（单元指派/按题引用）仅作兼容读取，重新发布即转快照；学生历史结果按「发布历史」Tab（`/classes/{code}/exercises/{id}/results`）按当时题单解释。
-- **三题型互相独立（2026-09-29）**：文章朗读（每篇文章一道题，朗读分句折叠在文章下，按原文顺序展示且随正文更新）/ 听句复述（独立句库 `SentenceLibrary`，可不挂篇目；从篇目自动生成时只取 3 句）/ 情景问答（按主题整组，**不分级**——band 字段仅存量兼容，抽题与发布不看档位）。课堂发布 = 三类各选内容写快照，操作条三端统一（编辑→标准音→删除）。
-- **朗读题库树（2026-10-08）**：`Passage.reading_split` 启用文章内的分句展示，`/admin/passages/{id}/split` 不再创建独立篇目或停用原文章。组卷仅选择整篇文章；旧版按段/按句拆出的篇目经完整且唯一的标题/正文/主题/单元匹配归入 `parent_passage_id`，保留原 ID 和发布快照，重新组卷时归回原文章。
+- **三题型互相独立（2026-09-29）**：文章朗读（未拆分整篇一道题；拆分文章按句出题，见「朗读题库树」）/ 听句复述（独立句库 `SentenceLibrary`，可不挂篇目；从篇目自动生成时只取 3 句）/ 情景问答（按主题整组，**不分级**——band 字段仅存量兼容，抽题与发布不看档位）。课堂发布 = 三类各选内容写快照，操作条三端统一（编辑→标准音→删除）。
+- **朗读题库树（2026-10-08）**：`Passage.reading_split` 启用逐句拆分，`/admin/passages/{id}/split` 不创建独立篇目、不停用原文章，`DELETE` 同路径取消拆分。组卷勾选整篇文章；拆分文章在发布快照/学生题单层按句展开成逐句朗读题（`app/services/reading.py`：uuid5(passage_id, 句序) 确定性合成 ID，快照携带 parent_id/句序，不建篇目行；作答限时按句长 4–30 秒；指派镜像与 practice_session 锚点仍存真实篇目 ID；展开后超 100 题拒发）。旧版按段/按句拆出的篇目经完整且唯一的标题/正文/主题/单元匹配归入 `parent_passage_id`，保留原 ID 和发布快照，重新组卷时归回原文章。
 - **学生账号密码（2026-09-29 决策）**：默认密码统一 `brs123456`，导入/重置/批量重置均用它且**不强制改密**（学生侧边栏有自愿修改入口）；随机初始密码与 CSV 导出已下线。
 
 ### 术语表（2026-09 统一，前端单一事实源 `frontend/src/lib/terms.ts`）
@@ -42,7 +42,7 @@
 - 界面文案铁律（PRD §3.2）：分数一律标「参考/模拟」，写明不是官方成绩；三种分（跟读引擎/模型/词表）来源要在界面上分开标注。
 - EIP 教材原文因版权**不进仓库**，只建内容槽（Passage/RepeatSentence/Scenario/ScenarioQuestion 表）；演示种子用自写 Pets 内容（slug: demo-pets，课堂码 DEMO01）。
 - **方舟已开通（2026-09-26 实测）**：`SCORING_PROVIDER=ark` 真实转写/rubric 模拟分已全链路验证。关键适配：浏览器 webm/opus 需服务端 ffmpeg 转 16kHz wav（`app/scoring/audio_convert.py`，容器已装 ffmpeg）；空转写不出 0 分模拟分。TTS `/audio/speech` 报 401（模型未开通），标准音暂用上传通道。
-- 待办（上线前）：讯飞评测账号（跟读分升级可选）、学校分级词表 CSV（经 /admin/wordlist 导入）、EIP 文本（经 /admin/passages 录入，配音可上传现成音频）、域名 + ICP 备案（进教室要 HTTPS，备案 1~3 周需立即启动）。
+- 待办（上线前）：讯飞评测账号（跟读分升级可选）、学校分级词表 CSV（经 /admin/vocablevels 导入五级词库）、EIP 文本（经 /admin/passages 录入，配音可上传现成音频）、域名 + ICP 备案（进教室要 HTTPS，备案 1~3 周需立即启动）。
 - 生产部署尚未启用。配置部署 Secrets 后，将 GitHub Actions 仓库变量 `ENABLE_PRODUCTION_DEPLOY` 设置为 `true` 才允许自动部署。
 
 ## 项目结构

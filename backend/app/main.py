@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -31,13 +32,26 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # 健康检查窗口内服务不可响应
     from anyio import to_thread
 
-    from app.scoring.worker import startup_recovery
+    from app.scoring.worker import start_sweeper, startup_recovery
+
+    # ASR 走 LLM responses API 按音频 token 计费，比 volc_flash 专线贵数倍；
+    # 生产漏配 ASR_PROVIDER=volc_flash 时在此显式告警（默认值保持 ark 以兼容本地仅有方舟密钥的环境）
+    if (
+        settings.ENVIRONMENT == "production"
+        and settings.SCORING_PROVIDER == "ark"
+        and settings.ASR_PROVIDER == "ark"
+    ):
+        logging.getLogger(__name__).warning(
+            "ASR_PROVIDER=ark 走 LLM 转写（贵路径），生产建议 ASR_PROVIDER=volc_flash"
+        )
 
     await to_thread.run_sync(startup_recovery)
+    start_sweeper()
     yield
-    # 关闭评分线程池，避免 docker stop 时挂起
-    from app.scoring.worker import shutdown_executor
+    # 关闭评分线程池与清扫线程，避免 docker stop 时挂起
+    from app.scoring.worker import shutdown_executor, stop_sweeper
 
+    stop_sweeper()
     shutdown_executor()
 
 

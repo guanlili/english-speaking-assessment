@@ -127,8 +127,10 @@ class Settings(BaseSettings):
     # 音色：mars 系标准音色账号直接可用，uranus 系精品音色需购买
     # （不存在的音色会返回 200 + 0 字节音频，不报错，按字节数判断）
     ARK_TTS_VOICE: str = "en_female_anna_mars_bigtts"
-    # 后台评分线程数（PRD：8 个 worker 可在 2 分钟内打完 40 人）
-    SCORING_WORKERS: int = 2
+    # 后台评分线程数（PRD：8 个 worker 可在 2 分钟内打完 40 人；生产经 .env 可调）
+    SCORING_WORKERS: int = 8
+    # 评分失败重投退避基数（秒），指数退避上限 60s：0 = 立即重投（测试用）
+    SCORING_RETRY_BACKOFF_S: int = 10
     # 音频落盘目录（compose 里挂卷到 /app/audio）
     AUDIO_STORAGE_DIR: str = "./audio"
     MAX_AUDIO_MB: int = 20

@@ -147,10 +147,16 @@ def login_demo(session: SessionDep) -> Token:
 
 
 @router.post("/password-recovery/{email}")
-def recover_password(email: str, session: SessionDep) -> Message:
+def recover_password(email: str, request: Request, session: SessionDep) -> Message:
     """
     Password Recovery
     """
+    # 匿名可达的发信入口，必须限流防邮件轰炸：IP 桶防横向刷 + 邮箱桶防针对
+    # 单箱轰炸（复用登录限流的窗口/上限）。服务未启用时同样计数，
+    # 不给探测方留下「换邮箱试探可用性」的空间
+    client_ip = request.client.host if request.client else "unknown"
+    _check_login_rate_limit(f"recovery:ip:{client_ip}")
+    _check_login_rate_limit(f"recovery:email:{email.strip().lower()}")
     # 学生无邮箱（学号登录），该通道天然只服务教师/管理员
     # 在查询账号前统一检查，服务不可用时也不能泄露邮箱是否已注册。
     if not settings.emails_enabled:

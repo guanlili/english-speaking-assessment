@@ -7,6 +7,7 @@ import {
   Plus,
   Scissors,
   Trash2,
+  Undo2,
 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
@@ -189,8 +190,8 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
           </h1>
           <p className="text-muted-foreground">
             {t({
-              zh: "每篇文章是一道朗读题。展开文章可查看正文和拆分句子，也可管理配套的听句复述。",
-              en: "Each article is one read-aloud question. Expand it to view the full text and reading sentences, or manage its paired Listen & Repeat items.",
+              zh: "未拆分的文章整篇一道题；拆分过的文章组卷时按句出题、学生逐句朗读。展开文章可查看正文和分句，也可管理配套的听句复述。",
+              en: "An unsplit article is one read-aloud question; a split article becomes one question per sentence so students read aloud sentence by sentence. Expand an article to view its text and sentences, or manage its paired Listen & Repeat items.",
             })}
           </p>
         </div>
@@ -745,14 +746,15 @@ function PassageCard({
 }) {
   const { t } = useI18n()
   const [splitConfirm, setSplitConfirm] = useState(false)
+  const [unsplitConfirm, setUnsplitConfirm] = useState(false)
   const splitPassage = useMutation({
     mutationFn: () =>
       AdminService.splitPassageIntoReadings({ passageId: passage.id }),
     onSuccess: (data) => {
       toast.success(
         t({
-          zh: `已在文章下拆分出 ${data.created} 句，组卷仍选择整篇文章`,
-          en: `Added ${data.created} sentences under the article; select the whole article when composing practice`,
+          zh: `已拆分出 ${data.created} 句：组卷时这篇文章将按句出题`,
+          en: `Split into ${data.created} sentences — this article now becomes one question per sentence when composing practice`,
         }),
       )
       setSplitConfirm(false)
@@ -769,6 +771,22 @@ function PassageCard({
             })
           : extractErrorMessage(err),
       ),
+  })
+  const unsplitPassage = useMutation({
+    mutationFn: () =>
+      AdminService.unsplitPassageReadings({ passageId: passage.id }),
+    onSuccess: () => {
+      toast.success(
+        t({
+          zh: "已取消拆分：此后组卷回到整篇一道题",
+          en: "Split removed — future practices use the whole article as one question",
+        }),
+      )
+      setUnsplitConfirm(false)
+      onMutated()
+    },
+    onError: (err: { body?: { detail?: string } }) =>
+      toast.error(extractErrorMessage(err)),
   })
   return (
     <Card data-testid={`passage-${passage.id}`}>
@@ -795,7 +813,12 @@ function PassageCard({
           <CardDescription className="mt-1 flex flex-wrap items-center gap-2">
             <Badge variant="outline">{unitTitle}</Badge>
             <span>
-              {t({ zh: "1 道文章朗读题", en: "1 read-aloud question" })}
+              {(passage.reading_segments ?? []).length > 0
+                ? t({
+                    zh: `按句出题 · ${(passage.reading_segments ?? []).length} 句`,
+                    en: `${(passage.reading_segments ?? []).length} sentence questions`,
+                  })
+                : t({ zh: "1 道文章朗读题", en: "1 read-aloud question" })}
             </span>
             {(passage.reading_segments ?? []).length > 0 && (
               <span>
@@ -837,13 +860,29 @@ function PassageCard({
               className="min-h-11"
               disabled={splitPassage.isPending}
               title={t({
-                zh: "按原文顺序拆句，作为文章下的子内容",
-                en: "Split sentences in source order as content within this article",
+                zh: "按原文顺序拆句，组卷时这篇文章按句出题",
+                en: "Split sentences in source order; the article then becomes one question per sentence",
               })}
               onClick={() => setSplitConfirm(true)}
             >
               <Scissors />
               {t({ zh: "自动拆分句子", en: "Auto-split Sentences" })}
+            </Button>
+          )}
+          {passage.reading_split && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-11"
+              disabled={unsplitPassage.isPending}
+              title={t({
+                zh: "取消拆分：此后组卷回到整篇一道题",
+                en: "Remove the split — future practices use the whole article as one question",
+              })}
+              onClick={() => setUnsplitConfirm(true)}
+            >
+              <Undo2 />
+              {t({ zh: "取消拆分", en: "Unsplit" })}
             </Button>
           )}
           <Button
@@ -915,8 +954,8 @@ function PassageCard({
           en: `Split reading sentences for "${passage.title}"?`,
         })}
         description={t({
-          zh: "按原文顺序拆分全部句子，折叠在文章下。组卷时整篇文章算一道题；修改正文后分句展示自动更新，听句复述单独管理。",
-          en: "All sentences appear in source order under the collapsible article. The whole article counts as one question. Sentence views update with the text; Listen & Repeat items are managed separately.",
+          zh: "按原文顺序拆分全部句子，折叠在文章下。组卷时这篇文章按句出题，学生逐句朗读；修改正文后分句自动更新，听句复述单独管理。",
+          en: "All sentences appear in source order under the collapsible article. Composing practice then creates one question per sentence — students read aloud sentence by sentence. Sentence views update with the text; Listen & Repeat items are managed separately.",
         })}
         confirmText={t({ zh: "拆分", en: "Split" })}
         onOpenChange={(next) => {
@@ -924,6 +963,24 @@ function PassageCard({
         }}
         onConfirm={async () => {
           await splitPassage.mutateAsync()
+        }}
+      />
+      <ConfirmDialog
+        open={unsplitConfirm}
+        title={t({
+          zh: `取消拆分「${passage.title}」？`,
+          en: `Remove the split for "${passage.title}"?`,
+        })}
+        description={t({
+          zh: "此后组卷回到整篇一道题。已发布练习的快照不受影响，学生继续按发布时的逐句题单作答。",
+          en: "Future practices go back to the whole article as one question. Already-published exercises keep their snapshots — students finish them as published.",
+        })}
+        confirmText={t({ zh: "取消拆分", en: "Unsplit" })}
+        onOpenChange={(next) => {
+          if (!next) setUnsplitConfirm(false)
+        }}
+        onConfirm={async () => {
+          await unsplitPassage.mutateAsync()
         }}
       />
     </Card>

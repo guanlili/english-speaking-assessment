@@ -10,15 +10,17 @@ import re
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
 
-from sqlmodel import Session, select
+from sqlalchemy.orm import load_only
+from sqlmodel import Session, col, func, select
 
 from app.core.config import settings
 from app.models import (
     MAX_SCORING_RETRIES,
+    QUEUED_STALE_TIMEOUT_S,
     SCORING_STALE_TIMEOUT_S,
     Attempt,
     AttemptItemType,
@@ -78,22 +80,52 @@ def _lemma_variants(token: str) -> list[str]:
     return list(dict.fromkeys(variants))
 
 
+# 进程内五级词库缓存：签名 = 过滤集 (count, max(created_at))。
+# 词表可发生的变更（导入插入、人工核对、启停用）都会改变过滤集 count，
+# 而 headword/level 不可编辑，故签名一致即可复用，无需 updated_at 列。
+# 多进程部署时各进程独立校验签名，天然一致。
+_five_level_cache_lock = threading.Lock()
+_five_level_cache: tuple[tuple[int, datetime | None], dict[str, set[str]]] | None = None
+
+
 def _get_five_level_cache(session: Session) -> dict[str, set[str]]:
-    """五级分级词条缓存（active 且已人工核对）：level → 词头集合。词组不计入逐词命中。"""
+    """五级分级词条缓存（active 且已人工核对）：level → 词头集合。词组不计入逐词命中。
+
+    评分热路径每条词汇作答都会调用，全表约 8k 行；签名命中时直接复用，
+    未命中才全量重建（聚合签名查询远轻于拖 8k 行回 Python）。
+    """
+    global _five_level_cache
     from app.models import VocabularyLevelEntry
 
-    levels: dict[str, set[str]] = {}
-    for headword, level in session.exec(
-        select(VocabularyLevelEntry.headword, VocabularyLevelEntry.level).where(
-            VocabularyLevelEntry.status == "active",
-            VocabularyLevelEntry.is_phrase.is_(False),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
-            VocabularyLevelEntry.needs_review.is_(False),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
-            VocabularyLevelEntry.meaning_zh.is_not(None),  # type: ignore[union-attr]  # ty: ignore[unresolved-attribute]
-            VocabularyLevelEntry.meaning_zh != "",  # type: ignore[union-attr]
+    active_filter = (
+        VocabularyLevelEntry.status == "active",
+        col(VocabularyLevelEntry.is_phrase).is_(False),
+        col(VocabularyLevelEntry.needs_review).is_(False),
+        col(VocabularyLevelEntry.meaning_zh).is_not(None),
+        col(VocabularyLevelEntry.meaning_zh) != "",
+    )
+    row = session.exec(
+        select(func.count(), func.max(VocabularyLevelEntry.created_at)).where(
+            *active_filter
         )
-    ).all():
-        levels.setdefault(level, set()).add(headword)
-    return levels
+    ).one()
+    signature = (int(row[0]), row[1])
+    cached = _five_level_cache
+    if cached is not None and cached[0] == signature:
+        return cached[1]
+    with _five_level_cache_lock:
+        cached = _five_level_cache
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        levels: dict[str, set[str]] = {}
+        for headword, level in session.exec(
+            select(VocabularyLevelEntry.headword, VocabularyLevelEntry.level).where(
+                *active_filter
+            )
+        ).all():
+            levels.setdefault(level, set()).add(headword)
+        _five_level_cache = (signature, levels)
+        return levels
 
 
 def _five_level_stats(session: Session, transcript: str) -> dict[str, object] | None:
@@ -245,28 +277,39 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
 
     detail_request: tuple[str, str, str] | None = None
     try:
-        audio_path = Path(attempt.audio_path)
-        audio = audio_path.read_bytes()
-        provider = build_asr_provider()
-        # 方舟不接受浏览器 webm/opus：转 16kHz wav 再送（本地 mock 原样）
-        conversion_start = perf_counter()
-        if provider.name == "volc_flash":
-            audio, effective_mime = convert_to_wav(audio, ".audio")
-        elif provider.name == "ark":
-            audio, effective_mime = ensure_ark_supported(audio, attempt.audio_mime)
+        # ASR 断点：上一轮已转写成功（transcript 已落库）时直接复用，
+        # 不再重跑 ASR——重试烧掉的是真实 API 费用，转写结果与音频内容无关可安全复用
+        if attempt.transcript is not None:
+            transcript = attempt.transcript
+            engine = attempt.engine or settings.SCORING_PROVIDER
+            logger.info("ASR attempt=%s reused cached transcript", attempt_id)
         else:
-            effective_mime = attempt.audio_mime
-        conversion_ms = (perf_counter() - conversion_start) * 1000
-        asr_start = perf_counter()
-        transcript = provider.transcribe(audio, effective_mime)
-        logger.info(
-            "ASR attempt=%s provider=%s conversion_ms=%.0f recognition_ms=%.0f",
-            attempt_id,
-            provider.name,
-            conversion_ms,
-            (perf_counter() - asr_start) * 1000,
-        )
-        engine = provider.name
+            audio_path = Path(attempt.audio_path)
+            audio = audio_path.read_bytes()
+            provider = build_asr_provider()
+            # 方舟不接受浏览器 webm/opus：转 16kHz wav 再送（本地 mock 原样）
+            conversion_start = perf_counter()
+            if provider.name == "volc_flash":
+                audio, effective_mime = convert_to_wav(audio, ".audio")
+            elif provider.name == "ark":
+                audio, effective_mime = ensure_ark_supported(audio, attempt.audio_mime)
+            else:
+                effective_mime = attempt.audio_mime
+            conversion_ms = (perf_counter() - conversion_start) * 1000
+            asr_start = perf_counter()
+            transcript = provider.transcribe(audio, effective_mime)
+            logger.info(
+                "ASR attempt=%s provider=%s conversion_ms=%.0f recognition_ms=%.0f",
+                attempt_id,
+                provider.name,
+                conversion_ms,
+                (perf_counter() - asr_start) * 1000,
+            )
+            engine = provider.name
+            # checkpoint：转写成功立即落库，后续环节失败重试时不再重跑 ASR
+            attempt.transcript = transcript
+            session.add(attempt)
+            session.commit()
 
         read_aloud = _resolve_read_aloud_item(session, attempt)
         if read_aloud is not None:
@@ -360,7 +403,19 @@ def _run_in_worker(attempt_id: uuid.UUID) -> None:
         # （retry_count 上限兜底，不会无限循环；测试直接调 process_attempt 不走这里）
         attempt = session.get(Attempt, attempt_id)
         if attempt is not None and attempt.status == AttemptStatus.QUEUED:
-            submit_attempt_scoring(attempt_id)
+            # 退避：引擎抖动通常是几十秒级，立即重投会把重试配额烧在同一个故障窗口里。
+            # 放投递层而非 process_attempt：直调 process_attempt 的测试/维护路径不受影响
+            delay = min(
+                settings.SCORING_RETRY_BACKOFF_S * 2 ** (attempt.retry_count - 1), 60
+            )
+            if delay > 0:
+                timer = threading.Timer(
+                    delay, submit_attempt_scoring, args=(attempt_id,)
+                )
+                timer.daemon = True
+                timer.start()
+            else:
+                submit_attempt_scoring(attempt_id)
 
 
 def get_executor() -> ThreadPoolExecutor:
@@ -398,6 +453,10 @@ def recover_stale_attempts(session: Session) -> int:
     - retry_count 未超限 → 回退为 queued，重新提交评分
     - retry_count 超限 → 标记为 failed
 
+    恢复不消耗 retry_count：僵尸是进程级事件（部署重启/OOM），不是作答本身
+    的问题——旧逻辑每次重启烧一次配额，连续两次部署期间在评的作答会被
+    直接推成 FAILED 给学生看。
+
     返回恢复的作答数。
     """
     cutoff = datetime.now(UTC).timestamp() - SCORING_STALE_TIMEOUT_S
@@ -416,14 +475,13 @@ def recover_stale_attempts(session: Session) -> int:
         if attempt.retry_count < MAX_SCORING_RETRIES:
             attempt.status = AttemptStatus.QUEUED
             attempt.claimed_at = None
-            attempt.retry_count += 1
             attempt.error = "worker 崩溃后自动重试"
             session.add(attempt)
             recovered += 1
             changed = True
         else:
             attempt.status = AttemptStatus.FAILED
-            attempt.error = "评分多次失败（worker 崩溃后重试上限）"
+            attempt.error = "评分多次失败（重试上限）"
             session.add(attempt)
             changed = True
     if changed:
@@ -433,24 +491,120 @@ def recover_stale_attempts(session: Session) -> int:
     return recovered
 
 
+def sweep_orphans(session: Session) -> int:
+    """运行期兜底清理（进程不重启也能自愈）：
+
+    - 僵尸 SCORING 恢复（线程在 LLM 调用中被杀/会话提交中断等）；
+    - 孤儿 QUEUED 重投： QUEUED 超过 QUEUED_STALE_TIMEOUT_S 仍无 worker 领取
+      （线程池 future 丢失等），避免僵尸永久占坑——队列容量按 QUEUED 计数，
+      占满 200 条后全站上传 503。重投幂等：领取走 SKIP LOCKED + 状态门，
+      对已在执行中的作答二次投递是无害空转；
+    - 悬置 rubric 关闭： detail 线程丢失导致 DONE 但 rubric 停在 pending。
+
+    返回重投的 QUEUED 作答数。
+    """
+    recover_stale_attempts(session)
+    now = datetime.now(UTC).timestamp()
+    resubmitted = 0
+    for attempt_id, created_at in session.exec(
+        select(Attempt.id, Attempt.created_at).where(
+            Attempt.status == AttemptStatus.QUEUED
+        )
+    ).all():
+        created = created_at.timestamp() if created_at is not None else 0
+        if now - created >= QUEUED_STALE_TIMEOUT_S:
+            submit_attempt_scoring(attempt_id)
+            resubmitted += 1
+    stale_cutoff = datetime.now(UTC) - timedelta(seconds=SCORING_STALE_TIMEOUT_S)
+    # load_only 只取 rubric：DONE 量随学期累积，整行加载会把 transcript/item_snapshot
+    # 等大 JSON 列也拖进来，60s 一轮的清扫扛不住
+    pending = session.exec(
+        select(Attempt)
+        .options(
+            load_only(
+                Attempt.id,  # ty: ignore[invalid-argument-type]
+                Attempt.rubric,  # ty: ignore[invalid-argument-type]
+            )
+        )
+        .where(
+            Attempt.status == AttemptStatus.DONE,
+            col(Attempt.created_at) < stale_cutoff,  # type: ignore[operator]
+        )
+    ).all()
+    for attempt in pending:
+        if attempt.rubric and attempt.rubric.get("status") == "pending":
+            attempt.rubric = {"status": "unavailable"}
+            session.add(attempt)
+    session.commit()
+    return resubmitted
+
+
 def startup_recovery() -> None:
     """进程启动时恢复僵尸 scoring 作答并重新提交评分。"""
     from app.core.db import engine
 
     with Session(engine) as session:
+        # 同 sweep_orphans：只取 rubric 判挂起，避免启动时全行加载大 JSON 列
         for attempt in session.exec(
-            select(Attempt).where(Attempt.status == AttemptStatus.DONE)
+            select(Attempt)
+            .options(
+                load_only(
+                    Attempt.id,  # ty: ignore[invalid-argument-type]
+                    Attempt.rubric,  # ty: ignore[invalid-argument-type]
+                )
+            )
+            .where(Attempt.status == AttemptStatus.DONE)
         ).all():
             if attempt.rubric and attempt.rubric.get("status") == "pending":
                 attempt.rubric = {"status": "unavailable"}
                 session.add(attempt)
         session.commit()
-        count = recover_stale_attempts(session)
-        if count > 0:
-            for attempt in session.exec(
-                select(Attempt).where(Attempt.status == AttemptStatus.QUEUED)
-            ).all():
-                submit_attempt_scoring(attempt.id)
+        recover_stale_attempts(session)
+        # 无条件重投所有 QUEUED：旧逻辑只在存在僵尸 SCORING 时才重投，会漏掉
+        # 「作答落库后、线程领取前进程崩溃」的情况——这些作答重启后无人再投，
+        # 永久卡在 queued 占坑，攒满队列上限后全站上传 503。
+        # 重投幂等（领取走 SKIP LOCKED + 状态门），多投无害
+        for attempt_id in session.exec(
+            select(Attempt.id).where(Attempt.status == AttemptStatus.QUEUED)
+        ).all():
+            submit_attempt_scoring(attempt_id)
+
+
+SWEEP_INTERVAL_S = 60
+_sweeper_stop: threading.Event | None = None
+_sweeper_thread: threading.Thread | None = None
+
+
+def _sweep_loop(stop_event: threading.Event) -> None:
+    while not stop_event.wait(SWEEP_INTERVAL_S):
+        # 引擎每轮重新解析：测试用 set_engine/monkeypatch 覆盖后，清扫也跟着指向目标库
+        from app.core.db import engine
+
+        try:
+            with Session(engine) as session:
+                sweep_orphans(session)
+        except Exception:  # noqa: BLE001 - 清扫是兜底，失败只记日志不能带崩线程
+            logger.exception("scoring sweeper iteration failed")
+
+
+def start_sweeper() -> None:
+    """启动运行期清扫线程（main lifespan 调用；TestClient 不进 lifespan 故测试不受影响）。"""
+    global _sweeper_stop, _sweeper_thread
+    if _sweeper_thread is not None and _sweeper_thread.is_alive():
+        return
+    _sweeper_stop = threading.Event()
+    _sweeper_thread = threading.Thread(
+        target=_sweep_loop, args=(_sweeper_stop,), name="scoring-sweeper", daemon=True
+    )
+    _sweeper_thread.start()
+
+
+def stop_sweeper() -> None:
+    global _sweeper_stop, _sweeper_thread
+    if _sweeper_stop is not None:
+        _sweeper_stop.set()
+    _sweeper_stop = None
+    _sweeper_thread = None
 
 
 def shutdown_executor() -> None:

@@ -1,4 +1,3 @@
-import * as Sentry from "@sentry/react"
 import {
   MutationCache,
   QueryCache,
@@ -6,23 +5,32 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query"
 import { createRouter, RouterProvider } from "@tanstack/react-router"
-import { StrictMode } from "react"
+import { lazy, StrictMode, Suspense } from "react"
 import ReactDOM from "react-dom/client"
 import { ApiError, OpenAPI } from "./client"
 import { ThemeProvider } from "./components/theme-provider"
-import { Toaster } from "./components/ui/sonner"
 import "./index.css"
 import { routeTree } from "./routeTree.gen"
 
 // 前端错误上报（学生端 JS 异常生产不可见的问题）：默认关闭，
-// 服务器 .env 配置 VITE_SENTRY_DSN 后经 compose build args 在构建期生效
+// 服务器 .env 配置 VITE_SENTRY_DSN 后经 compose build args 在构建期生效。
+// 动态 import：未配 DSN 时不打包进首屏，配了也在首帧之后加载
+// （代价是 init 之前的极早期错误不上报，可接受）
 if (import.meta.env.VITE_SENTRY_DSN) {
-  Sentry.init({
-    dsn: import.meta.env.VITE_SENTRY_DSN,
-    environment: import.meta.env.MODE,
-    tracesSampleRate: 0.1,
+  void import("@sentry/react").then((Sentry) => {
+    Sentry.init({
+      dsn: import.meta.env.VITE_SENTRY_DSN,
+      environment: import.meta.env.MODE,
+      tracesSampleRate: 0.1,
+    })
   })
 }
+
+// Toaster 纯展示容器且几乎总在首帧之后才需要（toast 由交互触发）：
+// lazy 拆出 entry，sonner + radix dialog 一串都不进首屏关键路径
+const Toaster = lazy(() =>
+  import("./components/ui/sonner").then((m) => ({ default: m.Toaster })),
+)
 
 OpenAPI.BASE = import.meta.env.VITE_API_URL
 OpenAPI.TOKEN = async () => {
@@ -88,7 +96,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
-        <Toaster richColors closeButton />
+        <Suspense fallback={null}>
+          <Toaster richColors closeButton />
+        </Suspense>
       </QueryClientProvider>
     </ThemeProvider>
   </StrictMode>,

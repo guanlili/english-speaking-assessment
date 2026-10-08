@@ -166,7 +166,6 @@ def word_explanation(
     """
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
-    vocab_ai.check_ai_rate_limit(f"student:{student.id}")
     vocab_ai.require_ai_configured()
 
     headword = body.headword.strip()
@@ -191,6 +190,8 @@ def word_explanation(
                 "stale": False,
             }
         )
+    # 限流放在缓存未命中之后：缓存命中不烧 API 也不吃掉每小时配额
+    vocab_ai.check_ai_rate_limit(f"student:{student.id}")
     try:
         fresh = vocab_ai.build_explanation_payload(
             headword, meaning_zh, body.part_of_speech
@@ -223,7 +224,6 @@ def session_insight(
     （不得绕过答案可见规则）。缓存按作答指纹判定新旧。"""
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
-    vocab_ai.check_ai_rate_limit(f"student:{student.id}")
     vocab_ai.require_ai_configured()
 
     vocab_session = session.get(VocabularySession, body.session_id)
@@ -258,6 +258,8 @@ def session_insight(
                 "stale": False,
             }
         )
+    # 限流放在缓存未命中之后：缓存命中不烧 API 也不吃掉每小时配额
+    vocab_ai.check_ai_rate_limit(f"student:{student.id}")
     try:
         fresh = vocab_ai.generate_session_insight(
             session, vocab_session, snapshot_items
@@ -290,7 +292,6 @@ def overall_insight(
     作答不计入）；缓存按窗口内作答指纹判定新旧。"""
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
-    vocab_ai.check_ai_rate_limit(f"student:{student.id}")
     vocab_ai.require_ai_configured()
 
     cache_key = f"overall-insight:{student.id}:{body.limit}:{body.days}"
@@ -320,6 +321,8 @@ def overall_insight(
             status_code=422,
             detail="这个时间范围内还没有可分析的练习记录",
         )
+    # 限流放在缓存未命中之后：缓存命中不烧 API 也不吃掉每小时配额
+    vocab_ai.check_ai_rate_limit(f"student:{student.id}")
     # 缓存 payload 是 JSON：时间一律 ISO 字符串（响应模型会再解析）
     scope_meta: dict[str, object] = {
         "answered_count": answered_total,
