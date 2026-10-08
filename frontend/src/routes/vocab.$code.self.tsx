@@ -32,6 +32,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { WordExplanationDialog } from "@/components/Vocabulary/VocabAi"
 import { APP_NAME } from "@/config"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
+import {
+  playAudio as playCachedAudio,
+  preloadAudio,
+  stopAudio,
+} from "@/lib/audio"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
 import {
@@ -263,11 +268,18 @@ function VocabSelfPracticePage() {
   const submitted = plan?.status === "submitted"
   const readOnly = submitted
 
+  // 听音预载与防串音：进题即预载本题标准音（顺带下一题），切题/卸载停掉在播音频
+  const nextAudioUrl = items[current + 1]?.audio_url
+  useEffect(() => {
+    if (!item?.audio_url) return
+    preloadAudio([item.audio_url, nextAudioUrl])
+    return () => stopAudio(item.audio_url)
+  }, [item?.audio_url, nextAudioUrl])
+
   const playAudio = () => {
     if (!item) return
     if (item.audio_url) {
-      const audio = new Audio(item.audio_url)
-      audio.play().catch(() => {
+      playCachedAudio(item.audio_url).catch(() => {
         toast.error(t({ zh: "音频播放失败", en: "Audio playback failed" }))
       })
       return

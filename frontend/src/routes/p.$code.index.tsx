@@ -22,6 +22,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
+import {
+  ExamCountdownChip,
+  ExamInstructionCountdown,
+  ExamItemTimer,
+  ExamPrepCountdown,
+  PrepCountdownBlock,
+} from "@/components/Practice/ExamCountdowns"
 import FeedbackCard from "@/components/Practice/FeedbackCard"
 import LimitedListenButton from "@/components/Practice/LimitedListenButton"
 import SpeakButton from "@/components/Practice/SpeakButton"
@@ -30,10 +37,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
 import type { AttemptSubmitTarget } from "@/hooks/useAttemptSubmit"
 import { useAttemptSubmit } from "@/hooks/useAttemptSubmit"
-import { useExamClock } from "@/hooks/useExamClock"
+import { useExamClockValue } from "@/hooks/useExamClock"
 import { useRecorder } from "@/hooks/useRecorder"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { displayName, loadStudent } from "@/lib/classroom-student"
@@ -48,6 +56,7 @@ import {
   ITEM_TYPE_LABELS,
   TERMS,
 } from "@/lib/terms"
+import { formatSeconds } from "@/lib/time"
 import { randomId } from "@/utils"
 
 export const Route = createFileRoute("/p/$code/")({
@@ -77,17 +86,6 @@ export const Route = createFileRoute("/p/$code/")({
     meta: [{ title: `今日练习 / Today's Practice - ${APP_NAME}` }],
   }),
 })
-
-function formatSeconds(seconds: number): string {
-  const whole = Math.floor(seconds)
-  return `${String(Math.floor(whole / 60)).padStart(1, "0")}:${String(whole % 60).padStart(2, "0")}`
-}
-
-function formatExamCountdown(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60)
-  const s = totalSeconds % 60
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-}
 
 function isTerminal(status: string | undefined): boolean {
   return status === "done" || status === "failed"
@@ -271,7 +269,24 @@ function ClassroomPracticePage() {
   const examStarted = exam?.started ?? false
   const examActive = exam !== null && !exam.ended
   const examEnded = exam?.ended ?? false
-  const examClock = useExamClock(exam, todayQuery.dataUpdatedAt)
+  // 考试时钟渲染隔离：页面层只订阅「到点」布尔跳变（稳态零重渲染），
+  // 秒级倒计时数字由 ExamCountdowns 里的 memo 叶子组件自行订阅展示。
+  const syncedAt = todayQuery.dataUpdatedAt
+  const itemExpired = useExamClockValue(
+    exam,
+    syncedAt,
+    (clock) => exam !== null && clock.itemRemaining === 0,
+  )
+  const examPrepDone = useExamClockValue(
+    exam,
+    syncedAt,
+    (clock) => exam === null || clock.prepRemaining === 0,
+  )
+  const examExpired = useExamClockValue(
+    exam,
+    syncedAt,
+    (clock) => exam !== null && clock.remaining === 0,
+  )
   const items = useMemo(() => {
     if (!plan) return []
     const merged = [...plan.items]
@@ -349,8 +364,8 @@ function ClassroomPracticePage() {
   const prepSeconds = isIeltsPart2 ? (currentItem?.prep_seconds ?? 60) : 0
   const [practicePrepLeft, setPrepLeft] = useState(0)
   const [practicePrepDone, setPrepDone] = useState(true)
-  const prepLeft = exam ? examClock.prepRemaining : practicePrepLeft
-  const prepDone = exam ? prepLeft === 0 : practicePrepDone
+  // 模考：准备是否结束来自考试时钟（布尔跳变才重渲染）；练习：本地秒表
+  const prepDone = exam ? examPrepDone : practicePrepDone
   const [prepForItem, setPrepForItem] = useState<string | null>(null)
   // 切题即重置准备计时（渲染期比较是 React 官方认可的 state 调整模式，
   // 避免 biome 判定 effect 依赖多余）
@@ -406,9 +421,9 @@ function ClassroomPracticePage() {
       exam && examStarted
         ? todayQuery.dataUpdatedAt + (exam.item_remaining_seconds ?? 0) * 1000
         : undefined,
-    maxSeconds: exam
-      ? Math.max(1, Math.min(recordLimitSeconds, examClock.itemRemaining))
-      : recordLimitSeconds,
+    // 模考下真实截止由 deadlineAt 精确钳制（开始录音时按绝对时间计算），
+    // maxSeconds 只需给题目本身的作答上限
+    maxSeconds: recordLimitSeconds,
     onComplete: (rec) => {
       submittedRef.current = true
       // 上传期间保留题面；模考上传成功即解除，不等待评分。
@@ -455,11 +470,7 @@ function ClassroomPracticePage() {
   const startRecording = () => {
     if (
       exam &&
-      (!examStarted ||
-        examEnded ||
-        currentItemDone ||
-        !prepDone ||
-        examClock.itemRemaining === 0)
+      (!examStarted || examEnded || currentItemDone || !prepDone || itemExpired)
     )
       return
     recordingTargetRef.current = {
@@ -645,18 +656,11 @@ function ClassroomPracticePage() {
 
   // 本地倒计时：以服务端 remaining_seconds 为准心，每秒递减仅作展示；
   // 未开考（确认页）不启动——服务端此刻也还没计时
-  const examRemaining = examClock.remaining
   const expiredItemRef = useRef<string | null>(null)
   const recorderStop = recorder.stop
   const recorderReset = recorder.reset
   useEffect(() => {
-    if (
-      !examActive ||
-      !examStarted ||
-      examClock.itemRemaining > 0 ||
-      !currentItem
-    )
-      return
+    if (!examActive || !examStarted || !itemExpired || !currentItem) return
     if (recorder.status === "recording") {
       recorderStop()
       return
@@ -673,7 +677,7 @@ function ClassroomPracticePage() {
   }, [
     examActive,
     examStarted,
-    examClock.itemRemaining,
+    itemExpired,
     currentItem,
     recorder.status,
     recorder.recording,
@@ -685,12 +689,16 @@ function ClassroomPracticePage() {
     queryClient,
     code,
   ])
-  // 倒计时归零：拉取服务端终态（惰性交卷在那边落库）
+  // 倒计时归零：拉取服务端终态（惰性交卷在那边落库）。
+  // 归零期间保持每秒拉取直到服务端判卷结束，与旧实现节奏一致
   useEffect(() => {
-    if (examRemaining === 0 && examActive) {
+    if (!examExpired || !examActive) return
+    void queryClient.invalidateQueries({ queryKey: todayQueryKey })
+    const timer = window.setInterval(() => {
       void queryClient.invalidateQueries({ queryKey: todayQueryKey })
-    }
-  }, [examRemaining, examActive, queryClient, todayQueryKey])
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [examExpired, examActive, queryClient, todayQueryKey])
   // 考试结束（到时/服务端判定）：自动进结果页（= 交卷）
   const examNavigatedRef = useRef(false)
   useEffect(() => {
@@ -796,9 +804,24 @@ function ClassroomPracticePage() {
 
   if (todayQuery.isPending) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        {t({ zh: "正在加载今日练习…", en: "Loading today's practice…" })}
-      </div>
+      <StudentShell active="practice">
+        <div className="flex flex-col gap-6" aria-busy="true">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-1.5 w-full rounded-full" />
+          <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_270px]">
+            <div className="grid gap-5">
+              <Skeleton className="h-96 w-full rounded-2xl" />
+            </div>
+            <div className="hidden gap-4 lg:grid">
+              <Skeleton className="h-44 rounded-2xl" />
+              <Skeleton className="h-20 rounded-2xl" />
+            </div>
+          </div>
+        </div>
+      </StudentShell>
     )
   }
   if (todayQuery.isError || !plan) {
@@ -1036,10 +1059,8 @@ function ClassroomPracticePage() {
               {examEnded
                 ? t({ zh: "考试已结束", en: "The exam has ended" })
                 : t({ zh: "模考进行中", en: "Exam in progress" })}
-              {examActive && (
-                <span className="ml-2 font-mono text-base tabular-nums">
-                  {formatExamCountdown(examRemaining ?? exam.remaining_seconds)}
-                </span>
+              {exam && examActive && (
+                <ExamCountdownChip exam={exam} syncedAt={syncedAt} />
               )}
             </p>
             <p className="text-xs text-muted-foreground">
@@ -1101,32 +1122,7 @@ function ClassroomPracticePage() {
                   </span>
                 </div>
 
-                {exam && (
-                  <div
-                    role="timer"
-                    data-testid="exam-item-timer"
-                    className="rounded-xl bg-secondary/60 px-4 py-3 text-sm"
-                  >
-                    {t({
-                      zh: prepLeft > 0 ? "准备倒计时" : "本题倒计时",
-                      en:
-                        prepLeft > 0
-                          ? "Preparation remaining"
-                          : "Time remaining for this item",
-                    })}{" "}
-                    <span className="font-mono text-lg font-bold tabular-nums">
-                      {formatSeconds(
-                        prepLeft > 0 ? prepLeft : examClock.itemRemaining,
-                      )}
-                    </span>
-                    <p className="text-xs text-muted-foreground">
-                      {t({
-                        zh: "到时自动提交已录音并进入下一题；未录音则跳过",
-                        en: "At the deadline, your recording submits and the next item opens. Items without a recording are skipped.",
-                      })}
-                    </p>
-                  </div>
-                )}
+                {exam && <ExamItemTimer exam={exam} syncedAt={syncedAt} />}
 
                 {/* 分级题型徽标：题型 × 级别（两维分别建模） */}
                 {examKind && (
@@ -1243,28 +1239,18 @@ function ClassroomPracticePage() {
                   </div>
                 )}
 
-                {/* Part 2 准备时间倒计时（结束或跳过后才能开始录音） */}
-                {isIeltsPart2 && !prepDone && (
-                  <div
-                    role="timer"
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-secondary/60 px-4 py-3"
-                  >
-                    <p className="text-sm">
-                      <span className="font-mono text-lg font-bold tabular-nums">
-                        {formatSeconds(prepLeft)}
-                      </span>{" "}
-                      {t({
-                        zh: "· 准备时间：先想好要说的要点，不用开口",
-                        en: "· Prep time: plan your points, no need to speak yet",
-                      })}
-                    </p>
-                    {!exam && (
-                      <Button variant="ghost" size="sm" onClick={skipPrep}>
-                        {t({ zh: "跳过准备，直接开始", en: "Skip prep" })}
-                      </Button>
-                    )}
-                  </div>
-                )}
+                {/* Part 2 准备时间倒计时（结束或跳过后才能开始录音）：
+                    秒级展示下沉到 memo 组件——模考走考试时钟，练习走本地秒表 */}
+                {isIeltsPart2 &&
+                  !prepDone &&
+                  (exam ? (
+                    <ExamPrepCountdown exam={exam} syncedAt={syncedAt} />
+                  ) : (
+                    <PrepCountdownBlock
+                      secondsLeft={practicePrepLeft}
+                      onSkip={skipPrep}
+                    />
+                  ))}
 
                 {currentItem.type === "repeat" ? (
                   <p className="prompt-display min-h-24 text-muted-foreground">
@@ -1366,13 +1352,11 @@ function ClassroomPracticePage() {
                         en: `Suggested ${currentItem.suggested_seconds}s on this page`,
                       })}
                     </p>
-                    {exam && examClock.itemRemaining > 0 && (
-                      <p
-                        role="timer"
-                        className="font-mono text-lg font-bold tabular-nums"
-                      >
-                        {formatSeconds(examClock.itemRemaining)}
-                      </p>
+                    {exam && (
+                      <ExamInstructionCountdown
+                        exam={exam}
+                        syncedAt={syncedAt}
+                      />
                     )}
                     <Button
                       size="lg"
@@ -1487,7 +1471,7 @@ function ClassroomPracticePage() {
                               </button>
                             )}
                           </p>
-                          {exam && examClock.itemRemaining === 0 && (
+                          {exam && itemExpired && (
                             <Button
                               variant="outline"
                               className="min-h-11"
@@ -1516,8 +1500,7 @@ function ClassroomPracticePage() {
                               scoring ||
                               (examActive && currentItemDone) ||
                               examEnded ||
-                              (Boolean(exam) &&
-                                examClock.itemRemaining === 0) ||
+                              itemExpired ||
                               !prepDone
                             }
                             aria-label={t({

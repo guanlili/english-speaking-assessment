@@ -8,6 +8,7 @@ import { createRouter, RouterProvider } from "@tanstack/react-router"
 import { lazy, StrictMode, Suspense } from "react"
 import ReactDOM from "react-dom/client"
 import { ApiError, OpenAPI } from "./client"
+import RoutePending from "./components/Pending/RoutePending"
 import { ThemeProvider } from "./components/theme-provider"
 import "./index.css"
 import { routeTree } from "./routeTree.gen"
@@ -84,7 +85,11 @@ const queryClient = new QueryClient({
   }),
 })
 
-const router = createRouter({ routeTree })
+// 路由级统一等待态：懒加载路由 chunk / loader pending 时展示骨架
+const router = createRouter({
+  routeTree,
+  defaultPendingComponent: () => <RoutePending />,
+})
 declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router
