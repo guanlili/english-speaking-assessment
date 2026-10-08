@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import SQLModel, col, select
+from sqlmodel import SQLModel, col, delete, select
 
 from app.api.deps import (
     CurrentUser,
@@ -74,6 +74,8 @@ from app.models import (
     TrailSession,
     Unit,
     User,
+    VocabularyAnswer,
+    VocabularySession,
 )
 from app.scoring.bands import BAND_ORDER, adjust_band
 from app.scoring.gamification import (
@@ -276,14 +278,19 @@ def list_my_classrooms(session: SessionDep, current_user: CurrentUser) -> Any:
 
 @router.delete("/{code}")
 def delete_class(
-    session: SessionDep, code: str, current_user: CurrentUser
+    session: SessionDep,
+    code: str,
+    current_user: CurrentUser,
+    delete_history: bool = False,
 ) -> dict[str, str]:
     """删除课堂（本人课堂或管理员）。
 
-    仅允许删除没有任何作答记录的课堂（测试/误建场景）；
-    有学生作答的课堂请用管理员后台停用，教学数据必须保留。
+    默认保留有作答的课堂；确认清理历史后可删除测试/冗余课堂。
+    移出学生的历史仍属于本课堂，账号及其他课堂的数据不受影响。
     """
-    classroom = _get_classroom(session, code)
+    classroom = get_classroom_by_code(session=session, code=code.upper())
+    if classroom is None:
+        raise HTTPException(status_code=404, detail="Classroom not found")
     _require_classroom_teacher(classroom, current_user)
     student_ids = session.exec(
         select(Student.id).where(Student.classroom_id == classroom.id)  # type: ignore[arg-type]
@@ -299,12 +306,48 @@ def delete_class(
             ).first()
             is not None
         )
-        if has_attempts:
+        has_vocabulary_answers = (
+            session.exec(
+                select(VocabularyAnswer.id)
+                .join(
+                    VocabularySession,
+                    col(VocabularyAnswer.session_id) == col(VocabularySession.id),
+                )
+                .where(VocabularySession.classroom_id == classroom.id)
+                .limit(1)
+            ).first()
+            is not None
+        )
+        if (has_attempts or has_vocabulary_answers) and not delete_history:
             raise HTTPException(
                 status_code=409,
                 detail="课堂内已有学生作答记录，不能删除；如需停用请联系管理员在后台操作",
             )
-    session.delete(classroom)  # 学生档案/会话随外键级联清理（无作答即无损失）
+        pending = session.exec(
+            select(Attempt.id)
+            .where(
+                col(Attempt.student_id).in_(student_ids),
+                col(Attempt.status).in_([AttemptStatus.QUEUED, AttemptStatus.SCORING]),
+            )
+            .limit(1)
+        ).first()
+        if pending is not None:
+            raise HTTPException(
+                status_code=409, detail="有正在评分中的作答，请稍后再删除"
+            )
+    # 先删会话，避免级联删除发布时 SET NULL 触发会话唯一键冲突。
+    session.exec(
+        delete(PracticeSession).where(col(PracticeSession.classroom_id) == classroom.id)
+    )  # type: ignore[call-overload]
+    session.exec(
+        delete(VocabularySession).where(
+            col(VocabularySession.classroom_id) == classroom.id
+        )
+    )  # type: ignore[call-overload]
+    classroom.current_exercise_id = None
+    session.add(classroom)
+    session.flush()
+    session.delete(classroom)
     session.commit()
     return {"message": "课堂已删除"}
 
@@ -722,7 +765,9 @@ def read_today_plan(
     exam_info = None
     if bound_exercise is not None and bound_exercise.is_exam:
         exam_service.finalize_if_expired(session, practice_session, bound_exercise)
-        exam_info = exam_service.exam_status_payload(practice_session, bound_exercise)
+        exam_info = exam_service.exam_status_payload(
+            session, practice_session, bound_exercise
+        )
 
     items: list[PlanItem] = []
     expected_items = 0
@@ -1997,7 +2042,7 @@ def start_exam(
     )
     exam_service.ensure_exam_started(session, practice_session, exercise)
     exam_service.finalize_if_expired(session, practice_session, exercise)
-    return exam_service.exam_status_payload(practice_session, exercise)
+    return exam_service.exam_status_payload(session, practice_session, exercise)
 
 
 @router.post("/{code}/exam/violation", response_model=ExamViolationResult)

@@ -942,6 +942,10 @@ class ExamStatus(SQLModel):
     started: bool
     ended: bool
     tab_switch_count: int = 0
+    # 顺序与题目时间来自发布快照；刷新/换设备不会重新计时。
+    current_item_index: int = 0
+    item_remaining_seconds: int = 0
+    prep_remaining_seconds: int = 0
 
 
 class TodayPlan(SQLModel):

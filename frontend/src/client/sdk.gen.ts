@@ -910,10 +910,11 @@ export class ClassesService {
      * Delete Class
      * 删除课堂（本人课堂或管理员）。
      *
-     * 仅允许删除没有任何作答记录的课堂（测试/误建场景）；
-     * 有学生作答的课堂请用管理员后台停用，教学数据必须保留。
+     * 默认保留有作答的课堂；确认清理历史后可删除测试/冗余课堂。
+     * 移出学生的历史仍属于本课堂，账号及其他课堂的数据不受影响。
      * @param data The data for the request.
      * @param data.code
+     * @param data.deleteHistory
      * @returns string Successful Response
      * @throws ApiError
      */
@@ -923,6 +924,9 @@ export class ClassesService {
             url: '/api/v1/classes/{code}',
             path: {
                 code: data.code
+            },
+            query: {
+                delete_history: data.deleteHistory
             },
             errors: {
                 422: 'Validation Error'

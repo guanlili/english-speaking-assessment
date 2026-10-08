@@ -3,14 +3,216 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
 from sqlmodel import Session, col, select
 
 from app.models import Passage, PracticeSession
+from app.services import exam as exam_service
 from tests.utils.audio import wav_upload
 from tests.utils.credential import make_student
 from tests.utils.utils import random_lower_string
+
+
+def test_exam_item_deadlines_restore_progress_and_lock_order(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """准备时间不许提前答；未答自动推进，刷新和题库编辑不重置。"""
+    from app.models import Classroom, ClassroomExercise
+
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+        )
+    )
+    code = classroom["code"]
+    made = make_student(db, client, code)
+    headers = made["headers"]
+    ids = [uuid.uuid4() for _ in range(3)]
+    passages = [
+        Passage(
+            id=item_id,
+            slug=f"exam-{item_id}",
+            title="Timed article",
+            text="Timed article.",
+            cefr_band="B1",
+        )
+        for item_id in ids[1:]
+    ]
+    db.add_all(passages)
+    db.commit()
+    snapshot: list[dict[str, object]] = [
+        {
+            "type": "question",
+            "id": str(ids[0]),
+            "text": "Describe your school.",
+            "exam_kind": "ielts_p2",
+            "prep_seconds": 10,
+            "suggested_seconds": 20,
+        },
+        {
+            "type": "passage",
+            "id": str(ids[1]),
+            "text": "Second article.",
+            "suggested_seconds": 20,
+        },
+        {
+            "type": "passage",
+            "id": str(ids[2]),
+            "text": "Last article.",
+            "suggested_seconds": 20,
+        },
+    ]
+    exercise = ClassroomExercise(
+        classroom_id=uuid.UUID(classroom["id"]),
+        snapshot_items=snapshot,
+        is_exam=True,
+        time_limit_minutes=30,
+    )
+    db.add(exercise)
+    db.flush()
+    row = db.get(Classroom, exercise.classroom_id)
+    assert row is not None
+    row.current_exercise_id = exercise.id
+    db.add(row)
+    db.commit()
+    now = datetime.now(UTC)
+    monkeypatch.setattr(exam_service, "_now", lambda: now)
+    try:
+        plan = _today(client, headers, code)
+        start = client.post(
+            f"/api/v1/classes/{code}/exam/start",
+            json={"session_id": plan["session_id"]},
+            headers=headers,
+        )
+        assert start.status_code == 200
+        assert start.json()["current_item_index"] == 0
+        assert start.json()["prep_remaining_seconds"] == 10
+        assert start.json()["item_remaining_seconds"] == 30
+        # 不能在准备时间作答，也不能跳到后面的题。
+        for index in (0, 1):
+            response = _submit(
+                client, headers, code, plan["items"][index], plan["session_id"]
+            )
+            assert response.status_code == 422
+            assert response.json()["detail"] == "本题作答时间已结束或尚未开始"
+        now += timedelta(seconds=11)
+        refreshed = _today(client, headers, code)
+        assert refreshed["exam"]["current_item_index"] == 0
+        assert refreshed["exam"]["prep_remaining_seconds"] == 0
+        assert refreshed["exam"]["item_remaining_seconds"] == 19
+        # 不录音也会在截止时推进。
+        now += timedelta(seconds=20)
+        refreshed = _today(client, headers, code)
+        assert refreshed["exam"]["current_item_index"] == 1
+        assert refreshed["exam"]["item_remaining_seconds"] == 19
+        now += timedelta(seconds=16)
+        late = _submit(client, headers, code, plan["items"][0], plan["session_id"])
+        assert late.status_code == 422
+        now += timedelta(seconds=24)
+        finished = _today(client, headers, code)
+        assert finished["exam"]["ended"] is True
+        assert finished["exam"]["current_item_index"] == 3
+        assert finished["attempts"] == []
+    finally:
+        _cleanup_classroom(db, classroom["id"])
+        for passage in passages:
+            db.delete(passage)
+        db.commit()
+
+
+def test_exam_upload_advances_before_scoring_and_preserves_timeout_anchor(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """queued/failed 都锁定一次提交；截止后的短传输不重置下一题计时。"""
+    from app.models import Attempt, ClassroomExercise
+
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+        )
+    )
+    code = classroom["code"]
+    made = make_student(db, client, code)
+    passage = _demo_passage(db)
+    another = Passage(
+        slug=f"exam-{uuid.uuid4().hex}",
+        title="Next article",
+        text="We learn together.",
+        cefr_band="B1",
+        suggested_seconds=20,
+    )
+    db.add(another)
+    db.commit()
+    try:
+        published = _publish_exam(
+            client,
+            superuser_token_headers,
+            code,
+            [
+                {"type": "passage", "id": str(passage.id)},
+                {"type": "passage", "id": str(another.id)},
+            ],
+        )
+        assert published.status_code == 200
+        plan = _today(client, made["headers"], code)
+        ps = db.get(PracticeSession, uuid.UUID(plan["session_id"]))
+        assert ps is not None
+        exercise = db.get(ClassroomExercise, ps.assignment_id)
+        assert exercise is not None
+        now = datetime.now(UTC)
+        ps.exam_started_at = now - timedelta(seconds=10)
+        db.add(ps)
+        db.commit()
+        monkeypatch.setattr(exam_service, "_now", lambda: now)
+        answer = Attempt(
+            session_id=ps.id,
+            student_id=ps.student_id,
+            item_type="passage",
+            item_id=passage.id,
+            audio_path="unused-test-audio",
+            duration_s=6,
+            status="queued",
+            created_at=now,
+        )
+        db.add(answer)
+        db.commit()
+        status = exam_service.exam_status_payload(db, ps, exercise)
+        assert status.current_item_index == 1
+        assert status.item_remaining_seconds == 20
+        answer.status = "failed"
+        db.add(answer)
+        db.commit()
+        now += timedelta(seconds=5)
+        refreshed = _today(client, made["headers"], code)
+        assert refreshed["exam"]["current_item_index"] == 1
+        assert refreshed["exam"]["item_remaining_seconds"] == 15
+        second = _submit(
+            client, made["headers"], code, plan["items"][0], plan["session_id"]
+        )
+        assert second.status_code == 422
+        assert "一次" in second.json()["detail"]
+        # 模拟先到时切题、录音随后在传输窗口落库。
+        answer.created_at = ps.exam_started_at + timedelta(
+            seconds=passage.suggested_seconds + 2
+        )
+        db.add(answer)
+        db.commit()
+        now = answer.created_at + timedelta(seconds=1)
+        status = exam_service.exam_status_payload(db, ps, exercise)
+        assert status.current_item_index == 1
+        assert status.item_remaining_seconds == 17
+    finally:
+        _cleanup_classroom(db, classroom["id"])
+        db.delete(another)
+        db.commit()
 
 
 def _demo_passage(db: Session) -> Passage:

@@ -223,7 +223,17 @@ def create_attempt_upload(
         if exam_session is not None and exam_session.assignment_id is not None:
             bound_exercise = session.get(ClassroomExercise, exam_session.assignment_id)
             if bound_exercise is not None and bound_exercise.is_exam:
-                exam_service.require_exam_open(session, exam_session, bound_exercise)
+                # 串行化同一考试会话的提交，防止并发新幂等键绕过每题一次门禁。
+                session.refresh(exam_session, with_for_update=True)
+                if idempotency_key:
+                    existing = session.exec(
+                        select(Attempt).where(
+                            Attempt.idempotency_key == idempotency_key
+                        )
+                    ).first()
+                    if existing is not None:
+                        _require_attempt_access(session, existing, current_user)
+                        return existing
                 already = session.exec(
                     select(Attempt.id).where(
                         Attempt.session_id == session_id,  # type: ignore[arg-type]
@@ -234,6 +244,10 @@ def create_attempt_upload(
                     raise HTTPException(
                         status_code=422, detail="考试中每题只能作答一次"
                     )
+                exam_service.require_exam_open(session, exam_session, bound_exercise)
+                exam_service.require_current_item(
+                    session, exam_session, bound_exercise, item_type, item_id
+                )
 
     item_snapshot = _snapshot_attempt_item(session, item_type, item_id, session_id)
 

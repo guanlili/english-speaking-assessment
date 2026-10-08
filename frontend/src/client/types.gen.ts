@@ -258,6 +258,9 @@ export type ExamStatus = {
     started: boolean;
     ended: boolean;
     tab_switch_count?: number;
+    current_item_index?: number;
+    item_remaining_seconds?: number;
+    prep_remaining_seconds?: number;
 };
 
 export type ExamViolationRequest = {
@@ -1872,6 +1875,7 @@ export type ClassesCreateClassResponse = (ClassroomPublic);
 
 export type ClassesDeleteClassData = {
     code: string;
+    deleteHistory?: boolean;
 };
 
 export type ClassesDeleteClassResponse = ({
