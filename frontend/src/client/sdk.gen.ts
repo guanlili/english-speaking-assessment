@@ -610,11 +610,7 @@ export class AdminService {
     
     /**
      * Split Passage Into Readings
-     * 把长文按段或按句拆成多道文章朗读题（本地算法非 AI）。
-     *
-     * 按段落切分时超长段再按句聚合；按句切分时每句生成一道题。
-     * 新篇目沿用原标题/主题/难度/分组，
-     * 标题追加（一）（二）…；原长文自动停用（历史与挂靠复述句保留，可再启用）。
+     * 启用文章内部的折叠分句展示；整篇文章仍是唯一的朗读题。
      * @param data The data for the request.
      * @param data.passageId
      * @param data.mode
@@ -914,10 +910,11 @@ export class ClassesService {
      * Delete Class
      * 删除课堂（本人课堂或管理员）。
      *
-     * 仅允许删除没有任何作答记录的课堂（测试/误建场景）；
-     * 有学生作答的课堂请用管理员后台停用，教学数据必须保留。
+     * 默认保留有作答的课堂；确认清理历史后可删除测试/冗余课堂。
+     * 移出学生的历史仍属于本课堂，账号及其他课堂的数据不受影响。
      * @param data The data for the request.
      * @param data.code
+     * @param data.deleteHistory
      * @returns string Successful Response
      * @throws ApiError
      */
@@ -927,6 +924,9 @@ export class ClassesService {
             url: '/api/v1/classes/{code}',
             path: {
                 code: data.code
+            },
+            query: {
+                delete_history: data.deleteHistory
             },
             errors: {
                 422: 'Validation Error'

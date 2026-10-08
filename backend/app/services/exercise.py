@@ -36,7 +36,7 @@ def validate_assignment_items(session: Any, items: list[AssignmentItemIn]) -> No
         seen.add((item.type, item.id))
         if item.type == "passage":
             obj = session.get(Passage, item.id)
-            if obj is None or not obj.is_active:
+            if obj is None or not obj.is_active or obj.parent_passage_id is not None:
                 raise HTTPException(status_code=404, detail="朗读篇目不存在或已停用")
         elif item.type == "repeat":
             if session.get(RepeatSentence, item.id) is None:
@@ -124,7 +124,7 @@ def build_snapshot_item(
     """把题目当前内容复制进发布快照。题库后续编辑不影响已发布练习。"""
     if item_type == AttemptItemType.PASSAGE:
         item = session.get(Passage, item_id)
-        if item is None or not item.is_active:
+        if item is None or not item.is_active or item.parent_passage_id is not None:
             raise HTTPException(status_code=404, detail="朗读篇目不存在或已停用")
         return {
             "type": item_type,

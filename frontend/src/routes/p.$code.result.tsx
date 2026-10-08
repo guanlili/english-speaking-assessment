@@ -118,6 +118,16 @@ function RoundResultPage() {
   })
 
   const plan = todayQuery.data
+  const isExam = Boolean(plan?.exam)
+  useEffect(() => {
+    if (plan?.exam && !plan.exam.ended) {
+      void navigate({
+        to: "/p/$code",
+        params: { code },
+        search: { session: plan.session_id },
+      })
+    }
+  }, [plan, navigate, code])
   const gamification = plan?.gamification ?? null
   const newBadges = useMemo(() => {
     if (!gamification?.badges) return []
@@ -246,6 +256,16 @@ function RoundResultPage() {
       </div>
     )
   }
+  if (plan.exam && !plan.exam.ended) {
+    return (
+      <div role="status">
+        {t({
+          zh: "考试进行中，正在返回试题…",
+          en: "Exam in progress. Returning to your items…",
+        })}
+      </div>
+    )
+  }
 
   return (
     <StudentShell active="practice">
@@ -265,6 +285,25 @@ function RoundResultPage() {
             })}
           </p>
         </div>
+
+        {isExam && (
+          <p role="status" className="rounded-xl bg-secondary/60 p-4 text-sm">
+            {t({
+              zh: `考试已结束 · 已提交 ${plan.attempts.length}/${plan.items.length} 题 · 未作答 ${Math.max(0, plan.items.length - plan.attempts.length)} 题`,
+              en: `Exam finished · ${plan.attempts.length}/${plan.items.length} items submitted · ${Math.max(0, plan.items.length - plan.attempts.length)} unanswered`,
+            })}
+            {plan.attempts.some(
+              (a) => a.status === "queued" || a.status === "scoring",
+            ) && (
+              <span className="mt-1 block">
+                {t({
+                  zh: "录音正在评分，结果会自动更新",
+                  en: "Recordings are being scored. Results will update automatically.",
+                })}
+              </span>
+            )}
+          </p>
+        )}
 
         {gamification && gamification.session_stars !== null && (
           <section className="flex flex-wrap items-center gap-5 rounded-3xl bg-secondary p-6">
@@ -495,8 +534,12 @@ function RoundResultPage() {
           <Card>
             <CardContent className="py-6 text-muted-foreground">
               {t({
-                zh: "还没有完成的作答。回到练习页开始第一题。",
-                en: "No completed attempts yet. Head back to practice and start the first item.",
+                zh: isExam
+                  ? "暂无已出分的作答。已提交的录音会在评分完成后显示，未作答的题保留为未作答。"
+                  : "还没有完成的作答。回到练习页开始第一题。",
+                en: isExam
+                  ? "No scores are available yet. Submitted recordings appear after scoring; unanswered items remain unanswered."
+                  : "No completed attempts yet. Head back to practice and start the first item.",
               })}
             </CardContent>
           </Card>
@@ -697,29 +740,31 @@ function RoundResultPage() {
               <Button variant="outline" onClick={() => setReplay(null)}>
                 {t({ zh: "关闭", en: "Close" })}
               </Button>
-              <Button
-                onClick={() => {
-                  if (replay) {
-                    void navigate({
-                      to: "/p/$code",
-                      params: { code },
-                      search: {
-                        focus: replay.item.id,
-                        ...(sessionId ? { session: sessionId } : {}),
-                      },
-                    })
-                  }
-                }}
-              >
-                <Repeat />
-                {t({ zh: "再练这一题", en: "Practice this item again" })}
-              </Button>
+              {!isExam && (
+                <Button
+                  onClick={() => {
+                    if (replay) {
+                      void navigate({
+                        to: "/p/$code",
+                        params: { code },
+                        search: {
+                          focus: replay.item.id,
+                          ...(sessionId ? { session: sessionId } : {}),
+                        },
+                      })
+                    }
+                  }}
+                >
+                  <Repeat />
+                  {t({ zh: "再练这一题", en: "Practice this item again" })}
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
         <div className="flex flex-wrap gap-3">
-          {weakest && (
+          {!isExam && weakest && (
             <Button
               variant="outline"
               onClick={() =>
@@ -737,31 +782,36 @@ function RoundResultPage() {
               {t({ zh: "重练最弱的一题", en: "Redo your weakest item" })}
             </Button>
           )}
-          <Button
-            onClick={() => nextQuestionMutation.mutate()}
-            disabled={
-              nextQuestionMutation.isPending ||
-              plan.questions_exhausted === true
-            }
-          >
-            <Shuffle />
-            {plan.questions_exhausted === true
-              ? t({
-                  zh: "这个主题的题已练完",
-                  en: "All questions on this topic are done",
-                })
-              : t({
-                  zh: "换同主题下一问",
-                  en: "Next question on this topic",
-                })}
-          </Button>
+          {!isExam && (
+            <Button
+              onClick={() => nextQuestionMutation.mutate()}
+              disabled={
+                nextQuestionMutation.isPending ||
+                plan.questions_exhausted === true
+              }
+            >
+              <Shuffle />
+              {plan.questions_exhausted === true
+                ? t({
+                    zh: "这个主题的题已练完",
+                    en: "All questions on this topic are done",
+                  })
+                : t({
+                    zh: "换同主题下一问",
+                    en: "Next question on this topic",
+                  })}
+            </Button>
+          )}
           <Button variant="ghost" asChild>
             <Link
-              to="/p/$code"
+              to={isExam ? "/home/$code" : "/p/$code"}
               params={{ code }}
-              search={sessionId ? { session: sessionId } : {}}
+              search={!isExam && sessionId ? { session: sessionId } : {}}
             >
-              {t({ zh: "回练习页", en: "Back to practice" })}
+              {t({
+                zh: isExam ? "返回首页" : "回练习页",
+                en: isExam ? "Back to home" : "Back to practice",
+              })}
               <ArrowRight />
             </Link>
           </Button>

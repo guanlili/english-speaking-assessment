@@ -139,20 +139,24 @@ def test_unattached_passage_topic_is_free(
 def test_split_passage_carries_unit_topic(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    """拆篇走同一派生规则：新篇目主题等于单元主题。"""
+    """拆句仍归在原文章下，文章保留单元派生的主题。"""
     headers = superuser_token_headers
     unit = _make_unit(client, headers, "Travel", "Split Unit", order=92)
     passage = _make_passage(client, headers, "Long Trip", "WRONG", unit["id"])
 
     resp = client.post(f"/api/v1/admin/passages/{passage['id']}/split", headers=headers)
     assert resp.status_code == 200
-    created_ids = set(resp.json()["passage_ids"])
-    assert len(created_ids) >= 2
-    topics = {
-        p["id"]: p["topic"]
+    assert resp.json()["passage_ids"] == []
+    assert resp.json()["created"] >= 2
+    article = next(
+        p
         for p in client.get("/api/v1/admin/passages", headers=headers).json()
-    }
-    assert all(topics[pid] == "Travel" for pid in created_ids)
+        if p["id"] == passage["id"]
+    )
+    assert article["topic"] == "Travel"
+    assert article["unit_id"] == unit["id"]
+    assert article["reading_split"] is True
+    assert article["is_active"] is True
 
 
 def test_missing_scenario_degrades_explore_round(

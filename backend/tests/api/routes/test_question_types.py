@@ -409,7 +409,7 @@ def test_split_passage_into_readings(
     superuser_token_headers: dict[str, str],
     db: Session,
 ) -> None:
-    """长文自动拆分：按段落生成多篇朗读材料，原长文停用。"""
+    """长文自动拆分：分句归在文章内部，原文章仍是唯一朗读题。"""
     long_text = "\n".join(
         [
             "I went there with my parents and my younger brother because my father thought it would be educational for us.",
@@ -437,21 +437,64 @@ def test_split_passage_into_readings(
     )
     assert split.status_code == 200, split.text
     data = split.json()
-    assert data["created"] == 3
+    assert data["created"] == 5
+    assert data["passage_ids"] == []
+    assert data["original_deactivated"] is False
 
     passages = client.get(
         "/api/v1/admin/passages", headers=superuser_token_headers
     ).json()
     by_id = {p["id"]: p for p in passages}
-    titles = [by_id[pid]["title"] for pid in data["passage_ids"]]
-    assert titles == ["Split Me（一）", "Split Me（二）", "Split Me（三）"]
-    assert all(by_id[pid]["is_active"] for pid in data["passage_ids"])
-    # 原长文停用，主题与秒数合理
-    assert by_id[original["id"]]["is_active"] is False
-    assert by_id[data["passage_ids"][0]]["topic"] == "Places"
-    assert by_id[data["passage_ids"][0]]["suggested_seconds"] >= 15
+    article = by_id[original["id"]]
+    assert article["is_active"] is True
+    assert article["reading_split"] is True
+    assert len(article["reading_segments"]) == 5
+    assert article["reading_segments"][0].endswith("educational for us.")
+    assert article["sentences"] == []  # 朗读分句不混入听句复述
+    repeated = client.post(
+        f"/api/v1/admin/passages/{original['id']}/split",
+        headers=superuser_token_headers,
+    )
+    assert repeated.status_code == 200
+    assert repeated.json() == data  # 重复拆句不创建额外题目
 
-    # 单段落无法拆分
+    classroom = _classroom(client, superuser_token_headers)
+    code = classroom["code"]
+    student = make_student(db, client, code, "文章朗读学生")
+    assigned = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": [{"type": "passage", "id": original["id"]}]},
+        headers=superuser_token_headers,
+    )
+    assert assigned.status_code == 200, assigned.text
+    plan = client.get(
+        f"/api/v1/classes/{code}/today", headers=student["headers"]
+    ).json()
+    assert len(plan["items"]) == 1
+    assert plan["items"][0]["text"] == long_text
+
+    # 编辑正文会刷新分句，但已发布快照不随题库编辑变化。
+    edited = "The first sentence. The second sentence!"
+    update = client.put(
+        f"/api/v1/admin/passages/{original['id']}",
+        json={"text": edited},
+        headers=superuser_token_headers,
+    )
+    assert update.status_code == 200, update.text
+    listed = client.get(
+        "/api/v1/admin/passages", headers=superuser_token_headers
+    ).json()
+    refreshed = next(p for p in listed if p["id"] == original["id"])
+    assert refreshed["reading_segments"] == [
+        "The first sentence.",
+        "The second sentence!",
+    ]
+    plan = client.get(
+        f"/api/v1/classes/{code}/today", headers=student["headers"]
+    ).json()
+    assert plan["items"][0]["text"] == long_text
+
+    # 只有一句时拒绝拆分（单段多句可拆）
     single = client.post(
         "/api/v1/admin/passages",
         json={
@@ -472,47 +515,108 @@ def test_split_passage_into_readings(
         client.delete(f"/api/v1/admin/passages/{pid}", headers=superuser_token_headers)
 
 
-def test_split_passage_into_sentence_readings(
-    client: TestClient,
-    superuser_token_headers: dict[str, str],
+def test_legacy_split_children_are_hidden_but_published_snapshots_survive(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
-    """单段文章也能按句生成独立的文章朗读题，保留顺序和标点。"""
+    from app.models import Passage
+
+    headers = superuser_token_headers
+    article = client.post(
+        "/api/v1/admin/passages",
+        json={"title": "Legacy article", "text": "First sentence. Second sentence."},
+        headers=headers,
+    ).json()
+    child = client.post(
+        "/api/v1/admin/passages",
+        json={"title": "Legacy article（一）", "text": "First sentence."},
+        headers=headers,
+    ).json()
+    classroom = _classroom(client, headers)
+    code = classroom["code"]
+    student = make_student(db, client, code, "旧版分段学生")
+    publish = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": [{"type": "passage", "id": child["id"]}]},
+        headers=headers,
+    )
+    assert publish.status_code == 200, publish.text
+
+    # 模拟迁移：归属与启用状态变化不触碰已发布快照。
+    parent_row = db.get(Passage, uuid.UUID(article["id"]))
+    child_row = db.get(Passage, uuid.UUID(child["id"]))
+    assert parent_row is not None and child_row is not None
+    parent_row.reading_split = True
+    child_row.parent_passage_id = parent_row.id
+    child_row.is_active = False
+    db.add(parent_row)
+    db.add(child_row)
+    db.commit()
+    listed = client.get("/api/v1/admin/passages", headers=headers).json()
+    assert not any(p["id"] == child["id"] for p in listed)
+    parent = next(p for p in listed if p["id"] == article["id"])
+    assert parent["reading_child_ids"] == [child["id"]]
+    assert parent["reading_segments"] == ["First sentence.", "Second sentence."]
+    old_plan = client.get(
+        f"/api/v1/classes/{code}/today", headers=student["headers"]
+    ).json()
+    assert old_plan["items"][0]["id"] == child["id"]
+    assert old_plan["items"][0]["text"] == "First sentence."
+    refused = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": [{"type": "passage", "id": child["id"]}]},
+        headers=headers,
+    )
+    assert refused.status_code == 404
+    republish = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": [{"type": "passage", "id": article["id"]}]},
+        headers=headers,
+    )
+    assert republish.status_code == 200, republish.text
+    plan = client.get(
+        f"/api/v1/classes/{code}/today", headers=student["headers"]
+    ).json()
+    assert len(plan["items"]) == 1
+    assert plan["items"][0]["text"] == article["text"]
+    deleted = client.delete(f"/api/v1/admin/passages/{article['id']}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    db.expire_all()
+    assert db.get(Passage, uuid.UUID(child["id"])) is None
+
+
+def test_split_passage_into_sentence_readings(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    """兼容 mode=sentence：句子保持顺序和标点，但整篇文章是一道题。"""
     sentences = ["What is your favorite food?", "I enjoy mooncakes.", "They are sweet!"]
     created = client.post(
         "/api/v1/admin/passages",
-        json={
-            "title": "Food Story",
-            "topic": "Food",
-            "text": " ".join(sentences),
-        },
+        json={"title": "Food Story", "topic": "Food", "text": " ".join(sentences)},
         headers=superuser_token_headers,
     )
     assert created.status_code == 200, created.text
     original_id = created.json()["id"]
-
     split = client.post(
         f"/api/v1/admin/passages/{original_id}/split?mode=sentence",
         headers=superuser_token_headers,
     )
     assert split.status_code == 200, split.text
-    result = split.json()
-    assert result["created"] == len(sentences)
-
+    assert split.json()["created"] == len(sentences)
+    assert split.json()["passage_ids"] == []
     passages = client.get(
         "/api/v1/admin/passages", headers=superuser_token_headers
     ).json()
-    by_id = {passage["id"]: passage for passage in passages}
-    assert [by_id[pid]["text"] for pid in result["passage_ids"]] == sentences
-    assert [by_id[pid]["title"] for pid in result["passage_ids"]] == [
-        "Food Story（一）",
-        "Food Story（二）",
-        "Food Story（三）",
-    ]
-    assert all(by_id[pid]["is_active"] for pid in result["passage_ids"])
-    assert by_id[original_id]["is_active"] is False
-
-    for pid in [*result["passage_ids"], original_id]:
-        client.delete(f"/api/v1/admin/passages/{pid}", headers=superuser_token_headers)
+    article = next(p for p in passages if p["id"] == original_id)
+    assert article["reading_segments"] == sentences
+    assert article["is_active"] is True
+    invalid = client.post(
+        f"/api/v1/admin/passages/{original_id}/split?mode=invalid",
+        headers=superuser_token_headers,
+    )
+    assert invalid.status_code == 422
+    client.delete(
+        f"/api/v1/admin/passages/{original_id}", headers=superuser_token_headers
+    )
 
 
 def test_delete_classroom_guards(

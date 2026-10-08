@@ -44,6 +44,8 @@ export function ConfirmDialog({
     try {
       await onConfirm()
       onOpenChange(false)
+    } catch {
+      // 调用者的 mutation 展示错误；失败时保留确认框，允许重试。
     } finally {
       setPending(false)
     }

@@ -105,6 +105,12 @@ class PassageBase(SQLModel):
 class Passage(PassageBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     slug: str = Field(unique=True, index=True, max_length=100)
+    # 拆句只用于文章内部展示；文章始终是一道朗读题。
+    reading_split: bool = False
+    # 旧版拆分产生的独立篇目保留 ID/历史，归入原文章后不再单独选题。
+    parent_passage_id: uuid.UUID | None = Field(
+        default=None, foreign_key="passage.id", ondelete="CASCADE", index=True
+    )
     # 所属学习单元（关卡）；为空时挂全局默认（老数据兼容）
     unit_id: uuid.UUID | None = Field(
         default=None, foreign_key="unit.id", ondelete="SET NULL", index=True
@@ -118,6 +124,7 @@ class Passage(PassageBase, table=True):
 class PassagePublic(PassageBase):
     id: uuid.UUID
     slug: str
+    reading_split: bool = False
     # 所属单元：管理端要能读回指派关系（写入口同为 PassageCreate.unit_id）
     unit_id: uuid.UUID | None = None
     created_at: datetime | None = None
@@ -935,6 +942,10 @@ class ExamStatus(SQLModel):
     started: bool
     ended: bool
     tab_switch_count: int = 0
+    # 顺序与题目时间来自发布快照；刷新/换设备不会重新计时。
+    current_item_index: int = 0
+    item_remaining_seconds: int = 0
+    prep_remaining_seconds: int = 0
 
 
 class TodayPlan(SQLModel):

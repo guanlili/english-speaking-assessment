@@ -33,6 +33,7 @@ import { Separator } from "@/components/ui/separator"
 import { APP_NAME } from "@/config"
 import type { AttemptSubmitTarget } from "@/hooks/useAttemptSubmit"
 import { useAttemptSubmit } from "@/hooks/useAttemptSubmit"
+import { useExamClock } from "@/hooks/useExamClock"
 import { useRecorder } from "@/hooks/useRecorder"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { displayName, loadStudent } from "@/lib/classroom-student"
@@ -119,6 +120,7 @@ function ClassroomPracticePage() {
   const [hideText, setHideText] = useState(false)
   // 录音开始时钉住 item_id / session_id / 题型：录音期间老师切换指派不影响旧录音
   const recordingTargetRef = useRef<AttemptSubmitTarget | null>(null)
+  const acceptedExamItemsRef = useRef(new Set<string>())
   // 本次停留是否提交过录音：防止从结果页回来时 allDone 直接又跳回结果页
   const submittedRef = useRef(false)
   // 自动跳结果页的闩锁：每次挂载最多跳一次
@@ -168,6 +170,7 @@ function ClassroomPracticePage() {
       }
     },
     onSuccess: () => {
+      setPinnedSessionId(todayQuery.data?.session_id ?? null)
       void queryClient.invalidateQueries({ queryKey: todayQueryKey })
     },
     onError: () => {
@@ -234,12 +237,19 @@ function ClassroomPracticePage() {
       nextFlag &&
       !nextFlagConsumedRef.current &&
       student !== null &&
-      todayQuery.isSuccess
+      todayQuery.isSuccess &&
+      !todayQuery.data?.exam
     ) {
       nextFlagConsumedRef.current = true
       nextQuestionMutation.mutate()
     }
-  }, [nextFlag, student, nextQuestionMutation, todayQuery.isSuccess])
+  }, [
+    nextFlag,
+    student,
+    nextQuestionMutation,
+    todayQuery.isSuccess,
+    todayQuery.data?.exam,
+  ])
 
   // ?next=1 但计划加载失败：提示换题未成功（否则静默无反应）
   useEffect(() => {
@@ -257,6 +267,11 @@ function ClassroomPracticePage() {
   const [extraQuestion, setExtraQuestion] = useState<PlanItem | null>(null)
 
   const plan = todayQuery.data
+  const exam = plan?.exam ?? null
+  const examStarted = exam?.started ?? false
+  const examActive = exam !== null && !exam.ended
+  const examEnded = exam?.ended ?? false
+  const examClock = useExamClock(exam, todayQuery.dataUpdatedAt)
   const items = useMemo(() => {
     if (!plan) return []
     const merged = [...plan.items]
@@ -281,6 +296,7 @@ function ClassroomPracticePage() {
       const pinnedIndex = items.findIndex((i) => i.id === pinnedItemId)
       if (pinnedIndex >= 0) return pinnedIndex
     }
+    if (exam) return Math.min(exam.current_item_index ?? 0, items.length - 1)
     if (focusItemId) {
       const focusIndex = items.findIndex((i) => i.id === focusItemId)
       if (focusIndex >= 0) return focusIndex
@@ -290,7 +306,7 @@ function ClassroomPracticePage() {
     )
     if (firstUndone === -1) return items.length - 1
     return firstUndone
-  }, [items, attemptByItem, focusItemId, pinnedItemId])
+  }, [items, attemptByItem, focusItemId, pinnedItemId, exam])
 
   const currentItem = items[currentIndex]
   const recordLimitSeconds = resolveRecordLimitSeconds(
@@ -323,8 +339,10 @@ function ClassroomPracticePage() {
   const isIeltsPart2 = examKind === "ielts_p2"
   const cueBullets = currentItem?.cue_card_bullets ?? []
   const prepSeconds = isIeltsPart2 ? (currentItem?.prep_seconds ?? 60) : 0
-  const [prepLeft, setPrepLeft] = useState(0)
-  const [prepDone, setPrepDone] = useState(true)
+  const [practicePrepLeft, setPrepLeft] = useState(0)
+  const [practicePrepDone, setPrepDone] = useState(true)
+  const prepLeft = exam ? examClock.prepRemaining : practicePrepLeft
+  const prepDone = exam ? prepLeft === 0 : practicePrepDone
   const [prepForItem, setPrepForItem] = useState<string | null>(null)
   // 切题即重置准备计时（渲染期比较是 React 官方认可的 state 调整模式，
   // 避免 biome 判定 effect 依赖多余）
@@ -335,7 +353,7 @@ function ClassroomPracticePage() {
     setPrepDone(!isIeltsPart2 || prepSeconds <= 0)
   }
   useEffect(() => {
-    if (prepDone) return
+    if (exam || practicePrepDone) return
     const timer = window.setInterval(() => {
       setPrepLeft((left) => {
         if (left <= 1) {
@@ -347,13 +365,14 @@ function ClassroomPracticePage() {
       })
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [prepDone])
+  }, [practicePrepDone, exam])
   const skipPrep = () => {
     setPrepDone(true)
     setPrepLeft(0)
   }
   const {
     submit,
+    submitAsync,
     submitting,
     attempt,
     submitError,
@@ -375,23 +394,66 @@ function ClassroomPracticePage() {
     )
 
   const recorder = useRecorder({
-    maxSeconds: recordLimitSeconds,
+    deadlineAt:
+      exam && examStarted
+        ? todayQuery.dataUpdatedAt + (exam.item_remaining_seconds ?? 0) * 1000
+        : undefined,
+    maxSeconds: exam
+      ? Math.max(1, Math.min(recordLimitSeconds, examClock.itemRemaining))
+      : recordLimitSeconds,
     onComplete: (rec) => {
       submittedRef.current = true
-      // 模考不钉住题目：提交后自动推进到下一道未做题（也不展示本题反馈）
-      if (currentItem && !examActive) setPinnedItemId(currentItem.id)
+      // 上传期间保留题面；模考上传成功即解除，不等待评分。
+      if (currentItem) setPinnedItemId(currentItem.id)
       // 使用录音开始时钉住的目标，避免录音期间计划刷新导致提交到新题新轮
-      submit(
+      submitRecording(
         { blob: rec.blob, duration: rec.duration },
         recordingTargetRef.current ?? undefined,
       )
     },
   })
 
+  const submitRecording = (
+    recording: { blob: Blob; duration: number },
+    target?: AttemptSubmitTarget,
+  ) => {
+    if (!exam) {
+      submit(recording, target)
+      return
+    }
+    void submitAsync(recording, target)
+      .then(() => {
+        if (target)
+          acceptedExamItemsRef.current.add(
+            `${target.sessionId}:${target.itemId}`,
+          )
+        recorder.reset()
+        resetAttempt()
+        recordingTargetRef.current = null
+        setPinnedItemId(null)
+        setFocusItemId(null)
+        void queryClient.invalidateQueries({
+          queryKey: ["classroom", code, "today"],
+        })
+      })
+      .catch(() => {
+        // 原录音留给幂等重传；模考没有重新录制入口。
+      })
+  }
+
   // 开始录音前钉住当前题 / 会话 / 题型 / 幂等键 / 凭证；
   // 同时钉住会话：录音→上传→反馈期间老师发布新计划，练习页仍保持本轮，
   // 结果页也绑定这个实际完成的会话，不挂到新题新轮。
   const startRecording = () => {
+    if (
+      exam &&
+      (!examStarted ||
+        examEnded ||
+        currentItemDone ||
+        !prepDone ||
+        examClock.itemRemaining === 0)
+    )
+      return
     recordingTargetRef.current = {
       itemType:
         (currentItem?.type as "passage" | "repeat" | "question") ?? "repeat",
@@ -400,6 +462,7 @@ function ClassroomPracticePage() {
       idempotencyKey: randomId(),
     }
     setPinnedSessionId(plan?.session_id ?? null)
+    if (exam && currentItem) setPinnedItemId(currentItem.id)
     recorder.start()
   }
 
@@ -407,7 +470,7 @@ function ClassroomPracticePage() {
   const retrySubmit = () => {
     if (recorder.recording) {
       submittedRef.current = true
-      submit(
+      submitRecording(
         {
           blob: recorder.recording.blob,
           duration: recorder.recording.duration,
@@ -425,6 +488,7 @@ function ClassroomPracticePage() {
   const blockerToastRef = useRef(false)
   useBlocker({
     shouldBlockFn: ({ current, next }) => {
+      if (exam && next.pathname === `/p/${code}/result`) return false
       if (!pendingBlockerActive) return false
       // 同一课堂内练习页互相跳转不算离开（结果页 / 练习页 / 加入页保留原状）
       if (current.pathname === next.pathname) return false
@@ -442,8 +506,12 @@ function ClassroomPracticePage() {
                   en: "Your recording is uploading — please wait or finish before leaving",
                 })
               : t({
-                  zh: "录音上传失败，请先重传或重录",
-                  en: "Upload failed — please retry the upload or re-record first",
+                  zh: exam
+                    ? "录音上传失败，请重传原录音"
+                    : "录音上传失败，请先重传或重录",
+                  en: exam
+                    ? "Upload failed — retry the original recording"
+                    : "Upload failed — please retry the upload or re-record first",
                 }),
         )
         window.setTimeout(() => {
@@ -468,47 +536,76 @@ function ClassroomPracticePage() {
       } else {
         toast.error(t({ zh: "上传失败", en: "Upload failed" }), {
           description: t({
-            zh: "录音已保留，可以点重传或重新录一次",
-            en: "Your recording is saved — retry the upload or record again",
+            zh: exam
+              ? "录音已保留，请重传原录音；模考不能重录"
+              : "录音已保留，可以点重传或重新录一次",
+            en: exam
+              ? "Your recording is saved. Retry the original upload; exam items cannot be re-recorded."
+              : "Your recording is saved — retry the upload or record again",
           }),
         })
       }
     }
-  }, [submitError, submitErrorData, t])
+  }, [submitError, submitErrorData, t, exam])
 
-  // 评分状态：上传中或排队/评分中都算「评分中」，期间禁用麦克风
+  // 普通练习等待单题反馈；模考只等待录音上传。
   const attemptStatus = attempt?.status
   const attemptTerminal = isTerminal(attemptStatus)
   const attemptFailed = attemptStatus === "failed"
 
   // ── 模考态 ──
-  const exam = plan?.exam ?? null
-  // started=false 表示还在开考确认页：不计时、不挂切屏监听、不作答
-  const examStarted = exam?.started ?? false
-  const examActive = exam !== null && !exam.ended
-  const examEnded = exam?.ended ?? false
-  // 当前题是否已作答（考试一次性口径：有终态作答即锁定）
+  // 模考任何已接收的提交都锁定，包含 queued/failed。
   const currentItemDone = currentItem
-    ? isTerminal(attemptByItem.get(currentItem.id)?.status)
+    ? exam
+      ? attemptByItem.has(currentItem.id) ||
+        acceptedExamItemsRef.current.has(
+          `${plan?.session_id}:${currentItem.id}`,
+        )
+      : isTerminal(attemptByItem.get(currentItem.id)?.status)
     : false
 
   // 本地倒计时：以服务端 remaining_seconds 为准心，每秒递减仅作展示；
   // 未开考（确认页）不启动——服务端此刻也还没计时
-  const examServerRemaining = exam?.remaining_seconds
-  const [examRemaining, setExamRemaining] = useState<number | null>(null)
+  const examRemaining = examClock.remaining
+  const expiredItemRef = useRef<string | null>(null)
+  const recorderStop = recorder.stop
+  const recorderReset = recorder.reset
   useEffect(() => {
-    if (examServerRemaining !== undefined && examStarted) {
-      setExamRemaining(examServerRemaining)
+    if (
+      !examActive ||
+      !examStarted ||
+      examClock.itemRemaining > 0 ||
+      !currentItem
+    )
+      return
+    if (recorder.status === "recording") {
+      recorderStop()
+      return
     }
-  }, [examServerRemaining, examStarted])
-  const examTimerActive = examRemaining !== null
-  useEffect(() => {
-    if (!examTimerActive) return
-    const timer = setInterval(() => {
-      setExamRemaining((v) => (v === null ? v : Math.max(0, v - 1)))
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [examTimerActive])
+    if (submitting || currentItemDone || (submitError && recorder.recording))
+      return
+    if (expiredItemRef.current === currentItem.id) return
+    expiredItemRef.current = currentItem.id
+    recorderReset()
+    setPinnedItemId(null)
+    void queryClient.invalidateQueries({
+      queryKey: ["classroom", code, "today"],
+    })
+  }, [
+    examActive,
+    examStarted,
+    examClock.itemRemaining,
+    currentItem,
+    recorder.status,
+    recorder.recording,
+    recorderStop,
+    recorderReset,
+    submitting,
+    currentItemDone,
+    submitError,
+    queryClient,
+    code,
+  ])
   // 倒计时归零：拉取服务端终态（惰性交卷在那边落库）
   useEffect(() => {
     if (examRemaining === 0 && examActive) {
@@ -519,13 +616,26 @@ function ClassroomPracticePage() {
   const examNavigatedRef = useRef(false)
   useEffect(() => {
     if (!examEnded || examNavigatedRef.current) return
+    if (recorder.status === "recording") {
+      recorderStop()
+      return
+    }
+    if (submitting) return
     examNavigatedRef.current = true
     void navigate({
       to: "/p/$code/result",
       params: { code },
-      search: sessionId ? { session: sessionId } : {},
+      search: plan?.session_id ? { session: plan.session_id } : {},
     })
-  }, [examEnded, navigate, code, sessionId])
+  }, [
+    examEnded,
+    navigate,
+    code,
+    plan?.session_id,
+    recorder.status,
+    recorderStop,
+    submitting,
+  ])
 
   // 防切屏：开考后离开页面（切 tab/最小化）计数并提示；切回时补报离屏时长
   const hiddenAtRef = useRef<number | null>(null)
@@ -572,14 +682,13 @@ function ClassroomPracticePage() {
     return () => document.removeEventListener("visibilitychange", onVisibility)
   }, [examActive, examStarted, plan?.session_id, code, t])
   const scoring =
-    submitting || (attemptStatus !== undefined && !attemptTerminal)
-  const recorderReset = recorder.reset
+    submitting || (!exam && attemptStatus !== undefined && !attemptTerminal)
 
   // 评分完成：同步今日计划（进度、升降档后的问答）；保留单题简短反馈，学生点击后继续
   useEffect(() => {
     if (!attemptTerminal) return
     void queryClient.invalidateQueries({ queryKey: todayQueryKey })
-    if (attemptFailed) {
+    if (attemptFailed && !exam) {
       toast.error(t({ zh: "这次没有评出来", en: "No score this time" }), {
         description: t({
           zh: "可以再录一次",
@@ -588,7 +697,7 @@ function ClassroomPracticePage() {
       })
       return
     }
-  }, [attemptTerminal, attemptFailed, queryClient, todayQueryKey, t])
+  }, [attemptTerminal, attemptFailed, queryClient, todayQueryKey, t, exam])
 
   // 全部完成后自动进入结果页统一展示（本次停留提交过 + 本地评分已结束 + 服务端计划全部完成）
   useEffect(() => {
@@ -680,8 +789,8 @@ function ClassroomPracticePage() {
               <ul className="mx-auto max-w-xs space-y-2 text-left text-sm text-muted-foreground">
                 <li>
                   {t({
-                    zh: "· 每题只能作答一次，不能重录",
-                    en: "· One attempt per item — no re-recording",
+                    zh: "· 每题只能作答一次，题目出现后计时，到时自动进入下一题；未录音则记为未作答",
+                    en: "· One attempt per item. Timing starts when each item appears; it advances automatically at the deadline. Items without a recording remain unanswered.",
                   })}
                 </li>
                 <li>
@@ -885,6 +994,33 @@ function ClassroomPracticePage() {
                   </span>
                 </div>
 
+                {exam && (
+                  <div
+                    role="timer"
+                    data-testid="exam-item-timer"
+                    className="rounded-xl bg-secondary/60 px-4 py-3 text-sm"
+                  >
+                    {t({
+                      zh: prepLeft > 0 ? "准备倒计时" : "本题倒计时",
+                      en:
+                        prepLeft > 0
+                          ? "Preparation remaining"
+                          : "Time remaining for this item",
+                    })}{" "}
+                    <span className="font-mono text-lg font-bold tabular-nums">
+                      {formatSeconds(
+                        prepLeft > 0 ? prepLeft : examClock.itemRemaining,
+                      )}
+                    </span>
+                    <p className="text-xs text-muted-foreground">
+                      {t({
+                        zh: "到时自动提交已录音并进入下一题；未录音则跳过",
+                        en: "At the deadline, your recording submits and the next item opens. Items without a recording are skipped.",
+                      })}
+                    </p>
+                  </div>
+                )}
+
                 {/* 分级题型徽标：题型 × 级别（两维分别建模） */}
                 {examKind && (
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -1015,9 +1151,11 @@ function ClassroomPracticePage() {
                         en: "· Prep time: plan your points, no need to speak yet",
                       })}
                     </p>
-                    <Button variant="ghost" size="sm" onClick={skipPrep}>
-                      {t({ zh: "跳过准备，直接开始", en: "Skip prep" })}
-                    </Button>
+                    {!exam && (
+                      <Button variant="ghost" size="sm" onClick={skipPrep}>
+                        {t({ zh: "跳过准备，直接开始", en: "Skip prep" })}
+                      </Button>
+                    )}
                   </div>
                 )}
 
@@ -1149,8 +1287,8 @@ function ClassroomPracticePage() {
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {t({
-                          zh: `本题限时 ${formatSeconds(recordLimitSeconds)} · 到时自动结束录音`,
-                          en: `This item's limit is ${formatSeconds(recordLimitSeconds)} · recording stops automatically`,
+                          zh: `本题限时 ${formatSeconds(recordLimitSeconds)} · 到时自动结束录音${exam ? "并进入下一题" : ""}`,
+                          en: `This item's limit is ${formatSeconds(recordLimitSeconds)} · recording stops automatically${exam ? " and the next item opens" : ""}`,
                         })}
                       </p>
                     </>
@@ -1176,17 +1314,42 @@ function ClassroomPracticePage() {
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {t({
-                          zh: "点这里重传 · 或",
-                          en: "Tap to retry · or",
+                          zh: exam
+                            ? "仅可重传原录音，不能重新作答"
+                            : "点这里重传 · 或",
+                          en: exam
+                            ? "Retry the original upload; this item cannot be answered again"
+                            : "Tap to retry · or",
                         })}
-                        <button
-                          type="button"
-                          onClick={startRecording}
-                          className="ml-1 underline text-primary"
-                        >
-                          {t({ zh: "重新录", en: "record again" })}
-                        </button>
+                        {!exam && (
+                          <button
+                            type="button"
+                            onClick={startRecording}
+                            className="ml-1 underline text-primary"
+                          >
+                            {t({ zh: "重新录", en: "record again" })}
+                          </button>
+                        )}
                       </p>
+                      {exam && examClock.itemRemaining === 0 && (
+                        <Button
+                          variant="outline"
+                          className="min-h-11"
+                          onClick={() => {
+                            recorder.reset()
+                            resetAttempt()
+                            setPinnedItemId(null)
+                            void queryClient.invalidateQueries({
+                              queryKey: ["classroom", code, "today"],
+                            })
+                          }}
+                        >
+                          {t({
+                            zh: "本题已到时，继续考试",
+                            en: "Time is up — continue the exam",
+                          })}
+                        </Button>
+                      )}
                     </>
                   ) : (
                     <>
@@ -1197,6 +1360,7 @@ function ClassroomPracticePage() {
                           scoring ||
                           (examActive && currentItemDone) ||
                           examEnded ||
+                          (Boolean(exam) && examClock.itemRemaining === 0) ||
                           !prepDone
                         }
                         aria-label={t({
@@ -1237,17 +1401,22 @@ function ClassroomPracticePage() {
                       </p>
                       {scoring ? (
                         <p className="text-xs text-muted-foreground">
-                          {isLastQuestion
+                          {exam
                             ? t({
-                                zh: "先显示本题分数和转写",
-                                en: "Showing this item's score and transcript first",
+                                zh: "正在上传录音，上传后自动继续；反馈将在考试结束后汇总",
+                                en: "Uploading your recording, then continuing automatically. Feedback appears after the exam.",
                               })
-                            : t({
-                                zh: "先显示本题分数和转写，详细评价最后看",
-                                en: "Score and transcript first — full feedback at the end",
-                              })}
+                            : isLastQuestion
+                              ? t({
+                                  zh: "先显示本题分数和转写",
+                                  en: "Showing this item's score and transcript first",
+                                })
+                              : t({
+                                  zh: "先显示本题分数和转写，详细评价最后看",
+                                  en: "Score and transcript first — full feedback at the end",
+                                })}
                         </p>
-                      ) : attemptFailed ? (
+                      ) : attemptFailed && !exam ? (
                         <p className="text-xs text-destructive">
                           {t({
                             zh: "这次没有评出来，再录一次就好",
