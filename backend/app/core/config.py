@@ -133,6 +133,9 @@ class Settings(BaseSettings):
     SCORING_RETRY_BACKOFF_S: int = 10
     # 音频落盘目录（compose 里挂卷到 /app/audio）
     AUDIO_STORAGE_DIR: str = "./audio"
+    # 作答音频保留期（天）：终态作答的录音文件超过保留期后由每日清理线程
+    # 删除（评分结果不受影响，仅失去回放）。0 = 不清理（默认，行为不变）
+    AUDIO_TTL_DAYS: int = 0
     MAX_AUDIO_MB: int = 20
     # 词表 CSV 导入上限（MB），防止超大文件打挂内存
     MAX_VOCAB_CSV_MB: int = 5

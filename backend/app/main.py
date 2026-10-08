@@ -47,10 +47,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     await to_thread.run_sync(startup_recovery)
     start_sweeper()
+    # 作答音频保留期清理（AUDIO_TTL_DAYS=0 时线程空转，不删任何文件）
+    from app.core.audio_retention import start_audio_retention, stop_audio_retention
+
+    start_audio_retention()
     yield
     # 关闭评分线程池与清扫线程，避免 docker stop 时挂起
     from app.scoring.worker import shutdown_executor, stop_sweeper
 
+    stop_audio_retention()
     stop_sweeper()
     shutdown_executor()
 
