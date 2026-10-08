@@ -701,9 +701,15 @@ def _focused_vocab_session(
     assignment_id: uuid.UUID,
     student_id: uuid.UUID,
     round_no: int | None = None,
+    rounds: list[VocabularySession] | None = None,
 ) -> VocabularySession | None:
-    """展示轮次：显式 round_no 回看指定轮；缺省未结束轮优先，否则最新轮。"""
-    rounds = _student_rounds(session, assignment_id, student_id)
+    """展示轮次：显式 round_no 回看指定轮；缺省未结束轮优先，否则最新轮。
+
+    rounds 传入调用方已查的轮次清单可省一次同参查询（today 路径原本
+    同参查 3 次：列表 + 展示轮 + 可练轮）。
+    """
+    if rounds is None:
+        rounds = _student_rounds(session, assignment_id, student_id)
     if round_no is not None:
         return next((r for r in rounds if r.round_no == round_no), None)
     unfinished = next((r for r in rounds if r.status == "in_progress"), None)
@@ -843,15 +849,19 @@ def _today_plan_payload(
         # 到时结算不依赖学生页面在线：触碰任务视图即收口到时答卷
         vocab_quiz.settle_due_sessions(session, assignment)
 
+    # 轮次清单一次查询复用：展示轮与可练轮都从同一份 rounds 挑选
+    # （原实现同参查 3 次：清单 + 展示轮 + 可练轮）
     rounds = _student_rounds(session, assignment.id, student_id)
     vocab_session = _focused_vocab_session(
-        session, assignment.id, student_id, round_no=round_no
+        session, assignment.id, student_id, round_no=round_no, rounds=rounds
     )
     if round_no is not None and vocab_session is None:
         # 显式回看不存在的轮次（含他学生的轮次）：404，不回落
         raise HTTPException(status_code=404, detail="轮次不存在")
     # 当前可练轮独立于展示轮计算：未结束轮优先，否则最新轮
-    practice_session = _focused_vocab_session(session, assignment.id, student_id)
+    practice_session = _focused_vocab_session(
+        session, assignment.id, student_id, rounds=rounds
+    )
     current_round = practice_session.round_no if practice_session is not None else None
     # 答案可见规则：测验在答案公布前，已答题也不揭示拼写与对错
     answers_visible = not (is_quiz and assignment.answers_published_at is None)

@@ -33,7 +33,9 @@ class ExamItemWindow:
 def _seconds(value: object, fallback: int) -> int:
     try:
         seconds = int(str(value))
-    except ValueError, TypeError:
+    # fmt: skip：括号必须保留——ruff 对 py314 会把括号格式化掉，
+    # 而 PEP 758 裸逗号写法 ≤3.13 的工具链（含系统 python3）无法解析
+    except (ValueError, TypeError):  # fmt: skip
         return fallback
     return min(300, seconds) if seconds >= 1 else fallback
 

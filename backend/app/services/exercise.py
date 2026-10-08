@@ -24,7 +24,12 @@ from app.models import (
 
 
 def validate_assignment_items(session: Any, items: list[AssignmentItemIn]) -> None:
-    """按题指派引用校验：题型合法且对象存在（朗读要求启用）。"""
+    """按题指派引用校验：题型合法且对象存在（朗读要求启用）。
+
+    按题型分组的 in_() 批量查询替代逐题 session.get（指派上限 100 题，
+    该函数在发布热路径上）。校验过的行进 session 身份映射，调用方随后
+    的 session.get 不再发查询。
+    """
     if len(items) > 100:
         raise HTTPException(status_code=422, detail="一次发布最多包含 100 道题")
     seen: set[tuple[str, uuid.UUID]] = set()
@@ -34,18 +39,52 @@ def validate_assignment_items(session: Any, items: list[AssignmentItemIn]) -> No
         if (item.type, item.id) in seen:
             raise HTTPException(status_code=422, detail="指派清单内有重复题目")
         seen.add((item.type, item.id))
+
+    passage_ids = [i.id for i in items if i.type == "passage"]
+    passages_by_id: dict[uuid.UUID, Passage] = {}
+    if passage_ids:
+        for obj in session.exec(
+            select(Passage).where(col(Passage.id).in_(passage_ids))
+        ).all():
+            passages_by_id[obj.id] = obj
+    sentence_ids = [i.id for i in items if i.type == "repeat"]
+    sentences_by_id: dict[uuid.UUID, RepeatSentence] = {}
+    if sentence_ids:
+        for obj in session.exec(
+            select(RepeatSentence).where(col(RepeatSentence.id).in_(sentence_ids))
+        ).all():
+            sentences_by_id[obj.id] = obj
+    question_ids = [i.id for i in items if i.type == "question"]
+    questions_by_id: dict[uuid.UUID, ScenarioQuestion] = {}
+    scenario_ids: set[uuid.UUID] = set()
+    if question_ids:
+        for obj in session.exec(
+            select(ScenarioQuestion).where(col(ScenarioQuestion.id).in_(question_ids))
+        ).all():
+            questions_by_id[obj.id] = obj
+            scenario_ids.add(obj.scenario_id)
+    scenarios_by_id: dict[uuid.UUID, Scenario] = {}
+    if scenario_ids:
+        for obj in session.exec(
+            select(Scenario).where(col(Scenario.id).in_(scenario_ids))
+        ).all():
+            scenarios_by_id[obj.id] = obj
+
+    for item in items:
         if item.type == "passage":
-            obj = session.get(Passage, item.id)
-            if obj is None or not obj.is_active or obj.parent_passage_id is not None:
+            obj = passages_by_id.get(item.id)
+            if obj is None or not obj.is_active:
+                raise HTTPException(status_code=404, detail="朗读篇目不存在或已停用")
+            if obj.parent_passage_id is not None:
                 raise HTTPException(status_code=404, detail="朗读篇目不存在或已停用")
         elif item.type == "repeat":
-            if session.get(RepeatSentence, item.id) is None:
+            if sentences_by_id.get(item.id) is None:
                 raise HTTPException(status_code=404, detail="复述句不存在")
         else:
-            question = session.get(ScenarioQuestion, item.id)
+            question = questions_by_id.get(item.id)
             if question is None:
                 raise HTTPException(status_code=404, detail="问答题不存在")
-            scenario = session.get(Scenario, question.scenario_id)
+            scenario = scenarios_by_id.get(question.scenario_id)
             if scenario is None or not scenario.is_active:
                 raise HTTPException(status_code=422, detail="问答题所属主题已停用")
 
