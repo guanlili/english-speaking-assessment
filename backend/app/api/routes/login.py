@@ -1,7 +1,4 @@
-import time
-from collections import defaultdict
 from datetime import timedelta
-from threading import Lock
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -13,6 +10,7 @@ from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core import security
 from app.core.config import settings
+from app.core.ratelimit import SlidingWindowLimiter
 from app.models import Message, NewPassword, Token, UserPublic, UserUpdate
 from app.utils import (
     generate_password_reset_token,
@@ -21,42 +19,20 @@ from app.utils import (
     verify_password_reset_token,
 )
 
-_login_attempts: dict[str, list[float]] = defaultdict(list)
-_login_lock = Lock()
+_login_limiter = SlidingWindowLimiter(limit=10, window_s=300)
+# 兼容旧测试钩子：test_login 直接 clear 该 dict / 持锁操作清理用例间状态
+_login_attempts = _login_limiter._attempts  # noqa: SLF001
+_login_lock = _login_limiter._lock  # noqa: SLF001
 LOGIN_RATE_LIMIT = 10
 LOGIN_RATE_WINDOW_S = 300
-# 防键空间无限膨胀：超过该数量时清理窗口已全过期的键（攻击者随机伪造 username 可制造大量一次性键）
-_LOGIN_KEYS_PRUNE_THRESHOLD = 4096
 
 
 def _check_login_rate_limit(bucket: str) -> None:
-    now = time.monotonic()
-    with _login_lock:
-        if len(_login_attempts) > _LOGIN_KEYS_PRUNE_THRESHOLD:
-            cutoff = now - LOGIN_RATE_WINDOW_S
-            for key in [
-                k
-                for k, window in _login_attempts.items()
-                if not window or window[-1] < cutoff
-            ]:
-                _login_attempts.pop(key, None)
-        window = _login_attempts.get(bucket, [])
-        cutoff = now - LOGIN_RATE_WINDOW_S
-        while window and window[0] < cutoff:
-            window.pop(0)
-        if len(window) >= LOGIN_RATE_LIMIT:
-            raise HTTPException(
-                status_code=429,
-                detail="登录尝试过于频繁，请 5 分钟后再试",
-                headers={"Retry-After": str(LOGIN_RATE_WINDOW_S)},
-            )
-        window.append(now)
-        _login_attempts[bucket] = window
+    _login_limiter.check(bucket, detail="登录尝试过于频繁，请 5 分钟后再试")
 
 
 def _record_login_success(bucket: str) -> None:
-    with _login_lock:
-        _login_attempts.pop(bucket, None)
+    _login_limiter.record_success(bucket)
 
 
 router = APIRouter(tags=["login"])

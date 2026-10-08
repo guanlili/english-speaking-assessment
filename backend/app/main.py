@@ -1,9 +1,10 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import sentry_sdk
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
 
@@ -81,5 +82,17 @@ if settings.all_cors_origins:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+
+# 安全响应头（2026-10-08 审计）：后端直出的 JSON/音频响应也带基础防线；
+# HSTS 只在 TLS 后面有意义，由 nginx 的 443 server 块下发（见 nginx-tls.conf）
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next: Any) -> Response:
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    return response
+
 
 app.include_router(api_router, prefix=settings.API_V1_STR)

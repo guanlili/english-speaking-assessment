@@ -1,7 +1,7 @@
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import col, func, select
 
 from app import crud
@@ -11,6 +11,7 @@ from app.api.deps import (
     get_current_active_superuser,
 )
 from app.core.config import settings
+from app.core.ratelimit import SlidingWindowLimiter
 from app.core.security import get_password_hash, verify_password
 from app.models import (
     Message,
@@ -164,8 +165,12 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     return Message(message="User deleted successfully")
 
 
+# 开放注册限流：每 IP 每小时 10 次开户尝试（正常师生注册远低于此）
+_signup_limiter = SlidingWindowLimiter(limit=10, window_s=3600)
+
+
 @router.post("/signup", response_model=UserPublic)
-def register_user(session: SessionDep, user_in: UserRegister) -> Any:
+def register_user(session: SessionDep, user_in: UserRegister, request: Request) -> Any:
     """
     Create new user without the need to be logged in.
     """
@@ -174,6 +179,8 @@ def register_user(session: SessionDep, user_in: UserRegister) -> Any:
             status_code=403,
             detail="Open user registration is forbidden on this server",
         )
+    # 开放注册是匿名入口：按 IP 限流防脚本批量开户（与登录限流同款双桶模式）
+    _signup_limiter.check(f"ip:{request.client.host if request.client else 'unknown'}")
     user = crud.get_user_by_email(session=session, email=user_in.email)
     if user:
         raise HTTPException(
