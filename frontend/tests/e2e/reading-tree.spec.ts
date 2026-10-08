@@ -77,13 +77,15 @@ for (const width of [390, 820, 1180]) {
     await page.getByText("文章朗读", { exact: true }).click()
     const picker = page.getByTestId(`pick-article-${article.id}`)
     await expect(picker).toBeVisible()
+    // 拆分文章的选题卡标出逐句题数；勾选仍是整篇一个入口
+    await expect(picker.getByText("逐句 2 题")).toBeVisible()
     await picker.getByRole("button", { name: "查看内容" }).click()
     await expect(picker.getByRole("listitem")).toHaveCount(2)
     await expect(picker.getByRole("checkbox")).toHaveCount(1)
     await expect(picker.getByRole("checkbox")).not.toBeChecked()
     await picker.getByText(article.title, { exact: true }).click()
     await expect(picker.getByRole("checkbox")).toBeChecked()
-    await expect(page.getByText("朗读 1 篇", { exact: true })).toBeVisible()
+    await expect(page.getByText("朗读 1 篇 · 逐句 2 题")).toBeVisible()
     await noOverflow(page)
   })
 }

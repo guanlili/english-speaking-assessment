@@ -89,8 +89,8 @@ function QuestionLibrary() {
         </h2>
         <p className="text-sm text-muted-foreground">
           {t({
-            zh: "每篇文章是一道题。展开文章查看朗读分句，组卷时直接选择整篇文章；听句复述作为配套题单独管理。",
-            en: "Each article is one question. Expand it to view reading sentences, and select the whole article when composing practice. Paired Listen & Repeat items are managed separately.",
+            zh: "未拆分的文章整篇一道题；拆分过的文章组卷时按句出题，学生逐句朗读。听句复述作为配套题单独管理。",
+            en: "An unsplit article is one question; a split article becomes one question per sentence when composing practice, so students read aloud sentence by sentence. Paired Listen & Repeat items are managed separately.",
           })}
         </p>
         <PassagesAdmin key="bank" embedded />

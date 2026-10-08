@@ -351,10 +351,16 @@ function ComposerForm({
   const planCounts = useMemo(
     () => ({
       reading: planItems.filter((i) => i.type === "passage").length,
+      // 拆分文章按句展开后的逐句题数（预览摘要给学生视角的总题量）
+      readingSentences: selectedPassages.reduce(
+        (total, p) =>
+          total + (p.reading_split ? (p.reading_segments ?? []).length : 0),
+        0,
+      ),
       repeat: planItems.filter((i) => i.type === "repeat").length,
       qa: planItems.filter((i) => i.type === "question").length,
     }),
-    [planItems],
+    [planItems, selectedPassages],
   )
 
   const changed =
@@ -590,8 +596,8 @@ function ComposerForm({
               </h2>
               <p className="mb-3 mt-2 text-sm text-muted-foreground">
                 {t({
-                  zh: "每篇文章算一道题，可多选。展开查看分句，选择整篇文章即可。",
-                  en: "Each article counts as one question. Expand to view its sentences and select the whole article.",
+                  zh: "可多选：未拆分的文章整篇一道题；拆分过的文章按句出题，学生逐句朗读。",
+                  en: "Multi-select: unsplit articles count as one question; split articles become one question per sentence, read aloud sentence by sentence.",
                 })}
               </p>
               <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
@@ -841,8 +847,16 @@ function ComposerForm({
             <p className="font-medium">
               {planCounts.reading > 0
                 ? t({
-                    zh: `朗读 ${planCounts.reading} 篇`,
-                    en: `${planCounts.reading} Read Aloud`,
+                    zh: `朗读 ${planCounts.reading} 篇${
+                      planCounts.readingSentences > 0
+                        ? ` · 逐句 ${planCounts.readingSentences} 题`
+                        : ""
+                    }`,
+                    en: `${planCounts.reading} Read Aloud${
+                      planCounts.readingSentences > 0
+                        ? ` · ${planCounts.readingSentences} sentence questions`
+                        : ""
+                    }`,
                   })
                 : null}
               {planCounts.repeat > 0
@@ -957,6 +971,14 @@ function ComposerForm({
                   : item.type === "repeat"
                     ? selectedSentences.find((s) => s.id === item.id)
                     : scenarioQuestions.find((q) => q.id === item.id)
+              // 拆分文章：预览展示学生将逐句作答的句子清单（句序固定按原文）
+              const splitSegments =
+                item.type === "passage" &&
+                source &&
+                "reading_segments" in source &&
+                source.reading_split
+                  ? (source.reading_segments ?? [])
+                  : []
               return (
                 <li
                   key={assignmentItemKey(item)}
@@ -973,15 +995,44 @@ function ComposerForm({
                     {item.type === "passage" && source && "title" in source
                       ? ` · ${source.title}`
                       : ""}
+                    {item.type === "passage" && splitSegments.length > 0
+                      ? t({
+                          zh: ` · 逐句 ${splitSegments.length} 题`,
+                          en: ` · ${splitSegments.length} sentence questions`,
+                        })
+                      : ""}
                   </h3>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
-                    {source?.text}
-                  </p>
+                  {splitSegments.length > 0 ? (
+                    <ol className="mt-2 space-y-1.5">
+                      {splitSegments.map((segment, si) => (
+                        <li
+                          key={`${si}-${segment}`}
+                          className="flex min-w-0 gap-2 text-sm leading-6"
+                        >
+                          <span className="shrink-0 text-xs leading-6 text-muted-foreground">
+                            {si + 1}.
+                          </span>
+                          <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                            {segment}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
+                      {source?.text}
+                    </p>
+                  )}
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {t({
-                      zh: `建议 ${source?.suggested_seconds ?? 0} 秒`,
-                      en: `Suggested ${source?.suggested_seconds ?? 0}s`,
-                    })}
+                    {splitSegments.length > 0
+                      ? t({
+                          zh: "学生将逐句朗读，每句单独录音评分",
+                          en: "Students read aloud sentence by sentence, one recording each",
+                        })
+                      : t({
+                          zh: `建议 ${source?.suggested_seconds ?? 0} 秒`,
+                          en: `Suggested ${source?.suggested_seconds ?? 0}s`,
+                        })}
                   </p>
                 </li>
               )

@@ -469,6 +469,9 @@ export type PlanItem = {
     exam_level?: (string | null);
     cue_card_bullets?: (Array<(string)> | null);
     prep_seconds?: (number | null);
+    parent_id?: (string | null);
+    sentence_index?: (number | null);
+    sentence_total?: (number | null);
     frames?: (Array<SentenceFramePublic> | null);
 };
 
@@ -1771,6 +1774,12 @@ export type AdminSplitPassageIntoReadingsData = {
 };
 
 export type AdminSplitPassageIntoReadingsResponse = (PassageSplitResult);
+
+export type AdminUnsplitPassageReadingsData = {
+    passageId: string;
+};
+
+export type AdminUnsplitPassageReadingsResponse = (PassagePublic);
 
 export type AdminGenerateStandardAudioData = {
     requestBody: TtsRequest;

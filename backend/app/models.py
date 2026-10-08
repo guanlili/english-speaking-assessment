@@ -861,6 +861,10 @@ class PlanItem(SQLModel):
     # IELTS Part 2 话题卡要点与准备时间
     cue_card_bullets: list[str] | None = None
     prep_seconds: int | None = None
+    # 逐句朗读（文章拆句展开）：句子条目的合成 ID 指回真实篇目与句序
+    parent_id: uuid.UUID | None = None
+    sentence_index: int | None = None
+    sentence_total: int | None = None
     # 可替换句型推荐（按题目实际难度与用途分类；仅考试题注入）
     frames: list[SentenceFramePublic] | None = None
 

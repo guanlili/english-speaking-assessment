@@ -49,6 +49,7 @@ from app.models import (
     validate_exam_fields,
     validate_question_suggested_seconds,
 )
+from app.services import reading
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -1091,26 +1092,8 @@ def auto_split_sentences(
 
 
 def _split_reading_sentences(text: str) -> list[str]:
-    """保留标点、按原文顺序展示全部句子；分句不生成独立题目。"""
-    import re
-
-    return [
-        part.strip() for part in re.split(r"(?<=[.!?])\s+|\n+", text) if part.strip()
-    ]
-
-
-def _split_reading_sentences(text: str) -> list[str]:
-    """按正文顺序生成逐句朗读题，保留句末标点。"""
-    import re as _re
-
-    sentences: list[str] = []
-    for paragraph in _re.split(r"\n+", text):
-        sentences.extend(
-            sentence.strip()
-            for sentence in _re.split(r"(?<=[.!?])\s+", paragraph.strip())
-            if sentence.strip()
-        )
-    return sentences
+    """按正文顺序拆句，保留句末标点（算法真源在 services/reading.py）。"""
+    return reading.split_reading_sentences(text)
 
 
 class PassageSplitResult(SQLModel):
@@ -1126,7 +1109,7 @@ def split_passage_into_readings(
     passage_id: uuid.UUID,
     mode: Literal["paragraph", "sentence"] = "sentence",
 ) -> Any:
-    """启用文章内部的折叠分句展示；整篇文章仍是唯一的朗读题。"""
+    """启用逐句拆分：发布/练习时该文章按句展开成多道朗读题（见 services/reading.py）。"""
     passage = session.get(Passage, passage_id)
     if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
@@ -1148,6 +1131,24 @@ def split_passage_into_readings(
     session.add(passage)
     session.commit()
     return PassageSplitResult(created=len(segments))
+
+
+@router.delete("/passages/{passage_id}/split", response_model=PassagePublic)
+def unsplit_passage_readings(
+    session: SessionDep, _admin: TeacherUserDep, passage_id: uuid.UUID
+) -> Any:
+    """取消拆分：此后发布/练习回到整篇一道题；已发布快照不可变不受影响。"""
+    passage = session.get(Passage, passage_id)
+    if passage is None:
+        raise HTTPException(status_code=404, detail="Passage not found")
+    if passage.parent_passage_id is not None:
+        raise HTTPException(status_code=422, detail="请在原文章下取消拆分")
+    if passage.reading_split:
+        passage.reading_split = False
+        session.add(passage)
+        session.commit()
+    session.refresh(passage)
+    return passage
 
 
 # ── 内容标准音 ───────────────────────────────────────────────────────

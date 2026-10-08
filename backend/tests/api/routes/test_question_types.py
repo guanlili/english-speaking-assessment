@@ -409,12 +409,19 @@ def test_split_passage_into_readings(
     superuser_token_headers: dict[str, str],
     db: Session,
 ) -> None:
-    """长文自动拆分：分句归在文章内部，原文章仍是唯一朗读题。"""
+    """长文拆句：发布后按句展开成逐句朗读题（合成 ID 指回真实篇目）。"""
+    sentence_texts = [
+        "I went there with my parents and my younger brother because my father thought it would be educational for us.",
+        "Firstly, the building was very dark and old, and there were almost no other visitors inside.",
+        "Most of the exhibits were just old dusty photographs in small glass cases.",
+        "In the end, I felt it was boring because there was nothing engaging to see.",
+        "I was really relieved when we finally left.",
+    ]
     long_text = "\n".join(
         [
-            "I went there with my parents and my younger brother because my father thought it would be educational for us.",
-            "Firstly, the building was very dark and old, and there were almost no other visitors inside. Most of the exhibits were just old dusty photographs in small glass cases.",
-            "In the end, I felt it was boring because there was nothing engaging to see. I was really relieved when we finally left.",
+            sentence_texts[0],
+            f"{sentence_texts[1]} {sentence_texts[2]}",
+            f"{sentence_texts[3]} {sentence_texts[4]}",
         ]
     )
     resp = client.post(
@@ -470,8 +477,31 @@ def test_split_passage_into_readings(
     plan = client.get(
         f"/api/v1/classes/{code}/today", headers=student["headers"]
     ).json()
-    assert len(plan["items"]) == 1
-    assert plan["items"][0]["text"] == long_text
+    # 拆句展开：一篇文章 = N 道逐句朗读题
+    assert [i["text"] for i in plan["items"]] == sentence_texts
+    assert all(i["type"] == "passage" for i in plan["items"])
+    assert all(i["parent_id"] == original["id"] for i in plan["items"])
+    assert [i["sentence_index"] for i in plan["items"]] == [1, 2, 3, 4, 5]
+    assert all(i["sentence_total"] == 5 for i in plan["items"])
+    # 合成 ID 确定性：跨请求稳定（刷新恢复/结果页对齐依赖）
+    again = client.get(
+        f"/api/v1/classes/{code}/today", headers=student["headers"]
+    ).json()
+    assert [i["id"] for i in again["items"]] == [i["id"] for i in plan["items"]]
+
+    # 逐句条目可作答：发布会话从发布快照取内容评分
+    submit = client.post(
+        "/api/v1/attempts",
+        files={"audio": wav_upload(3.0)},
+        data={
+            "item_type": "passage",
+            "item_id": plan["items"][0]["id"],
+            "duration_s": "3.0",
+            "session_id": plan["session_id"],
+        },
+        headers=student["headers"],
+    )
+    assert submit.status_code == 200, submit.text
 
     # 编辑正文会刷新分句，但已发布快照不随题库编辑变化。
     edited = "The first sentence. The second sentence!"
@@ -492,7 +522,27 @@ def test_split_passage_into_readings(
     plan = client.get(
         f"/api/v1/classes/{code}/today", headers=student["headers"]
     ).json()
-    assert plan["items"][0]["text"] == long_text
+    assert [i["text"] for i in plan["items"]] == sentence_texts
+
+    # 取消拆分：再发布回到整篇一道题（已发布快照不受影响）
+    unsplit = client.delete(
+        f"/api/v1/admin/passages/{original['id']}/split",
+        headers=superuser_token_headers,
+    )
+    assert unsplit.status_code == 200, unsplit.text
+    assert unsplit.json()["reading_split"] is False
+    republished = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"items": [{"type": "passage", "id": original["id"]}]},
+        headers=superuser_token_headers,
+    )
+    assert republished.status_code == 200, republished.text
+    plan = client.get(
+        f"/api/v1/classes/{code}/today", headers=student["headers"]
+    ).json()
+    assert len(plan["items"]) == 1
+    assert plan["items"][0]["id"] == original["id"]
+    assert plan["items"][0]["text"] == edited
 
     # 只有一句时拒绝拆分（单段多句可拆）
     single = client.post(
@@ -576,8 +626,12 @@ def test_legacy_split_children_are_hidden_but_published_snapshots_survive(
     plan = client.get(
         f"/api/v1/classes/{code}/today", headers=student["headers"]
     ).json()
-    assert len(plan["items"]) == 1
-    assert plan["items"][0]["text"] == article["text"]
+    # 迁移后的父篇目已带 reading_split：再发布按句展开成逐句题
+    assert [i["text"] for i in plan["items"]] == [
+        "First sentence.",
+        "Second sentence.",
+    ]
+    assert all(i["parent_id"] == article["id"] for i in plan["items"])
     deleted = client.delete(f"/api/v1/admin/passages/{article['id']}", headers=headers)
     assert deleted.status_code == 200, deleted.text
     db.expire_all()
@@ -587,7 +641,7 @@ def test_legacy_split_children_are_hidden_but_published_snapshots_survive(
 def test_split_passage_into_sentence_readings(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    """兼容 mode=sentence：句子保持顺序和标点，但整篇文章是一道题。"""
+    """兼容 mode=sentence：句子保持顺序和标点，发布时逐句展开。"""
     sentences = ["What is your favorite food?", "I enjoy mooncakes.", "They are sweet!"]
     created = client.post(
         "/api/v1/admin/passages",
@@ -617,6 +671,112 @@ def test_split_passage_into_sentence_readings(
     client.delete(
         f"/api/v1/admin/passages/{original_id}", headers=superuser_token_headers
     )
+
+
+def test_split_expansion_over_limit_rejected(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    """拆句展开后超过单次发布 100 题上限：按展开后题数 422。"""
+    text = " ".join(f"Practice sentence number {i} goes here." for i in range(101))
+    created = client.post(
+        "/api/v1/admin/passages",
+        json={"title": "Too Long", "topic": "Places", "text": text},
+        headers=superuser_token_headers,
+    )
+    assert created.status_code == 200, created.text
+    passage_id = created.json()["id"]
+    split = client.post(
+        f"/api/v1/admin/passages/{passage_id}/split",
+        headers=superuser_token_headers,
+    )
+    assert split.status_code == 200, split.text
+    classroom = _classroom(client, superuser_token_headers)
+    refused = client.put(
+        f"/api/v1/classes/{classroom['code']}/assignment",
+        json={"items": [{"type": "passage", "id": passage_id}]},
+        headers=superuser_token_headers,
+    )
+    assert refused.status_code == 422
+    assert "100" in refused.json()["detail"]
+    client.delete(
+        f"/api/v1/admin/passages/{passage_id}", headers=superuser_token_headers
+    )
+
+
+def test_explore_split_passage_sentence_fallback(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """自主练习（非发布会话）：拆句篇目逐句出题，合成 ID 提交走展开兜底。"""
+    headers = superuser_token_headers
+    unit = client.post(
+        "/api/v1/admin/units",
+        json={"order_index": 95, "title": "Explore Split", "topic": "ExploreSplit"},
+        headers=headers,
+    ).json()
+    created = client.post(
+        "/api/v1/admin/passages",
+        json={
+            "slug": f"explore-split-{uuid.uuid4().hex[:8]}",
+            "title": "Explore Article",
+            "topic": "ExploreSplit",
+            "cefr_band": "B1",
+            "text": "Morning light fills the room. Birds sing outside the window.",
+            "suggested_seconds": 30,
+            "unit_id": unit["id"],
+        },
+        headers=headers,
+    )
+    assert created.status_code == 200, created.text
+    passage_id = created.json()["id"]
+    split = client.post(f"/api/v1/admin/passages/{passage_id}/split", headers=headers)
+    assert split.status_code == 200, split.text
+
+    classroom = _classroom(client, headers)
+    code = classroom["code"]
+    # 只开朗读题型勾选（不发布任何练习，会话保持非发布路径）
+    client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={"assign_reading": True},
+        headers=headers,
+    )
+    student = make_student(db, client, code, "探索拆句学生")
+    explore = client.post(
+        f"/api/v1/classes/{code}/explore",
+        json={"unit_id": unit["id"]},
+        headers=student["headers"],
+    )
+    assert explore.status_code == 200, explore.text
+    session_id = explore.json()["session_id"]
+
+    plan = client.get(
+        f"/api/v1/classes/{code}/today",
+        params={"session_id": session_id},
+        headers=student["headers"],
+    ).json()
+    assert [i["text"] for i in plan["items"]] == [
+        "Morning light fills the room.",
+        "Birds sing outside the window.",
+    ]
+    assert all(i["parent_id"] == passage_id for i in plan["items"])
+
+    # 非发布会话：合成 ID 没有篇目行，提交靠拆分篇目重展开兜底
+    submit = client.post(
+        "/api/v1/attempts",
+        files={"audio": wav_upload(3.0)},
+        data={
+            "item_type": "passage",
+            "item_id": plan["items"][1]["id"],
+            "duration_s": "3.0",
+            "session_id": session_id,
+        },
+        headers=student["headers"],
+    )
+    assert submit.status_code == 200, submit.text
+
+    # 清理：取消课堂指派状态并删内容（共享库防污染）
+    client.delete(f"/api/v1/admin/passages/{passage_id}", headers=headers)
 
 
 def test_delete_classroom_guards(

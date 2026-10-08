@@ -34,6 +34,7 @@ from app.models import (
 )
 from app.scoring.audio_convert import probe_audio
 from app.services import exam as exam_service
+from app.services import reading
 
 router = APIRouter(tags=["attempts"])
 
@@ -83,6 +84,11 @@ def _snapshot_attempt_item(
     if item_type == AttemptItemType.PASSAGE:
         item = session.get(Passage, item_id)
         if item is None:
+            # 非发布会话（单元指派/自主练习）的逐句条目是合成 ID：
+            # 对拆分中的活动篇目重做展开按 ID 匹配
+            sentence_item = reading.find_reading_item_by_id(session, item_id)
+            if sentence_item is not None:
+                return sentence_item
             raise HTTPException(status_code=404, detail="题目不存在")
         return {
             "type": item_type,

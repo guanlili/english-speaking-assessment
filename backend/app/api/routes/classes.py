@@ -86,6 +86,7 @@ from app.scoring.gamification import (
 )
 from app.services import exam as exam_service
 from app.services import exercise as exercise_service
+from app.services import reading
 
 logger = logging.getLogger(__name__)
 
@@ -466,7 +467,8 @@ def _resolve_active_daily_session(
             for item in exercise.snapshot_items:
                 if item.get("type") == AttemptItemType.PASSAGE:
                     try:
-                        anchor_id = uuid.UUID(str(item["id"]))
+                        # 逐句条目是合成 ID：锚点外键必须落回真实篇目行
+                        anchor_id = uuid.UUID(str(item.get("parent_id") or item["id"]))
                     # fmt: skip：括号必须保留——ruff 对 py314 会把括号格式化掉，
                     # 而 PEP 758 裸逗号写法 ≤3.13 的工具链（含系统 python3）无法解析
                     except (KeyError, ValueError):  # fmt: skip
@@ -547,6 +549,16 @@ def _snapshot_optional_int(value: object | None) -> int | None:
     return None
 
 
+def _snapshot_uuid(value: object | None) -> uuid.UUID | None:
+    """快照可空 UUID 字段：None/非法 → None（逐句条目的 parent_id 用）。"""
+    if value is None:
+        return None
+    try:
+        return uuid.UUID(str(value))
+    except ValueError, TypeError:
+        return None
+
+
 def _plan_item_from_snapshot(
     item: dict[str, object],
     listen_counts: dict[uuid.UUID, int] | None = None,
@@ -604,6 +616,10 @@ def _plan_item_from_snapshot(
             else None
         ),
         prep_seconds=prep,
+        # 逐句朗读条目（文章拆句展开）：真实篇目 ID 与句序
+        parent_id=_snapshot_uuid(item.get("parent_id")),
+        sentence_index=_snapshot_optional_int(item.get("sentence_index")),
+        sentence_total=_snapshot_optional_int(item.get("sentence_total")),
     )
 
 
@@ -897,17 +913,12 @@ def read_today_plan(
             listen_counts = {ln.item_id: ln.count for ln in listens}
 
         if include_reading_build:
-            items += [
-                PlanItem(
-                    type=AttemptItemType.PASSAGE,
-                    id=p.id,
-                    text=p.text,
-                    translation=p.translation,
-                    audio_url=p.audio_url,
-                    suggested_seconds=p.suggested_seconds,
-                )
-                for p in reading_passages
-            ]
+            # 拆句的篇目展开成逐句条目（与发布快照同一算法），未拆分保持整篇
+            for p in reading_passages:
+                for snapshot in reading.expand_reading_items(p):
+                    item = _plan_item_from_snapshot(snapshot)
+                    if item is not None:
+                        items.append(item)
         items += [
             PlanItem(
                 type=AttemptItemType.REPEAT,
@@ -2370,10 +2381,22 @@ def set_assignment(
     if body.items is not None:
         if body.items:
             exercise_service.validate_assignment_items(session, body.items)
-            snapshots = [
-                exercise_service.build_snapshot_item(session, item.type, item.id)
-                for item in body.items
-            ]
+            snapshots: list[dict[str, object]] = []
+            for item in body.items:
+                if item.type == AttemptItemType.PASSAGE:
+                    # 拆句篇目展开成逐句快照（validate 已确认行存在且启用）
+                    passage = session.get(Passage, item.id)
+                    if passage is None:  # validate 之后并发删除的兜底
+                        raise HTTPException(
+                            status_code=404, detail="朗读篇目不存在或已停用"
+                        )
+                    snapshots.extend(reading.expand_reading_items(passage))
+                else:
+                    snapshots.append(
+                        exercise_service.build_snapshot_item(
+                            session, item.type, item.id
+                        )
+                    )
             exercise_service.publish_exercise(
                 session=session,
                 classroom=classroom,
@@ -2382,6 +2405,10 @@ def set_assignment(
                 title=body.title,
                 is_exam=body.is_exam,
                 time_limit_minutes=body.time_limit_minutes,
+                # 指派镜像只存真实题目 ID（合成句子 ID 只进快照）
+                assignment_items=[
+                    {"type": str(item.type), "id": str(item.id)} for item in body.items
+                ],
             )
             classroom.current_unit_id = None  # 按题模式取代单元指派
             # assigned_items 保留（_publish_exercise 已写入）：读取优先快照，
@@ -2418,12 +2445,9 @@ def set_assignment(
             raise HTTPException(status_code=422, detail="该单元没有启用篇目，不能发布")
         snapshots: list[dict[str, object]] = []
         if classroom.assign_reading is True:
-            snapshots.extend(
-                exercise_service.build_snapshot_item(
-                    session, AttemptItemType.PASSAGE, p.id
-                )
-                for p in passages
-            )
+            for p in passages:
+                # 拆句篇目逐句展开，未拆分整篇一条（与按题发布同口径）
+                snapshots.extend(reading.expand_reading_items(p))
         if classroom.assign_repeat is not False:
             for passage in passages:
                 sentences = session.exec(

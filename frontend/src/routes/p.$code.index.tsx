@@ -831,6 +831,15 @@ function ClassroomPracticePage() {
   )
 
   const isPassage = currentItem.type === "passage"
+  // 文章拆句展开的逐句条目：标出句序，提示语与整篇朗读区分
+  const isSentenceItem = isPassage && currentItem.sentence_index != null
+  const sentenceProgress =
+    isSentenceItem && currentItem.sentence_total
+      ? t({
+          zh: `第 ${currentItem.sentence_index}/${currentItem.sentence_total} 句`,
+          en: `Sentence ${currentItem.sentence_index}/${currentItem.sentence_total}`,
+        })
+      : null
   const itemPromptLabel = examKind
     ? t(EXAM_KIND_LABELS[examKind] ?? { zh: examKind, en: examKind })
     : isQuestion
@@ -838,29 +847,39 @@ function ClassroomPracticePage() {
           zh: "YOUR TURN · 分享你的想法",
           en: "YOUR TURN · Share your thoughts",
         })
-      : isPassage
-        ? t({
-            zh: "READ ALOUD · 大声朗读全文",
-            en: "READ ALOUD · Read the full text aloud",
-          })
-        : t({
-            zh: "LISTEN & REPEAT · 听一听，再试着说",
-            en: "LISTEN & REPEAT · Listen, then try to say it",
-          })
+      : isSentenceItem
+        ? `${t({
+            zh: "READ ALOUD · 逐句朗读",
+            en: "READ ALOUD · Sentence by sentence",
+          })} · ${sentenceProgress}`
+        : isPassage
+          ? t({
+              zh: "READ ALOUD · 大声朗读全文",
+              en: "READ ALOUD · Read the full text aloud",
+            })
+          : t({
+              zh: "LISTEN & REPEAT · 听一听，再试着说",
+              en: "LISTEN & REPEAT · Listen, then try to say it",
+            })
   const itemHintZh = isQuestion
     ? t({
         zh: "试着说出你的观点，再用一个理由或小例子支持它。",
         en: "State your opinion, then back it up with a reason or a quick example.",
       })
-    : isPassage
+    : isSentenceItem
       ? t({
-          zh: "先扫一眼生词，然后完整朗读。停顿和语调自然比逐词准确更重要。",
-          en: "Skim the new words first, then read it through. Natural pauses and intonation matter more than word-by-word accuracy.",
+          zh: "把这一句读清楚。停顿和语调自然比逐词准确更重要。",
+          en: "Read this sentence clearly. Natural pauses and intonation matter more than word-by-word accuracy.",
         })
-      : t({
-          zh: "先听完整句子，再跟着节奏说。比起说得快，说得自然更重要。",
-          en: "Listen to the full sentence first, then follow its rhythm. Sounding natural beats speaking fast.",
-        })
+      : isPassage
+        ? t({
+            zh: "先扫一眼生词，然后完整朗读。停顿和语调自然比逐词准确更重要。",
+            en: "Skim the new words first, then read it through. Natural pauses and intonation matter more than word-by-word accuracy.",
+          })
+        : t({
+            zh: "先听完整句子，再跟着节奏说。比起说得快，说得自然更重要。",
+            en: "Listen to the full sentence first, then follow its rhythm. Sounding natural beats speaking fast.",
+          })
 
   return (
     <StudentShell active="practice">
@@ -1169,7 +1188,7 @@ function ClassroomPracticePage() {
                 ) : (
                   <>
                     <p
-                      className={`prompt-display min-h-24 ${exam ? "select-none" : ""}`}
+                      className={`prompt-display min-h-24 whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${exam ? "select-none" : ""}`}
                     >
                       {hideText
                         ? t({
