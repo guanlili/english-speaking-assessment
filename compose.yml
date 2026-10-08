@@ -21,7 +21,9 @@ x-backend-common: &backend-common
     POSTGRES_SERVER: db
     # nginx（frontend 容器）是 backend 唯一上游且 backend 不对外发布端口：
     # 信任其 X-Forwarded-For，否则 request.client.host 恒为 nginx 容器 IP，
-    # 登录限流会退化成全站共用一个桶（任何人连错 10 次密码全校被锁）
+    # 登录限流会退化成全站共用一个桶（任何人连错 10 次密码全校被锁）。
+    # 伪造防线在 nginx 侧：X-Forwarded-For 用 $remote_addr 覆写而非追加
+    # （见 frontend/nginx*.conf），客户端自带的伪造链进不来
     FORWARDED_ALLOW_IPS: "*"
     FRONTEND_HOST: ${FRONTEND_HOST?Variable not set}
     SECRET_KEY: ${SECRET_KEY?Variable not set}

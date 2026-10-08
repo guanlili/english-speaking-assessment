@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -16,6 +16,7 @@ from sqlmodel import Session, select
 
 from app.api.deps import OptionalCurrentUser, ScoringSubmitter, SessionDep
 from app.core.config import settings
+from app.core.ratelimit import SlidingWindowLimiter
 from app.core.storage import save_audio_file
 from app.crud import create_attempt, get_attempt
 from app.models import (
@@ -40,6 +41,9 @@ router = APIRouter(tags=["attempts"])
 
 # PRD US-02：短于 1 秒不打分，提示再录
 MIN_DURATION_S = 1.0
+# 作答提交限流（付费评分链路）：学生按人 / 匿名按 IP，各 60 次 / 5 分钟
+_attempt_user_limiter = SlidingWindowLimiter(limit=60, window_s=300)
+_attempt_ip_limiter = SlidingWindowLimiter(limit=60, window_s=300)
 # 队列容量上限：超过时前端保留录音并提示稍后重试
 MAX_QUEUE_SIZE = 200
 # 分段读取的块大小（限量读取，避免整文件无上限进内存）
@@ -192,6 +196,7 @@ def _require_attempt_access(
 def create_attempt_upload(
     session: SessionDep,
     submitter: ScoringSubmitter,
+    request: Request,
     current_user: OptionalCurrentUser = None,
     audio: UploadFile = File(..., description="浏览器 MediaRecorder 录制的音频"),
     item_type: str = Form(...),
@@ -221,6 +226,16 @@ def create_attempt_upload(
             _require_attempt_access(session, existing, current_user)
             session.refresh(existing)
             return existing
+
+    # 限流（评分是付费链路：每次提交 = 一次 ASR 转写）：学生按人、其余按
+    # IP。放在幂等重放之后——断网重传同键不占配额。60 次/5 分钟对正常
+    # 作答节奏（录音 ≥3 秒 + 上传 + 轮询）极宽松，只挡脚本刷接口
+    if student is not None:
+        _attempt_user_limiter.check(f"student:{student.id}")
+    else:
+        _attempt_ip_limiter.check(
+            f"ip:{request.client.host if request.client else 'unknown'}"
+        )
 
     # 模考门禁：整场限时（服务端强约束）+ 每题一次作答。
     # 放在幂等检查之后：同一次录音断网重试（同幂等键）不受影响
