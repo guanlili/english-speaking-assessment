@@ -336,13 +336,20 @@ async def import_vocab_preview(_teacher: TeacherUserDep, file: UploadFile) -> An
 
 @router.get("/vocabulary/books", response_model=list[VocabularyBookPublic])
 def list_books(session: SessionDep, current_user: TeacherUserDep) -> Any:
-    """词库列表：公共词库全体教师可见；班级词库仅本班教师（管理员全见）。"""
-    books = session.exec(
-        select(VocabularyBook).order_by(col(VocabularyBook.created_at))
-    ).all()
-    visible = [b for b in books if _book_visible(b, current_user)]
-    counts = _book_word_count(session, [b.id for b in visible])
-    return [_book_public(b, counts.get(b.id, 0)) for b in visible]
+    """词库列表：公共词库全体教师可见；班级词库仅本班教师（管理员全见）。
+
+    可见性在 SQL 层过滤（与 _book_visible 同谓词：public 或本人创建），
+    不把别人的班级词库整表拉回 Python 再丢掉。
+    """
+    statement = select(VocabularyBook).order_by(col(VocabularyBook.created_at))
+    if not current_user.is_superuser:
+        statement = statement.where(
+            (col(VocabularyBook.scope) == "public")  # type: ignore[union-attr]
+            | (col(VocabularyBook.owner_id) == current_user.id)  # type: ignore[union-attr]
+        )
+    books = session.exec(statement).all()
+    counts = _book_word_count(session, [b.id for b in books])
+    return [_book_public(b, counts.get(b.id, 0)) for b in books]
 
 
 @router.post("/vocabulary/books", response_model=VocabularyBookDetail)

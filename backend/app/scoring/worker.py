@@ -676,8 +676,11 @@ def sweep_orphans(session: Session) -> int:
             submit_attempt_scoring(attempt_id)
             resubmitted += 1
     stale_cutoff = datetime.now(UTC) - timedelta(seconds=SCORING_STALE_TIMEOUT_S)
-    # load_only 只取 rubric/created_at：DONE 量随学期累积，整行加载会把
-    # transcript/item_snapshot 等大 JSON 列也拖进来，60s 一轮的清扫扛不住
+    # load_only 只取 rubric/created_at；SQL 层直接筛「rubric 处于 pending」
+    # （rubric->>'status'）：DONE 量随学期累积，绝大多数历史行 rubric 为
+    # null/已关闭，不该每 60s 拉回 Python 再丢掉。索引不盲加——候选集经
+    # status+created_at 前缀过滤后已足够小，是否需要 JSON 表达式索引由
+    # perf_baseline 实测 EXPLAIN 决定
     pending = session.exec(
         select(Attempt)
         .options(
@@ -690,6 +693,7 @@ def sweep_orphans(session: Session) -> int:
         .where(
             Attempt.status == AttemptStatus.DONE,
             col(Attempt.created_at) < stale_cutoff,  # type: ignore[operator]
+            col(Attempt.rubric)["status"].as_string() == "pending",  # type: ignore[index]
         )
     ).all()
     check_now = datetime.now(UTC)
@@ -706,8 +710,9 @@ def startup_recovery() -> None:
     from app.core.db import engine
 
     with Session(engine) as session:
-        # 同 sweep_orphans：只取 rubric/created_at 判挂起，避免启动时全行
-        # 加载大 JSON 列；挂起按详情阶段开始时刻判定（详见 _detail_stale）
+        # 同 sweep_orphans：SQL 层筛「rubric 处于 pending」+ load_only 窄列，
+        # 启动不把整个学期的 DONE 行拉回 Python；挂起按详情阶段开始时刻
+        # 判定（详见 _detail_stale）
         check_now = datetime.now(UTC)
         for attempt in session.exec(
             select(Attempt)
@@ -718,7 +723,10 @@ def startup_recovery() -> None:
                     Attempt.created_at,  # ty: ignore[invalid-argument-type]
                 )
             )
-            .where(Attempt.status == AttemptStatus.DONE)
+            .where(
+                Attempt.status == AttemptStatus.DONE,
+                col(Attempt.rubric)["status"].as_string() == "pending",  # type: ignore[index]
+            )
         ).all():
             if _detail_stale(attempt, check_now):
                 attempt.rubric = {"status": "unavailable"}
