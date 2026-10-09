@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
 
+from sqlalchemy import update
 from sqlalchemy.orm import load_only
 from sqlmodel import Session, col, func, select
 
@@ -40,6 +41,10 @@ logger = logging.getLogger(__name__)
 _executor: ThreadPoolExecutor | None = None
 _detail_executor: ThreadPoolExecutor | None = None
 _executor_lock = threading.Lock()
+# 终局关闭标志（返修R07）：置位后池创建与投递在同一把锁内被拒绝——
+# 已通过检查、尚未实际 submit 的迟到回调（Timer/清扫/主评分收尾）
+# 都不能再重建线程池。测试中途排水用 shutdown_executor(final=False)
+_executor_stopped = False
 # 在飞重试 Timer 登记：退出时统一取消
 _retry_timers: set[threading.Timer] = set()
 _retry_timers_lock = threading.Lock()
@@ -59,10 +64,12 @@ def _schedule_retry(attempt_id: uuid.UUID, delay: float) -> None:
     def fire() -> None:
         with _retry_timers_lock:
             _retry_timers.discard(holder["timer"])
-        # 线程池已关闭（进程退出）：放弃重投，不重建线程池
-        if _executor is None:
-            logger.info("scoring executor shut down; drop retry for %s", attempt_id)
-            return
+        # 终局关闭后放弃重投：检查与投递在 executor 锁内与 shutdown 串行化，
+        # 不存在「检查已通过、池被关闭又重建」的窗口（返修R07）
+        with _executor_lock:
+            if _executor_stopped:
+                logger.info("scoring executor stopped; drop retry for %s", attempt_id)
+                return
         submit_attempt_scoring(attempt_id)
 
     timer = threading.Timer(delay, fire)
@@ -342,11 +349,15 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
     if attempt is None:
         return  # 已被其他 worker 领取或已处理
 
+    # 租约令牌在写入前局部生成（返修R04）：commit 默认 expire ORM，
+    # 之后读 attempt.claimed_at 会触发重新 SELECT——若本线程在提交后停顿
+    # 且已被回收重领，会「认领」别人的新令牌。令牌只存在于局部变量
+    claim_token = datetime.now(UTC)
     attempt.status = AttemptStatus.SCORING
-    attempt.claimed_at = datetime.now(UTC)
+    attempt.claimed_at = claim_token
     session.add(attempt)
     session.commit()
-    lease_token = attempt.claimed_at
+    lease_token = claim_token
 
     def lease_valid() -> bool:
         """行锁内裸读领取代次：仍处 scoring 且 claimed_at 是本线程领取值。
@@ -405,10 +416,11 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             # 阶段推进即心跳，健康慢任务不会被误判成失联僵尸
             attempt.transcript = transcript
             attempt.engine = engine
-            attempt.claimed_at = datetime.now(UTC)
+            renewal = datetime.now(UTC)
+            attempt.claimed_at = renewal
             session.add(attempt)
             session.commit()
-            lease_token = attempt.claimed_at
+            lease_token = renewal
 
         read_aloud = _resolve_read_aloud_item(session, attempt)
         if read_aloud is not None:
@@ -438,11 +450,13 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             # rubric 四维与模拟分（PRD US-08）：仅 ark 引擎；失败降级不出假分
             # 空转写（没说话/识别不到）不出 0 分模拟——界面显示暂缺
             if engine in {"ark", "volc_flash"} and transcript.strip():
-                # pending_since 记录详情阶段开始时刻：挂起超时按此判定，
-                # 不再按录音创建时间（长排队后刚进入 rubric 会被误杀）
+                # 详情任务入队（返修R06）：queued_at 是排队时刻；真正开始
+                # 执行时 _complete_detail 会改写为 executing + pending_since。
+                # 挂起超时按阶段判定——合法的线程池排队不该被当线程丢失
                 attempt.rubric = {
                     "status": "pending",
-                    "pending_since": datetime.now(UTC).isoformat(),
+                    "phase": "queued",
+                    "queued_at": datetime.now(UTC).isoformat(),
                 }
                 detail_request = (prompt, band, transcript)
 
@@ -493,14 +507,43 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
     session.commit()
 
     if detail_request is not None and attempt.status == AttemptStatus.DONE:
-        _detail_executor = _get_or_create_detail_executor()
-        _detail_executor.submit(_complete_detail, attempt_id, *detail_request)
+        # 退出中完成的主评分：优雅放弃详情投递（重启后 startup 兜底），
+        # 不抛错也不重建已关闭的详情池（返修R07）
+        with _executor_lock:
+            if _executor_stopped:
+                logger.info("executor stopped; skip detail submit for %s", attempt_id)
+                return
+            detail_executor = _ensure_detail_executor_locked()
+        detail_executor.submit(_complete_detail, attempt_id, *detail_request)
 
 
 def _complete_detail(
     attempt_id: uuid.UUID, prompt: str, band: str, transcript: str
 ) -> None:
     from app.core.db import engine
+
+    # 执行开始即续期（返修R06）：排队时刻换成执行时刻，清扫的 120 秒
+    # 超时从此计——线程池排队再久也不会被误判；已被清扫关闭（非
+    # pending）则放弃本次调用，不烧费用
+    with Session(engine) as session:
+        attempt = session.get(Attempt, attempt_id)
+        if attempt is not None and attempt.status == AttemptStatus.DONE:
+            session.refresh(attempt, with_for_update=True)
+            rubric = attempt.rubric if isinstance(attempt.rubric, dict) else None
+            if (
+                attempt.status == AttemptStatus.DONE
+                and rubric is not None
+                and rubric.get("status") == "pending"
+            ):
+                attempt.rubric = {
+                    "status": "pending",
+                    "phase": "executing",
+                    "pending_since": datetime.now(UTC).isoformat(),
+                }
+                session.add(attempt)
+                session.commit()
+            else:
+                return
 
     result = _score_rubric(prompt, band, transcript)
     with Session(engine) as session:
@@ -541,32 +584,64 @@ def _run_in_worker(attempt_id: uuid.UUID) -> None:
                 submit_attempt_scoring(attempt_id)
 
 
-def get_executor() -> ThreadPoolExecutor:
+def _ensure_executor_locked() -> ThreadPoolExecutor:
+    """在已持有 _executor_lock 的前提下确保主评分池存在（返修R07）。
+
+    终局关闭后拒绝重建：创建、投递与关闭共享同一把锁，「检查通过后
+    池被关闭又重建」的窗口不存在。
+    """
     global _executor
     if _executor is None:
-        with _executor_lock:
-            if _executor is None:
-                _executor = ThreadPoolExecutor(
-                    max_workers=settings.SCORING_WORKERS,
-                    thread_name_prefix="scoring",
-                )
+        if _executor_stopped:
+            raise RuntimeError(
+                "scoring executor stopped; cannot recreate after final shutdown"
+            )
+        _executor = ThreadPoolExecutor(
+            max_workers=settings.SCORING_WORKERS,
+            thread_name_prefix="scoring",
+        )
     return _executor
 
 
-def _get_or_create_detail_executor() -> ThreadPoolExecutor:
+def get_executor() -> ThreadPoolExecutor:
+    """获取（必要时创建）主评分线程池。测试中途排水后复用见
+    shutdown_executor(final=False)。"""
+    if _executor is None:
+        with _executor_lock:
+            _ensure_executor_locked()
+    assert _executor is not None
+    return _executor
+
+
+def _ensure_detail_executor_locked() -> ThreadPoolExecutor:
     global _detail_executor
     if _detail_executor is None:
+        if _executor_stopped:
+            raise RuntimeError(
+                "detail executor stopped; cannot recreate after final shutdown"
+            )
+        _detail_executor = ThreadPoolExecutor(
+            max_workers=settings.SCORING_WORKERS,
+            thread_name_prefix="feedback",
+        )
+    return _detail_executor
+
+
+def _get_or_create_detail_executor() -> ThreadPoolExecutor:
+    if _detail_executor is None:
         with _executor_lock:
-            if _detail_executor is None:
-                _detail_executor = ThreadPoolExecutor(
-                    max_workers=settings.SCORING_WORKERS,
-                    thread_name_prefix="feedback",
-                )
+            _ensure_detail_executor_locked()
+    assert _detail_executor is not None
     return _detail_executor
 
 
 def submit_attempt_scoring(attempt_id: uuid.UUID) -> None:
-    get_executor().submit(_run_in_worker, attempt_id)
+    with _executor_lock:
+        if _executor_stopped:
+            logger.info("scoring executor stopped; skip resubmit for %s", attempt_id)
+            return
+        executor = _ensure_executor_locked()
+    executor.submit(_run_in_worker, attempt_id)
 
 
 def recover_stale_attempts(session: Session) -> int:
@@ -625,27 +700,47 @@ def recover_stale_attempts(session: Session) -> int:
     return recovered
 
 
-def _detail_stale(attempt: Attempt, now: datetime) -> bool:
-    """详情阶段挂起超时判定：按详情开始时刻（pending_since），不按录音创建时间。
+# 详情任务在队列里的最长等待（返修R06）：排队 30 分钟仍未开始执行，
+# 视为线程/任务丢失；正常 backlog（线程数有限）不会触达
+DETAIL_QUEUED_STALE_TIMEOUT_S = 30 * 60
 
-    旧口径用 created_at：长排队后刚进入 rubric 的作答会被 60s 一轮的清扫
-    误标 unavailable。历史行没有 pending_since 时沿用创建时间（兼容）。
+
+def _detail_stale_values(
+    rubric: dict[str, object] | None, created_at: datetime | None, now: datetime
+) -> bool:
+    """详情挂起超时判定（值语义，供 ORM 快照与行锁重读共用）。
+
+    - phase=queued：按 queued_at，超过 30 分钟才视为任务丢失——线程池
+      正常排队（40 份任务 × 慢调用）不误判（返修R06）；
+    - phase=executing（或历史行无 phase）：按 pending_since（缺失回落
+      created_at）判 120 秒——真正开始过的调用超时即失联；
     """
-    rubric = attempt.rubric if isinstance(attempt.rubric, dict) else None
     if rubric is None or rubric.get("status") != "pending":
         return False
-    base: datetime | None = None
-    since = rubric.get("pending_since")
-    if isinstance(since, str):
-        try:
-            base = datetime.fromisoformat(since)
-        except ValueError:
-            base = None
-    if base is None:
-        base = attempt.created_at
+
+    def _parse(value: object) -> datetime | None:
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                return None
+        return None
+
+    if rubric.get("phase") == "queued":
+        base = _parse(rubric.get("queued_at")) or created_at
+        timeout = DETAIL_QUEUED_STALE_TIMEOUT_S
+    else:
+        base = _parse(rubric.get("pending_since")) or created_at
+        timeout = SCORING_STALE_TIMEOUT_S
     if base is None:
         return True
-    return now - base > timedelta(seconds=SCORING_STALE_TIMEOUT_S)
+    return now - base > timedelta(seconds=timeout)
+
+
+def _detail_stale(attempt: Attempt, now: datetime) -> bool:
+    """详情阶段挂起超时判定（ORM 便捷封装）。"""
+    rubric = attempt.rubric if isinstance(attempt.rubric, dict) else None
+    return _detail_stale_values(rubric, attempt.created_at, now)
 
 
 def sweep_orphans(session: Session) -> int:
@@ -697,10 +792,33 @@ def sweep_orphans(session: Session) -> int:
         )
     ).all()
     check_now = datetime.now(UTC)
+    closed = 0
     for attempt in pending:
-        if _detail_stale(attempt, check_now):
-            attempt.rubric = {"status": "unavailable"}
-            session.add(attempt)
+        if not _detail_stale(attempt, check_now):
+            continue
+        # 行锁内重读并按最新值复判（返修R05）：候选快照之后详情线程可能
+        # 已把 pending 续期为 executing 或写回成功结果——陈旧快照不得
+        # 覆盖，条件 UPDATE 只关「此刻仍为本轮判定的 pending」
+        locked = session.exec(
+            select(Attempt.id, Attempt.rubric, Attempt.created_at)
+            .where(Attempt.id == attempt.id)
+            .with_for_update()
+        ).first()
+        if locked is None:
+            continue
+        fresh_rubric = locked[1] if isinstance(locked[1], dict) else None
+        if fresh_rubric is None or fresh_rubric.get("status") != "pending":
+            continue
+        if not _detail_stale_values(fresh_rubric, locked[2], datetime.now(UTC)):
+            continue
+        session.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
+            update(Attempt)
+            .where(col(Attempt.id) == attempt.id)
+            .values(rubric={"status": "unavailable"})
+        )
+        closed += 1
+    if closed:
+        logger.info("detail sweep closed %d stale rubrics", closed)
     session.commit()
     return resubmitted
 
@@ -728,9 +846,26 @@ def startup_recovery() -> None:
                 col(Attempt.rubric)["status"].as_string() == "pending",  # type: ignore[index]
             )
         ).all():
-            if _detail_stale(attempt, check_now):
-                attempt.rubric = {"status": "unavailable"}
-                session.add(attempt)
+            if not _detail_stale(attempt, check_now):
+                continue
+            # 行锁重读复判（返修R05）：陈旧快照不得覆盖执行中/已完成的详情
+            locked = session.exec(
+                select(Attempt.id, Attempt.rubric, Attempt.created_at)
+                .where(Attempt.id == attempt.id)
+                .with_for_update()
+            ).first()
+            if locked is None:
+                continue
+            fresh_rubric = locked[1] if isinstance(locked[1], dict) else None
+            if fresh_rubric is None or fresh_rubric.get("status") != "pending":
+                continue
+            if not _detail_stale_values(fresh_rubric, locked[2], datetime.now(UTC)):
+                continue
+            session.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
+                update(Attempt)
+                .where(col(Attempt.id) == attempt.id)
+                .values(rubric={"status": "unavailable"})
+            )
         session.commit()
         recover_stale_attempts(session)
         # 无条件重投所有 QUEUED：旧逻辑只在存在僵尸 SCORING 时才重投，会漏掉
@@ -783,17 +918,26 @@ def stop_sweeper() -> None:
     _sweeper_thread = None
 
 
-def shutdown_executor() -> None:
-    global _executor, _detail_executor
-    # 取消在飞重试 Timer：fire 回调发现线程池已关闭会直接放弃，不重建
-    with _retry_timers_lock:
-        timers = list(_retry_timers)
-        _retry_timers.clear()
-    for timer in timers:
-        timer.cancel()
-    if _detail_executor is not None:
-        _detail_executor.shutdown(wait=False)
-        _detail_executor = None
-    if _executor is not None:
-        _executor.shutdown(wait=False)
-        _executor = None
+def shutdown_executor(final: bool = True) -> None:
+    """关闭线程池。final=True 为终局关闭（进程退出/lifespan 结束）：
+
+    置 stopping 标志后迟到回调（Timer/清扫/主评分收尾）在同一把锁内
+    被拒绝，不能重建线程池（返修R07）。final=False 仅排水（测试中途
+    清理），之后仍可按需重建。
+    """
+    global _executor, _detail_executor, _executor_stopped
+    with _executor_lock:
+        if final:
+            _executor_stopped = True
+        # 取消在飞重试 Timer：fire 回调在锁内看到 stopped 会直接放弃
+        with _retry_timers_lock:
+            timers = list(_retry_timers)
+            _retry_timers.clear()
+        for timer in timers:
+            timer.cancel()
+        if _detail_executor is not None:
+            _detail_executor.shutdown(wait=False)
+            _detail_executor = None
+        if _executor is not None:
+            _executor.shutdown(wait=False)
+            _executor = None

@@ -354,7 +354,7 @@ def test_retry_redispatched_in_production_path(
         assert final.retry_count == 1
         assert FlakyAsr.calls == 2
     finally:
-        worker.shutdown_executor()
+        worker.shutdown_executor(final=False)
 
 
 def test_stale_failed_marks_are_committed(
@@ -757,7 +757,7 @@ def test_shutdown_cancels_retry_timers(
     with worker._retry_timers_lock:
         timers = list(worker._retry_timers)
     assert len(timers) == 1
-    worker.shutdown_executor()
+    worker.shutdown_executor(final=False)
     timers[0].join(timeout=1)
     assert not timers[0].is_alive()
     assert fired == []  # 已取消，从未点火重建线程池
@@ -875,3 +875,283 @@ def test_concurrent_same_key_leaves_exactly_one_audio_file(
     files = list(tmp_path.glob("*.wav")) + list(tmp_path.glob("*.webm"))
     assert len(files) == 1, f"并发同键产生孤儿音频: {files}"
     assert str(files[0]) == attempts[0].audio_path
+
+
+# ── 返修B（R04–R07）：租约、清扫条件更新、队列/执行区分、关闭协议 ──
+
+
+def test_mid_scoring_reclaim_discards_old_result(
+    db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R04：checkpoint 续租后再被回收重领——旧线程的最终写回仍被丢弃。
+
+    租约令牌全程局部变量（写入前生成，不从 ORM 回读），回收重领后
+    旧线程的 token 必然失配。
+    """
+    import threading
+
+    attempt_id = _make_queued_attempt(db, tmp_path)
+    entered = threading.Event()
+    release = threading.Event()
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+
+    class FastAsr:
+        name = "mock"
+
+        def transcribe(self, audio: bytes, mime_type: str) -> str:
+            return "hello world"
+
+    gate_asr = FastAsr()
+    monkeypatch.setattr(worker, "build_asr_provider", lambda: gate_asr)
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: None)
+
+    real_score = worker.score_read_aloud
+
+    def gated_score(*args: object, **kwargs: object) -> object:
+        if not entered.is_set():
+            entered.set()
+            assert release.wait(timeout=5), "测试同步点超时"
+        return real_score(*args, **kwargs)  # ty: ignore[invalid-argument-type]
+
+    monkeypatch.setattr(worker, "score_read_aloud", gated_score)
+
+    result: dict[str, object] = {}
+
+    def old_worker() -> None:
+        try:
+            with Session(db.get_bind()) as session:
+                worker.process_attempt(session, attempt_id)
+            result["old"] = "finished"
+        except Exception as exc:  # noqa: BLE001
+            result["old"] = repr(exc)
+
+    thread = threading.Thread(target=old_worker)
+    thread.start()
+    assert entered.wait(timeout=5), "旧 worker 未进入打分阶段"
+
+    # checkpoint 已续租（claimed_at 已刷新）；把续租时间拨旧 → 回收 → 新 worker 完成
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        assert attempt.status == AttemptStatus.SCORING
+        assert attempt.transcript == "hello world"  # checkpoint 已落库
+        attempt.claimed_at = datetime.now(UTC) - timedelta(seconds=300)
+        session.add(attempt)
+        session.commit()
+        worker.recover_stale_attempts(session)
+    with Session(db.get_bind()) as session:
+        worker.process_attempt(session, attempt_id)  # 新 worker 完成
+
+    release.set()
+    thread.join(timeout=5)
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        assert attempt.status == AttemptStatus.DONE
+        assert attempt.retry_count == 0  # 旧线程写回被租约丢弃，不烧配额
+
+
+def test_sweep_does_not_overwrite_completed_detail(
+    db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R05：清扫读到陈旧 pending 快照后，详情线程先写回成功结果——
+    陈旧快照不得把成功成绩覆盖成 unavailable。"""
+    import threading
+
+    attempt = Attempt(
+        item_type="question",
+        item_id=uuid.uuid4(),
+        audio_path="/tmp/x.wav",
+        audio_mime="audio/wav",
+        duration_s=5.0,
+        status=AttemptStatus.DONE,
+        transcript="hello",
+        # executing 且超时；created_at 也要过清扫的 SQL 前置过滤（>120s）
+        created_at=datetime.now(UTC) - timedelta(seconds=300),
+        rubric={
+            "status": "pending",
+            "phase": "executing",
+            "pending_since": (datetime.now(UTC) - timedelta(seconds=300)).isoformat(),
+        },
+    )
+    db.add(attempt)
+    db.commit()
+    try:
+        entered = threading.Event()
+        release = threading.Event()
+        real_stale = worker._detail_stale
+
+        def gated_stale(attempt_row: Attempt, now: datetime) -> bool:
+            verdict = real_stale(attempt_row, now)
+            if verdict and not entered.is_set():
+                entered.set()
+                assert release.wait(timeout=5), "测试同步点超时"
+            return verdict
+
+        monkeypatch.setattr(worker, "_detail_stale", gated_stale)
+        monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: None)
+
+        sweep_result: dict[str, object] = {}
+
+        def run_sweep() -> None:
+            try:
+                with Session(db.get_bind()) as session:
+                    worker.sweep_orphans(session)
+                sweep_result["ok"] = True
+            except Exception as exc:  # noqa: BLE001
+                sweep_result["error"] = repr(exc)
+
+        thread = threading.Thread(target=run_sweep)
+        thread.start()
+        assert entered.wait(timeout=5), "清扫未进入候选判定"
+
+        # 详情线程在清扫等待期间写回成功结果（行锁 + 先到先得）
+        monkeypatch.setattr(worker, "_score_rubric", lambda *a: {"mock_score": 7})
+        worker._complete_detail(attempt.id, "q", "B1", "hello")
+        db.refresh(attempt)
+        assert attempt.rubric == {"mock_score": 7}
+
+        release.set()
+        thread.join(timeout=5)
+        assert "error" not in sweep_result, sweep_result
+        db.refresh(attempt)
+        assert attempt.rubric == {"mock_score": 7}  # 不被覆盖为 unavailable
+    finally:
+        db.delete(attempt)
+        db.commit()
+
+
+def test_queued_detail_not_timed_out_and_execution_renews(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R06：合法排队不按 120s 误关；执行开始续期 pending_since 后才计超时。"""
+    queued_fresh = Attempt(
+        item_type="question",
+        item_id=uuid.uuid4(),
+        audio_path="/tmp/q1.wav",
+        audio_mime="audio/wav",
+        duration_s=5.0,
+        status=AttemptStatus.DONE,
+        transcript="a",
+        created_at=datetime.now(UTC) - timedelta(minutes=30),
+        rubric={
+            "status": "pending",
+            "phase": "queued",
+            "queued_at": (datetime.now(UTC) - timedelta(minutes=10)).isoformat(),
+        },
+    )
+    queued_lost = Attempt(
+        item_type="question",
+        item_id=uuid.uuid4(),
+        audio_path="/tmp/q2.wav",
+        audio_mime="audio/wav",
+        duration_s=5.0,
+        status=AttemptStatus.DONE,
+        transcript="b",
+        created_at=datetime.now(UTC) - timedelta(hours=2),
+        rubric={
+            "status": "pending",
+            "phase": "queued",
+            "queued_at": (datetime.now(UTC) - timedelta(minutes=45)).isoformat(),
+        },
+    )
+    db.add_all([queued_fresh, queued_lost])
+    db.commit()
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: None)
+    try:
+        with Session(db.get_bind()) as session:
+            worker.sweep_orphans(session)
+        db.refresh(queued_fresh)
+        db.refresh(queued_lost)
+        # 排队 10 分钟：正常 backlog，保持 pending
+        assert queued_fresh.rubric is not None
+        assert queued_fresh.rubric.get("status") == "pending"
+        # 排队 45 分钟（> 30 分钟）：视为任务丢失，关闭
+        assert queued_lost.rubric == {"status": "unavailable"}
+    finally:
+        db.delete(queued_fresh)
+        db.delete(queued_lost)
+        db.commit()
+
+
+def test_complete_detail_renews_to_executing_before_call(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R06：_complete_detail 开始即把 queued 续期为 executing（新 pending_since），
+    已被清扫关闭的任务直接放弃、不调用模型。"""
+    import threading
+
+    attempt = Attempt(
+        item_type="question",
+        item_id=uuid.uuid4(),
+        audio_path="/tmp/e.wav",
+        audio_mime="audio/wav",
+        duration_s=5.0,
+        status=AttemptStatus.DONE,
+        transcript="hello",
+        rubric={
+            "status": "pending",
+            "phase": "queued",
+            "queued_at": datetime.now(UTC).isoformat(),
+        },
+    )
+    db.add(attempt)
+    db.commit()
+    try:
+        executing_seen = threading.Event()
+        release = threading.Event()
+
+        def slow_score(prompt: str, band: str, transcript: str) -> dict:
+            executing_seen.set()
+            assert release.wait(timeout=5)
+            return {"mock_score": 5}
+
+        monkeypatch.setattr(worker, "_score_rubric", slow_score)
+        thread = threading.Thread(
+            target=worker._complete_detail, args=(attempt.id, "q", "B1", "hello")
+        )
+        thread.start()
+        assert executing_seen.wait(timeout=5), "执行开始未续期"
+        db.refresh(attempt)
+        rubric = attempt.rubric
+        assert isinstance(rubric, dict)
+        assert rubric.get("phase") == "executing"
+        assert "pending_since" in rubric
+
+        release.set()
+        thread.join(timeout=5)
+        db.refresh(attempt)
+        assert attempt.rubric == {"mock_score": 5}
+    finally:
+        db.delete(attempt)
+        db.commit()
+
+
+def test_final_shutdown_blocks_resubmit_and_recreation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R07：终局关闭后投递是 no-op、池重建被拒；final=False 排水后可重建。"""
+    # 确保有池存在，随后终局关闭
+    worker.get_executor()
+    worker.shutdown_executor(final=True)
+    try:
+        # 迟到投递：不抛错、不重建池
+        worker.submit_attempt_scoring(uuid.uuid4())
+        assert worker._executor is None
+        # 迟到 Timer fire 等价路径：锁内看到 stopped 放弃
+        with worker._executor_lock:
+            assert worker._executor_stopped is True
+        with pytest.raises(RuntimeError, match="final shutdown"):
+            worker.get_executor()
+    finally:
+        # 恢复可重建（后续测试仍需真实投递）：复位标志
+        with worker._executor_lock:
+            worker._executor_stopped = False
+
+    # final=False：排水后可重建
+    worker.get_executor()
+    worker.shutdown_executor(final=False)
+    assert worker._executor is None
+    assert worker._executor_stopped is False
+    worker.get_executor()  # 重建成功
+    worker.shutdown_executor(final=False)
