@@ -41,6 +41,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
   TooltipContent,
@@ -241,9 +242,16 @@ function RoundResultPage() {
 
   if (todayQuery.isPending) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        {t({ zh: "正在加载结果…", en: "Loading results…" })}
-      </div>
+      <StudentShell active="practice">
+        <div className="flex flex-col gap-6" aria-busy="true">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-64" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <Skeleton className="h-32 w-full rounded-2xl" />
+          <Skeleton className="h-64 w-full rounded-2xl" />
+        </div>
+      </StudentShell>
     )
   }
   if (todayQuery.isError || !plan) {

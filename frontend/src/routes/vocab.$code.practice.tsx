@@ -5,16 +5,7 @@ import {
   useNavigate,
   useParams,
 } from "@tanstack/react-router"
-import {
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  Headphones,
-  RotateCcw,
-  SpellCheck,
-  Volume2,
-  XCircle,
-} from "lucide-react"
+import { ArrowLeft, Headphones, SpellCheck, Volume2 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { VocabularyTodayItem } from "@/client"
@@ -29,16 +20,31 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  PracticeFeedbackCard,
+  QuizSubmittedCard,
+} from "@/components/Vocabulary/Practice/AnswerFeedback"
+import AnswerForm from "@/components/Vocabulary/Practice/AnswerForm"
+import type { AnswerState } from "@/components/Vocabulary/Practice/answer-state"
+import FinishBanner from "@/components/Vocabulary/Practice/FinishBanner"
+import ProgressDots from "@/components/Vocabulary/Practice/ProgressDots"
+import QuizRulesCard from "@/components/Vocabulary/Practice/QuizRulesCard"
+import RoundSwitcher from "@/components/Vocabulary/Practice/RoundSwitcher"
+import { SubmitQuizButton } from "@/components/Vocabulary/Practice/SubmitQuizButton"
 import {
   SessionInsightDialog,
   WordExplanationDialog,
 } from "@/components/Vocabulary/VocabAi"
 import { APP_NAME } from "@/config"
+import {
+  playAudio as playCachedAudio,
+  preloadAudio,
+  stopAudio,
+} from "@/lib/audio"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
-import { EXPLAIN_QUIZ_PUBLISH, EXPLAIN_QUIZ_RULES, TERMS } from "@/lib/terms"
+import { EXPLAIN_QUIZ_PUBLISH, TERMS } from "@/lib/terms"
 import { speakEnglish } from "@/lib/tts"
 
 export const Route = createFileRoute("/vocab/$code/practice")({
@@ -60,19 +66,7 @@ export const Route = createFileRoute("/vocab/$code/practice")({
   }),
 })
 
-/** 一题的最新作答反馈（含重试次数；重试在练习模式随时可以） */
-interface AnswerState {
-  isCorrect: boolean
-  correctSpelling: string
-  attemptNo: number
-}
-
-/** 测验进度点的提交态占位：只表示已提交，不携带对错 */
-const QUIZ_SUBMITTED_DOT: AnswerState = {
-  isCorrect: false,
-  correctSpelling: "",
-  attemptNo: 1,
-}
+/** 一题的最新作答反馈与测验提交占位（见 components/Vocabulary/Practice/answer-state） */
 
 function VocabPracticePage() {
   const { t } = useI18n()
@@ -421,11 +415,18 @@ function VocabPracticePage() {
     Boolean(item?.answered || quizLocalSubmitted[item?.item_index ?? -1])
   const quizItemSubmitted = itemQuizSubmitted
 
+  // 听音预载与防串音：进题即预载本题标准音（顺带下一题），切题/卸载停掉在播音频
+  const nextAudioUrl = items[current + 1]?.audio_url
+  useEffect(() => {
+    if (!item?.audio_url) return
+    preloadAudio([item.audio_url, nextAudioUrl])
+    return () => stopAudio(item.audio_url)
+  }, [item?.audio_url, nextAudioUrl])
+
   const playAudio = () => {
     if (!item) return
     if (item.audio_url) {
-      const audio = new Audio(item.audio_url)
-      audio.play().catch(() => {
+      playCachedAudio(item.audio_url).catch(() => {
         toast.error(t({ zh: "音频播放失败", en: "Audio playback failed" }))
       })
       return
@@ -515,80 +516,12 @@ function VocabPracticePage() {
               </Link>
             </Button>
           </div>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                {t(TERMS.vocabQuiz)} · {assignment.title}
-              </CardTitle>
-              <CardDescription>{t(EXPLAIN_QUIZ_RULES)}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <dl className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl bg-secondary/50 p-4">
-                  <dt className="text-xs text-muted-foreground">
-                    {t(TERMS.quizDuration)}
-                  </dt>
-                  <dd className="mt-1 text-lg font-semibold">
-                    {quiz.duration_minutes} {t({ zh: "分钟", en: "min" })}
-                  </dd>
-                </div>
-                <div className="rounded-2xl bg-secondary/50 p-4">
-                  <dt className="text-xs text-muted-foreground">
-                    {t(TERMS.passLine)}
-                  </dt>
-                  <dd className="mt-1 text-lg font-semibold">
-                    {quiz.pass_line}
-                    {t({ zh: " 分", en: " pts" })}
-                  </dd>
-                </div>
-                <div className="rounded-2xl bg-secondary/50 p-4">
-                  <dt className="text-xs text-muted-foreground">
-                    {t({ zh: "开放 / 截止", en: "Opens / Due" })}
-                  </dt>
-                  <dd className="mt-1 text-sm font-medium leading-5">
-                    {quiz.opens_at
-                      ? new Date(quiz.opens_at).toLocaleString()
-                      : t({ zh: "已开放", en: "Open now" })}
-                    <br />
-                    {quiz.due_at
-                      ? new Date(quiz.due_at).toLocaleString()
-                      : t({ zh: "无截止", en: "No due" })}
-                  </dd>
-                </div>
-                <div className="rounded-2xl bg-secondary/50 p-4">
-                  <dt className="text-xs text-muted-foreground">
-                    {t({ zh: "参与次数", en: "Attempts" })}
-                  </dt>
-                  <dd className="mt-1 text-lg font-semibold">
-                    {quiz.attempts_used} / {quiz.attempts_allowed}
-                    {quiz.retake_granted && (
-                      <span className="ml-2 text-sm text-muted-foreground">
-                        {t({ zh: "老师已授权补考", en: "retake granted" })}
-                      </span>
-                    )}
-                  </dd>
-                </div>
-              </dl>
-              <Button
-                size="lg"
-                className="h-12 w-full sm:w-auto"
-                disabled={startSession.isPending}
-                onClick={() => {
-                  startSession.mutate({ assignmentId: assignment.id })
-                }}
-              >
-                {startSession.isPending
-                  ? t({ zh: "正在开始…", en: "Starting…" })
-                  : t(TERMS.startQuiz)}
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                {t({
-                  zh: "点击开始后计时开始：有效结束时间取个人时长与任务截止中较早者。",
-                  en: "The timer starts on tap: your deadline is the earlier of your time limit and the task due time.",
-                })}
-              </p>
-            </CardContent>
-          </Card>
+          <QuizRulesCard
+            quiz={quiz}
+            assignmentTitle={assignment.title}
+            startPending={startSession.isPending}
+            onStart={() => startSession.mutate({ assignmentId: assignment.id })}
+          />
         </div>
       </StudentShell>
     )
@@ -710,88 +643,27 @@ function VocabPracticePage() {
         )}
 
         {/* 轮次切换：回看各轮记录；当前展示轮高亮 */}
-        {rounds.length > 1 && (
-          <ul
-            className="flex flex-wrap gap-1.5"
-            aria-label={t({ zh: "轮次列表", en: "Round list" })}
-          >
-            {rounds.map((round) => {
-              const isActive = round.round_no === activeRoundNo
-              return (
-                <li key={round.round_no}>
-                  <button
-                    type="button"
-                    aria-current={isActive ? "true" : undefined}
-                    onClick={() =>
-                      void navigate({
-                        to: "/vocab/$code/practice",
-                        params: { code },
-                        search: {
-                          assignment: assignmentParam ?? assignment?.id ?? "",
-                          ...(round.round_no === currentRoundNo
-                            ? {}
-                            : { round: String(round.round_no) }),
-                        },
-                      })
-                    }
-                    className={`h-11 rounded-xl border px-3 text-sm font-semibold transition-colors ${
-                      isActive
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-card text-muted-foreground hover:border-primary/40"
-                    }`}
-                  >
-                    {t({
-                      zh: `第 ${round.round_no} 轮 ${round.correct_first_count}/${round.answered_count}${round.status === "submitted" ? "" : " · 进行中"}`,
-                      en: `R${round.round_no} ${round.correct_first_count}/${round.answered_count}${round.status === "submitted" ? "" : " · open"}`,
-                    })}
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
+        <RoundSwitcher
+          code={code}
+          assignmentId={assignmentParam ?? assignment?.id ?? ""}
+          rounds={rounds}
+          activeRoundNo={activeRoundNo}
+          currentRoundNo={currentRoundNo}
+        />
 
         {/* 进度点：点选跳题；对=主色、错=灰、当前=实心 */}
-        <ul
-          className="flex flex-wrap gap-1.5"
-          aria-label={t({ zh: "作答进度", en: "Answer progress" })}
-        >
-          {items.map((it, index) => {
-            const state =
-              answers[it.item_index] ??
-              (isQuiz && (it.answered || quizLocalSubmitted[it.item_index])
-                ? QUIZ_SUBMITTED_DOT
-                : undefined)
-            return (
-              <li key={it.item_index}>
-                <button
-                  type="button"
-                  aria-label={t({
-                    zh: `第 ${index + 1} 题${state ? (isQuiz ? "（已提交）" : state.isCorrect ? "（对）" : "（错）") : "（未答）"}`,
-                    en: `Item ${index + 1}${state ? (isQuiz ? " (submitted)" : state.isCorrect ? " (correct)" : " (missed)") : " (not answered)"}`,
-                  })}
-                  aria-current={index === current ? "true" : undefined}
-                  onClick={() => {
-                    setCurrent(index)
-                    setInput("")
-                    pendingRef.current = null // 换题 = 新作答意图
-                  }}
-                  className={`size-11 rounded-xl border text-sm font-semibold transition-colors ${
-                    index === current
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : state
-                        ? state.isCorrect && !isQuiz
-                          ? "border-primary/30 bg-secondary text-primary"
-                          : "border-border bg-secondary/60 text-muted-foreground"
-                        : "border-border text-muted-foreground hover:border-primary/40"
-                  }`}
-                >
-                  {index + 1}
-                </button>
-              </li>
-            )
-          })}
-        </ul>
+        <ProgressDots
+          items={items}
+          answers={answers}
+          quizLocalSubmitted={quizLocalSubmitted}
+          isQuiz={isQuiz}
+          current={current}
+          onSelect={(index) => {
+            setCurrent(index)
+            setInput("")
+            pendingRef.current = null // 换题 = 新作答意图
+          }}
+        />
 
         <Card>
           <CardHeader className="space-y-1.5">
@@ -889,256 +761,85 @@ function VocabPracticePage() {
 
             {/* 作答区：练习=即时反馈；测验=只确认接收（不提前泄露答案） */}
             {!answer && !quizItemSubmitted ? (
-              <form
+              <AnswerForm
+                input={input}
+                onInputChange={setInput}
                 onSubmit={handleSubmit}
-                className="flex flex-col gap-3 sm:flex-row"
-              >
-                <label className="sr-only" htmlFor="vocab-answer">
-                  {t({ zh: "输入英文单词", en: "Type the English word" })}
-                </label>
-                <Input
-                  id="vocab-answer"
-                  ref={inputRef}
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  placeholder={t({
-                    zh: "在这里输入英文单词…",
-                    en: "Type the English word here…",
-                  })}
-                  autoComplete="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  className="h-12 flex-1 text-base"
-                  disabled={!sessionId || startSession.isPending || readOnly}
-                />
-                <Button
-                  type="submit"
-                  className="h-12 px-6"
-                  disabled={
-                    input.trim() === "" ||
-                    submitAnswer.isPending ||
-                    !sessionId ||
-                    readOnly
-                  }
-                >
-                  {submitAnswer.isPending
-                    ? t({ zh: "判分中…", en: "Checking…" })
-                    : t(
-                        isQuiz
-                          ? { zh: "提交答案", en: "Submit answer" }
-                          : { zh: "提交", en: "Submit" },
-                      )}
-                </Button>
-              </form>
+                inputRef={inputRef}
+                submitPending={submitAnswer.isPending}
+                isQuiz={isQuiz}
+                inputDisabled={!sessionId || startSession.isPending || readOnly}
+                submitDisabled={
+                  input.trim() === "" ||
+                  submitAnswer.isPending ||
+                  !sessionId ||
+                  readOnly
+                }
+              />
             ) : isQuiz && quizItemSubmitted ? (
-              <div
-                role="status"
-                className="flex items-start gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4"
-              >
-                <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-primary" />
-                <div className="min-w-0 space-y-1">
-                  <p className="font-semibold">
-                    {t({ zh: "答案已提交", en: "Answer submitted" })}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {t(EXPLAIN_QUIZ_PUBLISH)}
-                  </p>
-                </div>
-                <div className="ml-auto flex shrink-0 gap-2 self-center">
-                  {current < items.length - 1 ? (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setInput("")
-                        pendingRef.current = null
-                        setCurrent(current + 1)
-                      }}
-                    >
-                      {t({ zh: "下一题", en: "Next item" })}
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setInput("")
-                        pendingRef.current = null
-                        void queryClient.invalidateQueries({
-                          queryKey: ["vocab", code, "today"],
-                        })
-                      }}
-                    >
-                      {t({ zh: "刷新状态", en: "Refresh status" })}
-                    </Button>
-                  )}
-                </div>
-              </div>
+              <QuizSubmittedCard
+                hasNext={current < items.length - 1}
+                onNext={() => {
+                  setInput("")
+                  pendingRef.current = null
+                  setCurrent(current + 1)
+                }}
+                onRefresh={() => {
+                  setInput("")
+                  pendingRef.current = null
+                  void queryClient.invalidateQueries({
+                    queryKey: ["vocab", code, "today"],
+                  })
+                }}
+              />
             ) : answer ? (
-              <div className="space-y-4">
-                <div
-                  role="status"
-                  className={`flex items-start gap-3 rounded-2xl border p-4 ${
-                    answer.isCorrect
-                      ? "border-primary/30 bg-primary/5"
-                      : "border-border bg-secondary/50"
-                  }`}
-                >
-                  {answer.isCorrect ? (
-                    <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-primary" />
-                  ) : (
-                    <XCircle className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
-                  )}
-                  <div className="min-w-0 space-y-1">
-                    <p className="font-semibold">
-                      {answer.isCorrect
-                        ? t({ zh: "拼对了！", en: "Correct!" })
-                        : t({
-                            zh: "差一点点，再看看正确拼写。",
-                            en: "So close — check the correct spelling.",
-                          })}
-                    </p>
-                    <p className="text-sm">
-                      <span className="font-semibold">
-                        {answer.correctSpelling}
-                      </span>
-                      <span className="ml-2 text-muted-foreground">
-                        {item.meaning_zh}
-                      </span>
-                    </p>
-                    {!answer.isCorrect && input.trim() !== "" && (
-                      <p className="text-sm text-muted-foreground">
-                        {t({ zh: "你拼的是：", en: "You typed: " })}
-                        <span className="font-mono">{input.trim()}</span>
-                      </p>
-                    )}
-                    {answer.attemptNo > 1 && (
-                      <p className="text-xs text-muted-foreground">
-                        {t({
-                          zh: `第 ${answer.attemptNo} 次尝试（成绩按第一次计算）`,
-                          en: `Try #${answer.attemptNo} (score counts the first try)`,
-                        })}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {!answer.isCorrect && (
-                    <Button variant="outline" onClick={retry}>
-                      <RotateCcw />
-                      {t({ zh: "再试一次", en: "Try again" })}
-                    </Button>
-                  )}
-                  {item.headword && (
-                    <Button
-                      variant="ghost"
-                      onClick={() => setExplainOpen(true)}
-                    >
-                      {t(TERMS.aiWordExplanation)}
-                    </Button>
-                  )}
-                  <Button onClick={goNext}>
-                    {current < items.length - 1
-                      ? t({ zh: "下一个词", en: "Next word" })
-                      : allDone || answeredCount >= items.length
-                        ? t({ zh: "完成练习", en: "Finish" })
-                        : t({ zh: "下一个词", en: "Next word" })}
-                    <ArrowRight />
-                  </Button>
-                </div>
-              </div>
+              <PracticeFeedbackCard
+                answer={answer}
+                meaningZh={item.meaning_zh}
+                typedInput={input.trim()}
+                onRetry={retry}
+                canExplain={Boolean(item.headword)}
+                onExplain={() => setExplainOpen(true)}
+                nextLabel={
+                  current < items.length - 1
+                    ? t({ zh: "下一个词", en: "Next word" })
+                    : allDone || answeredCount >= items.length
+                      ? t({ zh: "完成练习", en: "Finish" })
+                      : t({ zh: "下一个词", en: "Next word" })
+                }
+                onNext={goNext}
+              />
             ) : null}
 
             {/* 走完全部题后的收尾提示：测验=交卷提醒；练习=完成统计 */}
-            {isQuiz && quizFinished && (
-              <Button variant="outline" onClick={() => setInsightOpen(true)}>
-                {t(TERMS.aiSessionInsight)}
-              </Button>
-            )}
-            {isQuiz && allDone && (
-              <div className="rounded-2xl border border-primary/20 bg-secondary/40 p-4">
-                <p className="text-sm font-semibold">
-                  {quiz?.status === "in_progress"
-                    ? t({
-                        zh: "全部题目已提交。确认无误就交卷；到时间也会自动交卷。",
-                        en: "All items submitted. Submit to finish — auto-submit at time-up either way.",
-                      })
-                    : t(EXPLAIN_QUIZ_PUBLISH)}
-                </p>
-                {quiz?.status === "in_progress" && (
-                  <div className="mt-3">
-                    <SubmitQuizButton
-                      sessionId={sessionId}
-                      disabled={!sessionId}
-                      onDone={() => {
-                        void queryClient.invalidateQueries({
-                          queryKey: ["vocab", code, "today"],
-                        })
-                      }}
-                    />
-                  </div>
-                )}
-                {quiz?.status !== "in_progress" && (
-                  <div className="mt-3">
-                    <Button asChild size="sm" variant="outline">
-                      <Link to="/vocab/$code" params={{ code }}>
-                        {t({ zh: "回词汇首页", en: "Back to Vocabulary home" })}
-                        <ArrowRight />
-                      </Link>
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-            {!isQuiz && allDone && answer && (
-              <Button
-                variant="outline"
-                className="w-fit"
-                onClick={() => setInsightOpen(true)}
-              >
-                {t(TERMS.aiSessionInsight)}
-              </Button>
-            )}
-            {!isQuiz && allDone && answer && (
-              <div className="rounded-2xl border border-primary/20 bg-secondary/40 p-4">
-                <p className="text-sm font-semibold">
-                  {t({
-                    zh: `这一轮完成了：${answeredCount} 词，首答正确 ${correctFirst} 个。`,
-                    en: `Round complete: ${answeredCount} words, ${correctFirst} correct on first try.`,
-                  })}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t({
-                    zh: "这一轮已单独记录，不改变任务成绩（任务成绩始终看第一轮）。想再练可以开新的一轮。",
-                    en: "This round is recorded separately — task scores always come from the first round. Start a new round to practice again.",
-                  })}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button asChild size="sm" variant="outline">
-                    <Link to="/vocab/$code" params={{ code }}>
-                      {t({ zh: "回词汇首页", en: "Back to Vocabulary home" })}
-                      <ArrowRight />
-                    </Link>
-                  </Button>
-                  {assignment?.mode === "practice" &&
-                    !readOnly &&
-                    isCurrentRound && (
-                      <Button
-                        size="sm"
-                        disabled={startSession.isPending}
-                        onClick={() => {
-                          pendingRef.current = null
-                          startSession.mutate({
-                            assignmentId: assignment.id,
-                            round: "new",
-                          })
-                        }}
-                      >
-                        <RotateCcw />
-                        {t({ zh: "再练一轮", en: "New round" })}
-                      </Button>
-                    )}
-                </div>
-              </div>
-            )}
+            <FinishBanner
+              code={code}
+              isQuiz={isQuiz}
+              quizFinished={quizFinished}
+              quizStatus={quiz?.status}
+              sessionId={sessionId}
+              onQuizSubmitted={() => {
+                void queryClient.invalidateQueries({
+                  queryKey: ["vocab", code, "today"],
+                })
+              }}
+              allDone={allDone}
+              hasAnswer={Boolean(answer)}
+              answeredCount={answeredCount}
+              correctFirst={correctFirst}
+              onOpenInsight={() => setInsightOpen(true)}
+              canNewRound={
+                assignment?.mode === "practice" && !readOnly && isCurrentRound
+              }
+              newRoundPending={startSession.isPending}
+              onNewRound={() => {
+                pendingRef.current = null
+                startSession.mutate({
+                  assignmentId: assignment?.id ?? "",
+                  round: "new",
+                })
+              }}
+            />
           </CardContent>
         </Card>
 
@@ -1175,42 +876,5 @@ function VocabPracticePage() {
         )}
       </div>
     </StudentShell>
-  )
-}
-
-/** 主动交卷按钮（测验）：终结答卷，幂等 */
-function SubmitQuizButton({
-  sessionId,
-  disabled,
-  onDone,
-}: {
-  sessionId: string | null
-  disabled?: boolean
-  onDone: () => void
-}) {
-  const { t } = useI18n()
-  const submit = useMutation({
-    mutationFn: () =>
-      VocabularyService.submitQuizSession({ sessionId: sessionId as string }),
-    onSuccess: () => {
-      toast.success(t({ zh: "已交卷。", en: "Submitted." }))
-      onDone()
-    },
-    onError: () => {
-      toast.error(
-        t({ zh: "交卷失败，请重试。", en: "Submit failed — please retry." }),
-      )
-    },
-  })
-  return (
-    <Button
-      size="sm"
-      disabled={disabled || submit.isPending}
-      onClick={() => submit.mutate()}
-    >
-      {submit.isPending
-        ? t({ zh: "交卷中…", en: "Submitting…" })
-        : t(TERMS.submitQuiz)}
-    </Button>
   )
 }

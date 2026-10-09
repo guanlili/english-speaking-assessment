@@ -68,11 +68,11 @@ function buildStudentSchema(t: ReturnType<typeof useI18n>["t"]) {
 }
 
 const inputClassName =
-  "h-12 rounded-lg border-[#233e34]/20 bg-[#f8f7f2] px-4 shadow-none placeholder:text-muted-foreground/75 focus-visible:bg-white dark:border-input dark:bg-background/50 dark:focus-visible:bg-background"
+  "h-12 rounded-lg border-brand-ink/20 bg-paper-soft px-4 shadow-none placeholder:text-muted-foreground/75 focus-visible:bg-white dark:border-input dark:bg-background/50 dark:focus-visible:bg-background"
 const submitClassName =
-  "group h-12 w-full rounded-lg bg-[#204f40] text-sm font-semibold text-[#fffaf0] shadow-none hover:bg-[#173f32] focus-visible:ring-[#204f40]/30 dark:bg-[#efbd94] dark:text-[#193f33] dark:hover:bg-[#f4cca9] dark:focus-visible:ring-[#efbd94]/40"
+  "group h-12 w-full rounded-lg bg-brand-pine text-sm font-semibold text-paper-cream shadow-none hover:bg-brand-pine-deep focus-visible:ring-brand-pine/30 dark:bg-tan dark:text-brand-pine-dark dark:hover:bg-tan-pale-hover dark:focus-visible:ring-tan/40"
 const tabClassName =
-  "h-11 gap-2 rounded-lg text-xs text-muted-foreground hover:text-foreground data-[state=active]:border-[#204f40] data-[state=active]:bg-[#204f40] data-[state=active]:text-[#fffaf0] data-[state=active]:shadow-none sm:text-sm dark:data-[state=active]:border-[#efbd94] dark:data-[state=active]:bg-[#efbd94] dark:data-[state=active]:text-[#193f33]"
+  "h-11 gap-2 rounded-lg text-xs text-muted-foreground hover:text-foreground data-[state=active]:border-brand-pine data-[state=active]:bg-brand-pine data-[state=active]:text-paper-cream data-[state=active]:shadow-none sm:text-sm dark:data-[state=active]:border-tan dark:data-[state=active]:bg-tan dark:data-[state=active]:text-brand-pine-dark"
 const linkClassName =
   "rounded-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
 
@@ -194,7 +194,7 @@ function StudentLogin({ loginMutation }: { loginMutation: LoginMutation }) {
               </FormControl>
               <FormDescription className="text-xs leading-5">
                 {t({ zh: "初始密码", en: "Default password" })}{" "}
-                <code className="rounded bg-[#eee9dd] px-1 py-0.5 text-foreground dark:bg-muted">
+                <code className="rounded bg-paper-sand px-1 py-0.5 text-foreground dark:bg-muted">
                   brs123456
                 </code>
                 {t({
@@ -255,7 +255,7 @@ function DemoEntry() {
       ),
   })
   return (
-    <details className="border-t border-[#233e34]/10 pt-4 text-xs text-muted-foreground dark:border-border">
+    <details className="border-t border-brand-ink/10 pt-4 text-xs text-muted-foreground dark:border-border">
       <summary className="cursor-pointer rounded-sm py-1.5 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
         {t({ zh: "本地演示体验（仅开发环境）", en: "Local demo (dev only)" })}
       </summary>
@@ -353,7 +353,7 @@ function Login() {
         >
           <TabsList
             aria-label={t({ zh: "选择登录身份", en: "Choose your role" })}
-            className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-[#233e34]/10 bg-[#f0eee6] p-1.5 dark:border-border dark:bg-background/60"
+            className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-brand-ink/10 bg-paper-warm p-1.5 dark:border-border dark:bg-background/60"
           >
             <TabsTrigger
               value="student"
