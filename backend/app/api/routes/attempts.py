@@ -192,6 +192,43 @@ def _require_attempt_access(
     )
 
 
+def _feedback_masked_for_user(
+    session: Session, attempt: Attempt, current_user: User | None
+) -> bool:
+    """模考进行中，学生本人只能拿到回执与状态；授权教师/管理员与普通练习不受影响。"""
+    if current_user is None or current_user.role != "student":
+        return False
+    if attempt.session_id is None:
+        return False
+    practice_session = session.get(PracticeSession, attempt.session_id)
+    if practice_session is None or practice_session.assignment_id is None:
+        return False
+    exercise = session.get(ClassroomExercise, practice_session.assignment_id)
+    return exam_service.exam_feedback_locked(session, practice_session, exercise)
+
+
+def _attempt_public(
+    attempt: Attempt, *, feedback_masked: bool = False
+) -> AttemptPublic:
+    """响应投影（不改 ORM）：遮罩时抹掉分数/转写/建议/词汇/rubric/错误详情。
+
+    幂等重放、并发兜底、GET 轮询、上传回执共用同一投影，考试终结后
+    feedback_masked=False，反馈完整恢复。
+    """
+    public = AttemptPublic.model_validate(attempt)
+    if feedback_masked:
+        public.transcript = None
+        public.completeness = None
+        public.fluency = None
+        public.accuracy = None
+        public.overall = None
+        public.advice = None
+        public.vocab = None
+        public.rubric = None
+        public.error = None
+    return public
+
+
 @router.post("/attempts", response_model=AttemptPublic)
 def create_attempt_upload(
     session: SessionDep,
@@ -225,7 +262,12 @@ def create_attempt_upload(
         if existing is not None:
             _require_attempt_access(session, existing, current_user)
             session.refresh(existing)
-            return existing
+            return _attempt_public(
+                existing,
+                feedback_masked=_feedback_masked_for_user(
+                    session, existing, current_user
+                ),
+            )
 
     # 限流（评分是付费链路：每次提交 = 一次 ASR 转写）：学生按人、其余按
     # IP。放在幂等重放之后——断网重传同键不占配额。60 次/5 分钟对正常
@@ -255,7 +297,12 @@ def create_attempt_upload(
                     ).first()
                     if existing is not None:
                         _require_attempt_access(session, existing, current_user)
-                        return existing
+                        return _attempt_public(
+                            existing,
+                            feedback_masked=_feedback_masked_for_user(
+                                session, existing, current_user
+                            ),
+                        )
                 already = session.exec(
                     select(Attempt.id).where(
                         Attempt.session_id == session_id,  # type: ignore[arg-type]
@@ -369,12 +416,19 @@ def create_attempt_upload(
             if existing is not None:
                 # 兜底分支同样校验归属，封死「预检查时未提交→撞唯一约束→拿到他人作答」路径
                 _require_attempt_access(session, existing, current_user)
-                return existing
+                return _attempt_public(
+                    existing,
+                    feedback_masked=_feedback_masked_for_user(
+                        session, existing, current_user
+                    ),
+                )
         raise
 
     submitter(attempt.id)
     session.refresh(attempt)
-    return attempt
+    return _attempt_public(
+        attempt, feedback_masked=_feedback_masked_for_user(session, attempt, current_user)
+    )
 
 
 def _mime_to_suffix(base_mime: str) -> str:
@@ -425,7 +479,9 @@ def read_attempt(
     if not attempt:
         raise HTTPException(status_code=404, detail="Attempt not found")
     _require_attempt_access(session, attempt, current_user)
-    return attempt
+    return _attempt_public(
+        attempt, feedback_masked=_feedback_masked_for_user(session, attempt, current_user)
+    )
 
 
 @router.get("/attempts/{attempt_id}/audio")

@@ -20,6 +20,7 @@ from app.models import (
     ClassroomExercise,
     ExamStatus,
     InstructionAck,
+    PlanAttempt,
     PracticeSession,
 )
 
@@ -265,6 +266,39 @@ def exam_remaining_seconds(
         # 确认页尚未开考。
         return (exercise.time_limit_minutes or 0) * 60
     return max(0, int((deadline - _now()).total_seconds()))
+
+
+def exam_feedback_locked(
+    db: Session, practice_session: PracticeSession, exercise: ClassroomExercise | None
+) -> bool:
+    """模考反馈可见性（服务端口径，只读）：考试终结前学生不得取得任何反馈。
+
+    与 exam_status_payload 的 ended 同判据（exam_ended_at 已落或所有题目
+    已提交/到期），但绝不写 exam_ended_at——读反馈的接口不能借可见性判定
+    提前关卷（最后一题上传宽限期仍开放）。未开考比进行中更应遮蔽。
+    """
+    if exercise is None or not exercise.is_exam:
+        return False
+    if practice_session.exam_ended_at is not None:
+        return False
+    if practice_session.exam_started_at is None:
+        return True
+    windows = item_windows(db, practice_session, exercise)
+    now = _now()
+    return not all(window.submitted or now >= window.deadline for window in windows)
+
+
+def masked_plan_attempt(attempt: PlanAttempt) -> PlanAttempt:
+    """模考进行中的作答回执投影：只保留题目/作答/状态，反馈字段一律不下发。
+
+    返回新对象，不改 ORM——遮罩是出口投影，不污染持久化结果；
+    考试终结后出口直接返回原对象，反馈完整恢复。
+    """
+    return PlanAttempt(
+        item_id=attempt.item_id,
+        attempt_id=attempt.attempt_id,
+        status=attempt.status,
+    )
 
 
 def exam_status_payload(

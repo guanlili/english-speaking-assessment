@@ -1089,7 +1089,12 @@ def read_today_plan(
                 for frame in matched[:6]
             ]
 
-    plan_attempts = [
+    # 模考反馈遮罩（服务端口径）：考试终结前学生只能拿到作答状态回执，
+    # 分数/转写/建议等反馈字段一律不下发——前端不显示不构成安全边界
+    feedback_locked = exam_service.exam_feedback_locked(
+        session, practice_session, bound_exercise
+    )
+    full_attempts = [
         PlanAttempt(
             item_id=a.item_id,
             attempt_id=a.id,
@@ -1104,6 +1109,10 @@ def read_today_plan(
             error=a.error,
         )
         for a in attempts
+    ]
+    plan_attempts = [
+        exam_service.masked_plan_attempt(pa) if feedback_locked else pa
+        for pa in full_attempts
     ]
 
     badges = [
