@@ -37,9 +37,10 @@ export default function PublishSidebar({
         })}
       </p>
       <div className="my-5 space-y-1 border-y py-4 text-sm">
-        <p className="font-medium">
-          {planCounts.reading > 0
-            ? t({
+        <div className="space-y-1 font-medium">
+          {planCounts.reading > 0 && (
+            <p>
+              {t({
                 zh: `朗读 ${planCounts.reading} 篇${
                   planCounts.readingSentences > 0
                     ? ` · 逐句 ${planCounts.readingSentences} 题`
@@ -50,29 +51,39 @@ export default function PublishSidebar({
                     ? ` · ${planCounts.readingSentences} sentence questions`
                     : ""
                 }`,
-              })
-            : null}
-          {planCounts.repeat > 0
-            ? t({
+              })}
+            </p>
+          )}
+          {planCounts.repeat > 0 && (
+            <p>
+              {t({
                 zh: `复述 ${planCounts.repeat} 句`,
                 en: `${planCounts.repeat} Listen & Repeat`,
-              })
-            : null}
-          {planCounts.qa > 0
-            ? t({
+              })}
+            </p>
+          )}
+          {planCounts.qa > 0 && (
+            <p>
+              {t({
                 zh: `问答 ${planCounts.qa} 道`,
                 en: `${planCounts.qa} Scenario Q&A`,
-              })
-            : null}
-          {planCounts.instruction > 0
-            ? t({
+              })}
+            </p>
+          )}
+          {planCounts.instruction > 0 && (
+            <p>
+              {t({
                 zh: `说明 ${planCounts.instruction} 条`,
                 en: `${planCounts.instruction} Instructions`,
-              })
-            : null}
+              })}
+            </p>
+          )}
           {planCounts.reading + planCounts.repeat + planCounts.qa === 0 &&
-            t({ zh: "尚未选择题型", en: "No question types selected" })}
-        </p>
+            t({
+              zh: "尚未选择可作答题目",
+              en: "No answerable questions selected",
+            })}
+        </div>
       </div>
       {problems.length ? (
         <ul className="space-y-3 text-sm leading-6 text-muted-foreground">
@@ -99,8 +110,8 @@ export default function PublishSidebar({
       </Button>
       <p className="mt-3 text-xs leading-5 text-muted-foreground">
         {t({
-          zh: "当前选择尚未发布。只有确认发布后，才会更新学生练习。",
-          en: "Your current selections aren't published yet. Student practice updates only after you confirm the publish.",
+          zh: "学生题单以最近一次确认发布为准；修改选择后，需再次确认发布才会更新。",
+          en: "Students use the latest confirmed publish. After changing selections, confirm a new publish to update their practice.",
         })}
       </p>
       <Button variant="link" className="mt-2 h-auto px-0" asChild>

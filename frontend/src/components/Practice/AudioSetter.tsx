@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query"
-import { Loader2, Mic, Square, Upload, Volume2, X } from "lucide-react"
+import { Loader2, Sparkles, Square, Upload, Volume2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { AdminService } from "@/client"
@@ -160,27 +160,29 @@ function AudioSetter({
       )}
       <Button
         variant="ghost"
-        size="icon-sm"
+        size="sm"
+        className="min-h-11 px-2"
         type="button"
         title={t({
-          zh: "语音合成生成标准音（需配置方舟密钥）",
-          en: "Generate audio with AI (requires an Ark API key)",
+          zh: "AI 生成标准音",
+          en: "Generate AI audio",
         })}
         aria-label={t({
-          zh: "语音合成生成标准音（需配置方舟密钥）",
-          en: "Generate audio with AI (requires an Ark API key)",
+          zh: "AI 生成标准音",
+          en: "Generate AI audio",
         })}
         onClick={(e) => {
           if (stopPropagation) e.stopPropagation()
           ttsMutation.mutate()
         }}
-        disabled={ttsMutation.isPending || !text}
+        disabled={ttsMutation.isPending || uploadMutation.isPending || !text}
       >
         {ttsMutation.isPending ? (
           <Loader2 className="size-3.5 animate-spin" />
         ) : (
-          <Mic className="size-3.5" />
+          <Sparkles className="size-3.5" />
         )}
+        {t({ zh: "AI 配音", en: "AI audio" })}
       </Button>
       <input
         ref={fileRef}
@@ -203,7 +205,7 @@ function AudioSetter({
           if (stopPropagation) e.stopPropagation()
           fileRef.current?.click()
         }}
-        disabled={uploadMutation.isPending}
+        disabled={uploadMutation.isPending || ttsMutation.isPending}
       >
         {uploadMutation.isPending ? (
           <Loader2 className="size-3.5 animate-spin" />
@@ -217,17 +219,18 @@ function AudioSetter({
           size="icon-sm"
           type="button"
           title={t({
-            zh: "清除标准音（回退浏览器朗读）",
-            en: "Clear audio (use device speech instead)",
+            zh: "清除标准音",
+            en: "Clear audio",
           })}
           aria-label={t({
-            zh: "清除标准音（回退浏览器朗读）",
-            en: "Clear audio (use device speech instead)",
+            zh: "清除标准音",
+            en: "Clear audio",
           })}
           onClick={(e) => {
             if (stopPropagation) e.stopPropagation()
             void clear()
           }}
+          disabled={ttsMutation.isPending || uploadMutation.isPending}
         >
           <X className="size-3.5 text-muted-foreground" />
         </Button>

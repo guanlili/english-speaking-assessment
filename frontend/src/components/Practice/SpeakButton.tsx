@@ -1,5 +1,6 @@
 import { Volume2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import type { BiString } from "@/lib/bi"
 import { useI18n } from "@/lib/i18n"
@@ -29,6 +30,16 @@ function SpeakButton({
   const [playing, setPlaying] = useState(false)
   const [rate, setRate] = useState("1")
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const playbackError = () => {
+    setPlaying(false)
+    utteranceRef.current = null
+    toast.error(
+      t({
+        zh: "音频播放失败，请检查网络或设备声音设置",
+        en: "Audio playback failed. Check your connection or device audio settings.",
+      }),
+    )
+  }
 
   useEffect(() => {
     return () => {
@@ -42,7 +53,7 @@ function SpeakButton({
   if (audioUrl) {
     const src = audioUrl.startsWith("/") ? `${API_BASE}${audioUrl}` : audioUrl
     return (
-      <audio controls src={src} className="w-full">
+      <audio controls src={src} className="w-full" onError={playbackError}>
         <track kind="captions" />
       </audio>
     )
@@ -55,14 +66,13 @@ function SpeakButton({
         setPlaying(false)
         utteranceRef.current = null
       },
-      onError: () => {
-        setPlaying(false)
-        utteranceRef.current = null
-      },
+      onError: playbackError,
     })
     if (utterance) {
       utteranceRef.current = utterance
       setPlaying(true)
+    } else {
+      playbackError()
     }
   }
 
@@ -74,6 +84,9 @@ function SpeakButton({
           ? t({ zh: "正在播放…", en: "Playing…" })
           : t({ zh: "听示范", en: "Listen" })}
       </Button>
+      <span className="text-xs text-muted-foreground">
+        {t({ zh: "设备合成语音", en: "Device speech" })}
+      </span>
       <div className="flex items-center gap-2">
         <label className="sr-only" htmlFor="speech-rate">
           {t({ zh: "示范语速", en: "Speed" })}

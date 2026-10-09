@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import type { BiString } from "@/lib/bi"
 import { useI18n } from "@/lib/i18n"
 import { speakEnglish, TTS_RATE_OPTIONS } from "@/lib/tts"
+import { extractErrorMessage } from "@/utils"
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ""
 
@@ -40,14 +41,21 @@ export default function LimitedListenButton({
   const { t } = useI18n()
   const [used, setUsed] = useState(initialUsed)
   const [rate, setRate] = useState("1")
+  const [loading, setLoading] = useState(false)
+  const [playing, setPlaying] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const countingRef = useRef(false)
+  const activeRef = useRef(true)
   const unlimited = replayLimit === 0
   const remaining = unlimited ? Infinity : Math.max(0, replayLimit - used)
   const exhausted = !unlimited && remaining <= 0
 
   useEffect(() => {
+    activeRef.current = true
+    const audio = audioRef.current
     return () => {
+      activeRef.current = false
+      audio?.pause()
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel()
       }
@@ -55,23 +63,48 @@ export default function LimitedListenButton({
   }, [])
 
   const play = async () => {
-    if (exhausted || !sessionId || countingRef.current) return
+    if (exhausted || !sessionId || countingRef.current || playing) return
     countingRef.current = true
+    setLoading(true)
     try {
       const counted = await recordListenCount()
-      if (!counted) return
+      if (!counted || !activeRef.current) return
       if (audioUrl) {
         if (audioRef.current) {
           audioRef.current.playbackRate = Number(rate)
-          void audioRef.current.play()
+          audioRef.current.currentTime = 0
+          if (audioRef.current.error) audioRef.current.load()
+          await audioRef.current.play()
+          setPlaying(true)
         }
         return
       }
       // TTS 兜底：浏览器合成没有服务端文件，仍走计数
-      speakEnglish(text, { rate: Number(rate) })
+      setPlaying(true)
+      const utterance = speakEnglish(text, {
+        rate: Number(rate),
+        onEnd: () => setPlaying(false),
+        onError: playbackError,
+      })
+      if (!utterance) playbackError()
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === "AbortError"))
+        playbackError()
     } finally {
       countingRef.current = false
+      setLoading(false)
     }
+  }
+
+  const playbackError = () => {
+    if (!activeRef.current) return
+    setPlaying(false)
+    toast.error(
+      t({
+        zh: "音频播放失败，请检查网络或设备声音设置",
+        en: "Audio playback failed. Check your connection or device audio settings.",
+      }),
+    )
   }
 
   const recordListenCount = async (): Promise<boolean> => {
@@ -84,16 +117,16 @@ export default function LimitedListenButton({
       setUsed((prev) => Math.max(prev, result.listen_used))
       return true
     } catch (err) {
-      if (err instanceof ApiError && err.status === 422) {
+      const detail = (err as ApiError).body as { detail?: string } | undefined
+      if (
+        err instanceof ApiError &&
+        err.status === 422 &&
+        detail?.detail?.startsWith("可重听次数已用完")
+      ) {
         toast.error(t({ zh: "可重听次数已用完", en: "No replays left" }))
         setUsed((prev) => Math.max(prev, replayLimit))
       } else {
-        toast.error(
-          t({
-            zh: "听音失败，请检查网络后重试",
-            en: "Playback failed — check your connection and retry",
-          }),
-        )
+        toast.error(extractErrorMessage(err))
       }
       return false
     }
@@ -107,6 +140,7 @@ export default function LimitedListenButton({
           src={audioUrl.startsWith("/") ? `${API_BASE}${audioUrl}` : audioUrl}
           preload="metadata"
           hidden
+          onEnded={() => setPlaying(false)}
         >
           <track kind="captions" />
         </audio>
@@ -115,12 +149,16 @@ export default function LimitedListenButton({
         variant="secondary"
         size="lg"
         onClick={() => void play()}
-        disabled={exhausted}
+        disabled={exhausted || loading || playing || !sessionId}
       >
         <Volume2 />
-        {exhausted
-          ? t({ zh: "重听次数已用完", en: "No replays left" })
-          : t({ zh: "听示范", en: "Listen" })}
+        {loading
+          ? t({ zh: "正在加载…", en: "Loading…" })
+          : playing
+            ? t({ zh: "正在播放…", en: "Playing…" })
+            : exhausted
+              ? t({ zh: "重听次数已用完", en: "No replays left" })
+              : t({ zh: "听示范", en: "Listen" })}
       </Button>
       <span className="text-xs text-muted-foreground">
         {unlimited
@@ -130,6 +168,11 @@ export default function LimitedListenButton({
               en: `${remaining} replays left`,
             })}
       </span>
+      {!audioUrl && (
+        <span className="text-xs text-muted-foreground">
+          {t({ zh: "设备合成语音", en: "Device speech" })}
+        </span>
+      )}
       <label className="sr-only" htmlFor={`listen-rate-${itemId}`}>
         {t({ zh: "示范语速", en: "Speed" })}
       </label>

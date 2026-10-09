@@ -1,7 +1,10 @@
 import { Link } from "@tanstack/react-router"
 import { Button } from "@/components/ui/button"
+import { readStoredLang, resolveBi } from "@/lib/bi"
 
 const ErrorComponent = () => {
+  // Root errors can render outside I18nProvider.
+  const lang = readStoredLang()
   return (
     <div
       className="flex min-h-screen items-center justify-center flex-col p-4"
@@ -10,18 +13,30 @@ const ErrorComponent = () => {
       <div className="flex items-center z-10">
         <div className="flex flex-col ml-4 items-center justify-center p-4">
           <span className="text-6xl md:text-8xl font-bold leading-none mb-4">
-            Error
+            {resolveBi({ zh: "页面出错", en: "Error" }, lang)}
           </span>
-          <span className="text-2xl font-bold mb-2">Oops!</span>
         </div>
       </div>
 
       <p className="text-lg text-muted-foreground mb-4 text-center z-10">
-        Something went wrong. Please try again.
+        {resolveBi(
+          {
+            zh: "页面暂时无法显示，请重新加载或返回首页。",
+            en: "This page could not be displayed. Reload it or return home.",
+          },
+          lang,
+        )}
       </p>
-      <Link to="/">
-        <Button>Go Home</Button>
-      </Link>
+      <div className="flex flex-wrap justify-center gap-3">
+        <Button type="button" onClick={() => window.location.reload()}>
+          {resolveBi({ zh: "重新加载页面", en: "Reload Page" }, lang)}
+        </Button>
+        <Button asChild variant="outline">
+          <Link to="/">
+            {resolveBi({ zh: "返回首页", en: "Go Home" }, lang)}
+          </Link>
+        </Button>
+      </div>
     </div>
   )
 }

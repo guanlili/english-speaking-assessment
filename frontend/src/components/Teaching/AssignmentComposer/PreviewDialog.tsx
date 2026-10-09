@@ -188,8 +188,10 @@ export function PreviewDialog({
 /** 发布历史（课堂练习版本，含已归档）。 */
 export function PublishHistory({
   exerciseHistory,
+  onViewHistory,
 }: {
   exerciseHistory: ClassroomExercisePublic[]
+  onViewHistory?: (exerciseId: string) => void
 }) {
   const { t } = useI18n()
   if (exerciseHistory.length === 0) return null
@@ -197,8 +199,8 @@ export function PublishHistory({
     <details className="rounded-2xl border bg-card px-5 py-4">
       <summary className="cursor-pointer text-sm font-semibold">
         {t({
-          zh: `发布历史（${exerciseHistory.length} 个版本）`,
-          en: `Publish History (${exerciseHistory.length} versions)`,
+          zh: `发布版本（${exerciseHistory.length} 个版本）`,
+          en: `Published Versions (${exerciseHistory.length} versions)`,
         })}
       </summary>
       <div className="mt-4 divide-y text-sm">
@@ -213,6 +215,16 @@ export function PublishHistory({
                 en: `v${exercise.version_no} · ${exercise.title} · ${exercise.item_count} items`,
               })}
             </span>
+            {onViewHistory && (
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                onClick={() => onViewHistory(exercise.id)}
+              >
+                {t({ zh: "查看该版结果", en: "View version results" })}
+              </Button>
+            )}
             <span className="text-xs text-muted-foreground">
               {exercise.status === "published"
                 ? t({ zh: "当前发布", en: "Current publish" })
