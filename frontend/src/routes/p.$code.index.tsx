@@ -326,6 +326,9 @@ function ClassroomPracticePage() {
     attempt,
     submitError,
     submitErrorData,
+    rubricPending: attemptRubricPending,
+    pollError: attemptPollError,
+    refetchAttempt,
     reset: resetAttempt,
   } = useAttemptSubmit({
     itemType:
@@ -1010,6 +1013,43 @@ function ClassroomPracticePage() {
           <PracticeSidebar isQuestion={isQuestion} allDone={allDone} />
         </div>
 
+        {/* 08A 状态接线：rubric 评定中不是卡死；轮询停止（403/404）给
+            只读重试入口——绝不重传音频、不新增幂等键 */}
+        {attemptRubricPending && !exam && (
+          <div
+            role="status"
+            className="flex items-center gap-2 rounded-xl border bg-muted/30 px-4 py-3 text-sm text-muted-foreground"
+          >
+            <span className="size-2 animate-pulse rounded-full bg-primary" />
+            {t({
+              zh: "基础反馈已就绪，模拟分评定中…",
+              en: "Feedback is ready. Mock score is being graded…",
+            })}
+          </div>
+        )}
+        {attemptPollError.present &&
+          (attemptPollError.status === 403 ||
+            attemptPollError.status === 404) &&
+          !exam && (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm"
+            >
+              <span>
+                {t({
+                  zh: "评分查询失败（无权限或作答不存在）",
+                  en: "Cannot fetch your score (no access or attempt missing)",
+                })}
+              </span>
+              <Button
+                variant="outline"
+                className="h-11"
+                onClick={refetchAttempt}
+              >
+                {t({ zh: "重新查询", en: "Retry fetch" })}
+              </Button>
+            </div>
+          )}
         {/* 反馈必须绑定实际作答的题型与题目：录音期间老师发布新计划后，
             旧反馈不会挂到新题（attempt 自带 item_type / item_id）。 */}
         {attempt && attemptTerminal && !exam && (

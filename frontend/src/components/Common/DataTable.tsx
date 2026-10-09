@@ -38,6 +38,11 @@ export interface ManualPagination {
   pageSize: number
   onPageChange: (pageIndex: number) => void
   onPageSizeChange: (pageSize: number) => void
+  /**
+   * 正在拉取新页（含 keepPreviousData 展示旧页期间）。为真时行操作
+   * 整体禁用：占位旧页上打开的破坏性弹窗，等新页到达后目标会错位
+   * （返修R01）——稳定行 id 让旧行卸载，这里再挡住新交互双保险。
+   */
   loading?: boolean
 }
 
@@ -46,6 +51,12 @@ interface DataTableProps<TData, TValue> {
   data: TData[]
   /** 不传 = 默认客户端分页（现有调用方行为不变） */
   manualPagination?: ManualPagination
+  /**
+   * 行的稳定业务主键（如用户 id）。跨页翻页时行位置会被复用，没有
+   * 稳定 id 的行键会让 React 把旧行的组件状态（弹窗等）安到新行上
+   * （返修R01）。客户端分页的静态数据不传也能工作，但推荐都传。
+   */
+  getRowId?: (row: TData) => string
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
@@ -54,6 +65,7 @@ export function DataTable<TData, TValue>({
   columns,
   data,
   manualPagination,
+  getRowId,
 }: DataTableProps<TData, TValue>) {
   const { t } = useI18n()
   const isManual = manualPagination !== undefined
@@ -62,6 +74,7 @@ export function DataTable<TData, TValue>({
   const table = useReactTable({
     data,
     columns,
+    getRowId: getRowId ? (row) => getRowId(row) : undefined,
     getCoreRowModel: getCoreRowModel(),
     // 服务端分页：行模型不分页（data 已是当前页），页数与状态由外部受控
     getPaginationRowModel: isManual ? undefined : getPaginationRowModel(),
@@ -107,6 +120,9 @@ export function DataTable<TData, TValue>({
     <div className="flex flex-col gap-4">
       <div
         aria-busy={manualPagination?.loading || undefined}
+        // inert 同时挡鼠标与键盘（pointer-events 挡不住 Enter/Tab 路径）：
+        // 占位旧页上的行操作（含弹窗）在数据到达前完全不可达（返修R01）
+        inert={manualPagination?.loading ? true : undefined}
         className={
           manualPagination?.loading
             ? "opacity-60 transition-opacity"

@@ -1,7 +1,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { useCallback, useRef, useState } from "react"
 import { AttemptsService } from "@/client"
-import { attemptPollIntervalMs, rubricPending } from "@/lib/attempt-polling"
+import {
+  attemptPollIntervalMs,
+  pollErrorInfo,
+  rubricPending,
+} from "@/lib/attempt-polling"
 
 export interface AttemptSubmitTarget {
   itemType: "passage" | "repeat" | "question"
@@ -52,6 +56,10 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
     onSuccess: (data) => setAttemptId(data.id ?? null),
   })
 
+  // 连续轮询失败次数（成功归零）：Query 的 fetchFailureCount 语义与
+  // 轮询轮次无关（内部重试也会累计），退避用自己的计数（返修R12）
+  const pollFailuresRef = useRef(0)
+
   const attemptQuery = useQuery({
     queryKey: ["attempt", attemptId],
     queryFn: () =>
@@ -59,16 +67,28 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
     enabled: attemptId !== null,
     refetchInterval: (query) => {
       const data = query.state.data
-      const error = query.state.error as { status?: number } | null
+      const errorInfo = pollErrorInfo(query.state.error)
+      if (errorInfo.present) {
+        pollFailuresRef.current += 1
+      } else {
+        pollFailuresRef.current = 0
+      }
       const rubric = data?.rubric as Record<string, unknown> | null | undefined
       return attemptPollIntervalMs({
         status: data?.status,
         rubricStatus: (rubric?.["status"] as string | undefined) ?? null,
-        errorStatus: error?.status,
-        failureCount: query.state.fetchFailureCount,
+        errorPresent: errorInfo.present,
+        errorStatus: errorInfo.status,
+        failureCount: pollFailuresRef.current,
       })
     },
   })
+
+  // 只读重试（GET）：轮询因网络/服务器错误停止或退避时由用户触发，
+  // 绝不重传音频、不新增幂等键（返修A：08A 状态接线）
+  const refetchAttempt = useCallback(() => {
+    void attemptQuery.refetch()
+  }, [attemptQuery])
 
   // useCallback：reset 会作为练习页自动推进 effect 的依赖，必须保持引用稳定
   const resetMutation = submitMutation.reset
@@ -78,7 +98,7 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
   }, [resetMutation])
 
   const attempt = attemptId ? attemptQuery.data : undefined
-  const pollError = (attemptQuery.error as { status?: number } | null) ?? null
+  const pollError = pollErrorInfo(attemptQuery.error)
 
   return {
     submit: (
@@ -98,8 +118,10 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
     attempt,
     /** rubric 详情仍在评定中（done 后模拟分未出） */
     rubricPending: rubricPending(attempt),
-    /** 轮询失败（403/404 已停轮；网络错误退避中） */
+    /** 轮询失败信息（403/404 已停轮；网络错误退避中），present=false 无错误 */
     pollError,
+    /** 用户触发的只读刷新（GET），用于停轮/退避后的恢复 */
+    refetchAttempt,
     reset,
   }
 }
