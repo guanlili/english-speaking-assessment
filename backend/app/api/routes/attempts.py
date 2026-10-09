@@ -455,7 +455,21 @@ def create_attempt_upload(
         _delete_unreferenced_audio(session, audio_path)
         raise
     except Exception:
-        _delete_unreferenced_audio(session, audio_path)
+        # 数据库异常后连接可能处于 aborted 态：先 rollback 复位，否则
+        # 补偿查询本身也会失败（返修E）。补偿全程受保护——补偿失败宁可
+        # 保留文件交给孤儿扫描，也不掩盖原始异常或误删已入库音频
+        try:
+            session.rollback()
+        except Exception:  # noqa: BLE001 - 复位失败只能保留文件并记录
+            logger.warning(
+                "rollback before audio compensation failed for %s", audio_path
+            )
+        try:
+            _delete_unreferenced_audio(session, audio_path)
+        except Exception:  # noqa: BLE001 - 补偿不得掩盖原始异常
+            logger.warning(
+                "audio compensation failed; keep %s for orphan scan", audio_path
+            )
         raise
 
     submitter(attempt.id)

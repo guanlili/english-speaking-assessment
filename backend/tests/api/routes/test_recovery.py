@@ -1155,3 +1155,38 @@ def test_final_shutdown_blocks_resubmit_and_recreation(
     assert worker._executor_stopped is False
     worker.get_executor()  # 重建成功
     worker.shutdown_executor(final=False)
+
+
+def test_upload_compensation_failure_never_masks_original_or_deletes(
+    client: TestClient,
+    inline_scoring: Any,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """返修E：入库失败 + 补偿自身失败——原始异常原样抛出（不被补偿
+    异常掩盖），文件按「不确定则保留」交给孤儿扫描。"""
+    from app.api.routes import attempts as attempts_route
+
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
+    first = plan["items"][0]
+
+    def broken_create(*args: object, **kwargs: object) -> Attempt:
+        raise RuntimeError("database connection lost")
+
+    def broken_compensation(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("db still gone")
+
+    monkeypatch.setattr(attempts_route, "create_attempt", broken_create)
+    monkeypatch.setattr(
+        attempts_route, "_delete_unreferenced_audio", broken_compensation
+    )
+    with pytest.raises(RuntimeError, match="database connection lost"):
+        _submit(
+            client, first["type"], first["id"], student["headers"], plan["session_id"]
+        )
+
+    # 补偿失败：文件保留（安全孤儿扫描的输入），异常是原始的那个
+    files = list(tmp_path.glob("*.wav")) + list(tmp_path.glob("*.webm"))
+    assert len(files) == 1, "补偿失败时按「不确定则保留」处理"

@@ -218,3 +218,24 @@ def test_purge_settles_symlink_pointing_outside(
     db.refresh(row)
     assert row.audio_purged_at is not None
     assert victim.exists()  # 真实文件绝不被删
+
+
+def test_purge_settles_same_dir_symlink_without_deleting_target(
+    db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    """返修E：存储根内的符号链接指向同目录另一条音频——原路径即链接，
+    resolve 前拒绝，目标文件（可能仍被其它作答引用）绝不被删。"""
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "AUDIO_TTL_DAYS", 90)
+    target = tmp_path / "live-audio.webm"
+    target.write_bytes(b"x")
+    link = tmp_path / "alias.webm"
+    link.symlink_to(target)
+    # 目标本身仍被一条未过期作答引用
+    _make_attempt(db, str(target), status=AttemptStatus.DONE, age_days=10)
+    link_row = _make_attempt(db, str(link), status=AttemptStatus.DONE, age_days=100)
+
+    assert purge_expired_attempt_audio(db) == 0
+    db.refresh(link_row)
+    assert link_row.audio_purged_at is not None  # 链接行结算
+    assert target.exists()  # 目标音频保留

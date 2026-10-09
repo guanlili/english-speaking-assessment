@@ -28,26 +28,78 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 PERF_DB_NAME = "app_perf"
 
 
-def _build_engine():
-    """从应用测试 DSN 派生凭据（同一实例），库固定为 app_perf。"""
-    from urllib.parse import urlparse, urlunparse
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
-    from sqlalchemy import create_engine, text
-    from sqlalchemy.pool import NullPool
+
+def _perf_uris() -> tuple[str, str]:
+    """从应用测试 DSN 派生同实例凭据，库固定为 app_perf（返回 admin/perf DSN）。"""
+    from urllib.parse import urlparse, urlunparse
 
     from app.core.config import settings
 
     parsed = urlparse(str(settings.SQLALCHEMY_DATABASE_TEST_URI))
-    admin_uri = urlunparse(parsed._replace(path=f"/{PERF_DB_NAME}")).replace(
-        f"/{PERF_DB_NAME}", "/postgres"
-    )
+    admin_uri = urlunparse(parsed._replace(path="/postgres"))
     perf_uri = urlunparse(parsed._replace(path=f"/{PERF_DB_NAME}"))
-    admin = create_engine(admin_uri, isolation_level="AUTOCOMMIT", poolclass=NullPool)
-    with admin.connect() as conn:
-        conn.execute(text(f'DROP DATABASE IF EXISTS "{PERF_DB_NAME}" WITH (FORCE)'))
-        conn.execute(text(f'CREATE DATABASE "{PERF_DB_NAME}"'))
-    admin.dispose()
-    return create_engine(perf_uri)
+    return admin_uri, perf_uri
+
+
+def _refuse_unsafe_target() -> None:
+    """首个 DDL 前的安全闸（返修R02）：
+
+    - 仅 ENVIRONMENT=local；
+    - 目标必须是本机实例（localhost/127.0.0.1/::1）——防止 .env 指向
+      远端时误删远端同名库；
+    - 应用库/测试库名不得与 app_perf 冲突。
+    """
+    from urllib.parse import urlparse
+
+    from app.core.config import settings
+
+    if settings.ENVIRONMENT != "local":
+        raise SystemExit(
+            f"仅允许 ENVIRONMENT=local 运行（当前 {settings.ENVIRONMENT}）"
+        )
+    admin_uri, _ = _perf_uris()
+    host = urlparse(admin_uri).hostname or ""
+    if host not in _LOCAL_HOSTS:
+        raise SystemExit(f"目标实例不是本机（{host}），拒绝运行")
+    for name in (settings.POSTGRES_DB, settings.POSTGRES_DB_TEST):
+        if name == PERF_DB_NAME:
+            raise SystemExit(f"应用库/测试库名与 {PERF_DB_NAME} 冲突，拒绝运行")
+
+
+def _prepare_database(create_engine_fn=None):
+    """创建本次专用的 app_perf 库。同名既有库一律拒绝——绝不无提示强删。
+
+    返回 (engine, created)；拒绝路径直接 SystemExit，清理只针对本次
+    创建的资源（调用方 finally 中执行）。create_engine_fn 可注入以捕获
+    DDL（测试用，不实际连库）。
+    """
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.pool import NullPool
+
+    if create_engine_fn is None:
+        create_engine_fn = create_engine
+    admin_uri, perf_uri = _perf_uris()
+    admin = create_engine_fn(
+        admin_uri, isolation_level="AUTOCOMMIT", poolclass=NullPool
+    )
+    try:
+        with admin.connect() as conn:
+            exists = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                {"name": PERF_DB_NAME},
+            ).scalar()
+            if exists:
+                raise SystemExit(
+                    f"数据库 {PERF_DB_NAME} 已存在：请先人工确认并删除"
+                    f"（psql -c 'DROP DATABASE {PERF_DB_NAME}'）再运行，"
+                    "本脚本不会无提示强删既有库"
+                )
+            conn.execute(text(f'CREATE DATABASE "{PERF_DB_NAME}"'))
+    finally:
+        admin.dispose()
+    return create_engine_fn(perf_uri), True
 
 
 class QueryCounter:
@@ -249,17 +301,16 @@ def main() -> int:
     parser.add_argument("--old-done", type=int, default=10000)
     parser.add_argument("--pending", type=int, default=5)
     parser.add_argument("--books", type=int, default=200)
-    parser.add_argument("--keep-db", action="store_true", help="保留 app_perf 便于排查")
+    parser.add_argument(
+        "--keep-db", action="store_true", help="保留本次创建的 app_perf 便于排查"
+    )
     args = parser.parse_args()
 
-    import os
+    # 安全闸（返修R02）：local 环境 + 本机实例 + 库名不冲突；
+    # 同名既有库拒绝——绝不无提示强删
+    _refuse_unsafe_target()
+    engine, created = _prepare_database()
 
-    # 安全：只连独立的 app_perf 合成库（_build_engine 硬编码建/删该库），
-    # 开发库 app 与测试库 app_test 都不会被触碰
-    server = os.environ.get("POSTGRES_SERVER", "localhost")
-    port = os.environ.get("POSTGRES_PORT", "5433")
-
-    engine = _build_engine()
     from sqlmodel import Session
 
     from app.core.db import set_engine
@@ -283,73 +334,75 @@ def main() -> int:
     print("| 测量项 | SELECT | 行加载 | 耗时 | 备注 |")
     print("|---|---|---|---|---|")
 
-    with Session(engine) as session:
-        with QueryCounter(engine) as c:
-            start = time.perf_counter()
-            worker.sweep_orphans(session)
-            _report("sweep_orphans 候选", c, time.perf_counter() - start,
-                    f"旧 done={args.old_done}, pending={args.pending}")
+    try:
+        with Session(engine) as session:
+            with QueryCounter(engine) as c:
+                start = time.perf_counter()
+                worker.sweep_orphans(session)
+                _report("sweep_orphans 候选", c, time.perf_counter() - start,
+                        f"旧 done={args.old_done}, pending={args.pending}")
 
-    with Session(engine) as session:
-        from sqlmodel import select as _select
+        with Session(engine) as session:
+            from sqlmodel import select as _select
 
-        from app.api.routes.vocabulary import list_books
-        from app.models import User
+            from app.api.routes.vocabulary import list_books
+            from app.models import User
 
-        teacher = session.exec(
-            _select(User).where(User.email == "perf-teacher@test.com")
-        ).first()
-        assert teacher is not None
-        with QueryCounter(engine) as c:
-            start = time.perf_counter()
-            books = list_books(session, teacher)
-            _report("list_books(管理员)", c, time.perf_counter() - start,
-                    f"可见 {len(books)}/{args.books} 本")
-        other = session.exec(
-            _select(User).where(User.email == "perf-other-00@test.com")
-        ).first()
-        assert other is not None
-        with QueryCounter(engine) as c:
-            start = time.perf_counter()
-            books = list_books(session, other)
-            _report("list_books(普通教师)", c, time.perf_counter() - start,
-                    f"可见 {len(books)}/{args.books} 本（SQL 过滤）")
+            teacher = session.exec(
+                _select(User).where(User.email == "perf-teacher@test.com")
+            ).first()
+            assert teacher is not None
+            with QueryCounter(engine) as c:
+                start = time.perf_counter()
+                books = list_books(session, teacher)
+                _report("list_books(管理员)", c, time.perf_counter() - start,
+                        f"可见 {len(books)}/{args.books} 本")
+            other = session.exec(
+                _select(User).where(User.email == "perf-other-00@test.com")
+            ).first()
+            assert other is not None
+            with QueryCounter(engine) as c:
+                start = time.perf_counter()
+                books = list_books(session, other)
+                _report("list_books(普通教师)", c, time.perf_counter() - start,
+                        f"可见 {len(books)}/{args.books} 本（SQL 过滤）")
 
-    with Session(engine) as session:
-        with QueryCounter(engine) as c:
-            start = time.perf_counter()
-            rows = vocab_service.teacher_assignment_rows(session, classroom_id)
-            _report("teacher_assignment_rows", c, time.perf_counter() - start,
-                    f"{args.students} 学生全历史（当前 1 任务）")
+        with Session(engine) as session:
+            with QueryCounter(engine) as c:
+                start = time.perf_counter()
+                rows = vocab_service.teacher_assignment_rows(session, classroom_id)
+                _report("teacher_assignment_rows", c, time.perf_counter() - start,
+                        f"{args.students} 学生全历史（当前 1 任务）")
 
-    with Session(engine) as session:
-        from sqlmodel import select as _select2
+        with Session(engine) as session:
+            from sqlmodel import select as _select2
 
-        from app.models import Student as _Student
+            from app.models import Student as _Student
 
-        stu = session.exec(_select2(_Student).limit(1)).first()
-        with QueryCounter(engine) as c:
-            start = time.perf_counter()
-            wrong = vocab_service.wrong_word_items(session, stu.id)
-            _report("wrong_word_items (today count)", c,
-                    time.perf_counter() - start, f"错词 {len(wrong)} 个")
+            stu = session.exec(_select2(_Student).limit(1)).first()
+            assert stu is not None
+            with QueryCounter(engine) as c:
+                start = time.perf_counter()
+                wrong = vocab_service.wrong_word_items(session, stu.id)
+                _report("wrong_word_items (today count)", c,
+                        time.perf_counter() - start, f"错词 {len(wrong)} 个")
+    finally:
+        set_engine(None)
+        engine.dispose()
+        # 清理只针对本次创建的资源；崩溃/中断也不留危险状态
+        if created and not args.keep_db:
+            from sqlalchemy import create_engine, text
+            from sqlalchemy.pool import NullPool
 
-    set_engine(None)
-    if not args.keep_db:
-        from sqlalchemy import create_engine, text
-        from sqlalchemy.pool import NullPool
-        from urllib.parse import urlparse, urlunparse
-
-        from app.core.config import settings as _settings
-
-        parsed = urlparse(str(_settings.SQLALCHEMY_DATABASE_TEST_URI))
-        admin_uri = urlunparse(parsed._replace(path="/postgres"))
-        admin = create_engine(
-            admin_uri, isolation_level="AUTOCOMMIT", poolclass=NullPool
-        )
-        with admin.connect() as conn:
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{PERF_DB_NAME}" WITH (FORCE)'))
-        admin.dispose()
+            admin_uri, _ = _perf_uris()
+            admin = create_engine(
+                admin_uri, isolation_level="AUTOCOMMIT", poolclass=NullPool
+            )
+            with admin.connect() as conn:
+                conn.execute(
+                    text(f'DROP DATABASE "{PERF_DB_NAME}" WITH (FORCE)')
+                )
+            admin.dispose()
     return 0
 
 

@@ -66,7 +66,14 @@ def purge_expired_attempt_audio(session: Session) -> int:
             # 模型上非空，防御性结算（无文件可管）
             settled_ids.append(attempt_id)
             continue
-        path = Path(audio_path).resolve()
+        raw_path = Path(audio_path)
+        if raw_path.is_symlink():
+            # 原路径就是符号链接（返修E）：resolve 会追踪目标——同目录链接
+            # 指向另一条仍在使用的音频时会误删目标文件。一律结算不删
+            logger.warning("settle symlink audio path: %s", audio_path)
+            settled_ids.append(attempt_id)
+            continue
+        path = raw_path.resolve()
         # 路径护栏：只管理存储根下的**直接**文件（uuid 音频平铺在根上）。
         # content/ 标准音、其它子目录、存储根之外的路径都不是本模块该删的
         # 文件——一律结算标记（不删任何东西），不再每轮重复选中阻塞推进

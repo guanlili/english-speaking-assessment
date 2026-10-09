@@ -19,7 +19,9 @@ TTL 清理管理（清理按行驱动），本脚本负责发现与（显式 --a
 """
 
 import argparse
+import math
 import sys
+import time
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -100,6 +102,9 @@ def main(argv: list[str] | None = None) -> int:
         help=f"安全窗口（小时），窗口内的文件不处理，默认 {DEFAULT_MIN_AGE_HOURS}",
     )
     args = parser.parse_args(argv)
+    # 窗口必须是正的有限数（返修E）：负数/0/NaN 会把安全窗口变成立即删除
+    if not math.isfinite(args.min_age_hours) or args.min_age_hours <= 0:
+        parser.error(f"--min-age-hours 必须是正的有限数（当前 {args.min_age_hours}）")
 
     from app.core.config import settings
 
@@ -123,10 +128,24 @@ def main(argv: list[str] | None = None) -> int:
         print("dry-run：加 --apply 才会删除。")
         return 0
     root_resolved = root.resolve()
+    # 删除前重查引用：候选选出后可能已有新作答入库（返修E）
+    fresh_refs = {
+        Path(p).name: p for p in _collect_referenced_paths() if p
+    }
+    fresh_resolved = {str(Path(p).resolve()) for p in fresh_refs.values() if p}
+    now_ts = time.time()
+    cutoff = now_ts - args.min_age_hours * 3600
     deleted = 0
     for path in orphans:
         try:
-            # 删除前再校验：仍在存储根内、仍无引用窗口内的最近修改
+            # 复验（与初筛同规则）：类型/符号链接、窗口内改动、新增引用、存储根归属
+            if path.is_symlink() or not path.is_file():
+                continue
+            if path.stat().st_mtime > cutoff:
+                continue
+            resolved = str(path.resolve())
+            if path.name in fresh_refs or resolved in fresh_resolved:
+                continue
             if root_resolved not in path.resolve().parents:
                 continue
             path.unlink(missing_ok=True)
