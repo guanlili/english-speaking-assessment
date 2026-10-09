@@ -918,6 +918,18 @@ def stop_sweeper() -> None:
     _sweeper_thread = None
 
 
+def reset_executors_for_restart() -> None:
+    """新生命周期启动时复位终局关闭标志（返修R07 收口）。
+
+    生产每次启动都是新进程（标志天然为 False）；测试进程内多个模块
+    共用 app，模块级 client 夹具反复进出 lifespan——上一轮 shutdown
+    的 final 标志必须复位，否则后续模块的真实投递被静默跳过。
+    """
+    global _executor_stopped
+    with _executor_lock:
+        _executor_stopped = False
+
+
 def shutdown_executor(final: bool = True) -> None:
     """关闭线程池。final=True 为终局关闭（进程退出/lifespan 结束）：
 
