@@ -132,6 +132,9 @@ def _snapshot_attempt_item(
             "id": str(item.id),
             "text": item.text,
             "suggested_seconds": item.suggested_seconds,
+            # 分级题型字段（批次10）：与发布快照同构，评分语境不因非发布而缺失
+            "exam_kind": item.exam_kind,
+            "exam_level": item.exam_level,
         }
     item = session.get(ScenarioQuestion, item_id)
     if item is None:
@@ -142,6 +145,11 @@ def _snapshot_attempt_item(
         "text": item.text,
         "band": item.band,
         "suggested_seconds": item.suggested_seconds,
+        # 分级题型字段（批次10）：与发布快照同构；话题卡要点参与评分
+        "exam_kind": item.exam_kind,
+        "exam_level": item.exam_level,
+        "cue_card_bullets": item.cue_card_bullets,
+        "prep_seconds": item.prep_seconds,
     }
 
 

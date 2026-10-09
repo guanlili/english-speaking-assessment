@@ -208,8 +208,12 @@ def test_quick_feedback_committed_before_detail(
         worker, "ensure_ark_supported", lambda audio, mime: (audio, mime)
     )
     monkeypatch.setattr(worker, "_resolve_read_aloud_item", lambda *_: None)
+    from app.scoring.rubric import RubricQuestionContext
+
     monkeypatch.setattr(
-        worker, "_resolve_question_prompt", lambda *_: ("Why cats?", "B1")
+        worker,
+        "_resolve_question_context",
+        lambda *_: RubricQuestionContext(text="Why cats?", band="B1"),
     )
     monkeypatch.setattr(worker, "_detail_executor", detail_executor)
     monkeypatch.setattr(db_module, "engine", db.get_bind())

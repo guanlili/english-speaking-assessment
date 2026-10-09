@@ -34,6 +34,7 @@ from app.scoring.asr import ArkResponsesAsr, MockAsr
 from app.scoring.audio_convert import convert_to_wav, ensure_ark_supported
 from app.scoring.base import AsrProvider, ContentMissingError, ScoringError
 from app.scoring.heuristic import score_open_response, score_read_aloud
+from app.scoring.rubric import RUBRIC_PROMPT_VERSION, RubricQuestionContext
 from app.scoring.volc_flash import VolcFlashAsr
 
 logger = logging.getLogger(__name__)
@@ -290,19 +291,57 @@ def _resolve_read_aloud_item(
     return None
 
 
-def _resolve_question_prompt(session: Session, attempt: Attempt) -> tuple[str, str]:
-    if isinstance(attempt.item_snapshot, dict):
-        text = attempt.item_snapshot.get("text")
-        band = attempt.item_snapshot.get("band", "B1")
-        if isinstance(text, str) and text.strip():
-            return text, band if isinstance(band, str) else "B1"
+def _resolve_question_context(
+    session: Session, attempt: Attempt
+) -> RubricQuestionContext:
+    """评分题目上下文（批次10）：快照优先，旧快照缺考试字段回填题库行。
+
+    老师事后改题干/话题卡不改历史评价依据；考试语境（题型/级别/话题卡
+    要点）随题面一并交给 rubric 模型——Part2 没覆盖要点的「任务完成」
+    维度此前无从谈起。
+    """
+    snapshot = (
+        attempt.item_snapshot if isinstance(attempt.item_snapshot, dict) else None
+    )
+    text = snapshot.get("text") if snapshot else None
+    band = snapshot.get("band", "B1") if snapshot else "B1"
+    exam_kind = snapshot.get("exam_kind") if snapshot else None
+    exam_level = snapshot.get("exam_level") if snapshot else None
+    raw_bullets = snapshot.get("cue_card_bullets") if snapshot else None
+    if isinstance(text, str) and text.strip():
+        # 旧快照没有考试字段：从题库当前行回填（兼容，不重写快照）
+        if exam_kind is None and exam_level is None and raw_bullets is None:
+            question = session.get(ScenarioQuestion, attempt.item_id)
+            if question is not None:
+                exam_kind = question.exam_kind
+                exam_level = question.exam_level
+                raw_bullets = question.cue_card_bullets
+        return RubricQuestionContext(
+            text=text,
+            band=band if isinstance(band, str) else "B1",
+            exam_kind=exam_kind if isinstance(exam_kind, str) else None,
+            exam_level=exam_level if isinstance(exam_level, str) else None,
+            cue_card_bullets=(
+                [b for b in raw_bullets if isinstance(b, str) and b.strip()]
+                if isinstance(raw_bullets, list)
+                else None
+            ),
+        )
     question = session.get(ScenarioQuestion, attempt.item_id)
     if question is None:
         raise ContentMissingError("问题不存在")
-    return question.text, question.band
+    return RubricQuestionContext(
+        text=question.text,
+        band=question.band,
+        exam_kind=question.exam_kind,
+        exam_level=question.exam_level,
+        cue_card_bullets=question.cue_card_bullets,
+    )
 
 
-def _score_rubric(prompt: str, band: str, transcript: str) -> dict[str, object] | None:
+def _score_rubric(
+    context: RubricQuestionContext, transcript: str
+) -> dict[str, object] | None:
     """ark 引擎下按 rubric 出四维分 + 0-9 模拟分；失败返回 None（显示暂缺）。"""
     from app.scoring.rubric import ArkRubricScorer
 
@@ -311,7 +350,7 @@ def _score_rubric(prompt: str, band: str, transcript: str) -> dict[str, object] 
             api_key=settings.ARK_API_KEY or "",
             model=settings.ARK_RUBRIC_MODEL,
         )
-        scores = scorer.score(prompt, band, transcript)
+        scores = scorer.score(context, transcript)
         return {
             "fluency": scores.fluency,
             "vocabulary": scores.vocabulary,
@@ -320,6 +359,10 @@ def _score_rubric(prompt: str, band: str, transcript: str) -> dict[str, object] 
             "mock_score": scores.mock_score,
             "upgrades": scores.upgrades,
             "advice": scores.advice,
+            # 评分来源元数据（批次10）：界面标注「模拟分由哪个模型按哪版
+            # 提示词评出」；历史行无这些字段按 legacy 展示，不猜测
+            "model": settings.ARK_RUBRIC_MODEL,
+            "prompt_version": RUBRIC_PROMPT_VERSION,
         }
     except Exception as exc:  # noqa: BLE001 - rubric 失败不影响作答本体
         # ERROR 级：Sentry 默认只把 ERROR 转成事件，WARNING 只进 breadcrumb——
@@ -378,7 +421,7 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             and row[0] == lease_token
         )
 
-    detail_request: tuple[str, str, str] | None = None
+    detail_request: tuple[RubricQuestionContext, str] | None = None
     try:
         # ASR 断点：上一轮已转写成功（transcript 已落库）时直接复用，
         # 不再重跑 ASR——重试烧掉的是真实 API 费用，转写结果与音频内容无关可安全复用
@@ -439,7 +482,7 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             attempt.advice = scores.advice
         else:
             # 开放问答：无参考文本（PRD §4：2 周只出总评和一句建议）
-            prompt, band = _resolve_question_prompt(session, attempt)
+            question_context = _resolve_question_context(session, attempt)
             open_scores = score_open_response(transcript, attempt.duration_s)
             attempt.transcript = open_scores.transcript
             attempt.fluency = open_scores.fluency
@@ -458,7 +501,7 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
                     "phase": "queued",
                     "queued_at": datetime.now(UTC).isoformat(),
                 }
-                detail_request = (prompt, band, transcript)
+                detail_request = (question_context, transcript)
 
         if not lease_valid():
             raise _LeaseLostError(attempt_id)
@@ -518,7 +561,7 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
 
 
 def _complete_detail(
-    attempt_id: uuid.UUID, prompt: str, band: str, transcript: str
+    attempt_id: uuid.UUID, context: RubricQuestionContext, transcript: str
 ) -> None:
     from app.core.db import engine
 
@@ -545,7 +588,7 @@ def _complete_detail(
             else:
                 return
 
-    result = _score_rubric(prompt, band, transcript)
+    result = _score_rubric(context, transcript)
     with Session(engine) as session:
         attempt = session.get(Attempt, attempt_id)
         if attempt is not None and attempt.status == AttemptStatus.DONE:
@@ -558,6 +601,9 @@ def _complete_detail(
                 and rubric is not None
                 and rubric.get("status") == "pending"
             ):
+                if result is not None:
+                    # asr 来源取作答行已落库的真实引擎（批次04 起可信）
+                    result = {**result, "asr": attempt.engine}
                 attempt.rubric = result or {"status": "unavailable"}
                 session.add(attempt)
                 session.commit()

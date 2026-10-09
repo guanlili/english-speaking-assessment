@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import type { BiString } from "@/lib/bi"
+import { adviceText, type BilingualAdvice } from "@/lib/bilingual"
 import { useI18n } from "@/lib/i18n"
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/utils"
 
@@ -54,9 +55,14 @@ interface RubricPayload {
   grammar?: number
   task?: number
   mock_score?: number
-  advice?: string[]
+  /** 批次10：新结构为 {zh,en} 双语；旧模型输出是纯字符串，原样展示 */
+  advice?: Array<string | BilingualAdvice>
   status?: string
   upgrades?: string[]
+  /** 评分来源元数据（批次10）；历史行缺省按 legacy 展示 */
+  model?: string
+  prompt_version?: number
+  asr?: string
 }
 
 function parseRubric(raw: unknown): RubricPayload | null {
@@ -75,7 +81,7 @@ export function RubricBlock({
   /** 按用户隔离的收藏键；缺省时收藏按钮降级为不写（避免写进无归属旧键串号）。 */
   savedExpressionsKey?: string
 }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const data = parseRubric(rubric)
 
   if (data?.status === "pending" || data?.status === "unavailable") {
@@ -142,9 +148,10 @@ export function RubricBlock({
       </div>
       {data.advice?.length ? (
         <ul className="list-disc space-y-1 pl-5 text-sm">
-          {data.advice.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
+          {data.advice.map((item) => {
+            const line = adviceText(item, lang)
+            return line ? <li key={line}>{line}</li> : null
+          })}
         </ul>
       ) : null}
       {data.upgrades && data.upgrades.length > 0 && (
@@ -181,6 +188,18 @@ export function RubricBlock({
           </ul>
         </div>
       )}
+      {/* 评分来源（批次10）：模拟分由哪个模型评出；历史行无元数据标 legacy */}
+      <p className="text-xs text-muted-foreground">
+        {data.model
+          ? t({
+              zh: `模拟分来源：${data.model}（提示词 v${data.prompt_version ?? "?"}，转写 ${data.asr ?? "?"}）`,
+              en: `Mock score by ${data.model} (prompt v${data.prompt_version ?? "?"}, ASR ${data.asr ?? "?"})`,
+            })
+          : t({
+              zh: "模拟分来源：历史记录（未记录模型版本）",
+              en: "Mock score: legacy record (model not recorded)",
+            })}
+      </p>
     </div>
   )
 }
