@@ -162,11 +162,39 @@ def settle_due_sessions(session: Session, assignment: VocabularyAssignment) -> i
     return settled
 
 
+def settle_session_if_due(
+    session: Session, vocab_session: VocabularySession, assignment: VocabularyAssignment
+) -> bool:
+    """只结算本答卷（学生作答/交卷路径专用，返修R09）。
+
+    与批量结算同口径，但只对本行加锁改写——学生路径不在持有/等待其它
+    学生行锁的情况下扫描全班，避免跨会话锁环。返回是否本次终结。
+    """
+    deadline = quiz_deadline(vocab_session, assignment)
+    if deadline is None or _now() <= deadline:
+        return False
+    session.refresh(vocab_session, with_for_update=True)
+    if vocab_session.status != "in_progress":
+        return False
+    locked_deadline = quiz_deadline(vocab_session, assignment)
+    if locked_deadline is None or _now() <= locked_deadline:
+        return False
+    vocab_session.status = "submitted"
+    vocab_session.end_reason = "timeout"
+    vocab_session.submitted_at = locked_deadline
+    session.add(vocab_session)
+    session.commit()
+    return True
+
+
 def ensure_quiz_answerable(
     session: Session, vocab_session: VocabularySession, assignment: VocabularyAssignment
 ) -> None:
-    """作答前门禁：结算到时答卷；已终结（交卷/超时）一律拒绝继续作答。"""
-    settle_due_sessions(session, assignment)
+    """作答前门禁：结算到时答卷；已终结（交卷/超时）一律拒绝继续作答。
+
+    只结算本答卷（R09）；终态竞态由 submit_answer 的会话行锁兜底。
+    """
+    settle_session_if_due(session, vocab_session, assignment)
     session.refresh(vocab_session)
     if vocab_session.status != "in_progress":
         if vocab_session.end_reason == "timeout":
@@ -253,17 +281,23 @@ def submit_quiz_session(
 ) -> VocabularySession:
     """主动交卷：终结答卷（幂等；已终结返回原状态，不重复改写）。
 
-    会话行锁内重校验状态——交卷与作答提交、到时结算共享同一把锁，
-    交卷生效后（锁释放前落库 submitted）并发作答在锁内看到终态被拒。
+    统一锁内终态规则（返修R08）：先看终态（已 submitted 一律不改写），
+    仍 in_progress 才依据**获锁后的服务器时间**决定 manual/timeout——
+    等锁期间跨过截止的交卷按超时结算，submitted_at 取截止时刻。
+    只结算本答卷（R09），不扫描其它学生的行。
     """
-    settle_due_sessions(session, assignment)
-    # 行锁 + 重读：交卷与作答提交、到时结算共享同一把锁，锁内终态判定
     session.refresh(vocab_session, with_for_update=True)
     if vocab_session.status != "in_progress":
         return vocab_session
-    vocab_session.status = "submitted"
-    vocab_session.end_reason = "manual"
-    vocab_session.submitted_at = _now()
+    deadline = quiz_deadline(vocab_session, assignment)
+    if deadline is not None and _now() > deadline:
+        vocab_session.status = "submitted"
+        vocab_session.end_reason = "timeout"
+        vocab_session.submitted_at = deadline
+    else:
+        vocab_session.status = "submitted"
+        vocab_session.end_reason = "manual"
+        vocab_session.submitted_at = _now()
     session.add(vocab_session)
     session.commit()
     session.refresh(vocab_session)

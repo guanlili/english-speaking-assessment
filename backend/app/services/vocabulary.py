@@ -608,6 +608,27 @@ def session_snapshot(
     return vocab_session.snapshot_items
 
 
+MAX_NORMALIZED_ANSWER_LEN = 255
+
+
+def _normalized_answer_or_422(answer_raw: str) -> str:
+    """规范化作答并校验长度（返修R11）。
+
+    原文 ≤255 不代表 NFKC 规范化后仍 ≤255（如 "ﬃ"×86 → 258 字符）。
+    超限直接 422 拒绝——落库截断会让同载荷重放被判不匹配、不同载荷
+    反而碰撞匹配。已有截断存量行不受影响（不回填不重算）。
+    """
+    normalized = normalize_spelling(answer_raw)
+    if not normalized:
+        raise HTTPException(status_code=422, detail="作答内容不能为空白")
+    if len(normalized) > MAX_NORMALIZED_ANSWER_LEN:
+        raise HTTPException(
+            status_code=422,
+            detail="作答内容过长（规范化后超过 255 字符），请缩短后提交",
+        )
+    return normalized
+
+
 def recognize_answer_replay(
     session: Session,
     vocab_session: VocabularySession,
@@ -626,6 +647,8 @@ def recognize_answer_replay(
     """
     if not idempotency_key:
         return None
+    # 超限载荷不可能匹配任何存量行（落库均为完整规范化值），先按长度拒绝
+    normalized = _normalized_answer_or_422(answer_raw)
     existing = session.exec(
         select(VocabularyAnswer).where(
             VocabularyAnswer.idempotency_key == idempotency_key  # type: ignore[arg-type]
@@ -637,7 +660,7 @@ def recognize_answer_replay(
         existing.session_id == vocab_session.id
         and existing.item_index == item_index
         and existing.prompt_type == prompt_type
-        and existing.answer_normalized == normalize_spelling(answer_raw)
+        and existing.answer_normalized == normalized
     )
     if not same:
         raise HTTPException(
@@ -689,9 +712,7 @@ def submit_answer(
     if isinstance(item_prompt_types, list) and prompt_type not in item_prompt_types:
         raise HTTPException(status_code=422, detail="该题不支持这种出题方式")
 
-    normalized = normalize_spelling(answer_raw)
-    if not normalized:
-        raise HTTPException(status_code=422, detail="作答内容不能为空白")
+    normalized = _normalized_answer_or_422(answer_raw)
     is_correct = check_spelling(answer_raw, snapshot_item)
 
     # 会话行锁（提交/交卷/结算共用）：锁内重校验，封死 check-then-insert 竞态
@@ -711,9 +732,13 @@ def submit_answer(
         return replay
 
     if one_attempt_per_item and assignment is not None:
+        # 统一锁内终态规则（返修R08）：先看终态——已 manual/submitted 的
+        # 事实不得被改写成 timeout；仍 in_progress 才按锁内时间判超时
+        if vocab_session.status != "in_progress":
+            raise HTTPException(status_code=422, detail="测验已交卷，不能继续作答")
         deadline = vocab_quiz.quiz_deadline(vocab_session, assignment)
         if deadline is not None and datetime.now(UTC) > deadline:
-            # 锁内到时终结本答卷（与 settle_due_sessions 同口径）后拒绝，
+            # 锁内到时终结本答卷（与惰性结算同口径）后拒绝，
             # 与惰性结算一致：成绩按截止时的作答计算
             vocab_session.status = "submitted"
             vocab_session.end_reason = "timeout"
@@ -721,8 +746,6 @@ def submit_answer(
             session.add(vocab_session)
             session.commit()
             raise HTTPException(status_code=422, detail="测验时间已到，已自动交卷")
-        if vocab_session.status != "in_progress":
-            raise HTTPException(status_code=422, detail="测验已交卷，不能继续作答")
 
     existing_attempts = session.exec(
         select(VocabularyAnswer).where(
@@ -970,12 +993,21 @@ def class_results(
             )
 
         if is_quiz:
-            # 口径统一（批次05）：答对/答错/未答与有效成绩来自同一份有效答卷，
-            # 不跨轮逐题择优——否则会出现「成绩 50 但 2/2 对」的自相矛盾，
-            # 逐词错误分布也会被补考的正确掩盖
-            item_firsts: dict[int, VocabularyAnswer] = (
-                dict(firsts.get(effective.id, {}) or {})
+            # 口径统一（批次05）：有效成绩存在时，答对/答错/未答与逐词分布
+            # 来自同一份有效答卷，不跨轮逐题择优。
+            # 尚无终结答卷（首考/补考进行中，返修R10）：主行展示最新答卷
+            # 的实际进度（成绩保持 None），教师不至于看到「已答 0」——
+            # 进度与有效成绩分属不同字段，不混充卷面成绩
+            progress_round = (
+                effective
                 if effective is not None
+                else quiz_rounds[-1]
+                if quiz_rounds
+                else None
+            )
+            item_firsts: dict[int, VocabularyAnswer] = (
+                dict(firsts.get(progress_round.id, {}) or {})
+                if progress_round is not None
                 else {}
             )
         else:

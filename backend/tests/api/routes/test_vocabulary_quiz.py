@@ -1250,3 +1250,222 @@ def test_quiz_export_csv_formula_guard(
     assert name_cell.startswith("'=")
     score_cell = body[header.index("成绩")]
     assert score_cell == "100"  # 数字成绩不加前缀
+
+
+# ── 返修C（R08/R09/R10/R11）：终态规则 / 结算范围 / 进行中进度 / NFKC 重放 ──
+
+
+def test_manual_submit_not_rewritten_by_late_answer(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """R08：先主动交卷、后到时——已确认的 manual 终态不被改写成 timeout。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=2
+    )
+    code = classroom["code"]
+    started = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    _answer(client, student["headers"], started["session_id"], 0, "w01")
+    assert (
+        _submit_quiz(client, student["headers"], started["session_id"]).status_code
+        == 200
+    )
+
+    _expire_started_quiz(db, started["session_id"])
+    # 到时后的作答：终态先判 → 422 已交卷（不是「已自动交卷」）
+    late = _answer(client, student["headers"], started["session_id"], 1, "w02")
+    assert late.status_code == 422
+    assert "交卷" in late.json()["detail"]
+
+    row = db.exec(
+        select(VocabularySession).where(
+            VocabularySession.id == uuid.UUID(started["session_id"])  # type: ignore[arg-type]
+        )
+    ).one()
+    assert row.status == "submitted"
+    assert row.end_reason == "manual"  # 不被覆写为 timeout
+    assert row.submitted_at is not None
+    manual_at = row.submitted_at
+    # 教师触碰触发的批量结算同样不改写
+    client.get(
+        f"{RESULTS.format(code=code)}?assignment_id={assignment['id']}",
+        headers=teacher_headers,
+    )
+    db.refresh(row)
+    assert row.end_reason == "manual"
+    assert row.submitted_at == manual_at
+
+
+def test_manual_submit_crossing_deadline_settles_timeout(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """R08：交卷等锁/延迟期间跨过截止——按超时结算，submitted_at 取截止时刻。"""
+    from app.services import vocab_quiz as quiz_service
+
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=2
+    )
+    code = classroom["code"]
+    started = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    session_uuid = uuid.UUID(started["session_id"])
+
+    with Session(db.get_bind()) as session:
+        # 截止已过（未结算）：交卷在锁内按服务器时间判 timeout
+        _expire_started_quiz(db, started["session_id"])
+        vocab_session = session.get(VocabularySession, session_uuid)
+        assignment_row = session.get(VocabularyAssignment, uuid.UUID(assignment["id"]))
+        assert vocab_session is not None and assignment_row is not None
+        finalized = quiz_service.submit_quiz_session(
+            session, vocab_session, assignment_row
+        )
+        assert finalized.end_reason == "timeout"
+        deadline = quiz_service.quiz_deadline(vocab_session, assignment_row)
+        assert deadline is not None
+        assert finalized.submitted_at == deadline
+
+
+def test_concurrent_submits_and_bulk_settle_no_deadlock(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """R09：两份已到期答卷并发手动交卷 + 批量结算——无跨会话锁环、无 500。"""
+    import concurrent.futures
+    import threading
+
+    from app.services import vocab_quiz as quiz_service
+
+    teacher_headers, classroom = None, None
+    teacher_headers = _login_teacher(db, client)[1]
+    classroom = _create_classroom(client, teacher_headers)
+    code = classroom["code"]
+    students = [make_student(db, client, code, f"死锁{i}") for i in range(2)]
+    book = _make_class_book(client, teacher_headers, classroom["id"], _words(2))
+    word_ids = [
+        w["id"]
+        for w in client.get(
+            f"{VOCAB}/books/{book['id']}", headers=teacher_headers
+        ).json()["words"]
+    ]
+    assignment = _publish_quiz(client, teacher_headers, code, word_ids)
+
+    session_ids = []
+    for made in students:
+        started = _start_quiz(client, made["headers"], code, assignment["id"]).json()
+        _answer(client, made["headers"], started["session_id"], 0, "w01")
+        _expire_started_quiz(db, started["session_id"])
+        session_ids.append(uuid.UUID(started["session_id"]))
+
+    barrier = threading.Barrier(3)
+    outcomes: dict[str, object] = {}
+
+    def manual_submit(sid: uuid.UUID) -> None:
+        barrier.wait()
+        try:
+            with Session(db.get_bind()) as session:
+                vocab_session = session.get(VocabularySession, sid)
+                assert vocab_session is not None
+                assignment_row = session.get(
+                    VocabularyAssignment, uuid.UUID(assignment["id"])
+                )
+                assert assignment_row is not None
+                quiz_service.submit_quiz_session(session, vocab_session, assignment_row)
+            outcomes[str(sid)] = "ok"
+        except Exception as exc:  # noqa: BLE001
+            outcomes[str(sid)] = repr(exc)
+
+    def bulk_settle() -> None:
+        barrier.wait()
+        try:
+            with Session(db.get_bind()) as session:
+                assignment_row = session.get(
+                    VocabularyAssignment, uuid.UUID(assignment["id"])
+                )
+                assert assignment_row is not None
+                quiz_service.settle_due_sessions(session, assignment_row)
+            outcomes["bulk"] = "ok"
+        except Exception as exc:  # noqa: BLE001
+            outcomes["bulk"] = repr(exc)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [pool.submit(manual_submit, sid) for sid in session_ids]
+        futures.append(pool.submit(bulk_settle))
+        for f in futures:
+            f.result(timeout=15)
+
+    for key, value in outcomes.items():
+        assert value == "ok", (key, value)  # 无 DeadlockDetected / 无异常
+    for sid in session_ids:
+        db.expire_all()
+        row = db.get(VocabularySession, sid)
+        assert row is not None
+        assert row.status == "submitted"
+
+
+def test_first_quiz_in_progress_shows_progress_not_zero(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """R10：首考进行中已答一题——主行进度 1/2（不是 0），成绩保持空。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=2
+    )
+    code = classroom["code"]
+    started = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    _answer(client, student["headers"], started["session_id"], 0, "w01")
+
+    row = _results_row(
+        client, teacher_headers, code, assignment["id"], student["student"]["id"]
+    )
+    assert row["status"] == "in_progress"
+    assert row["answered_count"] == 1  # 实时进度，不再报 0
+    assert row["correct_first_count"] == 1
+    assert row["score"] is None  # 尚无有效成绩
+    assert row["effective_round_no"] is None
+
+    # CSV：未答 = 1（2-1），不把已答当未答
+    import csv as csv_module
+    import io
+
+    resp = client.get(
+        f"/api/v1/classes/{code}/vocabulary/assignments/{assignment['id']}"
+        f"/results-export",
+        headers=teacher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    rows = list(csv_module.reader(io.StringIO(resp.content.decode("utf-8-sig"))))
+    header, body = rows[0], rows[1]
+    assert body[header.index("状态")].startswith("进行中")
+    assert body[header.index("答对")] == "1"
+    assert body[header.index("未答")] == "1"
+    assert body[header.index("成绩")] == ""
+
+
+def test_nfkc_expanding_answers_length_guard_and_replay(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """R11：NFKC 扩长载荷先按长度拒绝；等价展开的原文可作同键重放。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=1
+    )
+    code = classroom["code"]
+    started = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    session_id = started["session_id"]
+
+    # 原文 86 字符、NFKC 后 258 字符：422 拒绝（不落库截断值）
+    too_long = _answer(client, student["headers"], session_id, 0, "ﬃ" * 86)
+    assert too_long.status_code == 422
+    assert "过长" in too_long.json()["detail"]
+
+    # 255 字符等价原文：正常落库；同键用 NFKC 等价写法（ﬃ×85）可重放
+    key = f"nfkc-{uuid.uuid4()}"
+    first = _answer(client, student["headers"], session_id, 0, "ffi" * 85, key)
+    assert first.status_code == 200, first.text
+    replay = _answer(client, student["headers"], session_id, 0, "ﬃ" * 85, key)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["item_index"] == 0
+
+    # 超限载荷即便带同键也先按长度拒绝，不进入截断碰撞比较
+    over = client.post(
+        f"{VOCAB}/sessions/{session_id}/answers",
+        json=_answer_body(0, "ﬃ" * 86, key),
+        headers=student["headers"],
+    )
+    assert over.status_code == 422
+    assert "过长" in over.json()["detail"]
