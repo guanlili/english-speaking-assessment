@@ -127,6 +127,8 @@
   --mint: hsl(133 18% 85%); /* #d1dfd4 深底浅绿文字 */
   --mint-soft: hsl(133 18% 84%); /* #d0ded3 深底浅绿文字（面板） */
   --mint-mist: hsl(137 24% 83%); /* #c9decf 波形条 */
+  /* 品牌投影：登录卡片大投影（brand-pine 的 28% 透明度，rgba(32,79,64,0.28)） */
+  --shadow-brand-card: 0 20px 70px -36px hsl(161 42% 22% / 0.28);
 }
 
 .dark {

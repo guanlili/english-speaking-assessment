@@ -136,7 +136,7 @@ export function LoginLayout({ children }: { children: ReactNode }) {
 
         <section
           aria-label={t({ zh: "登录 Charcoal", en: "Sign in to Charcoal" })}
-          className="relative mx-auto w-full max-w-[480px] rounded-2xl border border-brand-ink/12 bg-paper-card p-5 shadow-[0_20px_70px_-36px_rgba(32,79,64,0.28)] before:absolute before:-top-px before:left-6 before:h-[3px] before:w-12 before:bg-tan-clay sm:p-8 sm:before:left-9 lg:mx-0 lg:justify-self-end xl:p-10 dark:border-border dark:bg-card dark:shadow-none"
+          className="relative mx-auto w-full max-w-[480px] rounded-2xl border border-brand-ink/12 bg-paper-card p-5 shadow-[var(--shadow-brand-card)] before:absolute before:-top-px before:left-6 before:h-[3px] before:w-12 before:bg-tan-clay sm:p-8 sm:before:left-9 lg:mx-0 lg:justify-self-end xl:p-10 dark:border-border dark:bg-card dark:shadow-none"
         >
           {children}
         </section>

@@ -132,14 +132,15 @@ async function mockPractice(page: Page): Promise<MockState> {
       const index = state.attempts.findIndex((a) => a.attempt_id === attemptId)
       if (scored && index >= 0) state.attempts[index] = scored
       const item = items.find((_, i) => `attempt-${i + 1}` === attemptId)
+      // 终态载荷在前（status/overall/transcript 等），公共字段在后兜底
       body = {
+        ...(scored ?? { status: "queued" }),
         id: attemptId,
         item_type: item?.type ?? "passage",
         item_id: item?.id ?? items[0].id,
         session_id: "flow-session",
         engine: "mock",
         duration_s: 3,
-        ...(scored ?? { status: "queued" }),
       }
     }
     await route.fulfill({ json: body })
