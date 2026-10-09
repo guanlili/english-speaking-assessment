@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -6,7 +7,7 @@ from sqlmodel import Session, select
 
 from app import crud
 from app.core.config import settings
-from app.core.security import verify_password
+from app.core.security import get_password_hash, verify_password
 from app.models import User, UserCreate
 from tests.utils.user import create_random_user
 from tests.utils.utils import random_email, random_lower_string
@@ -526,3 +527,74 @@ def test_delete_user_without_privileges(
     )
     assert r.status_code == 403
     assert r.json()["detail"] == "The user doesn't have enough privileges"
+
+
+def test_users_pagination_beyond_100(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """121 个合成账号：skip/limit 分页可访问第 101/121 个；参数越界 422。"""
+    from uuid import uuid4
+
+    baseline = client.get(
+        f"{settings.API_V1_STR}/users/", headers=superuser_token_headers
+    ).json()["count"]
+
+    marker = uuid4().hex[:8]
+    created: list[User] = []
+    same_ts = datetime.now(UTC)
+    for i in range(121):
+        user = User(
+            email=f"page-{marker}-{i:03d}@test.com",
+            full_name=f"分页用户{i:03d}",
+            hashed_password=get_password_hash(random_lower_string()),
+            is_active=True,
+            is_superuser=False,
+            # 部分账号同一时间戳：排序必须带 id 保证稳定
+            created_at=same_ts if i % 2 == 0 else None,
+        )
+        if user.created_at is None:
+            user.created_at = datetime.now(UTC)
+        db.add(user)
+        created.append(user)
+    db.commit()
+    try:
+        ids: set[uuid.UUID] = set()
+        for skip, limit in ((0, 100), (100, 100)):
+            resp = client.get(
+                f"{settings.API_V1_STR}/users/",
+                params={"skip": skip, "limit": limit},
+                headers=superuser_token_headers,
+            )
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
+            assert body["count"] == baseline + 121
+            assert len(body["data"]) <= limit
+            ids.update(u["id"] for u in body["data"])
+        mine = {str(u.id) for u in created}
+        assert mine <= ids, "第 101/121 个账号必须能通过分页访问到"
+
+        # 同 created_at 稳定：两次同样请求顺序一致（id 决胜）
+        r1 = client.get(
+            f"{settings.API_V1_STR}/users/",
+            params={"skip": 0, "limit": 100},
+            headers=superuser_token_headers,
+        ).json()["data"]
+        r2 = client.get(
+            f"{settings.API_V1_STR}/users/",
+            params={"skip": 0, "limit": 100},
+            headers=superuser_token_headers,
+        ).json()["data"]
+        assert [u["id"] for u in r1] == [u["id"] for u in r2]
+
+        # 参数校验：负 skip / 非法 limit 一律 422
+        for params in ({"skip": -1}, {"limit": 0}, {"limit": 201}):
+            resp = client.get(
+                f"{settings.API_V1_STR}/users/",
+                params=params,
+                headers=superuser_token_headers,
+            )
+            assert resp.status_code == 422, params
+    finally:
+        for user in created:
+            db.delete(user)
+        db.commit()

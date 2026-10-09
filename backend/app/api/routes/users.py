@@ -1,7 +1,7 @@
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import col, func, select
 
 from app import crud
@@ -29,12 +29,21 @@ from app.utils import generate_new_account_email, send_email
 router = APIRouter(prefix="/users", tags=["users"])
 
 
+# 用户列表分页参数边界（批次09）：limit 封顶防一次拉全表，
+# 排序带 id 保证同 created_at 稳定（offset 分页不承诺并发插入的快照一致）
+USERS_MAX_LIMIT = 200
+
+
 @router.get(
     "/",
     dependencies=[Depends(get_current_active_superuser)],
     response_model=UsersPublic,
 )
-def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
+def read_users(
+    session: SessionDep,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=USERS_MAX_LIMIT),
+) -> Any:
     """
     Retrieve users.
     """
@@ -43,7 +52,10 @@ def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
     count = session.exec(count_statement).one()
 
     statement = (
-        select(User).order_by(col(User.created_at).desc()).offset(skip).limit(limit)
+        select(User)
+        .order_by(col(User.created_at).desc(), col(User.id))
+        .offset(skip)
+        .limit(limit)
     )
     users = session.exec(statement).all()
 
