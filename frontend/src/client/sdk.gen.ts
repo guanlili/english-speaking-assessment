@@ -2604,6 +2604,8 @@ export class VocabularyService {
     /**
      * Export Quiz Results
      * 导出测验成绩 CSV（固定应考名单 + 状态/成绩/切屏等，UTF-8 BOM 兼容 Excel）。
+     *
+     * 用户可控文本单元格经 _csv_text_cell 防公式注入（与前端 csv.ts 同规则）。
      * @param data The data for the request.
      * @param data.code
      * @param data.assignmentId

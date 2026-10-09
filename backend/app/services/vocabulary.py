@@ -900,9 +900,10 @@ def class_results(
     """按目标名单聚合：学生行（含未开始）+ 逐词错误分布。
 
     练习：任务成绩锁定 round_no=1 的首答；复习轮只进 rounds 汇总。
-    测验：先到时结算（不依赖学生在线），统计覆盖全部答卷的首答
-    （错误分布含补考），学生行附成绩/及格/终结方式/切屏/补考授权；
-    有效成绩默认取最好成绩（best）并按答卷明细可回溯。
+    测验：先到时结算（不依赖学生在线）；有效成绩 = 最好整份已终结答卷
+    （同分取较早轮，effective_round_no 标注来源），答对/答错/未答与逐词
+    错误分布与成绩同源（不跨轮逐题择优）；进行中补考只作进度。
+    全部数据复用批量读取的 rounds/firsts（纯聚合），查询数不随学生数增长。
     """
     from app.models import (
         VocabularyWordMisspelling,
@@ -946,24 +947,48 @@ def class_results(
     for _target, student in targets:
         rounds = rounds_by_student.get(student.id, [])
         first_round_session = first_round(rounds)
-        # 练习：统计锁定首轮首答；测验：覆盖全部答卷的首答（含补考）
-        stat_rounds = (
-            rounds
-            if is_quiz
-            else ([first_round_session] if first_round_session else [])
+        total = len(assignment.snapshot_items)
+        quiz_rounds = (
+            [r for r in rounds if r.quiz_started_at is not None] if is_quiz else []
         )
-        item_firsts: dict[int, VocabularyAnswer] = {}
-        for stat_round in stat_rounds:
-            # 同一题在多份答卷中取最好的一次首答（有效成绩口径）
-            for idx, answer in (firsts.get(stat_round.id, {}) or {}).items():
-                existing = item_firsts.get(idx)
-                if existing is None or (not existing.is_correct and answer.is_correct):
-                    item_firsts[idx] = answer
+        finalized_rounds = (
+            [r for r in quiz_rounds if r.status == "submitted"] if is_quiz else []
+        )
+        best_score = None
+        passed = None
+        effective: VocabularySession | None = None
+        if is_quiz and finalized_rounds:
+            # 纯聚合复用已批量读取的 rounds/firsts（不再逐学生查库）；
+            # 同分取较早轮，进行中补考只作进度不参与有效成绩
+            (
+                best_score,
+                passed,
+                _attempts,
+                effective,
+            ) = vocab_quiz.effective_quiz_grade_from_rounds(
+                finalized_rounds, firsts, total, assignment.pass_line
+            )
+
+        if is_quiz:
+            # 口径统一（批次05）：答对/答错/未答与有效成绩来自同一份有效答卷，
+            # 不跨轮逐题择优——否则会出现「成绩 50 但 2/2 对」的自相矛盾，
+            # 逐词错误分布也会被补考的正确掩盖
+            item_firsts: dict[int, VocabularyAnswer] = (
+                dict(firsts.get(effective.id, {}) or {})
+                if effective is not None
+                else {}
+            )
+        else:
+            # 练习：统计锁定首轮首答；复习轮只进 rounds 汇总
+            item_firsts = (
+                dict(firsts.get(first_round_session.id, {}) or {})
+                if first_round_session is not None
+                else {}
+            )
         for idx, answer in item_firsts.items():
             word_firsts.setdefault(idx, []).append(answer)
         answered = len(item_firsts)
         correct = sum(1 for a in item_firsts.values() if a.is_correct)
-        total = len(assignment.snapshot_items)
         status = (
             "not_started"
             if answered == 0 and not rounds
@@ -980,13 +1005,6 @@ def class_results(
                 status = "in_progress"
             else:
                 status = "completed"
-        quiz_rounds = [r for r in rounds if r.quiz_started_at is not None]
-        best_score = None
-        passed = None
-        if is_quiz and quiz_rounds:
-            best_score, passed, _attempts = vocab_quiz.effective_quiz_grade(
-                session, assignment, student.id
-            )
         round_rows = [
             VocabularyStudentRoundRow(
                 round_no=vs.round_no,
@@ -1017,6 +1035,7 @@ def class_results(
                 quiz_end_reason=(quiz_rounds[-1].end_reason if quiz_rounds else None),
                 score=best_score if is_quiz else None,
                 passed=passed if is_quiz else None,
+                effective_round_no=(effective.round_no if effective else None),
                 tab_switch_count=sum(vs.tab_switch_count for vs in quiz_rounds)
                 if is_quiz
                 else 0,

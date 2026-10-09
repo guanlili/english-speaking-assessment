@@ -1354,6 +1354,20 @@ def read_quiz_answer_sheet(
     return vocab_service.student_plan(session, vocab_session, reveal=True)
 
 
+_CSV_TEXT_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_text_cell(value: object) -> object:
+    """CSV 公式注入防护：用户可控文本以 =/+/-/@ 或制表/回车开头时加 ' 前缀。
+
+    Excel/WPS 会把这类开头当公式执行（姓名字段来自导入与用户输入）；
+    前缀单引号是最保守的通用转义。数字类型原样保留（不破坏成绩列）。
+    """
+    if isinstance(value, str) and value[:1] in _CSV_TEXT_FORMULA_PREFIXES:
+        return "'" + value
+    return value
+
+
 @router.get("/classes/{code}/vocabulary/assignments/{assignment_id}/results-export")
 def export_quiz_results(
     session: SessionDep,
@@ -1361,7 +1375,10 @@ def export_quiz_results(
     assignment_id: uuid.UUID,
     current_user: TeacherUserDep,
 ) -> Any:
-    """导出测验成绩 CSV（固定应考名单 + 状态/成绩/切屏等，UTF-8 BOM 兼容 Excel）。"""
+    """导出测验成绩 CSV（固定应考名单 + 状态/成绩/切屏等，UTF-8 BOM 兼容 Excel）。
+
+    用户可控文本单元格经 _csv_text_cell 防公式注入（与前端 csv.ts 同规则）。
+    """
     import csv
     import io
 
@@ -1380,6 +1397,7 @@ def export_quiz_results(
             "答对",
             "答错",
             "未答",
+            "有效轮次",
             "参与次数",
             "切屏次数",
             "终结方式",
@@ -1399,14 +1417,17 @@ def export_quiz_results(
             end_label = "主动交卷"
         writer.writerow(
             [
-                row.display_name,
-                status_labels.get(row.status, row.status)
-                + (f"（{end_label}）" if end_label else ""),
+                _csv_text_cell(row.display_name),
+                _csv_text_cell(
+                    status_labels.get(row.status, row.status)
+                    + (f"（{end_label}）" if end_label else "")
+                ),
                 row.score if row.score is not None else "",
                 ("是" if row.passed else "否") if row.passed is not None else "",
                 row.correct_first_count,
                 max(0, row.answered_count - row.correct_first_count),
                 max(0, row.total_count - row.answered_count),
+                row.effective_round_no if row.effective_round_no is not None else "",
                 row.attempt_count,
                 row.tab_switch_count,
                 end_label,

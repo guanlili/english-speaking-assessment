@@ -1016,3 +1016,204 @@ def test_quiz_answer_vs_timeout_settlement_race(
         )
     ).all()
     assert len(answers) == 0
+
+
+# ── 有效成绩口径统一与查询消重（wise-quarry-trout 批次05）──────────
+
+
+def _results_row(client: TestClient, teacher_headers: dict[str, str], code: str, assignment_id: str, student_id: str) -> dict:
+    resp = client.get(
+        f"{RESULTS.format(code=code)}?assignment_id={assignment_id}",
+        headers=teacher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    return next(r for r in resp.json()["students"] if r["student_id"] == student_id)
+
+
+def _grant_retake(client: TestClient, teacher_headers: dict[str, str], code: str, assignment_id: str, student: dict) -> None:
+    resp = client.post(
+        f"/api/v1/classes/{code}/vocabulary/assignments/{assignment_id}"
+        f"/students/{student['student']['id']}/grant-retake",
+        headers=teacher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def test_quiz_effective_grade_counts_share_same_paper(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """两题两轮各对不同一题：成绩 50、答对 1/2 来自同一份答卷（同分取较早轮），
+    逐词错误分布不被补考的正确掩盖——不再出现「50 分但 2/2 对」。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=2
+    )
+    code = classroom["code"]
+    first = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    _answer(client, student["headers"], first["session_id"], 0, "w01")  # 对
+    _answer(client, student["headers"], first["session_id"], 1, "nope")  # 错
+    _submit_quiz(client, student["headers"], first["session_id"])
+
+    _grant_retake(client, teacher_headers, code, assignment["id"], student)
+    second = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    assert second["round_no"] == 2
+    _answer(client, student["headers"], second["session_id"], 0, "nah")  # 错
+    _answer(client, student["headers"], second["session_id"], 1, "w02")  # 对
+    _submit_quiz(client, student["headers"], second["session_id"])
+
+    row = _results_row(
+        client, teacher_headers, code, assignment["id"], student["student"]["id"]
+    )
+    # 同分（各 50）取较早轮：成绩与答对/答错/未答同源
+    assert row["score"] == 50
+    assert row["effective_round_no"] == 1
+    assert row["correct_first_count"] == 1
+    assert row["answered_count"] == 2
+    assert row["total_count"] == 2
+    # 逐轮明细仍独立可见（补考轮 1/2）
+    assert [r["round_no"] for r in row["rounds"]] == [1, 2]
+    assert row["rounds"][1]["correct_first_count"] == 1
+
+    # 逐词错误分布来自有效答卷（第 1 轮）：w02 的错没有被第 2 轮的对称
+    words = {
+        w["headword"]: w
+        for w in client.get(
+            f"{RESULTS.format(code=code)}?assignment_id={assignment['id']}",
+            headers=teacher_headers,
+        ).json()["words"]
+    }
+    assert words["w01"]["correct_first_count"] == 1
+    assert words["w01"]["error_count"] == 0
+    assert words["w02"]["error_count"] == 1
+    assert words["w02"]["correct_first_count"] == 0
+    assert any(m["answer"] == "nope" for m in words["w02"]["misspellings"])
+
+
+def test_quiz_in_progress_retake_keeps_finalized_grade(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """补考进行中只作进度：不改写已终结的有效成绩与计数来源。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=2
+    )
+    code = classroom["code"]
+    first = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    _answer(client, student["headers"], first["session_id"], 0, "w01")
+    _submit_quiz(client, student["headers"], first["session_id"])  # 1/2 = 50
+
+    _grant_retake(client, teacher_headers, code, assignment["id"], student)
+    second = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    _answer(client, student["headers"], second["session_id"], 0, "w01")  # 进行中 1/2
+
+    row = _results_row(
+        client, teacher_headers, code, assignment["id"], student["student"]["id"]
+    )
+    assert row["status"] == "in_progress"
+    assert row["score"] == 50  # 已终结成绩不被进行中补考覆盖
+    assert row["effective_round_no"] == 1
+    assert row["correct_first_count"] == 1  # 计数来自有效答卷
+    assert row["rounds"][1]["answered_count"] == 1  # 进度按轮展示
+
+
+def test_quiz_class_results_query_count_constant(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """class_results 查询数不随参与学生数增长（批量读取 + 纯聚合）。"""
+    from sqlalchemy import event
+
+    from app.services import vocabulary as vocab_service
+
+    # 名单在发布时固定：先入班、后发布
+    _teacher, teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, teacher_headers)
+    code = classroom["code"]
+    roster = [make_student(db, client, code, f"查询{i}") for i in range(8)]
+    book = _make_class_book(client, teacher_headers, classroom["id"], _words(2))
+    word_ids = [
+        w["id"]
+        for w in client.get(
+            f"{VOCAB}/books/{book['id']}", headers=teacher_headers
+        ).json()["words"]
+    ]
+    assignment = _publish_quiz(client, teacher_headers, code, word_ids)
+
+    def _run_student(made: dict) -> None:
+        _start = _start_quiz(client, made["headers"], code, assignment["id"])
+        assert _start.status_code == 200, _start.text
+        started = _start.json()
+        _answer(client, made["headers"], started["session_id"], 0, "w01")
+        _answer(client, made["headers"], started["session_id"], 1, "w02")
+        _submit_quiz(client, made["headers"], started["session_id"])
+
+    counts: list[int] = []
+
+    def _count_queries() -> int:
+        counter = {"n": 0}
+
+        def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):  # type: ignore[no-untyped-def]
+            if statement.lstrip().upper().startswith("SELECT"):
+                counter["n"] += 1
+
+        engine = db.get_bind()
+        event.listen(engine, "before_cursor_execute", _before_cursor_execute)
+        try:
+            with Session(engine) as session:
+                assignment_row = session.get(
+                    VocabularyAssignment, uuid.UUID(assignment["id"])
+                )
+                assert assignment_row is not None
+                vocab_service.class_results(session, assignment_row)
+        finally:
+            event.remove(engine, "before_cursor_execute", _before_cursor_execute)
+        return counter["n"]
+
+    # 阶段一：名单全班（8 人固定）但只有 2 人交卷
+    for made in roster[:2]:
+        _run_student(made)
+    counts.append(_count_queries())
+    # 阶段二：其余 6 人也交卷（参与者 ×4）
+    for made in roster[2:]:
+        _run_student(made)
+    counts.append(_count_queries())
+    # 参与学生数 2 → 8，查询数不得增长（名单数固定，聚合复用批量读取）
+    assert counts[1] == counts[0], counts
+
+
+def test_quiz_export_csv_formula_guard(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """导出 CSV：以 =/+/-/@ 开头的姓名加 ' 前缀防公式执行；数字成绩不受影响。"""
+    import csv as csv_module
+    import io
+
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=1
+    )
+    code = classroom["code"]
+    # 直接改显示名（导入通道之外的极端姓名）
+    with Session(db.get_bind()) as session:
+        from app.models import Student
+
+        row = session.get(Student, uuid.UUID(student["student"]["id"]))
+        assert row is not None
+        row.display_name = "=HYPERLINK(\"http://evil\",\"x\")"
+        session.add(row)
+        session.commit()
+
+    started = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    _answer(client, student["headers"], started["session_id"], 0, "w01")
+    _submit_quiz(client, student["headers"], started["session_id"])
+
+    resp = client.get(
+        f"/api/v1/classes/{code}/vocabulary/assignments/{assignment['id']}"
+        f"/results-export",
+        headers=teacher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    text = resp.content.decode("utf-8-sig")
+    rows = list(csv_module.reader(io.StringIO(text)))
+    header = rows[0]
+    body = rows[1]
+    name_cell = body[header.index("姓名")]
+    assert name_cell.startswith("'=")
+    score_cell = body[header.index("成绩")]
+    assert score_cell == "100"  # 数字成绩不加前缀

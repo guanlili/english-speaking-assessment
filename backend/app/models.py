@@ -1760,6 +1760,8 @@ class VocabularyStudentResultRow(SQLModel):
     # 百分制成绩（correct/total，未答计 0）；参与次数 = 已开考的答卷数
     score: int | None = None
     passed: bool | None = None
+    # 有效成绩来自哪一份答卷（最好整卷，同分取较早轮）；None=尚无终结答卷
+    effective_round_no: int | None = None
     tab_switch_count: int = 0
     retake_granted: bool = False
     attempt_count: int = 0
