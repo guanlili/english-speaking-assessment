@@ -119,14 +119,21 @@ function ClassroomPracticePage() {
   const sessionId = pinnedSessionId ?? exploreSessionId
   // 今日计划查询键：sessionId 为空时与 StudentShell 的 NotificationBell 同 key
   // （共享缓存，避免进练习页后铃铛+页面各拉一次同端点）；有会话时多一位区分数据。
-  // invalidate 用同一变量，避免前缀匹配错位
-  const todayQueryKey = [
-    "classroom",
-    code,
-    "today",
-    student?.id,
-    ...(sessionId ? [sessionId] : []),
-  ] as const
+  // invalidate 用同一变量，避免前缀匹配错位。
+  // useMemo 稳定键身份：多个 effect 依赖它做 invalidate，若每次渲染都是新数组，
+  // 会形成 invalidate → refetch → 渲染 → effect 重跑 的死循环（评分失败场景
+  // toast 每圈重弹刷屏，即新 e2e 在 CI 暴露的问题）
+  const todayQueryKey = useMemo(
+    () =>
+      [
+        "classroom",
+        code,
+        "today",
+        student?.id,
+        ...(sessionId ? [sessionId] : []),
+      ] as const,
+    [code, student?.id, sessionId],
+  )
 
   const todayQuery = useQuery({
     retry: 1,
