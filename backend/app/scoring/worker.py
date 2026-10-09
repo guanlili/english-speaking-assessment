@@ -91,7 +91,7 @@ def _drain_pending_resubmits(session: Session) -> int:
     still_queued = set(
         session.exec(
             select(Attempt.id).where(
-                Attempt.id.in_(candidates),  # type: ignore[arg-type]
+                col(Attempt.id).in_(candidates),
                 Attempt.status == AttemptStatus.QUEUED,
             )
         ).all()

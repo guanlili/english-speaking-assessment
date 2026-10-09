@@ -598,7 +598,7 @@ MASKED_PLAN_FIELDS = tuple(f for f in MASKED_ATTEMPT_FIELDS if f != "accuracy")
 @pytest.fixture
 def inline_scoring(
     db: Session, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """同步评分：POST 内联跑完 mock 引擎，反馈内容可确定性断言。"""
     from app.api.deps import get_scoring_submitter
     from app.core.config import settings
@@ -709,7 +709,9 @@ def test_exam_feedback_masked_server_side_until_ended(
 
         # 首题上传（内联评分即完成）→ 考试仍在进行（第二题未答）
         key = f"mask-{random_lower_string()}"
-        first = _submit(client, headers, code, plan["items"][0], plan["session_id"], key)
+        first = _submit(
+            client, headers, code, plan["items"][0], plan["session_id"], key
+        )
         assert first.status_code == 200, first.text
         attempt_id = first.json()["id"]
         assert first.json()["status"] == "done"
@@ -740,7 +742,9 @@ def test_exam_feedback_masked_server_side_until_ended(
 
         # 授权教师（课堂 owner，此处为 superuser）：完整反馈不受遮罩影响
         teacher = _resp_json(
-            client.get(f"/api/v1/attempts/{attempt_id}", headers=superuser_token_headers)
+            client.get(
+                f"/api/v1/attempts/{attempt_id}", headers=superuser_token_headers
+            )
         )
         assert teacher["transcript"] == "i have a cat and a dog"
         assert teacher["overall"] is not None

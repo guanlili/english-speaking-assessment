@@ -7,6 +7,7 @@ import httpx
 import pytest
 from sqlmodel import Session
 
+from app.models import Attempt, AttemptStatus
 from app.scoring import rubric as rubric_module
 from app.scoring import worker
 from app.scoring.rubric import (
@@ -14,13 +15,12 @@ from app.scoring.rubric import (
     MAX_ADVICE,
     MAX_UPGRADES,
     RUBRIC_TO_SCORE,
-    RubricParseError,
     ArkRubricScorer,
+    RubricParseError,
     build_rubric_user_prompt,
     map_to_mock_score,
     parse_rubric_response,
 )
-from app.models import Attempt, AttemptStatus
 
 
 def test_mock_score_mapping_bounds() -> None:
@@ -123,7 +123,9 @@ def test_parse_rubric_rejects_bad_dimension_values(bad_value: object) -> None:
 def test_parse_rubric_rejects_json_nan_and_infinity_literals() -> None:
     """json.loads 默认接受 NaN/Infinity 字面量，必须拦下（int(NaN) 会 ValueError）。"""
     with pytest.raises(RubricParseError):
-        parse_rubric_response('{"fluency": NaN, "vocabulary": 1, "grammar": 1, "task": 1}')
+        parse_rubric_response(
+            '{"fluency": NaN, "vocabulary": 1, "grammar": 1, "task": 1}'
+        )
     with pytest.raises(RubricParseError):
         parse_rubric_response(
             '{"fluency": 1, "vocabulary": Infinity, "grammar": 1, "task": 1}'
@@ -144,9 +146,7 @@ def test_parse_rubric_rejects_broken_json_with_braces() -> None:
 
 def test_parse_rubric_accepts_legitimate_all_zero() -> None:
     """合法四维全 0 必须保留（真说过但确实差），不能因收紧误伤。"""
-    content = json.dumps(
-        {"fluency": 0, "vocabulary": 0, "grammar": 0, "task": 0}
-    )
+    content = json.dumps({"fluency": 0, "vocabulary": 0, "grammar": 0, "task": 0})
     scores = parse_rubric_response(content)
     assert scores.mock_score == 0
     assert scores.advice == []
@@ -247,9 +247,7 @@ def test_ark_rubric_scorer_requires_key() -> None:
 
 
 def _chat_response(content: str) -> httpx.Response:
-    return httpx.Response(
-        200, json={"choices": [{"message": {"content": content}}]}
-    )
+    return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
 
 
 def _make_done_attempt_with_pending_rubric(db: Session) -> Attempt:
@@ -270,9 +268,7 @@ def _make_done_attempt_with_pending_rubric(db: Session) -> Attempt:
     return attempt
 
 
-def _mock_llm(
-    monkeypatch: pytest.MonkeyPatch, content: str
-) -> None:
+def _mock_llm(monkeypatch: pytest.MonkeyPatch, content: str) -> None:
     """让 worker 的 _score_rubric 走 MockTransport：HTTP 200 + 指定 content。"""
     from app.core.config import settings
 
@@ -305,9 +301,7 @@ class TestWorkerRubricDegradation:
     ) -> None:
         attempt = _make_done_attempt_with_pending_rubric(db)
         try:
-            _mock_llm(
-                monkeypatch, json.dumps({"advice": ["多说完整句"]})
-            )
+            _mock_llm(monkeypatch, json.dumps({"advice": ["多说完整句"]}))
             worker._complete_detail(attempt.id, "Do you like cats?", "B1", "i like")
             db.refresh(attempt)
             assert attempt.rubric == {"status": "unavailable"}
@@ -322,9 +316,7 @@ class TestWorkerRubricDegradation:
         try:
             _mock_llm(
                 monkeypatch,
-                json.dumps(
-                    {"fluency": 0, "vocabulary": 0, "grammar": 0, "task": 0}
-                ),
+                json.dumps({"fluency": 0, "vocabulary": 0, "grammar": 0, "task": 0}),
             )
             worker._complete_detail(attempt.id, "Do you like cats?", "B1", "i like")
             db.refresh(attempt)

@@ -9,10 +9,13 @@ import { formatCsvCell } from "../src/lib/csv.ts"
  */
 
 test("公式开头的学生文本加单引号前缀", () => {
-  assert.equal(formatCsvCell("=HYPERLINK(\"http://evil\",\"x\")"), `"'=HYPERLINK(""http://evil"",""x"")"`)
+  assert.equal(
+    formatCsvCell('=HYPERLINK("http://evil","x")'),
+    `"'=HYPERLINK(""http://evil"",""x"")"`,
+  )
   assert.equal(formatCsvCell("+1|calc"), "'+1|calc")
   assert.equal(formatCsvCell("-2+3|cmd"), "'-2+3|cmd")
-  assert.equal(formatCsvCell("@SUM(A1)", ), "'@SUM(A1)")
+  assert.equal(formatCsvCell("@SUM(A1)"), "'@SUM(A1)")
   assert.equal(formatCsvCell("\tTabStart"), "'\tTabStart")
   // 前缀后仍含 \r：既加 ' 前缀又按 RFC 4180 整体加引号
   assert.equal(formatCsvCell("\rCRStart"), '"\'\rCRStart"')

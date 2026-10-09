@@ -756,7 +756,9 @@ def test_quiz_replay_after_submit_returns_receipt(
     db: Session,
 ) -> None:
     """作答成功但回包丢失：交卷/到时后原键重试仍取得成功回执，不新增答案。"""
-    teacher_headers, student, classroom, assignment = _quiz_setup(client, superuser_token_headers, db)
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db
+    )
     resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
     assert resp.status_code == 200, resp.text
     session_id = resp.json()["session_id"]
@@ -810,7 +812,9 @@ def test_quiz_replay_after_deadline_returns_receipt(
     db: Session,
 ) -> None:
     """到时结算后原键重试同样取得回执（截止门禁不挡成功重放）。"""
-    teacher_headers, student, classroom, assignment = _quiz_setup(client, superuser_token_headers, db)
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db
+    )
     resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
     assert resp.status_code == 200, resp.text
     session_id = resp.json()["session_id"]
@@ -839,7 +843,9 @@ def test_quiz_concurrent_same_item_different_keys(
     """并发同题不同键（测验每题一次）：恰好一个 200、一个 422，不再出现 500。"""
     import threading
 
-    teacher_headers, student, classroom, assignment = _quiz_setup(client, superuser_token_headers, db)
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db
+    )
     resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
     assert resp.status_code == 200, resp.text
     session_id = resp.json()["session_id"]
@@ -880,7 +886,9 @@ def test_quiz_concurrent_same_key(
     import concurrent.futures
     import threading
 
-    teacher_headers, student, classroom, assignment = _quiz_setup(client, superuser_token_headers, db)
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db
+    )
     resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
     assert resp.status_code == 200, resp.text
     session_id = resp.json()["session_id"]
@@ -890,7 +898,9 @@ def test_quiz_concurrent_same_key(
 
     def submit() -> int:
         barrier.wait()
-        return _answer(client, student["headers"], session_id, 0, "apple", key).status_code
+        return _answer(
+            client, student["headers"], session_id, 0, "apple", key
+        ).status_code
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(submit) for _ in range(2)]
@@ -914,7 +924,9 @@ def test_quiz_concurrent_answer_vs_manual_submit(
     import concurrent.futures
     import threading
 
-    teacher_headers, student, classroom, assignment = _quiz_setup(client, superuser_token_headers, db)
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db
+    )
     resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
     assert resp.status_code == 200, resp.text
     session_id = resp.json()["session_id"]
@@ -967,8 +979,12 @@ def test_quiz_answer_vs_timeout_settlement_race(
 
     from app.services import vocab_quiz as quiz_service
 
-    teacher_headers, student, classroom, assignment_row = _quiz_setup(client, superuser_token_headers, db)
-    resp = _start_quiz(client, student["headers"], classroom["code"], assignment_row["id"])
+    teacher_headers, student, classroom, assignment_row = _quiz_setup(
+        client, superuser_token_headers, db
+    )
+    resp = _start_quiz(
+        client, student["headers"], classroom["code"], assignment_row["id"]
+    )
     assert resp.status_code == 200, resp.text
     session_id = resp.json()["session_id"]
     session_uuid = uuid.UUID(session_id)
@@ -1000,11 +1016,14 @@ def test_quiz_answer_vs_timeout_settlement_race(
             f.result()
 
     assert results["answer"] == 422, results
-    assert "自动交卷" in client.post(
-        f"{VOCAB}/sessions/{session_id}/answers",
-        json=_answer_body(0, "apple", None),
-        headers=student["headers"],
-    ).json()["detail"]
+    assert (
+        "自动交卷"
+        in client.post(
+            f"{VOCAB}/sessions/{session_id}/answers",
+            json=_answer_body(0, "apple", None),
+            headers=student["headers"],
+        ).json()["detail"]
+    )
     db.expire_all()
     vocab_session = db.get(VocabularySession, session_uuid)
     assert vocab_session is not None
@@ -1021,7 +1040,13 @@ def test_quiz_answer_vs_timeout_settlement_race(
 # ── 有效成绩口径统一与查询消重（wise-quarry-trout 批次05）──────────
 
 
-def _results_row(client: TestClient, teacher_headers: dict[str, str], code: str, assignment_id: str, student_id: str) -> dict:
+def _results_row(
+    client: TestClient,
+    teacher_headers: dict[str, str],
+    code: str,
+    assignment_id: str,
+    student_id: str,
+) -> dict:
     resp = client.get(
         f"{RESULTS.format(code=code)}?assignment_id={assignment_id}",
         headers=teacher_headers,
@@ -1030,7 +1055,13 @@ def _results_row(client: TestClient, teacher_headers: dict[str, str], code: str,
     return next(r for r in resp.json()["students"] if r["student_id"] == student_id)
 
 
-def _grant_retake(client: TestClient, teacher_headers: dict[str, str], code: str, assignment_id: str, student: dict) -> None:
+def _grant_retake(
+    client: TestClient,
+    teacher_headers: dict[str, str],
+    code: str,
+    assignment_id: str,
+    student: dict,
+) -> None:
     resp = client.post(
         f"/api/v1/classes/{code}/vocabulary/assignments/{assignment_id}"
         f"/students/{student['student']['id']}/grant-retake",
@@ -1149,7 +1180,9 @@ def test_quiz_class_results_query_count_constant(
     def _count_queries() -> int:
         counter = {"n": 0}
 
-        def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):  # type: ignore[no-untyped-def]
+        def _before_cursor_execute(
+            conn, cursor, statement, parameters, context, executemany
+        ):  # type: ignore[no-untyped-def]
             if statement.lstrip().upper().startswith("SELECT"):
                 counter["n"] += 1
 
@@ -1195,7 +1228,7 @@ def test_quiz_export_csv_formula_guard(
 
         row = session.get(Student, uuid.UUID(student["student"]["id"]))
         assert row is not None
-        row.display_name = "=HYPERLINK(\"http://evil\",\"x\")"
+        row.display_name = '=HYPERLINK("http://evil","x")'
         session.add(row)
         session.commit()
 

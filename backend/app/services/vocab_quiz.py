@@ -132,11 +132,13 @@ def settle_due_sessions(session: Session, assignment: VocabularyAssignment) -> i
     不会与学生只锁自己一行的路径形成锁环。
     """
     rounds = session.exec(
-        select(VocabularySession).where(
+        select(VocabularySession)
+        .where(
             VocabularySession.assignment_id == assignment.id,  # type: ignore[arg-type]
             VocabularySession.status == "in_progress",  # type: ignore[arg-type]
             col(VocabularySession.quiz_started_at).is_not(None),  # type: ignore[union-attr]
-        ).order_by(col(VocabularySession.id))
+        )
+        .order_by(col(VocabularySession.id))
     ).all()
     settled = 0
     for vocab_session in rounds:
@@ -312,9 +314,7 @@ def quiz_attempt_stats(
             VocabularyAnswer.attempt_no == 1,
         )
     ).all()
-    return quiz_round_stats_from_firsts(
-        {a.item_index: a for a in firsts}, total
-    )
+    return quiz_round_stats_from_firsts({a.item_index: a for a in firsts}, total)
 
 
 def effective_quiz_grade_from_rounds(
@@ -342,9 +342,7 @@ def effective_quiz_grade_from_rounds(
         if isinstance(score, int) and (best_score is None or score > best_score):
             best_score = score
             best_index = index
-    passed: bool | None = (
-        best_score >= pass_line if best_score is not None else None
-    )
+    passed: bool | None = best_score >= pass_line if best_score is not None else None
     effective = rounds[best_index] if best_index is not None else None
     return best_score, passed, attempts, effective
 
@@ -358,9 +356,8 @@ def effective_quiz_grade(
     返回 (最好成绩, 是否及格, 各次答卷明细)；从未开考为 (None, None, [])。
     """
     total = len(assignment.snapshot_items)
-    rounds = [
-        r
-        for r in session.exec(
+    rounds = list(
+        session.exec(
             select(VocabularySession)
             .where(
                 VocabularySession.assignment_id == assignment.id,  # type: ignore[arg-type]
@@ -370,7 +367,7 @@ def effective_quiz_grade(
             )
             .order_by(col(VocabularySession.round_no))
         ).all()
-    ]
+    )
     firsts_by_session: dict[uuid.UUID, dict[int, VocabularyAnswer]] = {}
     if rounds:
         from app.services.vocabulary import first_answers_by_session

@@ -11,7 +11,9 @@
 const CSV_FORMULA_PREFIX_RE = /^[=+\-@\t\r]/
 
 /** 单元格格式化：公式注入防护（' 前缀）+ RFC 4180 引号转义。 */
-export function formatCsvCell(cell: string | number | null | undefined): string {
+export function formatCsvCell(
+  cell: string | number | null | undefined,
+): string {
   let s = cell == null ? "" : String(cell)
   if (typeof cell === "string" && CSV_FORMULA_PREFIX_RE.test(s)) {
     s = `'${s}`

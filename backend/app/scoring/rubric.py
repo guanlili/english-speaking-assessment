@@ -102,9 +102,7 @@ def _parse_dim(key: str, value: object) -> int:
         except ValueError as exc:
             raise RubricParseError(f"评分维度 {key} 不是数字：{value!r}") from exc
     else:
-        raise RubricParseError(
-            f"评分维度 {key} 类型错误：{type(value).__name__}"
-        )
+        raise RubricParseError(f"评分维度 {key} 类型错误：{type(value).__name__}")
     if not math.isfinite(number):
         raise RubricParseError(f"评分维度 {key} 非有限数：{value!r}")
     return max(0, min(DIMENSION_MAX, int(number)))
@@ -122,9 +120,7 @@ def _parse_text_list(key: str, value: object, max_items: int) -> list[str]:
     items: list[str] = []
     for element in value:
         if not isinstance(element, str):
-            raise RubricParseError(
-                f"{key} 含非字符串元素：{element!r}"
-            )
+            raise RubricParseError(f"{key} 含非字符串元素：{element!r}")
         if element.strip():
             items.append(element)
     return items[:max_items]

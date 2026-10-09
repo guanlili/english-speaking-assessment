@@ -1096,8 +1096,7 @@ def submit_vocab_answer(
                     0,
                     int(
                         (
-                            deadline
-                            - datetime.now(UTC)  # type: ignore[operator]
+                            deadline - datetime.now(UTC)  # type: ignore[operator]
                         ).total_seconds()
                     ),
                 )

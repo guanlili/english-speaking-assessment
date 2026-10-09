@@ -28,7 +28,7 @@ from app.models import (
 )
 from app.scoring import worker
 from app.scoring.base import ScoringError
-from tests.utils.audio import wav_upload, wav_bytes
+from tests.utils.audio import wav_bytes, wav_upload
 from tests.utils.credential import make_student
 
 
@@ -508,7 +508,9 @@ def test_stale_recovery_does_not_burn_retry_quota(
 # ── 队列恢复与租约（wise-quarry-trout 批次04）────────────────────────
 
 
-def _make_queued_attempt(db: Session, tmp_path: Path, transcript: str | None = None) -> uuid.UUID:
+def _make_queued_attempt(
+    db: Session, tmp_path: Path, transcript: str | None = None
+) -> uuid.UUID:
     """直建一条 queued 作答（item_snapshot 带参考文本走跟读评分路径）。"""
     audio = tmp_path / f"{uuid.uuid4()}.wav"
     audio.write_bytes(wav_bytes(5.0))
@@ -695,9 +697,7 @@ def test_detail_pending_timeout_uses_detail_start(
         db.refresh(row)
         return row
 
-    fresh = _done_attempt(
-        status="pending", pending_since=(now).isoformat()
-    )
+    fresh = _done_attempt(status="pending", pending_since=(now).isoformat())
     stale = _done_attempt(
         status="pending", pending_since=(now - timedelta(seconds=121)).isoformat()
     )
@@ -752,9 +752,7 @@ def test_shutdown_cancels_retry_timers(
 ) -> None:
     """退出时取消在飞重试 Timer：关闭后不得重建线程池。"""
     fired: list[uuid.UUID] = []
-    monkeypatch.setattr(
-        worker, "submit_attempt_scoring", lambda aid: fired.append(aid)
-    )
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: fired.append(aid))
     worker._schedule_retry(uuid.uuid4(), 60.0)
     with worker._retry_timers_lock:
         timers = list(worker._retry_timers)

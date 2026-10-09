@@ -427,7 +427,8 @@ def create_attempt_upload(
     submitter(attempt.id)
     session.refresh(attempt)
     return _attempt_public(
-        attempt, feedback_masked=_feedback_masked_for_user(session, attempt, current_user)
+        attempt,
+        feedback_masked=_feedback_masked_for_user(session, attempt, current_user),
     )
 
 
@@ -480,7 +481,8 @@ def read_attempt(
         raise HTTPException(status_code=404, detail="Attempt not found")
     _require_attempt_access(session, attempt, current_user)
     return _attempt_public(
-        attempt, feedback_masked=_feedback_masked_for_user(session, attempt, current_user)
+        attempt,
+        feedback_masked=_feedback_masked_for_user(session, attempt, current_user),
     )
 
 
