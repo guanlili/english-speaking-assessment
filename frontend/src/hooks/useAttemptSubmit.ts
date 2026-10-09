@@ -76,7 +76,7 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
       const rubric = data?.rubric as Record<string, unknown> | null | undefined
       return attemptPollIntervalMs({
         status: data?.status,
-        rubricStatus: (rubric?.["status"] as string | undefined) ?? null,
+        rubricStatus: (rubric?.status as string | undefined) ?? null,
         errorPresent: errorInfo.present,
         errorStatus: errorInfo.status,
         failureCount: pollFailuresRef.current,

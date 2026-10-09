@@ -79,5 +79,5 @@ export function rubricPending(
     | undefined,
 ): boolean {
   if (!attempt || attempt.status !== "done") return false
-  return attempt.rubric?.["status"] === "pending"
+  return attempt.rubric?.status === "pending"
 }
