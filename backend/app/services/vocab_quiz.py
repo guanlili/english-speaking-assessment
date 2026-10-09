@@ -126,22 +126,33 @@ def settle_due_sessions(session: Session, assignment: VocabularyAssignment) -> i
 
     submitted_at 取个人截止时刻（而非结算触碰时刻）——成绩按截止时的
     作答计算，与「学生页面是否在线」无关；教师侧触碰同样完成结算。
+
+    并发约定：与学生提交/手动交卷共享 VocabularySession 行锁。逐行加锁后
+    重校验状态与时间（锁外快照可能已被其他触碰终结），按 id 稳定顺序加锁，
+    不会与学生只锁自己一行的路径形成锁环。
     """
     rounds = session.exec(
         select(VocabularySession).where(
             VocabularySession.assignment_id == assignment.id,  # type: ignore[arg-type]
             VocabularySession.status == "in_progress",  # type: ignore[arg-type]
             col(VocabularySession.quiz_started_at).is_not(None),  # type: ignore[union-attr]
-        )
+        ).order_by(col(VocabularySession.id))
     ).all()
     settled = 0
     for vocab_session in rounds:
         deadline = quiz_deadline(vocab_session, assignment)
         if deadline is None or _now() <= deadline:
             continue
+        # 行锁 + 重读：锁外快照可能已被其他触碰（交卷/作答锁内终结）改写
+        session.refresh(vocab_session, with_for_update=True)
+        if vocab_session.status != "in_progress":
+            continue
+        locked_deadline = quiz_deadline(vocab_session, assignment)
+        if locked_deadline is None or _now() <= locked_deadline:
+            continue
         vocab_session.status = "submitted"
         vocab_session.end_reason = "timeout"
-        vocab_session.submitted_at = deadline
+        vocab_session.submitted_at = locked_deadline
         session.add(vocab_session)
         settled += 1
     if settled:
@@ -238,9 +249,14 @@ def start_quiz_session(
 def submit_quiz_session(
     session: Session, vocab_session: VocabularySession, assignment: VocabularyAssignment
 ) -> VocabularySession:
-    """主动交卷：终结答卷（幂等；已终结返回原状态，不重复改写）。"""
+    """主动交卷：终结答卷（幂等；已终结返回原状态，不重复改写）。
+
+    会话行锁内重校验状态——交卷与作答提交、到时结算共享同一把锁，
+    交卷生效后（锁释放前落库 submitted）并发作答在锁内看到终态被拒。
+    """
     settle_due_sessions(session, assignment)
-    session.refresh(vocab_session)
+    # 行锁 + 重读：交卷与作答提交、到时结算共享同一把锁，锁内终态判定
+    session.refresh(vocab_session, with_for_update=True)
     if vocab_session.status != "in_progress":
         return vocab_session
     vocab_session.status = "submitted"

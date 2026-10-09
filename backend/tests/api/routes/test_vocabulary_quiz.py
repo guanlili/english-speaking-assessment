@@ -20,7 +20,11 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from sqlmodel import Session, select
 
-from app.models import VocabularyAssignment, VocabularySession
+from app.models import (
+    VocabularyAnswer,
+    VocabularyAssignment,
+    VocabularySession,
+)
 from tests.api.routes.test_vocabulary_student import (
     _create_classroom,
     _login_teacher,
@@ -730,3 +734,285 @@ def test_quiz_roster_and_unattended_student(
     assert row["score"] == 0  # 未答按零分计入分母，与答错分列
     assert row["answered_count"] == 0
     assert row["correct_first_count"] == 0
+
+
+# ── 断网重传与交卷/结算竞态（wise-quarry-trout 批次03）───────────────
+
+
+def _answer_body(item_index: int, answer: str, key: str | None) -> dict:
+    body: dict = {
+        "item_index": item_index,
+        "prompt_type": "meaning",
+        "answer": answer,
+    }
+    if key:
+        body["idempotency_key"] = key
+    return body
+
+
+def test_quiz_replay_after_submit_returns_receipt(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """作答成功但回包丢失：交卷/到时后原键重试仍取得成功回执，不新增答案。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(client, superuser_token_headers, db)
+    resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+
+    key = f"lost-{uuid.uuid4()}"
+    accepted = _answer(client, student["headers"], session_id, 0, "apple", key)
+    assert accepted.status_code == 200, accepted.text
+
+    # 手动交卷后原键重试（模拟回包丢失后的重传）
+    assert _submit_quiz(client, student["headers"], session_id).status_code == 200
+    replay = _answer(client, student["headers"], session_id, 0, "apple", key)
+    assert replay.status_code == 200, replay.text
+    body = replay.json()
+    assert body["received"] is True
+    assert body["item_index"] == 0
+    assert body["session_status"] == "submitted"
+    # 回执不泄露正误与答案
+    assert "is_correct" not in body
+    assert "correct_spelling" not in body
+
+    # 不新增答案；重放不改写终态
+    answers = db.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == uuid.UUID(session_id)  # type: ignore[arg-type]
+        )
+    ).all()
+    assert len(answers) == 1
+
+    # 同键不同答案：稳定 422（客户端误用，不得返回旧作答）
+    mismatch = client.post(
+        f"{VOCAB}/sessions/{session_id}/answers",
+        json=_answer_body(0, "banana", key),
+        headers=student["headers"],
+    )
+    assert mismatch.status_code == 422
+    assert "幂等键" in mismatch.json()["detail"]
+
+    # 交卷后新键新答案：正常门禁拒绝（重放豁免不得成为绕过口）
+    fresh = client.post(
+        f"{VOCAB}/sessions/{session_id}/answers",
+        json=_answer_body(1, "banana", None),
+        headers=student["headers"],
+    )
+    assert fresh.status_code == 422
+    assert "交卷" in fresh.json()["detail"]
+
+
+def test_quiz_replay_after_deadline_returns_receipt(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """到时结算后原键重试同样取得回执（截止门禁不挡成功重放）。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(client, superuser_token_headers, db)
+    resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+
+    key = f"late-{uuid.uuid4()}"
+    accepted = _answer(client, student["headers"], session_id, 0, "apple", key)
+    assert accepted.status_code == 200, accepted.text
+
+    _expire_started_quiz(db, session_id)
+    replay = _answer(client, student["headers"], session_id, 0, "apple", key)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["received"] is True
+    answers = db.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == uuid.UUID(session_id)  # type: ignore[arg-type]
+        )
+    ).all()
+    assert len(answers) == 1
+
+
+def test_quiz_concurrent_same_item_different_keys(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """并发同题不同键（测验每题一次）：恰好一个 200、一个 422，不再出现 500。"""
+    import threading
+
+    teacher_headers, student, classroom, assignment = _quiz_setup(client, superuser_token_headers, db)
+    resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+
+    barrier = threading.Barrier(2)
+
+    def submit(key: str) -> int:
+        barrier.wait()
+        return _answer(
+            client, student["headers"], session_id, 0, "apple", key
+        ).status_code
+
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [
+            pool.submit(submit, f"race-a-{uuid.uuid4()}"),
+            pool.submit(submit, f"race-b-{uuid.uuid4()}"),
+        ]
+        statuses = sorted(f.result() for f in futures)
+
+    assert statuses == [200, 422], statuses
+    answers = db.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == uuid.UUID(session_id),  # type: ignore[arg-type]
+            VocabularyAnswer.item_index == 0,
+        )
+    ).all()
+    assert len(answers) == 1
+
+
+def test_quiz_concurrent_same_key(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """并发同键重传：两个都拿到成功回执，落库恰好一条。"""
+    import concurrent.futures
+    import threading
+
+    teacher_headers, student, classroom, assignment = _quiz_setup(client, superuser_token_headers, db)
+    resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+
+    key = f"same-{uuid.uuid4()}"
+    barrier = threading.Barrier(2)
+
+    def submit() -> int:
+        barrier.wait()
+        return _answer(client, student["headers"], session_id, 0, "apple", key).status_code
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(submit) for _ in range(2)]
+        statuses = [f.result() for f in futures]
+
+    assert statuses == [200, 200], statuses
+    answers = db.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == uuid.UUID(session_id)  # type: ignore[arg-type]
+        )
+    ).all()
+    assert len(answers) == 1
+
+
+def test_quiz_concurrent_answer_vs_manual_submit(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """作答与手动交卷并发：无 500；若作答被接纳则计入成绩，交卷后不再接纳。"""
+    import concurrent.futures
+    import threading
+
+    teacher_headers, student, classroom, assignment = _quiz_setup(client, superuser_token_headers, db)
+    resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+    session_uuid = uuid.UUID(session_id)
+
+    barrier = threading.Barrier(2)
+
+    def answer() -> int:
+        barrier.wait()
+        return _answer(
+            client, student["headers"], session_id, 0, "apple", f"vs-{uuid.uuid4()}"
+        ).status_code
+
+    def submit() -> int:
+        barrier.wait()
+        return _submit_quiz(client, student["headers"], session_id).status_code
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        f_answer = pool.submit(answer)
+        f_submit = pool.submit(submit)
+        answer_status = f_answer.result()
+        submit_status = f_submit.result()
+
+    assert submit_status == 200
+    assert answer_status in (200, 422), answer_status
+    db.expire_all()
+    vocab_session = db.get(VocabularySession, session_uuid)
+    assert vocab_session is not None
+    assert vocab_session.status == "submitted"
+    answers = db.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == session_uuid,  # type: ignore[arg-type]
+            VocabularyAnswer.item_index == 0,
+        )
+    ).all()
+    if answer_status == 200:
+        assert len(answers) == 1  # 交卷前被锁内接纳，计入成绩
+    else:
+        assert len(answers) == 0  # 交卷已生效，锁内拒绝
+
+
+def test_quiz_answer_vs_timeout_settlement_race(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """到时后作答与结算并发：作答被锁内终结拒绝，结算与作答二选一终结，状态一致。"""
+    import concurrent.futures
+    import threading
+
+    from app.services import vocab_quiz as quiz_service
+
+    teacher_headers, student, classroom, assignment_row = _quiz_setup(client, superuser_token_headers, db)
+    resp = _start_quiz(client, student["headers"], classroom["code"], assignment_row["id"])
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+    session_uuid = uuid.UUID(session_id)
+    _expire_started_quiz(db, session_id)
+
+    barrier = threading.Barrier(2)
+    results: dict[str, object] = {}
+
+    def answer() -> None:
+        barrier.wait()
+        results["answer"] = _answer(
+            client, student["headers"], session_id, 0, "apple", f"to-{uuid.uuid4()}"
+        ).status_code
+
+    def settle() -> None:
+        barrier.wait()
+        with Session(db.get_bind()) as session:
+            assignment = session.get(
+                VocabularyAssignment, uuid.UUID(assignment_row["id"])
+            )
+            vocab_session = session.get(VocabularySession, session_uuid)
+            assert assignment is not None and vocab_session is not None
+            quiz_service.settle_due_sessions(session, assignment)
+        results["settle"] = "ok"
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(answer), pool.submit(settle)]
+        for f in futures:
+            f.result()
+
+    assert results["answer"] == 422, results
+    assert "自动交卷" in client.post(
+        f"{VOCAB}/sessions/{session_id}/answers",
+        json=_answer_body(0, "apple", None),
+        headers=student["headers"],
+    ).json()["detail"]
+    db.expire_all()
+    vocab_session = db.get(VocabularySession, session_uuid)
+    assert vocab_session is not None
+    assert vocab_session.status == "submitted"
+    assert vocab_session.end_reason == "timeout"
+    answers = db.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == session_uuid  # type: ignore[arg-type]
+        )
+    ).all()
+    assert len(answers) == 0

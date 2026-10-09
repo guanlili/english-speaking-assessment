@@ -1069,12 +1069,67 @@ def submit_vocab_answer(
         else None
     )
     is_quiz = assignment is not None and assignment.mode == "quiz"
+
+    # 已成功提交的幂等键识别（断网重传回执）：先于截止/归档/交卷门禁——
+    # 作答已落库但回包丢失时，交卷或截止后原键重试仍取得成功确认，
+    # 不新增答案；测验回执只确认已接收，不泄露正误与未公布答案
+    replay = vocab_service.recognize_answer_replay(
+        session,
+        vocab_session,
+        item_index=body.item_index,
+        prompt_type=body.prompt_type,
+        answer_raw=body.answer,
+        idempotency_key=body.idempotency_key,
+    )
+    if replay is not None:
+        answered_count, correct_first = vocab_service.session_progress(
+            session, vocab_session
+        )
+        if is_quiz:
+            deadline = (
+                vocab_quiz.quiz_deadline(vocab_session, assignment)
+                if assignment is not None
+                else None
+            )
+            remaining = (
+                max(
+                    0,
+                    int(
+                        (
+                            deadline
+                            - datetime.now(UTC)  # type: ignore[operator]
+                        ).total_seconds()
+                    ),
+                )
+                if deadline is not None and vocab_session.status == "in_progress"
+                else None
+            )
+            return VocabularyQuizAnswerReceipt(
+                item_index=replay.item_index,
+                answered_count=answered_count,
+                session_status=vocab_session.status,
+                remaining_seconds=remaining,
+            )
+        snapshot_items = vocab_service.session_snapshot(session, vocab_session)
+        snapshot_item = snapshot_items[replay.item_index]
+        return VocabularyAnswerResult(
+            item_index=replay.item_index,
+            attempt_no=replay.attempt_no,
+            is_correct=replay.is_correct,
+            correct_spelling=str(snapshot_item["headword"]),
+            meaning_zh=str(snapshot_item["meaning_zh"]),
+            session_status=vocab_session.status,
+            answered_count=answered_count,
+            correct_first_count=correct_first,
+        )
+
     if vocab_session.assignment_id is not None:
         if assignment is None:
             raise HTTPException(status_code=422, detail="会话没有绑定任务，不能作答")
         vocab_service.ensure_assignment_open(assignment)
     if is_quiz and assignment is not None:
-        # 测验门禁：到时先结算，再拒绝已终结答卷（交卷/超时都不能续答）
+        # 测验门禁：到时先结算，再拒绝已终结答卷（交卷/超时都不能续答）；
+        # 终态竞态由 submit_answer 的会话行锁兜底
         vocab_quiz.ensure_quiz_answerable(session, vocab_session, assignment)
     elif vocab_session.mode == "quiz" and vocab_session.status == "submitted":
         raise HTTPException(status_code=422, detail="测验已交卷，不能继续作答")
@@ -1089,6 +1144,7 @@ def submit_vocab_answer(
         answer_raw=body.answer,
         idempotency_key=body.idempotency_key,
         one_attempt_per_item=is_quiz,
+        assignment=assignment if is_quiz else None,
     )
     session.refresh(vocab_session)
     answered_count, _correct_first = vocab_service.session_progress(
