@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { fetchAudioObjectUrl } from "@/lib/attempt-audio"
 import { useI18n } from "@/lib/i18n"
 
@@ -21,6 +21,7 @@ export default function AttemptAudio({
   preload = "none",
 }: AttemptAudioProps) {
   const { t } = useI18n()
+  const audioRef = useRef<HTMLAudioElement>(null)
   const srcQuery = useQuery({
     queryKey: ["attempt-audio", attemptId],
     queryFn: () => fetchAudioObjectUrl(attemptId),
@@ -32,7 +33,9 @@ export default function AttemptAudio({
   const objectUrl = srcQuery.data ?? null
 
   useEffect(() => {
+    const audio = audioRef.current
     return () => {
+      audio?.pause()
       if (objectUrl) {
         URL.revokeObjectURL(objectUrl)
       }
@@ -62,6 +65,7 @@ export default function AttemptAudio({
   }
   return (
     <audio
+      ref={audioRef}
       controls
       preload={preload}
       src={objectUrl}

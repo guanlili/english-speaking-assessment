@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query"
-import { Download } from "lucide-react"
+import { Download, Volume2 } from "lucide-react"
 import { useState } from "react"
 import type { ClassroomExercisePublic, ExerciseStudentResult } from "@/client"
 import { ClassesService } from "@/client"
+import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,14 +32,22 @@ function formatDurationLabel(
 }
 
 /** 发布历史：每次发布的练习（快照）列表 + 按次结果回看与导出。 */
-export function ExerciseHistory({ code }: { code: string }) {
+export function ExerciseHistory({
+  code,
+  initialExerciseId,
+}: {
+  code: string
+  initialExerciseId?: string | null
+}) {
   const { t } = useI18n()
   const exercisesQuery = useQuery({
     queryKey: ["teacher", "exercises", code],
     queryFn: () =>
       ClassesService.listClassroomExercises({ code: code.toUpperCase() }),
   })
-  const [selected, setSelected] = useState<ClassroomExercisePublic | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialExerciseId ?? null,
+  )
 
   if (exercisesQuery.isPending)
     return (
@@ -65,6 +74,7 @@ export function ExerciseHistory({ code }: { code: string }) {
     )
 
   const exercises = exercisesQuery.data
+  const selected = exercises.find((exercise) => exercise.id === selectedId)
   if (exercises.length === 0)
     return (
       <p className="rounded-xl border bg-card p-6 text-center text-muted-foreground">
@@ -80,7 +90,7 @@ export function ExerciseHistory({ code }: { code: string }) {
       <ExerciseResults
         code={code}
         exercise={selected}
-        onBack={() => setSelected(null)}
+        onBack={() => setSelectedId(null)}
       />
     )
 
@@ -122,7 +132,7 @@ export function ExerciseHistory({ code }: { code: string }) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setSelected(exercise)}
+              onClick={() => setSelectedId(exercise.id)}
             >
               {t({ zh: "查看结果", en: "View Results" })}
             </Button>
@@ -143,6 +153,10 @@ function ExerciseResults({
   onBack: () => void
 }) {
   const { t } = useI18n()
+  const [recording, setRecording] = useState<{
+    id: string
+    label: string
+  } | null>(null)
   const resultsQuery = useQuery({
     queryKey: ["teacher", "exercise-results", code, exercise.id],
     queryFn: () =>
@@ -332,7 +346,7 @@ function ExerciseResults({
                     <TableCell className="whitespace-nowrap">
                       {row.done_count}/{row.total_count}
                     </TableCell>
-                    {row.items.map((item) => (
+                    {row.items.map((item, index) => (
                       <TableCell key={item.item_id}>
                         {item.status === "done" ? (
                           <span className="font-semibold tabular-nums">
@@ -351,21 +365,66 @@ function ExerciseResults({
                             {t({ zh: "评分中", en: "Scoring" })}
                           </span>
                         )}
+                        {item.attempt_id && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="mt-1 min-h-11"
+                            aria-label={t({
+                              zh: `回听 ${row.display_name} 第${index + 1}题录音`,
+                              en: `Listen to ${row.display_name}'s recording for item ${index + 1}`,
+                            })}
+                            onClick={() => {
+                              if (item.attempt_id)
+                                setRecording({
+                                  id: item.attempt_id,
+                                  label: t({
+                                    zh: `${row.display_name} · 第${index + 1}题`,
+                                    en: `${row.display_name} · Item ${index + 1}`,
+                                  }),
+                                })
+                            }}
+                          >
+                            <Volume2 className="size-4" />
+                            {t({ zh: "听录音", en: "Recording" })}
+                          </Button>
+                        )}
                       </TableCell>
                     ))}
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+            {recording && (
+              <div className="mt-4 space-y-2 rounded-xl border p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium">
+                    v{exercise.version_no} · {recording.label}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="min-h-11"
+                    onClick={() => setRecording(null)}
+                  >
+                    {t({ zh: "收起录音", en: "Close recording" })}
+                  </Button>
+                </div>
+                <AttemptAudio
+                  key={recording.id}
+                  attemptId={recording.id}
+                  className="w-full"
+                />
+              </div>
+            )}
             {(resultsQuery.data ?? []).some((row) =>
-              row.items.some(
-                (item) => item.attempt_id && item.status === "done",
-              ),
+              row.items.some((item) => item.attempt_id),
             ) && (
               <p className="mt-3 text-xs text-muted-foreground">
                 {t({
-                  zh: "分数为参考反馈；录音请在「学生结果」面板按学生展开回听。",
-                  en: "Scores are reference feedback; listen to recordings by expanding students in the Student Results panel.",
+                  zh: "分数为教学参考；点击「听录音」回听该发布版本的作答。",
+                  en: "Scores are teaching references. Select Recording to listen to answers from this published version.",
                 })}
               </p>
             )}

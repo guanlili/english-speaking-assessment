@@ -72,7 +72,7 @@ const questionTypes = [
   },
   {
     key: "qa",
-    title: { zh: "模拟问答", en: "Scenario Q&A" },
+    title: TERMS.typeQa,
     description: {
       zh: "按主题出题，一问一答",
       en: "Questions by topic, ask and answer",
@@ -97,11 +97,13 @@ export function AssignmentComposer({
   assignment,
   assignedItems,
   currentExercise,
+  onViewHistory,
 }: {
   code: string
   assignment?: AssignmentInfo | null
   assignedItems?: AssignedItemRef[] | null
   currentExercise?: ClassroomExercisePublic | null
+  onViewHistory?: (exerciseId: string) => void
 }) {
   const { t } = useI18n()
   // 各题型互相独立：各自的题库列表分别加载
@@ -233,6 +235,9 @@ export function AssignmentComposer({
         currentExercise?.title ?? t({ zh: "课堂练习", en: "Class Practice" })
       }
       exerciseHistory={exercisesQuery.data ?? []}
+      onViewHistory={onViewHistory}
+      initialIsExam={currentExercise?.is_exam ?? false}
+      initialExamMinutes={currentExercise?.time_limit_minutes ?? 30}
     />
   )
 }
@@ -252,6 +257,9 @@ function ComposerForm({
   hasLegacyReadingSelection,
   initialTitle,
   exerciseHistory,
+  onViewHistory,
+  initialIsExam,
+  initialExamMinutes,
 }: {
   code: string
   hasUnitAssignment: boolean
@@ -267,6 +275,9 @@ function ComposerForm({
   hasLegacyReadingSelection: boolean
   initialTitle: string
   exerciseHistory: ClassroomExercisePublic[]
+  onViewHistory?: (exerciseId: string) => void
+  initialIsExam: boolean
+  initialExamMinutes: number
 }) {
   const { t } = useI18n()
   const [types, setTypes] = useState<LessonTypes>(initialTypes)
@@ -276,8 +287,8 @@ function ComposerForm({
   )
   const [title, setTitle] = useState(initialTitle)
   // 模考模式：整场限时（分钟），确认页点「开始考试」后计时、到时自动交卷、切屏记录
-  const [isExam, setIsExam] = useState(false)
-  const [examMinutes, setExamMinutes] = useState(30)
+  const [isExam, setIsExam] = useState(initialIsExam)
+  const [examMinutes, setExamMinutes] = useState(initialExamMinutes)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
   const dirtyRef = useRef(false)
@@ -285,6 +296,10 @@ function ComposerForm({
   const prevServerSelectionRef = useRef(initialSelection)
   const prevServerTitleRef = useRef(initialTitle)
   const prevServerItemsRef = useRef(initialItems)
+  const prevServerExamRef = useRef({
+    isExam: initialIsExam,
+    minutes: initialExamMinutes,
+  })
   const queryClient = useQueryClient()
 
   // 服务端指派变更时同步本地表单（如老师在另一设备改了指派）
@@ -301,20 +316,36 @@ function ComposerForm({
     const itemsSame =
       JSON.stringify(initialItems) ===
       JSON.stringify(prevServerItemsRef.current)
-    if (typesSame && selectionSame && titleSame && itemsSame) return
+    const examSame =
+      initialIsExam === prevServerExamRef.current.isExam &&
+      initialExamMinutes === prevServerExamRef.current.minutes
+    if (typesSame && selectionSame && titleSame && itemsSame && examSame) return
     prevServerTypesRef.current = initialTypes
     prevServerSelectionRef.current = initialSelection
     prevServerTitleRef.current = initialTitle
     prevServerItemsRef.current = initialItems
+    prevServerExamRef.current = {
+      isExam: initialIsExam,
+      minutes: initialExamMinutes,
+    }
     if (!dirtyRef.current) {
       setTypes(initialTypes)
       setSelection(initialSelection)
       setTitle(initialTitle)
+      setIsExam(initialIsExam)
+      setExamMinutes(initialExamMinutes)
       setOrderedKeys(
         initialItems.length ? initialItems.map(assignmentItemKey) : null,
       )
     }
-  }, [initialTypes, initialSelection, initialTitle, initialItems])
+  }, [
+    initialTypes,
+    initialSelection,
+    initialTitle,
+    initialItems,
+    initialIsExam,
+    initialExamMinutes,
+  ])
 
   const setTypesDirty = (
     next: LessonTypes | ((prev: LessonTypes) => LessonTypes),
@@ -329,15 +360,23 @@ function ComposerForm({
     setSelection(next)
   }
 
-  const { scenarios: selectedScenarios, problems } = inspectSelection(
-    types,
-    selection,
-    {
+  const { scenarios: selectedScenarios, problems: selectionProblems } =
+    inspectSelection(types, selection, {
       sentences,
       scenarios,
       instructions,
-    },
-  )
+    })
+  const problems =
+    isExam &&
+    (!Number.isInteger(examMinutes) || examMinutes < 5 || examMinutes > 240)
+      ? [
+          ...selectionProblems,
+          {
+            zh: "模考限时须为 5–240 分钟的整数",
+            en: "Exam time must be a whole number between 5 and 240 minutes",
+          },
+        ]
+      : selectionProblems
 
   const selectedPassages = passages.filter((p) =>
     selection.passages.includes(p.id ?? ""),
@@ -396,6 +435,8 @@ function ComposerForm({
   )
 
   const changed =
+    isExam !== initialIsExam ||
+    (isExam && examMinutes !== initialExamMinutes) ||
     JSON.stringify(types) !== JSON.stringify(initialTypes) ||
     JSON.stringify(selection) !== JSON.stringify(initialSelection) ||
     title.trim() !== initialTitle.trim() ||
@@ -717,7 +758,10 @@ function ComposerForm({
           onPreview={() => setPreviewOpen(true)}
         />
       </div>
-      <PublishHistory exerciseHistory={exerciseHistory} />
+      <PublishHistory
+        exerciseHistory={exerciseHistory}
+        onViewHistory={onViewHistory}
+      />
       <PreviewDialog
         code={code}
         open={previewOpen}

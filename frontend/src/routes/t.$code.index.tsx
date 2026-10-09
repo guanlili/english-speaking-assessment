@@ -13,7 +13,7 @@ import {
   Search,
   Sparkles,
 } from "lucide-react"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { toast } from "sonner"
 import type { BoardStudent } from "@/client"
 import { ApiError, ClassesService } from "@/client"
@@ -64,6 +64,16 @@ function TeacherBoardPage() {
   const [activeTab, setActiveTab] = useState<"prepare" | "results" | "history">(
     "prepare",
   )
+  const [historyExerciseId, setHistoryExerciseId] = useState<string | null>(
+    null,
+  )
+  const historyTabRef = useRef<HTMLButtonElement>(null)
+  const viewHistory = (exerciseId: string | null) => {
+    setHistoryExerciseId(exerciseId)
+    setActiveTab("history")
+    historyTabRef.current?.focus({ preventScroll: true })
+    historyTabRef.current?.scrollIntoView({ block: "start" })
+  }
 
   const [statusFilter, setStatusFilter] = useState("all")
   const [nameQuery, setNameQuery] = useState("")
@@ -349,8 +359,9 @@ function TeacherBoardPage() {
               value === "prepare" ||
               value === "results" ||
               value === "history"
-            )
+            ) {
               setActiveTab(value)
+            }
           }}
           className="gap-6"
         >
@@ -361,7 +372,11 @@ function TeacherBoardPage() {
             <TabsTrigger value="results" className="px-4 sm:px-6">
               {t({ zh: "学生结果", en: "Student Results" })}
             </TabsTrigger>
-            <TabsTrigger value="history" className="px-4 sm:px-6">
+            <TabsTrigger
+              ref={historyTabRef}
+              value="history"
+              className="px-4 sm:px-6"
+            >
               {t({ zh: "发布历史", en: "Publish History" })}
             </TabsTrigger>
           </TabsList>
@@ -371,9 +386,34 @@ function TeacherBoardPage() {
               assignment={board.assignment}
               assignedItems={board.assigned_items}
               currentExercise={board.current_exercise}
+              onViewHistory={viewHistory}
             />
           </TabsContent>
           <TabsContent value="results" className="space-y-6">
+            {board.current_exercise && (
+              <div className="space-y-2 rounded-xl border bg-card p-4 text-sm">
+                <p className="font-semibold">
+                  {t({
+                    zh: `今日 · v${board.current_exercise.version_no} · ${board.current_exercise.title}`,
+                    en: `Today · v${board.current_exercise.version_no} · ${board.current_exercise.title}`,
+                  })}
+                </p>
+                <p className="text-muted-foreground">
+                  {t({
+                    zh: "此面板仅统计今日当前发布版本。重新发布后，旧版本的作答仍保存在发布历史中，未计入当前版本不代表成绩丢失。",
+                    en: "This panel shows today's current published version only. Earlier answers remain in Publish History after republishing; they are not included in this version's results.",
+                  })}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11"
+                  onClick={() => viewHistory(null)}
+                >
+                  {t({ zh: "查看历史版本结果", en: "View earlier results" })}
+                </Button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Card>
                 <CardContent className="py-4">
@@ -394,7 +434,13 @@ function TeacherBoardPage() {
               <Card>
                 <CardContent className="py-4">
                   <p className="text-xs text-muted-foreground">
-                    {t({ zh: "今日完成", en: "Done Today" })}
+                    {t({ zh: "已有作答", en: "Students with answers" })}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t({
+                      zh: "至少提交一道题",
+                      en: "At least one answer submitted",
+                    })}
                   </p>
                   <p className="mt-1 text-2xl font-bold">
                     {board.submitted_count}
@@ -656,7 +702,11 @@ function TeacherBoardPage() {
             </Card>
           </TabsContent>
           <TabsContent value="history">
-            <ExerciseHistory code={code} />
+            <ExerciseHistory
+              key={historyExerciseId ?? "history-list"}
+              code={code}
+              initialExerciseId={historyExerciseId}
+            />
           </TabsContent>
         </Tabs>
         <p className="pb-6 text-center text-xs text-muted-foreground">

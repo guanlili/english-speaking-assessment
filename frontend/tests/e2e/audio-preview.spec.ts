@@ -1,30 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
 
-// A real PCM file lets the browser decode and advance playback, rather than
-// replacing play() with a stub that would conceal a broken source URL.
-function wav() {
-  const sampleRate = 8000
-  const samples = sampleRate * 4
-  const data = Buffer.alloc(44 + samples * 2)
-  data.write("RIFF", 0)
-  data.writeUInt32LE(data.length - 8, 4)
-  data.write("WAVEfmt ", 8)
-  data.writeUInt32LE(16, 16)
-  data.writeUInt16LE(1, 20)
-  data.writeUInt16LE(1, 22)
-  data.writeUInt32LE(sampleRate, 24)
-  data.writeUInt32LE(sampleRate * 2, 28)
-  data.writeUInt16LE(2, 32)
-  data.writeUInt16LE(16, 34)
-  data.write("data", 36)
-  data.writeUInt32LE(samples * 2, 40)
-  for (let i = 0; i < samples; i++)
-    data.writeInt16LE(
-      Math.round(1000 * Math.sin((i * 440 * Math.PI * 2) / sampleRate)),
-      44 + i * 2,
-    )
-  return data
-}
+import { wav } from "./utils/audio"
 
 async function mockBank(page: Page, lang = "zh") {
   await page.addInitScript((lang) => {
@@ -112,7 +88,7 @@ for (const width of [390, 820, 1180]) {
     await expect(row.getByRole("button", { name: "试听标准音" })).toHaveCount(0)
     await row
       .getByRole("button", {
-        name: "语音合成生成标准音（需配置方舟密钥）",
+        name: "AI 生成标准音",
         exact: true,
       })
       .click()
@@ -149,7 +125,7 @@ test("article preview leaves its card expanded; collapse stops sentence audio", 
   await card.getByRole("button", { name: "停止试听" }).click()
   await row
     .getByRole("button", {
-      name: "语音合成生成标准音（需配置方舟密钥）",
+      name: "AI 生成标准音",
       exact: true,
     })
     .click()
@@ -191,7 +167,7 @@ test("upload, regenerate and clear update the preview and stop the old audio", a
   })
   await row
     .getByRole("button", {
-      name: "语音合成生成标准音（需配置方舟密钥）",
+      name: "AI 生成标准音",
       exact: true,
     })
     .click()
@@ -207,9 +183,7 @@ test("upload, regenerate and clear update the preview and stop the old audio", a
     ),
   ).toBe(true)
   await row.getByRole("button", { name: "试听标准音" }).click()
-  await row
-    .getByRole("button", { name: "清除标准音（回退浏览器朗读）", exact: true })
-    .click()
+  await row.getByRole("button", { name: "清除标准音", exact: true }).click()
   await expect(row.locator("audio")).toHaveCount(0)
   await expect(row.getByRole("button", { name: "试听标准音" })).toHaveCount(0)
 })
@@ -220,7 +194,7 @@ test("failed audio shows an English error and can be retried", async ({
   const { row, setFailAudio } = await mockBank(page, "en")
   await row
     .getByRole("button", {
-      name: "Generate audio with AI (requires an Ark API key)",
+      name: "Generate AI audio",
       exact: true,
     })
     .click()
