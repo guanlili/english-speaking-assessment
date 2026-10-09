@@ -188,14 +188,16 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # Chromium ~150MB 每轮全量下载：按 lockfile 缓存浏览器目录，通常省 1-2 分钟
+      # Chromium ~150MB / WebKit ~70MB 每轮全量下载：按 lockfile 缓存浏览器目录，
+      # 通常省 1-2 分钟。key 带 -webkit 后缀：旧缓存里没有 WebKit 二进制，
+      # 不换 key 会每轮都重新下载
       - uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
-      - name: 安装依赖与 Chromium
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-webkit
+      - name: 安装依赖与 Chromium/WebKit
         working-directory: frontend
-        run: npm ci && npx playwright install --with-deps chromium
+        run: npm ci && npx playwright install --with-deps chromium webkit
       - name: 运行 E2E
         working-directory: frontend
         run: |

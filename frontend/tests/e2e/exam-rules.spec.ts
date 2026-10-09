@@ -51,7 +51,12 @@ async function mockExam(page: Page, isExam = true) {
       }
     }
     window.MediaRecorder = TestRecorder as unknown as typeof MediaRecorder
-    navigator.mediaDevices.getUserMedia = async () => new MediaStream()
+    // WebKit 的 navigator.mediaDevices 是只读属性，直接赋值静默失败：
+    // 必须 defineProperty 覆盖（Chromium 宽容，两浏览器都走这条路）
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: async () => new MediaStream() },
+    })
   })
   await page.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname
@@ -203,9 +208,9 @@ test("exam timeout submits and advances while scoring remains queued", async ({
   expect(state.uploads).toBe(2)
 })
 
-test("exam upload failure retains original recording without re-recording", async ({
-  page,
-}) => {
+test("exam upload failure retains original recording without re-recording", {
+  tag: "@webkit",
+}, async ({ page }) => {
   await page.clock.install()
   const state = await mockExam(page)
   state.failUpload = true

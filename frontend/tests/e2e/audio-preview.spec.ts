@@ -116,9 +116,9 @@ for (const width of [390, 820, 1180]) {
   })
 }
 
-test("article preview leaves its card expanded; collapse stops sentence audio", async ({
-  page,
-}) => {
+test("article preview leaves its card expanded; collapse stops sentence audio", {
+  tag: "@webkit",
+}, async ({ page }) => {
   const { card, row } = await mockBank(page)
   await card.getByRole("button", { name: "试听标准音", exact: true }).click()
   await expect(row).toBeVisible()
