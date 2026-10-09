@@ -16,6 +16,7 @@ from app.scoring.heuristic import (
     SILENCE_ADVICE,
     completeness_score,
     fluency_score,
+    score_open_response,
     score_read_aloud,
     tokenize,
 )
@@ -172,3 +173,53 @@ def test_open_response_scores_range() -> None:
     scores = score_open_response("word " * 20, 10.0)
     assert 0 <= scores.fluency <= 100
     assert 0 <= scores.overall <= 100
+
+
+# ── 批次10：算法边界校准钉子（呈现当前行为并防回归，不改算法）─────
+
+
+class TestAlgorithmBoundaries:
+    """确定性校准：这些输入的当前输出被钉住——任何变化都必须是有意为之。
+
+    如实声明：完整度按词袋匹配，乱序读同一组词仍得高完整度——这是已知
+    算法边界（accuracy 与完整度同源），不是声学发音准确率。
+    """
+
+    def test_shuffled_word_bag_still_scores_high_completeness(self) -> None:
+        """乱序读出全部参考词：完整度仍高（词袋口径的已知边界）。"""
+        reference = "the quick brown fox jumps over the lazy dog"
+        shuffled = "dog lazy the over jumps fox brown quick the"
+        result = score_read_aloud(
+            transcript=shuffled,
+            reference_text=reference,
+            duration_s=6.0,
+            suggested_seconds=20,
+        )
+        assert result.completeness >= 80  # 钉住：乱序不扣完整度
+
+    def test_missing_words_reduce_completeness(self) -> None:
+        reference = "the quick brown fox jumps over the lazy dog"
+        half = "the quick brown fox"
+        result = score_read_aloud(
+            transcript=half,
+            reference_text=reference,
+            duration_s=4.0,
+            suggested_seconds=20,
+        )
+        assert 30 <= result.completeness <= 70  # 漏词按比例降
+
+    def test_repeated_words_do_not_inflate(self) -> None:
+        reference = "good morning everyone"
+        repeated = "good good good morning morning everyone everyone everyone"
+        single = "good morning everyone"
+        r1 = score_read_aloud(repeated, reference, 8.0, 20)
+        r2 = score_read_aloud(single, reference, 3.0, 20)
+        assert r1.completeness <= r2.completeness + 5  # 重复不冲高
+
+    def test_short_answer_open_response_low_fluency(self) -> None:
+        result = score_open_response("yes", duration_s=1.5)
+        assert result.fluency <= 40
+
+    def test_empty_transcript_open_response_zeroish(self) -> None:
+        result = score_open_response("", duration_s=5.0)
+        assert result.overall is not None and result.overall <= 10

@@ -736,12 +736,18 @@ def test_complete_detail_first_writer_wins(
     try:
         results = iter([{"mock_score": 1}, {"mock_score": 2}])
         monkeypatch.setattr(worker, "_score_rubric", lambda *a: next(results))
-        worker._complete_detail(attempt.id, "q", "B1", "hello")
+        worker._complete_detail(
+            attempt.id, worker.RubricQuestionContext(text="q"), "hello"
+        )
         db.refresh(attempt)
-        assert attempt.rubric == {"mock_score": 1}
-        worker._complete_detail(attempt.id, "q", "B1", "hello")
+        assert attempt.rubric is not None
+        assert attempt.rubric.get("mock_score") == 1
+        worker._complete_detail(
+            attempt.id, worker.RubricQuestionContext(text="q"), "hello"
+        )
         db.refresh(attempt)
-        assert attempt.rubric == {"mock_score": 1}  # 迟到结果不覆盖
+        assert attempt.rubric is not None
+        assert attempt.rubric.get("mock_score") == 1  # 迟到结果不覆盖
     finally:
         db.delete(attempt)
         db.commit()
@@ -1007,15 +1013,19 @@ def test_sweep_does_not_overwrite_completed_detail(
 
         # 详情线程在清扫等待期间写回成功结果（行锁 + 先到先得）
         monkeypatch.setattr(worker, "_score_rubric", lambda *a: {"mock_score": 7})
-        worker._complete_detail(attempt.id, "q", "B1", "hello")
+        worker._complete_detail(
+            attempt.id, worker.RubricQuestionContext(text="q"), "hello"
+        )
         db.refresh(attempt)
-        assert attempt.rubric == {"mock_score": 7}
+        assert attempt.rubric is not None
+        assert attempt.rubric.get("mock_score") == 7
 
         release.set()
         thread.join(timeout=5)
         assert "error" not in sweep_result, sweep_result
         db.refresh(attempt)
-        assert attempt.rubric == {"mock_score": 7}  # 不被覆盖为 unavailable
+        assert attempt.rubric is not None
+        assert attempt.rubric.get("mock_score") == 7  # 不被覆盖为 unavailable
     finally:
         db.delete(attempt)
         db.commit()
@@ -1101,14 +1111,15 @@ def test_complete_detail_renews_to_executing_before_call(
         executing_seen = threading.Event()
         release = threading.Event()
 
-        def slow_score(prompt: str, band: str, transcript: str) -> dict:
+        def slow_score(context: object, transcript: str) -> dict:
             executing_seen.set()
             assert release.wait(timeout=5)
             return {"mock_score": 5}
 
         monkeypatch.setattr(worker, "_score_rubric", slow_score)
         thread = threading.Thread(
-            target=worker._complete_detail, args=(attempt.id, "q", "B1", "hello")
+            target=worker._complete_detail,
+            args=(attempt.id, worker.RubricQuestionContext(text="q"), "hello"),
         )
         thread.start()
         assert executing_seen.wait(timeout=5), "执行开始未续期"
@@ -1121,7 +1132,8 @@ def test_complete_detail_renews_to_executing_before_call(
         release.set()
         thread.join(timeout=5)
         db.refresh(attempt)
-        assert attempt.rubric == {"mock_score": 5}
+        assert attempt.rubric is not None
+        assert attempt.rubric.get("mock_score") == 5
     finally:
         db.delete(attempt)
         db.commit()
