@@ -99,3 +99,122 @@ def test_never_deletes_outside_storage_dir(db: Session, tmp_path: Path, monkeypa
 
     assert purge_expired_attempt_audio(db) == 0
     assert outside.exists()
+
+
+# ── 清理推进 / 上传补偿（wise-quarry-trout 批次06）──────────────────
+
+
+def _make_batch_attempts(
+    db: Session, storage: Path, count: int, *, age_days: float = 100
+) -> list[Attempt]:
+    rows = []
+    for i in range(count):
+        audio = storage / f"bulk-{i:05d}.webm"
+        audio.write_bytes(b"x")
+        row = _make_attempt(
+            db, str(audio), status=AttemptStatus.DONE, age_days=age_days
+        )
+        rows.append(row)
+    return rows
+
+
+def test_purge_progresses_past_batch_limit(
+    db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    """1200 条候选（> 单轮 500 上限）：连续调用必须全部推进，不再卡死第一批。"""
+    from app.core.audio_retention import PURGE_BATCH_LIMIT
+
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "AUDIO_TTL_DAYS", 90)
+    rows = _make_batch_attempts(db, tmp_path, 1200)
+
+    total_deleted = 0
+    rounds = 0
+    while True:
+        deleted = purge_expired_attempt_audio(db)
+        total_deleted += deleted
+        rounds += 1
+        if deleted == 0:
+            break
+        assert rounds <= 10, "清理未推进：疑似反复选中同一批记录"
+    assert total_deleted == 1200
+    assert rounds >= 1200 // PURGE_BATCH_LIMIT  # 确实经过了多轮
+    for row in rows:
+        db.refresh(row)
+        assert row.audio_purged_at is not None
+    # 全部文件删除、全部行带完成标记（下一轮候选为空）
+    assert purge_expired_attempt_audio(db) == 0
+
+
+def test_purge_settles_missing_and_out_of_bounds(
+    db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    """文件缺失/越界路径：结算标记但不计删除数，且不再重复选中。"""
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "AUDIO_TTL_DAYS", 90)
+
+    missing = _make_attempt(
+        db, str(tmp_path / "gone.webm"), status=AttemptStatus.DONE, age_days=100
+    )
+    outside = tmp_path / "elsewhere" / "keep.webm"
+    outside.parent.mkdir()
+    outside.write_bytes(b"x")
+    out_row = _make_attempt(db, str(outside), status=AttemptStatus.DONE, age_days=100)
+
+    assert purge_expired_attempt_audio(db) == 0  # 无文件被删
+    db.refresh(missing)
+    db.refresh(out_row)
+    assert missing.audio_purged_at is not None  # 缺失 → 结算
+    assert out_row.audio_purged_at is not None  # 越界 → 结算不删
+    assert outside.exists()
+    # 已结算的行不再进入候选
+    assert purge_expired_attempt_audio(db) == 0
+
+
+def test_purge_retries_after_delete_failure(
+    db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    """删除失败不标记、下一轮重试成功。"""
+
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "AUDIO_TTL_DAYS", 90)
+    audio = tmp_path / "flaky.webm"
+    audio.write_bytes(b"x")
+    row = _make_attempt(db, str(audio), status=AttemptStatus.DONE, age_days=100)
+
+    real_unlink = Path.unlink
+
+    def failing_unlink(self: Path, missing_ok: bool = False) -> None:
+        if self.name == "flaky.webm":
+            raise OSError("disk busy")
+        real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", failing_unlink)
+    assert purge_expired_attempt_audio(db) == 0
+    db.refresh(row)
+    assert row.audio_purged_at is None  # 失败不结算
+    assert audio.exists()
+
+    monkeypatch.setattr(Path, "unlink", real_unlink)
+    assert purge_expired_attempt_audio(db) == 1
+    db.refresh(row)
+    assert row.audio_purged_at is not None
+    assert not audio.exists()
+
+
+def test_purge_settles_symlink_pointing_outside(
+    db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    """存储内的符号链接指向外部真实文件：resolve 后按越界结算，外部文件保留。"""
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "AUDIO_TTL_DAYS", 90)
+    victim = tmp_path.parent / "real-target.webm"
+    victim.write_bytes(b"x")
+    link = tmp_path / "sneaky.webm"
+    link.symlink_to(victim)
+    row = _make_attempt(db, str(link), status=AttemptStatus.DONE, age_days=100)
+
+    assert purge_expired_attempt_audio(db) == 0
+    db.refresh(row)
+    assert row.audio_purged_at is not None
+    assert victim.exists()  # 真实文件绝不被删

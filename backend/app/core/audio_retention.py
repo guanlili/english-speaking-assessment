@@ -8,6 +8,13 @@
 内容标准音/TTS 缓存，小且必需，永不触碰。只清终态作答（done/failed），
 排队/评分中的音频仍被 worker 使用。文件删除后回放端点按文件缺失 404，
 前端回放按钮报错即可，无契约变化。
+
+推进语义（批次06）：候选 = 终态 + 超过保留期 + audio_purged_at IS NULL，
+按 (created_at, id) 稳定排序、每轮至多 PURGE_BATCH_LIMIT 行。处理完成
+（删除或结算）即落标记，后续轮次推进到下一批——此前没有标记，候选超过
+单轮上限后会永远重复选中同一批已删记录。删除失败（OSError）不标记，
+下轮重试；文件本就缺失/路径越界/指向 content 的行结算标记但不计删除数，
+不长期阻塞其它候选。
 """
 
 import logging
@@ -15,6 +22,7 @@ import threading
 from datetime import timedelta
 from pathlib import Path
 
+from sqlalchemy import update
 from sqlmodel import Session, col, select
 
 from app.core.config import settings
@@ -28,7 +36,11 @@ RETENTION_INTERVAL_S = 24 * 3600
 
 
 def purge_expired_attempt_audio(session: Session) -> int:
-    """删除超过保留期的终态作答音频文件，返回删除数。TTL=0 直接返回。"""
+    """删除超过保留期的终态作答音频文件，返回本轮删除的文件数。
+
+    TTL=0 直接返回；处理完成的行写 audio_purged_at（删除、文件缺失、
+    越界/content 结算都算完成），失败行留待下轮重试。
+    """
     ttl_days = settings.AUDIO_TTL_DAYS
     if ttl_days <= 0:
         return 0
@@ -42,30 +54,61 @@ def purge_expired_attempt_audio(session: Session) -> int:
         .where(
             col(Attempt.status).in_([AttemptStatus.DONE, AttemptStatus.FAILED]),
             col(Attempt.created_at) < cutoff,
+            col(Attempt.audio_purged_at).is_(None),
         )
+        .order_by(col(Attempt.created_at), col(Attempt.id))
         .limit(PURGE_BATCH_LIMIT)
     ).all()
     purged = 0
-    for _attempt_id, audio_path in rows:
+    settled_ids: list[object] = []
+    for attempt_id, audio_path in rows:
         if not audio_path:
+            # 模型上非空，防御性结算（无文件可管）
+            settled_ids.append(attempt_id)
             continue
         path = Path(audio_path).resolve()
-        # 路径护栏：只删存储目录内的文件，且绝不碰内容标准音子目录
-        if content_dir == path or content_dir in path.parents:
-            continue
-        if storage not in path.parents:
-            logger.warning("skip audio outside storage dir: %s", audio_path)
+        # 路径护栏：只管理存储根下的**直接**文件（uuid 音频平铺在根上）。
+        # content/ 标准音、其它子目录、存储根之外的路径都不是本模块该删的
+        # 文件——一律结算标记（不删任何东西），不再每轮重复选中阻塞推进
+        if path.parent != storage:
+            if content_dir == path or content_dir in path.parents:
+                logger.warning(
+                    "settle audio path pointing into content dir: %s", audio_path
+                )
+            elif storage not in path.parents:
+                logger.warning("settle audio outside storage dir: %s", audio_path)
+            else:
+                logger.warning(
+                    "settle audio in unexpected subdirectory: %s", audio_path
+                )
+            settled_ids.append(attempt_id)
             continue
         try:
             existed = path.exists()
-            path.unlink(missing_ok=True)
+            if existed:
+                path.unlink()
         except OSError:
+            # 删除失败不标记：下一轮重试；已删/缺失之外的异常不吞进度
             logger.exception("failed to delete audio %s", audio_path)
             continue
         if existed:
             purged += 1
+        # 文件原本缺失 → 结算为已清理（不再有可管理的文件）
+        settled_ids.append(attempt_id)
+    if settled_ids:
+        session.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
+            update(Attempt)
+            .where(col(Attempt.id).in_(settled_ids))
+            .values(audio_purged_at=get_datetime_utc())
+        )
+        session.commit()
     if purged:
-        logger.info("audio retention purged %d files (ttl=%dd)", purged, ttl_days)
+        logger.info(
+            "audio retention purged %d files, settled %d rows (ttl=%dd)",
+            purged,
+            len(settled_ids),
+            ttl_days,
+        )
     return purged
 
 

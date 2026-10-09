@@ -763,3 +763,115 @@ def test_shutdown_cancels_retry_timers(
     assert fired == []  # 已取消，从未点火重建线程池
     with worker._retry_timers_lock:
         assert not worker._retry_timers
+
+
+# ── 上传孤儿补偿（wise-quarry-trout 批次06）────────────────────────
+
+
+def test_upload_create_failure_compensates_orphan_audio(
+    client: TestClient,
+    inline_scoring: Any,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """落盘后入库失败（非幂等冲突的数据库故障）：本次文件必须补偿删除。"""
+    from app.api.routes import attempts as attempts_route
+
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
+    first = plan["items"][0]
+
+    def broken_create(*args: object, **kwargs: object) -> Attempt:
+        raise RuntimeError("database connection lost")
+
+    monkeypatch.setattr(attempts_route, "create_attempt", broken_create)
+    with pytest.raises(RuntimeError, match="database connection lost"):
+        _submit(
+            client, first["type"], first["id"], student["headers"], plan["session_id"]
+        )
+
+    files = list(tmp_path.glob("*.wav")) + list(tmp_path.glob("*.webm"))
+    assert files == [], f"入库失败未补偿孤儿音频: {files}"
+
+
+def test_upload_submitter_failure_keeps_audio(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """数据库已提交但评分投递失败：录音保留（行已引用），交给恢复机制。"""
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+
+    def failing_submitter(attempt_id: uuid.UUID) -> None:
+        raise RuntimeError("executor rejected")
+
+    app.dependency_overrides[get_scoring_submitter] = lambda: failing_submitter
+    try:
+        student = _join(db, client)
+        plan = _today(client, student["headers"])
+        first = plan["items"][0]
+        with pytest.raises(RuntimeError, match="executor rejected"):
+            _submit(
+                client,
+                first["type"],
+                first["id"],
+                student["headers"],
+                plan["session_id"],
+            )
+
+        from sqlmodel import col as _col
+
+        with Session(db.get_bind()) as session:
+            attempt = session.exec(
+                select(Attempt)
+                .where(Attempt.session_id == uuid.UUID(plan["session_id"]))
+                .order_by(_col(Attempt.created_at).desc())
+            ).first()
+        assert attempt is not None
+        assert attempt.audio_path is not None
+        audio = Path(attempt.audio_path)
+        assert audio.exists(), "已入库录音不得被补偿删除"
+    finally:
+        app.dependency_overrides.pop(get_scoring_submitter, None)
+
+
+def test_concurrent_same_key_leaves_exactly_one_audio_file(
+    client: TestClient,
+    inline_scoring: Any,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """并发同键上传（Bar­rier）：无论哪个请求落库，存储里恰好一份音频、一条作答。"""
+    import concurrent.futures
+    import threading
+
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
+    first = plan["items"][0]
+    key = f"orphan-{uuid.uuid4()}"
+    barrier = threading.Barrier(2)
+
+    def submit() -> int:
+        barrier.wait()
+        return _submit(
+            client,
+            first["type"],
+            first["id"],
+            student["headers"],
+            plan["session_id"],
+            key,
+        ).status_code
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(submit) for _ in range(2)]
+        statuses = sorted(f.result() for f in futures)
+    assert statuses == [200, 200]
+
+    with Session(db.get_bind()) as session:
+        attempts = session.exec(
+            select(Attempt).where(Attempt.idempotency_key == key)  # type: ignore[arg-type]
+        ).all()
+    assert len(attempts) == 1
+    files = list(tmp_path.glob("*.wav")) + list(tmp_path.glob("*.webm"))
+    assert len(files) == 1, f"并发同键产生孤儿音频: {files}"
+    assert str(files[0]) == attempts[0].audio_path

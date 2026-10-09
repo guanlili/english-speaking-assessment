@@ -4,6 +4,7 @@ POST /attempts      上传音频（multipart），任何题型（PRD 附录 A）
 GET  /attempts/{id} 轮询转写与分数
 """
 
+import logging
 import uuid
 from pathlib import Path
 from typing import Any
@@ -37,7 +38,29 @@ from app.scoring.audio_convert import probe_audio
 from app.services import exam as exam_service
 from app.services import reading
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["attempts"])
+
+
+def _delete_unreferenced_audio(session: Session, path: Path) -> None:
+    """上传补偿：只删除本次生成、没有任何持久记录引用的音频文件。
+
+    先查 attempt.audio_path 引用再删——数据库已提交的录音（含评分投递
+    失败待恢复的）一定有行引用，不会被误删。补偿失败只记日志不阻断
+    原有异常路径。
+    """
+    referenced = session.exec(
+        select(Attempt.id).where(Attempt.audio_path == str(path)).limit(1)
+    ).first()
+    if referenced is not None:
+        return
+    try:
+        path.unlink(missing_ok=True)
+        logger.info("compensated orphan audio after failed attempt create: %s", path)
+    except OSError:
+        logger.warning("failed to compensate orphan audio %s", path)
+
 
 # PRD US-02：短于 1 秒不打分，提示再录
 MIN_DURATION_S = 1.0
@@ -378,34 +401,40 @@ def create_attempt_upload(
     # 并发时两个请求都能通过预检查。对考试会话行加锁后复查——锁只包住
     # 「复查 + 插入」的毫秒级临界区（音频校验在锁外），第二个请求在锁内
     # 看到首个作答后 422，不会产生双份作答/双倍评分费
-    if exam_one_attempt and session_id is not None:
-        locked_session = session.exec(
-            select(PracticeSession)
-            .where(PracticeSession.id == session_id)
-            .with_for_update()
-        ).first()
-        if locked_session is not None:
-            already = session.exec(
-                select(Attempt.id).where(
-                    Attempt.session_id == session_id,  # type: ignore[arg-type]
-                    Attempt.item_id == item_id,
-                )
-            ).first()
-            if already is not None:
-                raise HTTPException(status_code=422, detail="考试中每题只能作答一次")
-    attempt = Attempt(
-        item_type=item_type,
-        item_id=item_id,
-        student_id=student.id if student is not None else None,
-        session_id=session_id,
-        idempotency_key=idempotency_key,
-        item_snapshot=item_snapshot,
-        audio_path=str(audio_path),
-        audio_mime=mime_type,
-        duration_s=duration_s,
-        engine=settings.SCORING_PROVIDER,
-    )
+    # 上传补偿（批次06）：落盘成功但持久化失败（考试门禁/幂等并发撞唯一
+    # 约束/数据库故障）时，本次写入的文件没有任何记录引用——补偿删除，
+    # 不留不受 TTL 管理的孤儿。数据库已提交的录音不在补偿范围（被行引用，
+    # _delete_unreferenced_audio 会放行），评分投递失败由恢复机制接手
     try:
+        if exam_one_attempt and session_id is not None:
+            locked_session = session.exec(
+                select(PracticeSession)
+                .where(PracticeSession.id == session_id)
+                .with_for_update()
+            ).first()
+            if locked_session is not None:
+                already = session.exec(
+                    select(Attempt.id).where(
+                        Attempt.session_id == session_id,  # type: ignore[arg-type]
+                        Attempt.item_id == item_id,
+                    )
+                ).first()
+                if already is not None:
+                    raise HTTPException(
+                        status_code=422, detail="考试中每题只能作答一次"
+                    )
+        attempt = Attempt(
+            item_type=item_type,
+            item_id=item_id,
+            student_id=student.id if student is not None else None,
+            session_id=session_id,
+            idempotency_key=idempotency_key,
+            item_snapshot=item_snapshot,
+            audio_path=str(audio_path),
+            audio_mime=mime_type,
+            duration_s=duration_s,
+            engine=settings.SCORING_PROVIDER,
+        )
         attempt = create_attempt(session=session, attempt_in=attempt)
     except IntegrityError as exc:
         session.rollback()
@@ -416,12 +445,17 @@ def create_attempt_upload(
             if existing is not None:
                 # 兜底分支同样校验归属，封死「预检查时未提交→撞唯一约束→拿到他人作答」路径
                 _require_attempt_access(session, existing, current_user)
+                _delete_unreferenced_audio(session, audio_path)
                 return _attempt_public(
                     existing,
                     feedback_masked=_feedback_masked_for_user(
                         session, existing, current_user
                     ),
                 )
+        _delete_unreferenced_audio(session, audio_path)
+        raise
+    except Exception:
+        _delete_unreferenced_audio(session, audio_path)
         raise
 
     submitter(attempt.id)
