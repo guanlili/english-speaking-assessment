@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { useCallback, useRef, useState } from "react"
 import { AttemptsService } from "@/client"
+import { attemptPollIntervalMs, rubricPending } from "@/lib/attempt-polling"
 
 export interface AttemptSubmitTarget {
   itemType: "passage" | "repeat" | "question"
@@ -10,13 +11,17 @@ export interface AttemptSubmitTarget {
 }
 
 /**
- * 上传一条作答并轮询到 done/failed（PRD 不可协商 #4：上传与评分分离）。
+ * 上传一条作答并轮询到终态（PRD 不可协商 #4：上传与评分分离）。
  *
  * 学生身份走登录 JWT（Authorization 头，SDK 自动注入）；
  * submit 接受可选的 targetOverride：录音开始时钉住 item_id / session_id / 题型，
  * 录音期间老师切换指派不会让旧录音提交到新题新轮。
  * idempotencyKey 确保重传不重复创建作答/扣费。
  * 返回 uploadError 区分上传失败（可重传）与评分失败。
+ *
+ * 轮询节奏（批次08A，见 lib/attempt-polling）：done 但 rubric 仍 pending
+ * 时继续轮询不出假死；403/404 停止；网络异常有上限退避。刷新评分只
+ * GET——不重传音频、不新增幂等键。
  */
 export function useAttemptSubmit(target: AttemptSubmitTarget) {
   const [attemptId, setAttemptId] = useState<string | null>(null)
@@ -53,8 +58,15 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
       AttemptsService.readAttempt({ attemptId: attemptId as string }),
     enabled: attemptId !== null,
     refetchInterval: (query) => {
-      const status = query.state.data?.status
-      return status === "done" || status === "failed" ? false : 1000
+      const data = query.state.data
+      const error = query.state.error as { status?: number } | null
+      const rubric = data?.rubric as Record<string, unknown> | null | undefined
+      return attemptPollIntervalMs({
+        status: data?.status,
+        rubricStatus: (rubric?.["status"] as string | undefined) ?? null,
+        errorStatus: error?.status,
+        failureCount: query.state.fetchFailureCount,
+      })
     },
   })
 
@@ -64,6 +76,9 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
     setAttemptId(null)
     resetMutation()
   }, [resetMutation])
+
+  const attempt = attemptId ? attemptQuery.data : undefined
+  const pollError = (attemptQuery.error as { status?: number } | null) ?? null
 
   return {
     submit: (
@@ -80,7 +95,11 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
       status?: number
       body?: { detail?: string }
     } | null,
-    attempt: attemptId ? attemptQuery.data : undefined,
+    attempt,
+    /** rubric 详情仍在评定中（done 后模拟分未出） */
+    rubricPending: rubricPending(attempt),
+    /** 轮询失败（403/404 已停轮；网络错误退避中） */
+    pollError,
     reset,
   }
 }
