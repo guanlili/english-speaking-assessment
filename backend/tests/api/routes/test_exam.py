@@ -814,3 +814,124 @@ def test_practice_feedback_not_masked_outside_exam(
         assert pa["overall"] is not None
     finally:
         _cleanup_classroom(db, classroom["id"])
+
+
+def test_exam_attempt_excluded_from_student_trail_until_ended(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    inline_scoring: None,
+) -> None:
+    """R03：考试进行中已评分的首题不得进入学生成长轨迹聚合（当天只有
+    这道题时，平均分就是该题分数）；授权教师全量；考试终结后恢复。"""
+    from app.models import Classroom, ClassroomExercise
+
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+        )
+    )
+    code = classroom["code"]
+    made = make_student(db, client, code, "轨迹考生")
+    headers = made["headers"]
+    first_id, second_id = uuid.uuid4(), uuid.uuid4()
+    db.add_all(
+        [
+            Passage(
+                id=first_id,
+                slug=f"trail-a-{first_id}",
+                title="Trail first",
+                text="First article.",
+                cefr_band="B1",
+            ),
+            Passage(
+                id=second_id,
+                slug=f"trail-b-{second_id}",
+                title="Trail second",
+                text="Second article.",
+                cefr_band="B1",
+            ),
+        ]
+    )
+    db.commit()
+    exercise = ClassroomExercise(
+        classroom_id=uuid.UUID(classroom["id"]),
+        snapshot_items=[
+            {
+                "type": "passage",
+                "id": str(first_id),
+                "text": "First article.",
+                "suggested_seconds": 20,
+            },
+            {
+                "type": "passage",
+                "id": str(second_id),
+                "text": "Second article.",
+                "suggested_seconds": 20,
+            },
+        ],
+        is_exam=True,
+        time_limit_minutes=30,
+    )
+    db.add(exercise)
+    db.flush()
+    row = db.get(Classroom, exercise.classroom_id)
+    assert row is not None
+    row.current_exercise_id = exercise.id
+    db.add(row)
+    db.commit()
+    from datetime import UTC as _UTC
+
+    fake_now = datetime.now(_UTC)
+    monkeypatch_now = fake_now
+    import pytest as _pytest
+
+    with _pytest.MonkeyPatch.context() as mp:
+        mp.setattr(exam_service, "_now", lambda: monkeypatch_now)
+        plan = _today(client, headers, code)
+        assert (
+            client.post(
+                f"/api/v1/classes/{code}/exam/start",
+                json={"session_id": plan["session_id"]},
+                headers=headers,
+            ).status_code
+            == 200
+        )
+        # 首题作答并完成评分（考试仍进行中：第二题未答）
+        posted = _submit(client, headers, code, plan["items"][0], plan["session_id"])
+        assert posted.status_code == 200, posted.text
+        assert posted.json()["status"] == "done"
+        attempt_id = posted.json()["id"]
+        # POST 回执已被批次02遮罩：分数从授权教师视角确认确已评出
+        teacher_view = _resp_json(
+            client.get(
+                f"/api/v1/attempts/{attempt_id}", headers=superuser_token_headers
+            )
+        )
+        assert teacher_view["overall"] is not None
+
+        # 学生轨迹：考试未终结 → 当天聚合不包含该作答（count 0 / 无 speaking）
+        trail = client.get(f"/api/v1/classes/{code}/trail", headers=headers).json()
+        today = fake_now.date().isoformat()
+        sessions = {s["date"]: s for s in trail["sessions"]}
+        today_session = sessions.get(today)
+        # 该作答不进学生聚合：无当天记录，或有记录但 attempt_count 为 0
+        assert today_session is None or today_session["attempt_count"] == 0
+
+        # 授权教师（superuser）查同一学生：全量可见
+        teacher_trail = client.get(
+            f"/api/v1/classes/{code}/trail",
+            params={"student_id": made["student"]["id"]},
+            headers=superuser_token_headers,
+        ).json()
+        teacher_sessions = {s["date"]: s for s in teacher_trail["sessions"]}
+        assert teacher_sessions[today]["attempt_count"] >= 1
+
+        # 考试终结后：学生轨迹恢复包含该作答
+        monkeypatch_now = fake_now + timedelta(seconds=40)
+        plan2 = _today(client, headers, code)
+        assert plan2["exam"]["ended"] is True
+        trail2 = client.get(f"/api/v1/classes/{code}/trail", headers=headers).json()
+        sessions2 = {s["date"]: s for s in trail2["sessions"]}
+        assert sessions2[today]["attempt_count"] >= 1
+    _cleanup_classroom(db, classroom["id"])

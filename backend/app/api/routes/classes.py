@@ -1928,6 +1928,7 @@ def read_student_trail(
                 Attempt.created_at,  # ty: ignore[invalid-argument-type]
                 Attempt.item_type,  # ty: ignore[invalid-argument-type]
                 Attempt.status,  # ty: ignore[invalid-argument-type]
+                Attempt.session_id,  # ty: ignore[invalid-argument-type]
                 Attempt.overall,  # ty: ignore[invalid-argument-type]
                 Attempt.completeness,  # ty: ignore[invalid-argument-type]
                 Attempt.vocab,  # ty: ignore[invalid-argument-type]
@@ -1939,6 +1940,29 @@ def read_student_trail(
         )
         .order_by(col(Attempt.created_at))
     ).all()
+    # 模考反馈可见性（返修R03）：学生视角排除「考试未终结」的作答——
+    # 当天只有一道已评分题时，speaking_avg/completeness_avg 就是该题分数；
+    # 授权教师/管理员查看保持全量。与 today/attempts 出口共用
+    # exam_feedback_locked 判定，不改 ORM、不提前关卷
+    locked_session_ids: set[uuid.UUID] = set()
+    if current_user.role == "student" and not current_user.is_superuser:
+        seen_session_ids = {a.session_id for a in attempts if a.session_id}
+        if seen_session_ids:
+            exam_sessions = [
+                ps
+                for ps in session.exec(
+                    select(PracticeSession).where(
+                        col(PracticeSession.id).in_(seen_session_ids)  # type: ignore[operator]
+                    )
+                ).all()
+                if ps.assignment_id is not None
+                and (exercise := session.get(ClassroomExercise, ps.assignment_id))
+                is not None
+                and exercise.is_exam
+                and exam_service.exam_feedback_locked(session, ps, exercise)
+            ]
+            locked_session_ids = {ps.id for ps in exam_sessions}
+
     by_date: dict[str, dict[str, Any]] = {}
     for attempt in attempts:
         day = (
@@ -1948,6 +1972,8 @@ def read_student_trail(
         )
         if day is None or attempt.status != AttemptStatus.DONE:
             continue
+        if attempt.session_id is not None and attempt.session_id in locked_session_ids:
+            continue  # 考试进行中：该作答的分数不进学生聚合
         bucket = by_date.setdefault(
             day,
             {
