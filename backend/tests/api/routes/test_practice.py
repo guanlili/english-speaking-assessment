@@ -224,7 +224,10 @@ def test_quick_feedback_committed_before_detail(
     assert data["status"] == "done"
     assert data["overall"] is not None
     assert data["transcript"] == provider.transcribe.return_value
-    assert data["rubric"] == {"status": "pending"}
+    assert data["rubric"] is not None
+    assert data["rubric"]["status"] == "pending"
+    # pending_since 记录详情阶段开始时刻（批次04：挂起超时按此判定）
+    assert "pending_since" in data["rubric"]
     detail_executor.submit.assert_called_once()
 
     monkeypatch.setattr(worker, "_score_rubric", lambda *_: None)

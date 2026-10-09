@@ -28,7 +28,7 @@ from app.models import (
 )
 from app.scoring import worker
 from app.scoring.base import ScoringError
-from tests.utils.audio import wav_upload
+from tests.utils.audio import wav_upload, wav_bytes
 from tests.utils.credential import make_student
 
 
@@ -55,6 +55,14 @@ def cleanup_demo_students(db: Session) -> Generator[None]:
     for uid in user_ids:
         db.delete(db.get_one(User, uid))
     db.commit()
+
+
+@pytest.fixture(autouse=True)
+def _clear_resubmit_bookkeeping() -> Generator[None]:
+    """worker 的重投簿记是模块级状态：测试间必须清空，防止泄漏放大。"""
+    yield
+    with worker._resubmit_lock:
+        worker._resubmit_pending.clear()
 
 
 @pytest.fixture
@@ -203,9 +211,18 @@ def test_duplicate_submission_no_double_xp(
 
 
 def test_stale_scoring_recovery(
-    client: TestClient, inline_scoring: Any, db: Session
+    client: TestClient,
+    inline_scoring: Any,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """评分中断恢复：僵尸 scoring 作答被重排队列并最终完成。"""
+    """评分中断恢复：僵尸 scoring 作答被重排队列并最终完成。
+
+    恢复现在提交后立即投递（批次04）；本测试禁用真实投递，保持
+    「恢复 → 重排队列 → 手动评分 → 完成」的确定性验证——立即投递
+    行为由 test_recovered_attempt_is_resubmitted_immediately 覆盖。
+    """
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: None)
     inline_scoring({"audio/wav": "hello world"})
     student = _join(db, client)
     plan = _today(client, student["headers"])
@@ -486,3 +503,265 @@ def test_stale_recovery_does_not_burn_retry_quota(
     assert after is not None
     assert after.status == AttemptStatus.QUEUED
     assert after.retry_count == 1  # 恢复不再 +1
+
+
+# ── 队列恢复与租约（wise-quarry-trout 批次04）────────────────────────
+
+
+def _make_queued_attempt(db: Session, tmp_path: Path, transcript: str | None = None) -> uuid.UUID:
+    """直建一条 queued 作答（item_snapshot 带参考文本走跟读评分路径）。"""
+    audio = tmp_path / f"{uuid.uuid4()}.wav"
+    audio.write_bytes(wav_bytes(5.0))
+    attempt = Attempt(
+        item_type="repeat",
+        item_id=uuid.uuid4(),
+        audio_path=str(audio),
+        audio_mime="audio/wav",
+        duration_s=5.0,
+        status=AttemptStatus.QUEUED,
+        transcript=transcript,
+        item_snapshot={
+            "type": "repeat",
+            "id": str(uuid.uuid4()),
+            "text": "hello world",
+            "suggested_seconds": 20,
+        },
+    )
+    db.add(attempt)
+    db.commit()
+    return attempt.id
+
+
+def test_recovered_attempt_is_resubmitted_immediately(
+    db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """僵尸恢复提交成功即投递：不再等「创建超过 30 分钟」的孤儿规则。"""
+    attempt_id = _make_queued_attempt(db, tmp_path)
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        attempt.status = AttemptStatus.SCORING
+        attempt.claimed_at = datetime.now(UTC) - timedelta(seconds=300)
+        session.add(attempt)
+        session.commit()
+
+    dispatched: list[uuid.UUID] = []
+    monkeypatch.setattr(
+        worker, "submit_attempt_scoring", lambda aid: dispatched.append(aid)
+    )
+    with Session(db.get_bind()) as session:
+        recovered = worker.recover_stale_attempts(session)
+    assert recovered == 1
+    assert dispatched == [attempt_id]
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        assert attempt.status == AttemptStatus.QUEUED
+    with worker._resubmit_lock:
+        assert attempt_id in worker._resubmit_pending
+
+
+def test_resubmit_pending_retried_by_sweep(
+    db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """恢复后投递失败：候选留簿记，下一轮清扫继续重试，直到离开 queued。"""
+    attempt_id = _make_queued_attempt(db, tmp_path)
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        attempt.status = AttemptStatus.SCORING
+        attempt.claimed_at = datetime.now(UTC) - timedelta(seconds=300)
+        session.add(attempt)
+        session.commit()
+
+    calls: list[uuid.UUID] = []
+
+    def flaky_submit(aid: uuid.UUID) -> None:
+        calls.append(aid)
+        if len(calls) == 1:
+            raise RuntimeError("executor rejected")
+
+    monkeypatch.setattr(worker, "submit_attempt_scoring", flaky_submit)
+    with Session(db.get_bind()) as session:
+        assert worker.recover_stale_attempts(session) == 1
+    assert len(calls) == 1  # 第一次投递被拒
+    with worker._resubmit_lock:
+        assert attempt_id in worker._resubmit_pending
+
+    with Session(db.get_bind()) as session:
+        worker.sweep_orphans(session)
+    assert len(calls) == 2  # 下一轮清扫重试投递成功
+
+    # 被领取（离开 queued）后，候选从簿记清掉
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        attempt.status = AttemptStatus.SCORING
+        attempt.claimed_at = datetime.now(UTC)
+        session.add(attempt)
+        session.commit()
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: calls.append(aid))
+    with Session(db.get_bind()) as session:
+        worker.sweep_orphans(session)
+    with worker._resubmit_lock:
+        assert attempt_id not in worker._resubmit_pending
+
+
+def test_stale_worker_discards_result_after_reclaim(
+    db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """慢旧 worker 被回收重领后不得改写新结果（租约 = 领取时刻代次）。"""
+    import threading
+
+    attempt_id = _make_queued_attempt(db, tmp_path)
+    entered = threading.Event()
+    release = threading.Event()
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+
+    class GatedAsr:
+        name = "mock"
+        calls = 0
+
+        def transcribe(self, audio: bytes, mime_type: str) -> str:
+            GatedAsr.calls += 1
+            if GatedAsr.calls == 1:
+                entered.set()
+                assert release.wait(timeout=5), "测试同步点超时"
+                return "stale transcript"
+            return "fresh transcript"
+
+    gate = GatedAsr()
+    monkeypatch.setattr(worker, "build_asr_provider", lambda: gate)
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: None)
+
+    result: dict[str, object] = {}
+
+    def old_worker() -> None:
+        try:
+            with Session(db.get_bind()) as session:
+                worker.process_attempt(session, attempt_id)
+            result["old"] = "finished"
+        except Exception as exc:  # noqa: BLE001 - 记录旧线程任何异常
+            result["old"] = repr(exc)
+
+    thread = threading.Thread(target=old_worker)
+    thread.start()
+    assert entered.wait(timeout=5), "旧 worker 未进入 ASR"
+
+    # 旧 worker 卡在外部调用期间被回收 → 重领 → 新 worker 完成（fresh）
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        assert attempt.status == AttemptStatus.SCORING
+        attempt.claimed_at = datetime.now(UTC) - timedelta(seconds=300)
+        session.add(attempt)
+        session.commit()
+        worker.recover_stale_attempts(session)
+    with Session(db.get_bind()) as session:
+        worker.process_attempt(session, attempt_id)
+
+    release.set()
+    thread.join(timeout=5)
+
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        assert attempt.status == AttemptStatus.DONE
+        assert attempt.transcript == "fresh transcript"
+        assert attempt.retry_count == 0  # 旧结果被丢弃，不写失败也不烧重试
+
+
+def test_detail_pending_timeout_uses_detail_start(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """详情挂起超时按 pending_since 判定：长排队后刚进入 rubric 不被误杀。"""
+    from datetime import UTC as _UTC
+
+    now = datetime.now(_UTC)
+
+    def _done_attempt(**rubric: object) -> Attempt:
+        row = Attempt(
+            item_type="question",
+            item_id=uuid.uuid4(),
+            audio_path="/tmp/x.wav",
+            audio_mime="audio/wav",
+            duration_s=5.0,
+            status=AttemptStatus.DONE,
+            rubric=dict(rubric) if rubric else None,
+            created_at=now - timedelta(minutes=10),
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return row
+
+    fresh = _done_attempt(
+        status="pending", pending_since=(now).isoformat()
+    )
+    stale = _done_attempt(
+        status="pending", pending_since=(now - timedelta(seconds=121)).isoformat()
+    )
+    legacy = _done_attempt(status="pending")
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: None)
+    with Session(db.get_bind()) as session:
+        worker.sweep_orphans(session)
+
+    db.refresh(fresh)
+    db.refresh(stale)
+    db.refresh(legacy)
+    # 刚进入详情阶段：保持 pending（旧口径按 created_at 会误杀）
+    assert fresh.rubric is not None and fresh.rubric.get("status") == "pending"
+    # 详情阶段超时：关闭为 unavailable
+    assert stale.rubric == {"status": "unavailable"}
+    # 历史行无 pending_since：沿用创建时间口径
+    assert legacy.rubric == {"status": "unavailable"}
+
+
+def test_complete_detail_first_writer_wins(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """重复投递的 detail 线程：先写者胜，迟到结果不得覆盖。"""
+    attempt = Attempt(
+        item_type="question",
+        item_id=uuid.uuid4(),
+        audio_path="/tmp/x.wav",
+        audio_mime="audio/wav",
+        duration_s=5.0,
+        status=AttemptStatus.DONE,
+        transcript="hello",
+        rubric={"status": "pending"},
+    )
+    db.add(attempt)
+    db.commit()
+    try:
+        results = iter([{"mock_score": 1}, {"mock_score": 2}])
+        monkeypatch.setattr(worker, "_score_rubric", lambda *a: next(results))
+        worker._complete_detail(attempt.id, "q", "B1", "hello")
+        db.refresh(attempt)
+        assert attempt.rubric == {"mock_score": 1}
+        worker._complete_detail(attempt.id, "q", "B1", "hello")
+        db.refresh(attempt)
+        assert attempt.rubric == {"mock_score": 1}  # 迟到结果不覆盖
+    finally:
+        db.delete(attempt)
+        db.commit()
+
+
+def test_shutdown_cancels_retry_timers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """退出时取消在飞重试 Timer：关闭后不得重建线程池。"""
+    fired: list[uuid.UUID] = []
+    monkeypatch.setattr(
+        worker, "submit_attempt_scoring", lambda aid: fired.append(aid)
+    )
+    worker._schedule_retry(uuid.uuid4(), 60.0)
+    with worker._retry_timers_lock:
+        timers = list(worker._retry_timers)
+    assert len(timers) == 1
+    worker.shutdown_executor()
+    timers[0].join(timeout=1)
+    assert not timers[0].is_alive()
+    assert fired == []  # 已取消，从未点火重建线程池
+    with worker._retry_timers_lock:
+        assert not worker._retry_timers

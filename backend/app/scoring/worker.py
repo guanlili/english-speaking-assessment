@@ -40,6 +40,72 @@ logger = logging.getLogger(__name__)
 _executor: ThreadPoolExecutor | None = None
 _detail_executor: ThreadPoolExecutor | None = None
 _executor_lock = threading.Lock()
+# 在飞重试 Timer 登记：退出时统一取消
+_retry_timers: set[threading.Timer] = set()
+_retry_timers_lock = threading.Lock()
+# 已恢复但投递失败/未确认领取的重投候选：每轮清扫重试，不依赖录音年龄
+_resubmit_pending: set[uuid.UUID] = set()
+_resubmit_lock = threading.Lock()
+
+
+class _LeaseLostError(Exception):
+    """本线程的领取已被回收或重领：放弃一切写回，不标失败不改状态。"""
+
+
+def _schedule_retry(attempt_id: uuid.UUID, delay: float) -> None:
+    """延迟重投（带登记）：退出时统一取消，避免关闭后重建线程池。"""
+    holder: dict[str, threading.Timer] = {}
+
+    def fire() -> None:
+        with _retry_timers_lock:
+            _retry_timers.discard(holder["timer"])
+        # 线程池已关闭（进程退出）：放弃重投，不重建线程池
+        if _executor is None:
+            logger.info("scoring executor shut down; drop retry for %s", attempt_id)
+            return
+        submit_attempt_scoring(attempt_id)
+
+    timer = threading.Timer(delay, fire)
+    holder["timer"] = timer
+    with _retry_timers_lock:
+        _retry_timers.add(timer)
+    timer.daemon = True
+    timer.start()
+
+
+def _remember_resubmit(attempt_id: uuid.UUID) -> None:
+    with _resubmit_lock:
+        _resubmit_pending.add(attempt_id)
+
+
+def _drain_pending_resubmits(session: Session) -> int:
+    """投递失败/未确认领取的重投候选：仍处于 queued 的重新投递。
+
+    候选留在集合里直到观察到它离开 queued（被领取/终结）——若投递被拒
+    （线程池关闭等异常）下轮清扫继续重试，恢复不依赖录音创建年龄。
+    """
+    with _resubmit_lock:
+        candidates = list(_resubmit_pending)
+    if not candidates:
+        return 0
+    still_queued = set(
+        session.exec(
+            select(Attempt.id).where(
+                Attempt.id.in_(candidates),  # type: ignore[arg-type]
+                Attempt.status == AttemptStatus.QUEUED,
+            )
+        ).all()
+    )
+    submitted = 0
+    for row_id in still_queued:
+        try:
+            submit_attempt_scoring(row_id)
+            submitted += 1
+        except Exception:  # noqa: BLE001 - 投递失败留在集合，下轮重试
+            logger.exception("resubmit dispatch failed for %s", row_id)
+    with _resubmit_lock:
+        _resubmit_pending.intersection_update(still_queued)
+    return submitted
 
 
 _TOKEN_RE = re.compile(r"[a-z']+")
@@ -260,6 +326,12 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
 
     使用 SELECT FOR UPDATE SKIP LOCKED 原子领取，防止多 worker 重复评分。
     评分失败时按 retry_count 重试，超限后标记 failed。
+
+    领取租约：以 claimed_at 的领取时刻作为本线程代次标识；checkpoint、
+    最终结果与失败回退写回前都在行锁内校验代次仍有效——慢旧 worker 在
+    被回收/重领后不能改写新 worker 的结果，只能放弃自己的写回。
+    外部 ASR/LLM 调用不持有数据库行锁；崩溃窗口（调用中途被回收）由
+    checkpoint + 重试覆盖，不承诺付费调用的严格 exactly-once。
     """
     # 原子领取：FOR UPDATE SKIP LOCKED 防止并发重复评分
     attempt = session.exec(
@@ -274,6 +346,26 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
     attempt.claimed_at = datetime.now(UTC)
     session.add(attempt)
     session.commit()
+    lease_token = attempt.claimed_at
+
+    def lease_valid() -> bool:
+        """行锁内裸读领取代次：仍处 scoring 且 claimed_at 是本线程领取值。
+
+        不能用 refresh 校验——refresh 会用库里的旧值覆盖 session 中
+        已算出未提交的评分结果；裸列查询（no_autoflush）拿到行锁后，
+        本次事务内的写回与校验原子完成。
+        """
+        with session.no_autoflush:
+            row = session.exec(
+                select(Attempt.claimed_at, Attempt.status)
+                .where(Attempt.id == attempt_id)
+                .with_for_update()
+            ).first()
+        return (
+            row is not None
+            and row[1] == AttemptStatus.SCORING
+            and row[0] == lease_token
+        )
 
     detail_request: tuple[str, str, str] | None = None
     try:
@@ -306,10 +398,17 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
                 (perf_counter() - asr_start) * 1000,
             )
             engine = provider.name
-            # checkpoint：转写成功立即落库，后续环节失败重试时不再重跑 ASR
+            if not lease_valid():
+                raise _LeaseLostError(attempt_id)
+            # checkpoint：转写成功立即落库（同步保存真实 ASR provider），
+            # 后续环节失败重试时不再重跑 ASR；同时续租 claimed_at——
+            # 阶段推进即心跳，健康慢任务不会被误判成失联僵尸
             attempt.transcript = transcript
+            attempt.engine = engine
+            attempt.claimed_at = datetime.now(UTC)
             session.add(attempt)
             session.commit()
+            lease_token = attempt.claimed_at
 
         read_aloud = _resolve_read_aloud_item(session, attempt)
         if read_aloud is not None:
@@ -339,11 +438,26 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             # rubric 四维与模拟分（PRD US-08）：仅 ark 引擎；失败降级不出假分
             # 空转写（没说话/识别不到）不出 0 分模拟——界面显示暂缺
             if engine in {"ark", "volc_flash"} and transcript.strip():
-                attempt.rubric = {"status": "pending"}
+                # pending_since 记录详情阶段开始时刻：挂起超时按此判定，
+                # 不再按录音创建时间（长排队后刚进入 rubric 会被误杀）
+                attempt.rubric = {
+                    "status": "pending",
+                    "pending_since": datetime.now(UTC).isoformat(),
+                }
                 detail_request = (prompt, band, transcript)
 
+        if not lease_valid():
+            raise _LeaseLostError(attempt_id)
         attempt.status = AttemptStatus.DONE
         attempt.engine = engine
+    except _LeaseLostError:
+        # 领取已被回收/重领：本线程结果作废，不写任何状态（新 worker 接管）
+        session.rollback()
+        logger.warning(
+            "attempt %s lease lost before write-back; discarding stale result",
+            attempt_id,
+        )
+        return
     except ContentMissingError as exc:
         # 题目内容已被删除：重试无意义，直接标失败不消耗重试配额
         logger.error(
@@ -352,6 +466,8 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             exc,
             exc_info=True,
         )
+        if not lease_valid():
+            return
         attempt.status = AttemptStatus.FAILED
         # 学生端可见的 error 只放通用文案；上游异常原文（可能含 endpoint/配额等细节）只进日志
         attempt.error = "题目内容已不可用，请联系老师重新发布"
@@ -363,6 +479,8 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             exc,
             exc_info=True,
         )
+        if not lease_valid():
+            return
         if attempt.retry_count < MAX_SCORING_RETRIES:
             attempt.retry_count += 1
             attempt.status = AttemptStatus.QUEUED
@@ -388,9 +506,18 @@ def _complete_detail(
     with Session(engine) as session:
         attempt = session.get(Attempt, attempt_id)
         if attempt is not None and attempt.status == AttemptStatus.DONE:
-            attempt.rubric = result or {"status": "unavailable"}
-            session.add(attempt)
-            session.commit()
+            # 行锁内确认 rubric 仍处于 pending：先到先得，迟到的旧 detail
+            # 线程（重试/回收后重跑产生的重复投递）不得覆盖新结果
+            session.refresh(attempt, with_for_update=True)
+            rubric = attempt.rubric if isinstance(attempt.rubric, dict) else None
+            if (
+                attempt.status == AttemptStatus.DONE
+                and rubric is not None
+                and rubric.get("status") == "pending"
+            ):
+                attempt.rubric = result or {"status": "unavailable"}
+                session.add(attempt)
+                session.commit()
 
 
 def _run_in_worker(attempt_id: uuid.UUID) -> None:
@@ -409,11 +536,7 @@ def _run_in_worker(attempt_id: uuid.UUID) -> None:
                 settings.SCORING_RETRY_BACKOFF_S * 2 ** (attempt.retry_count - 1), 60
             )
             if delay > 0:
-                timer = threading.Timer(
-                    delay, submit_attempt_scoring, args=(attempt_id,)
-                )
-                timer.daemon = True
-                timer.start()
+                _schedule_retry(attempt_id, delay)
             else:
                 submit_attempt_scoring(attempt_id)
 
@@ -465,6 +588,7 @@ def recover_stale_attempts(session: Session) -> int:
         .where(Attempt.status == AttemptStatus.SCORING)
         .with_for_update(skip_locked=True)
     ).all()
+    recovered_ids: list[uuid.UUID] = []
     recovered = 0
     changed = False
     for attempt in stale:
@@ -479,6 +603,7 @@ def recover_stale_attempts(session: Session) -> int:
             session.add(attempt)
             recovered += 1
             changed = True
+            recovered_ids.append(attempt.id)
         else:
             attempt.status = AttemptStatus.FAILED
             attempt.error = "评分多次失败（重试上限）"
@@ -488,7 +613,39 @@ def recover_stale_attempts(session: Session) -> int:
         # 只要有状态变更（含超限标 failed）就必须落库，否则僵尸永远卡在 scoring
         session.commit()
         logger.info("recovered %d stale scoring attempts", recovered)
+        # 恢复提交成功即投递：不等待「录音创建超过 30 分钟」的孤儿规则——
+        # 恢复延迟从半小时量级降到毫秒级；投递被拒时进 pending 集合由
+        # 下一轮清扫继续重试（不依赖原录音年龄）
+        for attempt_id in recovered_ids:
+            _remember_resubmit(attempt_id)
+            try:
+                submit_attempt_scoring(attempt_id)
+            except Exception:  # noqa: BLE001 - 投递失败留在集合，下轮重试
+                logger.exception("resubmit after recovery failed for %s", attempt_id)
     return recovered
+
+
+def _detail_stale(attempt: Attempt, now: datetime) -> bool:
+    """详情阶段挂起超时判定：按详情开始时刻（pending_since），不按录音创建时间。
+
+    旧口径用 created_at：长排队后刚进入 rubric 的作答会被 60s 一轮的清扫
+    误标 unavailable。历史行没有 pending_since 时沿用创建时间（兼容）。
+    """
+    rubric = attempt.rubric if isinstance(attempt.rubric, dict) else None
+    if rubric is None or rubric.get("status") != "pending":
+        return False
+    base: datetime | None = None
+    since = rubric.get("pending_since")
+    if isinstance(since, str):
+        try:
+            base = datetime.fromisoformat(since)
+        except ValueError:
+            base = None
+    if base is None:
+        base = attempt.created_at
+    if base is None:
+        return True
+    return now - base > timedelta(seconds=SCORING_STALE_TIMEOUT_S)
 
 
 def sweep_orphans(session: Session) -> int:
@@ -499,31 +656,35 @@ def sweep_orphans(session: Session) -> int:
       （线程池 future 丢失等），避免僵尸永久占坑——队列容量按 QUEUED 计数，
       占满 200 条后全站上传 503。重投幂等：领取走 SKIP LOCKED + 状态门，
       对已在执行中的作答二次投递是无害空转；
-    - 悬置 rubric 关闭： detail 线程丢失导致 DONE 但 rubric 停在 pending。
+    - 恢复候选补投：恢复后投递失败/未确认领取的作答，每轮重试直到
+      离开 queued（不依赖录音创建年龄）；
+    - 悬置 rubric 关闭： detail 线程丢失导致 DONE 但 rubric 停在 pending
+      （按详情阶段开始时刻判定挂起，详见 _detail_stale）。
 
     返回重投的 QUEUED 作答数。
     """
     recover_stale_attempts(session)
-    now = datetime.now(UTC).timestamp()
-    resubmitted = 0
+    resubmitted = _drain_pending_resubmits(session)
+    now = datetime.now(UTC)
     for attempt_id, created_at in session.exec(
         select(Attempt.id, Attempt.created_at).where(
             Attempt.status == AttemptStatus.QUEUED
         )
     ).all():
         created = created_at.timestamp() if created_at is not None else 0
-        if now - created >= QUEUED_STALE_TIMEOUT_S:
+        if now.timestamp() - created >= QUEUED_STALE_TIMEOUT_S:
             submit_attempt_scoring(attempt_id)
             resubmitted += 1
     stale_cutoff = datetime.now(UTC) - timedelta(seconds=SCORING_STALE_TIMEOUT_S)
-    # load_only 只取 rubric：DONE 量随学期累积，整行加载会把 transcript/item_snapshot
-    # 等大 JSON 列也拖进来，60s 一轮的清扫扛不住
+    # load_only 只取 rubric/created_at：DONE 量随学期累积，整行加载会把
+    # transcript/item_snapshot 等大 JSON 列也拖进来，60s 一轮的清扫扛不住
     pending = session.exec(
         select(Attempt)
         .options(
             load_only(
                 Attempt.id,  # ty: ignore[invalid-argument-type]
                 Attempt.rubric,  # ty: ignore[invalid-argument-type]
+                Attempt.created_at,  # ty: ignore[invalid-argument-type]
             )
         )
         .where(
@@ -531,8 +692,9 @@ def sweep_orphans(session: Session) -> int:
             col(Attempt.created_at) < stale_cutoff,  # type: ignore[operator]
         )
     ).all()
+    check_now = datetime.now(UTC)
     for attempt in pending:
-        if attempt.rubric and attempt.rubric.get("status") == "pending":
+        if _detail_stale(attempt, check_now):
             attempt.rubric = {"status": "unavailable"}
             session.add(attempt)
     session.commit()
@@ -544,18 +706,21 @@ def startup_recovery() -> None:
     from app.core.db import engine
 
     with Session(engine) as session:
-        # 同 sweep_orphans：只取 rubric 判挂起，避免启动时全行加载大 JSON 列
+        # 同 sweep_orphans：只取 rubric/created_at 判挂起，避免启动时全行
+        # 加载大 JSON 列；挂起按详情阶段开始时刻判定（详见 _detail_stale）
+        check_now = datetime.now(UTC)
         for attempt in session.exec(
             select(Attempt)
             .options(
                 load_only(
                     Attempt.id,  # ty: ignore[invalid-argument-type]
                     Attempt.rubric,  # ty: ignore[invalid-argument-type]
+                    Attempt.created_at,  # ty: ignore[invalid-argument-type]
                 )
             )
             .where(Attempt.status == AttemptStatus.DONE)
         ).all():
-            if attempt.rubric and attempt.rubric.get("status") == "pending":
+            if _detail_stale(attempt, check_now):
                 attempt.rubric = {"status": "unavailable"}
                 session.add(attempt)
         session.commit()
@@ -568,6 +733,9 @@ def startup_recovery() -> None:
             select(Attempt.id).where(Attempt.status == AttemptStatus.QUEUED)
         ).all():
             submit_attempt_scoring(attempt_id)
+        # 启动即全量重投，进程内的恢复候选簿记一并清空
+        with _resubmit_lock:
+            _resubmit_pending.clear()
 
 
 SWEEP_INTERVAL_S = 60
@@ -609,6 +777,12 @@ def stop_sweeper() -> None:
 
 def shutdown_executor() -> None:
     global _executor, _detail_executor
+    # 取消在飞重试 Timer：fire 回调发现线程池已关闭会直接放弃，不重建
+    with _retry_timers_lock:
+        timers = list(_retry_timers)
+        _retry_timers.clear()
+    for timer in timers:
+        timer.cancel()
     if _detail_executor is not None:
         _detail_executor.shutdown(wait=False)
         _detail_executor = None
