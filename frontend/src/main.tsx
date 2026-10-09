@@ -33,7 +33,9 @@ const Toaster = lazy(() =>
   import("./components/ui/sonner").then((m) => ({ default: m.Toaster })),
 )
 
-OpenAPI.BASE = import.meta.env.VITE_API_URL
+// 生产部署由流水线注入空串（同源相对路径）；本地 preview 构建未注入时
+// 显式回退空串——undefined 会让 SDK 拼出 /undefined/api/... 全 404
+OpenAPI.BASE = import.meta.env.VITE_API_URL ?? ""
 OpenAPI.TOKEN = async () => {
   return localStorage.getItem("access_token") || ""
 }
