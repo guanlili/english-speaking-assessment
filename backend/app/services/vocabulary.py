@@ -16,6 +16,7 @@ from collections import Counter
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
 from app.models import (
@@ -607,6 +608,67 @@ def session_snapshot(
     return vocab_session.snapshot_items
 
 
+MAX_NORMALIZED_ANSWER_LEN = 255
+
+
+def _normalized_answer_or_422(answer_raw: str) -> str:
+    """规范化作答并校验长度（返修R11）。
+
+    原文 ≤255 不代表 NFKC 规范化后仍 ≤255（如 "ﬃ"×86 → 258 字符）。
+    超限直接 422 拒绝——落库截断会让同载荷重放被判不匹配、不同载荷
+    反而碰撞匹配。已有截断存量行不受影响（不回填不重算）。
+    """
+    normalized = normalize_spelling(answer_raw)
+    if not normalized:
+        raise HTTPException(status_code=422, detail="作答内容不能为空白")
+    if len(normalized) > MAX_NORMALIZED_ANSWER_LEN:
+        raise HTTPException(
+            status_code=422,
+            detail="作答内容过长（规范化后超过 255 字符），请缩短后提交",
+        )
+    return normalized
+
+
+def recognize_answer_replay(
+    session: Session,
+    vocab_session: VocabularySession,
+    *,
+    item_index: int,
+    prompt_type: str,
+    answer_raw: str,
+    idempotency_key: str | None,
+) -> VocabularyAnswer | None:
+    """识别已成功的幂等提交（断网重传回执）。
+
+    命中同会话+同题+同出题方式+同规范化答案 → 返回原作答：在截止/归档/
+    交卷之后仍可取得成功确认，不新增答案。键被用于别会话/别题/别出题方式/
+    不同答案 → 稳定 422（客户端误用，不得把旧作答当本次提交返回）。
+    返回 None 表示无重放，调用方走正常门禁+落库。
+    """
+    if not idempotency_key:
+        return None
+    # 超限载荷不可能匹配任何存量行（落库均为完整规范化值），先按长度拒绝
+    normalized = _normalized_answer_or_422(answer_raw)
+    existing = session.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.idempotency_key == idempotency_key  # type: ignore[arg-type]
+        )
+    ).first()
+    if existing is None:
+        return None
+    same = (
+        existing.session_id == vocab_session.id
+        and existing.item_index == item_index
+        and existing.prompt_type == prompt_type
+        and existing.answer_normalized == normalized
+    )
+    if not same:
+        raise HTTPException(
+            status_code=422, detail="幂等键已用于其他作答，请刷新后重新提交"
+        )
+    return existing
+
+
 def submit_answer(
     session: Session,
     vocab_session: VocabularySession,
@@ -616,31 +678,30 @@ def submit_answer(
     answer_raw: str,
     idempotency_key: str | None,
     one_attempt_per_item: bool = False,
+    assignment: VocabularyAssignment | None = None,
 ) -> VocabularyAnswer:
     """判分与落库：幂等键重放返回原作答；练习允许重试（attempt_no 递增）。
 
-    幂等键绑定会话与题号：命中其它会话/题目的键属于客户端误用，按 422
-    拒绝（避免把别人的旧作答当成当前学生的提交返回）。
+    幂等键绑定会话+题号+出题方式+规范化答案：命中其它绑定属于客户端误用，
+    按 422 拒绝（避免把别人的旧作答当成当前学生的提交返回）。
     题单由 session_snapshot 统一解析（任务快照或自主轮固化题单）。
     one_attempt_per_item（测验口径）：同题第二次提交 422；断网重传走
     幂等键重放，不受一次性限制误伤。
+
+    并发约定：提交/手动交卷/到时结算共享 VocabularySession 行锁。锁内
+    重新校验状态与服务端时间后再写入——服务端以锁内接纳时刻为顺序判定点，
+    交卷生效后不再接收新答案；校验与插入之间没有 helper commit 释放锁。
     """
-    if idempotency_key:
-        existing = session.exec(
-            select(VocabularyAnswer).where(
-                VocabularyAnswer.idempotency_key == idempotency_key  # type: ignore[arg-type]
-            )
-        ).first()
-        if existing is not None:
-            if (
-                existing.session_id != vocab_session.id
-                or existing.item_index != item_index
-            ):
-                raise HTTPException(
-                    status_code=422,
-                    detail="幂等键已用于其他作答，请刷新后重新提交",
-                )
-            return existing
+    replay = recognize_answer_replay(
+        session,
+        vocab_session,
+        item_index=item_index,
+        prompt_type=prompt_type,
+        answer_raw=answer_raw,
+        idempotency_key=idempotency_key,
+    )
+    if replay is not None:
+        return replay
 
     if not 0 <= item_index < len(snapshot_items):
         raise HTTPException(status_code=422, detail="题目序号不在本任务范围内")
@@ -651,10 +712,40 @@ def submit_answer(
     if isinstance(item_prompt_types, list) and prompt_type not in item_prompt_types:
         raise HTTPException(status_code=422, detail="该题不支持这种出题方式")
 
-    normalized = normalize_spelling(answer_raw)
-    if not normalized:
-        raise HTTPException(status_code=422, detail="作答内容不能为空白")
+    normalized = _normalized_answer_or_422(answer_raw)
     is_correct = check_spelling(answer_raw, snapshot_item)
+
+    # 会话行锁（提交/交卷/结算共用）：锁内重校验，封死 check-then-insert 竞态
+    session.refresh(vocab_session, with_for_update=True)
+
+    # 锁内重查幂等键：并发同键请求在对方提交后进锁，必须按重放返回而非
+    # 被一次性限制/终态门禁拒绝——断网重传的语义以锁内状态为准
+    replay = recognize_answer_replay(
+        session,
+        vocab_session,
+        item_index=item_index,
+        prompt_type=prompt_type,
+        answer_raw=answer_raw,
+        idempotency_key=idempotency_key,
+    )
+    if replay is not None:
+        return replay
+
+    if one_attempt_per_item and assignment is not None:
+        # 统一锁内终态规则（返修R08）：先看终态——已 manual/submitted 的
+        # 事实不得被改写成 timeout；仍 in_progress 才按锁内时间判超时
+        if vocab_session.status != "in_progress":
+            raise HTTPException(status_code=422, detail="测验已交卷，不能继续作答")
+        deadline = vocab_quiz.quiz_deadline(vocab_session, assignment)
+        if deadline is not None and datetime.now(UTC) > deadline:
+            # 锁内到时终结本答卷（与惰性结算同口径）后拒绝，
+            # 与惰性结算一致：成绩按截止时的作答计算
+            vocab_session.status = "submitted"
+            vocab_session.end_reason = "timeout"
+            vocab_session.submitted_at = deadline
+            session.add(vocab_session)
+            session.commit()
+            raise HTTPException(status_code=422, detail="测验时间已到，已自动交卷")
 
     existing_attempts = session.exec(
         select(VocabularyAnswer).where(
@@ -683,36 +774,10 @@ def submit_answer(
         idempotency_key=idempotency_key,
     )
     session.add(answer)
-    try:
-        session.commit()
-    except Exception:
-        # 并发同幂等键：唯一索引兜底，重放返回既有作答。
-        # 回退命中同样要过归属校验——并发里另一会话/题目先落库时，
-        # 不能把别人的判分结果混进当前请求的回包。
-        session.rollback()
-        if idempotency_key:
-            existing = session.exec(
-                select(VocabularyAnswer).where(
-                    VocabularyAnswer.idempotency_key == idempotency_key  # type: ignore[arg-type]
-                )
-            ).first()
-            if existing is not None:
-                if (
-                    existing.session_id != vocab_session.id
-                    or existing.item_index != item_index
-                ):
-                    raise HTTPException(
-                        status_code=422,
-                        detail="幂等键已用于其他作答，请刷新后重新提交",
-                    )
-                return existing
-        raise
-    session.refresh(answer)
-
-    # 全部题至少答过一次 → 会话完成（练习重试不回退状态）。
-    # 测验不自动交卷：只有主动交卷或到时结算两种终结方式
-    # （end_reason 由 submit_quiz_session / settle_due_sessions 落）。
     if not one_attempt_per_item:
+        # 全部题至少答过一次 → 会话完成（练习重试不回退状态）。
+        # 测验不自动交卷：只有主动交卷或到时结算两种终结方式
+        # （end_reason 由 submit_quiz_session / settle_due_sessions 落）。
         answered_slots = {
             a.item_index
             for a in session.exec(
@@ -720,14 +785,37 @@ def submit_answer(
                     VocabularyAnswer.session_id == vocab_session.id  # type: ignore[arg-type]
                 )
             ).all()
-        }
+        } | {item_index}
         if vocab_session.status == "in_progress" and answered_slots == set(
             range(len(snapshot_items))
         ):
             vocab_session.status = "submitted"
         vocab_session.submitted_at = get_datetime_utc()
         session.add(vocab_session)
+    try:
         session.commit()
+    except IntegrityError as exc:
+        # 行锁下正常不会撞约束；兜底绕过锁的直连/旧客户端并发：
+        # 同幂等键 → 重放返回；同槽位 → 按测验口径稳定 422；
+        # 其余数据库故障照常抛出，不得 except Exception 假装成功
+        session.rollback()
+        if idempotency_key and "idempotency_key" in str(exc.orig):
+            replay = recognize_answer_replay(
+                session,
+                vocab_session,
+                item_index=item_index,
+                prompt_type=prompt_type,
+                answer_raw=answer_raw,
+                idempotency_key=idempotency_key,
+            )
+            if replay is not None:
+                return replay
+        if "uq_vocab_answer_slot" in str(exc.orig) and one_attempt_per_item:
+            raise HTTPException(
+                status_code=422, detail="测验每题只能作答一次，不能修改答案"
+            ) from exc
+        raise
+    session.refresh(answer)
     return answer
 
 
@@ -835,9 +923,10 @@ def class_results(
     """按目标名单聚合：学生行（含未开始）+ 逐词错误分布。
 
     练习：任务成绩锁定 round_no=1 的首答；复习轮只进 rounds 汇总。
-    测验：先到时结算（不依赖学生在线），统计覆盖全部答卷的首答
-    （错误分布含补考），学生行附成绩/及格/终结方式/切屏/补考授权；
-    有效成绩默认取最好成绩（best）并按答卷明细可回溯。
+    测验：先到时结算（不依赖学生在线）；有效成绩 = 最好整份已终结答卷
+    （同分取较早轮，effective_round_no 标注来源），答对/答错/未答与逐词
+    错误分布与成绩同源（不跨轮逐题择优）；进行中补考只作进度。
+    全部数据复用批量读取的 rounds/firsts（纯聚合），查询数不随学生数增长。
     """
     from app.models import (
         VocabularyWordMisspelling,
@@ -881,24 +970,57 @@ def class_results(
     for _target, student in targets:
         rounds = rounds_by_student.get(student.id, [])
         first_round_session = first_round(rounds)
-        # 练习：统计锁定首轮首答；测验：覆盖全部答卷的首答（含补考）
-        stat_rounds = (
-            rounds
-            if is_quiz
-            else ([first_round_session] if first_round_session else [])
+        total = len(assignment.snapshot_items)
+        quiz_rounds = (
+            [r for r in rounds if r.quiz_started_at is not None] if is_quiz else []
         )
-        item_firsts: dict[int, VocabularyAnswer] = {}
-        for stat_round in stat_rounds:
-            # 同一题在多份答卷中取最好的一次首答（有效成绩口径）
-            for idx, answer in (firsts.get(stat_round.id, {}) or {}).items():
-                existing = item_firsts.get(idx)
-                if existing is None or (not existing.is_correct and answer.is_correct):
-                    item_firsts[idx] = answer
+        finalized_rounds = (
+            [r for r in quiz_rounds if r.status == "submitted"] if is_quiz else []
+        )
+        best_score = None
+        passed = None
+        effective: VocabularySession | None = None
+        if is_quiz and finalized_rounds:
+            # 纯聚合复用已批量读取的 rounds/firsts（不再逐学生查库）；
+            # 同分取较早轮，进行中补考只作进度不参与有效成绩
+            (
+                best_score,
+                passed,
+                _attempts,
+                effective,
+            ) = vocab_quiz.effective_quiz_grade_from_rounds(
+                finalized_rounds, firsts, total, assignment.pass_line
+            )
+
+        if is_quiz:
+            # 口径统一（批次05）：有效成绩存在时，答对/答错/未答与逐词分布
+            # 来自同一份有效答卷，不跨轮逐题择优。
+            # 尚无终结答卷（首考/补考进行中，返修R10）：主行展示最新答卷
+            # 的实际进度（成绩保持 None），教师不至于看到「已答 0」——
+            # 进度与有效成绩分属不同字段，不混充卷面成绩
+            progress_round = (
+                effective
+                if effective is not None
+                else quiz_rounds[-1]
+                if quiz_rounds
+                else None
+            )
+            item_firsts: dict[int, VocabularyAnswer] = (
+                dict(firsts.get(progress_round.id, {}) or {})
+                if progress_round is not None
+                else {}
+            )
+        else:
+            # 练习：统计锁定首轮首答；复习轮只进 rounds 汇总
+            item_firsts = (
+                dict(firsts.get(first_round_session.id, {}) or {})
+                if first_round_session is not None
+                else {}
+            )
         for idx, answer in item_firsts.items():
             word_firsts.setdefault(idx, []).append(answer)
         answered = len(item_firsts)
         correct = sum(1 for a in item_firsts.values() if a.is_correct)
-        total = len(assignment.snapshot_items)
         status = (
             "not_started"
             if answered == 0 and not rounds
@@ -915,13 +1037,6 @@ def class_results(
                 status = "in_progress"
             else:
                 status = "completed"
-        quiz_rounds = [r for r in rounds if r.quiz_started_at is not None]
-        best_score = None
-        passed = None
-        if is_quiz and quiz_rounds:
-            best_score, passed, _attempts = vocab_quiz.effective_quiz_grade(
-                session, assignment, student.id
-            )
         round_rows = [
             VocabularyStudentRoundRow(
                 round_no=vs.round_no,
@@ -952,6 +1067,7 @@ def class_results(
                 quiz_end_reason=(quiz_rounds[-1].end_reason if quiz_rounds else None),
                 score=best_score if is_quiz else None,
                 passed=passed if is_quiz else None,
+                effective_round_no=(effective.round_no if effective else None),
                 tab_switch_count=sum(vs.tab_switch_count for vs in quiz_rounds)
                 if is_quiz
                 else 0,

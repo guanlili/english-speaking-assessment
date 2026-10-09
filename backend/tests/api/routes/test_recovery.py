@@ -28,7 +28,7 @@ from app.models import (
 )
 from app.scoring import worker
 from app.scoring.base import ScoringError
-from tests.utils.audio import wav_upload
+from tests.utils.audio import wav_bytes, wav_upload
 from tests.utils.credential import make_student
 
 
@@ -55,6 +55,14 @@ def cleanup_demo_students(db: Session) -> Generator[None]:
     for uid in user_ids:
         db.delete(db.get_one(User, uid))
     db.commit()
+
+
+@pytest.fixture(autouse=True)
+def _clear_resubmit_bookkeeping() -> Generator[None]:
+    """worker 的重投簿记是模块级状态：测试间必须清空，防止泄漏放大。"""
+    yield
+    with worker._resubmit_lock:
+        worker._resubmit_pending.clear()
 
 
 @pytest.fixture
@@ -203,9 +211,18 @@ def test_duplicate_submission_no_double_xp(
 
 
 def test_stale_scoring_recovery(
-    client: TestClient, inline_scoring: Any, db: Session
+    client: TestClient,
+    inline_scoring: Any,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """评分中断恢复：僵尸 scoring 作答被重排队列并最终完成。"""
+    """评分中断恢复：僵尸 scoring 作答被重排队列并最终完成。
+
+    恢复现在提交后立即投递（批次04）；本测试禁用真实投递，保持
+    「恢复 → 重排队列 → 手动评分 → 完成」的确定性验证——立即投递
+    行为由 test_recovered_attempt_is_resubmitted_immediately 覆盖。
+    """
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: None)
     inline_scoring({"audio/wav": "hello world"})
     student = _join(db, client)
     plan = _today(client, student["headers"])
@@ -337,7 +354,7 @@ def test_retry_redispatched_in_production_path(
         assert final.retry_count == 1
         assert FlakyAsr.calls == 2
     finally:
-        worker.shutdown_executor()
+        worker.shutdown_executor(final=False)
 
 
 def test_stale_failed_marks_are_committed(
@@ -486,3 +503,690 @@ def test_stale_recovery_does_not_burn_retry_quota(
     assert after is not None
     assert after.status == AttemptStatus.QUEUED
     assert after.retry_count == 1  # 恢复不再 +1
+
+
+# ── 队列恢复与租约（wise-quarry-trout 批次04）────────────────────────
+
+
+def _make_queued_attempt(
+    db: Session, tmp_path: Path, transcript: str | None = None
+) -> uuid.UUID:
+    """直建一条 queued 作答（item_snapshot 带参考文本走跟读评分路径）。"""
+    audio = tmp_path / f"{uuid.uuid4()}.wav"
+    audio.write_bytes(wav_bytes(5.0))
+    attempt = Attempt(
+        item_type="repeat",
+        item_id=uuid.uuid4(),
+        audio_path=str(audio),
+        audio_mime="audio/wav",
+        duration_s=5.0,
+        status=AttemptStatus.QUEUED,
+        transcript=transcript,
+        item_snapshot={
+            "type": "repeat",
+            "id": str(uuid.uuid4()),
+            "text": "hello world",
+            "suggested_seconds": 20,
+        },
+    )
+    db.add(attempt)
+    db.commit()
+    return attempt.id
+
+
+def test_recovered_attempt_is_resubmitted_immediately(
+    db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """僵尸恢复提交成功即投递：不再等「创建超过 30 分钟」的孤儿规则。"""
+    attempt_id = _make_queued_attempt(db, tmp_path)
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        attempt.status = AttemptStatus.SCORING
+        attempt.claimed_at = datetime.now(UTC) - timedelta(seconds=300)
+        session.add(attempt)
+        session.commit()
+
+    dispatched: list[uuid.UUID] = []
+    monkeypatch.setattr(
+        worker, "submit_attempt_scoring", lambda aid: dispatched.append(aid)
+    )
+    with Session(db.get_bind()) as session:
+        recovered = worker.recover_stale_attempts(session)
+    assert recovered == 1
+    assert dispatched == [attempt_id]
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        assert attempt.status == AttemptStatus.QUEUED
+    with worker._resubmit_lock:
+        assert attempt_id in worker._resubmit_pending
+
+
+def test_resubmit_pending_retried_by_sweep(
+    db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """恢复后投递失败：候选留簿记，下一轮清扫继续重试，直到离开 queued。"""
+    attempt_id = _make_queued_attempt(db, tmp_path)
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        attempt.status = AttemptStatus.SCORING
+        attempt.claimed_at = datetime.now(UTC) - timedelta(seconds=300)
+        session.add(attempt)
+        session.commit()
+
+    calls: list[uuid.UUID] = []
+
+    def flaky_submit(aid: uuid.UUID) -> None:
+        calls.append(aid)
+        if len(calls) == 1:
+            raise RuntimeError("executor rejected")
+
+    monkeypatch.setattr(worker, "submit_attempt_scoring", flaky_submit)
+    with Session(db.get_bind()) as session:
+        assert worker.recover_stale_attempts(session) == 1
+    assert len(calls) == 1  # 第一次投递被拒
+    with worker._resubmit_lock:
+        assert attempt_id in worker._resubmit_pending
+
+    with Session(db.get_bind()) as session:
+        worker.sweep_orphans(session)
+    assert len(calls) == 2  # 下一轮清扫重试投递成功
+
+    # 被领取（离开 queued）后，候选从簿记清掉
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        attempt.status = AttemptStatus.SCORING
+        attempt.claimed_at = datetime.now(UTC)
+        session.add(attempt)
+        session.commit()
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: calls.append(aid))
+    with Session(db.get_bind()) as session:
+        worker.sweep_orphans(session)
+    with worker._resubmit_lock:
+        assert attempt_id not in worker._resubmit_pending
+
+
+def test_stale_worker_discards_result_after_reclaim(
+    db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """慢旧 worker 被回收重领后不得改写新结果（租约 = 领取时刻代次）。"""
+    import threading
+
+    attempt_id = _make_queued_attempt(db, tmp_path)
+    entered = threading.Event()
+    release = threading.Event()
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+
+    class GatedAsr:
+        name = "mock"
+        calls = 0
+
+        def transcribe(self, audio: bytes, mime_type: str) -> str:
+            GatedAsr.calls += 1
+            if GatedAsr.calls == 1:
+                entered.set()
+                assert release.wait(timeout=5), "测试同步点超时"
+                return "stale transcript"
+            return "fresh transcript"
+
+    gate = GatedAsr()
+    monkeypatch.setattr(worker, "build_asr_provider", lambda: gate)
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: None)
+
+    result: dict[str, object] = {}
+
+    def old_worker() -> None:
+        try:
+            with Session(db.get_bind()) as session:
+                worker.process_attempt(session, attempt_id)
+            result["old"] = "finished"
+        except Exception as exc:  # noqa: BLE001 - 记录旧线程任何异常
+            result["old"] = repr(exc)
+
+    thread = threading.Thread(target=old_worker)
+    thread.start()
+    assert entered.wait(timeout=5), "旧 worker 未进入 ASR"
+
+    # 旧 worker 卡在外部调用期间被回收 → 重领 → 新 worker 完成（fresh）
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        assert attempt.status == AttemptStatus.SCORING
+        attempt.claimed_at = datetime.now(UTC) - timedelta(seconds=300)
+        session.add(attempt)
+        session.commit()
+        worker.recover_stale_attempts(session)
+    with Session(db.get_bind()) as session:
+        worker.process_attempt(session, attempt_id)
+
+    release.set()
+    thread.join(timeout=5)
+
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        assert attempt.status == AttemptStatus.DONE
+        assert attempt.transcript == "fresh transcript"
+        assert attempt.retry_count == 0  # 旧结果被丢弃，不写失败也不烧重试
+
+
+def test_detail_pending_timeout_uses_detail_start(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """详情挂起超时按 pending_since 判定：长排队后刚进入 rubric 不被误杀。"""
+    from datetime import UTC as _UTC
+
+    now = datetime.now(_UTC)
+
+    def _done_attempt(**rubric: object) -> Attempt:
+        row = Attempt(
+            item_type="question",
+            item_id=uuid.uuid4(),
+            audio_path="/tmp/x.wav",
+            audio_mime="audio/wav",
+            duration_s=5.0,
+            status=AttemptStatus.DONE,
+            rubric=dict(rubric) if rubric else None,
+            created_at=now - timedelta(minutes=10),
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return row
+
+    fresh = _done_attempt(status="pending", pending_since=(now).isoformat())
+    stale = _done_attempt(
+        status="pending", pending_since=(now - timedelta(seconds=121)).isoformat()
+    )
+    legacy = _done_attempt(status="pending")
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: None)
+    with Session(db.get_bind()) as session:
+        worker.sweep_orphans(session)
+
+    db.refresh(fresh)
+    db.refresh(stale)
+    db.refresh(legacy)
+    # 刚进入详情阶段：保持 pending（旧口径按 created_at 会误杀）
+    assert fresh.rubric is not None and fresh.rubric.get("status") == "pending"
+    # 详情阶段超时：关闭为 unavailable
+    assert stale.rubric == {"status": "unavailable"}
+    # 历史行无 pending_since：沿用创建时间口径
+    assert legacy.rubric == {"status": "unavailable"}
+
+
+def test_complete_detail_first_writer_wins(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """重复投递的 detail 线程：先写者胜，迟到结果不得覆盖。"""
+    attempt = Attempt(
+        item_type="question",
+        item_id=uuid.uuid4(),
+        audio_path="/tmp/x.wav",
+        audio_mime="audio/wav",
+        duration_s=5.0,
+        status=AttemptStatus.DONE,
+        transcript="hello",
+        rubric={"status": "pending"},
+    )
+    db.add(attempt)
+    db.commit()
+    try:
+        results = iter([{"mock_score": 1}, {"mock_score": 2}])
+        monkeypatch.setattr(worker, "_score_rubric", lambda *a: next(results))
+        worker._complete_detail(attempt.id, "q", "B1", "hello")
+        db.refresh(attempt)
+        assert attempt.rubric == {"mock_score": 1}
+        worker._complete_detail(attempt.id, "q", "B1", "hello")
+        db.refresh(attempt)
+        assert attempt.rubric == {"mock_score": 1}  # 迟到结果不覆盖
+    finally:
+        db.delete(attempt)
+        db.commit()
+
+
+def test_shutdown_cancels_retry_timers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """退出时取消在飞重试 Timer：关闭后不得重建线程池。"""
+    fired: list[uuid.UUID] = []
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: fired.append(aid))
+    worker._schedule_retry(uuid.uuid4(), 60.0)
+    with worker._retry_timers_lock:
+        timers = list(worker._retry_timers)
+    assert len(timers) == 1
+    worker.shutdown_executor(final=False)
+    timers[0].join(timeout=1)
+    assert not timers[0].is_alive()
+    assert fired == []  # 已取消，从未点火重建线程池
+    with worker._retry_timers_lock:
+        assert not worker._retry_timers
+
+
+# ── 上传孤儿补偿（wise-quarry-trout 批次06）────────────────────────
+
+
+def test_upload_create_failure_compensates_orphan_audio(
+    client: TestClient,
+    inline_scoring: Any,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """落盘后入库失败（非幂等冲突的数据库故障）：本次文件必须补偿删除。"""
+    from app.api.routes import attempts as attempts_route
+
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
+    first = plan["items"][0]
+
+    def broken_create(*args: object, **kwargs: object) -> Attempt:
+        raise RuntimeError("database connection lost")
+
+    monkeypatch.setattr(attempts_route, "create_attempt", broken_create)
+    with pytest.raises(RuntimeError, match="database connection lost"):
+        _submit(
+            client, first["type"], first["id"], student["headers"], plan["session_id"]
+        )
+
+    files = list(tmp_path.glob("*.wav")) + list(tmp_path.glob("*.webm"))
+    assert files == [], f"入库失败未补偿孤儿音频: {files}"
+
+
+def test_upload_submitter_failure_keeps_audio(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """数据库已提交但评分投递失败：录音保留（行已引用），交给恢复机制。"""
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+
+    def failing_submitter(attempt_id: uuid.UUID) -> None:
+        raise RuntimeError("executor rejected")
+
+    app.dependency_overrides[get_scoring_submitter] = lambda: failing_submitter
+    try:
+        student = _join(db, client)
+        plan = _today(client, student["headers"])
+        first = plan["items"][0]
+        with pytest.raises(RuntimeError, match="executor rejected"):
+            _submit(
+                client,
+                first["type"],
+                first["id"],
+                student["headers"],
+                plan["session_id"],
+            )
+
+        from sqlmodel import col as _col
+
+        with Session(db.get_bind()) as session:
+            attempt = session.exec(
+                select(Attempt)
+                .where(Attempt.session_id == uuid.UUID(plan["session_id"]))
+                .order_by(_col(Attempt.created_at).desc())
+            ).first()
+        assert attempt is not None
+        assert attempt.audio_path is not None
+        audio = Path(attempt.audio_path)
+        assert audio.exists(), "已入库录音不得被补偿删除"
+    finally:
+        app.dependency_overrides.pop(get_scoring_submitter, None)
+
+
+def test_concurrent_same_key_leaves_exactly_one_audio_file(
+    client: TestClient,
+    inline_scoring: Any,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """并发同键上传（Bar­rier）：无论哪个请求落库，存储里恰好一份音频、一条作答。"""
+    import concurrent.futures
+    import threading
+
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
+    first = plan["items"][0]
+    key = f"orphan-{uuid.uuid4()}"
+    barrier = threading.Barrier(2)
+
+    def submit() -> int:
+        barrier.wait()
+        return _submit(
+            client,
+            first["type"],
+            first["id"],
+            student["headers"],
+            plan["session_id"],
+            key,
+        ).status_code
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(submit) for _ in range(2)]
+        statuses = sorted(f.result() for f in futures)
+    assert statuses == [200, 200]
+
+    with Session(db.get_bind()) as session:
+        attempts = session.exec(
+            select(Attempt).where(Attempt.idempotency_key == key)  # type: ignore[arg-type]
+        ).all()
+    assert len(attempts) == 1
+    files = list(tmp_path.glob("*.wav")) + list(tmp_path.glob("*.webm"))
+    assert len(files) == 1, f"并发同键产生孤儿音频: {files}"
+    assert str(files[0]) == attempts[0].audio_path
+
+
+# ── 返修B（R04–R07）：租约、清扫条件更新、队列/执行区分、关闭协议 ──
+
+
+def test_mid_scoring_reclaim_discards_old_result(
+    db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R04：checkpoint 续租后再被回收重领——旧线程的最终写回仍被丢弃。
+
+    租约令牌全程局部变量（写入前生成，不从 ORM 回读），回收重领后
+    旧线程的 token 必然失配。
+    """
+    import threading
+
+    attempt_id = _make_queued_attempt(db, tmp_path)
+    entered = threading.Event()
+    release = threading.Event()
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+
+    class FastAsr:
+        name = "mock"
+
+        def transcribe(self, audio: bytes, mime_type: str) -> str:
+            return "hello world"
+
+    gate_asr = FastAsr()
+    monkeypatch.setattr(worker, "build_asr_provider", lambda: gate_asr)
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: None)
+
+    real_score = worker.score_read_aloud
+
+    def gated_score(*args: object, **kwargs: object) -> object:
+        if not entered.is_set():
+            entered.set()
+            assert release.wait(timeout=5), "测试同步点超时"
+        return real_score(*args, **kwargs)  # ty: ignore[invalid-argument-type]
+
+    monkeypatch.setattr(worker, "score_read_aloud", gated_score)
+
+    result: dict[str, object] = {}
+
+    def old_worker() -> None:
+        try:
+            with Session(db.get_bind()) as session:
+                worker.process_attempt(session, attempt_id)
+            result["old"] = "finished"
+        except Exception as exc:  # noqa: BLE001
+            result["old"] = repr(exc)
+
+    thread = threading.Thread(target=old_worker)
+    thread.start()
+    assert entered.wait(timeout=5), "旧 worker 未进入打分阶段"
+
+    # checkpoint 已续租（claimed_at 已刷新）；把续租时间拨旧 → 回收 → 新 worker 完成
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        assert attempt.status == AttemptStatus.SCORING
+        assert attempt.transcript == "hello world"  # checkpoint 已落库
+        attempt.claimed_at = datetime.now(UTC) - timedelta(seconds=300)
+        session.add(attempt)
+        session.commit()
+        worker.recover_stale_attempts(session)
+    with Session(db.get_bind()) as session:
+        worker.process_attempt(session, attempt_id)  # 新 worker 完成
+
+    release.set()
+    thread.join(timeout=5)
+    with Session(db.get_bind()) as session:
+        attempt = session.get(Attempt, attempt_id)
+        assert attempt is not None
+        assert attempt.status == AttemptStatus.DONE
+        assert attempt.retry_count == 0  # 旧线程写回被租约丢弃，不烧配额
+
+
+def test_sweep_does_not_overwrite_completed_detail(
+    db: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R05：清扫读到陈旧 pending 快照后，详情线程先写回成功结果——
+    陈旧快照不得把成功成绩覆盖成 unavailable。"""
+    import threading
+
+    attempt = Attempt(
+        item_type="question",
+        item_id=uuid.uuid4(),
+        audio_path="/tmp/x.wav",
+        audio_mime="audio/wav",
+        duration_s=5.0,
+        status=AttemptStatus.DONE,
+        transcript="hello",
+        # executing 且超时；created_at 也要过清扫的 SQL 前置过滤（>120s）
+        created_at=datetime.now(UTC) - timedelta(seconds=300),
+        rubric={
+            "status": "pending",
+            "phase": "executing",
+            "pending_since": (datetime.now(UTC) - timedelta(seconds=300)).isoformat(),
+        },
+    )
+    db.add(attempt)
+    db.commit()
+    try:
+        entered = threading.Event()
+        release = threading.Event()
+        real_stale = worker._detail_stale
+
+        def gated_stale(attempt_row: Attempt, now: datetime) -> bool:
+            verdict = real_stale(attempt_row, now)
+            if verdict and not entered.is_set():
+                entered.set()
+                assert release.wait(timeout=5), "测试同步点超时"
+            return verdict
+
+        monkeypatch.setattr(worker, "_detail_stale", gated_stale)
+        monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: None)
+
+        sweep_result: dict[str, object] = {}
+
+        def run_sweep() -> None:
+            try:
+                with Session(db.get_bind()) as session:
+                    worker.sweep_orphans(session)
+                sweep_result["ok"] = True
+            except Exception as exc:  # noqa: BLE001
+                sweep_result["error"] = repr(exc)
+
+        thread = threading.Thread(target=run_sweep)
+        thread.start()
+        assert entered.wait(timeout=5), "清扫未进入候选判定"
+
+        # 详情线程在清扫等待期间写回成功结果（行锁 + 先到先得）
+        monkeypatch.setattr(worker, "_score_rubric", lambda *a: {"mock_score": 7})
+        worker._complete_detail(attempt.id, "q", "B1", "hello")
+        db.refresh(attempt)
+        assert attempt.rubric == {"mock_score": 7}
+
+        release.set()
+        thread.join(timeout=5)
+        assert "error" not in sweep_result, sweep_result
+        db.refresh(attempt)
+        assert attempt.rubric == {"mock_score": 7}  # 不被覆盖为 unavailable
+    finally:
+        db.delete(attempt)
+        db.commit()
+
+
+def test_queued_detail_not_timed_out_and_execution_renews(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R06：合法排队不按 120s 误关；执行开始续期 pending_since 后才计超时。"""
+    queued_fresh = Attempt(
+        item_type="question",
+        item_id=uuid.uuid4(),
+        audio_path="/tmp/q1.wav",
+        audio_mime="audio/wav",
+        duration_s=5.0,
+        status=AttemptStatus.DONE,
+        transcript="a",
+        created_at=datetime.now(UTC) - timedelta(minutes=30),
+        rubric={
+            "status": "pending",
+            "phase": "queued",
+            "queued_at": (datetime.now(UTC) - timedelta(minutes=10)).isoformat(),
+        },
+    )
+    queued_lost = Attempt(
+        item_type="question",
+        item_id=uuid.uuid4(),
+        audio_path="/tmp/q2.wav",
+        audio_mime="audio/wav",
+        duration_s=5.0,
+        status=AttemptStatus.DONE,
+        transcript="b",
+        created_at=datetime.now(UTC) - timedelta(hours=2),
+        rubric={
+            "status": "pending",
+            "phase": "queued",
+            "queued_at": (datetime.now(UTC) - timedelta(minutes=45)).isoformat(),
+        },
+    )
+    db.add_all([queued_fresh, queued_lost])
+    db.commit()
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: None)
+    try:
+        with Session(db.get_bind()) as session:
+            worker.sweep_orphans(session)
+        db.refresh(queued_fresh)
+        db.refresh(queued_lost)
+        # 排队 10 分钟：正常 backlog，保持 pending
+        assert queued_fresh.rubric is not None
+        assert queued_fresh.rubric.get("status") == "pending"
+        # 排队 45 分钟（> 30 分钟）：视为任务丢失，关闭
+        assert queued_lost.rubric == {"status": "unavailable"}
+    finally:
+        db.delete(queued_fresh)
+        db.delete(queued_lost)
+        db.commit()
+
+
+def test_complete_detail_renews_to_executing_before_call(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R06：_complete_detail 开始即把 queued 续期为 executing（新 pending_since），
+    已被清扫关闭的任务直接放弃、不调用模型。"""
+    import threading
+
+    attempt = Attempt(
+        item_type="question",
+        item_id=uuid.uuid4(),
+        audio_path="/tmp/e.wav",
+        audio_mime="audio/wav",
+        duration_s=5.0,
+        status=AttemptStatus.DONE,
+        transcript="hello",
+        rubric={
+            "status": "pending",
+            "phase": "queued",
+            "queued_at": datetime.now(UTC).isoformat(),
+        },
+    )
+    db.add(attempt)
+    db.commit()
+    try:
+        executing_seen = threading.Event()
+        release = threading.Event()
+
+        def slow_score(prompt: str, band: str, transcript: str) -> dict:
+            executing_seen.set()
+            assert release.wait(timeout=5)
+            return {"mock_score": 5}
+
+        monkeypatch.setattr(worker, "_score_rubric", slow_score)
+        thread = threading.Thread(
+            target=worker._complete_detail, args=(attempt.id, "q", "B1", "hello")
+        )
+        thread.start()
+        assert executing_seen.wait(timeout=5), "执行开始未续期"
+        db.refresh(attempt)
+        rubric = attempt.rubric
+        assert isinstance(rubric, dict)
+        assert rubric.get("phase") == "executing"
+        assert "pending_since" in rubric
+
+        release.set()
+        thread.join(timeout=5)
+        db.refresh(attempt)
+        assert attempt.rubric == {"mock_score": 5}
+    finally:
+        db.delete(attempt)
+        db.commit()
+
+
+def test_final_shutdown_blocks_resubmit_and_recreation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R07：终局关闭后投递是 no-op、池重建被拒；final=False 排水后可重建。"""
+    # 确保有池存在，随后终局关闭
+    worker.get_executor()
+    worker.shutdown_executor(final=True)
+    try:
+        # 迟到投递：不抛错、不重建池
+        worker.submit_attempt_scoring(uuid.uuid4())
+        assert worker._executor is None
+        # 迟到 Timer fire 等价路径：锁内看到 stopped 放弃
+        with worker._executor_lock:
+            assert worker._executor_stopped is True
+        with pytest.raises(RuntimeError, match="final shutdown"):
+            worker.get_executor()
+    finally:
+        # 恢复可重建（后续测试仍需真实投递）：复位标志
+        with worker._executor_lock:
+            worker._executor_stopped = False
+
+    # final=False：排水后可重建
+    worker.get_executor()
+    worker.shutdown_executor(final=False)
+    assert worker._executor is None
+    assert worker._executor_stopped is False
+    worker.get_executor()  # 重建成功
+    worker.shutdown_executor(final=False)
+
+
+def test_upload_compensation_failure_never_masks_original_or_deletes(
+    client: TestClient,
+    inline_scoring: Any,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """返修E：入库失败 + 补偿自身失败——原始异常原样抛出（不被补偿
+    异常掩盖），文件按「不确定则保留」交给孤儿扫描。"""
+    from app.api.routes import attempts as attempts_route
+
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
+    first = plan["items"][0]
+
+    def broken_create(*args: object, **kwargs: object) -> Attempt:
+        raise RuntimeError("database connection lost")
+
+    def broken_compensation(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("db still gone")
+
+    monkeypatch.setattr(attempts_route, "create_attempt", broken_create)
+    monkeypatch.setattr(
+        attempts_route, "_delete_unreferenced_audio", broken_compensation
+    )
+    with pytest.raises(RuntimeError, match="database connection lost"):
+        _submit(
+            client, first["type"], first["id"], student["headers"], plan["session_id"]
+        )
+
+    # 补偿失败：文件保留（安全孤儿扫描的输入），异常是原始的那个
+    files = list(tmp_path.glob("*.wav")) + list(tmp_path.glob("*.webm"))
+    assert len(files) == 1, "补偿失败时按「不确定则保留」处理"

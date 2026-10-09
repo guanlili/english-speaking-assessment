@@ -3,6 +3,7 @@ import {
   flexRender,
   getCoreRowModel,
   getPaginationRowModel,
+  type PaginationState,
   useReactTable,
 } from "@tanstack/react-table"
 import {
@@ -28,101 +29,182 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useI18n } from "@/lib/i18n"
+
+/** 服务端分页（受控）：总数来自服务器，翻页由调用方发新请求 */
+export interface ManualPagination {
+  rowCount: number
+  pageIndex: number
+  pageSize: number
+  onPageChange: (pageIndex: number) => void
+  onPageSizeChange: (pageSize: number) => void
+  /**
+   * 正在拉取新页（含 keepPreviousData 展示旧页期间）。为真时行操作
+   * 整体禁用：占位旧页上打开的破坏性弹窗，等新页到达后目标会错位
+   * （返修R01）——稳定行 id 让旧行卸载，这里再挡住新交互双保险。
+   */
+  loading?: boolean
+}
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
+  /** 不传 = 默认客户端分页（现有调用方行为不变） */
+  manualPagination?: ManualPagination
+  /**
+   * 行的稳定业务主键（如用户 id）。跨页翻页时行位置会被复用，没有
+   * 稳定 id 的行键会让 React 把旧行的组件状态（弹窗等）安到新行上
+   * （返修R01）。客户端分页的静态数据不传也能工作，但推荐都传。
+   */
+  getRowId?: (row: TData) => string
 }
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
 export function DataTable<TData, TValue>({
   columns,
   data,
+  manualPagination,
+  getRowId,
 }: DataTableProps<TData, TValue>) {
+  const { t } = useI18n()
+  const isManual = manualPagination !== undefined
+  const total = isManual ? manualPagination.rowCount : data.length
+
   const table = useReactTable({
     data,
     columns,
+    getRowId: getRowId ? (row) => getRowId(row) : undefined,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    // 服务端分页：行模型不分页（data 已是当前页），页数与状态由外部受控
+    getPaginationRowModel: isManual ? undefined : getPaginationRowModel(),
+    manualPagination: isManual,
+    pageCount: isManual
+      ? Math.max(
+          1,
+          Math.ceil(manualPagination.rowCount / manualPagination.pageSize),
+        )
+      : undefined,
+    state: isManual
+      ? {
+          pagination: {
+            pageIndex: manualPagination.pageIndex,
+            pageSize: manualPagination.pageSize,
+          } satisfies PaginationState,
+        }
+      : undefined,
+    onPaginationChange: isManual
+      ? (updater) => {
+          const next =
+            typeof updater === "function"
+              ? updater({
+                  pageIndex: manualPagination.pageIndex,
+                  pageSize: manualPagination.pageSize,
+                })
+              : updater
+          if (next.pageIndex !== manualPagination.pageIndex) {
+            manualPagination.onPageChange(next.pageIndex)
+          }
+          if (next.pageSize !== manualPagination.pageSize) {
+            manualPagination.onPageSizeChange(next.pageSize)
+          }
+        }
+      : undefined,
   })
+
+  const { pageIndex, pageSize } = table.getState().pagination
+  const firstRow = total === 0 ? 0 : pageIndex * pageSize + 1
+  const lastRow = Math.min((pageIndex + 1) * pageSize, total)
 
   return (
     <div className="flex flex-col gap-4">
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id} className="hover:bg-transparent">
-              {headerGroup.headers.map((header) => {
-                return (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )}
-                  </TableHead>
-                )
-              })}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
+      <div
+        aria-busy={manualPagination?.loading || undefined}
+        // inert 同时挡鼠标与键盘（pointer-events 挡不住 Enter/Tab 路径）：
+        // 占位旧页上的行操作（含弹窗）在数据到达前完全不可达（返修R01）
+        inert={manualPagination?.loading ? true : undefined}
+        className={
+          manualPagination?.loading
+            ? "opacity-60 transition-opacity"
+            : undefined
+        }
+      >
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id} className="hover:bg-transparent">
+                {headerGroup.headers.map((header) => {
+                  return (
+                    <TableHead key={header.id}>
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
+                    </TableHead>
+                  )
+                })}
               </TableRow>
-            ))
-          ) : (
-            <TableRow className="hover:bg-transparent">
-              <TableCell
-                colSpan={columns.length}
-                className="h-32 text-center text-muted-foreground"
-              >
-                No results found.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow className="hover:bg-transparent">
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-32 text-center text-muted-foreground"
+                >
+                  {t({ zh: "暂无数据", en: "No results found." })}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       {table.getPageCount() > 1 && (
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 border-t bg-muted/20">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="text-sm text-muted-foreground">
-              Showing{" "}
-              {table.getState().pagination.pageIndex *
-                table.getState().pagination.pageSize +
-                1}{" "}
-              to{" "}
-              {Math.min(
-                (table.getState().pagination.pageIndex + 1) *
-                  table.getState().pagination.pageSize,
-                data.length,
-              )}{" "}
-              of{" "}
-              <span className="font-medium text-foreground">{data.length}</span>{" "}
-              entries
+              {t({
+                zh: `第 ${firstRow}-${lastRow} 条 / 共 ${total} 条`,
+                en: `Showing ${firstRow} to ${lastRow} of ${total} entries`,
+              })}
             </div>
             <div className="flex items-center gap-x-2">
-              <p className="text-sm text-muted-foreground">Rows per page</p>
+              <p className="text-sm text-muted-foreground">
+                {t({ zh: "每页条数", en: "Rows per page" })}
+              </p>
               <Select
                 value={`${table.getState().pagination.pageSize}`}
                 onValueChange={(value) => {
                   table.setPageSize(Number(value))
                 }}
               >
-                <SelectTrigger className="h-8 w-[70px]">
+                <SelectTrigger
+                  className="h-11 w-[90px] text-base"
+                  aria-label={t({ zh: "每页条数", en: "Rows per page" })}
+                >
                   <SelectValue
                     placeholder={table.getState().pagination.pageSize}
                   />
                 </SelectTrigger>
                 <SelectContent side="top">
-                  {[5, 10, 25, 50].map((pageSize) => (
+                  {PAGE_SIZE_OPTIONS.map((pageSize) => (
                     <SelectItem key={pageSize} value={`${pageSize}`}>
                       {pageSize}
                     </SelectItem>
@@ -134,55 +216,59 @@ export function DataTable<TData, TValue>({
 
           <div className="flex items-center gap-x-6">
             <div className="flex items-center gap-x-1 text-sm text-muted-foreground">
-              <span>Page</span>
-              <span className="font-medium text-foreground">
-                {table.getState().pagination.pageIndex + 1}
-              </span>
-              <span>of</span>
-              <span className="font-medium text-foreground">
-                {table.getPageCount()}
-              </span>
+              {t({
+                zh: `第 ${table.getState().pagination.pageIndex + 1} / ${table.getPageCount()} 页`,
+                en: `Page ${table.getState().pagination.pageIndex + 1} of ${table.getPageCount()}`,
+              })}
             </div>
 
             <div className="flex items-center gap-x-1">
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 w-8 p-0"
+                className="h-11 w-11 p-0"
                 onClick={() => table.setPageIndex(0)}
                 disabled={!table.getCanPreviousPage()}
               >
-                <span className="sr-only">Go to first page</span>
+                <span className="sr-only">
+                  {t({ zh: "第一页", en: "Go to first page" })}
+                </span>
                 <ChevronsLeft className="h-4 w-4" />
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 w-8 p-0"
+                className="h-11 w-11 p-0"
                 onClick={() => table.previousPage()}
                 disabled={!table.getCanPreviousPage()}
               >
-                <span className="sr-only">Go to previous page</span>
+                <span className="sr-only">
+                  {t({ zh: "上一页", en: "Go to previous page" })}
+                </span>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 w-8 p-0"
+                className="h-11 w-11 p-0"
                 onClick={() => table.nextPage()}
                 disabled={!table.getCanNextPage()}
               >
-                <span className="sr-only">Go to next page</span>
+                <span className="sr-only">
+                  {t({ zh: "下一页", en: "Go to next page" })}
+                </span>
                 <ChevronRight className="h-4 w-4" />
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 w-8 p-0"
+                className="h-11 w-11 p-0"
                 onClick={() => table.setPageIndex(table.getPageCount() - 1)}
                 disabled={!table.getCanNextPage()}
               >
-                <span className="sr-only">Go to last page</span>
+                <span className="sr-only">
+                  {t({ zh: "最后一页", en: "Go to last page" })}
+                </span>
                 <ChevronsRight className="h-4 w-4" />
               </Button>
             </div>

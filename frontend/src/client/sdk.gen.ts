@@ -2123,6 +2123,9 @@ export class VocabularyService {
     /**
      * List Books
      * 词库列表：公共词库全体教师可见；班级词库仅本班教师（管理员全见）。
+     *
+     * 可见性在 SQL 层过滤（与 _book_visible 同谓词：public 或本人创建），
+     * 不把别人的班级词库整表拉回 Python 再丢掉。
      * @returns VocabularyBookPublic Successful Response
      * @throws ApiError
      */
@@ -2604,6 +2607,8 @@ export class VocabularyService {
     /**
      * Export Quiz Results
      * 导出测验成绩 CSV（固定应考名单 + 状态/成绩/切屏等，UTF-8 BOM 兼容 Excel）。
+     *
+     * 用户可控文本单元格经 _csv_text_cell 防公式注入（与前端 csv.ts 同规则）。
      * @param data The data for the request.
      * @param data.code
      * @param data.assignmentId

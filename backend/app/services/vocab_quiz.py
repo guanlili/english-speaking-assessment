@@ -126,22 +126,35 @@ def settle_due_sessions(session: Session, assignment: VocabularyAssignment) -> i
 
     submitted_at 取个人截止时刻（而非结算触碰时刻）——成绩按截止时的
     作答计算，与「学生页面是否在线」无关；教师侧触碰同样完成结算。
+
+    并发约定：与学生提交/手动交卷共享 VocabularySession 行锁。逐行加锁后
+    重校验状态与时间（锁外快照可能已被其他触碰终结），按 id 稳定顺序加锁，
+    不会与学生只锁自己一行的路径形成锁环。
     """
     rounds = session.exec(
-        select(VocabularySession).where(
+        select(VocabularySession)
+        .where(
             VocabularySession.assignment_id == assignment.id,  # type: ignore[arg-type]
             VocabularySession.status == "in_progress",  # type: ignore[arg-type]
             col(VocabularySession.quiz_started_at).is_not(None),  # type: ignore[union-attr]
         )
+        .order_by(col(VocabularySession.id))
     ).all()
     settled = 0
     for vocab_session in rounds:
         deadline = quiz_deadline(vocab_session, assignment)
         if deadline is None or _now() <= deadline:
             continue
+        # 行锁 + 重读：锁外快照可能已被其他触碰（交卷/作答锁内终结）改写
+        session.refresh(vocab_session, with_for_update=True)
+        if vocab_session.status != "in_progress":
+            continue
+        locked_deadline = quiz_deadline(vocab_session, assignment)
+        if locked_deadline is None or _now() <= locked_deadline:
+            continue
         vocab_session.status = "submitted"
         vocab_session.end_reason = "timeout"
-        vocab_session.submitted_at = deadline
+        vocab_session.submitted_at = locked_deadline
         session.add(vocab_session)
         settled += 1
     if settled:
@@ -149,11 +162,39 @@ def settle_due_sessions(session: Session, assignment: VocabularyAssignment) -> i
     return settled
 
 
+def settle_session_if_due(
+    session: Session, vocab_session: VocabularySession, assignment: VocabularyAssignment
+) -> bool:
+    """只结算本答卷（学生作答/交卷路径专用，返修R09）。
+
+    与批量结算同口径，但只对本行加锁改写——学生路径不在持有/等待其它
+    学生行锁的情况下扫描全班，避免跨会话锁环。返回是否本次终结。
+    """
+    deadline = quiz_deadline(vocab_session, assignment)
+    if deadline is None or _now() <= deadline:
+        return False
+    session.refresh(vocab_session, with_for_update=True)
+    if vocab_session.status != "in_progress":
+        return False
+    locked_deadline = quiz_deadline(vocab_session, assignment)
+    if locked_deadline is None or _now() <= locked_deadline:
+        return False
+    vocab_session.status = "submitted"
+    vocab_session.end_reason = "timeout"
+    vocab_session.submitted_at = locked_deadline
+    session.add(vocab_session)
+    session.commit()
+    return True
+
+
 def ensure_quiz_answerable(
     session: Session, vocab_session: VocabularySession, assignment: VocabularyAssignment
 ) -> None:
-    """作答前门禁：结算到时答卷；已终结（交卷/超时）一律拒绝继续作答。"""
-    settle_due_sessions(session, assignment)
+    """作答前门禁：结算到时答卷；已终结（交卷/超时）一律拒绝继续作答。
+
+    只结算本答卷（R09）；终态竞态由 submit_answer 的会话行锁兜底。
+    """
+    settle_session_if_due(session, vocab_session, assignment)
     session.refresh(vocab_session)
     if vocab_session.status != "in_progress":
         if vocab_session.end_reason == "timeout":
@@ -238,14 +279,25 @@ def start_quiz_session(
 def submit_quiz_session(
     session: Session, vocab_session: VocabularySession, assignment: VocabularyAssignment
 ) -> VocabularySession:
-    """主动交卷：终结答卷（幂等；已终结返回原状态，不重复改写）。"""
-    settle_due_sessions(session, assignment)
-    session.refresh(vocab_session)
+    """主动交卷：终结答卷（幂等；已终结返回原状态，不重复改写）。
+
+    统一锁内终态规则（返修R08）：先看终态（已 submitted 一律不改写），
+    仍 in_progress 才依据**获锁后的服务器时间**决定 manual/timeout——
+    等锁期间跨过截止的交卷按超时结算，submitted_at 取截止时刻。
+    只结算本答卷（R09），不扫描其它学生的行。
+    """
+    session.refresh(vocab_session, with_for_update=True)
     if vocab_session.status != "in_progress":
         return vocab_session
-    vocab_session.status = "submitted"
-    vocab_session.end_reason = "manual"
-    vocab_session.submitted_at = _now()
+    deadline = quiz_deadline(vocab_session, assignment)
+    if deadline is not None and _now() > deadline:
+        vocab_session.status = "submitted"
+        vocab_session.end_reason = "timeout"
+        vocab_session.submitted_at = deadline
+    else:
+        vocab_session.status = "submitted"
+        vocab_session.end_reason = "manual"
+        vocab_session.submitted_at = _now()
     session.add(vocab_session)
     session.commit()
     session.refresh(vocab_session)
@@ -263,18 +315,16 @@ def record_tab_switch(
     return vocab_session.tab_switch_count
 
 
-def quiz_attempt_stats(
-    session: Session, vocab_session: VocabularySession, total: int
+def quiz_round_stats_from_firsts(
+    firsts: dict[int, VocabularyAnswer], total: int
 ) -> dict[str, object]:
-    """单份答卷成绩：首答正确 / 答错 / 未答分列，未答按零分计入分母。"""
-    firsts = session.exec(
-        select(VocabularyAnswer).where(
-            VocabularyAnswer.session_id == vocab_session.id,  # type: ignore[arg-type]
-            VocabularyAnswer.attempt_no == 1,
-        )
-    ).all()
+    """单份答卷成绩（纯聚合）：首答正确 / 答错 / 未答分列，未答按零分计入分母。
+
+    输入是已批量读取的首答映射（item_index → answer），不再查库——
+    class_results 等聚合入口复用同一份预取数据，查询数不随学生数增长。
+    """
     answered = len(firsts)
-    correct = sum(1 for a in firsts if a.is_correct)
+    correct = sum(1 for a in firsts.values() if a.is_correct)
     wrong = answered - correct
     unanswered = max(0, total - answered)
     # 未答按零分计入必答题分母；半分四舍五入（整数百分制）
@@ -288,30 +338,76 @@ def quiz_attempt_stats(
     }
 
 
-def effective_quiz_grade(
-    session: Session, assignment: VocabularyAssignment, student_id: uuid.UUID
-) -> tuple[int | None, bool | None, list[dict[str, object]]]:
-    """有效成绩：默认取最好成绩（明确标注）。
-
-    返回 (最好成绩, 是否及格, 各次答卷明细)；从未开考为 (None, None, [])。
-    """
-    total = len(assignment.snapshot_items)
-    rounds = session.exec(
-        select(VocabularySession)
-        .where(
-            VocabularySession.assignment_id == assignment.id,  # type: ignore[arg-type]
-            VocabularySession.student_id == student_id,  # type: ignore[arg-type]
-            col(VocabularySession.quiz_started_at).is_not(None),  # type: ignore[union-attr]
+def quiz_attempt_stats(
+    session: Session, vocab_session: VocabularySession, total: int
+) -> dict[str, object]:
+    """单份答卷成绩（查库版）：等价于 quiz_round_stats_from_firsts。"""
+    firsts = session.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == vocab_session.id,  # type: ignore[arg-type]
+            VocabularyAnswer.attempt_no == 1,
         )
-        .order_by(col(VocabularySession.round_no))
     ).all()
-    attempts = [quiz_attempt_stats(session, r, total) for r in rounds]
+    return quiz_round_stats_from_firsts({a.item_index: a for a in firsts}, total)
+
+
+def effective_quiz_grade_from_rounds(
+    rounds: list[VocabularySession],
+    firsts_by_session: dict[uuid.UUID, dict[int, VocabularyAnswer]],
+    total: int,
+    pass_line: int,
+) -> tuple[int | None, bool | None, list[dict[str, object]], VocabularySession | None]:
+    """有效成绩（纯聚合）：最好整份已终结答卷，同分取较早轮（round_no 升序传入）。
+
+    口径统一（批次05）：成绩、答对/答错/未答必须来自同一份答卷——跨轮
+    逐题择优会出现「成绩 50 但 2/2 对」的自相矛盾。进行中答卷只作进度，
+    不参与有效成绩，不能篡改已终结成绩。返回
+    (最好成绩, 是否及格, 各份答卷明细, 有效答卷)；无终结答卷为
+    (None, None, [], None)。
+    """
+    attempts = [
+        quiz_round_stats_from_firsts(firsts_by_session.get(r.id, {}) or {}, total)
+        for r in rounds
+    ]
+    best_index: int | None = None
     best_score: int | None = None
-    for attempt in attempts:
+    for index, attempt in enumerate(attempts):
         score = attempt["score"]
         if isinstance(score, int) and (best_score is None or score > best_score):
             best_score = score
-    passed: bool | None = (
-        best_score >= assignment.pass_line if best_score is not None else None
+            best_index = index
+    passed: bool | None = best_score >= pass_line if best_score is not None else None
+    effective = rounds[best_index] if best_index is not None else None
+    return best_score, passed, attempts, effective
+
+
+def effective_quiz_grade(
+    session: Session, assignment: VocabularyAssignment, student_id: uuid.UUID
+) -> tuple[int | None, bool | None, list[dict[str, object]]]:
+    """有效成绩（查库版，学生端单学生视图用）：委托纯聚合。
+
+    与 effective_quiz_grade_from_rounds 同口径：仅已终结答卷参与有效成绩。
+    返回 (最好成绩, 是否及格, 各次答卷明细)；从未开考为 (None, None, [])。
+    """
+    total = len(assignment.snapshot_items)
+    rounds = list(
+        session.exec(
+            select(VocabularySession)
+            .where(
+                VocabularySession.assignment_id == assignment.id,  # type: ignore[arg-type]
+                VocabularySession.student_id == student_id,  # type: ignore[arg-type]
+                col(VocabularySession.quiz_started_at).is_not(None),  # type: ignore[union-attr]
+                VocabularySession.status == "submitted",  # type: ignore[arg-type]
+            )
+            .order_by(col(VocabularySession.round_no))
+        ).all()
+    )
+    firsts_by_session: dict[uuid.UUID, dict[int, VocabularyAnswer]] = {}
+    if rounds:
+        from app.services.vocabulary import first_answers_by_session
+
+        firsts_by_session = first_answers_by_session(session, [r.id for r in rounds])
+    best_score, passed, attempts, _effective = effective_quiz_grade_from_rounds(
+        rounds, firsts_by_session, total, assignment.pass_line
     )
     return best_score, passed, attempts

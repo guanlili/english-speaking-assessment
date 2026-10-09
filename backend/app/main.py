@@ -33,7 +33,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # 健康检查窗口内服务不可响应
     from anyio import to_thread
 
-    from app.scoring.worker import start_sweeper, startup_recovery
+    from app.scoring.worker import (
+        reset_executors_for_restart,
+        start_sweeper,
+        startup_recovery,
+    )
+
+    # 新生命周期启动：复位上一轮 lifespan 的终局关闭标志（测试进程内
+    # 多模块共用 app 时，模块级 client 夹具会反复进出 lifespan）
+    reset_executors_for_restart()
 
     # ASR 走 LLM responses API 按音频 token 计费，比 volc_flash 专线贵数倍；
     # 生产漏配 ASR_PROVIDER=volc_flash 时在此显式告警（默认值保持 ark 以兼容本地仅有方舟密钥的环境）

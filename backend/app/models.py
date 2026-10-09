@@ -854,6 +854,13 @@ class Attempt(SQLModel, table=True):
         default=None,
         sa_type=DateTime(timezone=True),  # type: ignore
     )
+    # 保留期清理的完成标记（批次06）：文件被删除或结算（缺失/越界/content）
+    # 的时刻；NULL = 未处理。有标记后清理批次才能推进——此前只删文件不记
+    # 状态，候选超过单轮上限后会永远重复选中同一批已删记录
+    audio_purged_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
     # 转写与评分使用的引擎名（mock / ark / …），界面据此标注分数来源（PRD §4）
     engine: str = Field(default="mock", max_length=32)
     transcript: str | None = None
@@ -1760,6 +1767,8 @@ class VocabularyStudentResultRow(SQLModel):
     # 百分制成绩（correct/total，未答计 0）；参与次数 = 已开考的答卷数
     score: int | None = None
     passed: bool | None = None
+    # 有效成绩来自哪一份答卷（最好整卷，同分取较早轮）；None=尚无终结答卷
+    effective_round_no: int | None = None
     tab_switch_count: int = 0
     retake_granted: bool = False
     attempt_count: int = 0

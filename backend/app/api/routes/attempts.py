@@ -4,6 +4,7 @@ POST /attempts      上传音频（multipart），任何题型（PRD 附录 A）
 GET  /attempts/{id} 轮询转写与分数
 """
 
+import logging
 import uuid
 from pathlib import Path
 from typing import Any
@@ -37,7 +38,29 @@ from app.scoring.audio_convert import probe_audio
 from app.services import exam as exam_service
 from app.services import reading
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["attempts"])
+
+
+def _delete_unreferenced_audio(session: Session, path: Path) -> None:
+    """上传补偿：只删除本次生成、没有任何持久记录引用的音频文件。
+
+    先查 attempt.audio_path 引用再删——数据库已提交的录音（含评分投递
+    失败待恢复的）一定有行引用，不会被误删。补偿失败只记日志不阻断
+    原有异常路径。
+    """
+    referenced = session.exec(
+        select(Attempt.id).where(Attempt.audio_path == str(path)).limit(1)
+    ).first()
+    if referenced is not None:
+        return
+    try:
+        path.unlink(missing_ok=True)
+        logger.info("compensated orphan audio after failed attempt create: %s", path)
+    except OSError:
+        logger.warning("failed to compensate orphan audio %s", path)
+
 
 # PRD US-02：短于 1 秒不打分，提示再录
 MIN_DURATION_S = 1.0
@@ -192,6 +215,43 @@ def _require_attempt_access(
     )
 
 
+def _feedback_masked_for_user(
+    session: Session, attempt: Attempt, current_user: User | None
+) -> bool:
+    """模考进行中，学生本人只能拿到回执与状态；授权教师/管理员与普通练习不受影响。"""
+    if current_user is None or current_user.role != "student":
+        return False
+    if attempt.session_id is None:
+        return False
+    practice_session = session.get(PracticeSession, attempt.session_id)
+    if practice_session is None or practice_session.assignment_id is None:
+        return False
+    exercise = session.get(ClassroomExercise, practice_session.assignment_id)
+    return exam_service.exam_feedback_locked(session, practice_session, exercise)
+
+
+def _attempt_public(
+    attempt: Attempt, *, feedback_masked: bool = False
+) -> AttemptPublic:
+    """响应投影（不改 ORM）：遮罩时抹掉分数/转写/建议/词汇/rubric/错误详情。
+
+    幂等重放、并发兜底、GET 轮询、上传回执共用同一投影，考试终结后
+    feedback_masked=False，反馈完整恢复。
+    """
+    public = AttemptPublic.model_validate(attempt)
+    if feedback_masked:
+        public.transcript = None
+        public.completeness = None
+        public.fluency = None
+        public.accuracy = None
+        public.overall = None
+        public.advice = None
+        public.vocab = None
+        public.rubric = None
+        public.error = None
+    return public
+
+
 @router.post("/attempts", response_model=AttemptPublic)
 def create_attempt_upload(
     session: SessionDep,
@@ -225,7 +285,12 @@ def create_attempt_upload(
         if existing is not None:
             _require_attempt_access(session, existing, current_user)
             session.refresh(existing)
-            return existing
+            return _attempt_public(
+                existing,
+                feedback_masked=_feedback_masked_for_user(
+                    session, existing, current_user
+                ),
+            )
 
     # 限流（评分是付费链路：每次提交 = 一次 ASR 转写）：学生按人、其余按
     # IP。放在幂等重放之后——断网重传同键不占配额。60 次/5 分钟对正常
@@ -255,7 +320,12 @@ def create_attempt_upload(
                     ).first()
                     if existing is not None:
                         _require_attempt_access(session, existing, current_user)
-                        return existing
+                        return _attempt_public(
+                            existing,
+                            feedback_masked=_feedback_masked_for_user(
+                                session, existing, current_user
+                            ),
+                        )
                 already = session.exec(
                     select(Attempt.id).where(
                         Attempt.session_id == session_id,  # type: ignore[arg-type]
@@ -331,34 +401,40 @@ def create_attempt_upload(
     # 并发时两个请求都能通过预检查。对考试会话行加锁后复查——锁只包住
     # 「复查 + 插入」的毫秒级临界区（音频校验在锁外），第二个请求在锁内
     # 看到首个作答后 422，不会产生双份作答/双倍评分费
-    if exam_one_attempt and session_id is not None:
-        locked_session = session.exec(
-            select(PracticeSession)
-            .where(PracticeSession.id == session_id)
-            .with_for_update()
-        ).first()
-        if locked_session is not None:
-            already = session.exec(
-                select(Attempt.id).where(
-                    Attempt.session_id == session_id,  # type: ignore[arg-type]
-                    Attempt.item_id == item_id,
-                )
-            ).first()
-            if already is not None:
-                raise HTTPException(status_code=422, detail="考试中每题只能作答一次")
-    attempt = Attempt(
-        item_type=item_type,
-        item_id=item_id,
-        student_id=student.id if student is not None else None,
-        session_id=session_id,
-        idempotency_key=idempotency_key,
-        item_snapshot=item_snapshot,
-        audio_path=str(audio_path),
-        audio_mime=mime_type,
-        duration_s=duration_s,
-        engine=settings.SCORING_PROVIDER,
-    )
+    # 上传补偿（批次06）：落盘成功但持久化失败（考试门禁/幂等并发撞唯一
+    # 约束/数据库故障）时，本次写入的文件没有任何记录引用——补偿删除，
+    # 不留不受 TTL 管理的孤儿。数据库已提交的录音不在补偿范围（被行引用，
+    # _delete_unreferenced_audio 会放行），评分投递失败由恢复机制接手
     try:
+        if exam_one_attempt and session_id is not None:
+            locked_session = session.exec(
+                select(PracticeSession)
+                .where(PracticeSession.id == session_id)
+                .with_for_update()
+            ).first()
+            if locked_session is not None:
+                already = session.exec(
+                    select(Attempt.id).where(
+                        Attempt.session_id == session_id,  # type: ignore[arg-type]
+                        Attempt.item_id == item_id,
+                    )
+                ).first()
+                if already is not None:
+                    raise HTTPException(
+                        status_code=422, detail="考试中每题只能作答一次"
+                    )
+        attempt = Attempt(
+            item_type=item_type,
+            item_id=item_id,
+            student_id=student.id if student is not None else None,
+            session_id=session_id,
+            idempotency_key=idempotency_key,
+            item_snapshot=item_snapshot,
+            audio_path=str(audio_path),
+            audio_mime=mime_type,
+            duration_s=duration_s,
+            engine=settings.SCORING_PROVIDER,
+        )
         attempt = create_attempt(session=session, attempt_in=attempt)
     except IntegrityError as exc:
         session.rollback()
@@ -369,12 +445,39 @@ def create_attempt_upload(
             if existing is not None:
                 # 兜底分支同样校验归属，封死「预检查时未提交→撞唯一约束→拿到他人作答」路径
                 _require_attempt_access(session, existing, current_user)
-                return existing
+                _delete_unreferenced_audio(session, audio_path)
+                return _attempt_public(
+                    existing,
+                    feedback_masked=_feedback_masked_for_user(
+                        session, existing, current_user
+                    ),
+                )
+        _delete_unreferenced_audio(session, audio_path)
+        raise
+    except Exception:
+        # 数据库异常后连接可能处于 aborted 态：先 rollback 复位，否则
+        # 补偿查询本身也会失败（返修E）。补偿全程受保护——补偿失败宁可
+        # 保留文件交给孤儿扫描，也不掩盖原始异常或误删已入库音频
+        try:
+            session.rollback()
+        except Exception:  # noqa: BLE001 - 复位失败只能保留文件并记录
+            logger.warning(
+                "rollback before audio compensation failed for %s", audio_path
+            )
+        try:
+            _delete_unreferenced_audio(session, audio_path)
+        except Exception:  # noqa: BLE001 - 补偿不得掩盖原始异常
+            logger.warning(
+                "audio compensation failed; keep %s for orphan scan", audio_path
+            )
         raise
 
     submitter(attempt.id)
     session.refresh(attempt)
-    return attempt
+    return _attempt_public(
+        attempt,
+        feedback_masked=_feedback_masked_for_user(session, attempt, current_user),
+    )
 
 
 def _mime_to_suffix(base_mime: str) -> str:
@@ -425,7 +528,10 @@ def read_attempt(
     if not attempt:
         raise HTTPException(status_code=404, detail="Attempt not found")
     _require_attempt_access(session, attempt, current_user)
-    return attempt
+    return _attempt_public(
+        attempt,
+        feedback_masked=_feedback_masked_for_user(session, attempt, current_user),
+    )
 
 
 @router.get("/attempts/{attempt_id}/audio")

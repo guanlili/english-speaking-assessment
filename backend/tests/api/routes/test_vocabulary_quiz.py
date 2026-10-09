@@ -20,7 +20,11 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from sqlmodel import Session, select
 
-from app.models import VocabularyAssignment, VocabularySession
+from app.models import (
+    VocabularyAnswer,
+    VocabularyAssignment,
+    VocabularySession,
+)
 from tests.api.routes.test_vocabulary_student import (
     _create_classroom,
     _login_teacher,
@@ -730,3 +734,738 @@ def test_quiz_roster_and_unattended_student(
     assert row["score"] == 0  # 未答按零分计入分母，与答错分列
     assert row["answered_count"] == 0
     assert row["correct_first_count"] == 0
+
+
+# ── 断网重传与交卷/结算竞态（wise-quarry-trout 批次03）───────────────
+
+
+def _answer_body(item_index: int, answer: str, key: str | None) -> dict:
+    body: dict = {
+        "item_index": item_index,
+        "prompt_type": "meaning",
+        "answer": answer,
+    }
+    if key:
+        body["idempotency_key"] = key
+    return body
+
+
+def test_quiz_replay_after_submit_returns_receipt(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """作答成功但回包丢失：交卷/到时后原键重试仍取得成功回执，不新增答案。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db
+    )
+    resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+
+    key = f"lost-{uuid.uuid4()}"
+    accepted = _answer(client, student["headers"], session_id, 0, "apple", key)
+    assert accepted.status_code == 200, accepted.text
+
+    # 手动交卷后原键重试（模拟回包丢失后的重传）
+    assert _submit_quiz(client, student["headers"], session_id).status_code == 200
+    replay = _answer(client, student["headers"], session_id, 0, "apple", key)
+    assert replay.status_code == 200, replay.text
+    body = replay.json()
+    assert body["received"] is True
+    assert body["item_index"] == 0
+    assert body["session_status"] == "submitted"
+    # 回执不泄露正误与答案
+    assert "is_correct" not in body
+    assert "correct_spelling" not in body
+
+    # 不新增答案；重放不改写终态
+    answers = db.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == uuid.UUID(session_id)  # type: ignore[arg-type]
+        )
+    ).all()
+    assert len(answers) == 1
+
+    # 同键不同答案：稳定 422（客户端误用，不得返回旧作答）
+    mismatch = client.post(
+        f"{VOCAB}/sessions/{session_id}/answers",
+        json=_answer_body(0, "banana", key),
+        headers=student["headers"],
+    )
+    assert mismatch.status_code == 422
+    assert "幂等键" in mismatch.json()["detail"]
+
+    # 交卷后新键新答案：正常门禁拒绝（重放豁免不得成为绕过口）
+    fresh = client.post(
+        f"{VOCAB}/sessions/{session_id}/answers",
+        json=_answer_body(1, "banana", None),
+        headers=student["headers"],
+    )
+    assert fresh.status_code == 422
+    assert "交卷" in fresh.json()["detail"]
+
+
+def test_quiz_replay_after_deadline_returns_receipt(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """到时结算后原键重试同样取得回执（截止门禁不挡成功重放）。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db
+    )
+    resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+
+    key = f"late-{uuid.uuid4()}"
+    accepted = _answer(client, student["headers"], session_id, 0, "apple", key)
+    assert accepted.status_code == 200, accepted.text
+
+    _expire_started_quiz(db, session_id)
+    replay = _answer(client, student["headers"], session_id, 0, "apple", key)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["received"] is True
+    answers = db.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == uuid.UUID(session_id)  # type: ignore[arg-type]
+        )
+    ).all()
+    assert len(answers) == 1
+
+
+def test_quiz_concurrent_same_item_different_keys(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """并发同题不同键（测验每题一次）：恰好一个 200、一个 422，不再出现 500。"""
+    import threading
+
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db
+    )
+    resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+
+    barrier = threading.Barrier(2)
+
+    def submit(key: str) -> int:
+        barrier.wait()
+        return _answer(
+            client, student["headers"], session_id, 0, "apple", key
+        ).status_code
+
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [
+            pool.submit(submit, f"race-a-{uuid.uuid4()}"),
+            pool.submit(submit, f"race-b-{uuid.uuid4()}"),
+        ]
+        statuses = sorted(f.result() for f in futures)
+
+    assert statuses == [200, 422], statuses
+    answers = db.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == uuid.UUID(session_id),  # type: ignore[arg-type]
+            VocabularyAnswer.item_index == 0,
+        )
+    ).all()
+    assert len(answers) == 1
+
+
+def test_quiz_concurrent_same_key(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """并发同键重传：两个都拿到成功回执，落库恰好一条。"""
+    import concurrent.futures
+    import threading
+
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db
+    )
+    resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+
+    key = f"same-{uuid.uuid4()}"
+    barrier = threading.Barrier(2)
+
+    def submit() -> int:
+        barrier.wait()
+        return _answer(
+            client, student["headers"], session_id, 0, "apple", key
+        ).status_code
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(submit) for _ in range(2)]
+        statuses = [f.result() for f in futures]
+
+    assert statuses == [200, 200], statuses
+    answers = db.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == uuid.UUID(session_id)  # type: ignore[arg-type]
+        )
+    ).all()
+    assert len(answers) == 1
+
+
+def test_quiz_concurrent_answer_vs_manual_submit(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """作答与手动交卷并发：无 500；若作答被接纳则计入成绩，交卷后不再接纳。"""
+    import concurrent.futures
+    import threading
+
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db
+    )
+    resp = _start_quiz(client, student["headers"], classroom["code"], assignment["id"])
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+    session_uuid = uuid.UUID(session_id)
+
+    barrier = threading.Barrier(2)
+
+    def answer() -> int:
+        barrier.wait()
+        return _answer(
+            client, student["headers"], session_id, 0, "apple", f"vs-{uuid.uuid4()}"
+        ).status_code
+
+    def submit() -> int:
+        barrier.wait()
+        return _submit_quiz(client, student["headers"], session_id).status_code
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        f_answer = pool.submit(answer)
+        f_submit = pool.submit(submit)
+        answer_status = f_answer.result()
+        submit_status = f_submit.result()
+
+    assert submit_status == 200
+    assert answer_status in (200, 422), answer_status
+    db.expire_all()
+    vocab_session = db.get(VocabularySession, session_uuid)
+    assert vocab_session is not None
+    assert vocab_session.status == "submitted"
+    answers = db.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == session_uuid,  # type: ignore[arg-type]
+            VocabularyAnswer.item_index == 0,
+        )
+    ).all()
+    if answer_status == 200:
+        assert len(answers) == 1  # 交卷前被锁内接纳，计入成绩
+    else:
+        assert len(answers) == 0  # 交卷已生效，锁内拒绝
+
+
+def test_quiz_answer_vs_timeout_settlement_race(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """到时后作答与结算并发：作答被锁内终结拒绝，结算与作答二选一终结，状态一致。"""
+    import concurrent.futures
+    import threading
+
+    from app.services import vocab_quiz as quiz_service
+
+    teacher_headers, student, classroom, assignment_row = _quiz_setup(
+        client, superuser_token_headers, db
+    )
+    resp = _start_quiz(
+        client, student["headers"], classroom["code"], assignment_row["id"]
+    )
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+    session_uuid = uuid.UUID(session_id)
+    _expire_started_quiz(db, session_id)
+
+    barrier = threading.Barrier(2)
+    results: dict[str, object] = {}
+
+    def answer() -> None:
+        barrier.wait()
+        results["answer"] = _answer(
+            client, student["headers"], session_id, 0, "apple", f"to-{uuid.uuid4()}"
+        ).status_code
+
+    def settle() -> None:
+        barrier.wait()
+        with Session(db.get_bind()) as session:
+            assignment = session.get(
+                VocabularyAssignment, uuid.UUID(assignment_row["id"])
+            )
+            vocab_session = session.get(VocabularySession, session_uuid)
+            assert assignment is not None and vocab_session is not None
+            quiz_service.settle_due_sessions(session, assignment)
+        results["settle"] = "ok"
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(answer), pool.submit(settle)]
+        for f in futures:
+            f.result()
+
+    assert results["answer"] == 422, results
+    assert (
+        "自动交卷"
+        in client.post(
+            f"{VOCAB}/sessions/{session_id}/answers",
+            json=_answer_body(0, "apple", None),
+            headers=student["headers"],
+        ).json()["detail"]
+    )
+    db.expire_all()
+    vocab_session = db.get(VocabularySession, session_uuid)
+    assert vocab_session is not None
+    assert vocab_session.status == "submitted"
+    assert vocab_session.end_reason == "timeout"
+    answers = db.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == session_uuid  # type: ignore[arg-type]
+        )
+    ).all()
+    assert len(answers) == 0
+
+
+# ── 有效成绩口径统一与查询消重（wise-quarry-trout 批次05）──────────
+
+
+def _results_row(
+    client: TestClient,
+    teacher_headers: dict[str, str],
+    code: str,
+    assignment_id: str,
+    student_id: str,
+) -> dict:
+    resp = client.get(
+        f"{RESULTS.format(code=code)}?assignment_id={assignment_id}",
+        headers=teacher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    return next(r for r in resp.json()["students"] if r["student_id"] == student_id)
+
+
+def _grant_retake(
+    client: TestClient,
+    teacher_headers: dict[str, str],
+    code: str,
+    assignment_id: str,
+    student: dict,
+) -> None:
+    resp = client.post(
+        f"/api/v1/classes/{code}/vocabulary/assignments/{assignment_id}"
+        f"/students/{student['student']['id']}/grant-retake",
+        headers=teacher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def test_quiz_effective_grade_counts_share_same_paper(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """两题两轮各对不同一题：成绩 50、答对 1/2 来自同一份答卷（同分取较早轮），
+    逐词错误分布不被补考的正确掩盖——不再出现「50 分但 2/2 对」。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=2
+    )
+    code = classroom["code"]
+    first = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    _answer(client, student["headers"], first["session_id"], 0, "w01")  # 对
+    _answer(client, student["headers"], first["session_id"], 1, "nope")  # 错
+    _submit_quiz(client, student["headers"], first["session_id"])
+
+    _grant_retake(client, teacher_headers, code, assignment["id"], student)
+    second = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    assert second["round_no"] == 2
+    _answer(client, student["headers"], second["session_id"], 0, "nah")  # 错
+    _answer(client, student["headers"], second["session_id"], 1, "w02")  # 对
+    _submit_quiz(client, student["headers"], second["session_id"])
+
+    row = _results_row(
+        client, teacher_headers, code, assignment["id"], student["student"]["id"]
+    )
+    # 同分（各 50）取较早轮：成绩与答对/答错/未答同源
+    assert row["score"] == 50
+    assert row["effective_round_no"] == 1
+    assert row["correct_first_count"] == 1
+    assert row["answered_count"] == 2
+    assert row["total_count"] == 2
+    # 逐轮明细仍独立可见（补考轮 1/2）
+    assert [r["round_no"] for r in row["rounds"]] == [1, 2]
+    assert row["rounds"][1]["correct_first_count"] == 1
+
+    # 逐词错误分布来自有效答卷（第 1 轮）：w02 的错没有被第 2 轮的对称
+    words = {
+        w["headword"]: w
+        for w in client.get(
+            f"{RESULTS.format(code=code)}?assignment_id={assignment['id']}",
+            headers=teacher_headers,
+        ).json()["words"]
+    }
+    assert words["w01"]["correct_first_count"] == 1
+    assert words["w01"]["error_count"] == 0
+    assert words["w02"]["error_count"] == 1
+    assert words["w02"]["correct_first_count"] == 0
+    assert any(m["answer"] == "nope" for m in words["w02"]["misspellings"])
+
+
+def test_quiz_in_progress_retake_keeps_finalized_grade(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """补考进行中只作进度：不改写已终结的有效成绩与计数来源。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=2
+    )
+    code = classroom["code"]
+    first = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    _answer(client, student["headers"], first["session_id"], 0, "w01")
+    _submit_quiz(client, student["headers"], first["session_id"])  # 1/2 = 50
+
+    _grant_retake(client, teacher_headers, code, assignment["id"], student)
+    second = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    _answer(client, student["headers"], second["session_id"], 0, "w01")  # 进行中 1/2
+
+    row = _results_row(
+        client, teacher_headers, code, assignment["id"], student["student"]["id"]
+    )
+    assert row["status"] == "in_progress"
+    assert row["score"] == 50  # 已终结成绩不被进行中补考覆盖
+    assert row["effective_round_no"] == 1
+    assert row["correct_first_count"] == 1  # 计数来自有效答卷
+    assert row["rounds"][1]["answered_count"] == 1  # 进度按轮展示
+
+
+def test_quiz_class_results_query_count_constant(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """class_results 查询数不随参与学生数增长（批量读取 + 纯聚合）。"""
+    from sqlalchemy import event
+
+    from app.services import vocabulary as vocab_service
+
+    # 名单在发布时固定：先入班、后发布
+    _teacher, teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, teacher_headers)
+    code = classroom["code"]
+    roster = [make_student(db, client, code, f"查询{i}") for i in range(8)]
+    book = _make_class_book(client, teacher_headers, classroom["id"], _words(2))
+    word_ids = [
+        w["id"]
+        for w in client.get(
+            f"{VOCAB}/books/{book['id']}", headers=teacher_headers
+        ).json()["words"]
+    ]
+    assignment = _publish_quiz(client, teacher_headers, code, word_ids)
+
+    def _run_student(made: dict) -> None:
+        _start = _start_quiz(client, made["headers"], code, assignment["id"])
+        assert _start.status_code == 200, _start.text
+        started = _start.json()
+        _answer(client, made["headers"], started["session_id"], 0, "w01")
+        _answer(client, made["headers"], started["session_id"], 1, "w02")
+        _submit_quiz(client, made["headers"], started["session_id"])
+
+    counts: list[int] = []
+
+    def _count_queries() -> int:
+        counter = {"n": 0}
+
+        def _before_cursor_execute(
+            conn, cursor, statement, parameters, context, executemany
+        ):  # type: ignore[no-untyped-def]
+            if statement.lstrip().upper().startswith("SELECT"):
+                counter["n"] += 1
+
+        engine = db.get_bind()
+        event.listen(engine, "before_cursor_execute", _before_cursor_execute)
+        try:
+            with Session(engine) as session:
+                assignment_row = session.get(
+                    VocabularyAssignment, uuid.UUID(assignment["id"])
+                )
+                assert assignment_row is not None
+                vocab_service.class_results(session, assignment_row)
+        finally:
+            event.remove(engine, "before_cursor_execute", _before_cursor_execute)
+        return counter["n"]
+
+    # 阶段一：名单全班（8 人固定）但只有 2 人交卷
+    for made in roster[:2]:
+        _run_student(made)
+    counts.append(_count_queries())
+    # 阶段二：其余 6 人也交卷（参与者 ×4）
+    for made in roster[2:]:
+        _run_student(made)
+    counts.append(_count_queries())
+    # 参与学生数 2 → 8，查询数不得增长（名单数固定，聚合复用批量读取）
+    assert counts[1] == counts[0], counts
+
+
+def test_quiz_export_csv_formula_guard(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """导出 CSV：以 =/+/-/@ 开头的姓名加 ' 前缀防公式执行；数字成绩不受影响。"""
+    import csv as csv_module
+    import io
+
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=1
+    )
+    code = classroom["code"]
+    # 直接改显示名（导入通道之外的极端姓名）
+    with Session(db.get_bind()) as session:
+        from app.models import Student
+
+        row = session.get(Student, uuid.UUID(student["student"]["id"]))
+        assert row is not None
+        row.display_name = '=HYPERLINK("http://evil","x")'
+        session.add(row)
+        session.commit()
+
+    started = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    _answer(client, student["headers"], started["session_id"], 0, "w01")
+    _submit_quiz(client, student["headers"], started["session_id"])
+
+    resp = client.get(
+        f"/api/v1/classes/{code}/vocabulary/assignments/{assignment['id']}"
+        f"/results-export",
+        headers=teacher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    text = resp.content.decode("utf-8-sig")
+    rows = list(csv_module.reader(io.StringIO(text)))
+    header = rows[0]
+    body = rows[1]
+    name_cell = body[header.index("姓名")]
+    assert name_cell.startswith("'=")
+    score_cell = body[header.index("成绩")]
+    assert score_cell == "100"  # 数字成绩不加前缀
+
+
+# ── 返修C（R08/R09/R10/R11）：终态规则 / 结算范围 / 进行中进度 / NFKC 重放 ──
+
+
+def test_manual_submit_not_rewritten_by_late_answer(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """R08：先主动交卷、后到时——已确认的 manual 终态不被改写成 timeout。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=2
+    )
+    code = classroom["code"]
+    started = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    _answer(client, student["headers"], started["session_id"], 0, "w01")
+    assert (
+        _submit_quiz(client, student["headers"], started["session_id"]).status_code
+        == 200
+    )
+
+    _expire_started_quiz(db, started["session_id"])
+    # 到时后的作答：终态先判 → 422 已交卷（不是「已自动交卷」）
+    late = _answer(client, student["headers"], started["session_id"], 1, "w02")
+    assert late.status_code == 422
+    assert "交卷" in late.json()["detail"]
+
+    row = db.exec(
+        select(VocabularySession).where(
+            VocabularySession.id == uuid.UUID(started["session_id"])  # type: ignore[arg-type]
+        )
+    ).one()
+    assert row.status == "submitted"
+    assert row.end_reason == "manual"  # 不被覆写为 timeout
+    assert row.submitted_at is not None
+    manual_at = row.submitted_at
+    # 教师触碰触发的批量结算同样不改写
+    client.get(
+        f"{RESULTS.format(code=code)}?assignment_id={assignment['id']}",
+        headers=teacher_headers,
+    )
+    db.refresh(row)
+    assert row.end_reason == "manual"
+    assert row.submitted_at == manual_at
+
+
+def test_manual_submit_crossing_deadline_settles_timeout(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """R08：交卷等锁/延迟期间跨过截止——按超时结算，submitted_at 取截止时刻。"""
+    from app.services import vocab_quiz as quiz_service
+
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=2
+    )
+    code = classroom["code"]
+    started = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    session_uuid = uuid.UUID(started["session_id"])
+
+    with Session(db.get_bind()) as session:
+        # 截止已过（未结算）：交卷在锁内按服务器时间判 timeout
+        _expire_started_quiz(db, started["session_id"])
+        vocab_session = session.get(VocabularySession, session_uuid)
+        assignment_row = session.get(VocabularyAssignment, uuid.UUID(assignment["id"]))
+        assert vocab_session is not None and assignment_row is not None
+        finalized = quiz_service.submit_quiz_session(
+            session, vocab_session, assignment_row
+        )
+        assert finalized.end_reason == "timeout"
+        deadline = quiz_service.quiz_deadline(vocab_session, assignment_row)
+        assert deadline is not None
+        assert finalized.submitted_at == deadline
+
+
+def test_concurrent_submits_and_bulk_settle_no_deadlock(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """R09：两份已到期答卷并发手动交卷 + 批量结算——无跨会话锁环、无 500。"""
+    import concurrent.futures
+    import threading
+
+    from app.services import vocab_quiz as quiz_service
+
+    teacher_headers, classroom = None, None
+    teacher_headers = _login_teacher(db, client)[1]
+    classroom = _create_classroom(client, teacher_headers)
+    code = classroom["code"]
+    students = [make_student(db, client, code, f"死锁{i}") for i in range(2)]
+    book = _make_class_book(client, teacher_headers, classroom["id"], _words(2))
+    word_ids = [
+        w["id"]
+        for w in client.get(
+            f"{VOCAB}/books/{book['id']}", headers=teacher_headers
+        ).json()["words"]
+    ]
+    assignment = _publish_quiz(client, teacher_headers, code, word_ids)
+
+    session_ids = []
+    for made in students:
+        started = _start_quiz(client, made["headers"], code, assignment["id"]).json()
+        _answer(client, made["headers"], started["session_id"], 0, "w01")
+        _expire_started_quiz(db, started["session_id"])
+        session_ids.append(uuid.UUID(started["session_id"]))
+
+    barrier = threading.Barrier(3)
+    outcomes: dict[str, object] = {}
+
+    def manual_submit(sid: uuid.UUID) -> None:
+        barrier.wait()
+        try:
+            with Session(db.get_bind()) as session:
+                vocab_session = session.get(VocabularySession, sid)
+                assert vocab_session is not None
+                assignment_row = session.get(
+                    VocabularyAssignment, uuid.UUID(assignment["id"])
+                )
+                assert assignment_row is not None
+                quiz_service.submit_quiz_session(session, vocab_session, assignment_row)
+            outcomes[str(sid)] = "ok"
+        except Exception as exc:  # noqa: BLE001
+            outcomes[str(sid)] = repr(exc)
+
+    def bulk_settle() -> None:
+        barrier.wait()
+        try:
+            with Session(db.get_bind()) as session:
+                assignment_row = session.get(
+                    VocabularyAssignment, uuid.UUID(assignment["id"])
+                )
+                assert assignment_row is not None
+                quiz_service.settle_due_sessions(session, assignment_row)
+            outcomes["bulk"] = "ok"
+        except Exception as exc:  # noqa: BLE001
+            outcomes["bulk"] = repr(exc)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [pool.submit(manual_submit, sid) for sid in session_ids]
+        futures.append(pool.submit(bulk_settle))
+        for f in futures:
+            f.result(timeout=15)
+
+    for key, value in outcomes.items():
+        assert value == "ok", (key, value)  # 无 DeadlockDetected / 无异常
+    for sid in session_ids:
+        db.expire_all()
+        row = db.get(VocabularySession, sid)
+        assert row is not None
+        assert row.status == "submitted"
+
+
+def test_first_quiz_in_progress_shows_progress_not_zero(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """R10：首考进行中已答一题——主行进度 1/2（不是 0），成绩保持空。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=2
+    )
+    code = classroom["code"]
+    started = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    _answer(client, student["headers"], started["session_id"], 0, "w01")
+
+    row = _results_row(
+        client, teacher_headers, code, assignment["id"], student["student"]["id"]
+    )
+    assert row["status"] == "in_progress"
+    assert row["answered_count"] == 1  # 实时进度，不再报 0
+    assert row["correct_first_count"] == 1
+    assert row["score"] is None  # 尚无有效成绩
+    assert row["effective_round_no"] is None
+
+    # CSV：未答 = 1（2-1），不把已答当未答
+    import csv as csv_module
+    import io
+
+    resp = client.get(
+        f"/api/v1/classes/{code}/vocabulary/assignments/{assignment['id']}"
+        f"/results-export",
+        headers=teacher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    rows = list(csv_module.reader(io.StringIO(resp.content.decode("utf-8-sig"))))
+    header, body = rows[0], rows[1]
+    assert body[header.index("状态")].startswith("进行中")
+    assert body[header.index("答对")] == "1"
+    assert body[header.index("未答")] == "1"
+    assert body[header.index("成绩")] == ""
+
+
+def test_nfkc_expanding_answers_length_guard_and_replay(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """R11：NFKC 扩长载荷先按长度拒绝；等价展开的原文可作同键重放。"""
+    teacher_headers, student, classroom, assignment = _quiz_setup(
+        client, superuser_token_headers, db, word_count=1
+    )
+    code = classroom["code"]
+    started = _start_quiz(client, student["headers"], code, assignment["id"]).json()
+    session_id = started["session_id"]
+
+    # 原文 86 字符、NFKC 后 258 字符：422 拒绝（不落库截断值）
+    too_long = _answer(client, student["headers"], session_id, 0, "ﬃ" * 86)
+    assert too_long.status_code == 422
+    assert "过长" in too_long.json()["detail"]
+
+    # 255 字符等价原文：正常落库；同键用 NFKC 等价写法（ﬃ×85）可重放
+    key = f"nfkc-{uuid.uuid4()}"
+    first = _answer(client, student["headers"], session_id, 0, "ffi" * 85, key)
+    assert first.status_code == 200, first.text
+    replay = _answer(client, student["headers"], session_id, 0, "ﬃ" * 85, key)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["item_index"] == 0
+
+    # 超限载荷即便带同键也先按长度拒绝，不进入截断碰撞比较
+    over = client.post(
+        f"{VOCAB}/sessions/{session_id}/answers",
+        json=_answer_body(0, "ﬃ" * 86, key),
+        headers=student["headers"],
+    )
+    assert over.status_code == 422
+    assert "过长" in over.json()["detail"]

@@ -1089,7 +1089,12 @@ def read_today_plan(
                 for frame in matched[:6]
             ]
 
-    plan_attempts = [
+    # 模考反馈遮罩（服务端口径）：考试终结前学生只能拿到作答状态回执，
+    # 分数/转写/建议等反馈字段一律不下发——前端不显示不构成安全边界
+    feedback_locked = exam_service.exam_feedback_locked(
+        session, practice_session, bound_exercise
+    )
+    full_attempts = [
         PlanAttempt(
             item_id=a.item_id,
             attempt_id=a.id,
@@ -1104,6 +1109,10 @@ def read_today_plan(
             error=a.error,
         )
         for a in attempts
+    ]
+    plan_attempts = [
+        exam_service.masked_plan_attempt(pa) if feedback_locked else pa
+        for pa in full_attempts
     ]
 
     badges = [
@@ -1919,6 +1928,7 @@ def read_student_trail(
                 Attempt.created_at,  # ty: ignore[invalid-argument-type]
                 Attempt.item_type,  # ty: ignore[invalid-argument-type]
                 Attempt.status,  # ty: ignore[invalid-argument-type]
+                Attempt.session_id,  # ty: ignore[invalid-argument-type]
                 Attempt.overall,  # ty: ignore[invalid-argument-type]
                 Attempt.completeness,  # ty: ignore[invalid-argument-type]
                 Attempt.vocab,  # ty: ignore[invalid-argument-type]
@@ -1930,6 +1940,29 @@ def read_student_trail(
         )
         .order_by(col(Attempt.created_at))
     ).all()
+    # 模考反馈可见性（返修R03）：学生视角排除「考试未终结」的作答——
+    # 当天只有一道已评分题时，speaking_avg/completeness_avg 就是该题分数；
+    # 授权教师/管理员查看保持全量。与 today/attempts 出口共用
+    # exam_feedback_locked 判定，不改 ORM、不提前关卷
+    locked_session_ids: set[uuid.UUID] = set()
+    if current_user.role == "student" and not current_user.is_superuser:
+        seen_session_ids = {a.session_id for a in attempts if a.session_id}
+        if seen_session_ids:
+            exam_sessions = [
+                ps
+                for ps in session.exec(
+                    select(PracticeSession).where(
+                        col(PracticeSession.id).in_(seen_session_ids)  # type: ignore[operator]
+                    )
+                ).all()
+                if ps.assignment_id is not None
+                and (exercise := session.get(ClassroomExercise, ps.assignment_id))
+                is not None
+                and exercise.is_exam
+                and exam_service.exam_feedback_locked(session, ps, exercise)
+            ]
+            locked_session_ids = {ps.id for ps in exam_sessions}
+
     by_date: dict[str, dict[str, Any]] = {}
     for attempt in attempts:
         day = (
@@ -1939,6 +1972,8 @@ def read_student_trail(
         )
         if day is None or attempt.status != AttemptStatus.DONE:
             continue
+        if attempt.session_id is not None and attempt.session_id in locked_session_ids:
+            continue  # 考试进行中：该作答的分数不进学生聚合
         bucket = by_date.setdefault(
             day,
             {

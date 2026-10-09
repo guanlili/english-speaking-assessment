@@ -649,6 +649,22 @@ export function ResultsPanel({
                                 ? t({ zh: "及格", en: "pass" })
                                 : t({ zh: "不及格", en: "below" })}
                             </span>
+                            {/* 补考后多份答卷：标注有效成绩取自哪一轮 */}
+                            {row.effective_round_no != null &&
+                            (row.attempt_count ?? 0) > 1 ? (
+                              <span
+                                className="ml-1 text-xs text-muted-foreground"
+                                title={t({
+                                  zh: "有效成绩取自该轮答卷（答对/答错与成绩同源）",
+                                  en: "Effective grade comes from this round (correct/wrong share the same paper)",
+                                })}
+                              >
+                                {t({
+                                  zh: `第${row.effective_round_no}轮`,
+                                  en: `R${row.effective_round_no}`,
+                                })}
+                              </span>
+                            ) : null}
                           </span>
                         ) : (
                           "–"

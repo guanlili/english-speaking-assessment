@@ -52,6 +52,8 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   const disposedRef = useRef(false)
   // 同步并发保护：getUserMedia 是异步的，连续点击期间用 ref 挡住第二个 start
   const startingRef = useRef(false)
+  // 录音中途中断（MediaRecorder 异常错误）：onstop 不得把残缺数据当有效作答提交
+  const interruptedRef = useRef(false)
 
   const cleanup = useCallback(() => {
     if (timerRef.current !== null) {
@@ -83,7 +85,21 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     // 同步并发保护：getUserMedia 未返回前第二个 start 直接忽略
     if (startingRef.current) return
     if (recorderRef.current?.state === "recording") return
+    // 环境能力前置检查：旧浏览器 / 非 HTTPS（安全上下文）没有 MediaRecorder
+    if (
+      typeof MediaRecorder === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      setError(
+        t({
+          zh: "当前浏览器不支持录音，请使用较新的浏览器并通过 HTTPS 访问",
+          en: "Recording is not supported here. Use a modern browser over HTTPS.",
+        }),
+      )
+      return
+    }
     startingRef.current = true
+    interruptedRef.current = false
     setError(null)
     setRecording(null)
     setElapsed(0)
@@ -131,10 +147,48 @@ export function useRecorder(options: UseRecorderOptions = {}) {
           chunksRef.current.push(event.data)
         }
       }
+      // MediaRecorder 异步错误（编码器/轨道故障）：中断而非静默丢弃，
+      // 残缺数据不提交；具体原因对用户统一为「中断请重试」
+      recorder.onerror = () => {
+        if (disposedRef.current) return
+        interruptedRef.current = true
+        try {
+          if (recorder.state !== "inactive") {
+            recorder.stop()
+          }
+        } catch {
+          // stop 本身失败也无所谓：cleanup 兜底释放
+        }
+        cleanup()
+        setStatus("idle")
+        setError(
+          t({
+            zh: "录音中途中断，请重试",
+            en: "Recording was interrupted. Please try again.",
+          }),
+        )
+      }
+      // 音轨意外结束（麦克风被拔出/系统抢占）：按「到时自动停」处理——
+      // 已录内容时长足够就照常提交。正常 stop 引发的 ended 在此已被
+      // recorder.state!=="recording" 挡住，不会重复触发
+      stream.getAudioTracks().forEach((track) => {
+        track.addEventListener("ended", () => {
+          if (disposedRef.current || interruptedRef.current) return
+          if (recorderRef.current?.state === "recording") {
+            recorderRef.current.stop()
+          }
+        })
+      })
       recorder.onstop = () => {
         // 卸载中（用户离开页面）：释放麦克风但不提交幽灵作答
         if (disposedRef.current) {
           cleanup()
+          return
+        }
+        // 录音中途中断（onerror 已提示）：残缺数据不提交，onerror 已设错误态
+        if (interruptedRef.current) {
+          cleanup()
+          setStatus("idle")
           return
         }
         const duration = (Date.now() - startedAtRef.current) / 1000
@@ -178,6 +232,13 @@ export function useRecorder(options: UseRecorderOptions = {}) {
           t({
             zh: "需要允许麦克风：请在浏览器地址栏的权限设置中允许麦克风，然后重试",
             en: "Microphone blocked: allow microphone access in the browser address bar, then retry.",
+          }),
+        )
+      } else if (name === "NotFoundError") {
+        setError(
+          t({
+            zh: "未检测到麦克风设备，请检查耳机/麦克风是否已连接",
+            en: "No microphone found. Check that your headset/mic is connected.",
           }),
         )
       } else {

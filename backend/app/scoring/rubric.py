@@ -11,6 +11,7 @@
 
 import json
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -79,13 +80,50 @@ def map_to_mock_score(total: int) -> float:
     return RUBRIC_TO_SCORE[index]
 
 
-def _clamp_dim(value: object) -> int:
-    if not isinstance(value, (int, float, str)):
-        return 0
-    try:
-        return max(0, min(DIMENSION_MAX, int(value)))
-    except ValueError:
-        return 0
+DIMENSION_KEYS = ("fluency", "vocabulary", "grammar", "task")
+
+
+class RubricParseError(ValueError):
+    """模型输出缺维度/结构坏。调用方必须降级为 unavailable，不得出 0 分。"""
+
+
+def _parse_dim(key: str, value: object) -> int:
+    """维度必须存在且可解析为有限数；缺失/None/布尔/非有限数一律拒绝。
+
+    合法有限数越界截断到 0-4、数字字符串兼容是既有测试约定的行为，保留。
+    """
+    if value is None or isinstance(value, bool):
+        raise RubricParseError(f"评分维度 {key} 缺失或为 null/布尔值")
+    if isinstance(value, (int, float)):
+        number = float(value)
+    elif isinstance(value, str):
+        try:
+            number = float(value.strip())
+        except ValueError as exc:
+            raise RubricParseError(f"评分维度 {key} 不是数字：{value!r}") from exc
+    else:
+        raise RubricParseError(f"评分维度 {key} 类型错误：{type(value).__name__}")
+    if not math.isfinite(number):
+        raise RubricParseError(f"评分维度 {key} 非有限数：{value!r}")
+    return max(0, min(DIMENSION_MAX, int(number)))
+
+
+def _parse_text_list(key: str, value: object, max_items: int) -> list[str]:
+    """advice/upgrades：缺省为空；必须是字符串列表（字符串会被逐字符拆开，拒绝）。
+
+    空白元素丢弃（不影响评分）；非字符串元素属结构错误，整份拒绝。
+    """
+    if value is None:
+        return []
+    if isinstance(value, str) or not isinstance(value, list):
+        raise RubricParseError(f"{key} 必须是字符串列表，实际是 {type(value).__name__}")
+    items: list[str] = []
+    for element in value:
+        if not isinstance(element, str):
+            raise RubricParseError(f"{key} 含非字符串元素：{element!r}")
+        if element.strip():
+            items.append(element)
+    return items[:max_items]
 
 
 def build_rubric_user_prompt(prompt: str, band: str, transcript: str) -> str:
@@ -97,23 +135,30 @@ def build_rubric_user_prompt(prompt: str, band: str, transcript: str) -> str:
 
 
 def parse_rubric_response(content: str) -> RubricScores:
-    """容错解析 LLM 输出：剥掉 markdown 代码栅栏，截断超量建议/升级。"""
+    """容错解析 LLM 输出：剥掉 markdown 代码栅栏，截断超量建议/升级。
+
+    四个评分维度是必需字段：缺失/类型错/非有限数的输出整体拒绝
+    （RubricParseError），由 worker 降级 unavailable——绝不能当真实 0 分
+    （PRD US-08：模型失败显示「建议暂缺」，不出假分）。
+    """
     cleaned = re.sub(
         r"^```(?:json)?|```$", "", content.strip(), flags=re.MULTILINE
     ).strip()
     match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
     if match is None:
-        raise ValueError("LLM 输出中没有 JSON 对象")
-    data = json.loads(match.group(0))
+        raise RubricParseError("LLM 输出中没有 JSON 对象")
+    try:
+        data = json.loads(match.group(0))
+    except json.JSONDecodeError as exc:
+        raise RubricParseError(f"LLM 输出不是合法 JSON：{exc}") from exc
+    if not isinstance(data, dict):
+        raise RubricParseError(
+            f"LLM 输出 JSON 必须是对象，实际是 {type(data).__name__}"
+        )
 
-    dims = {
-        "fluency": _clamp_dim(data.get("fluency")),
-        "vocabulary": _clamp_dim(data.get("vocabulary")),
-        "grammar": _clamp_dim(data.get("grammar")),
-        "task": _clamp_dim(data.get("task")),
-    }
-    advice = [str(a) for a in data.get("advice", []) if a][:MAX_ADVICE]
-    upgrades = [str(u) for u in data.get("upgrades", []) if u][:MAX_UPGRADES]
+    dims = {key: _parse_dim(key, data.get(key)) for key in DIMENSION_KEYS}
+    advice = _parse_text_list("advice", data.get("advice"), MAX_ADVICE)
+    upgrades = _parse_text_list("upgrades", data.get("upgrades"), MAX_UPGRADES)
 
     return RubricScores(
         fluency=dims["fluency"],

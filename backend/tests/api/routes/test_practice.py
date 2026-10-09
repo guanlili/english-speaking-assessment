@@ -224,7 +224,11 @@ def test_quick_feedback_committed_before_detail(
     assert data["status"] == "done"
     assert data["overall"] is not None
     assert data["transcript"] == provider.transcribe.return_value
-    assert data["rubric"] == {"status": "pending"}
+    assert data["rubric"] is not None
+    assert data["rubric"]["status"] == "pending"
+    # 入队即 queued 阶段（返修R06）：执行开始才换成 executing + pending_since
+    assert data["rubric"]["phase"] == "queued"
+    assert "queued_at" in data["rubric"]["status"] or "queued_at" in data["rubric"]
     detail_executor.submit.assert_called_once()
 
     monkeypatch.setattr(worker, "_score_rubric", lambda *_: None)

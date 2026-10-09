@@ -1,7 +1,9 @@
 """模考模式：确认页显式开考 + 整场限时（服务端强约束）+ 每题一次作答 + 防切屏（次数/离屏时长）+ 监考展示。"""
 
 import uuid
+from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -575,3 +577,361 @@ def test_regular_practice_unaffected(
         assert again.status_code == 200, again.text
     finally:
         _cleanup_classroom(db, classroom["id"])
+
+
+# AttemptPublic（GET/POST 作答出口）需要遮罩的反馈字段
+MASKED_ATTEMPT_FIELDS = (
+    "transcript",
+    "completeness",
+    "fluency",
+    "accuracy",
+    "overall",
+    "advice",
+    "vocab",
+    "rubric",
+    "error",
+)
+# PlanAttempt（today 计划出口）没有 accuracy 字段，其余同上
+MASKED_PLAN_FIELDS = tuple(f for f in MASKED_ATTEMPT_FIELDS if f != "accuracy")
+
+
+@pytest.fixture
+def inline_scoring(
+    db: Session, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> Generator[None]:
+    """同步评分：POST 内联跑完 mock 引擎，反馈内容可确定性断言。"""
+    from app.api.deps import get_scoring_submitter
+    from app.core.config import settings
+    from app.main import app
+    from app.scoring import worker
+
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+
+    class FakeAsr:
+        name = "mock"
+
+        def transcribe(self, audio: bytes, mime_type: str) -> str:
+            return "i have a cat and a dog"
+
+    monkeypatch.setattr(worker, "build_asr_provider", lambda: FakeAsr())
+
+    def run_inline(attempt_id: uuid.UUID) -> None:
+        with Session(db.get_bind()) as session:
+            worker.process_attempt(session, attempt_id)
+
+    app.dependency_overrides[get_scoring_submitter] = lambda: run_inline
+    yield
+    app.dependency_overrides.pop(get_scoring_submitter, None)
+
+
+def test_exam_feedback_masked_server_side_until_ended(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    inline_scoring: None,
+) -> None:
+    """模考反馈限制必须在服务端生效：进行中学生 GET/幂等重放/today 都拿不到
+    分数、转写、建议；授权教师不受影响；考试终结后反馈恢复；无关学生 403。
+
+    两题考试、只答第一题（评分已完成）——第二题未答且在窗口内，考试进行中。
+    """
+    from app.models import Classroom, ClassroomExercise
+
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+        )
+    )
+    code = classroom["code"]
+    made = make_student(db, client, code, "遮罩考生")
+    headers = made["headers"]
+    other = make_student(db, client, code, "无关考生")
+    first_id, second_id = uuid.uuid4(), uuid.uuid4()
+    db.add_all(
+        [
+            Passage(
+                id=first_id,
+                slug=f"mask-a-{first_id}",
+                title="First article",
+                text="First article.",
+                cefr_band="B1",
+            ),
+            Passage(
+                id=second_id,
+                slug=f"mask-b-{second_id}",
+                title="Second article",
+                text="Second article.",
+                cefr_band="B1",
+            ),
+        ]
+    )
+    db.commit()
+    snapshot: list[dict[str, object]] = [
+        {
+            "type": "passage",
+            "id": str(first_id),
+            "text": "First article.",
+            "suggested_seconds": 20,
+        },
+        {
+            "type": "passage",
+            "id": str(second_id),
+            "text": "Second article.",
+            "suggested_seconds": 20,
+        },
+    ]
+    exercise = ClassroomExercise(
+        classroom_id=uuid.UUID(classroom["id"]),
+        snapshot_items=snapshot,
+        is_exam=True,
+        time_limit_minutes=30,
+    )
+    db.add(exercise)
+    db.flush()
+    row = db.get(Classroom, exercise.classroom_id)
+    assert row is not None
+    row.current_exercise_id = exercise.id
+    db.add(row)
+    db.commit()
+    fake_now = datetime.now(UTC)
+    monkeypatch.setattr(exam_service, "_now", lambda: fake_now)
+    try:
+        plan = _today(client, headers, code)
+        assert (
+            client.post(
+                f"/api/v1/classes/{code}/exam/start",
+                json={"session_id": plan["session_id"]},
+                headers=headers,
+            ).status_code
+            == 200
+        )
+
+        # 首题上传（内联评分即完成）→ 考试仍在进行（第二题未答）
+        key = f"mask-{random_lower_string()}"
+        first = _submit(
+            client, headers, code, plan["items"][0], plan["session_id"], key
+        )
+        assert first.status_code == 200, first.text
+        attempt_id = first.json()["id"]
+        assert first.json()["status"] == "done"
+
+        # 学生 GET：状态保留，反馈字段全部为空（前端不显示不是安全边界）
+        got = _resp_json(client.get(f"/api/v1/attempts/{attempt_id}", headers=headers))
+        assert got["status"] == "done"
+        assert got["id"] == attempt_id
+        for field in MASKED_ATTEMPT_FIELDS:
+            assert got[field] is None, f"{field} 不应在模考进行中下发"
+
+        # 同幂等键重放（断网重传）：回执遮罩，不泄露评分结果
+        replay = _submit(
+            client, headers, code, plan["items"][0], plan["session_id"], key
+        )
+        assert replay.status_code == 200, replay.text
+        assert replay.json()["id"] == attempt_id
+        for field in MASKED_ATTEMPT_FIELDS:
+            assert replay.json()[field] is None
+
+        # today：plan_attempts 只剩题目/作答/状态回执
+        plan = _today(client, headers, code)
+        assert plan["exam"]["ended"] is False
+        pa = next(a for a in plan["attempts"] if str(a["attempt_id"]) == attempt_id)
+        assert pa["status"] == "done"
+        for field in MASKED_PLAN_FIELDS:
+            assert pa[field] is None
+
+        # 授权教师（课堂 owner，此处为 superuser）：完整反馈不受遮罩影响
+        teacher = _resp_json(
+            client.get(
+                f"/api/v1/attempts/{attempt_id}", headers=superuser_token_headers
+            )
+        )
+        assert teacher["transcript"] == "i have a cat and a dog"
+        assert teacher["overall"] is not None
+
+        # 无关学生：403（本来就不许读他人作答）
+        assert (
+            client.get(
+                f"/api/v1/attempts/{attempt_id}", headers=other["headers"]
+            ).status_code
+            == 403
+        )
+
+        # 到时终结（第二题窗口与宽限期都过去）→ 学生反馈完整恢复
+        fake_now += timedelta(seconds=40)
+        plan2 = _today(client, headers, code)
+        assert plan2["exam"]["ended"] is True
+        pa2 = next(a for a in plan2["attempts"] if str(a["attempt_id"]) == attempt_id)
+        assert pa2["transcript"] == "i have a cat and a dog"
+        assert pa2["overall"] is not None
+
+        got2 = _resp_json(client.get(f"/api/v1/attempts/{attempt_id}", headers=headers))
+        assert got2["transcript"] == "i have a cat and a dog"
+    finally:
+        _cleanup_classroom(db, classroom["id"])
+
+
+def test_practice_feedback_not_masked_outside_exam(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    inline_scoring: None,
+) -> None:
+    """普通发布练习（非模考）：遮罩逻辑不得误伤——评分完成后反馈照常可读。"""
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+        )
+    )
+    code = classroom["code"]
+    made = make_student(db, client, code, "普通练习生")
+    headers = made["headers"]
+    passage = _demo_passage(db)
+    try:
+        resp = client.put(
+            f"/api/v1/classes/{code}/assignment",
+            json={"items": [{"type": "passage", "id": str(passage.id)}]},
+            headers=superuser_token_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        plan = _today(client, headers, code)
+        item = plan["items"][0]
+        posted = _submit(client, headers, code, item, plan["session_id"])
+        assert posted.status_code == 200, posted.text
+        assert posted.json()["status"] == "done"
+        attempt_id = posted.json()["id"]
+
+        # 上传回执与轮询都直接带反馈（普通练习无遮罩）
+        assert posted.json()["transcript"] == "i have a cat and a dog"
+        assert posted.json()["overall"] is not None
+        got = _resp_json(client.get(f"/api/v1/attempts/{attempt_id}", headers=headers))
+        assert got["transcript"] == "i have a cat and a dog"
+        assert got["overall"] is not None
+
+        plan2 = _today(client, headers, code)
+        pa = next(a for a in plan2["attempts"] if str(a["attempt_id"]) == attempt_id)
+        assert pa["transcript"] == "i have a cat and a dog"
+        assert pa["overall"] is not None
+    finally:
+        _cleanup_classroom(db, classroom["id"])
+
+
+def test_exam_attempt_excluded_from_student_trail_until_ended(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    inline_scoring: None,
+) -> None:
+    """R03：考试进行中已评分的首题不得进入学生成长轨迹聚合（当天只有
+    这道题时，平均分就是该题分数）；授权教师全量；考试终结后恢复。"""
+    from app.models import Classroom, ClassroomExercise
+
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+        )
+    )
+    code = classroom["code"]
+    made = make_student(db, client, code, "轨迹考生")
+    headers = made["headers"]
+    first_id, second_id = uuid.uuid4(), uuid.uuid4()
+    db.add_all(
+        [
+            Passage(
+                id=first_id,
+                slug=f"trail-a-{first_id}",
+                title="Trail first",
+                text="First article.",
+                cefr_band="B1",
+            ),
+            Passage(
+                id=second_id,
+                slug=f"trail-b-{second_id}",
+                title="Trail second",
+                text="Second article.",
+                cefr_band="B1",
+            ),
+        ]
+    )
+    db.commit()
+    exercise = ClassroomExercise(
+        classroom_id=uuid.UUID(classroom["id"]),
+        snapshot_items=[
+            {
+                "type": "passage",
+                "id": str(first_id),
+                "text": "First article.",
+                "suggested_seconds": 20,
+            },
+            {
+                "type": "passage",
+                "id": str(second_id),
+                "text": "Second article.",
+                "suggested_seconds": 20,
+            },
+        ],
+        is_exam=True,
+        time_limit_minutes=30,
+    )
+    db.add(exercise)
+    db.flush()
+    row = db.get(Classroom, exercise.classroom_id)
+    assert row is not None
+    row.current_exercise_id = exercise.id
+    db.add(row)
+    db.commit()
+    from datetime import UTC as _UTC
+
+    fake_now = datetime.now(_UTC)
+    monkeypatch_now = fake_now
+    import pytest as _pytest
+
+    with _pytest.MonkeyPatch.context() as mp:
+        mp.setattr(exam_service, "_now", lambda: monkeypatch_now)
+        plan = _today(client, headers, code)
+        assert (
+            client.post(
+                f"/api/v1/classes/{code}/exam/start",
+                json={"session_id": plan["session_id"]},
+                headers=headers,
+            ).status_code
+            == 200
+        )
+        # 首题作答并完成评分（考试仍进行中：第二题未答）
+        posted = _submit(client, headers, code, plan["items"][0], plan["session_id"])
+        assert posted.status_code == 200, posted.text
+        assert posted.json()["status"] == "done"
+        attempt_id = posted.json()["id"]
+        # POST 回执已被批次02遮罩：分数从授权教师视角确认确已评出
+        teacher_view = _resp_json(
+            client.get(
+                f"/api/v1/attempts/{attempt_id}", headers=superuser_token_headers
+            )
+        )
+        assert teacher_view["overall"] is not None
+
+        # 学生轨迹：考试未终结 → 当天聚合不包含该作答（count 0 / 无 speaking）
+        trail = client.get(f"/api/v1/classes/{code}/trail", headers=headers).json()
+        today = fake_now.date().isoformat()
+        sessions = {s["date"]: s for s in trail["sessions"]}
+        today_session = sessions.get(today)
+        # 该作答不进学生聚合：无当天记录，或有记录但 attempt_count 为 0
+        assert today_session is None or today_session["attempt_count"] == 0
+
+        # 授权教师（superuser）查同一学生：全量可见
+        teacher_trail = client.get(
+            f"/api/v1/classes/{code}/trail",
+            params={"student_id": made["student"]["id"]},
+            headers=superuser_token_headers,
+        ).json()
+        teacher_sessions = {s["date"]: s for s in teacher_trail["sessions"]}
+        assert teacher_sessions[today]["attempt_count"] >= 1
+
+        # 考试终结后：学生轨迹恢复包含该作答
+        monkeypatch_now = fake_now + timedelta(seconds=40)
+        plan2 = _today(client, headers, code)
+        assert plan2["exam"]["ended"] is True
+        trail2 = client.get(f"/api/v1/classes/{code}/trail", headers=headers).json()
+        sessions2 = {s["date"]: s for s in trail2["sessions"]}
+        assert sessions2[today]["attempt_count"] >= 1
+    _cleanup_classroom(db, classroom["id"])

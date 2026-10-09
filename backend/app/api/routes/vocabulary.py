@@ -336,13 +336,20 @@ async def import_vocab_preview(_teacher: TeacherUserDep, file: UploadFile) -> An
 
 @router.get("/vocabulary/books", response_model=list[VocabularyBookPublic])
 def list_books(session: SessionDep, current_user: TeacherUserDep) -> Any:
-    """词库列表：公共词库全体教师可见；班级词库仅本班教师（管理员全见）。"""
-    books = session.exec(
-        select(VocabularyBook).order_by(col(VocabularyBook.created_at))
-    ).all()
-    visible = [b for b in books if _book_visible(b, current_user)]
-    counts = _book_word_count(session, [b.id for b in visible])
-    return [_book_public(b, counts.get(b.id, 0)) for b in visible]
+    """词库列表：公共词库全体教师可见；班级词库仅本班教师（管理员全见）。
+
+    可见性在 SQL 层过滤（与 _book_visible 同谓词：public 或本人创建），
+    不把别人的班级词库整表拉回 Python 再丢掉。
+    """
+    statement = select(VocabularyBook).order_by(col(VocabularyBook.created_at))
+    if not current_user.is_superuser:
+        statement = statement.where(
+            (col(VocabularyBook.scope) == "public")  # type: ignore[union-attr]
+            | (col(VocabularyBook.owner_id) == current_user.id)  # type: ignore[union-attr]
+        )
+    books = session.exec(statement).all()
+    counts = _book_word_count(session, [b.id for b in books])
+    return [_book_public(b, counts.get(b.id, 0)) for b in books]
 
 
 @router.post("/vocabulary/books", response_model=VocabularyBookDetail)
@@ -1069,12 +1076,66 @@ def submit_vocab_answer(
         else None
     )
     is_quiz = assignment is not None and assignment.mode == "quiz"
+
+    # 已成功提交的幂等键识别（断网重传回执）：先于截止/归档/交卷门禁——
+    # 作答已落库但回包丢失时，交卷或截止后原键重试仍取得成功确认，
+    # 不新增答案；测验回执只确认已接收，不泄露正误与未公布答案
+    replay = vocab_service.recognize_answer_replay(
+        session,
+        vocab_session,
+        item_index=body.item_index,
+        prompt_type=body.prompt_type,
+        answer_raw=body.answer,
+        idempotency_key=body.idempotency_key,
+    )
+    if replay is not None:
+        answered_count, correct_first = vocab_service.session_progress(
+            session, vocab_session
+        )
+        if is_quiz:
+            deadline = (
+                vocab_quiz.quiz_deadline(vocab_session, assignment)
+                if assignment is not None
+                else None
+            )
+            remaining = (
+                max(
+                    0,
+                    int(
+                        (
+                            deadline - datetime.now(UTC)  # type: ignore[operator]
+                        ).total_seconds()
+                    ),
+                )
+                if deadline is not None and vocab_session.status == "in_progress"
+                else None
+            )
+            return VocabularyQuizAnswerReceipt(
+                item_index=replay.item_index,
+                answered_count=answered_count,
+                session_status=vocab_session.status,
+                remaining_seconds=remaining,
+            )
+        snapshot_items = vocab_service.session_snapshot(session, vocab_session)
+        snapshot_item = snapshot_items[replay.item_index]
+        return VocabularyAnswerResult(
+            item_index=replay.item_index,
+            attempt_no=replay.attempt_no,
+            is_correct=replay.is_correct,
+            correct_spelling=str(snapshot_item["headword"]),
+            meaning_zh=str(snapshot_item["meaning_zh"]),
+            session_status=vocab_session.status,
+            answered_count=answered_count,
+            correct_first_count=correct_first,
+        )
+
     if vocab_session.assignment_id is not None:
         if assignment is None:
             raise HTTPException(status_code=422, detail="会话没有绑定任务，不能作答")
         vocab_service.ensure_assignment_open(assignment)
     if is_quiz and assignment is not None:
-        # 测验门禁：到时先结算，再拒绝已终结答卷（交卷/超时都不能续答）
+        # 测验门禁：到时先结算，再拒绝已终结答卷（交卷/超时都不能续答）；
+        # 终态竞态由 submit_answer 的会话行锁兜底
         vocab_quiz.ensure_quiz_answerable(session, vocab_session, assignment)
     elif vocab_session.mode == "quiz" and vocab_session.status == "submitted":
         raise HTTPException(status_code=422, detail="测验已交卷，不能继续作答")
@@ -1089,6 +1150,7 @@ def submit_vocab_answer(
         answer_raw=body.answer,
         idempotency_key=body.idempotency_key,
         one_attempt_per_item=is_quiz,
+        assignment=assignment if is_quiz else None,
     )
     session.refresh(vocab_session)
     answered_count, _correct_first = vocab_service.session_progress(
@@ -1298,6 +1360,20 @@ def read_quiz_answer_sheet(
     return vocab_service.student_plan(session, vocab_session, reveal=True)
 
 
+_CSV_TEXT_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_text_cell(value: object) -> object:
+    """CSV 公式注入防护：用户可控文本以 =/+/-/@ 或制表/回车开头时加 ' 前缀。
+
+    Excel/WPS 会把这类开头当公式执行（姓名字段来自导入与用户输入）；
+    前缀单引号是最保守的通用转义。数字类型原样保留（不破坏成绩列）。
+    """
+    if isinstance(value, str) and value[:1] in _CSV_TEXT_FORMULA_PREFIXES:
+        return "'" + value
+    return value
+
+
 @router.get("/classes/{code}/vocabulary/assignments/{assignment_id}/results-export")
 def export_quiz_results(
     session: SessionDep,
@@ -1305,7 +1381,10 @@ def export_quiz_results(
     assignment_id: uuid.UUID,
     current_user: TeacherUserDep,
 ) -> Any:
-    """导出测验成绩 CSV（固定应考名单 + 状态/成绩/切屏等，UTF-8 BOM 兼容 Excel）。"""
+    """导出测验成绩 CSV（固定应考名单 + 状态/成绩/切屏等，UTF-8 BOM 兼容 Excel）。
+
+    用户可控文本单元格经 _csv_text_cell 防公式注入（与前端 csv.ts 同规则）。
+    """
     import csv
     import io
 
@@ -1324,6 +1403,7 @@ def export_quiz_results(
             "答对",
             "答错",
             "未答",
+            "有效轮次",
             "参与次数",
             "切屏次数",
             "终结方式",
@@ -1343,14 +1423,17 @@ def export_quiz_results(
             end_label = "主动交卷"
         writer.writerow(
             [
-                row.display_name,
-                status_labels.get(row.status, row.status)
-                + (f"（{end_label}）" if end_label else ""),
+                _csv_text_cell(row.display_name),
+                _csv_text_cell(
+                    status_labels.get(row.status, row.status)
+                    + (f"（{end_label}）" if end_label else "")
+                ),
                 row.score if row.score is not None else "",
                 ("是" if row.passed else "否") if row.passed is not None else "",
                 row.correct_first_count,
                 max(0, row.answered_count - row.correct_first_count),
                 max(0, row.total_count - row.answered_count),
+                row.effective_round_no if row.effective_round_no is not None else "",
                 row.attempt_count,
                 row.tab_switch_count,
                 end_label,

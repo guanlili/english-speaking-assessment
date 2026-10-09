@@ -1439,6 +1439,7 @@ export type VocabularyStudentResultRow = {
     quiz_end_reason?: (string | null);
     score?: (number | null);
     passed?: (boolean | null);
+    effective_round_no?: (number | null);
     tab_switch_count?: number;
     retake_granted?: boolean;
     attempt_count?: number;
