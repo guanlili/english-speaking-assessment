@@ -7,9 +7,9 @@ class_today_plan，教师面板在 class_board，成长轨迹在 class_progress�
 经 app.api.routes.classes 取共享助手），main.py 仍从此处取 router。
 """
 
-from app.api.routes import (  # noqa: F401  # 端点注册副作用
-    # 导入顺序 = 路由注册顺序 = 拆分前 classes.py 内的端点顺序，
-    # 改动会改变 OpenAPI 路径顺序、触发前端客户端一致性漂移
+from app.api.routes import (  # noqa: F401, I001  # 端点注册副作用
+    # 导入顺序 = 路由注册顺序 = 拆分前 classes.py 内的端点顺序（非字母序，
+    # 故豁免 isort）；改动会改变 OpenAPI 路径顺序、触发前端客户端一致性漂移
     class_shared,
     class_today_plan,
     class_board,
