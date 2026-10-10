@@ -577,7 +577,9 @@ def test_question_bank_list_with_filters(
             params={"topic": "Test Bank Filter", "q": "weekend"},
             headers=superuser_token_headers,
         )
-        assert [q["text"] for q in by_q.json()["data"]] == ["What did you do last weekend?"]
+        assert [q["text"] for q in by_q.json()["data"]] == [
+            "What did you do last weekend?"
+        ]
 
         # 关键词（中文提示）
         by_cn = client.get(

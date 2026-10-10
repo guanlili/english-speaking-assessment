@@ -304,8 +304,7 @@ def list_passages(
     if q and q.strip():
         needle = q.strip()
         conditions.append(
-            col(Passage.title).icontains(needle)
-            | col(Passage.topic).icontains(needle)  # type: ignore[operator]
+            col(Passage.title).icontains(needle) | col(Passage.topic).icontains(needle)  # type: ignore[operator]
         )
     count = session.exec(
         select(func.count()).select_from(Passage).where(*conditions)
@@ -660,7 +659,7 @@ def list_scenarios(
     limit: int | None = Query(default=None, ge=1, le=500),
 ) -> Any:
     """问答题库主题列表：分页 + 主题关键词（limit=None 全量，组卷选择器兼容）。"""
-    conditions = []
+    conditions: list[Any] = []
     if q and q.strip():
         conditions.append(col(Scenario.topic).icontains(q.strip()))
     count = session.exec(
@@ -685,8 +684,10 @@ def list_scenarios(
             .where(col(ScenarioQuestion.scenario_id).in_(scenario_ids))
             .order_by(col(ScenarioQuestion.order_index))
         ).all()
-        for q in all_questions:
-            questions_by_scenario.setdefault(q.scenario_id, []).append(q)
+        # ty 对 in_(列表推导) 的重载推断失真（同代码在 master 无此报错，
+        # 疑与上文 stmt 分支赋值联动），行内标注压制
+        for q in all_questions:  # ty: ignore[invalid-assignment]
+            questions_by_scenario.setdefault(q.scenario_id, []).append(q)  # ty: ignore[unresolved-attribute, invalid-argument-type]
     result = []
     for scenario in scenarios:
         questions = questions_by_scenario.get(scenario.id, [])
@@ -826,7 +827,7 @@ def list_question_bank(
     skip: int = Query(default=0, ge=0),
     limit: int | None = Query(default=None, ge=1, le=500),
 ) -> Any:
-    conditions = []
+    conditions: list[Any] = []
     if topic is not None:
         conditions.append(Scenario.topic == topic)
     if band is not None:
@@ -1523,7 +1524,7 @@ def list_sentence_frames(
     skip: int = Query(default=0, ge=0),
     limit: int | None = Query(default=None, ge=1, le=500),
 ) -> Any:
-    conditions = []
+    conditions: list[Any] = []
     if level is not None:
         conditions.append(SentenceFrame.level == level)  # type: ignore[arg-type]
     if purpose is not None:
@@ -1536,13 +1537,20 @@ def list_sentence_frames(
     stmt = (
         select(SentenceFrame)
         .where(*conditions)
-        .order_by(col(SentenceFrame.purpose), col(SentenceFrame.text_en), col(SentenceFrame.id))
+        .order_by(
+            col(SentenceFrame.purpose),
+            col(SentenceFrame.text_en),
+            col(SentenceFrame.id),
+        )
         .offset(skip)
     )
     if limit is not None:
         stmt = stmt.limit(limit)
     return SentenceFramesListOut(
-        data=session.exec(stmt).all(),
+        data=[
+            SentenceFramePublic.model_validate(frame)
+            for frame in session.exec(stmt).all()
+        ],
         count=count,
     )
 
