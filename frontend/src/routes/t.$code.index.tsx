@@ -1,50 +1,30 @@
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link, useParams } from "@tanstack/react-router"
-import {
-  BookA,
-  ChevronDown,
-  ChevronRight,
-  ClipboardCheck,
-  Download,
-  Link2,
-  Loader2,
-  MessageCircle,
-  RefreshCw,
-  Search,
-  Sparkles,
-} from "lucide-react"
+import { BookA, Loader2, RefreshCw, Sparkles } from "lucide-react"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
-import type { BoardStudent } from "@/client"
 import { ApiError, ClassesService } from "@/client"
-import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { AssignmentComposer } from "@/components/Teaching/AssignmentComposer"
+import { BoardRosterCard } from "@/components/Teaching/BoardRosterCard"
+import { BoardStatsCards } from "@/components/Teaching/BoardStatsCards"
+import { BoardTeachingActions } from "@/components/Teaching/BoardTeachingActions"
 import { ExerciseHistory } from "@/components/Teaching/ExerciseHistory"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { APP_NAME } from "@/config"
+import {
+  boardReminderMessage,
+  boardRosterCsv,
+  boardStatusOf,
+  needsAttentionStudents,
+} from "@/lib/board-copy"
 import { copyText } from "@/lib/clipboard"
 import { downloadCsv } from "@/lib/csv"
-import { type BiString, useI18n } from "@/lib/i18n"
-import { ITEM_TYPE_LABELS, TERMS } from "@/lib/terms"
+import { useI18n } from "@/lib/i18n"
+import { TERMS } from "@/lib/terms"
 
 export const Route = createFileRoute("/t/$code/")({
   component: TeacherBoardPage,
@@ -154,30 +134,16 @@ function TeacherBoardPage() {
   const board = boardQuery.data
   const hasStudents = board.students.length > 0
 
-  const statusOf = (st: BoardStudent) =>
-    st.inactive_days7
-      ? "inactive"
-      : st.has_pending
-        ? "practicing"
-        : (st.done_count ?? 0) > 0
-          ? "done"
-          : "idle"
-
-  const STATUS_LABELS: Record<string, BiString> = {
-    all: { zh: "全部状态", en: "All statuses" },
-    done: { zh: "已提交", en: "Submitted" },
-    practicing: { zh: "评分中", en: "Scoring" },
-    idle: { zh: "未提交", en: "Not submitted" },
-    inactive: { zh: "7 天未练", en: "Inactive 7 days" },
-  }
-
   const filteredStudents = board.students.filter((st) => {
-    if (statusFilter !== "all" && statusOf(st) !== statusFilter) return false
+    if (statusFilter !== "all" && boardStatusOf(st) !== statusFilter) {
+      return false
+    }
     if (
       nameQuery &&
       !st.display_name.toLowerCase().includes(nameQuery.toLowerCase())
-    )
+    ) {
       return false
+    }
     return true
   })
 
@@ -191,39 +157,23 @@ function TeacherBoardPage() {
       ).toFixed(1)
     : "-"
   const inactiveCount = board.students.filter((st) => st.inactive_days7).length
+  const attentionStudents = needsAttentionStudents(board.students)
+
+  const clearFilters = () => {
+    setNameQuery("")
+    setStatusFilter("all")
+  }
+  const toggleRow = (studentId: string) => {
+    setExpandedId(expandedId === studentId ? null : studentId)
+  }
 
   const exportCsv = () => {
-    const header = [
-      t({ zh: "姓名", en: "Name" }),
-      t({ zh: "区分码", en: "Suffix" }),
-      t({ zh: "完成题数", en: "Items Done" }),
-      t({ zh: "跟读均分", en: "Repeat Avg" }),
-      t({ zh: "情景问答均分", en: "Scenario Q&A Avg" }),
-      "XP",
-      t({ zh: "连胜天数", en: "Streak Days" }),
-      t({ zh: "状态", en: "Status" }),
-    ]
-    const rows = filteredStudents.map((st) => [
-      st.display_name,
-      st.suffix ?? "",
-      `${st.done_count ?? 0}/${st.total_count ?? 0}`,
-      st.repeat_avg ?? "-",
-      st.question_avg ?? "-",
-      String(st.xp ?? 0),
-      String(st.streak_days ?? 0),
-      t(STATUS_LABELS[statusOf(st)] ?? { zh: "", en: "" }),
-    ])
-    downloadCsv(
-      [header, ...rows],
-      t({
-        zh: `课堂${board.classroom_code}-练习名单-${new Date()
-          .toISOString()
-          .slice(0, 10)}.csv`,
-        en: `classroom-${board.classroom_code}-practice-roster-${new Date()
-          .toISOString()
-          .slice(0, 10)}.csv`,
-      }),
+    const { rows, filename } = boardRosterCsv(
+      filteredStudents,
+      board.classroom_code,
+      t,
     )
+    downloadCsv(rows, filename)
   }
 
   const shareLink = async () => {
@@ -248,19 +198,8 @@ function TeacherBoardPage() {
     }
   }
 
-  const attentionStudents = board.students.filter(
-    (student) => student.inactive_days7 || student.done_count === 0,
-  )
-
   const copyReminder = async () => {
-    const names = attentionStudents
-      .map((student) => student.display_name)
-      .slice(0, 8)
-      .join("、")
-    const message = t({
-      zh: `【${board.classroom_name}】${names || "同学们"}，请完成今天的口语练习。提交后老师会查看反馈。课堂码：${board.classroom_code}`,
-      en: `[${board.classroom_name}] ${names || "everyone"}, please complete today's speaking practice. Your teacher will review your feedback after you submit. Classroom code: ${board.classroom_code}`,
-    })
+    const message = boardReminderMessage(board, board.students, t)
     if (await copyText(message)) {
       toast.success(t({ zh: "提醒文案已复制", en: "Reminder text copied" }), {
         description: message,
@@ -411,274 +350,34 @@ function TeacherBoardPage() {
                 </Button>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <Card>
-                <CardContent className="py-4">
-                  <p className="text-xs text-muted-foreground">
-                    {t({ zh: "班级学生", en: "Students" })}
-                  </p>
-                  <p className="mt-1 text-2xl font-bold">
-                    {board.students.length}
-                    <span className="ml-1 text-xs font-normal text-muted-foreground">
-                      {t({
-                        zh: `/ ${board.class_size} 人`,
-                        en: `/ ${board.class_size}`,
-                      })}
-                    </span>
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="py-4">
-                  <p className="text-xs text-muted-foreground">
-                    {t({ zh: "已有作答", en: "Students with answers" })}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {t({
-                      zh: "至少提交一道题",
-                      en: "At least one answer submitted",
-                    })}
-                  </p>
-                  <p className="mt-1 text-2xl font-bold">
-                    {board.submitted_count}
-                    <span className="ml-1 text-xs font-normal text-muted-foreground">
-                      {t({
-                        zh: `/ ${board.class_size} 人`,
-                        en: `/ ${board.class_size}`,
-                      })}
-                    </span>
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="py-4">
-                  <p className="text-xs text-muted-foreground">
-                    {t({ zh: "问答参考均分", en: "Scenario Q&A Avg" })}
-                  </p>
-                  <p className="mt-1 text-2xl font-bold">{classAvg}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="py-4">
-                  <p className="text-xs text-muted-foreground">
-                    {t({ zh: "值得关注", en: "Needs Attention" })}
-                  </p>
-                  <p className="mt-1 text-2xl font-bold">
-                    {inactiveCount}
-                    <span className="ml-1 text-xs font-normal text-muted-foreground">
-                      {t({
-                        zh: "人 7 天未练",
-                        en: "inactive for 7 days",
-                      })}
-                    </span>
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card className="border-primary/20 bg-secondary/30">
-              <CardContent className="flex flex-wrap items-center gap-3 py-4">
-                <div className="mr-auto min-w-48">
-                  <p className="flex items-center gap-1.5 text-sm font-semibold">
-                    <ClipboardCheck className="size-4 text-primary" />{" "}
-                    {t({ zh: "教学动作", en: "Teaching Actions" })}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {attentionStudents.length > 0
-                      ? t({
-                          zh: `有 ${attentionStudents.length} 位学生还没完成本轮。`,
-                          en: `${attentionStudents.length} student(s) haven't finished this round.`,
-                        })
-                      : t({
-                          zh: "本轮已全部提交，可以进入下一次安排。",
-                          en: "Everyone has submitted this round — ready for the next assignment.",
-                        })}
-                  </p>
-                </div>
-                {attentionStudents.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={copyReminder}>
-                    <MessageCircle />{" "}
-                    {t({ zh: "复制提醒文案", en: "Copy Reminder" })}
-                  </Button>
-                )}
-                <Button size="sm" onClick={() => setActiveTab("prepare")}>
-                  {t({ zh: "安排下一次练习", en: "Assign Next Practice" })}
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  {t({ zh: "今日名单", en: "Today's Roster" })}
-                </CardTitle>
-                <CardDescription>
-                  {t({
-                    zh: "点击一行展开每题分数和音频。分数是参考反馈，不是考试成绩。",
-                    en: "Click a row to expand per-item scores and audio. Scores are reference feedback, not exam grades.",
-                  })}
-                  <span className="mt-1 block sm:hidden">
-                    {t({
-                      zh: "横向滑动表格，可以查看完整成绩与状态。",
-                      en: "Swipe the table sideways to see all scores and statuses.",
-                    })}
-                  </span>
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pb-0">
-                <div className="flex flex-wrap items-center gap-2 pb-3">
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    aria-label={t({
-                      zh: "练习状态筛选",
-                      en: "Filter by practice status",
-                    })}
-                    className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground transition-colors hover:border-primary/35"
-                  >
-                    {Object.entries(STATUS_LABELS).map(([v, label]) => (
-                      <option key={v} value={v}>
-                        {t(label)}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="relative min-w-40 flex-1 sm:max-w-64">
-                    <Search
-                      aria-hidden="true"
-                      className="pointer-events-none absolute left-3 top-3.5 size-4 text-muted-foreground"
-                    />
-                    <Input
-                      type="search"
-                      value={nameQuery}
-                      onChange={(e) => setNameQuery(e.target.value)}
-                      placeholder={t({
-                        zh: "搜索学生姓名",
-                        en: "Search student names",
-                      })}
-                      aria-label={t({
-                        zh: "搜索学生姓名",
-                        en: "Search student names",
-                      })}
-                      className="pl-9"
-                    />
-                  </div>
-                  <span role="status" className="text-xs text-muted-foreground">
-                    {t({
-                      zh: `${filteredStudents.length} / ${board.students.length} 人`,
-                      en: `${filteredStudents.length} / ${board.students.length}`,
-                    })}
-                  </span>
-                  {(nameQuery || statusFilter !== "all") && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setNameQuery("")
-                        setStatusFilter("all")
-                      }}
-                    >
-                      {t({ zh: "清除筛选", en: "Clear Filters" })}
-                    </Button>
-                  )}
-                  <div className="ml-auto flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void shareLink()}
-                    >
-                      <Link2 />
-                      {t({ zh: "学生入口", en: "Student Entry" })}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={exportCsv}>
-                      <Download />
-                      {t({ zh: "导出", en: "Export" })}
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-              <CardContent>
-                {!hasStudents ? (
-                  <p className="py-8 text-center text-muted-foreground">
-                    {t({
-                      zh: "还没有学生进入这个课堂。",
-                      en: "No students have joined this classroom yet.",
-                    })}
-                  </p>
-                ) : filteredStudents.length === 0 ? (
-                  <div className="flex flex-col items-center gap-3 rounded-2xl bg-background px-4 py-10 text-center">
-                    <Search
-                      className="size-7 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <p className="text-sm font-semibold">
-                      {t({
-                        zh: "没有找到符合条件的学生",
-                        en: "No matching students",
-                      })}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {t({
-                        zh: "试试其他姓名，或清除筛选查看全部学生。",
-                        en: "Try another name, or clear filters to see all students.",
-                      })}
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setNameQuery("")
-                        setStatusFilter("all")
-                      }}
-                    >
-                      {t({ zh: "查看全部学生", en: "View All Students" })}
-                    </Button>
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-8" />
-                        <TableHead>{t({ zh: "姓名", en: "Name" })}</TableHead>
-                        <TableHead>{t({ zh: "完成", en: "Done" })}</TableHead>
-                        <TableHead>
-                          {t({
-                            zh: "跟读参考分",
-                            en: "Repeat Reference Score",
-                          })}
-                        </TableHead>
-                        <TableHead>
-                          {t({
-                            zh: "问答参考分",
-                            en: "Scenario Q&A Reference Score",
-                          })}
-                        </TableHead>
-                        <TableHead>{t({ zh: "状态", en: "Status" })}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredStudents.map((student) => (
-                        <StudentRow
-                          key={student.student_id}
-                          student={student}
-                          code={code}
-                          isExamPublish={
-                            board.current_exercise?.is_exam === true
-                          }
-                          expanded={expandedId === student.student_id}
-                          onToggle={() =>
-                            setExpandedId(
-                              expandedId === student.student_id
-                                ? null
-                                : student.student_id,
-                            )
-                          }
-                        />
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
+            <BoardStatsCards
+              studentsCount={board.students.length}
+              classSize={board.class_size}
+              submittedCount={board.submitted_count}
+              classAvg={classAvg}
+              inactiveCount={inactiveCount}
+            />
+            <BoardTeachingActions
+              attentionCount={attentionStudents.length}
+              onCopyReminder={copyReminder}
+              onAssignNext={() => setActiveTab("prepare")}
+            />
+            <BoardRosterCard
+              code={code}
+              hasStudents={hasStudents}
+              filteredStudents={filteredStudents}
+              totalStudents={board.students.length}
+              statusFilter={statusFilter}
+              onStatusFilterChange={setStatusFilter}
+              nameQuery={nameQuery}
+              onNameQueryChange={setNameQuery}
+              onClearFilters={clearFilters}
+              isExamPublish={board.current_exercise?.is_exam === true}
+              expandedId={expandedId}
+              onToggleRow={toggleRow}
+              onShareLink={() => void shareLink()}
+              onExportCsv={exportCsv}
+            />
 
             <Card className="border-accent bg-accent">
               <CardContent className="py-4">
@@ -715,224 +414,4 @@ function TeacherBoardPage() {
       </div>
     </div>
   )
-}
-
-function StudentRow({
-  student,
-  code,
-  expanded,
-  onToggle,
-  isExamPublish,
-}: {
-  student: BoardStudent
-  code: string
-  expanded: boolean
-  onToggle: () => void
-  isExamPublish: boolean
-}) {
-  const { t } = useI18n()
-  const name = student.suffix
-    ? `${student.display_name}·${student.suffix}`
-    : student.display_name
-
-  return (
-    <>
-      <TableRow onClick={onToggle} className="cursor-pointer">
-        <TableCell>
-          <button
-            type="button"
-            aria-expanded={expanded}
-            aria-label={
-              expanded
-                ? t({
-                    zh: `收起 ${name} 的详情`,
-                    en: `Collapse details for ${name}`,
-                  })
-                : t({
-                    zh: `展开 ${name} 的详情`,
-                    en: `Expand details for ${name}`,
-                  })
-            }
-            onClick={(e) => {
-              e.stopPropagation()
-              onToggle()
-            }}
-            className="grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
-          >
-            {expanded ? (
-              <ChevronDown className="size-4" />
-            ) : (
-              <ChevronRight className="size-4" />
-            )}
-          </button>
-        </TableCell>
-        <TableCell className="font-medium">{name}</TableCell>
-        <TableCell>
-          {student.done_count}/{student.total_count}
-        </TableCell>
-        <TableCell>{student.repeat_avg ?? "–"}</TableCell>
-        <TableCell>{student.question_avg ?? "–"}</TableCell>
-        <TableCell className="space-x-1 whitespace-nowrap">
-          {isExamPublish && (
-            <Badge
-              variant={student.exam_tab_switches ? "destructive" : "outline"}
-            >
-              {student.exam_tab_switches === null || undefined
-                ? t({ zh: "未开考", en: "Not started" })
-                : `${t({ zh: "切屏", en: "Switches" })} ${student.exam_tab_switches}`}
-            </Badge>
-          )}
-          {isExamPublish && student.exam_time_used_seconds != null && (
-            <Badge variant="secondary">
-              {student.exam_ended
-                ? `${t({ zh: "已交卷", en: "Submitted" })} · ${formatExamUsed(student.exam_time_used_seconds)}`
-                : `${t({ zh: "用时", en: "Elapsed" })} ${formatExamUsed(student.exam_time_used_seconds)}`}
-            </Badge>
-          )}
-          {student.inactive_days7 && (
-            <Badge variant="destructive">
-              {t({ zh: "7 日未练", en: "Inactive 7 Days" })}
-            </Badge>
-          )}
-          {student.has_pending ? (
-            <Badge variant="secondary">
-              {t({ zh: "评分中", en: "Scoring" })}
-            </Badge>
-          ) : student.done_count === 0 ? (
-            <span className="text-muted-foreground">
-              {t({ zh: "未提交", en: "Not submitted" })}
-            </span>
-          ) : (
-            <Badge variant="outline">
-              {t({ zh: "已提交", en: "Submitted" })}
-            </Badge>
-          )}
-        </TableCell>
-      </TableRow>
-      {expanded && (
-        <TableRow>
-          <TableCell colSpan={6}>
-            {/* biome-ignore lint/a11y/noStaticElementInteractions: stop click bubbling to row toggle */}
-            <div
-              className="space-y-2 py-1"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="link" size="sm" asChild>
-                    <Link
-                      to="/t/$code/s/$studentId"
-                      params={{ code, studentId: student.student_id }}
-                    >
-                      {t({
-                        zh: "查看进步轨迹 →",
-                        en: "View Progress Trail →",
-                      })}
-                    </Link>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async (event) => {
-                      event.stopPropagation()
-                      const feedback =
-                        student.done_count === 0
-                          ? t({
-                              zh: `${name} 还没有提交本轮口语练习，可以提醒完成。`,
-                              en: `${name} hasn't submitted this round of speaking practice yet — a reminder could help.`,
-                            })
-                          : t({
-                              zh: `${name} 已完成 ${student.done_count}/${student.total_count} 题，可结合结果页逐题反馈。`,
-                              en: `${name} has completed ${student.done_count}/${student.total_count} items; give per-item feedback from the results view.`,
-                            })
-                      if (await copyText(feedback)) {
-                        toast.success(
-                          t({
-                            zh: "反馈文案已复制",
-                            en: "Feedback text copied",
-                          }),
-                          {
-                            description: feedback,
-                          },
-                        )
-                      } else {
-                        toast.error(
-                          t({
-                            zh: "复制失败，请重试",
-                            en: "Copy failed, please try again",
-                          }),
-                        )
-                      }
-                    }}
-                  >
-                    {t({ zh: "复制反馈", en: "Copy Feedback" })}
-                  </Button>
-                </div>
-              </div>
-              {student.items
-                .filter((i) => i.type !== "instruction")
-                .every((i) => i.status === "missing") && (
-                <p className="text-sm text-muted-foreground">
-                  {t({ zh: "还没有作答。", en: "No answers yet." })}
-                </p>
-              )}
-              {student.items.map((item, index) => (
-                <div
-                  key={item.item_id}
-                  className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2"
-                >
-                  <span className="w-20 text-sm text-muted-foreground">
-                    {index + 1}.{" "}
-                    {t(
-                      ITEM_TYPE_LABELS[item.type] ?? {
-                        zh: item.type,
-                        en: item.type,
-                      },
-                    )}
-                  </span>
-                  {item.type === "instruction" ? (
-                    item.status === "done" ? (
-                      <span className="text-sm font-medium text-primary">
-                        {t({ zh: "已读", en: "Read" })}
-                      </span>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">
-                        {t({ zh: "未读", en: "Unread" })}
-                      </span>
-                    )
-                  ) : item.status === "missing" ? (
-                    <span className="text-sm text-muted-foreground">
-                      {t({ zh: "未做", en: "Missing" })}
-                    </span>
-                  ) : item.status === "done" ? (
-                    <span className="text-sm font-semibold tabular-nums">
-                      {t(TERMS.score)} {item.overall ?? "–"}
-                    </span>
-                  ) : item.status === "failed" ? (
-                    <span className="text-sm text-destructive">
-                      {t({ zh: "未评出", en: "No Score" })}
-                    </span>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">
-                      <Loader2 className="mr-1 inline size-3 animate-spin" />
-                      {t({ zh: "评分中", en: "Scoring" })}
-                    </span>
-                  )}
-                  {item.attempt_id && item.status === "done" && (
-                    <AttemptAudio attemptId={item.attempt_id} className="h-8" />
-                  )}
-                </div>
-              ))}
-            </div>
-          </TableCell>
-        </TableRow>
-      )}
-    </>
-  )
-}
-
-function formatExamUsed(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}:${String(s).padStart(2, "0")}`
 }

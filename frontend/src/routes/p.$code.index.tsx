@@ -1,44 +1,32 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   createFileRoute,
-  Link,
   useBlocker,
   useNavigate,
   useParams,
 } from "@tanstack/react-router"
-import { ArrowRight } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
-import type { PlanAttempt, PlanItem } from "@/client"
+import type { PlanItem } from "@/client"
 import { ClassesService } from "@/client"
 import AttemptStatusBar from "@/components/Practice/AttemptStatusBar"
-import CueCard from "@/components/Practice/CueCard"
 import DraftRecoveryCard from "@/components/Practice/DraftRecoveryCard"
 import ExamBanner from "@/components/Practice/ExamBanner"
-import {
-  ExamItemTimer,
-  ExamPrepCountdown,
-  PrepCountdownBlock,
-} from "@/components/Practice/ExamCountdowns"
 import ExamStartConfirm from "@/components/Practice/ExamStartConfirm"
-import FeedbackCard from "@/components/Practice/FeedbackCard"
 import InstructionPanel from "@/components/Practice/InstructionPanel"
-import LimitedListenButton from "@/components/Practice/LimitedListenButton"
+import PracticeFeedbackSection from "@/components/Practice/PracticeFeedbackSection"
+import PracticeFooter from "@/components/Practice/PracticeFooter"
 import PracticeHeader from "@/components/Practice/PracticeHeader"
+import PracticeItemCard from "@/components/Practice/PracticeItemCard"
+import {
+  PracticeLoadError,
+  PracticeSkeleton,
+} from "@/components/Practice/PracticeLoadState"
 import PracticeSidebar from "@/components/Practice/PracticeSidebar"
-import PromptTextBlock, {
-  RepeatHint,
-} from "@/components/Practice/PromptTextBlock"
 import RecordArea from "@/components/Practice/RecordArea"
-import SentenceFrames from "@/components/Practice/SentenceFrames"
-import SpeakButton from "@/components/Practice/SpeakButton"
 import StepProgressBar from "@/components/Practice/StepProgressBar"
 import StudentShell from "@/components/Practice/StudentShell"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
 import { useAttemptSubmit } from "@/hooks/useAttemptSubmit"
 import { useExamClockValue } from "@/hooks/useExamClock"
@@ -48,14 +36,15 @@ import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
 import { practiceItemCopy } from "@/lib/practice-copy"
-import { nextUnansweredIndex } from "@/lib/practice-navigation"
-import { resolveRecordLimitSeconds } from "@/lib/recording-limit"
 import {
-  EXAM_KIND_LABELS,
-  EXAM_LEVEL_LABELS,
-  ITEM_TYPE_LABELS,
-} from "@/lib/terms"
-import { formatSeconds } from "@/lib/time"
+  blockerNotice,
+  buildAttemptByItem,
+  isAttemptTerminal,
+  mergeItemsWithExtra,
+  nextItemIdAfterCompletion,
+  resolvePracticeIndex,
+} from "@/lib/practice-derive"
+import { resolveRecordLimitSeconds } from "@/lib/recording-limit"
 
 export const Route = createFileRoute("/p/$code/")({
   component: ClassroomPracticePage,
@@ -84,10 +73,6 @@ export const Route = createFileRoute("/p/$code/")({
     meta: [{ title: `今日练习 / Today's Practice - ${APP_NAME}` }],
   }),
 })
-
-function isTerminal(status: string | undefined): boolean {
-  return status === "done" || status === "failed"
-}
 
 function ClassroomPracticePage() {
   const { t } = useI18n()
@@ -150,7 +135,7 @@ function ClassroomPracticePage() {
       }),
     enabled: student !== null,
     refetchInterval: (query) =>
-      query.state.data?.attempts.some((a) => !isTerminal(a.status))
+      query.state.data?.attempts.some((a) => !isAttemptTerminal(a.status))
         ? 2000
         : 30000, // 慢速同步：老师中途指派新单元时学生端最迟 30 秒感知
   })
@@ -209,15 +194,10 @@ function ClassroomPracticePage() {
 
   // 追加换来的题（本地状态；完成后随 attempts 展示）
   const [extraQuestion, setExtraQuestion] = useState<PlanItem | null>(null)
-  const items = useMemo(() => {
-    if (!plan) return []
-    const merged = [...plan.items]
-    if (extraQuestion) {
-      const exists = merged.some((i) => i.id === extraQuestion.id)
-      if (!exists) merged.push(extraQuestion)
-    }
-    return merged
-  }, [plan, extraQuestion])
+  const items = useMemo(
+    () => (plan ? mergeItemsWithExtra(plan.items, extraQuestion) : []),
+    [plan, extraQuestion],
+  )
 
   // 换一题（US-06）：同主题同档未做过；探索轮绑定 session_id
   const { nextQuestionMutation } = useNextQuestion({
@@ -233,13 +213,10 @@ function ClassroomPracticePage() {
     onExtraQuestion: setExtraQuestion,
   })
 
-  const attemptByItem = useMemo(() => {
-    const map = new Map<string, PlanAttempt>()
-    for (const a of plan?.attempts ?? []) {
-      map.set(a.item_id, a)
-    }
-    return map
-  }, [plan])
+  const attemptByItem = useMemo(
+    () => buildAttemptByItem(plan?.attempts ?? []),
+    [plan],
+  )
 
   // 题目说明「已读」：服务端 acked_at + 本地乐观 ack 集合（点「继续」立即生效）
   const [ackedIds, setAckedIds] = useState<ReadonlySet<string>>(new Set())
@@ -247,25 +224,22 @@ function ClassroomPracticePage() {
     (item: PlanItem) =>
       item.type === "instruction"
         ? ackedIds.has(item.id) || item.acked_at != null
-        : isTerminal(attemptByItem.get(item.id)?.status),
+        : isAttemptTerminal(attemptByItem.get(item.id)?.status),
     [ackedIds, attemptByItem],
   )
 
-  const currentIndex = useMemo(() => {
-    // 查看反馈期间钉在当前题（避免评分完成后的计划刷新把视图拽走）
-    if (pinnedItemId) {
-      const pinnedIndex = items.findIndex((i) => i.id === pinnedItemId)
-      if (pinnedIndex >= 0) return pinnedIndex
-    }
-    if (exam) return Math.min(exam.current_item_index ?? 0, items.length - 1)
-    if (focusItemId) {
-      const focusIndex = items.findIndex((i) => i.id === focusItemId)
-      if (focusIndex >= 0) return focusIndex
-    }
-    const firstUndone = items.findIndex((item) => !isItemDone(item))
-    if (firstUndone === -1) return items.length - 1
-    return firstUndone
-  }, [items, focusItemId, pinnedItemId, exam, isItemDone])
+  // 当前题定位（优先级：钉住题 > 模考题序 > 手动聚焦 > 第一道未完成）
+  const currentIndex = useMemo(
+    () =>
+      resolvePracticeIndex({
+        items,
+        focusItemId,
+        pinnedItemId,
+        examIndex: exam ? (exam.current_item_index ?? 0) : null,
+        isItemDone,
+      }),
+    [items, focusItemId, pinnedItemId, exam, isItemDone],
+  )
 
   const currentItem = items[currentIndex]
   const recordLimitSeconds = resolveRecordLimitSeconds(
@@ -282,7 +256,7 @@ function ClassroomPracticePage() {
           acceptedExamItemsRef.current.has(
             `${plan?.session_id}:${currentItem.id}`,
           )
-        : isTerminal(attemptByItem.get(currentItem.id)?.status)
+        : isAttemptTerminal(attemptByItem.get(currentItem.id)?.status)
     : false
 
   // 分级题型训练：exam_kind（考试式题型）× exam_level（五级）两维分别建模；
@@ -344,7 +318,7 @@ function ClassroomPracticePage() {
     items.length > 0 &&
     items.every(
       (item) =>
-        (item.id === attempt?.item_id && isTerminal(attempt?.status)) ||
+        (item.id === attempt?.item_id && isAttemptTerminal(attempt?.status)) ||
         isItemDone(item),
     )
 
@@ -391,24 +365,7 @@ function ClassroomPracticePage() {
       if (!blockerToastRef.current) {
         blockerToastRef.current = true
         toast.warning(
-          recorder.status === "recording"
-            ? t({
-                zh: "正在录音，先结束或确认录音后再离开",
-                en: "Recording in progress — stop or confirm the recording before leaving",
-              })
-            : submitting
-              ? t({
-                  zh: "录音正在上传，请稍候或完成后再离开",
-                  en: "Your recording is uploading — please wait or finish before leaving",
-                })
-              : t({
-                  zh: exam
-                    ? "录音上传失败，请重传原录音"
-                    : "录音上传失败，请先重传或重录",
-                  en: exam
-                    ? "Upload failed — retry the original recording"
-                    : "Upload failed — please retry the upload or re-record first",
-                }),
+          t(blockerNotice(recorder.status, submitting, Boolean(exam))),
         )
         window.setTimeout(() => {
           blockerToastRef.current = false
@@ -421,7 +378,7 @@ function ClassroomPracticePage() {
 
   // 普通练习等待单题反馈；模考只等待录音上传。
   const attemptStatus = attempt?.status
-  const attemptTerminal = isTerminal(attemptStatus)
+  const attemptTerminal = isAttemptTerminal(attemptStatus)
   const attemptFailed = attemptStatus === "failed"
 
   // 题目说明「继续」：普通练习乐观推进（ack 失败不阻塞，下次 today 校准）；
@@ -468,18 +425,13 @@ function ClassroomPracticePage() {
             }),
           ),
       })
-      const completedIds = new Set(
-        items
-          .filter((item) => isItemDone(item) || item.id === itemId)
-          .map((item) => item.id),
-      )
-      const nextIndex = nextUnansweredIndex(
-        items.map((item) => item.id),
+      const nextItemId = nextItemIdAfterCompletion(
+        items,
         currentIndex,
-        completedIds,
+        (item) => isItemDone(item) || item.id === itemId,
       )
-      if (nextIndex >= 0) {
-        setFocusItemId(items[nextIndex].id)
+      if (nextItemId) {
+        setFocusItemId(nextItemId)
       } else {
         navigatedRef.current = true
         void navigate({
@@ -617,56 +569,16 @@ function ClassroomPracticePage() {
   if (todayQuery.isPending) {
     return (
       <StudentShell active="practice">
-        <div className="flex flex-col gap-6" aria-busy="true">
-          <div className="space-y-2">
-            <Skeleton className="h-7 w-48" />
-            <Skeleton className="h-4 w-64" />
-          </div>
-          <Skeleton className="h-1.5 w-full rounded-full" />
-          <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_270px]">
-            <div className="grid gap-5">
-              <Skeleton className="h-96 w-full rounded-2xl" />
-            </div>
-            <div className="hidden gap-4 lg:grid">
-              <Skeleton className="h-44 rounded-2xl" />
-              <Skeleton className="h-20 rounded-2xl" />
-            </div>
-          </div>
-        </div>
+        <PracticeSkeleton />
       </StudentShell>
     )
   }
   if (todayQuery.isError || !plan) {
-    const detail = (todayQuery.error as { body?: { detail?: string } })?.body
-      ?.detail
-    const contentMissing =
-      detail === "No active passage" ||
-      detail === "No repeat sentences configured"
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
-        {contentMissing ? (
-          <>
-            {t({
-              zh: "今天还没有可以练习的内容。",
-              en: "No practice content is available today.",
-            })}
-            <span className="text-sm">
-              {t({
-                zh: "请联系老师在后台配置篇目和复述句，配好后回来刷新即可。",
-                en: "Please ask your teacher to set up passages and repeat sentences; refresh here once they're ready.",
-              })}
-            </span>
-          </>
-        ) : (
-          t({
-            zh: "练习加载失败，请刷新重试。",
-            en: "Practice failed to load — please refresh and retry.",
-          })
-        )}
-        <Button variant="outline" onClick={() => todayQuery.refetch()}>
-          {t({ zh: "重试", en: "Retry" })}
-        </Button>
-      </div>
+      <PracticeLoadError
+        error={todayQuery.error}
+        onRetry={() => todayQuery.refetch()}
+      />
     )
   }
 
@@ -708,8 +620,6 @@ function ClassroomPracticePage() {
     },
     t,
   )
-  const itemPromptLabel = promptLabel
-  const itemHintZh = hint
 
   return (
     <StudentShell active="practice">
@@ -751,142 +661,33 @@ function ClassroomPracticePage() {
 
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_270px]">
           <div className="grid gap-5">
-            {/* 练习主卡 */}
-            <Card>
-              <CardContent className="space-y-5 pt-6">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-semibold tracking-wide text-primary">
-                    {itemPromptLabel}
-                  </span>
-                  <span className="rounded-md bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
-                    {t(
-                      ITEM_TYPE_LABELS[currentItem.type] ?? {
-                        zh: currentItem.type,
-                        en: currentItem.type,
-                      },
-                    )}
-                    {" · "}
-                    {t({ zh: "作答限时", en: "Answer limit" })}{" "}
-                    {formatSeconds(recordLimitSeconds)}
-                  </span>
-                </div>
-
-                {exam && <ExamItemTimer exam={exam} syncedAt={syncedAt} />}
-
-                {/* 分级题型徽标：题型 × 级别（两维分别建模） */}
-                {examKind && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Badge variant="secondary">
-                      {t(
-                        EXAM_KIND_LABELS[examKind] ?? {
-                          zh: examKind,
-                          en: examKind,
-                        },
-                      )}
-                    </Badge>
-                    {examLevel && (
-                      <Badge variant="outline">
-                        {t(
-                          EXAM_LEVEL_LABELS[examLevel] ?? {
-                            zh: examLevel,
-                            en: examLevel,
-                          },
-                        )}
-                      </Badge>
-                    )}
-                  </div>
-                )}
-
-                {/* 可替换句型（PR B）：按表达用途分组，可收藏 */}
-                {(currentItem.frames?.length ?? 0) > 0 && (
-                  <SentenceFrames
-                    frames={currentItem.frames ?? []}
-                    code={code}
-                    todayQueryKey={todayQueryKey}
-                  />
-                )}
-
-                {/* IELTS Part 2 话题卡 */}
-                {isIeltsPart2 && cueBullets.length > 0 && (
-                  <CueCard bullets={cueBullets} />
-                )}
-
-                {/* Part 2 准备时间倒计时（结束或跳过后才能开始录音）：
-                    秒级展示下沉到 memo 组件——模考走考试时钟，练习走本地秒表 */}
-                {isIeltsPart2 &&
-                  !prepDone &&
-                  (exam ? (
-                    <ExamPrepCountdown exam={exam} syncedAt={syncedAt} />
-                  ) : (
-                    <PrepCountdownBlock
-                      secondsLeft={practicePrepLeft}
-                      onSkip={skipPrep}
-                    />
-                  ))}
-
-                <PromptTextBlock
-                  item={currentItem}
-                  isInstruction={isInstruction}
-                  hideText={hideText}
-                  inExam={Boolean(exam)}
-                  hint={itemHintZh}
-                />
-                {currentItem.type === "repeat" && (
-                  <RepeatHint hint={itemHintZh} />
-                )}
-
-                {!isInstruction &&
-                  (currentItem.type === "repeat" ? (
-                    // 听音状态按 session_id + item_id 隔离：会话变化时重建计数状态，
-                    // 避免同一道题在新会话里沿用旧会话的已听次数。
-                    <LimitedListenButton
-                      key={`${plan?.session_id ?? ""}:${currentItem.id}`}
-                      code={code.toUpperCase()}
-                      sessionId={plan?.session_id}
-                      itemId={currentItem.id}
-                      text={currentItem.text}
-                      audioUrl={currentItem.audio_url}
-                      replayLimit={currentItem.replay_limit ?? 3}
-                      initialUsed={currentItem.listen_used ?? 0}
-                    />
-                  ) : (
-                    <SpeakButton
-                      key={currentItem.id}
-                      text={currentItem.text}
-                      audioUrl={currentItem.audio_url}
-                    />
-                  ))}
-                {isPassage && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs text-primary"
-                    onClick={() => setHideText(!hideText)}
-                  >
-                    {hideText
-                      ? t({ zh: "显示原文", en: "Show text" })
-                      : t({
-                          zh: "收起原文（练记忆）",
-                          en: "Hide text (memory practice)",
-                        })}
-                  </Button>
-                )}
-                {isQuestion && !exam && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs text-primary"
-                    onClick={() => nextQuestionMutation.mutate()}
-                    disabled={nextQuestionMutation.isPending}
-                  >
-                    {t({
-                      zh: "再来一题（同主题，追加到本轮）",
-                      en: "One more question (same topic)",
-                    })}
-                  </Button>
-                )}
-
-                {isInstruction ? (
+            {/* 练习主卡：题面展示（展示组件）；作答区接线留在本页经 footer 注入 */}
+            <PracticeItemCard
+              item={currentItem}
+              promptLabel={promptLabel}
+              hint={hint}
+              isPassage={isPassage}
+              isInstruction={isInstruction}
+              isQuestion={isQuestion}
+              hideText={hideText}
+              onToggleHideText={() => setHideText(!hideText)}
+              exam={exam}
+              syncedAt={syncedAt}
+              examKind={examKind}
+              examLevel={examLevel}
+              cueBullets={cueBullets}
+              isIeltsPart2={isIeltsPart2}
+              prepDone={prepDone}
+              practicePrepLeft={practicePrepLeft}
+              onSkipPrep={skipPrep}
+              code={code}
+              sessionId={plan?.session_id}
+              todayQueryKey={todayQueryKey}
+              recordLimitSeconds={recordLimitSeconds}
+              onNextQuestion={() => nextQuestionMutation.mutate()}
+              nextQuestionPending={nextQuestionMutation.isPending}
+              footer={
+                isInstruction ? (
                   <InstructionPanel
                     suggestedSeconds={currentItem.suggested_seconds}
                     itemDone={currentItemDone}
@@ -894,7 +695,7 @@ function ClassroomPracticePage() {
                     onContinue={() => void continueFromInstruction()}
                     exam={exam}
                     syncedAt={syncedAt}
-                    hint={itemHintZh}
+                    hint={hint}
                   />
                 ) : (
                   <>
@@ -927,9 +728,9 @@ function ClassroomPracticePage() {
                       }}
                     />
                   </>
-                )}
-              </CardContent>
-            </Card>
+                )
+              }
+            />
           </div>
 
           <PracticeSidebar isQuestion={isQuestion} allDone={allDone} />
@@ -950,89 +751,43 @@ function ClassroomPracticePage() {
         {/* 反馈必须绑定实际作答的题型与题目：录音期间老师发布新计划后，
             旧反馈不会挂到新题（attempt 自带 item_type / item_id）。 */}
         {attempt && attemptTerminal && !exam && (
-          <FeedbackCard
+          <PracticeFeedbackSection
             attempt={attempt}
-            itemType={attempt.item_type as "passage" | "repeat" | "question"}
+            attemptFailed={attemptFailed}
+            allDone={allDone}
+            items={items}
+            attemptByItem={attemptByItem}
+            currentIndex={currentIndex}
             onRepractice={() => {
               // 主动重录：清提交标记，避免重置后 allDone 触发自动跳转结果页
               submittedRef.current = false
               resetAttempt()
               recorder.reset()
             }}
-            extraActions={
-              !attemptFailed && (
-                <Button
-                  onClick={() => {
-                    // 先在当前题单里选定下一道未完成题：计划缓存尚未刷新时，
-                    // 仅清空 pinnedItemId 会再次定位到刚完成的旧题。
-                    const completedIds = new Set(
-                      items
-                        .filter(
-                          (item) =>
-                            (item.id === attempt?.item_id &&
-                              isTerminal(attempt?.status)) ||
-                            isTerminal(attemptByItem.get(item.id)?.status),
-                        )
-                        .map((item) => item.id),
-                    )
-                    const nextIndex = nextUnansweredIndex(
-                      items.map((item) => item.id),
-                      currentIndex,
-                      completedIds,
-                    )
-                    if (nextIndex >= 0) {
-                      setFocusItemId(items[nextIndex].id)
-                    } else {
-                      navigatedRef.current = true
-                      void navigate({
-                        to: "/p/$code/result",
-                        params: { code },
-                        search: sessionId ? { session: sessionId } : {},
-                      })
-                    }
-                    setPinnedItemId(null)
-                    recordingTargetRef.current = null
-                    recorder.reset()
-                    resetAttempt()
-                  }}
-                >
-                  {allDone
-                    ? t({
-                        zh: "查看详细总反馈",
-                        en: "View detailed feedback",
-                      })
-                    : t({ zh: "下一题", en: "Next item" })}
-                  <ArrowRight />
-                </Button>
-              )
-            }
+            onNextItem={(nextItemId) => {
+              if (nextItemId) {
+                setFocusItemId(nextItemId)
+              } else {
+                navigatedRef.current = true
+                void navigate({
+                  to: "/p/$code/result",
+                  params: { code },
+                  search: sessionId ? { session: sessionId } : {},
+                })
+              }
+              setPinnedItemId(null)
+              recordingTargetRef.current = null
+              recorder.reset()
+              resetAttempt()
+            }}
           />
         )}
-        <p className="text-center text-sm text-muted-foreground">
-          {t({
-            zh: "每题先看分数和转写，完成后查看全面评价与改进建议。",
-            en: "See each item's score and transcript first, then view full feedback and tips once you finish.",
-          })}
-        </p>
-
-        {allDone && (
-          <Button size="lg" asChild>
-            <Link
-              to="/p/$code/result"
-              params={{ code }}
-              search={sessionId ? { session: sessionId } : {}}
-            >
-              {t({ zh: "查看本轮结果", en: "View this round's results" })}
-            </Link>
-          </Button>
-        )}
-
-        <p className="pb-6 text-center text-xs text-muted-foreground">
-          {t({
-            zh: "分数是参考反馈，不是考试成绩。",
-            en: "Scores are reference feedback, not exam results.",
-          })}
-        </p>
+        <PracticeFooter
+          allDone={allDone}
+          resultsTo="/p/$code/result"
+          resultsParams={{ code }}
+          resultsSearch={sessionId ? { session: sessionId } : undefined}
+        />
       </div>
     </StudentShell>
   )
