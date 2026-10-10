@@ -63,11 +63,13 @@ async function mockPractice(page: Page): Promise<MockState> {
       stop() {
         if (this.state !== "recording") return
         this.state = "inactive"
-        this.ondataavailable?.(
-          new BlobEvent("dataavailable", {
-            data: new Blob(["test audio"], { type: "audio/webm" }),
-          }),
-        )
+        // Linux WebKit 没有全局 BlobEvent 构造器（macOS WebKit 有）：
+        // 用 Event + defineProperty 造出带 data 的等价事件，两端通吃
+        const dataEvent = new Event("dataavailable")
+        Object.defineProperty(dataEvent, "data", {
+          value: new Blob(["test audio"], { type: "audio/webm" }),
+        })
+        this.ondataavailable?.(dataEvent as unknown as BlobEvent)
         queueMicrotask(() => this.onstop?.())
       }
     }
@@ -281,11 +283,12 @@ async function mockDraftPractice(page: Page): Promise<DraftMockState> {
       stop() {
         if (this.state !== "recording") return
         this.state = "inactive"
-        this.ondataavailable?.(
-          new BlobEvent("dataavailable", {
-            data: new Blob(["draft test audio"], { type: "audio/webm" }),
-          }),
-        )
+        // Linux WebKit 无全局 BlobEvent：Event + defineProperty 等价实现
+        const dataEvent = new Event("dataavailable")
+        Object.defineProperty(dataEvent, "data", {
+          value: new Blob(["draft test audio"], { type: "audio/webm" }),
+        })
+        this.ondataavailable?.(dataEvent as unknown as BlobEvent)
         queueMicrotask(() => this.onstop?.())
       }
     }
