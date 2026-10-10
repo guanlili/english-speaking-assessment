@@ -302,16 +302,16 @@ function TeacherBoardPage() {
           className="gap-6"
         >
           <TabsList className="h-11">
-            <TabsTrigger value="prepare" className="px-4 sm:px-6">
+            <TabsTrigger value="prepare" className="px-3.5 sm:px-6">
               {t({ zh: "练习安排", en: "Assign Practice" })}
             </TabsTrigger>
-            <TabsTrigger value="results" className="px-4 sm:px-6">
+            <TabsTrigger value="results" className="px-3.5 sm:px-6">
               {t({ zh: "学生结果", en: "Student Results" })}
             </TabsTrigger>
             <TabsTrigger
               ref={historyTabRef}
               value="history"
-              className="px-4 sm:px-6"
+              className="px-3.5 sm:px-6"
             >
               {t({ zh: "发布历史", en: "Publish History" })}
             </TabsTrigger>

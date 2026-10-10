@@ -136,6 +136,17 @@ for (const vp of VIEWPORTS) {
     await expectNoHorizontalOverflow(page)
   })
 
+  test(`教师课堂面板在${vp.name}无横向溢出`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height })
+    await loginTeacherDemo(page)
+    await page.goto("/t/DEMO01")
+    // 三页签是面板就绪的稳定标志；390 下页签行曾溢出 3px，此处为回归锚点
+    await expect(
+      page.getByRole("tab", { name: /发布历史|Publish History/ }),
+    ).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+  })
+
   test(`学生词汇学习页在${vp.name}无横向溢出`, async ({ page }) => {
     await page.setViewportSize({ width: vp.width, height: vp.height })
     await loginStudentDemo(page)
