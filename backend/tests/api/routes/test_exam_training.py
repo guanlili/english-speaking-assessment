@@ -941,7 +941,7 @@ def test_sentence_frames_batch_import(
 
     stats = client.get(
         "/api/v1/admin/sentence-frames", headers=superuser_token_headers
-    ).json()
+    ).json()["data"]
     # 种子句型存在：只断言本测试创建的句型都在（不依赖库总量）
     created_texts = {"I think ...", "The reason is ..."}
     assert created_texts <= {frame["text_en"] for frame in stats}

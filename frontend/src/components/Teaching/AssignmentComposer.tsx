@@ -171,10 +171,12 @@ export function AssignmentComposer({
       </p>
     )
 
-  const passages = passagesQuery.data
-  const sentences = sentencesQuery.data
-  const scenarios = scenariosQuery.data
-  const instructions = instructionsQuery.data
+  // passages/scenarios 列表接口已改分页信封（limit=None 全量，组卷不变）。
+  // ?? [] 兜底：信封缺失（旧 mock/旧缓存）时退化为空列表，不崩 ErrorBoundary。
+  const passages = passagesQuery.data?.data ?? []
+  const sentences = sentencesQuery.data ?? []
+  const scenarios = scenariosQuery.data?.data ?? []
+  const instructions = instructionsQuery.data ?? []
 
   // 当前按题指派回显
   const currentItems = normalizeReadingSelection(

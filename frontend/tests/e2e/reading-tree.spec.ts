@@ -30,7 +30,9 @@ async function mockBank(page: Page) {
         is_active: true,
         is_superuser: true,
       }
-    else if (path.endsWith("/admin/passages")) body = [article]
+    else if (path.endsWith("/admin/passages"))
+      // 管理端列表已是分页信封 {data, count}（limit 默认 None 全量）
+      body = { data: [article], count: 1 }
     else if (path.endsWith("/classes/TREE/board"))
       body = {
         classroom_code: "TREE",

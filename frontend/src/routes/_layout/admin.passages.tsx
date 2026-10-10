@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import {
   ChevronDown,
@@ -9,13 +14,14 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import type { PassageWithSentences } from "@/client"
 import { AdminService } from "@/client"
 import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { TopicPicker } from "@/components/Admin/TopicPicker"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
+import Pager from "@/components/Common/Pager"
 import AudioSetter from "@/components/Practice/AudioSetter"
 import { PassageSentences } from "@/components/Teaching/PassageSentences"
 import { ReadingSentences } from "@/components/Teaching/ReadingSentences"
@@ -118,10 +124,41 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
   const [editing, setEditing] = useState<PassageWithSentences | null>(null)
   const [toDelete, setToDelete] = useState<PassageWithSentences | null>(null)
 
+  // 服务端分页 + 服务端关键词（题库增长后不再整表拉取；limit=None 全量只留给组卷）
+  const PAGE_SIZE = 20
+  const [pageIndex, setPageIndex] = useState(0)
   const passagesQuery = useQuery({
-    queryKey: ["admin", "passages"],
-    queryFn: () => AdminService.listPassages(),
+    queryKey: ["admin", "passages", keyword, pageIndex],
+    queryFn: () =>
+      AdminService.listPassages({
+        q: keyword.trim() || undefined,
+        skip: pageIndex * PAGE_SIZE,
+        limit: PAGE_SIZE,
+      }),
+    placeholderData: keepPreviousData,
   })
+  const totalCount = passagesQuery.data?.count ?? 0
+  useEffect(() => {
+    setPageIndex(0)
+  }, [])
+  useEffect(() => {
+    if (
+      passagesQuery.isSuccess &&
+      !passagesQuery.isPlaceholderData &&
+      (passagesQuery.data?.data ?? []).length === 0 &&
+      totalCount > 0 &&
+      pageIndex > 0
+    ) {
+      setPageIndex(Math.max(0, Math.ceil(totalCount / PAGE_SIZE) - 1))
+    }
+  }, [
+    passagesQuery.isSuccess,
+    passagesQuery.isPlaceholderData,
+    passagesQuery.data,
+    totalCount,
+    pageIndex,
+  ])
+
   const unitsQuery = useQuery({
     queryKey: ["admin", "units"],
     queryFn: () => AdminService.listUnits(),
@@ -206,7 +243,9 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
             topics={topicsQuery.data ?? []}
             units={units}
             scenarioTopics={
-              new Set((scenariosQuery.data ?? []).map((s) => s.topic ?? ""))
+              new Set(
+                (scenariosQuery.data?.data ?? []).map((s) => s.topic ?? ""),
+              )
             }
             pending={createMutation.isPending}
             onSubmit={(form) => createMutation.mutateAsync(form)}
@@ -241,49 +280,47 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
             {t({ zh: "重试", en: "Retry" })}
           </Button>
         </div>
-      ) : (passagesQuery.data ?? []).length === 0 ? (
+      ) : (passagesQuery.data?.data ?? []).length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">
-          {t({
-            zh: "还没有篇目，点击上方新建按钮开始备课。",
-            en: "No passages yet — use the New Passage form above to start building.",
-          })}
+          {keyword.trim()
+            ? t({
+                zh: "没有匹配的篇目，请换个关键词。",
+                en: "No passages match — try another keyword.",
+              })
+            : t({
+                zh: "还没有篇目，点击上方新建按钮开始备课。",
+                en: "No passages yet — use the New Passage form above to start building.",
+              })}
         </p>
       ) : (
-        <TopicGroups
-          passages={(passagesQuery.data ?? []).filter((passage) =>
-            `${passage.title} ${passage.topic}`
-              .toLowerCase()
-              .includes(keyword.trim().toLowerCase()),
+        <>
+          <TopicGroups
+            passages={passagesQuery.data?.data ?? []}
+            units={unitsQuery.data ?? []}
+            expandedId={expandedId}
+            onToggle={setExpandedId}
+            onEdit={setEditing}
+            onDelete={setToDelete}
+            onMutated={invalidate}
+          />
+          {passagesQuery.isSuccess && totalCount > PAGE_SIZE && (
+            <Pager
+              pageIndex={pageIndex}
+              pageSize={PAGE_SIZE}
+              count={totalCount}
+              isPlaceholder={passagesQuery.isPlaceholderData}
+              onChange={setPageIndex}
+            />
           )}
-          units={unitsQuery.data ?? []}
-          expandedId={expandedId}
-          onToggle={setExpandedId}
-          onEdit={setEditing}
-          onDelete={setToDelete}
-          onMutated={invalidate}
-        />
+        </>
       )}
 
-      {passagesQuery.isSuccess &&
-        (passagesQuery.data ?? []).length > 0 &&
-        !(passagesQuery.data ?? []).some((passage) =>
-          `${passage.title} ${passage.topic}`
-            .toLowerCase()
-            .includes(keyword.trim().toLowerCase()),
-        ) && (
-          <p className="py-8 text-center text-muted-foreground">
-            {t({
-              zh: "没有匹配的篇目，请换个关键词。",
-              en: "No passages match — try another keyword.",
-            })}
-          </p>
-        )}
       <EditPassageDialog
         passage={editing}
         topics={topicsQuery.data ?? []}
         units={units}
         scenarioTopics={
-          new Set((scenariosQuery.data ?? []).map((s) => s.topic ?? ""))
+          new Set((scenariosQuery.data?.data ?? []).map((s) => s.topic ?? ""))
         }
         pending={updateMutation.isPending}
         onClose={() => setEditing(null)}

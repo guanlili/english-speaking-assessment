@@ -60,7 +60,9 @@ async function mockBoard(page: Page, isExam = true) {
         is_superuser: true,
         is_active: true,
       }
-    else if (path.endsWith("/admin/passages")) body = [article]
+    else if (path.endsWith("/admin/passages"))
+      // 管理端列表已是分页信封 {data, count}（limit 默认 None 全量）
+      body = { data: [article], count: 1 }
     else if (path.endsWith("/CLARITY/board"))
       body = {
         classroom_code: "CLARITY",

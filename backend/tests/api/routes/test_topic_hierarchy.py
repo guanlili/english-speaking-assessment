@@ -72,7 +72,7 @@ def test_passage_topic_derives_from_unit(
     assert resp.status_code == 200
     topics = {
         p["id"]: p["topic"]
-        for p in client.get("/api/v1/admin/passages", headers=headers).json()
+        for p in client.get("/api/v1/admin/passages", headers=headers).json()["data"]
     }
     assert topics[passage["id"]] == "Food"
 
@@ -150,7 +150,7 @@ def test_split_passage_carries_unit_topic(
     assert resp.json()["created"] >= 2
     article = next(
         p
-        for p in client.get("/api/v1/admin/passages", headers=headers).json()
+        for p in client.get("/api/v1/admin/passages", headers=headers).json()["data"]
         if p["id"] == passage["id"]
     )
     assert article["topic"] == "Travel"

@@ -1,10 +1,16 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { ClipboardPaste, Pencil, Trash2 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AdminService, type QuestionBankOut } from "@/client"
 import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
+import Pager from "@/components/Common/Pager"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -133,19 +139,49 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
   const [keyword, setKeyword] = useState("")
   const [search, setSearch] = useState("")
 
+  // 服务端分页：筛选已在服务端，分页总数跟随筛选集合
+  const PAGE_SIZE = 20
+  const [pageIndex, setPageIndex] = useState(0)
   const bankQuery = useQuery({
-    queryKey: ["admin", "question-bank", filterTopic, search],
+    queryKey: ["admin", "question-bank", filterTopic, search, pageIndex],
     queryFn: () =>
       AdminService.listQuestionBank({
         topic: filterTopic === ALL_TOPICS ? undefined : filterTopic,
         q: search || undefined,
+        skip: pageIndex * PAGE_SIZE,
+        limit: PAGE_SIZE,
       }),
+    placeholderData: keepPreviousData,
   })
+  const rows = bankQuery.data?.data ?? []
+  const totalCount = bankQuery.data?.count ?? 0
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["admin", "question-bank"] })
     void queryClient.invalidateQueries({ queryKey: ["admin", "scenarios"] })
   }
+
+  // 筛选变化回第一页；末页删空回退（不看 placeholder/失败响应）
+  useEffect(() => {
+    setPageIndex(0)
+  }, [])
+  useEffect(() => {
+    if (
+      bankQuery.isSuccess &&
+      !bankQuery.isPlaceholderData &&
+      rows.length === 0 &&
+      totalCount > 0 &&
+      pageIndex > 0
+    ) {
+      setPageIndex(Math.max(0, Math.ceil(totalCount / PAGE_SIZE) - 1))
+    }
+  }, [
+    bankQuery.isSuccess,
+    bankQuery.isPlaceholderData,
+    rows.length,
+    totalCount,
+    pageIndex,
+  ])
 
   // ── 批量录入 ──
   const [batchTopic, setBatchTopic] = useState("")
@@ -163,7 +199,7 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
     }
   }, [batchText, t])
 
-  const scenarioId = (scenariosQuery.data ?? []).find(
+  const scenarioId = (scenariosQuery.data?.data ?? []).find(
     (s) => s.topic === batchTopic,
   )?.id
 
@@ -287,8 +323,7 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
       ),
   })
 
-  const topics = (scenariosQuery.data ?? []).map((s) => s.topic)
-  const rows = bankQuery.data ?? []
+  const topics = (scenariosQuery.data?.data ?? []).map((s) => s.topic)
   // 秒数上限按题型：考试题（长回答）≤300；普通题 ≤60
   const secondsLimit = editForm.exam_kind ? 300 : 60
   // 分级题型必须标注级别（后端同口径：有题型无级别 → 422）
@@ -426,8 +461,8 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
           </CardTitle>
           <CardDescription>
             {t({
-              zh: `共 ${rows.length} 条，按主题、序号排列。`,
-              en: `${rows.length} in total, ordered by topic and index.`,
+              zh: `共 ${totalCount} 条，按主题、序号排列。`,
+              en: `${totalCount} in total, ordered by topic and index.`,
             })}
           </CardDescription>
         </CardHeader>
@@ -497,61 +532,72 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
               })}
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t({ zh: "主题", en: "Topic" })}</TableHead>
-                  <TableHead>{t({ zh: "题目", en: "Question" })}</TableHead>
-                  <TableHead>
-                    {t({ zh: "中文提示", en: "Chinese Hint" })}
-                  </TableHead>
-                  <TableHead className="w-16">
-                    {t({ zh: "秒数", en: "Secs" })}
-                  </TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{row.topic}</TableCell>
-                    <TableCell className="max-w-96 font-medium">
-                      {row.text}
-                    </TableCell>
-                    <TableCell className="max-w-56 text-muted-foreground">
-                      {row.translation ?? "—"}
-                    </TableCell>
-                    <TableCell>{row.suggested_seconds}s</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t({
-                            zh: "编辑题目",
-                            en: "Edit question",
-                          })}
-                          onClick={() => openEdit(row)}
-                        >
-                          <Pencil />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t({
-                            zh: "删除题目",
-                            en: "Delete question",
-                          })}
-                          onClick={() => setToDelete(row)}
-                        >
-                          <Trash2 className="text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t({ zh: "主题", en: "Topic" })}</TableHead>
+                    <TableHead>{t({ zh: "题目", en: "Question" })}</TableHead>
+                    <TableHead>
+                      {t({ zh: "中文提示", en: "Chinese Hint" })}
+                    </TableHead>
+                    <TableHead className="w-16">
+                      {t({ zh: "秒数", en: "Secs" })}
+                    </TableHead>
+                    <TableHead />
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell>{row.topic}</TableCell>
+                      <TableCell className="max-w-96 font-medium">
+                        {row.text}
+                      </TableCell>
+                      <TableCell className="max-w-56 text-muted-foreground">
+                        {row.translation ?? "—"}
+                      </TableCell>
+                      <TableCell>{row.suggested_seconds}s</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t({
+                              zh: "编辑题目",
+                              en: "Edit question",
+                            })}
+                            onClick={() => openEdit(row)}
+                          >
+                            <Pencil />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t({
+                              zh: "删除题目",
+                              en: "Delete question",
+                            })}
+                            onClick={() => setToDelete(row)}
+                          >
+                            <Trash2 className="text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {bankQuery.isSuccess && totalCount > PAGE_SIZE && (
+                <Pager
+                  pageIndex={pageIndex}
+                  pageSize={PAGE_SIZE}
+                  count={totalCount}
+                  isPlaceholder={bankQuery.isPlaceholderData}
+                  onChange={setPageIndex}
+                />
+              )}
+            </>
           )}
         </CardContent>
       </Card>
