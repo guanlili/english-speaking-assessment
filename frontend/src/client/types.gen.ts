@@ -1901,6 +1901,8 @@ export type AdminCreateSentenceFramesBatchData = {
 
 export type AdminCreateSentenceFramesBatchResponse = (SentenceFrameBatchResult);
 
+export type AdminReadMetricsResponse = (unknown);
+
 export type AttemptsCreateAttemptUploadData = {
     formData: Body_attempts_create_attempt_upload;
 };
