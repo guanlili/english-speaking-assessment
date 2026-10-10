@@ -153,7 +153,10 @@ jobs:
   e2e:
     name: E2E 冒烟（主干道）
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 45 分钟：浏览器缓存未命中（lockfile 变更/缓存淘汰）时 Chromium+WebKit
+    # 全量下载约 20 分钟起，叠加完整栈启动与双浏览器套件，30 分钟会撞线
+    # 被强制取消（2026-10-10 PR#101 首次部署实测）；缓存命中时全程 ~10 分钟
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - name: 准备环境变量（local 环境，演示登录可用）

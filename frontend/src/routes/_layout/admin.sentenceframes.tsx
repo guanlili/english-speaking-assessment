@@ -1,8 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { MessageSquareQuote, Pencil, Plus, Trash2, Upload } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { AdminService, ApiError, type SentenceFramePublic } from "@/client"
+import Pager from "@/components/Common/Pager"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -62,14 +68,53 @@ function SentenceFramesAdmin() {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
 
-  const framesQuery = useQuery({
-    queryKey: ["admin", "sentence-frames"],
-    queryFn: () => AdminService.listSentenceFrames(),
-  })
-  const frames = framesQuery.data ?? []
-
   const [filterLevel, setFilterLevel] = useState("")
   const [filterPurpose, setFilterPurpose] = useState("")
+  // 服务端分页 + 服务端筛选：level/purpose 已有查询参数，不再全表拉取后客户端过滤
+  const PAGE_SIZE = 20
+  const [pageIndex, setPageIndex] = useState(0)
+
+  const framesQuery = useQuery({
+    queryKey: [
+      "admin",
+      "sentence-frames",
+      filterLevel,
+      filterPurpose,
+      pageIndex,
+    ],
+    queryFn: () =>
+      AdminService.listSentenceFrames({
+        level: filterLevel || undefined,
+        purpose: filterPurpose || undefined,
+        skip: pageIndex * PAGE_SIZE,
+        limit: PAGE_SIZE,
+      }),
+    placeholderData: keepPreviousData,
+  })
+  const frames = framesQuery.data?.data ?? []
+  const totalCount = framesQuery.data?.count ?? 0
+
+  // 筛选变化回第一页；末页删空回退到仍有数据的一页（不看 placeholder/失败响应）
+  useEffect(() => {
+    setPageIndex(0)
+  }, [])
+  useEffect(() => {
+    if (
+      framesQuery.isSuccess &&
+      !framesQuery.isPlaceholderData &&
+      frames.length === 0 &&
+      totalCount > 0 &&
+      pageIndex > 0
+    ) {
+      setPageIndex(Math.max(0, Math.ceil(totalCount / PAGE_SIZE) - 1))
+    }
+  }, [
+    framesQuery.isSuccess,
+    framesQuery.isPlaceholderData,
+    frames.length,
+    totalCount,
+    pageIndex,
+  ])
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [editing, setEditing] = useState<FrameRow | null>(null)
@@ -185,12 +230,6 @@ function SentenceFramesAdmin() {
       ),
   })
 
-  const filtered = frames.filter(
-    (frame) =>
-      (!filterLevel || frame.level === filterLevel) &&
-      (!filterPurpose || frame.purpose === filterPurpose),
-  )
-
   const formValid =
     form.text_en.trim() &&
     form.text_zh.trim() &&
@@ -295,7 +334,7 @@ function SentenceFramesAdmin() {
             <p role="status" className="pb-6 text-sm text-muted-foreground">
               {t({ zh: "正在加载…", en: "Loading…" })}
             </p>
-          ) : filtered.length === 0 ? (
+          ) : frames.length === 0 ? (
             <p className="pb-6 text-sm text-muted-foreground">
               {t({ zh: "还没有句型。", en: "No frames yet." })}
             </p>
@@ -321,7 +360,7 @@ function SentenceFramesAdmin() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((frame) => (
+                  {frames.map((frame) => (
                     <TableRow key={frame.id}>
                       <TableCell>
                         <Badge variant="outline">
@@ -389,6 +428,15 @@ function SentenceFramesAdmin() {
                   ))}
                 </TableBody>
               </Table>
+              {framesQuery.isSuccess && totalCount > PAGE_SIZE && (
+                <Pager
+                  pageIndex={pageIndex}
+                  pageSize={PAGE_SIZE}
+                  count={totalCount}
+                  isPlaceholder={framesQuery.isPlaceholderData}
+                  onChange={setPageIndex}
+                />
+              )}
             </>
           )}
         </CardContent>

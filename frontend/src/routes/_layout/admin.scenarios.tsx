@@ -1,11 +1,17 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { Loader2, Pencil, Plus, Sparkles, Trash2 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { AdminService } from "@/client"
 import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
+import Pager from "@/components/Common/Pager"
 import AudioSetter from "@/components/Practice/AudioSetter"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -64,11 +70,45 @@ export function ScenariosAdmin({ embedded = false }: { embedded?: boolean }) {
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const [keyword, setKeyword] = useState("")
   const [newTopic, setNewTopic] = useState("")
+  // 服务端分页 + 服务端关键词：题库上千后不再整表拉取（limit=None 全量只留给组卷）
+  const PAGE_SIZE = 20
+  const [pageIndex, setPageIndex] = useState(0)
 
   const scenariosQuery = useQuery({
-    queryKey: ["admin", "scenarios"],
-    queryFn: () => AdminService.listScenarios(),
+    queryKey: ["admin", "scenarios", keyword, pageIndex],
+    queryFn: () =>
+      AdminService.listScenarios({
+        q: keyword.trim() || undefined,
+        skip: pageIndex * PAGE_SIZE,
+        limit: PAGE_SIZE,
+      }),
+    placeholderData: keepPreviousData,
   })
+  const scenarios = scenariosQuery.data?.data ?? []
+  const totalCount = scenariosQuery.data?.count ?? 0
+
+  // 关键词变化回第一页；删除末页最后一条后回退到仍有数据的一页
+  // （只看当前页的真实成功响应，placeholder/失败不据此跳页——同批次09 R13）
+  useEffect(() => {
+    setPageIndex(0)
+  }, [])
+  useEffect(() => {
+    if (
+      scenariosQuery.isSuccess &&
+      !scenariosQuery.isPlaceholderData &&
+      scenarios.length === 0 &&
+      totalCount > 0 &&
+      pageIndex > 0
+    ) {
+      setPageIndex(Math.max(0, Math.ceil(totalCount / PAGE_SIZE) - 1))
+    }
+  }, [
+    scenariosQuery.isSuccess,
+    scenariosQuery.isPlaceholderData,
+    scenarios.length,
+    totalCount,
+    pageIndex,
+  ])
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["admin", "scenarios"] })
@@ -153,38 +193,36 @@ export function ScenariosAdmin({ embedded = false }: { embedded?: boolean }) {
             {t({ zh: "重试", en: "Retry" })}
           </Button>
         </div>
-      ) : (scenariosQuery.data ?? []).length === 0 ? (
+      ) : scenarios.length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">
-          {t({
-            zh: "还没有情景主题，先在上面创建一个（主题需与篇目一致才会配对）。",
-            en: "No topics yet — create one above (topics must match passage topics to pair up).",
-          })}
+          {keyword.trim()
+            ? t({
+                zh: "没有匹配的主题，请换个关键词。",
+                en: "No topics match — try another keyword.",
+              })
+            : t({
+                zh: "还没有情景主题，先在上面创建一个（主题需与篇目一致才会配对）。",
+                en: "No topics yet — create one above (topics must match passage topics to pair up).",
+              })}
         </p>
       ) : (
-        (scenariosQuery.data ?? [])
-          .filter((scenario) =>
-            scenario.topic.toLowerCase().includes(keyword.trim().toLowerCase()),
-          )
-          .map((scenario) => (
-            <ScenarioCard
-              key={scenario.id}
-              scenario={scenario as ScenarioShape}
-              onMutated={invalidate}
-            />
-          ))
+        scenarios.map((scenario) => (
+          <ScenarioCard
+            key={scenario.id}
+            scenario={scenario as ScenarioShape}
+            onMutated={invalidate}
+          />
+        ))
       )}
-      {scenariosQuery.isSuccess &&
-        (scenariosQuery.data ?? []).length > 0 &&
-        !(scenariosQuery.data ?? []).some((scenario) =>
-          scenario.topic.toLowerCase().includes(keyword.trim().toLowerCase()),
-        ) && (
-          <p className="py-8 text-center text-muted-foreground">
-            {t({
-              zh: "没有匹配的主题，请换个关键词。",
-              en: "No topics match — try another keyword.",
-            })}
-          </p>
-        )}
+      {scenariosQuery.isSuccess && totalCount > PAGE_SIZE && (
+        <Pager
+          pageIndex={pageIndex}
+          pageSize={PAGE_SIZE}
+          count={totalCount}
+          isPlaceholder={scenariosQuery.isPlaceholderData}
+          onChange={setPageIndex}
+        />
+      )}
     </div>
   )
 }

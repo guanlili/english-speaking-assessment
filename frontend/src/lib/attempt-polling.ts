@@ -78,6 +78,6 @@ export function rubricPending(
       }
     | undefined,
 ): boolean {
-  if (!attempt || attempt.status !== "done") return false
+  if (attempt?.status !== "done") return false
   return attempt.rubric?.status === "pending"
 }

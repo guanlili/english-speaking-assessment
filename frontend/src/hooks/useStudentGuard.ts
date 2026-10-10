@@ -36,6 +36,5 @@ export function useStudentGuard(
       clearStudent(code)
       void navigate({ to: "/j/$code", params: { code } })
     }
-    // biome-ignore lint/correctness/useExhaustiveDependencies: queries 每渲染新建，已由 notFoundKey 聚合；navigate 来自路由器保持稳定
   }, [student, code, notFoundKey, navigate])
 }

@@ -360,7 +360,7 @@ def test_item_assignment_independent_types(
     # 从种子情景取一道问答题
     scenarios = client.get(
         "/api/v1/admin/scenarios", headers=superuser_token_headers
-    ).json()
+    ).json()["data"]
     scenario = next(s for s in scenarios if s["topic"] == "Pets")
     question_id = scenario["questions"][0]["id"]
 
@@ -460,7 +460,7 @@ def test_split_passage_into_readings(
 
     passages = client.get(
         "/api/v1/admin/passages", headers=superuser_token_headers
-    ).json()
+    ).json()["data"]
     by_id = {p["id"]: p for p in passages}
     article = by_id[original["id"]]
     assert article["is_active"] is True
@@ -523,7 +523,7 @@ def test_split_passage_into_readings(
     assert update.status_code == 200, update.text
     listed = client.get(
         "/api/v1/admin/passages", headers=superuser_token_headers
-    ).json()
+    ).json()["data"]
     refreshed = next(p for p in listed if p["id"] == original["id"])
     assert refreshed["reading_segments"] == [
         "The first sentence.",
@@ -611,7 +611,7 @@ def test_legacy_split_children_are_hidden_but_published_snapshots_survive(
     db.add(parent_row)
     db.add(child_row)
     db.commit()
-    listed = client.get("/api/v1/admin/passages", headers=headers).json()
+    listed = client.get("/api/v1/admin/passages", headers=headers).json()["data"]
     assert not any(p["id"] == child["id"] for p in listed)
     parent = next(p for p in listed if p["id"] == article["id"])
     assert parent["reading_child_ids"] == [child["id"]]
@@ -669,7 +669,7 @@ def test_split_passage_into_sentence_readings(
     assert split.json()["passage_ids"] == []
     passages = client.get(
         "/api/v1/admin/passages", headers=superuser_token_headers
-    ).json()
+    ).json()["data"]
     article = next(p for p in passages if p["id"] == original_id)
     assert article["reading_segments"] == sentences
     assert article["is_active"] is True
