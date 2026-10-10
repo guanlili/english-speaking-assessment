@@ -6,11 +6,12 @@ import {
   useNavigate,
   useParams,
 } from "@tanstack/react-router"
-import { ArrowRight, Flame, Sparkles } from "lucide-react"
+import { ArrowRight } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
+import AttemptStatusBar from "@/components/Practice/AttemptStatusBar"
 import CueCard from "@/components/Practice/CueCard"
 import DraftRecoveryCard from "@/components/Practice/DraftRecoveryCard"
 import ExamBanner from "@/components/Practice/ExamBanner"
@@ -23,6 +24,7 @@ import ExamStartConfirm from "@/components/Practice/ExamStartConfirm"
 import FeedbackCard from "@/components/Practice/FeedbackCard"
 import InstructionPanel from "@/components/Practice/InstructionPanel"
 import LimitedListenButton from "@/components/Practice/LimitedListenButton"
+import PracticeHeader from "@/components/Practice/PracticeHeader"
 import PracticeSidebar from "@/components/Practice/PracticeSidebar"
 import PromptTextBlock, {
   RepeatHint,
@@ -43,8 +45,9 @@ import { useExamClockValue } from "@/hooks/useExamClock"
 import { useNextQuestion } from "@/hooks/useNextQuestion"
 import { useRecordingFlow } from "@/hooks/useRecordingFlow"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
-import { displayName, loadStudent } from "@/lib/classroom-student"
+import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
+import { practiceItemCopy } from "@/lib/practice-copy"
 import { nextUnansweredIndex } from "@/lib/practice-navigation"
 import { resolveRecordLimitSeconds } from "@/lib/recording-limit"
 import {
@@ -695,121 +698,34 @@ function ClassroomPracticePage() {
     (item) => item.id === currentItem.id || isItemDone(item),
   )
 
-  const isPassage = currentItem.type === "passage"
-  // 题目说明：无作答的引导页，学生点「继续」进入下一题
-  const isInstruction = currentItem.type === "instruction"
-  // 文章拆句展开的逐句条目：标出句序，提示语与整篇朗读区分
-  const isSentenceItem = isPassage && currentItem.sentence_index != null
-  const sentenceProgress =
-    isSentenceItem && currentItem.sentence_total
-      ? t({
-          zh: `第 ${currentItem.sentence_index}/${currentItem.sentence_total} 句`,
-          en: `Sentence ${currentItem.sentence_index}/${currentItem.sentence_total}`,
-        })
-      : null
-  const itemPromptLabel = examKind
-    ? t(EXAM_KIND_LABELS[examKind] ?? { zh: examKind, en: examKind })
-    : isInstruction
-      ? t({
-          zh: "INSTRUCTIONS · 读一读再继续",
-          en: "INSTRUCTIONS · Read before continuing",
-        })
-      : isQuestion
-        ? t({
-            zh: "YOUR TURN · 分享你的想法",
-            en: "YOUR TURN · Share your thoughts",
-          })
-        : isSentenceItem
-          ? `${t({
-              zh: "READ ALOUD · 逐句朗读",
-              en: "READ ALOUD · Sentence by sentence",
-            })} · ${sentenceProgress}`
-          : isPassage
-            ? t({
-                zh: "READ ALOUD · 大声朗读全文",
-                en: "READ ALOUD · Read the full text aloud",
-              })
-            : t({
-                zh: "LISTEN & REPEAT · 听一听，再试着说",
-                en: "LISTEN & REPEAT · Listen, then try to say it",
-              })
-  const itemHintZh = isInstruction
-    ? t({
-        zh: "读完这段说明，点「继续」进入下一题。这一页不用录音。",
-        en: "Read this, then tap Continue for the next item. No recording on this page.",
-      })
-    : isQuestion
-      ? t({
-          zh: "试着说出你的观点，再用一个理由或小例子支持它。",
-          en: "State your opinion, then back it up with a reason or a quick example.",
-        })
-      : isSentenceItem
-        ? t({
-            zh: "把这一句读清楚。停顿和语调自然比逐词准确更重要。",
-            en: "Read this sentence clearly. Natural pauses and intonation matter more than word-by-word accuracy.",
-          })
-        : isPassage
-          ? t({
-              zh: "先扫一眼生词，然后完整朗读。停顿和语调自然比逐词准确更重要。",
-              en: "Skim the new words first, then read it through. Natural pauses and intonation matter more than word-by-word accuracy.",
-            })
-          : t({
-              zh: "先听完整句子，再跟着节奏说。比起说得快，说得自然更重要。",
-              en: "Listen to the full sentence first, then follow its rhythm. Sounding natural beats speaking fast.",
-            })
+  // 题面文案（角标/提示）与题型判定收敛在纯函数层（lib/practice-copy，可单测）
+  const { isPassage, isInstruction, promptLabel, hint } = practiceItemCopy(
+    {
+      type: currentItem.type,
+      examKind,
+      sentenceIndex: currentItem.sentence_index,
+      sentenceTotal: currentItem.sentence_total,
+    },
+    t,
+  )
+  const itemPromptLabel = promptLabel
+  const itemHintZh = hint
 
   return (
     <StudentShell active="practice">
       <div className="flex flex-col gap-6">
-        {/* 顶部：标题 HUD + 结果页入口 */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">
-              {t({
-                zh: `第 ${currentIndex + 1}/${items.length} 题`,
-                en: `Item ${currentIndex + 1}/${items.length}`,
-              })}
-              {plan.assigned_unit_title && (
-                <span className="ml-2 text-sm font-medium text-primary">
-                  📌 {plan.assigned_unit_title}
-                </span>
-              )}
-            </h1>
-            <p className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-              {displayName(student)} ·{" "}
-              {t({
-                zh: `课堂 ${plan.classroom_code}`,
-                en: `Classroom ${plan.classroom_code}`,
-              })}
-              {plan.gamification && (
-                <>
-                  <span className="flex items-center gap-1">
-                    <Flame className="size-4 text-orange-500" />
-                    {t({
-                      zh: `${plan.gamification.streak_days} 天`,
-                      en: `${plan.gamification.streak_days} days`,
-                    })}
-                  </span>
-                  <span className="flex items-center gap-1 font-medium text-foreground">
-                    <Sparkles className="size-4 text-primary" />
-                    {plan.gamification.xp} XP
-                  </span>
-                </>
-              )}
-            </p>
-          </div>
-          <div className="flex gap-1">
-            <Button variant="ghost" size="sm" asChild>
-              <Link
-                to="/p/$code/result"
-                params={{ code }}
-                search={sessionId ? { session: sessionId } : {}}
-              >
-                {t({ zh: "结果页", en: "Results" })}
-              </Link>
-            </Button>
-          </div>
-        </div>
+        {/* 顶部：标题 HUD + 结果页入口（展示组件） */}
+        <PracticeHeader
+          currentIndex={currentIndex}
+          total={items.length}
+          unitTitle={plan.assigned_unit_title}
+          classroomCode={plan.classroom_code}
+          student={student}
+          streakDays={plan.gamification?.streak_days}
+          xp={plan.gamification?.xp}
+          resultsTo="/p/$code/result"
+          resultsSearch={sessionId ? { session: sessionId } : undefined}
+        />
 
         {exam && (
           <ExamBanner
@@ -1019,43 +935,18 @@ function ClassroomPracticePage() {
           <PracticeSidebar isQuestion={isQuestion} allDone={allDone} />
         </div>
 
-        {/* 08A 状态接线：rubric 评定中不是卡死；轮询停止（403/404）给
-            只读重试入口——绝不重传音频、不新增幂等键 */}
-        {attemptRubricPending && !exam && (
-          <div
-            role="status"
-            className="flex items-center gap-2 rounded-xl border bg-muted/30 px-4 py-3 text-sm text-muted-foreground"
-          >
-            <span className="size-2 animate-pulse rounded-full bg-primary" />
-            {t({
-              zh: "基础反馈已就绪，模拟分评定中…",
-              en: "Feedback is ready. Mock score is being graded…",
-            })}
-          </div>
+        {/* 08A 状态接线（展示组件）：评定中指示 + 403/404 停轮后的只读重试 */}
+        {!exam && (
+          <AttemptStatusBar
+            rubricPending={attemptRubricPending}
+            pollErrorStatus={
+              attemptPollError.present
+                ? (attemptPollError.status ?? null)
+                : null
+            }
+            onRefetch={refetchAttempt}
+          />
         )}
-        {attemptPollError.present &&
-          (attemptPollError.status === 403 ||
-            attemptPollError.status === 404) &&
-          !exam && (
-            <div
-              role="alert"
-              className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm"
-            >
-              <span>
-                {t({
-                  zh: "评分查询失败（无权限或作答不存在）",
-                  en: "Cannot fetch your score (no access or attempt missing)",
-                })}
-              </span>
-              <Button
-                variant="outline"
-                className="h-11"
-                onClick={refetchAttempt}
-              >
-                {t({ zh: "重新查询", en: "Retry fetch" })}
-              </Button>
-            </div>
-          )}
         {/* 反馈必须绑定实际作答的题型与题目：录音期间老师发布新计划后，
             旧反馈不会挂到新题（attempt 自带 item_type / item_id）。 */}
         {attempt && attemptTerminal && !exam && (
