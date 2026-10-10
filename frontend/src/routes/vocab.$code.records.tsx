@@ -37,6 +37,7 @@ import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
 import { EXPLAIN_FIRST_TRY_ACCURACY, TERMS } from "@/lib/terms"
+import { formatDate, formatDateTime } from "@/lib/time"
 
 export const Route = createFileRoute("/vocab/$code/records")({
   component: VocabRecordsPage,
@@ -55,7 +56,7 @@ const KIND_LABELS: Record<string, { zh: string; en: string }> = {
 const TREND_MAX_BARS = 12
 
 function VocabRecordsPage() {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const { code } = useParams({ from: "/vocab/$code/records" })
   const navigate = useNavigate({ from: "/vocab/$code/records" })
   const student = loadStudent(code)
@@ -169,7 +170,7 @@ function VocabRecordsPage() {
                 {trend.map((bar) => (
                   <li key={bar.key} className="flex items-center gap-3">
                     <span className="w-24 shrink-0 text-xs text-muted-foreground sm:w-32">
-                      {bar.date ? new Date(bar.date).toLocaleDateString() : "–"}
+                      {bar.date ? formatDate(bar.date, lang) : "–"}
                     </span>
                     <div
                       role="img"
@@ -265,7 +266,7 @@ function VocabRecordsPage() {
                         : ""}
                       {` · ${
                         row.started_at
-                          ? new Date(row.started_at).toLocaleString()
+                          ? formatDateTime(row.started_at, lang)
                           : "–"
                       }`}
                     </span>

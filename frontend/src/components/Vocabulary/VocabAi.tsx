@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { useI18n } from "@/lib/i18n"
 import { EXPLAIN_AI_CONTENT, EXPLAIN_AI_SCOPE, TERMS } from "@/lib/terms"
+import { formatDate, formatDateTime } from "@/lib/time"
 
 /** AI 触发的通用错误提示（503/429/422 都有后端双语 detail，前端兜底映射） */
 export function aiErrorToast(
@@ -69,7 +70,7 @@ export function WordExplanationDialog({
   open: boolean
   onClose: () => void
 }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [data, setData] = useState<VocabularyAiWordExplanation | null>(null)
   const [error, setError] = useState(false)
   const [pending, setPending] = useState(false)
@@ -173,7 +174,7 @@ export function WordExplanationDialog({
             )}
             <p className="text-[11px] text-muted-foreground">
               {t({ zh: "生成时间", en: "Generated" })}{" "}
-              {new Date(data.generated_at).toLocaleString()}
+              {formatDateTime(data.generated_at, lang)}
               {data.cached && ` · ${t({ zh: "缓存结果", en: "cached" })}`}
             </p>
           </div>
@@ -205,7 +206,7 @@ function InsightBody({
   onRegenerate?: () => void
   regenerating?: boolean
 }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   return (
     <div className="space-y-4">
       {stale && (
@@ -265,7 +266,7 @@ function InsightBody({
           {scopeLines.join(" · ")}
           {" · "}
           {t({ zh: "生成时间", en: "Generated" })}{" "}
-          {new Date(generatedAt).toLocaleString()}
+          {formatDateTime(generatedAt, lang)}
           {cached && !stale && ` · ${t({ zh: "缓存结果", en: "cached" })}`}
         </span>
         {onRegenerate && (
@@ -373,7 +374,7 @@ export function OverallInsightDialog({
   open: boolean
   onClose: () => void
 }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [data, setData] = useState<VocabularyAiOverallInsight | null>(null)
 
   const generate = useMutation({
@@ -430,7 +431,7 @@ export function OverallInsightDialog({
                 en: `${data.scope?.answered_count ?? 0} answers`,
               }),
               data.scope?.from_time
-                ? `${new Date(data.scope.from_time).toLocaleDateString()} ~ ${new Date(data.scope.to_time ?? "").toLocaleDateString()}`
+                ? `${formatDate(data.scope.from_time, lang)} ~ ${formatDate(data.scope.to_time ?? "", lang)}`
                 : "",
             ].filter(Boolean)}
             generatedAt={data.generated_at}

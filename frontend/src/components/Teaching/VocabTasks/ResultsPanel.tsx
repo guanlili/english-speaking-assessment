@@ -31,6 +31,7 @@ import {
 import { downloadCsv } from "@/lib/csv"
 import { type BiString, useI18n } from "@/lib/i18n"
 import { EXPLAIN_QUIZ_TAB_SWITCH, TERMS } from "@/lib/terms"
+import { formatTime } from "@/lib/time"
 import { QuizAnswerSheetDialog } from "./QuizAnswerSheetDialog"
 import { RoundSelector } from "./RoundSelector"
 
@@ -59,7 +60,7 @@ export function ResultsPanel({
   selectedAssignmentId: string | null
   onSelectAssignment: (id: string | null) => void
 }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const queryClient = useQueryClient()
   // 查看哪一期：null = 当前进行中；归档/重发后可切换历史期数按快照回看
   const resultsQuery = useQuery({
@@ -675,7 +676,7 @@ export function ResultsPanel({
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {row.submitted_at
-                          ? new Date(row.submitted_at).toLocaleTimeString()
+                          ? formatTime(row.submitted_at, lang)
                           : "–"}
                       </TableCell>
                       <TableCell>
@@ -771,7 +772,7 @@ export function ResultsPanel({
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {row.submitted_at
-                        ? new Date(row.submitted_at).toLocaleTimeString()
+                        ? formatTime(row.submitted_at, lang)
                         : "–"}
                     </TableCell>
                   </TableRow>

@@ -22,6 +22,7 @@ import {
 import { APP_NAME } from "@/config"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { clearStudent, displayName, loadStudent } from "@/lib/classroom-student"
+import { copyText } from "@/lib/clipboard"
 import { useI18n } from "@/lib/i18n"
 import { TERMS } from "@/lib/terms"
 
@@ -54,15 +55,14 @@ function ClassroomPage() {
   useStudentGuard(code, student, todayQuery)
 
   const copyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(code.toUpperCase())
+    if (await copyText(code.toUpperCase())) {
       toast.success(
         t({
           zh: `课堂码 ${code.toUpperCase()} 已复制`,
           en: `Classroom code ${code.toUpperCase()} copied`,
         }),
       )
-    } catch {
+    } else {
       toast.error(
         t({
           zh: "复制失败，请手动记录课堂码",

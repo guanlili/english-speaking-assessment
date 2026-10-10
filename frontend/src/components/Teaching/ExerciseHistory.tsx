@@ -18,6 +18,7 @@ import {
 import { downloadCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
 import { ITEM_TYPE_LABELS } from "@/lib/terms"
+import { formatDateTime } from "@/lib/time"
 
 /** 时长标签：60 秒内显示秒，超过显示「分 秒」（中英文各自习惯格式）。 */
 function formatDurationLabel(
@@ -122,8 +123,8 @@ export function ExerciseHistory({
                 {exercise.published_at && (
                   <span>
                     {t({
-                      zh: `发布于 ${new Date(exercise.published_at).toLocaleString("zh-CN")}`,
-                      en: `Published ${new Date(exercise.published_at).toLocaleString("zh-CN")}`,
+                      zh: `发布于 ${formatDateTime(exercise.published_at, "zh")}`,
+                      en: `Published ${formatDateTime(exercise.published_at, "en")}`,
                     })}
                   </span>
                 )}

@@ -42,6 +42,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
+import { copyText } from "@/lib/clipboard"
 import { useI18n } from "@/lib/i18n"
 import { extractErrorMessage, localizedDetail } from "@/utils"
 
@@ -387,15 +388,14 @@ function ClassroomCard({
   const [rosterOpen, setRosterOpen] = useState(false)
 
   const copyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(classroom.code)
+    if (await copyText(classroom.code)) {
       showSuccessToast(
         t({
           zh: `课堂码 ${classroom.code} 已复制`,
           en: `Classroom code ${classroom.code} copied`,
         }),
       )
-    } catch {
+    } else {
       showErrorToast(
         t({
           zh: `复制失败，请手动复制课堂码 ${classroom.code}`,

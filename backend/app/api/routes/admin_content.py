@@ -1073,7 +1073,8 @@ def list_topics(session: SessionDep, _admin: TeacherUserDep) -> Any:
     """已有主题词表（篇目/单元/情景的 topic 并集）：录入时从列表选，不再自由输入。"""
     topics: set[str] = set()
     for column in (Passage.topic, Unit.topic, Scenario.topic):
-        topics.update(t for t in session.exec(select(column)).all() if t)
+        # DISTINCT 在库端去重，避免随内容量增长整列拉回
+        topics.update(t for t in session.exec(select(column).distinct()).all() if t)
     return sorted(topics)
 
 

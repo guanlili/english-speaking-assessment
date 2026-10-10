@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
 import { useI18n } from "@/lib/i18n"
 import { TERMS } from "@/lib/terms"
+import { formatDateTime } from "@/lib/time"
 
 export const Route = createFileRoute("/t/$code/vocab")({
   component: TeacherVocabPage,
@@ -20,7 +21,7 @@ export const Route = createFileRoute("/t/$code/vocab")({
 })
 
 function TeacherVocabPage() {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const { code } = useParams({ from: "/t/$code/vocab" })
   const [tab, setTab] = useState<"assign" | "results">("assign")
   // 查看哪一期：null = 当前进行中（后端默认最新发布）；任务列表点击后切换
@@ -130,11 +131,11 @@ function TeacherVocabPage() {
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {t({
-                zh: `发布于 ${current.assignment.published_at ? new Date(current.assignment.published_at).toLocaleString() : "–"}`,
-                en: `Published ${current.assignment.published_at ? new Date(current.assignment.published_at).toLocaleString() : "–"}`,
+                zh: `发布于 ${current.assignment.published_at ? formatDateTime(current.assignment.published_at, "zh") : "–"}`,
+                en: `Published ${current.assignment.published_at ? formatDateTime(current.assignment.published_at, "en") : "–"}`,
               })}
               {current.assignment.due_at &&
-                ` · ${t({ zh: "截止", en: "Due" })} ${new Date(current.assignment.due_at).toLocaleString()}`}
+                ` · ${t({ zh: "截止", en: "Due" })} ${formatDateTime(current.assignment.due_at, lang)}`}
               {` · ${t({
                 zh: `已完成 ${current.completed_count ?? 0}/${current.target_count ?? 0}`,
                 en: `${current.completed_count ?? 0}/${current.target_count ?? 0} completed`,
