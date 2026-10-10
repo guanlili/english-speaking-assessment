@@ -891,6 +891,10 @@ class AttemptPublic(SQLModel):
     engine: str
     duration_s: float
     retry_count: int = 0
+    # 题干投影（提交时快照）：title 仅篇目/说明有；text 即题目文本/引导文。
+    # 教师逐题反馈弹窗与学生历史回看不依赖活题库即可展示题干。
+    item_title: str | None = None
+    item_text: str | None = None
     transcript: str | None = None
     completeness: int | None = None
     fluency: int | None = None
@@ -1128,6 +1132,24 @@ class TrailData(SQLModel):
     vocab_counts: dict[str, int] = {}
     # 五级词库口径的用词来源命中（现行为标准；来自 attempt.vocab.level_stats）
     level_counts: dict[str, int] = {}
+
+
+# 学生历史练习列表行（GET /classes/{code}/my-sessions）：一次会话一行，
+# 供「我的成长」页跳 /p/{code}/result?session=<id> 回看详细反馈。
+class MySessionSummary(SQLModel):
+    session_id: uuid.UUID
+    session_date: date
+    # daily = 课堂/发布练习轮；explore = 主题探索自由练习
+    mode: str
+    # 发布练习标题（assignment → ClassroomExercise.title；自主练习为 null，
+    # 前端按 mode 出双语文案，不把后端中文串直接当界面文案）
+    title: str | None = None
+    # 完成口径与 board 一致：题单（快照）题位的最新一次作答是否 done；
+    # 自主练习无固定快照分母，按该轮实际作答过的题位计
+    done_count: int
+    total_count: int
+    # 该轮已评分作答的参考分均值（未出分/考试未终结为 null）
+    overall_avg: float | None = None
 
 
 # ── 词汇学习（背单词模块，2026-10-01 设计文档 P0）──────────────────

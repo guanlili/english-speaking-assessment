@@ -82,6 +82,9 @@ def test_create_and_poll_attempt(
     assert attempt["status"] == "done"
     assert attempt["engine"] == "mock"
     assert attempt["transcript"]
+    # 题干投影（快照）：非发布会话的篇目快照无标题，正文即题干
+    assert attempt["item_text"]
+    assert attempt["item_title"] is None
     for key in ("completeness", "fluency", "overall"):
         assert 0 <= attempt[key] <= 100
     assert len(attempt["advice"]) <= 2

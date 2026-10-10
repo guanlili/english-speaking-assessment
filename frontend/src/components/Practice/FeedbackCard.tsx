@@ -16,8 +16,8 @@ import { adviceText, type BilingualAdvice } from "@/lib/bilingual"
 import { useI18n } from "@/lib/i18n"
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/utils"
 
-// PRD §4：三种分的来源必须在界面上写清
-const ENGINE_LABELS: Record<string, BiString> = {
+// PRD §4：三种分的来源必须在界面上写清（作答级来源徽标，教师逐题反馈弹窗复用）
+export const ENGINE_LABELS: Record<string, BiString> = {
   mock: {
     zh: "演示模式 · 本地模拟引擎",
     en: "Demo mode · local simulated engine",
