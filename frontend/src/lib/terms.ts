@@ -220,12 +220,6 @@ export const EXPLAIN_QUIZ_RULES = {
   en: "The timer starts only when you tap Start. Time is kept by the server — refreshing or switching devices won't reset it. Each item accepts one submission; time-up auto-submits.",
 } as const satisfies BiString
 
-/** 测验判分口径（报告/成绩触点共用） */
-export const EXPLAIN_QUIZ_SCORING = {
-  zh: "成绩 = 首答正确数 ÷ 总题数（未答按 0 分计入，与答错分开展示）；有补考时取最好成绩并标注。",
-  en: "Score = first-try correct ÷ total items (unanswered count as zero, shown separately from wrong). With a retake, the best score applies and is labeled.",
-} as const satisfies BiString
-
 /** 测验切屏口径（教师端触点共用） */
 export const EXPLAIN_QUIZ_TAB_SWITCH = {
   zh: "切屏只记录次数供教师参考，不自动认定作弊。",
