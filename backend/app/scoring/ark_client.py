@@ -7,9 +7,11 @@ rubric 评分与 AI 出题共用；转写（responses API）与语音合成（sp
 import json
 import logging
 import re
+import time
 
 import httpx
 
+from app.core import metrics
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -68,13 +70,22 @@ class ArkChatClient:
         headers = {"Authorization": f"Bearer {self.api_key}"}
         url = f"{self.base_url}/chat/completions"
         client = self._client if self._client is not None else _shared_client
-        resp = client.post(url, json=payload, headers=headers)
-        if resp.status_code != 200:
-            raise ArkChatError(f"Ark chat 返回 {resp.status_code}: {resp.text[:200]}")
+        start = time.perf_counter()
         try:
-            return resp.json()["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise ArkChatError("Ark chat 响应结构异常") from exc
+            resp = client.post(url, json=payload, headers=headers)
+            if resp.status_code != 200:
+                raise ArkChatError(
+                    f"Ark chat 返回 {resp.status_code}: {resp.text[:200]}"
+                )
+            try:
+                content = resp.json()["choices"][0]["message"]["content"]
+            except (KeyError, IndexError, TypeError) as exc:
+                raise ArkChatError("Ark chat 响应结构异常") from exc
+        except Exception:
+            metrics.record_call("llm", ok=False, duration_s=time.perf_counter() - start)
+            raise
+        metrics.record_call("llm", ok=True, duration_s=time.perf_counter() - start)
+        return content
 
 
 def parse_json_payload(content: str) -> dict:

@@ -18,6 +18,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import load_only
 from sqlmodel import Session, col, func, select
 
+from app.core import metrics
 from app.core.config import settings
 from app.models import (
     MAX_SCORING_RETRIES,
@@ -443,7 +444,16 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
                 effective_mime = attempt.audio_mime
             conversion_ms = (perf_counter() - conversion_start) * 1000
             asr_start = perf_counter()
-            transcript = provider.transcribe(audio, effective_mime)
+            try:
+                transcript = provider.transcribe(audio, effective_mime)
+                metrics.record_call(
+                    "asr", ok=True, duration_s=perf_counter() - asr_start
+                )
+            except Exception:
+                metrics.record_call(
+                    "asr", ok=False, duration_s=perf_counter() - asr_start
+                )
+                raise
             logger.info(
                 "ASR attempt=%s provider=%s conversion_ms=%.0f recognition_ms=%.0f",
                 attempt_id,
@@ -647,6 +657,12 @@ def _ensure_executor_locked() -> ThreadPoolExecutor:
             thread_name_prefix="scoring",
         )
     return _executor
+
+
+def executor_is_running() -> bool:
+    """评分线程池是否在运行（metrics 端点读；锁内读 _executor_stopped）。"""
+    with _executor_lock:
+        return not _executor_stopped and _executor is not None
 
 
 def get_executor() -> ThreadPoolExecutor:
