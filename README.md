@@ -273,7 +273,6 @@ english-speaking-assessment/
 | pre-commit 钩子 | CI 是唯一质量门槛。本地钩子对 AI 驱动的开发是摩擦（AI 每次提交都会被格式化钩子打断），且和 CI 重复 |
 | staging 环境 | 单服务器多项目、快速交付定位。staging 的维护成本大于收益；重要变更靠 CI 门槛 + 部署后健康检查兜底 |
 | JWT refresh token | 8 天 access token + localStorage 是简单性取舍，适合工具型产品。对安全有更高要求的项目再升级会话机制 |
-| 登录接口限流 | 不在代码层加依赖。`rate_limit` **不是 Caddy 内置模块**——官方发行版不带，需要用 `xcaddy` 自行构建含 `caddy-ratelimit` 插件的二进制（或换用云防火墙/WAF 做限流）；本仓库不提供也不默认包含，正式上线且暴露公网时再评估 |
-| 重置密码 token 一次性失效 | token 48 小时内可重复使用（改完密码不作废）。工具型项目风险低；高安全要求的项目可把 token 绑定当前密码 hash（密码一改即失效） |
+| 登录接口限流 | 已按进程内存实现（`login.py`：10 次/5 分钟，IP 与账号双键滑动窗口），未做跨 worker 共享存储——多 worker 部署时限额按进程数放大；更严格的公网限流再评估云防火墙/WAF |
 | 生产环境隐藏 `/docs`、`/redoc` | API 文档公开对内网工具是便利。正式上线面向公网的项目建议关闭（`ENVIRONMENT=production` 时设 `docs_url=None`）或在 Caddy 层加 basic auth |
 | Kubernetes / 多机编排 | 单服务器 docker compose 覆盖当前所有项目规模。规模到了再迁移，不预支复杂度 |

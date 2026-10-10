@@ -117,7 +117,5 @@ ${SLUG_WARNING}
    3. favicon     —— 替换 frontend/public/assets/images/favicon.png
    4. 首次启动    —— docker compose up --build
    5. 部署前      —— 按 README 配置 GitHub Secrets（SECRET_KEY 另生成新值，勿复用本地）
-   6. 交付前      —— 删除 Items 示例代码（清单见 README「第四步」）
-   7. 注册方式    —— 生产默认关闭自助注册（Secret USERS_OPEN_REGISTRATION 控制）；
-                     "管理员建账号"模式的项目请一并删除注册页（见 README「第四步」）
+   6. 注册方式    —— 生产默认关闭自助注册（Secret USERS_OPEN_REGISTRATION 控制）
 DONE
