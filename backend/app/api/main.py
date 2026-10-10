@@ -6,6 +6,7 @@ from app.api.routes import (
     audio,
     classes,
     login,
+    metrics,
     students,
     users,
     utils,
@@ -22,6 +23,7 @@ api_router.include_router(classes.router)
 api_router.include_router(attempts.router)
 api_router.include_router(students.router)
 api_router.include_router(admin_content.router)
+api_router.include_router(metrics.router)
 api_router.include_router(audio.router)
 api_router.include_router(vocabulary.router)
 api_router.include_router(vocab_levels.router)
