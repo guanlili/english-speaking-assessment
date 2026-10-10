@@ -157,7 +157,7 @@ def test_generate_endpoint_drafts_not_saved(
 
     listing = client.get(
         "/api/v1/admin/scenarios", headers=superuser_token_headers
-    ).json()
+    ).json()["data"]
     mine = next(s for s in listing if s["id"] == scenario["id"])
     assert mine["questions"] == []  # 未入库
 
@@ -202,7 +202,7 @@ def test_auto_split_creates_and_is_guarded(
     # 由短到长选出的 3 句可在篇目详情里按原顺序验证
     detail = client.get(
         "/api/v1/admin/passages", headers=superuser_token_headers
-    ).json()
+    ).json()["data"]
     mine = next(p2 for p2 in detail if p2["id"] == created["id"])
     texts = [s2["text"] for s2 in mine["sentences"]]
     assert texts == [

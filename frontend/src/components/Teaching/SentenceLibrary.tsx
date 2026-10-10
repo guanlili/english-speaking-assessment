@@ -139,7 +139,7 @@ export function SentenceLibrary({
     editForm.replays >= 0 &&
     editForm.replays <= 9
 
-  const passages = passagesQuery.data ?? []
+  const passages = passagesQuery.data?.data ?? []
   const sentences = (sentencesQuery.data ?? [])
     .filter((s) => (standaloneOnly ? !s.passage_id : true))
     .filter((s) =>

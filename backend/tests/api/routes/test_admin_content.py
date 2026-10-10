@@ -20,7 +20,80 @@ def admin(client: TestClient, superuser_token_headers: dict[str, str]) -> TestCl
 def _passages(client: TestClient, headers: dict[str, str]) -> list[dict]:
     resp = client.get("/api/v1/admin/passages", headers=headers)
     assert resp.status_code == 200
-    return resp.json()
+    return resp.json()["data"]
+
+
+def test_list_pagination_envelope(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """四个管理列表的分页语义：limit=None 全量（组卷兼容）；skip/limit 分页 +
+    count 反映过滤后总数；非法参数 422；无 token 401 不变。"""
+    # scenarios：limit=None 全量 + count
+    full = client.get("/api/v1/admin/scenarios", headers=superuser_token_headers)
+    assert full.status_code == 200
+    full_body = full.json()
+    assert full_body["count"] == len(full_body["data"])
+    if full_body["count"] == 0:
+        return  # 空库种子不可假设，只在有数据时验证分页切片
+
+    # limit=1 + skip 翻页：两页拼接与全量一致（稳定排序下）
+    page1 = client.get(
+        "/api/v1/admin/scenarios",
+        params={"skip": 0, "limit": 1},
+        headers=superuser_token_headers,
+    ).json()
+    page2 = client.get(
+        "/api/v1/admin/scenarios",
+        params={"skip": 1, "limit": 1},
+        headers=superuser_token_headers,
+    ).json()
+    assert page1["count"] == full_body["count"]
+    assert len(page1["data"]) == 1 and len(page2["data"]) == 1
+    assert page1["data"][0]["id"] != page2["data"][0]["id"]
+    assert [p["id"] for p in page1["data"] + page2["data"]] == [
+        p["id"] for p in full_body["data"][:2]
+    ]
+
+    # question bank：count 跟随过滤
+    bank_all = client.get(
+        "/api/v1/admin/questions", headers=superuser_token_headers
+    ).json()
+    bank_page = client.get(
+        "/api/v1/admin/questions",
+        params={"skip": 0, "limit": 2},
+        headers=superuser_token_headers,
+    ).json()
+    assert bank_page["count"] == bank_all["count"]
+    assert len(bank_page["data"]) == min(2, bank_all["count"])
+
+    # 句型库 / 篇目：同信封结构
+    frames = client.get(
+        "/api/v1/admin/sentence-frames", headers=superuser_token_headers
+    ).json()
+    assert set(frames.keys()) == {"data", "count"}
+    passages = client.get(
+        "/api/v1/admin/passages", headers=superuser_token_headers
+    ).json()
+    assert set(passages.keys()) == {"data", "count"}
+    assert passages["count"] == len(passages["data"])  # limit=None 全量
+
+    # 非法分页参数 → 422；无 token → 401（语义不变）
+    assert (
+        client.get(
+            "/api/v1/admin/passages",
+            params={"limit": 0},
+            headers=superuser_token_headers,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.get(
+            "/api/v1/admin/passages",
+            params={"skip": -1},
+            headers=superuser_token_headers,
+        ).status_code
+        == 422
+    )
 
 
 def test_admin_requires_superuser(client: TestClient) -> None:
@@ -144,7 +217,7 @@ def test_scenario_question_crud(
     question = ok.json()
 
     listing = client.get("/api/v1/admin/scenarios", headers=superuser_token_headers)
-    mine = next(s for s in listing.json() if s["id"] == scenario["id"])
+    mine = next(s for s in listing.json()["data"] if s["id"] == scenario["id"])
     assert len(mine["questions"]) == 1
 
     assert (
@@ -168,7 +241,7 @@ def test_school_life_question_bank(
 ) -> None:
     response = client.get("/api/v1/admin/scenarios", headers=superuser_token_headers)
     assert response.status_code == 200
-    scenarios = response.json()
+    scenarios = response.json()["data"]
     school = next(s for s in scenarios if s["topic"] == SCHOOL_LIFE_TOPIC)
     questions = school["questions"]
     assert school["is_active"] is True
@@ -196,7 +269,7 @@ def test_school_life_question_bank(
     _seed_school_life_questions(db)
     repeated = client.get(
         "/api/v1/admin/scenarios", headers=superuser_token_headers
-    ).json()
+    ).json()["data"]
     assert repeated == scenarios
 
 
@@ -416,7 +489,7 @@ def test_unit_passage_count_and_assignment_read_back(
         assert mine["passage_count"] == 1
 
         listed = client.get("/api/v1/admin/passages", headers=superuser_token_headers)
-        row = next(p for p in listed.json() if p["id"] == passage["id"])
+        row = next(p for p in listed.json()["data"] if p["id"] == passage["id"])
         assert row["unit_id"] == unit["id"]
 
         # 停用篇目不计入（指派前检查按“学生能练到”算）
@@ -478,7 +551,7 @@ def test_question_bank_list_with_filters(
         # 无过滤：包含本题库全部（其他主题种子也在，只验证本题都在）
         base = client.get("/api/v1/admin/questions", headers=superuser_token_headers)
         assert base.status_code == 200
-        mine = [q for q in base.json() if q["topic"] == "Test Bank Filter"]
+        mine = [q for q in base.json()["data"] if q["topic"] == "Test Bank Filter"]
         assert len(mine) == 3
         assert all(q["scenario_id"] == scenario["id"] for q in mine)
 
@@ -488,7 +561,7 @@ def test_question_bank_list_with_filters(
             params={"topic": "Test Bank Filter"},
             headers=superuser_token_headers,
         )
-        assert len(by_topic.json()) == 3
+        assert len(by_topic.json()["data"]) == 3
 
         # 档位过滤
         by_band = client.get(
@@ -496,7 +569,7 @@ def test_question_bank_list_with_filters(
             params={"topic": "Test Bank Filter", "band": "B1"},
             headers=superuser_token_headers,
         )
-        assert len(by_band.json()) == 2
+        assert len(by_band.json()["data"]) == 2
 
         # 关键词（英文）
         by_q = client.get(
@@ -504,7 +577,7 @@ def test_question_bank_list_with_filters(
             params={"topic": "Test Bank Filter", "q": "weekend"},
             headers=superuser_token_headers,
         )
-        assert [q["text"] for q in by_q.json()] == ["What did you do last weekend?"]
+        assert [q["text"] for q in by_q.json()["data"]] == ["What did you do last weekend?"]
 
         # 关键词（中文提示）
         by_cn = client.get(
@@ -512,7 +585,7 @@ def test_question_bank_list_with_filters(
             params={"topic": "Test Bank Filter", "q": "老师"},
             headers=superuser_token_headers,
         )
-        assert len(by_cn.json()) == 1
+        assert len(by_cn.json()["data"]) == 1
 
         # 非法档位 → 422
         bad = client.get(
@@ -622,7 +695,7 @@ def test_update_question_translation_and_bounds(
             "/api/v1/admin/questions",
             params={"topic": "Test Bank Edit"},
             headers=superuser_token_headers,
-        ).json()
+        ).json()["data"]
         row = next(q for q in bank if q["id"] == created["id"])
         assert row["translation"] == "中文提示"
         assert row["suggested_seconds"] == 30

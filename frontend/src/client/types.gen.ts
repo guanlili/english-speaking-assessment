@@ -424,6 +424,14 @@ export type PassagePublic = {
     created_at?: (string | null);
 };
 
+/**
+ * 管理端篇目分页信封：count 为根篇目总数；limit=None 时全量（组卷/句库兼容）
+ */
+export type PassagesListOut = {
+    data: Array<PassageWithSentences>;
+    count: number;
+};
+
 export type PassageSplitResult = {
     created: number;
     passage_ids?: Array<(string)>;
@@ -513,6 +521,14 @@ export type PlanItem = {
     sentence_index?: (number | null);
     sentence_total?: (number | null);
     frames?: (Array<SentenceFramePublic> | null);
+};
+
+/**
+ * 问答题库分页信封：count 反映过滤后的总数
+ */
+export type QuestionBankListOut = {
+    data: Array<QuestionBankOut>;
+    count: number;
 };
 
 /**
@@ -607,6 +623,14 @@ export type ScenarioQuestionPublic = {
     prep_seconds?: (number | null);
 };
 
+/**
+ * 问答题库主题分页信封：count 为主题总数；limit=None 时全量
+ */
+export type ScenariosListOut = {
+    data: Array<ScenarioOut>;
+    count: number;
+};
+
 export type ScenarioUpdate = {
     topic?: (string | null);
     is_active?: (boolean | null);
@@ -667,6 +691,14 @@ export type SentenceFramePublic = {
     text_zh: string;
     status?: string;
     favorited?: boolean;
+};
+
+/**
+ * 句型库分页信封：count 反映过滤后的总数
+ */
+export type SentenceFramesListOut = {
+    data: Array<SentenceFramePublic>;
+    count: number;
 };
 
 export type SentenceFrameUpdate = {
@@ -1612,7 +1644,16 @@ export type VocabularyWrongWords = {
     items?: Array<VocabularyWrongWordItem>;
 };
 
-export type AdminListPassagesResponse = (Array<PassageWithSentences>);
+export type AdminListPassagesData = {
+    limit?: (number | null);
+    /**
+     * 标题/主题关键词过滤
+     */
+    q?: (string | null);
+    skip?: number;
+};
+
+export type AdminListPassagesResponse = (PassagesListOut);
 
 export type AdminCreatePassageData = {
     requestBody: PassageCreate;
@@ -1699,7 +1740,16 @@ export type AdminDeleteInstructionResponse = ({
     [key: string]: (string);
 });
 
-export type AdminListScenariosResponse = (Array<ScenarioOut>);
+export type AdminListScenariosData = {
+    limit?: (number | null);
+    /**
+     * 主题关键词过滤
+     */
+    q?: (string | null);
+    skip?: number;
+};
+
+export type AdminListScenariosResponse = (ScenariosListOut);
 
 export type AdminCreateScenarioData = {
     requestBody: ScenarioCreate;
@@ -1757,17 +1807,19 @@ export type AdminListQuestionBankData = {
      * 考试级别过滤
      */
     examLevel?: (string | null);
+    limit?: (number | null);
     /**
      * 题目/中文提示关键词
      */
     q?: (string | null);
+    skip?: number;
     /**
      * 按主题精确过滤
      */
     topic?: (string | null);
 };
 
-export type AdminListQuestionBankResponse = (Array<QuestionBankOut>);
+export type AdminListQuestionBankResponse = (QuestionBankListOut);
 
 export type AdminCreateQuestionsBatchData = {
     requestBody: BatchQuestionCreate;
@@ -1866,13 +1918,15 @@ export type AdminListSentenceFramesData = {
      * 五级筛选
      */
     level?: (string | null);
+    limit?: (number | null);
     /**
      * 表达用途筛选
      */
     purpose?: (string | null);
+    skip?: number;
 };
 
-export type AdminListSentenceFramesResponse = (Array<SentenceFramePublic>);
+export type AdminListSentenceFramesResponse = (SentenceFramesListOut);
 
 export type AdminCreateSentenceFrameData = {
     requestBody: SentenceFrameCreate;

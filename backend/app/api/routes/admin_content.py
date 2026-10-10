@@ -280,9 +280,45 @@ def _reject_delete_items_queued(
         )
 
 
-@router.get("/passages", response_model=list[PassageWithSentences])
-def list_passages(session: SessionDep, _admin: TeacherUserDep) -> Any:
-    passages = session.exec(select(Passage).order_by(col(Passage.created_at))).all()
+class PassagesListOut(SQLModel):
+    """管理端篇目分页信封：count 为根篇目总数；limit=None 时全量（组卷/句库兼容）"""
+
+    data: list[PassageWithSentences]
+    count: int
+
+
+@router.get("/passages", response_model=PassagesListOut)
+def list_passages(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    q: str | None = Query(default=None, description="标题/主题关键词过滤"),
+    skip: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
+) -> Any:
+    """管理端篇目列表：按「根篇目」分页（拆句子篇不单占一行）+ 关键词过滤。
+
+    limit=None 走全量——教师组卷/句库要跨全部篇目搜索，不能被默认页宽截断。
+    句子与子篇只查本页根篇的，不再全表预取。
+    """
+    conditions = [col(Passage.parent_passage_id).is_(None)]
+    if q and q.strip():
+        needle = q.strip()
+        conditions.append(
+            col(Passage.title).icontains(needle)
+            | col(Passage.topic).icontains(needle)  # type: ignore[operator]
+        )
+    count = session.exec(
+        select(func.count()).select_from(Passage).where(*conditions)
+    ).one()
+    stmt = (
+        select(Passage)
+        .where(*conditions)
+        .order_by(col(Passage.created_at), col(Passage.id))
+        .offset(skip)
+    )
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    passages = session.exec(stmt).all()
     passage_ids = [p.id for p in passages]
     sentences_by_passage: dict[uuid.UUID, list[RepeatSentence]] = {}
     if passage_ids:
@@ -294,16 +330,17 @@ def list_passages(session: SessionDep, _admin: TeacherUserDep) -> Any:
         for s in all_sentences:
             if s.passage_id is not None:
                 sentences_by_passage.setdefault(s.passage_id, []).append(s)
-    result = []
     children_by_passage: dict[uuid.UUID, list[uuid.UUID]] = {}
-    for passage in passages:
-        if passage.parent_passage_id is not None:
-            children_by_passage.setdefault(passage.parent_passage_id, []).append(
-                passage.id
+    if passage_ids:
+        child_rows = session.exec(
+            select(Passage.id, Passage.parent_passage_id).where(
+                col(Passage.parent_passage_id).in_(passage_ids)
             )
+        ).all()
+        for child_id, parent_id in child_rows:
+            children_by_passage.setdefault(parent_id, []).append(child_id)
+    result = []
     for passage in passages:
-        if passage.parent_passage_id is not None:
-            continue
         item = PassageWithSentences.model_validate(passage)
         item.sentences = sentences_by_passage.get(passage.id, [])
         item.reading_segments = (
@@ -311,7 +348,7 @@ def list_passages(session: SessionDep, _admin: TeacherUserDep) -> Any:
         )
         item.reading_child_ids = children_by_passage.get(passage.id, [])
         result.append(item)
-    return result
+    return PassagesListOut(data=result, count=count)
 
 
 @router.post("/passages", response_model=PassagePublic)
@@ -598,6 +635,13 @@ def delete_instruction(
 # ── 情景与问法 ───────────────────────────────────────────────────────
 
 
+class ScenariosListOut(SQLModel):
+    """问答题库主题分页信封：count 为主题总数；limit=None 时全量"""
+
+    data: list[ScenarioOut]
+    count: int
+
+
 class ScenarioOut(SQLModel):
     """list_scenarios 的响应形状：情景 + 其问法列表。"""
 
@@ -607,9 +651,32 @@ class ScenarioOut(SQLModel):
     questions: list[ScenarioQuestionPublic]
 
 
-@router.get("/scenarios", response_model=list[ScenarioOut])
-def list_scenarios(session: SessionDep, _admin: TeacherUserDep) -> Any:
-    scenarios = session.exec(select(Scenario)).all()
+@router.get("/scenarios", response_model=ScenariosListOut)
+def list_scenarios(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    q: str | None = Query(default=None, description="主题关键词过滤"),
+    skip: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
+) -> Any:
+    """问答题库主题列表：分页 + 主题关键词（limit=None 全量，组卷选择器兼容）。"""
+    conditions = []
+    if q and q.strip():
+        conditions.append(col(Scenario.topic).icontains(q.strip()))
+    count = session.exec(
+        select(func.count()).select_from(Scenario).where(*conditions)
+    ).one()
+    # Scenario 无 created_at 列；topic 唯一 + id 兜底，分页序稳定
+    stmt = (
+        select(Scenario)
+        .where(*conditions)
+        .order_by(col(Scenario.topic), col(Scenario.id))
+    )
+    if limit is not None:
+        stmt = stmt.offset(skip).limit(limit)
+    else:
+        stmt = stmt.offset(skip)
+    scenarios = session.exec(stmt).all()
     scenario_ids = [s.id for s in scenarios]
     questions_by_scenario: dict[uuid.UUID, list[ScenarioQuestion]] = {}
     if scenario_ids:
@@ -631,7 +698,7 @@ def list_scenarios(session: SessionDep, _admin: TeacherUserDep) -> Any:
                 questions=[ScenarioQuestionPublic.model_validate(q) for q in questions],
             )
         )
-    return result
+    return ScenariosListOut(data=result, count=count)
 
 
 @router.post("/scenarios")
@@ -722,6 +789,13 @@ def delete_question(
 # ── 题库（全局视图 + 批量录入）──────────────────────────────────────
 
 
+class QuestionBankListOut(SQLModel):
+    """问答题库分页信封：count 反映过滤后的总数"""
+
+    data: list[QuestionBankOut]
+    count: int
+
+
 class QuestionBankOut(SQLModel):
     """题库全局视图：带上主题，供管理端筛选/搜索。"""
 
@@ -740,7 +814,7 @@ class QuestionBankOut(SQLModel):
     prep_seconds: int | None = None
 
 
-@router.get("/questions", response_model=list[QuestionBankOut])
+@router.get("/questions", response_model=QuestionBankListOut)
 def list_question_bank(
     session: SessionDep,
     _admin: TeacherUserDep,
@@ -749,50 +823,68 @@ def list_question_bank(
     q: str | None = Query(default=None, description="题目/中文提示关键词"),
     exam_kind: str | None = Query(default=None, description="考试题型过滤"),
     exam_level: str | None = Query(default=None, description="考试级别过滤"),
+    skip: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
 ) -> Any:
-    stmt = (
-        select(ScenarioQuestion, Scenario.topic)
-        .join(Scenario, ScenarioQuestion.scenario_id == Scenario.id)  # ty: ignore[invalid-argument-type]
-        .order_by(
-            col(Scenario.topic),
-            col(ScenarioQuestion.band),
-            col(ScenarioQuestion.order_index),
-        )
-    )
+    conditions = []
     if topic is not None:
-        stmt = stmt.where(Scenario.topic == topic)
+        conditions.append(Scenario.topic == topic)
     if band is not None:
         if band not in VALID_BANDS:
             raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
-        stmt = stmt.where(ScenarioQuestion.band == band)
+        conditions.append(ScenarioQuestion.band == band)
     if q and q.strip():
         needle = q.strip()
-        stmt = stmt.where(
+        conditions.append(
             col(ScenarioQuestion.text).icontains(needle)
             | col(ScenarioQuestion.translation).icontains(needle)  # type: ignore[operator]
         )
     if exam_kind is not None:
-        stmt = stmt.where(ScenarioQuestion.exam_kind == exam_kind)  # type: ignore[arg-type]
+        conditions.append(ScenarioQuestion.exam_kind == exam_kind)  # type: ignore[arg-type]
     if exam_level is not None:
-        stmt = stmt.where(ScenarioQuestion.exam_level == exam_level)  # type: ignore[arg-type]
-    rows = session.exec(stmt).all()
-    return [
-        QuestionBankOut(
-            id=question.id,
-            scenario_id=question.scenario_id,
-            topic=topic_name,
-            band=question.band,
-            order_index=question.order_index,
-            text=question.text,
-            translation=question.translation,
-            suggested_seconds=question.suggested_seconds,
-            exam_kind=question.exam_kind,
-            exam_level=question.exam_level,
-            cue_card_bullets=question.cue_card_bullets,
-            prep_seconds=question.prep_seconds,
+        conditions.append(ScenarioQuestion.exam_level == exam_level)  # type: ignore[arg-type]
+    # count 与数据同条件：分页总数必须反映过滤后的集合
+    count = session.exec(
+        select(func.count())
+        .select_from(ScenarioQuestion)
+        .join(Scenario, ScenarioQuestion.scenario_id == Scenario.id)  # ty: ignore[invalid-argument-type]
+        .where(*conditions)
+    ).one()
+    stmt = (
+        select(ScenarioQuestion, Scenario.topic)
+        .join(Scenario, ScenarioQuestion.scenario_id == Scenario.id)  # ty: ignore[invalid-argument-type]
+        .where(*conditions)
+        .order_by(
+            col(Scenario.topic),
+            col(ScenarioQuestion.band),
+            col(ScenarioQuestion.order_index),
+            col(ScenarioQuestion.id),
         )
-        for question, topic_name in rows
-    ]
+        .offset(skip)
+    )
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    rows = session.exec(stmt).all()
+    return QuestionBankListOut(
+        data=[
+            QuestionBankOut(
+                id=question.id,
+                scenario_id=question.scenario_id,
+                topic=topic_name,
+                band=question.band,
+                order_index=question.order_index,
+                text=question.text,
+                translation=question.translation,
+                suggested_seconds=question.suggested_seconds,
+                exam_kind=question.exam_kind,
+                exam_level=question.exam_level,
+                cue_card_bullets=question.cue_card_bullets,
+                prep_seconds=question.prep_seconds,
+            )
+            for question, topic_name in rows
+        ],
+        count=count,
+    )
 
 
 class BatchQuestionItem(SQLModel):
@@ -1414,24 +1506,45 @@ def _validate_frame_fields(
         raise HTTPException(status_code=422, detail="状态只能是 active/archived")
 
 
-@router.get("/sentence-frames", response_model=list[SentenceFramePublic])
+class SentenceFramesListOut(SQLModel):
+    """句型库分页信封：count 反映过滤后的总数"""
+
+    data: list[SentenceFramePublic]
+    count: int
+
+
+@router.get("/sentence-frames", response_model=SentenceFramesListOut)
 def list_sentence_frames(
     session: SessionDep,
     _admin: TeacherUserDep,
     level: str | None = Query(default=None, description="五级筛选"),
     purpose: str | None = Query(default=None, description="表达用途筛选"),
     exam_kind: str | None = Query(default=None, description="题型筛选"),
+    skip: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
 ) -> Any:
-    stmt = select(SentenceFrame).order_by(
-        col(SentenceFrame.purpose), col(SentenceFrame.text_en)
-    )
+    conditions = []
     if level is not None:
-        stmt = stmt.where(SentenceFrame.level == level)  # type: ignore[arg-type]
+        conditions.append(SentenceFrame.level == level)  # type: ignore[arg-type]
     if purpose is not None:
-        stmt = stmt.where(SentenceFrame.purpose == purpose)  # type: ignore[arg-type]
+        conditions.append(SentenceFrame.purpose == purpose)  # type: ignore[arg-type]
     if exam_kind is not None:
-        stmt = stmt.where(SentenceFrame.exam_kind == exam_kind)  # type: ignore[arg-type]
-    return session.exec(stmt).all()
+        conditions.append(SentenceFrame.exam_kind == exam_kind)  # type: ignore[arg-type]
+    count = session.exec(
+        select(func.count()).select_from(SentenceFrame).where(*conditions)
+    ).one()
+    stmt = (
+        select(SentenceFrame)
+        .where(*conditions)
+        .order_by(col(SentenceFrame.purpose), col(SentenceFrame.text_en), col(SentenceFrame.id))
+        .offset(skip)
+    )
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    return SentenceFramesListOut(
+        data=session.exec(stmt).all(),
+        count=count,
+    )
 
 
 @router.post("/sentence-frames", response_model=SentenceFramePublic)
