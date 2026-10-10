@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test"
  * 抓的是「页面能开、核心交互能点、关键区块在渲染」这类基础回归。
  */
 
-test("登录页渲染与学生/教师入口切换", async ({ page }) => {
+test("登录页渲染与学生/教师入口切换", { tag: "@webkit" }, async ({ page }) => {
   await page.goto("/login")
   await expect(
     page.getByRole("heading", { name: "欢迎来到 Charcoal" }),

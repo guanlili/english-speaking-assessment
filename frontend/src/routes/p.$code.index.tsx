@@ -12,6 +12,7 @@ import { toast } from "sonner"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
 import CueCard from "@/components/Practice/CueCard"
+import DraftRecoveryCard from "@/components/Practice/DraftRecoveryCard"
 import ExamBanner from "@/components/Practice/ExamBanner"
 import {
   ExamItemTimer,
@@ -320,7 +321,6 @@ function ClassroomPracticePage() {
     setPrepLeft(0)
   }
   const {
-    submit,
     submitAsync,
     submitting,
     attempt,
@@ -367,7 +367,6 @@ function ClassroomPracticePage() {
     syncedAt,
     recordLimitSeconds,
     acceptedExamItemsRef,
-    submit,
     submitAsync,
     submitting,
     submitError,
@@ -825,6 +824,13 @@ function ClassroomPracticePage() {
           items={items}
           currentIndex={currentIndex}
           isItemDone={isItemDone}
+        />
+
+        {/* 批次08B：刷新/断网前未上传的录音草稿——用户明确选择才上传/丢弃 */}
+        <DraftRecoveryCard
+          code={code}
+          items={items}
+          submitAsync={submitAsync}
         />
 
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_270px]">

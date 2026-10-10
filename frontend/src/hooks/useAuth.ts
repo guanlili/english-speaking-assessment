@@ -9,6 +9,7 @@ import {
   UsersService,
 } from "@/client"
 import { useI18n } from "@/lib/i18n"
+import { clearRecordingDrafts, currentDraftOwner } from "@/lib/recording-drafts"
 import { extractErrorMessage } from "@/utils"
 import useCustomToast from "./useCustomToast"
 
@@ -96,6 +97,10 @@ const useAuth = () => {
   })
 
   const logout = () => {
+    // 批次08B：登出清除该账号的本地录音草稿（属主须在移除 token 前取）。
+    // 异步清理不阻塞登出；失败由 24h TTL 兜底。
+    const draftOwner = currentDraftOwner()
+    if (draftOwner) void clearRecordingDrafts(draftOwner)
     localStorage.removeItem("access_token")
     localStorage.removeItem("esa:role")
     localStorage.removeItem("esa:must-change-pw")

@@ -912,7 +912,13 @@ def test_exam_attempt_excluded_from_student_trail_until_ended(
 
         # 学生轨迹：考试未终结 → 当天聚合不包含该作答（count 0 / 无 speaking）
         trail = client.get(f"/api/v1/classes/{code}/trail", headers=headers).json()
-        today = fake_now.date().isoformat()
+        # trail 按 PRACTICE_TZ（北京时间）分组；期望 key 必须同口径折算，
+        # 用 UTC 日期会在每天 UTC16-24 点窗口跨日 KeyError（CI 实测踩中）
+        from zoneinfo import ZoneInfo
+
+        from app.core.config import settings
+
+        today = datetime.now(ZoneInfo(settings.PRACTICE_TZ)).date().isoformat()
         sessions = {s["date"]: s for s in trail["sessions"]}
         today_session = sessions.get(today)
         # 该作答不进学生聚合：无当天记录，或有记录但 attempt_count 为 0
