@@ -52,6 +52,7 @@ import {
   EXPLAIN_WRONG_WORDS_POLICY,
   TERMS,
 } from "@/lib/terms"
+import { formatDate, formatDateTime } from "@/lib/time"
 
 /** 任务进度 → 双语徽标（进度与逾期两维独立展示） */
 const PROGRESS_LABEL: Record<string, { zh: string; en: string }> = {
@@ -68,7 +69,7 @@ export const Route = createFileRoute("/vocab/$code/")({
 })
 
 function VocabHomePage() {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const { code } = useParams({ from: "/vocab/$code/" })
   const navigate = useNavigate({ from: "/vocab/$code/" })
   const queryClient = useQueryClient()
@@ -316,7 +317,7 @@ function VocabHomePage() {
                             en: `${row.round_count ?? 0} rounds`,
                           })}`}
                         {row.due_at &&
-                          ` · ${t({ zh: "截止", en: "Due" })} ${new Date(row.due_at).toLocaleDateString()}`}
+                          ` · ${t({ zh: "截止", en: "Due" })} ${formatDate(row.due_at, lang)}`}
                       </span>
                     </span>
                     {row.overdue && (
@@ -528,12 +529,12 @@ function VocabHomePage() {
                       {t({
                         zh: `已${quiz.status === "timed_out" ? "超时结束" : "交卷"}${
                           quiz.submitted_at
-                            ? ` · ${new Date(quiz.submitted_at).toLocaleString()}`
+                            ? ` · ${formatDateTime(quiz.submitted_at, "zh")}`
                             : ""
                         }；参与 ${quiz.attempts_used}/${quiz.attempts_allowed} 次。`,
                         en: `${quiz.status === "timed_out" ? "Timed out" : "Submitted"}${
                           quiz.submitted_at
-                            ? ` · ${new Date(quiz.submitted_at).toLocaleString()}`
+                            ? ` · ${formatDateTime(quiz.submitted_at, "en")}`
                             : ""
                         }; attempts ${quiz.attempts_used}/${quiz.attempts_allowed}.`,
                       })}
@@ -771,18 +772,14 @@ function VocabHomePage() {
                                 <Circle className="size-3.5 text-muted-foreground" />
                               )}
                               {word.last_first_at
-                                ? new Date(
-                                    word.last_first_at,
-                                  ).toLocaleDateString()
+                                ? formatDate(word.last_first_at, lang)
                                 : ""}
                             </span>
                           )}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {word.last_correct_at
-                            ? new Date(
-                                word.last_correct_at,
-                              ).toLocaleDateString()
+                            ? formatDate(word.last_correct_at, lang)
                             : "–"}
                         </TableCell>
                       </TableRow>

@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/card"
 import { useI18n } from "@/lib/i18n"
 import { EXPLAIN_QUIZ_RULES, TERMS } from "@/lib/terms"
+import { formatDateTime } from "@/lib/time"
 
 /** 测验规则页：未明确开始不下发题面；这里给出规则与「开始测验」入口。 */
 export default function QuizRulesCard({
@@ -22,7 +23,7 @@ export default function QuizRulesCard({
   startPending: boolean
   onStart: () => void
 }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   return (
     <Card>
       <CardHeader>
@@ -56,11 +57,11 @@ export default function QuizRulesCard({
             </dt>
             <dd className="mt-1 text-sm font-medium leading-5">
               {quiz.opens_at
-                ? new Date(quiz.opens_at).toLocaleString()
+                ? formatDateTime(quiz.opens_at, lang)
                 : t({ zh: "已开放", en: "Open now" })}
               <br />
               {quiz.due_at
-                ? new Date(quiz.due_at).toLocaleString()
+                ? formatDateTime(quiz.due_at, lang)
                 : t({ zh: "无截止", en: "No due" })}
             </dd>
           </div>

@@ -1948,7 +1948,7 @@ def read_student_trail(
     if current_user.role == "student" and not current_user.is_superuser:
         seen_session_ids = {a.session_id for a in attempts if a.session_id}
         if seen_session_ids:
-            exam_sessions = [
+            candidate_sessions = [
                 ps
                 for ps in session.exec(
                     select(PracticeSession).where(
@@ -1956,8 +1956,23 @@ def read_student_trail(
                     )
                 ).all()
                 if ps.assignment_id is not None
-                and (exercise := session.get(ClassroomExercise, ps.assignment_id))
-                is not None
+            ]
+            # 批量预取涉及的练习快照（替代逐会话 session.get 的 N+1；90 天
+            # 窗口内会话数随使用线性增长，identity map 只挡重复 assignment）
+            exercises_by_id: dict[uuid.UUID, ClassroomExercise] = {}
+            if candidate_sessions:
+                for ex in session.exec(
+                    select(ClassroomExercise).where(
+                        col(ClassroomExercise.id).in_(  # type: ignore[operator]
+                            [ps.assignment_id for ps in candidate_sessions]
+                        )
+                    )
+                ).all():
+                    exercises_by_id[ex.id] = ex
+            exam_sessions = [
+                ps
+                for ps in candidate_sessions
+                if (exercise := exercises_by_id.get(ps.assignment_id)) is not None
                 and exercise.is_exam
                 and exam_service.exam_feedback_locked(session, ps, exercise)
             ]

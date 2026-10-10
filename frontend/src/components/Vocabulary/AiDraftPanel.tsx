@@ -27,6 +27,7 @@ import {
   VOCAB_LEVEL_LABELS,
   VOCAB_LEVEL_ORDER,
 } from "@/lib/terms"
+import { formatDateTime } from "@/lib/time"
 
 interface EditableDraft {
   include: boolean
@@ -48,7 +49,7 @@ export function AiDraftPanel({
   bookId: string | null
   bookTitle: string | null
 }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const queryClient = useQueryClient()
   const [theme, setTheme] = useState("")
   const [level, setLevel] = useState<string>("KET")
@@ -262,7 +263,7 @@ export function AiDraftPanel({
                 en: `${drafts.length} drafts (${dropped} dropped by checks). Target book: ${bookTitle ?? "none selected"}`,
               })}
               {generatedAt &&
-                ` · ${t({ zh: "生成时间", en: "Generated" })} ${new Date(generatedAt).toLocaleString()}`}
+                ` · ${t({ zh: "生成时间", en: "Generated" })} ${formatDateTime(generatedAt, lang)}`}
             </p>
             <ul className="space-y-2">
               {drafts.map((row, index) => (

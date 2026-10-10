@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { APP_NAME } from "@/config"
+import { copyText } from "@/lib/clipboard"
 import { downloadCsv } from "@/lib/csv"
 import { type BiString, useI18n } from "@/lib/i18n"
 import { ITEM_TYPE_LABELS, TERMS } from "@/lib/terms"
@@ -227,16 +228,14 @@ function TeacherBoardPage() {
 
   const shareLink = async () => {
     const url = `${window.location.origin}/j/${board.classroom_code}`
-    try {
-      await navigator.clipboard.writeText(url)
+    if (await copyText(url)) {
       toast.success(
         t({ zh: "学生入口链接已复制", en: "Student entry link copied" }),
         {
           description: url,
         },
       )
-    } catch (err) {
-      console.error("Failed to copy share link:", err)
+    } else {
       toast.error(
         t({
           zh: "复制失败，请手动复制",
@@ -262,13 +261,11 @@ function TeacherBoardPage() {
       zh: `【${board.classroom_name}】${names || "同学们"}，请完成今天的口语练习。提交后老师会查看反馈。课堂码：${board.classroom_code}`,
       en: `[${board.classroom_name}] ${names || "everyone"}, please complete today's speaking practice. Your teacher will review your feedback after you submit. Classroom code: ${board.classroom_code}`,
     })
-    try {
-      await navigator.clipboard.writeText(message)
+    if (await copyText(message)) {
       toast.success(t({ zh: "提醒文案已复制", en: "Reminder text copied" }), {
         description: message,
       })
-    } catch (error) {
-      console.error("Failed to copy reminder:", error)
+    } else {
       toast.error(
         t({ zh: "复制失败，请重试", en: "Copy failed, please try again" }),
       )
@@ -848,8 +845,7 @@ function StudentRow({
                               zh: `${name} 已完成 ${student.done_count}/${student.total_count} 题，可结合结果页逐题反馈。`,
                               en: `${name} has completed ${student.done_count}/${student.total_count} items; give per-item feedback from the results view.`,
                             })
-                      try {
-                        await navigator.clipboard.writeText(feedback)
+                      if (await copyText(feedback)) {
                         toast.success(
                           t({
                             zh: "反馈文案已复制",
@@ -859,8 +855,7 @@ function StudentRow({
                             description: feedback,
                           },
                         )
-                      } catch (error) {
-                        console.error("Failed to copy feedback:", error)
+                      } else {
                         toast.error(
                           t({
                             zh: "复制失败，请重试",

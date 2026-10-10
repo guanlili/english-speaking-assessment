@@ -44,6 +44,7 @@ import {
   EXPLAIN_ROUND_TIMES,
   TERMS,
 } from "@/lib/terms"
+import { formatDateTime } from "@/lib/time"
 import { speakEnglish } from "@/lib/tts"
 
 export const Route = createFileRoute("/vocab/$code/self")({
@@ -718,7 +719,7 @@ function RoundReport({
   kindLabel: string
   code: string
 }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const answered = plan.answered_count ?? 0
   const total = plan.total_count ?? 0
   const items = plan.items ?? []
@@ -729,7 +730,7 @@ function RoundReport({
     (it) => it.from_wrong && it.is_correct === true,
   )
   const fmtTime = (value?: string | null) =>
-    value ? new Date(value).toLocaleString() : "–"
+    value ? formatDateTime(value, lang) : "–"
 
   return (
     <Card>

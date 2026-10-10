@@ -20,6 +20,7 @@ import { LoadingButton } from "@/components/ui/loading-button"
 import { assignmentItemKey } from "@/lib/assignment-order"
 import { useI18n } from "@/lib/i18n"
 import { ITEM_TYPE_LABELS } from "@/lib/terms"
+import { formatDateTime } from "@/lib/time"
 
 /**
  * 练习预览：学生将按此顺序作答；拆分文章展开为逐句清单。
@@ -193,7 +194,7 @@ export function PublishHistory({
   exerciseHistory: ClassroomExercisePublic[]
   onViewHistory?: (exerciseId: string) => void
 }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   if (exerciseHistory.length === 0) return null
   return (
     <details className="rounded-2xl border bg-card px-5 py-4">
@@ -230,7 +231,7 @@ export function PublishHistory({
                 ? t({ zh: "当前发布", en: "Current publish" })
                 : t({ zh: "已归档", en: "Archived" })}
               {exercise.published_at
-                ? ` · ${new Date(exercise.published_at).toLocaleString()}`
+                ? ` · ${formatDateTime(exercise.published_at, lang)}`
                 : ""}
             </span>
           </div>
