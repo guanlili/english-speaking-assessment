@@ -81,10 +81,6 @@ export function setDraftIdbFactoryForTests(factory: IDBFactory | null): void {
   idbFactoryOverride = factory
   dbPromise = null
 }
-/** @internal 清空缓存的连接，测试间隔离用 */
-export function resetDraftStoreForTests(): void {
-  dbPromise = null
-}
 
 function factory(): IDBFactory | null {
   if (idbFactoryOverride !== undefined) return idbFactoryOverride

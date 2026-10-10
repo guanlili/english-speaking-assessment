@@ -55,7 +55,7 @@ Follow these guidelines to ensure code stability, consistency, and maintainabili
 - **Type Hints**: Always use Python type hints.
   - `def get_user(id: uuid.UUID) -> User:`
 - **Pydantic**: Use Pydantic models for all API Request/Response schemas.
-- **Sync by default**: Route handlers and database operations use plain `def` with the sync SQLModel `Session` (see `items.py`). FastAPI runs them in a threadpool. Do NOT mix in async DB sessions — stay consistent with the existing code. The readiness probe is a narrow exception: a dedicated async psycopg connection allows cancellation of the complete network operation.
+- **Sync by default**: Route handlers and database operations use plain `def` with the sync SQLModel `Session`. FastAPI runs them in a threadpool. Do NOT mix in async DB sessions — stay consistent with the existing code. The readiness probe is a narrow exception: a dedicated async psycopg connection allows cancellation of the complete network operation.
 - **Error Handling**: Use `HTTPException` for API errors. Do not return raw dictionaries for errors.
 - **401 vs 403**: 401 仅用于 token 无效/过期（前端收到 401 会自动登出）；403 用于"已登录但权限不足"。不要混用——权限不足返回 401 会把正常用户踢下线。
 

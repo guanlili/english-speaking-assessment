@@ -6,28 +6,27 @@
 
 ## 当前状态
 
-口语评测业务已实现 PRD 三个阶段的学生端与教师端（课堂码进入、一轮 3 复述 + 2 分级问答、反馈与词汇参考等级、进步轨迹、教师面板）。原有 Items 功能暂作参考，交付前删除。
+平台已上线生产。PRD 三阶段功能全部就绪并有后续增强：学生端全流程（学号账号登录、课堂码进入、文章朗读/听句复述/情景问答/题目说明四题型、发布快照、模考逐题限时计时）、词汇学习模块（词库、发布、看义/听音拼词、多任务多轮练习、限时测验、错词本、AI 学情）、五级词库分级数据源、教师面板与题库三层结构（主题 → 篇目 → 句子）、管理端内容管理、激励层（星级/XP/连胜/徽章）与进步轨迹。评分引擎可选 `mock`（离线）或 `ark`（火山方舟真实转写 + LLM rubric 模拟分）。
 
 ### 演示入口（本地 `docker compose up -d` 后）
 
 | 入口 | 地址 | 说明 |
 |------|------|------|
-| 学生进入课堂 | http://localhost:5173/j/DEMO01 | 输入显示名开始当天 5 题 |
-| 学生结果页 | http://localhost:5173/p/DEMO01/result | 每题转写与总评 |
-| 学生进步 | http://localhost:5173/me/DEMO01 | 口语分与词汇档轨迹 |
-| 教师面板 | http://localhost:5173/t/DEMO01 | 名单、均分、音频回放、档位分布 |
-| 内容管理 | http://localhost:5173/admin（管理员登录） | 篇目/情景问法/词表 CSV/课堂码 |
+| 学生进入课堂 | http://localhost:5173/j/DEMO01 | 学号账号登录后进入（本地演示账号 `student` / `demo1234`）|
+| 学生首页 | http://localhost:5173/home/DEMO01 | 今日练习与词汇任务入口 |
+| 学生结果页 | http://localhost:5173/p/DEMO01/result | 每题转写与参考反馈 |
+| 学生成长 | http://localhost:5173/me/DEMO01 | 参考分与进步轨迹 |
+| 词汇学习 | http://localhost:5173/vocab/DEMO01 | 词库浏览、自主练习与错词本 |
+| 教师面板 | http://localhost:5173/t/DEMO01 | 名单、发布、结果、录音回放 |
+| 内容管理 | http://localhost:5173/admin（管理员登录） | 篇目/情景问答/单元/五级词库/公共词库/课堂 |
 
-演示前重置数据：`bash scripts/reset-demo.sh`（清学生与作答，保留内容与课堂码）。
+> ⚠️ `scripts/reset-demo.sh` 会**清空全部学生、作答、会话与音频**（仅保留内容与 DEMO01 课堂码）。只在交付前的一次性演示环境使用，不要在任何有真实数据的库上运行。
 
 默认评分引擎为离线 mock（`SCORING_PROVIDER=mock`）。接入真实转写：方舟控制台开通模型后，在 `.env` 设置 `ARK_API_KEY` 并把 `SCORING_PROVIDER` 改为 `ark`。
 
 - 本地配置：`.env`（已忽略，不提交）；首次克隆可运行 `bash scripts/init-project.sh "英语口语评测平台"`，然后将 `COMPOSE_PROJECT_NAME` 设为 `english-speaking-assessment`。
 - 开发规范：[AGENTS.md](AGENTS.md)、[CLAUDE.md](CLAUDE.md)、[AI_RULES.md](AI_RULES.md)。
-- 下一步：确认目标用户、题型和评分标准，再用真实录音验证评测方案。
-- 生产部署默认关闭。配置服务器 Secrets 后，设置仓库变量 `ENABLE_PRODUCTION_DEPLOY=true` 启用。CI 检查始终保留。
-
-下方保留模板操作指南供开发参考，其中“开启新项目”步骤在本仓库已完成。
+- 生产部署已启用：push 到 `master` → CI（lint + 测试 + 客户端一致性）→ 自动部署，回滚走 revert，细节见下文「生产部署」。
 
 ---
 
@@ -45,75 +44,6 @@
 | 代码规范 | Ruff + ty（后端）/ Biome（前端）|
 | 容器 | Docker Compose（nginx 内置 /api 代理，无 Traefik）|
 | CI/CD | GitHub Actions：lint + 测试通过后 → server-side git pull + docker compose up |
-
----
-
-## 开启新项目
-
-### 第一步：基于本模板创建新仓库
-
-在 GitHub 上点 **Use this template → Create a new repository**（不是 Fork）。
-
-### 第二步：克隆并初始化
-
-```bash
-git clone git@github.com:guanlili/<新项目名>.git
-cd <新项目名>
-bash scripts/init-project.sh "项目显示名"
-```
-
-脚本一次性完成：生成 `.env`（`SECRET_KEY`、数据库密码、管理员密码全部随机化）、
-统一改名（`PROJECT_NAME`、前端 `APP_NAME`、页面标题）、
-自动生成容器名前缀（`COMPOSE_PROJECT_NAME`，从项目名推导），并输出剩余待办清单。
-本地管理员账号会打印在结果里（也记录在 `.env`）。
-> 纯中文项目名会回退为 `my-project`，如果同一台服务器上有多个项目，
-> 请手动修改 `.env` 里的 `COMPOSE_PROJECT_NAME`（和部署时的 GitHub Secret），避免容器名冲突。
-
-### 第三步：更新项目文档
-
-- `CLAUDE.md` — 写入该项目的业务背景、数据模型、特殊约定（AI 开发时会读这个）
-- `AI_RULES.md` — 追加项目特定的技术规范（如有）
-- `README.md` — 改为项目自己的说明
-
-### 第四步：删除示例代码
-
-模板自带一个 Items（条目）CRUD 示例，展示了标准开发模式，开发完后删除：
-
-**后端**
-
-- `backend/app/api/routes/items.py`（路由）及 `api/main.py` 里的注册行
-- `backend/app/models.py` 中的 `Item` / `ItemCreate` / `ItemUpdate` / `ItemPublic` / `ItemsPublic` 模型，以及 `User.items` 关系字段（`Relationship(back_populates="items", cascade_delete=True)`）
-- `backend/app/crud.py` 中 Item 相关的函数
-- `backend/tests/api/routes/test_items.py`（关联测试），`tests/conftest.py` 清理逻辑里的 `delete(Item)`
-- `backend/app/core/db.py` 若有 Item 引用一并清理
-
-**前端**
-
-- `frontend/src/routes/_layout/items.tsx`（页面）与路由引用
-- `frontend/src/components/Items/`（AddEntity / EditEntity 等组件）
-- `frontend/src/components/Sidebar/AppSidebar.tsx` 的 `baseItems` 里 Items 链接
-
-**数据库（按项目阶段二选一）**
-
-- **全新项目（还没上线）**：直接删模型即可，同时删掉 `backend/app/alembic/versions/` 里创建 `item` 表的迁移文件；或保留迁移历史不动（表残留但无害）。二选一，别混用。
-- **已有数据的项目**：模型删掉后**必须生成一个 drop table 迁移**（`alembic revision --autogenerate -m "drop items"`），否则数据库里残留孤儿表；确认表里没有要保留的数据再删。
-
-同时**决定注册方式**：自助注册默认只在本地开启（生产由可选 Secret `USERS_OPEN_REGISTRATION` 控制，默认关）。
-如果项目是"管理员建账号"模式，交付前把注册入口一并删掉：`frontend/src/routes/signup.tsx` 和登录页上的注册链接。
-
-### 第五步：首次启动
-
-```bash
-docker compose up --build
-```
-
-| 服务 | 本地地址 |
-|------|----------|
-| 前端 | http://localhost:5173 |
-| 后端 API 文档 | http://localhost:8000/docs |
-| 邮件测试（Mailcatcher） | http://localhost:1080 |
-
-默认管理员账号见 `.env` 中的 `FIRST_SUPERUSER` / `FIRST_SUPERUSER_PASSWORD`。
 
 ---
 
@@ -178,7 +108,7 @@ Claude Code 会按标准流程自动创建订单模块的全部后端和前端�
 
 **1. 配置 GitHub Secrets**
 
-在新仓库 **Settings → Secrets → Actions** 添加以下 12 个必填 Secret：
+在仓库 **Settings → Secrets and variables → Actions** 添加以下 12 个必填 Secret：
 
 | Secret | 必改 | 说明 | 示例 |
 |--------|:----:|------|------|
@@ -300,24 +230,6 @@ ssh 服务器 "cd 部署路径 && git reset --hard <上一个好提交> && docke
 
 ---
 
-## 模板维护
-
-本仓库是模板，会定期更新，现有项目不会受影响。
-
-### 维护节奏
-
-| 时机 | 操作 |
-|------|------|
-| 做项目时踩了坑 | 回来更新 `AI_RULES.md` 或 `CLAUDE.md` |
-| 每季度 | 运行 `/upgrade-deps` 升级依赖 |
-| 发现更好的开发模式 | 更新 `.claude/commands/` 中的指令 |
-
-### 从模板同步改进到现有项目
-
-模板和具体项目是独立仓库，没有 git 关联。需要手动同步时，把改进的文件（`CLAUDE.md`、`AI_RULES.md`、`compose.yml`、`.claude/commands/`）复制过去即可。
-
----
-
 ## 项目结构
 
 ```
@@ -350,21 +262,9 @@ english-speaking-assessment/
 
 ---
 
-## 与上游的主要区别
-
-| 项目 | 上游 fastapi/full-stack-fastapi-template | 本模板 |
-|------|------------------------------------------|--------|
-| 反向代理 | Traefik（复杂 label 配置） | nginx proxy_pass（内置前端镜像） |
-| CI/CD | staging + production 双套 | 单一 workflow：CI（lint+测试）通过后部署 |
-| Playwright e2e 测试 | 包含 | 2026-09-29 回归：冒烟用例进 CI（独立 e2e job，deploy 依赖其通过） |
-| Copier 模板系统 | 包含 | 已移除 |
-| AI 开发规范 | 无 | AI_RULES.md + CLAUDE.md + .claude/commands/ |
-
----
-
 ## 设计取舍（有意不做的东西）
 
-> 本节记录模板**刻意省略**的实践及原因。补齐它们之前请先读这里——多数"缺失"是权衡后的决定，不是疏漏。
+> 本节记录沿用自模板、本仓库**刻意省略**的实践及原因。补齐它们之前请先读这里——多数"缺失"是权衡后的决定，不是疏漏。
 
 | 不做什么 | 为什么 |
 |---------|--------|
@@ -373,7 +273,7 @@ english-speaking-assessment/
 | pre-commit 钩子 | CI 是唯一质量门槛。本地钩子对 AI 驱动的开发是摩擦（AI 每次提交都会被格式化钩子打断），且和 CI 重复 |
 | staging 环境 | 单服务器多项目、快速交付定位。staging 的维护成本大于收益；重要变更靠 CI 门槛 + 部署后健康检查兜底 |
 | JWT refresh token | 8 天 access token + localStorage 是简单性取舍，适合工具型产品。对安全有更高要求的项目再升级会话机制 |
-| 登录接口限流 | 不在代码层加依赖。`rate_limit` **不是 Caddy 内置模块**——官方发行版不带，需要用 `xcaddy` 自行构建含 `caddy-ratelimit` 插件的二进制（或换用云防火墙/WAF 做限流）；模板不提供也不默认包含，正式上线且暴露公网时再评估 |
+| 登录接口限流 | 不在代码层加依赖。`rate_limit` **不是 Caddy 内置模块**——官方发行版不带，需要用 `xcaddy` 自行构建含 `caddy-ratelimit` 插件的二进制（或换用云防火墙/WAF 做限流）；本仓库不提供也不默认包含，正式上线且暴露公网时再评估 |
 | 重置密码 token 一次性失效 | token 48 小时内可重复使用（改完密码不作废）。工具型项目风险低；高安全要求的项目可把 token 绑定当前密码 hash（密码一改即失效） |
 | 生产环境隐藏 `/docs`、`/redoc` | API 文档公开对内网工具是便利。正式上线面向公网的项目建议关闭（`ENVIRONMENT=production` 时设 `docs_url=None`）或在 Caddy 层加 basic auth |
 | Kubernetes / 多机编排 | 单服务器 docker compose 覆盖当前所有项目规模。规模到了再迁移，不预支复杂度 |

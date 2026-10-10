@@ -43,9 +43,9 @@
 - 兼容评分规则（`app/scoring/bands.py`）：A2/B1/B2 仍保留在内部数据中，供历史数据、词表分析和评分兼容使用；不参与教师课堂编排，也不向学生展示。
 - 界面文案铁律（PRD §3.2）：分数一律标「参考/模拟」，写明不是官方成绩；三种分（跟读引擎/模型/词表）来源要在界面上分开标注。
 - EIP 教材原文因版权**不进仓库**，只建内容槽（Passage/RepeatSentence/Scenario/ScenarioQuestion 表）；演示种子用自写 Pets 内容（slug: demo-pets，课堂码 DEMO01）。
-- **方舟已开通（2026-09-26 实测）**：`SCORING_PROVIDER=ark` 真实转写/rubric 模拟分已全链路验证。关键适配：浏览器 webm/opus 需服务端 ffmpeg 转 16kHz wav（`app/scoring/audio_convert.py`，容器已装 ffmpeg）；空转写不出 0 分模拟分。TTS `/audio/speech` 报 401（模型未开通），标准音暂用上传通道。
-- 待办（上线前）：讯飞评测账号（跟读分升级可选）、学校分级词表 CSV（经 /admin/vocablevels 导入五级词库）、EIP 文本（经 /admin/passages 录入，配音可上传现成音频）、域名 + ICP 备案（进教室要 HTTPS，备案 1~3 周需立即启动）。
-- 生产部署尚未启用。配置部署 Secrets 后，将 GitHub Actions 仓库变量 `ENABLE_PRODUCTION_DEPLOY` 设置为 `true` 才允许自动部署。
+- **方舟已开通（2026-09-26 实测）**：`SCORING_PROVIDER=ark` 真实转写/rubric 模拟分已全链路验证。关键适配：浏览器 webm/opus 需服务端 ffmpeg 转 16kHz wav（`app/scoring/audio_convert.py`，容器已装 ffmpeg）；空转写不出 0 分模拟分。标准音 TTS 走 vei AI 网关的 OpenAI 兼容接口（`ARK_TTS_*` 配置，网关密钥与方舟 Key 是两套），未配置时 TTS 返回 503，上传现成音频的通道不受影响。
+- 待办：EIP 教材文本（经 /admin/passages 录入，配音可上传现成音频）；词级发音评分二期（选型结论：火山打底、腾讯 SOE-N 候选）。五级词库导入与 HTTPS 上线均已完成。
+- 生产部署已启用：push `master` → CI（lint + 测试 + 客户端一致性）→ 自动部署（`ENABLE_PRODUCTION_DEPLOY` 仓库变量控制），回滚走 revert（见 README「生产部署」）。
 
 ## 项目结构
 
