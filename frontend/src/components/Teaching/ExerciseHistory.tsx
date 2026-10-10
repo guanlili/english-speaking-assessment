@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
-import { Download, Volume2 } from "lucide-react"
+import { Download, FileText, Volume2 } from "lucide-react"
 import { useState } from "react"
 import type { ClassroomExercisePublic, ExerciseStudentResult } from "@/client"
 import { ClassesService } from "@/client"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
+import { AttemptFeedbackDialog } from "@/components/Teaching/AttemptFeedbackDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -158,6 +159,9 @@ function ExerciseResults({
     id: string
     label: string
   } | null>(null)
+  const [feedbackAttemptId, setFeedbackAttemptId] = useState<string | null>(
+    null,
+  )
   const resultsQuery = useQuery({
     queryKey: ["teacher", "exercise-results", code, exercise.id],
     queryFn: () =>
@@ -367,29 +371,49 @@ function ExerciseResults({
                           </span>
                         )}
                         {item.attempt_id && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="mt-1 min-h-11"
-                            aria-label={t({
-                              zh: `回听 ${row.display_name} 第${index + 1}题录音`,
-                              en: `Listen to ${row.display_name}'s recording for item ${index + 1}`,
-                            })}
-                            onClick={() => {
-                              if (item.attempt_id)
-                                setRecording({
-                                  id: item.attempt_id,
-                                  label: t({
-                                    zh: `${row.display_name} · 第${index + 1}题`,
-                                    en: `${row.display_name} · Item ${index + 1}`,
-                                  }),
-                                })
-                            }}
-                          >
-                            <Volume2 className="size-4" />
-                            {t({ zh: "听录音", en: "Recording" })}
-                          </Button>
+                          <span className="mt-1 flex flex-col items-start gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="min-h-11"
+                              aria-label={t({
+                                zh: `回听 ${row.display_name} 第${index + 1}题录音`,
+                                en: `Listen to ${row.display_name}'s recording for item ${index + 1}`,
+                              })}
+                              onClick={() => {
+                                if (item.attempt_id)
+                                  setRecording({
+                                    id: item.attempt_id,
+                                    label: t({
+                                      zh: `${row.display_name} · 第${index + 1}题`,
+                                      en: `${row.display_name} · Item ${index + 1}`,
+                                    }),
+                                  })
+                              }}
+                            >
+                              <Volume2 className="size-4" />
+                              {t({ zh: "听录音", en: "Recording" })}
+                            </Button>
+                            {item.status === "done" && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="min-h-11"
+                                aria-label={t({
+                                  zh: `查看 ${row.display_name} 第${index + 1}题详细反馈`,
+                                  en: `View detailed feedback for ${row.display_name}'s item ${index + 1}`,
+                                })}
+                                onClick={() =>
+                                  setFeedbackAttemptId(item.attempt_id!)
+                                }
+                              >
+                                <FileText className="size-4" />
+                                {t({ zh: "详细反馈", en: "Feedback" })}
+                              </Button>
+                            )}
+                          </span>
                         )}
                       </TableCell>
                     ))}
@@ -424,14 +448,19 @@ function ExerciseResults({
             ) && (
               <p className="mt-3 text-xs text-muted-foreground">
                 {t({
-                  zh: "分数为教学参考；点击「听录音」回听该发布版本的作答。",
-                  en: "Scores are teaching references. Select Recording to listen to answers from this published version.",
+                  zh: "分数为教学参考；点击「听录音」回听该发布版本的作答，「详细反馈」可看转写与逐题建议。",
+                  en: "Scores are teaching references. Recording plays the answer from this published version; Feedback shows the transcript and per-item tips.",
                 })}
               </p>
             )}
           </CardContent>
         </Card>
       )}
+      <AttemptFeedbackDialog
+        attemptId={feedbackAttemptId}
+        open={feedbackAttemptId !== null}
+        onClose={() => setFeedbackAttemptId(null)}
+      />
     </div>
   )
 }

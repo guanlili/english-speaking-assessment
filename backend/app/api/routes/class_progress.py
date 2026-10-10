@@ -32,6 +32,7 @@ from app.models import (
     AttemptStatus,
     ClassroomExercise,
     LearningPath,
+    MySessionSummary,
     Passage,
     PathUnit,
     PracticeSession,
@@ -328,3 +329,123 @@ def read_learning_path(
         ),
         units=result,
     )
+
+
+@router.get("/{code}/my-sessions", response_model=list[MySessionSummary])
+def read_my_sessions(
+    session: SessionDep,
+    code: str,
+    current_user: StudentUserDep,
+    limit: int = Query(default=30, ge=1, le=100),
+) -> Any:
+    """学生本人的历史练习列表（按练习日倒序，最近 N 轮）。
+
+    每行给出该轮的完成口径（题单位最新作答 done 计数，与 board 一致）
+    与参考分均值，供「我的成长」页跳 /p/{code}/result?session=<id> 回看
+    详细反馈。仅学生本人凭证；考试未终结的轮次参考分不下发（与
+    trail/today 的模考遮罩口径一致，完成计数照常——学生本就可见状态）。
+    """
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(session, classroom, current_user)
+
+    sessions = session.exec(
+        select(PracticeSession)
+        .where(PracticeSession.student_id == student.id)
+        .order_by(
+            col(PracticeSession.session_date).desc(),
+            col(PracticeSession.created_at).desc(),
+        )
+        .limit(limit)
+    ).all()
+    if not sessions:
+        return []
+
+    # 批量预取：作答（最新一次覆盖，与 board/latest 口径一致）+ 绑定练习
+    latest_by_session: dict[uuid.UUID, dict[uuid.UUID, Attempt]] = {}
+    for attempt in session.exec(
+        select(Attempt)
+        .options(
+            # 列表只要小列：transcript/item_snapshot 等 JSON 大列不进内存
+            load_only(
+                Attempt.id,  # ty: ignore[invalid-argument-type]
+                Attempt.session_id,  # ty: ignore[invalid-argument-type]
+                Attempt.item_id,  # ty: ignore[invalid-argument-type]
+                Attempt.status,  # ty: ignore[invalid-argument-type]
+                Attempt.overall,  # ty: ignore[invalid-argument-type]
+            )
+        )
+        .where(
+            col(Attempt.session_id).in_(  # type: ignore[operator]
+                [ps.id for ps in sessions]
+            )
+        )
+        .order_by(col(Attempt.created_at))
+    ).all():
+        sid = attempt.session_id
+        if sid is None:  # in_ 过滤后理论不可达，类型收窄用
+            continue
+        latest_by_session.setdefault(sid, {})[attempt.item_id] = attempt
+
+    assignment_ids = {
+        ps.assignment_id for ps in sessions if ps.assignment_id is not None
+    }
+    exercises_by_id: dict[uuid.UUID, ClassroomExercise] = {}
+    if assignment_ids:
+        for exercise in session.exec(
+            select(ClassroomExercise).where(
+                col(ClassroomExercise.id).in_(  # type: ignore[operator]
+                    assignment_ids
+                )
+            )
+        ).all():
+            exercises_by_id[exercise.id] = exercise
+
+    rows: list[MySessionSummary] = []
+    for ps in sessions:
+        latest = latest_by_session.get(ps.id, {})
+        exercise = (
+            exercises_by_id.get(ps.assignment_id)
+            if ps.assignment_id is not None
+            else None
+        )
+        required: list[uuid.UUID]
+        if exercise is not None:
+            # 发布轮：题单 = 快照题位（题目说明无作答，不进分母）；
+            # 快照 id 非法的历史行跳过该题位（不因脏数据 500）
+            required = []
+            for item in exercise.snapshot_items:
+                if str(item.get("type", "")) == AttemptItemType.INSTRUCTION:
+                    continue
+                raw_id = item.get("id")
+                if raw_id is None:
+                    continue
+                try:
+                    required.append(uuid.UUID(str(raw_id)))
+                except ValueError:
+                    logger.warning("invalid exercise snapshot item id: %s", raw_id)
+        else:
+            # 自主轮：无固定快照分母，按该轮实际作答过的题位计
+            required = list(latest.keys())
+        done = [
+            latest[item_id]
+            for item_id in required
+            if item_id in latest and latest[item_id].status == AttemptStatus.DONE
+        ]
+        feedback_locked = exam_service.exam_feedback_locked(session, ps, exercise)
+        overalls = [a.overall for a in done if a.overall is not None]
+        rows.append(
+            MySessionSummary(
+                session_id=ps.id,
+                session_date=ps.session_date,
+                mode=ps.mode,
+                title=exercise.title if exercise is not None else None,
+                done_count=len(done),
+                total_count=len(required),
+                overall_avg=(
+                    None
+                    if feedback_locked or not overalls
+                    else round(sum(overalls) / len(overalls), 1)
+                ),
+            )
+        )
+    return rows

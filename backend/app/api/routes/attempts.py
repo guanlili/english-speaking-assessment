@@ -238,15 +238,31 @@ def _feedback_masked_for_user(
     return exam_service.exam_feedback_locked(session, practice_session, exercise)
 
 
+def _snapshot_text(snapshot: dict[str, object], key: str) -> str | None:
+    """快照文本字段提取：非空字符串才返回（题干投影用）。"""
+    value = snapshot.get(key)
+    if isinstance(value, str) and value.strip():
+        return value
+    return None
+
+
 def _attempt_public(
     attempt: Attempt, *, feedback_masked: bool = False
 ) -> AttemptPublic:
     """响应投影（不改 ORM）：遮罩时抹掉分数/转写/建议/词汇/rubric/错误详情。
 
     幂等重放、并发兜底、GET 轮询、上传回执共用同一投影，考试终结后
-    feedback_masked=False，反馈完整恢复。
+    feedback_masked=False，反馈完整恢复。题干（item_title/item_text）来自
+    提交时快照：题库此后被编辑/删除不影响展示，也不属于遮罩范围
+    （考试中学生本来就看得见题目）。
     """
     public = AttemptPublic.model_validate(attempt)
+    snapshot = (
+        attempt.item_snapshot if isinstance(attempt.item_snapshot, dict) else None
+    )
+    if snapshot is not None:
+        public.item_title = _snapshot_text(snapshot, "title")
+        public.item_text = _snapshot_text(snapshot, "text")
     if feedback_masked:
         public.transcript = None
         public.completeness = None

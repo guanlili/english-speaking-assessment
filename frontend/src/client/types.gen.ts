@@ -51,6 +51,8 @@ export type AttemptPublic = {
     engine: string;
     duration_s: number;
     retry_count?: number;
+    item_title?: (string | null);
+    item_text?: (string | null);
     transcript?: (string | null);
     completeness?: (number | null);
     fluency?: (number | null);
@@ -383,6 +385,16 @@ export type LoginOptions = {
 
 export type Message = {
     message: string;
+};
+
+export type MySessionSummary = {
+    session_id: string;
+    session_date: string;
+    mode: string;
+    title?: (string | null);
+    done_count: number;
+    total_count: number;
+    overall_avg?: (number | null);
 };
 
 export type NewPassword = {
@@ -2045,6 +2057,13 @@ export type ClassesReadLearningPathData = {
 };
 
 export type ClassesReadLearningPathResponse = (LearningPath);
+
+export type ClassesReadMySessionsData = {
+    code: string;
+    limit?: number;
+};
+
+export type ClassesReadMySessionsResponse = (Array<MySessionSummary>);
 
 export type ClassesStartExamData = {
     code: string;

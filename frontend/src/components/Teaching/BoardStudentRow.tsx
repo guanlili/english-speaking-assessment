@@ -1,8 +1,10 @@
 import { Link } from "@tanstack/react-router"
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react"
+import { useState } from "react"
 import { toast } from "sonner"
 import type { BoardStudent } from "@/client"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
+import { AttemptFeedbackDialog } from "@/components/Teaching/AttemptFeedbackDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TableCell, TableRow } from "@/components/ui/table"
@@ -33,6 +35,9 @@ export function BoardStudentRow({
 }) {
   const { t } = useI18n()
   const name = boardStudentDisplayName(student)
+  const [feedbackAttemptId, setFeedbackAttemptId] = useState<string | null>(
+    null,
+  )
 
   return (
     <>
@@ -209,10 +214,31 @@ export function BoardStudentRow({
                     </span>
                   )}
                   {item.attempt_id && item.status === "done" && (
-                    <AttemptAudio attemptId={item.attempt_id} className="h-8" />
+                    <>
+                      <AttemptAudio
+                        attemptId={item.attempt_id}
+                        className="h-8"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="min-h-11"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setFeedbackAttemptId(item.attempt_id!)
+                        }}
+                      >
+                        {t({ zh: "详细反馈", en: "Detailed Feedback" })}
+                      </Button>
+                    </>
                   )}
                 </div>
               ))}
+              <AttemptFeedbackDialog
+                attemptId={feedbackAttemptId}
+                open={feedbackAttemptId !== null}
+                onClose={() => setFeedbackAttemptId(null)}
+              />
             </div>
           </TableCell>
         </TableRow>

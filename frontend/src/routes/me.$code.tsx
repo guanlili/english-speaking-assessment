@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link, useParams } from "@tanstack/react-router"
-import { BookOpen, Flame, Mic, Sparkles, Star, Trophy } from "lucide-react"
+import {
+  BookOpen,
+  Flame,
+  History,
+  Mic,
+  Sparkles,
+  Star,
+  Trophy,
+} from "lucide-react"
 import { useState } from "react"
 import { ClassesService } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
@@ -15,6 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { displayName, loadStudent } from "@/lib/classroom-student"
@@ -78,6 +87,15 @@ function MyTrailPage() {
       ClassesService.readStudentTrail({
         code: code.toUpperCase(),
       }),
+    enabled: student !== null,
+  })
+
+  // 历史练习（第二天回看）：最近会话列表，点「查看反馈」进该轮结果页
+  const mySessionsQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
+    queryKey: ["classroom", code, "my-sessions", student?.id],
+    queryFn: () => ClassesService.readMySessions({ code: code.toUpperCase() }),
     enabled: student !== null,
   })
 
@@ -453,6 +471,116 @@ function MyTrailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* 历史练习：往日每轮练习的完成度与均分，点开回看逐题详细反馈 */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-1.5 text-base">
+              <History className="size-4 text-primary" />
+              {t({ zh: "历史练习", en: "Practice History" })}
+            </CardTitle>
+            <CardDescription>
+              {t({
+                zh: "最近 30 轮练习；点「查看反馈」回看当轮每题的转写、参考分与建议。",
+                en: "Your last 30 rounds. View feedback to revisit transcripts, reference scores and tips for each item.",
+              })}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {mySessionsQuery.isPending ? (
+              <div role="status" className="space-y-2">
+                <span className="sr-only">
+                  {t({
+                    zh: "正在加载历史练习…",
+                    en: "Loading practice history…",
+                  })}
+                </span>
+                <Skeleton className="h-14 rounded-xl" />
+                <Skeleton className="h-14 rounded-xl" />
+              </div>
+            ) : mySessionsQuery.isError ? (
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                <p role="alert">
+                  {t({
+                    zh: "历史练习暂时没有加载成功。",
+                    en: "Practice history failed to load.",
+                  })}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11"
+                  onClick={() => void mySessionsQuery.refetch()}
+                  disabled={mySessionsQuery.isFetching}
+                >
+                  {t({ zh: "重新加载", en: "Reload" })}
+                </Button>
+              </div>
+            ) : (mySessionsQuery.data ?? []).length === 0 ? (
+              <p className="py-2 text-sm text-muted-foreground">
+                {t({
+                  zh: "还没有历史练习。完成一轮练习后，这里可以随时回看每题反馈。",
+                  en: "No practice history yet — after your first round you can revisit per-item feedback anytime.",
+                })}
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {(mySessionsQuery.data ?? []).map((row) => (
+                  <li
+                    key={row.session_id}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border px-3 py-2.5"
+                  >
+                    <span className="w-24 shrink-0 text-xs text-muted-foreground">
+                      {/* 练习日按服务端时区落库（YYYY-MM-DD）：直接展示原串，
+                          不经本地时区解析（与轨迹表同口径，避免西半球差一天） */}
+                      {row.session_date}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium">
+                          {row.title ??
+                            t(
+                              row.mode === "explore"
+                                ? { zh: "主题探索", en: "Topic explore" }
+                                : { zh: "自主练习", en: "Self practice" },
+                            )}
+                        </span>
+                        {row.mode === "explore" && (
+                          <Badge
+                            variant="outline"
+                            className="shrink-0 text-muted-foreground"
+                          >
+                            {t({ zh: "探索", en: "Explore" })}
+                          </Badge>
+                        )}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        {t({
+                          zh: `完成 ${row.done_count}/${row.total_count} 题 · 参考分 ${row.overall_avg ?? "–"}`,
+                          en: `${row.done_count}/${row.total_count} done · ref score ${row.overall_avg ?? "–"}`,
+                        })}
+                      </span>
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="min-h-11 shrink-0"
+                      asChild
+                    >
+                      <Link
+                        to="/p/$code/result"
+                        params={{ code }}
+                        search={{ session: row.session_id }}
+                      >
+                        {t({ zh: "查看反馈", en: "View Feedback" })}
+                      </Link>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
 
         <p className="pb-6 text-center text-xs text-muted-foreground">
           {t({
