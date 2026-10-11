@@ -1,6 +1,7 @@
 import { Bookmark, Loader2, RefreshCw, TriangleAlert } from "lucide-react"
 import type { ReactNode } from "react"
 import type { AttemptPublic } from "@/client"
+import InfoHint from "@/components/Common/InfoHint"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -14,6 +15,7 @@ import { Separator } from "@/components/ui/separator"
 import type { BiString } from "@/lib/bi"
 import { adviceText, type BilingualAdvice } from "@/lib/bilingual"
 import { useI18n } from "@/lib/i18n"
+import { EXPLAIN } from "@/lib/terms"
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/utils"
 
 // PRD §4：三种分的来源必须在界面上写清（作答级来源徽标，教师逐题反馈弹窗复用）
@@ -35,16 +37,21 @@ export const ENGINE_LABELS: Record<string, BiString> = {
 function ScoreItem({
   label,
   value,
+  hint,
 }: {
   label: string
   value: number | null | undefined
+  hint?: string
 }) {
   return (
     <div className="flex flex-col items-center gap-1">
       <span className="text-3xl font-bold tabular-nums">
         {value === null || value === undefined ? "–" : value}
       </span>
-      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="flex items-center gap-1 text-sm text-muted-foreground">
+        {label}
+        {hint ? <InfoHint label={hint} /> : null}
+      </span>
     </div>
   )
 }
@@ -127,6 +134,7 @@ export function RubricBlock({
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="text-muted-foreground">
           {t({ zh: "模拟分（0–9）", en: "Mock score (0–9)" })}
+          <InfoHint label={t(EXPLAIN.mock_caliber)} />
         </span>
         <span className="text-2xl font-bold tabular-nums">
           {data.mock_score ?? "–"}
@@ -290,6 +298,7 @@ function FeedbackCard({
         <ScoreItem
           label={t({ zh: "本次参考分 / 100", en: "Reference score / 100" })}
           value={attempt.overall}
+          hint={t(EXPLAIN.reference_caliber)}
         />
       </CardContent>
       <CardFooter className="flex-col items-start gap-3">

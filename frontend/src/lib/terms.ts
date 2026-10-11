@@ -103,6 +103,18 @@ export const EXPLAIN = {
     zh: "星级按本轮各题参考分均值评定：≥85 得 3 星，≥70 得 2 星，完成即得 1 星。只和自己比，不和同学排名。",
     en: "Stars are based on your average score this round: 85+ earns 3 stars, 70+ earns 2, and finishing earns 1. Compare only with yourself, never with classmates.",
   },
+  reference_caliber: {
+    zh: "参考分（百分制）衡量开口的量与节奏：问答按词量（约 25 词即满内容分）与语速稳定度计算；跟读对照原文算完整度与流利度。它不判断用词、语法或是否切题。",
+    en: "The /100 reference score measures how much and how steadily you speak: open answers score by word count (~25 words is full marks) and pacing; read-aloud scores coverage and fluency against the text. It does not judge word choice, grammar, or relevance.",
+  },
+  mock_caliber: {
+    zh: "模拟分（0–9）由语言模型按雅思式四维打分加总映射：流利与连贯、词汇、语法、任务完成（是否答到点上）。衡量语言质量；模型未返回时显示暂缺，不出假分。",
+    en: "The 0–9 mock score maps the sum of four IELTS-style dimensions rated by a language model: fluency & coherence, vocabulary, grammar, and task achievement. It measures language quality; when unavailable it shows 'pending' rather than a fake score.",
+  },
+  score_gap: {
+    zh: "两套分数口径不同：参考分高说明开口量足、语速稳；模拟分低说明词汇、语法或切题展开有待提升。看四维小分找短板，用「升级表达」针对性提质。",
+    en: "The two scores measure different things: a high reference score means enough speaking at a steady pace; a low mock score means vocabulary, grammar, or staying on topic needs work. Check the four dimension scores to find the gap, then use the upgrade phrases to improve it.",
+  },
   xp: {
     zh: "每完成一题得 10 XP，每颗星加 5 XP，连续练习 3 天及以上每天再奖 10 XP。",
     en: "Earn 10 XP per completed item and 5 XP per star; practice 3+ days in a row for a 10 XP daily bonus.",
