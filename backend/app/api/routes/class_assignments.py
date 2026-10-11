@@ -65,7 +65,9 @@ def list_classroom_exercises(
             version_no=exercise.version_no,
             title=exercise.title,
             status=exercise.status,
-            item_count=len(exercise.snapshot_items),
+            item_count=sum(
+                i.get("type") != "instruction" for i in exercise.snapshot_items
+            ),
             created_at=exercise.created_at,
             published_at=exercise.published_at,
             archived_at=exercise.archived_at,
@@ -178,6 +180,8 @@ def read_exercise_results(
         items: list[BoardItem] = []
         done = 0
         for spec in exercise.snapshot_items:
+            if spec.get("type") == "instruction":
+                continue
             item_id = uuid.UUID(str(spec["id"]))
             attempt = latest.get(item_id)
             if attempt is None:
@@ -216,7 +220,7 @@ def read_exercise_results(
                 display_name=student.display_name,
                 suffix=student.suffix,
                 done_count=done,
-                total_count=len(exercise.snapshot_items),
+                total_count=len(items),
                 has_pending=has_pending,
                 exam_tab_switches=exam_switches,
                 exam_tab_switch_seconds=exam_switch_seconds,

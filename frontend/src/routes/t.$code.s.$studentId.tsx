@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link, useParams } from "@tanstack/react-router"
 import { ApiError, ClassesService } from "@/client"
 import TrailView from "@/components/Practice/TrailView"
+import { StudentSessionHistory } from "@/components/Teaching/StudentSessionHistory"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { APP_NAME } from "@/config"
@@ -99,6 +100,7 @@ function StudentDetailPage() {
         </div>
 
         <TrailView trail={trail} />
+        <StudentSessionHistory code={code} studentId={studentId} />
 
         <p className="pb-6 text-center text-xs text-muted-foreground">
           {t({

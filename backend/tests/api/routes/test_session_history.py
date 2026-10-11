@@ -359,6 +359,20 @@ def test_my_sessions_rows_and_stats(
             plan_b["session_id"],
             session_a,
         ]
+        teacher_history = client.get(
+            f"/api/v1/classes/{code}/students/{made['student']['id']}/sessions",
+            headers=superuser_token_headers,
+        )
+        assert teacher_history.status_code == 200, teacher_history.text
+        teacher_rows = {r["session_id"]: r for r in teacher_history.json()}
+        assert set(teacher_rows) == set(by_id)
+        assert set(teacher_rows[session_a]["attempt_ids"]) == {
+            passage_resp.json()["id"],
+            q1_resp.json()["id"],
+        }
+        assert teacher_rows[plan_c["session_id"]]["attempt_ids"] == [
+            repeat_resp.json()["id"]
+        ]
         # 昨天的发布轮：标题透出、2/3 完成、均分 = 两题参考分均值
         row_a = by_id[session_a]
         assert row_a["title"] == "期中口语练习"
@@ -442,6 +456,8 @@ def test_my_sessions_exam_scores_masked_until_ended(
         assert rows[0]["done_count"] == 1
         assert rows[0]["total_count"] == 2
         assert rows[0]["overall_avg"] is None
+        assert rows[0]["attempt_ids"] == []
+        assert rows[0]["is_exam"] is True
 
         # 考试终结（交卷）后：分数恢复
         session_row = db.get_one(PracticeSession, uuid.UUID(plan["session_id"]))

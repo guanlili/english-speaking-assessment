@@ -1269,3 +1269,53 @@ def test_exam_instruction_window(
         assert finished["exam"]["ended"] is True
     finally:
         _cleanup_classroom(db, classroom["id"])
+
+
+@pytest.mark.parametrize("is_exam", [False, True])
+def test_instruction_excluded_from_history_results(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    is_exam: bool,
+) -> None:
+    classroom = _classroom(client, superuser_token_headers)
+    code = classroom["code"]
+    made = make_student(db, client, code, "历史说明学生")
+    instruction = _make_instruction(client, superuser_token_headers)
+    sentence = client.post(
+        "/api/v1/admin/sentences",
+        json={"order_index": 0, "text": "A real question."},
+        headers=superuser_token_headers,
+    ).json()
+    published = client.put(
+        f"/api/v1/classes/{code}/assignment",
+        json={
+            "items": [
+                {"type": "instruction", "id": instruction["id"]},
+                {"type": "repeat", "id": sentence["id"]},
+            ],
+            "is_exam": is_exam,
+            "time_limit_minutes": 30 if is_exam else None,
+        },
+        headers=superuser_token_headers,
+    )
+    assert published.status_code == 200, published.text
+    plan = client.get(f"/api/v1/classes/{code}/today", headers=made["headers"]).json()
+    history = client.get(
+        f"/api/v1/classes/{code}/exercises", headers=superuser_token_headers
+    ).json()
+    assert history[0]["item_count"] == 1
+    results = client.get(
+        f"/api/v1/classes/{code}/exercises/{history[0]['id']}/results",
+        headers=superuser_token_headers,
+    ).json()
+    row = next(r for r in results if r["student_id"] == made["student"]["id"])
+    assert row["total_count"] == 1
+    assert [i["type"] for i in row["items"]] == ["repeat"]
+    url = f"/api/v1/classes/{code}/students/{made['student']['id']}/sessions"
+    sessions = client.get(url, headers=superuser_token_headers)
+    assert sessions.status_code == 200, sessions.text
+    assert sessions.json()[0]["session_id"] == plan["session_id"]
+    assert sessions.json()[0]["is_exam"] == is_exam
+    assert sessions.json()[0]["total_count"] == 1
+    assert client.get(url, headers=made["headers"]).status_code == 403

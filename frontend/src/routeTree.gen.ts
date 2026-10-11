@@ -25,6 +25,7 @@ import { Route as JCodeRouteImport } from './routes/j.$code'
 import { Route as HomeCodeRouteImport } from './routes/home.$code'
 import { Route as HelpCodeRouteImport } from './routes/help.$code'
 import { Route as ExploreCodeRouteImport } from './routes/explore.$code'
+import { Route as ExamCodeRouteImport } from './routes/exam.$code'
 import { Route as ClassroomCodeRouteImport } from './routes/classroom.$code'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutCreateRouteImport } from './routes/_layout/create'
@@ -33,6 +34,7 @@ import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as VocabCodeIndexRouteImport } from './routes/vocab.$code.index'
 import { Route as TCodeIndexRouteImport } from './routes/t.$code.index'
 import { Route as PCodeIndexRouteImport } from './routes/p.$code.index'
+import { Route as ExamCodeIndexRouteImport } from './routes/exam.$code.index'
 import { Route as LayoutAdminIndexRouteImport } from './routes/_layout/admin.index'
 import { Route as VocabCodeSelfRouteImport } from './routes/vocab.$code.self'
 import { Route as VocabCodeRecordsRouteImport } from './routes/vocab.$code.records'
@@ -40,6 +42,7 @@ import { Route as VocabCodePracticeRouteImport } from './routes/vocab.$code.prac
 import { Route as VocabCodeBooksRouteImport } from './routes/vocab.$code.books'
 import { Route as TCodeVocabRouteImport } from './routes/t.$code.vocab'
 import { Route as PCodeResultRouteImport } from './routes/p.$code.result'
+import { Route as ExamCodeResultRouteImport } from './routes/exam.$code.result'
 import { Route as LayoutAdminVocablevelsRouteImport } from './routes/_layout/admin.vocablevels'
 import { Route as LayoutAdminVocabbooksRouteImport } from './routes/_layout/admin.vocabbooks'
 import { Route as LayoutAdminUnitsRouteImport } from './routes/_layout/admin.units'
@@ -129,6 +132,11 @@ const ExploreCodeRoute = ExploreCodeRouteImport.update({
   path: '/explore/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ExamCodeRoute = ExamCodeRouteImport.update({
+  id: '/exam/$code',
+  path: '/exam/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ClassroomCodeRoute = ClassroomCodeRouteImport.update({
   id: '/classroom/$code',
   path: '/classroom/$code',
@@ -169,6 +177,11 @@ const PCodeIndexRoute = PCodeIndexRouteImport.update({
   path: '/',
   getParentRoute: () => PCodeRoute,
 } as any)
+const ExamCodeIndexRoute = ExamCodeIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ExamCodeRoute,
+} as any)
 const LayoutAdminIndexRoute = LayoutAdminIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -203,6 +216,11 @@ const PCodeResultRoute = PCodeResultRouteImport.update({
   id: '/result',
   path: '/result',
   getParentRoute: () => PCodeRoute,
+} as any)
+const ExamCodeResultRoute = ExamCodeResultRouteImport.update({
+  id: '/result',
+  path: '/result',
+  getParentRoute: () => ExamCodeRoute,
 } as any)
 const LayoutAdminVocablevelsRoute = LayoutAdminVocablevelsRouteImport.update({
   id: '/vocablevels',
@@ -264,6 +282,7 @@ export interface FileRoutesByFullPath {
   '/create': typeof LayoutCreateRoute
   '/settings': typeof LayoutSettingsRoute
   '/classroom/$code': typeof ClassroomCodeRoute
+  '/exam/$code': typeof ExamCodeRouteWithChildren
   '/explore/$code': typeof ExploreCodeRoute
   '/help/$code': typeof HelpCodeRoute
   '/home/$code': typeof HomeCodeRoute
@@ -280,6 +299,7 @@ export interface FileRoutesByFullPath {
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
+  '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
@@ -287,6 +307,7 @@ export interface FileRoutesByFullPath {
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
   '/vocab/$code/self': typeof VocabCodeSelfRoute
   '/admin/': typeof LayoutAdminIndexRoute
+  '/exam/$code/': typeof ExamCodeIndexRoute
   '/p/$code/': typeof PCodeIndexRoute
   '/t/$code/': typeof TCodeIndexRoute
   '/vocab/$code/': typeof VocabCodeIndexRoute
@@ -317,6 +338,7 @@ export interface FileRoutesByTo {
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
+  '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
@@ -324,6 +346,7 @@ export interface FileRoutesByTo {
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
   '/vocab/$code/self': typeof VocabCodeSelfRoute
   '/admin': typeof LayoutAdminIndexRoute
+  '/exam/$code': typeof ExamCodeIndexRoute
   '/p/$code': typeof PCodeIndexRoute
   '/t/$code': typeof TCodeIndexRoute
   '/vocab/$code': typeof VocabCodeIndexRoute
@@ -343,6 +366,7 @@ export interface FileRoutesById {
   '/_layout/create': typeof LayoutCreateRoute
   '/_layout/settings': typeof LayoutSettingsRoute
   '/classroom/$code': typeof ClassroomCodeRoute
+  '/exam/$code': typeof ExamCodeRouteWithChildren
   '/explore/$code': typeof ExploreCodeRoute
   '/help/$code': typeof HelpCodeRoute
   '/home/$code': typeof HomeCodeRoute
@@ -360,6 +384,7 @@ export interface FileRoutesById {
   '/_layout/admin/units': typeof LayoutAdminUnitsRoute
   '/_layout/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/_layout/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
+  '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
@@ -367,6 +392,7 @@ export interface FileRoutesById {
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
   '/vocab/$code/self': typeof VocabCodeSelfRoute
   '/_layout/admin/': typeof LayoutAdminIndexRoute
+  '/exam/$code/': typeof ExamCodeIndexRoute
   '/p/$code/': typeof PCodeIndexRoute
   '/t/$code/': typeof TCodeIndexRoute
   '/vocab/$code/': typeof VocabCodeIndexRoute
@@ -387,6 +413,7 @@ export interface FileRouteTypes {
     | '/create'
     | '/settings'
     | '/classroom/$code'
+    | '/exam/$code'
     | '/explore/$code'
     | '/help/$code'
     | '/home/$code'
@@ -403,6 +430,7 @@ export interface FileRouteTypes {
     | '/admin/units'
     | '/admin/vocabbooks'
     | '/admin/vocablevels'
+    | '/exam/$code/result'
     | '/p/$code/result'
     | '/t/$code/vocab'
     | '/vocab/$code/books'
@@ -410,6 +438,7 @@ export interface FileRouteTypes {
     | '/vocab/$code/records'
     | '/vocab/$code/self'
     | '/admin/'
+    | '/exam/$code/'
     | '/p/$code/'
     | '/t/$code/'
     | '/vocab/$code/'
@@ -440,6 +469,7 @@ export interface FileRouteTypes {
     | '/admin/units'
     | '/admin/vocabbooks'
     | '/admin/vocablevels'
+    | '/exam/$code/result'
     | '/p/$code/result'
     | '/t/$code/vocab'
     | '/vocab/$code/books'
@@ -447,6 +477,7 @@ export interface FileRouteTypes {
     | '/vocab/$code/records'
     | '/vocab/$code/self'
     | '/admin'
+    | '/exam/$code'
     | '/p/$code'
     | '/t/$code'
     | '/vocab/$code'
@@ -465,6 +496,7 @@ export interface FileRouteTypes {
     | '/_layout/create'
     | '/_layout/settings'
     | '/classroom/$code'
+    | '/exam/$code'
     | '/explore/$code'
     | '/help/$code'
     | '/home/$code'
@@ -482,6 +514,7 @@ export interface FileRouteTypes {
     | '/_layout/admin/units'
     | '/_layout/admin/vocabbooks'
     | '/_layout/admin/vocablevels'
+    | '/exam/$code/result'
     | '/p/$code/result'
     | '/t/$code/vocab'
     | '/vocab/$code/books'
@@ -489,6 +522,7 @@ export interface FileRouteTypes {
     | '/vocab/$code/records'
     | '/vocab/$code/self'
     | '/_layout/admin/'
+    | '/exam/$code/'
     | '/p/$code/'
     | '/t/$code/'
     | '/vocab/$code/'
@@ -504,6 +538,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
   ClassroomCodeRoute: typeof ClassroomCodeRoute
+  ExamCodeRoute: typeof ExamCodeRouteWithChildren
   ExploreCodeRoute: typeof ExploreCodeRoute
   HelpCodeRoute: typeof HelpCodeRoute
   HomeCodeRoute: typeof HomeCodeRoute
@@ -628,6 +663,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExploreCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/exam/$code': {
+      id: '/exam/$code'
+      path: '/exam/$code'
+      fullPath: '/exam/$code'
+      preLoaderRoute: typeof ExamCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/classroom/$code': {
       id: '/classroom/$code'
       path: '/classroom/$code'
@@ -684,6 +726,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PCodeIndexRouteImport
       parentRoute: typeof PCodeRoute
     }
+    '/exam/$code/': {
+      id: '/exam/$code/'
+      path: '/'
+      fullPath: '/exam/$code/'
+      preLoaderRoute: typeof ExamCodeIndexRouteImport
+      parentRoute: typeof ExamCodeRoute
+    }
     '/_layout/admin/': {
       id: '/_layout/admin/'
       path: '/'
@@ -732,6 +781,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/p/$code/result'
       preLoaderRoute: typeof PCodeResultRouteImport
       parentRoute: typeof PCodeRoute
+    }
+    '/exam/$code/result': {
+      id: '/exam/$code/result'
+      path: '/result'
+      fullPath: '/exam/$code/result'
+      preLoaderRoute: typeof ExamCodeResultRouteImport
+      parentRoute: typeof ExamCodeRoute
     }
     '/_layout/admin/vocablevels': {
       id: '/_layout/admin/vocablevels'
@@ -846,6 +902,20 @@ const LayoutRouteChildren: LayoutRouteChildren = {
 const LayoutRouteWithChildren =
   LayoutRoute._addFileChildren(LayoutRouteChildren)
 
+interface ExamCodeRouteChildren {
+  ExamCodeResultRoute: typeof ExamCodeResultRoute
+  ExamCodeIndexRoute: typeof ExamCodeIndexRoute
+}
+
+const ExamCodeRouteChildren: ExamCodeRouteChildren = {
+  ExamCodeResultRoute: ExamCodeResultRoute,
+  ExamCodeIndexRoute: ExamCodeIndexRoute,
+}
+
+const ExamCodeRouteWithChildren = ExamCodeRoute._addFileChildren(
+  ExamCodeRouteChildren,
+)
+
 interface PCodeRouteChildren {
   PCodeResultRoute: typeof PCodeResultRoute
   PCodeIndexRoute: typeof PCodeIndexRoute
@@ -901,6 +971,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
   ClassroomCodeRoute: ClassroomCodeRoute,
+  ExamCodeRoute: ExamCodeRouteWithChildren,
   ExploreCodeRoute: ExploreCodeRoute,
   HelpCodeRoute: HelpCodeRoute,
   HomeCodeRoute: HomeCodeRoute,

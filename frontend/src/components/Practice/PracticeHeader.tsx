@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n"
 /** 练习页顶部 HUD：题号/单元徽标 + 学生/课堂/游戏化 + 结果页入口（展示组件） */
 export function PracticeHeader({
   currentIndex,
+  isInstruction = false,
   total,
   unitTitle,
   classroomCode,
@@ -17,6 +18,7 @@ export function PracticeHeader({
   resultsTo,
   resultsSearch,
 }: {
+  isInstruction?: boolean
   currentIndex: number
   total: number
   unitTitle?: string | null
@@ -32,10 +34,12 @@ export function PracticeHeader({
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 className="text-xl font-bold tracking-tight">
-          {t({
-            zh: `第 ${currentIndex + 1}/${total} 题`,
-            en: `Item ${currentIndex + 1}/${total}`,
-          })}
+          {isInstruction
+            ? t({ zh: "题目说明", en: "Instructions" })
+            : t({
+                zh: `第 ${currentIndex + 1}/${total} 题`,
+                en: `Item ${currentIndex + 1}/${total}`,
+              })}
           {unitTitle && (
             <span className="ml-2 text-sm font-medium text-primary">
               📌 {unitTitle}

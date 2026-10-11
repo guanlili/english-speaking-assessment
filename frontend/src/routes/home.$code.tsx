@@ -183,7 +183,8 @@ function HomePage() {
     ? plan.attempts.filter((a) => a.status === "done" || a.status === "failed")
         .length
     : 0
-  const totalItems = plan?.items.length ?? 0
+  const totalItems =
+    plan?.items.filter((item) => item.type !== "instruction").length ?? 0
   // 题量按本轮实际指派计算：老师勾选的题型不同，结构就不同
   const countType = (type: string) =>
     plan?.items.filter((item) => item.type === type).length ?? 0
@@ -261,8 +262,8 @@ function HomePage() {
             <p className="mt-4 text-sm leading-6 text-mint">
               {plan?.assigned_unit_title
                 ? t({
-                    zh: `今日练习 · ${plan.assigned_unit_title}`,
-                    en: `Today's Practice · ${plan.assigned_unit_title}`,
+                    zh: `${plan.exam ? "考试" : "今日练习"} · ${plan.assigned_unit_title}`,
+                    en: `${plan.exam ? "Exam" : "Today's Practice"} · ${plan.assigned_unit_title}`,
                   })
                 : t({
                     zh: "从一次小小的练习，开始你的表达。",
@@ -275,25 +276,41 @@ function HomePage() {
                 className="group bg-tan-soft text-brand-pine shadow-none hover:bg-tan-pale"
                 disabled={totalItems === 0}
                 onClick={() =>
-                  void navigate({ to: "/p/$code", params: { code } })
+                  void navigate({
+                    to: plan?.exam ? "/exam/$code" : "/p/$code",
+                    params: { code },
+                  })
                 }
               >
                 {totalItems === 0
                   ? t({ zh: "等待课堂安排", en: "Awaiting today's assignment" })
-                  : done >= totalItems
+                  : plan?.exam
                     ? t({
-                        zh: "查看今日成果",
-                        en: "See today's results",
+                        zh: plan.exam.ended
+                          ? "查看考试反馈"
+                          : plan.exam.started
+                            ? "继续考试"
+                            : "进入考试",
+                        en: plan.exam.ended
+                          ? "View exam feedback"
+                          : plan.exam.started
+                            ? "Continue exam"
+                            : "Open exam",
                       })
-                    : done > 0
+                    : done >= totalItems
                       ? t({
-                          zh: "继续今日练习",
-                          en: "Continue today's practice",
+                          zh: "查看今日成果",
+                          en: "See today's results",
                         })
-                      : t({
-                          zh: "开始今日练习",
-                          en: "Start today's practice",
-                        })}
+                      : done > 0
+                        ? t({
+                            zh: "继续今日练习",
+                            en: "Continue today's practice",
+                          })
+                        : t({
+                            zh: "开始今日练习",
+                            en: "Start today's practice",
+                          })}
                 <ArrowRight className="transition-transform group-hover:translate-x-1" />
               </Button>
               <span className="text-xs text-mint">

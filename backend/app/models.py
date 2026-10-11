@@ -1137,6 +1137,9 @@ class TrailData(SQLModel):
 # 学生历史练习列表行（GET /classes/{code}/my-sessions）：一次会话一行，
 # 供「我的成长」页跳 /p/{code}/result?session=<id> 回看详细反馈。
 class MySessionSummary(SQLModel):
+    attempt_ids: list[uuid.UUID] = []
+    is_exam: bool = False
+    exam_ended: bool = False
     session_id: uuid.UUID
     session_date: date
     # daily = 课堂/发布练习轮；explore = 主题探索自由练习

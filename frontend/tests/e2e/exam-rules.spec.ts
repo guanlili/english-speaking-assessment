@@ -175,7 +175,7 @@ for (const width of [390, 820, 1180]) {
     state.ended = true
     state.index = 2
     await page.clock.runFor(3500)
-    await expect(page).toHaveURL(/\/p\/EXAM\/result/)
+    await expect(page).toHaveURL(/\/exam\/EXAM\/result/)
     await expect(page.getByText(/未作答 2 题/)).toBeVisible()
     await expect(
       page.getByRole("button", { name: /再练|重练|换同主题/ }),
@@ -205,7 +205,7 @@ test("exam timeout submits and advances while scoring remains queued", async ({
   expect(state.uploads).toBe(1)
   await page.getByRole("button", { name: "开始录音", exact: true }).click()
   await page.clock.runFor(3500)
-  await expect(page).toHaveURL(/\/p\/EXAM\/result/)
+  await expect(page).toHaveURL(/\/exam\/EXAM\/result/)
   await expect(page.getByText("录音正在评分，结果会自动更新")).toBeVisible()
   expect(state.uploads).toBe(2)
 })

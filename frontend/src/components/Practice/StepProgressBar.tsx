@@ -12,19 +12,23 @@ export default function StepProgressBar({
   isItemDone: (item: PlanItem) => boolean
 }) {
   const { t } = useI18n()
+  const questions = items.filter((item) => item.type !== "instruction")
   return (
     <div
       role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={questions.length}
+      aria-valuenow={questions.filter(isItemDone).length}
       className="flex items-center gap-2"
       aria-label={t({ zh: "练习进度", en: "Practice progress" })}
     >
-      {items.map((item, i) => {
+      {questions.map((item) => {
         const done = isItemDone(item)
         return (
           <span
             key={item.id}
             className={
-              i === currentIndex
+              item.id === items[currentIndex]?.id
                 ? "h-1.5 flex-1 rounded-full bg-orange-400"
                 : done
                   ? "h-1.5 flex-1 rounded-full bg-primary"

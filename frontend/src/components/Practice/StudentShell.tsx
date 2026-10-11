@@ -9,6 +9,7 @@ import {
   ChartLine,
   ChevronDown,
   CircleHelp,
+  ClipboardCheck,
   Home,
   KeyRound,
   LogOut,
@@ -73,6 +74,12 @@ const items = [
     to: "/me/$code",
     label: TERMS.growthPage,
     icon: ChartLine,
+  },
+  {
+    key: "exam",
+    to: "/exam/$code",
+    label: { zh: "考试", en: "Exams" },
+    icon: ClipboardCheck,
   },
   {
     key: "explore",
@@ -351,7 +358,8 @@ function NotificationBell({ code }: { code: string }) {
   const done =
     plan?.attempts.filter((a) => a.status === "done" || a.status === "failed")
       .length ?? 0
-  const total = plan?.items.length ?? 0
+  const total =
+    plan?.items.filter((item) => item.type !== "instruction").length ?? 0
   const today = new Date().toLocaleDateString("en-CA")
   const newBadges = (g?.badges ?? []).filter(
     (b) =>
