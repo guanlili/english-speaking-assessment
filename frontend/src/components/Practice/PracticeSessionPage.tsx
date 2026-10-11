@@ -329,7 +329,12 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
   const blockerToastRef = useRef(false)
   useBlocker({
     shouldBlockFn: ({ current, next }) => {
-      if (exam && next.pathname === `/p/${code}/result`) return false
+      if (
+        exam &&
+        (next.pathname === `/exam/${code}/result` ||
+          next.pathname === `/p/${code}/result`)
+      )
+        return false
       if (!pendingBlockerActive) return false
       // 同一课堂内练习页互相跳转不算离开（结果页 / 练习页 / 加入页保留原状）
       if (current.pathname === next.pathname) return false
@@ -427,15 +432,13 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
     return () => window.clearInterval(timer)
   }, [examExpired, examActive, queryClient, todayQueryKey])
   // 考试结束（到时/服务端判定）：自动进结果页（= 交卷）
-  const examNavigatedRef = useRef(false)
   useEffect(() => {
-    if (!examEnded || examNavigatedRef.current) return
+    if (!examEnded) return
     if (recorder.status === "recording") {
       recorder.stop()
       return
     }
     if (submitting) return
-    examNavigatedRef.current = true
     void navigate({
       to: exam ? "/exam/$code/result" : "/p/$code/result",
       params: { code },

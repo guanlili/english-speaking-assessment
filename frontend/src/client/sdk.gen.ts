@@ -1246,6 +1246,7 @@ export class ClassesService {
      * @param data.code
      * @param data.studentId
      * @param data.limit
+     * @param data.offset
      * @returns MySessionSummary Successful Response
      * @throws ApiError
      */
@@ -1258,7 +1259,8 @@ export class ClassesService {
                 student_id: data.studentId
             },
             query: {
-                limit: data.limit
+                limit: data.limit,
+                offset: data.offset
             },
             errors: {
                 422: 'Validation Error'

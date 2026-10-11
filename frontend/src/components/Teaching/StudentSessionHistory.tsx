@@ -1,9 +1,11 @@
-import { useQuery } from "@tanstack/react-query"
+import { useInfiniteQuery } from "@tanstack/react-query"
 import { useState } from "react"
 import { ClassesService } from "@/client"
 import { AttemptFeedbackDialog } from "@/components/Teaching/AttemptFeedbackDialog"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
+
+const HISTORY_PAGE_SIZE = 30
 
 export function StudentSessionHistory({
   code,
@@ -14,14 +16,22 @@ export function StudentSessionHistory({
 }) {
   const { t } = useI18n()
   const [attemptId, setAttemptId] = useState<string | null>(null)
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ["teacher", "student-sessions", code, studentId],
-    queryFn: () =>
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
       ClassesService.readStudentSessions({
         code: code.toUpperCase(),
         studentId,
+        limit: HISTORY_PAGE_SIZE,
+        offset: pageParam,
       }),
+    getNextPageParam: (lastPage, _pages, lastOffset) =>
+      lastPage.length === HISTORY_PAGE_SIZE
+        ? lastOffset + HISTORY_PAGE_SIZE
+        : undefined,
   })
+  const rows = query.data?.pages.flat() ?? []
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-semibold">
@@ -33,10 +43,10 @@ export function StudentSessionHistory({
           {t({ zh: "加载失败，重试", en: "Loading failed. Retry" })}
         </Button>
       )}
-      {query.data?.length === 0 && (
+      {query.isSuccess && rows.length === 0 && (
         <p>{t({ zh: "暂无历史记录。", en: "No history yet." })}</p>
       )}
-      {query.data?.map((row) => (
+      {rows.map((row) => (
         <article
           key={row.session_id}
           className="space-y-2 rounded-xl border p-4"
@@ -73,6 +83,20 @@ export function StudentSessionHistory({
           </div>
         </article>
       ))}
+      {query.hasNextPage && (
+        <Button
+          variant="outline"
+          className="min-h-11"
+          disabled={query.isFetchingNextPage}
+          onClick={() => void query.fetchNextPage()}
+        >
+          {t(
+            query.isFetchingNextPage
+              ? { zh: "正在加载…", en: "Loading…" }
+              : { zh: "加载更早记录", en: "Load older sessions" },
+          )}
+        </Button>
+      )}
       <AttemptFeedbackDialog
         attemptId={attemptId}
         open={attemptId !== null}

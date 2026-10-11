@@ -459,6 +459,19 @@ def test_my_sessions_exam_scores_masked_until_ended(
         assert rows[0]["attempt_ids"] == []
         assert rows[0]["is_exam"] is True
 
+        # 离开考试页后所有题窗过期：反馈和按钮使用同一只读结束判据。
+        session_row = db.get_one(PracticeSession, uuid.UUID(plan["session_id"]))
+        session_row.exam_started_at = datetime.now(UTC) - timedelta(hours=1)
+        db.add(session_row)
+        db.commit()
+        expired_rows = client.get(
+            f"/api/v1/classes/{code}/my-sessions", headers=made["headers"]
+        ).json()
+        assert expired_rows[0]["exam_ended"] is True
+        assert expired_rows[0]["overall_avg"] == attempt_row.overall
+        db.refresh(session_row)
+        assert session_row.exam_ended_at is None
+
         # 考试终结（交卷）后：分数恢复
         session_row = db.get_one(PracticeSession, uuid.UUID(plan["session_id"]))
         session_row.exam_ended_at = datetime.now(UTC)
@@ -471,4 +484,113 @@ def test_my_sessions_exam_scores_masked_until_ended(
         assert rows_after[0]["overall_avg"] == attempt_row.overall
     finally:
         _unassign(db, code)
+        _cleanup_student(db, made)
+
+
+def test_teacher_history_includes_exchanged_question_without_changing_totals(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    inline_scoring: Callable[[dict[str, str]], None],
+    db: Session,
+) -> None:
+    code = _classroom(client, superuser_token_headers)["code"]
+    made = make_student(db, client, code, "换题历史学生")
+    try:
+        scenario = next(
+            s
+            for s in client.get(
+                "/api/v1/admin/scenarios", headers=superuser_token_headers
+            ).json()["data"]
+            if s["topic"] == "Pets"
+        )
+        published = client.put(
+            f"/api/v1/classes/{code}/assignment",
+            json={
+                "items": [{"type": "question", "id": scenario["questions"][0]["id"]}]
+            },
+            headers=superuser_token_headers,
+        )
+        assert published.status_code == 200, published.text
+        plan = client.get(
+            f"/api/v1/classes/{code}/today", headers=made["headers"]
+        ).json()
+        exchanged = client.get(
+            f"/api/v1/classes/{code}/next-question",
+            params={"session_id": plan["session_id"]},
+            headers=made["headers"],
+        )
+        assert exchanged.status_code == 200, exchanged.text
+        question = exchanged.json()["question"]
+        assert question is not None
+        inline_scoring({"audio/wav": "i like pets because they are friendly"})
+        uploaded = _submit(
+            client,
+            {**question, "type": "question"},
+            made["headers"],
+            plan["session_id"],
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        row = client.get(
+            f"/api/v1/classes/{code}/students/{made['student']['id']}/sessions",
+            headers=superuser_token_headers,
+        ).json()[0]
+        assert row["attempt_ids"] == [uploaded.json()["id"]]
+        assert row["done_count"] == 0
+        assert row["total_count"] == 1
+        assert row["overall_avg"] is None
+        detail = client.get(
+            f"/api/v1/attempts/{row['attempt_ids'][0]}", headers=superuser_token_headers
+        )
+        assert detail.status_code == 200
+        assert detail.json()["item_text"] == question["text"]
+    finally:
+        _unassign(db, code)
+        _cleanup_student(db, made)
+
+
+def test_teacher_history_paginates_beyond_thirty_sessions(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    classroom = _classroom(client, superuser_token_headers)
+    code = classroom["code"]
+    made = make_student(db, client, code, "分页历史学生")
+    try:
+        now = datetime.now(UTC)
+        sessions = [
+            PracticeSession(
+                classroom_id=uuid.UUID(classroom["id"]),
+                student_id=uuid.UUID(made["student"]["id"]),
+                band="B1",
+                session_date=(now - timedelta(days=i)).date(),
+                created_at=now,
+            )
+            for i in range(35)
+        ]
+        db.add_all(sessions)
+        db.commit()
+        url = f"/api/v1/classes/{code}/students/{made['student']['id']}/sessions"
+        first = client.get(url, headers=superuser_token_headers).json()
+        second = client.get(
+            url, params={"offset": 30}, headers=superuser_token_headers
+        ).json()
+        assert len(first) == 30
+        assert len(second) == 5
+        assert [r["session_id"] for r in first + second] == [
+            str(ps.id) for ps in sessions
+        ]
+        assert (
+            client.get(
+                url, params={"offset": 35}, headers=superuser_token_headers
+            ).json()
+            == []
+        )
+        assert (
+            client.get(
+                url, params={"offset": -1}, headers=superuser_token_headers
+            ).status_code
+            == 422
+        )
+    finally:
         _cleanup_student(db, made)

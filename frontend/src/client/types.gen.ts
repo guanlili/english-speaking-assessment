@@ -2071,6 +2071,7 @@ export type ClassesReadMySessionsResponse = (Array<MySessionSummary>);
 export type ClassesReadStudentSessionsData = {
     code: string;
     limit?: number;
+    offset?: number;
     studentId: string;
 };
 

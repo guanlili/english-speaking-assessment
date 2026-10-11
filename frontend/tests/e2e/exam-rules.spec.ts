@@ -310,3 +310,22 @@ test("late microphone permission cannot start recording an expired item", async 
   ).toHaveCount(0)
   expect(state.uploads).toBe(0)
 })
+
+test("exam ends after upload failure without trapping result navigation", {
+  tag: "@webkit",
+}, async ({ page }) => {
+  await page.clock.install()
+  const state = await mockExam(page)
+  state.failUpload = true
+  await page.goto("/exam/EXAM")
+  await page.getByRole("button", { name: "开始录音", exact: true }).click()
+  await page.clock.runFor(3500)
+  await expect(
+    page.getByRole("button", { name: "重传录音", exact: true }),
+  ).toBeVisible()
+  state.ended = true
+  await page.clock.runFor(31000)
+  await expect(page).toHaveURL(/\/exam\/EXAM\/result/)
+  await expect(page.getByText(/考试已结束/)).toBeVisible()
+  expect(state.uploads).toBe(0)
+})
