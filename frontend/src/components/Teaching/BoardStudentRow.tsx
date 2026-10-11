@@ -3,8 +3,9 @@ import { ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import type { BoardStudent } from "@/client"
-import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { AttemptFeedbackDialog } from "@/components/Teaching/AttemptFeedbackDialog"
+import { RecordingButton } from "@/components/Teaching/RecordingButton"
+import { StudentFeedbackDialog } from "@/components/Teaching/StudentFeedbackDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TableCell, TableRow } from "@/components/ui/table"
@@ -34,6 +35,7 @@ export function BoardStudentRow({
   isExamPublish: boolean
 }) {
   const { t } = useI18n()
+  const [summaryOpen, setSummaryOpen] = useState(false)
   const name = boardStudentDisplayName(student)
   const [feedbackAttemptId, setFeedbackAttemptId] = useState<string | null>(
     null,
@@ -70,7 +72,20 @@ export function BoardStudentRow({
             )}
           </button>
         </TableCell>
-        <TableCell className="font-medium">{name}</TableCell>
+        <TableCell className="font-medium">
+          {name}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-1 flex min-h-11"
+            onClick={(event) => {
+              event.stopPropagation()
+              setSummaryOpen(true)
+            }}
+          >
+            {t({ zh: "汇总反馈", en: "Overall feedback" })}
+          </Button>
+        </TableCell>
         <TableCell>
           {student.done_count}/{student.total_count}
         </TableCell>
@@ -215,9 +230,13 @@ export function BoardStudentRow({
                   )}
                   {item.attempt_id && item.status === "done" && (
                     <>
-                      <AttemptAudio
+                      <RecordingButton
+                        key={item.attempt_id}
                         attemptId={item.attempt_id}
-                        className="h-8"
+                        label={t({
+                          zh: `回听 ${name} 第${index + 1}题录音`,
+                          en: `Listen to ${name}'s recording for item ${index + 1}`,
+                        })}
                       />
                       <Button
                         variant="ghost"
@@ -242,6 +261,14 @@ export function BoardStudentRow({
             </div>
           </TableCell>
         </TableRow>
+      )}
+      {summaryOpen && (
+        <StudentFeedbackDialog
+          name={name}
+          items={student.items}
+          open={summaryOpen}
+          onClose={() => setSummaryOpen(false)}
+        />
       )}
     </>
   )
