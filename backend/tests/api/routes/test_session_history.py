@@ -359,6 +359,20 @@ def test_my_sessions_rows_and_stats(
             plan_b["session_id"],
             session_a,
         ]
+        teacher_history = client.get(
+            f"/api/v1/classes/{code}/students/{made['student']['id']}/sessions",
+            headers=superuser_token_headers,
+        )
+        assert teacher_history.status_code == 200, teacher_history.text
+        teacher_rows = {r["session_id"]: r for r in teacher_history.json()}
+        assert set(teacher_rows) == set(by_id)
+        assert set(teacher_rows[session_a]["attempt_ids"]) == {
+            passage_resp.json()["id"],
+            q1_resp.json()["id"],
+        }
+        assert teacher_rows[plan_c["session_id"]]["attempt_ids"] == [
+            repeat_resp.json()["id"]
+        ]
         # 昨天的发布轮：标题透出、2/3 完成、均分 = 两题参考分均值
         row_a = by_id[session_a]
         assert row_a["title"] == "期中口语练习"
@@ -442,6 +456,21 @@ def test_my_sessions_exam_scores_masked_until_ended(
         assert rows[0]["done_count"] == 1
         assert rows[0]["total_count"] == 2
         assert rows[0]["overall_avg"] is None
+        assert rows[0]["attempt_ids"] == []
+        assert rows[0]["is_exam"] is True
+
+        # 离开考试页后所有题窗过期：反馈和按钮使用同一只读结束判据。
+        session_row = db.get_one(PracticeSession, uuid.UUID(plan["session_id"]))
+        session_row.exam_started_at = datetime.now(UTC) - timedelta(hours=1)
+        db.add(session_row)
+        db.commit()
+        expired_rows = client.get(
+            f"/api/v1/classes/{code}/my-sessions", headers=made["headers"]
+        ).json()
+        assert expired_rows[0]["exam_ended"] is True
+        assert expired_rows[0]["overall_avg"] == attempt_row.overall
+        db.refresh(session_row)
+        assert session_row.exam_ended_at is None
 
         # 考试终结（交卷）后：分数恢复
         session_row = db.get_one(PracticeSession, uuid.UUID(plan["session_id"]))
@@ -455,4 +484,200 @@ def test_my_sessions_exam_scores_masked_until_ended(
         assert rows_after[0]["overall_avg"] == attempt_row.overall
     finally:
         _unassign(db, code)
+        _cleanup_student(db, made)
+
+
+def test_teacher_history_includes_exchanged_question_without_changing_totals(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    inline_scoring: Callable[[dict[str, str]], None],
+    db: Session,
+) -> None:
+    code = _classroom(client, superuser_token_headers)["code"]
+    made = make_student(db, client, code, "换题历史学生")
+    try:
+        scenario = next(
+            s
+            for s in client.get(
+                "/api/v1/admin/scenarios", headers=superuser_token_headers
+            ).json()["data"]
+            if s["topic"] == "Pets"
+        )
+        published = client.put(
+            f"/api/v1/classes/{code}/assignment",
+            json={
+                "items": [{"type": "question", "id": scenario["questions"][0]["id"]}]
+            },
+            headers=superuser_token_headers,
+        )
+        assert published.status_code == 200, published.text
+        plan = client.get(
+            f"/api/v1/classes/{code}/today", headers=made["headers"]
+        ).json()
+        exchanged = client.get(
+            f"/api/v1/classes/{code}/next-question",
+            params={"session_id": plan["session_id"]},
+            headers=made["headers"],
+        )
+        assert exchanged.status_code == 200, exchanged.text
+        question = exchanged.json()["question"]
+        assert question is not None
+        inline_scoring({"audio/wav": "i like pets because they are friendly"})
+        uploaded = _submit(
+            client,
+            {**question, "type": "question"},
+            made["headers"],
+            plan["session_id"],
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        row = client.get(
+            f"/api/v1/classes/{code}/students/{made['student']['id']}/sessions",
+            headers=superuser_token_headers,
+        ).json()[0]
+        assert row["attempt_ids"] == [uploaded.json()["id"]]
+        assert row["done_count"] == 0
+        assert row["total_count"] == 1
+        assert row["overall_avg"] is None
+        detail = client.get(
+            f"/api/v1/attempts/{row['attempt_ids'][0]}", headers=superuser_token_headers
+        )
+        assert detail.status_code == 200
+        assert detail.json()["item_text"] == question["text"]
+    finally:
+        _unassign(db, code)
+        _cleanup_student(db, made)
+
+
+def test_teacher_history_paginates_beyond_thirty_sessions(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    classroom = _classroom(client, superuser_token_headers)
+    code = classroom["code"]
+    made = make_student(db, client, code, "分页历史学生")
+    try:
+        now = datetime.now(UTC)
+        sessions = [
+            PracticeSession(
+                classroom_id=uuid.UUID(classroom["id"]),
+                student_id=uuid.UUID(made["student"]["id"]),
+                band="B1",
+                session_date=(now - timedelta(days=i)).date(),
+                created_at=now,
+            )
+            for i in range(35)
+        ]
+        db.add_all(sessions)
+        db.commit()
+        url = f"/api/v1/classes/{code}/students/{made['student']['id']}/sessions"
+        first = client.get(url, headers=superuser_token_headers).json()
+        second = client.get(
+            url, params={"offset": 30}, headers=superuser_token_headers
+        ).json()
+        assert len(first) == 30
+        assert len(second) == 5
+        assert [r["session_id"] for r in first + second] == [
+            str(ps.id) for ps in sessions
+        ]
+        assert (
+            client.get(
+                url, params={"offset": 35}, headers=superuser_token_headers
+            ).json()
+            == []
+        )
+        assert (
+            client.get(
+                url, params={"offset": -1}, headers=superuser_token_headers
+            ).status_code
+            == 422
+        )
+    finally:
+        _cleanup_student(db, made)
+
+
+@pytest.mark.parametrize("elapsed_seconds", [299, 300, 301])
+def test_history_global_exam_deadline_before_item_deadlines(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    elapsed_seconds: int,
+) -> None:
+    """整场 5 分钟、两题各 3 分钟：历史只读解锁，不能提前落交卷时间。"""
+    from app.models import ClassroomExercise
+    from app.services import exam as exam_service
+
+    classroom = _classroom(client, superuser_token_headers)
+    code = classroom["code"]
+    made = make_student(db, client, code, "整场限时历史学生")
+    try:
+        started = datetime.now(UTC) - timedelta(minutes=10)
+        question_ids = [uuid.uuid4(), uuid.uuid4()]
+        exercise = ClassroomExercise(
+            classroom_id=uuid.UUID(classroom["id"]),
+            is_exam=True,
+            time_limit_minutes=5,
+            snapshot_items=[
+                {
+                    "type": "question",
+                    "id": str(item_id),
+                    "text": "Describe your school.",
+                    "suggested_seconds": 180,
+                }
+                for item_id in question_ids
+            ],
+        )
+        db.add(exercise)
+        db.flush()
+        practice = PracticeSession(
+            classroom_id=exercise.classroom_id,
+            student_id=uuid.UUID(made["student"]["id"]),
+            assignment_id=exercise.id,
+            band="B1",
+            session_date=started.date(),
+            exam_started_at=started,
+        )
+        db.add(practice)
+        db.flush()
+        attempt = Attempt(
+            student_id=practice.student_id,
+            session_id=practice.id,
+            item_type="question",
+            item_id=question_ids[0],
+            audio_path="unused-history-test.wav",
+            duration_s=180,
+            created_at=started + timedelta(seconds=180),
+            status=AttemptStatus.DONE,
+            overall=80,
+        )
+        db.add(attempt)
+        db.commit()
+        now = started + timedelta(seconds=elapsed_seconds)
+        monkeypatch.setattr(exam_service, "_now", lambda: now)
+        windows = exam_service.item_windows(db, practice, exercise)
+        assert windows[-1].deadline == started + timedelta(minutes=6)
+        ended = elapsed_seconds >= 300
+        assert exam_service.exam_feedback_locked(db, practice, exercise) is not ended
+        assert exam_service.exam_status_payload(db, practice, exercise).ended is ended
+        for url, headers in [
+            (f"/api/v1/classes/{code}/my-sessions", made["headers"]),
+            (
+                f"/api/v1/classes/{code}/students/{practice.student_id}/sessions",
+                superuser_token_headers,
+            ),
+        ]:
+            response = client.get(url, headers=headers)
+            assert response.status_code == 200, response.text
+            row = response.json()[0]
+            assert row["exam_ended"] is ended
+            assert row["overall_avg"] == (
+                80 if ended or headers is superuser_token_headers else None
+            )
+            assert row["attempt_ids"] == (
+                [str(attempt.id)] if ended or headers is superuser_token_headers else []
+            )
+        db.refresh(practice)
+        assert practice.exam_ended_at is None
+    finally:
         _cleanup_student(db, made)

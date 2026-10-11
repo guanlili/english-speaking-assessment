@@ -348,13 +348,46 @@ def read_my_sessions(
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
 
+    return _session_history(session, student.id, limit, mask_exam_feedback=True)
+
+
+@router.get(
+    "/{code}/students/{student_id}/sessions", response_model=list[MySessionSummary]
+)
+def read_student_sessions(
+    session: SessionDep,
+    code: str,
+    student_id: uuid.UUID,
+    current_user: CurrentUser,
+    limit: int = Query(default=30, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> Any:
+    """授权教师回看学生所有练习/考试轮次，包含自主练习与历史发布。"""
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    student = _get_student_of_classroom(session, classroom, student_id)
+    return _session_history(
+        session, student.id, limit, mask_exam_feedback=False, offset=offset
+    )
+
+
+def _session_history(
+    session: SessionDep,
+    student_id: uuid.UUID,
+    limit: int,
+    *,
+    mask_exam_feedback: bool,
+    offset: int = 0,
+) -> list[MySessionSummary]:
     sessions = session.exec(
         select(PracticeSession)
-        .where(PracticeSession.student_id == student.id)
+        .where(PracticeSession.student_id == student_id)
         .order_by(
             col(PracticeSession.session_date).desc(),
             col(PracticeSession.created_at).desc(),
+            col(PracticeSession.id).desc(),
         )
+        .offset(offset)
         .limit(limit)
     ).all()
     if not sessions:
@@ -431,10 +464,16 @@ def read_my_sessions(
             for item_id in required
             if item_id in latest and latest[item_id].status == AttemptStatus.DONE
         ]
-        feedback_locked = exam_service.exam_feedback_locked(session, ps, exercise)
+        exam_locked = exam_service.exam_feedback_locked(session, ps, exercise)
+        feedback_locked = mask_exam_feedback and exam_locked
         overalls = [a.overall for a in done if a.overall is not None]
         rows.append(
             MySessionSummary(
+                attempt_ids=[]
+                if feedback_locked
+                else [attempt.id for attempt in latest.values()],
+                is_exam=bool(exercise and exercise.is_exam),
+                exam_ended=bool(exercise and exercise.is_exam and not exam_locked),
                 session_id=ps.id,
                 session_date=ps.session_date,
                 mode=ps.mode,

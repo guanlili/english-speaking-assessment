@@ -531,7 +531,10 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                 version_no=current_exercise.version_no,
                 title=current_exercise.title,
                 status=current_exercise.status,
-                item_count=len(current_exercise.snapshot_items),
+                item_count=sum(
+                    i.get("type") != "instruction"
+                    for i in current_exercise.snapshot_items
+                ),
                 created_at=current_exercise.created_at,
                 published_at=current_exercise.published_at,
                 archived_at=current_exercise.archived_at,

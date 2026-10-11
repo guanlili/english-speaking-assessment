@@ -388,6 +388,9 @@ export type Message = {
 };
 
 export type MySessionSummary = {
+    attempt_ids?: Array<(string)>;
+    is_exam?: boolean;
+    exam_ended?: boolean;
     session_id: string;
     session_date: string;
     mode: string;
@@ -2064,6 +2067,15 @@ export type ClassesReadMySessionsData = {
 };
 
 export type ClassesReadMySessionsResponse = (Array<MySessionSummary>);
+
+export type ClassesReadStudentSessionsData = {
+    code: string;
+    limit?: number;
+    offset?: number;
+    studentId: string;
+};
+
+export type ClassesReadStudentSessionsResponse = (Array<MySessionSummary>);
 
 export type ClassesStartExamData = {
     code: string;

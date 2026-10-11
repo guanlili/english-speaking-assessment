@@ -481,7 +481,7 @@ function MyTrailPage() {
             </CardTitle>
             <CardDescription>
               {t({
-                zh: "最近 30 轮练习；点「查看反馈」回看当轮每题的转写、参考分与建议。",
+                zh: "最近 30 轮练习与考试；点「查看反馈」回看当轮每题的转写、参考分与建议。",
                 en: "Your last 30 rounds. View feedback to revisit transcripts, reference scores and tips for each item.",
               })}
             </CardDescription>
@@ -545,6 +545,13 @@ function MyTrailPage() {
                                 : { zh: "自主练习", en: "Self practice" },
                             )}
                         </span>
+                        <Badge variant="outline">
+                          {t(
+                            row.is_exam
+                              ? { zh: "考试", en: "Exam" }
+                              : { zh: "练习", en: "Practice" },
+                          )}
+                        </Badge>
                         {row.mode === "explore" && (
                           <Badge
                             variant="outline"
@@ -568,11 +575,17 @@ function MyTrailPage() {
                       asChild
                     >
                       <Link
-                        to="/p/$code/result"
+                        to={
+                          row.is_exam ? "/exam/$code/result" : "/p/$code/result"
+                        }
                         params={{ code }}
                         search={{ session: row.session_id }}
                       >
-                        {t({ zh: "查看反馈", en: "View Feedback" })}
+                        {t(
+                          row.is_exam && !row.exam_ended
+                            ? { zh: "进入考试", en: "Open exam" }
+                            : { zh: "查看反馈", en: "View Feedback" },
+                        )}
                       </Link>
                     </Button>
                   </li>

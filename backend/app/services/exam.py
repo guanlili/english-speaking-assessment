@@ -273,8 +273,8 @@ def exam_feedback_locked(
 ) -> bool:
     """模考反馈可见性（服务端口径，只读）：考试终结前学生不得取得任何反馈。
 
-    与 exam_status_payload 的 ended 同判据（exam_ended_at 已落或所有题目
-    已提交/到期），但绝不写 exam_ended_at——读反馈的接口不能借可见性判定
+    与 exam_status_payload 的 ended 同判据（exam_ended_at 已落、整场到期
+    或所有题目已提交/到期），但绝不写 exam_ended_at——读反馈的接口不能借可见性判定
     提前关卷（最后一题上传宽限期仍开放）。未开考比进行中更应遮蔽。
     """
     if exercise is None or not exercise.is_exam:
@@ -283,8 +283,11 @@ def exam_feedback_locked(
         return False
     if practice_session.exam_started_at is None:
         return True
-    windows = item_windows(db, practice_session, exercise)
     now = _now()
+    deadline = exam_deadline(practice_session, exercise)
+    if deadline is not None and now >= deadline:
+        return False
+    windows = item_windows(db, practice_session, exercise)
     return not all(window.submitted or now >= window.deadline for window in windows)
 
 
@@ -316,13 +319,19 @@ def exam_status_payload(
     )
     window = windows[index] if index < len(windows) else None
     items_finished = practice_session.exam_started_at is not None and window is None
+    deadline = exam_deadline(practice_session, exercise)
+    ended = (
+        practice_session.exam_ended_at is not None
+        or items_finished
+        or (deadline is not None and now >= deadline)
+    )
     return ExamStatus(
         time_limit_minutes=exercise.time_limit_minutes or 0,
         remaining_seconds=0
-        if practice_session.exam_ended_at is not None or items_finished
+        if ended
         else exam_remaining_seconds(practice_session, exercise),
         started=practice_session.exam_started_at is not None,
-        ended=practice_session.exam_ended_at is not None or items_finished,
+        ended=ended,
         tab_switch_count=practice_session.tab_switch_count,
         current_item_index=index,
         item_remaining_seconds=max(

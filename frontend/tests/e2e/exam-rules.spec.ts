@@ -175,7 +175,7 @@ for (const width of [390, 820, 1180]) {
     state.ended = true
     state.index = 2
     await page.clock.runFor(3500)
-    await expect(page).toHaveURL(/\/p\/EXAM\/result/)
+    await expect(page).toHaveURL(/\/exam\/EXAM\/result/)
     await expect(page.getByText(/未作答 2 题/)).toBeVisible()
     await expect(
       page.getByRole("button", { name: /再练|重练|换同主题/ }),
@@ -205,7 +205,7 @@ test("exam timeout submits and advances while scoring remains queued", async ({
   expect(state.uploads).toBe(1)
   await page.getByRole("button", { name: "开始录音", exact: true }).click()
   await page.clock.runFor(3500)
-  await expect(page).toHaveURL(/\/p\/EXAM\/result/)
+  await expect(page).toHaveURL(/\/exam\/EXAM\/result/)
   await expect(page.getByText("录音正在评分，结果会自动更新")).toBeVisible()
   expect(state.uploads).toBe(2)
 })
@@ -308,5 +308,24 @@ test("late microphone permission cannot start recording an expired item", async 
   await expect(
     page.getByRole("button", { name: "结束录音", exact: true }),
   ).toHaveCount(0)
+  expect(state.uploads).toBe(0)
+})
+
+test("exam ends after upload failure without trapping result navigation", {
+  tag: "@webkit",
+}, async ({ page }) => {
+  await page.clock.install()
+  const state = await mockExam(page)
+  state.failUpload = true
+  await page.goto("/exam/EXAM")
+  await page.getByRole("button", { name: "开始录音", exact: true }).click()
+  await page.clock.runFor(3500)
+  await expect(
+    page.getByRole("button", { name: "重传录音", exact: true }),
+  ).toBeVisible()
+  state.ended = true
+  await page.clock.runFor(31000)
+  await expect(page).toHaveURL(/\/exam\/EXAM\/result/)
+  await expect(page.getByText(/考试已结束/)).toBeVisible()
   expect(state.uploads).toBe(0)
 })
