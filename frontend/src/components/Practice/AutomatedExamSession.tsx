@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect, useRef, useState } from "react"
+import { toast } from "sonner"
 import {
   ApiError,
   AttemptsService,
@@ -26,7 +27,6 @@ import {
 import { ITEM_TYPE_LABELS } from "@/lib/terms"
 import { speakEnglish } from "@/lib/tts"
 import { randomId } from "@/utils"
-import { toast } from "sonner"
 
 // /attempts 422 的稳定 detail → 双语文案映射（后端 detail 是稳定标识不直出界面）
 const UPLOAD_REJECT_LABELS: Record<string, { zh: string; en: string }> = {
