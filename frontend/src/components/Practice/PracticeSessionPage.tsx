@@ -22,6 +22,7 @@ import {
   PracticeLoadError,
   PracticeSkeleton,
 } from "@/components/Practice/PracticeLoadState"
+import PracticeNavigator from "@/components/Practice/PracticeNavigator"
 import PracticeSidebar from "@/components/Practice/PracticeSidebar"
 import RecordArea from "@/components/Practice/RecordArea"
 import StepProgressBar from "@/components/Practice/StepProgressBar"
@@ -517,9 +518,10 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
     }
   }, [attemptTerminal, attemptFailed, queryClient, todayQueryKey, t, exam])
 
-  // 全部完成后自动进入结果页统一展示（本次停留提交过 + 本地评分已结束 + 服务端计划全部完成）
+  // 考试全部完成后进入结果页；练习保留题面，允许继续选题和重练。
   useEffect(() => {
-    if (!allDone || !submittedRef.current || navigatedRef.current) return
+    if (!exam || !allDone || !submittedRef.current || navigatedRef.current)
+      return
     if (attemptStatus !== undefined) return
     if (attemptFailed) return
     navigatedRef.current = true
@@ -668,75 +670,99 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_270px]">
           <div className="grid gap-5">
             {/* 练习主卡：题面展示（展示组件）；作答区接线留在本页经 footer 注入 */}
-            <PracticeItemCard
-              item={currentItem}
-              promptLabel={promptLabel}
-              hint={hint}
-              isPassage={isPassage}
-              isInstruction={isInstruction}
-              isQuestion={isQuestion}
-              hideText={hideText}
-              onToggleHideText={() => setHideText(!hideText)}
-              exam={exam}
-              syncedAt={syncedAt}
-              examKind={examKind}
-              examLevel={examLevel}
-              cueBullets={cueBullets}
-              isIeltsPart2={isIeltsPart2}
-              prepDone={prepDone}
-              practicePrepLeft={practicePrepLeft}
-              onSkipPrep={skipPrep}
-              code={code}
-              sessionId={plan?.session_id}
-              todayQueryKey={todayQueryKey}
-              recordLimitSeconds={recordLimitSeconds}
-              onNextQuestion={() => nextQuestionMutation.mutate()}
-              nextQuestionPending={nextQuestionMutation.isPending}
-              footer={
-                isInstruction ? (
-                  <InstructionPanel
-                    suggestedSeconds={currentItem.suggested_seconds}
-                    itemDone={currentItemDone}
-                    ackPending={ackMutation.isPending}
-                    onContinue={() => void continueFromInstruction()}
-                    exam={exam}
-                    syncedAt={syncedAt}
-                    hint={hint}
-                  />
-                ) : (
-                  <>
-                    <Separator />
-                    <RecordArea
-                      recorder={recorder}
-                      recordLimitSeconds={recordLimitSeconds}
-                      examKind={examKind}
-                      inExam={Boolean(exam)}
-                      examActive={examActive}
-                      examEnded={examEnded}
-                      itemExpired={itemExpired}
-                      currentItemDone={currentItemDone}
-                      prepDone={prepDone}
-                      scoring={scoring}
-                      attemptFailed={attemptFailed}
-                      isLastQuestion={isLastQuestion}
-                      submitting={submitting}
-                      submitError={submitError}
-                      onStart={startRecording}
-                      onStop={recorder.stop}
-                      onRetry={retrySubmit}
-                      onExpiredContinue={() => {
-                        recorder.reset()
-                        resetAttempt()
-                        setPinnedItemId(null)
-                        void queryClient.invalidateQueries({
-                          queryKey: ["classroom", code, "today"],
-                        })
-                      }}
-                    />
-                  </>
+            <PracticeNavigator
+              items={exam ? [currentItem] : items}
+              index={exam ? 0 : currentIndex}
+              disabled={pendingBlockerActive}
+              onSelect={(id) => {
+                if (
+                  exam ||
+                  pendingBlockerActive ||
+                  recorder.isStarting() ||
+                  id === currentItem.id
                 )
-              }
-            />
+                  return
+                submittedRef.current = false
+                setPinnedItemId(null)
+                setPinnedSessionId(plan?.session_id ?? null)
+                setFocusItemId(id)
+                setHideText(false)
+                recordingTargetRef.current = null
+                recorder.reset()
+                resetAttempt()
+              }}
+              hidden={Boolean(exam)}
+            >
+              <PracticeItemCard
+                item={currentItem}
+                promptLabel={promptLabel}
+                hint={hint}
+                isPassage={isPassage}
+                isInstruction={isInstruction}
+                isQuestion={isQuestion}
+                hideText={hideText}
+                onToggleHideText={() => setHideText(!hideText)}
+                exam={exam}
+                syncedAt={syncedAt}
+                examKind={examKind}
+                examLevel={examLevel}
+                cueBullets={cueBullets}
+                isIeltsPart2={isIeltsPart2}
+                prepDone={prepDone}
+                practicePrepLeft={practicePrepLeft}
+                onSkipPrep={skipPrep}
+                code={code}
+                sessionId={plan?.session_id}
+                todayQueryKey={todayQueryKey}
+                recordLimitSeconds={recordLimitSeconds}
+                onNextQuestion={() => nextQuestionMutation.mutate()}
+                nextQuestionPending={nextQuestionMutation.isPending}
+                footer={
+                  isInstruction ? (
+                    <InstructionPanel
+                      suggestedSeconds={currentItem.suggested_seconds}
+                      itemDone={currentItemDone}
+                      ackPending={ackMutation.isPending}
+                      onContinue={() => void continueFromInstruction()}
+                      exam={exam}
+                      syncedAt={syncedAt}
+                      hint={hint}
+                    />
+                  ) : (
+                    <>
+                      <Separator />
+                      <RecordArea
+                        recorder={recorder}
+                        recordLimitSeconds={recordLimitSeconds}
+                        examKind={examKind}
+                        inExam={Boolean(exam)}
+                        examActive={examActive}
+                        examEnded={examEnded}
+                        itemExpired={itemExpired}
+                        currentItemDone={currentItemDone}
+                        prepDone={prepDone}
+                        scoring={scoring}
+                        attemptFailed={attemptFailed}
+                        isLastQuestion={isLastQuestion}
+                        submitting={submitting}
+                        submitError={submitError}
+                        onStart={startRecording}
+                        onStop={recorder.stop}
+                        onRetry={retrySubmit}
+                        onExpiredContinue={() => {
+                          recorder.reset()
+                          resetAttempt()
+                          setPinnedItemId(null)
+                          void queryClient.invalidateQueries({
+                            queryKey: ["classroom", code, "today"],
+                          })
+                        }}
+                      />
+                    </>
+                  )
+                }
+              />
+            </PracticeNavigator>
           </div>
 
           {!exam && (

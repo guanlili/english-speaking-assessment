@@ -95,10 +95,19 @@ export function useRecordingFlow({
     // maxSeconds 只需给题目本身的作答上限
     maxSeconds: recordLimitSeconds,
     onComplete: (rec) => {
+      const target = recordingTargetRef.current
+      if (!target) {
+        toast.error(
+          t({
+            zh: "录音目标已失效，请重新录音",
+            en: "The recording target is no longer available. Please record again.",
+          }),
+        )
+        return
+      }
       submittedRef.current = true
       // 上传期间保留题面；模考上传成功即解除，不等待评分。
-      if (currentItem) setPinnedItemId(currentItem.id)
-      const target = recordingTargetRef.current
+      setPinnedItemId(target.itemId)
       // 录完即落草稿（与上传并行）：刷新/断网后仍可恢复。不保存 token，
       // 属主取 JWT sub；环境不可用时降级为仅内存重传。
       const owner = currentDraftOwner()
@@ -129,16 +138,13 @@ export function useRecordingFlow({
           .finally(() => setDraftFlushPending(false))
       }
       // 使用录音开始时钉住的目标，避免录音期间计划刷新导致提交到新题新轮
-      submitRecording(
-        { blob: rec.blob, duration: rec.duration },
-        target ?? undefined,
-      )
+      submitRecording({ blob: rec.blob, duration: rec.duration }, target)
     },
   })
 
   const submitRecording = (
     recording: { blob: Blob; duration: number },
-    target?: AttemptSubmitTarget,
+    target: AttemptSubmitTarget,
   ) => {
     // 统一走 submitAsync：服务器接受（2xx）后删除该题草稿；失败则草稿保留，
     // 刷新后由恢复卡片按原幂等键重传（不重复扣费）。普通练习与模考同规则。
@@ -173,6 +179,13 @@ export function useRecordingFlow({
   // 结果页也绑定这个实际完成的会话，不挂到新题新轮。
   const startRecording = () => {
     if (
+      recorder.isStarting() ||
+      recorder.status === "recording" ||
+      !currentItem ||
+      currentItem.type === "instruction"
+    )
+      return
+    if (
       exam &&
       (!examStarted || examEnded || currentItemDone || !prepDone || itemExpired)
     )
@@ -185,20 +198,20 @@ export function useRecordingFlow({
       idempotencyKey: randomId(),
     }
     setPinnedSessionId(sessionId ?? null)
-    if (exam && currentItem) setPinnedItemId(currentItem.id)
+    setPinnedItemId(currentItem.id)
     recorder.start()
   }
 
   // 重传：用相同幂等键重新提交同一段录音（断网/超时后恢复）
   const retrySubmit = () => {
-    if (recorder.recording) {
+    if (recorder.recording && recordingTargetRef.current) {
       submittedRef.current = true
       submitRecording(
         {
           blob: recorder.recording.blob,
           duration: recorder.recording.duration,
         },
-        recordingTargetRef.current ?? undefined,
+        recordingTargetRef.current,
       )
     }
   }
@@ -206,6 +219,7 @@ export function useRecordingFlow({
   // 录音/上传/失败待重传期间的离开保护判定（站内跳转 + 浏览器关闭/刷新）；
   // 草稿落盘未完成也保持保护——离开保护与数据落盘完成时机一致（批次08B）
   const pendingBlockerActive =
+    recorder.starting ||
     recorder.status === "recording" ||
     submitting ||
     draftFlushPending ||

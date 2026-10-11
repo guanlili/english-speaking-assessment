@@ -42,6 +42,8 @@ function pickMimeType(): string {
 export function useRecorder(options: UseRecorderOptions = {}) {
   const { t } = useI18n()
   const [status, setStatus] = useState<RecorderStatus>("idle")
+  const [starting, setStarting] = useState(false)
+  const generationRef = useRef(0)
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [recording, setRecording] = useState<Recording | null>(null)
@@ -84,6 +86,9 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   }, [])
 
   const reset = useCallback(() => {
+    generationRef.current += 1
+    startingRef.current = false
+    setStarting(false)
     setStatus("idle")
     setElapsed(0)
     setError(null)
@@ -107,7 +112,9 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       )
       return
     }
+    const generation = ++generationRef.current
     startingRef.current = true
+    setStarting(true)
     interruptedRef.current = false
     setError(null)
     setRecording(null)
@@ -117,7 +124,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         audio: { echoCancellation: true, noiseSuppression: true },
       })
       // await 期间卸载（权限弹窗未响应/用户已离开）：释放麦克风，不建 recorder
-      if (disposedRef.current) {
+      if (disposedRef.current || generation !== generationRef.current) {
         stream.getTracks().forEach((track) => {
           track.stop()
         })
@@ -246,6 +253,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         }
       }, 250)
     } catch (err) {
+      if (disposedRef.current || generation !== generationRef.current) return
       cleanup()
       setStatus("idle")
       const name = err instanceof DOMException ? err.name : ""
@@ -273,7 +281,10 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         )
       }
     } finally {
-      startingRef.current = false
+      if (generation === generationRef.current) {
+        startingRef.current = false
+        setStarting(false)
+      }
     }
   }, [cleanup, options.maxSeconds, options.deadlineAt, stop, t])
 
@@ -283,6 +294,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     disposedRef.current = false
     return () => {
       disposedRef.current = true
+      generationRef.current += 1
       const recorder = recorderRef.current
       if (recorder && recorder.state === "recording") {
         recorder.stop()
@@ -291,5 +303,15 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     }
   }, [cleanup])
 
-  return { status, elapsed, error, recording, start, stop, reset }
+  return {
+    status,
+    starting,
+    isStarting: () => startingRef.current,
+    elapsed,
+    error,
+    recording,
+    start,
+    stop,
+    reset,
+  }
 }
