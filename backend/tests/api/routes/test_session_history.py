@@ -594,3 +594,90 @@ def test_teacher_history_paginates_beyond_thirty_sessions(
         )
     finally:
         _cleanup_student(db, made)
+
+
+@pytest.mark.parametrize("elapsed_seconds", [299, 300, 301])
+def test_history_global_exam_deadline_before_item_deadlines(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    elapsed_seconds: int,
+) -> None:
+    """整场 5 分钟、两题各 3 分钟：历史只读解锁，不能提前落交卷时间。"""
+    from app.models import ClassroomExercise
+    from app.services import exam as exam_service
+
+    classroom = _classroom(client, superuser_token_headers)
+    code = classroom["code"]
+    made = make_student(db, client, code, "整场限时历史学生")
+    try:
+        started = datetime.now(UTC) - timedelta(minutes=10)
+        question_ids = [uuid.uuid4(), uuid.uuid4()]
+        exercise = ClassroomExercise(
+            classroom_id=uuid.UUID(classroom["id"]),
+            is_exam=True,
+            time_limit_minutes=5,
+            snapshot_items=[
+                {
+                    "type": "question",
+                    "id": str(item_id),
+                    "text": "Describe your school.",
+                    "suggested_seconds": 180,
+                }
+                for item_id in question_ids
+            ],
+        )
+        db.add(exercise)
+        db.flush()
+        practice = PracticeSession(
+            classroom_id=exercise.classroom_id,
+            student_id=uuid.UUID(made["student"]["id"]),
+            assignment_id=exercise.id,
+            band="B1",
+            session_date=started.date(),
+            exam_started_at=started,
+        )
+        db.add(practice)
+        db.flush()
+        attempt = Attempt(
+            student_id=practice.student_id,
+            session_id=practice.id,
+            item_type="question",
+            item_id=question_ids[0],
+            audio_path="unused-history-test.wav",
+            duration_s=180,
+            created_at=started + timedelta(seconds=180),
+            status=AttemptStatus.DONE,
+            overall=80,
+        )
+        db.add(attempt)
+        db.commit()
+        now = started + timedelta(seconds=elapsed_seconds)
+        monkeypatch.setattr(exam_service, "_now", lambda: now)
+        windows = exam_service.item_windows(db, practice, exercise)
+        assert windows[-1].deadline == started + timedelta(minutes=6)
+        ended = elapsed_seconds >= 300
+        assert exam_service.exam_feedback_locked(db, practice, exercise) is not ended
+        assert exam_service.exam_status_payload(db, practice, exercise).ended is ended
+        for url, headers in [
+            (f"/api/v1/classes/{code}/my-sessions", made["headers"]),
+            (
+                f"/api/v1/classes/{code}/students/{practice.student_id}/sessions",
+                superuser_token_headers,
+            ),
+        ]:
+            response = client.get(url, headers=headers)
+            assert response.status_code == 200, response.text
+            row = response.json()[0]
+            assert row["exam_ended"] is ended
+            assert row["overall_avg"] == (
+                80 if ended or headers is superuser_token_headers else None
+            )
+            assert row["attempt_ids"] == (
+                [str(attempt.id)] if ended or headers is superuser_token_headers else []
+            )
+        db.refresh(practice)
+        assert practice.exam_ended_at is None
+    finally:
+        _cleanup_student(db, made)
