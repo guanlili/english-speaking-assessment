@@ -14,6 +14,9 @@ export interface UseRecorderOptions {
   onComplete?: (recording: Recording) => void
   /** Optional durable snapshots for exams interrupted by navigation. */
   onProgress?: (recording: Recording) => void
+  /** 录音停止但被判定为无效（过短/空数据/中途中断）时触发，不提交作答。
+   * 退出等流程不能只挂在 onComplete 上，否则无效录音会把页面卡在原地。 */
+  onDiscard?: (reason: "short" | "interrupted") => void
   /** 当前题目的作答秒数；开始录音时固定，切题不会改变进行中的录音。 */
   maxSeconds?: number
   /** 模考题目的绝对截止时间；麦克风授权耗时也算在题目时间内。 */
@@ -52,6 +55,8 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   onProgressRef.current = options.onProgress
   const onCompleteRef = useRef(options.onComplete)
   onCompleteRef.current = options.onComplete
+  const onDiscardRef = useRef(options.onDiscard)
+  onDiscardRef.current = options.onDiscard
   // 卸载标志：录音中离开页面时，onstop 不再提交幽灵作答
   const disposedRef = useRef(false)
   // 同步并发保护：getUserMedia 是异步的，连续点击期间用 ref 挡住第二个 start
@@ -205,6 +210,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         if (interruptedRef.current) {
           cleanup()
           setStatus("idle")
+          onDiscardRef.current?.("interrupted")
           return
         }
         const duration = (Date.now() - startedAtRef.current) / 1000
@@ -218,6 +224,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
               en: "Recording too short (under 1 second). Please try again.",
             }),
           )
+          onDiscardRef.current?.("short")
           return
         }
         const blob = new Blob(chunksRef.current, { type: blobType })

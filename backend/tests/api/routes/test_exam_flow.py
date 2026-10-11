@@ -382,3 +382,90 @@ def test_last_item_next_keeps_upload_grace_through_attempts_gate(
         _cleanup_classroom(db, classroom["id"])
         db.delete(passage)
         db.commit()
+
+
+def test_whole_deadline_boundary_blocks_first_upload(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """整场截止的边界与 ended() 对齐：恰好到点/过点拒绝，临点前放行。"""
+    from tests.utils.audio import wav_upload
+
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+        )
+    )
+    code = classroom["code"]
+    made = make_student(db, client, code)
+    item_id = uuid.uuid4()
+    passage = Passage(
+        id=item_id,
+        slug=f"flow-edge-{item_id}",
+        title="Read",
+        text="Read this.",
+        cefr_band="B1",
+    )
+    db.add(passage)
+    db.commit()
+    exercise = ClassroomExercise(
+        classroom_id=uuid.UUID(classroom["id"]),
+        is_exam=True,
+        time_limit_minutes=5,
+        snapshot_items=[
+            {
+                "id": str(item_id),
+                "type": "passage",
+                "text": "Read this.",
+                "suggested_seconds": 5,
+                "exam_flow": ExamItemSettings(wait_seconds=0).model_dump(),
+            }
+        ],
+    )
+    db.add(exercise)
+    db.flush()
+    row = db.get(Classroom, exercise.classroom_id)
+    assert row is not None
+    row.current_exercise_id = exercise.id
+    db.add(row)
+    db.commit()
+    start = datetime.now(UTC)
+    monkeypatch.setattr(exam, "_now", lambda: start)
+
+    def upload(key: str) -> Response:
+        return client.post(
+            "/api/v1/attempts",
+            files={"audio": wav_upload(6.0)},
+            data={
+                "item_type": "passage",
+                "item_id": str(item_id),
+                "duration_s": "6.0",
+                "session_id": sid,
+                "idempotency_key": key,
+            },
+            headers=made["headers"],
+        )
+
+    try:
+        sid = _today(client, made["headers"], code)["session_id"]
+        assert (
+            client.post(
+                f"/api/v1/classes/{code}/exam/start",
+                json={"session_id": sid},
+                headers=made["headers"],
+            ).status_code
+            == 200
+        )
+        deadline = start + timedelta(minutes=5)
+        monkeypatch.setattr(exam, "_now", lambda: deadline)
+        assert upload("edge-at-deadline").status_code == 422
+        monkeypatch.setattr(exam, "_now", lambda: deadline + timedelta(seconds=1))
+        assert upload("edge-after-deadline").status_code == 422
+        monkeypatch.setattr(exam, "_now", lambda: deadline - timedelta(seconds=1))
+        assert upload("edge-before-deadline").status_code == 200
+    finally:
+        _cleanup_classroom(db, classroom["id"])
+        db.delete(passage)
+        db.commit()

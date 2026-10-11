@@ -26,6 +26,31 @@ import {
 import { ITEM_TYPE_LABELS } from "@/lib/terms"
 import { speakEnglish } from "@/lib/tts"
 import { randomId } from "@/utils"
+import { toast } from "sonner"
+
+// /attempts 422 的稳定 detail → 双语文案映射（后端 detail 是稳定标识不直出界面）
+const UPLOAD_REJECT_LABELS: Record<string, { zh: string; en: string }> = {
+  "录音太短（不足 1 秒），请再录一次": {
+    zh: "录音不足 1 秒，服务器未接受；可重试或确认后放弃。",
+    en: "The recording is under 1 second and was rejected. Retry or discard it after confirming.",
+  },
+  "音频为空，请再录一次": {
+    zh: "录音内容为空，无法提交；可重试或确认后放弃。",
+    en: "The recording is empty and cannot be submitted. Retry or discard it after confirming.",
+  },
+  "音频文件无效或损坏，请重新录音": {
+    zh: "录音文件无效或损坏，无法提交；可重试或确认后放弃。",
+    en: "The recording file is invalid or corrupted. Retry or discard it after confirming.",
+  },
+  "文件中没有音频音轨，请重新录音": {
+    zh: "文件中没有音频音轨，无法提交；可重试或确认后放弃。",
+    en: "The file has no audio track and cannot be submitted. Retry or discard it after confirming.",
+  },
+  "音轨数异常，请重新录音": {
+    zh: "音频轨数异常，无法提交；可重试或确认后放弃。",
+    en: "The audio tracks look abnormal. Retry or discard it after confirming.",
+  },
+}
 
 export default function AutomatedExamSession({
   code,
@@ -120,16 +145,18 @@ export default function AutomatedExamSession({
       void query.refetch()
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
-        // 服务器明确拒绝内容（损坏/无音轨等）：重传同一文件无意义，
-        // 展示原因并让学生确认后放弃这段录音继续考试。
+        // 服务器明确拒绝内容（损坏/无音轨等）：重传同一文件无意义。
+        // detail 是稳定标识，映射双语展示；未知 detail 走双语兜底。
         const detail = (err.body as { detail?: unknown } | null)?.detail
+        const label =
+          typeof detail === "string" ? UPLOAD_REJECT_LABELS[detail] : undefined
         setError(
-          typeof detail === "string" && detail
-            ? detail
-            : t({
-                zh: "录音无法提交，可重试或确认后放弃。",
-                en: "The recording could not be submitted. Retry or discard it after confirming.",
-              }),
+          t(
+            label ?? {
+              zh: "录音无法提交，可重试或确认后放弃。",
+              en: "The recording could not be submitted. Retry or discard it after confirming.",
+            },
+          ),
         )
       } else {
         setError(
@@ -145,6 +172,13 @@ export default function AutomatedExamSession({
   }
   const uploadRef = useRef(upload)
   uploadRef.current = upload
+  // 退出唯一出口：先消费标记（防止跨题残留误触发），再等本机保存链清空后离页。
+  function doExit() {
+    exitRequested.current = false
+    void saving.current.then(() =>
+      navigate({ to: "/home/$code", params: { code } }),
+    )
+  }
   function persist(recording: Recording, complete: boolean) {
     const base = target.current
     if (!base) return
@@ -165,8 +199,7 @@ export default function AutomatedExamSession({
         )
       if (complete) {
         await uploadRef.current(input)
-        if (exitRequested.current)
-          void navigate({ to: "/home/$code", params: { code } })
+        if (exitRequested.current) doExit()
       }
     })
   }
@@ -181,6 +214,19 @@ export default function AutomatedExamSession({
         1000,
     onComplete: (rec) => persist(rec, true),
     onProgress: (rec) => persist(rec, false),
+    // 录音被判无效（过短/中断）不会触发 onComplete：退出请求在这里兑现，
+    // 并提示本次录音未提交——不能把退出只挂在有效录音的完成回调上。
+    onDiscard: (reason) => {
+      if (!exitRequested.current) return
+      if (reason === "short")
+        toast.info(
+          t({
+            zh: "录音不足 1 秒未提交，已退出考试。",
+            en: "The recording under 1 second was not submitted. You have left the exam.",
+          }),
+        )
+      doExit()
+    },
   })
   const recorderRef = useRef(recorder)
   recorderRef.current = recorder
@@ -436,12 +482,11 @@ export default function AutomatedExamSession({
           className="min-h-11"
           disabled={busy}
           onClick={() => {
+            // 录音中：有效→上传后 doExit，无效→onDiscard 里 doExit；
+            // 未在录音：直接退出。所有路径都消费 exitRequested，不跨题残留。
             exitRequested.current = true
             if (recorder.status === "recording") recorder.stop()
-            else
-              void saving.current.then(() =>
-                navigate({ to: "/home/$code", params: { code } }),
-              )
+            else doExit()
           }}
         >
           {t({ zh: "保存并退出", en: "Save and exit" })}

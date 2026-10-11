@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test"
 import { EXAM_AUDIO_UNLOCK_URL } from "../../src/lib/exam-audio"
 
-async function setup(page: Page, mockAudio = true) {
+async function setup(page: Page, mockAudio = true, lang = "zh") {
   const state = {
     index: 0,
     phase: "not_started",
@@ -23,69 +23,73 @@ async function setup(page: Page, mockAudio = true) {
       exam_flow: { wait_seconds: 0, after_audio_seconds: 0, prep_seconds: 0 },
     }),
   )
-  await page.addInitScript((mockAudio) => {
-    localStorage.setItem(
-      "access_token",
-      `test.${btoa(JSON.stringify({ sub: "user" }))}.test`,
-    )
-    localStorage.setItem("esa:role", "student")
-    localStorage.setItem(
-      "esa:student:EXAM",
-      JSON.stringify({
-        id: "student",
-        display_name: "Student",
-        user_id: "user",
-      }),
-    )
-    class Recorder {
-      static isTypeSupported() {
-        return true
+  await page.addInitScript(
+    ({ mockAudio, lang }) => {
+      localStorage.setItem(
+        "access_token",
+        `test.${btoa(JSON.stringify({ sub: "user" }))}.test`,
+      )
+      localStorage.setItem("esa:role", "student")
+      if (lang !== "zh") localStorage.setItem("esa:lang", lang)
+      localStorage.setItem(
+        "esa:student:EXAM",
+        JSON.stringify({
+          id: "student",
+          display_name: "Student",
+          user_id: "user",
+        }),
+      )
+      class Recorder {
+        static isTypeSupported() {
+          return true
+        }
+        state = "inactive"
+        ondataavailable: ((event: BlobEvent) => void) | null = null
+        onstop: (() => void) | null = null
+        interval = 0
+        start() {
+          this.state = "recording"
+          this.interval = window.setInterval(() => this.chunk(), 250)
+        }
+        chunk() {
+          const e = new Event("dataavailable")
+          Object.defineProperty(e, "data", {
+            value: new Blob(["audio"], { type: "audio/webm" }),
+          })
+          this.ondataavailable?.(e as BlobEvent)
+        }
+        stop() {
+          if (this.state !== "recording") return
+          this.state = "inactive"
+          clearInterval(this.interval)
+          this.chunk()
+          queueMicrotask(() => this.onstop?.())
+        }
       }
-      state = "inactive"
-      ondataavailable: ((event: BlobEvent) => void) | null = null
-      onstop: (() => void) | null = null
-      interval = 0
-      start() {
-        this.state = "recording"
-        this.interval = window.setInterval(() => this.chunk(), 250)
+      window.MediaRecorder = Recorder as unknown as typeof MediaRecorder
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: { getUserMedia: async () => new MediaStream() },
+      })
+      class AudioMock {
+        onended: (() => void) | null = null
+        onerror: (() => void) | null = null
+        onloadedmetadata: (() => void) | null = null
+        currentTime = 0
+        duration = 2
+        timer = 0
+        async play() {
+          this.onloadedmetadata?.()
+          this.timer = window.setTimeout(() => this.onended?.(), 1000)
+        }
+        pause() {
+          clearTimeout(this.timer)
+        }
       }
-      chunk() {
-        const e = new Event("dataavailable")
-        Object.defineProperty(e, "data", {
-          value: new Blob(["audio"], { type: "audio/webm" }),
-        })
-        this.ondataavailable?.(e as BlobEvent)
-      }
-      stop() {
-        if (this.state !== "recording") return
-        this.state = "inactive"
-        clearInterval(this.interval)
-        this.chunk()
-        queueMicrotask(() => this.onstop?.())
-      }
-    }
-    window.MediaRecorder = Recorder as unknown as typeof MediaRecorder
-    Object.defineProperty(navigator, "mediaDevices", {
-      configurable: true,
-      value: { getUserMedia: async () => new MediaStream() },
-    })
-    class AudioMock {
-      onended: (() => void) | null = null
-      onerror: (() => void) | null = null
-      onloadedmetadata: (() => void) | null = null
-      currentTime = 0
-      duration = 2
-      timer = 0
-      async play() {
-        this.onloadedmetadata?.()
-        this.timer = window.setTimeout(() => this.onended?.(), 1000)
-      }
-      pause() {
-        clearTimeout(this.timer)
-      }
-    }
-    if (mockAudio) window.Audio = AudioMock as unknown as typeof Audio
-  }, mockAudio)
+      if (mockAudio) window.Audio = AudioMock as unknown as typeof Audio
+    },
+    { mockAudio, lang },
+  )
   function exam() {
     if (state.phase === "answering" && Date.now() - state.startedAt >= 3000)
       state.phase = "ready"
@@ -261,15 +265,53 @@ test("@webkit a permanently rejected upload can be discarded to continue the exa
   await page.goto("/exam/EXAM")
   await page.getByRole("button", { name: "启用声音并继续考试" }).click()
   await expect.poll(() => state.uploads).toBe(1)
-  // 422 内容错误要展示服务器原因，并给出确认后的放弃出口。
-  await expect(page.getByText("音频文件无效或损坏，请重新录音")).toBeVisible()
+  // 422 内容错误展示映射后的双语文案（不透传后端 detail），并给出确认后的放弃出口。
+  await expect(page.getByText("录音文件无效或损坏，无法提交")).toBeVisible()
   await page.getByRole("button", { name: "放弃这段录音" }).click()
   await page.getByRole("button", { name: "放弃录音", exact: true }).click()
-  await expect(page.getByText("音频文件无效或损坏，请重新录音")).toHaveCount(0)
+  await expect(page.getByText("录音文件无效或损坏，无法提交")).toHaveCount(0)
   await expect(
     page.getByRole("button", { name: "恢复并提交保留的录音" }),
   ).toHaveCount(0)
   await expect(page.getByRole("button", { name: "下一题" })).toBeEnabled()
+})
+
+test("@webkit an English locale maps the upload rejection to English", async ({
+  page,
+}) => {
+  const state = await setup(page, true, "en")
+  state.index = 1
+  state.started = true
+  state.phase = "answering"
+  state.startedAt = Date.now()
+  state.rejectUpload = true
+  await page.goto("/exam/EXAM")
+  await page
+    .getByRole("button", { name: "Enable sound and resume exam" })
+    .click()
+  await expect.poll(() => state.uploads).toBe(1)
+  await expect(
+    page.getByText("The recording file is invalid or corrupted"),
+  ).toBeVisible()
+  await expect(page.getByText("音频文件无效或损坏")).toHaveCount(0)
+})
+
+test("@webkit a too-short recording still exits on save and exit", async ({
+  page,
+}) => {
+  const state = await setup(page)
+  state.index = 1
+  state.started = true
+  state.phase = "answering"
+  state.startedAt = Date.now()
+  await page.goto("/exam/EXAM")
+  await page.getByRole("button", { name: "启用声音并继续考试" }).click()
+  // 录音开始后 1 秒内退出：时长不足走丢弃分支，同样必须离开考试页，
+  // 且不得提交无效文件（upload 计数保持 0）。
+  await page.waitForTimeout(500)
+  await page.getByRole("button", { name: "保存并退出" }).click()
+  await expect(page).toHaveURL(/\/home\/EXAM/, { timeout: 8000 })
+  expect(state.uploads).toBe(0)
 })
 
 test("@webkit the unlocked native audio element plays subsequent prompts automatically", async ({

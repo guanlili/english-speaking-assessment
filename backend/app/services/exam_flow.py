@@ -114,7 +114,8 @@ def uploads_allowed(
     """
     if ps.exam_started_at is None:
         return False
-    if now > ps.exam_started_at + timedelta(minutes=exercise.time_limit_minutes or 0):
+    # 截止边界与 ended() 对齐：恰好到达整场截止即视为结束，不再接受首次提交
+    if now >= ps.exam_started_at + timedelta(minutes=exercise.time_limit_minutes or 0):
         return False
     if ps.exam_ended_at is None:
         return True
