@@ -38,6 +38,8 @@ async function mockTeacher(page: Page, nativeAudio = false) {
     fail: false,
     slow: false,
     failAudio: false,
+    engine: "ark",
+    rubric: null as Record<string, unknown> | null,
   }
   await page.addInitScript((nativeAudio) => {
     localStorage.setItem("access_token", "teacher-token")
@@ -123,10 +125,11 @@ async function mockTeacher(page: Page, nativeAudio = false) {
         item_type: id.endsWith("1") ? "question" : "passage",
         status: "done",
         overall: id.endsWith("1") ? 80 : 60,
-        engine: "ark",
+        engine: state.engine,
+        rubric: id.endsWith("1") ? state.rubric : null,
         duration_s: 5,
         item_text: `Saved prompt ${id}`,
-        advice: [`Actual AI advice ${id}`],
+        advice: [`Saved rule advice ${id}`],
       }
     }
     await route.fulfill({ json: body })
@@ -150,8 +153,8 @@ for (const width of [390, 820, 1180]) {
     await openHistory(page)
     await page.getByRole("button", { name: "汇总反馈", exact: true }).click()
     const dialog = page.getByRole("dialog")
-    await expect(dialog.getByText("Actual AI advice old-1")).toBeVisible()
-    await expect(dialog.getByText("Actual AI advice old-2")).toBeVisible()
+    await expect(dialog.getByText("Saved rule advice old-1")).toBeVisible()
+    await expect(dialog.getByText("Saved rule advice old-2")).toBeVisible()
     await expect(dialog.getByText("已评分 2/2 题 · 参考分 70")).toBeVisible()
     expect(state.requested.sort()).toEqual(["old-1", "old-2"])
     expect(
@@ -198,7 +201,7 @@ test("@webkit feedback loading failure can retry without closing", async ({
   state.fail = false
   await retry.click()
   await expect(
-    page.getByRole("dialog").getByText("Actual AI advice old-1"),
+    page.getByRole("dialog").getByText("Saved rule advice old-1"),
   ).toBeVisible()
 })
 test("@webkit playback rejection retries at the same button", async ({
@@ -229,7 +232,7 @@ test("@webkit current roster offers the same feedback and listening controls", a
   await page.getByRole("tab", { name: /学生.*结果|课堂面板|学生反馈/ }).click()
   await page.getByRole("button", { name: "汇总反馈", exact: true }).click()
   await expect(
-    page.getByRole("dialog").getByText("Actual AI advice new-1"),
+    page.getByRole("dialog").getByText("Saved rule advice new-1"),
   ).toBeVisible()
   await page.getByRole("button", { name: "关闭", exact: true }).click()
   await page.getByRole("button", { name: "展开 Alice 的详情" }).click()
@@ -315,3 +318,55 @@ test("@webkit failed audio download retries in place", async ({ page }) => {
   await expect(button).toHaveAttribute("aria-pressed", "true")
   expect(state.audio).toEqual(["old-1", "old-1"])
 })
+
+for (const source of [
+  "mock",
+  "rules-only",
+  "pending",
+  "unavailable",
+  "model",
+]) {
+  test(`@webkit summary identifies feedback source: ${source}`, async ({
+    page,
+  }) => {
+    const state = await mockTeacher(page)
+    state.engine = source === "mock" ? "mock" : "ark"
+    state.rubric =
+      source === "model"
+        ? {
+            fluency: 3,
+            vocabulary: 3,
+            grammar: 3,
+            task: 3,
+            mock_score: 6.5,
+            advice: ["Saved model review"],
+          }
+        : source === "pending" || source === "unavailable"
+          ? { status: source }
+          : null
+    await openHistory(page)
+    await page.getByRole("button", { name: "汇总反馈", exact: true }).click()
+    const dialog = page.getByRole("dialog")
+    await expect(dialog.getByText(/并非独立生成的整轮 AI 总评/)).toBeVisible()
+    await expect(
+      dialog.getByText("规则评分与建议", { exact: true }),
+    ).toHaveCount(2)
+    await expect(dialog.getByText("Saved rule advice old-1")).toBeVisible()
+    const expected = {
+      mock: "演示模式 · 本地模拟引擎",
+      "rules-only": "模拟分：本次建议暂缺（模型未返回）",
+      pending: "详细评价正在生成…",
+      unavailable: "详细评价暂缺，请稍后再试。",
+      model: "Saved model review",
+    }[source]!
+    await expect(
+      dialog.getByText(expected, { exact: true }).first(),
+    ).toBeVisible()
+    if (source === "mock")
+      await expect(
+        dialog.getByText("暂无模型评价。", { exact: true }),
+      ).toBeVisible()
+    if (source !== "model")
+      await expect(dialog.getByText("Saved model review")).toHaveCount(0)
+  })
+}

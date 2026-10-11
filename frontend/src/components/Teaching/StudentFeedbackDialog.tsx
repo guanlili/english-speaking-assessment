@@ -1,6 +1,6 @@
 import { useQueries } from "@tanstack/react-query"
 import { AttemptsService, type BoardItem } from "@/client"
-import { RubricBlock } from "@/components/Practice/FeedbackCard"
+import { ENGINE_LABELS, RubricBlock } from "@/components/Practice/FeedbackCard"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -76,8 +76,8 @@ export function StudentFeedbackDialog({
           </DialogTitle>
           <DialogDescription>
             {t({
-              zh: "本条记录的实际 AI 反馈；参考分为已评分题目均值。",
-              en: "Actual AI feedback for this record; the reference score averages scored items.",
+              zh: "本条记录各题已保存的反馈；参考分为已评分题目均值，并非独立生成的整轮 AI 总评。",
+              en: "Saved feedback for each item in this record; the reference score averages scored items. This is not a separately generated overall AI review.",
             })}
           </DialogDescription>
         </DialogHeader>
@@ -146,6 +146,20 @@ export function StudentFeedbackDialog({
                   )}
                   {attempt.status === "done" ? (
                     <>
+                      <p className="text-xs text-muted-foreground">
+                        {t(
+                          ENGINE_LABELS[attempt.engine] ?? {
+                            zh: `转写来源 · ${attempt.engine}`,
+                            en: `Transcript source · ${attempt.engine}`,
+                          },
+                        )}
+                      </p>
+                      <p className="text-sm font-medium">
+                        {t({
+                          zh: "规则评分与建议",
+                          en: "Rule-based score and advice",
+                        })}
+                      </p>
                       <p className="text-sm">
                         {t({ zh: "参考分", en: "Reference score" })}{" "}
                         {attempt.overall ?? "–"}
@@ -159,16 +173,33 @@ export function StudentFeedbackDialog({
                       ) : (
                         <p className="text-sm text-muted-foreground">
                           {t({
-                            zh: "该题暂无 AI 文字建议。",
-                            en: "No AI text advice for this item.",
+                            zh: "该题暂无规则建议。",
+                            en: "No rule-based advice for this item.",
                           })}
                         </p>
                       )}
                       {attempt.item_type === "question" && (
-                        <RubricBlock
-                          rubric={attempt.rubric}
-                          engine={attempt.engine}
-                        />
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium">
+                            {t({
+                              zh: "模型详细评价",
+                              en: "Model-generated detailed review",
+                            })}
+                          </p>
+                          {attempt.rubric || attempt.engine === "ark" ? (
+                            <RubricBlock
+                              rubric={attempt.rubric}
+                              engine={attempt.engine}
+                            />
+                          ) : (
+                            <p className="text-sm text-muted-foreground">
+                              {t({
+                                zh: "暂无模型评价。",
+                                en: "No model review is available.",
+                              })}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </>
                   ) : (
@@ -176,8 +207,8 @@ export function StudentFeedbackDialog({
                       {t(
                         attempt.status === "failed"
                           ? {
-                              zh: "本次评分失败，暂无 AI 反馈。",
-                              en: "Scoring failed; no AI feedback is available.",
+                              zh: "本次评分失败，暂无反馈。",
+                              en: "Scoring failed; no feedback is available.",
                             }
                           : {
                               zh: "评分中，反馈会自动更新。",
