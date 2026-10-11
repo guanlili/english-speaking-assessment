@@ -29,6 +29,7 @@ function SpeakButton({
   const { t } = useI18n()
   const [playing, setPlaying] = useState(false)
   const [rate, setRate] = useState("1")
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
   const playbackError = () => {
     setPlaying(false)
@@ -42,7 +43,9 @@ function SpeakButton({
   }
 
   useEffect(() => {
+    const audio = audioRef.current
     return () => {
+      audio?.pause()
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel()
       }
@@ -53,7 +56,13 @@ function SpeakButton({
   if (audioUrl) {
     const src = audioUrl.startsWith("/") ? `${API_BASE}${audioUrl}` : audioUrl
     return (
-      <audio controls src={src} className="w-full" onError={playbackError}>
+      <audio
+        ref={audioRef}
+        controls
+        src={src}
+        className="w-full"
+        onError={playbackError}
+      >
         <track kind="captions" />
       </audio>
     )
@@ -95,7 +104,7 @@ function SpeakButton({
           id="speech-rate"
           value={rate}
           onChange={(e) => setRate(e.target.value)}
-          className="h-9 rounded-lg border border-border bg-card px-2 text-base text-muted-foreground"
+          className="h-11 rounded-lg border border-border bg-card px-2 text-base text-muted-foreground"
         >
           {TTS_RATE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
