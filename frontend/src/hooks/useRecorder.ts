@@ -12,6 +12,8 @@ export interface Recording {
 export interface UseRecorderOptions {
   /** 一条有效录音完成时触发，恰好一次（在 onstop 里调用）。 */
   onComplete?: (recording: Recording) => void
+  /** Optional durable snapshots for exams interrupted by navigation. */
+  onProgress?: (recording: Recording) => void
   /** 当前题目的作答秒数；开始录音时固定，切题不会改变进行中的录音。 */
   maxSeconds?: number
   /** 模考题目的绝对截止时间；麦克风授权耗时也算在题目时间内。 */
@@ -46,6 +48,8 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   const streamRef = useRef<MediaStream | null>(null)
   const startedAtRef = useRef(0)
   const timerRef = useRef<number | null>(null)
+  const onProgressRef = useRef(options.onProgress)
+  onProgressRef.current = options.onProgress
   const onCompleteRef = useRef(options.onComplete)
   onCompleteRef.current = options.onComplete
   // 卸载标志：录音中离开页面时，onstop 不再提交幽灵作答
@@ -142,9 +146,21 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       const blobType = mimeType || "audio/webm"
 
       chunksRef.current = []
+      let lastProgressAt = 0
       recorder.ondataavailable = (event: BlobEvent) => {
         if (event.data.size > 0) {
           chunksRef.current.push(event.data)
+          if (
+            !disposedRef.current &&
+            Date.now() - startedAtRef.current >= 1000 &&
+            Date.now() - lastProgressAt >= 1000
+          ) {
+            lastProgressAt = Date.now()
+            onProgressRef.current?.({
+              blob: new Blob(chunksRef.current, { type: blobType }),
+              duration: (Date.now() - startedAtRef.current) / 1000,
+            })
+          }
         }
       }
       // MediaRecorder 异步错误（编码器/轨道故障）：中断而非静默丢弃，

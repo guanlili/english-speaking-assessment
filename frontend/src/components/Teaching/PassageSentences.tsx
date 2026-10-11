@@ -8,6 +8,7 @@ import {
 } from "@/client"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import AudioSetter from "@/components/Practice/AudioSetter"
+import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -157,6 +158,11 @@ export function PassageSentences({
                 >
                   <Pencil className="size-3.5" />
                 </Button>
+                <ExamItemSettingsButton
+                  itemType="repeat"
+                  itemId={s.id ?? ""}
+                  text={s.text ?? ""}
+                />
                 <AudioSetter
                   audioUrl={s.audio_url}
                   text={s.text ?? ""}

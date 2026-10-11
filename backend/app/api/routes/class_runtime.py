@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -31,6 +31,7 @@ from app.models import (
     get_datetime_utc,
 )
 from app.services import exam as exam_service
+from app.services import exam_flow
 
 logger = logging.getLogger(__name__)
 
@@ -300,3 +301,26 @@ def record_instruction_ack(
         existing.created_at if existing is not None and existing.created_at else None
     ) or get_datetime_utc()
     return AckResult(acked=True, acked_at=fallback_at.isoformat())
+
+
+class ExamFlowEvent(SQLModel):
+    session_id: uuid.UUID
+    item_id: uuid.UUID
+    event: Literal["audio-ended", "next"]
+
+
+@router.post("/{code}/exam/flow", response_model=ExamStatus)
+def advance_exam_flow(
+    session: SessionDep, code: str, body: ExamFlowEvent, current_user: StudentUserDep
+) -> Any:
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(session, classroom, current_user)
+    ps, exercise = _exam_session_of(session, classroom, student, body.session_id)
+    if not exam_flow.enabled(exercise):
+        raise HTTPException(
+            status_code=422, detail="Automated exam flow is not enabled"
+        )
+    exam_flow.apply_event(
+        session, ps, exercise, body.item_id, body.event, exam_service._now()
+    )
+    return exam_service.exam_status_payload(session, ps, exercise)

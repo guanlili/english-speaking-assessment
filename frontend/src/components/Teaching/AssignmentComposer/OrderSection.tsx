@@ -6,6 +6,7 @@ import type {
   ScenarioOut,
   SentenceWithPassage,
 } from "@/client"
+import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
 import { Button } from "@/components/ui/button"
 import { assignmentItemKey } from "@/lib/assignment-order"
 import { useI18n } from "@/lib/i18n"
@@ -67,6 +68,17 @@ export default function OrderSection({
                 )}{" "}
                 · {label}
               </span>
+              <ExamItemSettingsButton
+                itemType={
+                  item.type as "passage" | "repeat" | "question" | "instruction"
+                }
+                itemId={item.id}
+                text={
+                  item.type === "instruction"
+                    ? (instructions.find((i) => i.id === item.id)?.text ?? "")
+                    : (label ?? "")
+                }
+              />
               <Button
                 variant="outline"
                 size="icon-sm"

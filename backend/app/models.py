@@ -87,6 +87,15 @@ class UsersPublic(SQLModel):
 # 作答（录音/转写/分数/建议）。词表档是第 3 周内容，暂不建。
 
 
+class ExamItemSettings(SQLModel):
+    """Per-item exam timings; publishing freezes these settings in the snapshot."""
+
+    wait_seconds: int = Field(default=3, ge=0, le=60)
+    after_audio_seconds: int = Field(default=2, ge=0, le=60)
+    prep_seconds: int | None = Field(default=None, ge=0, le=180)
+    audio_url: str | None = Field(default=None, max_length=1024)
+
+
 class PassageBase(SQLModel):
     title: str = Field(min_length=1, max_length=255)
     # 主题单一事实源是所属单元：挂单元时由服务端派生为 unit.topic（见
@@ -103,6 +112,8 @@ class PassageBase(SQLModel):
 
 
 class Passage(PassageBase, table=True):
+    exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
+
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     slug: str = Field(unique=True, index=True, max_length=100)
     # 拆句只用于文章内部展示；文章始终是一道朗读题。
@@ -344,6 +355,8 @@ class SentenceFramePublic(SQLModel):
 class RepeatSentence(SQLModel, table=True):
     __tablename__ = "repeat_sentence"
 
+    exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
+
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     # 可空：2026-09-29 起复述句可独立存在（题目库直接创建、指派直接选用）；
     # 挂到篇目时仍随篇目出现在自主练习轮里
@@ -381,6 +394,8 @@ class Scenario(SQLModel, table=True):
 
 class ScenarioQuestion(SQLModel, table=True):
     __tablename__ = "scenario_question"
+
+    exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     scenario_id: uuid.UUID = Field(
@@ -424,6 +439,8 @@ class ScenarioQuestionPublic(SQLModel):
 # （时长=suggested_seconds，可提前点继续，到时自动翻页），普通练习不强制停留。
 class Instruction(SQLModel, table=True):
     __tablename__ = "instruction"
+
+    exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     # 可选小标题：说明卡与组卷列表里作题头区分用途（如「Part B 开始」）
@@ -731,6 +748,10 @@ class PracticeSession(SQLModel, table=True):
         ),
     )
 
+    exam_flow_state: dict[str, dict[str, str]] | None = Field(
+        default=None, sa_type=JSON
+    )
+
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     # board/发布历史按课堂查会话；只有以 student_id 开头的部分唯一索引，
     # 不覆盖"课堂维度拉全部会话"的查询
@@ -909,6 +930,7 @@ class AttemptPublic(SQLModel):
 
 # 今日练习计划（GET /classes/{code}/today）：3 句复述 + 2 道该档问答
 class PlanItem(SQLModel):
+    exam_flow: ExamItemSettings | None = None
     type: str  # passage（整篇朗读）| repeat | question | instruction（说明页）
     id: uuid.UUID
     text: str
@@ -1003,6 +1025,10 @@ class GamificationInfo(SQLModel):
 class ExamStatus(SQLModel):
     """考试态信息（学生端倒计时与锁题、教师端监考）。"""
 
+    automated: bool = False
+    phase: str | None = None
+    phase_remaining_seconds: int = 0
+    phase_elapsed_seconds: int = 0
     time_limit_minutes: int
     # 服务器时间口径的剩余秒数（前端只做展示，作答以服务端校验为准）
     remaining_seconds: int

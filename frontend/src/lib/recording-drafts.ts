@@ -49,6 +49,23 @@ interface RecordingDraftRecord extends Omit<RecordingDraftMeta, "size"> {
   blob: Blob
 }
 
+interface StoredRecordingDraftRecord
+  extends Omit<RecordingDraftRecord, "blob"> {
+  blob: Blob | ArrayBuffer
+}
+
+function restoreRecord(
+  record: StoredRecordingDraftRecord,
+): RecordingDraftRecord {
+  return {
+    ...record,
+    blob:
+      record.blob instanceof Blob
+        ? record.blob
+        : new Blob([record.blob], { type: record.mimeType }),
+  }
+}
+
 export type DraftSaveResult = "saved" | "quota" | "unavailable"
 
 const DB_NAME = "esa-recording-drafts"
@@ -163,9 +180,9 @@ async function readOwnerRecords(
   const tx = db.transaction(STORE, "readonly")
   const index = tx.objectStore(STORE).index("by_owner")
   const all = await requestToPromise(
-    index.getAll(owner) as IDBRequest<RecordingDraftRecord[]>,
+    index.getAll(owner) as IDBRequest<StoredRecordingDraftRecord[]>,
   )
-  return all
+  return all.map(restoreRecord)
 }
 
 function deleteKeys(db: IDBDatabase, keys: string[]): Promise<void> {
@@ -239,9 +256,15 @@ const defaultPut = async (
   db: IDBDatabase,
   record: RecordingDraftRecord,
 ): Promise<void> => {
-  await requestToPromise(
-    db.transaction(STORE, "readwrite").objectStore(STORE).put(record),
-  )
+  // ArrayBuffer also works in WebKit environments that reject Blob cloning.
+  const stored = { ...record, blob: await record.blob.arrayBuffer() }
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite")
+    tx.objectStore(STORE).put(stored)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error ?? new Error("draft-write-failed"))
+    tx.onabort = () => reject(tx.error ?? new Error("draft-write-aborted"))
+  })
 }
 
 async function putWithRetry(
@@ -326,11 +349,12 @@ export async function getRecordingDraft(
     const tx = db.transaction(STORE, "readonly")
     const record = await requestToPromise(
       tx.objectStore(STORE).get(key) as IDBRequest<
-        RecordingDraftRecord | undefined
+        StoredRecordingDraftRecord | undefined
       >,
     )
     if (!record) return null
-    return { ...toMeta(record), blob: record.blob }
+    const restored = restoreRecord(record)
+    return { ...toMeta(restored), blob: restored.blob }
   } catch {
     return null
   }

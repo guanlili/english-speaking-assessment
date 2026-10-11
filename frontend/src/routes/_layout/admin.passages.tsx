@@ -23,6 +23,7 @@ import { TopicPicker } from "@/components/Admin/TopicPicker"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import Pager from "@/components/Common/Pager"
 import AudioSetter from "@/components/Practice/AudioSetter"
+import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
 import { PassageSentences } from "@/components/Teaching/PassageSentences"
 import { ReadingSentences } from "@/components/Teaching/ReadingSentences"
 import { Badge } from "@/components/ui/badge"
@@ -936,6 +937,11 @@ function PassageCard({
           >
             <Pencil />
           </Button>
+          <ExamItemSettingsButton
+            itemType="passage"
+            itemId={passage.id}
+            text={passage.text ?? ""}
+          />
           <AudioSetter
             audioUrl={passage.audio_url}
             text={passage.text ?? ""}

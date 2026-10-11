@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { PracticeSessionPage } from "@/components/Practice/PracticeSessionPage"
+import { ExamSessionPage } from "@/components/Practice/ExamSessionPage"
 import { APP_NAME } from "@/config"
 
 export const Route = createFileRoute("/exam/$code/")({
-  component: () => <PracticeSessionPage mode="exam" />,
+  component: ExamSessionPage,
   validateSearch: (
     search: Record<string, unknown>,
   ): {

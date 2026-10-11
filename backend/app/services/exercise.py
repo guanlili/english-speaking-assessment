@@ -250,6 +250,7 @@ def publish_exercise(
     created_by: uuid.UUID | None,
     snapshots: list[dict[str, object]],
     title: str | None = None,
+    automated_exam: bool = False,
     is_exam: bool = False,
     time_limit_minutes: int | None = None,
     assignment_items: list[dict[str, object]] | None = None,
@@ -270,6 +271,35 @@ def publish_exercise(
             raise HTTPException(status_code=422, detail="模考必须设置整场限时（分钟）")
         if not (5 <= time_limit_minutes <= 240):
             raise HTTPException(status_code=422, detail="模考限时须在 5–240 分钟之间")
+    if automated_exam and is_exam:
+        from app.models import ExamItemSettings
+
+        models = {
+            "passage": Passage,
+            "repeat": RepeatSentence,
+            "question": ScenarioQuestion,
+            "instruction": Instruction,
+        }
+        snapshots = [dict(item) for item in snapshots]
+        for item in snapshots:
+            kind = str(item["type"])
+            source_id = uuid.UUID(str(item.get("parent_id") or item["id"]))
+            source = session.get(models[kind], source_id)
+            settings = (
+                ExamItemSettings.model_validate(source.exam_settings or {})
+                if source is not None
+                else ExamItemSettings()
+            )
+            if settings.prep_seconds is None:
+                settings.prep_seconds = (
+                    int(str(item.get("prep_seconds") or 60))
+                    if item.get("exam_kind") == "ielts_p2"
+                    else 0
+                )
+            item["exam_flow"] = settings.model_dump()
+            if settings.audio_url:
+                item["audio_url"] = settings.audio_url
+
     # 同一课堂并发发布时锁住课堂行，避免版本号重复或互相覆盖当前版本。
     session.exec(
         select(Classroom).where(Classroom.id == classroom.id).with_for_update()
