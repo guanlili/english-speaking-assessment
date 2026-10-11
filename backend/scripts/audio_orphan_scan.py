@@ -16,6 +16,10 @@ TTL 清理管理（清理按行驱动），本脚本负责发现与（显式 --a
   uv run python scripts/audio_orphan_scan.py                 # dry-run
   uv run python scripts/audio_orphan_scan.py --min-age-hours 48
   uv run python scripts/audio_orphan_scan.py --apply         # 实删（慎用）
+
+维护承诺（2026-10-11 决策 B）：本脚本为 **dev-only** 工具——不入 CI lint、
+无 runbook、已移出保活测试（backend/tests/scripts/test_*.py 对应文件已删）。
+使用前请自行核对本文件与当前数据库 schema 是否仍然匹配。
 """
 
 import argparse
