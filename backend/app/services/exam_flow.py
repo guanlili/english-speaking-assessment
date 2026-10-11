@@ -114,10 +114,7 @@ def uploads_allowed(
     """
     if ps.exam_started_at is None:
         return False
-    if (
-        now
-        > ps.exam_started_at + timedelta(minutes=exercise.time_limit_minutes or 0)
-    ):
+    if now > ps.exam_started_at + timedelta(minutes=exercise.time_limit_minutes or 0):
         return False
     if ps.exam_ended_at is None:
         return True
