@@ -23,6 +23,7 @@ from app.models import (
     PlanAttempt,
     PracticeSession,
 )
+from app.services import exam_flow
 
 # 题目到时立即推进；仅允许截止前录完的音频有短暂传输时间。
 UPLOAD_GRACE_SECONDS = 15
@@ -139,6 +140,17 @@ def require_current_item(
     item_type: str,
     item_id: uuid.UUID,
 ) -> None:
+    if exam_flow.enabled(exercise):
+        exam_flow.require_submission(
+            db,
+            practice_session,
+            exercise,
+            item_type,
+            item_id,
+            _now(),
+            UPLOAD_GRACE_SECONDS,
+        )
+        return
     windows = item_windows(db, practice_session, exercise)
     now = _now()
     index = next(
@@ -178,6 +190,8 @@ def require_instruction_current(
 
     防直调 API 提前确认后面的说明跳读；普通练习不经过本函数。
     """
+    if exam_flow.enabled(exercise):
+        raise HTTPException(status_code=422, detail="Use exam flow next event")
     if practice_session.exam_ended_at is not None:
         raise HTTPException(status_code=422, detail="考试时间已到，已自动交卷")
     windows = item_windows(db, practice_session, exercise)
@@ -222,9 +236,21 @@ def ensure_exam_started(
     db: Session, practice_session: PracticeSession, exercise: ClassroomExercise
 ) -> None:
     """学生在开考确认页点「开始考试」即开始计时；只落一次（幂等）。"""
-    if not exercise.is_exam or practice_session.exam_started_at is not None:
+    if not exercise.is_exam:
+        return
+    db.exec(
+        select(PracticeSession)
+        .where(PracticeSession.id == practice_session.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one()
+    if practice_session.exam_started_at is not None:
         return
     practice_session.exam_started_at = _now()
+    if exam_flow.enabled(exercise):
+        practice_session.exam_flow_state = {
+            "0": {"started_at": practice_session.exam_started_at.isoformat()}
+        }
     db.add(practice_session)
     db.commit()
     db.refresh(practice_session)
@@ -241,7 +267,11 @@ def finalize_if_expired(
         return False
     now = _now()
     end = deadline if now >= deadline else None
-    windows = item_windows(db, practice_session, exercise)
+    windows = (
+        []
+        if exam_flow.enabled(exercise)
+        else item_windows(db, practice_session, exercise)
+    )
     if windows and all(
         window.submitted or now >= window.deadline for window in windows
     ):
@@ -279,6 +309,8 @@ def exam_feedback_locked(
     """
     if exercise is None or not exercise.is_exam:
         return False
+    if exam_flow.enabled(exercise):
+        return not exam_flow.ended(practice_session, exercise, _now())
     if practice_session.exam_ended_at is not None:
         return False
     if practice_session.exam_started_at is None:
@@ -307,6 +339,8 @@ def masked_plan_attempt(attempt: PlanAttempt) -> PlanAttempt:
 def exam_status_payload(
     db: Session, practice_session: PracticeSession, exercise: ClassroomExercise
 ) -> ExamStatus:
+    if exam_flow.enabled(exercise):
+        return exam_flow.status(practice_session, exercise, _now())
     windows = item_windows(db, practice_session, exercise)
     now = _now()
     index = next(
@@ -365,6 +399,14 @@ def require_exam_open(
     if practice_session.exam_started_at is None:
         # 开考必须经确认页显式触发（POST /exam/start），防止误触打开即计时
         raise HTTPException(status_code=422, detail="考试尚未开始")
+    if exam_flow.enabled(exercise):
+        # 自动考试末题 Next 即写 exam_ended_at；补传窗口在 exam_flow 内判定，
+        # 不能让整场结束标志先于 15 秒传输窗口关掉 /attempts。
+        if not exam_flow.uploads_allowed(
+            practice_session, exercise, _now(), UPLOAD_GRACE_SECONDS
+        ):
+            raise HTTPException(status_code=422, detail="考试时间已到，已自动交卷")
+        return
     finalize_if_expired(db, practice_session, exercise)
     if practice_session.exam_ended_at is not None:
         raise HTTPException(status_code=422, detail="考试时间已到，已自动交卷")

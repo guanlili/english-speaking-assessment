@@ -13,6 +13,7 @@ import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import Pager from "@/components/Common/Pager"
 import AudioSetter from "@/components/Practice/AudioSetter"
+import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -497,6 +498,11 @@ function ScenarioCard({
                     >
                       <Pencil className="size-3.5" />
                     </Button>
+                    <ExamItemSettingsButton
+                      itemType="question"
+                      itemId={q.id}
+                      text={q.text ?? ""}
+                    />
                     <AudioSetter
                       audioUrl={q.audio_url}
                       text={q.text ?? ""}

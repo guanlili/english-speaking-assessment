@@ -4,6 +4,7 @@ import { useState } from "react"
 import { AdminService, type SentenceWithPassage } from "@/client"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import AudioSetter from "@/components/Practice/AudioSetter"
+import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -255,7 +256,7 @@ export function SentenceLibrary({
                   )}
                 </p>
               </div>
-              <div className="flex shrink-0 items-center gap-1">
+              <div className="flex flex-wrap items-center justify-end gap-1">
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -267,6 +268,11 @@ export function SentenceLibrary({
                 >
                   <Pencil className="size-3.5" />
                 </Button>
+                <ExamItemSettingsButton
+                  itemType="repeat"
+                  itemId={s.id ?? ""}
+                  text={s.text ?? ""}
+                />
                 <AudioSetter
                   audioUrl={s.audio_url}
                   text={s.text ?? ""}

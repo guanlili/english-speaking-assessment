@@ -90,6 +90,7 @@ class AssignmentRequest(SQLModel):
     # 可选练习标题；不传时使用“课堂练习”
     title: str | None = None
     # 模考模式：整场限时（分钟，5–240）；is_exam=true 时必填
+    automated_exam: bool = False
     is_exam: bool = False
     time_limit_minutes: int | None = None
 
@@ -279,6 +280,7 @@ def set_assignment(
                 created_by=current_user.id,
                 snapshots=snapshots,
                 title=body.title,
+                automated_exam=body.automated_exam,
                 is_exam=body.is_exam,
                 time_limit_minutes=body.time_limit_minutes,
                 # 指派镜像只存真实题目 ID（合成句子 ID 只进快照）
@@ -354,6 +356,7 @@ def set_assignment(
             created_by=current_user.id,
             snapshots=snapshots,
             title=body.title,
+            automated_exam=body.automated_exam,
             is_exam=body.is_exam,
             time_limit_minutes=body.time_limit_minutes,
         )

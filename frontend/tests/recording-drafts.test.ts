@@ -72,6 +72,8 @@ test("save → list/get 回路：meta 不含 Blob，get 返回 Blob", async () =
   const record = await getRecordingDraft(metas[0].key)
   assert.ok(record)
   assert.ok(record.blob instanceof Blob)
+  assert.equal(await record.blob.text(), "test audio")
+  assert.equal(record.blob.type, "audio/webm")
 })
 
 test("跨账号隔离：A 的草稿对 B 不可见，B 清理不影响 A", async () => {

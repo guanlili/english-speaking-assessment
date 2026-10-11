@@ -37,6 +37,7 @@ export type AssignmentRequest = {
     assign_qa?: (boolean | null);
     items?: (Array<AssignmentItemIn> | null);
     title?: (string | null);
+    automated_exam?: boolean;
     is_exam?: boolean;
     time_limit_minutes?: (number | null);
 };
@@ -260,6 +261,24 @@ export type DraftQuestionOut = {
     suggested_seconds: number;
 };
 
+export type ExamFlowEvent = {
+    session_id: string;
+    item_id: string;
+    event: 'audio-ended' | 'next';
+};
+
+export type event = 'audio-ended' | 'next';
+
+/**
+ * Per-item exam timings; publishing freezes these settings in the snapshot.
+ */
+export type ExamItemSettings = {
+    wait_seconds?: number;
+    after_audio_seconds?: number;
+    prep_seconds?: (number | null);
+    audio_url?: (string | null);
+};
+
 export type ExamStartRequest = {
     session_id: string;
 };
@@ -268,6 +287,10 @@ export type ExamStartRequest = {
  * 考试态信息（学生端倒计时与锁题、教师端监考）。
  */
 export type ExamStatus = {
+    automated?: boolean;
+    phase?: (string | null);
+    phase_remaining_seconds?: number;
+    phase_elapsed_seconds?: number;
     time_limit_minutes: number;
     remaining_seconds: number;
     started: boolean;
@@ -517,6 +540,7 @@ export type PlanAttempt = {
 };
 
 export type PlanItem = {
+    exam_flow?: (ExamItemSettings | null);
     type: string;
     id: string;
     text: string;
@@ -595,6 +619,9 @@ export type QuestionUpdate = {
 };
 
 export type RepeatSentence = {
+    exam_settings?: ({
+    [key: string]: unknown;
+} | null);
     id?: string;
     passage_id?: (string | null);
     order_index: number;
@@ -744,6 +771,9 @@ export type SentenceUpdate = {
  * 平铺复述句库视图：带所属篇目标题（独立句为 null）。
  */
 export type SentenceWithPassage = {
+    exam_settings?: ({
+    [key: string]: unknown;
+} | null);
     id?: string;
     passage_id?: (string | null);
     order_index?: number;
@@ -1970,6 +2000,21 @@ export type AdminCreateSentenceFramesBatchData = {
 
 export type AdminCreateSentenceFramesBatchResponse = (SentenceFrameBatchResult);
 
+export type AdminReadExamItemSettingsData = {
+    itemId: string;
+    itemType: 'passage' | 'repeat' | 'question' | 'instruction';
+};
+
+export type AdminReadExamItemSettingsResponse = (ExamItemSettings);
+
+export type AdminUpdateExamItemSettingsData = {
+    itemId: string;
+    itemType: 'passage' | 'repeat' | 'question' | 'instruction';
+    requestBody: ExamItemSettings;
+};
+
+export type AdminUpdateExamItemSettingsResponse = (ExamItemSettings);
+
 export type AdminReadMetricsResponse = (unknown);
 
 export type AttemptsCreateAttemptUploadData = {
@@ -2104,6 +2149,13 @@ export type ClassesRecordInstructionAckData = {
 };
 
 export type ClassesRecordInstructionAckResponse = (AckResult);
+
+export type ClassesAdvanceExamFlowData = {
+    code: string;
+    requestBody: ExamFlowEvent;
+};
+
+export type ClassesAdvanceExamFlowResponse = (ExamStatus);
 
 export type ClassesListClassroomExercisesData = {
     code: string;

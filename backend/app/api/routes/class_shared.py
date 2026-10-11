@@ -606,10 +606,15 @@ def _plan_item_from_snapshot(
     text = item.get("text")
     if not isinstance(text, str) or not text.strip():
         return None
+    from app.models import ExamItemSettings
+
     cue_bullets = item.get("cue_card_bullets")
     prep = _snapshot_optional_int(item.get("prep_seconds"))
     acked_at = (ack_times or {}).get(item_id)
     return PlanItem(
+        exam_flow=ExamItemSettings.model_validate(item["exam_flow"])
+        if isinstance(item.get("exam_flow"), dict)
+        else None,
         type=t,
         id=item_id,
         text=text,

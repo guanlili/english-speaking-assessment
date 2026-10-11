@@ -14,7 +14,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import field_validator
-from sqlalchemy import func
+from sqlalchemy import JSON, func
 from sqlmodel import Field, Session, SQLModel, col, select
 
 from app import crud
@@ -476,6 +476,7 @@ def create_sentence(
 class SentenceWithPassage(RepeatSentence):
     """平铺复述句库视图：带所属篇目标题（独立句为 null）。"""
 
+    exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
     passage_title: str | None = None  # 考试字段自 RepeatSentence 继承
 
 

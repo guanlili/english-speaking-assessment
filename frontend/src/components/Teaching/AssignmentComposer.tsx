@@ -455,7 +455,11 @@ function ComposerForm({
               items: planItems,
               title: title.trim() || undefined,
               ...(isExam
-                ? { is_exam: true, time_limit_minutes: examMinutes }
+                ? {
+                    is_exam: true,
+                    automated_exam: true,
+                    time_limit_minutes: examMinutes,
+                  }
                 : {}),
             },
       }),
