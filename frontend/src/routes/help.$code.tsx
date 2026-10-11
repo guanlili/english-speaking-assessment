@@ -259,6 +259,20 @@ function HelpPage() {
                 </span>
                 {t(EXPLAIN.score)}
               </p>
+
+              <div className="flex items-start gap-2.5">
+                <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
+                <p className="leading-relaxed">
+                  <span className="font-semibold">
+                    {t({
+                      zh: "参考分高、模拟分低是怎么回事？",
+                      en: "High reference score but low mock score?",
+                    })}
+                    {t({ zh: "：", en: ": " })}
+                  </span>
+                  {t(EXPLAIN.score_gap)}
+                </p>
+              </div>
             </div>
             <div className="flex items-start gap-2.5">
               <Star className="mt-0.5 size-4 shrink-0 text-yellow-500" />
