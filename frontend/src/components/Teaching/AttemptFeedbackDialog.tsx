@@ -161,6 +161,7 @@ export function AttemptFeedbackDialog({
             )}
             <AttemptAudio
               attemptId={attempt.id}
+              durationSeconds={attempt.duration_s}
               preload="metadata"
               className="w-full"
             />
