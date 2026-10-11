@@ -158,7 +158,6 @@ for (const width of [390, 820, 1180]) {
       .click()
     const audio = page.locator("audio")
     await expect(audio).toHaveAttribute("src", /^blob:/)
-    await audio.evaluate((el: HTMLAudioElement) => el.play())
     await expect
       .poll(() => audio.evaluate((el: HTMLAudioElement) => el.currentTime))
       .toBeGreaterThan(0)
@@ -167,7 +166,9 @@ for (const width of [390, 820, 1180]) {
       ;(window as unknown as { oldAudio: HTMLAudioElement }).oldAudio =
         el as HTMLAudioElement
     })
-    await page.getByRole("button", { name: "收起录音" }).click()
+    await page
+      .getByRole("button", { name: "回听 First batch 第1题录音" })
+      .click()
     expect(
       await page.evaluate(
         () =>

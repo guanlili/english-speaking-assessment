@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
-import { Download, FileText, Volume2 } from "lucide-react"
+import { Download, FileText } from "lucide-react"
 import { useState } from "react"
 import type { ClassroomExercisePublic, ExerciseStudentResult } from "@/client"
 import { ClassesService } from "@/client"
-import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { AttemptFeedbackDialog } from "@/components/Teaching/AttemptFeedbackDialog"
+import { RecordingButton } from "@/components/Teaching/RecordingButton"
+import { StudentFeedbackDialog } from "@/components/Teaching/StudentFeedbackDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -155,10 +156,8 @@ function ExerciseResults({
   onBack: () => void
 }) {
   const { t } = useI18n()
-  const [recording, setRecording] = useState<{
-    id: string
-    label: string
-  } | null>(null)
+  const [feedbackStudent, setFeedbackStudent] =
+    useState<ExerciseStudentResult | null>(null)
   const [feedbackAttemptId, setFeedbackAttemptId] = useState<string | null>(
     null,
   )
@@ -347,6 +346,14 @@ function ExerciseResults({
                             {` · ${formatDurationLabel(t, row.exam_time_used_seconds)}`}
                           </Badge>
                         )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mt-1 flex min-h-11"
+                        onClick={() => setFeedbackStudent(row)}
+                      >
+                        {t({ zh: "汇总反馈", en: "Overall feedback" })}
+                      </Button>
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
                       {row.done_count}/{row.total_count}
@@ -371,30 +378,15 @@ function ExerciseResults({
                           </span>
                         )}
                         {item.attempt_id && (
-                          <span className="mt-1 flex flex-col items-start gap-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="min-h-11"
-                              aria-label={t({
+                          <div className="mt-1 flex flex-col items-start gap-1">
+                            <RecordingButton
+                              key={item.attempt_id}
+                              attemptId={item.attempt_id}
+                              label={t({
                                 zh: `回听 ${row.display_name} 第${index + 1}题录音`,
                                 en: `Listen to ${row.display_name}'s recording for item ${index + 1}`,
                               })}
-                              onClick={() => {
-                                if (item.attempt_id)
-                                  setRecording({
-                                    id: item.attempt_id,
-                                    label: t({
-                                      zh: `${row.display_name} · 第${index + 1}题`,
-                                      en: `${row.display_name} · Item ${index + 1}`,
-                                    }),
-                                  })
-                              }}
-                            >
-                              <Volume2 className="size-4" />
-                              {t({ zh: "听录音", en: "Recording" })}
-                            </Button>
+                            />
                             {item.status === "done" && (
                               <Button
                                 type="button"
@@ -413,7 +405,7 @@ function ExerciseResults({
                                 {t({ zh: "详细反馈", en: "Feedback" })}
                               </Button>
                             )}
-                          </span>
+                          </div>
                         )}
                       </TableCell>
                     ))}
@@ -421,28 +413,6 @@ function ExerciseResults({
                 ))}
               </TableBody>
             </Table>
-            {recording && (
-              <div className="mt-4 space-y-2 rounded-xl border p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium">
-                    v{exercise.version_no} · {recording.label}
-                  </p>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="min-h-11"
-                    onClick={() => setRecording(null)}
-                  >
-                    {t({ zh: "收起录音", en: "Close recording" })}
-                  </Button>
-                </div>
-                <AttemptAudio
-                  key={recording.id}
-                  attemptId={recording.id}
-                  className="w-full"
-                />
-              </div>
-            )}
             {(resultsQuery.data ?? []).some((row) =>
               row.items.some((item) => item.attempt_id),
             ) && (
@@ -456,6 +426,18 @@ function ExerciseResults({
           </CardContent>
         </Card>
       )}
+      <StudentFeedbackDialog
+        name={feedbackStudent?.display_name ?? ""}
+        items={
+          (
+            resultsQuery.data?.find(
+              (row) => row.student_id === feedbackStudent?.student_id,
+            ) ?? feedbackStudent
+          )?.items ?? []
+        }
+        open={feedbackStudent !== null}
+        onClose={() => setFeedbackStudent(null)}
+      />
       <AttemptFeedbackDialog
         attemptId={feedbackAttemptId}
         open={feedbackAttemptId !== null}
