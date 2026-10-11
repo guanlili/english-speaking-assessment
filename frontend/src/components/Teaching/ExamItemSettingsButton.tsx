@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Settings2 } from "lucide-react"
 import { useState } from "react"
 import { AdminService, type ExamItemSettings } from "@/client"
@@ -30,7 +30,8 @@ export default function ExamItemSettingsButton({
         <Button
           type="button"
           variant="outline"
-          className="min-h-11 shrink-0"
+          size="icon"
+          className="shrink-0"
           onClick={(e) => e.stopPropagation()}
           aria-label={t({ zh: "考试流程设置", en: "Exam flow settings" })}
         >
@@ -68,6 +69,7 @@ function SettingsEditor({
   onSaved: () => void
 }) {
   const { t } = useI18n()
+  const queryClient = useQueryClient()
   const query = useQuery({
     queryKey: ["exam-settings", itemType, itemId],
     queryFn: () => AdminService.readExamItemSettings({ itemType, itemId }),
@@ -77,7 +79,12 @@ function SettingsEditor({
   const mutation = useMutation({
     mutationFn: (requestBody: ExamItemSettings) =>
       AdminService.updateExamItemSettings({ itemType, itemId, requestBody }),
-    onSuccess: onSaved,
+    onSuccess: (data) => {
+      // 用返回值同步缓存：60s staleTime 内重开弹窗必须看到刚保存的值，
+      // 否则下次保存会把旧值一起写回。
+      queryClient.setQueryData(["exam-settings", itemType, itemId], data)
+      onSaved()
+    },
   })
   if (!value)
     return (

@@ -399,6 +399,14 @@ def require_exam_open(
     if practice_session.exam_started_at is None:
         # 开考必须经确认页显式触发（POST /exam/start），防止误触打开即计时
         raise HTTPException(status_code=422, detail="考试尚未开始")
+    if exam_flow.enabled(exercise):
+        # 自动考试末题 Next 即写 exam_ended_at；补传窗口在 exam_flow 内判定，
+        # 不能让整场结束标志先于 15 秒传输窗口关掉 /attempts。
+        if not exam_flow.uploads_allowed(
+            practice_session, exercise, _now(), UPLOAD_GRACE_SECONDS
+        ):
+            raise HTTPException(status_code=422, detail="考试时间已到，已自动交卷")
+        return
     finalize_if_expired(db, practice_session, exercise)
     if practice_session.exam_ended_at is not None:
         raise HTTPException(status_code=422, detail="考试时间已到，已自动交卷")

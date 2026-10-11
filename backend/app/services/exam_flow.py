@@ -101,6 +101,35 @@ def ended(ps: PracticeSession, exercise: ClassroomExercise, now: datetime) -> bo
     )
 
 
+def uploads_allowed(
+    ps: PracticeSession,
+    exercise: ClassroomExercise,
+    now: datetime,
+    grace_seconds: int,
+) -> bool:
+    """上传门禁：整场截止前保持可提交；学生主动提前交卷只保留固定补传窗口。
+
+    与 ended() 的区别：末题 Next 落 exam_ended_at 后，本题录音在
+    next_at + grace 内（且不晚于整场截止）仍可首次提交。
+    """
+    if ps.exam_started_at is None:
+        return False
+    if (
+        now
+        > ps.exam_started_at + timedelta(minutes=exercise.time_limit_minutes or 0)
+    ):
+        return False
+    if ps.exam_ended_at is None:
+        return True
+    finishes = [
+        datetime.fromisoformat(entry["next_at"])
+        for entry in (ps.exam_flow_state or {}).values()
+        if entry.get("next_at")
+    ]
+    # exam_ended_at 只在末题 Next 时写入，此时 next_at 必然存在
+    return bool(finishes) and now <= max(finishes) + timedelta(seconds=grace_seconds)
+
+
 def status(
     ps: PracticeSession, exercise: ClassroomExercise, now: datetime
 ) -> ExamStatus:

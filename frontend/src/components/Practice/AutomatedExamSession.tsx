@@ -1,7 +1,13 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect, useRef, useState } from "react"
-import { AttemptsService, ClassesService, type TodayPlan } from "@/client"
+import {
+  ApiError,
+  AttemptsService,
+  ClassesService,
+  type TodayPlan,
+} from "@/client"
+import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import { LanguageToggle } from "@/components/Common/LanguageToggle"
 import ExamGroupedProgress from "@/components/Practice/ExamGroupedProgress"
 import { Button } from "@/components/ui/button"
@@ -54,6 +60,7 @@ export default function AutomatedExamSession({
   const [pendingDraft, setPendingDraft] = useState<RecordingDraftInput | null>(
     null,
   )
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [notes, setNotes] = useState("")
   const context = useRef<AudioContext | null>(null)
   const audio = useRef<HTMLAudioElement | null>(null)
@@ -111,13 +118,27 @@ export default function AutomatedExamSession({
       await deleteRecordingDraft(draftKey(input))
       setPendingDraft(null)
       void query.refetch()
-    } catch {
-      setError(
-        t({
-          zh: "录音尚未提交，请重试。",
-          en: "Recording has not been submitted. Please retry.",
-        }),
-      )
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 422) {
+        // 服务器明确拒绝内容（损坏/无音轨等）：重传同一文件无意义，
+        // 展示原因并让学生确认后放弃这段录音继续考试。
+        const detail = (err.body as { detail?: unknown } | null)?.detail
+        setError(
+          typeof detail === "string" && detail
+            ? detail
+            : t({
+                zh: "录音无法提交，可重试或确认后放弃。",
+                en: "The recording could not be submitted. Retry or discard it after confirming.",
+              }),
+        )
+      } else {
+        setError(
+          t({
+            zh: "录音尚未提交，请重试。",
+            en: "Recording has not been submitted. Please retry.",
+          }),
+        )
+      }
     } finally {
       setBusy(false)
     }
@@ -484,10 +505,21 @@ export default function AutomatedExamSession({
           {t({ zh: "重试同步", en: "Retry sync" })}
         </Button>
       )}
-      {item && (
+      {item && exam?.started && (
         <section className="space-y-5 rounded-xl border p-5 select-none">
           <h2 className="font-semibold">{t(ITEM_TYPE_LABELS[item.type])}</h2>
-          <p className="whitespace-pre-wrap break-words text-lg">{item.text}</p>
+          {item.type === "repeat" ? (
+            <p className="min-h-16 text-lg text-muted-foreground">
+              {t({
+                zh: "本题不显示文字：请听音频，听完后复述出来。",
+                en: "No text for this item. Listen to the audio, then repeat what you heard.",
+              })}
+            </p>
+          ) : (
+            <p className="whitespace-pre-wrap break-words text-lg">
+              {item.text}
+            </p>
+          )}
           {item.cue_card_bullets?.length ? (
             <ul className="list-disc pl-5">
               {item.cue_card_bullets.map((b) => (
@@ -520,16 +552,26 @@ export default function AutomatedExamSession({
             </label>
           )}
           {pendingDraft && (
-            <Button
-              className="min-h-11"
-              disabled={busy}
-              onClick={() => void upload(pendingDraft)}
-            >
-              {t({
-                zh: "恢复并提交保留的录音",
-                en: "Restore and submit saved recording",
-              })}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                className="min-h-11"
+                disabled={busy}
+                onClick={() => void upload(pendingDraft)}
+              >
+                {t({
+                  zh: "恢复并提交保留的录音",
+                  en: "Restore and submit saved recording",
+                })}
+              </Button>
+              <Button
+                variant="outline"
+                className="min-h-11"
+                disabled={busy}
+                onClick={() => setConfirmDiscard(true)}
+              >
+                {t({ zh: "放弃这段录音", en: "Discard this recording" })}
+              </Button>
+            </div>
           )}
           {recorder.error && phase === "answering" && !pendingDraft && (
             <Button className="min-h-11" onClick={() => void recorder.start()}>
@@ -554,6 +596,22 @@ export default function AutomatedExamSession({
           )}
         </section>
       )}
+      <ConfirmDialog
+        open={confirmDiscard}
+        title={t({ zh: "放弃这段录音？", en: "Discard this recording?" })}
+        description={t({
+          zh: "放弃后本题将没有作答记录，无法恢复。仅在上传持续失败时使用。",
+          en: "This item will have no answer record and cannot be recovered. Use only when uploading keeps failing.",
+        })}
+        confirmText={t({ zh: "放弃录音", en: "Discard recording" })}
+        onOpenChange={setConfirmDiscard}
+        onConfirm={async () => {
+          if (pendingDraft) await deleteRecordingDraft(draftKey(pendingDraft))
+          setPendingDraft(null)
+          setError(null)
+          setConfirmDiscard(false)
+        }}
+      />
     </main>
   )
 }

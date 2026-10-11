@@ -10,6 +10,7 @@ async function setup(page: Page, mockAudio = true) {
     uploads: 0,
     audioEvents: 0,
     failUpload: false,
+    rejectUpload: false,
     requests: [] as string[],
   }
   const items = ["instruction", "passage", "repeat", "question"].map(
@@ -145,6 +146,13 @@ async function setup(page: Page, mockAudio = true) {
     }
     if (path.endsWith("/attempts") && route.request().method() === "POST") {
       state.uploads++
+      if (state.rejectUpload) {
+        await route.fulfill({
+          status: 422,
+          json: { detail: "音频文件无效或损坏，请重新录音" },
+        })
+        return
+      }
       if (state.failUpload) {
         await route.fulfill({ status: 503, json: { detail: "Unavailable" } })
         return
@@ -163,7 +171,18 @@ for (const width of [390, 820, 1180]) {
     await page.setViewportSize({ width, height: 900 })
     const state = await setup(page)
     await page.goto("/exam/EXAM")
+    await expect(
+      page.getByRole("button", { name: "检查设备并开始考试" }),
+    ).toBeVisible()
+    // 开考前不得泄露题面：题干与笔记区都在服务端 started 之后才渲染。
+    await expect(page.getByText("Exam prompt 1", { exact: true })).toHaveCount(
+      0,
+    )
+    await expect(
+      page.getByRole("textbox", { name: "准备笔记（不计分）" }),
+    ).toHaveCount(0)
     await page.getByRole("button", { name: "检查设备并开始考试" }).click()
+    await expect(page.getByText("Exam prompt 1", { exact: true })).toBeVisible()
     await expect(page.getByRole("button", { name: "下一题" })).toBeVisible()
     expect(state.audioEvents).toBe(1)
     const progress = page.getByRole("group", { name: "考试进度" })
@@ -174,9 +193,16 @@ for (const width of [390, 820, 1180]) {
     await expect(page.getByText("可替换句型")).toHaveCount(0)
     for (let index = 1; index < 4; index++) {
       await page.getByRole("button", { name: "下一题" }).click()
-      await expect(
-        page.getByText(`Exam prompt ${index + 1}`, { exact: true }),
-      ).toBeVisible()
+      const prompt = page.getByText(`Exam prompt ${index + 1}`, { exact: true })
+      if (
+        ["instruction", "passage", "repeat", "question"][index] === "repeat"
+      ) {
+        // 听音复述不显示原文，只给听力提示。
+        await expect(prompt).toHaveCount(0)
+        await expect(page.getByText("本题不显示文字")).toBeVisible()
+      } else {
+        await expect(prompt).toBeVisible()
+      }
       await expect.poll(() => state.uploads, { timeout: 10000 }).toBe(index)
       await expect(page.getByRole("button", { name: "下一题" })).toBeEnabled()
     }
@@ -220,6 +246,29 @@ test("@webkit a failed upload survives refresh and retries", async ({
   state.failUpload = false
   await page.getByRole("button", { name: "恢复并提交保留的录音" }).click()
   await expect.poll(() => state.uploads).toBe(2)
+  await expect(page.getByRole("button", { name: "下一题" })).toBeEnabled()
+})
+
+test("@webkit a permanently rejected upload can be discarded to continue the exam", async ({
+  page,
+}) => {
+  const state = await setup(page)
+  state.index = 1
+  state.started = true
+  state.phase = "answering"
+  state.startedAt = Date.now()
+  state.rejectUpload = true
+  await page.goto("/exam/EXAM")
+  await page.getByRole("button", { name: "启用声音并继续考试" }).click()
+  await expect.poll(() => state.uploads).toBe(1)
+  // 422 内容错误要展示服务器原因，并给出确认后的放弃出口。
+  await expect(page.getByText("音频文件无效或损坏，请重新录音")).toBeVisible()
+  await page.getByRole("button", { name: "放弃这段录音" }).click()
+  await page.getByRole("button", { name: "放弃录音", exact: true }).click()
+  await expect(page.getByText("音频文件无效或损坏，请重新录音")).toHaveCount(0)
+  await expect(
+    page.getByRole("button", { name: "恢复并提交保留的录音" }),
+  ).toHaveCount(0)
   await expect(page.getByRole("button", { name: "下一题" })).toBeEnabled()
 })
 

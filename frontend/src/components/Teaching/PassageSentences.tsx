@@ -146,7 +146,7 @@ export function PassageSentences({
                   )}
                 </p>
               </div>
-              <div className="flex shrink-0 items-center gap-0.5">
+              <div className="flex flex-wrap items-center justify-end gap-0.5">
                 <Button
                   variant="ghost"
                   size="icon-sm"

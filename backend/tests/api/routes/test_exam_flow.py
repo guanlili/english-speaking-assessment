@@ -1,7 +1,8 @@
 """Automated phases use fixed server clocks and explicit playback/Next events."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from typing import cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -156,7 +157,12 @@ def test_global_deadline_is_read_only_even_during_audio(
         ],
     )
     ps = PracticeSession(
-        student_id=uuid.uuid4(), passage_id=uuid.uuid4(), exam_started_at=now
+        classroom_id=exercise.classroom_id,
+        student_id=uuid.uuid4(),
+        passage_id=uuid.uuid4(),
+        band="B1",
+        session_date=date.today(),
+        exam_started_at=now,
     )
     assert exam_flow.status(ps, exercise, now + timedelta(seconds=301)).ended
     assert exam_flow.ended(ps, exercise, now + timedelta(seconds=301))
@@ -205,9 +211,12 @@ def test_question_settings_are_snapshotted(
         )
         assert response.status_code == 200, response.text
         row = db.get(Classroom, uuid.UUID(classroom["id"]))
+        assert row is not None
         db.refresh(row)
         exercise = db.get(ClassroomExercise, row.current_exercise_id)
-        assert exercise.snapshot_items[0]["exam_flow"]["wait_seconds"] == 8
+        assert exercise is not None
+        flow = cast(dict[str, object], exercise.snapshot_items[0]["exam_flow"])
+        assert flow["wait_seconds"] == 8
         assert (
             client.put(
                 endpoint, json={"wait_seconds": 1}, headers=superuser_token_headers
@@ -215,7 +224,9 @@ def test_question_settings_are_snapshotted(
             == 200
         )
         db.refresh(exercise)
-        assert exercise.snapshot_items[0]["exam_flow"]["wait_seconds"] == 8
+        assert exercise is not None
+        flow = cast(dict[str, object], exercise.snapshot_items[0]["exam_flow"])
+        assert flow["wait_seconds"] == 8
         made = make_student(db, client, code)
         assert client.get(endpoint, headers=made["headers"]).status_code == 403
     finally:
@@ -245,7 +256,12 @@ def test_retained_recording_upload_window(db: Session) -> None:
         ],
     )
     ps = PracticeSession(
-        student_id=uuid.uuid4(), passage_id=ids[0], exam_started_at=now
+        classroom_id=exercise.classroom_id,
+        student_id=uuid.uuid4(),
+        passage_id=ids[0],
+        band="B1",
+        session_date=date.today(),
+        exam_started_at=now,
     )
     # Resuming the same finished item preserves the unsubmitted recording.
     exam_flow.require_submission(
@@ -265,3 +281,104 @@ def test_retained_recording_upload_window(db: Session) -> None:
         exam_flow.require_submission(
             db, ps, exercise, "passage", ids[0], now + timedelta(seconds=76), 15
         )
+
+
+def test_last_item_next_keeps_upload_grace_through_attempts_gate(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """末题 Next 落 exam_ended_at 后，15 秒补传窗口必须穿过 /attempts 完整门禁。"""
+    from tests.utils.audio import wav_upload
+
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+        )
+    )
+    code = classroom["code"]
+    made = make_student(db, client, code)
+    item_id = uuid.uuid4()
+    passage = Passage(
+        id=item_id,
+        slug=f"flow-grace-{item_id}",
+        title="Read",
+        text="Read this.",
+        cefr_band="B1",
+    )
+    db.add(passage)
+    db.commit()
+    exercise = ClassroomExercise(
+        classroom_id=uuid.UUID(classroom["id"]),
+        is_exam=True,
+        time_limit_minutes=5,
+        snapshot_items=[
+            {
+                "id": str(item_id),
+                "type": "passage",
+                "text": "Read this.",
+                "suggested_seconds": 5,
+                "exam_flow": ExamItemSettings(wait_seconds=0).model_dump(),
+            }
+        ],
+    )
+    db.add(exercise)
+    db.flush()
+    row = db.get(Classroom, exercise.classroom_id)
+    assert row is not None
+    row.current_exercise_id = exercise.id
+    db.add(row)
+    db.commit()
+    now = datetime.now(UTC)
+    monkeypatch.setattr(exam, "_now", lambda: now)
+
+    def upload(key: str) -> Response:
+        return client.post(
+            "/api/v1/attempts",
+            files={"audio": wav_upload(6.0)},
+            data={
+                "item_type": "passage",
+                "item_id": str(item_id),
+                "duration_s": "6.0",
+                "session_id": sid,
+                "idempotency_key": key,
+            },
+            headers=made["headers"],
+        )
+
+    try:
+        sid = _today(client, made["headers"], code)["session_id"]
+        assert (
+            client.post(
+                f"/api/v1/classes/{code}/exam/start",
+                json={"session_id": sid},
+                headers=made["headers"],
+            ).status_code
+            == 200
+        )
+        now += timedelta(seconds=10)
+        assert (
+            client.post(
+                f"/api/v1/classes/{code}/exam/flow",
+                json={
+                    "session_id": sid,
+                    "item_id": str(item_id),
+                    "event": "next",
+                },
+                headers=made["headers"],
+            ).status_code
+            == 200
+        )
+        # 末题 Next 已结束整场（exam_ended_at 落库）：窗口外新键提交被拒，
+        # 窗口内（回拨模拟另一标签页的保留录音）首次提交必须放行。
+        now += timedelta(seconds=16)
+        response = upload("grace-key-late")
+        assert response.status_code == 422
+        assert response.json()["detail"] == "考试时间已到，已自动交卷"
+        now -= timedelta(seconds=15)
+        assert upload("grace-key-1").status_code == 200
+    finally:
+        _cleanup_classroom(db, classroom["id"])
+        db.delete(passage)
+        db.commit()
