@@ -10,7 +10,7 @@ const items = [0, 1].map((index) => ({
   listen_used: 1,
 }))
 
-async function mockExam(page: Page, isExam = true) {
+async function mockExam(page: Page, isExam = true, nextType = "repeat") {
   const state = {
     index: 0,
     ended: false,
@@ -106,7 +106,9 @@ async function mockExam(page: Page, isExam = true) {
                     }
                   : item,
               )
-            : items,
+            : items.map((item, index) =>
+                index === 1 ? { ...item, type: nextType } : item,
+              ),
         attempts: state.attempts,
         exam: isExam
           ? {
@@ -246,3 +248,53 @@ test("@webkit practice blocks switching during recording and can revisit after s
   expect(state.submittedItems).toEqual([items[0].id, items[0].id])
   await expect(page).toHaveURL(/\/p\/EXAM/)
 })
+
+for (const nextType of ["repeat", "instruction"]) {
+  test(`@webkit pending microphone permission locks navigation to ${nextType}`, async ({
+    page,
+  }) => {
+    const state = await mockExam(page, false, nextType)
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: {
+          getUserMedia: () =>
+            new Promise<MediaStream>((resolve) => {
+              ;(window as unknown as { grantMic: () => void }).grantMic = () =>
+                resolve(new MediaStream())
+            }),
+        },
+      })
+    })
+    await page.goto("/p/EXAM")
+    await page.getByRole("button", { name: "开始录音", exact: true }).click()
+    const picker = page.getByRole("combobox", { name: "选择练习题" })
+    await expect(picker).toBeDisabled()
+    await expect(
+      page
+        .getByRole("navigation", { name: "练习选题" })
+        .getByRole("button", { name: "下一题", exact: true }),
+    ).toBeDisabled()
+    const prompt = page.getByText(
+      "本题不显示文字。点下方「听示范」听语音，听完后复述出来。",
+      { exact: true },
+    )
+    await prompt.dispatchEvent("touchstart", {
+      touches: [{ identifier: 1, clientX: 300, clientY: 300 }],
+    })
+    await prompt.dispatchEvent("touchend", {
+      changedTouches: [{ identifier: 1, clientX: 100, clientY: 300 }],
+    })
+    await expect(picker).toHaveValue(items[0].id)
+    await page.evaluate(() =>
+      (window as unknown as { grantMic: () => void }).grantMic(),
+    )
+    await expect(
+      page.getByRole("button", { name: "结束录音", exact: true }),
+    ).toBeVisible()
+    await page.waitForTimeout(1100)
+    await page.getByRole("button", { name: "结束录音", exact: true }).click()
+    await expect.poll(() => state.uploads).toBe(1)
+    expect(state.submittedItems).toEqual([items[0].id])
+  })
+}

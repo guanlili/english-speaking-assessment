@@ -675,7 +675,12 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
               index={exam ? 0 : currentIndex}
               disabled={pendingBlockerActive}
               onSelect={(id) => {
-                if (exam || pendingBlockerActive || id === currentItem.id)
+                if (
+                  exam ||
+                  pendingBlockerActive ||
+                  recorder.isStarting() ||
+                  id === currentItem.id
+                )
                   return
                 submittedRef.current = false
                 setPinnedItemId(null)

@@ -182,7 +182,10 @@ test("record → upload → feedback → next item → results page", {
   await expect(page.getByText("85").first()).toBeVisible()
 
   // 下一题：进入第二题（问答），再次录音
-  await page.getByRole("button", { name: "下一题", exact: true }).click()
+  await page
+    .getByRole("navigation", { name: "练习选题" })
+    .getByRole("button", { name: "下一题", exact: true })
+    .click()
   await expect(page.getByText(items[1].text, { exact: true })).toBeVisible()
   await recordOneItem(page)
   await page.clock.runFor(1500)
@@ -336,7 +339,7 @@ async function mockDraftPractice(page: Page): Promise<DraftMockState> {
         return
       }
       // multipart 原始体里抽 item_id（UUID 为 ASCII，latin1 解码安全）
-      const raw = route.request().postData()?.toString("latin1") ?? ""
+      const raw = route.request().postDataBuffer()?.toString("latin1") ?? ""
       const itemId = /name="item_id"\r\n\r\n([^\r]+)\r\n/.exec(raw)?.[1] ?? ""
       state.uploads += 1
       const attemptId = `draft-attempt-${itemId}`
