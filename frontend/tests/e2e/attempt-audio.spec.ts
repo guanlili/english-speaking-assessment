@@ -1,7 +1,13 @@
+import { readFile } from "node:fs/promises"
 import { expect, type Page, test } from "@playwright/test"
 import { wav } from "./utils/audio"
 
-async function mockTeacher(page: Page, width = 820, failInitially = false) {
+async function mockTeacher(
+  page: Page,
+  width = 820,
+  failInitially = false,
+  host = false,
+) {
   await page.setViewportSize({ width, height: 900 })
   await page.addInitScript(() => {
     localStorage.setItem("access_token", "test-token")
@@ -62,10 +68,14 @@ async function mockTeacher(page: Page, width = 820, failInitially = false) {
         engine: "ark",
         duration_s: 4,
         item_text: "Saved question",
-        advice: ["Saved AI advice"],
+        advice: ["Saved rule advice"],
       }
     await route.fulfill({ json: body })
   })
+  if (host) {
+    await page.goto("http://127.0.0.1:5176")
+    return state
+  }
   await page.goto("/t/PLAY")
   await page.getByRole("tab", { name: "学生结果", exact: true }).click()
   await page
@@ -77,21 +87,46 @@ async function mockTeacher(page: Page, width = 820, failInitially = false) {
 test("@webkit simultaneous players own separate live audio URLs", async ({
   page,
 }) => {
-  await mockTeacher(page)
-  const original = page.locator("audio").first()
+  const state = await mockTeacher(page, 820, false, true)
+  const original = page.getByTestId("primary-player").locator("audio")
   await expect(original).toHaveAttribute("src", /^blob:/)
   const firstUrl = await original.getAttribute("src")
-  await page.getByRole("button", { name: "详细反馈", exact: true }).click()
-  const dialogAudio = page.getByRole("dialog").locator("audio")
-  await expect(dialogAudio).toHaveAttribute("src", /^blob:/)
-  const dialogUrl = await dialogAudio.getAttribute("src")
-  await page.getByRole("button", { name: "关闭", exact: true }).click()
+  await page
+    .getByRole("button", { name: "Mount second player", exact: true })
+    .click()
+  const second = page.getByTestId("second-player").locator("audio")
+  await expect(second).toHaveAttribute("src", /^blob:/)
+  const secondUrl = await second.getAttribute("src")
+  expect(secondUrl).not.toBe(firstUrl)
+  // Both genuine AttemptAudio instances share one QueryClient and cached Blob.
+  expect(state.requests).toBe(1)
+  await page
+    .getByRole("button", { name: "Unmount second player", exact: true })
+    .click()
   expect(
     await original.evaluate(
       async (audio: HTMLAudioElement) => (await fetch(audio.src)).ok,
     ),
   ).toBe(true)
-  expect(dialogUrl).not.toBe(firstUrl)
+  expect(
+    await page.evaluate(async (url) => {
+      try {
+        await fetch(url!)
+        return false
+      } catch {
+        return true
+      }
+    }, secondUrl),
+  ).toBe(true)
+  await page
+    .getByTestId("primary-player")
+    .getByRole("button", { name: "播放录音", exact: true })
+    .click()
+  await expect
+    .poll(() =>
+      original.evaluate((audio: HTMLAudioElement) => audio.currentTime),
+    )
+    .toBeGreaterThan(0)
 })
 
 for (const width of [390, 820, 1180]) {
@@ -219,11 +254,13 @@ test("@webkit timeline remains usable when container duration is missing", async
       },
     })
   })
-  await mockTeacher(page)
-  // The roster has no supplied duration: it must decode the bytes, without seeking.
+  await mockTeacher(page, 820, false, true)
+  // No supplied duration: decode the bytes, without seeking.
   const progress = page.getByRole("slider", { name: "录音播放进度" })
   await expect(progress).toBeEnabled()
-  await expect(progress).toHaveAttribute("max", "4")
+  await expect
+    .poll(async () => Number(await progress.getAttribute("max")))
+    .toBeCloseTo(4, 2)
   expect(
     await page
       .locator("audio")
@@ -233,75 +270,92 @@ test("@webkit timeline remains usable when container duration is missing", async
   await expect.poll(() => progress.inputValue().then(Number)).toBeGreaterThan(0)
 })
 
-test("@webkit MediaRecorder audio starts at the beginning without seeking", async ({
-  page,
-}) => {
-  await mockTeacher(page)
-  const recording = await page.evaluate(async () => {
-    const context = new AudioContext()
-    await context.resume()
-    const oscillator = context.createOscillator()
-    const destination = context.createMediaStreamDestination()
-    oscillator.connect(destination)
-    oscillator.start()
-    const mimeType = ["audio/webm;codecs=opus", "audio/mp4"].find((mime) =>
-      MediaRecorder.isTypeSupported(mime),
+for (const forceFallback of [false, true]) {
+  test(`@webkit recorded audio starts without seeking (fixture fallback: ${forceFallback})`, async ({
+    page,
+  }) => {
+    if (forceFallback)
+      await page.addInitScript(() => {
+        Object.defineProperty(window, "MediaRecorder", {
+          value: undefined,
+          configurable: true,
+        })
+      })
+    await mockTeacher(page, 820, false, true)
+    const canRecord = await page.evaluate(
+      () => typeof MediaRecorder !== "undefined",
     )
-    const recorder = new MediaRecorder(
-      destination.stream,
-      mimeType ? { mimeType } : undefined,
+    // Linux WebKit may decode recordings but cannot create them. Exercise playback regardless.
+    const recording = canRecord
+      ? await page.evaluate(async () => {
+          const context = new AudioContext()
+          await context.resume()
+          const oscillator = context.createOscillator()
+          const destination = context.createMediaStreamDestination()
+          oscillator.connect(destination)
+          oscillator.start()
+          const mimeType = ["audio/webm;codecs=opus", "audio/mp4"].find(
+            (mime) => MediaRecorder.isTypeSupported(mime),
+          )
+          const recorder = new MediaRecorder(
+            destination.stream,
+            mimeType ? { mimeType } : undefined,
+          )
+          const chunks: Blob[] = []
+          const finished = new Promise<Blob>((resolve) => {
+            recorder.ondataavailable = (event) => chunks.push(event.data)
+            recorder.onstop = () =>
+              resolve(new Blob(chunks, { type: recorder.mimeType }))
+          })
+          recorder.start(100)
+          await new Promise((resolve) => setTimeout(resolve, 1500))
+          recorder.stop()
+          const blob = await finished
+          oscillator.stop()
+          destination.stream.getTracks().forEach((track) => {
+            track.stop()
+          })
+          await context.close()
+          return {
+            bytes: Array.from(new Uint8Array(await blob.arrayBuffer())),
+            mime: blob.type,
+          }
+        })
+      : {
+          bytes: await readFile(
+            new URL("../fixtures/recorded-tone.wav", import.meta.url),
+          ),
+          mime: "audio/wav",
+        }
+    await page.route("**/attempts/saved-attempt/audio", (route) =>
+      route.fulfill({
+        contentType: recording.mime,
+        body: Buffer.from(recording.bytes),
+      }),
     )
-    const chunks: Blob[] = []
-    const finished = new Promise<Blob>((resolve) => {
-      recorder.ondataavailable = (event) => chunks.push(event.data)
-      recorder.onstop = () =>
-        resolve(new Blob(chunks, { type: recorder.mimeType }))
-    })
-    recorder.start(100)
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    recorder.stop()
-    const blob = await finished
-    oscillator.stop()
-    destination.stream.getTracks().forEach((track) => {
-      track.stop()
-    })
-    await context.close()
-    return {
-      bytes: Array.from(new Uint8Array(await blob.arrayBuffer())),
-      mime: blob.type,
-    }
+    // Reload creates a fresh QueryClient, so the recording replaces the initial WAV.
+    await page.reload()
+    await expect(
+      page.getByRole("button", { name: "播放录音", exact: true }),
+    ).toBeEnabled()
+    const audio = page.locator("audio")
+    expect(
+      await audio.evaluate((element: HTMLAudioElement) => element.currentTime),
+    ).toBe(0)
+    await page.getByRole("button", { name: "播放录音", exact: true }).click()
+    await expect
+      .poll(() =>
+        audio.evaluate((element: HTMLAudioElement) => element.currentTime),
+      )
+      .toBeGreaterThan(0)
+    await expect(
+      page.getByRole("slider", { name: "录音播放进度" }),
+    ).toBeEnabled()
+    await expect
+      .poll(() => page.getByRole("slider").inputValue().then(Number))
+      .toBeGreaterThan(0)
   })
-  await page.route("**/attempts/saved-attempt/audio", (route) =>
-    route.fulfill({
-      contentType: recording.mime,
-      body: Buffer.from(recording.bytes),
-    }),
-  )
-  // Unmount the cached WAV before mounting a fresh recording player.
-  await page
-    .getByRole("button", { name: "收起 Alice 的详情", exact: true })
-    .click()
-  await page
-    .getByRole("button", { name: "展开 Alice 的详情", exact: true })
-    .click()
-  await expect(
-    page.getByRole("button", { name: "播放录音", exact: true }),
-  ).toBeEnabled()
-  const audio = page.locator("audio")
-  expect(
-    await audio.evaluate((element: HTMLAudioElement) => element.currentTime),
-  ).toBe(0)
-  await page.getByRole("button", { name: "播放录音", exact: true }).click()
-  await expect
-    .poll(() =>
-      audio.evaluate((element: HTMLAudioElement) => element.currentTime),
-    )
-    .toBeGreaterThan(0)
-  await expect(page.getByRole("slider", { name: "录音播放进度" })).toBeEnabled()
-  await expect
-    .poll(() => page.getByRole("slider").inputValue().then(Number))
-    .toBeGreaterThan(0)
-})
+}
 
 test("@webkit rejected playback shows a retry without pretending to play", async ({
   page,
@@ -317,7 +371,7 @@ test("@webkit rejected playback shows a retry without pretending to play", async
       return play.call(this)
     }
   })
-  await mockTeacher(page)
+  await mockTeacher(page, 820, false, true)
   const button = page.getByRole("button", { name: "播放录音", exact: true })
   await expect(button).toBeEnabled()
   await button.click()

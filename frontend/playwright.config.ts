@@ -14,6 +14,12 @@ import { defineConfig } from "@playwright/test"
  */
 export default defineConfig({
   testDir: "tests/e2e",
+  webServer: {
+    command:
+      "npx vite --config tests/fixtures/vite.config.ts --host 127.0.0.1 --port 5176 --strictPort",
+    url: "http://127.0.0.1:5176",
+    reuseExistingServer: !process.env.CI,
+  },
   timeout: 30_000,
   retries: 1,
   workers: 1,
