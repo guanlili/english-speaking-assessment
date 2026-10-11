@@ -165,7 +165,7 @@ for (const width of [390, 820, 1180]) {
       analyser.connect(context.destination)
       await context.resume()
       let peak = 0
-      for (let count = 0; count < 30 && peak === 0; count++) {
+      for (let count = 0; count < 30 && peak <= 0.001; count++) {
         await new Promise((resolve) => setTimeout(resolve, 30))
         const samples = new Float32Array(analyser.fftSize)
         analyser.getFloatTimeDomainData(samples)
