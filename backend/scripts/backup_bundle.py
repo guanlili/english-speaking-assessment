@@ -26,6 +26,10 @@
   uv run python scripts/backup_bundle.py restore --bundle <bundle.tar.gz> \
       --target-db restore_drill_x --audio-dir /tmp/restore-audio \
       --confirm-target restore_drill_x
+
+维护承诺（2026-10-11 决策 B）：本脚本为 **dev-only** 工具——不入 CI lint、
+无 runbook、已移出保活测试（backend/tests/scripts/test_*.py 对应文件已删）。
+使用前请自行核对本文件与当前数据库 schema 是否仍然匹配。
 """
 
 import argparse
