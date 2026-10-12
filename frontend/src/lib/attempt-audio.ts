@@ -8,7 +8,7 @@ export function attemptAudioUrl(attemptId: string): string {
   return `${API_BASE}/api/v1/attempts/${attemptId}/audio`
 }
 
-export async function fetchAudioObjectUrl(attemptId: string): Promise<string> {
+export async function fetchAudioBlob(attemptId: string): Promise<Blob> {
   // 与 OpenAPI.TOKEN 同源（main.tsx 写入 localStorage），fetch 才能带 Authorization 头
   const token = localStorage.getItem("access_token") || ""
   const res = await fetch(attemptAudioUrl(attemptId), {
@@ -17,5 +17,10 @@ export async function fetchAudioObjectUrl(attemptId: string): Promise<string> {
   if (!res.ok) {
     throw new Error(`录音加载失败（${res.status}）`)
   }
-  return URL.createObjectURL(await res.blob())
+  return res.blob()
+}
+
+/** Object URLs belong to the caller, never to a shared query cache. */
+export async function fetchAudioObjectUrl(attemptId: string): Promise<string> {
+  return URL.createObjectURL(await fetchAudioBlob(attemptId))
 }

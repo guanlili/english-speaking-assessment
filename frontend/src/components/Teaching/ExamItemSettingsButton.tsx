@@ -166,6 +166,12 @@ function SettingsEditor({
         ))}
       {itemType !== "passage" && (
         <div className="flex flex-wrap items-center gap-2">
+          <p className="w-full text-sm text-muted-foreground">
+            {t({
+              zh: "自动考试的说明、复述和问答题须有音频；可在此生成或上传，也可沿用题目已有的标准音。",
+              en: "Automated exam instructions, repeat items and questions require audio. Generate or upload it here, or use the item's existing standard audio.",
+            })}
+          </p>
           <span>{t({ zh: "考试播放音频", en: "Exam audio" })}</span>
           <AudioSetter
             text={text}

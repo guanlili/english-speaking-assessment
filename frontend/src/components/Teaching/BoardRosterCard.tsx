@@ -1,4 +1,4 @@
-import { Download, Link2, Search } from "lucide-react"
+import { Download, Link2, Search, Users } from "lucide-react"
 import type { BoardStudent } from "@/client"
 import { BoardStudentRow } from "@/components/Teaching/BoardStudentRow"
 import { Button } from "@/components/ui/button"
@@ -57,26 +57,41 @@ export function BoardRosterCard({
 }) {
   const { t } = useI18n()
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          {t({ zh: "今日名单", en: "Today's Roster" })}
-        </CardTitle>
-        <CardDescription>
-          {t({
-            zh: "点击一行展开每题分数和音频。分数是参考反馈，不是考试成绩。",
-            en: "Click a row to expand per-item scores and audio. Scores are reference feedback, not exam grades.",
-          })}
-          <span className="mt-1 block sm:hidden">
+    <Card className="gap-0 overflow-hidden py-0 shadow-none">
+      <CardHeader className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div className="min-w-0 space-y-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Users className="size-4 text-primary" aria-hidden="true" />
+            {t({ zh: "今日名单", en: "Today's Roster" })}
+          </CardTitle>
+          <CardDescription>
             {t({
-              zh: "横向滑动表格，可以查看完整成绩与状态。",
-              en: "Swipe the table sideways to see all scores and statuses.",
+              zh: "展开查看逐题反馈与录音，分数仅供教学参考。",
+              en: "Expand for per-item feedback and recordings. Scores are for teaching reference.",
             })}
-          </span>
-        </CardDescription>
+          </CardDescription>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11"
+            onClick={onShareLink}
+          >
+            <Link2 /> {t({ zh: "学生入口", en: "Student Entry" })}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11"
+            onClick={onExportCsv}
+          >
+            <Download /> {t({ zh: "导出", en: "Export" })}
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent className="pb-0">
-        <div className="flex flex-wrap items-center gap-2 pb-3">
+      <CardContent className="border-y border-border/70 bg-muted/25 px-5 py-3 sm:px-6">
+        <div className="flex flex-wrap items-center gap-3">
           <select
             value={statusFilter}
             onChange={(e) => onStatusFilterChange(e.target.value)}
@@ -92,7 +107,7 @@ export function BoardRosterCard({
               </option>
             ))}
           </select>
-          <div className="relative min-w-40 flex-1 sm:max-w-64">
+          <div className="relative min-w-36 flex-1 sm:max-w-72">
             <Search
               aria-hidden="true"
               className="pointer-events-none absolute left-3 top-3.5 size-4 text-muted-foreground"
@@ -112,7 +127,10 @@ export function BoardRosterCard({
               className="pl-9"
             />
           </div>
-          <span role="status" className="text-xs text-muted-foreground">
+          <span
+            role="status"
+            className="ml-auto text-xs tabular-nums text-muted-foreground"
+          >
             {t({
               zh: `${filteredStudents.length} / ${totalStudents} 人`,
               en: `${filteredStudents.length} / ${totalStudents}`,
@@ -123,19 +141,9 @@ export function BoardRosterCard({
               {t({ zh: "清除筛选", en: "Clear Filters" })}
             </Button>
           )}
-          <div className="ml-auto flex gap-2">
-            <Button variant="outline" size="sm" onClick={onShareLink}>
-              <Link2 />
-              {t({ zh: "学生入口", en: "Student Entry" })}
-            </Button>
-            <Button variant="outline" size="sm" onClick={onExportCsv}>
-              <Download />
-              {t({ zh: "导出", en: "Export" })}
-            </Button>
-          </div>
         </div>
       </CardContent>
-      <CardContent>
+      <CardContent className="p-3 sm:p-5">
         {!hasStudents ? (
           <p className="py-8 text-center text-muted-foreground">
             {t({
@@ -166,19 +174,19 @@ export function BoardRosterCard({
             </Button>
           </div>
         ) : (
-          <Table>
-            <TableHeader>
+          <Table className="block lg:table">
+            <TableHeader className="hidden lg:table-header-group">
               <TableRow>
                 <TableHead className="w-8" />
                 <TableHead>{t({ zh: "姓名", en: "Name" })}</TableHead>
                 <TableHead>{t({ zh: "完成", en: "Done" })}</TableHead>
-                <TableHead>
+                <TableHead className="whitespace-normal leading-5">
                   {t({
                     zh: "跟读参考分",
                     en: "Repeat Reference Score",
                   })}
                 </TableHead>
-                <TableHead>
+                <TableHead className="whitespace-normal leading-5">
                   {t({
                     zh: "问答参考分",
                     en: "Scenario Q&A Reference Score",
@@ -187,7 +195,7 @@ export function BoardRosterCard({
                 <TableHead>{t({ zh: "状态", en: "Status" })}</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody className="block lg:table-row-group">
               {filteredStudents.map((student) => (
                 <BoardStudentRow
                   key={student.student_id}

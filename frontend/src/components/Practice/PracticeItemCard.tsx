@@ -168,7 +168,7 @@ export default function PracticeItemCard({
         {item.type === "repeat" && <RepeatHint hint={hint} />}
 
         {!isInstruction &&
-          (item.type === "repeat" ? (
+          (exam && item.type === "repeat" ? (
             // 听音状态按 session_id + item_id 隔离：会话变化时重建计数状态，
             // 避免同一道题在新会话里沿用旧会话的已听次数。
             <LimitedListenButton

@@ -158,7 +158,6 @@ for (const width of [390, 820, 1180]) {
       .click()
     const audio = page.locator("audio")
     await expect(audio).toHaveAttribute("src", /^blob:/)
-    await audio.evaluate((el: HTMLAudioElement) => el.play())
     await expect
       .poll(() => audio.evaluate((el: HTMLAudioElement) => el.currentTime))
       .toBeGreaterThan(0)
@@ -167,7 +166,9 @@ for (const width of [390, 820, 1180]) {
       ;(window as unknown as { oldAudio: HTMLAudioElement }).oldAudio =
         el as HTMLAudioElement
     })
-    await page.getByRole("button", { name: "收起录音" }).click()
+    await page
+      .getByRole("button", { name: "回听 First batch 第1题录音" })
+      .click()
     expect(
       await page.evaluate(
         () =>
@@ -224,11 +225,13 @@ test("invalid exam duration explains why preview is unavailable", async ({
 
 async function mockListening(
   page: Page,
-  failAudio = false,
+  initiallyFailAudio = false,
   failCount = false,
   reading = false,
+  exam = false,
 ) {
   await login(page, "student")
+  let failAudio = initiallyFailAudio
   let listens = 0
   let release: (() => void) | undefined
   await page.route("**/api/v1/**", async (route) => {
@@ -247,6 +250,17 @@ async function mockListening(
         classroom_code: "CLARITY",
         band: "B1",
         attempts: [],
+        exam: exam
+          ? {
+              started: true,
+              ended: false,
+              time_limit_minutes: 30,
+              remaining_seconds: 1800,
+              current_item_index: 0,
+              item_remaining_seconds: 120,
+              prep_remaining_seconds: 0,
+            }
+          : null,
         items: [
           {
             id: "sentence",
@@ -281,17 +295,23 @@ async function mockListening(
     }
     await route.fulfill({ json: body })
   })
-  await page.goto("/p/CLARITY")
+  await page.goto(exam ? "/exam/CLARITY" : "/p/CLARITY")
   await expect(
     page.getByRole("region", { name: "Notifications alt+T" }),
   ).toBeAttached()
-  return { listens: () => listens, release: () => release?.() }
+  return {
+    listens: () => listens,
+    release: () => release?.(),
+    setFailAudio: (value: boolean) => {
+      failAudio = value
+    },
+  }
 }
 
-test("repeat audio prevents extra counts while loading or playing", async ({
+test("exam repeat audio prevents extra counts while loading or playing", async ({
   page,
 }) => {
-  const state = await mockListening(page)
+  const state = await mockListening(page, false, false, false, true)
   await page.getByRole("button", { name: "听示范", exact: true }).click()
   await expect(
     page.getByRole("button", { name: "正在加载…", exact: true }),
@@ -308,23 +328,40 @@ test("repeat audio prevents extra counts while loading or playing", async ({
   ).toBeEnabled({ timeout: 10_000 })
 })
 
-test("repeat playback errors are visible and do not leave the button stuck", async ({
+test("practice repeat playback errors recover and replay remains unlimited", async ({
   page,
 }) => {
-  await mockListening(page, true)
-  await page.getByRole("button", { name: "听示范", exact: true }).click()
+  const state = await mockListening(page, true)
+  const audio = page.locator("audio")
+  await audio.evaluate((element: HTMLAudioElement) => {
+    element.load()
+    return element.play().catch(() => {})
+  })
   await expect(
-    page.getByText("音频播放失败，请检查网络或设备声音设置", { exact: true }),
+    page
+      .getByText("音频播放失败，请检查网络或设备声音设置", { exact: true })
+      .first(),
   ).toBeVisible()
-  await expect(
-    page.getByRole("button", { name: "听示范", exact: true }),
-  ).toBeEnabled()
+  state.setFailAudio(false)
+  for (let count = 0; count < 4; count++) {
+    await audio.evaluate(async (element: HTMLAudioElement) => {
+      element.load()
+      await element.play()
+    })
+    await expect
+      .poll(() =>
+        audio.evaluate((element: HTMLAudioElement) => element.currentTime),
+      )
+      .toBeGreaterThan(0)
+    await audio.evaluate((element: HTMLAudioElement) => element.pause())
+  }
+  expect(state.listens()).toBe(0)
 })
 
 test("a timing rejection is not mislabeled as exhausted replays", async ({
   page,
 }) => {
-  await mockListening(page, false, true)
+  await mockListening(page, false, true, false, true)
   await page.getByRole("button", { name: "听示范", exact: true }).click()
   await expect(
     page.getByText("本题作答时间已结束或尚未开始", { exact: true }),
@@ -348,7 +385,9 @@ test("device speech is clearly labeled and unsupported playback shows feedback",
   await expect(page.getByText("设备合成语音", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "听示范", exact: true }).click()
   await expect(
-    page.getByText("音频播放失败，请检查网络或设备声音设置", { exact: true }),
+    page
+      .getByText("音频播放失败，请检查网络或设备声音设置", { exact: true })
+      .first(),
   ).toBeVisible()
   await expect(
     page.getByRole("button", { name: "听示范", exact: true }),

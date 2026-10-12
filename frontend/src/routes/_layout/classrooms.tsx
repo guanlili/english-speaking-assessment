@@ -1,14 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { ClipboardPaste, Copy, Plus, RotateCcw, UserMinus } from "lucide-react"
+import {
+  ChevronDown,
+  ClipboardPaste,
+  Copy,
+  Plus,
+  RotateCcw,
+  UserMinus,
+} from "lucide-react"
 import { useMemo, useState } from "react"
 import {
   ClassesService,
   type StudentImportResult,
   StudentsService,
 } from "@/client"
-
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
+import { TeachingPageHeader } from "@/components/Teaching/TeachingPageHeader"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -108,91 +115,77 @@ function MyClassroomsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="mb-2 text-xs font-semibold tracking-widest text-primary">
-            {t({ zh: "从这里开始上课", en: "Start here" })}
-          </p>
-          <h1 className="text-3xl font-bold tracking-tight">
-            {t({ zh: "我的课堂", en: "My Classrooms" })}
-          </h1>
-          <p className="text-muted-foreground">
-            {t({
-              zh: "一间课堂，一个教学空间。安排口语练习，查看学生录音与参考反馈。",
-              en: "One classroom, one teaching space. Assign speaking practice and review student recordings with reference feedback.",
-            })}
-          </p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus />
-          {t({ zh: "新建课堂", en: "New Classroom" })}
-        </Button>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        {[
-          {
-            title: {
-              zh: "课前 · 准备题目",
-              en: "Before class · Prepare questions",
-            },
-            text: {
-              zh: "文章朗读、听句复述、情景问答",
-              en: "Read Aloud, Listen & Repeat, Scenario Q&A",
-            },
-          },
-          {
-            title: {
-              zh: "课中 · 安排练习",
-              en: "In class · Assign practice",
-            },
-            text: {
-              zh: "进入课堂，选择内容并预览发布",
-              en: "Open the classroom, choose content and preview before publishing",
-            },
-          },
-          {
-            title: {
-              zh: "课后 · 查看结果",
-              en: "After class · Review results",
-            },
-            text: {
-              zh: "听录音、看参考反馈、跟踪进步",
-              en: "Listen to recordings, check reference feedback, track progress",
-            },
-          },
-        ].map((step, index) => (
-          <div
-            key={step.title.zh}
-            className="flex gap-3 rounded-xl border bg-card p-5"
-          >
-            <span className="text-sm font-semibold text-primary">
-              0{index + 1}
-            </span>
-            <div>
-              <p className="text-sm font-semibold">{t(step.title)}</p>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                {t(step.text)}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-      <Input
-        aria-label={t({
-          zh: "搜索课堂名称或课堂码",
-          en: "Search by classroom name or code",
+      <TeachingPageHeader
+        eyebrow={t({ zh: "教学工作台", en: "Teaching workspace" })}
+        title={t({ zh: "我的课堂", en: "My Classrooms" })}
+        description={t({
+          zh: "从课堂开始，安排练习、听评作答，关注每位学生的进步。",
+          en: "Open a classroom to assign practice, review recordings and follow each student's progress.",
         })}
-        value={keyword}
-        onChange={(event) => setKeyword(event.target.value)}
-        placeholder={t({
-          zh: "搜索课堂名称或课堂码…",
-          en: "Search by classroom name or code…",
-        })}
-        className="max-w-sm"
+        actions={
+          <Button variant="secondary" onClick={() => setCreateOpen(true)}>
+            <Plus />
+            {t({ zh: "新建课堂", en: "New Classroom" })}
+          </Button>
+        }
       />
-      <Card>
-        <CardHeader>
+      <details className="group rounded-xl border bg-card px-5">
+        <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-2 text-sm font-medium text-primary">
+          {t({
+            zh: "教学流程指南 · 课前 / 课中 / 课后",
+            en: "Teaching guide · Before / during / after class",
+          })}
+          <ChevronDown className="size-4 shrink-0 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            {
+              title: {
+                zh: "课前 · 准备题目",
+                en: "Before class · Prepare questions",
+              },
+              text: {
+                zh: "文章朗读、听句复述、情景问答",
+                en: "Read Aloud, Listen & Repeat, Scenario Q&A",
+              },
+            },
+            {
+              title: {
+                zh: "课中 · 安排练习",
+                en: "In class · Assign practice",
+              },
+              text: {
+                zh: "进入课堂，选择内容并预览发布",
+                en: "Open the classroom, choose content and preview before publishing",
+              },
+            },
+            {
+              title: {
+                zh: "课后 · 查看结果",
+                en: "After class · Review results",
+              },
+              text: {
+                zh: "听录音、看参考反馈、跟踪进步",
+                en: "Listen to recordings, check reference feedback, track progress",
+              },
+            },
+          ].map((step, index) => (
+            <div key={step.title.zh} className="flex gap-3 py-4 pr-4">
+              <span className="text-sm font-semibold text-primary">
+                0{index + 1}
+              </span>
+              <div>
+                <p className="text-sm font-semibold">{t(step.title)}</p>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  {t(step.text)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </details>
+      <Card className="gap-0 overflow-hidden border-primary/10 py-0 shadow-sm">
+        <CardHeader className="border-b bg-muted/30 py-5">
           <CardTitle className="text-base">
             {t({ zh: "课堂列表", en: "Classroom List" })}
           </CardTitle>
@@ -203,7 +196,21 @@ function MyClassroomsPage() {
             })}
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-5 py-5">
+          <Input
+            aria-label={t({
+              zh: "搜索课堂名称或课堂码",
+              en: "Search by classroom name or code",
+            })}
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder={t({
+              zh: "搜索课堂名称或课堂码…",
+              en: "Search by classroom name or code…",
+            })}
+            className="min-h-11 w-full sm:max-w-sm"
+          />
+
           {classroomsQuery.isPending ? (
             <div className="flex flex-col gap-3">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -423,10 +430,10 @@ function ClassroomCard({
   })
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <div>
-          <CardTitle className="text-lg">
+    <Card className="h-full gap-0 border-primary/15 shadow-none transition-shadow hover:shadow-md">
+      <CardHeader className="flex flex-wrap items-start justify-between gap-3 space-y-0 pb-4">
+        <div className="min-w-0 flex-1">
+          <CardTitle className="break-words text-lg">
             {classroom.name ||
               t({ zh: "未命名课堂", en: "Untitled Classroom" })}
           </CardTitle>
@@ -447,15 +454,15 @@ function ClassroomCard({
             : t({ zh: "已停用", en: "Deactivated" })}
         </Badge>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
+      <CardContent className="flex flex-1 flex-col gap-4">
+        <p className="flex-1 break-words text-sm leading-6 text-muted-foreground">
           {classroom.teaching_goal ||
             t({
               zh: "安排本次练习，查看学生作答与录音。",
               en: "Assign practice and review student answers and recordings.",
             })}
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid gap-2 xl:grid-cols-2 [&_a]:min-h-11 [&_button]:min-h-11">
           {classroom.is_active ? (
             <Button asChild>
               <Link to="/t/$code" params={{ code: classroom.code }}>
@@ -472,14 +479,15 @@ function ClassroomCard({
             {t({ zh: "复制课堂码", en: "Copy Classroom Code" })}
           </Button>
         </div>
-        <details className="border-t pt-3">
-          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+        <details className="group border-t pt-3">
+          <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-2 text-sm font-medium text-muted-foreground">
             {t({
               zh: "学生管理 · 名单与账号",
               en: "Students · Roster & Accounts",
             })}
+            <ChevronDown className="size-4 shrink-0 transition-transform group-open:rotate-180" />
           </summary>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2 [&_button]:min-h-11">
             <Button
               variant="outline"
               size="sm"
