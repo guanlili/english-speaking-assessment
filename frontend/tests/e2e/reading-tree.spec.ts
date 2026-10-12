@@ -15,6 +15,10 @@ const article = {
 }
 
 async function mockBank(page: Page) {
+  const state = {
+    ...article,
+    reading_sentence_seconds: [null, null] as (number | null)[],
+  }
   await page.addInitScript(() => {
     localStorage.setItem("access_token", "test-token")
     localStorage.setItem("esa:role", "teacher")
@@ -32,8 +36,16 @@ async function mockBank(page: Page) {
       }
     else if (path.endsWith("/admin/passages"))
       // 管理端列表已是分页信封 {data, count}（limit 默认 None 全量）
-      body = { data: [article], count: 1 }
-    else if (path.endsWith("/classes/TREE/board"))
+      body = { data: [state], count: 1 }
+    else if (
+      path.endsWith(`/admin/passages/${article.id}`) &&
+      route.request().method() === "PUT"
+    ) {
+      state.reading_sentence_seconds = route
+        .request()
+        .postDataJSON().reading_sentence_seconds
+      body = state
+    } else if (path.endsWith("/classes/TREE/board"))
       body = {
         classroom_code: "TREE",
         classroom_name: "Tree test",
@@ -58,7 +70,7 @@ async function noOverflow(page: Page) {
 }
 
 for (const width of [390, 820, 1180]) {
-  test(`article tree and whole-article selection at ${width}px`, async ({
+  test(`@webkit article tree and whole-article selection at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 1000 })
@@ -71,6 +83,30 @@ for (const width of [390, 820, 1180]) {
     await expect(
       card.getByTestId("reading-sentences").getByRole("listitem"),
     ).toHaveCount(2)
+    const first = card.getByRole("spinbutton", {
+      name: "第 1 句作答时长（秒）",
+    })
+    await first.fill("22")
+    await card
+      .getByRole("listitem")
+      .nth(0)
+      .getByRole("button", { name: "保存", exact: true })
+      .click()
+    await expect(first).toHaveValue("22")
+    const second = card.getByRole("spinbutton", {
+      name: "第 2 句作答时长（秒）",
+    })
+    await second.fill("35")
+    await card
+      .getByRole("listitem")
+      .nth(1)
+      .getByRole("button", { name: "保存", exact: true })
+      .click()
+    await expect(second).toHaveValue("35")
+    await page.reload()
+    await card.getByRole("button", { name: article.title, exact: true }).click()
+    await expect(first).toHaveValue("22")
+    await expect(second).toHaveValue("35")
     await noOverflow(page)
     await card.getByRole("button", { name: article.title, exact: true }).click()
     await expect(card.getByTestId("reading-sentences")).toHaveCount(0)
@@ -83,6 +119,8 @@ for (const width of [390, 820, 1180]) {
     await expect(picker.getByText("逐句 2 题")).toBeVisible()
     await picker.getByRole("button", { name: "查看内容" }).click()
     await expect(picker.getByRole("listitem")).toHaveCount(2)
+    await expect(picker.getByText("22 秒", { exact: true })).toBeVisible()
+    await expect(picker.getByText("35 秒", { exact: true })).toBeVisible()
     await expect(picker.getByRole("checkbox")).toHaveCount(1)
     await expect(picker.getByRole("checkbox")).not.toBeChecked()
     await picker.getByText(article.title, { exact: true }).click()
