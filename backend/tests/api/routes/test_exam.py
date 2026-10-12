@@ -1243,3 +1243,30 @@ def test_idempotency_key_scoped_to_item_type(
     cross = _submit(client, headers, code, other_type, plan["session_id"], key)
     assert cross.status_code == 422
     assert cross.json()["detail"] == "作答凭证已失效，请重新录音后提交"
+
+
+def test_today_skips_settle_and_masks_stars_while_feedback_locked(
+    flow_exam_started: tuple[TestClient, str, dict[str, str], dict, list[dict], list],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """反馈遮罩期间不得结算/下发星级（2026-10-12 评审）。
+
+    settle 会按分数落 stars/XP，GamificationInfo 直出 stars 等于把分数
+    档（≥85→3 星）提前泄露给考生。两层都要封：结算跳过 + 下发遮罩。
+    """
+    from app.api.routes import class_today_plan
+
+    client, code, headers, plan, items, clock = flow_exam_started
+    clock[0] += timedelta(seconds=2)
+    first = _submit(
+        client, headers, code, items[0], plan["session_id"], f"idem-{uuid.uuid4()}"
+    )
+    assert first.status_code == 200, first.text
+
+    def _no_settle(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("settle_session must be skipped while feedback locked")
+
+    monkeypatch.setattr(class_today_plan, "settle_session", _no_settle)
+    monkeypatch.setattr(exam_service, "exam_feedback_locked", lambda *a, **k: True)
+    refreshed = _today(client, headers, code)
+    assert refreshed["gamification"]["session_stars"] is None

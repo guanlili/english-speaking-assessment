@@ -173,6 +173,20 @@ def read_exercise_results(
                 continue
             latest_by_session.setdefault(sid, {})[attempt.item_id] = attempt
 
+    # 模考批量终结：预取首答后纯计算、单次 commit（替代循环内逐会话
+    # finalize 的 N+1；2026-10-12 评审）
+    if exercise.is_exam:
+        started_sessions = [
+            ps for ps in sessions_by_student.values() if ps.exam_started_at is not None
+        ]
+        if started_sessions:
+            first_by_session = exam_service.first_submitted_by_session(
+                session, [ps.id for ps in started_sessions]
+            )
+            exam_service.finalize_if_expired_batch(
+                session, started_sessions, exercise, first_by_session
+            )
+
     out: list[ExerciseStudentResult] = []
     for student in students:
         ps = sessions_by_student.get(student.id)
@@ -216,7 +230,7 @@ def read_exercise_results(
         exam_used: int | None = None
         exam_ended_flag: bool | None = None
         if exercise.is_exam and ps is not None and ps.exam_started_at is not None:
-            exam_service.finalize_if_expired(session, ps, exercise)
+            # 终结已在上方批量完成；这里只读字段
             exam_switches = ps.tab_switch_count
             exam_switch_seconds = ps.tab_switch_seconds
             exam_used = exam_service.exam_time_used_seconds(ps)
