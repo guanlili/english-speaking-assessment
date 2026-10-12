@@ -1,6 +1,15 @@
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link, useParams } from "@tanstack/react-router"
-import { BookA, Loader2, RefreshCw, Sparkles } from "lucide-react"
+import {
+  ArrowLeft,
+  BookA,
+  ClipboardList,
+  History,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  Users,
+} from "lucide-react"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
 import { ApiError, ClassesService } from "@/client"
@@ -213,16 +222,28 @@ function TeacherBoardPage() {
 
   return (
     <div className="bg-background">
-      <div className="flex w-full flex-col gap-6">
-        <Link to="/classrooms" className="text-sm font-medium text-primary">
-          ← {t({ zh: "我的课堂", en: "My Classrooms" })}
+      <div className="flex w-full min-w-0 flex-col gap-5 sm:gap-6">
+        <Link
+          to="/classrooms"
+          className="inline-flex min-h-11 w-fit items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+        >
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          {t({ zh: "我的课堂", en: "My Classrooms" })}
         </Link>
-        <div className="flex items-start justify-between gap-4 rounded-2xl border border-primary/10 bg-secondary/40 p-5 sm:p-7">
-          <div className="min-w-0">
-            <p className="mb-2 text-[10px] font-semibold tracking-[0.18em] text-primary">
-              CLASSROOM STUDIO
+        <div className="relative isolate flex flex-col justify-between gap-6 overflow-hidden rounded-3xl bg-brand-pine p-6 text-paper-hero sm:p-8 lg:flex-row lg:items-center">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-16 -top-24 -z-10 size-80 rounded-full border border-white/10"
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -bottom-44 right-20 -z-10 size-80 rounded-full border border-white/10"
+          />
+          <div className="min-w-0 space-y-3">
+            <p className="text-xs font-medium tracking-widest text-paper-hero/70">
+              {t({ zh: "课堂教学", en: "CLASSROOM STUDIO" })}
             </p>
-            <h1 className="break-words text-2xl font-semibold tracking-tight sm:text-3xl">
+            <h1 className="break-words text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
               {board.classroom_name}
               {board.current_exercise?.is_exam && (
                 <Badge variant="destructive" className="ml-2 align-middle">
@@ -232,7 +253,7 @@ function TeacherBoardPage() {
                 </Badge>
               )}
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm leading-6 text-paper-hero/80">
               {board.classroom_grade && `${board.classroom_grade} · `}
               {t({
                 zh: `课堂码 ${board.classroom_code} · 已提交 ${board.submitted_count}/${board.class_size}`,
@@ -248,16 +269,22 @@ function TeacherBoardPage() {
                 </span>
               )}
             </p>
-            <div className="mt-1 flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-2">
               {board.teaching_goal && (
-                <Badge variant="secondary">
+                <Badge
+                  variant="secondary"
+                  className="max-w-full whitespace-normal border-white/10 bg-white/10 text-paper-hero"
+                >
                   {t({
                     zh: `目标：${board.teaching_goal}`,
                     en: `Goal: ${board.teaching_goal}`,
                   })}
                 </Badge>
               )}
-              <Badge variant="secondary">
+              <Badge
+                variant="secondary"
+                className="border-white/10 bg-white/10 text-paper-hero/80"
+              >
                 {t({ zh: "评分引擎：", en: "Scoring engine: " })}
                 {board.engine === "volc_flash"
                   ? t({ zh: "豆包语音（AI）", en: "Doubao Speech (AI)" })
@@ -268,7 +295,12 @@ function TeacherBoardPage() {
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-11 border-white/20 bg-white/10 text-paper-hero hover:bg-white/20 hover:text-paper-hero"
+              asChild
+            >
               <Link to="/t/$code/vocab" params={{ code }}>
                 <BookA />
                 {t(TERMS.vocabLearning)}
@@ -277,6 +309,7 @@ function TeacherBoardPage() {
             <Button
               variant="outline"
               size="sm"
+              className="min-h-11 border-white/20 bg-white/10 text-paper-hero hover:bg-white/20 hover:text-paper-hero"
               onClick={() => boardQuery.refetch()}
               disabled={boardQuery.isFetching}
             >
@@ -301,18 +334,30 @@ function TeacherBoardPage() {
           }}
           className="gap-6"
         >
-          <TabsList className="h-11">
-            <TabsTrigger value="prepare" className="px-3.5 sm:px-6">
+          <TabsList className="grid h-auto min-h-12 w-full grid-cols-3 gap-1 rounded-2xl border border-border/80 bg-card p-1.5 sm:w-fit">
+            <TabsTrigger
+              value="prepare"
+              className="min-h-11 whitespace-normal px-2 py-2 text-center text-xs leading-5 data-[state=active]:bg-secondary data-[state=active]:shadow-none sm:px-6 sm:text-sm"
+            >
+              <ClipboardList
+                aria-hidden="true"
+                className="hidden size-4 sm:block"
+              />
               {t({ zh: "练习安排", en: "Assign Practice" })}
             </TabsTrigger>
-            <TabsTrigger value="results" className="px-3.5 sm:px-6">
+            <TabsTrigger
+              value="results"
+              className="min-h-11 whitespace-normal px-2 py-2 text-center text-xs leading-5 data-[state=active]:bg-secondary data-[state=active]:shadow-none sm:px-6 sm:text-sm"
+            >
+              <Users aria-hidden="true" className="hidden size-4 sm:block" />
               {t({ zh: "学生结果", en: "Student Results" })}
             </TabsTrigger>
             <TabsTrigger
               ref={historyTabRef}
               value="history"
-              className="px-3.5 sm:px-6"
+              className="min-h-11 whitespace-normal px-2 py-2 text-center text-xs leading-5 data-[state=active]:bg-secondary data-[state=active]:shadow-none sm:px-6 sm:text-sm"
             >
+              <History aria-hidden="true" className="hidden size-4 sm:block" />
               {t({ zh: "发布历史", en: "Publish History" })}
             </TabsTrigger>
           </TabsList>
@@ -327,23 +372,25 @@ function TeacherBoardPage() {
           </TabsContent>
           <TabsContent value="results" className="space-y-6">
             {board.current_exercise && (
-              <div className="space-y-2 rounded-xl border bg-card p-4 text-sm">
-                <p className="font-semibold">
-                  {t({
-                    zh: `今日 · v${board.current_exercise.version_no} · ${board.current_exercise.title}`,
-                    en: `Today · v${board.current_exercise.version_no} · ${board.current_exercise.title}`,
-                  })}
-                </p>
-                <p className="text-muted-foreground">
-                  {t({
-                    zh: "此面板仅统计今日当前发布版本。重新发布后，旧版本的作答仍保存在发布历史中，未计入当前版本不代表成绩丢失。",
-                    en: "This panel shows today's current published version only. Earlier answers remain in Publish History after republishing; they are not included in this version's results.",
-                  })}
-                </p>
+              <div className="flex flex-col gap-4 rounded-2xl border border-border/80 bg-card p-5 text-sm lg:flex-row lg:items-center">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <p className="font-semibold">
+                    {t({
+                      zh: `今日 · v${board.current_exercise.version_no} · ${board.current_exercise.title}`,
+                      en: `Today · v${board.current_exercise.version_no} · ${board.current_exercise.title}`,
+                    })}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {t({
+                      zh: "当前发布的作答记录；其他版本的成绩保存在发布历史中。",
+                      en: "Answers for the current publication. Earlier results are saved in Publish History.",
+                    })}
+                  </p>
+                </div>
                 <Button
                   type="button"
                   variant="outline"
-                  className="min-h-11"
+                  className="min-h-11 shrink-0 self-start lg:self-center"
                   onClick={() => viewHistory(null)}
                 >
                   {t({ zh: "查看历史版本结果", en: "View earlier results" })}
@@ -356,11 +403,6 @@ function TeacherBoardPage() {
               submittedCount={board.submitted_count}
               classAvg={classAvg}
               inactiveCount={inactiveCount}
-            />
-            <BoardTeachingActions
-              attentionCount={attentionStudents.length}
-              onCopyReminder={copyReminder}
-              onAssignNext={() => setActiveTab("prepare")}
             />
             <BoardRosterCard
               code={code}
@@ -379,7 +421,13 @@ function TeacherBoardPage() {
               onExportCsv={exportCsv}
             />
 
-            <Card className="border-accent bg-accent">
+            <BoardTeachingActions
+              attentionCount={attentionStudents.length}
+              onCopyReminder={copyReminder}
+              onAssignNext={() => setActiveTab("prepare")}
+            />
+
+            <Card className="border-accent/80 bg-accent/50 py-1 shadow-none">
               <CardContent className="py-4">
                 <p className="flex items-center gap-1.5 text-sm font-semibold">
                   <Sparkles className="size-4" />{" "}

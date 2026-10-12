@@ -370,3 +370,65 @@ for (const source of [
       await expect(dialog.getByText("Saved model review")).toHaveCount(0)
   })
 }
+
+for (const width of [390, 820, 1180]) {
+  test(`@webkit current roster remains usable in both languages at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await mockTeacher(page)
+    await page.goto("/t/TEACH")
+    await page.getByRole("tab", { name: "学生结果", exact: true }).click()
+    const expand = page.getByRole("button", {
+      name: "展开 Alice 的详情",
+      exact: true,
+    })
+    await expect(expand).toBeVisible()
+    expect((await expand.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+    await page.getByRole("button", { name: "汇总反馈", exact: true }).click()
+    await expect(
+      page.getByRole("dialog").getByText("Saved rule advice new-1"),
+    ).toBeVisible()
+    await page.getByRole("button", { name: "关闭", exact: true }).click()
+    await expand.click()
+    const play = page.getByRole("button", {
+      name: "回听 Alice 第2题录音",
+      exact: true,
+    })
+    await play.click()
+    await expect(play).toHaveAttribute("aria-pressed", "true")
+    await play.click()
+    await page
+      .getByRole("searchbox", { name: "搜索学生姓名", exact: true })
+      .fill("Nobody")
+    await expect(
+      page.getByText("没有找到符合条件的学生", { exact: true }),
+    ).toBeVisible()
+    await page
+      .getByRole("button", { name: "查看全部学生", exact: true })
+      .click()
+    await expect(page.getByText("Alice", { exact: true })).toBeVisible()
+    for (const language of ["中", "EN"]) {
+      await page
+        .getByRole("button", { name: language, exact: true })
+        .last()
+        .click()
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true)
+      // Expanded content must fit its card, including at phone width.
+      const table = page.locator('[data-slot="table-container"]').first()
+      expect(
+        await table.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+      ).toBe(true)
+    }
+    await expect(
+      page.getByRole("button", { name: "Overall feedback", exact: true }),
+    ).toBeVisible()
+    await page
+      .getByRole("button", { name: "Collapse details for Alice", exact: true })
+      .click()
+  })
+}
