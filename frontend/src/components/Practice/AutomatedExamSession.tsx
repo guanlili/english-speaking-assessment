@@ -14,6 +14,7 @@ import ExamGroupedProgress from "@/components/Practice/ExamGroupedProgress"
 import { Button } from "@/components/ui/button"
 import { type Recording, useRecorder } from "@/hooks/useRecorder"
 import { EXAM_AUDIO_UNLOCK_URL } from "@/lib/exam-audio"
+import { checkExamAudio, ExamAudioCheckError } from "@/lib/exam-audio-check"
 import { useI18n } from "@/lib/i18n"
 import {
   currentDraftOwner,
@@ -77,6 +78,7 @@ export default function AutomatedExamSession({
   const [armed, setArmed] = useState(false)
   const [enabling, setEnabling] = useState(false)
   const enablingRef = useRef(false)
+  const audioCheck = useRef<AbortController | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [storageError, setStorageError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -101,10 +103,14 @@ export default function AutomatedExamSession({
   const owner = currentDraftOwner()
 
   const sendEvent = useMutation({
-    mutationFn: (event: "audio-ended" | "next") =>
+    mutationFn: (requestBody: {
+      session_id: string
+      item_id: string
+      event: "audio-ended" | "next"
+    }) =>
       ClassesService.advanceExamFlow({
         code,
-        requestBody: { session_id: plan.session_id, item_id: item.id, event },
+        requestBody,
       }),
     retry: 2,
     onSuccess: () => {
@@ -263,11 +269,17 @@ export default function AutomatedExamSession({
     setNotes(localStorage.getItem(noteKey) ?? "")
   }, [noteKey])
 
+  function playerCleanup() {
+    audio.current?.pause()
+    window.speechSynthesis?.cancel()
+  }
   async function enable() {
     if (enablingRef.current) return
     enablingRef.current = true
     setEnabling(true)
     setError(null)
+    const check = new AbortController()
+    audioCheck.current = check
     try {
       context.current ??= new AudioContext()
       const player = audio.current ?? new Audio(EXAM_AUDIO_UNLOCK_URL)
@@ -276,12 +288,24 @@ export default function AutomatedExamSession({
       player.onerror = null
       player.src = EXAM_AUDIO_UNLOCK_URL
       // Both calls happen synchronously within the student's device-check click.
-      await Promise.all([context.current.resume(), player.play()])
+      await Promise.all([
+        context.current.resume(),
+        player.play(),
+        checkExamAudio(
+          exam?.started
+            ? phase === "audio" && item
+              ? [item]
+              : []
+            : plan.items,
+          check.signal,
+        ),
+      ])
       player.pause()
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       stream.getTracks().forEach((track) => {
         track.stop()
       })
+      if (check.signal.aborted) return
       if (!exam?.started)
         await ClassesService.startExam({
           code,
@@ -289,12 +313,22 @@ export default function AutomatedExamSession({
         })
       await query.refetch()
       setArmed(true)
-    } catch {
+    } catch (err) {
+      if (check.signal.aborted) return
+      check.abort()
+      playerCleanup()
       setError(
-        t({
-          zh: "请允许麦克风和声音播放，再重试。",
-          en: "Allow microphone and audio playback, then retry.",
-        }),
+        t(
+          err instanceof ExamAudioCheckError
+            ? {
+                zh: "考试音频检查失败，尚未开始新考试。请检查网络后重试；若仍失败，请联系老师检查题目音频。已开始的考试计时继续。",
+                en: "Exam audio check failed; no new exam was started. Check your connection and retry, or ask your teacher to check the audio. An exam already started keeps counting down.",
+              }
+            : {
+                zh: "请允许麦克风和声音播放，再重试。",
+                en: "Allow microphone and audio playback, then retry.",
+              },
+        ),
       )
     } finally {
       enablingRef.current = false
@@ -332,7 +366,12 @@ export default function AutomatedExamSession({
     let cancelled = false
     if (phase === "audio") {
       const ended = () => {
-        if (!cancelled) eventRef.current("audio-ended")
+        if (!cancelled)
+          eventRef.current({
+            session_id: current.plan.session_id,
+            item_id: currentItem.id,
+            event: "audio-ended",
+          })
       }
       const failed = () => {
         if (!cancelled) {
@@ -364,7 +403,7 @@ export default function AutomatedExamSession({
         )
           failed()
       }
-      void playPrompt()
+      void playPrompt().catch(failed)
     }
     if (
       phase === "answering" &&
@@ -442,6 +481,7 @@ export default function AutomatedExamSession({
     window.addEventListener("beforeunload", warn)
     return () => {
       window.removeEventListener("beforeunload", warn)
+      audioCheck.current?.abort()
       audio.current?.pause()
       window.speechSynthesis?.cancel()
       void context.current?.close()
@@ -513,17 +553,22 @@ export default function AutomatedExamSession({
             disabled={enabling}
             onClick={() => void enable()}
           >
-            {t(
-              exam?.started
-                ? {
-                    zh: "启用声音并继续考试",
-                    en: "Enable sound and resume exam",
-                  }
-                : {
-                    zh: "检查设备并开始考试",
-                    en: "Check devices and start exam",
-                  },
-            )}
+            {enabling
+              ? t({
+                  zh: "正在检查设备与题目音频…",
+                  en: "Checking devices and exam audio…",
+                })
+              : t(
+                  exam?.started
+                    ? {
+                        zh: "启用声音并继续考试",
+                        en: "Enable sound and resume exam",
+                      }
+                    : {
+                        zh: "检查设备并开始考试",
+                        en: "Check devices and start exam",
+                      },
+                )}
           </Button>
         </section>
       )}
@@ -545,7 +590,10 @@ export default function AutomatedExamSession({
       {sendEvent.isError && (
         <Button
           className="min-h-11"
-          onClick={() => sendEvent.mutate(sendEvent.variables ?? "audio-ended")}
+          disabled={sendEvent.isPending}
+          onClick={() => {
+            if (sendEvent.variables) sendEvent.mutate(sendEvent.variables)
+          }}
         >
           {t({ zh: "重试同步", en: "Retry sync" })}
         </Button>
@@ -633,7 +681,12 @@ export default function AutomatedExamSession({
                 !!pendingDraft
               }
               onClick={() => {
-                void saving.current.then(() => eventRef.current("next"))
+                const event = {
+                  session_id: plan.session_id,
+                  item_id: item.id,
+                  event: "next" as const,
+                }
+                void saving.current.then(() => eventRef.current(event))
               }}
             >
               {t({ zh: "下一题", en: "Next" })}

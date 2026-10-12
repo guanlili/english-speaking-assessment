@@ -50,6 +50,7 @@ import {
 } from "@/lib/lesson-readiness"
 import { normalizeReadingSelection } from "@/lib/reading-selection"
 import { TERMS } from "@/lib/terms"
+import { extractErrorMessage } from "@/utils"
 
 const questionTypes = [
   {
@@ -487,13 +488,7 @@ function ComposerForm({
         queryClient.invalidateQueries({ queryKey: ["admin", "instructions"] }),
       ])
     },
-    onError: () =>
-      toast.error(
-        t({
-          zh: "发布失败，选择已保留，请重试",
-          en: "Publish failed — your selections are kept, please retry",
-        }),
-      ),
+    onError: (err) => toast.error(extractErrorMessage(err)),
   })
 
   const toggleInList = (list: string[], id: string) =>

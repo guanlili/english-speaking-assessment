@@ -8,6 +8,10 @@ import { readStoredLang } from "./lib/bi.ts"
  * zh 列缺省回退原文；en 列缺省回退通用英文（不把中文透给英文用户）。
  */
 const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
+  "Automated exam audio missing: ": {
+    zh: "自动考试包含缺少音频的题目。请在题库的「考试流程设置」中上传或生成音频，再重新发布。",
+    en: "Some exam items have no audio. Upload or generate audio in Exam flow settings, then publish again.",
+  },
   "Incorrect email or password": {
     zh: "邮箱或密码不正确，请重新输入",
     en: "Incorrect email or password",
@@ -124,7 +128,12 @@ export function localizedDetail(detail: string): string {
   // 前缀匹配（如 "音频超过 20MB 上限" 这类动态拼接的 detail）
   for (const [prefix, pair] of Object.entries(DETAIL_MESSAGES)) {
     if (detail.startsWith(prefix)) {
-      return lang === "en" ? pair.en : (pair.zh ?? detail)
+      const message = lang === "en" ? pair.en : (pair.zh ?? detail)
+      if (prefix === "Automated exam audio missing: ") {
+        const positions = detail.slice(prefix.length)
+        return `${message} ${lang === "en" ? "Positions in the published list:" : "题单位置："}${positions}`
+      }
+      return message
     }
   }
   if (lang === "en") {
