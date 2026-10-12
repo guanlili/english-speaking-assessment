@@ -55,7 +55,8 @@ def current_phase(
         )
         settings = ExamItemSettings.model_validate(item["exam_flow"])
         audio_start = started + timedelta(seconds=settings.wait_seconds)
-        if now < audio_start:
+        # 说明题跳过朗读（audio_ended_at 提前写入）后不再停留 waiting
+        if now < audio_start and not entry.get("audio_ended_at"):
             return FlowPhase(index, item, "waiting", started, audio_start)
         if item["type"] != "passage":
             if not entry.get("audio_ended_at"):
@@ -251,11 +252,17 @@ def apply_event(
         ).isoformat(),
     )
     if event == "audio-ended":
-        if phase.phase != "audio":
+        # 说明题的等待与朗读只是阅读辅助：学生读得快可提前确认（跳过朗读）；
+        # 作答题的题干音频是作答依据，仍只能在实际播放阶段确认播完
+        kind = exercise.snapshot_items[item_index]["type"]
+        allowed = ("waiting", "audio") if kind == "instruction" else ("audio",)
+        if phase.phase not in allowed:
             raise HTTPException(status_code=422, detail="Exam audio is not active")
         entry["audio_ended_at"] = now.isoformat()
     elif event == "next":
-        if phase.phase != "ready":
+        # answering 中允许提前交题：说得快的学生说完即走，
+        # 麦克风不再收周围同学的说话声（录音先上传、再推进由前端保证）
+        if phase.phase not in ("ready", "answering"):
             raise HTTPException(status_code=422, detail="Exam item is not finished")
         entry["next_at"] = now.isoformat()
         if exercise.snapshot_items[item_index]["type"] == "instruction":
