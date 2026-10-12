@@ -2,4 +2,8 @@
 members = ["backend"]
 
 [tool.uv]
-index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+# 官方源锁版与安装（2026-10-12 CI 优化）：CI 是海外 runner，下载国内镜像
+# 慢且被限流（清华镜像 403 曾使整个 job 失败）；uv.lock 的 URL 与此处声明
+# 必须一致，否则 uv run 会触发重解析。开发者本机如需镜像加速，请用
+# UV_DEFAULT_INDEX 环境变量临时覆盖——但不要用它重新 uv lock 提交。
+index-url = "https://pypi.org/simple"

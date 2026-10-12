@@ -28,11 +28,15 @@ export default defineConfig({
     locale: "zh-CN",
   },
   projects: [
-    { name: "chromium", use: { browserName: "chromium" } },
+    // chromium 打真实 docker 栈 + 共享库：保持单 worker 串行防互踩
+    { name: "chromium", use: { browserName: "chromium" }, workers: 1 },
     {
       name: "webkit",
       use: { browserName: "webkit" },
       grep: /@webkit/,
+      // webkit 层全部是 page.route 网络层 mock：不碰共享后端，浏览器上下文
+      // 天然隔离（storage/route 均按 context），可并行压缩冒烟墙钟
+      workers: 4,
     },
   ],
 })
