@@ -1841,6 +1841,9 @@ export class StudentsService {
     /**
      * Bulk Reset Passwords
      * 批量重置课堂内全部已绑定账号的密码为统一默认密码。
+     *
+     * 账号级守卫与单条重置一致（非学生账号 / 名下档案跨其他教师班级的一律
+     * 跳过并计入 skipped），避免批量入口绕过凭证范围检查。
      * @param data The data for the request.
      * @param data.classroomId
      * @returns BulkResetResult Successful Response

@@ -495,9 +495,17 @@ def test_stale_recovery_does_not_burn_retry_quota(
         session.commit()
         attempt_id = attempt.id
 
+    # stub 掉投递：恢复会毫秒级同步 submit，MockAsr + 随机 item_id 的
+    # process_attempt 会在断言前把状态推到终态（ContentMissing → failed），
+    # 断言只关心「回队 + 不烧配额 + 重投被发起」本身
+    submitted: list[uuid.UUID] = []
+    monkeypatch.setattr(
+        worker, "submit_attempt_scoring", lambda aid: submitted.append(aid)
+    )
     with Session(db.get_bind()) as session:
         recovered = worker.recover_stale_attempts(session)
     assert recovered == 1
+    assert submitted == [attempt_id]  # 恢复即重投
     with Session(db.get_bind()) as check:
         after = check.get(Attempt, attempt_id)
     assert after is not None
@@ -1202,3 +1210,49 @@ def test_upload_compensation_failure_never_masks_original_or_deletes(
     # 补偿失败：文件保留（安全孤儿扫描的输入），异常是原始的那个
     files = list(tmp_path.glob("*.wav")) + list(tmp_path.glob("*.webm"))
     assert len(files) == 1, "补偿失败时按「不确定则保留」处理"
+
+
+def test_process_attempt_holds_no_transaction_during_asr(
+    client: TestClient,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """ASR 网络调用期间不得持有打开的事务/连接（2026-10-12 评审 P0 回归）。
+
+    领取租约 commit 后再读 attempt 属性会触发 ORM 过期重载、隐式开启
+    新事务并占住连接直到秒级转写结束——修复要求转写期间事务关闭。
+    """
+    from app.core.storage import save_audio_file
+
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
+    with Session(db.get_bind()) as session:
+        path = save_audio_file(b"fake", "audio/wav")
+        attempt = Attempt(
+            item_type="repeat",
+            item_id=uuid.uuid4(),
+            student_id=uuid.UUID(student["student"]["id"]),
+            session_id=uuid.UUID(plan["session_id"]),
+            audio_path=str(path),
+            duration_s=5.0,
+            status=AttemptStatus.QUEUED,
+        )
+        session.add(attempt)
+        session.commit()
+        attempt_id = attempt.id
+
+    observed: list[bool] = []
+    with Session(db.get_bind()) as scoring_session:
+
+        class ProbeAsr:
+            name = "mock"
+
+            def transcribe(self, _audio: bytes, _mime: str) -> str:
+                observed.append(scoring_session.in_transaction())
+                return "read this."
+
+        monkeypatch.setattr(worker, "build_asr_provider", ProbeAsr)
+        worker.process_attempt(scoring_session, attempt_id)
+    assert observed == [False]

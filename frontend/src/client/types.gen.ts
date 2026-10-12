@@ -206,6 +206,7 @@ export type Body_vocabulary_import_vocab_preview = {
 
 export type BulkResetResult = {
     reset: number;
+    skipped?: number;
     rows: Array<StudentResetRow>;
 };
 

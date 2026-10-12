@@ -393,6 +393,14 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
     if attempt is None:
         return  # 已被其他 worker 领取或已处理
 
+    # 领取即捕获 ASR 前要用的列到局部变量：commit 默认 expire ORM，之后
+    # 任何 attempt.xxx 属性访问都会隐式重载并开启新事务——ASR/转换是
+    # 秒级操作，不能全程占着连接（与 _complete_detail 的短事务模式对齐）
+    cached_transcript = attempt.transcript
+    audio_path_str = attempt.audio_path
+    audio_mime = attempt.audio_mime
+    cached_engine = attempt.engine
+    duration_s = attempt.duration_s
     # 租约令牌在写入前局部生成（返修R04）：commit 默认 expire ORM，
     # 之后读 attempt.claimed_at 会触发重新 SELECT——若本线程在提交后停顿
     # 且已被回收重领，会「认领」别人的新令牌。令牌只存在于局部变量
@@ -426,12 +434,12 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
     try:
         # ASR 断点：上一轮已转写成功（transcript 已落库）时直接复用，
         # 不再重跑 ASR——重试烧掉的是真实 API 费用，转写结果与音频内容无关可安全复用
-        if attempt.transcript is not None:
-            transcript = attempt.transcript
-            engine = attempt.engine or settings.SCORING_PROVIDER
+        if cached_transcript is not None:
+            transcript = cached_transcript
+            engine = cached_engine or settings.SCORING_PROVIDER
             logger.info("ASR attempt=%s reused cached transcript", attempt_id)
         else:
-            audio_path = Path(attempt.audio_path)
+            audio_path = Path(audio_path_str)
             audio = audio_path.read_bytes()
             provider = build_asr_provider()
             # 方舟不接受浏览器 webm/opus：转 16kHz wav 再送（本地 mock 原样）
@@ -439,9 +447,9 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             if provider.name == "volc_flash":
                 audio, effective_mime = convert_to_wav(audio, ".audio")
             elif provider.name == "ark":
-                audio, effective_mime = ensure_ark_supported(audio, attempt.audio_mime)
+                audio, effective_mime = ensure_ark_supported(audio, audio_mime)
             else:
-                effective_mime = attempt.audio_mime
+                effective_mime = audio_mime
             conversion_ms = (perf_counter() - conversion_start) * 1000
             asr_start = perf_counter()
             try:
@@ -481,7 +489,7 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             scores = score_read_aloud(
                 transcript=transcript,
                 reference_text=reference_text,
-                duration_s=attempt.duration_s,
+                duration_s=duration_s,
                 suggested_seconds=suggested_seconds,
             )
             attempt.transcript = scores.transcript
@@ -493,7 +501,7 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
         else:
             # 开放问答：无参考文本（PRD §4：2 周只出总评和一句建议）
             question_context = _resolve_question_context(session, attempt)
-            open_scores = score_open_response(transcript, attempt.duration_s)
+            open_scores = score_open_response(transcript, duration_s)
             attempt.transcript = open_scores.transcript
             attempt.fluency = open_scores.fluency
             attempt.overall = open_scores.overall

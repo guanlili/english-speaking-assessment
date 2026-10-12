@@ -79,6 +79,18 @@ const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
   "没有权限：只能管理自己课堂的学生": {
     en: "No permission: you can only manage students in your own classroom.",
   },
+  "没有权限：只能重置学生账号的密码": {
+    en: "No permission: only student account passwords can be reset.",
+  },
+  "没有权限：该学生账号同时属于其他教师的班级，请联系管理员重置": {
+    en: "No permission: this student also belongs to another teacher's class. Ask an administrator to reset the password.",
+  },
+  "作答凭证已失效，请重新录音后提交": {
+    en: "This recording token is no longer valid. Please record and submit again.",
+  },
+  "该场考试已开考过，请返回考试入口继续": {
+    en: "This exam has already been started. Please re-enter from the exam page.",
+  },
   "Session not found": {
     zh: "练习会话不存在",
     en: "Practice session not found.",

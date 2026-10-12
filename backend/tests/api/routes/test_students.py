@@ -8,6 +8,7 @@
 
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, col, select
 
@@ -654,3 +655,177 @@ def test_my_enrollments_requires_student_role(client: TestClient, db: Session) -
     teacher, headers = _login_teacher(db, client)
     resp = client.get("/api/v1/students/me/classrooms", headers=headers)
     assert resp.status_code == 403
+
+
+# ── 2026-10-12 评审 P0 回归：重置密码的账号级守卫 ──
+
+
+@pytest.mark.parametrize("bulk", [False, True])
+def test_teacher_cannot_reset_enrolled_admin(
+    client: TestClient, db: Session, bulk: bool
+) -> None:
+    """教师不得重置已入班的管理员：重置的是账号级凭证，角色守卫必须拦截。"""
+    from datetime import timedelta
+
+    from app.core import security
+
+    teacher, teacher_headers = _login_teacher(db, client)
+    admin = crud.create_user(
+        session=db,
+        user_create=UserCreate(
+            email=random_email(),
+            password=random_lower_string(),
+            full_name="Enrolled Admin",
+            role="admin",
+            is_superuser=True,
+        ),
+    )
+    original_hash = admin.hashed_password
+    admin_headers = {
+        "Authorization": "Bearer "
+        + security.create_access_token(
+            admin.id,
+            timedelta(minutes=5),
+            role=admin.role,
+            password_hash=original_hash,
+        )
+    }
+    classroom_id: uuid.UUID | None = None
+    try:
+        classroom = _new_classroom(client, teacher_headers)
+        classroom_id = uuid.UUID(classroom["id"])
+        joined = client.post(
+            f"/api/v1/classes/{classroom['code']}/join",
+            headers=admin_headers,
+            json={},
+        )
+        assert joined.status_code == 200, joined.text
+        student_id = joined.json()["id"]
+        if bulk:
+            response = client.post(
+                "/api/v1/students/bulk-reset-password",
+                params={"classroom_id": str(classroom_id)},
+                headers=teacher_headers,
+            )
+            assert response.status_code == 200, response.text
+            assert response.json()["reset"] == 0
+            assert response.json()["skipped"] == 1
+        else:
+            response = client.post(
+                f"/api/v1/students/{student_id}/reset-password",
+                headers=teacher_headers,
+            )
+            assert response.status_code == 403
+            assert response.json()["detail"] == "没有权限：只能重置学生账号的密码"
+        db.refresh(admin)
+        assert admin.hashed_password == original_hash
+        login = client.post(
+            "/api/v1/login/access-token",
+            data={
+                "username": admin.email or "",
+                "password": DEFAULT_STUDENT_PASSWORD,
+            },
+        )
+        assert login.status_code == 400
+    finally:
+        _cleanup(db, classroom_id, teacher, admin)
+
+
+def test_teacher_cannot_reset_cross_class_shared_student(
+    client: TestClient,
+    db: Session,
+    superuser_token_headers: dict[str, str],
+) -> None:
+    """跨班共享学生：凭证影响所有班级，未同时拥有两班的教师不得重置。"""
+    from tests.utils.credential import make_student
+
+    teacher_a, headers_a = _login_teacher(db, client)
+    teacher_b, _headers_b = _login_teacher(db, client)
+    classroom_a_id: uuid.UUID | None = None
+    classroom_b_id: uuid.UUID | None = None
+    student_row_id: uuid.UUID | None = None
+    try:
+        classroom_a = _new_classroom(client, headers_a)
+        classroom_a_id = uuid.UUID(classroom_a["id"])
+        made = make_student(db, client, classroom_a["code"])
+        student_row_id = uuid.UUID(made["student"]["id"])
+
+        classroom_b = _new_classroom(client, _headers_b)
+        classroom_b_id = uuid.UUID(classroom_b["id"])
+        # 同一账号在 B 班的档案（多班归属）
+        db.add(
+            Student(
+                classroom_id=classroom_b_id,
+                user_id=uuid.UUID(str(made["user"].id)),
+                display_name=made["student"]["display_name"],
+            )
+        )
+        db.commit()
+
+        resp_a = client.post(
+            f"/api/v1/students/{student_row_id}/reset-password", headers=headers_a
+        )
+        assert resp_a.status_code == 403
+        assert resp_a.json()["detail"] == (
+            "没有权限：该学生账号同时属于其他教师的班级，请联系管理员重置"
+        )
+        # 管理员不受多班限制
+        resp_su = client.post(
+            f"/api/v1/students/{student_row_id}/reset-password",
+            headers=superuser_token_headers,
+        )
+        assert resp_su.status_code == 200, resp_su.text
+    finally:
+        _cleanup(db, classroom_a_id, teacher_a)
+        _cleanup(db, classroom_b_id, teacher_b)
+
+
+@pytest.mark.parametrize("bulk", [False, True])
+def test_teacher_cannot_reset_superuser_flagged_student(
+    client: TestClient, db: Session, bulk: bool
+) -> None:
+    """role=student 但 is_superuser=True 的分叉账号（update_user 逐字段盲写
+    可造成）：实际高权限账号同样不得被教师重置——角色守卫必须双标志判定。
+    """
+    from app.models import UserUpdate
+    from tests.utils.credential import make_student
+
+    teacher, teacher_headers = _login_teacher(db, client)
+    classroom_id: uuid.UUID | None = None
+    made: dict | None = None
+    try:
+        classroom = _new_classroom(client, teacher_headers)
+        classroom_id = uuid.UUID(classroom["id"])
+        made = make_student(db, client, classroom["code"])
+        student_id = made["student"]["id"]
+        target = made["user"]
+
+        crud.update_user(
+            session=db, db_user=target, user_in=UserUpdate(is_superuser=True)
+        )
+        assert target.role == "student" and target.is_superuser is True
+        original_hash = target.hashed_password
+
+        if bulk:
+            response = client.post(
+                "/api/v1/students/bulk-reset-password",
+                params={"classroom_id": str(classroom_id)},
+                headers=teacher_headers,
+            )
+            assert response.status_code == 200, response.text
+            assert response.json()["reset"] == 0
+            assert response.json()["skipped"] == 1
+        else:
+            response = client.post(
+                f"/api/v1/students/{student_id}/reset-password",
+                headers=teacher_headers,
+            )
+            assert response.status_code == 403
+            assert response.json()["detail"] == "没有权限：只能重置学生账号的密码"
+        db.refresh(target)
+        assert target.hashed_password == original_hash
+    finally:
+        if made is not None:
+            _cleanup(db, classroom_id, teacher, made["user"])
+        else:
+            _cleanup(db, classroom_id, teacher)
