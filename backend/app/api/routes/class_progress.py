@@ -90,6 +90,9 @@ def read_student_trail(
                 Attempt.overall,  # ty: ignore[invalid-argument-type]
                 Attempt.completeness,  # ty: ignore[invalid-argument-type]
                 Attempt.vocab,  # ty: ignore[invalid-argument-type]
+                # total_minutes 需要 duration_s：缺列 = deferred 属性访问时
+                # 每行触发一次单行 SELECT（90 天窗口可达上千次，2026-10-12 评审）
+                Attempt.duration_s,  # ty: ignore[invalid-argument-type]
             )
         )
         .where(

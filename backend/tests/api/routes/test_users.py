@@ -326,12 +326,16 @@ def test_register_user(client: TestClient, db: Session) -> None:
     created_user = r.json()
     assert created_user["email"] == username
     assert created_user["full_name"] == full_name
+    # 开放注册是匿名入口：只能开出 student 账号（默认 teacher 是提权跳板）
+    assert created_user["role"] == "student"
+    assert created_user["is_superuser"] is False
 
     user_query = select(User).where(User.email == username)
     user_db = db.exec(user_query).first()
     assert user_db
     assert user_db.email == username
     assert user_db.full_name == full_name
+    assert user_db.role == "student"
     verified, _ = verify_password(password, user_db.hashed_password)
     assert verified
 

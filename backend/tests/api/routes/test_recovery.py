@@ -1256,3 +1256,52 @@ def test_process_attempt_holds_no_transaction_during_asr(
         monkeypatch.setattr(worker, "build_asr_provider", ProbeAsr)
         worker.process_attempt(scoring_session, attempt_id)
     assert observed == [False]
+
+
+def test_retry_success_clears_placeholder_error(
+    client: TestClient,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """重试成功的作答必须清空占位 error（2026-10-12 评审）。
+
+    重试路径会写「评分服务暂时不可用，正在自动重试」；第二次成功后
+    status=done 但 error 残留的话，/attempts 轮询与 /today 回执会一直
+    带着误导性文案。
+    """
+    from app.core.storage import save_audio_file
+
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+    student = _join(db, client)
+    plan = _today(client, student["headers"])
+    with Session(db.get_bind()) as session:
+        path = save_audio_file(b"fake", "audio/wav")
+        attempt = Attempt(
+            item_type="passage",
+            item_id=uuid.uuid4(),
+            student_id=uuid.UUID(student["student"]["id"]),
+            session_id=uuid.UUID(plan["session_id"]),
+            audio_path=str(path),
+            duration_s=5.0,
+            item_snapshot={"text": "Read this.", "suggested_seconds": 5},
+            status=AttemptStatus.QUEUED,
+            retry_count=1,
+            error="评分服务暂时不可用，正在自动重试",
+        )
+        session.add(attempt)
+        session.commit()
+        attempt_id = attempt.id
+
+        class StubAsr:
+            name = "mock"
+
+            def transcribe(self, _audio: bytes, _mime: str) -> str:
+                return "read this."
+
+        monkeypatch.setattr(worker, "build_asr_provider", StubAsr)
+        worker.process_attempt(session, attempt_id)
+        after = session.get(Attempt, attempt_id)
+    assert after is not None
+    assert after.status == AttemptStatus.DONE
+    assert after.error is None

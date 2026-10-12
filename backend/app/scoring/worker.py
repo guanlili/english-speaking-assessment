@@ -525,6 +525,9 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             raise _LeaseLostError(attempt_id)
         attempt.status = AttemptStatus.DONE
         attempt.engine = engine
+        # 重试成功的作答要抹掉重试期的占位文案，否则 done 回执一直带着
+        # 「正在自动重试」误导学生/教师（2026-10-12 评审）
+        attempt.error = None
     except _LeaseLostError:
         # 领取已被回收/重领：本线程结果作废，不写任何状态（新 worker 接管）
         session.rollback()

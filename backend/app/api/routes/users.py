@@ -199,7 +199,10 @@ def register_user(session: SessionDep, user_in: UserRegister, request: Request) 
             status_code=400,
             detail="The user with this email already exists in the system",
         )
-    user_create = UserCreate.model_validate(user_in)
+    # 开放注册是匿名入口：强制落 student 角色——UserBase.role 默认值是
+    # teacher（模板遗留），不显式覆盖的话任何匿名注册者直接拿到教师权限
+    # （建课堂/批量导入学生/看成答录音），构成零条件提权跳板
+    user_create = UserCreate.model_validate(user_in, update={"role": "student"})
     user = crud.create_user(session=session, user_create=user_create)
     return user
 

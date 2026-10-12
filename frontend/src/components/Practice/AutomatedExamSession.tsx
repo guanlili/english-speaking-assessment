@@ -350,6 +350,17 @@ export default function AutomatedExamSession({
   const beepRef = useRef(beep)
   beepRef.current = beep
 
+  // effect 内只有 failed 回调用到 t：语言切换会换 t 引用，进了依赖数组
+  // 会把正在播放的听力题 cleanup 掉并从头重播（服务端计时照走，音频与
+  // 题窗错位）。文案经 ref 解耦，依赖数组不含 t
+  const audioFailText = () =>
+    t({
+      zh: "音频未播放完成，请启用声音后继续。",
+      en: "Audio did not finish. Enable sound to continue.",
+    })
+  const audioFailTextRef = useRef(audioFailText)
+  audioFailTextRef.current = audioFailText
+
   useEffect(() => {
     if (!armed || !draftsReady) return
     const current = latest.current
@@ -369,12 +380,7 @@ export default function AutomatedExamSession({
       const failed = () => {
         if (!cancelled) {
           setArmed(false)
-          setError(
-            t({
-              zh: "音频未播放完成，请启用声音后继续。",
-              en: "Audio did not finish. Enable sound to continue.",
-            }),
-          )
+          setError(audioFailTextRef.current())
         }
       }
       async function playPrompt() {
@@ -442,7 +448,6 @@ export default function AutomatedExamSession({
     code,
     plan.session_id,
     phase,
-    t,
   ])
 
   useEffect(() => {

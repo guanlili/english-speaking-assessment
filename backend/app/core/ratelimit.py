@@ -45,7 +45,21 @@ class SlidingWindowLimiter:
             window.append(now)
             self._attempts[bucket] = window
 
-    def record_success(self, bucket: str) -> None:
-        """成功后清桶（失败计数不累积误伤正常用户）。"""
+    def record_success(self, bucket: str, *, refund_only: bool = False) -> None:
+        """成功后清桶（失败计数不累积误伤正常用户）。
+
+        refund_only：只退还本次成功在 check 里占用的额度，保留窗口内的
+        失败计数——共享桶（如 NAT 出口的 IP 桶）用：持任一有效账号的
+        攻击者交替「失败喷洒 + 成功登录自己」时，成功不能再抹掉同桶的
+        攻击痕迹；否则每轮成功清一次桶，横向喷洒永不触顶。独立桶
+        （账号桶：成功即证明本人）维持整桶清空。
+        """
         with self._lock:
-            self._attempts.pop(bucket, None)
+            if not refund_only:
+                self._attempts.pop(bucket, None)
+                return
+            window = self._attempts.get(bucket)
+            if window:
+                window.pop()
+                if not window:
+                    self._attempts.pop(bucket, None)
