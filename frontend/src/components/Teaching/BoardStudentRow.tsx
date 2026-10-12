@@ -1,5 +1,10 @@
 import { Link } from "@tanstack/react-router"
-import { ChevronDown, ChevronRight, Loader2 } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  MessageSquareText,
+} from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import type { BoardStudent } from "@/client"
@@ -43,8 +48,12 @@ export function BoardStudentRow({
 
   return (
     <>
-      <TableRow onClick={onToggle} className="cursor-pointer">
-        <TableCell>
+      <TableRow
+        onClick={onToggle}
+        data-state={expanded ? "selected" : undefined}
+        className="grid cursor-pointer grid-cols-[2.75rem_minmax(0,1fr)_auto] gap-y-3 p-4 hover:bg-secondary/30 lg:table-row lg:p-0"
+      >
+        <TableCell className="block p-0 lg:table-cell lg:w-12 lg:py-4 lg:pl-3 lg:pr-0">
           <button
             type="button"
             aria-expanded={expanded}
@@ -63,7 +72,7 @@ export function BoardStudentRow({
               e.stopPropagation()
               onToggle()
             }}
-            className="grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
+            className="grid size-11 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-primary focus-visible:outline-2 focus-visible:outline-ring"
           >
             {expanded ? (
               <ChevronDown className="size-4" />
@@ -72,31 +81,77 @@ export function BoardStudentRow({
             )}
           </button>
         </TableCell>
-        <TableCell className="font-medium">
-          {name}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mt-1 flex min-h-11"
-            onClick={(event) => {
-              event.stopPropagation()
-              setSummaryOpen(true)
-            }}
+        <TableCell className="block min-w-0 p-0 font-medium lg:table-cell lg:px-4 lg:py-4">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span
+              aria-hidden="true"
+              className="hidden size-9 shrink-0 items-center justify-center rounded-full border border-primary/10 bg-secondary text-xs font-semibold text-primary lg:flex"
+            >
+              {student.display_name.trim().slice(0, 1).toUpperCase()}
+            </span>
+            <div className="min-w-0">
+              <span className="block break-words whitespace-normal leading-5">
+                {name}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-1 flex min-h-11 gap-1.5 px-0 text-xs font-medium text-primary hover:bg-transparent hover:underline"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setSummaryOpen(true)
+                }}
+              >
+                <MessageSquareText aria-hidden="true" className="size-3.5" />
+                {t({ zh: "汇总反馈", en: "Overall feedback" })}
+              </Button>
+            </div>
+          </div>
+        </TableCell>
+        <TableCell className="block p-0 text-right lg:table-cell lg:px-4 lg:py-4 lg:text-left">
+          <p className="mb-1 text-[11px] text-muted-foreground lg:hidden">
+            {t({ zh: "完成", en: "Done" })}
+          </p>
+          <p className="text-sm font-medium tabular-nums">
+            {student.done_count}
+            <span className="text-muted-foreground">
+              /{student.total_count}
+            </span>
+          </p>
+          <div
+            aria-hidden="true"
+            className="mt-2 flex h-1.5 w-14 overflow-hidden rounded-full bg-muted lg:w-16"
           >
-            {t({ zh: "汇总反馈", en: "Overall feedback" })}
-          </Button>
+            <div
+              className="rounded-full bg-primary/70"
+              style={{
+                width: `${student.total_count > 0 ? Math.min(100, Math.max(0, (student.done_count / student.total_count) * 100)) : 0}%`,
+              }}
+            />
+          </div>
         </TableCell>
-        <TableCell>
-          {student.done_count}/{student.total_count}
+        <TableCell className="col-start-2 block p-0 lg:table-cell lg:px-4 lg:py-4">
+          <span className="mb-1 block text-[11px] text-muted-foreground lg:hidden">
+            {t({ zh: "跟读参考分", en: "Repeat score" })}
+          </span>
+          <span className="font-medium tabular-nums">
+            {student.repeat_avg ?? "–"}
+          </span>
         </TableCell>
-        <TableCell>{student.repeat_avg ?? "–"}</TableCell>
-        <TableCell>{student.question_avg ?? "–"}</TableCell>
-        <TableCell className="space-x-1 whitespace-nowrap">
+        <TableCell className="block p-0 text-right lg:table-cell lg:px-4 lg:py-4 lg:text-left">
+          <span className="mb-1 block text-[11px] text-muted-foreground lg:hidden">
+            {t({ zh: "问答参考分", en: "Q&A score" })}
+          </span>
+          <span className="font-medium tabular-nums">
+            {student.question_avg ?? "–"}
+          </span>
+        </TableCell>
+        <TableCell className="col-span-2 col-start-2 flex flex-wrap items-center gap-1.5 p-0 lg:table-cell lg:max-w-56 lg:space-x-1 lg:whitespace-normal lg:px-4 lg:py-4 [&_[data-slot=badge]]:my-0.5">
           {isExamPublish && (
             <Badge
               variant={student.exam_tab_switches ? "destructive" : "outline"}
             >
-              {student.exam_tab_switches === null || undefined
+              {student.exam_tab_switches == null
                 ? t({ zh: "未开考", en: "Not started" })
                 : `${t({ zh: "切屏", en: "Switches" })} ${student.exam_tab_switches}`}
             </Badge>
@@ -129,16 +184,19 @@ export function BoardStudentRow({
         </TableCell>
       </TableRow>
       {expanded && (
-        <TableRow>
-          <TableCell colSpan={6}>
+        <TableRow className="block bg-muted/20 hover:bg-muted/20 lg:table-row">
+          <TableCell
+            colSpan={6}
+            className="block whitespace-normal p-3 lg:table-cell lg:p-5"
+          >
             {/* biome-ignore lint/a11y/noStaticElementInteractions: stop click bubbling to row toggle */}
             <div
-              className="space-y-2 py-1"
+              className="min-w-0 space-y-3 py-1"
               onMouseDown={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="link" size="sm" asChild>
+                  <Button variant="link" size="sm" className="min-h-11" asChild>
                     <Link
                       to="/t/$code/s/$studentId"
                       params={{ code, studentId: student.student_id }}
@@ -152,6 +210,7 @@ export function BoardStudentRow({
                   <Button
                     variant="outline"
                     size="sm"
+                    className="min-h-11"
                     onClick={async (event) => {
                       event.stopPropagation()
                       const feedback = boardStudentFeedbackMessage(student, t)
@@ -189,9 +248,9 @@ export function BoardStudentRow({
               {student.items.map((item, index) => (
                 <div
                   key={item.item_id}
-                  className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2"
+                  className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border/70 bg-card px-4 py-3"
                 >
-                  <span className="w-20 text-sm text-muted-foreground">
+                  <span className="min-w-24 flex-1 text-sm font-medium leading-6 text-muted-foreground">
                     {index + 1}.{" "}
                     {t(
                       ITEM_TYPE_LABELS[item.type] ?? {

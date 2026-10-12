@@ -1,4 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query"
+import { CalendarDays, FileText } from "lucide-react"
 import { useState } from "react"
 import { ClassesService } from "@/client"
 import { AttemptFeedbackDialog } from "@/components/Teaching/AttemptFeedbackDialog"
@@ -33,8 +34,9 @@ export function StudentSessionHistory({
   })
   const rows = query.data?.pages.flat() ?? []
   return (
-    <section className="space-y-3">
-      <h2 className="text-lg font-semibold">
+    <section className="space-y-4 rounded-2xl border border-primary/10 bg-card p-4 shadow-sm sm:p-6">
+      <h2 className="flex items-center gap-2 text-lg font-semibold text-primary">
+        <CalendarDays className="size-5" />
         {t({ zh: "历史练习与考试反馈", en: "Practice and exam history" })}
       </h2>
       {query.isPending && <p>{t({ zh: "正在加载…", en: "Loading…" })}</p>}
@@ -49,7 +51,7 @@ export function StudentSessionHistory({
       {rows.map((row) => (
         <article
           key={row.session_id}
-          className="space-y-2 rounded-xl border p-4"
+          className="space-y-3 rounded-xl border border-primary/10 bg-muted/20 p-4 sm:p-5"
         >
           <p className="break-words font-medium">
             {row.session_date} ·{" "}
@@ -60,7 +62,7 @@ export function StudentSessionHistory({
             )}{" "}
             · {row.title ?? t({ zh: "自主练习", en: "Self practice" })}
           </p>
-          <p className="text-sm text-muted-foreground">
+          <p className="rounded-lg bg-primary/5 px-3 py-2 text-sm tabular-nums text-muted-foreground">
             {t({
               zh: `完成 ${row.done_count}/${row.total_count} 题 · 参考分 ${row.overall_avg ?? "–"}`,
               en: `${row.done_count}/${row.total_count} done · reference score ${row.overall_avg ?? "–"}`,
@@ -74,6 +76,7 @@ export function StudentSessionHistory({
                 className="min-h-11"
                 onClick={() => setAttemptId(id)}
               >
+                <FileText className="size-4" />
                 {t({
                   zh: `作答反馈 ${index + 1}`,
                   en: `Answer feedback ${index + 1}`,

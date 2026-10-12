@@ -18,9 +18,9 @@ export function BoardTeachingActions({
 }) {
   const { t } = useI18n()
   return (
-    <Card className="border-primary/20 bg-secondary/30">
+    <Card className="border-primary/15 bg-secondary/40 py-0 shadow-none">
       <CardContent className="flex flex-wrap items-center gap-3 py-4">
-        <div className="mr-auto min-w-48">
+        <div className="mr-auto min-w-0 flex-1 basis-48">
           <p className="flex items-center gap-1.5 text-sm font-semibold">
             <ClipboardCheck className="size-4 text-primary" />{" "}
             {t({ zh: "教学动作", en: "Teaching Actions" })}
@@ -28,21 +28,26 @@ export function BoardTeachingActions({
           <p className="mt-1 text-xs text-muted-foreground">
             {attentionCount > 0
               ? t({
-                  zh: `有 ${attentionCount} 位学生还没完成本轮。`,
-                  en: `${attentionCount} student(s) haven't finished this round.`,
+                  zh: `有 ${attentionCount} 位学生需要关注。`,
+                  en: `${attentionCount} student(s) need attention.`,
                 })
               : t({
-                  zh: "本轮已全部提交，可以进入下一次安排。",
-                  en: "Everyone has submitted this round — ready for the next assignment.",
+                  zh: "查看本轮反馈，或准备下一次课堂练习。",
+                  en: "Review this round or prepare the next classroom practice.",
                 })}
           </p>
         </div>
         {attentionCount > 0 && (
-          <Button variant="outline" size="sm" onClick={onCopyReminder}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11"
+            onClick={onCopyReminder}
+          >
             <MessageCircle /> {t({ zh: "复制提醒文案", en: "Copy Reminder" })}
           </Button>
         )}
-        <Button size="sm" onClick={onAssignNext}>
+        <Button size="sm" className="min-h-11" onClick={onAssignNext}>
           {t({ zh: "安排下一次练习", en: "Assign Next Practice" })}
         </Button>
       </CardContent>

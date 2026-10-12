@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { Download, FileText } from "lucide-react"
+import { ArrowUpRight, Download, FileText, History } from "lucide-react"
 import { useState } from "react"
 import type { ClassroomExercisePublic, ExerciseStudentResult } from "@/client"
 import { ClassesService } from "@/client"
@@ -98,15 +98,32 @@ export function ExerciseHistory({
     )
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 rounded-xl border border-primary/10 bg-primary/5 p-4">
+        <History className="size-5 shrink-0 text-primary" />
+        <div>
+          <h2 className="font-semibold">
+            {t({ zh: "发布记录", en: "Published activities" })}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t({
+              zh: `共 ${exercises.length} 次发布 · 按发布时的题单查看反馈`,
+              en: `${exercises.length} activities · Review feedback against the published items`,
+            })}
+          </p>
+        </div>
+      </div>
       {exercises.map((exercise) => (
-        <Card key={exercise.id}>
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+        <Card
+          key={exercise.id}
+          className="gap-0 border-primary/10 shadow-none transition-shadow hover:shadow-sm"
+        >
+          <CardContent className="flex flex-wrap items-center justify-between gap-4 py-5">
             <div>
-              <p className="font-semibold">
+              <p className="break-words font-semibold">
                 v{exercise.version_no} · {exercise.title}
               </p>
-              <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Badge
                   variant={
                     exercise.status === "published" ? "outline" : "secondary"
@@ -135,9 +152,11 @@ export function ExerciseHistory({
             <Button
               variant="outline"
               size="sm"
+              className="min-h-11"
               onClick={() => setSelectedId(exercise.id)}
             >
               {t({ zh: "查看结果", en: "View Results" })}
+              <ArrowUpRight className="size-4" />
             </Button>
           </CardContent>
         </Card>
@@ -233,17 +252,17 @@ function ExerciseResults({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/10 bg-primary/5 p-4">
         <div>
           <Button
             variant="ghost"
             size="sm"
-            className="mb-1 px-0"
+            className="mb-1 min-h-11 px-0"
             onClick={onBack}
           >
             ← {t({ zh: "发布历史", en: "Publish History" })}
           </Button>
-          <p className="font-semibold">
+          <p className="break-words font-semibold">
             v{exercise.version_no} · {exercise.title}
           </p>
         </div>
@@ -251,6 +270,7 @@ function ExerciseResults({
           <Button
             variant="outline"
             size="sm"
+            className="min-h-11"
             onClick={() => exportCsv(resultsQuery.data!)}
           >
             <Download />
@@ -270,8 +290,8 @@ function ExerciseResults({
           })}
         </p>
       ) : (
-        <Card>
-          <CardHeader>
+        <Card className="gap-0 overflow-hidden border-primary/10 shadow-sm">
+          <CardHeader className="border-b bg-muted/30 pb-5">
             <CardTitle className="text-base">
               {t({
                 zh: `按「${exercise.title}」发布的题单解释（${exercise.item_count} 道题）`,
@@ -285,16 +305,16 @@ function ExerciseResults({
                 </Badge>
               )}
             </CardTitle>
-            <p className="mt-1 block text-xs text-muted-foreground sm:hidden">
+            <p className="mt-1 block text-xs text-muted-foreground hidden lg:block">
               {t({
                 zh: "横向滑动表格，可以查看完整内容。",
                 en: "Swipe the table sideways to see everything.",
               })}
             </p>
           </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
+          <CardContent className="pt-5">
+            <Table className="block lg:table">
+              <TableHeader className="hidden lg:table-header-group">
                 <TableRow>
                   <TableHead>{t({ zh: "姓名", en: "Name" })}</TableHead>
                   <TableHead>{t({ zh: "完成", en: "Done" })}</TableHead>
@@ -311,10 +331,13 @@ function ExerciseResults({
                   ))}
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody className="block space-y-4 lg:table-row-group lg:space-y-0">
                 {(resultsQuery.data ?? []).map((row) => (
-                  <TableRow key={row.student_id}>
-                    <TableCell className="font-medium">
+                  <TableRow
+                    key={row.student_id}
+                    className="grid grid-cols-1 gap-3 rounded-xl border bg-card p-4 sm:grid-cols-2 lg:table-row lg:rounded-none lg:border-x-0 lg:border-t-0 lg:p-0"
+                  >
+                    <TableCell className="block whitespace-normal font-medium sm:col-span-2 lg:table-cell">
                       {row.suffix
                         ? `${row.display_name}·${row.suffix}`
                         : row.display_name}
@@ -355,11 +378,26 @@ function ExerciseResults({
                         {t({ zh: "汇总反馈", en: "Overall feedback" })}
                       </Button>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">
+                    <TableCell className="block whitespace-nowrap text-sm tabular-nums sm:col-span-2 lg:table-cell">
+                      <span className="mr-2 text-muted-foreground lg:hidden">
+                        {t({ zh: "完成", en: "Done" })}
+                      </span>
                       {row.done_count}/{row.total_count}
                     </TableCell>
                     {row.items.map((item, index) => (
-                      <TableCell key={item.item_id}>
+                      <TableCell
+                        key={item.item_id}
+                        className="block min-w-0 rounded-lg bg-muted/40 p-3 whitespace-normal lg:table-cell lg:rounded-none lg:bg-transparent"
+                      >
+                        <p className="mb-2 text-xs font-medium text-muted-foreground lg:hidden">
+                          {index + 1}.{" "}
+                          {t(
+                            ITEM_TYPE_LABELS[item.type] ?? {
+                              zh: item.type,
+                              en: item.type,
+                            },
+                          )}
+                        </p>
                         {item.status === "done" ? (
                           <span className="font-semibold tabular-nums">
                             {item.overall ?? "-"}
