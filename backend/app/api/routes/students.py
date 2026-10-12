@@ -45,11 +45,15 @@ def _get_classroom_in_scope(
 def _ensure_account_reset_allowed(
     session: Session, current_user: User, user: User, *, classroom_id: uuid.UUID
 ) -> None:
-    """重置的是账号级唯一凭证：目标必须是学生账号，且操作者对该账号
+    """重置的是账号级唯一凭证：目标必须是普通学生账号，且操作者对该账号
     名下所有班级档案都有权限——否则 B 班教师可重置共享学生/被拉进班的
     管理员，用公开默认密码冒充其在其他班级作答（账号接管面）。
+
+    角色与超管标志必须同时判定：update_user 逐字段盲写，role=student 与
+    is_superuser=True 可以并存（不变量只在建号/迁移时维护），而全站管理员
+    门禁认的是 is_superuser——只看 role 会放行实际超管账号。
     """
-    if user.role != "student":
+    if user.role != "student" or user.is_superuser:
         raise HTTPException(status_code=403, detail="没有权限：只能重置学生账号的密码")
     if current_user.is_superuser:
         return

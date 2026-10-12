@@ -84,6 +84,9 @@ const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
   "作答凭证已失效，请重新录音后提交": {
     en: "This recording token is no longer valid. Please record and submit again.",
   },
+  "该场考试已开考过，请返回考试入口继续": {
+    en: "This exam has already been started. Please re-enter from the exam page.",
+  },
   "Session not found": {
     zh: "练习会话不存在",
     en: "Practice session not found.",

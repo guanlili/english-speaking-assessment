@@ -279,22 +279,28 @@ def _attempt_public(
 def _idempotent_existing(
     session: Session,
     idempotency_key: str,
+    item_type: str,
     item_id: uuid.UUID,
     session_id: uuid.UUID | None,
 ) -> Attempt | None:
     """按幂等键取已有作答；键指向别的题目/会话时直接拒绝。
 
     幂等键标识「一次录音」，客户端为每次录音独立生成且草稿把
-    sessionId/itemId/key 绑定存储——键命中却对不上当前题/会话，只可能
-    是客户端缺陷或构造请求。该键在库中已指向别的作答，既不能再存
-    （撞全局唯一索引），更不能把那份回执当成这次的结果返回（串题）。
+    sessionId/itemType/itemId/key 绑定存储——键命中却对不上当前
+    (题型, 题目, 会话)，只可能是客户端缺陷或构造请求（不同题型的同 UUID
+    也不是同一题）。该键在库中已指向别的作答，既不能再存（撞全局唯一
+    索引），更不能把那份回执当成这次的结果返回（串题）。
     """
     existing = session.exec(
         select(Attempt).where(Attempt.idempotency_key == idempotency_key)
     ).first()
     if existing is None:
         return None
-    if existing.item_id != item_id or existing.session_id != session_id:
+    if (
+        existing.item_type != item_type
+        or existing.item_id != item_id
+        or existing.session_id != session_id
+    ):
         raise HTTPException(status_code=422, detail="作答凭证已失效，请重新录音后提交")
     return existing
 
@@ -327,7 +333,9 @@ def create_attempt_upload(
     # 幂等检查：同键已有作答直接返回（同样校验归属，防越权读取他人作答）；
     # 键指向别的题目/会话时拒绝（防串题回执，见 _idempotent_existing）
     if idempotency_key:
-        existing = _idempotent_existing(session, idempotency_key, item_id, session_id)
+        existing = _idempotent_existing(
+            session, idempotency_key, item_type, item_id, session_id
+        )
         if existing is not None:
             _require_attempt_access(session, existing, current_user)
             session.refresh(existing)
@@ -360,7 +368,7 @@ def create_attempt_upload(
                 session.refresh(exam_session, with_for_update=True)
                 if idempotency_key:
                     existing = _idempotent_existing(
-                        session, idempotency_key, item_id, session_id
+                        session, idempotency_key, item_type, item_id, session_id
                     )
                     if existing is not None:
                         _require_attempt_access(session, existing, current_user)
@@ -489,7 +497,7 @@ def create_attempt_upload(
         if idempotency_key and "idempotency_key" in str(exc.orig):
             try:
                 existing = _idempotent_existing(
-                    session, idempotency_key, item_id, session_id
+                    session, idempotency_key, item_type, item_id, session_id
                 )
             except HTTPException:
                 # 键指向别的题目/会话：新作答存不进（全局唯一键）、旧回执不能

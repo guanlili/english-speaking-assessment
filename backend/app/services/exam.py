@@ -12,11 +12,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.models import (
     Attempt,
     AttemptItemType,
+    Classroom,
     ClassroomExercise,
     ExamStatus,
     InstructionAck,
@@ -235,9 +236,19 @@ def exam_deadline(
 def ensure_exam_started(
     db: Session, practice_session: PracticeSession, exercise: ClassroomExercise
 ) -> None:
-    """学生在开考确认页点「开始考试」即开始计时；只落一次（幂等）。"""
+    """学生在开考确认页点「开始考试」即开始计时；只落一次（幂等）。
+
+    同学生同一场发布可能存在多条未开考会话（按天建轮），只锁各自会话行
+    挡不住「先启动 A，再拿保存的 B 显式开考」的隔天重考——先锁课堂行做
+    串行化锚，再校验该生该发布没有别的会话已开考过。
+    """
     if not exercise.is_exam:
         return
+    db.exec(
+        select(Classroom)
+        .where(Classroom.id == practice_session.classroom_id)
+        .with_for_update()
+    ).first()
     db.exec(
         select(PracticeSession)
         .where(PracticeSession.id == practice_session.id)
@@ -246,6 +257,19 @@ def ensure_exam_started(
     ).one()
     if practice_session.exam_started_at is not None:
         return
+    if practice_session.assignment_id is not None:
+        prior = db.exec(
+            select(PracticeSession.id).where(
+                PracticeSession.student_id == practice_session.student_id,
+                PracticeSession.assignment_id == practice_session.assignment_id,
+                col(PracticeSession.exam_started_at).is_not(None),
+            )
+        ).first()
+        if prior is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="该场考试已开考过，请返回考试入口继续",
+            )
     practice_session.exam_started_at = _now()
     if exam_flow.enabled(exercise):
         practice_session.exam_flow_state = {
