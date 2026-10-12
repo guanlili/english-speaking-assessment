@@ -143,21 +143,30 @@ def probe_audio(data: bytes, suffix: str) -> AudioProbeResult | None:
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / f"src{suffix}"
         src.write_bytes(data)
-        result = subprocess.run(  # noqa: S603 - 参数固定，无用户输入
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-print_format",
-                "json",
-                "-show_streams",
-                "-show_format",
-                str(src),
-            ],
-            capture_output=True,
-            timeout=15,
-            check=False,
-        )
+        try:
+            result = subprocess.run(  # noqa: S603 - 参数固定，无用户输入
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-print_format",
+                    "json",
+                    "-show_streams",
+                    "-show_format",
+                    str(src),
+                ],
+                capture_output=True,
+                timeout=15,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            # 精心构造的容器文件可以让 ffprobe 解析挂满 15 秒——超时按
+            # 「无效音频」处理（调用方 422），不让异常裸奔成 500
+            return None
+        except OSError:
+            # which 检查后二进制仍可能消失/不可执行（容器裁剪、权限）：
+            # 降级魔数识别而不是 500
+            return _sniff_fallback(data)
         if result.returncode != 0:
             return None
         import json as _json

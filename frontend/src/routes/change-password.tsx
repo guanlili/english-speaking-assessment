@@ -17,6 +17,7 @@ import { APP_NAME } from "@/config"
 import { isLoggedIn } from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
+import { extractErrorMessage } from "@/utils"
 
 export const Route = createFileRoute("/change-password")({
   beforeLoad: () => {
@@ -48,11 +49,7 @@ function ChangePasswordPage() {
       showSuccessToast(t({ zh: "密码已修改", en: "Password changed" }))
       void navigate({ to: "/join" })
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      setError(
-        err.body?.detail ??
-          t({ zh: "修改失败，请重试", en: "Change failed, please retry" }),
-      ),
+    onError: (err: unknown) => setError(extractErrorMessage(err)),
   })
 
   const submit = (e: React.FormEvent) => {

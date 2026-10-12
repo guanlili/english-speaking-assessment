@@ -13,6 +13,7 @@ import {
   listRecordingDrafts,
   type RecordingDraftMeta,
 } from "@/lib/recording-drafts"
+import { localizedDetail } from "@/utils"
 
 interface DraftFailure {
   status?: number
@@ -114,7 +115,11 @@ export function DraftRecoveryCard({
         typeof e?.body?.detail === "string" ? e.body.detail : undefined
       setFailures((prev) => ({
         ...prev,
-        [draft.key]: { status: e?.status, message: detail },
+        // 展示前本地化：英文用户不透出中文原文（双语准则）
+        [draft.key]: {
+          status: e?.status,
+          message: detail ? localizedDetail(detail) : undefined,
+        },
       }))
     } finally {
       setUploadingKey(null)

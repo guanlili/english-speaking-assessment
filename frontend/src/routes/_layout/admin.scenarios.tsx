@@ -40,7 +40,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
-import { randomId } from "@/utils"
+import { extractErrorMessage, randomId } from "@/utils"
 
 export const Route = createFileRoute("/_layout/admin/scenarios")({
   component: ScenariosAdmin,
@@ -124,10 +124,7 @@ export function ScenariosAdmin({ embedded = false }: { embedded?: boolean }) {
       setNewTopic("")
       invalidate()
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(
-        err.body?.detail ?? t({ zh: "创建失败", en: "Create failed" }),
-      ),
+    onError: (err: unknown) => showErrorToast(extractErrorMessage(err)),
   })
 
   return (
@@ -293,16 +290,13 @@ function ScenarioCard({
         })),
       )
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      toast.error(
-        err.body?.detail ?? t({ zh: "生成失败", en: "Generation failed" }),
-        {
-          description: t({
-            zh: "需配置方舟密钥后可用；也可手动录入",
-            en: "Requires an Ark API key; you can also enter questions manually",
-          }),
-        },
-      ),
+    onError: (err: unknown) =>
+      toast.error(extractErrorMessage(err), {
+        description: t({
+          zh: "需配置方舟密钥后可用；也可手动录入",
+          en: "Requires an Ark API key; you can also enter questions manually",
+        }),
+      }),
   })
 
   const adoptDraft = (index: number) => {
@@ -351,10 +345,7 @@ function ScenarioCard({
       setEditingQ(null)
       onMutated()
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      toast.error(
-        err.body?.detail ?? t({ zh: "更新失败", en: "Update failed" }),
-      ),
+    onError: (err: unknown) => toast.error(extractErrorMessage(err)),
   })
   const editValid =
     editForm.text.trim().length > 0 &&
@@ -372,10 +363,7 @@ function ScenarioCard({
       showSuccessToast(t({ zh: "情景已更新", en: "Topic updated" }))
       onMutated()
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      toast.error(
-        err.body?.detail ?? t({ zh: "更新失败", en: "Update failed" }),
-      ),
+    onError: (err: unknown) => toast.error(extractErrorMessage(err)),
   })
 
   const deleteScenario = useMutation({
@@ -384,10 +372,7 @@ function ScenarioCard({
       setConfirmDelete(false)
       onMutated()
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      toast.error(
-        err.body?.detail ?? t({ zh: "删除失败", en: "Delete failed" }),
-      ),
+    onError: (err: unknown) => toast.error(extractErrorMessage(err)),
   })
 
   return (
