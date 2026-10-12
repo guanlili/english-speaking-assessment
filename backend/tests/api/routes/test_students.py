@@ -778,3 +778,54 @@ def test_teacher_cannot_reset_cross_class_shared_student(
     finally:
         _cleanup(db, classroom_a_id, teacher_a)
         _cleanup(db, classroom_b_id, teacher_b)
+
+
+@pytest.mark.parametrize("bulk", [False, True])
+def test_teacher_cannot_reset_superuser_flagged_student(
+    client: TestClient, db: Session, bulk: bool
+) -> None:
+    """role=student 但 is_superuser=True 的分叉账号（update_user 逐字段盲写
+    可造成）：实际高权限账号同样不得被教师重置——角色守卫必须双标志判定。
+    """
+    from app.models import UserUpdate
+    from tests.utils.credential import make_student
+
+    teacher, teacher_headers = _login_teacher(db, client)
+    classroom_id: uuid.UUID | None = None
+    made: dict | None = None
+    try:
+        classroom = _new_classroom(client, teacher_headers)
+        classroom_id = uuid.UUID(classroom["id"])
+        made = make_student(db, client, classroom["code"])
+        student_id = made["student"]["id"]
+        target = made["user"]
+
+        crud.update_user(
+            session=db, db_user=target, user_in=UserUpdate(is_superuser=True)
+        )
+        assert target.role == "student" and target.is_superuser is True
+        original_hash = target.hashed_password
+
+        if bulk:
+            response = client.post(
+                "/api/v1/students/bulk-reset-password",
+                params={"classroom_id": str(classroom_id)},
+                headers=teacher_headers,
+            )
+            assert response.status_code == 200, response.text
+            assert response.json()["reset"] == 0
+            assert response.json()["skipped"] == 1
+        else:
+            response = client.post(
+                f"/api/v1/students/{student_id}/reset-password",
+                headers=teacher_headers,
+            )
+            assert response.status_code == 403
+            assert response.json()["detail"] == "没有权限：只能重置学生账号的密码"
+        db.refresh(target)
+        assert target.hashed_password == original_hash
+    finally:
+        if made is not None:
+            _cleanup(db, classroom_id, teacher, made["user"])
+        else:
+            _cleanup(db, classroom_id, teacher)

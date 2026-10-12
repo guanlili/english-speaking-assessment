@@ -947,7 +947,7 @@ def test_exam_attempt_excluded_from_student_trail_until_ended(
 
 
 @pytest.fixture
-def flow_exam_started(
+def flow_exam_setup(
     client: TestClient,
     superuser_token_headers: dict[str, str],
     db: Session,
@@ -1010,12 +1010,6 @@ def flow_exam_started(
     app.dependency_overrides[get_scoring_submitter] = lambda: lambda _id: None
     try:
         plan = _today(client, headers, code)
-        start = client.post(
-            f"/api/v1/classes/{code}/exam/start",
-            json={"session_id": plan["session_id"]},
-            headers=headers,
-        )
-        assert start.status_code == 200, start.text
         yield client, code, headers, plan, plan["items"], clock
     finally:
         app.dependency_overrides.pop(get_scoring_submitter, None)
@@ -1023,6 +1017,21 @@ def flow_exam_started(
         for passage in passages:
             db.delete(passage)
         db.commit()
+
+
+@pytest.fixture
+def flow_exam_started(
+    flow_exam_setup: tuple[TestClient, str, dict[str, str], dict, list[dict], list],
+) -> Generator[tuple[TestClient, str, dict[str, str], dict, list[dict], list]]:
+    """在发布态之上显式开考（其余测试默认用这个；未开考场景用 flow_exam_setup）。"""
+    client, code, headers, plan, items, clock = flow_exam_setup
+    start = client.post(
+        f"/api/v1/classes/{code}/exam/start",
+        json={"session_id": plan["session_id"]},
+        headers=headers,
+    )
+    assert start.status_code == 200, start.text
+    yield client, code, headers, plan, items, clock
 
 
 def test_idempotency_key_scoped_to_item_and_session(
@@ -1131,3 +1140,106 @@ def test_exam_cannot_retake_across_days(
     again = _submit(client, headers, code, items[1], plan["session_id"])
     assert again.status_code == 422
     assert again.json()["detail"] == "考试时间已到，已自动交卷"
+
+
+def test_stale_unstarted_session_cannot_restart_same_exam(
+    flow_exam_setup: tuple[TestClient, str, dict[str, str], dict, list[dict], list],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """隔天重考第二道闸：/today 守卫之外，保存的未开考会话显式开考必须 409。
+
+    场景：第 1 天打开得会话 A（未开考），第 2 天再打开得会话 B（守卫按
+    「已开考」判，两条都未开考所以并存）；正常考完 A 后，拿 B 的
+    session_id 显式调 /exam/start 不能拿到第二次整场。
+    """
+    from datetime import date
+
+    from app.api.routes import class_today_plan
+
+    client, code, headers, plan, items, clock = flow_exam_setup
+    real_today = class_today_plan._today_in_practice_tz()
+    monkeypatch.setattr(
+        class_today_plan,
+        "_today_in_practice_tz",
+        lambda: date.fromordinal(real_today.toordinal() + 1),
+    )
+    day2 = _today(client, headers, code)
+    assert day2["session_id"] != plan["session_id"]
+    monkeypatch.setattr(class_today_plan, "_today_in_practice_tz", lambda: real_today)
+
+    start = client.post(
+        f"/api/v1/classes/{code}/exam/start",
+        json={"session_id": plan["session_id"]},
+        headers=headers,
+    )
+    assert start.status_code == 200, start.text
+    clock[0] += timedelta(minutes=6)  # A 已到时结束
+    second = client.post(
+        f"/api/v1/classes/{code}/exam/start",
+        json={"session_id": day2["session_id"]},
+        headers=headers,
+    )
+    assert second.status_code == 409
+    assert second.json()["detail"] == "该场考试已开考过，请返回考试入口继续"
+
+
+def test_republish_new_assignment_allows_new_exam_start(
+    flow_exam_started: tuple[TestClient, str, dict[str, str], dict, list[dict], list],
+    db: Session,
+) -> None:
+    """合法重考路径保留：重新发布（新 assignment）后学生可对新会话开考。"""
+    from app.models import Classroom, ClassroomExercise
+
+    client, code, headers, plan, items, clock = flow_exam_started
+    start = client.post(
+        f"/api/v1/classes/{code}/exam/start",
+        json={"session_id": plan["session_id"]},
+        headers=headers,
+    )
+    assert start.status_code == 200, start.text
+    clock[0] += timedelta(minutes=6)  # 第一场已结束
+
+    classroom_row = db.exec(
+        select(Classroom).where(Classroom.code == code)  # type: ignore[arg-type]
+    ).one()
+    old_ex = db.get_one(ClassroomExercise, classroom_row.current_exercise_id)
+    new_ex = ClassroomExercise(
+        classroom_id=classroom_row.id,
+        version_no=old_ex.version_no + 1,
+        title="Retake",
+        status="published",
+        snapshot_items=old_ex.snapshot_items,
+        is_exam=True,
+        time_limit_minutes=5,
+    )
+    db.add(new_ex)
+    db.flush()
+    old_ex.status = "archived"
+    classroom_row.current_exercise_id = new_ex.id
+    db.add(old_ex)
+    db.add(classroom_row)
+    db.commit()
+
+    plan2 = _today(client, headers, code)
+    assert plan2["session_id"] != plan["session_id"]
+    start2 = client.post(
+        f"/api/v1/classes/{code}/exam/start",
+        json={"session_id": plan2["session_id"]},
+        headers=headers,
+    )
+    assert start2.status_code == 200, start2.text
+
+
+def test_idempotency_key_scoped_to_item_type(
+    flow_exam_started: tuple[TestClient, str, dict[str, str], dict, list[dict], list],
+) -> None:
+    """题目身份是 (item_type, item_id)：同 UUID 换题型不得拿到旧题型回执。"""
+    client, code, headers, plan, items, clock = flow_exam_started
+    clock[0] += timedelta(seconds=2)
+    key = f"idem-{uuid.uuid4()}"
+    first = _submit(client, headers, code, items[0], plan["session_id"], key)
+    assert first.status_code == 200, first.text
+    other_type = {**items[0], "type": "question"}
+    cross = _submit(client, headers, code, other_type, plan["session_id"], key)
+    assert cross.status_code == 422
+    assert cross.json()["detail"] == "作答凭证已失效，请重新录音后提交"
