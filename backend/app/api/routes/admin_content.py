@@ -38,6 +38,7 @@ from app.models import (
     Passage,
     PassageCreate,
     PassagePublic,
+    ReadingSentenceSeconds,
     RepeatSentence,
     Scenario,
     ScenarioQuestion,
@@ -192,6 +193,9 @@ class QuestionCreate(SQLModel):
 
 class PassageUpdate(SQLModel):
     """更新篇目请求：缺省不修改；translation/audio_url/unit_id 可 null 清空。"""
+
+    reading_sentence_seconds: list[ReadingSentenceSeconds | None] | None = None
+    reading_sentence_texts: list[str] | None = None
 
     title: str | None = Field(default=None, min_length=1, max_length=255)
     topic: str | None = Field(default=None, max_length=100)
@@ -389,6 +393,16 @@ def update_passage(
     if "topic" in update and update["topic"] is None:
         # topic 非空列：显式清空/空串归一为空串（挂单元时反正会被派生值覆盖）
         update["topic"] = ""
+    segments = reading.split_reading_sentences(str(update.get("text", passage.text)))
+    expected_segments = update.pop("reading_sentence_texts", None)
+    if expected_segments is not None and expected_segments != segments:
+        raise HTTPException(422, detail="Reading sentences changed")
+    if "reading_sentence_seconds" in update:
+        durations = update["reading_sentence_seconds"]
+        if durations is not None and len(durations) != len(segments):
+            raise HTTPException(422, detail="Reading sentence durations count mismatch")
+    elif segments != reading.split_reading_sentences(passage.text):
+        update["reading_sentence_seconds"] = None
     passage.sqlmodel_update(update)
     # 主题单一事实源：挂单元的篇目 topic 一律跟随单元，显式传入值不生效
     if passage.unit_id is not None:

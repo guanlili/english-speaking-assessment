@@ -8,6 +8,14 @@ import { readStoredLang } from "./lib/bi.ts"
  * zh 列缺省回退原文；en 列缺省回退通用英文（不把中文透给英文用户）。
  */
 const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
+  "Reading sentences changed": {
+    zh: "正文已变化，请刷新后重新设置逐句时长。",
+    en: "The article has changed. Refresh before setting sentence durations.",
+  },
+  "Reading sentence durations count mismatch": {
+    zh: "句子数量已变化，请刷新后重新设置逐句时长。",
+    en: "The sentence count has changed. Refresh and set the sentence durations again.",
+  },
   "Automated exam audio missing: ": {
     zh: "自动考试包含缺少音频的题目。请在题库的「考试流程设置」中上传或生成音频，再重新发布。",
     en: "Some exam items have no audio. Upload or generate audio in Exam flow settings, then publish again.",
