@@ -756,13 +756,7 @@ function StudentRosterDialog({
         }),
       )
     },
-    onError: (error) =>
-      showErrorToast(
-        t({
-          zh: `重置失败：${error.message}`,
-          en: `Reset failed: ${error.message}`,
-        }),
-      ),
+    onError: (error) => showErrorToast(extractErrorMessage(error)),
   })
 
   const resetPendingId = resetMutation.isPending
@@ -774,19 +768,18 @@ function StudentRosterDialog({
     onSuccess: (res) => {
       setBulkDone(res.reset)
       showSuccessToast(
-        t({
-          zh: `已重置 ${res.reset} 个账号为默认密码 brs123456`,
-          en: `${res.reset} account(s) reset to the default password brs123456`,
-        }),
+        res.skipped
+          ? t({
+              zh: `已重置 ${res.reset} 个账号为默认密码 brs123456；跳过 ${res.skipped} 个（非学生账号或跨班共享，需管理员处理）`,
+              en: `${res.reset} account(s) reset to the default password brs123456; ${res.skipped} skipped (non-student or shared across classes — needs an administrator).`,
+            })
+          : t({
+              zh: `已重置 ${res.reset} 个账号为默认密码 brs123456`,
+              en: `${res.reset} account(s) reset to the default password brs123456`,
+            }),
       )
     },
-    onError: (error) =>
-      showErrorToast(
-        t({
-          zh: `批量重置失败：${error.message}`,
-          en: `Bulk reset failed: ${error.message}`,
-        }),
-      ),
+    onError: (error) => showErrorToast(extractErrorMessage(error)),
   })
 
   const removeMutation = useMutation({

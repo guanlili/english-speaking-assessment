@@ -399,6 +399,22 @@ def require_exam_open(
     if practice_session.exam_started_at is None:
         # 开考必须经确认页显式触发（POST /exam/start），防止误触打开即计时
         raise HTTPException(status_code=422, detail="考试尚未开始")
+    if not exam_flow.enabled(exercise):
+        finalize_if_expired(db, practice_session, exercise)
+    require_deadline_not_passed(practice_session, exercise)
+
+
+def require_deadline_not_passed(
+    practice_session: PracticeSession, exercise: ClassroomExercise
+) -> None:
+    """整场截止的纯时间判定：不 finalize、不 commit，不释放调用方持有的行锁。
+
+    供 /attempts 锁内复查使用——音频校验（ffprobe 可达秒级）期间可能跨过
+    截止，插入前必须以同一口径复查一次。边界与 finalize_if_expired 对齐：
+    now >= deadline 即到时；提前交卷（全部题已交）落下的 exam_ended_at 同样拒绝。
+    """
+    if not exercise.is_exam or practice_session.exam_started_at is None:
+        return
     if exam_flow.enabled(exercise):
         # 自动考试末题 Next 即写 exam_ended_at；补传窗口在 exam_flow 内判定，
         # 不能让整场结束标志先于 15 秒传输窗口关掉 /attempts。
@@ -407,8 +423,10 @@ def require_exam_open(
         ):
             raise HTTPException(status_code=422, detail="考试时间已到，已自动交卷")
         return
-    finalize_if_expired(db, practice_session, exercise)
     if practice_session.exam_ended_at is not None:
+        raise HTTPException(status_code=422, detail="考试时间已到，已自动交卷")
+    deadline = exam_deadline(practice_session, exercise)
+    if deadline is not None and _now() >= deadline:
         raise HTTPException(status_code=422, detail="考试时间已到，已自动交卷")
 
 

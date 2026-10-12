@@ -11,6 +11,7 @@ from app.core.security import get_password_hash, verify_password
 from app.models import (
     Attempt,
     Classroom,
+    ClassroomExercise,
     Passage,
     PassageCreate,
     PracticeSession,
@@ -237,6 +238,25 @@ def get_or_create_today_session(
     - mode='daily' 且 assignment_id IS NULL → 每日一条自主轮
     - mode='explore' → (student, date, mode, passage_id)
     """
+    if assignment_id is not None and mode == "daily":
+        # 考试不允许隔天重考：计时/每题一次/阶段机全部挂在会话行上，而会话
+        # 按天建轮——该生已开考过这场发布时必须回到那一场（已结束则直出
+        # 结果态），否则考完次日再点入口会整场重考、每题再得作答权。守卫
+        # 放在当日查询之前，兼容线上已存在的「隔天空会话 + 已开考前轮」。
+        # 要让全班重考请重新发布（每次发布都是新的 assignment）。
+        exercise = session.get(ClassroomExercise, assignment_id)
+        if exercise is not None and exercise.is_exam:
+            prior = session.exec(
+                select(PracticeSession)
+                .where(
+                    PracticeSession.student_id == student.id,
+                    PracticeSession.assignment_id == assignment_id,
+                    col(PracticeSession.exam_started_at).is_not(None),
+                )
+                .order_by(col(PracticeSession.created_at).desc())
+            ).first()
+            if prior is not None:
+                return prior
     statement = select(PracticeSession).where(
         PracticeSession.student_id == student.id,
         PracticeSession.session_date == today,

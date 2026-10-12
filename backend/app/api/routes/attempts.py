@@ -276,6 +276,29 @@ def _attempt_public(
     return public
 
 
+def _idempotent_existing(
+    session: Session,
+    idempotency_key: str,
+    item_id: uuid.UUID,
+    session_id: uuid.UUID | None,
+) -> Attempt | None:
+    """按幂等键取已有作答；键指向别的题目/会话时直接拒绝。
+
+    幂等键标识「一次录音」，客户端为每次录音独立生成且草稿把
+    sessionId/itemId/key 绑定存储——键命中却对不上当前题/会话，只可能
+    是客户端缺陷或构造请求。该键在库中已指向别的作答，既不能再存
+    （撞全局唯一索引），更不能把那份回执当成这次的结果返回（串题）。
+    """
+    existing = session.exec(
+        select(Attempt).where(Attempt.idempotency_key == idempotency_key)
+    ).first()
+    if existing is None:
+        return None
+    if existing.item_id != item_id or existing.session_id != session_id:
+        raise HTTPException(status_code=422, detail="作答凭证已失效，请重新录音后提交")
+    return existing
+
+
 @router.post("/attempts", response_model=AttemptPublic)
 def create_attempt_upload(
     session: SessionDep,
@@ -288,7 +311,7 @@ def create_attempt_upload(
     duration_s: float = Form(..., gt=0, description="录音时长（秒）"),
     session_id: uuid.UUID | None = Form(default=None),
     idempotency_key: str | None = Form(
-        default=None, description="幂等键：重传不重复创建"
+        default=None, max_length=64, description="幂等键：重传不重复创建"
     ),
 ) -> Any:
     """
@@ -301,11 +324,10 @@ def create_attempt_upload(
     # 归属解析：课堂作答（有 session）必须登录学生本人，演示作答无归属
     student = _resolve_submit_student(session, session_id, current_user)
 
-    # 幂等检查：同键已有作答直接返回（同样校验归属，防越权读取他人作答）
+    # 幂等检查：同键已有作答直接返回（同样校验归属，防越权读取他人作答）；
+    # 键指向别的题目/会话时拒绝（防串题回执，见 _idempotent_existing）
     if idempotency_key:
-        existing = session.exec(
-            select(Attempt).where(Attempt.idempotency_key == idempotency_key)
-        ).first()
+        existing = _idempotent_existing(session, idempotency_key, item_id, session_id)
         if existing is not None:
             _require_attempt_access(session, existing, current_user)
             session.refresh(existing)
@@ -337,11 +359,9 @@ def create_attempt_upload(
                 # 串行化同一考试会话的提交，防止并发新幂等键绕过每题一次门禁。
                 session.refresh(exam_session, with_for_update=True)
                 if idempotency_key:
-                    existing = session.exec(
-                        select(Attempt).where(
-                            Attempt.idempotency_key == idempotency_key
-                        )
-                    ).first()
+                    existing = _idempotent_existing(
+                        session, idempotency_key, item_id, session_id
+                    )
                     if existing is not None:
                         _require_attempt_access(session, existing, current_user)
                         return _attempt_public(
@@ -437,6 +457,10 @@ def create_attempt_upload(
                 .with_for_update()
             ).first()
             if locked_session is not None:
+                # 锁内复查整场截止：音频校验（probe 可达秒级）期间可能跨过
+                # 截止，与预检查同一口径再判一次；纯时间判定不 commit，
+                # 不释放本临界区行锁
+                exam_service.require_deadline_not_passed(locked_session, bound_exercise)
                 already = session.exec(
                     select(Attempt.id).where(
                         Attempt.session_id == session_id,  # type: ignore[arg-type]
@@ -463,9 +487,15 @@ def create_attempt_upload(
     except IntegrityError as exc:
         session.rollback()
         if idempotency_key and "idempotency_key" in str(exc.orig):
-            existing = session.exec(
-                select(Attempt).where(Attempt.idempotency_key == idempotency_key)
-            ).first()
+            try:
+                existing = _idempotent_existing(
+                    session, idempotency_key, item_id, session_id
+                )
+            except HTTPException:
+                # 键指向别的题目/会话：新作答存不进（全局唯一键）、旧回执不能
+                # 返回（串题）——补偿删除本次文件后按稳定 422 拒绝
+                _delete_unreferenced_audio(session, audio_path)
+                raise
             if existing is not None:
                 # 兜底分支同样校验归属，封死「预检查时未提交→撞唯一约束→拿到他人作答」路径
                 _require_attempt_access(session, existing, current_user)

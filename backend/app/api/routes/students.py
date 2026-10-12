@@ -6,6 +6,7 @@
 不新建账号、不重置密码；姓名不一致仍阻断；已在本班则幂等成功。
 """
 
+import logging
 import uuid
 from typing import Any
 
@@ -27,6 +28,8 @@ from app.models import (
 
 router = APIRouter(prefix="/students", tags=["students"])
 
+logger = logging.getLogger(__name__)
+
 
 def _get_classroom_in_scope(
     session: Session, current_user: User, classroom_id: uuid.UUID
@@ -37,6 +40,32 @@ def _get_classroom_in_scope(
     if not current_user.is_superuser and classroom.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="没有权限：只能管理自己课堂的学生")
     return classroom
+
+
+def _ensure_account_reset_allowed(
+    session: Session, current_user: User, user: User, *, classroom_id: uuid.UUID
+) -> None:
+    """重置的是账号级唯一凭证：目标必须是学生账号，且操作者对该账号
+    名下所有班级档案都有权限——否则 B 班教师可重置共享学生/被拉进班的
+    管理员，用公开默认密码冒充其在其他班级作答（账号接管面）。
+    """
+    if user.role != "student":
+        raise HTTPException(status_code=403, detail="没有权限：只能重置学生账号的密码")
+    if current_user.is_superuser:
+        return
+    other_owners = session.exec(
+        select(Classroom.owner_id)
+        .join(Student, Student.classroom_id == Classroom.id)
+        .where(
+            Student.user_id == user.id,
+            Student.classroom_id != classroom_id,
+        )
+    ).all()
+    if any(owner_id != current_user.id for owner_id in other_owners):
+        raise HTTPException(
+            status_code=403,
+            detail="没有权限：该学生账号同时属于其他教师的班级，请联系管理员重置",
+        )
 
 
 class StudentImportLine(SQLModel):
@@ -404,6 +433,16 @@ def reset_student_password(
     user = session.get(User, student.user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    _ensure_account_reset_allowed(
+        session, current_user, user, classroom_id=student.classroom_id
+    )
+    logger.info(
+        "password reset by teacher=%s target_user=%s student=%s classroom=%s",
+        current_user.id,
+        user.id,
+        student.id,
+        student.classroom_id,
+    )
     user.hashed_password = get_password_hash(DEFAULT_STUDENT_PASSWORD)
     user.must_change_password = False
     session.add(user)
@@ -437,6 +476,7 @@ class StudentResetRow(SQLModel):
 
 class BulkResetResult(SQLModel):
     reset: int
+    skipped: int = 0
     rows: list[StudentResetRow]
 
 
@@ -446,7 +486,11 @@ def bulk_reset_passwords(
     current_user: TeacherUserDep,
     classroom_id: uuid.UUID = Query(...),
 ) -> Any:
-    """批量重置课堂内全部已绑定账号的密码为统一默认密码。"""
+    """批量重置课堂内全部已绑定账号的密码为统一默认密码。
+
+    账号级守卫与单条重置一致（非学生账号 / 名下档案跨其他教师班级的一律
+    跳过并计入 skipped），避免批量入口绕过凭证范围检查。
+    """
     classroom = _get_classroom_in_scope(session, current_user, classroom_id)
     students = session.exec(
         select(Student)
@@ -463,10 +507,23 @@ def bulk_reset_passwords(
             select(User).where(col(User.id).in_(user_ids))  # type: ignore[operator]
         ).all()
     }
-    result = BulkResetResult(reset=0, rows=[])
+    result = BulkResetResult(reset=0, skipped=0, rows=[])
     for s in students:
         user = users_by_id.get(s.user_id) if s.user_id else None
         if user is None:
+            continue
+        try:
+            _ensure_account_reset_allowed(
+                session, current_user, user, classroom_id=classroom.id
+            )
+        except HTTPException:
+            result.skipped += 1
+            logger.info(
+                "bulk password reset skipped target_user=%s student=%s classroom=%s",
+                user.id,
+                s.id,
+                classroom.id,
+            )
             continue
         user.hashed_password = get_password_hash(DEFAULT_STUDENT_PASSWORD)
         user.must_change_password = False
