@@ -231,7 +231,7 @@ function StudentShell({
               {t({ zh: "课堂", en: "Classroom" })} {code}
             </Link>
             <NotificationBell code={code} />
-            <LanguageToggle />
+            {active !== "exam" && <LanguageToggle />}
             <Appearance />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

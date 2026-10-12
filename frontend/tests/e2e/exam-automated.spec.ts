@@ -322,22 +322,20 @@ test("@webkit an English locale maps the upload rejection to English", async ({
   await expect(page.getByText("音频文件无效或损坏")).toHaveCount(0)
 })
 
-test("@webkit a too-short recording still exits on save and exit", async ({
+test("@webkit exam header hides language and save-and-exit controls", async ({
   page,
 }) => {
-  const state = await setup(page)
-  state.index = 1
-  state.started = true
-  state.phase = "answering"
-  state.startedAt = Date.now()
+  await setup(page)
   await page.goto("/exam/EXAM")
-  await page.getByRole("button", { name: "启用声音并继续考试" }).click()
-  // 录音开始后 1 秒内退出：时长不足走丢弃分支，同样必须离开考试页，
-  // 且不得提交无效文件（upload 计数保持 0）。
-  await page.waitForTimeout(500)
-  await page.getByRole("button", { name: "保存并退出" }).click()
-  await expect(page).toHaveURL(/\/home\/EXAM/, { timeout: 8000 })
-  expect(state.uploads).toBe(0)
+  await expect(
+    page.getByRole("heading", { name: "考试", exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole("group", { name: "语言 / Language" }),
+  ).toHaveCount(0)
+  await expect(
+    page.getByRole("button", { name: /保存并退出|Save and exit/ }),
+  ).toHaveCount(0)
 })
 
 test("@webkit the unlocked native audio element plays subsequent prompts automatically", async ({
