@@ -98,6 +98,8 @@ export default function AutomatedExamSession({
   latest.current = { plan, item, syncedAt: query.dataUpdatedAt }
   const saving = useRef<Promise<void>>(Promise.resolve())
   const exitRequested = useRef(false)
+  // 提前交题标记（存 itemId 防跨题残留）：录音上传成功后自动发 next
+  const finishEarlyRef = useRef<string | null>(null)
   const phase = exam?.phase
   const stageKey = `${plan.session_id}:${item?.id}:${phase}`
   const owner = currentDraftOwner()
@@ -206,6 +208,17 @@ export default function AutomatedExamSession({
       if (complete) {
         await uploadRef.current(input)
         if (exitRequested.current) doExit()
+        else if (finishEarlyRef.current === input.itemId) {
+          // 「说完了·下一题」只在上传成功后推进；失败回落到倒计时到点的
+          // 常规路径（ready 页重试上传/下一题），不丢已保留的录音
+          finishEarlyRef.current = null
+          if (accepted.current.has(input.itemId))
+            eventRef.current({
+              session_id: input.sessionId ?? plan.session_id,
+              item_id: input.itemId,
+              event: "next",
+            })
+        }
       }
     })
   }
@@ -223,6 +236,8 @@ export default function AutomatedExamSession({
     // 录音被判无效（过短/中断）不会触发 onComplete：退出请求在这里兑现，
     // 并提示本次录音未提交——不能把退出只挂在有效录音的完成回调上。
     onDiscard: (reason) => {
+      // 无效录音（过短/中断）没有可交的作答：清掉提前交题标记，等倒计时
+      finishEarlyRef.current = null
       if (!exitRequested.current) return
       if (reason === "short")
         toast.info(
@@ -500,6 +515,26 @@ export default function AutomatedExamSession({
     return () => document.removeEventListener("visibilitychange", report)
   }, [code, plan.session_id, exam?.started, exam?.ended])
 
+  // 说明题跳过：立即停朗读，服务器按「已读完」收尾本题并直接翻页（一键两事件）
+  function skipInstruction() {
+    const target = item
+    if (!target) return
+    window.speechSynthesis?.cancel()
+    audio.current?.pause()
+    sendEvent.mutate(
+      { session_id: plan.session_id, item_id: target.id, event: "audio-ended" },
+      {
+        onSuccess: () => {
+          sendEvent.mutate({
+            session_id: plan.session_id,
+            item_id: target.id,
+            event: "next",
+          })
+        },
+      },
+    )
+  }
+
   const labels: Record<string, { zh: string; en: string }> = {
     waiting: { zh: "请等待", en: "Please wait" },
     audio: { zh: "正在播放", en: "Playing audio" },
@@ -628,6 +663,38 @@ export default function AutomatedExamSession({
               ? `${exam.phase_remaining_seconds}s`
               : ""}
           </p>
+          {item.type === "instruction" &&
+            (phase === "waiting" || phase === "audio") && (
+              <Button
+                className="min-h-11 px-8 text-base"
+                disabled={busy || sendEvent.isPending}
+                onClick={skipInstruction}
+              >
+                {t({ zh: "已读完 · 跳过说明", en: "Skip instructions" })}
+              </Button>
+            )}
+          {phase === "answering" &&
+            recorder.status === "recording" &&
+            !pendingDraft && (
+              <div className="grid justify-items-center gap-1">
+                <Button
+                  className="min-h-11 px-8 text-base"
+                  disabled={busy || sendEvent.isPending || recorder.elapsed < 1}
+                  onClick={() => {
+                    finishEarlyRef.current = item.id
+                    recorder.stop()
+                  }}
+                >
+                  {t({ zh: "我说完了", en: "I'm done" })}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  {t({
+                    zh: "说完即点，无需等倒计时走完",
+                    en: "Tap as soon as you finish — no need to wait out the timer",
+                  })}
+                </p>
+              </div>
+            )}
           {item.type === "question" && (
             <label className="grid gap-2">
               {t({

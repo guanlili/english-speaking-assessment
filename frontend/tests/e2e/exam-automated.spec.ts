@@ -106,7 +106,8 @@ async function setup(page: Page, mockAudio = true, lang = "zh") {
     { mockAudio, lang },
   )
   function exam() {
-    if (state.phase === "answering" && Date.now() - state.startedAt >= 3000)
+    const limit = (items[state.index]?.suggested_seconds ?? 3) * 1000
+    if (state.phase === "answering" && Date.now() - state.startedAt >= limit)
       state.phase = "ready"
     return {
       automated: true,
@@ -118,7 +119,10 @@ async function setup(page: Page, mockAudio = true, lang = "zh") {
       current_item_index: state.index,
       item_remaining_seconds:
         state.phase === "answering"
-          ? Math.max(0, Math.ceil((3000 - Date.now() + state.startedAt) / 1000))
+          ? Math.max(
+              0,
+              Math.ceil((limit - Date.now() + state.startedAt) / 1000),
+            )
           : 0,
       phase_remaining_seconds: 0,
       phase_elapsed_seconds: 0,
@@ -253,6 +257,44 @@ for (const width of [390, 820, 1180]) {
     ).toBeTruthy()
   })
 }
+
+test("@webkit instructions can be skipped before the narration finishes", async ({
+  page,
+}) => {
+  const state = await setup(page)
+  await page.goto("/exam/EXAM")
+  await page.getByRole("button", { name: "检查设备并开始考试" }).click()
+  // 朗读中一键跳过：链式 audio-ended + next，直接落到下一题的作答/播放
+  await page.getByRole("button", { name: "已读完 · 跳过说明" }).click()
+  await expect(page.getByText("Exam prompt 2", { exact: true })).toBeVisible()
+  expect(state.events.map((event) => event.event)).toEqual([
+    "audio-ended",
+    "next",
+  ])
+})
+
+test("@webkit done speaking advances as soon as the upload lands", async ({
+  page,
+}) => {
+  const state = await setup(page)
+  state.index = 1
+  state.started = true
+  state.phase = "answering"
+  state.startedAt = Date.now()
+  // 设备启用流程可能吃掉数秒：放大本题窗口，保证按钮等待期间仍在作答中
+  state.items[1].suggested_seconds = 120
+  await page.goto("/exam/EXAM")
+  await page.getByRole("button", { name: "启用声音并继续考试" }).click()
+  // 录音满 1 秒按钮才可用（不足 1 秒的录音服务器不收）
+  await expect(page.getByRole("button", { name: "我说完了" })).toBeEnabled()
+  await page.getByRole("button", { name: "我说完了" }).click()
+  await expect.poll(() => state.uploads).toBe(1)
+  await expect
+    .poll(() => state.events.filter((event) => event.event === "next").length)
+    .toBe(1)
+  // 下一题（repeat）自动开始播放，不再等本题倒计时走完
+  await expect(page.getByText("本题不显示文字")).toBeVisible()
+})
 
 test("@webkit a failed upload survives refresh and retries", async ({
   page,

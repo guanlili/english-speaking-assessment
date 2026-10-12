@@ -95,7 +95,8 @@ def test_automated_exam_phases_and_resume(
         assert response.status_code == 200
         assert phase()["phase"] == "waiting"
         assert event(0, "next").status_code == 422
-        assert event(0, "audio-ended").status_code == 422
+        # 说明题 waiting 中跳过朗读（audio-ended）已放开，见
+        # test_instruction_skip_and_early_next
         now += timedelta(seconds=4)
         assert phase()["phase"] == "audio"
         assert event(0, "next").status_code == 422
@@ -109,7 +110,7 @@ def test_automated_exam_phases_and_resume(
         now += timedelta(seconds=5)
         assert phase()["phase"] == "answering"
         assert phase()["item_remaining_seconds"] == 8
-        assert event(1, "next").status_code == 422
+        # answering 中提前交题（next）已放开，见 test_instruction_skip_and_early_next
         now += timedelta(seconds=10)
         assert phase()["phase"] == "ready"
         assert phase()["current_item_index"] == 1
@@ -132,6 +133,105 @@ def test_automated_exam_phases_and_resume(
         now += timedelta(seconds=10)
         assert event(3, "next").status_code == 200
         assert phase()["ended"] is True
+    finally:
+        _cleanup_classroom(db, classroom["id"])
+        db.delete(passage)
+        db.commit()
+
+
+def test_instruction_skip_and_early_next(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """说明题在 waiting/audio 阶段可跳过朗读；作答题 answering 中可提前交题。"""
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+        )
+    )
+    code = classroom["code"]
+    made = make_student(db, client, code)
+    ids = [uuid.uuid4() for _ in range(3)]
+    passage = Passage(
+        id=ids[1],
+        slug=f"skip-{ids[1]}",
+        title="Read",
+        text="Read this.",
+        cefr_band="B1",
+    )
+    db.add(passage)
+    db.commit()
+    settings = ExamItemSettings(wait_seconds=3, after_audio_seconds=2).model_dump()
+    exercise = ClassroomExercise(
+        classroom_id=uuid.UUID(classroom["id"]),
+        is_exam=True,
+        time_limit_minutes=5,
+        snapshot_items=[
+            {
+                "id": str(item_id),
+                "type": kind,
+                "text": (
+                    "Read this instruction."
+                    if kind == "instruction"
+                    else "Answer this."
+                ),
+                "suggested_seconds": 30,
+                "exam_flow": settings,
+            }
+            for item_id, kind in zip(
+                ids, ["instruction", "passage", "repeat"], strict=True
+            )
+        ],
+    )
+    db.add(exercise)
+    db.flush()
+    row = db.get(Classroom, exercise.classroom_id)
+    assert row is not None
+    row.current_exercise_id = exercise.id
+    db.add(row)
+    db.commit()
+    now = datetime.now(UTC)
+    monkeypatch.setattr(exam, "_now", lambda: now)
+    try:
+        plan = _today(client, made["headers"], code)
+        sid = plan["session_id"]
+
+        def event(index: int, name: str) -> Response:
+            return client.post(
+                f"/api/v1/classes/{code}/exam/flow",
+                json={"session_id": sid, "item_id": str(ids[index]), "event": name},
+                headers=made["headers"],
+            )
+
+        def phase() -> dict[str, object]:
+            return _today(client, made["headers"], code)["exam"]
+
+        assert (
+            client.post(
+                f"/api/v1/classes/{code}/exam/start",
+                json={"session_id": sid},
+                headers=made["headers"],
+            ).status_code
+            == 200
+        )
+        # 说明题：开考即处于 waiting，跳过朗读（audio-ended）直接落 ready
+        assert phase()["phase"] == "waiting"
+        assert event(0, "audio-ended").status_code == 200
+        assert phase()["phase"] == "ready"
+        assert event(0, "next").status_code == 200
+        # 作答题：answering 中提前交题推进题序（录音已先行上传）
+        now += timedelta(seconds=4)
+        assert phase()["phase"] == "answering"
+        assert event(1, "next").status_code == 200
+        assert phase()["current_item_index"] == 2
+        # 作答题的题干音频不能没播就确认：waiting 中 audio-ended 仍被拒
+        assert event(2, "audio-ended").status_code == 422
+        now += timedelta(seconds=4)
+        assert phase()["phase"] == "audio"
+        assert event(2, "audio-ended").status_code == 200
+        assert phase()["phase"] == "buffer"
     finally:
         _cleanup_classroom(db, classroom["id"])
         db.delete(passage)
