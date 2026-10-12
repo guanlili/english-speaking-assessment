@@ -79,7 +79,9 @@ def login_access_token(
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    _record_login_success(f"ip:{client_ip}")
+    # 账号桶整桶清空（成功即本人）；IP 桶只退还本次占用的额度、保留
+    # 失败计数——NAT 出口共享，成功清桶会让「喷洒+成功」交替绕过限流
+    _login_limiter.record_success(f"ip:{client_ip}", refund_only=True)
     _record_login_success(f"user:{account}")
     return Token(
         access_token=security.create_access_token(

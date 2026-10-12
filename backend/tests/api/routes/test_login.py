@@ -352,6 +352,10 @@ def test_login_rate_limit_per_account(client: TestClient) -> None:
     from app.api.routes import login as login_route
 
     try:
+        # 入场先清共享 IP 桶：IP 桶成功只退还额度不清历史（2026-10-12 起），
+        # 前面用例的失败残留会提前触发 IP 维度 429，污染账号维度的计数断言
+        with login_route._login_lock:  # noqa: SLF001
+            login_route._login_attempts.clear()
         for _ in range(login_route.LOGIN_RATE_LIMIT):
             resp = client.post(
                 f"{settings.API_V1_STR}/login/access-token",
@@ -375,5 +379,61 @@ def test_login_rate_limit_per_account(client: TestClient) -> None:
         assert other.status_code == 400
     finally:
         # 清理内存限流表，避免污染同会话后续用例（testclient 共享同一 IP 桶）
+        with login_route._login_lock:
+            login_route._login_attempts.clear()
+
+
+def test_login_ip_bucket_success_refunds_without_clearing_failures(
+    client: TestClient,
+) -> None:
+    """IP 桶语义：成功只退还本次额度、不清失败计数（2026-10-12 评审）。
+
+    持任一有效账号的攻击者交替「喷洒受害者 + 成功登录自己」，成功不能再
+    抹掉同 IP 的失败计数；纯成功流量（NAT 下全班齐登录）各自退还、互不
+    挤占额度。
+    """
+    from app.api.routes import login as login_route
+
+    try:
+        # 9 次喷洒受害者（testclient 共享同一 IP，会灌入 IP 桶）
+        for _ in range(login_route.LOGIN_RATE_LIMIT - 1):
+            resp = client.post(
+                f"{settings.API_V1_STR}/login/access-token",
+                data={"username": "victim-unknown", "password": "wrong"},
+            )
+            assert resp.status_code == 400
+        # 攻击者用自己的有效账号成功登录（旧语义会把 IP 桶整桶清空）
+        ok = client.post(
+            f"{settings.API_V1_STR}/login/access-token",
+            data={
+                "username": settings.FIRST_SUPERUSER,
+                "password": settings.FIRST_SUPERUSER_PASSWORD,
+            },
+        )
+        assert ok.status_code == 200, ok.text
+        # 喷洒继续：第 10 次失败占满窗口，第 11 次被拒——成功没有清掉历史
+        spray_10th = client.post(
+            f"{settings.API_V1_STR}/login/access-token",
+            data={"username": "victim-unknown", "password": "wrong"},
+        )
+        assert spray_10th.status_code == 400
+        blocked = client.post(
+            f"{settings.API_V1_STR}/login/access-token",
+            data={"username": "victim-unknown", "password": "wrong"},
+        )
+        assert blocked.status_code == 429
+        # 正常连续成功不互相挤占：每次成功都退还自己占用的额度
+        with login_route._login_lock:
+            login_route._login_attempts.clear()
+        for _ in range(login_route.LOGIN_RATE_LIMIT + 2):
+            again = client.post(
+                f"{settings.API_V1_STR}/login/access-token",
+                data={
+                    "username": settings.FIRST_SUPERUSER,
+                    "password": settings.FIRST_SUPERUSER_PASSWORD,
+                },
+            )
+            assert again.status_code == 200
+    finally:
         with login_route._login_lock:
             login_route._login_attempts.clear()

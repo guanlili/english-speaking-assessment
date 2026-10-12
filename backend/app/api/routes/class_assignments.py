@@ -141,9 +141,15 @@ def read_exercise_results(
     sessions_by_student: dict[uuid.UUID, PracticeSession] = {}
     if students:
         for ps in session.exec(
-            select(PracticeSession).where(
+            select(PracticeSession)
+            .where(
                 PracticeSession.classroom_id == classroom.id,
                 PracticeSession.assignment_id == exercise.id,
+            )
+            # 无排序时取「最新」靠存储顺序决定——多轮（跨天重发）场景下
+            # 教师端可能把第一轮的缺考/成绩当成最终结果（2026-10-12 评审）
+            .order_by(
+                col(PracticeSession.created_at), col(PracticeSession.session_date)
             )
         ).all():
             # 同学生多轮（跨天重发）取最新
