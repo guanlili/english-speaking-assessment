@@ -22,7 +22,9 @@ export default defineConfig({
   },
   timeout: 30_000,
   retries: 1,
-  workers: 1,
+  // 全局是 worker 池上限，项目级 workers 只能再往下限：池开到 4 供
+  // webkit 并行，chromium 在项目级压回单 worker（见 projects 注释）
+  workers: 4,
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:80",
     locale: "zh-CN",
