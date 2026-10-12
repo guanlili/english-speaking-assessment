@@ -53,9 +53,10 @@ def _ensure_account_reset_allowed(
         raise HTTPException(status_code=403, detail="没有权限：只能重置学生账号的密码")
     if current_user.is_superuser:
         return
+    # join 走 Student.classroom_id 外键推断，不写 onclause（ty 会把列 == 判成 bool）
     other_owners = session.exec(
         select(Classroom.owner_id)
-        .join(Student, Student.classroom_id == Classroom.id)
+        .join(Student)
         .where(
             Student.user_id == user.id,
             Student.classroom_id != classroom_id,

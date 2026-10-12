@@ -495,9 +495,17 @@ def test_stale_recovery_does_not_burn_retry_quota(
         session.commit()
         attempt_id = attempt.id
 
+    # stub 掉投递：恢复会毫秒级同步 submit，MockAsr + 随机 item_id 的
+    # process_attempt 会在断言前把状态推到终态（ContentMissing → failed），
+    # 断言只关心「回队 + 不烧配额 + 重投被发起」本身
+    submitted: list[uuid.UUID] = []
+    monkeypatch.setattr(
+        worker, "submit_attempt_scoring", lambda aid: submitted.append(aid)
+    )
     with Session(db.get_bind()) as session:
         recovered = worker.recover_stale_attempts(session)
     assert recovered == 1
+    assert submitted == [attempt_id]  # 恢复即重投
     with Session(db.get_bind()) as check:
         after = check.get(Attempt, attempt_id)
     assert after is not None

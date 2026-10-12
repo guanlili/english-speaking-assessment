@@ -722,7 +722,7 @@ def test_teacher_cannot_reset_enrolled_admin(
         login = client.post(
             "/api/v1/login/access-token",
             data={
-                "username": admin.email,
+                "username": admin.email or "",
                 "password": DEFAULT_STUDENT_PASSWORD,
             },
         )

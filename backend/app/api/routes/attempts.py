@@ -456,7 +456,7 @@ def create_attempt_upload(
                 .where(PracticeSession.id == session_id)
                 .with_for_update()
             ).first()
-            if locked_session is not None:
+            if locked_session is not None and bound_exercise is not None:
                 # 锁内复查整场截止：音频校验（probe 可达秒级）期间可能跨过
                 # 截止，与预检查同一口径再判一次；纯时间判定不 commit，
                 # 不释放本临界区行锁
