@@ -22,17 +22,23 @@ export default defineConfig({
   },
   timeout: 30_000,
   retries: 1,
-  workers: 1,
+  // 全局是 worker 池上限，项目级 workers 只能再往下限：池开到 4 供
+  // webkit 并行，chromium 在项目级压回单 worker（见 projects 注释）
+  workers: 4,
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:80",
     locale: "zh-CN",
   },
   projects: [
-    { name: "chromium", use: { browserName: "chromium" } },
+    // chromium 打真实 docker 栈 + 共享库：保持单 worker 串行防互踩
+    { name: "chromium", use: { browserName: "chromium" }, workers: 1 },
     {
       name: "webkit",
       use: { browserName: "webkit" },
       grep: /@webkit/,
+      // webkit 层全部是 page.route 网络层 mock：不碰共享后端，浏览器上下文
+      // 天然隔离（storage/route 均按 context），可并行压缩冒烟墙钟
+      workers: 4,
     },
   ],
 })

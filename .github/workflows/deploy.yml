@@ -3,13 +3,27 @@ name: CI & Deploy
 on:
   push:
     branches: [master]
+    # 纯文档/评审产物改动不烧 14 分钟 E2E，也不触发无意义的服务器重启
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "reviews/**"
+      - "prototypes/**"
+      - "gui-test-screenshots/**"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "reviews/**"
+      - "prototypes/**"
+      - "gui-test-screenshots/**"
   workflow_dispatch:
 
-# CI 检查按分支分组排队，不打断进行中的检查
+# CI 检查按分支分组排队；PR 连续推修复时打断过期的全量检查（省 runner
+# 分钟——一次全链路 40+ 分钟），master 与手动触发不打断进行中的检查
 concurrency:
   group: ci-${{ github.repository }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
 
@@ -56,6 +70,14 @@ jobs:
           fi
       - name: 部署配置回归检查
         run: python3 scripts/test_deploy.py
+      - name: 校验 uv.lock 不含镜像源 URL
+        run: |
+          if grep -qE "tuna\.tsinghua|mirrors\.aliyun|mirrors\.cloud\.tencent|mirrors\.163" uv.lock; then
+            echo "❌ uv.lock 内嵌了国内镜像 URL——CI 是海外 runner，下载国内镜像慢且被限流"
+            echo "   （2026-10-12 曾因清华镜像 403 整 job 失败）。请在官方源上重新锁版："
+            echo "   UV_DEFAULT_INDEX=https://pypi.org/simple uv lock"
+            exit 1
+          fi
       - uses: astral-sh/setup-uv@v7
       - name: 准备环境变量
         run: cp .env.example .env
