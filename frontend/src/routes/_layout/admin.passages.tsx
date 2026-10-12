@@ -173,10 +173,11 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
     queryFn: () => AdminService.listScenarios(),
   })
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["admin", "passages"] })
-    void queryClient.invalidateQueries({ queryKey: ["admin", "units"] })
-  }
+  const invalidate = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["admin", "passages"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin", "units"] }),
+    ])
 
   const createMutation = useMutation({
     mutationFn: (form: PassageForm) =>
@@ -985,7 +986,12 @@ function PassageCard({
           <p className="whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-sm [overflow-wrap:anywhere]">
             {passage.text}
           </p>
-          <ReadingSentences segments={passage.reading_segments ?? []} />
+          <ReadingSentences
+            segments={passage.reading_segments ?? []}
+            seconds={passage.reading_sentence_seconds}
+            passageId={passage.id}
+            onMutated={onMutated}
+          />
           <PassageSentences passage={passage} onMutated={onMutated} />
         </CardContent>
       )}

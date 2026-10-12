@@ -456,6 +456,7 @@ export type PassagePublic = {
     audio_url?: (string | null);
     suggested_seconds?: number;
     is_active?: boolean;
+    reading_sentence_seconds?: (Array<(number | null)> | null);
     id: string;
     slug: string;
     reading_split?: boolean;
@@ -481,6 +482,8 @@ export type PassageSplitResult = {
  * 更新篇目请求：缺省不修改；translation/audio_url/unit_id 可 null 清空。
  */
 export type PassageUpdate = {
+    reading_sentence_seconds?: (Array<(number | null)> | null);
+    reading_sentence_texts?: (Array<(string)> | null);
     title?: (string | null);
     topic?: (string | null);
     cefr_band?: (string | null);
@@ -501,6 +504,7 @@ export type PassageWithSentences = {
     audio_url?: (string | null);
     suggested_seconds?: number;
     is_active?: boolean;
+    reading_sentence_seconds?: (Array<(number | null)> | null);
     id: string;
     slug: string;
     reading_split?: boolean;

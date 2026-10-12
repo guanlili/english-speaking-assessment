@@ -1,8 +1,10 @@
 import uuid
 from datetime import UTC, date, datetime
+from typing import Annotated
 
 from fastapi import HTTPException
 from pydantic import EmailStr, field_validator
+from pydantic import Field as PydanticField
 from sqlalchemy import JSON, Column, Date, DateTime, Index, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
 
@@ -111,12 +113,18 @@ class PassageBase(SQLModel):
     is_active: bool = True
 
 
+ReadingSentenceSeconds = Annotated[int, PydanticField(strict=True, ge=1, le=180)]
+
+
 class Passage(PassageBase, table=True):
+    reading_sentence_seconds: list[ReadingSentenceSeconds | None] | None = Field(
+        default=None, sa_type=JSON
+    )
     exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     slug: str = Field(unique=True, index=True, max_length=100)
-    # 拆句只用于文章内部展示；文章始终是一道朗读题。
+    # 题库保留整篇文章；发布/学生题单按句展开为独立朗读题。
     reading_split: bool = False
     # 旧版拆分产生的独立篇目保留 ID/历史，归入原文章后不再单独选题。
     parent_passage_id: uuid.UUID | None = Field(
@@ -133,6 +141,7 @@ class Passage(PassageBase, table=True):
 
 
 class PassagePublic(PassageBase):
+    reading_sentence_seconds: list[ReadingSentenceSeconds | None] | None = None
     id: uuid.UUID
     slug: str
     reading_split: bool = False

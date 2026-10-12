@@ -81,7 +81,13 @@ def expand_reading_items(passage: Passage) -> list[dict[str, object]]:
             # 整篇中文提示/标准音对单句不对位，不透传
             "translation": None,
             "audio_url": None,
-            "suggested_seconds": _sentence_seconds(sentence),
+            "suggested_seconds": (
+                passage.reading_sentence_seconds[index]
+                if passage.reading_sentence_seconds
+                and index < len(passage.reading_sentence_seconds)
+                and passage.reading_sentence_seconds[index] is not None
+                else _sentence_seconds(sentence)
+            ),
             "title": passage.title,
             "topic": passage.topic,
         }

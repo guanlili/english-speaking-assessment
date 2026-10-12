@@ -74,7 +74,10 @@ export function ReadingPassagePicker({
       {expanded && (
         <div id={`pick-article-content-${passage.id}`} className="border-t p-3">
           {segments.length > 0 ? (
-            <ReadingSentences segments={segments} />
+            <ReadingSentences
+              segments={segments}
+              seconds={passage.reading_sentence_seconds}
+            />
           ) : (
             <p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">
               {passage.text}
