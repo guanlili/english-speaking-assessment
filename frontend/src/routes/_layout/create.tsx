@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router"
 import { ArrowLeft } from "lucide-react"
 import { useState } from "react"
 import { SentenceLibrary } from "@/components/Teaching/SentenceLibrary"
+import { TeachingPageHeader } from "@/components/Teaching/TeachingPageHeader"
 import { Button } from "@/components/ui/button"
 import { APP_NAME } from "@/config"
 import { useI18n } from "@/lib/i18n"
@@ -33,12 +34,12 @@ function QuestionLibrary() {
   const { classroom } = Route.useSearch()
   const [qaMode, setQaMode] = useState<"topics" | "questions">("topics")
   return (
-    <div className="space-y-9">
+    <div className="space-y-6">
       {classroom && (
         <Link
           to="/t/$code"
           params={{ code: classroom }}
-          className="inline-flex items-center gap-2 text-sm font-medium text-primary"
+          className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary"
         >
           <ArrowLeft className="size-4" />
           {t({
@@ -47,44 +48,76 @@ function QuestionLibrary() {
           })}
         </Link>
       )}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="mb-2 text-xs font-semibold tracking-widest text-primary">
-            {t({ zh: "准备教学内容", en: "Prepare teaching content" })}
-          </p>
-          <h1 className="text-3xl font-bold">
-            {t({ zh: "题目库", en: "Question Bank" })}
-          </h1>
-          <p className="mt-3 text-sm text-muted-foreground">
-            {t({
-              zh: "按「主题 → 篇目 → 句子」三层组织：主题（单元）归组篇目，篇目下管理听句复述；情景问答按主题独立配套。",
-              en: "Organized in three layers — topic → passage → sentence: units group passages, passages hold their repeat sentences, and Scenario Q&A pairs by topic.",
-            })}
-          </p>
-        </div>
-        {!classroom && (
-          <Button asChild variant="outline">
-            <Link to="/classrooms">
-              {t({
-                zh: "去课堂安排练习",
-                en: "Assign practice in classrooms",
-              })}
-            </Link>
-          </Button>
-        )}
-      </div>
+      <TeachingPageHeader
+        eyebrow={t({ zh: "准备教学内容", en: "Prepare teaching content" })}
+        title={t({ zh: "题目库", en: "Question Bank" })}
+        description={t({
+          zh: "按题型准备教学材料，用主题和单元组织内容，再进入课堂选题发布。",
+          en: "Prepare materials by question type, organize them into topics and units, then select and publish in your classroom.",
+        })}
+        actions={
+          !classroom && (
+            <Button asChild variant="secondary">
+              <Link to="/classrooms">
+                {t({
+                  zh: "去课堂安排练习",
+                  en: "Assign practice in classrooms",
+                })}
+              </Link>
+            </Button>
+          )
+        }
+      />
+      <nav
+        aria-label={t({ zh: "题目库分区", en: "Question bank sections" })}
+        className="flex flex-wrap gap-2 rounded-xl border bg-card p-3"
+      >
+        {[
+          { id: "bank-topics", zh: "主题 · 单元", en: "Topics · Units" },
+          { id: "bank-passages", zh: "文章朗读", en: "Read Aloud" },
+          { id: "bank-repeat", zh: "听句复述", en: "Listen & Repeat" },
+          { id: "bank-qa", zh: "情景问答", en: "Scenario Q&A" },
+        ].map((section, index) => (
+          <a
+            key={section.id}
+            href={`#${section.id}`}
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg px-4 text-sm font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary"
+          >
+            <span className="text-xs text-muted-foreground">0{index + 1}</span>
+            {t(section)}
+          </a>
+        ))}
+      </nav>
 
       {/* 第 1 层：主题（单元） */}
-      <section aria-labelledby="bank-topics" className="space-y-4">
-        <h2 id="bank-topics" className="text-lg font-semibold">
+      <section
+        aria-labelledby="bank-topics"
+        className="scroll-mt-6 space-y-4 rounded-2xl border border-primary/10 bg-card p-4 shadow-sm sm:p-6"
+      >
+        <h2
+          id="bank-topics"
+          className="scroll-mt-6 text-lg font-semibold text-primary"
+        >
           {t({ zh: "主题 · 单元", en: "Topics · Units" })}
         </h2>
+        <p className="text-xs text-muted-foreground lg:hidden">
+          {t({
+            zh: "横向滑动单元表格，可查看状态与编辑操作。",
+            en: "Swipe the units table sideways to see status and editing actions.",
+          })}
+        </p>
         <UnitsAdmin embedded />
       </section>
 
       {/* 第 2 层：篇目（展开后内联管理第 3 层：句子） */}
-      <section aria-labelledby="bank-passages" className="space-y-4">
-        <h2 id="bank-passages" className="text-lg font-semibold">
+      <section
+        aria-labelledby="bank-passages"
+        className="scroll-mt-6 space-y-4 rounded-2xl border border-primary/10 bg-card p-4 shadow-sm sm:p-6"
+      >
+        <h2
+          id="bank-passages"
+          className="scroll-mt-6 text-lg font-semibold text-primary"
+        >
           {t({ zh: "文章朗读 · 篇目", en: "Read Aloud · Passages" })}
         </h2>
         <p className="text-sm text-muted-foreground">
@@ -97,14 +130,26 @@ function QuestionLibrary() {
       </section>
 
       {/* 不挂篇目的分级考试复述句 */}
-      <SentenceLibrary standaloneOnly />
+      <section
+        id="bank-repeat"
+        aria-label={t({ zh: "听句复述", en: "Listen & Repeat" })}
+        className="scroll-mt-6 rounded-2xl border border-primary/10 bg-card p-4 shadow-sm sm:p-6"
+      >
+        <SentenceLibrary standaloneOnly />
+      </section>
 
       {/* 情景问答：主题 → 问法，独立配套 */}
-      <section aria-labelledby="bank-qa" className="space-y-4">
-        <h2 id="bank-qa" className="text-lg font-semibold">
+      <section
+        aria-labelledby="bank-qa"
+        className="scroll-mt-6 space-y-4 rounded-2xl border border-primary/10 bg-card p-4 shadow-sm sm:p-6"
+      >
+        <h2
+          id="bank-qa"
+          className="scroll-mt-6 text-lg font-semibold text-primary"
+        >
           {t({ zh: "情景问答", en: "Scenario Q&A" })}
         </h2>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 rounded-xl bg-muted/50 p-2 [&_button]:min-h-11">
           <Button
             variant={qaMode === "topics" ? "secondary" : "ghost"}
             onClick={() => setQaMode("topics")}

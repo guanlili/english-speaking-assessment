@@ -3,6 +3,7 @@ import { createFileRoute, Link, useParams } from "@tanstack/react-router"
 import { ApiError, ClassesService } from "@/client"
 import TrailView from "@/components/Practice/TrailView"
 import { StudentSessionHistory } from "@/components/Teaching/StudentSessionHistory"
+import { TeachingPageHeader } from "@/components/Teaching/TeachingPageHeader"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { APP_NAME } from "@/config"
@@ -39,7 +40,7 @@ function StudentDetailPage() {
 
   if (trailQuery.isPending) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+      <div className="flex min-h-dvh items-center justify-center text-muted-foreground">
         {t({ zh: "正在加载进步轨迹…", en: "Loading progress trail…" })}
       </div>
     )
@@ -48,7 +49,7 @@ function StudentDetailPage() {
     const status =
       trailQuery.error instanceof ApiError ? trailQuery.error.status : undefined
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 text-muted-foreground">
         {status === 403
           ? t({
               zh: "你还不是这个课堂的授权教师，无法查看学生数据。",
@@ -75,29 +76,28 @@ function StudentDetailPage() {
     : trail.display_name
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">{name}</h1>
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              {t({
-                zh: `课堂 ${trail.classroom_code}`,
-                en: `Classroom ${trail.classroom_code}`,
-              })}
-              {boardRow?.inactive_days7 && (
-                <Badge variant="destructive">
-                  {t({ zh: "7 日未练", en: "Inactive 7 Days" })}
-                </Badge>
-              )}
-            </p>
-          </div>
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/t/$code" params={{ code }}>
-              {t({ zh: "回面板", en: "Back to Dashboard" })}
-            </Link>
-          </Button>
-        </div>
+    <div className="bg-background">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+        <TeachingPageHeader
+          eyebrow={t({ zh: "学生学习档案", en: "Student learning profile" })}
+          title={name}
+          description={t({
+            zh: `课堂 ${trail.classroom_code} · 进步轨迹与历史反馈`,
+            en: `Classroom ${trail.classroom_code} · Progress and past feedback`,
+          })}
+          actions={
+            <Button variant="secondary" asChild>
+              <Link to="/t/$code" params={{ code }}>
+                {t({ zh: "回面板", en: "Back to Dashboard" })}
+              </Link>
+            </Button>
+          }
+        />
+        {boardRow?.inactive_days7 && (
+          <Badge variant="secondary">
+            {t({ zh: "7 日未练", en: "Inactive 7 Days" })}
+          </Badge>
+        )}
 
         <TrailView trail={trail} />
         <StudentSessionHistory code={code} studentId={studentId} />

@@ -151,6 +151,17 @@ for (const width of [390, 820, 1180]) {
     await page.setViewportSize({ width, height: 900 })
     const state = await mockTeacher(page)
     await openHistory(page)
+    if (width < 1024) {
+      expect(
+        await page
+          .locator('[data-slot="table-container"]')
+          .evaluateAll((elements) =>
+            elements.every(
+              (element) => element.scrollWidth <= element.clientWidth,
+            ),
+          ),
+      ).toBe(true)
+    }
     await page.getByRole("button", { name: "汇总反馈", exact: true }).click()
     const dialog = page.getByRole("dialog")
     await expect(dialog.getByText("Saved rule advice old-1")).toBeVisible()
