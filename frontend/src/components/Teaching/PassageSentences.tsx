@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
 import { EXAM_LEVEL_LABELS, TERMS, VOCAB_LEVEL_ORDER } from "@/lib/terms"
+import { extractErrorMessage } from "@/utils"
 
 /** 篇目卡内联的复述句管理（题库三层：主题→篇目→句子的最底层）。 */
 export function PassageSentences({
@@ -321,10 +322,7 @@ function SentenceFormDialog({
       onClose()
       onSaved()
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(
-        err.body?.detail ?? t({ zh: "保存失败", en: "Failed to save" }),
-      ),
+    onError: (err: unknown) => showErrorToast(extractErrorMessage(err)),
   })
 
   const valid =

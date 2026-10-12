@@ -38,6 +38,7 @@ import { Textarea } from "@/components/ui/textarea"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
 import { EXAM_LEVEL_LABELS, TERMS, VOCAB_LEVEL_ORDER } from "@/lib/terms"
+import { extractErrorMessage } from "@/utils"
 
 const NO_PASSAGE = "__none__"
 
@@ -78,10 +79,7 @@ export function SentenceLibrary({
       setToDelete(null)
       invalidate()
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(
-        err.body?.detail ?? t({ zh: "删除失败", en: "Failed to delete" }),
-      ),
+    onError: (err: unknown) => showErrorToast(extractErrorMessage(err)),
   })
 
   // ── 编辑（与文章朗读编辑弹窗同款：铅笔入口 + 全字段）──
@@ -126,10 +124,7 @@ export function SentenceLibrary({
       setEditing(null)
       invalidate()
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(
-        err.body?.detail ?? t({ zh: "更新失败", en: "Failed to update" }),
-      ),
+    onError: (err: unknown) => showErrorToast(extractErrorMessage(err)),
   })
   const editValid =
     editForm.text.trim().length > 0 &&
@@ -494,10 +489,7 @@ function AutoSplitCard({
       setPassageId("")
       onCreated()
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(
-        err.body?.detail ?? t({ zh: "拆分失败", en: "Split failed" }),
-      ),
+    onError: (err: unknown) => showErrorToast(extractErrorMessage(err)),
   })
 
   return (
@@ -594,10 +586,7 @@ function NewSentenceCard({
       setExamLevel("")
       onCreated()
     },
-    onError: (err: { body?: { detail?: string } }) =>
-      showErrorToast(
-        err.body?.detail ?? t({ zh: "创建失败", en: "Failed to create" }),
-      ),
+    onError: (err: unknown) => showErrorToast(extractErrorMessage(err)),
   })
 
   const valid =

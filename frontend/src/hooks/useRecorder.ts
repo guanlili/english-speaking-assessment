@@ -245,9 +245,16 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       setStatus("recording")
       recorder.start(250)
       recorderRef.current = recorder
+      // 心跳保持 250ms 用于到时判定；elapsed 只在整秒变化时更新——
+      // 250ms 粒度的 state 变化会把整个练习页拖成每秒 4 次重渲染
+      const lastWholeSec = { value: -1 }
       timerRef.current = window.setInterval(() => {
         const seconds = (Date.now() - startedAtRef.current) / 1000
-        setElapsed(seconds)
+        const whole = Math.floor(seconds)
+        if (whole !== lastWholeSec.value) {
+          lastWholeSec.value = whole
+          setElapsed(seconds)
+        }
         if (seconds >= limitSeconds) {
           stop()
         }

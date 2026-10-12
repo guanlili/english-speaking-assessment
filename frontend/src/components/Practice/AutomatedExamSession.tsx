@@ -67,7 +67,15 @@ export default function AutomatedExamSession({
     queryFn: () =>
       ClassesService.readTodayPlan({ code, sessionId: initialPlan.session_id }),
     initialData: initialPlan,
-    refetchInterval: 1000,
+    // 全量 plan 的 1Hz 轮询只在考试进行中有价值；未开考/已结束/断网时
+    // 降频（40 人班级并发考试时后端 QPS 直接砍掉大半，与其它页面的
+    // 条件轮询范式对齐：练习页 2s/30s、教师板 5s/20s）
+    refetchInterval: (query) => {
+      if (query.state.error) return 3000
+      const examState = query.state.data?.exam
+      if (!examState?.started || examState.ended) return 3000
+      return 1000
+    },
     retry: 1,
   })
   const plan = query.data

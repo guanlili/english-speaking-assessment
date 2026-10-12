@@ -8,6 +8,7 @@ EIP 文本只进数据库，不进 git。
     /admin/classrooms          课堂码列表 / 停用
 """
 
+import logging
 import uuid
 from typing import Any, Literal
 
@@ -56,6 +57,8 @@ from app.models import (
 from app.services import reading
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+logger = logging.getLogger(__name__)
 
 VALID_BANDS = {"A2", "B1", "B2"}
 
@@ -1217,8 +1220,18 @@ def generate_questions(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001 - 无密钥/调用失败 → 503
-        raise HTTPException(status_code=503, detail=f"AI 生成暂不可用：{exc}") from exc
+    except Exception:  # noqa: BLE001 - 无密钥/调用失败 → 503
+        # 异常原文（上游响应片段/内部路径）只进日志；前端把 detail 映射成
+        # 双语稳定文案（vocab_ai 路由同款范式，2026-10-12 评审）
+        logger.warning(
+            "AI question draft failed scenario=%s band=%s",
+            scenario_id,
+            body.band,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503, detail="AI 生成暂不可用，请稍后再试"
+        ) from None
     return [
         DraftQuestionOut(text=d.text, suggested_seconds=d.suggested_seconds)
         for d in drafts
