@@ -50,6 +50,53 @@ def _seconds(value: object, fallback: int) -> int:
     return min(300, seconds) if seconds >= 1 else fallback
 
 
+def _merge_first_submitted(
+    target: dict[tuple[str, uuid.UUID], datetime],
+    key: tuple[str, uuid.UUID],
+    created_at: datetime,
+) -> None:
+    target[key] = min(target.get(key, created_at), created_at)
+
+
+def first_submitted_by_session(
+    db: Session, session_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, dict[tuple[str, uuid.UUID], datetime]]:
+    """多会话一次预取首答/ack 时间（列裁剪，不载大 JSON）。
+
+    监考板、结果页等按学生循环的场景用它替代逐会话查询的 N+1；
+    口径与 item_windows 单会话路径完全一致。
+    """
+    result: dict[uuid.UUID, dict[tuple[str, uuid.UUID], datetime]] = {}
+    if not session_ids:
+        return result
+    for sid, item_type, item_id, created_at in db.exec(
+        select(
+            Attempt.session_id,
+            Attempt.item_type,
+            Attempt.item_id,
+            Attempt.created_at,
+        ).where(col(Attempt.session_id).in_(session_ids))
+    ).all():
+        if created_at is None:
+            continue
+        per_session = result.setdefault(sid, {})
+        _merge_first_submitted(per_session, (item_type, item_id), created_at)
+    for sid, item_id, created_at in db.exec(
+        select(
+            InstructionAck.session_id,
+            InstructionAck.item_id,
+            InstructionAck.created_at,
+        ).where(col(InstructionAck.session_id).in_(session_ids))
+    ).all():
+        if created_at is None:
+            continue
+        per_session = result.setdefault(sid, {})
+        _merge_first_submitted(
+            per_session, (AttemptItemType.INSTRUCTION, item_id), created_at
+        )
+    return result
+
+
 def item_windows(
     db: Session, practice_session: PracticeSession, exercise: ClassroomExercise
 ) -> list[ExamItemWindow]:
@@ -58,31 +105,21 @@ def item_windows(
     提前提交即开始下一题；未答题到期后按原截止时间推进。
     queued/failed 都是已提交的一次作答，不等待评分，也不能重答。
     """
+    first_submitted = first_submitted_by_session(db, [practice_session.id]).get(
+        practice_session.id, {}
+    )
+    return windows_from_first(practice_session, exercise, first_submitted)
+
+
+def windows_from_first(
+    practice_session: PracticeSession,
+    exercise: ClassroomExercise,
+    first_submitted: dict[tuple[str, uuid.UUID], datetime],
+) -> list[ExamItemWindow]:
+    """item_windows 的纯计算部分：接受预取的首答时间，不查库。"""
     cursor = practice_session.exam_started_at
     if cursor is None:
         return []
-    attempts = db.exec(
-        select(Attempt).where(Attempt.session_id == practice_session.id)
-    ).all()
-    first_submitted: dict[tuple[str, uuid.UUID], datetime] = {}
-    for attempt in attempts:
-        if attempt.created_at is not None:
-            key = (attempt.item_type, attempt.item_id)
-            first_submitted[key] = min(
-                first_submitted.get(key, attempt.created_at), attempt.created_at
-            )
-    # 题目说明无作答：学生点「继续」的 ack 等价于首答时间（提前确认即开下一题窗）
-    acks = db.exec(
-        select(InstructionAck).where(
-            InstructionAck.session_id == practice_session.id  # type: ignore[arg-type]
-        )
-    ).all()
-    for ack in acks:
-        if ack.created_at is not None:
-            key = (AttemptItemType.INSTRUCTION, ack.item_id)
-            first_submitted[key] = min(
-                first_submitted.get(key, ack.created_at), ack.created_at
-            )
     windows = []
     for item in exercise.snapshot_items:
         item_type = str(item.get("type", ""))
@@ -280,36 +317,84 @@ def ensure_exam_started(
     db.refresh(practice_session)
 
 
+def _exam_end_at(
+    practice_session: PracticeSession,
+    exercise: ClassroomExercise,
+    now: datetime,
+    first_submitted: dict[tuple[str, uuid.UUID], datetime],
+) -> datetime | None:
+    """到时判定（纯计算，不查库）：整场截止到点，或 legacy 模考全部题
+    已交（含补传宽限）时提前收卷。自动考试（exam_flow）的 exam_ended_at
+    由末题 Next 写入，这里只看整场截止。"""
+    deadline = exam_deadline(practice_session, exercise)
+    if deadline is None:
+        return None
+    end = deadline if now >= deadline else None
+    if not exam_flow.enabled(exercise):
+        windows = windows_from_first(practice_session, exercise, first_submitted)
+        if windows and all(
+            window.submitted or now >= window.deadline for window in windows
+        ):
+            last = windows[-1]
+            if last.submitted or now >= last.deadline + timedelta(
+                seconds=UPLOAD_GRACE_SECONDS
+            ):
+                end = min(deadline, last.finished_at)
+    return end
+
+
 def finalize_if_expired(
     db: Session, practice_session: PracticeSession, exercise: ClassroomExercise
 ) -> bool:
     """到时惰性终结：返回 True 表示本次调用终结了会话（刚到时）。"""
     if not exercise.is_exam or practice_session.exam_ended_at is not None:
         return False
-    deadline = exam_deadline(practice_session, exercise)
-    if deadline is None:
-        return False
-    now = _now()
-    end = deadline if now >= deadline else None
-    windows = (
-        []
-        if exam_flow.enabled(exercise)
-        else item_windows(db, practice_session, exercise)
+    first = first_submitted_by_session(db, [practice_session.id]).get(
+        practice_session.id, {}
     )
-    if windows and all(
-        window.submitted or now >= window.deadline for window in windows
-    ):
-        last = windows[-1]
-        if last.submitted or now >= last.deadline + timedelta(
-            seconds=UPLOAD_GRACE_SECONDS
-        ):
-            end = min(deadline, last.finished_at)
+    end = _exam_end_at(practice_session, exercise, _now(), first)
     if end is None:
         return False
     practice_session.exam_ended_at = end
     db.add(practice_session)
     db.commit()
     return True
+
+
+def finalize_if_expired_batch(
+    db: Session,
+    sessions: list[PracticeSession],
+    exercise: ClassroomExercise,
+    first_by_session: dict[uuid.UUID, dict[tuple[str, uuid.UUID], datetime]],
+) -> int:
+    """监考板/结果页批量终结：首答时间预取后纯计算，单次 commit。
+
+    替代循环内逐会话 finalize（每会话 2 条查询 + 整行大 JSON 加载 +
+    循环内 commit）；first_by_session 用 first_submitted_by_session 预取。
+    """
+    if not exercise.is_exam:
+        return 0
+    now = _now()
+    changed = False
+    finalized = 0
+    for practice_session in sessions:
+        if practice_session.exam_ended_at is not None:
+            continue
+        end = _exam_end_at(
+            practice_session,
+            exercise,
+            now,
+            first_by_session.get(practice_session.id, {}),
+        )
+        if end is None:
+            continue
+        practice_session.exam_ended_at = end
+        db.add(practice_session)
+        changed = True
+        finalized += 1
+    if changed:
+        db.commit()
+    return finalized
 
 
 def exam_remaining_seconds(

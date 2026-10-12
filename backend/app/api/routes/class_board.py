@@ -214,6 +214,22 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                 continue
         session_by_student[sid] = sessions[-1]
 
+    # 模考批量终结：预取全班首答后纯计算、单次 commit——替代下方学生循环
+    # 内的逐会话 finalize（每会话 2 条查询 + 整行大 JSON，监考轮询热路径）
+    if current_exercise is not None and current_exercise.is_exam:
+        started_exam_sessions = [
+            ps
+            for ps in session_by_student.values()
+            if ps is not None and ps.exam_started_at is not None
+        ]
+        if started_exam_sessions:
+            first_by_session = exam_service.first_submitted_by_session(
+                session, [ps.id for ps in started_exam_sessions]
+            )
+            exam_service.finalize_if_expired_batch(
+                session, started_exam_sessions, current_exercise, first_by_session
+            )
+
     # 7 日未练口径：加入超过 7 天且窗口内无任何作答（US-10 简化实现）
 
     now = datetime.now(ZoneInfo(settings.PRACTICE_TZ))
@@ -466,7 +482,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         if current_exercise is not None and current_exercise.is_exam:
             ps = session_by_student.get(student.id)
             if ps is not None and ps.exam_started_at is not None:
-                exam_service.finalize_if_expired(session, ps, current_exercise)
+                # 终结已在循环外批量完成；这里只读字段
                 exam_switches = ps.tab_switch_count
                 exam_switch_seconds = ps.tab_switch_seconds
                 exam_used = exam_service.exam_time_used_seconds(ps)

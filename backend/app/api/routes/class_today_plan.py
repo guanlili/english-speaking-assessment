@@ -108,6 +108,12 @@ def read_today_plan(
         exam_info = exam_service.exam_status_payload(
             session, practice_session, bound_exercise
         )
+    # 反馈遮罩判定提前：考试终结前跳过激励结算——settle 会按分数落
+    # stars/XP，GamificationInfo 直出 practice_session.stars 会把分数档
+    # （≥85→3 星）提前泄露给考生本人，XP 同步跳变（2026-10-12 评审）
+    feedback_locked = exam_service.exam_feedback_locked(
+        session, practice_session, bound_exercise
+    )
 
     items: list[PlanItem] = []
     expected_items = 0
@@ -288,18 +294,21 @@ def read_today_plan(
         ]
         expected_items = len(items)
 
-    # 激励结算（幂等）：本轮全部终态时计算星/XP/连胜/徽章
+    # 激励结算（幂等）：本轮全部终态时计算星/XP/连胜/徽章。
+    # 考试反馈遮罩期间跳过：结算产物（stars/XP）会绕过 attempts 遮罩
+    # 提前泄露分数档；考试终结后下一次 /today 自然补结算
     # expected_items 严格按本轮题单，额外换题/问答题不顶替必做题；
     # 题目说明无作答，不进必做集合
     required_ids = {it.id for it in items if it.type != AttemptItemType.INSTRUCTION}
-    settle_session(
-        session,
-        practice_session,
-        student,
-        today,
-        expected_items,
-        required_item_ids=required_ids,
-    )
+    if not feedback_locked:
+        settle_session(
+            session,
+            practice_session,
+            student,
+            today,
+            expected_items,
+            required_item_ids=required_ids,
+        )
 
     # 结算可能已写入 stars/xp 并 commit；刷新对象确保返回最新
     session.refresh(student)
@@ -360,9 +369,6 @@ def read_today_plan(
 
     # 模考反馈遮罩（服务端口径）：考试终结前学生只能拿到作答状态回执，
     # 分数/转写/建议等反馈字段一律不下发——前端不显示不构成安全边界
-    feedback_locked = exam_service.exam_feedback_locked(
-        session, practice_session, bound_exercise
-    )
     full_attempts = [
         PlanAttempt(
             item_id=a.item_id,
@@ -430,7 +436,9 @@ def read_today_plan(
         gamification=GamificationInfo(
             xp=student.xp,
             streak_days=student.streak_days,
-            session_stars=practice_session.stars,
+            # 纵深防御：结算已按 feedback_locked 跳过，这里再遮一层——
+            # 任何路径提前写下的 stars 都不得在考试终结前下发分数档
+            session_stars=(None if feedback_locked else practice_session.stars),
             badges=badges,
         ),
     )

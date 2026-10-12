@@ -359,12 +359,15 @@ def create_attempt_upload(
     # 模考门禁：整场限时（服务端强约束）+ 每题一次作答。
     # 放在幂等检查之后：同一次录音断网重试（同幂等键）不受影响
     exam_one_attempt = False
+    exam_assignment_id: uuid.UUID | None = None
     if session_id is not None:
         exam_session = session.get(PracticeSession, session_id)
         if exam_session is not None and exam_session.assignment_id is not None:
             bound_exercise = session.get(ClassroomExercise, exam_session.assignment_id)
             if bound_exercise is not None and bound_exercise.is_exam:
-                # 串行化同一考试会话的提交，防止并发新幂等键绕过每题一次门禁。
+                # 预检阶段串行化：锁内在锁外各查一次幂等/每题一次，快速
+                # 拦掉大多数重复；事务边界① 即释放。并发封口以边界②后的
+                # 「锁内复查 + 插入」新短事务为准（毫秒级临界区）
                 session.refresh(exam_session, with_for_update=True)
                 if idempotency_key:
                     existing = _idempotent_existing(
@@ -393,8 +396,20 @@ def create_attempt_upload(
                     session, exam_session, bound_exercise, item_type, item_id
                 )
                 exam_one_attempt = True
+                exam_assignment_id = exam_session.assignment_id
+
+    # 事务边界①：门禁与临界区判断全部完成——立即提交，释放考试会话行锁
+    # 与连接。后续读 body / ffprobe（可达 15 秒）/落盘不得占用连接：40 人
+    # 自动考试同步上传时池上限 30 会被打穿，且 /today 每秒轮询的 settle
+    # 要争同一行锁。真正的并发封口是边界②之后「锁内复查 + 插入」的
+    # 毫秒级新短事务（每题一次的判定在那里重做一遍）
+    student_id = student.id if student is not None else None
+    session.commit()
 
     item_snapshot = _snapshot_attempt_item(session, item_type, item_id, session_id)
+    # 事务边界②：快照查询开启的只读事务到此为止——body 读取与 probe
+    # 全程零事务零连接
+    session.commit()
 
     if duration_s < MIN_DURATION_S:
         raise HTTPException(status_code=422, detail="录音太短（不足 1 秒），请再录一次")
@@ -448,6 +463,9 @@ def create_attempt_upload(
             detail="评分队列繁忙，请稍后重试",
         )
 
+    # 事务边界③：队列计数的只读事务结束，落盘在事务外（本地磁盘写也
+    # 不占连接）
+    session.commit()
     audio_path = save_audio_file(audio_bytes, mime_type)
     # 模考同题并发兜底：上面的 already 检查是 check-then-insert，双击/断网重试
     # 并发时两个请求都能通过预检查。对考试会话行加锁后复查——锁只包住
@@ -459,6 +477,9 @@ def create_attempt_upload(
     # _delete_unreferenced_audio 会放行），评分投递失败由恢复机制接手
     try:
         if exam_one_attempt and session_id is not None:
+            # 新短事务：先取发布快照（无锁读），再锁会话行做毫秒级
+            # 「复查 + 插入」临界区
+            bound_exercise = session.get(ClassroomExercise, exam_assignment_id)
             locked_session = session.exec(
                 select(PracticeSession)
                 .where(PracticeSession.id == session_id)
@@ -482,7 +503,7 @@ def create_attempt_upload(
         attempt = Attempt(
             item_type=item_type,
             item_id=item_id,
-            student_id=student.id if student is not None else None,
+            student_id=student_id,
             session_id=session_id,
             idempotency_key=idempotency_key,
             item_snapshot=item_snapshot,
