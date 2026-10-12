@@ -469,3 +469,149 @@ def test_whole_deadline_boundary_blocks_first_upload(
         _cleanup_classroom(db, classroom["id"])
         db.delete(passage)
         db.commit()
+
+
+@pytest.mark.parametrize("kind", ["instruction", "repeat", "question"])
+def test_publish_automated_exam_requires_prompt_audio(
+    kind: str,
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    from app.models import Instruction, RepeatSentence, Scenario, ScenarioQuestion
+
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+        )
+    )
+    passage = Passage(
+        slug=f"audio-{uuid.uuid4()}", title="Read", text="Read this.", cefr_band="B1"
+    )
+    scenario = Scenario(topic=f"audio-{uuid.uuid4()}")
+    db.add_all([passage, scenario])
+    db.flush()
+    source = (
+        Instruction(text="Listen carefully.")
+        if kind == "instruction"
+        else RepeatSentence(order_index=0, text="Repeat this sentence.")
+        if kind == "repeat"
+        else ScenarioQuestion(
+            scenario_id=scenario.id, text="Tell me about your school."
+        )
+    )
+    db.add(source)
+    db.commit()
+    endpoint = f"/api/v1/classes/{classroom['code']}/assignment"
+    items = [
+        {"type": kind, "id": str(source.id)},
+        {"type": "passage", "id": str(passage.id)},
+    ]
+
+    def publish(**options: object) -> Response:
+        return client.put(
+            endpoint, json={"items": items, **options}, headers=superuser_token_headers
+        )
+
+    try:
+        # Practice and existing non-automated exam publishing retain their rules.
+        assert publish().status_code == 200
+        assert publish(is_exam=True, time_limit_minutes=5).status_code == 200
+        row = db.get(Classroom, uuid.UUID(classroom["id"]))
+        assert row is not None
+        db.refresh(row)
+        previous_id = row.current_exercise_id
+        response = publish(is_exam=True, automated_exam=True, time_limit_minutes=5)
+        assert response.status_code == 422
+        assert response.json()["detail"] == "Automated exam audio missing: 1"
+        db.refresh(row)
+        assert row.current_exercise_id == previous_id
+        previous = db.get(ClassroomExercise, previous_id)
+        assert previous is not None and previous.status == "published"
+
+        source.exam_settings = {"audio_url": "/api/v1/audio/content/exam.wav"}
+        db.add(source)
+        db.commit()
+        response = publish(is_exam=True, automated_exam=True, time_limit_minutes=5)
+        assert response.status_code == 200, response.text
+        db.refresh(row)
+        exercise = db.get(ClassroomExercise, row.current_exercise_id)
+        assert exercise is not None
+        assert (
+            exercise.snapshot_items[0]["audio_url"] == "/api/v1/audio/content/exam.wav"
+        )
+        source.exam_settings = {"audio_url": "/api/v1/audio/content/replacement.wav"}
+        db.add(source)
+        db.commit()
+        db.refresh(exercise)
+        assert (
+            exercise.snapshot_items[0]["audio_url"] == "/api/v1/audio/content/exam.wav"
+        )
+    finally:
+        _cleanup_classroom(db, classroom["id"])
+        db.delete(source)
+        db.commit()
+        db.delete(scenario)
+        db.delete(passage)
+        db.commit()
+
+
+@pytest.mark.parametrize("kind", ["repeat", "question"])
+def test_publish_automated_exam_accepts_existing_standard_audio(
+    kind: str,
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    from app.models import RepeatSentence, Scenario, ScenarioQuestion
+
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+        )
+    )
+    scenario = Scenario(topic=f"standard-{uuid.uuid4()}")
+    db.add(scenario)
+    db.flush()
+    source = (
+        RepeatSentence(
+            order_index=0,
+            text="Repeat this sentence.",
+            audio_url="/api/v1/audio/content/standard.wav",
+        )
+        if kind == "repeat"
+        else ScenarioQuestion(
+            scenario_id=scenario.id,
+            text="Tell me about your school.",
+            audio_url="/api/v1/audio/content/standard.wav",
+        )
+    )
+    db.add(source)
+    db.commit()
+    try:
+        response = client.put(
+            f"/api/v1/classes/{classroom['code']}/assignment",
+            json={
+                "items": [{"type": kind, "id": str(source.id)}],
+                "is_exam": True,
+                "automated_exam": True,
+                "time_limit_minutes": 5,
+            },
+            headers=superuser_token_headers,
+        )
+        assert response.status_code == 200, response.text
+        row = db.get(Classroom, uuid.UUID(classroom["id"]))
+        assert row is not None
+        db.refresh(row)
+        exercise = db.get(ClassroomExercise, row.current_exercise_id)
+        assert exercise is not None
+        assert (
+            exercise.snapshot_items[0]["audio_url"]
+            == "/api/v1/audio/content/standard.wav"
+        )
+    finally:
+        _cleanup_classroom(db, classroom["id"])
+        db.delete(source)
+        db.commit()
+        db.delete(scenario)
+        db.commit()

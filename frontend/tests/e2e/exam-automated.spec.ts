@@ -9,6 +9,8 @@ async function setup(page: Page, mockAudio = true, lang = "zh") {
     startedAt: 0,
     uploads: 0,
     audioEvents: 0,
+    failFlow: false,
+    events: [] as Array<{ session_id: string; item_id: string; event: string }>,
     failUpload: false,
     rejectUpload: false,
     requests: [] as string[],
@@ -75,6 +77,19 @@ async function setup(page: Page, mockAudio = true, lang = "zh") {
         onended: (() => void) | null = null
         onerror: (() => void) | null = null
         onloadedmetadata: (() => void) | null = null
+        onloadeddata: (() => void) | null = null
+        src = ""
+        removeAttribute() {
+          this.src = ""
+        }
+        load() {
+          if (!this.src) return
+          queueMicrotask(() => {
+            if ((window as unknown as { failExamAudio: boolean }).failExamAudio)
+              this.onerror?.()
+            else this.onloadeddata?.()
+          })
+        }
         currentTime = 0
         duration = 2
         timer = 0
@@ -135,7 +150,18 @@ async function setup(page: Page, mockAudio = true, lang = "zh") {
       json = exam()
     }
     if (path.endsWith("/exam/flow")) {
-      const event = route.request().postDataJSON().event
+      const payload = route.request().postDataJSON()
+      state.events.push(payload)
+      if (state.failFlow) {
+        await route.fulfill({ status: 503, json: { detail: "Unavailable" } })
+        return
+      }
+      // Old events may be retried after another tab has already advanced.
+      if (payload.item_id !== items[state.index]?.id) {
+        await route.fulfill({ json: exam() })
+        return
+      }
+      const event = payload.event
       if (event === "audio-ended") {
         state.audioEvents++
         state.phase = state.index === 0 ? "ready" : "answering"
@@ -165,7 +191,7 @@ async function setup(page: Page, mockAudio = true, lang = "zh") {
     }
     await route.fulfill({ json })
   })
-  return state
+  return Object.assign(state, { items })
 }
 
 for (const width of [390, 820, 1180]) {
@@ -333,4 +359,162 @@ test("@webkit the unlocked native audio element plays subsequent prompts automat
   await page.getByRole("button", { name: "下一题" }).click()
   await expect.poll(() => state.audioEvents).toBe(2)
   await expect.poll(() => state.uploads, { timeout: 10000 }).toBe(2)
+})
+
+for (const lang of ["zh", "en"]) {
+  test(`@webkit broken exam audio prevents starting the clock and can retry (${lang})`, async ({
+    page,
+  }) => {
+    const state = await setup(page, true, lang)
+    await page.addInitScript(() => {
+      ;(window as unknown as { failExamAudio: boolean }).failExamAudio = true
+    })
+    await page.goto("/exam/EXAM")
+    const start = page.getByRole("button", {
+      name:
+        lang === "zh" ? "检查设备并开始考试" : "Check devices and start exam",
+    })
+    await start.click()
+    await expect(page.getByRole("alert")).toContainText(
+      lang === "zh" ? "考试音频检查失败" : "Exam audio check failed",
+    )
+    expect(state.started).toBe(false)
+    expect(state.requests.some((url) => url.endsWith("/exam/start"))).toBe(
+      false,
+    )
+    expect(state.audioEvents).toBe(0)
+    await page.evaluate(() => {
+      ;(window as unknown as { failExamAudio: boolean }).failExamAudio = false
+    })
+    await start.click()
+    await expect(
+      page.getByRole("button", {
+        name: lang === "zh" ? "下一题" : "Next",
+        exact: true,
+      }),
+    ).toBeVisible()
+    expect(state.started).toBe(true)
+  })
+}
+
+test("@webkit legacy exam without TTS fails before starting, then recovers", async ({
+  page,
+}) => {
+  const state = await setup(page)
+  state.items[0].audio_url = null
+  await page.addInitScript(() =>
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: undefined,
+    }),
+  )
+  await page.goto("/exam/EXAM")
+  await page.getByRole("button", { name: "检查设备并开始考试" }).click()
+  await expect(page.getByRole("alert")).toContainText("考试音频检查失败")
+  expect(state.started).toBe(false)
+  expect(state.audioEvents).toBe(0)
+  await page.evaluate(() =>
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: {
+        cancel() {},
+        getVoices() {
+          return []
+        },
+        speak(utterance: SpeechSynthesisUtterance) {
+          setTimeout(() => utterance.onend?.({} as SpeechSynthesisEvent), 10)
+        },
+      },
+    }),
+  )
+  await page.getByRole("button", { name: "检查设备并开始考试" }).click()
+  await expect(
+    page.getByRole("button", { name: "下一题", exact: true }),
+  ).toBeVisible()
+  expect(state.started).toBe(true)
+})
+
+test("@webkit stalled legacy TTS times out before starting the exam", async ({
+  page,
+}) => {
+  const state = await setup(page)
+  state.items[0].audio_url = null
+  await page.addInitScript(() =>
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: {
+        cancel() {},
+        getVoices() {
+          return []
+        },
+        speak() {},
+      },
+    }),
+  )
+  await page.goto("/exam/EXAM")
+  await page.clock.install()
+  await page.getByRole("button", { name: "检查设备并开始考试" }).click()
+  await expect(
+    page.getByRole("button", { name: "正在检查设备与题目音频…" }),
+  ).toBeVisible()
+  await page.clock.fastForward(16_000)
+  await expect(page.getByRole("alert")).toContainText("考试音频检查失败")
+  expect(state.started).toBe(false)
+})
+
+test("@webkit sync retry retains the original item after another tab advances", async ({
+  page,
+}) => {
+  const state = await setup(page)
+  state.started = true
+  state.phase = "ready"
+  state.failFlow = true
+  await page.goto("/exam/EXAM")
+  await page.getByRole("button", { name: "下一题", exact: true }).click()
+  await expect(page.getByRole("button", { name: "重试同步" })).toBeVisible({
+    timeout: 10000,
+  })
+  state.index = 2
+  state.phase = "audio"
+  await expect(page.getByText("本题不显示文字")).toBeVisible()
+  state.failFlow = false
+  await page.getByRole("button", { name: "重试同步" }).click()
+  await expect(page.getByRole("button", { name: "重试同步" })).toHaveCount(0)
+  expect(state.events.length).toBeGreaterThanOrEqual(4)
+  expect(
+    state.events.every(
+      (event) =>
+        event.session_id === "exam-session" &&
+        event.item_id === state.items[0].id &&
+        event.event === "next",
+    ),
+  ).toBe(true)
+  expect(state.index).toBe(2)
+})
+
+test("@webkit a missing real audio file blocks a new exam and recovers on retry", async ({
+  page,
+}) => {
+  const state = await setup(page, false)
+  let fail = true
+  await page.route("**/audio/example.mp3", (route) =>
+    fail
+      ? route.fulfill({ status: 404, body: "Missing" })
+      : route.fulfill({
+          contentType: "audio/wav",
+          body: Buffer.from(EXAM_AUDIO_UNLOCK_URL.split(",")[1], "base64"),
+        }),
+  )
+  await page.goto("/exam/EXAM")
+  const start = page.getByRole("button", { name: "检查设备并开始考试" })
+  await start.click()
+  await expect(page.getByRole("alert")).toContainText("考试音频检查失败")
+  expect(state.started).toBe(false)
+  expect(state.audioEvents).toBe(0)
+  fail = false
+  await start.click()
+  await expect(
+    page.getByRole("button", { name: "下一题", exact: true }),
+  ).toBeVisible()
+  expect(state.started).toBe(true)
 })

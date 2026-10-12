@@ -299,6 +299,17 @@ def publish_exercise(
             item["exam_flow"] = settings.model_dump()
             if settings.audio_url:
                 item["audio_url"] = settings.audio_url
+        missing_audio = [
+            str(index + 1)
+            for index, item in enumerate(snapshots)
+            if item["type"] != "passage"
+            and not str(item.get("audio_url") or "").strip()
+        ]
+        if missing_audio:
+            raise HTTPException(
+                status_code=422,
+                detail="Automated exam audio missing: " + ", ".join(missing_audio),
+            )
 
     # 同一课堂并发发布时锁住课堂行，避免版本号重复或互相覆盖当前版本。
     session.exec(
