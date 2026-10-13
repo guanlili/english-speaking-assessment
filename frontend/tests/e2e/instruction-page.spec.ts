@@ -42,9 +42,11 @@ async function mockPlan(page: Page, isExam: boolean) {
       }
       state = "inactive"
       ondataavailable: ((event: BlobEvent) => void) | null = null
+      onstart: (() => void) | null = null
       onstop: (() => void) | null = null
       start() {
         this.state = "recording"
+        queueMicrotask(() => this.onstart?.())
       }
       stop() {
         if (this.state !== "recording") return

@@ -27,6 +27,7 @@ from sqlmodel import Session, col, select
 
 from app.core.config import settings
 from app.models import Attempt, AttemptStatus
+from app.services.audio_playback import playback_cache_path
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,7 @@ def purge_expired_attempt_audio(session: Session) -> int:
             settled_ids.append(attempt_id)
             continue
         try:
+            playback_cache_path(path).unlink(missing_ok=True)
             existed = path.exists()
             if existed:
                 path.unlink()

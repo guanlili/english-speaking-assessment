@@ -52,6 +52,8 @@ def test_ttl_purges_old_terminal_keeps_the_rest(
 
     old_done = tmp_path / "old-done.webm"
     old_done.write_bytes(b"x")
+    playback = old_done.with_name(old_done.name + ".playback.wav")
+    playback.write_bytes(b"cached")
     _make_attempt(db, str(old_done), status=AttemptStatus.DONE, age_days=100)
 
     old_failed = tmp_path / "old-failed.webm"
@@ -80,6 +82,7 @@ def test_ttl_purges_old_terminal_keeps_the_rest(
 
     assert purge_expired_attempt_audio(db) == 2
     assert not old_done.exists()
+    assert not playback.exists()
     assert not old_failed.exists()
     assert recent_done.exists()
     assert old_queued.exists()

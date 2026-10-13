@@ -37,6 +37,7 @@ from app.models import (
 from app.scoring.audio_convert import probe_audio
 from app.services import exam as exam_service
 from app.services import reading
+from app.services.audio_playback import playback_path
 
 logger = logging.getLogger(__name__)
 
@@ -631,5 +632,6 @@ def read_attempt_audio(
     path = Path(attempt.audio_path)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Audio not found")
+    path = playback_path(path)
     safe_mime = _mime_to_suffix_reverse().get(path.suffix, "application/octet-stream")
     return FileResponse(path, media_type=safe_mime)

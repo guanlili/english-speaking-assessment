@@ -47,10 +47,16 @@ async function setup(page: Page, mockAudio = true, lang = "zh") {
         }
         state = "inactive"
         ondataavailable: ((event: BlobEvent) => void) | null = null
+        onstart: (() => void) | null = null
         onstop: (() => void) | null = null
         interval = 0
         start() {
           this.state = "recording"
+          window.setTimeout(
+            () => this.onstart?.(),
+            (window as unknown as { recorderStartDelay?: number })
+              .recorderStartDelay ?? 0,
+          )
           this.interval = window.setInterval(() => this.chunk(), 250)
         }
         chunk() {
@@ -557,4 +563,81 @@ test("@webkit a missing real audio file blocks a new exam and recovers on retry"
     page.getByRole("button", { name: "下一题", exact: true }),
   ).toBeVisible()
   expect(state.started).toBe(true)
+})
+
+test("@webkit microphone startup finishes before answer cue and reuses checked stream", async ({
+  page,
+}) => {
+  const state = await setup(page)
+  state.started = true
+  state.index = 1
+  state.phase = "answering"
+  state.items[1].suggested_seconds = 30
+  state.startedAt = Date.now()
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      recorderStartDelay: 1500,
+      microphoneRequests: 0,
+      cueTimes: [],
+    })
+    const original = navigator.mediaDevices.getUserMedia
+    navigator.mediaDevices.getUserMedia = async (...args) => {
+      const state = window as unknown as { microphoneRequests: number }
+      state.microphoneRequests++
+      return original(...args)
+    }
+    const originalOscillator = AudioContext.prototype.createOscillator
+    AudioContext.prototype.createOscillator = function () {
+      const oscillator = originalOscillator.call(this)
+      const originalStart = oscillator.start.bind(oscillator)
+      oscillator.start = (...args) => {
+        ;(window as unknown as { cueTimes: number[] }).cueTimes.push(Date.now())
+        originalStart(...args)
+      }
+      return oscillator
+    }
+  })
+  await page.goto("/exam/EXAM")
+  await page.getByRole("button", { name: "启用声音并继续考试" }).click()
+  await expect(page.getByRole("status")).toContainText("正在准备麦克风")
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { cueTimes: number[] }).cueTimes.length,
+    ),
+  ).toBe(0)
+  await expect(page.getByRole("status")).toContainText("请作答 · 自动录音")
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { microphoneRequests: number })
+          .microphoneRequests,
+    ),
+  ).toBe(1)
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { cueTimes: number[] }).cueTimes.length,
+    ),
+  ).toBe(1)
+})
+
+test("@webkit a recorder that starts after the item deadline does not record or submit", async ({
+  page,
+}) => {
+  const state = await setup(page)
+  state.started = true
+  state.index = 1
+  state.phase = "answering"
+  state.startedAt = Date.now()
+  await page.addInitScript(() => {
+    Object.assign(window, { recorderStartDelay: 4500 })
+  })
+  await page.goto("/exam/EXAM")
+  await page.getByRole("button", { name: "启用声音并继续考试" }).click()
+  await expect(page.getByRole("status")).toContainText("本题已结束", {
+    timeout: 8000,
+  })
+  await expect(page.getByText("本题时间已结束，录音未开始")).toBeVisible({
+    timeout: 8000,
+  })
+  expect(state.uploads).toBe(0)
 })
