@@ -910,3 +910,130 @@ def test_partial_completion_not_counted_as_done(
         if uid is not None:
             db.delete(db.get_one(User, uid))
         db.commit()
+
+
+# ── 班级人数上限调整（教师本人/管理员，建班后可改）──────────────────
+
+
+def _teacher_login(db: Session, client: TestClient, email: str) -> dict[str, str]:
+    """建非管理员教师账号并登录（随机邮箱防共享测试库串号）。"""
+    from app import crud as _crud
+    from app.models import UserCreate
+
+    password = "teacher-pass-123"
+    _crud.create_user(
+        session=db,
+        user_create=UserCreate(email=email, password=password, role="teacher"),
+    )
+    login = client.post(
+        "/api/v1/login/access-token",
+        data={"username": email, "password": password},
+    )
+    assert login.status_code == 200, login.text
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
+def test_update_class_size_owner_guard_and_bounds(
+    db: Session,
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+) -> None:
+    """建班后调整人数上限：本人/管理员可改；不低于现有档案数；越界 422。"""
+    owner = _teacher_login(db, client, f"size-owner-{uuid.uuid4().hex[:8]}@example.com")
+    resp = client.post(
+        "/api/v1/classes",
+        json={"name": "班容调整班", "class_size": 5},
+        headers=owner,
+    )
+    assert resp.status_code == 200, resp.text
+    code = resp.json()["code"]
+    classroom_id = resp.json()["id"]
+
+    student1 = _join(db, client, "班容学生一", code)
+    _join(db, client, "班容学生二", code)
+
+    # 本人调高成功
+    resp = client.patch(
+        f"/api/v1/classes/{code}", json={"class_size": 80}, headers=owner
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["class_size"] == 80
+
+    # 管理员对他人课堂同样可调（旁路）
+    resp = client.patch(
+        f"/api/v1/classes/{code}",
+        json={"class_size": 75},
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    # 等于现有档案数（2）允许；低于则 422（稳定 detail 含当前人数）
+    resp = client.patch(
+        f"/api/v1/classes/{code}", json={"class_size": 2}, headers=owner
+    )
+    assert resp.status_code == 200, resp.text
+    resp = client.patch(
+        f"/api/v1/classes/{code}", json={"class_size": 1}, headers=owner
+    )
+    assert resp.status_code == 422
+    assert "不能低于" in resp.json()["detail"]
+
+    # 越界（>100 / <1）由 Schema 校验 422
+    resp = client.patch(
+        f"/api/v1/classes/{code}", json={"class_size": 101}, headers=owner
+    )
+    assert resp.status_code == 422
+    resp = client.patch(
+        f"/api/v1/classes/{code}", json={"class_size": 0}, headers=owner
+    )
+    assert resp.status_code == 422
+
+    # 其他教师 403；学生 403（课堂码不是教师凭据）
+    other = _teacher_login(db, client, f"size-other-{uuid.uuid4().hex[:8]}@example.com")
+    resp = client.patch(
+        f"/api/v1/classes/{code}", json={"class_size": 50}, headers=other
+    )
+    assert resp.status_code == 403
+    resp = client.patch(
+        f"/api/v1/classes/{code}",
+        json={"class_size": 50},
+        headers=student1["headers"],
+    )
+    assert resp.status_code == 403
+
+    # 调回 2 后容量生效：班外新学生自加入 409；已入班学生重复加入幂等 200
+    third = create_student_user(db, full_name="班容学生三")
+    assert third.username is not None
+    resp = client.post(
+        f"/api/v1/classes/{code}/join",
+        json={},
+        headers=login_headers(client, third.username),
+    )
+    assert resp.status_code == 409, resp.text
+    resp = client.post(
+        f"/api/v1/classes/{code}/join",
+        json={},
+        headers=student1["headers"],
+    )
+    assert resp.status_code == 200
+
+    # 管理后台 PUT 同口径：改班容、低于档案数 422；放容后班外学生可入
+    resp = client.put(
+        f"/api/v1/admin/classrooms/{classroom_id}",
+        json={"class_size": 1},
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 422
+    resp = client.put(
+        f"/api/v1/admin/classrooms/{classroom_id}",
+        json={"class_size": 90},
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["class_size"] == 90
+    resp = client.post(
+        f"/api/v1/classes/{code}/join",
+        json={},
+        headers=login_headers(client, third.username),
+    )
+    assert resp.status_code == 200, resp.text

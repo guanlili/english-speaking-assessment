@@ -393,6 +393,27 @@ function ClassroomCard({
   const { t } = useI18n()
   const [importOpen, setImportOpen] = useState(false)
   const [rosterOpen, setRosterOpen] = useState(false)
+  const [sizeOpen, setSizeOpen] = useState(false)
+  const [sizeValue, setSizeValue] = useState(classroom.class_size)
+
+  const sizeMutation = useMutation({
+    mutationFn: (next: number) =>
+      ClassesService.updateClassSize({
+        code: classroom.code,
+        requestBody: { class_size: next },
+      }),
+    onSuccess: (data) => {
+      showSuccessToast(
+        t({
+          zh: `人数上限已调整为 ${data.class_size} 人`,
+          en: `Class size limit updated to ${data.class_size}`,
+        }),
+      )
+      setSizeOpen(false)
+      onInvalidated()
+    },
+    onError: (error) => showErrorToast(extractErrorMessage(error)),
+  })
 
   const copyCode = async () => {
     if (await copyText(classroom.code)) {
@@ -504,6 +525,19 @@ function ClassroomCard({
               {t({ zh: "学生名单", en: "Roster" })}
             </Button>
             <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSizeValue(classroom.class_size)
+                setSizeOpen(true)
+              }}
+            >
+              {t({
+                zh: `人数上限 ${classroom.class_size}`,
+                en: `Size Limit ${classroom.class_size}`,
+              })}
+            </Button>
+            <Button
               variant="ghost"
               size="sm"
               className="text-destructive hover:text-destructive"
@@ -526,6 +560,50 @@ function ClassroomCard({
         open={rosterOpen}
         onOpenChange={setRosterOpen}
       />
+      <Dialog open={sizeOpen} onOpenChange={setSizeOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {t({
+                zh: `调整 ${classroom.code} 的人数上限`,
+                en: `Adjust Size Limit for ${classroom.code}`,
+              })}
+            </DialogTitle>
+            <DialogDescription>
+              {t({
+                zh: "上限只限制新学生加入（导入/自加入），已入班学生不受影响；不能低于班内现有档案数。",
+                en: "The limit only gates new students joining (import or self-join); enrolled students are unaffected. It cannot go below the current roster size.",
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="class-size-edit">
+              {t({
+                zh: "班级人数上限（1-100）",
+                en: "Class size limit (1-100)",
+              })}
+            </Label>
+            <NumberInput
+              id="class-size-edit"
+              min={1}
+              max={100}
+              value={sizeValue}
+              onValueChange={setSizeValue}
+            />
+          </div>
+          <DialogFooter>
+            <LoadingButton
+              disabled={
+                !Number.isInteger(sizeValue) || sizeValue < 1 || sizeValue > 100
+              }
+              loading={sizeMutation.isPending}
+              onClick={() => sizeMutation.mutate(sizeValue)}
+            >
+              {t({ zh: "保存", en: "Save" })}
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ConfirmDialog
         open={deleteOpen}
         title={t({

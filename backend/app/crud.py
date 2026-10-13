@@ -5,6 +5,7 @@ import uuid
 from datetime import date
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, func, select
 
@@ -149,6 +150,25 @@ def create_classroom(*, session: Session, classroom: Classroom) -> Classroom:
 
 def get_classroom_by_code(*, session: Session, code: str) -> Classroom | None:
     return session.exec(select(Classroom).where(Classroom.code == code)).first()
+
+
+def ensure_class_size_feasible(
+    *, session: Session, classroom: Classroom, new_size: int
+) -> None:
+    """调整班容前置校验：新上限不得低于班内现有档案数。
+
+    口径与 join_classroom 的容量检查一致（班内全部档案，含被移出后的
+    孤儿档案——它们仍在花名册上）。不满足抛 422（稳定 detail）。"""
+    enrolled_count = session.exec(
+        select(func.count())
+        .select_from(Student)
+        .where(Student.classroom_id == classroom.id)  # type: ignore[arg-type]
+    ).one()
+    if new_size < enrolled_count:
+        raise HTTPException(
+            status_code=422,
+            detail=f"班级人数上限不能低于当前已有档案数（{enrolled_count} 人）",
+        )
 
 
 class ClassroomFullError(Exception):
