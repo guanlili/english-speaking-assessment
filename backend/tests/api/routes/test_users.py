@@ -480,9 +480,11 @@ def test_delete_user_super_user(
     user_in = UserCreate(email=username, password=password)
     user = crud.create_user(session=db, user_create=user_in)
     user_id = user.id
-    r = client.delete(
+    r = client.request(
+        "DELETE",
         f"{settings.API_V1_STR}/users/{user_id}",
         headers=superuser_token_headers,
+        json={"password": settings.FIRST_SUPERUSER_PASSWORD},
     )
     assert r.status_code == 200
     deleted_user = r.json()
@@ -494,9 +496,11 @@ def test_delete_user_super_user(
 def test_delete_user_not_found(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    r = client.delete(
+    r = client.request(
+        "DELETE",
         f"{settings.API_V1_STR}/users/{uuid.uuid4()}",
         headers=superuser_token_headers,
+        json={"password": "any-password"},
     )
     assert r.status_code == 404
     assert r.json()["detail"] == "User not found"
@@ -509,9 +513,11 @@ def test_delete_user_current_super_user_error(
     assert super_user
     user_id = super_user.id
 
-    r = client.delete(
+    r = client.request(
+        "DELETE",
         f"{settings.API_V1_STR}/users/{user_id}",
         headers=superuser_token_headers,
+        json={"password": "any-password"},
     )
     assert r.status_code == 403
     assert r.json()["detail"] == "Super users are not allowed to delete themselves"
@@ -601,4 +607,97 @@ def test_users_pagination_beyond_100(
     finally:
         for user in created:
             db.delete(user)
+        db.commit()
+
+
+# ── 账号级管理（2026-10-13）：删除密码复核 + 列表搜索筛选 ────────────
+
+
+def test_delete_user_requires_admin_password_confirmation(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """删除账号必须带管理员密码：错密码 403；不传 body 422；正确密码删除成功。"""
+    target = crud.create_user(
+        session=db,
+        user_create=UserCreate(
+            email=random_email(), password=random_lower_string(), role="student"
+        ),
+    )
+    try:
+        # 无 body → 422（密码复核是必填）
+        r = client.delete(
+            f"{settings.API_V1_STR}/users/{target.id}",
+            headers=superuser_token_headers,
+        )
+        assert r.status_code == 422
+        # 错密码 → 403 稳定 detail
+        r = client.request(
+            "DELETE",
+            f"{settings.API_V1_STR}/users/{target.id}",
+            headers=superuser_token_headers,
+            json={"password": "definitely-wrong-pass"},
+        )
+        assert r.status_code == 403
+        assert "密码不正确" in r.json()["detail"]
+        assert target.email is not None
+        assert crud.get_user_by_email(session=db, email=target.email) is not None
+
+        # 正确密码 → 删除成功（该生为普通学生，账号删除生效）
+        r = client.request(
+            "DELETE",
+            f"{settings.API_V1_STR}/users/{target.id}",
+            headers=superuser_token_headers,
+            json={"password": settings.FIRST_SUPERUSER_PASSWORD},
+        )
+        assert r.status_code == 200
+        assert crud.get_user_by_email(session=db, email=target.email or "") is None
+    finally:
+        row = db.get(User, target.id)
+        if row is not None:
+            db.delete(row)
+            db.commit()
+
+
+def test_read_users_search_and_role_filter(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """列表搜索（学号/姓名/邮箱）与角色筛选生效，count 同口径。"""
+    marker = f"probe{uuid.uuid4().hex[:8]}"
+    student = crud.create_user(
+        session=db,
+        user_create=UserCreate(
+            email=f"{marker}@example.com",
+            password=random_lower_string(),
+            role="student",
+            full_name=f"搜索测试{marker}",
+        ),
+    )
+    try:
+        r = client.get(
+            f"{settings.API_V1_STR}/users",
+            headers=superuser_token_headers,
+            params={"q": marker, "role": "student"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["count"] == 1
+        assert body["data"][0]["id"] == str(student.id)
+
+        # 姓名关键词也命中
+        r = client.get(
+            f"{settings.API_V1_STR}/users",
+            headers=superuser_token_headers,
+            params={"q": f"搜索测试{marker}"},
+        )
+        assert r.json()["count"] == 1
+
+        # 角色不匹配 → 0
+        r = client.get(
+            f"{settings.API_V1_STR}/users",
+            headers=superuser_token_headers,
+            params={"q": marker, "role": "teacher"},
+        )
+        assert r.json()["count"] == 0
+    finally:
+        db.delete(student)
         db.commit()

@@ -968,6 +968,13 @@ export type UserCreate = {
     password: string;
 };
 
+/**
+ * 删除账号的管理员密码复核：防会话被冒用后一键毁库。
+ */
+export type UserDeleteRequest = {
+    password: string;
+};
+
 export type UserPublic = {
     email?: (string | null);
     is_active?: boolean;
@@ -2308,6 +2315,8 @@ export type StudentsBulkResetPasswordsResponse = (BulkResetResult);
 
 export type UsersReadUsersData = {
     limit?: number;
+    q?: (string | null);
+    role?: (string | null);
     skip?: number;
 };
 
@@ -2355,6 +2364,7 @@ export type UsersUpdateUserData = {
 export type UsersUpdateUserResponse = (UserPublic);
 
 export type UsersDeleteUserData = {
+    requestBody: UserDeleteRequest;
     userId: string;
 };
 

@@ -1159,8 +1159,8 @@ function StudentRosterDialog({
           en: "Delete this student from the roster?",
         })}
         description={t({
-          zh: "删除档案并释放班级容量；该生将无法进入本班。如该生有练习记录，会再要求一次确认。",
-          en: "Deletes the profile and frees a class-size slot; the student can no longer join this class. If they have practice history, you will be asked to confirm again.",
+          zh: "删除的是本班档案（释放班级容量），不删除学号账号；如需彻底删除该学生的账号，请联系管理员在「用户与权限」中操作。如该生有练习记录，会再要求一次确认。",
+          en: "This deletes the classroom profile (freeing a class-size slot), not the account itself. To delete the student's account entirely, ask an administrator via Users & Permissions. If they have practice history, you will be asked to confirm again.",
         })}
         confirmText={t({
           zh: "删除",
