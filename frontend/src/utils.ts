@@ -138,6 +138,12 @@ const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
   班级人数上限不能低于当前已有档案数: {
     en: "The size limit cannot go below the current roster size.",
   },
+  该学生在本班有作答记录: {
+    en: "This student has answer history in this classroom.",
+  },
+  该姓名在本班已被使用: {
+    en: "This name is already used in this classroom.",
+  },
   "Not Found": { zh: "资源不存在", en: "Not found." },
 }
 

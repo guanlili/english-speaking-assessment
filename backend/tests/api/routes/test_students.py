@@ -829,3 +829,164 @@ def test_teacher_cannot_reset_superuser_flagged_student(
             _cleanup(db, classroom_id, teacher, made["user"])
         else:
             _cleanup(db, classroom_id, teacher)
+
+
+# ── 名单自由管理（2026-10-13）：删除档案 / 改名 ──────────────────────
+
+
+def _make_attempt(db: Session, student_id: uuid.UUID) -> uuid.UUID:
+    """最小作答行（purge 历史确认分支的夹具）。"""
+    from app.models import Attempt, AttemptItemType, AttemptStatus
+
+    attempt_id = uuid.uuid4()
+    db.add(
+        Attempt(
+            id=attempt_id,
+            item_type=AttemptItemType.PASSAGE,
+            item_id=uuid.uuid4(),
+            student_id=student_id,
+            audio_path="/tmp/test.webm",
+            duration_s=3.0,
+            status=AttemptStatus.DONE,
+        )
+    )
+    db.commit()
+    return attempt_id
+
+
+def test_purge_student_without_history(client: TestClient, db: Session) -> None:
+    """删除档案（无作答）：直接删行、名单消失、容量释放。"""
+    teacher, headers = _login_teacher(db, client)
+    classroom_id = None
+    try:
+        classroom_id = uuid.UUID(_new_classroom(client, headers)["id"])
+        result = _import(
+            client,
+            headers,
+            str(classroom_id),
+            [{"username": f"stu{uuid.uuid4().hex[:8]}", "full_name": "待删学生"}],
+        )
+        student_id = result["rows"][0]["student_id"]
+
+        resp = client.delete(
+            f"/api/v1/students/{student_id}?purge=true", headers=headers
+        )
+        assert resp.status_code == 200, resp.text
+        assert db.get(Student, uuid.UUID(student_id)) is None
+        roster = client.get(
+            "/api/v1/students",
+            params={"classroom_id": str(classroom_id)},
+            headers=headers,
+        )
+        assert all(r["student"]["id"] != student_id for r in roster.json())
+    finally:
+        _cleanup(db, classroom_id, teacher)
+
+
+def test_purge_student_with_history_requires_confirm(
+    client: TestClient, db: Session
+) -> None:
+    """有作答历史：默认 409 阻断；显式 delete_history 确认后级联清干净。"""
+    from app.models import Attempt
+
+    teacher, headers = _login_teacher(db, client)
+    classroom_id = None
+    try:
+        classroom_id = uuid.UUID(_new_classroom(client, headers)["id"])
+        result = _import(
+            client,
+            headers,
+            str(classroom_id),
+            [{"username": f"stu{uuid.uuid4().hex[:8]}", "full_name": "有历史学生"}],
+        )
+        student_id = uuid.UUID(result["rows"][0]["student_id"])
+        attempt_id = _make_attempt(db, student_id)
+
+        blocked = client.delete(
+            f"/api/v1/students/{student_id}?purge=true", headers=headers
+        )
+        assert blocked.status_code == 409
+        assert "作答记录" in blocked.json()["detail"]
+
+        confirmed = client.delete(
+            f"/api/v1/students/{student_id}?purge=true&delete_history=true",
+            headers=headers,
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        assert db.get(Student, student_id) is None
+        assert db.get(Attempt, attempt_id) is None  # FK 级联清除
+    finally:
+        _cleanup(db, classroom_id, teacher)
+
+
+def test_purge_unlinked_orphan_profile(client: TestClient, db: Session) -> None:
+    """已移出的孤儿档案（user_id=None）也能删除，释放容量占用。"""
+    teacher, headers = _login_teacher(db, client)
+    classroom_id = None
+    try:
+        classroom_id = uuid.UUID(_new_classroom(client, headers)["id"])
+        result = _import(
+            client,
+            headers,
+            str(classroom_id),
+            [{"username": f"stu{uuid.uuid4().hex[:8]}", "full_name": "孤儿档案"}],
+        )
+        student_id = result["rows"][0]["student_id"]
+        unlink = client.delete(f"/api/v1/students/{student_id}", headers=headers)
+        assert unlink.status_code == 200
+        assert db.get(Student, uuid.UUID(student_id)) is not None  # 档案仍在
+
+        resp = client.delete(
+            f"/api/v1/students/{student_id}?purge=true", headers=headers
+        )
+        assert resp.status_code == 200, resp.text
+        assert db.get(Student, uuid.UUID(student_id)) is None
+    finally:
+        _cleanup(db, classroom_id, teacher)
+
+
+def test_update_student_display_name(client: TestClient, db: Session) -> None:
+    """改班内显示名：成功改名清后缀；撞本班姓名 422；他师 403。"""
+    teacher, headers = _login_teacher(db, client)
+    other_teacher, other_headers = _login_teacher(db, client)
+    classroom_id = None
+    try:
+        classroom_id = uuid.UUID(_new_classroom(client, headers)["id"])
+        result = _import(
+            client,
+            headers,
+            str(classroom_id),
+            [
+                {"username": f"stu{uuid.uuid4().hex[:8]}", "full_name": "王小明"},
+                {"username": f"stu{uuid.uuid4().hex[:8]}", "full_name": "李雷"},
+            ],
+        )
+        rows = {r["full_name"]: r["student_id"] for r in result["rows"]}
+        target = rows["王小明"]
+
+        resp = client.patch(
+            f"/api/v1/students/{target}",
+            json={"display_name": "王小明明"},
+            headers=headers,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["display_name"] == "王小明明"
+
+        # 撞本班已有姓名
+        clash = client.patch(
+            f"/api/v1/students/{target}",
+            json={"display_name": "李雷"},
+            headers=headers,
+        )
+        assert clash.status_code == 422
+        assert "已被使用" in clash.json()["detail"]
+
+        # 其他教师（非本班授权）403
+        forbidden = client.patch(
+            f"/api/v1/students/{target}",
+            json={"display_name": "越权改名"},
+            headers=other_headers,
+        )
+        assert forbidden.status_code == 403
+    finally:
+        _cleanup(db, classroom_id, teacher, other_teacher)
