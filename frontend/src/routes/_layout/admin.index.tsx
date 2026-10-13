@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { RefreshCw, Search } from "lucide-react"
-import { Suspense, useEffect, useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import { type UserPublic, UsersService } from "@/client"
 import AddUser from "@/components/Admin/AddUser"
 import { columns, type UserTableData } from "@/components/Admin/columns"
@@ -63,7 +63,14 @@ function UsersTableContent() {
   const [searchInput, setSearchInput] = useState("")
   const [search, setSearch] = useState("")
   const [role, setRole] = useState("all")
+  // 首次渲染不排定时器：mount 350ms 后的 setPageIndex(0) 会在用户
+  // 已翻页时把页码拉回第一页（生产环境实测把翻页请求作废）
+  const searchFirstRun = useRef(true)
   useEffect(() => {
+    if (searchFirstRun.current) {
+      searchFirstRun.current = false
+      return
+    }
     const timer = setTimeout(() => {
       setSearch(searchInput.trim())
       setPageIndex(0)
