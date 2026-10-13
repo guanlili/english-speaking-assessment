@@ -156,7 +156,9 @@ test("R01: rows are inert while a page fetch is in flight (mouse + keyboard)", a
     .getByRole("button", { name: /用户操作/ })
   await menuButton.focus()
   await page.keyboard.press("Enter")
-  await expect(page.getByRole("menuitem", { name: "Delete User" })).toBeHidden()
+  await expect(
+    page.getByRole("menuitem", { name: /删除账号|Delete User/ }),
+  ).toBeHidden()
 
   // 新页到达后恢复正常可交互；旧行卸载（稳定 id），新行操作可用
   await expect(page.getByText("乙用户 1-00")).toBeVisible({ timeout: 5000 })
@@ -165,7 +167,7 @@ test("R01: rows are inert while a page fetch is in flight (mouse + keyboard)", a
     .getByRole("button", { name: /用户操作/ })
     .click()
   await expect(
-    page.getByRole("menuitem", { name: "Delete User" }),
+    page.getByRole("menuitem", { name: /删除账号|Delete User/ }),
   ).toBeVisible()
   expect(mock.deleted).toEqual([])
 })

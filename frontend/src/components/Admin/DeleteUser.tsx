@@ -15,33 +15,41 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
 import useCustomToast from "@/hooks/useCustomToast"
-import { handleError } from "@/utils"
+import { useI18n } from "@/lib/i18n"
+import { extractErrorMessage } from "@/utils"
 
 interface DeleteUserProps {
   id: string
+  /** 展示用账号标识（学号/邮箱），警示文案指名道姓 */
+  label?: string
   onSuccess: () => void
 }
 
-const DeleteUser = ({ id, onSuccess }: DeleteUserProps) => {
+const DeleteUser = ({ id, label, onSuccess }: DeleteUserProps) => {
   const [isOpen, setIsOpen] = useState(false)
+  const [password, setPassword] = useState("")
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { t } = useI18n()
   const { handleSubmit } = useForm()
 
-  const deleteUser = async (id: string) => {
-    await UsersService.deleteUser({ userId: id })
-  }
-
   const mutation = useMutation({
-    mutationFn: deleteUser,
+    mutationFn: (targetId: string) =>
+      UsersService.deleteUser({
+        userId: targetId,
+        requestBody: { password },
+      }),
     onSuccess: () => {
-      showSuccessToast("The user was deleted successfully")
+      showSuccessToast(t({ zh: "账号已删除", en: "User deleted successfully" }))
       setIsOpen(false)
+      setPassword("")
       onSuccess()
     },
-    onError: handleError.bind(showErrorToast),
+    onError: (error) => showErrorToast(extractErrorMessage(error)),
     onSettled: () => {
       queryClient.invalidateQueries()
     },
@@ -52,38 +60,64 @@ const DeleteUser = ({ id, onSuccess }: DeleteUserProps) => {
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        setIsOpen(next)
+        if (!next) setPassword("")
+      }}
+    >
       <DropdownMenuItem
         variant="destructive"
         onSelect={(e) => e.preventDefault()}
         onClick={() => setIsOpen(true)}
       >
         <Trash2 />
-        Delete User
+        {t({ zh: "删除账号", en: "Delete User" })}
       </DropdownMenuItem>
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit(onSubmit)}>
           <DialogHeader>
-            <DialogTitle>Delete User</DialogTitle>
+            <DialogTitle>
+              {t({ zh: "删除账号？", en: "Delete this user?" })}
+            </DialogTitle>
             <DialogDescription>
-              All items associated with this user will also be{" "}
-              <strong>permanently deleted.</strong> Are you sure? You will not
-              be able to undo this action.
+              {label ? `${label} — ` : ""}
+              {t({
+                zh: "将永久删除该账号及其在所有班级的档案、作答记录与成绩，此操作不可恢复。如只是暂时停用，请改用「禁用账号」。",
+                en: 'This permanently deletes the account, its profiles in every classroom, and all answer history — this cannot be undone. To suspend temporarily, use "Disable" instead.',
+              })}
             </DialogDescription>
           </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="delete-user-password">
+              {t({
+                zh: "输入管理员密码以确认",
+                en: "Enter your admin password to confirm",
+              })}
+            </Label>
+            <Input
+              id="delete-user-password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
 
           <DialogFooter className="mt-4">
             <DialogClose asChild>
               <Button variant="outline" disabled={mutation.isPending}>
-                Cancel
+                {t({ zh: "取消", en: "Cancel" })}
               </Button>
             </DialogClose>
             <LoadingButton
               variant="destructive"
               type="submit"
+              disabled={!password}
               loading={mutation.isPending}
             >
-              Delete
+              {t({ zh: "永久删除", en: "Delete Permanently" })}
             </LoadingButton>
           </DialogFooter>
         </form>

@@ -144,6 +144,9 @@ const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
   该姓名在本班已被使用: {
     en: "This name is already used in this classroom.",
   },
+  管理员密码不正确: {
+    en: "Admin password incorrect — deletion denied.",
+  },
   "Not Found": { zh: "资源不存在", en: "Not found." },
 }
 

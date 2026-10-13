@@ -1932,10 +1932,12 @@ export class StudentsService {
 export class UsersService {
     /**
      * Read Users
-     * Retrieve users.
+     * Retrieve users（管理员；支持按学号/姓名/邮箱模糊搜索与角色筛选）。
      * @param data The data for the request.
      * @param data.skip
      * @param data.limit
+     * @param data.q
+     * @param data.role
      * @returns UsersPublic Successful Response
      * @throws ApiError
      */
@@ -1945,7 +1947,9 @@ export class UsersService {
             url: '/api/v1/users/',
             query: {
                 skip: data.skip,
-                limit: data.limit
+                limit: data.limit,
+                q: data.q,
+                role: data.role
             },
             errors: {
                 422: 'Validation Error'
@@ -2107,9 +2111,12 @@ export class UsersService {
     
     /**
      * Delete User
-     * Delete a user.
+     * Delete a user（系统级删除：该账号在所有班的档案与作答一并清除）。
+     *
+     * 需管理员密码复核；不能删除自己。
      * @param data The data for the request.
      * @param data.userId
+     * @param data.requestBody
      * @returns Message Successful Response
      * @throws ApiError
      */
@@ -2120,6 +2127,8 @@ export class UsersService {
             path: {
                 user_id: data.userId
             },
+            body: data.requestBody,
+            mediaType: 'application/json',
             errors: {
                 422: 'Validation Error'
             }

@@ -2,7 +2,8 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlmodel import col, func, select
+from pydantic import Field
+from sqlmodel import SQLModel, col, func, select
 
 from app import crud
 from app.api.deps import (
@@ -43,20 +44,31 @@ def read_users(
     session: SessionDep,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=USERS_MAX_LIMIT),
+    q: str | None = Query(default=None, max_length=128),
+    role: str | None = Query(default=None, max_length=16),
 ) -> Any:
     """
-    Retrieve users.
+    Retrieve users（管理员；支持按学号/姓名/邮箱模糊搜索与角色筛选）。
     """
+    conditions = []
+    if q and q.strip():
+        conditions.append(
+            col(User.username).icontains(q.strip())  # type: ignore[union-attr]
+            | col(User.full_name).icontains(q.strip())  # type: ignore[union-attr]
+            | col(User.email).icontains(q.strip())  # type: ignore[union-attr]
+        )
+    if role:
+        conditions.append(User.role == role)
 
     count_statement = select(func.count()).select_from(User)
+    if conditions:
+        count_statement = count_statement.where(*conditions)
     count = session.exec(count_statement).one()
 
-    statement = (
-        select(User)
-        .order_by(col(User.created_at).desc(), col(User.id))
-        .offset(skip)
-        .limit(limit)
-    )
+    statement = select(User).order_by(col(User.created_at).desc(), col(User.id))
+    if conditions:
+        statement = statement.where(*conditions)
+    statement = statement.offset(skip).limit(limit)
     users = session.exec(statement).all()
 
     users_public = [UserPublic.model_validate(user) for user in users]
@@ -259,12 +271,23 @@ def update_user(
     return db_user
 
 
+class UserDeleteRequest(SQLModel):
+    """删除账号的管理员密码复核：防会话被冒用后一键毁库。"""
+
+    password: str = Field(min_length=1, max_length=128)
+
+
 @router.delete("/{user_id}", dependencies=[Depends(get_current_active_superuser)])
 def delete_user(
-    session: SessionDep, current_user: CurrentUser, user_id: uuid.UUID
+    session: SessionDep,
+    current_user: CurrentUser,
+    user_id: uuid.UUID,
+    body: UserDeleteRequest,
 ) -> Message:
     """
-    Delete a user.
+    Delete a user（系统级删除：该账号在所有班的档案与作答一并清除）。
+
+    需管理员密码复核；不能删除自己。
     """
     user = session.get(User, user_id)
     if not user:
@@ -273,6 +296,9 @@ def delete_user(
         raise HTTPException(
             status_code=403, detail="Super users are not allowed to delete themselves"
         )
+    verified, _ = verify_password(body.password, current_user.hashed_password)
+    if not verified:
+        raise HTTPException(status_code=403, detail="管理员密码不正确，删除已拒绝")
     session.delete(user)
     session.commit()
     return Message(message="User deleted successfully")

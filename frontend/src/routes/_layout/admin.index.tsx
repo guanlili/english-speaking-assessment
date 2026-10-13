@@ -1,25 +1,43 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { RefreshCw } from "lucide-react"
-import { Suspense, useEffect, useState } from "react"
+import { RefreshCw, Search } from "lucide-react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import { type UserPublic, UsersService } from "@/client"
 import AddUser from "@/components/Admin/AddUser"
 import { columns, type UserTableData } from "@/components/Admin/columns"
 import { DataTable } from "@/components/Common/DataTable"
 import PendingUsers from "@/components/Pending/PendingUsers"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { APP_NAME } from "@/config"
 import useAuth from "@/hooks/useAuth"
 import { useI18n } from "@/lib/i18n"
 
 const USERS_PAGE_SIZE = 25
 
-function getUsersQueryOptions(pageIndex: number, pageSize: number) {
+function getUsersQueryOptions(
+  pageIndex: number,
+  pageSize: number,
+  q: string,
+  role: string,
+) {
   return {
     queryFn: () =>
-      UsersService.readUsers({ skip: pageIndex * pageSize, limit: pageSize }),
+      UsersService.readUsers({
+        skip: pageIndex * pageSize,
+        limit: pageSize,
+        q: q || undefined,
+        role: role || undefined,
+      }),
     // 页码与每页条数进 key：切页翻新请求；前缀 ["users"] 仍覆盖增删改失效
-    queryKey: ["users", pageIndex, pageSize],
+    queryKey: ["users", pageIndex, pageSize, q, role],
     placeholderData: keepPreviousData,
   }
 }
@@ -41,6 +59,24 @@ function UsersTableContent() {
   // 服务端分页（批次09）：此前固定取前 100 人，超出部分无法从本页管理
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(USERS_PAGE_SIZE)
+  // 搜索/筛选（服务端 q/role；输入防抖 350ms）
+  const [searchInput, setSearchInput] = useState("")
+  const [search, setSearch] = useState("")
+  const [role, setRole] = useState("all")
+  // 首次渲染不排定时器：mount 350ms 后的 setPageIndex(0) 会在用户
+  // 已翻页时把页码拉回第一页（生产环境实测把翻页请求作废）
+  const searchFirstRun = useRef(true)
+  useEffect(() => {
+    if (searchFirstRun.current) {
+      searchFirstRun.current = false
+      return
+    }
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim())
+      setPageIndex(0)
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [searchInput])
   const {
     data: users,
     isPending,
@@ -48,7 +84,14 @@ function UsersTableContent() {
     isPlaceholderData,
     isFetching,
     refetch,
-  } = useQuery(getUsersQueryOptions(pageIndex, pageSize))
+  } = useQuery(
+    getUsersQueryOptions(
+      pageIndex,
+      pageSize,
+      search,
+      role === "all" ? "" : role,
+    ),
+  )
 
   // 删除末页最后一人后回退到仍有数据的一页。只看「当前页」的真实成功
   // 响应：placeholder 旧页（keepPreviousData）与失败响应都不是本页事实，
@@ -112,23 +155,62 @@ function UsersTableContent() {
   )
 
   return (
-    <DataTable
-      columns={columns}
-      data={tableData}
-      // 稳定业务主键：翻页后行位置复用不会让旧行弹窗状态挂到新行（返修R01）
-      getRowId={(row) => row.id}
-      manualPagination={{
-        rowCount: users?.count ?? 0,
-        pageIndex,
-        pageSize,
-        onPageChange: setPageIndex,
-        onPageSizeChange: (next) => {
-          setPageSize(next)
-          setPageIndex(0)
-        },
-        loading: isFetching,
-      }}
-    />
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-56 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            aria-label={t({ zh: "搜索用户", en: "Search users" })}
+            placeholder={t({
+              zh: "搜索学号 / 姓名 / 邮箱",
+              en: "Search by ID, name, or email",
+            })}
+            className="pl-9"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          />
+        </div>
+        <Select
+          value={role}
+          onValueChange={(next) => {
+            setRole(next)
+            setPageIndex(0)
+          }}
+        >
+          <SelectTrigger className="w-36">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">
+              {t({ zh: "全部角色", en: "All Roles" })}
+            </SelectItem>
+            <SelectItem value="student">
+              {t({ zh: "学生", en: "Students" })}
+            </SelectItem>
+            <SelectItem value="teacher">
+              {t({ zh: "教师", en: "Teachers" })}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <DataTable
+        columns={columns}
+        data={tableData}
+        // 稳定业务主键：翻页后行位置复用不会让旧行弹窗状态挂到新行（返修R01）
+        getRowId={(row) => row.id}
+        manualPagination={{
+          rowCount: users?.count ?? 0,
+          pageIndex,
+          pageSize,
+          onPageChange: setPageIndex,
+          onPageSizeChange: (next) => {
+            setPageSize(next)
+            setPageIndex(0)
+          },
+          loading: isFetching,
+        }}
+      />
+    </div>
   )
 }
 
