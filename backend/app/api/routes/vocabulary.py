@@ -21,7 +21,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import update
-from sqlmodel import Session, col, func, select
+from sqlmodel import Session, col, select
 
 from app.api.deps import SessionDep, StudentUserDep, TeacherUserDep
 from app.api.routes.classes import (
@@ -73,12 +73,26 @@ from app.models import (
 from app.services import vocab_levels as vocab_levels_service
 from app.services import vocab_quiz
 from app.services import vocabulary as vocab_service
+from app.services.vocabulary import (
+    MAX_BOOK_WORDS,
+    _create_word,
+)
+from app.services.vocabulary import (
+    add_words_to_book as _add_words_to_book,
+)
+from app.services.vocabulary import (
+    get_book_or_404 as _get_book,
+)
+from app.services.vocabulary import (
+    require_book_editor as _require_book_editor,
+)
+from app.services.vocabulary import (
+    word_count_by_book as _book_word_count,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["vocabulary"])
-
-MAX_BOOK_WORDS = 500
 
 
 # ── 权限与组装辅助 ──────────────────────────────────────────────────
@@ -96,19 +110,6 @@ def _word_public(word: VocabularyWord) -> VocabularyWordPublic:
         audio_url=word.audio_url,
         status=word.status,
     )
-
-
-def _book_word_count(
-    session: Session, book_ids: list[uuid.UUID]
-) -> dict[uuid.UUID, int]:
-    if not book_ids:
-        return {}
-    rows = session.exec(
-        select(VocabularyBookItem.book_id, func.count())
-        .where(col(VocabularyBookItem.book_id).in_(book_ids))  # type: ignore[operator]
-        .group_by(VocabularyBookItem.book_id)  # ty: ignore[invalid-argument-type]
-    ).all()
-    return dict(rows)
 
 
 def _book_public(book: VocabularyBook, word_count: int) -> VocabularyBookPublic:
@@ -129,112 +130,12 @@ def _assignment_public(assignment: VocabularyAssignment) -> VocabularyAssignment
     return vocab_service.assignment_public(assignment)
 
 
-def _get_book(session: Session, book_id: uuid.UUID) -> VocabularyBook:
-    book = session.get(VocabularyBook, book_id)
-    if book is None:
-        raise HTTPException(status_code=404, detail="词库不存在")
-    return book
-
-
-def _require_book_editor(book: VocabularyBook, current_user: User) -> None:
-    """词库编辑权：公共词库仅管理员；班级词库为本班教师或管理员。"""
-    if current_user.is_superuser:
-        return
-    if (
-        book.scope == "classroom"
-        and book.classroom_id is not None
-        and book.owner_id == current_user.id
-    ):
-        return
-    raise HTTPException(status_code=403, detail="没有权限编辑这个词库")
-
-
 def _book_visible(book: VocabularyBook, current_user: User) -> bool:
     if current_user.is_superuser:
         return True
     if book.scope == "public":
         return True
     return book.owner_id == current_user.id
-
-
-def _create_word(session: Session, word_in: VocabularyWordIn) -> VocabularyWord:
-    word = VocabularyWord(
-        headword=word_in.headword.strip(),
-        part_of_speech=(word_in.part_of_speech or "").strip() or None,
-        meaning_zh=word_in.meaning_zh.strip(),
-        meaning_en=(word_in.meaning_en or "").strip() or None,
-        accepted_spellings=[
-            spelling.strip()
-            for spelling in (word_in.accepted_spellings or [])
-            if spelling.strip()
-        ]
-        or None,
-        example_en=(word_in.example_en or "").strip() or None,
-        audio_url=(word_in.audio_url or "").strip() or None,
-    )
-    session.add(word)
-    return word
-
-
-def _next_position(session: Session, book_id: uuid.UUID) -> int:
-    latest = session.exec(
-        select(VocabularyBookItem.position)
-        .where(VocabularyBookItem.book_id == book_id)
-        .order_by(col(VocabularyBookItem.position).desc())
-    ).first()
-    return (latest or 0) + 1
-
-
-def _add_words_to_book(
-    session: Session, book: VocabularyBook, words_in: list[VocabularyWordIn]
-) -> int:
-    """词库内加词；同库已收的词（headword+释义一致）跳过。返回新增数。"""
-    if not words_in:
-        return 0
-    if len(words_in) > MAX_BOOK_WORDS:
-        raise HTTPException(
-            status_code=422, detail=f"单次最多加入 {MAX_BOOK_WORDS} 个词"
-        )
-    existing_items = session.exec(
-        select(VocabularyBookItem.word_id).where(
-            VocabularyBookItem.book_id == book.id  # type: ignore[arg-type]
-        )
-    ).all()
-    existing_words = {
-        w.id: w
-        for w in session.exec(
-            select(VocabularyWord).where(
-                col(VocabularyWord.id).in_(existing_items or [uuid.uuid4()])
-            )  # type: ignore[operator]
-        ).all()
-    }
-    known = {(w.headword.casefold(), w.meaning_zh) for w in existing_words.values()}
-    position = _next_position(session, book.id)
-    new_words: list[VocabularyWord] = []
-    for word_in in words_in:
-        key = (word_in.headword.strip().casefold(), word_in.meaning_zh.strip())
-        if key in known:
-            continue
-        known.add(key)
-        new_words.append(_create_word(session, word_in))
-    if new_words:
-        # 两批各一次往返（原实现逐词 flush，500 词 ≈ 500 次往返）。
-        # 词与词库条目之间没有 relationship，unit-of-work 不保证跨 mapper
-        # 的 INSERT 顺序——必须先 flush 完全部词条再挂条目，FK 才不悬空
-        session.flush()
-        for word in new_words:
-            session.add(
-                VocabularyBookItem(book_id=book.id, word_id=word.id, position=position)
-            )
-            position += 1
-        # SQL 原子自增：并发加词时读-改-写会丢版本号
-        session.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
-            update(VocabularyBook)
-            .where(col(VocabularyBook.id) == book.id)
-            .values(version=VocabularyBook.version + 1)
-        )
-    session.commit()
-    return len(new_words)
 
 
 # ── CSV 导入预览 ────────────────────────────────────────────────────

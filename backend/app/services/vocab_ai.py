@@ -216,15 +216,15 @@ def import_word_drafts(
     """教师确认入库：剥离不可信字段（accepted_spellings 等），走既有加词
     去重语义（headword+meaning_zh 与词库现有词条重复即跳过）。
     current_user = 完整教师用户（编辑权校验沿用既有规则）。"""
-    from app.api.routes.vocabulary import (
+    from app.services.vocabulary import (
         MAX_BOOK_WORDS,
-        _add_words_to_book,
-        _get_book,
-        _require_book_editor,
+        add_words_to_book,
+        get_book_or_404,
+        require_book_editor,
     )
 
-    book = _get_book(session, book_id)
-    _require_book_editor(book, current_user)
+    book = get_book_or_404(session, book_id)
+    require_book_editor(book, current_user)
     if book.status != "active":
         raise HTTPException(status_code=422, detail="词库已归档，不能加词")
     if len(drafts) > MAX_BOOK_WORDS:
@@ -246,10 +246,10 @@ def import_word_drafts(
         if str(d.get("headword", "")).strip() and str(d.get("meaning_zh", "")).strip()
     ]
     valid = [w for w in words_in if w.headword and w.meaning_zh]
-    added = _add_words_to_book(session, book, valid)
-    from app.api.routes.vocabulary import _book_word_count
+    added = add_words_to_book(session, book, valid)
+    from app.services.vocabulary import word_count_by_book
 
-    counts = _book_word_count(session, [book.id])
+    counts = word_count_by_book(session, [book.id])
     return added, len(valid) - added, counts.get(book.id, 0)
 
 

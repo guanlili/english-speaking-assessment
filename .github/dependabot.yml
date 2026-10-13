@@ -1,0 +1,33 @@
+# 依赖更新跟踪（2026-10-13）：运行时依赖的 fix 版本（PyJWT/urllib3/axios
+# 等的上游安全补丁）常态化跟踪，升级 PR 由人审后合并；构建链 dev 依赖
+# 噪音大，只开安全更新（npm 默认行为即含 dev，但 frequency 压到每周）。
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+    # 只跟 lockfile（uv.lock）里的补丁级更新，不动 pyproject 的版本策略
+    versioning-strategy: lockfile-only
+    open-pull-requests-limit: 5
+    groups:
+      python-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      actions-minor:
+        update-types: [minor, patch]
