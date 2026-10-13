@@ -54,7 +54,6 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   const preparedStreamRef = useRef<MediaStream | null>(null)
   const onStartedRef = useRef(options.onStarted)
   onStartedRef.current = options.onStarted
-  const chunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
   const startedAtRef = useRef(0)
   const timerRef = useRef<number | null>(null)
@@ -151,6 +150,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     startedAtRef.current = 0
     let rejectStart: ((reason: Error) => void) | undefined
     let startTimeout: number | undefined
+    let stoppedBeforeStart = false
     try {
       if (
         preparedStreamRef.current
@@ -199,13 +199,15 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       const recorder = mimeType
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream)
-      const blobType = mimeType || "audio/webm"
+      const blobType = recorder.mimeType || mimeType || "audio/webm"
 
-      chunksRef.current = []
+      const chunks: Blob[] = []
+      let startAbandoned = false
       let lastProgressAt = 0
       recorder.ondataavailable = (event: BlobEvent) => {
+        if (disposedRef.current || generation !== generationRef.current) return
         if (event.data.size > 0) {
-          chunksRef.current.push(event.data)
+          chunks.push(event.data)
           if (
             !disposedRef.current &&
             startedAtRef.current > 0 &&
@@ -214,7 +216,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
           ) {
             lastProgressAt = Date.now()
             onProgressRef.current?.({
-              blob: new Blob(chunksRef.current, { type: blobType }),
+              blob: new Blob(chunks, { type: blobType }),
               duration: (Date.now() - startedAtRef.current) / 1000,
             })
           }
@@ -245,16 +247,27 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       // 音轨意外结束（麦克风被拔出/系统抢占）：按「到时自动停」处理——
       // 已录内容时长足够就照常提交。正常 stop 引发的 ended 在此已被
       // recorder.state!=="recording" 挡住，不会重复触发
+      const onTrackEnded = () => {
+        if (
+          disposedRef.current ||
+          generation !== generationRef.current ||
+          interruptedRef.current
+        )
+          return
+        if (recorder.state === "recording") recorder.stop()
+      }
       stream.getAudioTracks().forEach((track) => {
-        track.addEventListener("ended", () => {
-          if (disposedRef.current || interruptedRef.current) return
-          if (recorderRef.current?.state === "recording") {
-            recorderRef.current.stop()
-          }
-        })
+        track.addEventListener("ended", onTrackEnded)
       })
       recorder.onstop = () => {
+        // The prepared stream outlives each item; release callbacks and their
+        // captured audio chunks when this recorder stops.
+        stream.getAudioTracks().forEach((track) => {
+          track.removeEventListener("ended", onTrackEnded)
+        })
         if (rejectStart) {
+          startAbandoned = true
+          stoppedBeforeStart = true
           rejectStart(new Error("Recorder stopped before starting"))
           if (stream !== preparedStreamRef.current)
             stream.getTracks().forEach((track) => {
@@ -284,7 +297,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         const duration = (Date.now() - startedAtRef.current) / 1000
         cleanup()
         // PRD US-02：空文件或短于 1 秒不打分，提示再录
-        if (duration < MIN_RECORD_SECONDS || chunksRef.current.length === 0) {
+        if (duration < MIN_RECORD_SECONDS || chunks.length === 0) {
           setStatus("idle")
           setError(
             t({
@@ -295,7 +308,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
           onDiscardRef.current?.("short")
           return
         }
-        const blob = new Blob(chunksRef.current, { type: blobType })
+        const blob = new Blob(chunks, { type: blobType })
         const rec = { blob, duration }
         setRecording(rec)
         setStatus("ready")
@@ -305,14 +318,18 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       recorderRef.current = recorder
       await new Promise<void>((resolve, reject) => {
         rejectStart = reject
-        startTimeout = window.setTimeout(
-          () => reject(new Error("Recorder start timed out")),
-          RECORDER_START_TIMEOUT_MS,
-        )
+        startTimeout = window.setTimeout(() => {
+          startAbandoned = true
+          reject(new Error("Recorder start timed out"))
+        }, RECORDER_START_TIMEOUT_MS)
         recorder.onstart = () => {
           window.clearTimeout(startTimeout)
           rejectStart = undefined
-          if (disposedRef.current || generation !== generationRef.current) {
+          if (
+            startAbandoned ||
+            disposedRef.current ||
+            generation !== generationRef.current
+          ) {
             if (recorder.state === "recording") recorder.stop()
             resolve()
             return
@@ -361,8 +378,19 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       cleanup()
       setStatus("idle")
       const name = err instanceof DOMException ? err.name : ""
-      // PRD US-02：拒绝授权时说明原因，不提交空文件
-      if (name === "NotAllowedError" || name === "SecurityError") {
+      // A server phase change can stop startup slightly before the rounded
+      // local deadline; it is still a time limit, not a microphone failure.
+      if (
+        options.deadlineAt !== undefined &&
+        (stoppedBeforeStart || Date.now() >= options.deadlineAt)
+      ) {
+        setError(
+          t({
+            zh: "本题时间已结束，录音未开始",
+            en: "This item's time is up. Recording did not start.",
+          }),
+        )
+      } else if (name === "NotAllowedError" || name === "SecurityError") {
         setError(
           t({
             zh: "需要允许麦克风：请在浏览器地址栏的权限设置中允许麦克风，然后重试",
