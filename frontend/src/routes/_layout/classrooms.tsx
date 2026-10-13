@@ -4,12 +4,15 @@ import {
   ChevronDown,
   ClipboardPaste,
   Copy,
+  Pencil,
   Plus,
   RotateCcw,
+  Trash2,
   UserMinus,
 } from "lucide-react"
 import { useMemo, useState } from "react"
 import {
+  ApiError,
   ClassesService,
   type StudentImportResult,
   StudentsService,
@@ -830,6 +833,69 @@ function StudentRosterDialog({
   const [removeTarget, setRemoveTarget] = useState<string | null>(null)
   const [bulkConfirm, setBulkConfirm] = useState(false)
   const [bulkDone, setBulkDone] = useState<number | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [forceDeleteTarget, setForceDeleteTarget] = useState<string | null>(
+    null,
+  )
+  const [renameTarget, setRenameTarget] = useState<{
+    id: string
+    name: string
+  } | null>(null)
+  const [renameValue, setRenameValue] = useState("")
+
+  const renameMutation = useMutation({
+    mutationFn: ({ studentId, name }: { studentId: string; name: string }) =>
+      StudentsService.updateStudent({
+        studentId,
+        requestBody: { display_name: name },
+      }),
+    onSuccess: () => {
+      showSuccessToast(t({ zh: "姓名已更新", en: "Name updated" }))
+      setRenameTarget(null)
+      void rosterQuery.refetch()
+    },
+    onError: (error) => showErrorToast(extractErrorMessage(error)),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: ({
+      studentId,
+      deleteHistory,
+    }: {
+      studentId: string
+      deleteHistory?: boolean
+    }) =>
+      StudentsService.removeStudent({ studentId, purge: true, deleteHistory }),
+    onSuccess: (res) => {
+      showSuccessToast(
+        t({
+          zh: res.message?.includes("容量") ? res.message : "已从名单删除",
+          en: "Deleted from the roster",
+        }),
+      )
+      setDeleteTarget(null)
+      setForceDeleteTarget(null)
+      void rosterQuery.refetch()
+    },
+    onError: (error) => {
+      // 有作答历史：后端 409 阻断 → 升级到强确认（携带删除历史重试）
+      const body = error instanceof ApiError ? error.body : null
+      const detail =
+        body &&
+        typeof body === "object" &&
+        "detail" in body &&
+        typeof body.detail === "string"
+          ? body.detail
+          : ""
+      if (detail.includes("作答记录") && deleteMutation.variables?.studentId) {
+        setDeleteTarget(null)
+        setForceDeleteTarget(deleteMutation.variables.studentId)
+        return
+      }
+      showErrorToast(extractErrorMessage(error))
+      setDeleteTarget(null)
+    },
+  })
 
   const resetMutation = useMutation({
     mutationFn: (studentId: string) =>
@@ -947,6 +1013,7 @@ function StudentRosterDialog({
               <TableRow>
                 <TableHead>{t({ zh: "姓名", en: "Name" })}</TableHead>
                 <TableHead>{t({ zh: "学号", en: "Student ID" })}</TableHead>
+                <TableHead>{t({ zh: "状态", en: "Status" })}</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -959,9 +1026,20 @@ function StudentRosterDialog({
                   <TableCell className="font-mono">
                     {s.username ?? "—"}
                   </TableCell>
+                  <TableCell>
+                    {s.username ? (
+                      <Badge variant="outline">
+                        {t({ zh: "在班", en: "Enrolled" })}
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">
+                        {t({ zh: "已移出", en: "Unlinked" })}
+                      </Badge>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right">
-                    {s.username && (
-                      <div className="flex justify-end gap-1">
+                    <div className="flex justify-end gap-1">
+                      {s.username && (
                         <Button
                           variant="ghost"
                           size="icon-sm"
@@ -976,6 +1054,25 @@ function StudentRosterDialog({
                         >
                           <RotateCcw className="size-3.5" />
                         </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t({
+                          zh: `修改 ${s.student.display_name} 的姓名`,
+                          en: `Rename ${s.student.display_name}`,
+                        })}
+                        onClick={() => {
+                          setRenameValue(s.student.display_name)
+                          setRenameTarget({
+                            id: s.student.id,
+                            name: s.student.display_name,
+                          })
+                        }}
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                      {s.username && (
                         <Button
                           variant="ghost"
                           size="icon-sm"
@@ -985,10 +1082,21 @@ function StudentRosterDialog({
                           })}
                           onClick={() => setRemoveTarget(s.student.id)}
                         >
-                          <UserMinus className="size-3.5 text-destructive" />
+                          <UserMinus className="size-3.5" />
                         </Button>
-                      </div>
-                    )}
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t({
+                          zh: "从名单删除",
+                          en: "Delete from roster",
+                        })}
+                        onClick={() => setDeleteTarget(s.student.id)}
+                      >
+                        <Trash2 className="size-3.5 text-destructive" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -996,6 +1104,106 @@ function StudentRosterDialog({
           </Table>
         )}
       </DialogContent>
+      <Dialog
+        open={renameTarget !== null}
+        onOpenChange={(v) => {
+          if (!v) setRenameTarget(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {t({ zh: "修改姓名", en: "Rename Student" })}
+            </DialogTitle>
+            <DialogDescription>
+              {t({
+                zh: "只修改本班显示名；学号与登录密码不变（修改学号需删除后重新导入）。",
+                en: "Changes the display name in this classroom only; the student ID and password stay (to change the ID, delete and re-import).",
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="rename-student">
+              {t({ zh: "姓名", en: "Name" })}
+            </Label>
+            <Input
+              id="rename-student"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              maxLength={64}
+            />
+          </div>
+          <DialogFooter>
+            <LoadingButton
+              disabled={
+                !renameValue.trim() || renameValue.trim() === renameTarget?.name
+              }
+              loading={renameMutation.isPending}
+              onClick={() => {
+                if (renameTarget)
+                  renameMutation.mutate({
+                    studentId: renameTarget.id,
+                    name: renameValue.trim(),
+                  })
+              }}
+            >
+              {t({ zh: "保存", en: "Save" })}
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={t({
+          zh: "从名单删除该学生？",
+          en: "Delete this student from the roster?",
+        })}
+        description={t({
+          zh: "删除档案并释放班级容量；该生将无法进入本班。如该生有练习记录，会再要求一次确认。",
+          en: "Deletes the profile and frees a class-size slot; the student can no longer join this class. If they have practice history, you will be asked to confirm again.",
+        })}
+        confirmText={t({
+          zh: "删除",
+          en: "Delete",
+        })}
+        destructive
+        onOpenChange={(next) => {
+          if (!next) setDeleteTarget(null)
+        }}
+        onConfirm={async () => {
+          if (deleteTarget)
+            await deleteMutation.mutateAsync({
+              studentId: deleteTarget,
+              deleteHistory: false,
+            })
+        }}
+      />
+      <ConfirmDialog
+        open={forceDeleteTarget !== null}
+        title={t({
+          zh: "该学生有作答记录，仍要删除？",
+          en: "This student has answer history — delete anyway?",
+        })}
+        description={t({
+          zh: "确认后将删除该学生在本班的全部练习记录、成绩与游戏化数据，此操作不可恢复。",
+          en: "Confirming permanently deletes all of this student's practice records, scores and progress in this classroom. This cannot be undone.",
+        })}
+        confirmText={t({
+          zh: "删除全部记录",
+          en: "Delete All Records",
+        })}
+        destructive
+        onOpenChange={(next) => {
+          if (!next) setForceDeleteTarget(null)
+        }}
+        onConfirm={async () => {
+          if (forceDeleteTarget)
+            await deleteMutation.mutateAsync({
+              studentId: forceDeleteTarget,
+              deleteHistory: true,
+            })
+        }}
+      />
       <ConfirmDialog
         open={removeTarget !== null}
         title={t({

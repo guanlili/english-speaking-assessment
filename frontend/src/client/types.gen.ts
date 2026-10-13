@@ -877,6 +877,13 @@ export type StudentResetRow = {
     new_password: string;
 };
 
+/**
+ * 改班内显示名（档案级，不触碰账号与他班同名档案）。
+ */
+export type StudentUpdate = {
+    display_name: string;
+};
+
 export type TodayPlan = {
     session_id: string;
     classroom_code: string;
@@ -2254,6 +2261,23 @@ export type LoginRecoverPasswordHtmlContentData = {
 
 export type LoginRecoverPasswordHtmlContentResponse = (string);
 
+export type StudentsUpdateStudentData = {
+    requestBody: StudentUpdate;
+    studentId: string;
+};
+
+export type StudentsUpdateStudentResponse = (StudentPublic);
+
+export type StudentsRemoveStudentData = {
+    deleteHistory?: boolean;
+    purge?: boolean;
+    studentId: string;
+};
+
+export type StudentsRemoveStudentResponse = ({
+    [key: string]: (string);
+});
+
 export type StudentsImportStudentsData = {
     requestBody: StudentImportRequest;
 };
@@ -2273,14 +2297,6 @@ export type StudentsResetStudentPasswordData = {
 };
 
 export type StudentsResetStudentPasswordResponse = ({
-    [key: string]: (string);
-});
-
-export type StudentsRemoveStudentData = {
-    studentId: string;
-};
-
-export type StudentsRemoveStudentResponse = ({
     [key: string]: (string);
 });
 

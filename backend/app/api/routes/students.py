@@ -12,6 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import Field, field_validator
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, SQLModel, col, select
 
 from app import crud
@@ -19,11 +20,14 @@ from app.api.deps import SessionDep, StudentUserDep, TeacherUserDep
 from app.core.security import DEFAULT_STUDENT_PASSWORD, get_password_hash
 from app.crud import ClassroomFullError
 from app.models import (
+    Attempt,
     Classroom,
     ClassroomExercise,
     Student,
     StudentPublic,
     User,
+    VocabularyAnswer,
+    VocabularySession,
 )
 
 router = APIRouter(prefix="/students", tags=["students"])
@@ -121,6 +125,105 @@ class StudentAccountOut(SQLModel):
     username: str | None = None
     full_name: str | None = None
     must_change_password: bool = False
+
+
+class StudentUpdate(SQLModel):
+    """改班内显示名（档案级，不触碰账号与他班同名档案）。"""
+
+    display_name: str = Field(min_length=1, max_length=64)
+
+
+@router.patch("/{student_id}", response_model=StudentPublic)
+def update_student(
+    session: SessionDep,
+    current_user: TeacherUserDep,
+    student_id: uuid.UUID,
+    body: StudentUpdate,
+) -> Any:
+    """修改学生在本班的显示名。
+
+    档案级改名：账号信息与他班同名档案不受影响；改名后清除重名后缀
+    （教师显式指定的新名）。与本班现有姓名（含无后缀同名）冲突时 422。
+    """
+    student = session.get(Student, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    _get_classroom_in_scope(session, current_user, student.classroom_id)
+    name = body.display_name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="姓名不能为空")
+    if name != student.display_name:
+        student.display_name = name[:64]
+        student.suffix = None
+        try:
+            session.add(student)
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            raise HTTPException(
+                status_code=422, detail="该姓名在本班已被使用，请换一个名字"
+            ) from None
+    session.refresh(student)
+    return student
+
+
+def _student_has_history(session: Session, student_id: uuid.UUID) -> bool:
+    """该生在本班是否有作答记录（口语或词汇）。"""
+    has_attempts = (
+        session.exec(
+            select(Attempt.id).where(Attempt.student_id == student_id).limit(1)  # type: ignore[arg-type]
+        ).first()
+        is not None
+    )
+    if has_attempts:
+        return True
+    return (
+        session.exec(
+            select(VocabularyAnswer.id)
+            .join(
+                VocabularySession,
+                col(VocabularyAnswer.session_id) == col(VocabularySession.id),
+            )
+            .where(VocabularySession.student_id == student_id)  # type: ignore[arg-type]
+            .limit(1)
+        ).first()
+        is not None
+    )
+
+
+@router.delete("/{student_id}")
+def remove_student(
+    session: SessionDep,
+    current_user: TeacherUserDep,
+    student_id: uuid.UUID,
+    purge: bool = Query(default=False),
+    delete_history: bool = Query(default=False),
+) -> dict[str, str]:
+    """把学生移出课堂（purge=false）或从名单删除档案（purge=true）。
+
+    - 移出（默认）：仅解除账号绑定，档案与作答历史保留（重新导入相同学号
+      可找回），档案仍占班级容量；
+    - 删除档案（purge=true）：物理删除档案行并释放容量，其在本班的全部
+      练习记录、成绩与游戏化数据按外键级联删除。有作答历史时必须
+      delete_history=true 显式确认（默认 409 阻断）。
+    """
+    student = session.get(Student, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    _get_classroom_in_scope(session, current_user, student.classroom_id)
+    if not purge:
+        student.user_id = None
+        session.add(student)
+        session.commit()
+        return {"message": "已移出课堂（档案与历史保留，重新导入可找回）"}
+    if not delete_history and _student_has_history(session, student.id):
+        raise HTTPException(
+            status_code=409,
+            detail="该学生在本班有作答记录，删除档案将一并清除其全部练习与成绩；确认清除请重试并携带删除历史确认",
+        )
+    session.delete(student)
+    session.commit()
+    return {"message": "已从名单删除（容量已释放）"}
 
 
 def _normalized_name(name: str | None) -> str:
@@ -453,23 +556,6 @@ def reset_student_password(
     session.add(user)
     session.commit()
     return {"new_password": DEFAULT_STUDENT_PASSWORD}
-
-
-@router.delete("/{student_id}")
-def remove_student(
-    session: SessionDep,
-    current_user: TeacherUserDep,
-    student_id: uuid.UUID,
-) -> dict[str, str]:
-    """把学生移出课堂：档案与作答历史保留（可重新导入找回），仅解除账号绑定。"""
-    student = session.get(Student, student_id)
-    if student is None:
-        raise HTTPException(status_code=404, detail="Student not found")
-    _get_classroom_in_scope(session, current_user, student.classroom_id)
-    student.user_id = None
-    session.add(student)
-    session.commit()
-    return {"message": "已移出课堂（档案与历史保留，重新导入可找回）"}
 
 
 class StudentResetRow(SQLModel):
