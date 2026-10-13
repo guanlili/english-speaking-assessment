@@ -349,7 +349,7 @@ jobs:
           rm -f "$RUNNER_TEMP/deploy.env"
 
       - name: 服务器拉代码并重启服务
-        uses: appleboy/ssh-action@v1.2.2
+        uses: appleboy/ssh-action@v1.2.5
         env:
           ENV_B64: ${{ steps.envfile.outputs.env_b64 }}
           PATH_B64: ${{ steps.envfile.outputs.path_b64 }}
