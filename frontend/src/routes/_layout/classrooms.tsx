@@ -78,7 +78,7 @@ function MyClassroomsPage() {
   const [className, setClassName] = useState("")
   const [grade, setGrade] = useState("")
   const [teachingGoal, setTeachingGoal] = useState("")
-  const [classSize, setClassSize] = useState(40)
+  const [classSize, setClassSize] = useState(60)
   const createMutation = useMutation({
     mutationFn: () =>
       ClassesService.createClass({

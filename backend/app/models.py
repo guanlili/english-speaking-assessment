@@ -503,7 +503,7 @@ class Classroom(SQLModel, table=True):
     name: str = Field(default="未命名课堂", max_length=120)
     grade: str | None = Field(default=None, max_length=64)
     teaching_goal: str | None = Field(default=None, max_length=255)
-    class_size: int = Field(default=40, ge=1, le=100)
+    class_size: int = Field(default=60, ge=1, le=100)
     is_active: bool = True
     # 授权教师（User.id）：教师面板/指派/名单必须由本人或管理员访问；
     # 课堂码只用于学生入班，不能凭课堂码查看全班数据
@@ -638,7 +638,7 @@ class ClassroomCreate(SQLModel):
     name: str = Field(default="未命名课堂", min_length=1, max_length=120)
     grade: str | None = Field(default=None, max_length=64)
     teaching_goal: str | None = Field(default=None, max_length=255)
-    class_size: int = Field(default=40, ge=1, le=100)
+    class_size: int = Field(default=60, ge=1, le=100)
 
 
 # 学生：与登录账号（role=student 的 User）关联；游戏化数据挂在本行
