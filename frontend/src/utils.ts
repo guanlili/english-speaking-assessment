@@ -135,6 +135,9 @@ const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
   "班级人数已满，请联系老师调整课堂容量": {
     en: "This class is full. Ask the teacher to adjust the class size.",
   },
+  班级人数上限不能低于当前已有档案数: {
+    en: "The size limit cannot go below the current roster size.",
+  },
   "Not Found": { zh: "资源不存在", en: "Not found." },
 }
 

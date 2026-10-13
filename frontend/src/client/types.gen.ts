@@ -255,6 +255,14 @@ export type ClassroomUpdate = {
     unlock_all?: (boolean | null);
     owner_id?: (string | null);
     is_active?: (boolean | null);
+    class_size?: (number | null);
+};
+
+/**
+ * 调整班级人数上限（教师本人/管理员）。
+ */
+export type ClassSizeUpdate = {
+    class_size: number;
 };
 
 export type DraftQuestionOut = {
@@ -2062,6 +2070,13 @@ export type ClassesDeleteClassData = {
 export type ClassesDeleteClassResponse = ({
     [key: string]: (string);
 });
+
+export type ClassesUpdateClassSizeData = {
+    code: string;
+    requestBody: ClassSizeUpdate;
+};
+
+export type ClassesUpdateClassSizeResponse = (ClassroomPublic);
 
 export type ClassesJoinClassData = {
     code: string;

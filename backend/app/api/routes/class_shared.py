@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import load_only
-from sqlmodel import col, delete, select
+from sqlmodel import Field, SQLModel, col, delete, select
 
 from app.api.deps import (
     CurrentUser,
@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.crud import (
     ClassroomFullError,
     create_classroom,
+    ensure_class_size_feasible,
     get_classroom_by_code,
     get_or_create_today_session,
     get_student,
@@ -347,6 +348,38 @@ def delete_class(
     session.delete(classroom)
     session.commit()
     return {"message": "课堂已删除"}
+
+
+class ClassSizeUpdate(SQLModel):
+    """调整班级人数上限（教师本人/管理员）。"""
+
+    class_size: int = Field(ge=1, le=100)
+
+
+@router.patch("/{code}", response_model=ClassroomPublic)
+def update_class_size(
+    session: SessionDep,
+    code: str,
+    current_user: CurrentUser,
+    body: ClassSizeUpdate,
+) -> Any:
+    """调整班级人数上限（本人课堂或管理员）。
+
+    上限只挡新档案入班（导入/自加入），不影响已入班学生；不得低于
+    班内现有档案数。
+    """
+    classroom = get_classroom_by_code(session=session, code=code.upper())
+    if classroom is None:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+    _require_classroom_teacher(classroom, current_user)
+    ensure_class_size_feasible(
+        session=session, classroom=classroom, new_size=body.class_size
+    )
+    classroom.class_size = body.class_size
+    session.add(classroom)
+    session.commit()
+    session.refresh(classroom)
+    return classroom
 
 
 @router.post("", response_model=ClassroomPublic)

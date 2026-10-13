@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { Plus, Trash2 } from "lucide-react"
+import { Pencil, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { AdminService, ClassesService, UsersService } from "@/client"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
@@ -14,6 +14,16 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { NumberInput } from "@/components/ui/number-input"
 import {
   Select,
   SelectContent,
@@ -96,6 +106,7 @@ function ClassroomsAdmin() {
         unlock_all?: boolean
         owner_id?: string | null
         is_active?: boolean
+        class_size?: number
       }
     }) => AdminService.updateClassroom({ classroomId: id, requestBody: patch }),
     onSuccess: (_data, vars) => {
@@ -104,6 +115,13 @@ function ClassroomsAdmin() {
           vars.patch.owner_id
             ? t({ zh: "已绑定授权教师", en: "Teacher bound" })
             : t({ zh: "已解绑授权教师", en: "Teacher unbound" }),
+        )
+      } else if (typeof vars.patch.class_size === "number") {
+        showSuccessToast(
+          t({
+            zh: `人数上限已调整为 ${vars.patch.class_size} 人`,
+            en: `Size limit updated to ${vars.patch.class_size}`,
+          }),
         )
       } else if (vars.patch.is_active === true) {
         showSuccessToast(
@@ -262,7 +280,19 @@ function ClassroomsAdmin() {
                           {c.code}
                         </p>
                       </TableCell>
-                      <TableCell>{c.class_size}</TableCell>
+                      <TableCell>
+                        <ClassSizeCell
+                          classroomId={c.id}
+                          code={c.code}
+                          classSize={c.class_size}
+                          onSave={(next) =>
+                            updateMutation.mutate({
+                              id: c.id,
+                              patch: { class_size: next },
+                            })
+                          }
+                        />
+                      </TableCell>
                       <TableCell>
                         <div className="flex min-w-48 items-center gap-2">
                           <Select
@@ -415,6 +445,93 @@ function ClassroomsAdmin() {
           }
         }}
       />
+    </div>
+  )
+}
+
+/** 班额单元格：当前值 + 铅笔编辑（弹层改人数上限，管理员兜底入口）。 */
+function ClassSizeCell({
+  classroomId,
+  code,
+  classSize,
+  onSave,
+}: {
+  classroomId: string
+  code: string
+  classSize: number
+  onSave: (next: number) => void
+}) {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState(classSize)
+
+  return (
+    <div className="flex items-center gap-1">
+      <span>{classSize}</span>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-8"
+        aria-label={t({
+          zh: `调整课堂 ${code} 的人数上限`,
+          en: `Adjust size limit for ${code}`,
+        })}
+        onClick={() => {
+          setValue(classSize)
+          setOpen(true)
+        }}
+      >
+        <Pencil className="size-3.5" />
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {t({
+                zh: `调整 ${code} 的人数上限`,
+                en: `Adjust Size Limit for ${code}`,
+              })}
+            </DialogTitle>
+            <DialogDescription>
+              {t({
+                zh: "上限只限制新学生加入（导入/自加入），已入班学生不受影响；不能低于班内现有档案数。",
+                en: "The limit only gates new students joining (import or self-join); enrolled students are unaffected. It cannot go below the current roster size.",
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor={`class-size-${classroomId}`}>
+              {t({
+                zh: "班级人数上限（1-100）",
+                en: "Class size limit (1-100)",
+              })}
+            </Label>
+            <NumberInput
+              id={`class-size-${classroomId}`}
+              min={1}
+              max={100}
+              value={value}
+              onValueChange={setValue}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              disabled={
+                !Number.isInteger(value) ||
+                value < 1 ||
+                value > 100 ||
+                value === classSize
+              }
+              onClick={() => {
+                onSave(value)
+                setOpen(false)
+              }}
+            >
+              {t({ zh: "保存", en: "Save" })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

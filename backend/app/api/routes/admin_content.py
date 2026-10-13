@@ -1084,6 +1084,7 @@ class ClassroomUpdate(SQLModel):
     unlock_all: bool | None = None
     owner_id: uuid.UUID | None = None
     is_active: bool | None = None
+    class_size: int | None = Field(default=None, ge=1, le=100)
 
 
 @router.get("/topics", response_model=list[str])
@@ -1124,7 +1125,7 @@ def update_classroom(
     classroom_id: uuid.UUID,
     classroom_in: ClassroomUpdate,
 ) -> Any:
-    """更新课堂设置：unlock_all（一键解锁）、owner_id（绑定授权教师）、启停。"""
+    """更新课堂设置：unlock_all（一键解锁）、owner_id（绑定授权教师）、启停、班容。"""
     classroom = session.get(Classroom, classroom_id)
     if classroom is None:
         raise HTTPException(status_code=404, detail="Classroom not found")
@@ -1138,6 +1139,10 @@ def update_classroom(
             raise HTTPException(status_code=422, detail="教师账号不存在")
         if not owner.is_superuser and owner.role != "teacher":
             raise HTTPException(status_code=422, detail="被绑定账号不是教师角色")
+    if update.get("class_size") is not None:
+        crud.ensure_class_size_feasible(
+            session=session, classroom=classroom, new_size=update["class_size"]
+        )
     classroom.sqlmodel_update(update)
     session.add(classroom)
     session.commit()
