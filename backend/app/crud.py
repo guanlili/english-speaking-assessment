@@ -152,6 +152,17 @@ def get_classroom_by_code(*, session: Session, code: str) -> Classroom | None:
     return session.exec(select(Classroom).where(Classroom.code == code)).first()
 
 
+def classroom_teacher_allowed(classroom: Classroom, user: User) -> bool:
+    """教师越权判定唯一事实源（纯函数，不抛错）：
+
+    本班 owner（绑定教师）或管理员可过；owner 未绑定的课堂任何教师都
+    不可过（课堂码不是教师凭据）。students / class_shared 两套适配层
+    停用课堂与 403 文案语义不同，但判定核心必须是同一个。"""
+    if user.is_superuser:
+        return True
+    return classroom.owner_id is not None and classroom.owner_id == user.id
+
+
 def ensure_class_size_feasible(
     *, session: Session, classroom: Classroom, new_size: int
 ) -> None:
@@ -199,6 +210,14 @@ def join_classroom(
         or "同学"
     )
     for _attempt in range(10):
+        # 容量检查-插入之间无原子性：并发抢最后一个名额会双双通过检查超员。
+        # 对课堂行 FOR UPDATE 串行化同班并发入班（毫秒级临界区，提交即释放；
+        # 教师批量导入期间锁持有到导入事务结束，自加入学生会排队等导入完成）
+        locked_classroom = session.exec(
+            select(Classroom).where(Classroom.id == classroom.id).with_for_update()
+        ).first()
+        if locked_classroom is None:
+            raise HTTPException(status_code=404, detail="Classroom not found")
         duplicate = session.exec(
             select(Student).where(
                 Student.classroom_id == classroom.id,  # type: ignore[arg-type]
@@ -211,7 +230,7 @@ def join_classroom(
             .select_from(Student)
             .where(Student.classroom_id == classroom.id)  # type: ignore[arg-type]
         ).one()
-        if enrolled_count >= classroom.class_size:
+        if enrolled_count >= locked_classroom.class_size:
             raise ClassroomFullError()
         suffix = None if duplicate is None else f"{random.randint(1000, 9999)}"  # noqa: S311
         student = Student(

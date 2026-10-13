@@ -1,10 +1,13 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { RefreshCw, Search } from "lucide-react"
-import { Suspense, useEffect, useRef, useState } from "react"
+import { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { type UserPublic, UsersService } from "@/client"
 import AddUser from "@/components/Admin/AddUser"
-import { columns, type UserTableData } from "@/components/Admin/columns"
+import {
+  buildUserColumns,
+  type UserTableData,
+} from "@/components/Admin/columns"
 import { DataTable } from "@/components/Common/DataTable"
 import PendingUsers from "@/components/Pending/PendingUsers"
 import { Button } from "@/components/ui/button"
@@ -56,6 +59,7 @@ export const Route = createFileRoute("/_layout/admin/")({
 function UsersTableContent() {
   const { user: currentUser } = useAuth()
   const { t } = useI18n()
+  const columns = useMemo(() => buildUserColumns(t), [t])
   // 服务端分页（批次09）：此前固定取前 100 人，超出部分无法从本页管理
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(USERS_PAGE_SIZE)

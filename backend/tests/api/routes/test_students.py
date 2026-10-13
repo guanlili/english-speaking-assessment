@@ -10,6 +10,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func
 from sqlmodel import Session, col, select
 
 from app import crud
@@ -990,3 +991,127 @@ def test_update_student_display_name(client: TestClient, db: Session) -> None:
         assert forbidden.status_code == 403
     finally:
         _cleanup(db, classroom_id, teacher, other_teacher)
+
+
+# ── 并发容量与越权统一（2026-10-13）─────────────────────────────────
+
+
+def test_concurrent_join_cannot_exceed_capacity(
+    client: TestClient, db: Session
+) -> None:
+    """并发抢最后一个名额：课堂行锁保证恰一人成功（不超员）。"""
+    import threading
+
+    from app.core.db import _get_engine
+    from app.crud import ClassroomFullError, join_classroom
+
+    teacher, headers = _login_teacher(db, client)
+    classroom_id = None
+    try:
+        classroom_id = uuid.UUID(_new_classroom(client, headers)["id"])
+        _import(
+            client,
+            headers,
+            str(classroom_id),
+            [{"username": f"stu{uuid.uuid4().hex[:8]}", "full_name": "先到者"}],
+        )
+        classroom = db.get(Classroom, classroom_id)
+        assert classroom is not None
+        # 收紧到 2（已有 1 人）：并发两个新账号抢最后一席
+        resp = client.patch(
+            f"/api/v1/classes/{classroom.code}",
+            json={"class_size": 2},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+        engine = _get_engine()
+        outcomes: list[str] = []
+        barrier = threading.Barrier(2)
+
+        def contender(tag: str) -> None:
+            with Session(engine) as thread_session:
+                user = crud.create_user(
+                    session=thread_session,
+                    user_create=UserCreate(
+                        email=f"race-{tag}-{uuid.uuid4().hex[:8]}@example.com",
+                        password=random_lower_string(),
+                        role="student",
+                    ),
+                )
+                thread_session.commit()
+                barrier.wait()  # 两线程同时发起入班
+                try:
+                    join_classroom(
+                        session=thread_session,
+                        classroom=classroom,
+                        user=user,
+                        display_name=f"竞争者{tag}",
+                    )
+                    outcomes.append("ok")
+                except ClassroomFullError:
+                    outcomes.append("full")
+
+        threads = [
+            threading.Thread(target=contender, args=(tag,)) for tag in ("A", "B")
+        ]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+
+        assert sorted(outcomes) == ["full", "ok"], outcomes
+        db.expire_all()
+        enrolled = db.exec(
+            select(func.count())
+            .select_from(Student)
+            .where(Student.classroom_id == classroom_id)
+        ).one()
+        assert enrolled == 2  # 恰好满员，不超员
+    finally:
+        _cleanup(db, classroom_id, teacher)
+
+
+def test_teacher_gate_unified_across_adapters(client: TestClient, db: Session) -> None:
+    """越权判定单一事实源：非 owner 教师在两套适配层下都被拒（403）。"""
+    owner, owner_headers = _login_teacher(db, client)
+    stranger, stranger_headers = _login_teacher(db, client)
+    classroom_id = None
+    try:
+        classroom_id = uuid.UUID(_new_classroom(client, owner_headers)["id"])
+        result = _import(
+            client,
+            owner_headers,
+            str(classroom_id),
+            [{"username": f"stu{uuid.uuid4().hex[:8]}", "full_name": "被管学生"}],
+        )
+        student_id = result["rows"][0]["student_id"]
+
+        # students 侧（名单）
+        r1 = client.get(
+            "/api/v1/students",
+            params={"classroom_id": str(classroom_id)},
+            headers=stranger_headers,
+        )
+        assert r1.status_code == 403
+
+        # class_shared 侧（删除课堂）
+        classroom = db.get(Classroom, classroom_id)
+        assert classroom is not None and classroom.code is not None
+        r2 = client.delete(
+            f"/api/v1/classes/{classroom.code}",
+            headers=stranger_headers,
+        )
+        assert r2.status_code == 403
+        assert db.get(Classroom, classroom_id) is not None
+
+        # owner 本人两侧都放行
+        r3 = client.get(
+            "/api/v1/students",
+            params={"classroom_id": str(classroom_id)},
+            headers=owner_headers,
+        )
+        assert r3.status_code == 200
+        assert db.get(Student, uuid.UUID(student_id)) is not None
+    finally:
+        _cleanup(db, classroom_id, owner, stranger)
