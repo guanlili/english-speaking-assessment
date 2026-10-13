@@ -41,7 +41,7 @@ def _get_classroom_in_scope(
     classroom = session.get(Classroom, classroom_id)
     if classroom is None or not classroom.is_active:
         raise HTTPException(status_code=404, detail="Classroom not found")
-    if not current_user.is_superuser and classroom.owner_id != current_user.id:
+    if not crud.classroom_teacher_allowed(classroom, current_user):
         raise HTTPException(status_code=403, detail="没有权限：只能管理自己课堂的学生")
     return classroom
 

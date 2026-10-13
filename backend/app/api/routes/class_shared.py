@@ -21,6 +21,7 @@ from app.api.deps import (
 from app.core.config import settings
 from app.crud import (
     ClassroomFullError,
+    classroom_teacher_allowed,
     create_classroom,
     ensure_class_size_feasible,
     get_classroom_by_code,
@@ -254,15 +255,15 @@ def _include_type(classroom: Classroom, kind: str) -> bool:
 
 
 def _require_classroom_teacher(classroom: Classroom, current_user: User) -> None:
-    """教师端点：本人是指派教师或管理员才能访问（课堂码不能当教师凭据）。"""
-    if current_user.is_superuser:
-        return
-    if classroom.owner_id is not None and classroom.owner_id == current_user.id:
-        return
-    raise HTTPException(
-        status_code=403,
-        detail="没有权限：您不是该课堂的授权教师，请联系管理员绑定后再查看",
-    )
+    """教师端点：本人是指派教师或管理员才能访问（课堂码不能当教师凭据）。
+
+    判定核心在 crud.classroom_teacher_allowed（与 students 侧同一事实源）；
+    本侧对停用课堂放行（owner 收尾操作：删除课堂/调班容等）。"""
+    if not classroom_teacher_allowed(classroom, current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="没有权限：您不是该课堂的授权教师，请联系管理员绑定后再查看",
+        )
 
 
 @router.get("", response_model=list[ClassroomPublic])

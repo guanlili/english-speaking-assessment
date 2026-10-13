@@ -29,29 +29,48 @@ import {
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import useCustomToast from "@/hooks/useCustomToast"
-import { handleError } from "@/utils"
+import { useI18n } from "@/lib/i18n"
+import { extractErrorMessage } from "@/utils"
 
-const formSchema = z
-  .object({
-    email: z
-      .union([z.literal(""), z.email({ message: "Invalid email address" })])
-      .optional(),
-    full_name: z.string().optional(),
-    password: z
-      .string()
-      .min(8, { message: "Password must be at least 8 characters" })
-      .optional()
-      .or(z.literal("")),
-    confirm_password: z.string().optional(),
-    is_superuser: z.boolean().optional(),
-    is_active: z.boolean().optional(),
-  })
-  .refine((data) => !data.password || data.password === data.confirm_password, {
-    message: "The passwords don't match",
-    path: ["confirm_password"],
-  })
+/** 校验消息需随语言切换：schema 由工厂按当前文案生成 */
+type Translate = ReturnType<typeof useI18n>["t"]
 
-type FormData = z.infer<typeof formSchema>
+const buildFormSchema = (t: Translate) =>
+  z
+    .object({
+      email: z
+        .union([
+          z.literal(""),
+          z.email({
+            message: t({ zh: "邮箱格式不正确", en: "Invalid email address" }),
+          }),
+        ])
+        .optional(),
+      full_name: z.string().optional(),
+      password: z
+        .string()
+        .min(8, {
+          message: t({
+            zh: "密码至少 8 个字符",
+            en: "Password must be at least 8 characters",
+          }),
+        })
+        .optional()
+        .or(z.literal("")),
+      confirm_password: z.string().optional(),
+      is_superuser: z.boolean().optional(),
+      is_active: z.boolean().optional(),
+    })
+    .refine(
+      (data) => !data.password || data.password === data.confirm_password,
+      {
+        message: t({
+          zh: "两次输入的密码不一致",
+          en: "The passwords don't match",
+        }),
+        path: ["confirm_password"],
+      },
+    )
 
 interface EditUserProps {
   user: UserPublic
@@ -62,8 +81,10 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
   const [isOpen, setIsOpen] = useState(false)
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { t } = useI18n()
+  const formSchema = buildFormSchema(t)
 
-  const form = useForm<FormData>({
+  const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     mode: "onBlur",
     criteriaMode: "all",
@@ -76,20 +97,20 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
   })
 
   const mutation = useMutation({
-    mutationFn: (data: FormData) =>
+    mutationFn: (data: z.infer<typeof formSchema>) =>
       UsersService.updateUser({ userId: user.id, requestBody: data }),
     onSuccess: () => {
-      showSuccessToast("User updated successfully")
+      showSuccessToast(t({ zh: "用户已更新", en: "User updated successfully" }))
       setIsOpen(false)
       onSuccess()
     },
-    onError: handleError.bind(showErrorToast),
+    onError: (error) => showErrorToast(extractErrorMessage(error)),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] })
     },
   })
 
-  const onSubmit = (data: FormData) => {
+  const onSubmit = (data: z.infer<typeof formSchema>) => {
     // exclude confirm_password from submission data and remove password if empty
     const { confirm_password: _, ...submitData } = data
     if (!submitData.password) {
@@ -105,15 +126,20 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
         onClick={() => setIsOpen(true)}
       >
         <Pencil />
-        Edit User
+        {t({ zh: "编辑用户", en: "Edit User" })}
       </DropdownMenuItem>
       <DialogContent className="sm:max-w-md">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <DialogHeader>
-              <DialogTitle>Edit User</DialogTitle>
+              <DialogTitle>
+                {t({ zh: "编辑用户", en: "Edit User" })}
+              </DialogTitle>
               <DialogDescription>
-                Update the user details below.
+                {t({
+                  zh: "修改账号信息；留空的密码不变更。",
+                  en: "Update the account details below; an empty password keeps the current one.",
+                })}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -123,11 +149,12 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      Email <span className="text-destructive">*</span>
+                      {t({ zh: "邮箱", en: "Email" })}{" "}
+                      <span className="text-destructive">*</span>
                     </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Email"
+                        placeholder={t({ zh: "邮箱", en: "Email" })}
                         type="email"
                         {...field}
                         required
@@ -143,9 +170,13 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
                 name="full_name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Full Name</FormLabel>
+                    <FormLabel>{t({ zh: "姓名", en: "Full Name" })}</FormLabel>
                     <FormControl>
-                      <Input placeholder="Full name" type="text" {...field} />
+                      <Input
+                        placeholder={t({ zh: "姓名", en: "Full name" })}
+                        type="text"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -157,10 +188,12 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Set Password</FormLabel>
+                    <FormLabel>
+                      {t({ zh: "设置新密码", en: "Set Password" })}
+                    </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Password"
+                        placeholder={t({ zh: "密码", en: "Password" })}
                         type="password"
                         {...field}
                       />
@@ -175,10 +208,12 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
                 name="confirm_password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Confirm Password</FormLabel>
+                    <FormLabel>
+                      {t({ zh: "确认新密码", en: "Confirm Password" })}
+                    </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Password"
+                        placeholder={t({ zh: "密码", en: "Password" })}
                         type="password"
                         {...field}
                       />
@@ -199,7 +234,9 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
                         onCheckedChange={field.onChange}
                       />
                     </FormControl>
-                    <FormLabel className="font-normal">Is superuser?</FormLabel>
+                    <FormLabel className="font-normal">
+                      {t({ zh: "管理员权限", en: "Is superuser?" })}
+                    </FormLabel>
                   </FormItem>
                 )}
               />
@@ -215,7 +252,9 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
                         onCheckedChange={field.onChange}
                       />
                     </FormControl>
-                    <FormLabel className="font-normal">Is active?</FormLabel>
+                    <FormLabel className="font-normal">
+                      {t({ zh: "启用账号", en: "Is active?" })}
+                    </FormLabel>
                   </FormItem>
                 )}
               />
@@ -224,11 +263,11 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
             <DialogFooter>
               <DialogClose asChild>
                 <Button variant="outline" disabled={mutation.isPending}>
-                  Cancel
+                  {t({ zh: "取消", en: "Cancel" })}
                 </Button>
               </DialogClose>
               <LoadingButton type="submit" loading={mutation.isPending}>
-                Save
+                {t({ zh: "保存", en: "Save" })}
               </LoadingButton>
             </DialogFooter>
           </form>
