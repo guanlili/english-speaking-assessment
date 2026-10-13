@@ -1,3 +1,4 @@
+import logging
 import random
 import re
 import uuid
@@ -21,6 +22,8 @@ from app.models import (
     UserCreate,
     UserUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def create_user(*, session: Session, user_create: UserCreate) -> User:
@@ -200,7 +203,7 @@ def join_classroom(
         session.add(student)
         try:
             session.commit()
-        except IntegrityError:
+        except IntegrityError as exc:
             session.rollback()
             # 并发同账号入班：重查直接返回
             existing = session.exec(
@@ -211,6 +214,15 @@ def join_classroom(
             ).first()
             if existing is not None:
                 return existing
+            # 重查无既有档案：多半是随机后缀显示名撞车，静默重试会让
+            # 排查「为何没入班」失去线索——留一条再继续
+            logger.warning(
+                "join_classroom integrity conflict without existing profile, "
+                "retrying user=%s classroom=%s: %s",
+                user.id,
+                classroom.id,
+                exc,
+            )
             continue
         session.refresh(student)
         return student

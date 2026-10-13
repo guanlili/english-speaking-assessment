@@ -730,20 +730,22 @@ def recover_stale_attempts(session: Session) -> int:
 
     返回恢复的作答数。
     """
-    cutoff = datetime.now(UTC).timestamp() - SCORING_STALE_TIMEOUT_S
+    cutoff = datetime.now(UTC) - timedelta(seconds=SCORING_STALE_TIMEOUT_S)
+    # 超时条件下推 SQL：只锁定/取回真正过期的行——原实现锁全部 scoring 行
+    # （含正在正常评分中的），清扫一跑，评分线程的写回都要吃 skip_locked
     stale = session.exec(
         select(Attempt)
-        .where(Attempt.status == AttemptStatus.SCORING)
+        .where(
+            Attempt.status == AttemptStatus.SCORING,
+            col(Attempt.claimed_at).is_not(None),
+            col(Attempt.claimed_at) <= cutoff,
+        )
         .with_for_update(skip_locked=True)
     ).all()
     recovered_ids: list[uuid.UUID] = []
     recovered = 0
     changed = False
     for attempt in stale:
-        if attempt.claimed_at is None:
-            continue
-        if attempt.claimed_at.timestamp() > cutoff:
-            continue  # 还在正常评分中
         if attempt.retry_count < MAX_SCORING_RETRIES:
             attempt.status = AttemptStatus.QUEUED
             attempt.claimed_at = None

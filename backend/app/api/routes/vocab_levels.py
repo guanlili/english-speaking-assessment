@@ -241,14 +241,13 @@ def list_teaching_words_by_level(
             VocabularyWord.status == "active",
             col(VocabularyWord.headword).in_(matched_headwords),  # type: ignore[operator]
         )
-        .order_by(col(VocabularyWord.headword))
+        .order_by(col(VocabularyWord.headword), col(VocabularyWord.id))
+        .offset(offset)
+        .limit(limit)
     )
-    words = session.exec(stmt).all()
-    # 同词可在多本可见词库：JSON 列不支持 SQL DISTINCT，按 id 在 Python 去重
-    deduped: dict[uuid.UUID, VocabularyWord] = {}
-    for word in words:
-        deduped.setdefault(word.id, word)
-    page = list(deduped.values())[offset : offset + limit]
+    # 单表查询无 join，词行天然不重复，分页直接下推 SQL（原全量取回后
+    # Python 去重切片，词库增长后每次都是全量传输）
+    page = list(session.exec(stmt).all())
     return levels_service.attach_word_levels(session, page)
 
 

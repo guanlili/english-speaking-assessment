@@ -8,9 +8,11 @@ OpenAI 兼容 /audio/speech 接口：POST {ARK_TTS_BASE_URL}/audio/speech 返回
 
 import hashlib
 import logging
+import time
 
 import httpx
 
+from app.core import metrics
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -68,9 +70,16 @@ class ArkTtsProvider:
         headers = {"Authorization": f"Bearer {self.api_key}"}
         url = f"{self.base_url}/audio/speech"
         client = self._client if self._client is not None else _shared_client
-        resp = client.post(url, json=payload, headers=headers)
-        if resp.status_code != 200:
-            raise TtsError(f"TTS 返回 {resp.status_code}: {resp.text[:200]}")
+        start = time.perf_counter()
+        try:
+            resp = client.post(url, json=payload, headers=headers)
+            if resp.status_code != 200:
+                raise TtsError(f"TTS 返回 {resp.status_code}: {resp.text[:200]}")
+        except Exception:
+            metrics.record_call("tts", ok=False, duration_s=time.perf_counter() - start)
+            raise
+        # TTS 是按字符计费的调用：进运维指标（缓存命中在上层、不经过这里）
+        metrics.record_call("tts", ok=True, duration_s=time.perf_counter() - start)
         return resp.content
 
 

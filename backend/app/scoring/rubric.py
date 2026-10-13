@@ -13,10 +13,12 @@ import json
 import logging
 import math
 import re
+import time
 from dataclasses import dataclass, field
 
 import httpx
 
+from app.core import metrics
 from app.core.config import settings
 from app.scoring.ark_client import fast_chat_options
 
@@ -292,10 +294,23 @@ class ArkRubricScorer:
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
         client = self._client if self._client is not None else _shared_client
-        resp = client.post(
-            f"{self.base_url}/chat/completions", json=payload, headers=headers
+        start = time.perf_counter()
+        try:
+            resp = client.post(
+                f"{self.base_url}/chat/completions", json=payload, headers=headers
+            )
+            if resp.status_code != 200:
+                raise ValueError(f"Ark chat 返回 {resp.status_code}: {resp.text[:200]}")
+            content = resp.json()["choices"][0]["message"]["content"]
+            scores = parse_rubric_response(content)
+        except Exception:
+            metrics.record_call(
+                "llm_rubric", ok=False, duration_s=time.perf_counter() - start
+            )
+            raise
+        # 评分走独立 kind：与出题/词汇讲解分开归因（评分是最大成本项，
+        # 此前直连 POST 完全没进指标）
+        metrics.record_call(
+            "llm_rubric", ok=True, duration_s=time.perf_counter() - start
         )
-        if resp.status_code != 200:
-            raise ValueError(f"Ark chat 返回 {resp.status_code}: {resp.text[:200]}")
-        content = resp.json()["choices"][0]["message"]["content"]
-        return parse_rubric_response(content)
+        return scores

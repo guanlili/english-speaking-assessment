@@ -18,6 +18,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
+from sqlalchemy import func, update
 from sqlmodel import Session, col, select
 
 from app.models import (
@@ -307,11 +308,19 @@ def submit_quiz_session(
 def record_tab_switch(
     session: Session, vocab_session: VocabularySession, assignment: VocabularyAssignment
 ) -> int:
-    """切屏上报：仅计数供教师参考，不做任何作弊认定（封顶防刷）。"""
+    """切屏上报：仅计数供教师参考，不做任何作弊认定（封顶防刷）。
+
+    SQL 原子自增：与考试切屏同理，并发上报不丢计数。"""
     ensure_quiz_answerable(session, vocab_session, assignment)
-    vocab_session.tab_switch_count = min(999, vocab_session.tab_switch_count + 1)
-    session.add(vocab_session)
+    session.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
+        update(VocabularySession)
+        .where(col(VocabularySession.id) == vocab_session.id)
+        .values(
+            tab_switch_count=func.least(VocabularySession.tab_switch_count + 1, 999)
+        )
+    )
     session.commit()
+    session.refresh(vocab_session)
     return vocab_session.tab_switch_count
 
 

@@ -200,7 +200,9 @@ def test_word_drafts_generation_and_validation(
     ]
     calls: list[tuple[str, str]] = []
 
-    def fake_chat(system: str, user: str, temperature: float = 0.4) -> str:
+    def fake_chat(
+        system: str, user: str, temperature: float = 0.4, metric_kind: str = "llm_vocab"
+    ) -> str:
         calls.append((system, user))
         return "```json\n" + json.dumps(mock_items, ensure_ascii=False) + "\n```"
 
@@ -240,7 +242,9 @@ def test_word_drafts_model_failure_degrades(
 ) -> None:
     """模型输出非 JSON → 503；练习不受影响（无副作用）。"""
 
-    def bad_chat(system: str, user: str, temperature: float = 0.4) -> str:
+    def bad_chat(
+        system: str, user: str, temperature: float = 0.4, metric_kind: str = "llm_vocab"
+    ) -> str:
         return "抱歉，我无法完成这个任务。"
 
     monkeypatch.setattr(vocab_ai, "_chat", bad_chat)
@@ -318,7 +322,7 @@ def test_word_drafts_rate_limit(
     monkeypatch.setattr(
         vocab_ai,
         "_chat",
-        lambda system, user, temperature=0.4: json.dumps(
+        lambda system, user, temperature=0.4, **kwargs: json.dumps(
             [{"headword": "limit", "meaning_zh": "限额"}]
         ),
     )
@@ -364,7 +368,9 @@ def test_word_explanation_cache_and_privacy(
     prompts: list[str] = []
     call_count = {"n": 0}
 
-    def fake_chat(system: str, user: str, temperature: float = 0.4) -> str:
+    def fake_chat(
+        system: str, user: str, temperature: float = 0.4, metric_kind: str = "llm_vocab"
+    ) -> str:
         call_count["n"] += 1
         prompts.append(user)
         return json.dumps(
@@ -440,7 +446,7 @@ def test_explanation_blocked_for_unpublished_quiz_word(
     monkeypatch.setattr(
         vocab_ai,
         "_chat",
-        lambda system, user, temperature=0.4: json.dumps(
+        lambda system, user, temperature=0.4, **kwargs: json.dumps(
             {
                 "meanings": ["词义"],
                 "common_misspellings": [],
@@ -511,7 +517,9 @@ def test_session_insight_evidence_and_fingerprint(
         "s03",
     )
 
-    def fake_chat(system: str, user: str, temperature: float = 0.4) -> str:
+    def fake_chat(
+        system: str, user: str, temperature: float = 0.4, metric_kind: str = "llm_vocab"
+    ) -> str:
         # 虚构词 fake-word 必须被丢弃；s01 是真实错词
         assert "fake-word" not in "s01"  # 自检
         return json.dumps(
@@ -598,7 +606,7 @@ def test_session_insight_permission_and_quiz_guard(
     monkeypatch.setattr(
         vocab_ai,
         "_chat",
-        lambda system, user, temperature=0.4: json.dumps(
+        lambda system, user, temperature=0.4, **kwargs: json.dumps(
             {"summary": "s", "weak_words": [], "suggestions": []}
         ),
     )
@@ -681,7 +689,9 @@ def test_overall_insight_scope_and_publish_guard(
 
     captured: dict[str, str] = {}
 
-    def fake_chat(system: str, user: str, temperature: float = 0.4) -> str:
+    def fake_chat(
+        system: str, user: str, temperature: float = 0.4, metric_kind: str = "llm_vocab"
+    ) -> str:
         captured["user"] = user
         return json.dumps(
             {

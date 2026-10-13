@@ -65,14 +65,20 @@ def check_ai_rate_limit(bucket: str) -> None:
         _rate_buckets[bucket] = window  # 首次出现的桶要存回（get 的默认值不落盘）
 
 
-def _chat(system: str, user: str, temperature: float = 0.4) -> str:
-    """模型调用唯一入口（测试通过 monkeypatch 本函数注入模拟响应）。"""
+def _chat(
+    system: str, user: str, temperature: float = 0.4, metric_kind: str = "llm_vocab"
+) -> str:
+    """模型调用唯一入口（测试通过 monkeypatch 本函数注入模拟响应）。
+
+    metric_kind 区分调用用途进运维指标（草稿/讲解/学情），成本可归因。"""
     from app.core.config import settings
 
     client = ArkChatClient(
         api_key=settings.ARK_API_KEY, model=settings.ARK_RUBRIC_MODEL
     )
-    return client.chat(system=system, user=user, temperature=temperature)
+    return client.chat(
+        system=system, user=user, temperature=temperature, metric_kind=metric_kind
+    )
 
 
 def ai_configured() -> bool:
@@ -164,6 +170,7 @@ def generate_word_drafts(
         system=DRAFT_SYSTEM_PROMPT,
         user=build_draft_user_prompt(theme, level, count, hint),
         temperature=0.6,
+        metric_kind="llm_vocab_draft",
     )
     from app.scoring.ark_client import parse_json_list
 
@@ -280,6 +287,7 @@ def build_explanation_payload(
         system=EXPLANATION_SYSTEM_PROMPT,
         user=build_explanation_user_prompt(headword, meaning_zh, part_of_speech),
         temperature=0.3,
+        metric_kind="llm_vocab_explain",
     )
     data = parse_model_json_object(content)
     meanings = [
@@ -448,6 +456,7 @@ def generate_session_insight(
         system=INSIGHT_SYSTEM_PROMPT,
         user=build_insight_user_prompt(evidence, [w["headword"] for w in wrong_pool]),
         temperature=0.3,
+        metric_kind="llm_vocab_insight",
     )
     data = parse_model_json_object(content)
     summary_fallback = (
@@ -547,6 +556,7 @@ def generate_overall_insight(
             evidence_digest, [w["headword"] for w in wrong_pool]
         ),
         temperature=0.3,
+        metric_kind="llm_vocab_insight",
     )
     data = parse_model_json_object(content)
     summary_fallback = (

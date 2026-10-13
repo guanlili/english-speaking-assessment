@@ -196,15 +196,16 @@ def read_student_trail(
     # 最近一轮档位动向（PRD US-10）：对比最近会话的调整后档与开始档。
     # 先幂等触发一次档位计算（作答后学生可能没再打开 /today）
     band_change: str | None = None
-    practice_sessions = session.exec(
+    # 最近一轮档位动向（PRD US-10）：对比最近会话的调整后档与开始档。
+    # 先幂等触发一次档位计算（作答后学生可能没再打开 /today）。
+    # 只消费最新一条会话，limit(1) 即可（原 limit(100) 取整行再丢 99 条）
+    latest = session.exec(
         select(PracticeSession)
         .where(PracticeSession.student_id == student.id)
         .order_by(col(PracticeSession.created_at).desc())
-        .limit(100)
-    ).all()
-    practice_sessions.reverse()  # type: ignore
-    if practice_sessions:
-        latest = practice_sessions[-1]
+        .limit(1)
+    ).first()
+    if latest is not None:
         _question_band_for_session(session, latest, student)
         # question_band 已写入才算完成过一轮调整；复述未完成 → 无建议
         if latest.question_band is not None:

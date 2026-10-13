@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from app.core.storage import content_audio_path
+from app.core.storage import AUDIO_SUFFIX_TO_MIME, content_audio_path
 
 router = APIRouter(prefix="/audio", tags=["audio"])
 
@@ -15,14 +15,8 @@ def read_content_audio(filename: str) -> Any:
     path = content_audio_path(filename)
     if path is None:
         raise HTTPException(status_code=404, detail="Audio not found")
-    suffix = path.suffix.lower()
-    media_types = {
-        ".mp3": "audio/mpeg",
-        ".wav": "audio/wav",
-        ".m4a": "audio/mp4",
-        ".ogg": "audio/ogg",
-        ".webm": "audio/webm",
-    }
-    return FileResponse(
-        path, media_type=media_types.get(suffix, "application/octet-stream")
+    # 后缀集合由 CONTENT_AUDIO_SUFFIXES 白名单限定，映射与上传侧共用一份
+    media_type = AUDIO_SUFFIX_TO_MIME.get(
+        path.suffix.lower(), "application/octet-stream"
     )
+    return FileResponse(path, media_type=media_type)

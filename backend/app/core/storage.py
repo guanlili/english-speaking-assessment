@@ -5,8 +5,12 @@ from pathlib import Path
 
 from app.core.config import settings
 
-_MIME_SUFFIX = {
+# mime → 后缀的唯一事实源：上传探测（attempts）/落盘（本文件）/回放
+# Content-Type（attempts/audio 路由）三处共用。曾经三份映射漂移——探测
+# 映射有 flac/amr/video-webm 而落盘映射缺 → 存成 .bin 回放 Content-Type 错
+MIME_TO_SUFFIX = {
     "audio/webm": ".webm",
+    "video/webm": ".webm",
     "audio/ogg": ".ogg",
     "audio/mpeg": ".mp3",
     "audio/mp3": ".mp3",
@@ -15,11 +19,31 @@ _MIME_SUFFIX = {
     "audio/wav": ".wav",
     "audio/x-wav": ".wav",
     "audio/aac": ".aac",
+    "audio/flac": ".flac",
+    "audio/amr": ".amr",
+}
+
+# 回放方向：后缀 → Content-Type（.bin 不在其中，未知后缀回退 octet-stream）
+AUDIO_SUFFIX_TO_MIME = {
+    ".webm": "audio/webm",
+    ".ogg": "audio/ogg",
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".wav": "audio/wav",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+    ".amr": "audio/amr",
 }
 
 
+def mime_to_suffix(mime_type: str) -> str:
+    """未知 mime 回退 .webm：与上传探测的回退一致（ffprobe 已按该后缀
+    校验过音轨真实有效，落盘后缀与探测后缀保持同一路径）。"""
+    return MIME_TO_SUFFIX.get(mime_type.split(";")[0].strip().lower(), ".webm")
+
+
 def save_audio_file(data: bytes, mime_type: str) -> Path:
-    suffix = _MIME_SUFFIX.get(mime_type.split(";")[0].strip(), ".bin")
+    suffix = mime_to_suffix(mime_type)
     directory = Path(settings.AUDIO_STORAGE_DIR)
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{uuid.uuid4()}{suffix}"

@@ -67,6 +67,7 @@ def test_generate_draft_questions_via_mock_chat(monkeypatch) -> None:
             user: str,
             model: str | None = None,
             temperature: float = 0.2,
+            metric_kind: str = "llm",
         ) -> str:
             assert "exactly 2" in user
             return json.dumps(
@@ -139,6 +140,7 @@ def test_generate_endpoint_drafts_not_saved(
             user: str,
             model: str | None = None,
             temperature: float = 0.2,
+            metric_kind: str = "llm",
         ) -> str:
             return '[{"text": "Q1?", "suggested_seconds": 20}]'
 

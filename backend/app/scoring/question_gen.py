@@ -62,6 +62,7 @@ def generate_draft_questions(
         system=QUESTION_SYSTEM_PROMPT,
         user=build_generation_user_prompt(topic, band, count, hint),
         temperature=0.8,
+        metric_kind="llm_question_gen",
     )
     items = parse_json_list(content)
     drafts: list[DraftQuestion] = []
