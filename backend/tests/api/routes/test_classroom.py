@@ -1003,6 +1003,7 @@ def test_update_class_size_owner_guard_and_bounds(
 
     # 调回 2 后容量生效：班外新学生自加入 409；已入班学生重复加入幂等 200
     third = create_student_user(db, full_name="班容学生三")
+    assert third.username is not None
     resp = client.post(
         f"/api/v1/classes/{code}/join",
         json={},
