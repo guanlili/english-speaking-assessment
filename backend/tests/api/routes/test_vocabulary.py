@@ -13,10 +13,10 @@ import io
 import uuid
 
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, col, select
 
 from app import crud
-from app.models import User, UserCreate
+from app.models import User, UserCreate, VocabularyBook
 from tests.utils.credential import make_student
 from tests.utils.utils import random_email, random_lower_string
 
@@ -834,3 +834,79 @@ def test_concurrent_same_key_different_items(
             assert body is not None
             assert body["attempt_no"] == 1
             assert body["item_index"] in (0, 1)
+
+
+# ── 并发加词 position 竞态（2026-10-13）─────────────────────────────
+
+
+def test_concurrent_add_words_no_position_clash(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """两个并发加词请求：词库行锁保证 position 不重复不跳号。
+
+    修复前两请求同时从 max+1 起编号会拿到相同 position（词序错乱，
+    教师预览与学生测验词序不一致）。
+    """
+    import threading
+
+    from app.core.db import _get_engine
+    from app.models import VocabularyBookItem, VocabularyWordIn
+    from app.services.vocabulary import add_words_to_book
+
+    resp = client.post(
+        "/api/v1/vocabulary/books",
+        json={
+            "title": f"并发加词测试{uuid.uuid4().hex[:6]}",
+            "scope": "public",
+            "words": [{"headword": "seed", "meaning_zh": "种子"}],
+        },
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    book_id = uuid.UUID(resp.json()["id"])
+    try:
+        engine = _get_engine()
+        barrier = threading.Barrier(2)
+
+        def adder(tag: str) -> None:
+            with Session(engine) as thread_session:
+                book = thread_session.get(VocabularyBook, book_id)
+                assert book is not None
+                barrier.wait()
+                add_words_to_book(
+                    thread_session,
+                    book,
+                    [
+                        VocabularyWordIn(
+                            headword=f"{tag}-word-{i}", meaning_zh=f"测试词{tag}{i}"
+                        )
+                        for i in range(5)
+                    ],
+                )
+
+        threads = [threading.Thread(target=adder, args=(t,)) for t in ("A", "B")]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+
+        db.expire_all()
+        positions = db.exec(
+            select(VocabularyBookItem.position)
+            .where(VocabularyBookItem.book_id == book_id)
+            .order_by(col(VocabularyBookItem.position))
+        ).all()
+        assert sorted(positions) == list(range(1, 12))  # 1..11 无重复无跳号
+    finally:
+        # 清理本测试建的公共词库（conftest 全库清理不含词库级联的手动删）
+        from sqlalchemy import delete as sa_delete
+
+        book = db.get(VocabularyBook, book_id)
+        if book is not None:
+            db.exec(
+                sa_delete(VocabularyBookItem).where(  # type: ignore[call-overload]
+                    col(VocabularyBookItem.book_id) == book_id  # type: ignore[operator]
+                )
+            )
+            db.delete(book)
+            db.commit()
