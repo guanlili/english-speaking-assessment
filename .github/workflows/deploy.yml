@@ -236,7 +236,7 @@ jobs:
       # Separate Chromium-only and dual-browser caches; a cold integration job
       # must not save a partial cache under the key used by mocked shards.
       # Restore the previous dual-browser cache when upgrading this workflow.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-${{ matrix.suite }}
