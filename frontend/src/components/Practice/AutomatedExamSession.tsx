@@ -220,6 +220,9 @@ export default function AutomatedExamSession({
     })
   }
   const recorder = useRecorder({
+    onStarted: () => {
+      void beepRef.current()
+    },
     maxSeconds: item?.suggested_seconds,
     deadlineAt:
       query.dataUpdatedAt +
@@ -302,10 +305,7 @@ export default function AutomatedExamSession({
         ),
       ])
       player.pause()
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      stream.getTracks().forEach((track) => {
-        track.stop()
-      })
+      await recorderRef.current.prepare()
       if (check.signal.aborted) return
       if (!exam?.started)
         await ClassesService.startExam({
@@ -435,11 +435,8 @@ export default function AutomatedExamSession({
           durationS: 0,
           blob: new Blob(),
         }
-        void beepRef.current().then(() => {
-          if (cancelled) return
-          recordingStarted.current.add(stageKey)
-          void recorderRef.current.start()
-        })
+        recordingStarted.current.add(stageKey)
+        void recorderRef.current.start()
       }
     }
     return () => {
@@ -633,7 +630,15 @@ export default function AutomatedExamSession({
           ) : null}
           <p role="status">
             {t(
-              labels[phase ?? ""] ?? { zh: "等待开考", en: "Waiting to start" },
+              phase === "answering" && recorder.status !== "recording"
+                ? {
+                    zh: "正在准备麦克风，请稍候…",
+                    en: "Preparing the microphone. Please wait…",
+                  }
+                : (labels[phase ?? ""] ?? {
+                    zh: "等待开考",
+                    en: "Waiting to start",
+                  }),
             )}{" "}
             {exam?.phase_remaining_seconds
               ? `${exam.phase_remaining_seconds}s`

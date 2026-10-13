@@ -342,6 +342,23 @@ for (const forceFallback of [false, true]) {
     expect(
       await audio.evaluate((element: HTMLAudioElement) => element.currentTime),
     ).toBe(0)
+    // End-to-end clock checks run muted so parallel headless WebKit pages do
+    // not contend for the system audio device; audibility is measured above.
+    await audio.evaluate((element: HTMLAudioElement) => {
+      element.muted = true
+    })
+    await page.getByRole("button", { name: "播放录音", exact: true }).click()
+    await expect
+      .poll(() =>
+        audio.evaluate((element: HTMLAudioElement) => element.currentTime),
+      )
+      .toBeGreaterThan(0)
+    await expect
+      .poll(
+        () => audio.evaluate((element: HTMLAudioElement) => element.ended),
+        { timeout: 10000 },
+      )
+      .toBe(true)
     await page.getByRole("button", { name: "播放录音", exact: true }).click()
     await expect
       .poll(() =>

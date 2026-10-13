@@ -56,9 +56,11 @@ async function mockPractice(page: Page): Promise<MockState> {
       }
       state = "inactive"
       ondataavailable: ((event: BlobEvent) => void) | null = null
+      onstart: (() => void) | null = null
       onstop: (() => void) | null = null
       start() {
         this.state = "recording"
+        queueMicrotask(() => this.onstart?.())
       }
       stop() {
         if (this.state !== "recording") return
@@ -279,9 +281,11 @@ async function mockDraftPractice(page: Page): Promise<DraftMockState> {
       }
       state = "inactive"
       ondataavailable: ((event: BlobEvent) => void) | null = null
+      onstart: (() => void) | null = null
       onstop: (() => void) | null = null
       start() {
         this.state = "recording"
+        queueMicrotask(() => this.onstart?.())
       }
       stop() {
         if (this.state !== "recording") return

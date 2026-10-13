@@ -154,6 +154,7 @@ export default function RecordArea({
             type="button"
             onClick={onStart}
             disabled={
+              recorder.starting ||
               scoring ||
               (examActive && currentItemDone) ||
               examEnded ||
@@ -166,32 +167,37 @@ export default function RecordArea({
             <Mic className="size-7" />
           </button>
           <p className="mt-4 text-sm">
-            {examEnded
-              ? t({ zh: "考试已结束", en: "The exam has ended" })
-              : examActive && currentItemDone
-                ? t({
-                    zh: "本题已作答，考试中不能重录",
-                    en: "Already answered — one attempt per item",
-                  })
-                : scoring
+            {recorder.starting
+              ? t({
+                  zh: "正在准备麦克风，请稍候…",
+                  en: "Preparing the microphone. Please wait…",
+                })
+              : examEnded
+                ? t({ zh: "考试已结束", en: "The exam has ended" })
+                : examActive && currentItemDone
                   ? t({
-                      zh: "已提交，正在出反馈…",
-                      en: "Submitted — feedback is on its way…",
+                      zh: "本题已作答，考试中不能重录",
+                      en: "Already answered — one attempt per item",
                     })
-                  : recorder.status === "ready"
+                  : scoring
                     ? t({
-                        zh: "这一次开口，已记录",
-                        en: "This speaking attempt is recorded",
+                        zh: "已提交，正在出反馈…",
+                        en: "Submitted — feedback is on its way…",
                       })
-                    : !prepDone
+                    : recorder.status === "ready"
                       ? t({
-                          zh: "先利用准备时间组织思路",
-                          en: "Use the prep time to organise your ideas",
+                          zh: "这一次开口，已记录",
+                          en: "This speaking attempt is recorded",
                         })
-                      : t({
-                          zh: "准备好了，就点一下麦克风",
-                          en: "When you're ready, tap the microphone",
-                        })}
+                      : !prepDone
+                        ? t({
+                            zh: "先利用准备时间组织思路",
+                            en: "Use the prep time to organise your ideas",
+                          })
+                        : t({
+                            zh: "准备好了，就点一下麦克风",
+                            en: "When you're ready, tap the microphone",
+                          })}
           </p>
           {scoring ? (
             <p className="text-xs text-muted-foreground">

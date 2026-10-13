@@ -10,6 +10,7 @@ export interface Recording {
 }
 
 export interface UseRecorderOptions {
+  onStarted?: () => void
   /** 一条有效录音完成时触发，恰好一次（在 onstop 里调用）。 */
   onComplete?: (recording: Recording) => void
   /** Optional durable snapshots for exams interrupted by navigation. */
@@ -25,6 +26,7 @@ export interface UseRecorderOptions {
 
 // PRD US-02：短于 1 秒不打分
 export const MIN_RECORD_SECONDS = 1
+const RECORDER_START_TIMEOUT_MS = 10_000
 
 function pickMimeType(): string {
   const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]
@@ -49,6 +51,9 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   const [recording, setRecording] = useState<Recording | null>(null)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
+  const preparedStreamRef = useRef<MediaStream | null>(null)
+  const onStartedRef = useRef(options.onStarted)
+  onStartedRef.current = options.onStarted
   const chunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
   const startedAtRef = useRef(0)
@@ -71,9 +76,10 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       window.clearInterval(timerRef.current)
       timerRef.current = null
     }
-    streamRef.current?.getTracks().forEach((track) => {
-      track.stop()
-    })
+    if (streamRef.current !== preparedStreamRef.current)
+      streamRef.current?.getTracks().forEach((track) => {
+        track.stop()
+      })
     streamRef.current = null
     recorderRef.current = null
   }, [])
@@ -87,12 +93,35 @@ export function useRecorder(options: UseRecorderOptions = {}) {
 
   const reset = useCallback(() => {
     generationRef.current += 1
+    const active = recorderRef.current
+    if (timerRef.current !== null) window.clearInterval(timerRef.current)
+    timerRef.current = null
+    recorderRef.current = null
+    if (active?.state === "recording") active.stop()
     startingRef.current = false
     setStarting(false)
     setStatus("idle")
     setElapsed(0)
     setError(null)
     setRecording(null)
+  }, [])
+
+  const prepare = useCallback(async () => {
+    if (preparedStreamRef.current?.active) return
+    const generation = generationRef.current
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true },
+    })
+    if (disposedRef.current || generation !== generationRef.current) {
+      stream.getTracks().forEach((track) => {
+        track.stop()
+      })
+      return
+    }
+    preparedStreamRef.current?.getTracks().forEach((track) => {
+      track.stop()
+    })
+    preparedStreamRef.current = stream
   }, [])
 
   const start = useCallback(async () => {
@@ -119,10 +148,25 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     setError(null)
     setRecording(null)
     setElapsed(0)
+    startedAtRef.current = 0
+    let rejectStart: ((reason: Error) => void) | undefined
+    let startTimeout: number | undefined
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-      })
+      if (
+        preparedStreamRef.current
+          ?.getAudioTracks()
+          .some((track) => track.readyState === "ended")
+      ) {
+        preparedStreamRef.current.getTracks().forEach((track) => {
+          track.stop()
+        })
+        preparedStreamRef.current = null
+      }
+      const stream =
+        preparedStreamRef.current ??
+        (await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+        }))
       // await 期间卸载（权限弹窗未响应/用户已离开）：释放麦克风，不建 recorder
       if (disposedRef.current || generation !== generationRef.current) {
         stream.getTracks().forEach((track) => {
@@ -164,6 +208,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
           chunksRef.current.push(event.data)
           if (
             !disposedRef.current &&
+            startedAtRef.current > 0 &&
             Date.now() - startedAtRef.current >= 1000 &&
             Date.now() - lastProgressAt >= 1000
           ) {
@@ -178,7 +223,8 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       // MediaRecorder 异步错误（编码器/轨道故障）：中断而非静默丢弃，
       // 残缺数据不提交；具体原因对用户统一为「中断请重试」
       recorder.onerror = () => {
-        if (disposedRef.current) return
+        if (disposedRef.current || generation !== generationRef.current) return
+        rejectStart?.(new Error("Recorder failed to start"))
         interruptedRef.current = true
         try {
           if (recorder.state !== "inactive") {
@@ -208,9 +254,24 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         })
       })
       recorder.onstop = () => {
+        if (rejectStart) {
+          rejectStart(new Error("Recorder stopped before starting"))
+          if (stream !== preparedStreamRef.current)
+            stream.getTracks().forEach((track) => {
+              track.stop()
+            })
+          return
+        }
         // 卸载中（用户离开页面）：释放麦克风但不提交幽灵作答
         if (disposedRef.current) {
           cleanup()
+          return
+        }
+        if (generation !== generationRef.current) {
+          if (stream !== preparedStreamRef.current)
+            stream.getTracks().forEach((track) => {
+              track.stop()
+            })
           return
         }
         // 录音中途中断（onerror 已提示）：残缺数据不提交，onerror 已设错误态
@@ -241,26 +302,62 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         onCompleteRef.current?.(rec)
       }
 
-      startedAtRef.current = Date.now()
-      setStatus("recording")
-      recorder.start(250)
       recorderRef.current = recorder
-      // 心跳保持 250ms 用于到时判定；elapsed 只在整秒变化时更新——
-      // 250ms 粒度的 state 变化会把整个练习页拖成每秒 4 次重渲染
-      const lastWholeSec = { value: -1 }
-      timerRef.current = window.setInterval(() => {
-        const seconds = (Date.now() - startedAtRef.current) / 1000
-        const whole = Math.floor(seconds)
-        if (whole !== lastWholeSec.value) {
-          lastWholeSec.value = whole
-          setElapsed(seconds)
+      await new Promise<void>((resolve, reject) => {
+        rejectStart = reject
+        startTimeout = window.setTimeout(
+          () => reject(new Error("Recorder start timed out")),
+          RECORDER_START_TIMEOUT_MS,
+        )
+        recorder.onstart = () => {
+          window.clearTimeout(startTimeout)
+          rejectStart = undefined
+          if (disposedRef.current || generation !== generationRef.current) {
+            if (recorder.state === "recording") recorder.stop()
+            resolve()
+            return
+          }
+          if (
+            options.deadlineAt !== undefined &&
+            Date.now() >= options.deadlineAt
+          ) {
+            interruptedRef.current = true
+            recorder.stop()
+            setError(
+              t({
+                zh: "本题时间已结束，录音未开始",
+                en: "This item's time is up. Recording did not start.",
+              }),
+            )
+            resolve()
+            return
+          }
+          startedAtRef.current = Date.now()
+          setStatus("recording")
+          onStartedRef.current?.()
+          let lastWholeSecond = -1
+          timerRef.current = window.setInterval(() => {
+            const seconds = (Date.now() - startedAtRef.current) / 1000
+            const wholeSecond = Math.floor(seconds)
+            if (wholeSecond !== lastWholeSecond) {
+              lastWholeSecond = wholeSecond
+              setElapsed(seconds)
+            }
+            if (
+              seconds >= limitSeconds ||
+              (options.deadlineAt !== undefined &&
+                Date.now() >= options.deadlineAt)
+            )
+              stop()
+          }, 250)
+          resolve()
         }
-        if (seconds >= limitSeconds) {
-          stop()
-        }
-      }, 250)
+        recorder.start(250)
+      })
     } catch (err) {
       if (disposedRef.current || generation !== generationRef.current) return
+      interruptedRef.current = true
+      if (recorderRef.current?.state === "recording") recorderRef.current.stop()
       cleanup()
       setStatus("idle")
       const name = err instanceof DOMException ? err.name : ""
@@ -288,6 +385,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         )
       }
     } finally {
+      window.clearTimeout(startTimeout)
       if (generation === generationRef.current) {
         startingRef.current = false
         setStarting(false)
@@ -307,10 +405,15 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         recorder.stop()
       }
       cleanup()
+      preparedStreamRef.current?.getTracks().forEach((track) => {
+        track.stop()
+      })
+      preparedStreamRef.current = null
     }
   }, [cleanup])
 
   return {
+    prepare,
     status,
     starting,
     isStarting: () => startingRef.current,
