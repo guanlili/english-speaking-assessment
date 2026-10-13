@@ -67,7 +67,7 @@ function ClassroomsAdmin() {
 
   const createMutation = useMutation({
     mutationFn: () =>
-      ClassesService.createClass({ requestBody: { class_size: 40 } }),
+      ClassesService.createClass({ requestBody: { class_size: 60 } }),
     onSuccess: (data) => {
       showSuccessToast(
         t({

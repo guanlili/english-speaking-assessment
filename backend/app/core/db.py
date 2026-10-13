@@ -232,7 +232,7 @@ def _seed_practice_content(session: Session) -> None:
         select(Classroom).where(Classroom.code == DEMO_CLASSROOM_CODE)
     ).first()
     if demo_classroom is None:
-        demo_classroom = Classroom(code=DEMO_CLASSROOM_CODE, class_size=40)
+        demo_classroom = Classroom(code=DEMO_CLASSROOM_CODE, class_size=60)
         session.add(demo_classroom)
         session.commit()
 
