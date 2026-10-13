@@ -263,7 +263,7 @@ jobs:
         run: npx playwright test --project=chromium-mock --project=webkit --shard=${{ matrix.shard }}/${{ matrix.total }}
       - name: 上传失败现场
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.suite }}-${{ matrix.shard }}
           path: frontend/test-results/
