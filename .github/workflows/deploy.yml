@@ -172,8 +172,24 @@ jobs:
             exit 1
           fi
 
-  e2e:
-    name: E2E 冒烟（主干道）
+  e2e-tests:
+    name: E2E (${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.total }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: integration
+            shard: 1
+            total: 1
+            browsers: chromium
+          - suite: mocked
+            shard: 1
+            total: 2
+            browsers: chromium webkit
+          - suite: mocked
+            shard: 2
+            total: 2
+            browsers: chromium webkit
     runs-on: ubuntu-latest
     # 45 分钟：浏览器缓存未命中（lockfile 变更/缓存淘汰）时 Chromium+WebKit
     # 全量下载约 20 分钟起，叠加完整栈启动与双浏览器套件，30 分钟会撞线
@@ -182,18 +198,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: 准备环境变量（local 环境，演示登录可用）
+        if: matrix.suite == 'integration'
         run: cp .env.example .env
       # type=gha 构建缓存需要 docker-container 驱动的构建器；compose 不跟随
       # buildx 的 --use 全局切换，必须导出 BUILDX_BUILDER 显式指定
       - name: 启用 GHA 构建缓存构建器
+        if: matrix.suite == 'integration'
         run: |
           docker buildx create --use --driver docker-container --name gha-cache-builder
           echo "BUILDX_BUILDER=gha-cache-builder" >> "$GITHUB_ENV"
       - name: 启动完整栈（db + backend + prestart + frontend）
+        if: matrix.suite == 'integration'
         # -f 跳过本地开发的 compose.override.yml（5173 映射），用生产端口形态；
         # 追加 compose.ci-build-cache.yml 启用 GHA 层缓存（仅本 job，服务器部署不加载）
         run: docker compose -f compose.yml -f compose.ci-build-cache.yml up -d --build
       - name: 等待就绪（prestart 迁移 + backend 健康检查，首次较慢）
+        if: matrix.suite == 'integration'
         run: |
           port=$(grep -E '^APP_PORT=' .env | cut -d= -f2 | tr -d '"')
           port=${port:-80}
@@ -213,28 +233,54 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # Chromium ~150MB / WebKit ~70MB 每轮全量下载：按 lockfile 缓存浏览器目录，
-      # 通常省 1-2 分钟。key 带 -webkit 后缀：旧缓存里没有 WebKit 二进制，
-      # 不换 key 会每轮都重新下载
+      # Separate Chromium-only and dual-browser caches; a cold integration job
+      # must not save a partial cache under the key used by mocked shards.
+      # Restore the previous dual-browser cache when upgrading this workflow.
       - uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-webkit
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-${{ matrix.suite }}
+          restore-keys: |
+            playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-webkit
       - name: 安装依赖与 Chromium/WebKit
         working-directory: frontend
-        run: npm ci && npx playwright install --with-deps chromium webkit
-      - name: 运行 E2E
+        run: npm ci && npx playwright install --with-deps ${{ matrix.browsers }}
+      - name: 构建模拟接口测试使用的前端
+        if: matrix.suite == 'mocked'
+        working-directory: frontend
+        run: npm run build
+      - name: 运行真实后端 E2E（独立数据库，串行）
+        if: matrix.suite == 'integration'
         working-directory: frontend
         run: |
           port=$(grep -E '^APP_PORT=' ../.env | cut -d= -f2 | tr -d '"')
-          E2E_BASE_URL="http://localhost:${port:-80}" npx playwright test
+          E2E_BASE_URL="http://localhost:${port:-80}" npx playwright test --project=chromium
+      - name: 运行模拟接口 E2E（双浏览器，独立分片）
+        if: matrix.suite == 'mocked'
+        working-directory: frontend
+        env:
+          E2E_MOCK_ONLY: "true"
+        run: npx playwright test --project=chromium-mock --project=webkit --shard=${{ matrix.shard }}/${{ matrix.total }}
       - name: 上传失败现场
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.suite }}-${{ matrix.shard }}
           path: frontend/test-results/
           retention-days: 7
+
+  # Keep the existing required check name; deployment must wait for every shard.
+  e2e:
+    name: E2E 冒烟（主干道）
+    needs: [e2e-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: 确认所有 E2E 分片通过
+        env:
+          E2E_RESULT: ${{ needs.e2e-tests.result }}
+        run: test "$E2E_RESULT" = "success"
 
   deploy:
     name: 部署到服务器

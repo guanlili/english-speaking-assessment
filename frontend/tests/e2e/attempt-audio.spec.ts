@@ -2,6 +2,10 @@ import { readFile } from "node:fs/promises"
 import { expect, type Page, test } from "@playwright/test"
 import { wav } from "./utils/audio"
 
+// Real playback tests share the runner's audio device. Keep them together and
+// sequential while the rest of the mocked suite runs fully parallel.
+test.describe.configure({ mode: "default" })
+
 async function mockTeacher(
   page: Page,
   width = 820,

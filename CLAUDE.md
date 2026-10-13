@@ -189,3 +189,11 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - 本机按账号和课堂保存当前考试会话，返回仍读取原发布快照。录音中每秒暂存已产生的音频块，正常退出先结束录音并保存/上传；断网录音保留原幂等键供重传。突然关闭时只能恢复已经成功落盘的音频块，浏览器拒绝存储会明确提示。IndexedDB 使用 ArrayBuffer 存储并兼容旧 Blob 草稿。
 - 当前题的保留录音可在整场截止前重传；点下一题后仅留 15 秒传输窗口。整场到时始终拒绝新提交，历史只读结束判定也检查整场截止。
 - 数据迁移 `dc44acace33b` 为四类题库增加 `exam_settings`，为会话增加 `exam_flow_state`。服务端测试 `test_exam_flow.py`，浏览器回归 `exam-automated.spec.ts`。
+
+## Actions E2E 分层与并行（2026-10-13）
+
+- `chromium` 项目运行真实后端用例，单 worker，CI 单独启动完整 Docker 栈及独立数据库。新测试文件默认进入该项目，确认所有 API 都被模拟且没有共享状态后，才加入 `frontend/playwright.config.ts` 的 `mockedFiles`。
+- `chromium-mock` 运行已审核的模拟接口文件；`webkit` 保留所有 `@webkit` 标记用例（含不访问后端的登录页冒烟）。两个项目在 CI 拆成 2 个独立 runner 分片，每片 2 workers，不启动后端或数据库。
+- 模拟接口任务先 `npm run build`，再设置 `E2E_MOCK_ONLY=true`；Playwright 自动启动生产构建预览（5177）和组件宿主（5176）。本地可运行 `E2E_MOCK_ONLY=true npx playwright test --project=chromium-mock --project=webkit --shard=1/2`（第二片用 `2/2`）。
+- 模拟用例按测试粒度并行；真实音频回放文件保持文件内顺序，避免共用系统音频设备造成不稳定。新增模拟用例需保持每个测试独立，不共享可变状态。
+- `E2E 冒烟（主干道）` 汇总检查只有在全部分片成功时通过，任一失败、取消或跳过均阻断部署。生产部署仍等待前端、后端和 E2E 汇总通过，不复用其他提交的检查结果。
