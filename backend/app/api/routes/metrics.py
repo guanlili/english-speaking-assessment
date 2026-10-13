@@ -17,7 +17,7 @@ from sqlmodel import Session, col, select
 
 from app.api.deps import SessionDep, SuperUserDep
 from app.core.config import settings
-from app.core.metrics import call_stats
+from app.core.metrics import call_stats, call_stats_by_prefix
 from app.models import Attempt, AttemptStatus
 from app.scoring import worker
 
@@ -88,12 +88,13 @@ def _scoring_queue_stats(session: Session) -> dict[str, Any]:
 
 @router.get("")
 def read_metrics(session: SessionDep, _superuser: SuperUserDep) -> Any:
+    stats = call_stats()
     return {
         "scoring": _scoring_queue_stats(session),
         "providers": {
             "asr": {
                 "provider": settings.ASR_PROVIDER,
-                **call_stats().get(
+                **stats.get(
                     "asr",
                     {
                         "calls": 0,
@@ -103,10 +104,18 @@ def read_metrics(session: SessionDep, _superuser: SuperUserDep) -> Any:
                     },
                 ),
             },
+            # llm 桶 = 全部 llm* 细分 kind（rubric 评分/出题/词汇讲解与学情）
+            # 的聚合口径；by_kind 明细供成本归因
             "llm": {
                 "model": settings.ARK_RUBRIC_MODEL,
-                **call_stats().get(
-                    "llm",
+                **call_stats_by_prefix("llm"),
+                "by_kind": {k: v for k, v in stats.items() if k.startswith("llm")},
+            },
+            "tts": {
+                "model": settings.ARK_TTS_MODEL,
+                "voice": settings.ARK_TTS_VOICE,
+                **stats.get(
+                    "tts",
                     {
                         "calls": 0,
                         "failures": 0,

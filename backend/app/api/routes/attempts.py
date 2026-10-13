@@ -18,6 +18,8 @@ from sqlmodel import Session, select
 from app.api.deps import OptionalCurrentUser, ScoringSubmitter, SessionDep
 from app.core.config import settings
 from app.core.ratelimit import SlidingWindowLimiter
+from app.core.storage import AUDIO_SUFFIX_TO_MIME as _AUDIO_MIME_BY_SUFFIX
+from app.core.storage import mime_to_suffix as storage_mime_to_suffix
 from app.core.storage import save_audio_file
 from app.crud import create_attempt, get_attempt
 from app.models import (
@@ -565,37 +567,8 @@ def create_attempt_upload(
 
 
 def _mime_to_suffix(base_mime: str) -> str:
-    mapping = {
-        "audio/webm": ".webm",
-        "video/webm": ".webm",
-        "audio/ogg": ".ogg",
-        "audio/mpeg": ".mp3",
-        "audio/mp3": ".mp3",
-        "audio/mp4": ".m4a",
-        "audio/x-m4a": ".m4a",
-        "audio/wav": ".wav",
-        "audio/x-wav": ".wav",
-        "audio/aac": ".aac",
-        "audio/flac": ".flac",
-        "audio/amr": ".amr",
-    }
-    return mapping.get(base_mime, ".webm")
-
-
-_AUDIO_MIME_BY_SUFFIX = {
-    ".webm": "audio/webm",
-    ".ogg": "audio/ogg",
-    ".mp3": "audio/mpeg",
-    ".m4a": "audio/mp4",
-    ".wav": "audio/wav",
-    ".aac": "audio/aac",
-    ".flac": "audio/flac",
-    ".amr": "audio/amr",
-}
-
-
-def _mime_to_suffix_reverse() -> dict[str, str]:
-    return _AUDIO_MIME_BY_SUFFIX
+    # 唯一事实源在 app.core.storage（与落盘/回放共用，见该处注释）
+    return storage_mime_to_suffix(base_mime)
 
 
 @router.get("/attempts/{attempt_id}", response_model=AttemptPublic)
@@ -633,5 +606,5 @@ def read_attempt_audio(
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Audio not found")
     path = playback_path(path)
-    safe_mime = _mime_to_suffix_reverse().get(path.suffix, "application/octet-stream")
+    safe_mime = _AUDIO_MIME_BY_SUFFIX.get(path.suffix, "application/octet-stream")
     return FileResponse(path, media_type=safe_mime)

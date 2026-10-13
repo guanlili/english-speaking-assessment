@@ -16,6 +16,7 @@ from collections import Counter
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
@@ -419,8 +420,13 @@ def student_assignment_rows(
             if vs.assignment_id is None:
                 continue
             rounds_by_assignment.setdefault(vs.assignment_id, []).append(vs)
-    all_round_ids = [vs.id for rounds in rounds_by_assignment.values() for vs in rounds]
-    firsts = first_answers_by_session(session, all_round_ids)
+    # 进度只消费每任务首轮（round_no 最小）的首答，预取同样只取首轮
+    first_round_ids = [
+        min(rounds, key=lambda r: r.round_no).id
+        for rounds in rounds_by_assignment.values()
+        if rounds
+    ]
+    firsts = first_answers_by_session(session, first_round_ids)
 
     rows: list[VocabularyStudentAssignment] = []
     for assignment in sorted(assignments, key=_assignment_sort_key):
@@ -588,6 +594,18 @@ def first_answers_by_session(
     ).all():
         result.setdefault(answer.session_id, {})[answer.item_index] = answer
     return result
+
+
+def _min_round_by_student(
+    rounds: list[VocabularySession],
+) -> dict[uuid.UUID, VocabularySession]:
+    """轮次列表里每个学生的首轮（round_no 最小；同号取先遍历到的）。"""
+    first_by_student: dict[uuid.UUID, VocabularySession] = {}
+    for vs in rounds:
+        cur = first_by_student.get(vs.student_id)
+        if cur is None or vs.round_no < cur.round_no:
+            first_by_student[vs.student_id] = vs
+    return first_by_student
 
 
 def session_snapshot(
@@ -873,8 +891,14 @@ def teacher_assignment_rows(
     ).all():
         if vs.assignment_id is not None:
             rounds_by_assignment.setdefault(vs.assignment_id, []).append(vs)
-    all_round_ids = [vs.id for rounds in rounds_by_assignment.values() for vs in rounds]
-    firsts = first_answers_by_session(session, all_round_ids)
+    # 进度只消费每生首轮（round_no 最小）的首答：预取按（任务,学生）取首轮，
+    # 不再拉全部轮次的首答
+    first_round_ids = [
+        vs.id
+        for rounds in rounds_by_assignment.values()
+        for vs in _min_round_by_student(rounds).values()
+    ]
+    firsts = first_answers_by_session(session, first_round_ids)
     targets_by_assignment: dict[uuid.UUID, set[uuid.UUID]] = {}
     for target in session.exec(
         select(VocabularyAssignmentTarget).where(
@@ -1178,6 +1202,36 @@ def wrong_word_items(
         for item in items:
             item.practiceable = item.word_id in practiceable_ids
     return items
+
+
+def wrong_word_count(session: Session, student_id: uuid.UUID) -> int:
+    """错词本词数（与 wrong_word_items 同口径的计数版）。
+
+    今日视图高频调用只需要 len()，这里用 SQL 聚合避免拉全量作答历史
+    与整行 ORM 对象。口径：至少一次独立首答（attempt_no=1）判错的
+    去重词条数，测验答卷在答案公布前不计入（与 wrong_word_items 一致）。
+    """
+    return int(
+        session.exec(
+            select(func.count(func.distinct(VocabularyAnswer.word_id)))
+            .join(
+                VocabularySession,
+                VocabularySession.id == VocabularyAnswer.session_id,  # ty: ignore[invalid-argument-type]
+            )
+            .outerjoin(
+                VocabularyAssignment,
+                VocabularyAssignment.id == VocabularySession.assignment_id,  # ty: ignore[invalid-argument-type]
+            )
+            .where(
+                VocabularySession.student_id == student_id,  # type: ignore[arg-type]
+                VocabularyAnswer.attempt_no == 1,
+                col(VocabularyAnswer.is_correct).is_(False),
+                (col(VocabularySession.assignment_id).is_(None))  # type: ignore[union-attr]
+                | (col(VocabularyAssignment.mode) != "quiz")  # type: ignore[operator]
+                | col(VocabularyAssignment.answers_published_at).is_not(None),  # type: ignore[union-attr]
+            )
+        ).one()
+    )
 
 
 def pos_by_word_ids(

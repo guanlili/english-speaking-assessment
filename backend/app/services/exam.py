@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
+from sqlalchemy import func, update
 from sqlmodel import Session, col, select
 
 from app.models import (
@@ -553,11 +554,17 @@ def _ensure_switch_open(
 def record_tab_switch(
     db: Session, practice_session: PracticeSession, exercise: ClassroomExercise
 ) -> int:
-    """前端切屏上报（hidden 相位）：计数并返回最新值（封顶防刷）。"""
+    """前端切屏上报（hidden 相位）：计数并返回最新值（封顶防刷）。
+
+    SQL 原子自增：两个上报并发时读-改-写会互相覆盖丢计数。"""
     _ensure_switch_open(db, practice_session, exercise)
-    practice_session.tab_switch_count = min(999, practice_session.tab_switch_count + 1)
-    db.add(practice_session)
+    db.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
+        update(PracticeSession)
+        .where(col(PracticeSession.id) == practice_session.id)
+        .values(tab_switch_count=func.least(PracticeSession.tab_switch_count + 1, 999))
+    )
     db.commit()
+    db.refresh(practice_session)
     return practice_session.tab_switch_count
 
 
@@ -569,13 +576,20 @@ def record_tab_return(
 ) -> tuple[int, int]:
     """前端切回上报（visible 相位）：累计离屏时长，返回最新（次数, 秒）。
 
-    单次封顶 1 小时、累计封顶 1 天，负数按 0 计，防异常值刷爆。
-    """
+    单次封顶 1 小时、累计封顶 1 天，负数按 0 计，防异常值刷爆；
+    累加走 SQL 原子更新（与切屏计数同理，防并发丢更新）。"""
     _ensure_switch_open(db, practice_session, exercise)
-    practice_session.tab_switch_seconds = min(
-        86400,
-        practice_session.tab_switch_seconds + max(0, min(away_seconds, 3600)),
+    db.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
+        update(PracticeSession)
+        .where(col(PracticeSession.id) == practice_session.id)
+        .values(
+            tab_switch_seconds=func.least(
+                PracticeSession.tab_switch_seconds
+                + func.greatest(0, func.least(away_seconds, 3600)),
+                86400,
+            )
+        )
     )
-    db.add(practice_session)
     db.commit()
+    db.refresh(practice_session)
     return practice_session.tab_switch_count, practice_session.tab_switch_seconds

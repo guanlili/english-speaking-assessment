@@ -41,6 +41,26 @@ def call_stats() -> dict[str, dict[str, float]]:
         return snapshot
 
 
+def call_stats_by_prefix(prefix: str) -> dict[str, float]:
+    """前缀聚合的单条快照："llm" → llm / llm_rubric / llm_vocab_* 合计。
+
+    调用被拆成细分 kind 归因成本后，总量口径仍要一个入口（llm 整体
+    失败率）；空集返回零值，字段形状与 call_stats 一致。"""
+    with _lock:
+        calls = failures = total_seconds = 0.0
+        for kind, entry in _stats.items():
+            if kind == prefix or kind.startswith(f"{prefix}_"):
+                calls += entry["calls"]
+                failures += entry["failures"]
+                total_seconds += entry["total_seconds"]
+        return {
+            "calls": calls,
+            "failures": failures,
+            "failure_rate": failures / calls if calls else 0.0,
+            "avg_seconds": total_seconds / calls if calls else 0.0,
+        }
+
+
 def reset_for_tests() -> None:
     with _lock:
         _stats.clear()

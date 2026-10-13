@@ -122,28 +122,27 @@ def import_word_drafts(
 
 
 def _unpublished_quiz_headwords(session: SessionDep, student_id: uuid.UUID) -> set[str]:
-    """学生未公布答案的测验答卷里的词条拼写（讲解保护名单）。"""
-    rounds = session.exec(
-        select(VocabularySession).where(
+    """学生未公布答案的测验答卷里的词条拼写（讲解保护名单）。
+
+    单查询取「本人已交卷 + 测验 + 答案未公布」任务的快照题单
+    （只取 snapshot_items 列，不整行加载任务），替代逐轮 session.get。
+    """
+    snapshot_rows = session.exec(
+        select(VocabularyAssignment.snapshot_items)
+        .join(VocabularySession)
+        .where(
             VocabularySession.student_id == student_id,  # type: ignore[arg-type]
             VocabularySession.kind == "task",  # type: ignore[arg-type]
             col(VocabularySession.quiz_started_at).is_not(None),  # type: ignore[union-attr]
             VocabularySession.status == "submitted",  # type: ignore[arg-type]
+            col(VocabularyAssignment.mode) == "quiz",  # type: ignore[operator]
+            col(VocabularyAssignment.answers_published_at).is_(None),  # type: ignore[union-attr]
         )
     ).all()
     blocked: set[str] = set()
-    for vocab_session in rounds:
-        assignment = (
-            session.get(VocabularyAssignment, vocab_session.assignment_id)
-            if vocab_session.assignment_id is not None
-            else None
-        )
-        if assignment is None or assignment.mode != "quiz":
-            continue
-        if assignment.answers_published_at is not None:
-            continue
-        # 测验是任务轮：题单在任务快照里（会话自身无 snapshot_items）
-        for item in assignment.snapshot_items or []:
+    # 测验是任务轮：题单在任务快照里（会话自身无 snapshot_items）
+    for snapshot_items in snapshot_rows:
+        for item in snapshot_items or []:
             headword = item.get("headword")
             if isinstance(headword, str):
                 blocked.add(headword.casefold())

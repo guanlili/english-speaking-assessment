@@ -220,6 +220,13 @@ def record_listen(
         # INSERT 走了 ON CONFLICT 但 WHERE 不满足 → 已到上限；或 INSERT 本身因其它原因未返回
         # 回滚未完成的计数操作
         session.rollback()
+        logger.warning(
+            "listen replay limit reached (or insert returned no row) "
+            "student=%s session=%s item=%s",
+            params["sid"],
+            params["sess"],
+            params["item"],
+        )
         raise HTTPException(
             status_code=422,
             detail=f"可重听次数已用完（{replay_limit} 次）",

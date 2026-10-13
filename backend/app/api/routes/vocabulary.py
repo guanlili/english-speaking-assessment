@@ -20,6 +20,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from sqlalchemy import update
 from sqlmodel import Session, col, func, select
 
 from app.api.deps import SessionDep, StudentUserDep, TeacherUserDep
@@ -209,24 +210,31 @@ def _add_words_to_book(
     }
     known = {(w.headword.casefold(), w.meaning_zh) for w in existing_words.values()}
     position = _next_position(session, book.id)
-    added = 0
+    new_words: list[VocabularyWord] = []
     for word_in in words_in:
         key = (word_in.headword.strip().casefold(), word_in.meaning_zh.strip())
         if key in known:
             continue
         known.add(key)
-        word = _create_word(session, word_in)
+        new_words.append(_create_word(session, word_in))
+    if new_words:
+        # 两批各一次往返（原实现逐词 flush，500 词 ≈ 500 次往返）。
+        # 词与词库条目之间没有 relationship，unit-of-work 不保证跨 mapper
+        # 的 INSERT 顺序——必须先 flush 完全部词条再挂条目，FK 才不悬空
         session.flush()
-        session.add(
-            VocabularyBookItem(book_id=book.id, word_id=word.id, position=position)
+        for word in new_words:
+            session.add(
+                VocabularyBookItem(book_id=book.id, word_id=word.id, position=position)
+            )
+            position += 1
+        # SQL 原子自增：并发加词时读-改-写会丢版本号
+        session.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
+            update(VocabularyBook)
+            .where(col(VocabularyBook.id) == book.id)
+            .values(version=VocabularyBook.version + 1)
         )
-        position += 1
-        added += 1
-    if added:
-        book.version += 1
-        session.add(book)
     session.commit()
-    return added
+    return len(new_words)
 
 
 # ── CSV 导入预览 ────────────────────────────────────────────────────
@@ -531,8 +539,12 @@ def remove_book_word(
     if item is None:
         raise HTTPException(status_code=404, detail="该词不在此词库中")
     session.delete(item)
-    book.version += 1
-    session.add(book)
+    # SQL 原子自增：并发编辑时读-改-写会丢版本号
+    session.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
+        update(VocabularyBook)
+        .where(col(VocabularyBook.id) == book.id)
+        .values(version=VocabularyBook.version + 1)
+    )
     session.commit()
     return {"message": "词条已从词库移除"}
 
@@ -851,9 +863,9 @@ def _today_plan_payload(
         if assignment is None or not vocab_service.student_targeted(
             session, assignment, student_id
         ):
-            wrong = vocab_service.wrong_word_items(session, student_id)
             return VocabularyTodayPlan(
-                assignments=assignments, wrong_word_count=len(wrong)
+                assignments=assignments,
+                wrong_word_count=vocab_service.wrong_word_count(session, student_id),
             )
 
     is_quiz = assignment.mode == "quiz"
@@ -948,7 +960,6 @@ def _today_plan_payload(
         answered_count = 0
         correct_first = 0
     grades_masked = is_quiz and assignment.grades_published_at is None
-    wrong = vocab_service.wrong_word_items(session, student_id)
     return VocabularyTodayPlan(
         assignment=_assignment_public(assignment),
         session_id=vocab_session.id if vocab_session is not None else None,
@@ -965,7 +976,7 @@ def _today_plan_payload(
         ),
         rounds=_round_summary_rows(session, rounds, masked=grades_masked),
         assignments=assignments,
-        wrong_word_count=len(wrong),
+        wrong_word_count=vocab_service.wrong_word_count(session, student_id),
     )
 
 

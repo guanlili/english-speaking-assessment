@@ -55,6 +55,7 @@ class ArkChatClient:
         user: str,
         model: str | None = None,
         temperature: float = 0.2,
+        metric_kind: str = "llm",
     ) -> str:
         if not self.api_key:
             raise ArkChatError("未配置 ARK_API_KEY")
@@ -82,9 +83,13 @@ class ArkChatClient:
             except (KeyError, IndexError, TypeError) as exc:
                 raise ArkChatError("Ark chat 响应结构异常") from exc
         except Exception:
-            metrics.record_call("llm", ok=False, duration_s=time.perf_counter() - start)
+            metrics.record_call(
+                metric_kind, ok=False, duration_s=time.perf_counter() - start
+            )
             raise
-        metrics.record_call("llm", ok=True, duration_s=time.perf_counter() - start)
+        metrics.record_call(
+            metric_kind, ok=True, duration_s=time.perf_counter() - start
+        )
         return content
 
 

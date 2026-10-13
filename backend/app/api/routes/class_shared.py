@@ -373,8 +373,15 @@ def create_class(
         )
         try:
             return create_classroom(session=session, classroom=classroom)
-        except IntegrityError:
+        except IntegrityError as exc:
             session.rollback()
+            # 随机码撞车按次重试；非撞车类约束错（如外键）重试 5 次也必败，
+            # 带 err 便于区分
+            logger.warning(
+                "classroom code insert hit constraint, retrying code=%s: %s",
+                code,
+                exc,
+            )
             continue
     raise HTTPException(status_code=500, detail="无法生成唯一课堂码")
 
