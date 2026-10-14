@@ -1566,7 +1566,6 @@ def test_concurrent_confirm_two_connections(db: Session, client: TestClient) -> 
     from app.core.config import settings
     from app.services import question_bank_io as svc
 
-    headers = _login_teacher(db, client)
     parsed = svc.parse_upload(
         "race.csv",
         _csv_file(

@@ -369,6 +369,7 @@ function ComposerForm({
   // scenario 的反查需要 scenarios 数据就绪，所以放在拿到数据 props 的
   // ComposerForm 里（挂载时数据已加载完毕）。
   const presetDoneRef = useRef(false)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 一次性预选——仅挂载时读取并消费交接键，数据 props 届时已就绪
   useEffect(() => {
     if (presetDoneRef.current) {
       return
@@ -418,7 +419,6 @@ function ComposerForm({
       qa: prev.qa || presetScenarioIds.size > 0,
       instruction: prev.instruction || validInstructions.length > 0,
     }))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const { scenarios: selectedScenarios, problems: selectionProblems } =

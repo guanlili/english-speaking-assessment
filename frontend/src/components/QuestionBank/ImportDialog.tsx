@@ -735,16 +735,19 @@ export function QuestionBankImportDialog({
                         <li key={item.id}>· {item.label}</li>
                       ))}
                     </ul>
-                    <a
-                      href="/create#bank-repeat"
-                      className="inline-flex min-h-11 items-center text-sm font-medium text-primary"
-                      onClick={() => onOpenChange(false)}
+                    <Button
+                      variant="link"
+                      className="min-h-11 px-0 text-sm"
+                      onClick={() => {
+                        onOpenChange(false)
+                        void navigate({ to: "/create", hash: "bank-repeat" })
+                      }}
                     >
                       {t({
                         zh: "去听句复述区上传/生成音频 →",
                         en: "Open Listen & Repeat to upload/generate →",
                       })}
-                    </a>
+                    </Button>
                   </div>
                 )}
               </div>

@@ -85,7 +85,9 @@ test("普通教师：导入 → 查看本批 → 带入组卷 → 发布", async
 
   // ── 查看本批：只含本批新建题目 ──
   await dialog.getByRole("button", { name: /查看本批题目（1）/ }).click()
-  await expect(dialog.getByText(new RegExp(`${marker} Which place`))).toBeVisible()
+  await expect(
+    dialog.getByText(new RegExp(`${marker} Which place`)),
+  ).toBeVisible()
 
   // ── 带入组卷：无课堂上下文 → 跳课堂列表，进入教师自己的课堂 ──
   await dialog.getByRole("button", { name: /带入组卷/ }).click()
@@ -94,7 +96,9 @@ test("普通教师：导入 → 查看本批 → 带入组卷 → 发布", async
   })
   // 落到课堂列表（老师自选课堂）；课堂卡可见后进入自己刚建的课堂。
   // 预选经 sessionStorage 跨页面导航保留。
-  await expect(page.getByText(new RegExp(code))).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText(new RegExp(code))).toBeVisible({
+    timeout: 15_000,
+  })
   await page.goto(`/t/${code}`)
 
   // 组卷页：预选生效（问答主题被带入且勾选），预览发布入口可见
@@ -112,5 +116,4 @@ test("普通教师：导入 → 查看本批 → 带入组卷 → 发布", async
   await expect(page.getByText(/本次课堂练习已发布/)).toBeVisible({
     timeout: 15_000,
   })
-
 })
