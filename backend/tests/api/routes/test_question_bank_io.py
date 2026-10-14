@@ -996,39 +996,39 @@ def test_excel_resource_caps(client: TestClient, db: Session) -> None:
 
 
 def test_csv_guard_roundtrip_reversible(client: TestClient, db: Session) -> None:
-    """公式防护前缀可逆：以 - / = 开头的内容导出→回导不变形、不新增重复。"""
+    """公式防护前缀可逆：API 建的原内容（含 - / = / 原生引号 开头）导出→
+    回导不变形、不新增重复。手写文件中 `'`+危险字符 按.Excel 转义惯例
+    剥前缀属设计行为，不在此断言范围。"""
     headers = _login_teacher(db, client)
-    file = _csv_file(
-        [
-            {
-                "__type__": "题目说明",
-                "text": "- Explain your choice.",
-                "suggested_seconds": "30",
-            },
-            {
-                "__type__": "题目说明",
-                "text": "= not a formula",
-                "suggested_seconds": "20",
-            },
-        ]
-    )
-    resp = _upload(client, headers, file, confirm=True)
-    assert resp.json()["sheets"][0]["created"] == 2, resp.text
+    raw_texts = [
+        "- Explain your choice.",
+        "= not a formula",
+        # 原文自带的引号：导出须双前缀转义（''），导入只剥一层——
+        # 否则原文引号被当前缀误删（评审 P2：'-ed' → -ed'）
+        "'-ed' marks the past tense.",
+    ]
+    for text in raw_texts:
+        resp = client.post(
+            "/api/v1/admin/instructions",
+            json={"text": text, "suggested_seconds": 25},
+            headers=headers,
+        )
+        assert resp.status_code == 200, resp.text
 
     export = client.get(f"{QB}/export?format=csv", headers=headers)
     assert export.status_code == 200, export.text
     text = export.content.decode("utf-8-sig")
-    assert "'- Explain your choice." in text  # 导出侧确有防护前缀
+    assert "'- Explain your choice." in text  # 危险字符：单前缀
+    assert "''-ed' marks the past tense." in text  # 原生引号：双前缀转义
 
     body = _preview(client, headers, export.content, filename="export.csv")
     counts = {s["type"]: s for s in body["sheets"]}["instruction"]
-    assert counts["exact_duplicate_count"] >= 2, body  # unguard 还原后判重
+    assert counts["exact_duplicate_count"] >= 3, body  # unguard 还原后判重
     assert counts["valid_count"] == 0
     assert counts["suspected_duplicate_count"] == 0
 
     instructions = {i.text for i in _new_rows(db, Instruction)}
-    assert "- Explain your choice." in instructions  # 库内内容未被前缀污染
-    assert "= not a formula" in instructions
+    assert instructions == set(raw_texts)  # 库内原内容不被前缀污染
 
 
 def test_repeat_ghost_linkage_reupload_exact_dup(
@@ -1062,8 +1062,9 @@ def test_repeat_ghost_linkage_reupload_exact_dup(
 def test_scenario_exact_match_first_and_case_collision(
     client: TestClient, db: Session
 ) -> None:
-    """库内 Travel/travel 并存：精确名优先；大小写都不同的写法命中多个 →
-    行级报错，绝不静默挑一个。"""
+    """库内 Travel/travel 并存：精确名优先；查重按主题身份（scenario_id）
+    不按主题名——不同主题下的同题是疑似重复（可勾选导入）而非完全重复；
+    歧义行优先报错，不被查重静默吞掉。"""
     headers = _login_teacher(db, client)
     upper = Scenario(topic="Travel")
     lower = Scenario(topic="travel")
@@ -1082,11 +1083,30 @@ def test_scenario_exact_match_first_and_case_collision(
     ).one()
     assert question.scenario_id == upper.id
 
-    # 规范化命中多个（TRAVEL）→ 行级错误
-    file = _csv_file([{**QUESTION_ROW, "topic": "TRAVEL", "text": "Ambiguous case?"}])
+    # 不同主题（travel）下的同题：疑似重复而非完全重复，勾选后可导入
+    file = _csv_file([{**QUESTION_ROW, "topic": "travel", "text": "Exact match?"}])
+    body = _preview(client, headers, file)
+    counts = body["sheets"][0]
+    assert counts["suspected_duplicate_count"] == 1, body
+    assert counts["exact_duplicate_count"] == 0
+    assert counts["valid_count"] == 0  # 默认排除
+    resp = _upload(client, headers, file, confirm=True, include_suspected=True)
+    assert resp.json()["sheets"][0]["created"] == 1, resp.text
+    rows = db.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.text == "Exact match?")
+    ).all()
+    assert {row.scenario_id for row in rows} == {upper.id, lower.id}
+
+    # 歧义行优先报错：内容即使与库内完全相同也不被查重吞掉
+    file = _csv_file([{**QUESTION_ROW, "topic": "TRAVEL", "text": "Exact match?"}])
     body = _preview(client, headers, file)
     assert body["total_valid"] == 0
     assert any("多个大小写不同的同名主题" in i["reason"] for i in body["issues"])
+    assert all(
+        s["exact_duplicate_count"] == 0
+        for s in body["sheets"]
+        if s["type"] == "question"
+    )
 
     # 精确命中小写主题
     file = _csv_file([{**QUESTION_ROW, "topic": "travel", "text": "Lower exact?"}])
@@ -1216,6 +1236,94 @@ def test_in_batch_same_text_passages_suspected(client: TestClient, db: Session) 
     assert counts["valid_count"] == 1
     assert counts["suspected_duplicate_count"] == 1, body
     assert "相同正文已存在于其他篇目" in body["suspected"][0]["reason"]
+
+
+def test_repeat_same_title_child_passage_not_exact_dup(
+    client: TestClient, db: Session
+) -> None:
+    """同名根篇与旧拆分子篇是不同记录：挂靠按解析后的 passage 身份查重，
+    「挂在根篇的同句」与「挂在子篇的同句」互为疑似，不判完全重复。"""
+    headers = _login_teacher(db, client)
+    root = Passage(
+        title="Shared Name", text="Root passage body.", slug="shared-name-root"
+    )
+    db.add(root)
+    db.commit()
+    db.refresh(root)
+    # 旧拆分子篇：同名，parent 指向根篇（列表只展示根篇，但库内是独立行）
+    child = Passage(
+        title="Shared Name",
+        text="Root passage body.",
+        slug="shared-name-child",
+        parent_passage_id=root.id,
+    )
+    db.add(child)
+    db.commit()
+    db.refresh(child)
+    db.add(
+        RepeatSentence(
+            passage_id=child.id, order_index=1, text="Linked to child passage."
+        )
+    )
+    db.commit()
+
+    # 挂靠 Shared Name 解析到根篇（唯一根篇命中）——与子篇下的同句身份不同
+    file = _csv_file(
+        [
+            {
+                "__type__": "听句复述",
+                "text": "Linked to child passage.",
+                "passage_title": "Shared Name",
+            }
+        ]
+    )
+    body = _preview(client, headers, file)
+    counts = body["sheets"][0]
+    assert counts["suspected_duplicate_count"] == 1, body
+    assert counts["exact_duplicate_count"] == 0
+    assert counts["valid_count"] == 0  # 默认排除
+    # 勾选后可导入：挂到根篇，与子篇下的那句并存
+    resp = _upload(client, headers, file, confirm=True, include_suspected=True)
+    assert resp.json()["sheets"][0]["created"] == 1, resp.text
+    db.refresh(root)
+    root_sentence = db.exec(
+        select(RepeatSentence).where(RepeatSentence.text == "Linked to child passage.")
+    ).all()
+    assert {s.passage_id for s in root_sentence} == {root.id, child.id}
+
+
+def test_export_size_capped_at_upload_limit(client: TestClient, db: Session) -> None:
+    """导出体积对齐导入 5MB 上限：超出即 422 提示分批，不让导出文件回导被 413 挡下。"""
+    headers = _login_teacher(db, client)
+    # 每篇约 3.3KB 正文 × 1600 行 ≈ 5.3MB > 5MB；行数 1600 < 2000（先触发行数以外的体积门）。
+    # 种子直写 DB：导入通道本身受 5MB 上传限制，不可能经导入造出超大数据
+    for i in range(1600):
+        db.add(
+            Passage(
+                title=f"Bulk passage {i}",
+                text="x" * 3300,
+                slug=f"bulk-passage-{i}",
+            )
+        )
+    db.commit()
+
+    # CSV 明文超 5MB → 422 提示分批；xlsx 压缩后实际体积小 → 合法导出，
+    # 但同样必须过体积门（断言其物理尺寸 ≤ 5MB，保证可回导）
+    resp = client.get(f"{QB}/export?types=passage&format=csv", headers=headers)
+    assert resp.status_code == 422, resp.status_code
+    assert "5MB" in resp.json()["detail"], resp.json()["detail"]
+    assert "分批" in resp.json()["detail"]
+
+    resp = client.get(f"{QB}/export?types=passage&format=xlsx", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert len(resp.content) <= 5 * 1024 * 1024
+
+    # 缩小范围后可正常导出（体积门按筛选后的实际内容判定）
+    resp = client.get(
+        f"{QB}/export?types=passage&q=Bulk%20passage%20159&format=csv",
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
 
 
 # ── 权限 ─────────────────────────────────────────────────────────────

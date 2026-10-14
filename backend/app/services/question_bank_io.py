@@ -900,9 +900,12 @@ class _Ref:
     # 前者）；规范化命中多个时由调用方报行级错误，绝不静默选一个
     scenarios_by_exact: dict[str, Scenario]
     scenarios_by_norm: dict[str, list[Scenario]]
-    question_exact: dict[tuple[str, str], list[tuple[Any, ...]]]
-    question_texts: dict[str, set[str]]
-    sentence_configs: dict[str, list[tuple[Any, ...]]]
+    # 查重按对象身份（scenario_id），不按主题名——travel/Travel 是两个主题，
+    # 各自持有同题不是完全重复（评审 P2）
+    question_exact: dict[tuple[uuid.UUID, str], list[tuple[Any, ...]]]
+    question_texts: dict[str, set[uuid.UUID]]
+    # 复述句同理：挂靠身份是 passage_id（同名根篇/旧子篇是不同记录）
+    sentence_configs: dict[str, list[tuple[uuid.UUID | None, tuple[Any, ...]]]]
     instruction_configs: dict[str, list[tuple[Any, ...]]]
     existing_slugs: set[str]
     max_question_order: dict[uuid.UUID, int]
@@ -930,7 +933,6 @@ def _load_reference(session: Session) -> _Ref:
         root_passages_by_norm.setdefault(_norm_text(passage.title), []).append(passage)
 
     unit_titles = {u.id: u.title for u in units}
-    passage_titles = {p.id: p.title for p in all_passages}
     passage_exact: dict[tuple[str, str], list[tuple[Any, ...]]] = {}
     passage_texts: set[str] = set()
     for passage in root_passages:
@@ -951,12 +953,11 @@ def _load_reference(session: Session) -> _Ref:
     scenarios_by_norm: dict[str, list[Scenario]] = {}
     for s in scenarios:
         scenarios_by_norm.setdefault(_norm_text(s.topic), []).append(s)
-    topic_by_scenario = {s.id: s.topic for s in scenarios}
-    question_exact: dict[tuple[str, str], list[tuple[Any, ...]]] = {}
-    question_texts: dict[str, set[str]] = {}
+    question_exact: dict[tuple[uuid.UUID, str], list[tuple[Any, ...]]] = {}
+    question_texts: dict[str, set[uuid.UUID]] = {}
     for question in questions:
-        topic = topic_by_scenario.get(question.scenario_id, "")
-        key = (_norm_text(topic), _norm_text(question.text))
+        # 键是 (scenario_id, 规范化题干)：主题身份进键，cfg 不再携带主题名
+        key = (question.scenario_id, _norm_text(question.text))
         cfg = (
             _norm_text(question.translation or ""),
             question.suggested_seconds,
@@ -968,10 +969,11 @@ def _load_reference(session: Session) -> _Ref:
         )
         question_exact.setdefault(key, []).append(cfg)
         question_texts.setdefault(_norm_text(question.text), set()).add(
-            _norm_text(topic)
+            question.scenario_id
         )
 
-    sentence_configs: dict[str, list[tuple[Any, ...]]] = {}
+    # (passage_id 或 None=独立句, cfg)：挂靠身份与配置分开存，比较时按身份过滤
+    sentence_configs: dict[str, list[tuple[uuid.UUID | None, tuple[Any, ...]]]] = {}
     for sentence in sentences:
         cfg = (
             _norm_text(sentence.translation or ""),
@@ -979,12 +981,11 @@ def _load_reference(session: Session) -> _Ref:
             sentence.replay_limit,
             sentence.exam_kind or "",
             sentence.exam_level or "",
-            _norm_text(passage_titles.get(sentence.passage_id, ""))
-            if sentence.passage_id
-            else "",
             sentence.audio_url or "",
         )
-        sentence_configs.setdefault(_norm_text(sentence.text), []).append(cfg)
+        sentence_configs.setdefault(_norm_text(sentence.text), []).append(
+            (sentence.passage_id, cfg)
+        )
 
     instruction_configs: dict[str, list[tuple[Any, ...]]] = {}
     for ins in instructions:
@@ -1171,11 +1172,17 @@ def _plan_passages(
         planned_texts.add(n_text)
 
 
+def _pid_key(passage_id: uuid.UUID | None) -> str:
+    """挂靠身份键：独立句统一空串（None 与「无挂靠」语义一致）。"""
+    return str(passage_id) if passage_id is not None else ""
+
+
 def _plan_repeats(
     plan: QuestionBankPlan, ref: _Ref, rows: list[_RawRow], include_suspected: bool
 ) -> None:
     counts = plan.counts[TYPE_REPEAT]
-    planned_configs: dict[str, list[tuple[Any, ...]]] = {}
+    planned_configs: dict[tuple[str, str], list[tuple[Any, ...]]] = {}
+    planned_links: dict[str, set[str]] = {}  # n_text → 本批已见的挂靠身份键
     # 本批计划新建的篇目标题（供挂靠；同批多篇同名 → 歧义报错）
     planned_titles: dict[str, int] = {}
     for item in plan.creates[TYPE_PASSAGE]:
@@ -1189,13 +1196,13 @@ def _plan_repeats(
             plan.issues.append(_issue(TYPE_REPEAT, row.line, exc.reason))
             continue
         n_text = _norm_text(payload["text"])
-        # 挂靠解析必须先于查重：cfg 的挂靠分量要用**落库后的最终关联**——
-        # 命中库内/本批篇目 → 规范化篇目标题；找不到而降级独立句 → 空串
-        # （与库内独立句的 cfg 一致）。否则「挂靠 Ghost」首次导入成独立句后，
-        # 重传同文件会因 cfg 不匹配被误判疑似、勾选后建出重复独立句（评审 P2）
+        # 挂靠解析（歧义报错）必须先于查重，且查重按**解析后的对象身份**
+        # （passage_id）比较——同名根篇与旧子篇是不同记录，按标题比较会把
+        # 挂在不同篇目下的同句误判为完全重复（评审 P2）；降级独立句的身份
+        # 键是空串，与库内独立句一致（Ghost 挂靠重传仍判完全重复）
         passage_id: uuid.UUID | None = None
         planned_title: str | None = None
-        linkage_norm = ""
+        linkage = ""
         if payload["passage_title"] is not None:
             n_title = _norm_text(payload["passage_title"])
             existing_hits = len(ref.root_passages_by_norm.get(n_title, []))
@@ -1212,10 +1219,10 @@ def _plan_repeats(
                 continue
             if existing_hits == 1:
                 passage_id = ref.root_passages_by_norm[n_title][0].id
-                linkage_norm = n_title
+                linkage = _pid_key(passage_id)
             elif planned_hits == 1:
                 planned_title = n_title
-                linkage_norm = n_title
+                linkage = f"new:{n_title}"
             else:
                 plan.standalone_sentence_count += 1
         cfg = (
@@ -1224,18 +1231,30 @@ def _plan_repeats(
             payload["replay_limit"],
             payload["exam_kind"] or "",
             payload["exam_level"] or "",
-            linkage_norm,
             payload["audio_url"] or "",
         )
-        db_cfgs = ref.sentence_configs.get(n_text, [])
-        planned_cfgs = planned_configs.get(n_text, [])
+        db_entries = ref.sentence_configs.get(n_text, [])
+        db_cfgs = [c for pid, c in db_entries if _pid_key(pid) == linkage]
+        planned_cfgs = planned_configs.get((linkage, n_text), [])
         if db_cfgs or planned_cfgs:
             if cfg in db_cfgs or cfg in planned_cfgs:
                 counts.exact_dup += 1
                 continue
             counts.suspected += 1
             plan.suspected_rows.append(
-                _issue(TYPE_REPEAT, row.line, "疑似重复：相同句子已存在但配置不同")
+                _issue(
+                    TYPE_REPEAT, row.line, "疑似重复：相同句子已存在但挂靠或配置不同"
+                )
+            )
+            if not include_suspected:
+                continue
+        elif db_entries or n_text in planned_links:
+            # 相同句子挂在其他篇目/独立存在：疑似而非完全重复，可勾选导入
+            counts.suspected += 1
+            plan.suspected_rows.append(
+                _issue(
+                    TYPE_REPEAT, row.line, "疑似重复：相同句子已存在但挂靠或配置不同"
+                )
             )
             if not include_suspected:
                 continue
@@ -1250,7 +1269,8 @@ def _plan_repeats(
                 planned_passage_title=planned_title,
             )
         )
-        planned_configs.setdefault(n_text, []).append(cfg)
+        planned_configs.setdefault((linkage, n_text), []).append(cfg)
+        planned_links.setdefault(n_text, set()).add(linkage)
 
 
 def _plan_questions(
@@ -1258,7 +1278,7 @@ def _plan_questions(
 ) -> None:
     counts = plan.counts[TYPE_QUESTION]
     planned_exact: dict[tuple[str, str], list[tuple[Any, ...]]] = {}
-    planned_texts: dict[str, set[str]] = {}
+    planned_texts: set[str] = set()
     new_topic_map: dict[str, str] = {}
     for row in rows:
         try:
@@ -1268,38 +1288,10 @@ def _plan_questions(
             plan.issues.append(_issue(TYPE_QUESTION, row.line, exc.reason))
             continue
         n_topic, n_text = _norm_text(payload["topic"]), _norm_text(payload["text"])
-        key = (n_topic, n_text)
-        cfg = (
-            _norm_text(payload["translation"] or ""),
-            payload["suggested_seconds"],
-            payload["exam_kind"] or "",
-            payload["exam_level"] or "",
-            tuple(payload["cue_card_bullets"] or ()),
-            payload["prep_seconds"] or 0,
-            payload["audio_url"] or "",
-        )
-        db_cfgs = ref.question_exact.get(key, [])
-        planned_cfgs = planned_exact.get(key, [])
-        tier: str | None = None
-        if db_cfgs or planned_cfgs:
-            tier = "exact" if cfg in db_cfgs or cfg in planned_cfgs else "same_topic"
-        elif n_text in ref.question_texts or n_text in planned_texts:
-            tier = "cross_topic"
-        if tier == "exact":
-            counts.exact_dup += 1
-            continue
-        if tier is not None:
-            counts.suspected += 1
-            reason = (
-                "疑似重复：该主题下已有相同题目但配置不同"
-                if tier == "same_topic"
-                else "疑似重复：该题目已存在于其他主题"
-            )
-            plan.suspected_rows.append(_issue(TYPE_QUESTION, row.line, reason))
-            if not include_suspected:
-                continue
-        # 主题解析精确优先：库内允许 Travel/travel 并存，规范化字典只作
-        # 兜底；规范化命中多个时报行级错误，绝不静默挑一个（评审 P2）
+        # 主题解析（精确优先，歧义报错）必须先于查重：查重按解析后的
+        # scenario 身份（scenario_id）比较，不按主题名——travel/Travel 是两个
+        # 主题，各自持有同题是疑似重复（可勾选导入）而非完全重复；歧义行
+        # 也不能因内容与库内相同而被查重静默跳过、漏掉歧义提示（评审 P2）
         scenario = ref.scenarios_by_exact.get(payload["topic"])
         if scenario is None:
             candidates = ref.scenarios_by_norm.get(n_topic, [])
@@ -1315,6 +1307,42 @@ def _plan_questions(
                 continue
             if len(candidates) == 1:
                 scenario = candidates[0]
+        # 身份键：已解析主题用其 id；新主题用规范化主题名作批内伪键
+        owner = str(scenario.id) if scenario is not None else f"new:{n_topic}"
+        cfg = (
+            _norm_text(payload["translation"] or ""),
+            payload["suggested_seconds"],
+            payload["exam_kind"] or "",
+            payload["exam_level"] or "",
+            tuple(payload["cue_card_bullets"] or ()),
+            payload["prep_seconds"] or 0,
+            payload["audio_url"] or "",
+        )
+        db_cfgs = (
+            ref.question_exact.get((scenario.id, n_text), [])
+            if scenario is not None
+            else []
+        )
+        planned_cfgs = planned_exact.get((owner, n_text), [])
+        other_owners = ref.question_texts.get(n_text, set())
+        tier: str | None = None
+        if db_cfgs or planned_cfgs:
+            tier = "exact" if cfg in db_cfgs or cfg in planned_cfgs else "same_topic"
+        elif other_owners or n_text in planned_texts:
+            tier = "cross_topic"
+        if tier == "exact":
+            counts.exact_dup += 1
+            continue
+        if tier is not None:
+            counts.suspected += 1
+            reason = (
+                "疑似重复：该主题下已有相同题目但配置不同"
+                if tier == "same_topic"
+                else "疑似重复：该题目已存在于其他主题"
+            )
+            plan.suspected_rows.append(_issue(TYPE_QUESTION, row.line, reason))
+            if not include_suspected:
+                continue
         if scenario is None and n_topic not in new_topic_map:
             new_topic_map[n_topic] = payload["topic"]
             plan.new_topics.append(payload["topic"])
@@ -1329,8 +1357,8 @@ def _plan_questions(
                 new_topic=None if scenario is not None else new_topic_map[n_topic],
             )
         )
-        planned_exact.setdefault(key, []).append(cfg)
-        planned_texts.setdefault(n_text, set()).add(n_topic)
+        planned_exact.setdefault((owner, n_text), []).append(cfg)
+        planned_texts.add(n_text)
 
 
 def _plan_instructions(
@@ -1589,8 +1617,8 @@ GUIDE_LINES = (
     "音频 Audio：先导入文字，再在题目编辑里上传音频文件；「音频链接」列只填本站链接",
     "Import text first, then upload audio files in the question editor; the Audio column only accepts this site's links",
     "",
-    "上限 Limits：导入 2000 行 / 5MB；导出同为 2000 行（超出请按题型/主题分批导出）",
-    "Limits: import 2000 rows / 5MB; exports share the same 2000-row cap (split by type/topic when larger)",
+    "上限 Limits：导入 2000 行 / 5MB；导出同受 2000 行与 5MB 限制（超出请按题型/主题分批导出）",
+    "Limits: import 2000 rows / 5MB; exports share the same 2000-row and 5MB caps (split by type/topic when larger)",
     "编码 Encoding：Excel(.xlsx) 直接上传；CSV 需 UTF-8（推荐用本站下载的 CSV 模板）",
     "",
     "注意：本模板用于题目内容交换，不是完整备份——拆句朗读、逐题计时、题目说明的考试音频等高级配置不入模板，导入后如需请在题目编辑页设置",
@@ -1829,9 +1857,20 @@ def _build_csv_template() -> tuple[bytes, str, str]:
     )
 
 
+# 危险字符集（公式注入）+ 引号本身：原文以 ' 开头也要转义（见 _csv_guard）
+_CSV_GUARD_CHARS = "=+-@\t\r'"
+
+
 def _csv_guard(value: str) -> str:
-    """CSV 公式注入防护：与前端 lib/csv.ts 同规则（= +/-/@/制表符/回车加 ' 前缀）。"""
-    if value and value[0] in "=+-@\t\r":
+    """CSV 公式注入防护（可逆方案的前半）。
+
+    在前端同规则（= +/-/@/制表符/回车加 `'` 前缀）之上**追加一条**：原文
+    本身以 `'` 开头时也加前缀（`'x` → `''x`）。这样导出的单元格只要以
+    `'` 开头，第二字符必属于危险集或仍是 `'`——导入侧 _csv_unguard 依据
+    该不变量无歧义还原，原文自带的引号不会被误删（评审 P3：
+    `'-ed' marks…` 曾被剥成 `-ed' marks…`）。
+    """
+    if value and value[0] in _CSV_GUARD_CHARS:
         return "'" + value
     return value
 
@@ -1839,12 +1878,14 @@ def _csv_guard(value: str) -> str:
 def _csv_unguard(cell: str) -> str:
     """_csv_guard 的逆运算：还原导出时加的公式防护前缀。
 
-    规则与 guard 严格镜像——仅当首字符是 `'` 且第二字符属于危险字符集时
-    才剥掉前缀（内容本就以 `'=` 开头的概率极低，且 Excel 中该写法本来就
-    表示转义）。没有这一步，导出→导入会永久改变以 - / = / + 开头的
-    题干并凭空新增重复题（评审 P2："- Explain your choice." → "'- …"）。
+    仅当首字符是 `'` 且第二字符属于 `_CSV_GUARD_CHARS` 时剥掉**一个**
+    前缀——导出侧保证凡是它产出的 `'` 开头单元格都满足该形态：
+    - `'-ed'…`（原文 `-ed'…`，防护前缀）→ `-ed'…`
+    - `''-ed'…`（原文 `'-ed'…`，原文引号被转义）→ `'-ed'…`
+    第二字符不在集合内的 `'hello`（手写、未经导出）按字面保留，与
+    Excel 自身的 `'` 前缀语义一致。
     """
-    if len(cell) >= 2 and cell[0] == "'" and cell[1] in "=+-@\t\r":
+    if len(cell) >= 2 and cell[0] == "'" and cell[1] in _CSV_GUARD_CHARS:
         return cell[1:]
     return cell
 
@@ -1917,16 +1958,30 @@ def export_bank(
                         *[row.get(c.field, "") for c in CSV_UNION_COLUMNS],
                     ]
                 )
-        return (
+        data, filename, media_type = (
             _csv_bytes(rows),
             f"question-bank-export-{date_tag}.csv",
             CSV_MEDIA_TYPE,
         )
-    return (
-        _export_xlsx(rows_by_type),
-        f"question-bank-export-{date_tag}.xlsx",
-        XLSX_MEDIA_TYPE,
-    )
+    else:
+        data, filename, media_type = (
+            _export_xlsx(rows_by_type),
+            f"question-bank-export-{date_tag}.xlsx",
+            XLSX_MEDIA_TYPE,
+        )
+    # 行数对齐之外还要对齐体积：导入有 5MB 上限，超体积的导出文件回导会
+    # 被 413 挡下（评审 P2：1800 篇 ×3KB 导出 5.9MB）。超限直接 422 提示
+    # 分批，「导出文件可直接回导」的承诺才成立
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"导出文件约 {len(data) // 1024 // 1024}MB，超过 "
+                f"{MAX_UPLOAD_BYTES // 1024 // 1024}MB 上传上限，"
+                "请按题型/主题缩小范围分批导出（导出文件保持可直接回导）"
+            ),
+        )
+    return data, filename, media_type
 
 
 def _export_passages(

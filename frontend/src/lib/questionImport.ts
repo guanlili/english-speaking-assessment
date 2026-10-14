@@ -208,6 +208,13 @@ export function localizeQuestionImportIssue(reason: string): BiString {
         },
       ],
       [
+        /^疑似重复：相同句子已存在但挂靠或配置不同$/,
+        {
+          zh: "疑似重复：相同句子已存在但挂靠或配置不同",
+          en: "Possible duplicate: this sentence exists under a different passage or settings",
+        },
+      ],
+      [
         /^疑似重复：相同句子已存在但配置不同$/,
         {
           zh: "疑似重复：相同句子已存在但配置不同",
@@ -347,6 +354,13 @@ export function matchQuestionBankDetail(detail: string): BiString | null {
       {
         zh: "导出行数超过上限（2000 行），请按题型/主题分批导出（导出文件可直接回导）",
         en: "Export capped at 2000 rows; split by question type/topic (exports stay re-importable)",
+      },
+    ],
+    [
+      /^导出文件约 \d+MB，超过/,
+      {
+        zh: "导出文件超过 5MB 上传上限，请按题型/主题缩小范围分批导出（导出文件可直接回导）",
+        en: "Export exceeds the 5MB upload cap; narrow the filters and export in batches (exports stay re-importable)",
       },
     ],
     [
