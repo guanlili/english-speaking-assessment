@@ -1156,40 +1156,40 @@ def _summarize_payload(qtype: str, payload: dict[str, Any]) -> dict[str, str]:
     if qtype == TYPE_PASSAGE:
         return {
             "title": payload["title"],
-            "text": _excerpt(str(payload["text"])),
+            "text": str(payload["text"]),
             "unit": payload.get("unit_title") or "",
             "topic": payload.get("topic") or "",
             "band": payload["cefr_band"],
             "seconds": str(payload["suggested_seconds"]),
-            "translation": _excerpt(payload.get("translation") or ""),
+            "translation": payload.get("translation") or "",
             "audio": payload.get("audio_url") or "",
         }
     if qtype == TYPE_REPEAT:
         return {
-            "text": _excerpt(payload["text"]),
+            "text": payload["text"],
             "passage": payload.get("passage_title") or "",
             "seconds": str(payload["suggested_seconds"]),
             "replay": str(payload["replay_limit"]),
             "kind": payload.get("exam_kind") or "",
             "level": payload.get("exam_level") or "",
-            "translation": _excerpt(payload.get("translation") or ""),
+            "translation": payload.get("translation") or "",
             "audio": payload.get("audio_url") or "",
         }
     if qtype == TYPE_QUESTION:
         return {
-            "text": _excerpt(payload["text"]),
+            "text": payload["text"],
             "topic": payload["topic"],
             "seconds": str(payload["suggested_seconds"]),
             "kind": payload.get("exam_kind") or "",
             "level": payload.get("exam_level") or "",
             "prep": str(payload.get("prep_seconds") or ""),
-            "cue": _excerpt(" / ".join(payload.get("cue_card_bullets") or [])),
-            "translation": _excerpt(payload.get("translation") or ""),
+            "cue": " / ".join(payload.get("cue_card_bullets") or []),
+            "translation": payload.get("translation") or "",
             "audio": payload.get("audio_url") or "",
         }
     return {
         "title": payload.get("title") or "",
-        "text": _excerpt(payload["text"]),
+        "text": payload["text"],
         "seconds": str(payload["suggested_seconds"]),
     }
 
@@ -1199,7 +1199,8 @@ def _row_digest(qtype: str, line: int, payload: dict[str, Any]) -> tuple[str, in
     import json
 
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
-    return (qtype, line, hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16])
+    # 完整 64 位十六进制摘要：截断摘要对「尾部字符被改」的候选不敏感（评审 P2）
+    return (qtype, line, hashlib.sha256(raw.encode("utf-8")).hexdigest())
 
 
 def plan_fingerprint(plan: QuestionBankPlan) -> str:
@@ -1417,39 +1418,39 @@ def _pid_key(passage_id: uuid.UUID | None) -> str:
 def _summarize_passage_model(p: Passage, ref: _Ref) -> dict[str, str]:
     return {
         "title": p.title,
-        "text": _excerpt(p.text),
+        "text": p.text,
         "unit": ref.unit_titles.get(p.unit_id, "") if p.unit_id else "",
         "topic": p.topic or "",
         "band": p.cefr_band,
         "seconds": str(p.suggested_seconds),
-        "translation": _excerpt(p.translation or ""),
+        "translation": p.translation or "",
         "audio": p.audio_url or "",
     }
 
 
 def _summarize_sentence_model(s: RepeatSentence, ref: _Ref) -> dict[str, str]:
     return {
-        "text": _excerpt(s.text),
+        "text": s.text,
         "passage": ref.passage_titles.get(s.passage_id, "") if s.passage_id else "",
         "seconds": str(s.suggested_seconds),
         "replay": str(s.replay_limit),
         "kind": s.exam_kind or "",
         "level": s.exam_level or "",
-        "translation": _excerpt(s.translation or ""),
+        "translation": s.translation or "",
         "audio": s.audio_url or "",
     }
 
 
 def _summarize_question_model(q: ScenarioQuestion, ref: _Ref) -> dict[str, str]:
     return {
-        "text": _excerpt(q.text),
+        "text": q.text,
         "topic": ref.scenario_topics.get(q.scenario_id, ""),
         "seconds": str(q.suggested_seconds),
         "kind": q.exam_kind or "",
         "level": q.exam_level or "",
         "prep": str(q.prep_seconds or ""),
-        "cue": _excerpt(" / ".join(q.cue_card_bullets or [])),
-        "translation": _excerpt(q.translation or ""),
+        "cue": " / ".join(q.cue_card_bullets or []),
+        "translation": q.translation or "",
         "audio": q.audio_url or "",
     }
 
@@ -1457,7 +1458,7 @@ def _summarize_question_model(q: ScenarioQuestion, ref: _Ref) -> dict[str, str]:
 def _summarize_instruction_model(i: Instruction) -> dict[str, str]:
     return {
         "title": i.title or "",
-        "text": _excerpt(i.text),
+        "text": i.text,
         "seconds": str(i.suggested_seconds),
     }
 
@@ -1846,16 +1847,20 @@ def apply_import(
             text("SELECT pg_advisory_xact_lock(:lock_key)"),
             {"lock_key": IMPORT_ADVISORY_LOCK_KEY},
         )
-        plan = plan_import(session, parsed, include_lines)
         # 指纹对账（锁内、与最新库状态比对）：老师确认的是预览时的内容与
         # 候选快照——文件被改、候选题被改、重复格局变化都会失配，要求重新
         # 预览。咨询锁只防同时写入，不能证明「确认过的是当前内容」。
-        if expected_fingerprint and plan_fingerprint(plan) != expected_fingerprint:
-            session.rollback()
-            raise HTTPException(
-                status_code=422,
-                detail="预览结果已变化（文件或题库内容有更新），请重新预览后再确认导入",
-            )
+        # 比对用**无决策基线**：new_topics/批内格局受勾选影响（勾了疑似行
+        # 其新主题才注册），带着决策算指纹会让正常导入永远 422（评审 P2）。
+        if expected_fingerprint:
+            baseline = plan_import(session, parsed)
+            if plan_fingerprint(baseline) != expected_fingerprint:
+                session.rollback()
+                raise HTTPException(
+                    status_code=422,
+                    detail="预览结果已变化（文件或题库内容有更新），请重新预览后再确认导入",
+                )
+        plan = plan_import(session, parsed, include_lines)
         created_scenarios: dict[str, Scenario] = {}
         for topic in plan.new_topics:
             scenario = Scenario(topic=topic, is_active=True)

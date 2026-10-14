@@ -136,6 +136,16 @@ export function AssignmentComposer({
     scenariosQuery.isError ||
     instructionsQuery.isError
   )
+    // 有缓存数据时后台刷新失败不应整块报错（离线时组卷要能用缓存渲染，
+    // 「带入组卷」预选的暂缓提示在表单内给出）；完全无数据才走错误态
+    if (
+      !(
+        passagesQuery.data &&
+        sentencesQuery.data &&
+        scenariosQuery.data &&
+        instructionsQuery.data
+      )
+    )
     return (
       <div className="rounded-2xl border p-6">
         <p>
@@ -214,12 +224,20 @@ export function AssignmentComposer({
     qa: currentQuestionIds.size > 0,
     instruction: currentInstructionIds.length > 0,
   }
+  // 回显按题目级恢复：已发布只含主题部分题目时，白名单=那些题（否则空
+  // 白名单代表「主题全部题」，重新进入会把同主题旧题混进题单（评审 P2）
+  const currentScenarioQuestions = scenarios
+    .filter((s) => currentScenarioIds.includes(s.id))
+    .flatMap((s) => s.questions.map((q) => q.id))
+  const partialQuestions =
+    currentQuestionIds.size > 0 &&
+    currentScenarioQuestions.some((id) => !currentQuestionIds.has(id))
   const initialSelection: LessonSelection = {
     passages: currentPassages,
     sentences: currentSentences,
     scenarioIds: currentScenarioIds,
     instructions: currentInstructionIds,
-    questions: [],
+    questions: partialQuestions ? [...currentQuestionIds] : [],
   }
 
   return (
@@ -372,6 +390,7 @@ function ComposerForm({
   // 问答按题目白名单带入（selection.questions），不整主题展开混入旧题。
   const presetDoneRef = useRef(false)
   const [presetRefreshed, setPresetRefreshed] = useState(false)
+  const [presetBlocked, setPresetBlocked] = useState(false)
   // biome-ignore lint/correctness/useExhaustiveDependencies: 仅挂载时探测交接键并触发一次刷新
   useEffect(() => {
     if (sessionStorage.getItem(COMPOSER_PRESET_KEY)) {
@@ -423,9 +442,17 @@ function ComposerForm({
     if (!resolved && !presetRefreshed) {
       return // 缓存里还没有本批新题：等 invalidate 后的新数据
     }
+    if (!resolved && presetRefreshed) {
+      // 刷新已完成但仍解析不到（离线/请求失败返回旧缓存）：绝不能消费——
+      // 否则本批新题被当缺失过滤掉，预选静默丢失（评审 P2）。保留交接键，
+      // 老师离开再进入本页时自动重试
+      setPresetBlocked(true)
+      return
+    }
     // 消费（数据已是刷新后的；仍缺失的 ID 属于已被删除等情形，跳过）
     sessionStorage.removeItem(COMPOSER_PRESET_KEY)
     presetDoneRef.current = true
+    setPresetBlocked(false)
     const presetScenarioIds = new Set<string>()
     const validQuestions: string[] = []
     for (const scenario of scenarios) {
@@ -461,12 +488,25 @@ function ComposerForm({
     }))
   }, [passages, sentences, scenarios, instructions, presetRefreshed])
 
+  // 题目级白名单（批量导入带入组卷时非空）：只出白名单内的问答题，
+  // 避免勾选主题就混入同主题全部旧题。须先于就绪校验计算（空题单校验）
+  const scenarioQuestions = scenarios
+    .filter((scenario) => selection.scenarioIds.includes(scenario.id))
+    .flatMap((scenario) => scenario.questions)
+  const filteredScenarioQuestions =
+    selection.questions.length > 0
+      ? scenarioQuestions.filter((q) => selection.questions.includes(q.id))
+      : scenarioQuestions
   const { scenarios: selectedScenarios, problems: selectionProblems } =
     inspectSelection(types, selection, {
       sentences,
       scenarios,
       instructions,
     })
+  const qaEffectiveEmpty =
+    types.qa &&
+    selection.scenarioIds.length > 0 &&
+    filteredScenarioQuestions.length === 0
   const problems =
     isExam &&
     (!Number.isInteger(examMinutes) || examMinutes < 5 || examMinutes > 240)
@@ -477,7 +517,17 @@ function ComposerForm({
             en: "Exam time must be a whole number between 5 and 240 minutes",
           },
         ]
-      : selectionProblems
+      : [
+          ...selectionProblems,
+          ...(qaEffectiveEmpty
+            ? [
+                {
+                  zh: "情景问答的最终题单为空：题单白名单里没有当前所选主题的题目。请重新勾选主题，或点「改为出主题全部题目」。",
+                  en: "The final Q&A list is empty: the batch filter has no questions under the selected topics. Re-check topics or include all topic questions.",
+                },
+              ]
+            : []),
+        ]
 
   const selectedPassages = passages.filter((p) =>
     selection.passages.includes(p.id ?? ""),
@@ -488,15 +538,7 @@ function ComposerForm({
   const selectedInstructions = instructions.filter((i) =>
     selection.instructions.includes(i.id),
   )
-  const scenarioQuestions = selectedScenarios.flatMap(
-    (scenario) => scenario.questions,
-  )
-  // 题目级白名单（批量导入带入组卷时非空）：只出白名单内的问答题，
-  // 避免勾选主题就混入同主题全部旧题
-  const filteredScenarioQuestions =
-    selection.questions.length > 0
-      ? scenarioQuestions.filter((q) => selection.questions.includes(q.id))
-      : scenarioQuestions
+
 
   // 唯一题单：预览 / 数量摘要 / 提交请求共用同一份「按启用题型过滤后的题单」，
   // 避免教师取消勾选某题型后，预览或提交仍带上该题型已选内容。
@@ -736,6 +778,14 @@ function ComposerForm({
               )}
             </div>
           </section>
+          {presetBlocked && (
+            <p className="rounded-xl bg-amber-100 p-3 text-sm text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
+              {t({
+                zh: "题库数据刷新失败，「带入组卷」的本批题目暂未选中（不会丢）。请检查网络后离开再进入本页，会自动重试带入。",
+                en: "Failed to refresh the question bank, so the imported batch hasn't been pre-selected (it's kept). Check the network and re-enter this page to retry.",
+              })}
+            </p>
+          )}
           <section>
             <h2 className="font-semibold">
               {t({ zh: "1. 选择题型", en: "1. Choose Question Types" })}
@@ -831,10 +881,25 @@ function ComposerForm({
               selectedIds={selection.scenarioIds}
               selectedScenarios={selectedScenarios}
               onToggle={(id) =>
-                setSelectionDirty((cur) => ({
-                  ...cur,
-                  scenarioIds: toggleInList(cur.scenarioIds, id),
-                }))
+                setSelectionDirty((cur) => {
+                  const unchecking = cur.scenarioIds.includes(id)
+                  const removedQuestions = unchecking
+                    ? new Set(
+                        (scenarios.find((s) => s.id === id)?.questions ?? []).map(
+                          (q) => q.id,
+                        ),
+                      )
+                    : new Set<string>()
+                  return {
+                    ...cur,
+                    scenarioIds: toggleInList(cur.scenarioIds, id),
+                    // 取消的主题不再出题：白名单同步剪掉它的题，避免
+                    // 「白名单只剩未选主题的题」把最终题单掏空
+                    questions: unchecking
+                      ? cur.questions.filter((qid) => !removedQuestions.has(qid))
+                      : cur.questions,
+                  }
+                })
               }
             />
           )}

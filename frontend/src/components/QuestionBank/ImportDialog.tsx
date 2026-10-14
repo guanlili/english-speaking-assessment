@@ -79,40 +79,53 @@ function DiffTable({
   existing: Record<string, string>
 }) {
   const { t } = useI18n()
+  // 后端给的是完整值（与指纹同源）；长文本默认两行截断、可展开看全文——
+  // 差异只在尾部时截断展示会「看起来完全相同」（评审 P2）
+  const [expanded, setExpanded] = useState(false)
   const keys = Array.from(
     new Set([...Object.keys(incoming), ...Object.keys(existing)]),
   )
+  const cellClass = expanded ? "whitespace-pre-wrap break-all" : "line-clamp-2 break-all"
   return (
-    <div className="grid grid-cols-[auto_1fr_1fr] gap-x-2 gap-y-1 text-xs">
-      <span />
-      <span className="font-medium text-primary">
-        {t({ zh: "待导入", en: "Incoming" })}
-      </span>
-      <span className="font-medium text-muted-foreground">
-        {t({ zh: "已有候选", en: "Existing" })}
-      </span>
-      {keys.map((key) => {
-        const differs = (incoming[key] ?? "") !== (existing[key] ?? "")
-        return (
-          <div key={key} className="col-span-3 grid grid-cols-subgrid">
-            <span className="text-muted-foreground">
-              {t(diffFieldLabel(key))}
-            </span>
-            <span
-              className={
-                differs ? "rounded bg-amber-100 px-1 dark:bg-amber-900/40" : ""
-              }
-            >
-              {incoming[key] || "—"}
-            </span>
-            <span
-              className={`text-muted-foreground ${differs ? "rounded bg-amber-100 px-1 dark:bg-amber-900/40" : ""}`}
-            >
-              {existing[key] || "—"}
-            </span>
-          </div>
-        )
-      })}
+    <div className="space-y-1">
+      <div className="grid grid-cols-[auto_1fr_1fr] gap-x-2 gap-y-1 text-xs">
+        <span />
+        <span className="font-medium text-primary">
+          {t({ zh: "待导入", en: "Incoming" })}
+        </span>
+        <span className="font-medium text-muted-foreground">
+          {t({ zh: "已有候选", en: "Existing" })}
+        </span>
+        {keys.map((key) => {
+          const differs = (incoming[key] ?? "") !== (existing[key] ?? "")
+          return (
+            <div key={key} className="col-span-3 grid grid-cols-subgrid">
+              <span className="text-muted-foreground">
+                {t(diffFieldLabel(key))}
+              </span>
+              <span
+                className={`${cellClass} ${differs ? "rounded bg-amber-100 px-1 dark:bg-amber-900/40" : ""}`}
+              >
+                {incoming[key] || "—"}
+              </span>
+              <span
+                className={`${cellClass} text-muted-foreground ${differs ? "rounded bg-amber-100 px-1 dark:bg-amber-900/40" : ""}`}
+              >
+                {existing[key] || "—"}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+      <button
+        type="button"
+        className="text-xs text-primary underline-offset-2 hover:underline"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        {expanded
+          ? t({ zh: "收起长文本", en: "Collapse long text" })
+          : t({ zh: "展开完整内容", en: "Show full values" })}
+      </button>
     </div>
   )
 }

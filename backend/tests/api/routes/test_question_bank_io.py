@@ -1844,6 +1844,85 @@ def test_preview_invalid_total_covers_parse_errors(
     assert body["total_valid"] == 0
 
 
+# ── 第六轮：指纹决策无关 / 尾部敏感 / 空题单防护 ─────────────────────
+
+
+def test_fingerprint_independent_of_selection(client: TestClient, db: Session) -> None:
+    """勾选疑似行不得改变指纹：新主题导入同题（预览疑似 → 勾选导入），
+    确认必须成功——此前 new_topics 受决策影响，确认永远 422。"""
+    headers = _login_teacher(db, client)
+    seeded = _csv_file(
+        [{**QUESTION_ROW, "text": "Decision independent?", "topic": "BaseTopic"}]
+    )
+    assert _upload(client, headers, seeded, confirm=True).status_code == 200
+
+    file = _csv_file(
+        [
+            {
+                **QUESTION_ROW,
+                "text": "Decision independent?",
+                "topic": "FreshTopic",
+            }
+        ]
+    )
+    body = _preview(client, headers, file)
+    assert body["sheets"][0]["suspected_duplicate_count"] == 1
+    # 同一指纹反复预览稳定
+    fingerprint = body["fingerprint"]
+    body2 = _preview(client, headers, file)
+    assert body2["fingerprint"] == fingerprint
+
+    resp = client.post(
+        f"{QB}/import-confirm",
+        files={"file": ("bank.csv", file, "text/csv")},
+        data={"include_lines": "question:2", "preview_fingerprint": fingerprint},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["sheets"][0]["created"] == 1
+    assert resp.json()["created_topics"] == ["FreshTopic"]
+
+
+def test_fingerprint_detects_trailing_change(client: TestClient, db: Session) -> None:
+    """候选内容尾部（60 字符之后）被改：指纹必须失配（此前摘要截断放行）。"""
+    headers = _login_teacher(db, client)
+    long_hint = "提" * 80
+    seeded = _csv_file(
+        [
+            {
+                **QUESTION_ROW,
+                "text": "Trailing change?",
+                "translation": long_hint,
+            }
+        ]
+    )
+    assert _upload(client, headers, seeded, confirm=True).status_code == 200
+
+    file = _csv_file(
+        [{**QUESTION_ROW, "text": "Trailing change?", "translation": "改"}]
+    )
+    body = _preview(client, headers, file)
+    fingerprint = body["fingerprint"]
+    # 对照快照携带完整值（含 80 字提示），不是 60 字截断
+    assert body["suspected"][0]["existing"]["translation"] == long_hint
+
+    existing = db.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.text == "Trailing change?")
+    ).one()
+    existing.translation = long_hint[:70]  # 尾部第 70 字改动（旧摘要截断盲区）
+    db.add(existing)
+    db.commit()
+
+    resp = client.post(
+        f"{QB}/import-confirm",
+        files={"file": ("bank.csv", file, "text/csv")},
+        data={"include_lines": "question:2", "preview_fingerprint": fingerprint},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+    assert "预览结果已变化" in resp.json()["detail"]
+
+
 # ── 权限 ─────────────────────────────────────────────────────────────
 
 
