@@ -63,19 +63,25 @@ test("题库批量导入：上传 CSV → 预览 → 确认 → 重传防重", a
   await expect(dialog.getByText(/完全重复 1（自动跳过）/)).toBeVisible()
   await expect(dialog.getByRole("button", { name: /确认导入/ })).toBeDisabled()
 
-  // 疑似重复（同题干不同秒数）：勾选后换新文件，开关须回到默认排除
+  // 疑似重复（同题干不同秒数）：逐条对照可见，点「导入」勾选该行
   await fileInput.setInputFiles({
     name: "e2e-suspected.csv",
     mimeType: "text/csv",
     buffer: importCsv(marker, "30"),
   })
   await dialog.getByRole("button", { name: /^预览$/ }).click()
-  const includeToggle = dialog.getByRole("checkbox")
-  await expect(includeToggle).toBeVisible()
-  await includeToggle.check()
-  await expect(includeToggle).toBeChecked()
+  await expect(dialog.getByText(/待导入/)).toBeVisible() // 两侧对照
+  await expect(dialog.getByText(/已有候选/)).toBeVisible()
+  const importRowButton = dialog
+    .locator("li")
+    .filter({ hasText: /疑似重复/ })
+    .getByRole("button", { name: /^导入$/ })
+  await expect(importRowButton).toBeVisible()
+  await importRowButton.click()
+  // 勾选后可导入数从 0 变 1：确认按钮从禁用转为可用
+  await expect(dialog.getByRole("button", { name: /确认导入/ })).toBeEnabled()
 
-  // 直接选择新文件（不经「继续导入下一批」）：开关重置、疑似行按文件重判
+  // 直接选择新文件（不经「继续导入下一批」）：选择清空、疑似行按文件重判
   await fileInput.setInputFiles({
     name: "e2e-fresh.csv",
     mimeType: "text/csv",
@@ -83,17 +89,20 @@ test("题库批量导入：上传 CSV → 预览 → 确认 → 重传防重", a
   })
   await dialog.getByRole("button", { name: /^预览$/ }).click()
   await expect(dialog.getByText(/将导入 1/)).toBeVisible()
-  await expect(includeToggle).toHaveCount(0) // 无疑似行：开关随预览一起消失
+  await expect(importRowButton).toHaveCount(0) // 无疑似行：逐条控件随预览消失
 
-  // 再传疑似文件：开关重新出现且未勾选（不继承上一批的选择）
+  // 再传疑似文件：控件重新出现且默认跳过（确认禁用=不继承上一批选择）
   await fileInput.setInputFiles({
     name: "e2e-suspected.csv",
     mimeType: "text/csv",
     buffer: importCsv(marker, "30"),
   })
   await dialog.getByRole("button", { name: /^预览$/ }).click()
-  await expect(includeToggle).toBeVisible()
-  await expect(includeToggle).not.toBeChecked()
+  await expect(importRowButton).toBeVisible()
+  await expect(dialog.getByRole("button", { name: /确认导入/ })).toBeDisabled()
+  // 「全部导入」批量快捷：一次勾选全部疑似行
+  await dialog.getByRole("button", { name: /全部导入/ }).click()
+  await expect(dialog.getByRole("button", { name: /确认导入/ })).toBeEnabled()
 })
 
 test("导出超长正文提示改用 CSV（blob 错误完整展示）", async ({ page }) => {

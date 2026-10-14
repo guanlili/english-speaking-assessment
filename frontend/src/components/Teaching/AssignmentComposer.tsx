@@ -48,6 +48,7 @@ import {
   type LessonSelection,
   type LessonTypes,
 } from "@/lib/lesson-readiness"
+import { COMPOSER_PRESET_KEY } from "@/lib/questionImport"
 import { normalizeReadingSelection } from "@/lib/reading-selection"
 import { TERMS } from "@/lib/terms"
 import { extractErrorMessage } from "@/utils"
@@ -362,6 +363,63 @@ function ComposerForm({
     dirtyRef.current = true
     setSelection(next)
   }
+
+  // 题库批量导入「带入组卷」：一次性预选本批新建题目（sessionStorage 交接，
+  // 读后即删）。只做预选——是否发布由老师检查后自行决定。question →
+  // scenario 的反查需要 scenarios 数据就绪，所以放在拿到数据 props 的
+  // ComposerForm 里（挂载时数据已加载完毕）。
+  const presetDoneRef = useRef(false)
+  useEffect(() => {
+    if (presetDoneRef.current) {
+      return
+    }
+    const raw = sessionStorage.getItem(COMPOSER_PRESET_KEY)
+    if (!raw) {
+      return
+    }
+    presetDoneRef.current = true
+    sessionStorage.removeItem(COMPOSER_PRESET_KEY)
+    let preset: {
+      passages?: string[]
+      sentences?: string[]
+      questions?: string[]
+      instructions?: string[]
+    }
+    try {
+      preset = JSON.parse(raw) as typeof preset
+    } catch {
+      return
+    }
+    const presetScenarioIds = new Set<string>()
+    for (const scenario of scenarios) {
+      if (scenario.questions.some((q) => preset.questions?.includes(q.id))) {
+        presetScenarioIds.add(scenario.id)
+      }
+    }
+    const validPassages = (preset.passages ?? []).filter((id) =>
+      passages.some((p) => p.id === id),
+    )
+    const validSentences = (preset.sentences ?? []).filter((id) =>
+      sentences.some((s_) => s_.id === id),
+    )
+    const validInstructions = (preset.instructions ?? []).filter((id) =>
+      instructions.some((i) => i.id === id),
+    )
+    setSelectionDirty((prev) => ({
+      passages: [...new Set([...prev.passages, ...validPassages])],
+      sentences: [...new Set([...prev.sentences, ...validSentences])],
+      scenarioIds: [...new Set([...prev.scenarioIds, ...presetScenarioIds])],
+      instructions: [...new Set([...prev.instructions, ...validInstructions])],
+    }))
+    setTypesDirty((prev) => ({
+      ...prev,
+      reading: prev.reading || validPassages.length > 0,
+      repeat: prev.repeat || validSentences.length > 0,
+      qa: prev.qa || presetScenarioIds.size > 0,
+      instruction: prev.instruction || validInstructions.length > 0,
+    }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const { scenarios: selectedScenarios, problems: selectionProblems } =
     inspectSelection(types, selection, {

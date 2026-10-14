@@ -12,6 +12,7 @@
 
 import csv
 import io
+import uuid
 from typing import Any
 
 import pytest
@@ -168,7 +169,7 @@ def _upload(
     data: bytes,
     *,
     confirm: bool = False,
-    include_suspected: bool = False,
+    include_lines: str = "",
     filename: str = "bank.csv",
     media_type: str = "text/csv",
 ):
@@ -177,7 +178,7 @@ def _upload(
         return client.post(
             f"{QB}/import-confirm",
             files=files,
-            data={"include_suspected": "true" if include_suspected else "false"},
+            data={"include_lines": include_lines},
             headers=headers,
         )
     return client.post(f"{QB}/import-preview", files=files, headers=headers)
@@ -590,7 +591,7 @@ def test_duplicate_tiers_and_reupload_safety(client: TestClient, db: Session) ->
     resp = _upload(client, headers, file2, confirm=True)
     assert resp.json()["sheets"][0]["skipped_suspected"] == 1
     assert len(_new_rows(db, ScenarioQuestion)) == 1
-    resp = _upload(client, headers, file2, confirm=True, include_suspected=True)
+    resp = _upload(client, headers, file2, confirm=True, include_lines="question:2")
     assert resp.json()["sheets"][0]["created"] == 1
     assert len(_new_rows(db, ScenarioQuestion)) == 2
 
@@ -843,9 +844,10 @@ def test_unit_passage_reupload_is_exact_duplicate(
     assert counts["exact_duplicate_count"] == 1
     assert counts["suspected_duplicate_count"] == 0, body
     assert counts["valid_count"] == 0
-    # 勾选「仍导入疑似重复」也不会新增（无疑似行）
-    resp = _upload(client, headers, file, confirm=True, include_suspected=True)
-    assert resp.json()["sheets"][0]["created"] == 0
+    # 完全重复行不开放重复创建：对它提交勾选 = 选择过期 → 422 要求重新预览
+    resp = _upload(client, headers, file, confirm=True, include_lines="passage:2")
+    assert resp.status_code == 422
+    assert "预览结果已变化" in resp.json()["detail"]
 
 
 def test_audio_difference_is_suspected(client: TestClient, db: Session) -> None:
@@ -877,7 +879,7 @@ def test_audio_difference_is_suspected(client: TestClient, db: Session) -> None:
     counts = body["sheets"][0]
     assert counts["suspected_duplicate_count"] == 1, body
     assert counts["exact_duplicate_count"] == 0
-    resp = _upload(client, headers, second, confirm=True, include_suspected=True)
+    resp = _upload(client, headers, second, confirm=True, include_lines="question:2")
     assert resp.json()["sheets"][0]["created"] == 1
     rows = db.exec(
         select(ScenarioQuestion).where(ScenarioQuestion.text == "Audio differs.")
@@ -1054,7 +1056,7 @@ def test_repeat_ghost_linkage_reupload_exact_dup(
     assert counts["exact_duplicate_count"] == 1, body
     assert counts["suspected_duplicate_count"] == 0
 
-    resp = _upload(client, headers, file, confirm=True, include_suspected=True)
+    resp = _upload(client, headers, file, confirm=True)
     assert resp.json()["sheets"][0]["created"] == 0
     assert len(_new_rows(db, RepeatSentence)) == 1
 
@@ -1090,7 +1092,7 @@ def test_scenario_exact_match_first_and_case_collision(
     assert counts["suspected_duplicate_count"] == 1, body
     assert counts["exact_duplicate_count"] == 0
     assert counts["valid_count"] == 0  # 默认排除
-    resp = _upload(client, headers, file, confirm=True, include_suspected=True)
+    resp = _upload(client, headers, file, confirm=True, include_lines="question:2")
     assert resp.json()["sheets"][0]["created"] == 1, resp.text
     rows = db.exec(
         select(ScenarioQuestion).where(ScenarioQuestion.text == "Exact match?")
@@ -1283,7 +1285,7 @@ def test_repeat_same_title_child_passage_not_exact_dup(
     assert counts["exact_duplicate_count"] == 0
     assert counts["valid_count"] == 0  # 默认排除
     # 勾选后可导入：挂到根篇，与子篇下的那句并存
-    resp = _upload(client, headers, file, confirm=True, include_suspected=True)
+    resp = _upload(client, headers, file, confirm=True, include_lines="repeat:2")
     assert resp.json()["sheets"][0]["created"] == 1, resp.text
     db.refresh(root)
     root_sentence = db.exec(
@@ -1324,6 +1326,328 @@ def test_export_size_capped_at_upload_limit(client: TestClient, db: Session) -> 
         headers=headers,
     )
     assert resp.status_code == 200, resp.text
+
+
+# ── 第四轮：导入后直达使用 / 错误下载 / 逐条确认 / 并发防重 ─────────
+
+
+def test_confirm_returns_created_items(client: TestClient, db: Session) -> None:
+    """确认导入返回本批新建条目（真实 ID/label/topic/音频需求），零新建时为空列表。"""
+    headers = _login_teacher(db, client)
+    data = _csv_file(
+        [
+            PASSAGE_ROW,
+            {"__type__": "听句复述", "text": "Needs audio sentence."},
+            {
+                **QUESTION_ROW,
+                "text": "Created item question?",
+                "audio_url": "/api/v1/audio/content/q.mp3",
+            },
+            {
+                "__type__": "题目说明",
+                "title": "CI Part",
+                "text": "Created item instruction.",
+            },
+        ]
+    )
+    resp = _upload(client, headers, data, confirm=True)
+    assert resp.status_code == 200, resp.text
+    items = resp.json()["created_items"]
+    assert len(items) == 4, resp.json()
+
+    by_type = {item["type"]: item for item in items}
+    assert by_type["passage"]["label"] == PASSAGE_ROW["title"]
+    assert by_type["passage"]["needs_audio"] is False
+    assert by_type["repeat"]["needs_audio"] is True
+    assert by_type["repeat"]["audio_missing"] is True
+    assert by_type["repeat"]["label"].startswith("Needs audio")
+    assert by_type["question"]["topic"] == QUESTION_ROW["topic"]
+    assert by_type["question"]["audio_missing"] is False
+    assert by_type["instruction"]["label"] == "CI Part"
+    # id 是库里真实行：按 id 能查回
+    sentence = db.get(RepeatSentence, uuid.UUID(by_type["repeat"]["id"]))
+    assert sentence is not None and sentence.text == "Needs audio sentence."
+
+    # 零新增（全部重复）：created_items 为空，不退化成全库
+    resp = _upload(client, headers, data, confirm=True)
+    assert resp.json()["created_items"] == []
+
+
+def test_error_file_roundtrip_and_full_list(client: TestClient, db: Session) -> None:
+    """下载待修正数据：原始字段+行号+原因全保留（含原生引号），修正后直接
+    回传成功（辅助列被忽略）；错误清单不受 200 条界面截断限制。"""
+    headers = _login_teacher(db, client)
+    data = _csv_file(
+        [
+            {**QUESTION_ROW, "text": "Valid row."},
+            {"__type__": "不存在题型", "text": "Bad type row."},  # 解析期错误
+            {
+                "__type__": "情景问答",
+                "topic": "FixTopic",
+                "text": "x" * 600,  # 题目过长
+                "translation": "'-ed' 原生引号保留检查",
+            },
+            {
+                "__type__": "情景问答",
+                "topic": "FixTopic",
+                "text": "Seconds out of range?",
+                "suggested_seconds": "999",  # 秒数越界
+            },
+        ]
+    )
+    body = _preview(client, headers, data)
+    counts = {sheet["type"]: sheet for sheet in body["sheets"]}["question"]
+    assert counts["invalid_count"] == 2
+    assert body["issues"][0]["type"] == "-"  # 解析期错误行也在清单
+
+    resp = client.post(
+        f"{QB}/import-error-file",
+        files={"file": ("bank.csv", data, "text/csv")},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    text = resp.content.decode("utf-8-sig")
+    lines = text.splitlines()
+    assert lines[0].endswith("原行号,错误原因")  # 辅助列在表头
+    assert len(lines) == 4  # 表头 + 3 条错误行（含解析期错误）
+    assert "x" * 60 in lines[2]  # 原始字段保留
+    # 手写文件中 '+危险字符 按 Excel 转义惯例剥离（设计口径）；错误文件对
+    # 剥离后的规范值再加防护前缀——不改字段直接回传，值保持稳定不漂移
+    assert "'-ed' 原生引号保留检查" in text
+    assert "999" in lines[3]
+    assert "题目过长" in lines[2] and "行数超过上限" not in "".join(lines)
+
+    # 模拟老师修正：改对三处错误，辅助列原样保留
+    import csv as csv_mod
+    import io as io_mod
+
+    rows = list(csv_mod.reader(io_mod.StringIO(text.lstrip("\ufeff"))))
+    header, fix_rows = rows[0], rows[1:]
+    fix_rows[0][0] = "情景问答"  # 题型改对（辅助列在尾部不影响）
+    fix_rows[0][3] = "FixTopic"  # 主题补上
+    fix_rows[0][5] = "Fixed type row?"
+    fix_rows[1][5] = "Shortened question?"
+    fix_rows[2][8] = "20"  # 秒数改对（第 9 列）
+    fixed = io_mod.StringIO()
+    writer = csv_mod.writer(fixed)
+    writer.writerows([header, *fix_rows])
+    resp = _upload(client, headers, fixed.getvalue().encode("utf-8"), confirm=True)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["sheets"][0]["created"] == 3, resp.text  # 修正后全部入库
+    assert resp.json()["created_items"]
+    # 引号原文在库内一字不差
+    question = db.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.text == "Shortened question?")
+    ).one()
+    assert question.translation == "-ed' 原生引号保留检查"
+
+    # 无错误行 → 422 明确提示
+    clean = _csv_file([{**QUESTION_ROW, "text": "Clean row."}])
+    resp = client.post(
+        f"{QB}/import-error-file",
+        files={"file": ("bank.csv", clean, "text/csv")},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+    assert "没有需要修正的行" in resp.json()["detail"]
+
+
+def test_error_file_full_list_beyond_200(client: TestClient, db: Session) -> None:
+    """201 条错误行：界面 issues 截断到 200，下载的是全量。"""
+    headers = _login_teacher(db, client)
+    rows = [
+        {"__type__": "情景问答", "topic": "Bulk", "text": f"Too long {i} " + "x" * 600}
+        for i in range(201)
+    ]
+    data = _csv_file(rows)
+    body = _preview(client, headers, data)
+    assert body["issues_truncated"] is True
+
+    resp = client.post(
+        f"{QB}/import-error-file",
+        files={"file": ("bank.csv", data, "text/csv")},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert len(resp.content.decode("utf-8-sig").splitlines()) == 202  # 表头 + 201
+
+
+def test_suspected_snapshot_and_per_row_selection(
+    client: TestClient, db: Session
+) -> None:
+    """疑似快照展示两侧关键字段差异；逐条选择只导入勾选行，默认全跳过。"""
+    headers = _login_teacher(db, client)
+    seed = _csv_file(
+        [{**QUESTION_ROW, "text": "Diff question?", "suggested_seconds": "20"}]
+    )
+    resp = _upload(client, headers, seed, confirm=True)
+    assert resp.status_code == 200, resp.text
+
+    # 同题干不同秒数 → 疑似：快照须含两侧对照
+    file = _csv_file(
+        [
+            {**QUESTION_ROW, "text": "Diff question?", "suggested_seconds": "30"},
+            {**QUESTION_ROW, "text": "Fresh valid question?"},
+        ]
+    )
+    body = _preview(client, headers, file)
+    assert body["sheets"][0]["suspected_duplicate_count"] == 1
+    suspected = body["suspected"][0]
+    assert suspected["type"] == "question" and suspected["line"] == 2
+    assert suspected["incoming"]["seconds"] == "30"
+    assert suspected["existing"]["seconds"] == "20"
+    assert suspected["incoming"]["text"] == suspected["existing"]["text"]
+
+    # 默认全跳过：只导入 1 条有效行
+    resp = _upload(client, headers, file, confirm=True)
+    sheet = resp.json()["sheets"][0]
+    assert sheet["created"] == 1
+    assert sheet["skipped_suspected"] == 1
+    rows = db.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.text == "Diff question?")
+    ).all()
+    assert len(rows) == 1 and rows[0].suggested_seconds == 20
+
+    # 换库状态后（把疑似行变成可再导）：勾选 line 2 精确导入该行
+    file2 = _csv_file(
+        [{**QUESTION_ROW, "text": "Diff question?", "suggested_seconds": "40"}]
+    )
+    resp = _upload(client, headers, file2, confirm=True, include_lines="question:2")
+    sheet = resp.json()["sheets"][0]
+    assert sheet["created"] == 1
+    assert sheet["skipped_suspected"] == 0
+    rows = db.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.text == "Diff question?")
+    ).all()
+    assert sorted(r.suggested_seconds for r in rows) == [20, 40]
+
+
+def test_stale_selection_rejected(client: TestClient, db: Session) -> None:
+    """预览后库被他人写入 → 疑似行变成完全重复：勾选令牌过期 → 422 重新预览。"""
+    headers = _login_teacher(db, client)
+    other_headers = _login_teacher(db, client)
+    file = _csv_file(
+        [{**QUESTION_ROW, "text": "Race question?", "suggested_seconds": "20"}]
+    )
+    # 老师A 先导入一版（不同配置），使老师B 的文件成为疑似
+    seeded = _csv_file(
+        [{**QUESTION_ROW, "text": "Race question?", "suggested_seconds": "30"}]
+    )
+    assert _upload(client, other_headers, seeded, confirm=True).status_code == 200
+
+    body = _preview(client, headers, file)
+    assert body["sheets"][0]["suspected_duplicate_count"] == 1
+
+    # 预览与确认之间，另一账号勾选导入了**完全相同**配置 → 疑似变完全重复
+    same = _csv_file(
+        [{**QUESTION_ROW, "text": "Race question?", "suggested_seconds": "20"}]
+    )
+    resp_other = _upload(
+        client, other_headers, same, confirm=True, include_lines="question:2"
+    )
+    assert resp_other.status_code == 200, resp_other.text
+
+    resp = _upload(client, headers, file, confirm=True, include_lines="question:2")
+    assert resp.status_code == 422
+    assert "预览结果已变化" in resp.json()["detail"]
+    rows = db.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.text == "Race question?")
+    ).all()
+    assert len(rows) == 2  # 20s + 30s，无第三条
+
+
+def test_concurrent_confirm_two_connections(db: Session, client: TestClient) -> None:
+    """两个独立数据库连接并发确认同一批：咨询锁串行化 + 锁内重查，
+    只有一方落库，另一方全部判重跳过；主题不重复、无 500。"""
+    import threading
+
+    from sqlalchemy import create_engine
+
+    from app.core.config import settings
+    from app.services import question_bank_io as svc
+
+    headers = _login_teacher(db, client)
+    parsed = svc.parse_upload(
+        "race.csv",
+        _csv_file(
+            [
+                {**QUESTION_ROW, "text": "Concurrent question?", "topic": "RaceTopic"},
+                {**QUESTION_ROW, "text": "Second concurrent?", "topic": "RaceTopic"},
+            ]
+        ),
+    )
+    engine = create_engine(str(settings.SQLALCHEMY_DATABASE_TEST_URI))
+    results: list[Any] = []
+    errors: list[BaseException] = []
+
+    def _run() -> None:
+        import sqlmodel
+
+        with sqlmodel.Session(engine) as session:
+            try:
+                results.append(svc.apply_import(session, parsed))
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+    threads = [threading.Thread(target=_run) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors, errors
+
+    created_totals = sorted(
+        sum(sheet.created for sheet in result.sheets) for result in results
+    )
+    assert created_totals == [0, 2], created_totals  # 一方全建、一方全跳过
+    scenarios = db.exec(select(Scenario).where(Scenario.topic == "RaceTopic")).all()
+    assert len(scenarios) == 1
+    from sqlmodel import col
+
+    questions = db.exec(
+        select(ScenarioQuestion).where(
+            col(ScenarioQuestion.text).in_(  # type: ignore[union-attr]
+                ["Concurrent question?", "Second concurrent?"]
+            )
+        )
+    ).all()
+    assert len(questions) == 2
+
+
+def test_integrity_conflict_returns_409(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """陈旧计划撞唯一约束（锁内重查失效的极端兜底）：409 而非 500，整批回滚。"""
+    from app.services import question_bank_io as svc
+
+    headers = _login_teacher(db, client)
+    file = _csv_file(
+        [{**QUESTION_ROW, "text": "Conflict question?", "topic": "ConflictTopic"}]
+    )
+    # 造一份「查重为空」的陈旧计划（模拟锁内重查前库内状态）
+    stale_plan = svc.plan_import(db, svc.parse_upload("stale.csv", file))
+    assert stale_plan.new_topics == ["ConflictTopic"]
+    # 计划生成后，库内出现同名主题 → 陈旧计划插入必撞 topic 唯一约束
+    db.add(Scenario(topic="ConflictTopic"))
+    db.commit()
+    monkeypatch.setattr(svc, "plan_import", lambda *args, **kwargs: stale_plan)
+
+    resp = _upload(client, headers, file, confirm=True)
+    assert resp.status_code == 409, resp.text
+    assert "冲突" in resp.json()["detail"]
+    # 整批回滚：没有多余主题、没有题目
+    assert (
+        len(db.exec(select(Scenario).where(Scenario.topic == "ConflictTopic")).all())
+        == 1
+    )
+    assert (
+        db.exec(
+            select(ScenarioQuestion).where(
+                ScenarioQuestion.text == "Conflict question?"
+            )
+        ).first()
+        is None
+    )
 
 
 # ── 权限 ─────────────────────────────────────────────────────────────

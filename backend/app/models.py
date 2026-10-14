@@ -508,6 +508,7 @@ class QuestionBankTypeCount(SQLModel):
     valid_count: int  # 将新建（默认不含疑似重复）
     exact_duplicate_count: int  # 完全重复，导入时自动跳过
     suspected_duplicate_count: int  # 疑似重复，需老师确认是否导入
+    invalid_count: int  # 校验/歧义错误行（可下载待修正数据）
     missing_audio_count: int  # 将新建且缺音频的题数（信息性提示，不阻断）
 
 
@@ -519,11 +520,35 @@ class QuestionBankImportIssue(SQLModel):
     reason: str
 
 
+class QuestionBankSuspectedItem(SQLModel):
+    """疑似重复逐条确认单元：待导入行 vs 已有候选（库内或同批前序行）的
+    关键字段快照。键是 canonical 字段名（稳定标识），前端映射双语标签；
+    行标识 (type, line) 绑定当前文件，确认时按此对账。"""
+
+    type: str
+    line: int
+    reason: str
+    incoming: dict[str, str]
+    existing: dict[str, str]
+
+
+class QuestionBankCreatedItem(SQLModel):
+    """确认导入新建条目引用：支撑「查看本批 / 带入组卷 / 补齐音频」。
+    无批次表——批次即本次响应，前端按 id 使用现有能力。"""
+
+    type: str
+    id: str
+    label: str  # 标题或题干节选（展示用）
+    topic: str | None = None  # 仅问答题：所属主题（组卷 scenario 反查备用）
+    needs_audio: bool  # 仅听句复述：题面不显示文字 + 模考开考检查，缺音频影响作答
+    audio_missing: bool
+
+
 class QuestionBankImportPreview(SQLModel):
     sheets: list[QuestionBankTypeCount]  # 只列文件中出现的题型
     issues: list[QuestionBankImportIssue]
     issues_truncated: bool
-    suspected: list[QuestionBankImportIssue]  # 疑似重复逐行明细（确认开关的依据）
+    suspected: list[QuestionBankSuspectedItem]  # 疑似重复逐条明细+两侧对照
     suspected_truncated: bool
     new_topics: list[str]  # 将自动新建的问答主题
     unit_fallback_count: int  # 单元未匹配、按无单元导入的篇目数
@@ -537,7 +562,7 @@ class QuestionBankImportTypeResult(SQLModel):
     type: str
     created: int
     skipped_duplicate: int
-    skipped_suspected: int  # 未勾选「导入疑似重复」而被排除的行数
+    skipped_suspected: int  # 未被逐条勾选「导入」的疑似行数
     skipped_invalid: int
     missing_audio_count: int
 
@@ -545,6 +570,7 @@ class QuestionBankImportTypeResult(SQLModel):
 class QuestionBankImportResult(SQLModel):
     sheets: list[QuestionBankImportTypeResult]
     created_topics: list[str]
+    created_items: list[QuestionBankCreatedItem]  # 本批新建条目（按真实 ID）
     issues: list[QuestionBankImportIssue]
     missing_audio_total: int
 

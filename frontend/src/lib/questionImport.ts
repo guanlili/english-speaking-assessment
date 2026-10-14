@@ -9,6 +9,29 @@ import { extractErrorMessage } from "@/utils"
 import type { BiString } from "./bi.ts"
 import { ITEM_TYPE_LABELS } from "./terms.ts"
 
+/** 疑似对照快照的 canonical 字段键 → 双语标签（后端稳定标识，前端翻译）。 */
+export const DIFF_FIELD_LABELS: Record<string, BiString> = {
+  title: { zh: "标题", en: "Title" },
+  text: { zh: "题干", en: "Text" },
+  unit: { zh: "单元", en: "Unit" },
+  topic: { zh: "主题", en: "Topic" },
+  band: { zh: "难度", en: "Level" },
+  seconds: { zh: "秒数", en: "Seconds" },
+  replay: { zh: "可听次数", en: "Replays" },
+  kind: { zh: "考试题型", en: "Exam type" },
+  level: { zh: "考试级别", en: "Exam level" },
+  prep: { zh: "准备秒数", en: "Prep time" },
+  passage: { zh: "挂靠篇目", en: "Passage" },
+  audio: { zh: "音频", en: "Audio" },
+}
+
+export function diffFieldLabel(key: string): BiString {
+  return DIFF_FIELD_LABELS[key] ?? { zh: key, en: key }
+}
+
+/** 本批新建题目 → 组卷预选的 sessionStorage 交接键（一次性，读后即删）。 */
+export const COMPOSER_PRESET_KEY = "esa:qbank:composer-preset"
+
 /** 题型 key（passage/repeat/question/instruction）→ 双语名。 */
 export function questionBankTypeLabel(type: string): BiString {
   return ITEM_TYPE_LABELS[type] ?? { zh: type, en: type }
@@ -361,6 +384,31 @@ export function matchQuestionBankDetail(detail: string): BiString | null {
       {
         zh: "导出文件超过 5MB 上传上限，请按题型/主题缩小范围分批导出（导出文件可直接回导）",
         en: "Export exceeds the 5MB upload cap; narrow the filters and export in batches (exports stay re-importable)",
+      },
+    ],
+    [
+      /^预览结果已变化/,
+      {
+        zh: "预览结果已变化（文件或题库刚被更新），请重新预览后再确认",
+        en: "The preview is out of date (file or bank just changed); preview again before confirming",
+      },
+    ],
+    [
+      /与其他操作冲突/,
+      {
+        zh: "导入内容与其他操作冲突（可能刚被他人导入），请重新预览",
+        en: "Conflicting change detected (content may have just been imported); preview again",
+      },
+    ],
+    [
+      /^没有需要修正的行$/,
+      { zh: "没有需要修正的行", en: "No rows need fixing" },
+    ],
+    [
+      /^疑似重复勾选格式无效/,
+      {
+        zh: "疑似重复勾选格式无效，请重新预览",
+        en: "Invalid duplicate-selection format; preview again",
       },
     ],
     [

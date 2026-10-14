@@ -1,19 +1,27 @@
 /**
- * 题库批量导入弹窗：选文件 → 预览（计数/问题行/疑似重复）→ 确认导入。
+ * 题库批量导入弹窗：选文件 → 预览（计数/错误行/疑似逐条对照）→ 确认导入 →
+ * 本批直达使用（查看本批 / 带入组卷 / 补齐音频）。
  *
- * 预览不落库；确认时重新上传同一文件由后端重新校验（预览与确认之间
- * 题库变化不会产生脏数据）。文件一旦变化预览即作废（vocablevels 模式）。
+ * 逐条确认：疑似项展示「待导入 vs 已有候选」关键字段差异，默认跳过、可
+ * 逐条或批量勾选导入；选择绑定当前文件的 (type:line)，换文件即清空。确认
+ * 由后端在锁内重查对账——选择过期（422）或并发冲突（409）都会提示重新
+ * 预览，绝不沿用旧选择静默导入。
+ *
+ * 竞态守卫：预览请求带 epoch，弹窗关闭/换文件后到达的迟到响应直接丢弃，
+ * 不能恢复旧状态。
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useNavigate } from "@tanstack/react-router"
 import { useRef, useState } from "react"
 import type {
+  QuestionBankCreatedItem,
   QuestionBankImportPreview,
   QuestionBankImportResult,
 } from "@/client"
 import { QuestionBankService } from "@/client"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -21,10 +29,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
 import {
+  COMPOSER_PRESET_KEY,
+  diffFieldLabel,
   localizeQuestionImportIssue,
   questionBankErrorMessage,
   questionBankTypeLabel,
@@ -50,35 +59,120 @@ function issueText(
   })
 }
 
+function downloadBlob(blob: Blob | File, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  document.body.append(anchor)
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
+/** 疑似对照：两侧快照逐字段并排，差异字段高亮。 */
+function DiffTable({
+  incoming,
+  existing,
+}: {
+  incoming: Record<string, string>
+  existing: Record<string, string>
+}) {
+  const { t } = useI18n()
+  const keys = Array.from(
+    new Set([...Object.keys(incoming), ...Object.keys(existing)]),
+  )
+  return (
+    <div className="grid grid-cols-[auto_1fr_1fr] gap-x-2 gap-y-1 text-xs">
+      <span />
+      <span className="font-medium text-primary">
+        {t({ zh: "待导入", en: "Incoming" })}
+      </span>
+      <span className="font-medium text-muted-foreground">
+        {t({ zh: "已有候选", en: "Existing" })}
+      </span>
+      {keys.map((key) => {
+        const differs = (incoming[key] ?? "") !== (existing[key] ?? "")
+        return (
+          <div key={key} className="col-span-3 grid grid-cols-subgrid">
+            <span className="text-muted-foreground">
+              {t(diffFieldLabel(key))}
+            </span>
+            <span
+              className={
+                differs ? "rounded bg-amber-100 px-1 dark:bg-amber-900/40" : ""
+              }
+            >
+              {incoming[key] || "—"}
+            </span>
+            <span
+              className={`text-muted-foreground ${differs ? "rounded bg-amber-100 px-1 dark:bg-amber-900/40" : ""}`}
+            >
+              {existing[key] || "—"}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function QuestionBankImportDialog({
   open,
   onOpenChange,
+  classroom,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  classroom?: string
 }) {
   const { t } = useI18n()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
+  /** 竞态守卫：每次重置/换文件自增；迟到的预览响应因 epoch 不匹配被丢弃 */
+  const epochRef = useRef(0)
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<QuestionBankImportPreview | null>(null)
-  const [includeSuspected, setIncludeSuspected] = useState(false)
+  /** key = `${type}:${line}`，值为 true 表示勾选导入；缺省（不含 key）= 跳过 */
+  const [decisions, setDecisions] = useState<Record<string, boolean>>({})
   const [result, setResult] = useState<QuestionBankImportResult | null>(null)
+  const [showBatch, setShowBatch] = useState(false)
+  const [showAudioFix, setShowAudioFix] = useState(false)
 
   const reset = () => {
+    epochRef.current += 1
     setFile(null)
     setPreview(null)
     setResult(null)
-    setIncludeSuspected(false)
+    setDecisions({})
+    setShowBatch(false)
+    setShowAudioFix(false)
+  }
+
+  const invalidateBank = () => {
+    for (const key of [
+      ["admin", "passages"],
+      ["admin", "sentences"],
+      ["admin", "question-bank"],
+      ["admin", "scenarios"],
+      ["admin", "instructions"],
+      ["admin", "topics"],
+    ]) {
+      void queryClient.invalidateQueries({ queryKey: key })
+    }
   }
 
   const previewMutation = useMutation({
-    mutationFn: (target: File) =>
+    mutationFn: (args: { target: File; epoch: number }) =>
       QuestionBankService.questionBankImportPreview({
-        formData: { file: target as unknown as string },
-      }),
-    onSuccess: (data) => {
+        formData: { file: args.target as unknown as string },
+      }).then((data) => ({ data, epoch: args.epoch })),
+    onSuccess: ({ data, epoch }) => {
+      if (epoch !== epochRef.current) {
+        return // 迟到响应：弹窗已关/文件已换，丢弃
+      }
       setPreview(data)
       setResult(null)
     },
@@ -88,11 +182,11 @@ export function QuestionBankImportDialog({
   })
 
   const confirmMutation = useMutation({
-    mutationFn: (args: { target: File; include: boolean }) =>
+    mutationFn: (args: { target: File; includeLines: string }) =>
       QuestionBankService.questionBankImportConfirm({
         formData: {
           file: args.target as unknown as string,
-          include_suspected: args.include,
+          include_lines: args.includeLines,
         },
       }),
     onSuccess: (data) => {
@@ -104,17 +198,23 @@ export function QuestionBankImportDialog({
           en: `Imported ${data.sheets.reduce((sum, s) => sum + s.created, 0)} items`,
         }),
       )
-      // 导入的数据落在现有四表：刷新题库相关查询，组卷/搜索立刻可见
-      for (const key of [
-        ["admin", "passages"],
-        ["admin", "sentences"],
-        ["admin", "question-bank"],
-        ["admin", "scenarios"],
-        ["admin", "instructions"],
-        ["admin", "topics"],
-      ]) {
-        void queryClient.invalidateQueries({ queryKey: key })
-      }
+      invalidateBank()
+    },
+    onError: (err) => {
+      void questionBankErrorMessage(err).then((msg) => showErrorToast(t(msg)))
+    },
+  })
+
+  const fixFileMutation = useMutation({
+    mutationFn: (target: File) =>
+      QuestionBankService.questionBankImportErrorFile({
+        formData: { file: target as unknown as string },
+      }),
+    onSuccess: (blob, target) => {
+      downloadBlob(
+        blob,
+        `question-bank-fix.${target.name.toLowerCase().endsWith(".xlsx") ? "xlsx" : "csv"}`,
+      )
     },
     onError: (err) => {
       void questionBankErrorMessage(err).then((msg) => showErrorToast(t(msg)))
@@ -141,19 +241,59 @@ export function QuestionBankImportDialog({
       )
       return
     }
+    epochRef.current += 1
     setFile(picked)
     setPreview(null)
     setResult(null)
-    // 「仍导入疑似重复」只对当前文件有效：换文件即回到默认排除（评审 P2）
-    setIncludeSuspected(false)
+    // 疑似选择只对当前文件有效：换文件回到默认全部跳过
+    setDecisions({})
+    setShowBatch(false)
+    setShowAudioFix(false)
   }
 
   const suspectedTotal =
     preview?.sheets.reduce((sum, s) => sum + s.suspected_duplicate_count, 0) ??
     0
-  const effectiveValid =
-    (preview?.total_valid ?? 0) + (includeSuspected ? suspectedTotal : 0)
-  const busy = previewMutation.isPending || confirmMutation.isPending
+  const invalidTotal =
+    preview?.sheets.reduce((sum, s) => sum + (s.invalid_count ?? 0), 0) ?? 0
+  const selectedCount = Object.values(decisions).filter(Boolean).length
+  const effectiveValid = (preview?.total_valid ?? 0) + selectedCount
+  const busy =
+    previewMutation.isPending ||
+    confirmMutation.isPending ||
+    fixFileMutation.isPending
+
+  const confirmImport = () => {
+    if (!file) return
+    const includeLines = Object.entries(decisions)
+      .filter(([, checked]) => checked)
+      .map(([key]) => key)
+      .join(",")
+    confirmMutation.mutate({ target: file, includeLines })
+  }
+
+  /** 本批新建 → 组卷预选（一次性 sessionStorage 交接；老师检查后自行发布） */
+  const sendToComposer = (items: QuestionBankCreatedItem[]) => {
+    const preset = {
+      passages: items.filter((i) => i.type === "passage").map((i) => i.id),
+      sentences: items.filter((i) => i.type === "repeat").map((i) => i.id),
+      questions: items.filter((i) => i.type === "question").map((i) => i.id),
+      instructions: items
+        .filter((i) => i.type === "instruction")
+        .map((i) => i.id),
+    }
+    sessionStorage.setItem(COMPOSER_PRESET_KEY, JSON.stringify(preset))
+    if (classroom) {
+      void navigate({ to: "/t/$code", params: { code: classroom } })
+    } else {
+      void navigate({ to: "/classrooms" })
+    }
+  }
+
+  const createdItems = result?.created_items ?? []
+  const audioFixItems = createdItems.filter(
+    (i) => i.needs_audio && i.audio_missing,
+  )
 
   return (
     <Dialog
@@ -203,7 +343,13 @@ export function QuestionBankImportDialog({
           {file && !result && (
             <Button
               className="min-h-11"
-              onClick={() => previewMutation.mutate(file)}
+              onClick={() =>
+                file &&
+                previewMutation.mutate({
+                  target: file,
+                  epoch: epochRef.current,
+                })
+              }
               disabled={busy}
             >
               {t({ zh: "预览", en: "Preview" })}
@@ -252,6 +398,14 @@ export function QuestionBankImportDialog({
                         })}
                       </span>
                     )}
+                    {(sheet.invalid_count ?? 0) > 0 && (
+                      <span className="text-destructive">
+                        {t({
+                          zh: `错误行 ${sheet.invalid_count}`,
+                          en: `${sheet.invalid_count} invalid rows`,
+                        })}
+                      </span>
+                    )}
                     {sheet.missing_audio_count > 0 && (
                       <span className="text-muted-foreground">
                         {t({
@@ -289,41 +443,123 @@ export function QuestionBankImportDialog({
               </p>
             )}
 
-            {preview.suspected.length > 0 && (
-              <div>
-                <p className="font-medium text-amber-600 dark:text-amber-400">
+            {invalidTotal > 0 && file && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  className="min-h-11"
+                  disabled={busy}
+                  onClick={() => fixFileMutation.mutate(file)}
+                >
                   {t({
-                    zh: "疑似重复（默认不导入）",
-                    en: "Possible duplicates (excluded by default)",
+                    zh: "下载待修正数据（全部错误行）",
+                    en: "Download rows to fix (all errors)",
                   })}
-                </p>
-                <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto text-xs text-muted-foreground">
-                  {preview.suspected.map((issue, index) => (
-                    <li key={`${issue.type}-${issue.line}-${index}`}>
-                      {issueText(t, issue)}
-                    </li>
-                  ))}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {t({
+                    zh: "修正后连同辅助列直接重新上传即可",
+                    en: "Fix and re-upload as-is; helper columns are ignored",
+                  })}
+                </span>
+              </div>
+            )}
+
+            {preview.suspected.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium text-amber-600 dark:text-amber-400">
+                    {t({
+                      zh: `疑似重复（默认跳过，勾选后导入）`,
+                      en: `Possible duplicates (skipped unless checked)`,
+                    })}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="min-h-9"
+                      onClick={() =>
+                        setDecisions(
+                          Object.fromEntries(
+                            preview.suspected.map((item) => [
+                              `${item.type}:${item.line}`,
+                              true,
+                            ]),
+                          ),
+                        )
+                      }
+                    >
+                      {t({ zh: "全部导入", en: "Import all" })}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="min-h-9"
+                      onClick={() => setDecisions({})}
+                    >
+                      {t({ zh: "全部跳过", en: "Skip all" })}
+                    </Button>
+                  </div>
+                </div>
+                <ul className="max-h-64 space-y-2 overflow-y-auto">
+                  {preview.suspected.map((item) => {
+                    const key = `${item.type}:${item.line}`
+                    const checked = decisions[key] === true
+                    return (
+                      <li
+                        key={key}
+                        className="space-y-2 rounded-lg border border-border bg-card p-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            {issueText(t, {
+                              type: item.type,
+                              line: item.line,
+                              reason: item.reason,
+                            })}
+                          </span>
+                          <div className="flex gap-2">
+                            <Button
+                              variant={checked ? "default" : "outline"}
+                              className="h-9"
+                              onClick={() =>
+                                setDecisions((prev) => ({
+                                  ...prev,
+                                  [key]: true,
+                                }))
+                              }
+                            >
+                              {t({ zh: "导入", en: "Import" })}
+                            </Button>
+                            <Button
+                              variant={!checked ? "secondary" : "outline"}
+                              className="h-9"
+                              onClick={() =>
+                                setDecisions((prev) => ({
+                                  ...prev,
+                                  [key]: false,
+                                }))
+                              }
+                            >
+                              {t({ zh: "跳过", en: "Skip" })}
+                            </Button>
+                          </div>
+                        </div>
+                        <DiffTable
+                          incoming={item.incoming}
+                          existing={item.existing}
+                        />
+                      </li>
+                    )
+                  })}
                 </ul>
                 {preview.suspected_truncated && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {t({ zh: "仅显示前 100 条", en: "First 100 shown" })}
+                  <p className="text-xs text-muted-foreground">
+                    {t({
+                      zh: `仅展示前 ${preview.suspected.length} 条（共 ${suspectedTotal} 条疑似）`,
+                      en: `First ${preview.suspected.length} of ${suspectedTotal} shown`,
+                    })}
                   </p>
                 )}
-                <div className="mt-2 flex items-center gap-2">
-                  <Checkbox
-                    id="include-suspected"
-                    checked={includeSuspected}
-                    onCheckedChange={(checked) =>
-                      setIncludeSuspected(checked === true)
-                    }
-                  />
-                  <Label htmlFor="include-suspected" className="text-sm">
-                    {t({
-                      zh: `仍导入疑似重复（${suspectedTotal} 行）`,
-                      en: `Import possible duplicates anyway (${suspectedTotal} rows)`,
-                    })}
-                  </Label>
-                </div>
               </div>
             )}
 
@@ -344,7 +580,10 @@ export function QuestionBankImportDialog({
                 </ul>
                 {preview.issues_truncated && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {t({ zh: "仅显示前 200 条", en: "First 200 shown" })}
+                    {t({
+                      zh: "仅展示前 200 条，下载待修正数据可看全量",
+                      en: "First 200 shown; download rows-to-fix for the full list",
+                    })}
                   </p>
                 )}
               </div>
@@ -354,13 +593,7 @@ export function QuestionBankImportDialog({
               <Button
                 className="min-h-11"
                 disabled={busy || effectiveValid === 0}
-                onClick={() =>
-                  file &&
-                  confirmMutation.mutate({
-                    target: file,
-                    include: includeSuspected,
-                  })
-                }
+                onClick={confirmImport}
               >
                 {t({ zh: "确认导入", en: "Confirm import" })}
               </Button>
@@ -404,8 +637,8 @@ export function QuestionBankImportDialog({
                   {sheet.skipped_suspected > 0 && (
                     <span className="text-muted-foreground">
                       {t({
-                        zh: `排除疑似重复 ${sheet.skipped_suspected}`,
-                        en: `${sheet.skipped_suspected} possible duplicates excluded`,
+                        zh: `跳过疑似 ${sheet.skipped_suspected}`,
+                        en: `${sheet.skipped_suspected} possible duplicates skipped`,
                       })}
                     </span>
                   )}
@@ -428,11 +661,100 @@ export function QuestionBankImportDialog({
                 })}
               </p>
             )}
+
+            {createdItems.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    className="min-h-11"
+                    onClick={() => {
+                      setShowBatch((v) => !v)
+                      setShowAudioFix(false)
+                    }}
+                  >
+                    {t({
+                      zh: `查看本批题目（${createdItems.length}）`,
+                      en: `View this batch (${createdItems.length})`,
+                    })}
+                  </Button>
+                  {audioFixItems.length > 0 && (
+                    <Button
+                      variant="secondary"
+                      className="min-h-11"
+                      onClick={() => {
+                        setShowAudioFix((v) => !v)
+                        setShowBatch(false)
+                      }}
+                    >
+                      {t({
+                        zh: `补齐音频（${audioFixItems.length}）`,
+                        en: `Add audio (${audioFixItems.length})`,
+                      })}
+                    </Button>
+                  )}
+                  <Button
+                    className="min-h-11"
+                    onClick={() => sendToComposer(createdItems)}
+                  >
+                    {t({ zh: "带入组卷", en: "Send to composer" })}
+                  </Button>
+                </div>
+
+                {showBatch && (
+                  <ul className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border bg-card p-2">
+                    {createdItems.map((item) => (
+                      <li
+                        key={`${item.type}-${item.id}`}
+                        className="flex flex-wrap items-center gap-2 text-xs"
+                      >
+                        <Badge variant="secondary">
+                          {t(questionBankTypeLabel(item.type))}
+                        </Badge>
+                        <span>{item.label}</span>
+                        {item.needs_audio && item.audio_missing && (
+                          <span className="text-amber-600 dark:text-amber-400">
+                            {t({ zh: "缺音频", en: "no audio" })}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {showAudioFix && (
+                  <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+                    <p className="text-amber-600 dark:text-amber-400">
+                      {t({
+                        zh: "以下复述句缺音频：题面不显示文字，练习靠设备合成语音兜底、自动考试开考时还会实测合成——建议为它们上传或生成示范音。",
+                        en: "These Listen & Repeat items have no audio: text is hidden from students, practice falls back to device TTS, and automated exams test synthesis at start. Upload or generate demo audio for them.",
+                      })}
+                    </p>
+                    <ul className="max-h-40 space-y-1 overflow-y-auto">
+                      {audioFixItems.map((item) => (
+                        <li key={item.id}>· {item.label}</li>
+                      ))}
+                    </ul>
+                    <a
+                      href="/create#bank-repeat"
+                      className="inline-flex min-h-11 items-center text-sm font-medium text-primary"
+                      onClick={() => onOpenChange(false)}
+                    >
+                      {t({
+                        zh: "去听句复述区上传/生成音频 →",
+                        en: "Open Listen & Repeat to upload/generate →",
+                      })}
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
             {result.missing_audio_total > 0 && (
-              <p className="text-amber-600 dark:text-amber-400">
+              <p className="text-xs text-muted-foreground">
                 {t({
-                  zh: `有 ${result.missing_audio_total} 道题缺音频：请到题目编辑里上传或生成，未配齐前不宜用于自动考试。`,
-                  en: `${result.missing_audio_total} item(s) have no audio yet: upload or generate it in the question editor before using them in automated exams.`,
+                  zh: `本批共 ${result.missing_audio_total} 题暂无音频（朗读/问答有文字与合成兜底，可用于普通练习）。`,
+                  en: `${result.missing_audio_total} item(s) have no audio yet (reading/Q&A fall back to text and synthesis for practice).`,
                 })}
               </p>
             )}
