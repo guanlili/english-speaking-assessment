@@ -11,7 +11,7 @@ import type {
   QuestionBankImportPreview,
   QuestionBankImportResult,
 } from "@/client"
-import { ApiError, QuestionBankService } from "@/client"
+import { QuestionBankService } from "@/client"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -25,11 +25,10 @@ import { Label } from "@/components/ui/label"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
 import {
-  localizeQuestionBankDetail,
   localizeQuestionImportIssue,
+  questionBankErrorMessage,
   questionBankTypeLabel,
 } from "@/lib/questionImport"
-import { extractErrorMessage } from "@/utils"
 
 const MAX_FILE_MB = 5
 
@@ -83,8 +82,9 @@ export function QuestionBankImportDialog({
       setPreview(data)
       setResult(null)
     },
-    onError: (err) =>
-      showErrorToast(t(localizeQuestionBankDetail(extractErrorMessage(err)))),
+    onError: (err) => {
+      void questionBankErrorMessage(err).then((msg) => showErrorToast(t(msg)))
+    },
   })
 
   const confirmMutation = useMutation({
@@ -117,13 +117,7 @@ export function QuestionBankImportDialog({
       }
     },
     onError: (err) => {
-      if (err instanceof ApiError) {
-        showErrorToast(t(localizeQuestionBankDetail(extractErrorMessage(err))))
-      } else {
-        showErrorToast(
-          t({ zh: "导入失败，请重试", en: "Import failed, please retry" }),
-        )
-      }
+      void questionBankErrorMessage(err).then((msg) => showErrorToast(t(msg)))
     },
   })
 
@@ -150,6 +144,8 @@ export function QuestionBankImportDialog({
     setFile(picked)
     setPreview(null)
     setResult(null)
+    // 「仍导入疑似重复」只对当前文件有效：换文件即回到默认排除（评审 P2）
+    setIncludeSuspected(false)
   }
 
   const suspectedTotal =

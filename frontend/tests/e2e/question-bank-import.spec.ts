@@ -17,10 +17,10 @@ async function loginTeacherDemo(page: Page) {
   })
 }
 
-function importCsv(marker: string): Buffer {
+function importCsv(marker: string, seconds = "20"): Buffer {
   const rows = [
     "题型,标题,单元,主题,难度,内容,中文提示,挂靠篇目,秒数,可听次数,考试题型,考试级别,话题卡要点,准备秒数,音频链接,状态",
-    `情景问答,,,E2E 导入测试,,${marker} Do you like e2e imports?,,,20,,,,,,,,`,
+    `情景问答,,,E2E 导入测试,,${marker} Do you like e2e imports?,,,${seconds},,,,,,,,,`,
   ]
   return Buffer.from(`\ufeff${rows.join("\n")}\n`, "utf-8")
 }
@@ -62,4 +62,36 @@ test("题库批量导入：上传 CSV → 预览 → 确认 → 重传防重", a
   await dialog.getByRole("button", { name: /^预览$/ }).click()
   await expect(dialog.getByText(/完全重复 1（自动跳过）/)).toBeVisible()
   await expect(dialog.getByRole("button", { name: /确认导入/ })).toBeDisabled()
+
+  // 疑似重复（同题干不同秒数）：勾选后换新文件，开关须回到默认排除
+  await fileInput.setInputFiles({
+    name: "e2e-suspected.csv",
+    mimeType: "text/csv",
+    buffer: importCsv(marker, "30"),
+  })
+  await dialog.getByRole("button", { name: /^预览$/ }).click()
+  const includeToggle = dialog.getByRole("checkbox")
+  await expect(includeToggle).toBeVisible()
+  await includeToggle.check()
+  await expect(includeToggle).toBeChecked()
+
+  // 直接选择新文件（不经「继续导入下一批」）：开关重置、疑似行按文件重判
+  await fileInput.setInputFiles({
+    name: "e2e-fresh.csv",
+    mimeType: "text/csv",
+    buffer: importCsv(`${marker}-fresh`),
+  })
+  await dialog.getByRole("button", { name: /^预览$/ }).click()
+  await expect(dialog.getByText(/将导入 1/)).toBeVisible()
+  await expect(includeToggle).toHaveCount(0) // 无疑似行：开关随预览一起消失
+
+  // 再传疑似文件：开关重新出现且未勾选（不继承上一批的选择）
+  await fileInput.setInputFiles({
+    name: "e2e-suspected.csv",
+    mimeType: "text/csv",
+    buffer: importCsv(marker, "30"),
+  })
+  await dialog.getByRole("button", { name: /^预览$/ }).click()
+  await expect(includeToggle).toBeVisible()
+  await expect(includeToggle).not.toBeChecked()
 })

@@ -14,10 +14,8 @@ export function questionBankTypeLabel(type: string): BiString {
   return ITEM_TYPE_LABELS[type] ?? { zh: type, en: type }
 }
 
-/** 模板/导出下载的错误提取：blob 拦截器会把错误响应体也变成 Blob。 */
-export async function extractDownloadErrorDetail(
-  err: unknown,
-): Promise<string> {
+/** 取错误体里的原始 detail（blob 拦截器会把下载端点的错误响应也变成 Blob）。 */
+async function rawErrorDetail(err: unknown): Promise<string> {
   const body = (err as { body?: unknown } | null)?.body
   if (body instanceof Blob) {
     try {
@@ -26,10 +24,43 @@ export async function extractDownloadErrorDetail(
         return parsed.detail
       }
     } catch {
-      // 非 JSON 错误体：回落到通用文案
+      // 非 JSON 错误体：交由通用回落
+    }
+    return ""
+  }
+  const detail = (body as { detail?: unknown } | undefined)?.detail
+  if (typeof detail === "string") {
+    return detail
+  }
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0] as { msg?: unknown }
+    if (typeof first?.msg === "string") {
+      return first.msg
     }
   }
-  return extractErrorMessage(err)
+  return ""
+}
+
+/**
+ * 文件级错误的完整链路：原始 detail → 题库专用双语映射 → 通用回落。
+ *
+ * 必须先取原始 detail 再映射——extractErrorMessage 对未登记的中文 detail
+ * 会先替换成英文通用文案，之后专用映射就永远匹配不上（评审 P2：外教在
+ * 缺少题型列时只看到 Something went wrong，无法自行修正）。
+ */
+export async function questionBankErrorMessage(
+  err: unknown,
+): Promise<BiString> {
+  const raw = await rawErrorDetail(err)
+  if (raw) {
+    const mapped = matchQuestionBankDetail(raw)
+    if (mapped) {
+      return mapped
+    }
+    return { zh: raw, en: extractErrorMessage(err) }
+  }
+  const fallback = extractErrorMessage(err)
+  return { zh: fallback, en: fallback }
 }
 
 /** 行级问题原因（含疑似重复说明）→ 双语。 */
@@ -207,13 +238,34 @@ export function localizeQuestionImportIssue(reason: string): BiString {
   return { zh: reason, en: reason }
 }
 
-/** 文件级错误 detail（422/413 toast 用）→ 双语。 */
-export function localizeQuestionBankDetail(detail: string): BiString {
+/** 文件级错误 detail（422/413 toast 用）→ 双语；未匹配返回 null（走通用回落）。 */
+export function matchQuestionBankDetail(detail: string): BiString | null {
   const missing = detail.match(/^工作表「(.+)」缺少必填列：(.+)$/)
   if (missing) {
     return {
       zh: `「${missing[1]}」缺少必填列：${missing[2]}`,
       en: `Sheet "${missing[1]}" is missing required columns: ${missing[2]}`,
+    }
+  }
+  const overRows = detail.match(/^工作表「(.+)」有效区共 (\d+) 行/)
+  if (overRows) {
+    return {
+      zh: `「${overRows[1]}」有效区 ${overRows[2]} 行，超过 2000 行上限；若因整列设置格式导致，请清除多余格式或把数据复制到新模板`,
+      en: `Sheet "${overRows[1]}" spans ${overRows[2]} rows (limit 2000). If caused by whole-column formatting, clear it or copy data into a fresh template`,
+    }
+  }
+  const overCols = detail.match(/^工作表「(.+)」有 (\d+) 列/)
+  if (overCols) {
+    return {
+      zh: `「${overCols[1]}」列数过多（${overCols[2]} 列），请使用标准模板的列`,
+      en: `Sheet "${overCols[1]}" has ${overCols[2]} columns; keep the template columns`,
+    }
+  }
+  const overCell = detail.match(/^(.+)「(.*)」的(\w+)超过 Excel 单元格/)
+  if (overCell) {
+    return {
+      zh: `${overCell[1]}「${overCell[2]}」内容超过 Excel 单元格 32767 字符上限，请改用 CSV 格式导出（无损）`,
+      en: `${overCell[1]} "${overCell[2]}" exceeds Excel's 32,767-character cell limit; export as CSV instead (lossless)`,
     }
   }
   const table: Array<[RegExp, BiString]> = [
@@ -296,5 +348,5 @@ export function localizeQuestionBankDetail(detail: string): BiString {
       return mapped
     }
   }
-  return { zh: detail, en: detail }
+  return null
 }

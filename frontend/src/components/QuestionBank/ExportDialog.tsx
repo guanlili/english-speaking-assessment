@@ -27,10 +27,7 @@ import {
 } from "@/components/ui/select"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
-import {
-  extractDownloadErrorDetail,
-  localizeQuestionBankDetail,
-} from "@/lib/questionImport"
+import { questionBankErrorMessage } from "@/lib/questionImport"
 import {
   EXAM_KIND_LABELS,
   ITEM_TYPE_LABELS,
@@ -95,9 +92,7 @@ export function QuestionBankExportDialog({
       anchor.remove()
       URL.revokeObjectURL(url)
     } catch (err) {
-      showErrorToast(
-        t(localizeQuestionBankDetail(await extractDownloadErrorDetail(err))),
-      )
+      showErrorToast(t(await questionBankErrorMessage(err)))
     } finally {
       setDownloading(false)
     }

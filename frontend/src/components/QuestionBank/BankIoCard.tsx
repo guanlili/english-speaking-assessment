@@ -14,10 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
-import {
-  extractDownloadErrorDetail,
-  localizeQuestionBankDetail,
-} from "@/lib/questionImport"
+import { questionBankErrorMessage } from "@/lib/questionImport"
 import { QuestionBankExportDialog } from "./ExportDialog"
 import { QuestionBankImportDialog } from "./ImportDialog"
 
@@ -41,9 +38,7 @@ export function QuestionBankIoCard() {
       anchor.remove()
       URL.revokeObjectURL(url)
     } catch (err) {
-      showErrorToast(
-        t(localizeQuestionBankDetail(await extractDownloadErrorDetail(err))),
-      )
+      showErrorToast(t(await questionBankErrorMessage(err)))
     } finally {
       setDownloading(false)
     }
@@ -58,14 +53,14 @@ export function QuestionBankIoCard() {
         <div>
           <h2 className="text-lg font-semibold text-primary">
             {t({
-              zh: "批量录入 · 备份 · 交换",
-              en: "Bulk entry · Backup · Share",
+              zh: "批量录入 · 导入导出",
+              en: "Bulk entry · Import & export",
             })}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {t({
-              zh: "下载模板批量录入题目，先预览再导入；导入的题目直接进入下方题库，可搜索、选题、发布。",
-              en: "Download a template to enter questions in bulk, preview, then import. Imported items land in the bank below, ready to search, select and publish.",
+              zh: "下载模板批量录入题目，先预览再导入；也可按条件导出题目内容做整理与交换（高级考试配置不随导出）。",
+              en: "Download a template to enter questions in bulk, preview, then import; or export question content to tidy up and share (advanced exam settings are not included).",
             })}
           </p>
         </div>

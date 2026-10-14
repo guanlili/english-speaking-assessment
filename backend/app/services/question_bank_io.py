@@ -26,7 +26,6 @@ xlsx 模板与解析共用本文件的列规格（单一事实源）；CSV 与�
 
 import csv
 import io
-import re
 import unicodedata
 import uuid
 from dataclasses import dataclass, field
@@ -62,6 +61,12 @@ MAX_IMPORT_ROWS = 2000
 MAX_EXPORT_ROWS = 20000
 MAX_ISSUES = 200
 MAX_SUSPECTED_LISTED = 100
+# xlsx 解析资源上限（评审 P1）：按工作表声明范围在读遍历前判定，
+# 防止「只有格式没有内容」的远端单元格把遍历量撑大（表头+说明行余量）
+MAX_SHEET_ROWS = MAX_IMPORT_ROWS + 8
+MAX_SHEET_COLUMNS = 64
+# Excel 单元格字符串硬上限：openpyxl 写超长会静默截断，导出前显式拒绝
+EXCEL_CELL_MAX_CHARS = 32767
 
 TYPE_PASSAGE = "passage"
 TYPE_REPEAT = "repeat"
@@ -435,11 +440,16 @@ def _parse_exam_level(raw: str) -> str | None:
 
 
 def _parse_bullets(raw: str) -> list[str] | None:
+    """话题卡要点：仅按换行拆分（导出即换行连接，可逆）。
+
+    不再按分号/竖线拆——要点本身含 ; 或 | 时按分隔符拆会改变结构，
+    导出→导入往返不无损（评审 P2 实例：["where; why","who"] 变三条）。
+    """
     s = (raw or "").strip()
     if not s:
         return None
-    parts = [p.strip() for p in re.split(r"[\n;；|]", s)]
-    bullets = [p for p in parts if p]
+    bullets = [p.strip() for p in s.splitlines()]
+    bullets = [p for p in bullets if p]
     return bullets or None
 
 
@@ -645,6 +655,13 @@ def parse_upload(filename: str, raw: bytes) -> ParsedFile:
 
 
 def _parse_xlsx(raw: bytes) -> ParsedFile:
+    """流式解析 xlsx，边读边限。
+
+    行/列上限在读遍历**之前**按工作表声明范围（max_row/max_column）判定：
+    只有格式的远端单元格（如整列设置格式）同样会扩大有效区——若读完再数
+    数据行，一个 4.9KB 的文件就能让解析器遍历几十万个单元格（评审 P1）。
+    判定过界直接 422，绝不静默截断工作表内容。
+    """
     from openpyxl import load_workbook
 
     try:
@@ -658,30 +675,68 @@ def _parse_xlsx(raw: bytes) -> ParsedFile:
     matched_any = False
     try:
         for sheet_name in workbook.sheetnames:
-            sheet_rows = [
-                (r_idx, tuple(_cell_str(c) for c in row))
-                for r_idx, row in enumerate(
-                    workbook[sheet_name].iter_rows(values_only=True), start=1
-                )
-            ]
-            data_rows = [(i, r) for i, r in sheet_rows if any(r)]
-            if not data_rows:
-                continue
             if _is_guide_sheet(sheet_name):
-                continue
-            qtype = _match_sheet_type(sheet_name)
-            if qtype is None:
+                continue  # 说明页按名字跳过，不读内容
+            sheet = workbook[sheet_name]
+            max_row = sheet.max_row or 0
+            max_column = sheet.max_column or 0
+            if max_column > MAX_SHEET_COLUMNS:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"工作表「{sheet_name}」无法识别题型，请勿重命名模板工作表",
+                    detail=(
+                        f"工作表「{sheet_name}」有 {max_column} 列，超过 "
+                        f"{MAX_SHEET_COLUMNS} 列上限，请使用标准模板的列"
+                    ),
                 )
-            matched_any = True
-            col_map = _map_header(data_rows[0][1])
-            _require_columns(qtype, col_map, sheet_name)
-            for r_idx, row_cells in data_rows[1:]:
+            if max_row > MAX_SHEET_ROWS:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"工作表「{sheet_name}」有效区共 {max_row} 行，超过 "
+                        f"{MAX_IMPORT_ROWS} 行数据上限；若因整列设置格式导致，"
+                        "请清除多余格式或把数据复制到新模板"
+                    ),
+                )
+            header_done = False
+            col_map: dict[int, str] = {}
+            qtype: str | None = None
+            for r_idx, row in enumerate(
+                sheet.iter_rows(values_only=True, max_row=max_row), start=1
+            ):
+                # 防御声明范围偏小的畸形文件：实际行数超界立即拒绝
+                if r_idx > MAX_SHEET_ROWS:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"行数超过上限（{MAX_IMPORT_ROWS} 行），请分批导入",
+                    )
+                row_cells = tuple(_cell_str(c) for c in row)
+                if not any(row_cells):
+                    continue
+                if not header_done:
+                    header_done = True
+                    qtype = _match_sheet_type(sheet_name)
+                    if qtype is None:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=(
+                                f"工作表「{sheet_name}」无法识别题型，"
+                                "请勿重命名模板工作表"
+                            ),
+                        )
+                    matched_any = True
+                    col_map = _map_header(row_cells)
+                    _require_columns(qtype, col_map, sheet_name)
+                    continue
+                if len(rows) + 1 > MAX_IMPORT_ROWS:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"行数超过上限（{MAX_IMPORT_ROWS} 行），请分批导入",
+                    )
                 rows.append(
                     _RawRow(
-                        qtype=qtype, line=r_idx, cells=_row_cells(col_map, row_cells)
+                        qtype=qtype or "",
+                        line=r_idx,
+                        cells=_row_cells(col_map, row_cells),
                     )
                 )
     finally:
@@ -704,21 +759,34 @@ def _parse_csv(raw: bytes) -> ParsedFile:
             continue
     if text is None:
         raise HTTPException(status_code=422, detail="文件必须是 UTF-8 编码")
-    all_rows = [tuple(c.strip() for c in row) for row in csv.reader(io.StringIO(text))]
-    if not all_rows or not any(any(r) for r in all_rows):
-        raise HTTPException(status_code=422, detail="文件为空")
-    header = all_rows[0]
-    col_map = _map_header(header)
-    type_col = next((c for c, f in col_map.items() if f == "__type__"), None)
-    if type_col is None:
-        raise HTTPException(status_code=422, detail="CSV 缺少题型列")
-    fields_present = set(col_map.values())
+    reader = csv.reader(io.StringIO(text))
+    header: list[str] | None = None
+    col_map: dict[int, str] = {}
+    type_col: int | None = None
+    fields_present: set[str] = set()
     rows: list[_RawRow] = []
     issues: list[QuestionBankImportIssue] = []
     checked_types: set[str] = set()
-    for r_idx, row_cells in enumerate(all_rows[1:], start=2):
+    any_content = False
+    for r_idx, raw_row in enumerate(reader, start=1):
+        row_cells = tuple(c.strip() for c in raw_row)
         if not any(row_cells):
             continue
+        any_content = True
+        if header is None:
+            header = list(row_cells)
+            col_map = _map_header(header)
+            type_col = next((c for c, f in col_map.items() if f == "__type__"), None)
+            if type_col is None:
+                raise HTTPException(status_code=422, detail="CSV 缺少题型列")
+            fields_present = set(col_map.values())
+            continue
+        if len(rows) + 1 > MAX_IMPORT_ROWS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"行数超过上限（{MAX_IMPORT_ROWS} 行），请分批导入",
+            )
+        assert type_col is not None
         type_cell = row_cells[type_col] if type_col < len(row_cells) else ""
         if not type_cell:
             issues.append(
@@ -740,6 +808,8 @@ def _parse_csv(raw: bytes) -> ParsedFile:
             {c: f for c, f in col_map.items() if f != "__type__"}, row_cells
         )
         rows.append(_RawRow(qtype=qtype, line=r_idx, cells=cells))
+    if not any_content:
+        raise HTTPException(status_code=422, detail="文件为空")
     return ParsedFile(rows=rows, issues=issues)
 
 
@@ -840,6 +910,7 @@ def _load_reference(session: Session) -> _Ref:
             passage.is_active,
             _norm_text(unit_titles.get(passage.unit_id, "")) if passage.unit_id else "",
             _norm_text(passage.topic or ""),
+            passage.audio_url or "",
         )
         passage_exact.setdefault(key, []).append(cfg)
         passage_texts.add(key[1])
@@ -858,6 +929,7 @@ def _load_reference(session: Session) -> _Ref:
             question.exam_level or "",
             tuple(question.cue_card_bullets or ()),
             question.prep_seconds or 0,
+            question.audio_url or "",
         )
         question_exact.setdefault(key, []).append(cfg)
         question_texts.setdefault(_norm_text(question.text), set()).add(
@@ -875,6 +947,7 @@ def _load_reference(session: Session) -> _Ref:
             _norm_text(passage_titles.get(sentence.passage_id, ""))
             if sentence.passage_id
             else "",
+            sentence.audio_url or "",
         )
         sentence_configs.setdefault(_norm_text(sentence.text), []).append(cfg)
 
@@ -997,13 +1070,37 @@ def _plan_passages(
             continue
         n_title, n_text = _norm_text(payload["title"]), _norm_text(payload["text"])
         key = (n_title, n_text)
+        # 单元解析必须先于查重：落库时挂单元的篇目 topic 会被派生为单元主题
+        # （crud.derive_passage_topic），查重配置若用原始 topic，同一文件重传
+        # 会因「落库值≠导入值」被误判疑似重复（评审 P2 实例）
+        unit_title_resolved = ""
+        topic_resolved = payload["topic"]
+        if payload["unit_title"] is not None:
+            candidates = ref.units_by_norm.get(_norm_text(payload["unit_title"]), [])
+            if len(candidates) > 1:
+                counts.invalid += 1
+                plan.issues.append(
+                    _issue(
+                        TYPE_PASSAGE,
+                        row.line,
+                        "单元匹配到多个同名单元，请改为精确的单元标题",
+                    )
+                )
+                continue
+            if len(candidates) == 1:
+                payload["unit_id"] = candidates[0].id
+                unit_title_resolved = candidates[0].title
+                topic_resolved = candidates[0].topic
+            else:
+                plan.unit_fallback_count += 1
         cfg = (
             _norm_text(payload["translation"] or ""),
             payload["cefr_band"],
             payload["suggested_seconds"],
             payload["is_active"],
-            _norm_text(payload["unit_title"] or ""),
-            _norm_text(payload["topic"]),
+            _norm_text(unit_title_resolved),
+            _norm_text(topic_resolved),
+            payload["audio_url"] or "",
         )
         db_cfgs = ref.passage_exact.get(key, [])
         planned_cfgs = planned_exact.get(key, [])
@@ -1028,22 +1125,6 @@ def _plan_passages(
             )
             if not include_suspected:
                 continue
-        if payload["unit_title"] is not None:
-            candidates = ref.units_by_norm.get(_norm_text(payload["unit_title"]), [])
-            if len(candidates) > 1:
-                counts.invalid += 1
-                plan.issues.append(
-                    _issue(
-                        TYPE_PASSAGE,
-                        row.line,
-                        "单元匹配到多个同名单元，请改为精确的单元标题",
-                    )
-                )
-                continue
-            if len(candidates) == 1:
-                payload["unit_id"] = candidates[0].id
-            else:
-                plan.unit_fallback_count += 1
         if not payload["audio_url"]:
             counts.missing_audio += 1
         counts.valid += 1
@@ -1076,6 +1157,7 @@ def _plan_repeats(
             payload["exam_kind"] or "",
             payload["exam_level"] or "",
             _norm_text(payload["passage_title"] or ""),
+            payload["audio_url"] or "",
         )
         db_cfgs = ref.sentence_configs.get(n_text, [])
         planned_cfgs = planned_configs.get(n_text, [])
@@ -1148,6 +1230,7 @@ def _plan_questions(
             payload["exam_level"] or "",
             tuple(payload["cue_card_bullets"] or ()),
             payload["prep_seconds"] or 0,
+            payload["audio_url"] or "",
         )
         db_cfgs = ref.question_exact.get(key, [])
         planned_cfgs = planned_exact.get(key, [])
@@ -1447,8 +1530,8 @@ GUIDE_LINES = (
     "上限 Limits：2000 行 / 5MB",
     "编码 Encoding：Excel(.xlsx) 直接上传；CSV 需 UTF-8（推荐用本站下载的 CSV 模板）",
     "",
-    "注意：拆句朗读、逐题计时等高级配置不入模板，导入后如需请在题目编辑页设置",
-    "Note: advanced settings (per-sentence split, per-item timing) are not covered by the template; configure them in the editor after import",
+    "注意：本模板用于题目内容交换，不是完整备份——拆句朗读、逐题计时、题目说明的考试音频等高级配置不入模板，导入后如需请在题目编辑页设置",
+    "Note: this template exchanges question content, not a full backup — advanced settings (per-sentence split, per-item timing, exam audio on instructions) must be reconfigured in the editor after import",
 )
 
 TEMPLATE_EXAMPLES: dict[str, list[list[str]]] = {
@@ -1720,7 +1803,7 @@ def export_bank(
     if band_upper is not None and band_upper not in VALID_BANDS:
         raise HTTPException(status_code=422, detail="难度无效，可选：A2/B1/B2")
 
-    rows_by_type: dict[str, list[list[str]]] = {}
+    rows_by_type: dict[str, list[dict[str, str]]] = {}
     if TYPE_PASSAGE in selected:
         rows_by_type[TYPE_PASSAGE] = _export_passages(
             session, topic, q, band_upper, active
@@ -1743,11 +1826,18 @@ def export_bank(
 
     date_tag = get_datetime_utc().date().isoformat()
     if fmt == "csv":
+        # CSV 行必须按 CSV_UNION_COLUMNS 的字段名取值对齐——各题型自己的
+        # 列顺序与并集列顺序不同，直接拼接会整体错位（评审 P1：回导损坏题目）
         header = [CSV_TYPE_COLUMN.zh] + [c.zh for c in CSV_UNION_COLUMNS]
         rows = [header]
         for qtype in QUESTION_BANK_TYPE_ORDER:
             for row in rows_by_type.get(qtype, []):
-                rows.append([TYPE_LABELS[qtype], *row])
+                rows.append(
+                    [
+                        TYPE_LABELS[qtype],
+                        *[row.get(c.field, "") for c in CSV_UNION_COLUMNS],
+                    ]
+                )
         return (
             _csv_bytes(rows),
             f"question-bank-export-{date_tag}.csv",
@@ -1766,7 +1856,7 @@ def _export_passages(
     q: str | None,
     band_upper: str | None,
     active: bool | None,
-) -> list[list[str]]:
+) -> list[dict[str, str]]:
     conditions: list[Any] = [col(Passage.parent_passage_id).is_(None)]
     if q and q.strip():
         needle = q.strip()
@@ -1786,24 +1876,24 @@ def _export_passages(
     ).all()
     unit_titles = {u.id: u.title for u in session.exec(select(Unit)).all()}
     return [
-        [
-            p.title,
-            unit_titles.get(p.unit_id, "") if p.unit_id else "",
-            p.topic or "",
-            p.cefr_band,
-            p.text,
-            p.translation or "",
-            str(p.suggested_seconds),
-            p.audio_url or "",
-            "启用" if p.is_active else "停用",
-        ]
+        {
+            "title": p.title,
+            "unit_title": unit_titles.get(p.unit_id, "") if p.unit_id else "",
+            "topic": p.topic or "",
+            "cefr_band": p.cefr_band,
+            "text": p.text,
+            "translation": p.translation or "",
+            "suggested_seconds": str(p.suggested_seconds),
+            "audio_url": p.audio_url or "",
+            "is_active": "启用" if p.is_active else "停用",
+        }
         for p in passages
     ]
 
 
 def _export_sentences(
     session: Session, exam_kind: str | None, exam_level: str | None
-) -> list[list[str]]:
+) -> list[dict[str, str]]:
     stmt = select(RepeatSentence)
     if exam_kind is not None:
         stmt = stmt.where(RepeatSentence.exam_kind == exam_kind)  # type: ignore[arg-type]
@@ -1814,16 +1904,16 @@ def _export_sentences(
     ).all()
     title_map = dict(session.exec(select(Passage.id, Passage.title)).all())
     return [
-        [
-            s.text,
-            s.translation or "",
-            title_map.get(s.passage_id, "") if s.passage_id else "",
-            str(s.suggested_seconds),
-            str(s.replay_limit),
-            s.exam_kind or "",
-            s.exam_level or "",
-            s.audio_url or "",
-        ]
+        {
+            "text": s.text,
+            "translation": s.translation or "",
+            "passage_title": title_map.get(s.passage_id, "") if s.passage_id else "",
+            "suggested_seconds": str(s.suggested_seconds),
+            "replay_limit": str(s.replay_limit),
+            "exam_kind": s.exam_kind or "",
+            "exam_level": s.exam_level or "",
+            "audio_url": s.audio_url or "",
+        }
         for s in sentences
     ]
 
@@ -1835,7 +1925,7 @@ def _export_questions(
     band_upper: str | None,
     exam_kind: str | None,
     exam_level: str | None,
-) -> list[list[str]]:
+) -> list[dict[str, str]]:
     conditions: list[Any] = []
     if topic is not None and topic.strip():
         conditions.append(Scenario.topic == topic.strip())
@@ -1862,32 +1952,57 @@ def _export_questions(
         )
     ).all()
     return [
-        [
-            topic_name,
-            question.text,
-            question.translation or "",
-            str(question.suggested_seconds),
-            question.exam_kind or "",
-            question.exam_level or "",
-            "\n".join(question.cue_card_bullets or ()),
-            str(question.prep_seconds) if question.prep_seconds is not None else "",
-            question.audio_url or "",
-        ]
+        {
+            "topic": topic_name,
+            "text": question.text,
+            "translation": question.translation or "",
+            "suggested_seconds": str(question.suggested_seconds),
+            "exam_kind": question.exam_kind or "",
+            "exam_level": question.exam_level or "",
+            "cue_card_bullets": "\n".join(question.cue_card_bullets or ()),
+            "prep_seconds": (
+                str(question.prep_seconds) if question.prep_seconds is not None else ""
+            ),
+            "audio_url": question.audio_url or "",
+        }
         for question, topic_name in rows
     ]
 
 
-def _export_instructions(session: Session) -> list[list[str]]:
+def _export_instructions(session: Session) -> list[dict[str, str]]:
     instructions = session.exec(
         select(Instruction).order_by(col(Instruction.created_at), col(Instruction.id))
     ).all()
-    return [[i.title or "", i.text, str(i.suggested_seconds)] for i in instructions]
+    return [
+        {
+            "title": i.title or "",
+            "text": i.text,
+            "suggested_seconds": str(i.suggested_seconds),
+        }
+        for i in instructions
+    ]
 
 
-def _export_xlsx(rows_by_type: dict[str, list[list[str]]]) -> bytes:
+def _export_xlsx(rows_by_type: dict[str, list[dict[str, str]]]) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font
     from openpyxl.utils import get_column_letter
+
+    # Excel 单元格字符串硬上限 32767，openpyxl 写超长会**静默截断**——
+    # 导出必须无损，先整体校验再生成（评审 P2：截断后仍返回成功）
+    for qtype in QUESTION_BANK_TYPE_ORDER:
+        for row in rows_by_type.get(qtype, []):
+            for _field_name, value in row.items():
+                if len(value) > EXCEL_CELL_MAX_CHARS:
+                    label = TYPE_LABELS[qtype]
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            f"{label}「{row.get('title') or row.get('text', '')[:30]}」"
+                            f"的{field}超过 Excel 单元格 {EXCEL_CELL_MAX_CHARS} 字符上限，"
+                            "请改用 CSV 格式导出（无此限制，内容无损）"
+                        ),
+                    )
 
     workbook = Workbook()
     workbook.remove(workbook.active)
@@ -1904,11 +2019,12 @@ def _export_xlsx(rows_by_type: dict[str, list[list[str]]]) -> bytes:
                 qtype
             ][spec.field]
         sheet.freeze_panes = "A2"
-        for row_idx, values in enumerate(rows_by_type[qtype], start=2):
-            for col_idx, value in enumerate(values, start=1):
+        for row_idx, row in enumerate(rows_by_type[qtype], start=2):
+            for col_idx, spec in enumerate(columns, start=1):
+                value = row.get(spec.field, "")
                 cell = sheet.cell(row=row_idx, column=col_idx, value=value)
                 # openpyxl 会把 "=" 开头的字符串当公式写入；导出内容必须恒为文本
-                if isinstance(value, str) and value.startswith("="):
+                if value.startswith("="):
                     cell.data_type = "s"
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
     buffer = io.BytesIO()
