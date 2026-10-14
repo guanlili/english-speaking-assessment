@@ -383,6 +383,7 @@ function ComposerForm({
       ]).then(() => setPresetRefreshed(true))
     }
   }, [])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 一次性消费——依赖里只需数据数组与刷新标记；setter 为组件内稳定语义函数
   useEffect(() => {
     if (presetDoneRef.current) {
       return
@@ -515,7 +516,7 @@ function ComposerForm({
         : [],
     )
     return reconcileAssignmentOrder(available, orderedKeys)
-  }, [types, selection, scenarioQuestions, orderedKeys])
+  }, [types, selection, filteredScenarioQuestions, orderedKeys])
 
   const moveItem = (index: number, direction: -1 | 1) => {
     dirtyRef.current = true
