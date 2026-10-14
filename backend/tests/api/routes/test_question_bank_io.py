@@ -39,20 +39,49 @@ _BASELINE_IDS: dict[str, set] | None = None
 
 # CSV 并集列顺序（与模板一致）
 CSV_FIELDS = [
-    "标题", "单元", "主题", "难度", "内容", "中文提示", "挂靠篇目",
-    "秒数", "可听次数", "考试题型", "考试级别", "话题卡要点", "准备秒数",
-    "音频链接", "状态",
+    "标题",
+    "单元",
+    "主题",
+    "难度",
+    "内容",
+    "中文提示",
+    "挂靠篇目",
+    "秒数",
+    "可听次数",
+    "考试题型",
+    "考试级别",
+    "话题卡要点",
+    "准备秒数",
+    "音频链接",
+    "状态",
 ]
 FIELD_TO_HEADER = {
-    "title": "标题", "unit_title": "单元", "topic": "主题", "cefr_band": "难度",
-    "text": "内容", "translation": "中文提示", "passage_title": "挂靠篇目",
-    "suggested_seconds": "秒数", "replay_limit": "可听次数", "exam_kind": "考试题型",
-    "exam_level": "考试级别", "cue_card_bullets": "话题卡要点",
-    "prep_seconds": "准备秒数", "audio_url": "音频链接", "is_active": "状态",
+    "title": "标题",
+    "unit_title": "单元",
+    "topic": "主题",
+    "cefr_band": "难度",
+    "text": "内容",
+    "translation": "中文提示",
+    "passage_title": "挂靠篇目",
+    "suggested_seconds": "秒数",
+    "replay_limit": "可听次数",
+    "exam_kind": "考试题型",
+    "exam_level": "考试级别",
+    "cue_card_bullets": "话题卡要点",
+    "prep_seconds": "准备秒数",
+    "audio_url": "音频链接",
+    "is_active": "状态",
 }
 
 
-BASELINE_TABLES = (ScenarioQuestion, RepeatSentence, Instruction, Passage, Scenario, Unit)
+BASELINE_TABLES = (
+    ScenarioQuestion,
+    RepeatSentence,
+    Instruction,
+    Passage,
+    Scenario,
+    Unit,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -84,7 +113,13 @@ def _new_rows(db: Session, model: type) -> list:
     """查询结果里只留本模块新增的行（排除 init_db 种子与既有内容）。"""
     assert _BASELINE_IDS is not None
     baseline = _BASELINE_IDS[model.__name__]
-    return [row for row in db.exec(select(model)).all() if row.id not in baseline]  # type: ignore[attr-defined]
+    # getattr+noqa：直接 row.id 会被 ty 拦（object 无该属性），getattr 常量
+    # 又被 ruff B009 拦——两者取 getattr + noqa 是唯一交集
+    return [
+        row
+        for row in db.exec(select(model)).all()
+        if getattr(row, "id") not in baseline  # noqa: B009
+    ]
 
 
 def _one_new(db: Session, model: type):
@@ -149,7 +184,9 @@ def _upload(
     return client.post(f"{QB}/import-preview", files=files, headers=headers)
 
 
-def _preview(client: TestClient, headers: dict[str, str], data: bytes, **kwargs: Any) -> dict:
+def _preview(
+    client: TestClient, headers: dict[str, str], data: bytes, **kwargs: Any
+) -> dict:
     resp = _upload(client, headers, data, **kwargs)
     assert resp.status_code == 200, resp.text
     return resp.json()
@@ -189,7 +226,12 @@ def test_template_download(client: TestClient, db: Session) -> None:
     from app.services import question_bank_io as svc
 
     parsed = svc.parse_upload("t.xlsx", resp.content)
-    assert {(r.qtype) for r in parsed.rows} == {"passage", "repeat", "question", "instruction"}
+    assert {(r.qtype) for r in parsed.rows} == {
+        "passage",
+        "repeat",
+        "question",
+        "instruction",
+    }
 
     resp = client.get(f"{QB}/import-template?format=csv", headers=headers)
     assert resp.status_code == 200, resp.text
@@ -236,12 +278,26 @@ def test_preview_exam_field_validation_reuse(client: TestClient, db: Session) ->
     data = _csv_file(
         [
             {**QUESTION_ROW, "text": "Q1", "exam_kind": "interview"},  # 缺级别
-            {**QUESTION_ROW, "text": "Q2", "exam_kind": "ielts_p1", "exam_level": "PET",
-             "cue_card_bullets": "what\nwhen"},  # 话题卡仅 p2
-            {**QUESTION_ROW, "text": "Q3", "exam_kind": "ielts_p2", "exam_level": "PET",
-             "prep_seconds": "200"},  # 准备时间越界
-            {"__type__": "听句复述", "text": "Repeat me.", "exam_kind": "ielts_p2",
-             "exam_level": "PET"},  # 复述句不支持 ielts_p2
+            {
+                **QUESTION_ROW,
+                "text": "Q2",
+                "exam_kind": "ielts_p1",
+                "exam_level": "PET",
+                "cue_card_bullets": "what\nwhen",
+            },  # 话题卡仅 p2
+            {
+                **QUESTION_ROW,
+                "text": "Q3",
+                "exam_kind": "ielts_p2",
+                "exam_level": "PET",
+                "prep_seconds": "200",
+            },  # 准备时间越界
+            {
+                "__type__": "听句复述",
+                "text": "Repeat me.",
+                "exam_kind": "ielts_p2",
+                "exam_level": "PET",
+            },  # 复述句不支持 ielts_p2
             {**QUESTION_ROW, "text": "Q4", "exam_level": "PET"},  # 无题型不能配级别
         ]
     )
@@ -260,12 +316,31 @@ def test_preview_xlsx_sheets(client: TestClient, db: Session) -> None:
     data = _xlsx_bytes(
         {
             "文章朗读": [
-                ["标题", "单元", "主题", "难度", "正文", "中文提示", "建议秒数", "音频链接", "状态"],
+                [
+                    "标题",
+                    "单元",
+                    "主题",
+                    "难度",
+                    "正文",
+                    "中文提示",
+                    "建议秒数",
+                    "音频链接",
+                    "状态",
+                ],
                 ["A Trip", "", "Travel", "B1", "We went to the sea.", "", "45", "", ""],
             ],
             "情景问答": [
-                ["主题", "英文题目", "中文提示", "作答秒数", "考试题型", "考试级别",
-                 "话题卡要点", "准备秒数", "音频链接"],
+                [
+                    "主题",
+                    "英文题目",
+                    "中文提示",
+                    "作答秒数",
+                    "考试题型",
+                    "考试级别",
+                    "话题卡要点",
+                    "准备秒数",
+                    "音频链接",
+                ],
                 ["Travel", "Where did you go?", "", "20", "", "", "", "", ""],
             ],
         }
@@ -288,7 +363,7 @@ def test_preview_xlsx_sheets(client: TestClient, db: Session) -> None:
 
 def test_preview_csv_file_level_errors(client: TestClient, db: Session) -> None:
     headers = _login_teacher(db, client)
-    no_type_col = "标题,内容\nT,hello".encode("utf-8")
+    no_type_col = "标题,内容\nT,hello".encode()
     resp = _upload(client, headers, no_type_col)
     assert resp.status_code == 422
     assert "CSV 缺少题型列" in resp.json()["detail"]
@@ -300,7 +375,11 @@ def test_preview_csv_file_level_errors(client: TestClient, db: Session) -> None:
     assert "行数超过上限" in resp.json()["detail"]
 
     # GBK 编码兜底（Excel 中文环境「另存为 CSV」默认 GBK）
-    gbk = _csv_file([{**QUESTION_ROW, "text": "Encoding check?"}]).decode("utf-8").encode("gb18030")
+    gbk = (
+        _csv_file([{**QUESTION_ROW, "text": "Encoding check?"}])
+        .decode("utf-8")
+        .encode("gb18030")
+    )
     body = _preview(client, headers, gbk)
     assert body["total_valid"] == 1
 
@@ -309,7 +388,11 @@ def test_audio_url_validation(client: TestClient, db: Session) -> None:
     headers = _login_teacher(db, client)
     data = _csv_file(
         [
-            {**QUESTION_ROW, "text": "Q audio ok", "audio_url": "/api/v1/audio/content/a.mp3"},
+            {
+                **QUESTION_ROW,
+                "text": "Q audio ok",
+                "audio_url": "/api/v1/audio/content/a.mp3",
+            },
             {**QUESTION_ROW, "text": "Q audio bad", "audio_url": "https://x.com/a.mp3"},
         ]
     )
@@ -329,14 +412,30 @@ def test_confirm_creates_all_types_and_auto_scenario(
     data = _csv_file(
         [
             PASSAGE_ROW,
-            {"__type__": "听句复述", "text": "The sea was calm.", "translation": "大海很平静。",
-             "suggested_seconds": "8", "replay_limit": "5", "exam_kind": "toefl_lnr",
-             "exam_level": "PET"},
-            {**QUESTION_ROW, "text": "Describe your favourite place.", "suggested_seconds": "120",
-             "exam_kind": "IELTS · Part 2", "exam_level": "四级",
-             "cue_card_bullets": "where it is\nhow often you go", "prep_seconds": "60"},
-            {"__type__": "题目说明", "title": "Part B", "text": "Now talk about the topic.",
-             "suggested_seconds": "30"},
+            {
+                "__type__": "听句复述",
+                "text": "The sea was calm.",
+                "translation": "大海很平静。",
+                "suggested_seconds": "8",
+                "replay_limit": "5",
+                "exam_kind": "toefl_lnr",
+                "exam_level": "PET",
+            },
+            {
+                **QUESTION_ROW,
+                "text": "Describe your favourite place.",
+                "suggested_seconds": "120",
+                "exam_kind": "IELTS · Part 2",
+                "exam_level": "四级",
+                "cue_card_bullets": "where it is\nhow often you go",
+                "prep_seconds": "60",
+            },
+            {
+                "__type__": "题目说明",
+                "title": "Part B",
+                "text": "Now talk about the topic.",
+                "suggested_seconds": "30",
+            },
         ]
     )
     resp = _upload(client, headers, data, confirm=True)
@@ -382,9 +481,17 @@ def test_confirm_fallbacks_unit_and_passage_linkage(
             # 单元不存在 → 降级无单元
             {**PASSAGE_ROW, "unit_title": "不存在的单元"},
             # 挂靠本次导入的篇目 → 挂靠成功
-            {"__type__": "听句复述", "text": "Attached to new passage.", "passage_title": "Morning Routine"},
+            {
+                "__type__": "听句复述",
+                "text": "Attached to new passage.",
+                "passage_title": "Morning Routine",
+            },
             # 挂靠不存在的篇目 → 独立句
-            {"__type__": "听句复述", "text": "No such passage.", "passage_title": "Ghost"},
+            {
+                "__type__": "听句复述",
+                "text": "No such passage.",
+                "passage_title": "Ghost",
+            },
         ]
     )
     body = _preview(client, headers, data)
@@ -406,7 +513,15 @@ def test_confirm_fallbacks_unit_and_passage_linkage(
         headers=headers,
     )
     assert resp.status_code == 200, resp.text
-    again = _csv_file([{"__type__": "听句复述", "text": "Ambiguous link.", "passage_title": "Morning Routine"}])
+    again = _csv_file(
+        [
+            {
+                "__type__": "听句复述",
+                "text": "Ambiguous link.",
+                "passage_title": "Morning Routine",
+            }
+        ]
+    )
     body = _preview(client, headers, again)
     assert any("挂靠篇目匹配到多个同名篇目" in i["reason"] for i in body["issues"])
 
@@ -467,7 +582,9 @@ def test_duplicate_tiers_and_reupload_safety(client: TestClient, db: Session) ->
     assert len(_new_rows(db, ScenarioQuestion)) == 1
 
     # 同题干不同配置 → 疑似重复：默认排除，勾选后导入
-    file2 = _csv_file([{**QUESTION_ROW, "text": "Same question.", "suggested_seconds": "30"}])
+    file2 = _csv_file(
+        [{**QUESTION_ROW, "text": "Same question.", "suggested_seconds": "30"}]
+    )
     body = _preview(client, headers, file2)
     assert body["sheets"][0]["suspected_duplicate_count"] == 1
     assert body["suspected"][0]["line"] == 2
@@ -479,7 +596,12 @@ def test_duplicate_tiers_and_reupload_safety(client: TestClient, db: Session) ->
     assert len(_new_rows(db, ScenarioQuestion)) == 2
 
     # 批内重复：同文件两行一样 → 1 valid + 1 exact dup
-    file3 = _csv_file([{**QUESTION_ROW, "text": "In-file dup."}, {**QUESTION_ROW, "text": "In-file dup."}])
+    file3 = _csv_file(
+        [
+            {**QUESTION_ROW, "text": "In-file dup."},
+            {**QUESTION_ROW, "text": "In-file dup."},
+        ]
+    )
     body = _preview(client, headers, file3)
     counts = body["sheets"][0]
     assert counts["valid_count"] == 1
@@ -500,13 +622,29 @@ def test_export_reimport_roundtrip(client: TestClient, db: Session) -> None:
     data = _csv_file(
         [
             PASSAGE_ROW,
-            {"__type__": "听句复述", "text": "The sea was calm.", "suggested_seconds": "10",
-             "replay_limit": "4", "exam_kind": "toefl_lnr", "exam_level": "KET"},
-            {**QUESTION_ROW, "text": "Describe your favourite place.",
-             "suggested_seconds": "120", "exam_kind": "ielts_p2", "exam_level": "PET",
-             "cue_card_bullets": "where it is\nhow often you go", "prep_seconds": "60"},
-            {"__type__": "题目说明", "title": "Part B", "text": "Now talk about the topic.",
-             "suggested_seconds": "30"},
+            {
+                "__type__": "听句复述",
+                "text": "The sea was calm.",
+                "suggested_seconds": "10",
+                "replay_limit": "4",
+                "exam_kind": "toefl_lnr",
+                "exam_level": "KET",
+            },
+            {
+                **QUESTION_ROW,
+                "text": "Describe your favourite place.",
+                "suggested_seconds": "120",
+                "exam_kind": "ielts_p2",
+                "exam_level": "PET",
+                "cue_card_bullets": "where it is\nhow often you go",
+                "prep_seconds": "60",
+            },
+            {
+                "__type__": "题目说明",
+                "title": "Part B",
+                "text": "Now talk about the topic.",
+                "suggested_seconds": "30",
+            },
         ]
     )
     resp = _upload(client, headers, data, confirm=True)
@@ -542,7 +680,9 @@ def test_export_csv_with_filters(client: TestClient, db: Session) -> None:
     resp = _upload(client, headers, data, confirm=True)
     assert resp.status_code == 200, resp.text
 
-    resp = client.get(f"{QB}/export?format=csv&types=question&topic=Travel", headers=headers)
+    resp = client.get(
+        f"{QB}/export?format=csv&types=question&topic=Travel", headers=headers
+    )
     assert resp.status_code == 200, resp.text
     text = resp.content.decode("utf-8-sig")
     assert text.splitlines()[0].startswith("题型,标题,单元,主题,难度,内容")
@@ -561,6 +701,7 @@ def test_permissions_student_403_and_anonymous_401(
     client: TestClient, db: Session
 ) -> None:
     student = create_student_user(db)
+    assert student.username is not None
     student_headers = login_headers(client, student.username)
     resp = client.get(f"{QB}/import-template", headers=student_headers)
     assert resp.status_code == 403

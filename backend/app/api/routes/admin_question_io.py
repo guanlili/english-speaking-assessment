@@ -35,14 +35,18 @@ async def _read_upload(file: UploadFile) -> tuple[str, bytes]:
     return file.filename or "", raw
 
 
-_BINARY_RESPONSES = {
-    200: {"content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}}
+_BINARY_RESPONSES: dict[int | str, dict[str, Any]] = {
+    200: {
+        "content": {
+            "application/octet-stream": {
+                "schema": {"type": "string", "format": "binary"}
+            }
+        }
+    }
 }
 
 
-@router.get(
-    "/import-template", response_class=Response, responses=_BINARY_RESPONSES
-)
+@router.get("/import-template", response_class=Response, responses=_BINARY_RESPONSES)
 def download_import_template(
     _teacher: TeacherUserDep,
     format: Literal["xlsx", "csv"] = Query(default="xlsx"),
@@ -77,16 +81,23 @@ async def question_bank_import_confirm(
     """确认导入：重新上传预览时的同一文件；疑似重复默认排除，勾选后才导入。"""
     filename, raw = await _read_upload(file)
     parsed = await run_in_threadpool(io_service.parse_upload, filename, raw)
-    return await run_in_threadpool(io_service.apply_import, session, parsed, include_suspected)
+    return await run_in_threadpool(
+        io_service.apply_import, session, parsed, include_suspected
+    )
 
 
 @router.get("/export", response_class=Response, responses=_BINARY_RESPONSES)
 def export_question_bank(
     session: SessionDep,
     _teacher: TeacherUserDep,
-    types: list[str] | None = Query(default=None, description="题型（passage/repeat/question/instruction，缺省全部）"),
+    types: list[str] | None = Query(
+        default=None,
+        description="题型（passage/repeat/question/instruction，缺省全部）",
+    ),
     topic: str | None = Query(default=None, description="主题（篇目/问答）"),
-    q: str | None = Query(default=None, description="关键词（篇目标题/主题、问答题目/中文提示）"),
+    q: str | None = Query(
+        default=None, description="关键词（篇目标题/主题、问答题目/中文提示）"
+    ),
     band: str | None = Query(default=None, description="难度 A2/B1/B2（篇目/问答）"),
     exam_kind: str | None = Query(default=None, description="考试题型（复述句/问答）"),
     exam_level: str | None = Query(default=None, description="考试级别（复述句/问答）"),

@@ -78,25 +78,64 @@ TYPE_LABELS = {
 
 # 工作表名 → 题型（模板工作表名/CSV 题型列共用；大小写与首尾空白不敏感）
 SHEET_NAME_ALIASES: dict[str, set[str]] = {
-    TYPE_PASSAGE: {"文章朗读", "文章朗读 · 篇目", "朗读", "read aloud", "passage", "reading"},
-    TYPE_REPEAT: {"听句复述", "听令复述", "listen & repeat", "listen and repeat", "repeat"},
-    TYPE_QUESTION: {"情景问答", "问答", "scenario q&a", "scenario qa", "question", "qa"},
+    TYPE_PASSAGE: {
+        "文章朗读",
+        "文章朗读 · 篇目",
+        "朗读",
+        "read aloud",
+        "passage",
+        "reading",
+    },
+    TYPE_REPEAT: {
+        "听句复述",
+        "听令复述",
+        "listen & repeat",
+        "listen and repeat",
+        "repeat",
+    },
+    TYPE_QUESTION: {
+        "情景问答",
+        "问答",
+        "scenario q&a",
+        "scenario qa",
+        "question",
+        "qa",
+    },
     # 注意：「说明」不进题型别名——那是模板说明页的名字，不能当题目说明工作表
     TYPE_INSTRUCTION: {"题目说明", "instruction"},
 }
 # 说明页：有内容也整体跳过，不参与导入（「说明」从题型别名挪到这里）
-INSTRUCTION_SHEET_ALIASES = {"说明", "填写说明", "使用说明", "说明页", "readme", "instructions", "help"}
+INSTRUCTION_SHEET_ALIASES = {
+    "说明",
+    "填写说明",
+    "使用说明",
+    "说明页",
+    "readme",
+    "instructions",
+    "help",
+}
 
 VALID_BANDS = {"A2", "B1", "B2"}
 
 # 考试题型别名（值匹配用：casefold + 空白折叠后比对；含系统代码/中英文名）
 EXAM_KIND_ALIASES: dict[str, set[str]] = {
     "toefl_lnr": {
-        "toefl_lnr", "toefl", "托福", "toefl · 听令复述", "toefl听令复述",
-        "toefl · 听句复述", "toefl听句复述", "listen & repeat", "listen and repeat",
+        "toefl_lnr",
+        "toefl",
+        "托福",
+        "toefl · 听令复述",
+        "toefl听令复述",
+        "toefl · 听句复述",
+        "toefl听句复述",
+        "listen & repeat",
+        "listen and repeat",
     },
     "interview": {
-        "interview", "toefl · 情景访谈", "toefl情景访谈", "take an interview", "访谈",
+        "interview",
+        "toefl · 情景访谈",
+        "toefl情景访谈",
+        "take an interview",
+        "访谈",
     },
     "ielts_p1": {"ielts_p1", "ielts · part 1", "ielts part 1", "ielts p1", "part 1"},
     "ielts_p2": {"ielts_p2", "ielts · part 2", "ielts part 2", "ielts p2", "part 2"},
@@ -108,8 +147,12 @@ EXAM_LEVEL_ALIASES: dict[str, set[str]] = {
     "ACADEMIC": {"academic", "学术词汇", "学术"},
     "CET4": {"cet4", "cet-4", "cet 4", "四级"},
     "IELTS_TOEFL": {
-        "ielts_toefl", "雅思&托福词汇", "雅思托福", "雅思和托福",
-        "ielts & toefl", "ielts&toefl",
+        "ielts_toefl",
+        "雅思&托福词汇",
+        "雅思托福",
+        "雅思和托福",
+        "ielts & toefl",
+        "ielts&toefl",
     },
 }
 STATUS_ACTIVE_ALIASES = {"启用", "是", "true", "active", "1"}
@@ -162,7 +205,10 @@ class ColumnSpec:
         return f"{self.zh}\n{self.en}"
 
     def aliases(self) -> set[str]:
-        return {_norm_header(a) for a in (self.zh, self.en, self.header, *self.extra_aliases)}
+        return {
+            _norm_header(a)
+            for a in (self.zh, self.en, self.header, *self.extra_aliases)
+        }
 
 
 PASSAGE_COLUMNS = (
@@ -179,9 +225,16 @@ PASSAGE_COLUMNS = (
 REPEAT_COLUMNS = (
     ColumnSpec("text", "英文句子", "Sentence", ("句子", "sentence")),
     ColumnSpec("translation", "中文提示", "Chinese hint", ("翻译", "hint")),
-    ColumnSpec("passage_title", "挂靠篇目", "Passage", ("所属篇目", "篇目标题", "passage title")),
+    ColumnSpec(
+        "passage_title",
+        "挂靠篇目",
+        "Passage",
+        ("所属篇目", "篇目标题", "passage title"),
+    ),
     ColumnSpec("suggested_seconds", "作答秒数", "Seconds"),
-    ColumnSpec("replay_limit", "可听次数", "Replays", ("重听次数", "replay", "replays")),
+    ColumnSpec(
+        "replay_limit", "可听次数", "Replays", ("重听次数", "replay", "replays")
+    ),
     ColumnSpec("exam_kind", "考试题型", "Exam type", ("exam_kind",)),
     ColumnSpec("exam_level", "考试级别", "Exam level", ("exam_level",)),
     ColumnSpec("audio_url", "音频链接", "Audio URL", ("音频", "audio")),
@@ -193,8 +246,12 @@ QUESTION_COLUMNS = (
     ColumnSpec("suggested_seconds", "作答秒数", "Seconds"),
     ColumnSpec("exam_kind", "考试题型", "Exam type", ("exam_kind",)),
     ColumnSpec("exam_level", "考试级别", "Exam level", ("exam_level",)),
-    ColumnSpec("cue_card_bullets", "话题卡要点", "Cue card", ("话题卡", "cue_card_bullets")),
-    ColumnSpec("prep_seconds", "准备秒数", "Prep seconds", ("准备时间", "prep", "prep_seconds")),
+    ColumnSpec(
+        "cue_card_bullets", "话题卡要点", "Cue card", ("话题卡", "cue_card_bullets")
+    ),
+    ColumnSpec(
+        "prep_seconds", "准备秒数", "Prep seconds", ("准备时间", "prep", "prep_seconds")
+    ),
     ColumnSpec("audio_url", "音频链接", "Audio URL", ("音频", "audio")),
 )
 INSTRUCTION_COLUMNS = (
@@ -214,11 +271,23 @@ CSV_UNION_COLUMNS: tuple[ColumnSpec, ...] = (
         "text",
         "内容",
         "Text",
-        ("正文", "英文句子", "句子", "英文题目", "题目", "说明文字", "sentence", "question", "body"),
+        (
+            "正文",
+            "英文句子",
+            "句子",
+            "英文题目",
+            "题目",
+            "说明文字",
+            "sentence",
+            "question",
+            "body",
+        ),
     ),
     ColumnSpec("translation", "中文提示", "Chinese hint", ("翻译", "hint")),
     ColumnSpec("passage_title", "挂靠篇目", "Passage", ("所属篇目", "篇目标题")),
-    ColumnSpec("suggested_seconds", "秒数", "Seconds", ("建议秒数", "作答秒数", "duration")),
+    ColumnSpec(
+        "suggested_seconds", "秒数", "Seconds", ("建议秒数", "作答秒数", "duration")
+    ),
     ColumnSpec("replay_limit", "可听次数", "Replays", ("重听次数", "replay")),
     ColumnSpec("exam_kind", "考试题型", "Exam type", ("exam_kind",)),
     ColumnSpec("exam_level", "考试级别", "Exam level", ("exam_level",)),
@@ -412,7 +481,11 @@ def _build_passage(cells: dict[str, str]) -> dict[str, Any]:
             cells.get("translation") or "", max_len=1024, label="中文提示"
         ),
         "suggested_seconds": _parse_int(
-            cells.get("suggested_seconds") or "", default=45, lo=10, hi=180, label="建议秒数"
+            cells.get("suggested_seconds") or "",
+            default=45,
+            lo=10,
+            hi=180,
+            label="建议秒数",
         ),
         "audio_url": _parse_audio(cells.get("audio_url") or ""),
         "is_active": _parse_status(cells.get("is_active") or ""),
@@ -439,7 +512,11 @@ def _build_repeat(cells: dict[str, str]) -> dict[str, Any]:
         ),
         "passage_title": (cells.get("passage_title") or "").strip() or None,
         "suggested_seconds": _parse_int(
-            cells.get("suggested_seconds") or "", default=8, lo=3, hi=60, label="作答秒数"
+            cells.get("suggested_seconds") or "",
+            default=8,
+            lo=3,
+            hi=60,
+            label="作答秒数",
         ),
         "replay_limit": _parse_int(
             cells.get("replay_limit") or "", default=3, lo=0, hi=9, label="可听次数"
@@ -468,10 +545,16 @@ def _build_question(cells: dict[str, str]) -> dict[str, Any]:
     bullets = _parse_bullets(cells.get("cue_card_bullets") or "")
     prep_seconds = _parse_prep_seconds(cells.get("prep_seconds") or "")
     seconds = _parse_int(
-        cells.get("suggested_seconds") or "", default=20, lo=10, hi=300, label="作答秒数"
+        cells.get("suggested_seconds") or "",
+        default=20,
+        lo=10,
+        hi=300,
+        label="作答秒数",
     )
     err = _checked(
-        lambda: validate_exam_fields("question", exam_kind, exam_level, bullets, prep_seconds)
+        lambda: validate_exam_fields(
+            "question", exam_kind, exam_level, bullets, prep_seconds
+        )
     ) or _checked(lambda: validate_question_suggested_seconds(seconds, exam_kind))
     if err:
         raise _RowError(err)
@@ -497,7 +580,9 @@ def _build_instruction(cells: dict[str, str]) -> dict[str, Any]:
     if len(text) > 2000:
         raise _RowError("说明文字过长（>2000 字符）")
     return {
-        "title": _parse_optional_text(cells.get("title") or "", max_len=100, label="小标题"),
+        "title": _parse_optional_text(
+            cells.get("title") or "", max_len=100, label="小标题"
+        ),
         "text": text,
         "suggested_seconds": _parse_int(
             cells.get("suggested_seconds") or "", default=20, lo=5, hi=300, label="秒数"
@@ -575,7 +660,9 @@ def _parse_xlsx(raw: bytes) -> ParsedFile:
         for sheet_name in workbook.sheetnames:
             sheet_rows = [
                 (r_idx, tuple(_cell_str(c) for c in row))
-                for r_idx, row in enumerate(workbook[sheet_name].iter_rows(values_only=True), start=1)
+                for r_idx, row in enumerate(
+                    workbook[sheet_name].iter_rows(values_only=True), start=1
+                )
             ]
             data_rows = [(i, r) for i, r in sheet_rows if any(r)]
             if not data_rows:
@@ -593,7 +680,9 @@ def _parse_xlsx(raw: bytes) -> ParsedFile:
             _require_columns(qtype, col_map, sheet_name)
             for r_idx, row_cells in data_rows[1:]:
                 rows.append(
-                    _RawRow(qtype=qtype, line=r_idx, cells=_row_cells(col_map, row_cells))
+                    _RawRow(
+                        qtype=qtype, line=r_idx, cells=_row_cells(col_map, row_cells)
+                    )
                 )
     finally:
         workbook.close()
@@ -632,7 +721,9 @@ def _parse_csv(raw: bytes) -> ParsedFile:
             continue
         type_cell = row_cells[type_col] if type_col < len(row_cells) else ""
         if not type_cell:
-            issues.append(QuestionBankImportIssue(type="-", line=r_idx, reason="题型不能为空"))
+            issues.append(
+                QuestionBankImportIssue(type="-", line=r_idx, reason="题型不能为空")
+            )
             continue
         qtype = _match_sheet_type(type_cell)
         if qtype is None:
@@ -645,7 +736,9 @@ def _parse_csv(raw: bytes) -> ParsedFile:
         if qtype not in checked_types:
             checked_types.add(qtype)
             _require_columns_csv(qtype, fields_present)
-        cells = _row_cells({c: f for c, f in col_map.items() if f != "__type__"}, row_cells)
+        cells = _row_cells(
+            {c: f for c, f in col_map.items() if f != "__type__"}, row_cells
+        )
         rows.append(_RawRow(qtype=qtype, line=r_idx, cells=cells))
     return ParsedFile(rows=rows, issues=issues)
 
@@ -669,7 +762,9 @@ def _require_columns(qtype: str, col_map: dict[int, str], sheet_name: str) -> No
     missing = [f for f in REQUIRED_FIELDS[qtype] if f not in present]
     if missing:
         names = "/".join(_zh_of(qtype, f) for f in missing)
-        raise HTTPException(status_code=422, detail=f"工作表「{sheet_name}」缺少必填列：{names}")
+        raise HTTPException(
+            status_code=422, detail=f"工作表「{sheet_name}」缺少必填列：{names}"
+        )
 
 
 def _require_columns_csv(qtype: str, fields_present: set[str]) -> None:
@@ -765,7 +860,9 @@ def _load_reference(session: Session) -> _Ref:
             question.prep_seconds or 0,
         )
         question_exact.setdefault(key, []).append(cfg)
-        question_texts.setdefault(_norm_text(question.text), set()).add(_norm_text(topic))
+        question_texts.setdefault(_norm_text(question.text), set()).add(
+            _norm_text(topic)
+        )
 
     sentence_configs: dict[str, list[tuple[Any, ...]]] = {}
     for sentence in sentences:
@@ -937,7 +1034,9 @@ def _plan_passages(
                 counts.invalid += 1
                 plan.issues.append(
                     _issue(
-                        TYPE_PASSAGE, row.line, "单元匹配到多个同名单元，请改为精确的单元标题"
+                        TYPE_PASSAGE,
+                        row.line,
+                        "单元匹配到多个同名单元，请改为精确的单元标题",
                     )
                 )
                 continue
@@ -1000,7 +1099,9 @@ def _plan_repeats(
                 counts.invalid += 1
                 plan.issues.append(
                     _issue(
-                        TYPE_REPEAT, row.line, "挂靠篇目匹配到多个同名篇目，请先重命名区分"
+                        TYPE_REPEAT,
+                        row.line,
+                        "挂靠篇目匹配到多个同名篇目，请先重命名区分",
                     )
                 )
                 continue
@@ -1109,12 +1210,18 @@ def _plan_instructions(
                 continue
             counts.suspected += 1
             plan.suspected_rows.append(
-                _issue(TYPE_INSTRUCTION, row.line, "疑似重复：相同说明文字已存在但标题/秒数不同")
+                _issue(
+                    TYPE_INSTRUCTION,
+                    row.line,
+                    "疑似重复：相同说明文字已存在但标题/秒数不同",
+                )
             )
             if not include_suspected:
                 continue
         counts.valid += 1
-        plan.creates[TYPE_INSTRUCTION].append(_CreateItem(line=row.line, payload=payload))
+        plan.creates[TYPE_INSTRUCTION].append(
+            _CreateItem(line=row.line, payload=payload)
+        )
         planned_configs.setdefault(n_text, []).append(cfg)
 
 
@@ -1260,7 +1367,9 @@ def apply_import(
         raise
     except Exception as exc:
         session.rollback()
-        raise HTTPException(status_code=500, detail="导入失败，已整体回滚，请重试") from exc
+        raise HTTPException(
+            status_code=500, detail="导入失败，已整体回滚，请重试"
+        ) from exc
 
     sheets = []
     missing_total = 0
@@ -1302,7 +1411,7 @@ def _generate_slug(title: str, used: set[str]) -> str:
         if slug not in used:
             break
         suffix = f"-{i}"
-        slug = f"{base[:100 - len(suffix)]}{suffix}"
+        slug = f"{base[: 100 - len(suffix)]}{suffix}"
     else:
         slug = f"{base[:90]}-{uuid.uuid4().hex[:8]}"
     used.add(slug)
@@ -1493,9 +1602,9 @@ def _build_xlsx_template() -> tuple[bytes, str, str]:
             cell = sheet.cell(row=1, column=col_idx, value=spec.header)
             cell.font = Font(bold=True)
             cell.alignment = Alignment(wrap_text=True, vertical="center")
-            sheet.column_dimensions[get_column_letter(col_idx)].width = TEMPLATE_WIDTHS[qtype][
-                spec.field
-            ]
+            sheet.column_dimensions[get_column_letter(col_idx)].width = TEMPLATE_WIDTHS[
+                qtype
+            ][spec.field]
         sheet.freeze_panes = "A2"
         for row_idx, example in enumerate(TEMPLATE_EXAMPLES[qtype], start=2):
             for col_idx, value in enumerate(example, start=1):
@@ -1613,7 +1722,9 @@ def export_bank(
 
     rows_by_type: dict[str, list[list[str]]] = {}
     if TYPE_PASSAGE in selected:
-        rows_by_type[TYPE_PASSAGE] = _export_passages(session, topic, q, band_upper, active)
+        rows_by_type[TYPE_PASSAGE] = _export_passages(
+            session, topic, q, band_upper, active
+        )
     if TYPE_REPEAT in selected:
         rows_by_type[TYPE_REPEAT] = _export_sentences(session, exam_kind, exam_level)
     if TYPE_QUESTION in selected:
@@ -1626,7 +1737,8 @@ def export_bank(
     total = sum(len(v) for v in rows_by_type.values())
     if total > MAX_EXPORT_ROWS:
         raise HTTPException(
-            status_code=422, detail=f"导出行数超过上限（{MAX_EXPORT_ROWS}），请缩小筛选范围"
+            status_code=422,
+            detail=f"导出行数超过上限（{MAX_EXPORT_ROWS}），请缩小筛选范围",
         )
 
     date_tag = get_datetime_utc().date().isoformat()
@@ -1769,9 +1881,7 @@ def _export_instructions(session: Session) -> list[list[str]]:
     instructions = session.exec(
         select(Instruction).order_by(col(Instruction.created_at), col(Instruction.id))
     ).all()
-    return [
-        [i.title or "", i.text, str(i.suggested_seconds)] for i in instructions
-    ]
+    return [[i.title or "", i.text, str(i.suggested_seconds)] for i in instructions]
 
 
 def _export_xlsx(rows_by_type: dict[str, list[list[str]]]) -> bytes:
@@ -1790,9 +1900,9 @@ def _export_xlsx(rows_by_type: dict[str, list[list[str]]]) -> bytes:
             cell = sheet.cell(row=1, column=col_idx, value=spec.header)
             cell.font = Font(bold=True)
             cell.alignment = Alignment(wrap_text=True, vertical="center")
-            sheet.column_dimensions[get_column_letter(col_idx)].width = TEMPLATE_WIDTHS[qtype][
-                spec.field
-            ]
+            sheet.column_dimensions[get_column_letter(col_idx)].width = TEMPLATE_WIDTHS[
+                qtype
+            ][spec.field]
         sheet.freeze_panes = "A2"
         for row_idx, values in enumerate(rows_by_type[qtype], start=2):
             for col_idx, value in enumerate(values, start=1):
