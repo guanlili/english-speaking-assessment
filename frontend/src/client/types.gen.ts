@@ -188,6 +188,15 @@ export type Body_login_login_access_token = {
     client_secret?: (string | null);
 };
 
+export type Body_question_bank_question_bank_import_confirm = {
+    file: string;
+    include_suspected?: boolean;
+};
+
+export type Body_question_bank_question_bank_import_preview = {
+    file: string;
+};
+
 export type Body_vocab_levels_vocab_level_import_confirm = {
     file: string;
     level: string;
@@ -576,6 +585,46 @@ export type PlanItem = {
 };
 
 /**
+ * 行级问题定位：题型（即工作表）+ 行号 + 中文稳定标识原因（前端双语映射）。
+ */
+export type QuestionBankImportIssue = {
+    type: string;
+    line: number;
+    reason: string;
+};
+
+export type QuestionBankImportPreview = {
+    sheets: Array<QuestionBankTypeCount>;
+    issues: Array<QuestionBankImportIssue>;
+    issues_truncated: boolean;
+    suspected: Array<QuestionBankImportIssue>;
+    suspected_truncated: boolean;
+    new_topics: Array<(string)>;
+    unit_fallback_count: number;
+    standalone_sentence_count: number;
+    total_valid: number;
+};
+
+export type QuestionBankImportResult = {
+    sheets: Array<QuestionBankImportTypeResult>;
+    created_topics: Array<(string)>;
+    issues: Array<QuestionBankImportIssue>;
+    missing_audio_total: number;
+};
+
+/**
+ * 确认导入：单个题型的落库结果。
+ */
+export type QuestionBankImportTypeResult = {
+    type: string;
+    created: number;
+    skipped_duplicate: number;
+    skipped_suspected: number;
+    skipped_invalid: number;
+    missing_audio_count: number;
+};
+
+/**
  * 问答题库分页信封：count 反映过滤后的总数
  */
 export type QuestionBankListOut = {
@@ -599,6 +648,17 @@ export type QuestionBankOut = {
     exam_level?: (string | null);
     cue_card_bullets?: (Array<(string)> | null);
     prep_seconds?: (number | null);
+};
+
+/**
+ * 预览：单个题型工作表的分类计数。
+ */
+export type QuestionBankTypeCount = {
+    type: string;
+    valid_count: number;
+    exact_duplicate_count: number;
+    suspected_duplicate_count: number;
+    missing_audio_count: number;
 };
 
 /**
@@ -2267,6 +2327,58 @@ export type LoginRecoverPasswordHtmlContentData = {
 };
 
 export type LoginRecoverPasswordHtmlContentResponse = (string);
+
+export type QuestionBankDownloadImportTemplateData = {
+    format?: 'xlsx' | 'csv';
+};
+
+export type QuestionBankDownloadImportTemplateResponse = ((Blob | File));
+
+export type QuestionBankQuestionBankImportPreviewData = {
+    formData: Body_question_bank_question_bank_import_preview;
+};
+
+export type QuestionBankQuestionBankImportPreviewResponse = (QuestionBankImportPreview);
+
+export type QuestionBankQuestionBankImportConfirmData = {
+    formData: Body_question_bank_question_bank_import_confirm;
+};
+
+export type QuestionBankQuestionBankImportConfirmResponse = (QuestionBankImportResult);
+
+export type QuestionBankExportQuestionBankData = {
+    /**
+     * 仅篇目：启用状态
+     */
+    active?: (boolean | null);
+    /**
+     * 难度 A2/B1/B2（篇目/问答）
+     */
+    band?: (string | null);
+    /**
+     * 考试题型（复述句/问答）
+     */
+    examKind?: (string | null);
+    /**
+     * 考试级别（复述句/问答）
+     */
+    examLevel?: (string | null);
+    format?: 'xlsx' | 'csv';
+    /**
+     * 关键词（篇目标题/主题、问答题目/中文提示）
+     */
+    q?: (string | null);
+    /**
+     * 主题（篇目/问答）
+     */
+    topic?: (string | null);
+    /**
+     * 题型（passage/repeat/question/instruction，缺省全部）
+     */
+    types?: (Array<(string)> | null);
+};
+
+export type QuestionBankExportQuestionBankResponse = ((Blob | File));
 
 export type StudentsUpdateStudentData = {
     requestBody: StudentUpdate;

@@ -39,6 +39,19 @@ OpenAPI.BASE = import.meta.env.VITE_API_URL ?? ""
 OpenAPI.TOKEN = async () => {
   return localStorage.getItem("access_token") || ""
 }
+// 题库导入模板/批量导出是二进制响应（xlsx）：生成客户端不设 axios
+// responseType，默认会把字节当文本解析出乱码。请求拦截器按端点补
+// responseType=blob（不改生成代码的唯一入口）。
+OpenAPI.interceptors.request.use((config) => {
+  if (
+    typeof config.url === "string" &&
+    (config.url.includes("/admin/question-bank/import-template") ||
+      config.url.includes("/admin/question-bank/export"))
+  ) {
+    config.responseType = "blob"
+  }
+  return config
+})
 
 const handleApiError = (error: Error) => {
   // 只在 401（token 无效/过期）时登出；403 是"已登录但权限不足"，

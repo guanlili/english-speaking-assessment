@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     admin_content,
     admin_exam,
+    admin_question_io,
     attempts,
     audio,
     classes,
@@ -25,6 +26,7 @@ api_router.include_router(attempts.router)
 api_router.include_router(students.router)
 api_router.include_router(admin_content.router)
 api_router.include_router(admin_exam.router)
+api_router.include_router(admin_question_io.router)
 api_router.include_router(metrics.router)
 api_router.include_router(audio.router)
 api_router.include_router(vocabulary.router)
