@@ -176,14 +176,12 @@ test("普通教师：导入 → 查看本批 → 带入组卷 → 发布", async
     timeout: 15_000,
   })
 
-  // ── P1 防护：勾选别的主题再取消本批主题 → 白名单同步剪空（语义回到
-  // 「主题全部题」），B 主题全量出题、题单非空——不会发出 items: [] 归档 ──
+  // ── P1 防护 + 勾新主题并入白名单：勾第二主题（白名单并入它的题）→
+  // 取消本批主题（白名单剪掉它的题）→ 题单=第二主题的题，非空可发布，
+  // 不会发出 items: [] 归档 ──
   const composer2 = page.getByRole("main")
   await composer2.getByLabel(/e2e-second-topic（/).click()
   await composer2.getByLabel(/e2e-old-topic（/).click()
-  await expect(page.getByText(/只出本批新建题/)).toHaveCount(0, {
-    timeout: 10_000,
-  })
   await expect(page.getByText(/最终题单为空/)).toHaveCount(0)
   await expect(
     composer2.getByRole("button", { name: /预览练习/ }),
@@ -312,6 +310,73 @@ test("断网时带入组卷不丢预选，恢复后自动带入", async ({ page 
   await page.waitForURL((url) => url.pathname === "/classrooms")
   await enterClassroom(page, code)
   await expect(page.getByText(/刷新失败/)).toHaveCount(0, { timeout: 20_000 })
+  expect(
+    await page.evaluate(() =>
+      sessionStorage.getItem("esa:qbank:composer-preset"),
+    ),
+  ).toBeNull()
+})
+
+test("本批题目被删除：缺失确认后继续带入有效题", async ({ page }) => {
+  test.setTimeout(120_000)
+  const code = await seedTeacherAndClassroom(page)
+  const marker = `del-${Date.now()}`
+  await loginTeacher(page)
+
+  // 导入两道同主题新题
+  await page.goto("/create")
+  await page.getByRole("button", { name: /^批量导入$/ }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.locator('input[type="file"]').setInputFiles({
+    name: "two.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      `\ufeff题型,标题,单元,主题,难度,内容,中文提示,挂靠篇目,秒数,可听次数,考试题型,考试级别,话题卡要点,准备秒数,音频链接,状态\n` +
+        `情景问答,,,del-topic,,${marker} keep me?,,,20,,,,,,,,,\n` +
+        `情景问答,,,del-topic,,${marker} delete me?,,,20,,,,,,,,,\n`,
+      "utf-8",
+    ),
+  })
+  await dialog.getByRole("button", { name: /^预览$/ }).click()
+  await expect(dialog.getByText(/将导入 2/)).toBeVisible()
+  await dialog.getByRole("button", { name: /确认导入/ }).click()
+  await expect(dialog.getByText(/新建 2/)).toBeVisible()
+
+  // 进入课堂前删掉其中一题（复现「部分缺失」）
+  const token = await page.evaluate(() => localStorage.getItem("access_token"))
+  const bank = await page.request.get("/api/v1/admin/questions", {
+    params: { q: `${marker} delete` },
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const doomed = ((await bank.json()) as { data: Array<{ id: string }> })
+    .data[0]
+  expect(doomed).toBeTruthy()
+  const delResp = await page.request.delete(
+    `/api/v1/admin/questions/${doomed.id}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
+  expect(delResp.ok()).toBeTruthy()
+
+  // 带入组卷 → 进课堂：出现缺失确认（1 道不在题库），有效题未带入
+  await dialog.getByRole("button", { name: /带入组卷/ }).click()
+  await page.waitForURL((url) => url.pathname === "/classrooms")
+  await expect(page.getByText(new RegExp(code))).toBeVisible({
+    timeout: 15_000,
+  })
+  await enterClassroom(page, code)
+  await expect(page.getByText(/1 道题已不在题库/)).toBeVisible({
+    timeout: 20_000,
+  })
+  await expect(page.getByText(/只出本批新建题/)).toHaveCount(0)
+
+  // 选择「继续带入其余题目」：白名单只含存活题，题单可发布
+  await page.getByRole("button", { name: /继续带入其余题目/ }).click()
+  await expect(page.getByText(/只出本批新建题/)).toBeVisible({
+    timeout: 15_000,
+  })
+  await expect(page.getByText(/已不在题库/)).toHaveCount(0)
   expect(
     await page.evaluate(() =>
       sessionStorage.getItem("esa:qbank:composer-preset"),

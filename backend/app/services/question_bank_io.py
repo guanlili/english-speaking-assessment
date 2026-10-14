@@ -1134,6 +1134,12 @@ class QuestionBankPlan:
     # 预览指纹原料：每条通过校验的行 (type, line, payload 摘要)——与查重
     # 决策无关（疑似是否勾选导入不影响指纹），预览与确认两侧可比对
     parsed_digests: list[tuple[str, int, str]] = field(default_factory=list)
+    # 指纹的疑似候选全量：(type, line, reason, [(id, summary), ...])。
+    # 展示层（existing）只取代表一条，指纹必须覆盖全部相关候选——
+    # 新增/修改第二条同题候选也要让指纹失配（评审 P2）
+    fingerprint_candidates: list[
+        tuple[str, int, str, list[tuple[str, dict[str, str]]]]
+    ] = field(default_factory=list)
     issues: list[QuestionBankImportIssue] = field(default_factory=list)
     suspected_rows: list[QuestionBankSuspectedItem] = field(default_factory=list)
     error_rows: list[ErrorRow] = field(default_factory=list)
@@ -1219,10 +1225,7 @@ def plan_fingerprint(plan: QuestionBankPlan) -> str:
             qtype: [c.exact_dup, c.suspected, c.invalid]
             for qtype, c in plan.counts.items()
         },
-        "suspected": [
-            [item.type, item.line, item.reason, item.incoming, item.existing]
-            for item in plan.suspected_rows
-        ],
+        "suspected_candidates": [list(item) for item in plan.fingerprint_candidates],
         "new_topics": plan.new_topics,
     }
     raw = json.dumps(projection, sort_keys=True, ensure_ascii=False, default=str)
@@ -1230,12 +1233,17 @@ def plan_fingerprint(plan: QuestionBankPlan) -> str:
 
 
 def _suspected(
+    plan: QuestionBankPlan,
     qtype: str,
     line: int,
     reason: str,
     incoming: dict[str, str],
     existing: dict[str, str],
+    candidates: list[tuple[str, dict[str, str]]],
 ) -> QuestionBankSuspectedItem:
+    plan.fingerprint_candidates.append(
+        (qtype, line, reason, sorted(candidates, key=lambda pair: pair[0]))
+    )
     return QuestionBankSuspectedItem(
         type=qtype,
         line=line,
@@ -1278,18 +1286,6 @@ def plan_import(
     _plan_repeats(plan, ref, by_type[TYPE_REPEAT], decisions)
     _plan_questions(plan, ref, by_type[TYPE_QUESTION], decisions)
     _plan_instructions(plan, ref, by_type[TYPE_INSTRUCTION], decisions)
-
-    # 选择对账：每个勾选 token 必须命中一条当前疑似行，否则状态已过期
-    suspected_keys = {(item.type, item.line) for item in plan.suspected_rows}
-    stale = decisions - suspected_keys
-    if stale:
-        sample = "、".join(f"{t}:{ln}" for t, ln in sorted(stale)[:3])
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"预览结果已变化（{sample} 不再是疑似重复行），请重新预览后再确认导入"
-            ),
-        )
     return plan
 
 
@@ -1389,13 +1385,31 @@ def _plan_passages(
             suspected_reason = "疑似重复：相同正文已存在于其他篇目"
         if suspected_reason is not None:
             counts.suspected += 1
+            db_candidate_rows = [
+                *ref.passages_by_key.get(key, []),
+                *[
+                    p
+                    for (kt, ktext), plist in ref.passages_by_key.items()
+                    if ktext == n_text
+                    for p in plist
+                ],
+            ]
+            seen_ids: set[str] = set()
+            passage_candidates: list[tuple[str, dict[str, str]]] = []
+            for p in sorted(db_candidate_rows, key=lambda item: str(item.id)):
+                if str(p.id) in seen_ids:
+                    continue
+                seen_ids.add(str(p.id))
+                passage_candidates.append((str(p.id), _summarize_passage_model(p, ref)))
             plan.suspected_rows.append(
                 _suspected(
+                    plan,
                     TYPE_PASSAGE,
                     row.line,
                     suspected_reason,
                     _summarize_payload(TYPE_PASSAGE, payload),
                     _existing_passage_summary(key, n_text),
+                    passage_candidates,
                 )
             )
             if (TYPE_PASSAGE, row.line) not in decisions:
@@ -1562,13 +1576,21 @@ def _plan_repeats(
             suspected_reason = "疑似重复：相同句子已存在但挂靠或配置不同"
         if suspected_reason is not None:
             counts.suspected += 1
+            sentence_candidates = [
+                (str(sentence.id), _summarize_sentence_model(sentence, ref))
+                for sentence in sorted(
+                    ref.sentences_by_key.get(n_text, []), key=lambda item: str(item.id)
+                )
+            ]
             plan.suspected_rows.append(
                 _suspected(
+                    plan,
                     TYPE_REPEAT,
                     row.line,
                     suspected_reason,
                     _summarize_payload(TYPE_REPEAT, payload),
                     _existing_sentence_summary(n_text, linkage),
+                    sentence_candidates,
                 )
             )
             if (TYPE_REPEAT, row.line) not in decisions:
@@ -1691,13 +1713,25 @@ def _plan_questions(
             suspected_reason = "疑似重复：该题目已存在于其他主题"
         if suspected_reason is not None:
             counts.suspected += 1
+            question_candidate_rows = [
+                q
+                for (c_sid, c_text), qlist in ref.questions_by_key.items()
+                if c_text == n_text
+                for q in qlist
+            ]
+            question_candidates = [
+                (str(q.id), _summarize_question_model(q, ref))
+                for q in sorted(question_candidate_rows, key=lambda item: str(item.id))
+            ]
             plan.suspected_rows.append(
                 _suspected(
+                    plan,
                     TYPE_QUESTION,
                     row.line,
                     suspected_reason,
                     _summarize_payload(TYPE_QUESTION, payload),
                     _existing_question_summary(scenario, owner, n_text),
+                    question_candidates,
                 )
             )
             if (TYPE_QUESTION, row.line) not in decisions:
@@ -1765,13 +1799,21 @@ def _plan_instructions(
                 counts.exact_dup += 1
                 continue
             counts.suspected += 1
+            instruction_candidates = [
+                (str(ins.id), _summarize_instruction_model(ins))
+                for ins in ref.instructions_all
+                if _norm_text(ins.text) == n_text
+            ]
+            instruction_candidates.sort(key=lambda pair: pair[0])
             plan.suspected_rows.append(
                 _suspected(
+                    plan,
                     TYPE_INSTRUCTION,
                     row.line,
                     "疑似重复：相同说明文字已存在但标题/秒数不同",
                     _summarize_payload(TYPE_INSTRUCTION, payload),
                     _existing_instruction_summary(n_text),
+                    instruction_candidates,
                 )
             )
             if (TYPE_INSTRUCTION, row.line) not in decisions:
@@ -1852,14 +1894,29 @@ def apply_import(
         # 预览。咨询锁只防同时写入，不能证明「确认过的是当前内容」。
         # 比对用**无决策基线**：new_topics/批内格局受勾选影响（勾了疑似行
         # 其新主题才注册），带着决策算指纹会让正常导入永远 422（评审 P2）。
-        if expected_fingerprint:
-            baseline = plan_import(session, parsed)
-            if plan_fingerprint(baseline) != expected_fingerprint:
-                session.rollback()
-                raise HTTPException(
-                    status_code=422,
-                    detail="预览结果已变化（文件或题库内容有更新），请重新预览后再确认导入",
-                )
+        # 基线（无决策）对账：指纹比对 + 勾选 token 核验都用它——勾选会让
+        # 部分疑似行进入待创建列表、使后续同批同款行在决策计划里变成完全
+        # 重复，那是勾选的预期结果（按 exact 正常跳过），不是「预览过期」
+        # （评审 P2）；对完全重复行提交勾选仍是过期（基线里它不是疑似）
+        baseline = plan_import(session, parsed)
+        if expected_fingerprint and plan_fingerprint(baseline) != expected_fingerprint:
+            session.rollback()
+            raise HTTPException(
+                status_code=422,
+                detail="预览结果已变化（文件或题库内容有更新），请重新预览后再确认导入",
+            )
+        baseline_keys = {(item.type, item.line) for item in baseline.suspected_rows}
+        stale = decisions - baseline_keys
+        if stale:
+            sample = "、".join(f"{t}:{ln}" for t, ln in sorted(stale)[:3])
+            session.rollback()
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"预览结果已变化（{sample} 不再是疑似重复行），"
+                    "请重新预览后再确认导入"
+                ),
+            )
         plan = plan_import(session, parsed, include_lines)
         created_scenarios: dict[str, Scenario] = {}
         for topic in plan.new_topics:

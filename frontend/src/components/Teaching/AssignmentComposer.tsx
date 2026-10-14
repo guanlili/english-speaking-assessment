@@ -53,6 +53,14 @@ import { normalizeReadingSelection } from "@/lib/reading-selection"
 import { TERMS } from "@/lib/terms"
 import { extractErrorMessage } from "@/utils"
 
+/** 预选刷新涉及的全部题库查询键（成功判据逐个核对 dataUpdatedAt） */
+const PRESET_QUERY_KEYS = [
+  ["admin", "passages"],
+  ["admin", "sentences"],
+  ["admin", "scenarios"],
+  ["admin", "instructions"],
+] as const
+
 const questionTypes = [
   {
     key: "reading",
@@ -391,9 +399,18 @@ function ComposerForm({
   const presetDoneRef = useRef(false)
   const [presetRefreshed, setPresetRefreshed] = useState(false)
   const [presetBlocked, setPresetBlocked] = useState(false)
+  /** 刷新成功后仍缺失的题目 id（已被删除等）：等老师确认继续用有效题或取消 */
+  const [presetMissing, setPresetMissing] = useState<string[]>([])
+  /** invalidate 起始时刻：刷新成功的判据是 dataUpdatedAt 晚于它（区分
+   * 「请求失败/离线」与「刷新成功但题目确实不在了」，评审 P2） */
+  const presetInvalidatedAtRef = useRef(0)
+  const presetRawRef = useRef<string | null>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: 仅挂载时探测交接键并触发一次刷新
   useEffect(() => {
-    if (sessionStorage.getItem(COMPOSER_PRESET_KEY)) {
+    const raw = sessionStorage.getItem(COMPOSER_PRESET_KEY)
+    if (raw) {
+      presetRawRef.current = raw
+      presetInvalidatedAtRef.current = Date.now()
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin", "passages"] }),
         queryClient.invalidateQueries({ queryKey: ["admin", "sentences"] }),
@@ -438,39 +455,66 @@ function ComposerForm({
         ...scenarios.flatMap((scenario) => scenario.questions.map((q) => q.id)),
       ].filter((id): id is string => Boolean(id)),
     )
-    const resolved = allPresetIds.every((id) => knownIds.has(id))
-    if (!resolved && !presetRefreshed) {
-      return // 缓存里还没有本批新题：等 invalidate 后的新数据
-    }
-    if (!resolved && presetRefreshed) {
-      // 刷新已完成但仍解析不到（离线/请求失败返回旧缓存）：绝不能消费——
-      // 否则本批新题被当缺失过滤掉，预选静默丢失（评审 P2）。保留交接键，
-      // 老师离开再进入本页时自动重试
-      setPresetBlocked(true)
+    // 等 invalidate 落地再判定——id 在**过期缓存**里可解析不代表题还在
+    // （导入后缓存刷新前可能已被删除，评审 P2）
+    if (!presetRefreshed) {
       return
     }
-    // 消费（数据已是刷新后的；仍缺失的 ID 属于已被删除等情形，跳过）
+    const missing = allPresetIds.filter((id) => !knownIds.has(id))
+    // invalidate 完成 ≠ 刷新成功：全部查询拿到新数据（dataUpdatedAt 晚于
+    // t0）时，仍缺失 = 题目确实不在了 → 老师确认（继续用有效题/取消）；
+    // 刷新失败（离线）则回落到现有缓存判定——全部 id 在缓存可解析（只是
+    // 可能偏旧）时照常消费，否则暂缓待重试
+    const t0 = presetInvalidatedAtRef.current
+    const allFresh = PRESET_QUERY_KEYS.every((key) => {
+      const state = queryClient.getQueryState(key)
+      return (state?.dataUpdatedAt ?? 0) > t0
+    })
+    if (missing.length === 0) {
+      consumePreset(preset)
+      return
+    }
+    if (allFresh) {
+      setPresetMissing(missing)
+      return
+    }
+    setPresetBlocked(true)
+  }, [passages, sentences, scenarios, instructions, presetRefreshed])
+
+  /** 消费交接预选（dropIds = 老师确认放弃的缺失项，正常路径为空集） */
+  const consumePreset = (
+    preset: {
+      passages?: string[]
+      sentences?: string[]
+      questions?: string[]
+      instructions?: string[]
+    },
+    dropIds: Set<string> = new Set(),
+  ) => {
     sessionStorage.removeItem(COMPOSER_PRESET_KEY)
+    presetRawRef.current = null
     presetDoneRef.current = true
     setPresetBlocked(false)
+    setPresetMissing([])
+    const keep = (id: string) => !dropIds.has(id)
     const presetScenarioIds = new Set<string>()
     const validQuestions: string[] = []
     for (const scenario of scenarios) {
       for (const q of scenario.questions) {
-        if (preset.questions?.includes(q.id)) {
+        if (preset.questions?.includes(q.id) && keep(q.id)) {
           presetScenarioIds.add(scenario.id)
           validQuestions.push(q.id)
         }
       }
     }
-    const validPassages = (preset.passages ?? []).filter((id) =>
-      passages.some((p) => p.id === id),
+    const validPassages = (preset.passages ?? []).filter(
+      (id) => keep(id) && passages.some((p) => p.id === id),
     )
-    const validSentences = (preset.sentences ?? []).filter((id) =>
-      sentences.some((s_) => s_.id === id),
+    const validSentences = (preset.sentences ?? []).filter(
+      (id) => keep(id) && sentences.some((s_) => s_.id === id),
     )
-    const validInstructions = (preset.instructions ?? []).filter((id) =>
-      instructions.some((i) => i.id === id),
+    const validInstructions = (preset.instructions ?? []).filter(
+      (id) => keep(id) && instructions.some((i) => i.id === id),
     )
     setSelectionDirty((prev) => ({
       passages: [...new Set([...prev.passages, ...validPassages])],
@@ -486,7 +530,16 @@ function ComposerForm({
       qa: prev.qa || presetScenarioIds.size > 0,
       instruction: prev.instruction || validInstructions.length > 0,
     }))
-  }, [passages, sentences, scenarios, instructions, presetRefreshed])
+  }
+
+  /** 取消带入：丢弃交接键（缺失确认的「取消」路径） */
+  const discardPreset = () => {
+    sessionStorage.removeItem(COMPOSER_PRESET_KEY)
+    presetRawRef.current = null
+    presetDoneRef.current = true
+    setPresetBlocked(false)
+    setPresetMissing([])
+  }
 
   // 题目级白名单（批量导入带入组卷时非空）：只出白名单内的问答题，
   // 避免勾选主题就混入同主题全部旧题。须先于就绪校验计算（空题单校验）
@@ -777,6 +830,49 @@ function ComposerForm({
               )}
             </div>
           </section>
+          {presetMissing.length > 0 && !presetDoneRef.current && (
+            <div className="space-y-2 rounded-xl bg-amber-100 p-3 text-sm text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
+              <p>
+                {t({
+                  zh: `「带入组卷」的 ${presetMissing.length} 道题已不在题库（可能被删除），无法带入。`,
+                  en: `${presetMissing.length} item(s) from the imported batch are no longer in the bank (possibly deleted) and can't be pre-selected.`,
+                })}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  className="min-h-11"
+                  onClick={() => {
+                    const raw = presetRawRef.current
+                    if (!raw) {
+                      discardPreset()
+                      return
+                    }
+                    try {
+                      consumePreset(
+                        JSON.parse(raw) as Parameters<typeof consumePreset>[0],
+                        new Set(presetMissing),
+                      )
+                    } catch {
+                      discardPreset()
+                    }
+                  }}
+                >
+                  {t({
+                    zh: "继续带入其余题目",
+                    en: "Pre-select the rest",
+                  })}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="min-h-11"
+                  onClick={discardPreset}
+                >
+                  {t({ zh: "取消带入", en: "Discard batch" })}
+                </Button>
+              </div>
+            </div>
+          )}
           {presetBlocked && (
             <p className="rounded-xl bg-amber-100 p-3 text-sm text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
               {t({
@@ -882,22 +978,28 @@ function ComposerForm({
               onToggle={(id) =>
                 setSelectionDirty((cur) => {
                   const unchecking = cur.scenarioIds.includes(id)
-                  const removedQuestions = unchecking
-                    ? new Set(
-                        (
-                          scenarios.find((s) => s.id === id)?.questions ?? []
-                        ).map((q) => q.id),
-                      )
-                    : new Set<string>()
+                  const topicQuestions = (
+                    scenarios.find((s) => s.id === id)?.questions ?? []
+                  ).map((q) => q.id)
+                  if (unchecking) {
+                    return {
+                      ...cur,
+                      scenarioIds: toggleInList(cur.scenarioIds, id),
+                      // 取消的主题不再出题：白名单同步剪掉它的题，避免
+                      // 「白名单只剩未选主题的题」把最终题单掏空
+                      questions: cur.questions.filter(
+                        (qid) => !topicQuestions.includes(qid),
+                      ),
+                    }
+                  }
+                  // 新勾主题：白名单非空（逐题模式）时并入该主题全部题——
+                  // 只加 scenarioIds 不扩白名单会漏掉新主题的题（评审 P2）
+                  const merging = cur.questions.length > 0
                   return {
                     ...cur,
                     scenarioIds: toggleInList(cur.scenarioIds, id),
-                    // 取消的主题不再出题：白名单同步剪掉它的题，避免
-                    // 「白名单只剩未选主题的题」把最终题单掏空
-                    questions: unchecking
-                      ? cur.questions.filter(
-                          (qid) => !removedQuestions.has(qid),
-                        )
+                    questions: merging
+                      ? [...new Set([...cur.questions, ...topicQuestions])]
                       : cur.questions,
                   }
                 })

@@ -1923,6 +1923,136 @@ def test_fingerprint_detects_trailing_change(client: TestClient, db: Session) ->
     assert "预览结果已变化" in resp.json()["detail"]
 
 
+# ── 第七轮：同批双疑似全量导入 / 指纹候选全量 ─────────────────────────
+
+
+def test_same_batch_two_suspected_import_all(client: TestClient, db: Session) -> None:
+    """同批两条相同题干均疑似：「全部导入」不再误判预览过期——决策产生的
+    完全重复按 exact 正常跳过（评审 P2 复现：此前整批 422）。"""
+    headers = _login_teacher(db, client)
+    seeded = _csv_file(
+        [{**QUESTION_ROW, "text": "Twin suspected?", "suggested_seconds": "20"}]
+    )
+    assert _upload(client, headers, seeded, confirm=True).status_code == 200
+
+    # 变体一：两行配置不同（30/40s）→ 预览两条均疑似，全部导入 → 两条入库
+    file = _csv_file(
+        [
+            {**QUESTION_ROW, "text": "Twin suspected?", "suggested_seconds": "30"},
+            {**QUESTION_ROW, "text": "Twin suspected?", "suggested_seconds": "40"},
+        ]
+    )
+    body = _preview(client, headers, file)
+    assert body["sheets"][0]["suspected_duplicate_count"] == 2, body
+    resp = client.post(
+        f"{QB}/import-confirm",
+        files={"file": ("bank.csv", file, "text/csv")},
+        data={
+            "include_lines": "question:2,question:3",
+            "preview_fingerprint": body["fingerprint"],
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["sheets"][0]["created"] == 2, resp.text
+
+    # 变体二：两行配置完全相同 → 预览第一条 valid、第二条批内 exact；
+    # 无疑似可勾，确认（无勾选）只建一条，绝不 422
+    file2 = _csv_file(
+        [
+            {**QUESTION_ROW, "text": "Identical twins?", "suggested_seconds": "50"},
+            {**QUESTION_ROW, "text": "Identical twins?", "suggested_seconds": "50"},
+        ]
+    )
+    body2 = _preview(client, headers, file2)
+    sheet = body2["sheets"][0]
+    assert sheet["valid_count"] == 1, sheet
+    assert sheet["exact_duplicate_count"] == 1  # 第二条批内完全重复
+    resp = client.post(
+        f"{QB}/import-confirm",
+        files={"file": ("bank.csv", file2, "text/csv")},
+        data={"preview_fingerprint": body2["fingerprint"]},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["sheets"][0]["created"] == 1
+    rows = db.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.text == "Identical twins?")
+    ).all()
+    assert len(rows) == 1
+
+
+def test_fingerprint_covers_all_candidates(client: TestClient, db: Session) -> None:
+    """指纹覆盖全部冲突候选：同题第二条候选被新增或修改都要失配
+    （此前只取展示代表，第二条变化放行）。"""
+    headers = _login_teacher(db, client)
+    # 库内同主题两条同题（20s / 25s）
+    scenario = Scenario(topic="MultiCandidate")
+    db.add(scenario)
+    db.commit()
+    db.refresh(scenario)
+    for seconds in (20, 25):
+        db.add(
+            ScenarioQuestion(
+                scenario_id=scenario.id,
+                order_index=seconds,
+                text="Multi candidate?",
+                suggested_seconds=seconds,
+            )
+        )
+    db.commit()
+
+    file = _csv_file(
+        [
+            {
+                **QUESTION_ROW,
+                "text": "Multi candidate?",
+                "topic": "MultiCandidate",
+                "suggested_seconds": "30",
+            }
+        ]
+    )
+    body = _preview(client, headers, file)
+    assert body["sheets"][0]["suspected_duplicate_count"] == 1
+    fingerprint = body["fingerprint"]
+
+    # (a) 预览后**新增**第三条同题候选（28s）→ 旧指纹失配
+    db.add(
+        ScenarioQuestion(
+            scenario_id=scenario.id,
+            order_index=3,
+            text="Multi candidate?",
+            suggested_seconds=28,
+        )
+    )
+    db.commit()
+    resp = client.post(
+        f"{QB}/import-confirm",
+        files={"file": ("bank.csv", file, "text/csv")},
+        data={"include_lines": "question:2", "preview_fingerprint": fingerprint},
+        headers=headers,
+    )
+    assert resp.status_code == 422, resp.text
+    assert "预览结果已变化" in resp.json()["detail"]
+
+    # 重新预览拿新指纹；改**第二条**候选（25→26s）→ 再失配
+    body = _preview(client, headers, file)
+    fingerprint = body["fingerprint"]
+    second = db.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.suggested_seconds == 25)
+    ).one()
+    second.suggested_seconds = 26
+    db.add(second)
+    db.commit()
+    resp = client.post(
+        f"{QB}/import-confirm",
+        files={"file": ("bank.csv", file, "text/csv")},
+        data={"include_lines": "question:2", "preview_fingerprint": fingerprint},
+        headers=headers,
+    )
+    assert resp.status_code == 422, resp.text
+
+
 # ── 权限 ─────────────────────────────────────────────────────────────
 
 
