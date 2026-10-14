@@ -85,7 +85,9 @@ function DiffTable({
   const keys = Array.from(
     new Set([...Object.keys(incoming), ...Object.keys(existing)]),
   )
-  const cellClass = expanded ? "whitespace-pre-wrap break-all" : "line-clamp-2 break-all"
+  const cellClass = expanded
+    ? "whitespace-pre-wrap break-all"
+    : "line-clamp-2 break-all"
   return (
     <div className="space-y-1">
       <div className="grid grid-cols-[auto_1fr_1fr] gap-x-2 gap-y-1 text-xs">

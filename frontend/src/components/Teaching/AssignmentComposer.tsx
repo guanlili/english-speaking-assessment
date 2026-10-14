@@ -136,8 +136,6 @@ export function AssignmentComposer({
     scenariosQuery.isError ||
     instructionsQuery.isError
   )
-    // 有缓存数据时后台刷新失败不应整块报错（离线时组卷要能用缓存渲染，
-    // 「带入组卷」预选的暂缓提示在表单内给出）；完全无数据才走错误态
     if (
       !(
         passagesQuery.data &&
@@ -146,28 +144,30 @@ export function AssignmentComposer({
         instructionsQuery.data
       )
     )
-    return (
-      <div className="rounded-2xl border p-6">
-        <p>
-          {t({
-            zh: "练习内容加载失败。",
-            en: "Failed to load practice content.",
-          })}
-        </p>
-        <Button
-          className="mt-3"
-          variant="outline"
-          onClick={() => {
-            void passagesQuery.refetch()
-            void sentencesQuery.refetch()
-            void scenariosQuery.refetch()
-            void instructionsQuery.refetch()
-          }}
-        >
-          {t({ zh: "重新加载", en: "Reload" })}
-        </Button>
-      </div>
-    )
+      // 有缓存数据时后台刷新失败不应整块报错（离线时组卷要能用缓存渲染，
+      // 「带入组卷」预选的暂缓提示在表单内给出）；完全无数据才走错误态
+      return (
+        <div className="rounded-2xl border p-6">
+          <p>
+            {t({
+              zh: "练习内容加载失败。",
+              en: "Failed to load practice content.",
+            })}
+          </p>
+          <Button
+            className="mt-3"
+            variant="outline"
+            onClick={() => {
+              void passagesQuery.refetch()
+              void sentencesQuery.refetch()
+              void scenariosQuery.refetch()
+              void instructionsQuery.refetch()
+            }}
+          >
+            {t({ zh: "重新加载", en: "Reload" })}
+          </Button>
+        </div>
+      )
   if (
     passagesQuery.isPending ||
     sentencesQuery.isPending ||
@@ -539,7 +539,6 @@ function ComposerForm({
     selection.instructions.includes(i.id),
   )
 
-
   // 唯一题单：预览 / 数量摘要 / 提交请求共用同一份「按启用题型过滤后的题单」，
   // 避免教师取消勾选某题型后，预览或提交仍带上该题型已选内容。
   const planItems = useMemo(() => {
@@ -885,9 +884,9 @@ function ComposerForm({
                   const unchecking = cur.scenarioIds.includes(id)
                   const removedQuestions = unchecking
                     ? new Set(
-                        (scenarios.find((s) => s.id === id)?.questions ?? []).map(
-                          (q) => q.id,
-                        ),
+                        (
+                          scenarios.find((s) => s.id === id)?.questions ?? []
+                        ).map((q) => q.id),
                       )
                     : new Set<string>()
                   return {
@@ -896,7 +895,9 @@ function ComposerForm({
                     // 取消的主题不再出题：白名单同步剪掉它的题，避免
                     // 「白名单只剩未选主题的题」把最终题单掏空
                     questions: unchecking
-                      ? cur.questions.filter((qid) => !removedQuestions.has(qid))
+                      ? cur.questions.filter(
+                          (qid) => !removedQuestions.has(qid),
+                        )
                       : cur.questions,
                   }
                 })
