@@ -103,7 +103,10 @@ test("导出超长正文提示改用 CSV（blob 错误完整展示）", async ({
   const token = await page.evaluate(() => localStorage.getItem("access_token"))
   const create = await page.request.post("/api/v1/admin/passages", {
     headers: { Authorization: `Bearer ${token}` },
-    data: { title: "E2E 超长正文（测试用，自动清理）", text: "a".repeat(40000) },
+    data: {
+      title: "E2E 超长正文（测试用，自动清理）",
+      text: "a".repeat(40000),
+    },
   })
   expect(create.ok()).toBeTruthy()
   const passageId = ((await create.json()) as { id: string }).id
