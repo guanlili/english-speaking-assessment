@@ -105,6 +105,38 @@ test("题库批量导入：上传 CSV → 预览 → 确认 → 重传防重", a
   await expect(dialog.getByRole("button", { name: /确认导入/ })).toBeEnabled()
 })
 
+test("下载待修正数据：真实下载且内容可回导", async ({ page }) => {
+  await loginTeacherDemo(page)
+  const marker = `fix-${Date.now()}`
+  const bad = Buffer.from(
+    `\ufeff题型,标题,单元,主题,难度,内容,中文提示,挂靠篇目,秒数,可听次数,考试题型,考试级别,话题卡要点,准备秒数,音频链接,状态\n` +
+      `情景问答,,,${marker} T,,${marker} broken row?,,,999,,,,,,,,\n`,
+    "utf-8",
+  )
+  await page.goto("/create")
+  await page.getByRole("button", { name: /^批量导入$/ }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.locator('input[type="file"]').setInputFiles({
+    name: "bad.csv",
+    mimeType: "text/csv",
+    buffer: bad,
+  })
+  await dialog.getByRole("button", { name: /^预览$/ }).click()
+  await expect(dialog.getByText(/错误行 1/)).toBeVisible()
+
+  // 真实浏览器下载（blob 拦截器必须覆盖 import-error-file，否则抛 TypeError）
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    dialog.getByRole("button", { name: /下载待修正数据/ }).click(),
+  ])
+  expect(download.suggestedFilename()).toBe("question-bank-fix.csv")
+  const path = await download.path()
+  const content = (await import("node:fs")).readFileSync(path, "utf-8")
+  expect(content).toContain(`${marker} broken row?`)
+  expect(content).toContain("原行号")
+  expect(content).toContain("作答秒数需为")
+})
+
 test("导出超长正文提示改用 CSV（blob 错误完整展示）", async ({ page }) => {
   await loginTeacherDemo(page)
   // 经 API 造一篇超 Excel 单元格上限（32767）的正文：xlsx 导出必须报错

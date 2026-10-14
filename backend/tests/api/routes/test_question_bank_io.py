@@ -1649,6 +1649,201 @@ def test_integrity_conflict_returns_409(
     )
 
 
+# ── 第五轮：指纹对账 / 同题型双表 / 对照字段 / 疑似全量 / 音频规则 ────
+
+
+def test_fingerprint_rejects_content_change(client: TestClient, db: Session) -> None:
+    """预览后候选题内容被改：指纹失配 → 422 重新预览（此前只查「还是不是
+    疑似」，候选 20→60 秒照样放行）。"""
+    headers = _login_teacher(db, client)
+    seeded = _csv_file(
+        [{**QUESTION_ROW, "text": "FP question?", "suggested_seconds": "20"}]
+    )
+    assert _upload(client, headers, seeded, confirm=True).status_code == 200
+
+    file = _csv_file(
+        [{**QUESTION_ROW, "text": "FP question?", "suggested_seconds": "30"}]
+    )
+    body = _preview(client, headers, file)
+    assert body["sheets"][0]["suspected_duplicate_count"] == 1
+    assert body["fingerprint"]
+    fingerprint = body["fingerprint"]
+
+    # 预览与确认之间：候选题（20 秒那道）被编辑为 60 秒 → 对照快照变化
+    existing = db.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.text == "FP question?")
+    ).one()
+    existing.suggested_seconds = 60
+    db.add(existing)
+    db.commit()
+
+    resp = client.post(
+        f"{QB}/import-confirm",
+        files={"file": ("bank.csv", file, "text/csv")},
+        data={
+            "include_lines": "question:2",
+            "preview_fingerprint": fingerprint,
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 422, resp.text
+    assert "预览结果已变化" in resp.json()["detail"]
+    assert (
+        db.exec(select(ScenarioQuestion).where(ScenarioQuestion.text == "FP question?"))
+        .all()
+        .__len__()
+        == 1
+    )  # 未新增
+
+    # 重新预览（新指纹反映 60 秒候选）后同一文件可正常勾选导入
+    body = _preview(client, headers, file)
+    assert body["suspected"][0]["existing"]["seconds"] == "60"
+    resp = client.post(
+        f"{QB}/import-confirm",
+        files={"file": ("bank.csv", file, "text/csv")},
+        data={
+            "include_lines": "question:2",
+            "preview_fingerprint": body["fingerprint"],
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["sheets"][0]["created"] == 1
+
+
+def test_same_qtype_two_sheets_rejected(client: TestClient, db: Session) -> None:
+    """「情景问答」和「question」两表同题型：行标识 (type,line) 会撞号 →
+    文件级 422，要求合并到一个工作表。"""
+    headers = _login_teacher(db, client)
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+    for name in ("情景问答", "question"):
+        sheet = workbook.create_sheet(name)
+        sheet.append(["主题", "英文题目"])
+        sheet.append(["Dup", f"Sheet {name} row?"])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    resp = _upload(
+        client,
+        headers,
+        buffer.getvalue(),
+        filename="dup-type.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    assert resp.status_code == 422
+    assert "多个工作表" in resp.json()["detail"]
+
+
+def test_suspected_snapshot_includes_translation_and_cue(
+    client: TestClient, db: Session
+) -> None:
+    """只有中文提示/话题卡不同的两道题：对照快照必须把差异字段亮出来。"""
+    headers = _login_teacher(db, client)
+    first = _csv_file(
+        [
+            {
+                **QUESTION_ROW,
+                "text": "Diff by hint only?",
+                "translation": "第一版提示",
+                "exam_kind": "ielts_p2",
+                "exam_level": "PET",
+                "cue_card_bullets": "who\nwhy",
+            }
+        ]
+    )
+    assert _upload(client, headers, first, confirm=True).status_code == 200
+
+    second = _csv_file(
+        [
+            {
+                **QUESTION_ROW,
+                "text": "Diff by hint only?",
+                "translation": "第二版提示",
+                "exam_kind": "ielts_p2",
+                "exam_level": "PET",
+                "cue_card_bullets": "who\nwhere",
+            }
+        ]
+    )
+    body = _preview(client, headers, second)
+    suspected = body["suspected"][0]
+    assert suspected["incoming"]["translation"] == "第二版提示"
+    assert suspected["existing"]["translation"] == "第一版提示"
+    assert suspected["incoming"]["cue"] == "who / where"
+    assert suspected["existing"]["cue"] == "who / why"
+
+
+def test_suspected_list_full_beyond_100(client: TestClient, db: Session) -> None:
+    """101 条疑似全量返回：全部导入可一次勾完（截断会漏掉后续行）。"""
+    headers = _login_teacher(db, client)
+    rows = [
+        {**QUESTION_ROW, "text": f"Bulk seeded {i}?", "suggested_seconds": "20"}
+        for i in range(101)
+    ]
+    assert _upload(client, headers, _csv_file(rows), confirm=True).status_code == 200
+
+    changed = _csv_file(
+        [
+            {**QUESTION_ROW, "text": f"Bulk seeded {i}?", "suggested_seconds": "30"}
+            for i in range(101)
+        ]
+    )
+    body = _preview(client, headers, changed)
+    assert body["sheets"][0]["suspected_duplicate_count"] == 101
+    assert len(body["suspected"]) == 101, "疑似清单不得截断"
+    assert body["suspected_truncated"] is False
+
+    include_lines = ",".join(f"question:{2 + i}" for i in range(101))
+    resp = client.post(
+        f"{QB}/import-confirm",
+        files={"file": ("bank.csv", changed, "text/csv")},
+        data={
+            "include_lines": include_lines,
+            "preview_fingerprint": body["fingerprint"],
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["sheets"][0]["created"] == 101
+
+
+def test_created_items_needs_audio_matches_exam_rule(
+    client: TestClient, db: Session
+) -> None:
+    """needs_audio 对齐自动考试规则：所有非朗读题（复述/问答/说明）为 True。"""
+    headers = _login_teacher(db, client)
+    data = _csv_file(
+        [
+            PASSAGE_ROW,
+            {"__type__": "听句复述", "text": "Exam audio rule sentence."},
+            {**QUESTION_ROW, "text": "Exam audio rule question?"},
+            {"__type__": "题目说明", "text": "Exam audio rule instruction."},
+        ]
+    )
+    resp = _upload(client, headers, data, confirm=True)
+    items = {item["type"]: item for item in resp.json()["created_items"]}
+    assert items["passage"]["needs_audio"] is False
+    assert items["repeat"]["needs_audio"] is True
+    assert items["question"]["needs_audio"] is True
+    assert items["instruction"]["needs_audio"] is True
+    assert items["instruction"]["audio_missing"] is True  # exam_settings 导入不写
+
+
+def test_preview_invalid_total_covers_parse_errors(
+    client: TestClient, db: Session
+) -> None:
+    """全部为无效题型行：invalid_total>0（下载入口依据），不依赖题型计数。"""
+    headers = _login_teacher(db, client)
+    data = _csv_file(
+        [{"__type__": "不存在题型", "text": f"All bad {i}"} for i in range(3)]
+    )
+    body = _preview(client, headers, data)
+    assert body["invalid_total"] == 3
+    assert body["total_valid"] == 0
+
+
 # ── 权限 ─────────────────────────────────────────────────────────────
 
 

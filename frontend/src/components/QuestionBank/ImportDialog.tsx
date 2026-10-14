@@ -138,6 +138,8 @@ export function QuestionBankImportDialog({
   /** key = `${type}:${line}`，值为 true 表示勾选导入；缺省（不含 key）= 跳过 */
   const [decisions, setDecisions] = useState<Record<string, boolean>>({})
   const [result, setResult] = useState<QuestionBankImportResult | null>(null)
+  /** 当前预览的指纹（与 preview 同生共死）：确认时带回后端锁内比对 */
+  const [fingerprint, setFingerprint] = useState("")
   const [showBatch, setShowBatch] = useState(false)
   const [showAudioFix, setShowAudioFix] = useState(false)
 
@@ -147,6 +149,7 @@ export function QuestionBankImportDialog({
     setPreview(null)
     setResult(null)
     setDecisions({})
+    setFingerprint("")
     setShowBatch(false)
     setShowAudioFix(false)
   }
@@ -174,6 +177,7 @@ export function QuestionBankImportDialog({
         return // 迟到响应：弹窗已关/文件已换，丢弃
       }
       setPreview(data)
+      setFingerprint(data.fingerprint ?? "")
       setResult(null)
     },
     onError: (err) => {
@@ -182,11 +186,16 @@ export function QuestionBankImportDialog({
   })
 
   const confirmMutation = useMutation({
-    mutationFn: (args: { target: File; includeLines: string }) =>
+    mutationFn: (args: {
+      target: File
+      includeLines: string
+      fingerprint: string
+    }) =>
       QuestionBankService.questionBankImportConfirm({
         formData: {
           file: args.target as unknown as string,
           include_lines: args.includeLines,
+          preview_fingerprint: args.fingerprint,
         },
       }),
     onSuccess: (data) => {
@@ -245,6 +254,7 @@ export function QuestionBankImportDialog({
     setFile(picked)
     setPreview(null)
     setResult(null)
+    setFingerprint("")
     // 疑似选择只对当前文件有效：换文件回到默认全部跳过
     setDecisions({})
     setShowBatch(false)
@@ -254,8 +264,8 @@ export function QuestionBankImportDialog({
   const suspectedTotal =
     preview?.sheets.reduce((sum, s) => sum + s.suspected_duplicate_count, 0) ??
     0
-  const invalidTotal =
-    preview?.sheets.reduce((sum, s) => sum + (s.invalid_count ?? 0), 0) ?? 0
+  // invalid_total 含解析期（题型列无效）错误行——全无效文件也要有下载入口
+  const invalidTotal = preview?.invalid_total ?? 0
   const selectedCount = Object.values(decisions).filter(Boolean).length
   const effectiveValid = (preview?.total_valid ?? 0) + selectedCount
   const busy =
@@ -269,7 +279,7 @@ export function QuestionBankImportDialog({
       .filter(([, checked]) => checked)
       .map(([key]) => key)
       .join(",")
-    confirmMutation.mutate({ target: file, includeLines })
+    confirmMutation.mutate({ target: file, includeLines, fingerprint })
   }
 
   /** 本批新建 → 组卷预选（一次性 sessionStorage 交接；老师检查后自行发布） */
@@ -723,31 +733,73 @@ export function QuestionBankImportDialog({
                 )}
 
                 {showAudioFix && (
-                  <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+                  <div className="space-y-3 rounded-lg border border-border bg-card p-3 text-xs">
                     <p className="text-amber-600 dark:text-amber-400">
                       {t({
-                        zh: "以下复述句缺音频：题面不显示文字，练习靠设备合成语音兜底、自动考试开考时还会实测合成——建议为它们上传或生成示范音。",
-                        en: "These Listen & Repeat items have no audio: text is hidden from students, practice falls back to device TTS, and automated exams test synthesis at start. Upload or generate demo audio for them.",
+                        zh: "自动考试要求所有非朗读题配齐音频才能发布（不能依赖开考时合成）；普通练习可用文字与设备合成兜底。以下题目建议补齐：",
+                        en: "Automated exams reject any non-reading item without audio at publish time (no on-start synthesis fallback); normal practice falls back to text and device TTS. Recommended fixes:",
                       })}
                     </p>
-                    <ul className="max-h-40 space-y-1 overflow-y-auto">
-                      {audioFixItems.map((item) => (
-                        <li key={item.id}>· {item.label}</li>
-                      ))}
-                    </ul>
-                    <Button
-                      variant="link"
-                      className="min-h-11 px-0 text-sm"
-                      onClick={() => {
-                        onOpenChange(false)
-                        void navigate({ to: "/create", hash: "bank-repeat" })
-                      }}
-                    >
-                      {t({
-                        zh: "去听句复述区上传/生成音频 →",
-                        en: "Open Listen & Repeat to upload/generate →",
-                      })}
-                    </Button>
+                    {(["repeat", "question", "instruction"] as const).map(
+                      (kind) => {
+                        const items = audioFixItems.filter(
+                          (i) => i.type === kind,
+                        )
+                        if (items.length === 0) {
+                          return null
+                        }
+                        return (
+                          <div key={kind} className="space-y-1">
+                            <p className="font-medium">
+                              {t(questionBankTypeLabel(kind))}（{items.length}）
+                            </p>
+                            <ul className="max-h-32 space-y-1 overflow-y-auto">
+                              {items.map((item) => (
+                                <li key={item.id}>· {item.label}</li>
+                              ))}
+                            </ul>
+                            {kind === "repeat" && (
+                              <Button
+                                variant="link"
+                                className="min-h-9 px-0 text-xs"
+                                onClick={() => {
+                                  onOpenChange(false)
+                                  void navigate({ to: "/create" })
+                                }}
+                              >
+                                {t({
+                                  zh: "去题目库处理：挂靠篇目的句子在「文章朗读 · 篇目」编辑里，独立句在「听句复述」区 →",
+                                  en: "Open the Question Bank: attached sentences are edited under Read Aloud · Passages; standalone ones in Listen & Repeat →",
+                                })}
+                              </Button>
+                            )}
+                            {kind === "question" && (
+                              <Button
+                                variant="link"
+                                className="min-h-9 px-0 text-xs"
+                                onClick={() => {
+                                  onOpenChange(false)
+                                  void navigate({ to: "/admin/scenarios" })
+                                }}
+                              >
+                                {t({
+                                  zh: "去情景问答，在各主题的题目编辑里上传/生成音频 →",
+                                  en: "Open Scenario Q&A to upload/generate audio in each topic →",
+                                })}
+                              </Button>
+                            )}
+                            {kind === "instruction" && (
+                              <p className="text-muted-foreground">
+                                {t({
+                                  zh: "题目说明的考试音频在发布考试时的逐题设置里配置（普通练习无需）。",
+                                  en: "Exam audio for instructions is configured in per-item settings when publishing an exam (not needed for normal practice).",
+                                })}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      },
+                    )}
                   </div>
                 )}
               </div>

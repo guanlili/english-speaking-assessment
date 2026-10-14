@@ -1804,8 +1804,8 @@ export class QuestionBankService {
     /**
      * Question Bank Import Confirm
      * 确认导入：重新上传预览时的同一文件；疑似重复默认逐条跳过，仅
-     * include_lines 勾选的行导入。锁内重查库内现状，选择过期或新冲突返回
-     * 422/409 要求重新预览，绝不沿用旧选择静默导入。
+     * include_lines 勾选的行导入。锁内重查库内现状并比对预览指纹——选择
+     * 过期、内容变化或新冲突返回 422/409 要求重新预览，绝不沿用旧选择静默导入。
      * @param data The data for the request.
      * @param data.formData
      * @returns QuestionBankImportResult Successful Response

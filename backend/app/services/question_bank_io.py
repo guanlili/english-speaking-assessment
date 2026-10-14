@@ -66,7 +66,9 @@ MAX_IMPORT_ROWS = 2000
 # 2001 行可导出、回导被 2000 行上限拒绝）。更大规模请按题型/主题筛选分批导出
 MAX_EXPORT_ROWS = MAX_IMPORT_ROWS
 MAX_ISSUES = 200
-MAX_SUSPECTED_LISTED = 100
+# 疑似对照全量返回（上限=行数上限）：截断会让「全部导入」漏掉后续行，
+# 无法在本轮完成确认（评审 P2）
+MAX_SUSPECTED_LISTED = MAX_IMPORT_ROWS
 # 并发导入防重：事务级咨询锁键（pg_advisory_xact_lock 的任意固定整数，
 # 取自业务无关魔数，仅用于串行化导入确认这一件事）
 IMPORT_ADVISORY_LOCK_KEY = 872_514_309
@@ -702,6 +704,9 @@ def _parse_xlsx(raw: bytes) -> ParsedFile:
     rows: list[_RawRow] = []
     issues: list[QuestionBankImportIssue] = []
     matched_any = False
+    # 同一题型只允许出现在一个工作表：行标识是 (type, line)，
+    # 「情景问答」和「question」两表同用第 2 行会撞号（评审 P2）
+    seen_types: set[str] = set()
     try:
         for sheet_name in workbook.sheetnames:
             if _is_guide_sheet(sheet_name):
@@ -763,6 +768,15 @@ def _parse_xlsx(raw: bytes) -> ParsedFile:
                                 "请勿重命名模板工作表"
                             ),
                         )
+                    if qtype in seen_types:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=(
+                                f"题型「{TYPE_LABELS[qtype]}」出现在多个工作表，"
+                                "请合并到同一工作表（行号按工作表区分会撞号）"
+                            ),
+                        )
+                    seen_types.add(qtype)
                     matched_any = True
                     col_map = _map_header(row_cells)
                     _require_columns(qtype, col_map, sheet_name)
@@ -1117,6 +1131,9 @@ class _CreateItem:
 class QuestionBankPlan:
     creates: dict[str, list[_CreateItem]] = field(default_factory=dict)
     counts: dict[str, _TypeCounts] = field(default_factory=dict)
+    # 预览指纹原料：每条通过校验的行 (type, line, payload 摘要)——与查重
+    # 决策无关（疑似是否勾选导入不影响指纹），预览与确认两侧可比对
+    parsed_digests: list[tuple[str, int, str]] = field(default_factory=list)
     issues: list[QuestionBankImportIssue] = field(default_factory=list)
     suspected_rows: list[QuestionBankSuspectedItem] = field(default_factory=list)
     error_rows: list[ErrorRow] = field(default_factory=list)
@@ -1144,6 +1161,7 @@ def _summarize_payload(qtype: str, payload: dict[str, Any]) -> dict[str, str]:
             "topic": payload.get("topic") or "",
             "band": payload["cefr_band"],
             "seconds": str(payload["suggested_seconds"]),
+            "translation": _excerpt(payload.get("translation") or ""),
             "audio": payload.get("audio_url") or "",
         }
     if qtype == TYPE_REPEAT:
@@ -1154,6 +1172,7 @@ def _summarize_payload(qtype: str, payload: dict[str, Any]) -> dict[str, str]:
             "replay": str(payload["replay_limit"]),
             "kind": payload.get("exam_kind") or "",
             "level": payload.get("exam_level") or "",
+            "translation": _excerpt(payload.get("translation") or ""),
             "audio": payload.get("audio_url") or "",
         }
     if qtype == TYPE_QUESTION:
@@ -1164,6 +1183,8 @@ def _summarize_payload(qtype: str, payload: dict[str, Any]) -> dict[str, str]:
             "kind": payload.get("exam_kind") or "",
             "level": payload.get("exam_level") or "",
             "prep": str(payload.get("prep_seconds") or ""),
+            "cue": _excerpt(" / ".join(payload.get("cue_card_bullets") or [])),
+            "translation": _excerpt(payload.get("translation") or ""),
             "audio": payload.get("audio_url") or "",
         }
     return {
@@ -1171,6 +1192,40 @@ def _summarize_payload(qtype: str, payload: dict[str, Any]) -> dict[str, str]:
         "text": _excerpt(payload["text"]),
         "seconds": str(payload["suggested_seconds"]),
     }
+
+
+def _row_digest(qtype: str, line: int, payload: dict[str, Any]) -> tuple[str, int, str]:
+    import hashlib
+    import json
+
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+    return (qtype, line, hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16])
+
+
+def plan_fingerprint(plan: QuestionBankPlan) -> str:
+    """预览指纹：文件行内容 + 库内查重状态（含疑似两侧快照）的摘要。
+
+    决策无关——老师勾选哪些疑似行不影响指纹；预览与确认各算一次，
+    锁内比对，任何一侧内容/候选变化都会失配（评审 P2：只查「还是不是
+    疑似」挡不住「候选内容变了」）。
+    """
+    import hashlib
+    import json
+
+    projection = {
+        "rows": [list(item) for item in plan.parsed_digests],
+        "counts": {
+            qtype: [c.exact_dup, c.suspected, c.invalid]
+            for qtype, c in plan.counts.items()
+        },
+        "suspected": [
+            [item.type, item.line, item.reason, item.incoming, item.existing]
+            for item in plan.suspected_rows
+        ],
+        "new_topics": plan.new_topics,
+    }
+    raw = json.dumps(projection, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _suspected(
@@ -1270,6 +1325,7 @@ def _plan_passages(
     for row in rows:
         try:
             payload = _build_passage(row.cells)
+            plan.parsed_digests.append(_row_digest(TYPE_PASSAGE, row.line, payload))
         except _RowError as exc:
             counts.invalid += 1
             plan.issues.append(_issue(TYPE_PASSAGE, row.line, exc.reason))
@@ -1366,6 +1422,7 @@ def _summarize_passage_model(p: Passage, ref: _Ref) -> dict[str, str]:
         "topic": p.topic or "",
         "band": p.cefr_band,
         "seconds": str(p.suggested_seconds),
+        "translation": _excerpt(p.translation or ""),
         "audio": p.audio_url or "",
     }
 
@@ -1378,6 +1435,7 @@ def _summarize_sentence_model(s: RepeatSentence, ref: _Ref) -> dict[str, str]:
         "replay": str(s.replay_limit),
         "kind": s.exam_kind or "",
         "level": s.exam_level or "",
+        "translation": _excerpt(s.translation or ""),
         "audio": s.audio_url or "",
     }
 
@@ -1390,6 +1448,8 @@ def _summarize_question_model(q: ScenarioQuestion, ref: _Ref) -> dict[str, str]:
         "kind": q.exam_kind or "",
         "level": q.exam_level or "",
         "prep": str(q.prep_seconds or ""),
+        "cue": _excerpt(" / ".join(q.cue_card_bullets or [])),
+        "translation": _excerpt(q.translation or ""),
         "audio": q.audio_url or "",
     }
 
@@ -1439,6 +1499,7 @@ def _plan_repeats(
     for row in rows:
         try:
             payload = _build_repeat(row.cells)
+            plan.parsed_digests.append(_row_digest(TYPE_REPEAT, row.line, payload))
         except _RowError as exc:
             counts.invalid += 1
             plan.issues.append(_issue(TYPE_REPEAT, row.line, exc.reason))
@@ -1563,6 +1624,7 @@ def _plan_questions(
     for row in rows:
         try:
             payload = _build_question(row.cells)
+            plan.parsed_digests.append(_row_digest(TYPE_QUESTION, row.line, payload))
         except _RowError as exc:
             counts.invalid += 1
             plan.issues.append(_issue(TYPE_QUESTION, row.line, exc.reason))
@@ -1680,6 +1742,7 @@ def _plan_instructions(
     for row in rows:
         try:
             payload = _build_instruction(row.cells)
+            plan.parsed_digests.append(_row_digest(TYPE_INSTRUCTION, row.line, payload))
         except _RowError as exc:
             counts.invalid += 1
             plan.issues.append(_issue(TYPE_INSTRUCTION, row.line, exc.reason))
@@ -1748,6 +1811,8 @@ def preview_import(session: Session, parsed: ParsedFile) -> QuestionBankImportPr
         issues_truncated=len(plan.issues) > MAX_ISSUES,
         suspected=plan.suspected_rows[:MAX_SUSPECTED_LISTED],
         suspected_truncated=len(plan.suspected_rows) > MAX_SUSPECTED_LISTED,
+        invalid_total=len(plan.error_rows),
+        fingerprint=plan_fingerprint(plan),
         new_topics=plan.new_topics,
         unit_fallback_count=plan.unit_fallback_count,
         standalone_sentence_count=plan.standalone_sentence_count,
@@ -1764,6 +1829,7 @@ def apply_import(
     session: Session,
     parsed: ParsedFile,
     include_lines: set[tuple[str, int]] | None = None,
+    expected_fingerprint: str | None = None,
 ) -> QuestionBankImportResult:
     """确认导入：单事务落库；任何 DB 异常整体回滚。
 
@@ -1781,6 +1847,15 @@ def apply_import(
             {"lock_key": IMPORT_ADVISORY_LOCK_KEY},
         )
         plan = plan_import(session, parsed, include_lines)
+        # 指纹对账（锁内、与最新库状态比对）：老师确认的是预览时的内容与
+        # 候选快照——文件被改、候选题被改、重复格局变化都会失配，要求重新
+        # 预览。咨询锁只防同时写入，不能证明「确认过的是当前内容」。
+        if expected_fingerprint and plan_fingerprint(plan) != expected_fingerprint:
+            session.rollback()
+            raise HTTPException(
+                status_code=422,
+                detail="预览结果已变化（文件或题库内容有更新），请重新预览后再确认导入",
+            )
         created_scenarios: dict[str, Scenario] = {}
         for topic in plan.new_topics:
             scenario = Scenario(topic=topic, is_active=True)
@@ -1886,7 +1961,7 @@ def apply_import(
                     id=str(question.id),
                     label=_excerpt(payload["text"]),
                     topic=payload["topic"],
-                    needs_audio=False,  # 题面有文字 + TTS 兜底
+                    needs_audio=True,  # 自动考试拒收缺音频的非朗读题（exercise.py）
                     audio_missing=not payload["audio_url"],
                 )
             )
@@ -1904,8 +1979,10 @@ def apply_import(
                     type=TYPE_INSTRUCTION,
                     id=str(instruction.id),
                     label=payload["title"] or _excerpt(payload["text"]),
-                    needs_audio=False,  # 无作答、无音频概念
-                    audio_missing=False,
+                    needs_audio=True,  # 自动考试同样要求说明有音频（exam_settings）
+                    # 说明的考试音频存于 exam_settings.audio_url，导入不写 → 恒缺，
+                    # 在发布考试的题目设置里配置
+                    audio_missing=True,
                 )
             )
         _commit(session)

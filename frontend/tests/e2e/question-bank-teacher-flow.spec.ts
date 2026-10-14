@@ -38,7 +38,28 @@ async function seedTeacherAndClassroom(page: Page): Promise<string> {
     data: { class_size: 10 },
   })
   expect(classroom.ok()).toBeTruthy()
-  return ((await classroom.json()) as { code: string }).code
+  const code = ((await classroom.json()) as { code: string }).code
+
+  // 同主题放一道「旧题」：验证带入组卷只出新批题目、不混入旧题
+  const oldSeed =
+    `\ufeff题型,标题,单元,主题,难度,内容,中文提示,挂靠篇目,秒数,可听次数,考试题型,考试级别,话题卡要点,准备秒数,音频链接,状态\n` +
+    `情景问答,,,e2e-old-topic,,OLD question that must stay out,,,20,,,,,,,,,\n`
+  const seedResp = await page.request.post(
+    "/api/v1/admin/question-bank/import-confirm",
+    {
+      headers: { Authorization: `Bearer ${teacherToken}` },
+      multipart: {
+        file: {
+          name: "old.csv",
+          mimeType: "text/csv",
+          buffer: Buffer.from(oldSeed, "utf-8"),
+        },
+        include_lines: "",
+      },
+    },
+  )
+  expect(seedResp.ok()).toBeTruthy()
+  return code
 }
 
 async function loginTeacher(page: Page) {
@@ -63,6 +84,13 @@ test("普通教师：导入 → 查看本批 → 带入组卷 → 发布", async
   const marker = `flow-${Date.now()}`
   await loginTeacher(page)
 
+  // 暖缓存路径（评审 P2）：先访问课堂把组卷题库查询缓存住（不含新题），
+  // 之后再导入并返回——预选必须等刷新后的数据，而不是消费旧缓存丢新题
+  await page.goto(`/t/${code}`)
+  await expect(page.getByRole("button", { name: /预览练习/ })).toBeVisible({
+    timeout: 20_000,
+  })
+
   // ── 导入：/create 批量导入弹窗全链路 ──
   await page.goto("/create")
   await page.getByRole("button", { name: /^批量导入$/ }).click()
@@ -70,7 +98,7 @@ test("普通教师：导入 → 查看本批 → 带入组卷 → 发布", async
   const fileInput = dialog.locator('input[type="file"]')
   const csv = Buffer.from(
     `\ufeff题型,标题,单元,主题,难度,内容,中文提示,挂靠篇目,秒数,可听次数,考试题型,考试级别,话题卡要点,准备秒数,音频链接,状态\n` +
-      `情景问答,,,${marker} Topic,,${marker} Which place do you like best?,,,20,,,,,,,,,\n`,
+      `情景问答,,,e2e-old-topic,,${marker} Which place do you like best?,,,20,,,,,,,,,\n`,
     "utf-8",
   )
   await fileInput.setInputFiles({
@@ -103,15 +131,19 @@ test("普通教师：导入 → 查看本批 → 带入组卷 → 发布", async
 
   // 组卷页：预选生效（问答主题被带入且勾选），预览发布入口可见
   const composer = page.getByRole("main")
-  await expect(
-    composer.getByText(new RegExp(`${marker} Topic`)).first(),
-  ).toBeVisible({ timeout: 15_000 })
+  await expect(composer.getByText(/e2e-old-topic/).first()).toBeVisible({
+    timeout: 15_000,
+  })
   await expect(composer.getByRole("button", { name: /预览练习/ })).toBeEnabled()
 
   // ── 发布（老师检查后自行确认；不自动发布）──
   await composer.getByRole("button", { name: /预览练习/ }).click()
   const previewDialog = page.getByRole("dialog")
   await expect(previewDialog.getByText(marker)).toBeVisible()
+  // 题目级白名单：同主题旧题不得混入本批题单
+  await expect(
+    previewDialog.getByText("OLD question that must stay out"),
+  ).toHaveCount(0)
   await previewDialog.getByRole("button", { name: /确认发布到课堂/ }).click()
   await expect(page.getByText(/本次课堂练习已发布/)).toBeVisible({
     timeout: 15_000,

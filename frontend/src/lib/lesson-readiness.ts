@@ -19,6 +19,12 @@ export interface LessonSelection {
   scenarioIds: string[]
   /** 选中的题目说明 id */
   instructions: string[]
+  /**
+   * 问答题目级白名单（空 = 选中主题下的全部题）。批量导入「带入组卷」
+   * 用它做到只带入本批新建题——主题仍是勾选单位（沿用现有交互），
+   * 但出题清单只含白名单内的题目，避免混入同主题旧题。
+   */
+  questions: string[]
 }
 
 export interface LessonData {

@@ -22,6 +22,8 @@ export const DIFF_FIELD_LABELS: Record<string, BiString> = {
   level: { zh: "考试级别", en: "Exam level" },
   prep: { zh: "准备秒数", en: "Prep time" },
   passage: { zh: "挂靠篇目", en: "Passage" },
+  translation: { zh: "中文提示", en: "Chinese hint" },
+  cue: { zh: "话题卡要点", en: "Cue card" },
   audio: { zh: "音频", en: "Audio" },
 }
 

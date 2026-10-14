@@ -194,6 +194,10 @@ export type Body_question_bank_question_bank_import_confirm = {
      * 勾选导入的疑似行，逗号分隔的 type:line（缺省全部跳过）
      */
     include_lines?: string;
+    /**
+     * 预览返回的指纹；提供时锁内比对，内容/候选变化即 422 要求重新预览
+     */
+    preview_fingerprint?: string;
 };
 
 export type Body_question_bank_question_bank_import_error_file = {
@@ -619,6 +623,8 @@ export type QuestionBankImportPreview = {
     issues_truncated: boolean;
     suspected: Array<QuestionBankSuspectedItem>;
     suspected_truncated: boolean;
+    invalid_total: number;
+    fingerprint: string;
     new_topics: Array<(string)>;
     unit_fallback_count: number;
     standalone_sentence_count: number;

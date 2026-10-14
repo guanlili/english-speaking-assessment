@@ -550,6 +550,8 @@ class QuestionBankImportPreview(SQLModel):
     issues_truncated: bool
     suspected: list[QuestionBankSuspectedItem]  # 疑似重复逐条明细+两侧对照
     suspected_truncated: bool
+    invalid_total: int  # 全部错误行（含解析期题型无效行；错误下载的依据）
+    fingerprint: str  # 预览指纹：确认时锁内比对，内容变化即要求重新预览
     new_topics: list[str]  # 将自动新建的问答主题
     unit_fallback_count: int  # 单元未匹配、按无单元导入的篇目数
     standalone_sentence_count: int  # 挂靠篇目未匹配、按独立句导入的句数

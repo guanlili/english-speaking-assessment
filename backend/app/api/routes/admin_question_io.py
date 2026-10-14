@@ -100,14 +100,24 @@ async def question_bank_import_confirm(
         default="",
         description="勾选导入的疑似行，逗号分隔的 type:line（缺省全部跳过）",
     ),
+    preview_fingerprint: str = Form(
+        default="",
+        description="预览返回的指纹；提供时锁内比对，内容/候选变化即 422 要求重新预览",
+    ),
 ) -> Any:
     """确认导入：重新上传预览时的同一文件；疑似重复默认逐条跳过，仅
-    include_lines 勾选的行导入。锁内重查库内现状，选择过期或新冲突返回
-    422/409 要求重新预览，绝不沿用旧选择静默导入。"""
+    include_lines 勾选的行导入。锁内重查库内现状并比对预览指纹——选择
+    过期、内容变化或新冲突返回 422/409 要求重新预览，绝不沿用旧选择静默导入。"""
     filename, raw = await _read_upload(file)
     parsed = await run_in_threadpool(io_service.parse_upload, filename, raw)
     decisions = _parse_include_lines(include_lines)
-    return await run_in_threadpool(io_service.apply_import, session, parsed, decisions)
+    return await run_in_threadpool(
+        io_service.apply_import,
+        session,
+        parsed,
+        decisions,
+        expected_fingerprint=preview_fingerprint or None,
+    )
 
 
 @router.post("/import-error-file", response_class=Response, responses=_BINARY_RESPONSES)

@@ -219,6 +219,7 @@ export function AssignmentComposer({
     sentences: currentSentences,
     scenarioIds: currentScenarioIds,
     instructions: currentInstructionIds,
+    questions: [],
   }
 
   return (
@@ -364,12 +365,24 @@ function ComposerForm({
     setSelection(next)
   }
 
-  // 题库批量导入「带入组卷」：一次性预选本批新建题目（sessionStorage 交接，
-  // 读后即删）。只做预选——是否发布由老师检查后自行决定。question →
-  // scenario 的反查需要 scenarios 数据就绪，所以放在拿到数据 props 的
-  // ComposerForm 里（挂载时数据已加载完毕）。
+  // 题库批量导入「带入组卷」：一次性预选本批新建题目。分两步防「旧缓存
+  // 丢预选」（评审 P2）：① 挂载发现交接键 → invalidate 四个题库查询强制
+  // 刷新（staleTime 内的旧缓存不含刚导入的新题，直接消费会把新题过滤掉
+  // 并删掉交接数据）；② 待本批 ID 全部可解析（或刷新完成后仍缺失）才消费。
+  // 问答按题目白名单带入（selection.questions），不整主题展开混入旧题。
   const presetDoneRef = useRef(false)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 一次性预选——仅挂载时读取并消费交接键，数据 props 届时已就绪
+  const [presetRefreshed, setPresetRefreshed] = useState(false)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 仅挂载时探测交接键并触发一次刷新
+  useEffect(() => {
+    if (sessionStorage.getItem(COMPOSER_PRESET_KEY)) {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "passages"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "sentences"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "scenarios"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "instructions"] }),
+      ]).then(() => setPresetRefreshed(true))
+    }
+  }, [])
   useEffect(() => {
     if (presetDoneRef.current) {
       return
@@ -378,8 +391,6 @@ function ComposerForm({
     if (!raw) {
       return
     }
-    presetDoneRef.current = true
-    sessionStorage.removeItem(COMPOSER_PRESET_KEY)
     let preset: {
       passages?: string[]
       sentences?: string[]
@@ -389,12 +400,39 @@ function ComposerForm({
     try {
       preset = JSON.parse(raw) as typeof preset
     } catch {
+      sessionStorage.removeItem(COMPOSER_PRESET_KEY)
+      presetDoneRef.current = true
       return
     }
+    const allPresetIds = [
+      ...(preset.passages ?? []),
+      ...(preset.sentences ?? []),
+      ...(preset.questions ?? []),
+      ...(preset.instructions ?? []),
+    ]
+    const knownIds = new Set<string>(
+      [
+        ...passages.map((item) => item.id),
+        ...sentences.map((item) => item.id),
+        ...instructions.map((item) => item.id),
+        ...scenarios.flatMap((scenario) => scenario.questions.map((q) => q.id)),
+      ].filter((id): id is string => Boolean(id)),
+    )
+    const resolved = allPresetIds.every((id) => knownIds.has(id))
+    if (!resolved && !presetRefreshed) {
+      return // 缓存里还没有本批新题：等 invalidate 后的新数据
+    }
+    // 消费（数据已是刷新后的；仍缺失的 ID 属于已被删除等情形，跳过）
+    sessionStorage.removeItem(COMPOSER_PRESET_KEY)
+    presetDoneRef.current = true
     const presetScenarioIds = new Set<string>()
+    const validQuestions: string[] = []
     for (const scenario of scenarios) {
-      if (scenario.questions.some((q) => preset.questions?.includes(q.id))) {
-        presetScenarioIds.add(scenario.id)
+      for (const q of scenario.questions) {
+        if (preset.questions?.includes(q.id)) {
+          presetScenarioIds.add(scenario.id)
+          validQuestions.push(q.id)
+        }
       }
     }
     const validPassages = (preset.passages ?? []).filter((id) =>
@@ -411,6 +449,7 @@ function ComposerForm({
       sentences: [...new Set([...prev.sentences, ...validSentences])],
       scenarioIds: [...new Set([...prev.scenarioIds, ...presetScenarioIds])],
       instructions: [...new Set([...prev.instructions, ...validInstructions])],
+      questions: [...new Set([...prev.questions, ...validQuestions])],
     }))
     setTypesDirty((prev) => ({
       ...prev,
@@ -419,7 +458,7 @@ function ComposerForm({
       qa: prev.qa || presetScenarioIds.size > 0,
       instruction: prev.instruction || validInstructions.length > 0,
     }))
-  }, [])
+  }, [passages, sentences, scenarios, instructions, presetRefreshed])
 
   const { scenarios: selectedScenarios, problems: selectionProblems } =
     inspectSelection(types, selection, {
@@ -451,6 +490,12 @@ function ComposerForm({
   const scenarioQuestions = selectedScenarios.flatMap(
     (scenario) => scenario.questions,
   )
+  // 题目级白名单（批量导入带入组卷时非空）：只出白名单内的问答题，
+  // 避免勾选主题就混入同主题全部旧题
+  const filteredScenarioQuestions =
+    selection.questions.length > 0
+      ? scenarioQuestions.filter((q) => selection.questions.includes(q.id))
+      : scenarioQuestions
 
   // 唯一题单：预览 / 数量摘要 / 提交请求共用同一份「按启用题型过滤后的题单」，
   // 避免教师取消勾选某题型后，预览或提交仍带上该题型已选内容。
@@ -463,7 +508,7 @@ function ComposerForm({
         ? selection.sentences.map((id) => ({ type: "repeat", id }))
         : [],
       types.qa && selection.scenarioIds.length > 0
-        ? scenarioQuestions.map((q) => ({ type: "question", id: q.id }))
+        ? filteredScenarioQuestions.map((q) => ({ type: "question", id: q.id }))
         : [],
       types.instruction
         ? selection.instructions.map((id) => ({ type: "instruction", id }))
@@ -756,6 +801,28 @@ function ComposerForm({
               }
             />
           )}
+          {types.qa && selection.questions.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl bg-secondary/60 p-2 text-sm">
+              <span>
+                {t({
+                  zh: `已按「带入组卷」只出本批新建题（${filteredScenarioQuestions.length}/${scenarioQuestions.length} 题）`,
+                  en: `Batch filter on: ${filteredScenarioQuestions.length} of ${scenarioQuestions.length} questions`,
+                })}
+              </span>
+              <Button
+                variant="outline"
+                className="h-9"
+                onClick={() =>
+                  setSelectionDirty((cur) => ({ ...cur, questions: [] }))
+                }
+              >
+                {t({
+                  zh: "改为出主题全部题目",
+                  en: "Include all topic questions",
+                })}
+              </Button>
+            </div>
+          )}
           {types.qa && (
             <ScenariosSection
               sectionNo={qaNo ?? 0}
@@ -881,5 +948,13 @@ function currentQuestionCount(
 ): number {
   return scenarios
     .filter((scenario) => selection.scenarioIds.includes(scenario.id))
-    .reduce((count, scenario) => count + scenario.questions.length, 0)
+    .reduce(
+      (count, scenario) =>
+        count +
+        (selection.questions.length > 0
+          ? scenario.questions.filter((q) => selection.questions.includes(q.id))
+              .length
+          : scenario.questions.length),
+      0,
+    )
 }
