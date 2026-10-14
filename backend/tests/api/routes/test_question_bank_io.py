@@ -784,6 +784,9 @@ def test_export_xlsx_rejects_overlong_text(client: TestClient, db: Session) -> N
     assert resp.status_code == 422
     assert "32767" in resp.json()["detail"]
     assert "CSV" in resp.json()["detail"]
+    # 字段名必须是真实列名而非误引用（曾打印 <function field ...>）
+    assert "的text超过" in resp.json()["detail"]
+    assert "<function" not in resp.json()["detail"]
 
     resp = client.get(f"{QB}/export?format=csv", headers=headers)
     assert resp.status_code == 200, resp.text
@@ -987,6 +990,232 @@ def test_excel_resource_caps(client: TestClient, db: Session) -> None:
     )
     assert resp.status_code == 422
     assert "行数超过上限" in resp.json()["detail"]
+
+
+# ── 第二轮评审回归 ───────────────────────────────────────────────────
+
+
+def test_csv_guard_roundtrip_reversible(client: TestClient, db: Session) -> None:
+    """公式防护前缀可逆：以 - / = 开头的内容导出→回导不变形、不新增重复。"""
+    headers = _login_teacher(db, client)
+    file = _csv_file(
+        [
+            {
+                "__type__": "题目说明",
+                "text": "- Explain your choice.",
+                "suggested_seconds": "30",
+            },
+            {
+                "__type__": "题目说明",
+                "text": "= not a formula",
+                "suggested_seconds": "20",
+            },
+        ]
+    )
+    resp = _upload(client, headers, file, confirm=True)
+    assert resp.json()["sheets"][0]["created"] == 2, resp.text
+
+    export = client.get(f"{QB}/export?format=csv", headers=headers)
+    assert export.status_code == 200, export.text
+    text = export.content.decode("utf-8-sig")
+    assert "'- Explain your choice." in text  # 导出侧确有防护前缀
+
+    body = _preview(client, headers, export.content, filename="export.csv")
+    counts = {s["type"]: s for s in body["sheets"]}["instruction"]
+    assert counts["exact_duplicate_count"] >= 2, body  # unguard 还原后判重
+    assert counts["valid_count"] == 0
+    assert counts["suspected_duplicate_count"] == 0
+
+    instructions = {i.text for i in _new_rows(db, Instruction)}
+    assert "- Explain your choice." in instructions  # 库内内容未被前缀污染
+    assert "= not a formula" in instructions
+
+
+def test_repeat_ghost_linkage_reupload_exact_dup(
+    client: TestClient, db: Session
+) -> None:
+    """挂靠篇目找不到而降级独立句后，重传同文件应判完全重复（cfg 用最终
+    关联），勾选疑似导入也不会建出第二条相同独立句。"""
+    headers = _login_teacher(db, client)
+    file = _csv_file(
+        [
+            {
+                "__type__": "听句复述",
+                "text": "Ghost linked sentence.",
+                "passage_title": "Ghost",
+            }
+        ]
+    )
+    resp = _upload(client, headers, file, confirm=True)
+    assert resp.json()["sheets"][0]["created"] == 1
+
+    body = _preview(client, headers, file)
+    counts = body["sheets"][0]
+    assert counts["exact_duplicate_count"] == 1, body
+    assert counts["suspected_duplicate_count"] == 0
+
+    resp = _upload(client, headers, file, confirm=True, include_suspected=True)
+    assert resp.json()["sheets"][0]["created"] == 0
+    assert len(_new_rows(db, RepeatSentence)) == 1
+
+
+def test_scenario_exact_match_first_and_case_collision(
+    client: TestClient, db: Session
+) -> None:
+    """库内 Travel/travel 并存：精确名优先；大小写都不同的写法命中多个 →
+    行级报错，绝不静默挑一个。"""
+    headers = _login_teacher(db, client)
+    upper = Scenario(topic="Travel")
+    lower = Scenario(topic="travel")
+    db.add(upper)
+    db.add(lower)
+    db.commit()
+    db.refresh(upper)
+    db.refresh(lower)
+
+    # 精确命中：文件写 Travel → 进 Travel（不被规范化字典覆盖到 travel）
+    file = _csv_file([{**QUESTION_ROW, "topic": "Travel", "text": "Exact match?"}])
+    resp = _upload(client, headers, file, confirm=True)
+    assert resp.json()["sheets"][0]["created"] == 1
+    question = db.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.text == "Exact match?")
+    ).one()
+    assert question.scenario_id == upper.id
+
+    # 规范化命中多个（TRAVEL）→ 行级错误
+    file = _csv_file([{**QUESTION_ROW, "topic": "TRAVEL", "text": "Ambiguous case?"}])
+    body = _preview(client, headers, file)
+    assert body["total_valid"] == 0
+    assert any("多个大小写不同的同名主题" in i["reason"] for i in body["issues"])
+
+    # 精确命中小写主题
+    file = _csv_file([{**QUESTION_ROW, "topic": "travel", "text": "Lower exact?"}])
+    resp = _upload(client, headers, file, confirm=True)
+    assert resp.json()["sheets"][0]["created"] == 1
+    question = db.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.text == "Lower exact?")
+    ).one()
+    assert question.scenario_id == lower.id
+
+
+def _strip_xlsx_dimension(data: bytes) -> bytes:
+    """去掉工作表 XML 的 dimension 声明：模拟无尺寸声明的合法 xlsx
+    （max_row/max_column 为 None，声明预检必须被逐行实测兜底）。"""
+    import re as re_mod
+    import zipfile
+
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(data)) as zin, zipfile.ZipFile(out, "w") as zout:
+        for item in zin.infolist():
+            content = zin.read(item.filename)
+            if item.filename.startswith("xl/worksheets/") and item.filename.endswith(
+                ".xml"
+            ):
+                content = re_mod.sub(rb"<dimension[^>]*/>", b"", content)
+            zout.writestr(item, content)
+    return out.getvalue()
+
+
+def test_xlsx_column_cap_without_dimension(client: TestClient, db: Session) -> None:
+    """无尺寸声明的 100 列文件绕不过列上限：逐行实测列数兜底。"""
+    headers = _login_teacher(db, client)
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+    sheet = workbook.create_sheet("文章朗读")
+    sheet.append(["标题", "正文"] + [""] * 98)
+    sheet.append(["No dimension", "Column cap via row width."])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    raw = _strip_xlsx_dimension(buffer.getvalue())
+
+    resp = _upload(
+        client,
+        headers,
+        raw,
+        filename="nodim.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    assert resp.status_code == 422
+    assert "列" in resp.json()["detail"]
+    assert "100" in resp.json()["detail"]
+
+
+def test_csv_invalid_rows_count_toward_cap(client: TestClient, db: Session) -> None:
+    """无效题型行也计入行数上限：2001 行全无效 → 422，不再绕过。"""
+    headers = _login_teacher(db, client)
+    rows = [{"__type__": "不存在题型", "text": f"Invalid {i}"} for i in range(2001)]
+    resp = _upload(client, headers, _csv_file(rows))
+    assert resp.status_code == 422
+    assert "行数超过上限" in resp.json()["detail"]
+
+
+def test_csv_huge_field_parses(client: TestClient, db: Session) -> None:
+    """超长字段（> csv 默认 128KB 上限）解析不 500：field_size_limit 已抬高。"""
+    headers = _login_teacher(db, client)
+    huge = "a" * 200_000
+    file = _csv_file([{"__type__": "文章朗读", "title": "Huge field", "text": huge}])
+    resp = _upload(client, headers, file)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["total_valid"] == 1
+
+
+def test_export_capped_at_reimportable_rows(client: TestClient, db: Session) -> None:
+    """导出上限与导入一致（2000）：超出即 422 提示分批——导出的文件必须
+    始终可直接回导。"""
+    headers = _login_teacher(db, client)
+    scenario = Scenario(topic="Export Cap Topic")
+    db.add(scenario)
+    db.commit()
+    db.refresh(scenario)
+    for start in (0, 1000):
+        items = [
+            {"text": f"Cap question {start + i}?", "suggested_seconds": 20}
+            for i in range(1000)
+        ]
+        resp = client.post(
+            f"/api/v1/admin/scenarios/{scenario.id}/questions/batch",
+            json={"items": items},
+            headers=headers,
+        )
+        assert resp.status_code == 200, resp.text
+    # 批量端点单批上限 1000：第 2001 条走单题接口补足
+    resp = client.post(
+        f"/api/v1/admin/scenarios/{scenario.id}/questions",
+        json={"text": "Cap question 2000?", "suggested_seconds": 20},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = client.get(f"{QB}/export?types=question", headers=headers)
+    assert resp.status_code == 422
+    assert "2000" in resp.json()["detail"]
+    assert "分批" in resp.json()["detail"]
+
+
+def test_in_batch_same_text_passages_suspected(client: TestClient, db: Session) -> None:
+    """批内两篇不同标题、相同正文：第二篇应判疑似（不只查库内正文）。"""
+    headers = _login_teacher(db, client)
+    file = _csv_file(
+        [
+            {
+                "__type__": "文章朗读",
+                "title": "First title",
+                "text": "Identical body across titles.",
+            },
+            {
+                "__type__": "文章朗读",
+                "title": "Second title",
+                "text": "Identical body across titles.",
+            },
+        ]
+    )
+    body = _preview(client, headers, file)
+    counts = body["sheets"][0]
+    assert counts["valid_count"] == 1
+    assert counts["suspected_duplicate_count"] == 1, body
+    assert "相同正文已存在于其他篇目" in body["suspected"][0]["reason"]
 
 
 # ── 权限 ─────────────────────────────────────────────────────────────

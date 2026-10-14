@@ -95,3 +95,27 @@ test("题库批量导入：上传 CSV → 预览 → 确认 → 重传防重", a
   await expect(includeToggle).toBeVisible()
   await expect(includeToggle).not.toBeChecked()
 })
+
+test("导出超长正文提示改用 CSV（blob 错误完整展示）", async ({ page }) => {
+  await loginTeacherDemo(page)
+  // 经 API 造一篇超 Excel 单元格上限（32767）的正文：xlsx 导出必须报错
+  // 且错误经过 blob 拦截器解析后完整展示「改用 CSV」指引（英文界面同链路）
+  const token = await page.evaluate(() => localStorage.getItem("access_token"))
+  const create = await page.request.post("/api/v1/admin/passages", {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { title: "E2E 超长正文（测试用，自动清理）", text: "a".repeat(40000) },
+  })
+  expect(create.ok()).toBeTruthy()
+  const passageId = ((await create.json()) as { id: string }).id
+
+  await page.goto("/create")
+  await page.getByRole("button", { name: /导出题目/ }).click()
+  await page.getByRole("button", { name: /^导出$/ }).click()
+  await expect(page.getByText(/改用 CSV/)).toBeVisible({ timeout: 10_000 })
+  // 字段级细节（Excel 单元格上限）也要透出，不能只剩通用文案
+  await expect(page.getByText(/Excel 单元格/)).toBeVisible()
+
+  await page.request.delete(`/api/v1/admin/passages/${passageId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+})

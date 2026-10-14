@@ -58,9 +58,14 @@ from app.models import (
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_IMPORT_ROWS = 2000
-MAX_EXPORT_ROWS = 20000
+# 导出上限必须与导入上限一致：导出的文件要始终能直接回导（评审 P2 曾出现
+# 2001 行可导出、回导被 2000 行上限拒绝）。更大规模请按题型/主题筛选分批导出
+MAX_EXPORT_ROWS = MAX_IMPORT_ROWS
 MAX_ISSUES = 200
 MAX_SUSPECTED_LISTED = 100
+# csv 模块单字段默认 128KB 上限：长正文导出 CSV 后回导会触发 csv.Error → 500。
+# 抬到上传上限之上，任何能通过 5MB 限制的文件都可解析（_parse_csv 另有兜底 422）
+csv.field_size_limit(MAX_UPLOAD_BYTES + 1024)
 # xlsx 解析资源上限（评审 P1）：按工作表声明范围在读遍历前判定，
 # 防止「只有格式没有内容」的远端单元格把遍历量撑大（表头+说明行余量）
 MAX_SHEET_ROWS = MAX_IMPORT_ROWS + 8
@@ -660,7 +665,8 @@ def _parse_xlsx(raw: bytes) -> ParsedFile:
     行/列上限在读遍历**之前**按工作表声明范围（max_row/max_column）判定：
     只有格式的远端单元格（如整列设置格式）同样会扩大有效区——若读完再数
     数据行，一个 4.9KB 的文件就能让解析器遍历几十万个单元格（评审 P1）。
-    判定过界直接 422，绝不静默截断工作表内容。
+    无尺寸声明的合法文件 max_row/max_column 为 None（声明预检跳过），
+    此时由遍历中的逐行实测兜底：行号上限 + 实际列数上限。
     """
     from openpyxl import load_workbook
 
@@ -700,14 +706,25 @@ def _parse_xlsx(raw: bytes) -> ParsedFile:
             header_done = False
             col_map: dict[int, str] = {}
             qtype: str | None = None
-            for r_idx, row in enumerate(
-                sheet.iter_rows(values_only=True, max_row=max_row), start=1
-            ):
-                # 防御声明范围偏小的畸形文件：实际行数超界立即拒绝
+            # max_row=0（无尺寸声明）时不能下传 max_row——会一个单元格都不产出
+            iter_kwargs: dict[str, Any] = {"values_only": True}
+            if max_row:
+                iter_kwargs["max_row"] = max_row
+            for r_idx, row in enumerate(sheet.iter_rows(**iter_kwargs), start=1):
+                # 防御声明范围偏小/缺失的畸形文件：实际行数超界立即拒绝
                 if r_idx > MAX_SHEET_ROWS:
                     raise HTTPException(
                         status_code=422,
                         detail=f"行数超过上限（{MAX_IMPORT_ROWS} 行），请分批导入",
+                    )
+                # 无尺寸声明（max_column=None）时声明预检失效：逐行实测列数
+                if len(row) > MAX_SHEET_COLUMNS:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            f"工作表「{sheet_name}」有 {len(row)} 列，超过 "
+                            f"{MAX_SHEET_COLUMNS} 列上限，请使用标准模板的列"
+                        ),
                     )
                 row_cells = tuple(_cell_str(c) for c in row)
                 if not any(row_cells):
@@ -768,46 +785,58 @@ def _parse_csv(raw: bytes) -> ParsedFile:
     issues: list[QuestionBankImportIssue] = []
     checked_types: set[str] = set()
     any_content = False
-    for r_idx, raw_row in enumerate(reader, start=1):
-        row_cells = tuple(c.strip() for c in raw_row)
-        if not any(row_cells):
-            continue
-        any_content = True
-        if header is None:
-            header = list(row_cells)
-            col_map = _map_header(header)
-            type_col = next((c for c, f in col_map.items() if f == "__type__"), None)
-            if type_col is None:
-                raise HTTPException(status_code=422, detail="CSV 缺少题型列")
-            fields_present = set(col_map.values())
-            continue
-        if len(rows) + 1 > MAX_IMPORT_ROWS:
-            raise HTTPException(
-                status_code=422,
-                detail=f"行数超过上限（{MAX_IMPORT_ROWS} 行），请分批导入",
-            )
-        assert type_col is not None
-        type_cell = row_cells[type_col] if type_col < len(row_cells) else ""
-        if not type_cell:
-            issues.append(
-                QuestionBankImportIssue(type="-", line=r_idx, reason="题型不能为空")
-            )
-            continue
-        qtype = _match_sheet_type(type_cell)
-        if qtype is None:
-            issues.append(
-                QuestionBankImportIssue(
-                    type="-", line=r_idx, reason=f"题型列的值无效：{type_cell}"
+    # 数据行计数包含无效行（题型空/无效）——只数成功识别的行会让
+    # 2001 行全无效的文件绕过行数上限（评审 P2）
+    data_rows = 0
+    try:
+        for r_idx, raw_row in enumerate(reader, start=1):
+            # 还原导出时的公式防护前缀（见 _csv_unguard）：往返必须无损
+            row_cells = tuple(_csv_unguard(c.strip()) for c in raw_row)
+            if not any(row_cells):
+                continue
+            any_content = True
+            if header is None:
+                header = list(row_cells)
+                col_map = _map_header(header)
+                type_col = next(
+                    (c for c, f in col_map.items() if f == "__type__"), None
                 )
+                if type_col is None:
+                    raise HTTPException(status_code=422, detail="CSV 缺少题型列")
+                fields_present = set(col_map.values())
+                continue
+            data_rows += 1
+            if data_rows > MAX_IMPORT_ROWS:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"行数超过上限（{MAX_IMPORT_ROWS} 行），请分批导入",
+                )
+            assert type_col is not None
+            type_cell = row_cells[type_col] if type_col < len(row_cells) else ""
+            if not type_cell:
+                issues.append(
+                    QuestionBankImportIssue(type="-", line=r_idx, reason="题型不能为空")
+                )
+                continue
+            qtype = _match_sheet_type(type_cell)
+            if qtype is None:
+                issues.append(
+                    QuestionBankImportIssue(
+                        type="-", line=r_idx, reason=f"题型列的值无效：{type_cell}"
+                    )
+                )
+                continue
+            if qtype not in checked_types:
+                checked_types.add(qtype)
+                _require_columns_csv(qtype, fields_present)
+            cells = _row_cells(
+                {c: f for c, f in col_map.items() if f != "__type__"}, row_cells
             )
-            continue
-        if qtype not in checked_types:
-            checked_types.add(qtype)
-            _require_columns_csv(qtype, fields_present)
-        cells = _row_cells(
-            {c: f for c, f in col_map.items() if f != "__type__"}, row_cells
-        )
-        rows.append(_RawRow(qtype=qtype, line=r_idx, cells=cells))
+            rows.append(_RawRow(qtype=qtype, line=r_idx, cells=cells))
+    except csv.Error as exc:
+        # field_size_limit 已抬高到上传上限之上，此处理论不可达——保留
+        # 防御：任何 csv 模块级错误都以 422 呈现，绝不 500
+        raise HTTPException(status_code=422, detail="CSV 字段过大，无法解析") from exc
     if not any_content:
         raise HTTPException(status_code=422, detail="文件为空")
     return ParsedFile(rows=rows, issues=issues)
@@ -867,7 +896,10 @@ class _Ref:
     root_passages_by_norm: dict[str, list[Passage]]
     passage_exact: dict[tuple[str, str], list[tuple[Any, ...]]]
     passage_texts: set[str]
-    scenario_by_norm: dict[str, Scenario]
+    # 主题匹配：精确优先。规范化字典允许 Travel/travel 并存（后者不覆盖
+    # 前者）；规范化命中多个时由调用方报行级错误，绝不静默选一个
+    scenarios_by_exact: dict[str, Scenario]
+    scenarios_by_norm: dict[str, list[Scenario]]
     question_exact: dict[tuple[str, str], list[tuple[Any, ...]]]
     question_texts: dict[str, set[str]]
     sentence_configs: dict[str, list[tuple[Any, ...]]]
@@ -915,7 +947,10 @@ def _load_reference(session: Session) -> _Ref:
         passage_exact.setdefault(key, []).append(cfg)
         passage_texts.add(key[1])
 
-    scenario_by_norm = {_norm_text(s.topic): s for s in scenarios}
+    scenarios_by_exact = {s.topic: s for s in scenarios}
+    scenarios_by_norm: dict[str, list[Scenario]] = {}
+    for s in scenarios:
+        scenarios_by_norm.setdefault(_norm_text(s.topic), []).append(s)
     topic_by_scenario = {s.id: s.topic for s in scenarios}
     question_exact: dict[tuple[str, str], list[tuple[Any, ...]]] = {}
     question_texts: dict[str, set[str]] = {}
@@ -975,7 +1010,8 @@ def _load_reference(session: Session) -> _Ref:
         root_passages_by_norm=root_passages_by_norm,
         passage_exact=passage_exact,
         passage_texts=passage_texts,
-        scenario_by_norm=scenario_by_norm,
+        scenarios_by_exact=scenarios_by_exact,
+        scenarios_by_norm=scenarios_by_norm,
         question_exact=question_exact,
         question_texts=question_texts,
         sentence_configs=sentence_configs,
@@ -1061,6 +1097,7 @@ def _plan_passages(
 ) -> None:
     counts = plan.counts[TYPE_PASSAGE]
     planned_exact: dict[tuple[str, str], list[tuple[Any, ...]]] = {}
+    planned_texts: set[str] = set()
     for row in rows:
         try:
             payload = _build_passage(row.cells)
@@ -1118,7 +1155,8 @@ def _plan_passages(
             )
             if not include_suspected:
                 continue
-        elif n_text in ref.passage_texts:
+        elif n_text in ref.passage_texts or n_text in planned_texts:
+            # 批内正文集合也要查：同批两篇不同标题、相同正文 → 第二篇疑似
             counts.suspected += 1
             plan.suspected_rows.append(
                 _issue(TYPE_PASSAGE, row.line, "疑似重复：相同正文已存在于其他篇目")
@@ -1130,6 +1168,7 @@ def _plan_passages(
         counts.valid += 1
         plan.creates[TYPE_PASSAGE].append(_CreateItem(line=row.line, payload=payload))
         planned_exact.setdefault(key, []).append(cfg)
+        planned_texts.add(n_text)
 
 
 def _plan_repeats(
@@ -1150,29 +1189,13 @@ def _plan_repeats(
             plan.issues.append(_issue(TYPE_REPEAT, row.line, exc.reason))
             continue
         n_text = _norm_text(payload["text"])
-        cfg = (
-            _norm_text(payload["translation"] or ""),
-            payload["suggested_seconds"],
-            payload["replay_limit"],
-            payload["exam_kind"] or "",
-            payload["exam_level"] or "",
-            _norm_text(payload["passage_title"] or ""),
-            payload["audio_url"] or "",
-        )
-        db_cfgs = ref.sentence_configs.get(n_text, [])
-        planned_cfgs = planned_configs.get(n_text, [])
-        if db_cfgs or planned_cfgs:
-            if cfg in db_cfgs or cfg in planned_cfgs:
-                counts.exact_dup += 1
-                continue
-            counts.suspected += 1
-            plan.suspected_rows.append(
-                _issue(TYPE_REPEAT, row.line, "疑似重复：相同句子已存在但配置不同")
-            )
-            if not include_suspected:
-                continue
+        # 挂靠解析必须先于查重：cfg 的挂靠分量要用**落库后的最终关联**——
+        # 命中库内/本批篇目 → 规范化篇目标题；找不到而降级独立句 → 空串
+        # （与库内独立句的 cfg 一致）。否则「挂靠 Ghost」首次导入成独立句后，
+        # 重传同文件会因 cfg 不匹配被误判疑似、勾选后建出重复独立句（评审 P2）
         passage_id: uuid.UUID | None = None
         planned_title: str | None = None
+        linkage_norm = ""
         if payload["passage_title"] is not None:
             n_title = _norm_text(payload["passage_title"])
             existing_hits = len(ref.root_passages_by_norm.get(n_title, []))
@@ -1189,10 +1212,33 @@ def _plan_repeats(
                 continue
             if existing_hits == 1:
                 passage_id = ref.root_passages_by_norm[n_title][0].id
+                linkage_norm = n_title
             elif planned_hits == 1:
                 planned_title = n_title
+                linkage_norm = n_title
             else:
                 plan.standalone_sentence_count += 1
+        cfg = (
+            _norm_text(payload["translation"] or ""),
+            payload["suggested_seconds"],
+            payload["replay_limit"],
+            payload["exam_kind"] or "",
+            payload["exam_level"] or "",
+            linkage_norm,
+            payload["audio_url"] or "",
+        )
+        db_cfgs = ref.sentence_configs.get(n_text, [])
+        planned_cfgs = planned_configs.get(n_text, [])
+        if db_cfgs or planned_cfgs:
+            if cfg in db_cfgs or cfg in planned_cfgs:
+                counts.exact_dup += 1
+                continue
+            counts.suspected += 1
+            plan.suspected_rows.append(
+                _issue(TYPE_REPEAT, row.line, "疑似重复：相同句子已存在但配置不同")
+            )
+            if not include_suspected:
+                continue
         if not payload["audio_url"]:
             counts.missing_audio += 1
         counts.valid += 1
@@ -1252,7 +1298,23 @@ def _plan_questions(
             plan.suspected_rows.append(_issue(TYPE_QUESTION, row.line, reason))
             if not include_suspected:
                 continue
-        scenario = ref.scenario_by_norm.get(n_topic)
+        # 主题解析精确优先：库内允许 Travel/travel 并存，规范化字典只作
+        # 兜底；规范化命中多个时报行级错误，绝不静默挑一个（评审 P2）
+        scenario = ref.scenarios_by_exact.get(payload["topic"])
+        if scenario is None:
+            candidates = ref.scenarios_by_norm.get(n_topic, [])
+            if len(candidates) > 1:
+                counts.invalid += 1
+                plan.issues.append(
+                    _issue(
+                        TYPE_QUESTION,
+                        row.line,
+                        "主题匹配到多个大小写不同的同名主题，请使用与题库完全一致的主题名",
+                    )
+                )
+                continue
+            if len(candidates) == 1:
+                scenario = candidates[0]
         if scenario is None and n_topic not in new_topic_map:
             new_topic_map[n_topic] = payload["topic"]
             plan.new_topics.append(payload["topic"])
@@ -1527,7 +1589,8 @@ GUIDE_LINES = (
     "音频 Audio：先导入文字，再在题目编辑里上传音频文件；「音频链接」列只填本站链接",
     "Import text first, then upload audio files in the question editor; the Audio column only accepts this site's links",
     "",
-    "上限 Limits：2000 行 / 5MB",
+    "上限 Limits：导入 2000 行 / 5MB；导出同为 2000 行（超出请按题型/主题分批导出）",
+    "Limits: import 2000 rows / 5MB; exports share the same 2000-row cap (split by type/topic when larger)",
     "编码 Encoding：Excel(.xlsx) 直接上传；CSV 需 UTF-8（推荐用本站下载的 CSV 模板）",
     "",
     "注意：本模板用于题目内容交换，不是完整备份——拆句朗读、逐题计时、题目说明的考试音频等高级配置不入模板，导入后如需请在题目编辑页设置",
@@ -1773,6 +1836,19 @@ def _csv_guard(value: str) -> str:
     return value
 
 
+def _csv_unguard(cell: str) -> str:
+    """_csv_guard 的逆运算：还原导出时加的公式防护前缀。
+
+    规则与 guard 严格镜像——仅当首字符是 `'` 且第二字符属于危险字符集时
+    才剥掉前缀（内容本就以 `'=` 开头的概率极低，且 Excel 中该写法本来就
+    表示转义）。没有这一步，导出→导入会永久改变以 - / = / + 开头的
+    题干并凭空新增重复题（评审 P2："- Explain your choice." → "'- …"）。
+    """
+    if len(cell) >= 2 and cell[0] == "'" and cell[1] in "=+-@\t\r":
+        return cell[1:]
+    return cell
+
+
 def _csv_bytes(rows: list[list[str]]) -> bytes:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
@@ -1821,7 +1897,10 @@ def export_bank(
     if total > MAX_EXPORT_ROWS:
         raise HTTPException(
             status_code=422,
-            detail=f"导出行数超过上限（{MAX_EXPORT_ROWS}），请缩小筛选范围",
+            detail=(
+                f"导出行数超过上限（{MAX_EXPORT_ROWS} 行），请按题型/主题等筛选分批导出"
+                "（导出文件保持可直接回导）"
+            ),
         )
 
     date_tag = get_datetime_utc().date().isoformat()
@@ -1992,14 +2071,14 @@ def _export_xlsx(rows_by_type: dict[str, list[dict[str, str]]]) -> bytes:
     # 导出必须无损，先整体校验再生成（评审 P2：截断后仍返回成功）
     for qtype in QUESTION_BANK_TYPE_ORDER:
         for row in rows_by_type.get(qtype, []):
-            for _field_name, value in row.items():
+            for field_key, value in row.items():
                 if len(value) > EXCEL_CELL_MAX_CHARS:
                     label = TYPE_LABELS[qtype]
                     raise HTTPException(
                         status_code=422,
                         detail=(
                             f"{label}「{row.get('title') or row.get('text', '')[:30]}」"
-                            f"的{field}超过 Excel 单元格 {EXCEL_CELL_MAX_CHARS} 字符上限，"
+                            f"的{field_key}超过 Excel 单元格 {EXCEL_CELL_MAX_CHARS} 字符上限，"
                             "请改用 CSV 格式导出（无此限制，内容无损）"
                         ),
                     )

@@ -102,6 +102,13 @@ export function localizeQuestionImportIssue(reason: string): BiString {
         { zh: "难度无效，可选：A2/B1/B2", en: "Invalid level; use A2/B1/B2" },
       ],
       [
+        /^主题匹配到多个大小写不同的同名主题，请使用与题库完全一致的主题名$/,
+        {
+          zh: "主题匹配到多个大小写不同的同名主题，请使用与题库完全一致的主题名",
+          en: "Several topics share this name with different casing; use the exact topic name from the bank",
+        },
+      ],
+      [
         /^(建议秒数|作答秒数|秒数|可听次数|准备秒数)需为 (\d+)–(\d+) 之间的整数$/,
         (m) => ({
           zh: m[0],
@@ -304,6 +311,13 @@ export function matchQuestionBankDetail(detail: string): BiString | null {
       { zh: "CSV 缺少「题型」列", en: "CSV is missing the Type column" },
     ],
     [
+      /^CSV 字段过大，无法解析$/,
+      {
+        zh: "CSV 字段过大，无法解析",
+        en: "A CSV field is too large to parse; split the file",
+      },
+    ],
+    [
       /^CSV 表头缺少(.+)必填列：(.+)$/,
       {
         zh: "CSV 表头缺少必填列",
@@ -331,8 +345,8 @@ export function matchQuestionBankDetail(detail: string): BiString | null {
     [
       /^导出行数超过上限/,
       {
-        zh: "导出行数过多，请缩小筛选范围",
-        en: "Too many rows to export; narrow the filters",
+        zh: "导出行数超过上限（2000 行），请按题型/主题分批导出（导出文件可直接回导）",
+        en: "Export capped at 2000 rows; split by question type/topic (exports stay re-importable)",
       },
     ],
     [
