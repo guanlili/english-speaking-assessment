@@ -495,6 +495,60 @@ class InstructionAck(SQLModel, table=True):
     )
 
 
+# ── 题库批量导入导出（2026-10-14：老师自助录题）──────────────────────
+# 模板下载 → Excel/CSV 上传 → 预览（不落库）→ 确认导入（单事务）。
+# 只写现有四张题型表、只 INSERT 不 UPDATE；详细口径见 services/question_bank_io.py。
+QUESTION_BANK_TYPES = ("passage", "repeat", "question", "instruction")
+
+
+class QuestionBankTypeCount(SQLModel):
+    """预览：单个题型工作表的分类计数。"""
+
+    type: str  # QUESTION_BANK_TYPES 之一
+    valid_count: int  # 将新建（默认不含疑似重复）
+    exact_duplicate_count: int  # 完全重复，导入时自动跳过
+    suspected_duplicate_count: int  # 疑似重复，需老师确认是否导入
+    missing_audio_count: int  # 将新建且缺音频的题数（信息性提示，不阻断）
+
+
+class QuestionBankImportIssue(SQLModel):
+    """行级问题定位：题型（即工作表）+ 行号 + 中文稳定标识原因（前端双语映射）。"""
+
+    type: str
+    line: int
+    reason: str
+
+
+class QuestionBankImportPreview(SQLModel):
+    sheets: list[QuestionBankTypeCount]  # 只列文件中出现的题型
+    issues: list[QuestionBankImportIssue]
+    issues_truncated: bool
+    suspected: list[QuestionBankImportIssue]  # 疑似重复逐行明细（确认开关的依据）
+    suspected_truncated: bool
+    new_topics: list[str]  # 将自动新建的问答主题
+    unit_fallback_count: int  # 单元未匹配、按无单元导入的篇目数
+    standalone_sentence_count: int  # 挂靠篇目未匹配、按独立句导入的句数
+    total_valid: int
+
+
+class QuestionBankImportTypeResult(SQLModel):
+    """确认导入：单个题型的落库结果。"""
+
+    type: str
+    created: int
+    skipped_duplicate: int
+    skipped_suspected: int  # 未勾选「导入疑似重复」而被排除的行数
+    skipped_invalid: int
+    missing_audio_count: int
+
+
+class QuestionBankImportResult(SQLModel):
+    sheets: list[QuestionBankImportTypeResult]
+    created_topics: list[str]
+    issues: list[QuestionBankImportIssue]
+    missing_audio_total: int
+
+
 # 课堂码即弱密码（PRD §8.5）：无账号体系，泄露只影响一个班的成绩可见性
 class Classroom(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

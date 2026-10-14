@@ -19,6 +19,8 @@ dependencies = [
     "sentry-sdk[fastapi]>=2.0.0,<3.0.0",
     "pyjwt<3.0.0,>=2.13.0",
     "pwdlib[argon2,bcrypt]>=0.3.0",
+    # 题库批量导入导出：xlsx 模板生成与解析（纯 Python，无编译依赖）
+    "openpyxl>=3.1.5,<4.0.0",
 ]
 
 [dependency-groups]

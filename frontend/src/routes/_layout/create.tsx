@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { ArrowLeft } from "lucide-react"
 import { useState } from "react"
+import { QuestionBankIoCard } from "@/components/QuestionBank/BankIoCard"
 import { SentenceLibrary } from "@/components/Teaching/SentenceLibrary"
 import { TeachingPageHeader } from "@/components/Teaching/TeachingPageHeader"
 import { Button } from "@/components/ui/button"
@@ -88,6 +89,9 @@ function QuestionLibrary() {
           </a>
         ))}
       </nav>
+
+      {/* 批量导入导出入口：普通教师自助录题（2026-10 本期范围） */}
+      <QuestionBankIoCard />
 
       {/* 第 1 层：主题（单元） */}
       <section
