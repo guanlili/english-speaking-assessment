@@ -11,7 +11,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.main import app
 from app.models import (
@@ -267,8 +267,12 @@ def test_plain_items_keep_old_meaning(
     from tests.utils.credential import make_student
 
     scenario = db.exec(select(Scenario)).first()
-    question = db.exec(select(ScenarioQuestion)).first()
-    sentence = db.exec(select(RepeatSentence)).first()
+    question = db.exec(
+        select(ScenarioQuestion).where(col(ScenarioQuestion.exam_kind).is_(None))
+    ).first()
+    sentence = db.exec(
+        select(RepeatSentence).where(col(RepeatSentence.exam_kind).is_(None))
+    ).first()
     if scenario is None or question is None or sentence is None:
         return  # 演示种子被其他用例清空时跳过（种子完整性由其他用例保证）
 

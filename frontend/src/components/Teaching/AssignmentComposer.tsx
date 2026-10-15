@@ -3,7 +3,6 @@ import { BookOpenText, Ear, Info, MessagesSquare } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
-  AdminService,
   type AssignmentInfo,
   type AssignmentItemIn,
   ClassesService,
@@ -13,6 +12,7 @@ import {
   type ScenarioOut,
   type SentenceWithPassage,
 } from "@/client"
+import { CatalogControls } from "@/components/Teaching/AssignmentComposer/CatalogControls"
 import InstructionsSection from "@/components/Teaching/AssignmentComposer/InstructionsSection"
 import OrderSection from "@/components/Teaching/AssignmentComposer/OrderSection"
 import PassagesSection from "@/components/Teaching/AssignmentComposer/PassagesSection"
@@ -37,6 +37,11 @@ import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { NumberInput } from "@/components/ui/number-input"
 import {
+  type ComposerLibrary,
+  useComposerLibrary,
+} from "@/hooks/useComposerLibrary"
+import { useComposerPreset } from "@/hooks/useComposerPreset"
+import {
   assignmentItemKey,
   defaultAssignmentOrder,
   moveAssignmentItem,
@@ -52,14 +57,6 @@ import { COMPOSER_PRESET_KEY } from "@/lib/questionImport"
 import { normalizeReadingSelection } from "@/lib/reading-selection"
 import { TERMS } from "@/lib/terms"
 import { extractErrorMessage } from "@/utils"
-
-/** 预选刷新涉及的全部题库查询键（成功判据逐个核对 dataUpdatedAt） */
-const PRESET_QUERY_KEYS = [
-  ["admin", "passages"],
-  ["admin", "sentences"],
-  ["admin", "scenarios"],
-  ["admin", "instructions"],
-] as const
 
 const questionTypes = [
   {
@@ -116,101 +113,40 @@ export function AssignmentComposer({
   onViewHistory?: (exerciseId: string) => void
 }) {
   const { t } = useI18n()
-  // 各题型互相独立：各自的题库列表分别加载
-  const passagesQuery = useQuery({
-    queryKey: ["admin", "passages"],
-    queryFn: () => AdminService.listPassages(),
-  })
-  const sentencesQuery = useQuery({
-    queryKey: ["admin", "sentences"],
-    queryFn: () => AdminService.listSentencesFlat(),
-  })
-  const scenariosQuery = useQuery({
-    queryKey: ["admin", "scenarios"],
-    queryFn: () => AdminService.listScenarios(),
-  })
-  const instructionsQuery = useQuery({
-    queryKey: ["admin", "instructions"],
-    queryFn: () => AdminService.listInstructions(),
-  })
+  const library = useComposerLibrary(assignedItems)
   const exercisesQuery = useQuery({
     queryKey: ["teacher", "exercises", code],
     queryFn: () => ClassesService.listClassroomExercises({ code }),
   })
 
-  if (
-    passagesQuery.isError ||
-    sentencesQuery.isError ||
-    scenariosQuery.isError ||
-    instructionsQuery.isError
-  )
-    if (
-      !(
-        passagesQuery.data &&
-        sentencesQuery.data &&
-        scenariosQuery.data &&
-        instructionsQuery.data
-      )
-    )
-      // 有缓存数据时后台刷新失败不应整块报错（离线时组卷要能用缓存渲染，
-      // 「带入组卷」预选的暂缓提示在表单内给出）；完全无数据才走错误态
-      return (
-        <div className="rounded-2xl border p-6">
-          <p>
-            {t({
-              zh: "练习内容加载失败。",
-              en: "Failed to load practice content.",
-            })}
-          </p>
-          <Button
-            className="mt-3"
-            variant="outline"
-            onClick={() => {
-              void passagesQuery.refetch()
-              void sentencesQuery.refetch()
-              void scenariosQuery.refetch()
-              void instructionsQuery.refetch()
-            }}
-          >
-            {t({ zh: "重新加载", en: "Reload" })}
-          </Button>
-        </div>
-      )
-  if (
-    passagesQuery.isPending ||
-    sentencesQuery.isPending ||
-    scenariosQuery.isPending ||
-    instructionsQuery.isPending
-  ) {
-    // 题库刷新悬挂期间 ComposerForm 尚未挂载（预选等待条在表单内）——
-    // 有「带入组卷」交接键时把等待提示提到这一层，老师不会无提示干等
-    const hasPreset = Boolean(sessionStorage.getItem(COMPOSER_PRESET_KEY))
+  if (library.failed)
     return (
-      <div className="space-y-3">
-        {hasPreset && (
-          <p className="rounded-xl bg-secondary/70 p-3 text-sm text-muted-foreground">
-            {t({
-              zh: "正在刷新题库并带入本批题目…（网络较慢时请稍候）",
-              en: "Refreshing the question bank and pre-selecting this batch… (may take a moment on slow networks)",
-            })}
-          </p>
-        )}
-        <p className="rounded-2xl border p-6 text-muted-foreground">
+      <div className="space-y-3 rounded-2xl border p-6">
+        <p>
           {t({
-            zh: "正在加载可用练习…",
-            en: "Loading available practice…",
+            zh: "练习内容加载失败。",
+            en: "Failed to load practice content.",
           })}
         </p>
+        <Button variant="outline" onClick={library.retry}>
+          {t({ zh: "重新加载", en: "Reload" })}
+        </Button>
       </div>
     )
-  }
-
-  // passages/scenarios 列表接口已改分页信封（limit=None 全量，组卷不变）。
-  // ?? [] 兜底：信封缺失（旧 mock/旧缓存）时退化为空列表，不崩 ErrorBoundary。
-  const passages = passagesQuery.data?.data ?? []
-  const sentences = sentencesQuery.data ?? []
-  const scenarios = scenariosQuery.data?.data ?? []
-  const instructions = instructionsQuery.data ?? []
+  if (library.pending)
+    return (
+      <p className="rounded-2xl border p-6 text-muted-foreground">
+        {t({
+          zh: sessionStorage.getItem(COMPOSER_PRESET_KEY)
+            ? "正在刷新题库并带入本批题目…（网络较慢时请稍候）"
+            : "正在加载可用练习…",
+          en: sessionStorage.getItem(COMPOSER_PRESET_KEY)
+            ? "Refreshing the question bank and pre-selecting this batch… (may take a moment on slow networks)"
+            : "Loading available practice…",
+        })}
+      </p>
+    )
+  const { passages, sentences, scenarios, instructions } = library.data
 
   // 当前按题指派回显
   const currentItems = normalizeReadingSelection(
@@ -264,6 +200,8 @@ export function AssignmentComposer({
 
   return (
     <ComposerForm
+      key={code}
+      library={library}
       code={code}
       hasUnitAssignment={Boolean(assignment)}
       unitTitle={assignment?.title}
@@ -288,6 +226,7 @@ export function AssignmentComposer({
 }
 
 function ComposerForm({
+  library,
   code,
   hasUnitAssignment,
   unitTitle,
@@ -306,6 +245,7 @@ function ComposerForm({
   initialIsExam,
   initialExamMinutes,
 }: {
+  library: ComposerLibrary
   code: string
   hasUnitAssignment: boolean
   unitTitle?: string
@@ -405,162 +345,30 @@ function ComposerForm({
     setSelection(next)
   }
 
-  // 题库批量导入「带入组卷」：一次性预选本批新建题目。分两步防「旧缓存
-  // 丢预选」（评审 P2）：① 挂载发现交接键 → invalidate 四个题库查询强制
-  // 刷新（staleTime 内的旧缓存不含刚导入的新题，直接消费会把新题过滤掉
-  // 并删掉交接数据）；② 待本批 ID 全部可解析（或刷新完成后仍缺失）才消费。
-  // 问答按题目白名单带入（selection.questions），不整主题展开混入旧题。
-  const presetDoneRef = useRef(false)
-  const [presetRefreshed, setPresetRefreshed] = useState(false)
-  const [presetBlocked, setPresetBlocked] = useState(false)
-  /** 刷新成功后仍缺失的题目 id（已被删除等）：等老师确认继续用有效题或取消 */
-  const [presetMissing, setPresetMissing] = useState<string[]>([])
-  /** 刷新进行中（含网络悬挂）：给老师可见的等待提示，落地后转入终态 */
-  const [presetWaiting, setPresetWaiting] = useState(false)
-  /** invalidate 起始时刻：刷新成功的判据是 dataUpdatedAt 晚于它（区分
-   * 「请求失败/离线」与「刷新成功但题目确实不在了」，评审 P2） */
-  const presetInvalidatedAtRef = useRef(0)
-  const presetRawRef = useRef<string | null>(null)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 仅挂载时探测交接键并触发一次刷新
+  const selectionSignature = JSON.stringify([
+    ...selection.passages.map((id) => ({ type: "passage", id })),
+    ...selection.sentences.map((id) => ({ type: "repeat", id })),
+    ...selection.scenarioIds.map((id) => ({ type: "scenario", id })),
+    ...selection.instructions.map((id) => ({ type: "instruction", id })),
+  ])
   useEffect(() => {
-    const raw = sessionStorage.getItem(COMPOSER_PRESET_KEY)
-    if (raw) {
-      presetRawRef.current = raw
-      setPresetWaiting(true)
-      presetInvalidatedAtRef.current = Date.now()
-      void Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["admin", "passages"] }),
-        queryClient.invalidateQueries({ queryKey: ["admin", "sentences"] }),
-        queryClient.invalidateQueries({ queryKey: ["admin", "scenarios"] }),
-        queryClient.invalidateQueries({ queryKey: ["admin", "instructions"] }),
-      ]).then(() => setPresetRefreshed(true))
-    }
-  }, [])
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 一次性消费——依赖里只需数据数组与刷新标记；setter 为组件内稳定语义函数
-  useEffect(() => {
-    if (presetDoneRef.current) {
-      return
-    }
-    const raw = sessionStorage.getItem(COMPOSER_PRESET_KEY)
-    if (!raw) {
-      return
-    }
-    let preset: {
-      passages?: string[]
-      sentences?: string[]
-      questions?: string[]
-      instructions?: string[]
-    }
-    try {
-      preset = JSON.parse(raw) as typeof preset
-    } catch {
-      sessionStorage.removeItem(COMPOSER_PRESET_KEY)
-      presetDoneRef.current = true
-      return
-    }
-    const allPresetIds = [
-      ...(preset.passages ?? []),
-      ...(preset.sentences ?? []),
-      ...(preset.questions ?? []),
-      ...(preset.instructions ?? []),
-    ]
-    const knownIds = new Set<string>(
-      [
-        ...passages.map((item) => item.id),
-        ...sentences.map((item) => item.id),
-        ...instructions.map((item) => item.id),
-        ...scenarios.flatMap((scenario) => scenario.questions.map((q) => q.id)),
-      ].filter((id): id is string => Boolean(id)),
-    )
-    // 等 invalidate 落地再判定——id 在**过期缓存**里可解析不代表题还在
-    // （导入后缓存刷新前可能已被删除，评审 P2）
-    if (!presetRefreshed) {
-      return
-    }
-    const missing = allPresetIds.filter((id) => !knownIds.has(id))
-    // invalidate 完成 ≠ 刷新成功：全部查询拿到新数据（dataUpdatedAt 晚于
-    // t0）时，仍缺失 = 题目确实不在了 → 老师确认（继续用有效题/取消）；
-    // 刷新失败（离线）则回落到现有缓存判定——全部 id 在缓存可解析（只是
-    // 可能偏旧）时照常消费，否则暂缓待重试
-    const t0 = presetInvalidatedAtRef.current
-    const allFresh = PRESET_QUERY_KEYS.every((key) => {
-      const state = queryClient.getQueryState(key)
-      return (state?.dataUpdatedAt ?? 0) > t0
-    })
-    if (missing.length === 0) {
-      consumePreset(preset)
-      return
-    }
-    if (allFresh) {
-      setPresetMissing(missing)
-      setPresetWaiting(false)
-      return
-    }
-    setPresetBlocked(true)
-    setPresetWaiting(false)
-  }, [passages, sentences, scenarios, instructions, presetRefreshed])
-
-  /** 消费交接预选（dropIds = 老师确认放弃的缺失项，正常路径为空集） */
-  const consumePreset = (
-    preset: {
-      passages?: string[]
-      sentences?: string[]
-      questions?: string[]
-      instructions?: string[]
-    },
-    dropIds: Set<string> = new Set(),
-  ) => {
-    sessionStorage.removeItem(COMPOSER_PRESET_KEY)
-    presetRawRef.current = null
-    presetDoneRef.current = true
-    setPresetBlocked(false)
-    setPresetMissing([])
-    setPresetWaiting(false)
-    const keep = (id: string) => !dropIds.has(id)
-    const presetScenarioIds = new Set<string>()
-    const validQuestions: string[] = []
-    for (const scenario of scenarios) {
-      for (const q of scenario.questions) {
-        if (preset.questions?.includes(q.id) && keep(q.id)) {
-          presetScenarioIds.add(scenario.id)
-          validQuestions.push(q.id)
-        }
-      }
-    }
-    const validPassages = (preset.passages ?? []).filter(
-      (id) => keep(id) && passages.some((p) => p.id === id),
-    )
-    const validSentences = (preset.sentences ?? []).filter(
-      (id) => keep(id) && sentences.some((s_) => s_.id === id),
-    )
-    const validInstructions = (preset.instructions ?? []).filter(
-      (id) => keep(id) && instructions.some((i) => i.id === id),
-    )
-    setSelectionDirty((prev) => ({
-      passages: [...new Set([...prev.passages, ...validPassages])],
-      sentences: [...new Set([...prev.sentences, ...validSentences])],
-      scenarioIds: [...new Set([...prev.scenarioIds, ...presetScenarioIds])],
-      instructions: [...new Set([...prev.instructions, ...validInstructions])],
-      questions: [...new Set([...prev.questions, ...validQuestions])],
-    }))
-    setTypesDirty((prev) => ({
-      ...prev,
-      reading: prev.reading || validPassages.length > 0,
-      repeat: prev.repeat || validSentences.length > 0,
-      qa: prev.qa || presetScenarioIds.size > 0,
-      instruction: prev.instruction || validInstructions.length > 0,
-    }))
-  }
-
-  /** 取消带入：丢弃交接键（缺失确认的「取消」路径） */
-  const discardPreset = () => {
-    sessionStorage.removeItem(COMPOSER_PRESET_KEY)
-    presetRawRef.current = null
-    presetDoneRef.current = true
-    setPresetBlocked(false)
-    setPresetMissing([])
-    setPresetWaiting(false)
-  }
+    library.setSelected(JSON.parse(selectionSignature) as AssignmentItemIn[])
+  }, [library.setSelected, selectionSignature])
+  const {
+    presetWaiting,
+    presetMissing,
+    presetBlocked,
+    continuePreset,
+    discardPreset,
+  } = useComposerPreset({
+    passages,
+    sentences,
+    scenarios,
+    instructions,
+    setSelectionDirty,
+    setTypesDirty,
+    selectionKey: library.selectionKey,
+  })
 
   // 题目级白名单（批量导入带入组卷时非空）：只出白名单内的问答题，
   // 避免勾选主题就混入同主题全部旧题。须先于就绪校验计算（空题单校验）
@@ -581,6 +389,24 @@ function ComposerForm({
     types.qa &&
     selection.scenarioIds.length > 0 &&
     filteredScenarioQuestions.length === 0
+  const knownSelectedIds = new Set([
+    ...passages.map((p) => p.id),
+    ...sentences.map((p) => p.id),
+    ...scenarios.map((p) => p.id),
+    ...instructions.map((p) => p.id),
+  ])
+  if (
+    [
+      ...selection.passages,
+      ...selection.sentences,
+      ...selection.scenarioIds,
+      ...selection.instructions,
+    ].some((id) => !knownSelectedIds.has(id))
+  )
+    selectionProblems.push({
+      zh: "所选题目的详情尚未加载或已删除，请等待加载完成或重新选题。",
+      en: "Selected item details are still loading or have been deleted. Wait for loading or select the items again.",
+    })
   const problems =
     isExam &&
     (!Number.isInteger(examMinutes) || examMinutes < 5 || examMinutes > 240)
@@ -859,7 +685,7 @@ function ComposerForm({
               })}
             </p>
           )}
-          {presetMissing.length > 0 && !presetDoneRef.current && (
+          {presetMissing.length > 0 && (
             <div className="space-y-2 rounded-xl bg-amber-100 p-3 text-sm text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
               <p>
                 {t({
@@ -871,21 +697,7 @@ function ComposerForm({
                 <Button
                   variant="secondary"
                   className="min-h-11"
-                  onClick={() => {
-                    const raw = presetRawRef.current
-                    if (!raw) {
-                      discardPreset()
-                      return
-                    }
-                    try {
-                      consumePreset(
-                        JSON.parse(raw) as Parameters<typeof consumePreset>[0],
-                        new Set(presetMissing),
-                      )
-                    } catch {
-                      discardPreset()
-                    }
-                  }}
+                  onClick={continuePreset}
                 >
                   {t({
                     zh: "继续带入其余题目",
@@ -951,30 +763,58 @@ function ComposerForm({
             </div>
           </section>
           {types.reading && (
-            <PassagesSection
-              sectionNo={readingNo ?? 0}
-              passages={passages}
-              selectedIds={selection.passages}
-              onToggle={(id) =>
-                setSelectionDirty((cur) => ({
-                  ...cur,
-                  passages: toggleInList(cur.passages, id),
-                }))
-              }
-            />
+            <div className="space-y-3">
+              <CatalogControls
+                page={library.passages.control}
+                label={{ zh: "搜索朗读篇目", en: "Search read-aloud passages" }}
+              />
+              <fieldset
+                className="min-w-0"
+                disabled={
+                  library.passages.control.pending ||
+                  library.passages.control.failed
+                }
+              >
+                <PassagesSection
+                  sectionNo={readingNo ?? 0}
+                  passages={library.passages.rows}
+                  selectedIds={selection.passages}
+                  onToggle={(id) =>
+                    setSelectionDirty((cur) => ({
+                      ...cur,
+                      passages: toggleInList(cur.passages, id),
+                    }))
+                  }
+                />
+              </fieldset>
+            </div>
           )}
           {types.repeat && (
-            <SentencesSection
-              sectionNo={repeatNo ?? 0}
-              sentences={sentences}
-              selectedIds={selection.sentences}
-              onToggle={(id) =>
-                setSelectionDirty((cur) => ({
-                  ...cur,
-                  sentences: toggleInList(cur.sentences, id),
-                }))
-              }
-            />
+            <div className="space-y-3">
+              <CatalogControls
+                page={library.sentences.control}
+                label={{ zh: "搜索复述句", en: "Search repeat sentences" }}
+              />
+              <fieldset
+                className="min-w-0"
+                disabled={
+                  library.sentences.control.pending ||
+                  library.sentences.control.failed
+                }
+              >
+                <SentencesSection
+                  sectionNo={repeatNo ?? 0}
+                  sentences={library.sentences.rows}
+                  selectedIds={selection.sentences}
+                  onToggle={(id) =>
+                    setSelectionDirty((cur) => ({
+                      ...cur,
+                      sentences: toggleInList(cur.sentences, id),
+                    }))
+                  }
+                />
+              </fieldset>
+            </div>
           )}
           {types.qa && selection.questions.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-xl bg-secondary/60 p-2 text-sm">
@@ -999,69 +839,97 @@ function ComposerForm({
             </div>
           )}
           {types.qa && (
-            <ScenariosSection
-              sectionNo={qaNo ?? 0}
-              scenarios={scenarios}
-              selectedIds={selection.scenarioIds}
-              selectedScenarios={selectedScenarios}
-              onToggle={(id) =>
-                setSelectionDirty((cur) => {
-                  const unchecking = cur.scenarioIds.includes(id)
-                  const topicQuestions = (
-                    scenarios.find((s) => s.id === id)?.questions ?? []
-                  ).map((q) => q.id)
-                  if (unchecking) {
-                    return {
-                      ...cur,
-                      scenarioIds: toggleInList(cur.scenarioIds, id),
-                      // 取消的主题不再出题：白名单同步剪掉它的题，避免
-                      // 「白名单只剩未选主题的题」把最终题单掏空
-                      questions: cur.questions.filter(
-                        (qid) => !topicQuestions.includes(qid),
-                      ),
-                    }
+            <div className="space-y-3">
+              <CatalogControls
+                page={library.scenarios.control}
+                label={{ zh: "搜索问答主题", en: "Search Q&A topics" }}
+              />
+              <fieldset
+                className="min-w-0"
+                disabled={
+                  library.scenarios.control.pending ||
+                  library.scenarios.control.failed
+                }
+              >
+                <ScenariosSection
+                  sectionNo={qaNo ?? 0}
+                  scenarios={library.scenarios.rows}
+                  selectedIds={selection.scenarioIds}
+                  selectedScenarios={selectedScenarios}
+                  onToggle={(id) =>
+                    setSelectionDirty((cur) => {
+                      const unchecking = cur.scenarioIds.includes(id)
+                      const topicQuestions = (
+                        scenarios.find((s) => s.id === id)?.questions ?? []
+                      ).map((q) => q.id)
+                      if (unchecking) {
+                        return {
+                          ...cur,
+                          scenarioIds: toggleInList(cur.scenarioIds, id),
+                          // 取消的主题不再出题：白名单同步剪掉它的题，避免
+                          // 「白名单只剩未选主题的题」把最终题单掏空
+                          questions: cur.questions.filter(
+                            (qid) => !topicQuestions.includes(qid),
+                          ),
+                        }
+                      }
+                      // 新勾主题：白名单非空（逐题模式）时并入该主题全部题——
+                      // 只加 scenarioIds 不扩白名单会漏掉新主题的题（评审 P2）
+                      const merging = cur.questions.length > 0
+                      return {
+                        ...cur,
+                        scenarioIds: toggleInList(cur.scenarioIds, id),
+                        questions: merging
+                          ? [...new Set([...cur.questions, ...topicQuestions])]
+                          : cur.questions,
+                      }
+                    })
                   }
-                  // 新勾主题：白名单非空（逐题模式）时并入该主题全部题——
-                  // 只加 scenarioIds 不扩白名单会漏掉新主题的题（评审 P2）
-                  const merging = cur.questions.length > 0
-                  return {
-                    ...cur,
-                    scenarioIds: toggleInList(cur.scenarioIds, id),
-                    questions: merging
-                      ? [...new Set([...cur.questions, ...topicQuestions])]
-                      : cur.questions,
-                  }
-                })
-              }
-            />
+                />
+              </fieldset>
+            </div>
           )}
           {types.instruction && (
-            <InstructionsSection
-              sectionNo={instructionNo ?? 0}
-              instructions={instructions}
-              selectedIds={selection.instructions}
-              onToggle={(id) =>
-                setSelectionDirty((cur) => ({
-                  ...cur,
-                  instructions: toggleInList(cur.instructions, id),
-                }))
-              }
-              onAddCreated={(id) =>
-                setSelectionDirty((cur) => ({
-                  ...cur,
-                  instructions: [...cur.instructions, id],
-                }))
-              }
-              onRemoveDeleted={(id) =>
-                setSelectionDirty((cur) => ({
-                  ...cur,
-                  instructions: cur.instructions.filter((x) => x !== id),
-                }))
-              }
-              onDirty={() => {
-                dirtyRef.current = true
-              }}
-            />
+            <div className="space-y-3">
+              <CatalogControls
+                page={library.instructions.control}
+                label={{ zh: "搜索题目说明", en: "Search instructions" }}
+              />
+              <fieldset
+                className="min-w-0"
+                disabled={
+                  library.instructions.control.pending ||
+                  library.instructions.control.failed
+                }
+              >
+                <InstructionsSection
+                  sectionNo={instructionNo ?? 0}
+                  instructions={library.instructions.rows}
+                  selectedIds={selection.instructions}
+                  onToggle={(id) =>
+                    setSelectionDirty((cur) => ({
+                      ...cur,
+                      instructions: toggleInList(cur.instructions, id),
+                    }))
+                  }
+                  onAddCreated={(id) =>
+                    setSelectionDirty((cur) => ({
+                      ...cur,
+                      instructions: [...cur.instructions, id],
+                    }))
+                  }
+                  onRemoveDeleted={(id) =>
+                    setSelectionDirty((cur) => ({
+                      ...cur,
+                      instructions: cur.instructions.filter((x) => x !== id),
+                    }))
+                  }
+                  onDirty={() => {
+                    dirtyRef.current = true
+                  }}
+                />
+              </fieldset>
+            </div>
           )}
           {planItems.length > 0 && (
             <OrderSection

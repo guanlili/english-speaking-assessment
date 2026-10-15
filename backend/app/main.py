@@ -1,4 +1,7 @@
 import logging
+import re
+import time
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -7,9 +10,14 @@ import sentry_sdk
 from fastapi import FastAPI, Request, Response
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
 
 from app.api.main import api_router
 from app.core.config import settings
+from app.core.request_context import request_id
+
+logging.basicConfig(level=logging.INFO)
+request_logger = logging.getLogger("app.requests")
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:
@@ -89,6 +97,7 @@ if settings.all_cors_origins:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Request-ID"],
     )
 
 
@@ -96,11 +105,49 @@ if settings.all_cors_origins:
 # HSTS 只在 TLS 后面有意义，由 nginx 的 443 server 块下发（见 nginx-tls.conf）
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next: Any) -> Response:
-    response = await call_next(request)
+    supplied = request.headers.get("X-Request-ID", "")
+    correlation = (
+        supplied if re.fullmatch(r"[A-Za-z0-9_-]{8,64}", supplied) else uuid.uuid4().hex
+    )
+    request.state.request_id = correlation
+    token = request_id.set(correlation)
+    started = time.perf_counter()
+    response = None
+    try:
+        response = await call_next(request)
+    except Exception:
+        request_logger.exception("request_failed request_id=%s", correlation)
+        raise
+    finally:
+        route = request.scope.get("route")
+        request_logger.info(
+            "http_request request_id=%s method=%s route=%s status=%d duration_ms=%.1f",
+            correlation,
+            request.method,
+            getattr(route, "path", "unmatched"),
+            response.status_code if response is not None else 500,
+            (time.perf_counter() - started) * 1000,
+        )
+        request_id.reset(token)
+    response.headers["X-Request-ID"] = correlation
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     return response
+
+
+@app.exception_handler(Exception)
+async def unexpected_error(request: Request, _exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error"},
+        headers={
+            "X-Request-ID": getattr(request.state, "request_id", uuid.uuid4().hex),
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "DENY",
+            "Referrer-Policy": "no-referrer",
+        },
+    )
 
 
 app.include_router(api_router, prefix=settings.API_V1_STR)

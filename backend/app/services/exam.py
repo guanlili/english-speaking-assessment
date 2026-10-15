@@ -409,7 +409,11 @@ def exam_remaining_seconds(
 
 
 def exam_feedback_locked(
-    db: Session, practice_session: PracticeSession, exercise: ClassroomExercise | None
+    db: Session,
+    practice_session: PracticeSession,
+    exercise: ClassroomExercise | None,
+    *,
+    first_submitted: dict[tuple[str, uuid.UUID], datetime] | None = None,
 ) -> bool:
     """模考反馈可见性（服务端口径，只读）：考试终结前学生不得取得任何反馈。
 
@@ -429,7 +433,11 @@ def exam_feedback_locked(
     deadline = exam_deadline(practice_session, exercise)
     if deadline is not None and now >= deadline:
         return False
-    windows = item_windows(db, practice_session, exercise)
+    windows = (
+        item_windows(db, practice_session, exercise)
+        if first_submitted is None
+        else windows_from_first(practice_session, exercise, first_submitted)
+    )
     return not all(window.submitted or now >= window.deadline for window in windows)
 
 

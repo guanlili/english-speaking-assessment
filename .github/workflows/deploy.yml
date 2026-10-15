@@ -69,7 +69,9 @@ jobs:
             exit 1
           fi
       - name: 部署配置回归检查
-        run: python3 scripts/test_deploy.py
+        run: |
+          python3 scripts/test_deploy.py
+          python3 scripts/test_backup.py
       - name: 校验 uv.lock 不含镜像源 URL
         run: |
           if grep -qE "tuna\.tsinghua|mirrors\.aliyun|mirrors\.cloud\.tencent|mirrors\.163" uv.lock; then
@@ -432,15 +434,10 @@ jobs:
             echo "=== 4.5/6 每日数据库备份（幂等注册，保留 14 天） ==="
             mkdir -p backups
             chmod 700 backups
-            # 注意转义层次：backup_cmd 是双引号赋值，\${...} 与 \$(...) 保持字面量进 crontab，
-            # 由 cron 启动的 sh 展开；\% 是 cron 的 % 转义（% 在 crontab 里是换行/stdin 标记）。
-            # pg_dump 的变量在 db 容器内展开（compose 注入的 POSTGRES_USER/POSTGRES_DB），
-            # 不能写成 $$（会被当成 shell PID，此前导致备份全为空归档且退出码被 gzip 掩盖）。
-            # 先落盘再 gzip：pg_dump 失败时 exit 非 0，不会生成假备份文件。
-            # 同时快照 .env（SECRET_KEY/ARK 密钥等——只有 pg_dump 的话服务器报废后
-            # 无法完整重建系统）；失败追加一行时间戳到 backup-failure.log，巡检可见。
-            backup_cmd="(cd '$PWD' && docker compose -f compose.yml exec -T db sh -c 'pg_dump -U \${POSTGRES_USER} \${POSTGRES_DB}' > /tmp/app-backup.sql && gzip -c /tmp/app-backup.sql > backups/app-\$(date +\%Y\%m\%d-\%H\%M).sql.gz && rm -f /tmp/app-backup.sql && cp .env backups/env-\$(date +\%Y\%m\%d-\%H\%M).env && find backups \\( -name 'app-*.sql.gz' -o -name 'env-*.env' \\) -mtime +14 -delete) || date >> '$PWD/backups/backup-failure.log'"
-            (crontab -l 2>/dev/null | grep -v 'app-.*sql.gz'; echo "30 3 * * * $backup_cmd") | crontab -
+            # 完整备份包含数据库、录音/标准音卷和部署配置；失败记入巡检日志。
+            # 清理旧版 cron，避免迁移后重复运行。部署前的数据库快照仍单独保留。
+            backup_cmd="cd '$PWD' && bash scripts/backup-local.sh || date >> '$PWD/backups/backup-failure.log'"
+            (crontab -l 2>/dev/null | grep -v -e 'app-.*sql.gz' -e 'scripts/backup-local.sh'; echo "30 3 * * * $backup_cmd") | crontab -
             # 部署时顺手做一次当次备份，保证改库前总有快照；失败则中止部署（不能无快照改库）
             dump_tmp="backups/app-$(date +%Y%m%d-%H%M)-predeploy.sql"
             if docker compose -f compose.yml exec -T db sh -c 'pg_dump -U ${POSTGRES_USER} ${POSTGRES_DB}' > "$dump_tmp"; then

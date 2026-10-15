@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Pencil, Plus, Scissors, Trash2 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { AdminService, type SentenceWithPassage } from "@/client"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
+import Pager from "@/components/Common/Pager"
 import AudioSetter from "@/components/Practice/AudioSetter"
 import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
 import { Badge } from "@/components/ui/badge"
@@ -41,6 +42,8 @@ import { EXAM_LEVEL_LABELS, TERMS, VOCAB_LEVEL_ORDER } from "@/lib/terms"
 import { extractErrorMessage } from "@/utils"
 
 const NO_PASSAGE = "__none__"
+const PAGE_SIZE = 20
+const SEARCH_DELAY_MS = 250
 
 /** 听句复述独立题库：句子直接创建与管理，挂篇目仅为自主练习复用。
  *
@@ -56,11 +59,34 @@ export function SentenceLibrary({
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const { t } = useI18n()
   const [keyword, setKeyword] = useState("")
+  const [search, setSearch] = useState("")
+  const [pageIndex, setPageIndex] = useState(0)
+  useEffect(() => {
+    if (keyword.trim() === search) return
+    const timer = setTimeout(() => {
+      setSearch(keyword.trim())
+      setPageIndex(0)
+    }, SEARCH_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [keyword, search])
   const [toDelete, setToDelete] = useState<SentenceWithPassage | null>(null)
 
   const sentencesQuery = useQuery({
-    queryKey: ["admin", "sentences"],
-    queryFn: () => AdminService.listSentencesFlat(),
+    queryKey: [
+      "admin",
+      "sentences",
+      "library",
+      search,
+      pageIndex,
+      standaloneOnly,
+    ],
+    queryFn: () =>
+      AdminService.listSentencesPage({
+        q: search || undefined,
+        standaloneOnly,
+        skip: pageIndex * PAGE_SIZE,
+        limit: PAGE_SIZE,
+      }),
   })
   const passagesQuery = useQuery({
     queryKey: ["admin", "passages"],
@@ -136,11 +162,14 @@ export function SentenceLibrary({
     editForm.replays <= 9
 
   const passages = passagesQuery.data?.data ?? []
-  const sentences = (sentencesQuery.data ?? [])
-    .filter((s) => (standaloneOnly ? !s.passage_id : true))
-    .filter((s) =>
-      (s.text ?? "").toLowerCase().includes(keyword.trim().toLowerCase()),
-    )
+  const sentences = sentencesQuery.data?.data ?? []
+  const totalCount = sentencesQuery.data?.count ?? 0
+  useEffect(() => {
+    if (sentencesQuery.isSuccess) {
+      const lastPage = Math.max(0, Math.ceil(totalCount / PAGE_SIZE) - 1)
+      if (pageIndex > lastPage) setPageIndex(lastPage)
+    }
+  }, [sentencesQuery.isSuccess, totalCount, pageIndex])
 
   return (
     <div className="flex flex-col gap-6">
@@ -184,7 +213,7 @@ export function SentenceLibrary({
         aria-label={t({ zh: "搜索复述句", en: "Search repeat sentences" })}
         placeholder={t({ zh: "搜索复述句…", en: "Search repeat sentences…" })}
         value={keyword}
-        onChange={(e) => setKeyword(e.target.value)}
+        onChange={(e) => setKeyword(e.target.value.slice(0, 200))}
       />
       {sentencesQuery.isPending ? (
         <div className="flex flex-col gap-3">
@@ -211,8 +240,12 @@ export function SentenceLibrary({
       ) : sentences.length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">
           {t({
-            zh: "还没有复述句，点上方新建开始出题。",
-            en: "No repeat sentences yet — create one above to get started.",
+            zh: search
+              ? "没有匹配的复述句，请换个关键词。"
+              : "还没有复述句，点上方新建开始出题。",
+            en: search
+              ? "No repeat sentences match — try another keyword."
+              : "No repeat sentences yet — create one above to get started.",
           })}
         </p>
       ) : (
@@ -301,6 +334,16 @@ export function SentenceLibrary({
             </div>
           ))}
         </div>
+      )}
+
+      {sentencesQuery.isSuccess && totalCount > PAGE_SIZE && (
+        <Pager
+          pageIndex={pageIndex}
+          pageSize={PAGE_SIZE}
+          count={totalCount}
+          isPlaceholder={sentencesQuery.isFetching}
+          onChange={setPageIndex}
+        />
       )}
 
       <Dialog

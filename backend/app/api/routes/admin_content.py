@@ -301,6 +301,7 @@ def list_passages(
     q: str | None = Query(default=None, description="标题/主题关键词过滤"),
     skip: int = Query(default=0, ge=0),
     limit: int | None = Query(default=None, ge=1, le=500),
+    ids: list[uuid.UUID] | None = Query(default=None),
 ) -> Any:
     """管理端篇目列表：按「根篇目」分页（拆句子篇不单占一行）+ 关键词过滤。
 
@@ -308,6 +309,13 @@ def list_passages(
     句子与子篇只查本页根篇的，不再全表预取。
     """
     conditions = [col(Passage.parent_passage_id).is_(None)]
+    if ids is not None:
+        parent_ids = session.exec(
+            select(Passage.parent_passage_id).where(col(Passage.id).in_(ids))
+        ).all()
+        conditions.append(
+            col(Passage.id).in_({*ids, *(p for p in parent_ids if p is not None)})
+        )
     if q and q.strip():
         needle = q.strip()
         conditions.append(
@@ -497,21 +505,84 @@ class SentenceWithPassage(RepeatSentence):
     passage_title: str | None = None  # 考试字段自 RepeatSentence 继承
 
 
+class SentencesListOut(SQLModel):
+    data: list[SentenceWithPassage]
+    count: int
+
+
+@router.get("/sentences-page", response_model=SentencesListOut)
+def list_sentences_page(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    q: str | None = Query(default=None, max_length=200),
+    standalone_only: bool = False,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> SentencesListOut:
+    """题库管理分页：过滤与计数同口径，只读取当前页的挂靠篇目标题。"""
+    conditions = []
+    if q and q.strip():
+        conditions.append(
+            col(RepeatSentence.text).icontains(q.strip(), autoescape=True)
+        )
+    if standalone_only:
+        conditions.append(col(RepeatSentence.passage_id).is_(None))
+    count = session.exec(
+        select(func.count()).select_from(RepeatSentence).where(*conditions)
+    ).one()
+    rows = session.exec(
+        select(RepeatSentence, Passage.title)
+        .outerjoin(Passage, col(RepeatSentence.passage_id) == col(Passage.id))
+        .where(*conditions)
+        .order_by(col(RepeatSentence.created_at), col(RepeatSentence.id))
+        .offset(skip)
+        .limit(limit)
+    ).all()
+    return SentencesListOut(
+        data=[
+            SentenceWithPassage(**s.model_dump(), passage_title=title)
+            for s, title in rows
+        ],
+        count=count,
+    )
+
+
 @router.get("/sentences", response_model=list[SentenceWithPassage])
 def list_sentences_flat(
     session: SessionDep,
     _admin: TeacherUserDep,
     exam_kind: str | None = Query(default=None, description="考试题型过滤"),
     exam_level: str | None = Query(default=None, description="考试级别过滤"),
+    ids: list[uuid.UUID] | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=200),
+    skip: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=100),
 ) -> Any:
     """复述句独立题库：全部复述句平铺（含挂篇目的），按创建顺序。"""
     stmt = select(RepeatSentence).order_by(col(RepeatSentence.created_at))
+    if ids is not None:
+        stmt = stmt.where(col(RepeatSentence.id).in_(ids))
     if exam_kind is not None:
         stmt = stmt.where(RepeatSentence.exam_kind == exam_kind)  # type: ignore[arg-type]
     if exam_level is not None:
         stmt = stmt.where(RepeatSentence.exam_level == exam_level)  # type: ignore[arg-type]
+    if q and q.strip():
+        stmt = stmt.where(
+            col(RepeatSentence.text).icontains(q.strip(), autoescape=True)
+        )
+    stmt = stmt.order_by(col(RepeatSentence.id)).offset(skip)
+    if limit is not None:
+        stmt = stmt.limit(limit)
     sentences = session.exec(stmt).all()
-    passage_titles = dict(session.exec(select(Passage.id, Passage.title)).all())
+    passage_titles = dict(
+        session.exec(
+            select(Passage.id, Passage.title).where(
+                col(Passage.id).in_(
+                    {s.passage_id for s in sentences if s.passage_id is not None}
+                )
+            )
+        ).all()
+    )
     return [
         SentenceWithPassage(
             **s.model_dump(),
@@ -598,9 +669,21 @@ def delete_sentence(
 def list_instructions(
     session: SessionDep,
     _admin: TeacherUserDep,
+    q: str | None = Query(default=None, max_length=200),
+    skip: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=100),
 ) -> Any:
     """题目说明库：组卷时可勾选复用的全部说明，按创建顺序。"""
-    return session.exec(select(Instruction).order_by(col(Instruction.created_at))).all()
+    stmt = select(Instruction)
+    if q and q.strip():
+        stmt = stmt.where(
+            col(Instruction.text).icontains(q.strip(), autoescape=True)
+            | col(Instruction.title).icontains(q.strip(), autoescape=True)
+        )
+    stmt = stmt.order_by(col(Instruction.created_at), col(Instruction.id)).offset(skip)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    return session.exec(stmt).all()
 
 
 @router.post("/instructions", response_model=InstructionPublic)
@@ -675,9 +758,12 @@ def list_scenarios(
     q: str | None = Query(default=None, description="主题关键词过滤"),
     skip: int = Query(default=0, ge=0),
     limit: int | None = Query(default=None, ge=1, le=500),
+    ids: list[uuid.UUID] | None = Query(default=None),
 ) -> Any:
     """问答题库主题列表：分页 + 主题关键词（limit=None 全量，组卷选择器兼容）。"""
     conditions: list[Any] = []
+    if ids is not None:
+        conditions.append(col(Scenario.id).in_(ids))
     if q and q.strip():
         conditions.append(col(Scenario.topic).icontains(q.strip()))
     count = session.exec(

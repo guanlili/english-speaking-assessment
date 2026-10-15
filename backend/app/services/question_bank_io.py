@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
@@ -970,16 +970,147 @@ class _Ref:
     max_sentence_order_global: int
 
 
-def _load_reference(session: Session) -> _Ref:
-    units = session.exec(select(Unit)).all()
-    root_passages = session.exec(
-        select(Passage).where(col(Passage.parent_passage_id).is_(None))
-    ).all()
-    all_passages = session.exec(select(Passage)).all()
-    scenarios = session.exec(select(Scenario)).all()
-    questions = session.exec(select(ScenarioQuestion)).all()
-    sentences = session.exec(select(RepeatSentence)).all()
-    instructions = session.exec(select(Instruction)).all()
+def _matching_ids(
+    session: Session, statement: Any, wanted: set[str]
+) -> list[uuid.UUID]:
+    """Python 保留 NFKC/casefold/Unicode 空白精确语义；只流式读取匹配键。
+
+    不用数据库 lower 近似 casefold（ß/全角/Unicode 空白会漏判）；大文本
+    每次最多 256 行，只有命中的候选才创建完整 ORM 对象。
+    """
+    if not wanted:
+        return []
+    rows = session.exec(statement.execution_options(yield_per=256))
+    try:
+        return [row_id for row_id, value in rows if _norm_text(value or "") in wanted]
+    finally:
+        rows.close()
+
+
+def _load_reference(session: Session, parsed: ParsedFile) -> _Ref:
+    payloads: dict[str, list[dict[str, Any]]] = {
+        kind: [] for kind in QUESTION_BANK_TYPE_ORDER
+    }
+    for row in parsed.rows:
+        try:
+            payloads[row.qtype].append(BUILDERS[row.qtype](row.cells))
+        except _RowError:
+            continue  # 规划阶段仍返回原行错误；无效行不需要读取候选
+    passage_payloads = payloads[TYPE_PASSAGE]
+    repeat_payloads = payloads[TYPE_REPEAT]
+    question_payloads = payloads[TYPE_QUESTION]
+    instruction_payloads = payloads[TYPE_INSTRUCTION]
+    titles = {_norm_text(p["title"]) for p in passage_payloads}
+    titles.update(
+        _norm_text(p["passage_title"]) for p in repeat_payloads if p["passage_title"]
+    )
+    passage_ids = set(
+        _matching_ids(
+            session,
+            select(Passage.id, Passage.title).where(
+                col(Passage.parent_passage_id).is_(None)
+            ),
+            titles,
+        )
+    )
+    passage_ids.update(
+        _matching_ids(
+            session,
+            select(Passage.id, Passage.text).where(
+                col(Passage.parent_passage_id).is_(None)
+            ),
+            {_norm_text(p["text"]) for p in passage_payloads},
+        )
+    )
+    units_wanted = {
+        _norm_text(p["unit_title"]) for p in passage_payloads if p.get("unit_title")
+    }
+    unit_ids = _matching_ids(session, select(Unit.id, Unit.title), units_wanted)
+    root_passages = (
+        list(
+            session.exec(select(Passage).where(col(Passage.id).in_(passage_ids))).all()
+        )
+        if passage_ids
+        else []
+    )
+    # 已有候选挂靠的单元影响完全重复/指纹，必须把它们也补齐。
+    unit_ids.extend(p.unit_id for p in root_passages if p.unit_id is not None)
+    units = (
+        list(session.exec(select(Unit).where(col(Unit.id).in_(unit_ids))).all())
+        if unit_ids
+        else []
+    )
+    scenario_ids = set(
+        _matching_ids(
+            session,
+            select(Scenario.id, Scenario.topic),
+            {_norm_text(p["topic"]) for p in question_payloads},
+        )
+    )
+    question_ids = _matching_ids(
+        session,
+        select(ScenarioQuestion.id, ScenarioQuestion.text),
+        {_norm_text(p["text"]) for p in question_payloads},
+    )
+    questions = (
+        list(
+            session.exec(
+                select(ScenarioQuestion).where(
+                    col(ScenarioQuestion.id).in_(question_ids)
+                )
+            ).all()
+        )
+        if question_ids
+        else []
+    )
+    scenario_ids.update(q.scenario_id for q in questions)
+    scenarios = (
+        list(
+            session.exec(
+                select(Scenario).where(col(Scenario.id).in_(scenario_ids))
+            ).all()
+        )
+        if scenario_ids
+        else []
+    )
+    sentence_ids = _matching_ids(
+        session,
+        select(RepeatSentence.id, RepeatSentence.text),
+        {_norm_text(p["text"]) for p in repeat_payloads},
+    )
+    sentences = (
+        list(
+            session.exec(
+                select(RepeatSentence).where(col(RepeatSentence.id).in_(sentence_ids))
+            ).all()
+        )
+        if sentence_ids
+        else []
+    )
+    instruction_ids = _matching_ids(
+        session,
+        select(Instruction.id, Instruction.text),
+        {_norm_text(p["text"]) for p in instruction_payloads},
+    )
+    instructions = (
+        list(
+            session.exec(
+                select(Instruction).where(col(Instruction.id).in_(instruction_ids))
+            ).all()
+        )
+        if instruction_ids
+        else []
+    )
+    linked_ids = passage_ids | {
+        s.passage_id for s in sentences if s.passage_id is not None
+    }
+    passage_title_rows = (
+        session.exec(
+            select(Passage.id, Passage.title).where(col(Passage.id).in_(linked_ids))
+        ).all()
+        if linked_ids
+        else []
+    )
 
     units_by_norm: dict[str, list[Unit]] = {}
     for unit in units:
@@ -1050,7 +1181,7 @@ def _load_reference(session: Session) -> _Ref:
         instruction_configs.setdefault(_norm_text(ins.text), []).append(cfg)
 
     # 疑似对照行对象索引（与查重索引同键）
-    passage_titles = {p.id: p.title for p in all_passages}
+    passage_titles = dict(passage_title_rows)
     scenario_topics = {s_.id: s_.topic for s_ in scenarios}
     passages_by_key: dict[tuple[str, str], list[Passage]] = {}
     for passage in root_passages:
@@ -1066,19 +1197,38 @@ def _load_reference(session: Session) -> _Ref:
             (question.scenario_id, _norm_text(question.text)), []
         ).append(question)
 
-    max_question_order: dict[uuid.UUID, int] = {}
-    for question in questions:
-        max_question_order[question.scenario_id] = max(
-            max_question_order.get(question.scenario_id, 0), question.order_index
+    max_question_order = (
+        dict(
+            session.exec(
+                select(
+                    ScenarioQuestion.scenario_id, func.max(ScenarioQuestion.order_index)
+                )
+                .where(col(ScenarioQuestion.scenario_id).in_(scenario_ids))
+                .group_by(col(ScenarioQuestion.scenario_id))
+            ).all()
         )
-    max_by_passage: dict[uuid.UUID, int] = {}
-    global_max = 0
-    for sentence in sentences:
-        global_max = max(global_max, sentence.order_index)
-        if sentence.passage_id is not None:
-            max_by_passage[sentence.passage_id] = max(
-                max_by_passage.get(sentence.passage_id, 0), sentence.order_index
-            )
+        if question_payloads
+        else {}
+    )
+    max_by_passage = (
+        dict(
+            session.exec(
+                select(RepeatSentence.passage_id, func.max(RepeatSentence.order_index))
+                .where(col(RepeatSentence.passage_id).in_(passage_ids))
+                .group_by(col(RepeatSentence.passage_id))
+            ).all()
+        )
+        if repeat_payloads
+        else {}
+    )
+    global_max = (
+        session.exec(select(func.max(RepeatSentence.order_index))).one() or 0
+        if repeat_payloads
+        else 0
+    )
+    existing_slugs = (
+        set(session.exec(select(Passage.slug)).all()) if passage_payloads else set()
+    )
 
     return _Ref(
         units_by_norm=units_by_norm,
@@ -1098,7 +1248,7 @@ def _load_reference(session: Session) -> _Ref:
         sentences_by_key=sentences_by_key,
         questions_by_key=questions_by_key,
         instructions_all=list(instructions),
-        existing_slugs={p.slug for p in all_passages},
+        existing_slugs=existing_slugs,
         max_question_order=max_question_order,
         max_sentence_order_by_passage=max_by_passage,
         max_sentence_order_global=global_max,
@@ -1275,7 +1425,7 @@ def plan_import(
     （文件或库状态已变化）→ 422 强制重新预览，绝不沿用旧选择。
     """
     decisions = include_lines or set()
-    ref = _load_reference(session)
+    ref = _load_reference(session, parsed)
     plan = QuestionBankPlan(
         existing_slugs=ref.existing_slugs,
         max_question_order=ref.max_question_order,

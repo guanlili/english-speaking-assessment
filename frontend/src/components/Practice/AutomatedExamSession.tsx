@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect, useRef, useState } from "react"
 import {
@@ -10,22 +10,20 @@ import {
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import ExamGroupedProgress from "@/components/Practice/ExamGroupedProgress"
 import { Button } from "@/components/ui/button"
+import { useAutomatedExamState } from "@/hooks/useAutomatedExamState"
+import { useExamAudioDevice } from "@/hooks/useExamAudioDevice"
+import { useExamDraftRecovery } from "@/hooks/useExamDraftRecovery"
+import { useExamPhase } from "@/hooks/useExamPhase"
 import { type Recording, useRecorder } from "@/hooks/useRecorder"
-import { EXAM_AUDIO_UNLOCK_URL } from "@/lib/exam-audio"
-import { checkExamAudio, ExamAudioCheckError } from "@/lib/exam-audio-check"
 import { useI18n } from "@/lib/i18n"
 import {
   currentDraftOwner,
   deleteRecordingDraft,
   draftKey,
-  getRecordingDraft,
-  listRecordingDrafts,
   type RecordingDraftInput,
   saveRecordingDraft,
 } from "@/lib/recording-drafts"
 import { ITEM_TYPE_LABELS } from "@/lib/terms"
-import { speakEnglish } from "@/lib/tts"
-import { randomId } from "@/utils"
 
 // /attempts 422 的稳定 detail → 双语文案映射（后端 detail 是稳定标识不直出界面）
 const UPLOAD_REJECT_LABELS: Record<string, { zh: string; en: string }> = {
@@ -62,41 +60,18 @@ export default function AutomatedExamSession({
 }) {
   const { t } = useI18n()
   const navigate = useNavigate()
-  const query = useQuery({
-    queryKey: ["automated-exam", code, initialPlan.session_id],
-    queryFn: () =>
-      ClassesService.readTodayPlan({ code, sessionId: initialPlan.session_id }),
-    initialData: initialPlan,
-    // 全量 plan 的 1Hz 轮询只在考试进行中有价值；未开考/已结束/断网时
-    // 降频（40 人班级并发考试时后端 QPS 直接砍掉大半，与其它页面的
-    // 条件轮询范式对齐：练习页 2s/30s、教师板 5s/20s）
-    refetchInterval: (query) => {
-      if (query.state.error) return 3000
-      const examState = query.state.data?.exam
-      if (!examState?.started || examState.ended) return 3000
-      return 1000
-    },
-    retry: 1,
-  })
-  const plan = query.data
+  const query = useAutomatedExamState(code, initialPlan)
+  const plan = query.plan
   const exam = plan.exam
   const item = plan.items[exam?.current_item_index ?? 0]
-  const [armed, setArmed] = useState(false)
-  const [enabling, setEnabling] = useState(false)
-  const enablingRef = useRef(false)
-  const audioCheck = useRef<AbortController | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [storageError, setStorageError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [restoredItem, setRestoredItem] = useState<string | null>(null)
-  const draftsReady = restoredItem === item?.id
   const [pendingDraft, setPendingDraft] = useState<RecordingDraftInput | null>(
     null,
   )
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [notes, setNotes] = useState("")
-  const context = useRef<AudioContext | null>(null)
-  const audio = useRef<HTMLAudioElement | null>(null)
   const target = useRef<RecordingDraftInput | null>(null)
   const accepted = useRef(new Set(plan.attempts.map((a) => a.item_id)))
   const recordingStarted = useRef(new Set<string>())
@@ -108,6 +83,14 @@ export default function AutomatedExamSession({
   const phase = exam?.phase
   const stageKey = `${plan.session_id}:${item?.id}:${phase}`
   const owner = currentDraftOwner()
+  const draftsReady = useExamDraftRecovery({
+    owner,
+    code,
+    sessionId: plan.session_id,
+    itemId: item?.id,
+    accepted,
+    setPendingDraft,
+  })
 
   const sendEvent = useMutation({
     mutationFn: (requestBody: {
@@ -240,220 +223,47 @@ export default function AutomatedExamSession({
   })
   const recorderRef = useRef(recorder)
   recorderRef.current = recorder
+  const { armed, setArmed, enabling, enable, audio, beepRef } =
+    useExamAudioDevice({
+      code,
+      plan,
+      recorderRef,
+      refetch: query.refetch,
+      setError,
+    })
+  useEffect(() => {
+    for (const id of query.data.submitted_item_ids) accepted.current.add(id)
+  }, [query.data.submitted_item_ids])
 
   useEffect(() => {
     localStorage.setItem(storageKey, plan.session_id)
   }, [storageKey, plan.session_id])
-  useEffect(() => {
-    let cancelled = false
-    async function restore() {
-      if (owner) {
-        const drafts = await listRecordingDrafts(owner, code)
-        const found = drafts.find(
-          (d) =>
-            d.sessionId === plan.session_id &&
-            d.itemId === item?.id &&
-            !accepted.current.has(d.itemId),
-        )
-        if (found) {
-          const saved = await getRecordingDraft(found.key)
-          if (saved && !cancelled) setPendingDraft(saved)
-        }
-      }
-      if (!cancelled) setRestoredItem(item?.id ?? null)
-    }
-    void restore()
-    return () => {
-      cancelled = true
-    }
-  }, [owner, code, plan.session_id, item?.id])
 
   const noteKey = `exam-note:${owner}:${plan.session_id}:${item?.id}`
   useEffect(() => {
     setNotes(localStorage.getItem(noteKey) ?? "")
   }, [noteKey])
 
-  function playerCleanup() {
-    audio.current?.pause()
-    window.speechSynthesis?.cancel()
-  }
-  async function enable() {
-    if (enablingRef.current) return
-    enablingRef.current = true
-    setEnabling(true)
-    setError(null)
-    const check = new AbortController()
-    audioCheck.current = check
-    try {
-      context.current ??= new AudioContext()
-      const player = audio.current ?? new Audio(EXAM_AUDIO_UNLOCK_URL)
-      audio.current = player
-      player.onended = null
-      player.onerror = null
-      player.src = EXAM_AUDIO_UNLOCK_URL
-      // Both calls happen synchronously within the student's device-check click.
-      await Promise.all([
-        context.current.resume(),
-        player.play(),
-        checkExamAudio(
-          exam?.started
-            ? phase === "audio" && item
-              ? [item]
-              : []
-            : plan.items,
-          check.signal,
-        ),
-      ])
-      player.pause()
-      await recorderRef.current.prepare()
-      if (check.signal.aborted) return
-      if (!exam?.started)
-        await ClassesService.startExam({
-          code,
-          requestBody: { session_id: plan.session_id },
-        })
-      await query.refetch()
-      setArmed(true)
-    } catch (err) {
-      if (check.signal.aborted) return
-      check.abort()
-      playerCleanup()
-      setError(
-        t(
-          err instanceof ExamAudioCheckError
-            ? {
-                zh: "考试音频检查失败，尚未开始新考试。请检查网络后重试；若仍失败，请联系老师检查题目音频。已开始的考试计时继续。",
-                en: "Exam audio check failed; no new exam was started. Check your connection and retry, or ask your teacher to check the audio. An exam already started keeps counting down.",
-              }
-            : {
-                zh: "请允许麦克风和声音播放，再重试。",
-                en: "Allow microphone and audio playback, then retry.",
-              },
-        ),
-      )
-    } finally {
-      enablingRef.current = false
-      setEnabling(false)
-    }
-  }
-  function beep(): Promise<void> {
-    const ctx = context.current
-    if (!ctx) return Promise.resolve()
-    const oscillator = ctx.createOscillator()
-    const gain = ctx.createGain()
-    oscillator.connect(gain)
-    gain.connect(ctx.destination)
-    oscillator.frequency.value = 880
-    gain.gain.value = 0.12
-    oscillator.start()
-    oscillator.stop(ctx.currentTime + 0.15)
-    return new Promise((resolve) => {
-      oscillator.onended = () => {
-        oscillator.disconnect()
-        gain.disconnect()
-        resolve()
-      }
-    })
-  }
-  const beepRef = useRef(beep)
-  beepRef.current = beep
-
-  // effect 内只有 failed 回调用到 t：语言切换会换 t 引用，进了依赖数组
-  // 会把正在播放的听力题 cleanup 掉并从头重播（服务端计时照走，音频与
-  // 题窗错位）。文案经 ref 解耦，依赖数组不含 t
-  const audioFailText = () =>
-    t({
-      zh: "音频未播放完成，请启用声音后继续。",
-      en: "Audio did not finish. Enable sound to continue.",
-    })
-  const audioFailTextRef = useRef(audioFailText)
-  audioFailTextRef.current = audioFailText
-
-  useEffect(() => {
-    if (!armed || !draftsReady) return
-    const current = latest.current
-    const currentItem = current.item
-    const currentExam = current.plan.exam
-    if (!currentItem || !currentExam || currentExam.ended) return
-    let cancelled = false
-    if (phase === "audio") {
-      const ended = () => {
-        if (!cancelled)
-          eventRef.current({
-            session_id: current.plan.session_id,
-            item_id: currentItem.id,
-            event: "audio-ended",
-          })
-      }
-      const failed = () => {
-        if (!cancelled) {
-          setArmed(false)
-          setError(audioFailTextRef.current())
-        }
-      }
-      async function playPrompt() {
-        if (currentItem.type !== "instruction") await beepRef.current()
-        if (cancelled) return
-        if (currentItem.audio_url) {
-          const player = audio.current ?? new Audio()
-          audio.current = player
-          player.src = currentItem.audio_url.startsWith("/")
-            ? `${import.meta.env.VITE_API_URL ?? ""}${currentItem.audio_url}`
-            : currentItem.audio_url
-          player.onended = ended
-          player.onerror = failed
-          // Re-entering an audio phase replays the current prompt. The server's
-          // overall clock continues; waiting/preparation clocks never restart.
-          void player.play().catch(failed)
-        } else if (
-          !speakEnglish(currentItem.text, { onEnd: ended, onError: failed })
-        )
-          failed()
-      }
-      void playPrompt().catch(failed)
-    }
-    if (
-      phase === "answering" &&
-      !accepted.current.has(currentItem.id) &&
-      !recordingStarted.current.has(stageKey) &&
-      !pendingDraft
-    ) {
-      if (
-        (currentItem.type === "passage" ||
-          currentItem.type === "repeat" ||
-          currentItem.type === "question") &&
-        owner
-      ) {
-        target.current = {
-          owner,
-          classroomCode: code,
-          sessionId: plan.session_id,
-          itemType: currentItem.type,
-          itemId: currentItem.id,
-          idempotencyKey: randomId(),
-          mimeType: "audio/webm",
-          durationS: 0,
-          blob: new Blob(),
-        }
-        recordingStarted.current.add(stageKey)
-        void recorderRef.current.start()
-      }
-    }
-    return () => {
-      cancelled = true
-      audio.current?.pause()
-      window.speechSynthesis?.cancel()
-    }
-  }, [
-    stageKey,
+  useExamPhase({
     armed,
     draftsReady,
+    latest,
+    phase,
+    stageKey,
     pendingDraft,
     owner,
     code,
-    plan.session_id,
-    phase,
-  ])
+    sessionId: plan.session_id,
+    accepted,
+    recordingStarted,
+    target,
+    recorderRef,
+    audio,
+    beepRef,
+    eventRef,
+    setArmed,
+    setError,
+  })
 
   useEffect(() => {
     if (phase === "ready" || exam?.ended) recorder.stop()
@@ -484,10 +294,6 @@ export default function AutomatedExamSession({
     window.addEventListener("beforeunload", warn)
     return () => {
       window.removeEventListener("beforeunload", warn)
-      audioCheck.current?.abort()
-      audio.current?.pause()
-      window.speechSynthesis?.cancel()
-      void context.current?.close()
     }
   }, [])
   useEffect(() => {

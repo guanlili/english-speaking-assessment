@@ -60,8 +60,9 @@ const handleApiError = (error: Error) => {
   if (error instanceof ApiError && error.status === 401) {
     const body = error.body as { detail?: unknown } | null
     const detail = typeof body?.detail === "string" ? body.detail : ""
-    // 登录接口的 401（密码错误）不属于任何身份失效，走教师分支静默处理
+    // 登录接口的 401（密码错误）由登录页展示，保留输入，不触发身份失效跳转
     const isLoginCall = error.url.includes("/login/access-token")
+    if (isLoginCall) return
     // 学生凭证失效：错误文案明确提到学生凭证/重新进入课堂时才清除，
     // 避免其他接口的 401 误把学生登录态清掉
     const isStudentCredentialFailure =

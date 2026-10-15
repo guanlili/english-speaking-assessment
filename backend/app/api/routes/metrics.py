@@ -18,6 +18,7 @@ from sqlmodel import Session, col, select
 from app.api.deps import SessionDep, SuperUserDep
 from app.core.config import settings
 from app.core.metrics import call_stats, call_stats_by_prefix
+from app.core.request_context import PROCESS_INFO
 from app.models import Attempt, AttemptStatus
 from app.scoring import worker
 
@@ -90,6 +91,7 @@ def _scoring_queue_stats(session: Session) -> dict[str, Any]:
 def read_metrics(session: SessionDep, _superuser: SuperUserDep) -> Any:
     stats = call_stats()
     return {
+        "process": PROCESS_INFO,
         "scoring": _scoring_queue_stats(session),
         "providers": {
             "asr": {

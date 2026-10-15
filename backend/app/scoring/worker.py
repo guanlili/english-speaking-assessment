@@ -10,6 +10,7 @@ import re
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
@@ -578,7 +579,9 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
                 logger.info("executor stopped; skip detail submit for %s", attempt_id)
                 return
             detail_executor = _ensure_detail_executor_locked()
-        detail_executor.submit(_complete_detail, attempt_id, *detail_request)
+        detail_executor.submit(
+            copy_context().run, _complete_detail, attempt_id, *detail_request
+        )
 
 
 def _complete_detail(
@@ -714,7 +717,7 @@ def submit_attempt_scoring(attempt_id: uuid.UUID) -> None:
             logger.info("scoring executor stopped; skip resubmit for %s", attempt_id)
             return
         executor = _ensure_executor_locked()
-    executor.submit(_run_in_worker, attempt_id)
+    executor.submit(copy_context().run, _run_in_worker, attempt_id)
 
 
 def recover_stale_attempts(session: Session) -> int:

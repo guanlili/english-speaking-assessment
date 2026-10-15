@@ -1,12 +1,14 @@
 """学生练习计划：today 题单与逐题推进（next-question）。"""
 
+import hashlib
+import json
 import logging
 import uuid
 from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException, Query
-from sqlmodel import col, select
+from sqlmodel import SQLModel, col, select
 
 from app.api.deps import (
     SessionDep,
@@ -65,6 +67,36 @@ from app.services import exercise as exercise_service
 from app.services import reading
 
 logger = logging.getLogger(__name__)
+
+
+class ClassroomRevision(SQLModel):
+    revision: str
+
+
+@router.get("/{code}/revision", response_model=ClassroomRevision)
+def read_classroom_revision(
+    session: SessionDep,
+    code: str,
+    current_user: StudentUserDep,
+) -> ClassroomRevision:
+    """只检查发布版本，不创建会话、不加载题目或返回考试反馈。"""
+    classroom = _get_classroom(session, code)
+    _student_profile_of(session, classroom, current_user)
+    content = json.dumps(
+        {
+            "date": str(_today_in_practice_tz()),
+            "exercise": str(classroom.current_exercise_id),
+            "unit": str(classroom.current_unit_id),
+            "items": classroom.assigned_items,
+            "types": [
+                classroom.assign_reading,
+                classroom.assign_repeat,
+                classroom.assign_qa,
+            ],
+        },
+        sort_keys=True,
+    )
+    return ClassroomRevision(revision=hashlib.sha256(content.encode()).hexdigest())
 
 
 @router.get("/{code}/today", response_model=TodayPlan)

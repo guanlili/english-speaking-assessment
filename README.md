@@ -189,22 +189,19 @@ HTTP 明文意味着 JWT token 和登录密码裸奔公网、浏览器标"不安
    `systemctl reload caddy` 生效，证书自动申请续期。安全组需放行 80/443。
 3. **改 Secret**：`FRONTEND_HOST` 改为 `https://项目名.你的域名.com`，push 触发重新部署即可（CORS 自动跟随，代码零改动）。
 
+### 运行时与故障定位 / Runtime diagnostics
+
+课堂发布版本同步、自动考试轻量轮询、请求关联 ID 与 E2E 失败现场的使用说明见 [运行时诊断](docs/runtime-observability.md)。
+
+See [runtime diagnostics](docs/runtime-observability.md) for class synchronization, compact exam polling, request IDs, and E2E failure artifacts.
+
 ### 数据库备份
 
-生产数据只存在 Docker volume 里，服务器磁盘损坏即全部丢失。**部署流水线会自动注册每日备份 cron**（每天 3:30，保留 14 天，`backups/` 目录），**不要手动再注册备份 crontab**（会双跑双清理）。备份内容：
+生产数据存于 Docker volume。部署流水线自动注册每日 03:30 完整备份（服务器时区，保留 14 天），不要重复注册 cron。新 `backups/bundle-*` 目录包含数据库、录音与标准音卷、私密配置和校验和；失败记入 `backups/backup-failure.log`。部署前另保留数据库快照。
 
-- `app-*.sql.gz`：pg_dump 全量数据库；
-- `env-*.env`：当次 `.env` 快照（SECRET_KEY、数据库密码、方舟密钥——灾后重建必需）。
+完整包目前仅落本地，**未启用异地上传**。手动备份、只读校验及隔离恢复步骤见 [备份与恢复说明 / Backup and recovery](docs/backup-restore.md)。旧版 `app-*.sql.gz` / `env-*.env` 备份保留供过渡核对。
 
-失败排查：备份失败会追加一行时间戳到 `backups/backup-failure.log`。
-
-> ⚠️ 备份仍只落在服务器本地盘：服务器整体报废时数据与备份同归于尽。异地容灾（对象存储/另一台机器）需要提供云凭证后另行配置。
-
-恢复（用户名/库名以服务器 `.env` 中的 `POSTGRES_USER`/`POSTGRES_DB` 为准）：
-
-```bash
-gunzip -c 备份文件.sql.gz | docker compose exec -T db psql -U $POSTGRES_USER $POSTGRES_DB
-```
+旧 SQL 备份只包含数据库，不包含录音与标准音。恢复请按上述说明在隔离环境校验和演练。
 
 ### 回滚
 

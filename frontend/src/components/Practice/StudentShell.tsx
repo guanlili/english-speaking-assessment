@@ -40,6 +40,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import useAuth from "@/hooks/useAuth"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
 import { TERMS } from "@/lib/terms"
@@ -111,6 +112,7 @@ function StudentShell({
   wide?: boolean
 }) {
   const { t } = useI18n()
+  const { logout } = useAuth()
   const { code = "" } = useParams({ strict: false })
   const student = loadStudent(code)
   const name = student
@@ -275,22 +277,9 @@ function StudentShell({
                   </a>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" asChild>
-                  <a
-                    href="/login"
-                    onClick={() => {
-                      localStorage.removeItem("access_token")
-                      localStorage.removeItem("esa:role")
-                      localStorage.removeItem("esa:must-change-pw")
-                      for (const key of Object.keys(localStorage)) {
-                        if (key.startsWith("esa:student:"))
-                          localStorage.removeItem(key)
-                      }
-                    }}
-                  >
-                    <LogOut />
-                    {t({ zh: "退出登录", en: "Sign out" })}
-                  </a>
+                <DropdownMenuItem variant="destructive" onSelect={logout}>
+                  <LogOut />
+                  {t({ zh: "退出登录", en: "Sign out" })}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

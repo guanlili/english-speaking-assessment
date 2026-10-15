@@ -4,9 +4,11 @@ import { defineConfig } from "@playwright/test"
 // the serial integration project until their isolation has been checked.
 const mockedFiles = [
   "admin-pagination",
+  "auth-session",
   "attempt-audio",
   "audio-preview",
   "classroom-delete",
+  "composer-pagination",
   "exam-automated",
   "exam-rules",
   "general-modes",
@@ -18,6 +20,7 @@ const mockedFiles = [
   "reading-tree",
   "recorder-lifecycle",
   "student-recording-flow",
+  "sentence-pagination",
   "teacher-feedback",
   "teacher-workspace",
 ].map((name) => `**/${name}.spec.ts`)
@@ -52,6 +55,9 @@ export default defineConfig({
       process.env.E2E_BASE_URL ??
       (mockOnly ? "http://127.0.0.1:5177" : "http://localhost:80"),
     locale: "zh-CN",
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
   },
   projects: [
     {
