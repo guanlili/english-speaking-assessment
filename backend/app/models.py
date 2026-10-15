@@ -1,3 +1,4 @@
+import time
 import uuid
 from datetime import UTC, date, datetime
 from typing import Annotated
@@ -5,7 +6,16 @@ from typing import Annotated
 from fastapi import HTTPException
 from pydantic import EmailStr, field_validator
 from pydantic import Field as PydanticField
-from sqlalchemy import JSON, Column, Date, DateTime, Index, UniqueConstraint, text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Column,
+    Date,
+    DateTime,
+    Index,
+    UniqueConstraint,
+    text,
+)
 from sqlmodel import Field, SQLModel
 
 
@@ -686,6 +696,30 @@ class ClassroomExercise(SQLModel, table=True):
     time_limit_minutes: int | None = Field(default=None, ge=5, le=240)
 
 
+class ComposerDraft(SQLModel, table=True):
+    """每位教师、每间课堂各一份私有组卷草稿。"""
+
+    __tablename__ = "composer_draft"
+    __table_args__ = (
+        UniqueConstraint("classroom_id", "owner_id", name="uq_composer_draft_owner"),
+    )
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    classroom_id: uuid.UUID = Field(
+        foreign_key="classroom.id", ondelete="CASCADE", index=True
+    )
+    owner_id: uuid.UUID = Field(foreign_key="user.id", ondelete="CASCADE", index=True)
+    # 初始版本不从 1 重用，避免发布删除后新建草稿接受旧页面的同号版本。
+    revision: int = Field(
+        default_factory=lambda: time.time_ns() // 1000,
+        sa_column=Column(BigInteger, nullable=False),
+    )
+    state: dict[str, object] = Field(sa_column=Column(JSON, nullable=False))
+    updated_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
 class ClassroomExercisePublic(SQLModel):
     id: uuid.UUID
     classroom_id: uuid.UUID
@@ -895,6 +929,11 @@ class PracticeSession(SQLModel, table=True):
     # 份内容，老师此后改题干/话题卡或删题均不影响学生已看到的题目
     exchanged_items: list[dict[str, object]] | None = Field(
         default=None, sa_column=Column("exchanged_items", JSON, nullable=True)
+    )
+    runtime_issue: str | None = Field(default=None, max_length=32)
+    runtime_issue_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
     )
     # 防切屏：前端 visibilitychange 上报的离开次数（教师面板可见）
     tab_switch_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})

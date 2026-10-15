@@ -47,6 +47,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   const [starting, setStarting] = useState(false)
   const generationRef = useRef(0)
   const [elapsed, setElapsed] = useState(0)
+  const [deviceFault, setDeviceFault] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [recording, setRecording] = useState<Recording | null>(null)
 
@@ -101,6 +102,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     setStarting(false)
     setStatus("idle")
     setElapsed(0)
+    setDeviceFault(false)
     setError(null)
     setRecording(null)
   }, [])
@@ -132,6 +134,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       typeof MediaRecorder === "undefined" ||
       !navigator.mediaDevices?.getUserMedia
     ) {
+      setDeviceFault(true)
       setError(
         t({
           zh: "当前浏览器不支持录音，请使用较新的浏览器并通过 HTTPS 访问",
@@ -144,6 +147,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     startingRef.current = true
     setStarting(true)
     interruptedRef.current = false
+    setDeviceFault(false)
     setError(null)
     setRecording(null)
     setElapsed(0)
@@ -228,6 +232,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         if (disposedRef.current || generation !== generationRef.current) return
         rejectStart?.(new Error("Recorder failed to start"))
         interruptedRef.current = true
+        setDeviceFault(true)
         try {
           if (recorder.state !== "inactive") {
             recorder.stop()
@@ -378,6 +383,12 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       cleanup()
       setStatus("idle")
       const name = err instanceof DOMException ? err.name : ""
+      setDeviceFault(
+        !(
+          options.deadlineAt !== undefined &&
+          (stoppedBeforeStart || Date.now() >= options.deadlineAt)
+        ),
+      )
       // A server phase change can stop startup slightly before the rounded
       // local deadline; it is still a time limit, not a microphone failure.
       if (
@@ -441,6 +452,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   }, [cleanup])
 
   return {
+    deviceFault,
     prepare,
     status,
     starting,

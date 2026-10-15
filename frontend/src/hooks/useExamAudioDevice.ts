@@ -22,6 +22,9 @@ export function useExamAudioDevice({
   const exam = plan.exam
   const phase = exam?.phase
   const item = plan.items[exam?.current_item_index ?? 0]
+  const [deviceIssue, setDeviceIssue] = useState<"device" | "audio" | null>(
+    null,
+  )
   const [armed, setArmed] = useState(false)
   const [enabling, setEnabling] = useState(false)
   const enablingRef = useRef(false)
@@ -39,6 +42,7 @@ export function useExamAudioDevice({
     setError(null)
     const check = new AbortController()
     audioCheck.current = check
+    let stage: "audio" | "device" | "sync" = "audio"
     try {
       context.current ??= new AudioContext()
       const player = audio.current ?? new Audio(EXAM_AUDIO_UNLOCK_URL)
@@ -60,7 +64,9 @@ export function useExamAudioDevice({
         ),
       ])
       player.pause()
+      stage = "device"
       await recorderRef.current.prepare()
+      stage = "sync"
       if (check.signal.aborted) return
       if (!exam?.started)
         await ClassesService.startExam({
@@ -69,8 +75,10 @@ export function useExamAudioDevice({
         })
       await refetch()
       setArmed(true)
+      setDeviceIssue(null)
     } catch (err) {
       if (check.signal.aborted) return
+      setDeviceIssue(stage === "sync" ? null : stage)
       check.abort()
       playerCleanup()
       setError(
@@ -122,5 +130,5 @@ export function useExamAudioDevice({
     },
     [],
   )
-  return { armed, setArmed, enabling, enable, audio, beepRef }
+  return { deviceIssue, armed, setArmed, enabling, enable, audio, beepRef }
 }

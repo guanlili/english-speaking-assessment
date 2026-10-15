@@ -4,6 +4,7 @@ import { useState } from "react"
 import type { ClassroomExercisePublic, ExerciseStudentResult } from "@/client"
 import { ClassesService } from "@/client"
 import { AttemptFeedbackDialog } from "@/components/Teaching/AttemptFeedbackDialog"
+import { CopyExerciseDialog } from "@/components/Teaching/CopyExerciseDialog"
 import { RecordingButton } from "@/components/Teaching/RecordingButton"
 import { StudentFeedbackDialog } from "@/components/Teaching/StudentFeedbackDialog"
 import { Badge } from "@/components/ui/badge"
@@ -38,11 +39,14 @@ function formatDurationLabel(
 export function ExerciseHistory({
   code,
   initialExerciseId,
+  onCopied,
 }: {
   code: string
   initialExerciseId?: string | null
+  onCopied?: () => void
 }) {
   const { t } = useI18n()
+  const [copying, setCopying] = useState<ClassroomExercisePublic | null>(null)
   const exercisesQuery = useQuery({
     queryKey: ["teacher", "exercises", code],
     queryFn: () =>
@@ -99,6 +103,14 @@ export function ExerciseHistory({
 
   return (
     <div className="space-y-4">
+      {copying && (
+        <CopyExerciseDialog
+          code={code}
+          exercise={copying}
+          onClose={() => setCopying(null)}
+          onCopied={onCopied}
+        />
+      )}
       <div className="flex items-center gap-3 rounded-xl border border-primary/10 bg-primary/5 p-4">
         <History className="size-5 shrink-0 text-primary" />
         <div>
@@ -149,15 +161,24 @@ export function ExerciseHistory({
                 )}
               </p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-11"
-              onClick={() => setSelectedId(exercise.id)}
-            >
-              {t({ zh: "查看结果", en: "View Results" })}
-              <ArrowUpRight className="size-4" />
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                className="min-h-11"
+                onClick={() => setCopying(exercise)}
+              >
+                {t({ zh: "复制练习", en: "Copy practice" })}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-11"
+                onClick={() => setSelectedId(exercise.id)}
+              >
+                {t({ zh: "查看结果", en: "View Results" })}
+                <ArrowUpRight className="size-4" />
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ))}

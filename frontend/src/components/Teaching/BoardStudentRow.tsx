@@ -49,6 +49,7 @@ export function BoardStudentRow({
   return (
     <>
       <TableRow
+        id={`student-${student.student_id}`}
         onClick={onToggle}
         data-state={expanded ? "selected" : undefined}
         className="grid cursor-pointer grid-cols-[2.75rem_minmax(0,1fr)_auto] gap-y-3 p-4 hover:bg-secondary/30 lg:table-row lg:p-0"

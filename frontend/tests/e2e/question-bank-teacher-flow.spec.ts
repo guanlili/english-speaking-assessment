@@ -286,7 +286,17 @@ test("断网时带入组卷不丢预选，恢复后自动带入", async ({ page 
   await page.waitForURL((url) => url.pathname === "/classrooms")
   await enterClassroom(page, code)
   await expect(page.getByText(/刷新失败/)).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByText(/只出本批新建题/)).toHaveCount(0)
+  // 新草稿机制会恢复上一批已保存的选题；新交接失败不能清空旧备课。
+  await expect(page.getByText(/只出本批新建题/)).toBeVisible()
+  const savedDraft = await page.request.get(
+    `/api/v1/classes/${code}/composer-draft`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
+  expect((await savedDraft.json()).state.selection.questions).toContain(
+    realQuestionId,
+  )
   expect(
     await page.evaluate(() =>
       sessionStorage.getItem("esa:qbank:composer-preset"),

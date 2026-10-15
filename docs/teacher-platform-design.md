@@ -83,3 +83,20 @@ AI 出题是问答编辑器内的辅助能力，生成结果为待审核草稿�
 7. 朗读文章可折叠查看分句，选择一次即选整篇；未拆分文章计为一道题，拆分文章按句展开（预览与题单标注逐句题数）。
 8. 冗余/停用课堂在确认后可删除，清空成员后仍能清理归档历史；评分未结束时保留确认框并提示稍后重试。
 9. 模考每题倒计时到时自动推进，刷新不会回到上一题；最后一题完成/到时进入结果页，结果页可回放但不提供重答入口。普通练习仍可重练。
+
+## 私有备课草稿、历史复制与异常提示（2026-10-16）
+
+- 草稿按教师账号与课堂隔离，编辑标题、选题、题序和考试模式后约 800ms 自动保存到服务器；切换设备可继续。未保存时有状态提示，关闭/刷新有浏览器离开保护。断网时保留页面编辑，恢复后可重试；浏览器崩溃或强制关闭前尚未完成的保存不能保证恢复。
+- 草稿通过版本比较阻止多设备互相覆盖。发生冲突后保留当前页面编辑并提示重新加载，不静默覆盖服务器。登录身份变化后不再提交旧页面的排队保存，也不把迟到响应写入新账号缓存。
+- 发布前等待草稿保存完成，再在同一发布事务中检查版本并清理本人的草稿。发布失败保留草稿；其他教师的草稿不清理。当前发布变化时，旧草稿仍保留并提示核对。可确认放弃编辑、恢复当前发布选题。
+- 发布历史可复制选题、顺序、标题及考试模式到本人有权限的课堂草稿；替换目标已有草稿需明确勾选确认。**新练习使用题库当前的题文、音频和逐题设置**，不是逐字克隆旧快照；旧成绩、作答、计时状态不复制。已删除的材料会在组卷校验中提示，必须处理后才能发布。
+- 学生结果页每 5 秒检查课堂异常。麦克风/播放/提交问题来自学生设备的枚举上报，不包含原始错误、正文或录音；持续问题每分钟刷新，超过 5 分钟失效。无网络的设备不能上报，未作答也不能据此推断离线或设备异常。
+- 服务端仅检查今日、当前发布、当前在班学生的最新课堂轮次。评分失败和排队/处理超过 2 分钟单独提示；每题只看最新作答，后续成功不再展示旧失败。定位学生会展开对应结果，不自动重传、重评或重置考试。
+
+### English
+
+Private drafts are scoped to the teacher and classroom. Edits save to the server after about 800ms and can resume on another device. Failed saves keep the form open for retry; unsaved edits warn on browser exit. A crash or forced close before a save completes can still lose changes. Revision conflicts prevent overwriting another device. Successful publishing checks the draft revision and removes only that teacher's draft in the publication transaction; failure keeps it.
+
+History reuse copies selections, order, title and exam mode into an authorized target classroom's private draft. Replacing an existing draft requires explicit confirmation. New publication uses **current question-bank text, audio and item settings**; it does not clone historical content or copy results. Missing items must be resolved before publishing.
+
+The student-results panel checks issues every five seconds. Device and submission hints are self-reported enums, refreshed every minute while present and expire after five minutes. Offline devices cannot report, and missing answers are not treated as device faults. Server-side scoring alerts use the latest attempt per item in today's current publication only. Finding a student expands their results without retrying uploads or changing exam clocks.

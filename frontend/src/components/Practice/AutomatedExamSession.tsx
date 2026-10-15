@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   ApiError,
   AttemptsService,
@@ -15,6 +15,7 @@ import { useExamAudioDevice } from "@/hooks/useExamAudioDevice"
 import { useExamDraftRecovery } from "@/hooks/useExamDraftRecovery"
 import { useExamPhase } from "@/hooks/useExamPhase"
 import { type Recording, useRecorder } from "@/hooks/useRecorder"
+import { useRuntimeIssue } from "@/hooks/useRuntimeIssue"
 import { useI18n } from "@/lib/i18n"
 import {
   currentDraftOwner,
@@ -64,7 +65,13 @@ export default function AutomatedExamSession({
   const plan = query.plan
   const exam = plan.exam
   const item = plan.items[exam?.current_item_index ?? 0]
+  const [uploadFailed, setUploadFailed] = useState(false)
+  const [audioFailed, setAudioFailed] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const setAudioError = useCallback((message: string | null) => {
+    setError(message)
+    setAudioFailed(Boolean(message))
+  }, [])
   const [storageError, setStorageError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [pendingDraft, setPendingDraft] = useState<RecordingDraftInput | null>(
@@ -120,6 +127,7 @@ export default function AutomatedExamSession({
 
   async function upload(input: RecordingDraftInput) {
     setBusy(true)
+    setUploadFailed(false)
     setError(null)
     setPendingDraft(input)
     try {
@@ -140,6 +148,7 @@ export default function AutomatedExamSession({
       setPendingDraft(null)
       void query.refetch()
     } catch (err) {
+      setUploadFailed(true)
       if (err instanceof ApiError && err.status === 422) {
         // 服务器明确拒绝内容（损坏/无音轨等）：重传同一文件无意义。
         // detail 是稳定标识，映射双语展示；未知 detail 走双语兜底。
@@ -223,7 +232,7 @@ export default function AutomatedExamSession({
   })
   const recorderRef = useRef(recorder)
   recorderRef.current = recorder
-  const { armed, setArmed, enabling, enable, audio, beepRef } =
+  const { deviceIssue, armed, setArmed, enabling, enable, audio, beepRef } =
     useExamAudioDevice({
       code,
       plan,
@@ -231,6 +240,15 @@ export default function AutomatedExamSession({
       refetch: query.refetch,
       setError,
     })
+  useRuntimeIssue(
+    code,
+    plan.session_id,
+    recorder.deviceFault
+      ? "device"
+      : pendingDraft && uploadFailed
+        ? "upload"
+        : (deviceIssue ?? (audioFailed && !armed ? "audio" : null)),
+  )
   useEffect(() => {
     for (const id of query.data.submitted_item_ids) accepted.current.add(id)
   }, [query.data.submitted_item_ids])
@@ -262,7 +280,7 @@ export default function AutomatedExamSession({
     beepRef,
     eventRef,
     setArmed,
-    setError,
+    setError: setAudioError,
   })
 
   useEffect(() => {

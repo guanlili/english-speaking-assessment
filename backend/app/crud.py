@@ -14,6 +14,7 @@ from app.models import (
     Attempt,
     Classroom,
     ClassroomExercise,
+    ComposerDraft,
     Passage,
     PassageCreate,
     PracticeSession,
@@ -349,3 +350,16 @@ def create_attempt(*, session: Session, attempt_in: Attempt) -> Attempt:
     session.commit()
     session.refresh(attempt_in)
     return attempt_in
+
+
+def get_composer_draft(
+    session: Session, classroom_id: uuid.UUID, owner_id: uuid.UUID
+) -> ComposerDraft | None:
+    return session.exec(
+        select(ComposerDraft)
+        .where(
+            ComposerDraft.classroom_id == classroom_id,
+            ComposerDraft.owner_id == owner_id,
+        )
+        .with_for_update()
+    ).first()

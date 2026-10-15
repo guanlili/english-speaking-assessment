@@ -37,6 +37,7 @@ export type AssignmentRequest = {
     assign_qa?: (boolean | null);
     items?: (Array<AssignmentItemIn> | null);
     title?: (string | null);
+    draft_revision?: (number | null);
     automated_exam?: boolean;
     is_exam?: boolean;
     time_limit_minutes?: (number | null);
@@ -237,6 +238,11 @@ export type ClassroomCreate = {
     class_size?: number;
 };
 
+export type ClassroomDiagnostics = {
+    checked_at: string;
+    issues: Array<ClassroomIssue>;
+};
+
 export type ClassroomExercisePublic = {
     id: string;
     classroom_id: string;
@@ -250,6 +256,16 @@ export type ClassroomExercisePublic = {
     is_exam?: boolean;
     time_limit_minutes?: (number | null);
 };
+
+export type ClassroomIssue = {
+    student_id: string;
+    display_name: string;
+    kind: 'device' | 'audio' | 'upload' | 'scoring_slow' | 'scoring_failed';
+    observed_at: string;
+    attempt_id?: (string | null);
+};
+
+export type kind = 'device' | 'audio' | 'upload' | 'scoring_slow' | 'scoring_failed';
 
 export type ClassroomPublic = {
     id: string;
@@ -301,9 +317,45 @@ export type ComposerSelectionIn = {
     items: Array<AssignmentItemIn>;
 };
 
+export type ComposerState = {
+    title: string;
+    types: DraftTypes;
+    selection: DraftSelection;
+    ordered_keys?: (Array<(string)> | null);
+    is_exam: boolean;
+    exam_minutes: number;
+    base_exercise_id?: (string | null);
+};
+
+export type DraftPublic = {
+    revision: number;
+    state: ComposerState;
+    updated_at: string;
+};
+
 export type DraftQuestionOut = {
     text: string;
     suggested_seconds: number;
+};
+
+export type DraftSelection = {
+    passages: Array<(string)>;
+    sentences: Array<(string)>;
+    scenarioIds: Array<(string)>;
+    instructions: Array<(string)>;
+    questions: Array<(string)>;
+};
+
+export type DraftTypes = {
+    reading: boolean;
+    repeat: boolean;
+    qa: boolean;
+    instruction: boolean;
+};
+
+export type DraftWrite = {
+    expected_revision: number;
+    state: ComposerState;
 };
 
 export type ExamFlowEvent = {
@@ -773,6 +825,11 @@ export type RepeatSentence = {
     exam_kind?: (string | null);
     exam_level?: (string | null);
     created_at?: (string | null);
+};
+
+export type RuntimeIssueIn = {
+    session_id: string;
+    issue: ('device' | 'audio' | 'upload' | null);
 };
 
 /**
@@ -2409,6 +2466,39 @@ export type ClassesRemoveFrameFavoriteData = {
 };
 
 export type ClassesRemoveFrameFavoriteResponse = (Array<SentenceFramePublic>);
+
+export type ClassesReadComposerDraftData = {
+    code: string;
+};
+
+export type ClassesReadComposerDraftResponse = ((DraftPublic | null));
+
+export type ClassesSaveComposerDraftData = {
+    code: string;
+    requestBody: DraftWrite;
+};
+
+export type ClassesSaveComposerDraftResponse = (DraftPublic);
+
+export type ClassesReadExerciseComposerSeedData = {
+    code: string;
+    exerciseId: string;
+};
+
+export type ClassesReadExerciseComposerSeedResponse = (ComposerState);
+
+export type ClassesReportRuntimeIssueData = {
+    code: string;
+    requestBody: RuntimeIssueIn;
+};
+
+export type ClassesReportRuntimeIssueResponse = (unknown);
+
+export type ClassesReadClassroomDiagnosticsData = {
+    code: string;
+};
+
+export type ClassesReadClassroomDiagnosticsResponse = (ClassroomDiagnostics);
 
 export type LoginReadLoginOptionsResponse = (LoginOptions);
 
