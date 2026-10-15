@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
+import { useClassroomRevision } from "@/hooks/useClassroomRevision"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import {
   displayName,
@@ -81,6 +82,7 @@ function HomePage() {
   const { code } = useParams({ from: "/home/$code" })
   const navigate = useNavigate({ from: "/home/$code" })
   const student = loadStudent(code)
+  useClassroomRevision(code, student?.id)
 
   const [goalPicker, setGoalPicker] = useState(false)
 

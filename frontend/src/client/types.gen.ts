@@ -268,6 +268,10 @@ export type ClassroomPublic = {
     created_at?: (string | null);
 };
 
+export type ClassroomRevision = {
+    revision: string;
+};
+
 export type ClassroomUpdate = {
     name?: (string | null);
     grade?: (string | null);
@@ -283,6 +287,18 @@ export type ClassroomUpdate = {
  */
 export type ClassSizeUpdate = {
     class_size: number;
+};
+
+export type ComposerLibraryData = {
+    passages?: Array<PassageWithSentences>;
+    sentences?: Array<SentenceWithPassage>;
+    scenarios?: Array<ScenarioOut>;
+    instructions?: Array<InstructionPublic>;
+    missing_ids?: Array<(string)>;
+};
+
+export type ComposerSelectionIn = {
+    items: Array<AssignmentItemIn>;
 };
 
 export type DraftQuestionOut = {
@@ -306,6 +322,12 @@ export type ExamItemSettings = {
     after_audio_seconds?: number;
     prep_seconds?: (number | null);
     audio_url?: (string | null);
+};
+
+export type ExamRuntimeState = {
+    session_id: string;
+    exam: ExamStatus;
+    submitted_item_ids: Array<(string)>;
 };
 
 export type ExamStartRequest = {
@@ -1827,6 +1849,7 @@ export type VocabularyWrongWords = {
 };
 
 export type AdminListPassagesData = {
+    ids?: (Array<(string)> | null);
     limit?: (number | null);
     /**
      * 标题/主题关键词过滤
@@ -1883,6 +1906,10 @@ export type AdminListSentencesFlatData = {
      * 考试级别过滤
      */
     examLevel?: (string | null);
+    ids?: (Array<(string)> | null);
+    limit?: (number | null);
+    q?: (string | null);
+    skip?: number;
 };
 
 export type AdminListSentencesFlatResponse = (Array<SentenceWithPassage>);
@@ -1908,6 +1935,12 @@ export type AdminDeleteSentenceResponse = ({
     [key: string]: (string);
 });
 
+export type AdminListInstructionsData = {
+    limit?: (number | null);
+    q?: (string | null);
+    skip?: number;
+};
+
 export type AdminListInstructionsResponse = (Array<InstructionPublic>);
 
 export type AdminCreateInstructionData = {
@@ -1932,6 +1965,7 @@ export type AdminDeleteInstructionResponse = ({
 });
 
 export type AdminListScenariosData = {
+    ids?: (Array<(string)> | null);
     limit?: (number | null);
     /**
      * 主题关键词过滤
@@ -2146,6 +2180,12 @@ export type AdminCreateSentenceFramesBatchData = {
 
 export type AdminCreateSentenceFramesBatchResponse = (SentenceFrameBatchResult);
 
+export type AdminReadComposerSelectionData = {
+    requestBody: ComposerSelectionIn;
+};
+
+export type AdminReadComposerSelectionResponse = (ComposerLibraryData);
+
 export type AdminReadExamItemSettingsData = {
     itemId: string;
     itemType: 'passage' | 'repeat' | 'question' | 'instruction';
@@ -2218,6 +2258,12 @@ export type ClassesJoinClassData = {
 
 export type ClassesJoinClassResponse = (StudentPublic);
 
+export type ClassesReadClassroomRevisionData = {
+    code: string;
+};
+
+export type ClassesReadClassroomRevisionResponse = (ClassroomRevision);
+
 export type ClassesReadTodayPlanData = {
     code: string;
     sessionId?: (string | null);
@@ -2274,6 +2320,13 @@ export type ClassesReadStudentSessionsData = {
 };
 
 export type ClassesReadStudentSessionsResponse = (Array<MySessionSummary>);
+
+export type ClassesReadExamStateData = {
+    code: string;
+    sessionId: string;
+};
+
+export type ClassesReadExamStateResponse = (ExamRuntimeState);
 
 export type ClassesStartExamData = {
     code: string;

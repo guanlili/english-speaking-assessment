@@ -197,3 +197,12 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - 模拟接口任务先 `npm run build`，再设置 `E2E_MOCK_ONLY=true`；Playwright 自动启动生产构建预览（5177）和组件宿主（5176）。本地可运行 `E2E_MOCK_ONLY=true npx playwright test --project=chromium-mock --project=webkit --shard=1/2`（第二片用 `2/2`）。
 - 模拟用例按测试粒度并行；真实音频回放文件保持文件内顺序，避免共用系统音频设备造成不稳定。新增模拟用例需保持每个测试独立，不共享可变状态。
 - `E2E 冒烟（主干道）` 汇总检查只有在全部分片成功时通过，任一失败、取消或跳过均阻断部署。生产部署仍等待前端、后端和 E2E 汇总通过，不复用其他提交的检查结果。
+
+
+## 运行时与题库加载优化（2026-10-15）
+
+- 学生首页经 `useClassroomRevision` 每 5 秒检查 `/classes/{code}/revision`，仅发布版本变化时刷新 today/path；不替换正在作答的会话快照。
+- 自动考试首次读取完整题单，后续 `/classes/{code}/exam/state` 只返回考试态和已提交题 ID。设备检查、阶段推进、草稿恢复、状态请求分别在 `useExamAudioDevice` / `useExamPhase` / `useExamDraftRecovery` / `useAutomatedExamState`；服务端仍是计时与作答门禁的唯一权威。
+- 组卷四类题库以 20 条分页浏览，`POST /admin/composer-selection` 按引用恢复已发布、跨页选中和导入预选的详情；包含旧朗读子篇归根、问答主题反查与缺失 ID。搜索/翻页不清空选择；新接口只读，无表结构变更。
+- 导入查重只流式扫描相关题型的匹配键，再加载命中候选；保留 Python 的 NFKC/casefold/Unicode 空白规范化，不用 SQL lower 近似替代。
+- API 响应携带 `X-Request-ID`，评分线程继承请求上下文。metrics 仍是进程快照，实例/启动信息识别计数重置，历史查外部调用日志；见 `docs/runtime-observability.md`。E2E 失败保留 trace/截图/视频，组件宿主使用独立 Vite 缓存。

@@ -7,7 +7,12 @@
 - 线程安全（评分线程池并发调用），开销为一次锁内 dict 自增。
 """
 
+import logging
 import threading
+
+from app.core.request_context import PROCESS_INFO, request_id
+
+logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 # kind -> {"calls": int, "failures": int, "total_seconds": float}
@@ -24,6 +29,14 @@ def record_call(kind: str, *, ok: bool, duration_s: float) -> None:
         if not ok:
             entry["failures"] += 1
         entry["total_seconds"] += max(0.0, duration_s)
+    logger.info(
+        "provider_call request_id=%s instance_id=%s kind=%s ok=%s duration_s=%.3f",
+        request_id.get(),
+        PROCESS_INFO["instance_id"],
+        kind,
+        ok,
+        max(0.0, duration_s),
+    )
 
 
 def call_stats() -> dict[str, dict[str, float]]:

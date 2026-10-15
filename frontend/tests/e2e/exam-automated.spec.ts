@@ -154,6 +154,12 @@ async function setup(page: Page, mockAudio = true, lang = "zh") {
         attempts: [],
         exam: exam(),
       }
+    if (path.endsWith("/exam/state"))
+      json = {
+        session_id: "exam-session",
+        exam: exam(),
+        submitted_item_ids: [],
+      }
     if (path.endsWith("/exam/start")) {
       state.started = true
       state.phase = "audio"

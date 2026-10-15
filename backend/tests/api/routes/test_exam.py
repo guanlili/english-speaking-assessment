@@ -1301,3 +1301,40 @@ def test_today_skips_settle_and_masks_stars_while_feedback_locked(
     monkeypatch.setattr(exam_service, "exam_feedback_locked", lambda *a, **k: True)
     refreshed = _today(client, headers, code)
     assert refreshed["gamification"]["session_stars"] is None
+
+
+def test_compact_exam_state_keeps_clock_and_hides_feedback(
+    flow_exam_started: tuple[TestClient, str, dict[str, str], dict, list[dict], list],
+    db: Session,
+) -> None:
+    client, code, headers, plan, items, clock = flow_exam_started
+    response = client.get(
+        f"/api/v1/classes/{code}/exam/state",
+        params={"session_id": plan["session_id"]},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert set(payload) == {"session_id", "exam", "submitted_item_ids"}
+    assert payload["exam"]["started"] is True
+    assert payload["submitted_item_ids"] == []
+    clock[0] += timedelta(seconds=2)
+    assert (
+        _submit(client, headers, code, items[0], plan["session_id"]).status_code == 200
+    )
+    after = client.get(
+        f"/api/v1/classes/{code}/exam/state",
+        params={"session_id": plan["session_id"]},
+        headers=headers,
+    ).json()
+    assert items[0]["id"] in after["submitted_item_ids"]
+    assert "overall" not in str(after)
+    other = make_student(db, client, code, "非本人考试")
+    assert (
+        client.get(
+            f"/api/v1/classes/{code}/exam/state",
+            params={"session_id": plan["session_id"]},
+            headers=other["headers"],
+        ).status_code
+        == 404
+    )

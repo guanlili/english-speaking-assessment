@@ -189,6 +189,12 @@ HTTP 明文意味着 JWT token 和登录密码裸奔公网、浏览器标"不安
    `systemctl reload caddy` 生效，证书自动申请续期。安全组需放行 80/443。
 3. **改 Secret**：`FRONTEND_HOST` 改为 `https://项目名.你的域名.com`，push 触发重新部署即可（CORS 自动跟随，代码零改动）。
 
+### 运行时与故障定位 / Runtime diagnostics
+
+课堂发布版本同步、自动考试轻量轮询、请求关联 ID 与 E2E 失败现场的使用说明见 [运行时诊断](docs/runtime-observability.md)。
+
+See [runtime diagnostics](docs/runtime-observability.md) for class synchronization, compact exam polling, request IDs, and E2E failure artifacts.
+
 ### 数据库备份
 
 生产数据存于 Docker volume。部署流水线自动注册每日 03:30 完整备份（服务器时区，保留 14 天），不要重复注册 cron。新 `backups/bundle-*` 目录包含数据库、录音与标准音卷、私密配置和校验和；失败记入 `backups/backup-failure.log`。部署前另保留数据库快照。

@@ -8,6 +8,7 @@ import { expect, type Page, test } from "@playwright/test"
 const CODE = "HOME"
 
 async function mockHome(page: Page) {
+  const state = { revision: "v1", title: "Unit 1 Travel", todayReads: 0 }
   await page.addInitScript(() => {
     localStorage.setItem("access_token", "test-token")
     localStorage.setItem("esa:role", "student")
@@ -31,7 +32,10 @@ async function mockHome(page: Page) {
         is_active: true,
         is_superuser: false,
       }
+    } else if (path.endsWith("/revision")) {
+      body = { revision: state.revision }
     } else if (path.endsWith("/today")) {
+      state.todayReads += 1
       body = {
         session_id: "home-session",
         classroom_code: CODE,
@@ -53,7 +57,7 @@ async function mockHome(page: Page) {
         attempts: [],
         exam: null,
         gamification: { xp: 12, streak_days: 3 },
-        assigned_unit_title: "Unit 1 Travel",
+        assigned_unit_title: state.title,
       }
     } else if (path.endsWith("/path")) {
       body = { classroom_code: CODE, unlock_all: false, units: [] }
@@ -74,6 +78,7 @@ async function mockHome(page: Page) {
     }
     await route.fulfill({ json: body })
   })
+  return state
 }
 
 test("home hero, plan summary and gamification render", async ({ page }) => {
@@ -109,4 +114,22 @@ test("home week goal can be adjusted from the card", async ({ page }) => {
   await expect(dialog).toBeVisible()
   await dialog.getByRole("button", { name: "3" }).click()
   await expect(page.getByText("每周目标已调整为 3 天")).toBeVisible()
+})
+
+test("home sees a new publication and unchanged revisions do not reload the plan", async ({
+  page,
+}) => {
+  const state = await mockHome(page)
+  await page.goto(`/home/${CODE}`)
+  await expect(page.getByText("今日练习 · Unit 1 Travel")).toBeVisible()
+  state.title = "Unit 2 Stories"
+  state.revision = "v2"
+  await expect(page.getByText("今日练习 · Unit 2 Stories")).toBeVisible({
+    timeout: 8000,
+  })
+  const loaded = state.todayReads
+  await page.waitForResponse((response) =>
+    new URL(response.url()).pathname.endsWith("/revision"),
+  )
+  expect(state.todayReads).toBe(loaded)
 })

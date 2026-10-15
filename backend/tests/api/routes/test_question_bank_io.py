@@ -2164,3 +2164,62 @@ def test_permissions_student_403_and_anonymous_401(
     with anonymous(client):
         resp = client.get(f"{QB}/import-template")
         assert resp.status_code == 401
+
+
+def test_repeat_import_streams_unicode_keys_without_materializing_unrelated_tables(
+    db: Session,
+) -> None:
+    from sqlalchemy import event
+
+    from app.services import question_bank_io as svc
+
+    marker = uuid.uuid4().hex
+    passage = Passage(
+        slug=f"candidate-{marker}",
+        title="Unrelated",
+        text=f"Unrelated {marker}",
+        cefr_band="B1",
+    )
+    instruction = Instruction(text=f"Unrelated {marker}", suggested_seconds=20)
+    sentence = RepeatSentence(
+        text=f"Straße\u00a0ＦＵＬＬ {marker}",
+        order_index=0,
+        suggested_seconds=8,
+        replay_limit=3,
+    )
+    db.add_all([passage, instruction, sentence])
+    db.commit()
+    ids = passage.id, instruction.id, sentence.id
+    for row in (passage, instruction, sentence):
+        db.expunge(row)
+    loaded: list[type] = []
+
+    def remember(_session: Session, instance: object) -> None:
+        loaded.append(type(instance))
+
+    event.listen(db, "loaded_as_persistent", remember)
+    try:
+        file = _csv_file(
+            [
+                {
+                    "__type__": "听句复述",
+                    "text": f"STRASSE FULL {marker}",
+                    "passage_title": "",
+                }
+            ]
+        )
+        plan = svc.plan_import(db, svc.parse_upload("unicode.csv", file))
+        assert plan.counts[svc.TYPE_REPEAT].exact_dup == 1
+        assert RepeatSentence in loaded
+        assert Passage not in loaded
+        assert Instruction not in loaded
+        assert ScenarioQuestion not in loaded
+    finally:
+        event.remove(db, "loaded_as_persistent", remember)
+        for model, row_id in zip(
+            (Passage, Instruction, RepeatSentence), ids, strict=True
+        ):
+            row = db.get(model, row_id)
+            if row is not None:
+                db.delete(row)
+        db.commit()

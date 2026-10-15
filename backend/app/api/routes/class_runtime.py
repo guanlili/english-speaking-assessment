@@ -20,6 +20,7 @@ from app.api.routes.class_shared import (
     router,
 )
 from app.models import (
+    Attempt,
     AttemptItemType,
     Classroom,
     ClassroomExercise,
@@ -93,6 +94,34 @@ def _exam_session_of(
     if exercise is None or not exercise.is_exam:
         raise HTTPException(status_code=422, detail="该练习不是模考")
     return practice_session, exercise
+
+
+class ExamRuntimeState(SQLModel):
+    session_id: uuid.UUID
+    exam: ExamStatus
+    submitted_item_ids: list[uuid.UUID]
+
+
+@router.get("/{code}/exam/state", response_model=ExamRuntimeState)
+def read_exam_state(
+    session: SessionDep,
+    code: str,
+    session_id: uuid.UUID,
+    current_user: StudentUserDep,
+) -> ExamRuntimeState:
+    """考试轮询只返回阶段/时钟与已提交题 ID，题目始终来自初次加载的发布快照。"""
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(session, classroom, current_user)
+    ps, exercise = _exam_session_of(session, classroom, student, session_id)
+    exam_service.finalize_if_expired(session, ps, exercise)
+    submitted = session.exec(
+        select(Attempt.item_id).where(Attempt.session_id == ps.id).distinct()
+    ).all()
+    return ExamRuntimeState(
+        session_id=ps.id,
+        exam=exam_service.exam_status_payload(session, ps, exercise),
+        submitted_item_ids=list(submitted),
+    )
 
 
 @router.post("/{code}/exam/start", response_model=ExamStatus)

@@ -9,14 +9,6 @@ import type {
 import type { LessonSelection, LessonTypes } from "@/lib/lesson-readiness"
 import { COMPOSER_PRESET_KEY } from "@/lib/questionImport"
 
-/** 预选刷新涉及的全部题库查询键（成功判据逐个核对 dataUpdatedAt） */
-const PRESET_QUERY_KEYS = [
-  ["admin", "passages"],
-  ["admin", "sentences"],
-  ["admin", "scenarios"],
-  ["admin", "instructions"],
-] as const
-
 export function useComposerPreset({
   passages,
   sentences,
@@ -24,7 +16,9 @@ export function useComposerPreset({
   instructions,
   setSelectionDirty,
   setTypesDirty,
+  selectionKey,
 }: {
+  selectionKey: readonly unknown[]
   passages: PassageWithSentences[]
   sentences: SentenceWithPassage[]
   scenarios: ScenarioOut[]
@@ -38,8 +32,8 @@ export function useComposerPreset({
 }) {
   const queryClient = useQueryClient()
   // 题库批量导入「带入组卷」：一次性预选本批新建题目。分两步防「旧缓存
-  // 丢预选」（评审 P2）：① 挂载发现交接键 → invalidate 四个题库查询强制
-  // 刷新（staleTime 内的旧缓存不含刚导入的新题，直接消费会把新题过滤掉
+  // 丢预选」（评审 P2）：① 挂载发现交接键 → 刷新分页目录与所选题目详情
+  // （staleTime 内的旧缓存不含刚导入的新题，直接消费会把新题过滤掉
   // 并删掉交接数据）；② 待本批 ID 全部可解析（或刷新完成后仍缺失）才消费。
   // 问答按题目白名单带入（selection.questions），不整主题展开混入旧题。
   const presetDoneRef = useRef(false)
@@ -62,6 +56,7 @@ export function useComposerPreset({
       presetInvalidatedAtRef.current = Date.now()
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin", "passages"] }),
+        queryClient.invalidateQueries({ queryKey: selectionKey }),
         queryClient.invalidateQueries({ queryKey: ["admin", "sentences"] }),
         queryClient.invalidateQueries({ queryKey: ["admin", "scenarios"] }),
         queryClient.invalidateQueries({ queryKey: ["admin", "instructions"] }),
@@ -115,10 +110,9 @@ export function useComposerPreset({
     // 刷新失败（离线）则回落到现有缓存判定——全部 id 在缓存可解析（只是
     // 可能偏旧）时照常消费，否则暂缓待重试
     const t0 = presetInvalidatedAtRef.current
-    const allFresh = PRESET_QUERY_KEYS.every((key) => {
-      const state = queryClient.getQueryState(key)
-      return (state?.dataUpdatedAt ?? 0) > t0
-    })
+    const allFresh =
+      (queryClient.getQueryState(selectionKey)?.dataUpdatedAt ?? 0) > t0
+
     if (missing.length === 0) {
       consumePreset(preset)
       return

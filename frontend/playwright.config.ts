@@ -8,6 +8,7 @@ const mockedFiles = [
   "attempt-audio",
   "audio-preview",
   "classroom-delete",
+  "composer-pagination",
   "exam-automated",
   "exam-rules",
   "general-modes",
@@ -54,6 +55,9 @@ export default defineConfig({
       process.env.E2E_BASE_URL ??
       (mockOnly ? "http://127.0.0.1:5177" : "http://localhost:80"),
     locale: "zh-CN",
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
   },
   projects: [
     {
