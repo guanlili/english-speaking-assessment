@@ -18,7 +18,7 @@ import { questionBankErrorMessage } from "@/lib/questionImport"
 import { QuestionBankExportDialog } from "./ExportDialog"
 import { QuestionBankImportDialog } from "./ImportDialog"
 
-export function QuestionBankIoCard() {
+export function QuestionBankIoCard({ classroom }: { classroom?: string }) {
   const { t } = useI18n()
   const { showErrorToast } = useCustomToast()
   const [importOpen, setImportOpen] = useState(false)
@@ -111,6 +111,7 @@ export function QuestionBankIoCard() {
       <QuestionBankImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
+        classroom={classroom}
       />
       <QuestionBankExportDialog
         open={exportOpen}

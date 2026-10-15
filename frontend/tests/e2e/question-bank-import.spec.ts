@@ -63,19 +63,25 @@ test("题库批量导入：上传 CSV → 预览 → 确认 → 重传防重", a
   await expect(dialog.getByText(/完全重复 1（自动跳过）/)).toBeVisible()
   await expect(dialog.getByRole("button", { name: /确认导入/ })).toBeDisabled()
 
-  // 疑似重复（同题干不同秒数）：勾选后换新文件，开关须回到默认排除
+  // 疑似重复（同题干不同秒数）：逐条对照可见，点「导入」勾选该行
   await fileInput.setInputFiles({
     name: "e2e-suspected.csv",
     mimeType: "text/csv",
     buffer: importCsv(marker, "30"),
   })
   await dialog.getByRole("button", { name: /^预览$/ }).click()
-  const includeToggle = dialog.getByRole("checkbox")
-  await expect(includeToggle).toBeVisible()
-  await includeToggle.check()
-  await expect(includeToggle).toBeChecked()
+  await expect(dialog.getByText(/待导入/)).toBeVisible() // 两侧对照
+  await expect(dialog.getByText(/已有候选/)).toBeVisible()
+  const importRowButton = dialog
+    .locator("li")
+    .filter({ hasText: /疑似重复/ })
+    .getByRole("button", { name: /^导入$/ })
+  await expect(importRowButton).toBeVisible()
+  await importRowButton.click()
+  // 勾选后可导入数从 0 变 1：确认按钮从禁用转为可用
+  await expect(dialog.getByRole("button", { name: /确认导入/ })).toBeEnabled()
 
-  // 直接选择新文件（不经「继续导入下一批」）：开关重置、疑似行按文件重判
+  // 直接选择新文件（不经「继续导入下一批」）：选择清空、疑似行按文件重判
   await fileInput.setInputFiles({
     name: "e2e-fresh.csv",
     mimeType: "text/csv",
@@ -83,17 +89,52 @@ test("题库批量导入：上传 CSV → 预览 → 确认 → 重传防重", a
   })
   await dialog.getByRole("button", { name: /^预览$/ }).click()
   await expect(dialog.getByText(/将导入 1/)).toBeVisible()
-  await expect(includeToggle).toHaveCount(0) // 无疑似行：开关随预览一起消失
+  await expect(importRowButton).toHaveCount(0) // 无疑似行：逐条控件随预览消失
 
-  // 再传疑似文件：开关重新出现且未勾选（不继承上一批的选择）
+  // 再传疑似文件：控件重新出现且默认跳过（确认禁用=不继承上一批选择）
   await fileInput.setInputFiles({
     name: "e2e-suspected.csv",
     mimeType: "text/csv",
     buffer: importCsv(marker, "30"),
   })
   await dialog.getByRole("button", { name: /^预览$/ }).click()
-  await expect(includeToggle).toBeVisible()
-  await expect(includeToggle).not.toBeChecked()
+  await expect(importRowButton).toBeVisible()
+  await expect(dialog.getByRole("button", { name: /确认导入/ })).toBeDisabled()
+  // 「全部导入」批量快捷：一次勾选全部疑似行
+  await dialog.getByRole("button", { name: /全部导入/ }).click()
+  await expect(dialog.getByRole("button", { name: /确认导入/ })).toBeEnabled()
+})
+
+test("下载待修正数据：真实下载且内容可回导", async ({ page }) => {
+  await loginTeacherDemo(page)
+  const marker = `fix-${Date.now()}`
+  const bad = Buffer.from(
+    `\ufeff题型,标题,单元,主题,难度,内容,中文提示,挂靠篇目,秒数,可听次数,考试题型,考试级别,话题卡要点,准备秒数,音频链接,状态\n` +
+      `情景问答,,,${marker} T,,${marker} broken row?,,,999,,,,,,,,\n`,
+    "utf-8",
+  )
+  await page.goto("/create")
+  await page.getByRole("button", { name: /^批量导入$/ }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.locator('input[type="file"]').setInputFiles({
+    name: "bad.csv",
+    mimeType: "text/csv",
+    buffer: bad,
+  })
+  await dialog.getByRole("button", { name: /^预览$/ }).click()
+  await expect(dialog.getByText(/错误行 1/)).toBeVisible()
+
+  // 真实浏览器下载（blob 拦截器必须覆盖 import-error-file，否则抛 TypeError）
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    dialog.getByRole("button", { name: /下载待修正数据/ }).click(),
+  ])
+  expect(download.suggestedFilename()).toBe("question-bank-fix.csv")
+  const path = await download.path()
+  const content = (await import("node:fs")).readFileSync(path, "utf-8")
+  expect(content).toContain(`${marker} broken row?`)
+  expect(content).toContain("原行号")
+  expect(content).toContain("作答秒数需为")
 })
 
 test("导出超长正文提示改用 CSV（blob 错误完整展示）", async ({ page }) => {

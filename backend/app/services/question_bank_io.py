@@ -32,6 +32,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import HTTPException
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
 from app import crud
@@ -42,10 +44,12 @@ from app.models import (
     VOCAB_LEVEL_ORDER,
     Instruction,
     Passage,
+    QuestionBankCreatedItem,
     QuestionBankImportIssue,
     QuestionBankImportPreview,
     QuestionBankImportResult,
     QuestionBankImportTypeResult,
+    QuestionBankSuspectedItem,
     QuestionBankTypeCount,
     RepeatSentence,
     Scenario,
@@ -62,7 +66,12 @@ MAX_IMPORT_ROWS = 2000
 # 2001 行可导出、回导被 2000 行上限拒绝）。更大规模请按题型/主题筛选分批导出
 MAX_EXPORT_ROWS = MAX_IMPORT_ROWS
 MAX_ISSUES = 200
-MAX_SUSPECTED_LISTED = 100
+# 疑似对照全量返回（上限=行数上限）：截断会让「全部导入」漏掉后续行，
+# 无法在本轮完成确认（评审 P2）
+MAX_SUSPECTED_LISTED = MAX_IMPORT_ROWS
+# 并发导入防重：事务级咨询锁键（pg_advisory_xact_lock 的任意固定整数，
+# 取自业务无关魔数，仅用于串行化导入确认这一件事）
+IMPORT_ADVISORY_LOCK_KEY = 872_514_309
 # csv 模块单字段默认 128KB 上限：长正文导出 CSV 后回导会触发 csv.Error → 500。
 # 抬到上传上限之上，任何能通过 5MB 限制的文件都可解析（_parse_csv 另有兜底 422）
 csv.field_size_limit(MAX_UPLOAD_BYTES + 1024)
@@ -624,9 +633,23 @@ class _RawRow:
 
 
 @dataclass
+class ErrorRow:
+    """错误行完整快照：驱动「下载待修正数据」——保留原始字段 + 工作表 +
+    原始行号 + 原因，修正后可直接回传（辅助列被解析器忽略）。"""
+
+    qtype: str  # "-" 表示题型列本身无效（仅 CSV 解析期）
+    line: int
+    reason: str
+    cells: dict[str, str]  # canonical 字段 → 原始字符串值
+    type_cell: str = ""  # 原始题型单元格值（题型列无效时保留原样）
+
+
+@dataclass
 class ParsedFile:
     rows: list[_RawRow]
     issues: list[QuestionBankImportIssue]  # 解析期问题（CSV 题型列无效等）
+    error_rows: list[ErrorRow] = field(default_factory=list)
+    fmt: str = "csv"  # 上传格式（错误文件按同格式生成）
 
 
 def _match_sheet_type(name: str) -> str | None:
@@ -646,10 +669,12 @@ def parse_upload(filename: str, raw: bytes) -> ParsedFile:
     name = (filename or "").casefold()
     if name.endswith(".xlsx") or raw[:2] == b"PK":
         parsed = _parse_xlsx(raw)
+        parsed.fmt = "xlsx"
     else:
         # 其余一律按 CSV 尝试（utf-8-sig → gb18030 兜底：Excel 中文环境
         # 「另存为 CSV」默认 GBK，直接拒绝会把老师挡在门外）
         parsed = _parse_csv(raw)
+        parsed.fmt = "csv"
     if len(parsed.rows) > MAX_IMPORT_ROWS:
         raise HTTPException(
             status_code=422, detail=f"行数超过上限（{MAX_IMPORT_ROWS} 行），请分批导入"
@@ -679,6 +704,9 @@ def _parse_xlsx(raw: bytes) -> ParsedFile:
     rows: list[_RawRow] = []
     issues: list[QuestionBankImportIssue] = []
     matched_any = False
+    # 同一题型只允许出现在一个工作表：行标识是 (type, line)，
+    # 「情景问答」和「question」两表同用第 2 行会撞号（评审 P2）
+    seen_types: set[str] = set()
     try:
         for sheet_name in workbook.sheetnames:
             if _is_guide_sheet(sheet_name):
@@ -740,6 +768,15 @@ def _parse_xlsx(raw: bytes) -> ParsedFile:
                                 "请勿重命名模板工作表"
                             ),
                         )
+                    if qtype in seen_types:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=(
+                                f"题型「{TYPE_LABELS[qtype]}」出现在多个工作表，"
+                                "请合并到同一工作表（行号按工作表区分会撞号）"
+                            ),
+                        )
+                    seen_types.add(qtype)
                     matched_any = True
                     col_map = _map_header(row_cells)
                     _require_columns(qtype, col_map, sheet_name)
@@ -783,6 +820,7 @@ def _parse_csv(raw: bytes) -> ParsedFile:
     fields_present: set[str] = set()
     rows: list[_RawRow] = []
     issues: list[QuestionBankImportIssue] = []
+    error_rows: list[ErrorRow] = []
     checked_types: set[str] = set()
     any_content = False
     # 数据行计数包含无效行（题型空/无效）——只数成功识别的行会让
@@ -813,25 +851,36 @@ def _parse_csv(raw: bytes) -> ParsedFile:
                 )
             assert type_col is not None
             type_cell = row_cells[type_col] if type_col < len(row_cells) else ""
+            cells = _row_cells(
+                {c: f for c, f in col_map.items() if f != "__type__"}, row_cells
+            )
             if not type_cell:
                 issues.append(
                     QuestionBankImportIssue(type="-", line=r_idx, reason="题型不能为空")
                 )
+                error_rows.append(
+                    ErrorRow(qtype="-", line=r_idx, reason="题型不能为空", cells=cells)
+                )
                 continue
             qtype = _match_sheet_type(type_cell)
             if qtype is None:
+                reason = f"题型列的值无效：{type_cell}"
                 issues.append(
-                    QuestionBankImportIssue(
-                        type="-", line=r_idx, reason=f"题型列的值无效：{type_cell}"
+                    QuestionBankImportIssue(type="-", line=r_idx, reason=reason)
+                )
+                error_rows.append(
+                    ErrorRow(
+                        qtype="-",
+                        line=r_idx,
+                        reason=reason,
+                        cells=cells,
+                        type_cell=type_cell,
                     )
                 )
                 continue
             if qtype not in checked_types:
                 checked_types.add(qtype)
                 _require_columns_csv(qtype, fields_present)
-            cells = _row_cells(
-                {c: f for c, f in col_map.items() if f != "__type__"}, row_cells
-            )
             rows.append(_RawRow(qtype=qtype, line=r_idx, cells=cells))
     except csv.Error as exc:
         # field_size_limit 已抬高到上传上限之上，此处理论不可达——保留
@@ -839,7 +888,7 @@ def _parse_csv(raw: bytes) -> ParsedFile:
         raise HTTPException(status_code=422, detail="CSV 字段过大，无法解析") from exc
     if not any_content:
         raise HTTPException(status_code=422, detail="文件为空")
-    return ParsedFile(rows=rows, issues=issues)
+    return ParsedFile(rows=rows, issues=issues, error_rows=error_rows)
 
 
 def _map_header(header_cells: tuple[str, ...] | list[str]) -> dict[int, str]:
@@ -907,6 +956,14 @@ class _Ref:
     # 复述句同理：挂靠身份是 passage_id（同名根篇/旧子篇是不同记录）
     sentence_configs: dict[str, list[tuple[uuid.UUID | None, tuple[Any, ...]]]]
     instruction_configs: dict[str, list[tuple[Any, ...]]]
+    # 疑似重复对照用：库内候选行对象（键与上面查重索引一致）
+    unit_titles: dict[uuid.UUID, str]
+    passage_titles: dict[uuid.UUID, str]
+    scenario_topics: dict[uuid.UUID, str]
+    passages_by_key: dict[tuple[str, str], list[Passage]]
+    sentences_by_key: dict[str, list[RepeatSentence]]
+    questions_by_key: dict[tuple[uuid.UUID, str], list[ScenarioQuestion]]
+    instructions_all: list[Instruction]
     existing_slugs: set[str]
     max_question_order: dict[uuid.UUID, int]
     max_sentence_order_by_passage: dict[uuid.UUID, int]
@@ -992,6 +1049,23 @@ def _load_reference(session: Session) -> _Ref:
         cfg = (_norm_text(ins.title or ""), ins.suggested_seconds)
         instruction_configs.setdefault(_norm_text(ins.text), []).append(cfg)
 
+    # 疑似对照行对象索引（与查重索引同键）
+    passage_titles = {p.id: p.title for p in all_passages}
+    scenario_topics = {s_.id: s_.topic for s_ in scenarios}
+    passages_by_key: dict[tuple[str, str], list[Passage]] = {}
+    for passage in root_passages:
+        passages_by_key.setdefault(
+            (_norm_text(passage.title), _norm_text(passage.text)), []
+        ).append(passage)
+    sentences_by_key: dict[str, list[RepeatSentence]] = {}
+    for sentence in sentences:
+        sentences_by_key.setdefault(_norm_text(sentence.text), []).append(sentence)
+    questions_by_key: dict[tuple[uuid.UUID, str], list[ScenarioQuestion]] = {}
+    for question in questions:
+        questions_by_key.setdefault(
+            (question.scenario_id, _norm_text(question.text)), []
+        ).append(question)
+
     max_question_order: dict[uuid.UUID, int] = {}
     for question in questions:
         max_question_order[question.scenario_id] = max(
@@ -1017,6 +1091,13 @@ def _load_reference(session: Session) -> _Ref:
         question_texts=question_texts,
         sentence_configs=sentence_configs,
         instruction_configs=instruction_configs,
+        unit_titles=unit_titles,
+        passage_titles=passage_titles,
+        scenario_topics=scenario_topics,
+        passages_by_key=passages_by_key,
+        sentences_by_key=sentences_by_key,
+        questions_by_key=questions_by_key,
+        instructions_all=list(instructions),
         existing_slugs={p.slug for p in all_passages},
         max_question_order=max_question_order,
         max_sentence_order_by_passage=max_by_passage,
@@ -1050,8 +1131,18 @@ class _CreateItem:
 class QuestionBankPlan:
     creates: dict[str, list[_CreateItem]] = field(default_factory=dict)
     counts: dict[str, _TypeCounts] = field(default_factory=dict)
+    # 预览指纹原料：每条通过校验的行 (type, line, payload 摘要)——与查重
+    # 决策无关（疑似是否勾选导入不影响指纹），预览与确认两侧可比对
+    parsed_digests: list[tuple[str, int, str]] = field(default_factory=list)
+    # 指纹的疑似候选全量：(type, line, reason, [(id, summary), ...])。
+    # 展示层（existing）只取代表一条，指纹必须覆盖全部相关候选——
+    # 新增/修改第二条同题候选也要让指纹失配（评审 P2）
+    fingerprint_candidates: list[
+        tuple[str, int, str, list[tuple[str, dict[str, Any]]]]
+    ] = field(default_factory=list)
     issues: list[QuestionBankImportIssue] = field(default_factory=list)
-    suspected_rows: list[QuestionBankImportIssue] = field(default_factory=list)
+    suspected_rows: list[QuestionBankSuspectedItem] = field(default_factory=list)
+    error_rows: list[ErrorRow] = field(default_factory=list)
     new_topics: list[str] = field(default_factory=list)
     unit_fallback_count: int = 0
     standalone_sentence_count: int = 0
@@ -1062,10 +1153,128 @@ class QuestionBankPlan:
     max_sentence_order_global: int = 0
 
 
+def _excerpt(text: str, limit: int = 60) -> str:
+    return text if len(text) <= limit else f"{text[:limit]}…"
+
+
+def _summarize_payload(qtype: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """疑似对照：待导入行 / 同批前序行的关键字段快照（canonical 键）。"""
+    if qtype == TYPE_PASSAGE:
+        return {
+            "title": payload["title"],
+            "text": str(payload["text"]),
+            "unit": payload.get("unit_title") or "",
+            "topic": payload.get("topic") or "",
+            "band": payload["cefr_band"],
+            "seconds": str(payload["suggested_seconds"]),
+            "translation": payload.get("translation") or "",
+            "audio": payload.get("audio_url") or "",
+            "_active": bool(payload.get("is_active", True)),
+        }
+    if qtype == TYPE_REPEAT:
+        return {
+            "text": payload["text"],
+            "passage": payload.get("passage_title") or "",
+            "seconds": str(payload["suggested_seconds"]),
+            "replay": str(payload["replay_limit"]),
+            "kind": payload.get("exam_kind") or "",
+            "level": payload.get("exam_level") or "",
+            "translation": payload.get("translation") or "",
+            "audio": payload.get("audio_url") or "",
+        }
+    if qtype == TYPE_QUESTION:
+        return {
+            "text": payload["text"],
+            "topic": payload["topic"],
+            "seconds": str(payload["suggested_seconds"]),
+            "kind": payload.get("exam_kind") or "",
+            "level": payload.get("exam_level") or "",
+            "prep": str(payload.get("prep_seconds") or ""),
+            "cue": " / ".join(payload.get("cue_card_bullets") or []),
+            "_bullets": list(payload.get("cue_card_bullets") or []),
+            "translation": payload.get("translation") or "",
+            "audio": payload.get("audio_url") or "",
+        }
+    return {
+        "title": payload.get("title") or "",
+        "text": payload["text"],
+        "seconds": str(payload["suggested_seconds"]),
+    }
+
+
+def _row_digest(qtype: str, line: int, payload: dict[str, Any]) -> tuple[str, int, str]:
+    import hashlib
+    import json
+
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+    # 完整 64 位十六进制摘要：截断摘要对「尾部字符被改」的候选不敏感（评审 P2）
+    return (qtype, line, hashlib.sha256(raw.encode("utf-8")).hexdigest())
+
+
+def plan_fingerprint(plan: QuestionBankPlan) -> str:
+    """预览指纹：文件行内容 + 库内查重状态（含疑似两侧快照）的摘要。
+
+    决策无关——老师勾选哪些疑似行不影响指纹；预览与确认各算一次，
+    锁内比对，任何一侧内容/候选变化都会失配（评审 P2：只查「还是不是
+    疑似」挡不住「候选内容变了」）。
+    """
+    import hashlib
+    import json
+
+    projection = {
+        "rows": [list(item) for item in plan.parsed_digests],
+        "counts": {
+            qtype: [c.exact_dup, c.suspected, c.invalid]
+            for qtype, c in plan.counts.items()
+        },
+        "suspected_candidates": [list(item) for item in plan.fingerprint_candidates],
+        "new_topics": plan.new_topics,
+    }
+    raw = json.dumps(projection, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _suspected(
+    plan: QuestionBankPlan,
+    qtype: str,
+    line: int,
+    reason: str,
+    incoming: dict[str, str],
+    existing: dict[str, str],
+    candidates: list[tuple[str, dict[str, Any]]],
+) -> QuestionBankSuspectedItem:
+    plan.fingerprint_candidates.append(
+        (qtype, line, reason, sorted(candidates, key=lambda pair: pair[0]))
+    )
+
+    # 展示层只保留可读字段（响应模型 dict[str,str]）；下划线前缀的
+    # 指纹专用键（_active/_bullets/_topic_active）只在候选全量里参与比对
+    def display(snapshot: dict[str, Any]) -> dict[str, str]:
+        return {
+            key: value for key, value in snapshot.items() if not key.startswith("_")
+        }
+
+    return QuestionBankSuspectedItem(
+        type=qtype,
+        line=line,
+        reason=reason,
+        incoming=display(incoming),
+        existing=display(existing),
+    )
+
+
 def plan_import(
-    session: Session, parsed: ParsedFile, include_suspected: bool = False
+    session: Session,
+    parsed: ParsedFile,
+    include_lines: set[tuple[str, int]] | None = None,
 ) -> QuestionBankPlan:
-    """校验 + 查重 + 兜底解析，产出创建计划（不写库）。"""
+    """校验 + 查重 + 兜底解析，产出创建计划（不写库）。
+
+    include_lines：老师逐条勾选「导入」的疑似行 (type, line) 集合。
+    空集 = 全部疑似默认跳过。集合中任何 token 未命中**当前**疑似行
+    （文件或库状态已变化）→ 422 强制重新预览，绝不沿用旧选择。
+    """
+    decisions = include_lines or set()
     ref = _load_reference(session)
     plan = QuestionBankPlan(
         existing_slugs=ref.existing_slugs,
@@ -1077,15 +1286,16 @@ def plan_import(
         plan.creates[qtype] = []
         plan.counts[qtype] = _TypeCounts()
     plan.issues.extend(parsed.issues)
+    plan.error_rows.extend(parsed.error_rows)
 
     by_type: dict[str, list[_RawRow]] = {t: [] for t in plan.creates}
     for row in parsed.rows:
         by_type.setdefault(row.qtype, []).append(row)
 
-    _plan_passages(plan, ref, by_type[TYPE_PASSAGE], include_suspected)
-    _plan_repeats(plan, ref, by_type[TYPE_REPEAT], include_suspected)
-    _plan_questions(plan, ref, by_type[TYPE_QUESTION], include_suspected)
-    _plan_instructions(plan, ref, by_type[TYPE_INSTRUCTION], include_suspected)
+    _plan_passages(plan, ref, by_type[TYPE_PASSAGE], decisions)
+    _plan_repeats(plan, ref, by_type[TYPE_REPEAT], decisions)
+    _plan_questions(plan, ref, by_type[TYPE_QUESTION], decisions)
+    _plan_instructions(plan, ref, by_type[TYPE_INSTRUCTION], decisions)
     return plan
 
 
@@ -1094,17 +1304,46 @@ def _issue(qtype: str, line: int, reason: str) -> QuestionBankImportIssue:
 
 
 def _plan_passages(
-    plan: QuestionBankPlan, ref: _Ref, rows: list[_RawRow], include_suspected: bool
+    plan: QuestionBankPlan,
+    ref: _Ref,
+    rows: list[_RawRow],
+    decisions: set[tuple[str, int]],
 ) -> None:
     counts = plan.counts[TYPE_PASSAGE]
     planned_exact: dict[tuple[str, str], list[tuple[Any, ...]]] = {}
+    planned_payloads_by_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    planned_payloads_by_text: dict[str, dict[str, Any]] = {}
     planned_texts: set[str] = set()
+
+    def _existing_passage_summary(key: tuple[str, str], n_text: str) -> dict[str, str]:
+        db_row = ref.passages_by_key.get(key, [None])[0]
+        if db_row is None:
+            for (_ptitle, p_text), plist in ref.passages_by_key.items():
+                if p_text == n_text and plist:
+                    db_row = plist[0]
+                    break
+        if db_row is not None:
+            return _summarize_passage_model(db_row, ref)
+        payload = planned_payloads_by_key.get(key, [None])[
+            0
+        ] or planned_payloads_by_text.get(n_text)
+        return _summarize_payload(TYPE_PASSAGE, payload) if payload else {}
+
     for row in rows:
         try:
             payload = _build_passage(row.cells)
+            plan.parsed_digests.append(_row_digest(TYPE_PASSAGE, row.line, payload))
         except _RowError as exc:
             counts.invalid += 1
             plan.issues.append(_issue(TYPE_PASSAGE, row.line, exc.reason))
+            plan.error_rows.append(
+                ErrorRow(
+                    qtype=TYPE_PASSAGE,
+                    line=row.line,
+                    reason=exc.reason,
+                    cells=row.cells,
+                )
+            )
             continue
         n_title, n_text = _norm_text(payload["title"]), _norm_text(payload["text"])
         key = (n_title, n_text)
@@ -1116,12 +1355,15 @@ def _plan_passages(
         if payload["unit_title"] is not None:
             candidates = ref.units_by_norm.get(_norm_text(payload["unit_title"]), [])
             if len(candidates) > 1:
+                reason = "单元匹配到多个同名单元，请改为精确的单元标题"
                 counts.invalid += 1
-                plan.issues.append(
-                    _issue(
-                        TYPE_PASSAGE,
-                        row.line,
-                        "单元匹配到多个同名单元，请改为精确的单元标题",
+                plan.issues.append(_issue(TYPE_PASSAGE, row.line, reason))
+                plan.error_rows.append(
+                    ErrorRow(
+                        qtype=TYPE_PASSAGE,
+                        line=row.line,
+                        reason=reason,
+                        cells=row.cells,
                     )
                 )
                 continue
@@ -1142,33 +1384,53 @@ def _plan_passages(
         )
         db_cfgs = ref.passage_exact.get(key, [])
         planned_cfgs = planned_exact.get(key, [])
+        suspected_reason = None
         if db_cfgs or planned_cfgs:
             if cfg in db_cfgs or cfg in planned_cfgs:
                 counts.exact_dup += 1
                 continue
-            counts.suspected += 1
-            plan.suspected_rows.append(
-                _issue(
-                    TYPE_PASSAGE,
-                    row.line,
-                    "疑似重复：同名同正文篇目已存在，但难度/秒数等配置不同",
-                )
-            )
-            if not include_suspected:
-                continue
+            suspected_reason = "疑似重复：同名同正文篇目已存在，但难度/秒数等配置不同"
         elif n_text in ref.passage_texts or n_text in planned_texts:
             # 批内正文集合也要查：同批两篇不同标题、相同正文 → 第二篇疑似
+            suspected_reason = "疑似重复：相同正文已存在于其他篇目"
+        if suspected_reason is not None:
             counts.suspected += 1
+            db_candidate_rows = [
+                *ref.passages_by_key.get(key, []),
+                *[
+                    p
+                    for (kt, ktext), plist in ref.passages_by_key.items()
+                    if ktext == n_text
+                    for p in plist
+                ],
+            ]
+            seen_ids: set[str] = set()
+            passage_candidates: list[tuple[str, dict[str, str]]] = []
+            for p in sorted(db_candidate_rows, key=lambda item: str(item.id)):
+                if str(p.id) in seen_ids:
+                    continue
+                seen_ids.add(str(p.id))
+                passage_candidates.append((str(p.id), _summarize_passage_model(p, ref)))
             plan.suspected_rows.append(
-                _issue(TYPE_PASSAGE, row.line, "疑似重复：相同正文已存在于其他篇目")
+                _suspected(
+                    plan,
+                    TYPE_PASSAGE,
+                    row.line,
+                    suspected_reason,
+                    _summarize_payload(TYPE_PASSAGE, payload),
+                    _existing_passage_summary(key, n_text),
+                    passage_candidates,
+                )
             )
-            if not include_suspected:
+            if (TYPE_PASSAGE, row.line) not in decisions:
                 continue
         if not payload["audio_url"]:
             counts.missing_audio += 1
         counts.valid += 1
         plan.creates[TYPE_PASSAGE].append(_CreateItem(line=row.line, payload=payload))
         planned_exact.setdefault(key, []).append(cfg)
+        planned_payloads_by_key.setdefault(key, []).append(payload)
+        planned_payloads_by_text.setdefault(n_text, payload)
         planned_texts.add(n_text)
 
 
@@ -1177,23 +1439,112 @@ def _pid_key(passage_id: uuid.UUID | None) -> str:
     return str(passage_id) if passage_id is not None else ""
 
 
+def _summarize_passage_model(p: Passage, ref: _Ref) -> dict[str, Any]:
+    return {
+        "title": p.title,
+        "text": p.text,
+        "unit": ref.unit_titles.get(p.unit_id, "") if p.unit_id else "",
+        "topic": p.topic or "",
+        "band": p.cefr_band,
+        "seconds": str(p.suggested_seconds),
+        "translation": p.translation or "",
+        "audio": p.audio_url or "",
+        "_active": bool(p.is_active),
+    }
+
+
+def _summarize_sentence_model(s: RepeatSentence, ref: _Ref) -> dict[str, Any]:
+    return {
+        "text": s.text,
+        "passage": ref.passage_titles.get(s.passage_id, "") if s.passage_id else "",
+        "seconds": str(s.suggested_seconds),
+        "replay": str(s.replay_limit),
+        "kind": s.exam_kind or "",
+        "level": s.exam_level or "",
+        "translation": s.translation or "",
+        "audio": s.audio_url or "",
+    }
+
+
+def _scenario_active(ref: _Ref, scenario_id: uuid.UUID) -> bool:
+    for scenario in ref.scenarios_by_norm.get(
+        _norm_text(ref.scenario_topics.get(scenario_id, "")), []
+    ):
+        if scenario.id == scenario_id:
+            return bool(scenario.is_active)
+    return True
+
+
+def _summarize_question_model(q: ScenarioQuestion, ref: _Ref) -> dict[str, Any]:
+    return {
+        "text": q.text,
+        "topic": ref.scenario_topics.get(q.scenario_id, ""),
+        "seconds": str(q.suggested_seconds),
+        "kind": q.exam_kind or "",
+        "level": q.exam_level or "",
+        "prep": str(q.prep_seconds or ""),
+        "cue": " / ".join(q.cue_card_bullets or []),
+        "_bullets": list(q.cue_card_bullets or []),
+        "translation": q.translation or "",
+        "audio": q.audio_url or "",
+        "_topic_active": _scenario_active(ref, q.scenario_id),
+    }
+
+
+def _summarize_instruction_model(i: Instruction) -> dict[str, Any]:
+    return {
+        "title": i.title or "",
+        "text": i.text,
+        "seconds": str(i.suggested_seconds),
+    }
+
+
 def _plan_repeats(
-    plan: QuestionBankPlan, ref: _Ref, rows: list[_RawRow], include_suspected: bool
+    plan: QuestionBankPlan,
+    ref: _Ref,
+    rows: list[_RawRow],
+    decisions: set[tuple[str, int]],
 ) -> None:
     counts = plan.counts[TYPE_REPEAT]
     planned_configs: dict[tuple[str, str], list[tuple[Any, ...]]] = {}
+    planned_payloads: dict[tuple[str, str], list[dict[str, Any]]] = {}
     planned_links: dict[str, set[str]] = {}  # n_text → 本批已见的挂靠身份键
     # 本批计划新建的篇目标题（供挂靠；同批多篇同名 → 歧义报错）
     planned_titles: dict[str, int] = {}
     for item in plan.creates[TYPE_PASSAGE]:
         n_title = _norm_text(item.payload["title"])
         planned_titles[n_title] = planned_titles.get(n_title, 0) + 1
+
+    def _existing_sentence_summary(n_text: str, linkage: str) -> dict[str, str]:
+        candidates = ref.sentences_by_key.get(n_text, [])
+        db_row = next(
+            (s for s in candidates if _pid_key(s.passage_id) == linkage),
+            None,
+        )
+        if db_row is None:
+            db_row = candidates[0] if candidates else None
+        if db_row is not None:
+            return _summarize_sentence_model(db_row, ref)
+        payload = (planned_payloads.get((linkage, n_text)) or [None])[0]
+        if payload is None:
+            for (_plink, ptext), plist in planned_payloads.items():
+                if ptext == n_text and plist:
+                    payload = plist[0]
+                    break
+        return _summarize_payload(TYPE_REPEAT, payload) if payload else {}
+
     for row in rows:
         try:
             payload = _build_repeat(row.cells)
+            plan.parsed_digests.append(_row_digest(TYPE_REPEAT, row.line, payload))
         except _RowError as exc:
             counts.invalid += 1
             plan.issues.append(_issue(TYPE_REPEAT, row.line, exc.reason))
+            plan.error_rows.append(
+                ErrorRow(
+                    qtype=TYPE_REPEAT, line=row.line, reason=exc.reason, cells=row.cells
+                )
+            )
             continue
         n_text = _norm_text(payload["text"])
         # 挂靠解析（歧义报错）必须先于查重，且查重按**解析后的对象身份**
@@ -1208,12 +1559,12 @@ def _plan_repeats(
             existing_hits = len(ref.root_passages_by_norm.get(n_title, []))
             planned_hits = planned_titles.get(n_title, 0)
             if existing_hits + planned_hits > 1:
+                reason = "挂靠篇目匹配到多个同名篇目，请先重命名区分"
                 counts.invalid += 1
-                plan.issues.append(
-                    _issue(
-                        TYPE_REPEAT,
-                        row.line,
-                        "挂靠篇目匹配到多个同名篇目，请先重命名区分",
+                plan.issues.append(_issue(TYPE_REPEAT, row.line, reason))
+                plan.error_rows.append(
+                    ErrorRow(
+                        qtype=TYPE_REPEAT, line=row.line, reason=reason, cells=row.cells
                     )
                 )
                 continue
@@ -1236,27 +1587,35 @@ def _plan_repeats(
         db_entries = ref.sentence_configs.get(n_text, [])
         db_cfgs = [c for pid, c in db_entries if _pid_key(pid) == linkage]
         planned_cfgs = planned_configs.get((linkage, n_text), [])
+        suspected_reason = None
         if db_cfgs or planned_cfgs:
             if cfg in db_cfgs or cfg in planned_cfgs:
                 counts.exact_dup += 1
                 continue
-            counts.suspected += 1
-            plan.suspected_rows.append(
-                _issue(
-                    TYPE_REPEAT, row.line, "疑似重复：相同句子已存在但挂靠或配置不同"
-                )
-            )
-            if not include_suspected:
-                continue
+            suspected_reason = "疑似重复：相同句子已存在但挂靠或配置不同"
         elif db_entries or n_text in planned_links:
             # 相同句子挂在其他篇目/独立存在：疑似而非完全重复，可勾选导入
+            suspected_reason = "疑似重复：相同句子已存在但挂靠或配置不同"
+        if suspected_reason is not None:
             counts.suspected += 1
+            sentence_candidates = [
+                (str(sentence.id), _summarize_sentence_model(sentence, ref))
+                for sentence in sorted(
+                    ref.sentences_by_key.get(n_text, []), key=lambda item: str(item.id)
+                )
+            ]
             plan.suspected_rows.append(
-                _issue(
-                    TYPE_REPEAT, row.line, "疑似重复：相同句子已存在但挂靠或配置不同"
+                _suspected(
+                    plan,
+                    TYPE_REPEAT,
+                    row.line,
+                    suspected_reason,
+                    _summarize_payload(TYPE_REPEAT, payload),
+                    _existing_sentence_summary(n_text, linkage),
+                    sentence_candidates,
                 )
             )
-            if not include_suspected:
+            if (TYPE_REPEAT, row.line) not in decisions:
                 continue
         if not payload["audio_url"]:
             counts.missing_audio += 1
@@ -1270,22 +1629,58 @@ def _plan_repeats(
             )
         )
         planned_configs.setdefault((linkage, n_text), []).append(cfg)
+        planned_payloads.setdefault((linkage, n_text), []).append(payload)
         planned_links.setdefault(n_text, set()).add(linkage)
 
 
 def _plan_questions(
-    plan: QuestionBankPlan, ref: _Ref, rows: list[_RawRow], include_suspected: bool
+    plan: QuestionBankPlan,
+    ref: _Ref,
+    rows: list[_RawRow],
+    decisions: set[tuple[str, int]],
 ) -> None:
     counts = plan.counts[TYPE_QUESTION]
     planned_exact: dict[tuple[str, str], list[tuple[Any, ...]]] = {}
+    planned_payloads: dict[tuple[str, str], list[dict[str, Any]]] = {}
     planned_texts: set[str] = set()
     new_topic_map: dict[str, str] = {}
+
+    def _existing_question_summary(
+        scenario: Scenario | None, owner: str, n_text: str
+    ) -> dict[str, str]:
+        db_row = None
+        if scenario is not None:
+            db_row = (ref.questions_by_key.get((scenario.id, n_text)) or [None])[0]
+        if db_row is None:
+            for (_sid, ptext), qlist in ref.questions_by_key.items():
+                if ptext == n_text and qlist:
+                    db_row = qlist[0]
+                    break
+        if db_row is not None:
+            return _summarize_question_model(db_row, ref)
+        payload = (planned_payloads.get((owner, n_text)) or [None])[0]
+        if payload is None:
+            for (_powner, ptext), plist in planned_payloads.items():
+                if ptext == n_text and plist:
+                    payload = plist[0]
+                    break
+        return _summarize_payload(TYPE_QUESTION, payload) if payload else {}
+
     for row in rows:
         try:
             payload = _build_question(row.cells)
+            plan.parsed_digests.append(_row_digest(TYPE_QUESTION, row.line, payload))
         except _RowError as exc:
             counts.invalid += 1
             plan.issues.append(_issue(TYPE_QUESTION, row.line, exc.reason))
+            plan.error_rows.append(
+                ErrorRow(
+                    qtype=TYPE_QUESTION,
+                    line=row.line,
+                    reason=exc.reason,
+                    cells=row.cells,
+                )
+            )
             continue
         n_topic, n_text = _norm_text(payload["topic"]), _norm_text(payload["text"])
         # 主题解析（精确优先，歧义报错）必须先于查重：查重按解析后的
@@ -1296,12 +1691,17 @@ def _plan_questions(
         if scenario is None:
             candidates = ref.scenarios_by_norm.get(n_topic, [])
             if len(candidates) > 1:
+                reason = (
+                    "主题匹配到多个大小写不同的同名主题，请使用与题库完全一致的主题名"
+                )
                 counts.invalid += 1
-                plan.issues.append(
-                    _issue(
-                        TYPE_QUESTION,
-                        row.line,
-                        "主题匹配到多个大小写不同的同名主题，请使用与题库完全一致的主题名",
+                plan.issues.append(_issue(TYPE_QUESTION, row.line, reason))
+                plan.error_rows.append(
+                    ErrorRow(
+                        qtype=TYPE_QUESTION,
+                        line=row.line,
+                        reason=reason,
+                        cells=row.cells,
                     )
                 )
                 continue
@@ -1325,23 +1725,38 @@ def _plan_questions(
         )
         planned_cfgs = planned_exact.get((owner, n_text), [])
         other_owners = ref.question_texts.get(n_text, set())
-        tier: str | None = None
+        suspected_reason = None
         if db_cfgs or planned_cfgs:
-            tier = "exact" if cfg in db_cfgs or cfg in planned_cfgs else "same_topic"
+            if cfg in db_cfgs or cfg in planned_cfgs:
+                counts.exact_dup += 1
+                continue
+            suspected_reason = "疑似重复：该主题下已有相同题目但配置不同"
         elif other_owners or n_text in planned_texts:
-            tier = "cross_topic"
-        if tier == "exact":
-            counts.exact_dup += 1
-            continue
-        if tier is not None:
+            suspected_reason = "疑似重复：该题目已存在于其他主题"
+        if suspected_reason is not None:
             counts.suspected += 1
-            reason = (
-                "疑似重复：该主题下已有相同题目但配置不同"
-                if tier == "same_topic"
-                else "疑似重复：该题目已存在于其他主题"
+            question_candidate_rows = [
+                q
+                for (c_sid, c_text), qlist in ref.questions_by_key.items()
+                if c_text == n_text
+                for q in qlist
+            ]
+            question_candidates = [
+                (str(q.id), _summarize_question_model(q, ref))
+                for q in sorted(question_candidate_rows, key=lambda item: str(item.id))
+            ]
+            plan.suspected_rows.append(
+                _suspected(
+                    plan,
+                    TYPE_QUESTION,
+                    row.line,
+                    suspected_reason,
+                    _summarize_payload(TYPE_QUESTION, payload),
+                    _existing_question_summary(scenario, owner, n_text),
+                    question_candidates,
+                )
             )
-            plan.suspected_rows.append(_issue(TYPE_QUESTION, row.line, reason))
-            if not include_suspected:
+            if (TYPE_QUESTION, row.line) not in decisions:
                 continue
         if scenario is None and n_topic not in new_topic_map:
             new_topic_map[n_topic] = payload["topic"]
@@ -1358,20 +1773,44 @@ def _plan_questions(
             )
         )
         planned_exact.setdefault((owner, n_text), []).append(cfg)
+        planned_payloads.setdefault((owner, n_text), []).append(payload)
         planned_texts.add(n_text)
 
 
 def _plan_instructions(
-    plan: QuestionBankPlan, ref: _Ref, rows: list[_RawRow], include_suspected: bool
+    plan: QuestionBankPlan,
+    ref: _Ref,
+    rows: list[_RawRow],
+    decisions: set[tuple[str, int]],
 ) -> None:
     counts = plan.counts[TYPE_INSTRUCTION]
     planned_configs: dict[str, list[tuple[Any, ...]]] = {}
+    planned_payloads: dict[str, dict[str, Any]] = {}
+
+    def _existing_instruction_summary(n_text: str) -> dict[str, str]:
+        db_row = next(
+            (i for i in ref.instructions_all if _norm_text(i.text) == n_text), None
+        )
+        if db_row is not None:
+            return _summarize_instruction_model(db_row)
+        payload = planned_payloads.get(n_text)
+        return _summarize_payload(TYPE_INSTRUCTION, payload) if payload else {}
+
     for row in rows:
         try:
             payload = _build_instruction(row.cells)
+            plan.parsed_digests.append(_row_digest(TYPE_INSTRUCTION, row.line, payload))
         except _RowError as exc:
             counts.invalid += 1
             plan.issues.append(_issue(TYPE_INSTRUCTION, row.line, exc.reason))
+            plan.error_rows.append(
+                ErrorRow(
+                    qtype=TYPE_INSTRUCTION,
+                    line=row.line,
+                    reason=exc.reason,
+                    cells=row.cells,
+                )
+            )
             continue
         n_text = _norm_text(payload["text"])
         cfg = (_norm_text(payload["title"] or ""), payload["suggested_seconds"])
@@ -1382,27 +1821,38 @@ def _plan_instructions(
                 counts.exact_dup += 1
                 continue
             counts.suspected += 1
+            instruction_candidates = [
+                (str(ins.id), _summarize_instruction_model(ins))
+                for ins in ref.instructions_all
+                if _norm_text(ins.text) == n_text
+            ]
+            instruction_candidates.sort(key=lambda pair: pair[0])
             plan.suspected_rows.append(
-                _issue(
+                _suspected(
+                    plan,
                     TYPE_INSTRUCTION,
                     row.line,
                     "疑似重复：相同说明文字已存在但标题/秒数不同",
+                    _summarize_payload(TYPE_INSTRUCTION, payload),
+                    _existing_instruction_summary(n_text),
+                    instruction_candidates,
                 )
             )
-            if not include_suspected:
+            if (TYPE_INSTRUCTION, row.line) not in decisions:
                 continue
         counts.valid += 1
         plan.creates[TYPE_INSTRUCTION].append(
             _CreateItem(line=row.line, payload=payload)
         )
         planned_configs.setdefault(n_text, []).append(cfg)
+        planned_payloads.setdefault(n_text, payload)
 
 
 # ── 预览与落库 ───────────────────────────────────────────────────────
 
 
 def preview_import(session: Session, parsed: ParsedFile) -> QuestionBankImportPreview:
-    plan = plan_import(session, parsed, include_suspected=False)
+    plan = plan_import(session, parsed)
     sheets = []
     total_valid = 0
     for qtype in QUESTION_BANK_TYPE_ORDER:
@@ -1415,6 +1865,7 @@ def preview_import(session: Session, parsed: ParsedFile) -> QuestionBankImportPr
                 valid_count=counts.valid,
                 exact_duplicate_count=counts.exact_dup,
                 suspected_duplicate_count=counts.suspected,
+                invalid_count=counts.invalid,
                 missing_audio_count=counts.missing_audio,
             )
         )
@@ -1425,6 +1876,8 @@ def preview_import(session: Session, parsed: ParsedFile) -> QuestionBankImportPr
         issues_truncated=len(plan.issues) > MAX_ISSUES,
         suspected=plan.suspected_rows[:MAX_SUSPECTED_LISTED],
         suspected_truncated=len(plan.suspected_rows) > MAX_SUSPECTED_LISTED,
+        invalid_total=len(plan.error_rows),
+        fingerprint=plan_fingerprint(plan),
         new_topics=plan.new_topics,
         unit_fallback_count=plan.unit_fallback_count,
         standalone_sentence_count=plan.standalone_sentence_count,
@@ -1438,11 +1891,55 @@ def _commit(session: Session) -> None:
 
 
 def apply_import(
-    session: Session, parsed: ParsedFile, include_suspected: bool
+    session: Session,
+    parsed: ParsedFile,
+    include_lines: set[tuple[str, int]] | None = None,
+    expected_fingerprint: str | None = None,
 ) -> QuestionBankImportResult:
-    """确认导入：重新解析校验后单事务落库；任何 DB 异常整体回滚。"""
-    plan = plan_import(session, parsed, include_suspected)
+    """确认导入：单事务落库；任何 DB 异常整体回滚。
+
+    并发防重：事务级咨询锁（pg_advisory_xact_lock）串行化所有导入确认——
+    适合 PostgreSQL 多进程部署（进程内锁无效）。文件解析在锁外完成；
+    拿到锁后**重新**查重规划（READ COMMITTED 下能看到刚提交的他批导入），
+    两位老师同时导入相同内容时，后拿锁的一批会全部判重跳过。锁随事务
+    提交/回滚自动释放。
+    """
+    decisions = include_lines or set()
     try:
+        # Connection.execute：事务内取咨询锁（SQLModel Session.exec 不收原生 SQL 参数）
+        session.connection().execute(
+            text("SELECT pg_advisory_xact_lock(:lock_key)"),
+            {"lock_key": IMPORT_ADVISORY_LOCK_KEY},
+        )
+        # 指纹对账（锁内、与最新库状态比对）：老师确认的是预览时的内容与
+        # 候选快照——文件被改、候选题被改、重复格局变化都会失配，要求重新
+        # 预览。咨询锁只防同时写入，不能证明「确认过的是当前内容」。
+        # 比对用**无决策基线**：new_topics/批内格局受勾选影响（勾了疑似行
+        # 其新主题才注册），带着决策算指纹会让正常导入永远 422（评审 P2）。
+        # 基线（无决策）对账：指纹比对 + 勾选 token 核验都用它——勾选会让
+        # 部分疑似行进入待创建列表、使后续同批同款行在决策计划里变成完全
+        # 重复，那是勾选的预期结果（按 exact 正常跳过），不是「预览过期」
+        # （评审 P2）；对完全重复行提交勾选仍是过期（基线里它不是疑似）
+        baseline = plan_import(session, parsed)
+        if expected_fingerprint and plan_fingerprint(baseline) != expected_fingerprint:
+            session.rollback()
+            raise HTTPException(
+                status_code=422,
+                detail="预览结果已变化（文件或题库内容有更新），请重新预览后再确认导入",
+            )
+        baseline_keys = {(item.type, item.line) for item in baseline.suspected_rows}
+        stale = decisions - baseline_keys
+        if stale:
+            sample = "、".join(f"{t}:{ln}" for t, ln in sorted(stale)[:3])
+            session.rollback()
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"预览结果已变化（{sample} 不再是疑似重复行），"
+                    "请重新预览后再确认导入"
+                ),
+            )
+        plan = plan_import(session, parsed, include_lines)
         created_scenarios: dict[str, Scenario] = {}
         for topic in plan.new_topics:
             scenario = Scenario(topic=topic, is_active=True)
@@ -1450,6 +1947,7 @@ def apply_import(
             created_scenarios[_norm_text(topic)] = scenario
         session.flush()  # 分配 scenario.id
 
+        created_items: list[QuestionBankCreatedItem] = []
         used_slugs = set(plan.existing_slugs)
         created_passages: dict[str, Passage] = {}
         for item in plan.creates[TYPE_PASSAGE]:
@@ -1470,6 +1968,15 @@ def apply_import(
             )
             session.add(passage)
             created_passages[_norm_text(passage.title)] = passage
+            created_items.append(
+                QuestionBankCreatedItem(
+                    type=TYPE_PASSAGE,
+                    id=str(passage.id),
+                    label=payload["title"],
+                    needs_audio=False,
+                    audio_missing=not payload["audio_url"],
+                )
+            )
         session.flush()  # 分配 passage.id，供复述句挂靠
 
         per_passage_order = dict(plan.max_sentence_order_by_passage)
@@ -1486,17 +1993,25 @@ def apply_import(
             else:
                 global_order += 1
                 order = global_order
-            session.add(
-                RepeatSentence(
-                    passage_id=passage_id,
-                    order_index=order,
-                    text=payload["text"],
-                    translation=payload["translation"],
-                    audio_url=payload["audio_url"],
-                    suggested_seconds=payload["suggested_seconds"],
-                    replay_limit=payload["replay_limit"],
-                    exam_kind=payload["exam_kind"],
-                    exam_level=payload["exam_level"],
+            sentence = RepeatSentence(
+                passage_id=passage_id,
+                order_index=order,
+                text=payload["text"],
+                translation=payload["translation"],
+                audio_url=payload["audio_url"],
+                suggested_seconds=payload["suggested_seconds"],
+                replay_limit=payload["replay_limit"],
+                exam_kind=payload["exam_kind"],
+                exam_level=payload["exam_level"],
+            )
+            session.add(sentence)
+            created_items.append(
+                QuestionBankCreatedItem(
+                    type=TYPE_REPEAT,
+                    id=str(sentence.id),
+                    label=_excerpt(payload["text"]),
+                    needs_audio=True,  # 题面不显示文字 + 模考开考检查（见 exam-audio-check）
+                    audio_missing=not payload["audio_url"],
                 )
             )
 
@@ -1510,34 +2025,62 @@ def apply_import(
                 scenario_id = scenario.id
             order = question_order.get(scenario_id, 0) + 1
             question_order[scenario_id] = order
-            session.add(
-                ScenarioQuestion(
-                    scenario_id=scenario_id,
-                    band="B1",
-                    order_index=order,
-                    text=payload["text"],
-                    translation=payload["translation"],
-                    audio_url=payload["audio_url"],
-                    suggested_seconds=payload["suggested_seconds"],
-                    exam_kind=payload["exam_kind"],
-                    exam_level=payload["exam_level"],
-                    cue_card_bullets=payload["cue_card_bullets"],
-                    prep_seconds=payload["prep_seconds"],
+            question = ScenarioQuestion(
+                scenario_id=scenario_id,
+                band="B1",
+                order_index=order,
+                text=payload["text"],
+                translation=payload["translation"],
+                audio_url=payload["audio_url"],
+                suggested_seconds=payload["suggested_seconds"],
+                exam_kind=payload["exam_kind"],
+                exam_level=payload["exam_level"],
+                cue_card_bullets=payload["cue_card_bullets"],
+                prep_seconds=payload["prep_seconds"],
+            )
+            session.add(question)
+            created_items.append(
+                QuestionBankCreatedItem(
+                    type=TYPE_QUESTION,
+                    id=str(question.id),
+                    label=_excerpt(payload["text"]),
+                    topic=payload["topic"],
+                    needs_audio=True,  # 自动考试拒收缺音频的非朗读题（exercise.py）
+                    audio_missing=not payload["audio_url"],
                 )
             )
 
         for item in plan.creates[TYPE_INSTRUCTION]:
             payload = item.payload
-            session.add(
-                Instruction(
-                    title=payload["title"],
-                    text=payload["text"],
-                    suggested_seconds=payload["suggested_seconds"],
+            instruction = Instruction(
+                title=payload["title"],
+                text=payload["text"],
+                suggested_seconds=payload["suggested_seconds"],
+            )
+            session.add(instruction)
+            created_items.append(
+                QuestionBankCreatedItem(
+                    type=TYPE_INSTRUCTION,
+                    id=str(instruction.id),
+                    label=payload["title"] or _excerpt(payload["text"]),
+                    needs_audio=True,  # 自动考试同样要求说明有音频（exam_settings）
+                    # 说明的考试音频存于 exam_settings.audio_url，导入不写 → 恒缺，
+                    # 在发布考试的题目设置里配置
+                    audio_missing=True,
                 )
             )
         _commit(session)
     except HTTPException:
+        session.rollback()
         raise
+    except IntegrityError as exc:
+        # 咨询锁 + 锁内重查下不应发生（外键等极端竞态兜底）：明确 409
+        # 而不是 500，老师重新预览即可对账
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="导入内容与其他操作冲突（可能刚被他人导入），请重新预览",
+        ) from exc
     except Exception as exc:
         session.rollback()
         raise HTTPException(
@@ -1552,18 +2095,21 @@ def apply_import(
             (
                 plan.creates[qtype],
                 counts.exact_dup,
-                counts.suspected if not include_suspected else 0,
+                counts.suspected,
                 counts.invalid,
             )
         ):
             continue
         missing_total += counts.missing_audio
+        selected_imported = sum(
+            1 for item in plan.creates[qtype] if (qtype, item.line) in decisions
+        )
         sheets.append(
             QuestionBankImportTypeResult(
                 type=qtype,
                 created=len(plan.creates[qtype]),
                 skipped_duplicate=counts.exact_dup,
-                skipped_suspected=0 if include_suspected else counts.suspected,
+                skipped_suspected=counts.suspected - selected_imported,
                 skipped_invalid=counts.invalid,
                 missing_audio_count=counts.missing_audio,
             )
@@ -1571,6 +2117,7 @@ def apply_import(
     return QuestionBankImportResult(
         sheets=sheets,
         created_topics=plan.new_topics,
+        created_items=created_items,
         issues=plan.issues[:MAX_ISSUES],
         missing_audio_total=missing_total,
     )
@@ -1895,6 +2442,98 @@ def _csv_bytes(rows: list[list[str]]) -> bytes:
     writer = csv.writer(buffer)
     writer.writerows([[_csv_guard(c) for c in row] for row in rows])
     return ("\ufeff" + buffer.getvalue()).encode("utf-8")
+
+
+# ── 待修正数据下载（错误行原始字段 + 辅助列；修正后可直接回传） ─────
+
+
+ERROR_FILE_LINE_HEADER = "原行号\nOriginal line"
+ERROR_FILE_REASON_HEADER = "错误原因\nError reason"
+
+
+def build_error_file(session: Session, parsed: ParsedFile) -> tuple[bytes, str, str]:
+    """把当前文件的全部错误行（解析期 + 校验期）生成可回传的修正文件。
+
+    - 与上传格式同构（xlsx→xlsx / CSV→CSV），列用标准模板表头 + 两列辅助
+      （原行号/错误原因）——辅助列表头不在解析别名表内，回传时被忽略；
+    - 完整清单，不受预览界面 200 条截断限制；
+    - 单元格值走同一套 guard/转义规则，原文引号、换行不损坏。
+    """
+    plan = plan_import(session, parsed)
+    error_rows = plan.error_rows
+    if not error_rows:
+        raise HTTPException(status_code=422, detail="没有需要修正的行")
+    if parsed.fmt == "csv":
+        rows = [
+            [
+                CSV_TYPE_COLUMN.zh,
+                *[c.zh for c in CSV_UNION_COLUMNS],
+                "原行号",
+                "错误原因",
+            ]
+        ]
+        for error in error_rows:
+            type_label = error.type_cell or TYPE_LABELS.get(error.qtype, "")
+            rows.append(
+                [
+                    type_label,
+                    *[error.cells.get(c.field, "") for c in CSV_UNION_COLUMNS],
+                    str(error.line),
+                    error.reason,
+                ]
+            )
+        return (
+            _csv_bytes(rows),
+            "question-bank-fix.csv",
+            CSV_MEDIA_TYPE,
+        )
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font
+    from openpyxl.utils import get_column_letter
+
+    by_type: dict[str, list[ErrorRow]] = {}
+    for error in error_rows:
+        if error.qtype == "-":
+            # xlsx 上传不会有题型列无效行（那类错误在文件级 422）；防御归并
+            by_type.setdefault(TYPE_INSTRUCTION, []).append(error)
+        else:
+            by_type.setdefault(error.qtype, []).append(error)
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+    for qtype in QUESTION_BANK_TYPE_ORDER:
+        errors = by_type.get(qtype)
+        if not errors:
+            continue
+        columns = COLUMNS_BY_TYPE[qtype]
+        sheet = workbook.create_sheet(TYPE_LABELS[qtype])
+        headers = [c.header for c in columns] + [
+            ERROR_FILE_LINE_HEADER,
+            ERROR_FILE_REASON_HEADER,
+        ]
+        for col_idx, header in enumerate(headers, start=1):
+            cell = sheet.cell(row=1, column=col_idx, value=header)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(wrap_text=True, vertical="center")
+            width = TEMPLATE_WIDTHS[qtype].get(
+                columns[col_idx - 1].field if col_idx <= len(columns) else "", 12
+            )
+            sheet.column_dimensions[get_column_letter(col_idx)].width = (
+                14 if col_idx > len(columns) else width
+            )
+        sheet.freeze_panes = "A2"
+        for row_idx, error in enumerate(errors, start=2):
+            values = [error.cells.get(c.field, "") for c in columns] + [
+                str(error.line),
+                error.reason,
+            ]
+            for col_idx, value in enumerate(values, start=1):
+                cell = sheet.cell(row=row_idx, column=col_idx, value=value)
+                if value.startswith("="):
+                    cell.data_type = "s"
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue(), "question-bank-fix.xlsx", XLSX_MEDIA_TYPE
 
 
 # ── 批量导出（筛选条件镜像现有列表接口；格式与导入模板兼容） ────────

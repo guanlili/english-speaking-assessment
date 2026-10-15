@@ -2,14 +2,18 @@
 
     /admin/question-bank/import-template  下载模板（xlsx 分工作表 / CSV 题型列）
     /admin/question-bank/import-preview   上传解析校验（不落库）
-    /admin/question-bank/import-confirm   重新上传同一文件，单事务落库
+    /admin/question-bank/import-confirm   重新上传同一文件，单事务落库（咨询锁防并发）
+    /admin/question-bank/import-error-file 下载待修正数据（错误行原始字段+辅助列）
     /admin/question-bank/export            按现有筛选条件导出（格式兼容模板）
 
 普通教师账号即可使用（TeacherUserDep），与管理端建题同权限口径。确认导入
-不暂存任何服务端状态：文件重新解析、与库内现状重新比对，预览与确认之间
-库或文件发生变化都不会产生脏数据。401 只表示登录失效；权限不足 403。
+不暂存任何服务端状态：文件重新解析、与库内现状重新比对（锁内重查），预览
+与确认之间库或文件发生变化都不会产生脏数据；疑似重复按行标识逐条勾选，
+选择过期（行不再是疑似）直接 422 要求重新预览。401 只表示登录失效；权限
+不足 403。
 """
 
+import re
 from typing import Any, Literal
 
 from fastapi import APIRouter, Form, HTTPException, Query, UploadFile
@@ -33,6 +37,22 @@ async def _read_upload(file: UploadFile) -> tuple[str, bytes]:
     if not raw:
         raise HTTPException(status_code=422, detail="文件为空")
     return file.filename or "", raw
+
+
+def _parse_include_lines(raw: str) -> set[tuple[str, int]]:
+    """『type:line』逗号串 → 疑似行勾选集合（行标识绑定当前文件）。"""
+    decisions: set[tuple[str, int]] = set()
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        match = re.fullmatch(r"(passage|repeat|question|instruction):(\d+)", token)
+        if match is None:
+            raise HTTPException(
+                status_code=422, detail=f"疑似重复勾选格式无效：{token}"
+            )
+        decisions.add((match.group(1), int(match.group(2))))
+    return decisions
 
 
 _BINARY_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -76,13 +96,45 @@ async def question_bank_import_confirm(
     session: SessionDep,
     _teacher: TeacherUserDep,
     file: UploadFile,
-    include_suspected: bool = Form(default=False),
+    include_lines: str = Form(
+        default="",
+        description="勾选导入的疑似行，逗号分隔的 type:line（缺省全部跳过）",
+    ),
+    preview_fingerprint: str = Form(
+        default="",
+        description="预览返回的指纹；提供时锁内比对，内容/候选变化即 422 要求重新预览",
+    ),
 ) -> Any:
-    """确认导入：重新上传预览时的同一文件；疑似重复默认排除，勾选后才导入。"""
+    """确认导入：重新上传预览时的同一文件；疑似重复默认逐条跳过，仅
+    include_lines 勾选的行导入。锁内重查库内现状并比对预览指纹——选择
+    过期、内容变化或新冲突返回 422/409 要求重新预览，绝不沿用旧选择静默导入。"""
     filename, raw = await _read_upload(file)
     parsed = await run_in_threadpool(io_service.parse_upload, filename, raw)
+    decisions = _parse_include_lines(include_lines)
     return await run_in_threadpool(
-        io_service.apply_import, session, parsed, include_suspected
+        io_service.apply_import,
+        session,
+        parsed,
+        decisions,
+        expected_fingerprint=preview_fingerprint or None,
+    )
+
+
+@router.post("/import-error-file", response_class=Response, responses=_BINARY_RESPONSES)
+async def question_bank_import_error_file(
+    session: SessionDep, _teacher: TeacherUserDep, file: UploadFile
+) -> Response:
+    """下载待修正数据：全部错误行的原始字段 + 工作表 + 原始行号 + 原因。
+    与上传格式同构，辅助列不干扰解析——修正后可直接重新上传。"""
+    filename, raw = await _read_upload(file)
+    parsed = await run_in_threadpool(io_service.parse_upload, filename, raw)
+    data, filename_out, media_type = await run_in_threadpool(
+        io_service.build_error_file, session, parsed
+    )
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename_out}"'},
     )
 
 

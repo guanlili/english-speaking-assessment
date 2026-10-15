@@ -190,7 +190,18 @@ export type Body_login_login_access_token = {
 
 export type Body_question_bank_question_bank_import_confirm = {
     file: string;
-    include_suspected?: boolean;
+    /**
+     * 勾选导入的疑似行，逗号分隔的 type:line（缺省全部跳过）
+     */
+    include_lines?: string;
+    /**
+     * 预览返回的指纹；提供时锁内比对，内容/候选变化即 422 要求重新预览
+     */
+    preview_fingerprint?: string;
+};
+
+export type Body_question_bank_question_bank_import_error_file = {
+    file: string;
 };
 
 export type Body_question_bank_question_bank_import_preview = {
@@ -585,6 +596,19 @@ export type PlanItem = {
 };
 
 /**
+ * 确认导入新建条目引用：支撑「查看本批 / 带入组卷 / 补齐音频」。
+ * 无批次表——批次即本次响应，前端按 id 使用现有能力。
+ */
+export type QuestionBankCreatedItem = {
+    type: string;
+    id: string;
+    label: string;
+    topic?: (string | null);
+    needs_audio: boolean;
+    audio_missing: boolean;
+};
+
+/**
  * 行级问题定位：题型（即工作表）+ 行号 + 中文稳定标识原因（前端双语映射）。
  */
 export type QuestionBankImportIssue = {
@@ -597,8 +621,10 @@ export type QuestionBankImportPreview = {
     sheets: Array<QuestionBankTypeCount>;
     issues: Array<QuestionBankImportIssue>;
     issues_truncated: boolean;
-    suspected: Array<QuestionBankImportIssue>;
+    suspected: Array<QuestionBankSuspectedItem>;
     suspected_truncated: boolean;
+    invalid_total: number;
+    fingerprint: string;
     new_topics: Array<(string)>;
     unit_fallback_count: number;
     standalone_sentence_count: number;
@@ -608,6 +634,7 @@ export type QuestionBankImportPreview = {
 export type QuestionBankImportResult = {
     sheets: Array<QuestionBankImportTypeResult>;
     created_topics: Array<(string)>;
+    created_items: Array<QuestionBankCreatedItem>;
     issues: Array<QuestionBankImportIssue>;
     missing_audio_total: number;
 };
@@ -651,6 +678,23 @@ export type QuestionBankOut = {
 };
 
 /**
+ * 疑似重复逐条确认单元：待导入行 vs 已有候选（库内或同批前序行）的
+ * 关键字段快照。键是 canonical 字段名（稳定标识），前端映射双语标签；
+ * 行标识 (type, line) 绑定当前文件，确认时按此对账。
+ */
+export type QuestionBankSuspectedItem = {
+    type: string;
+    line: number;
+    reason: string;
+    incoming: {
+        [key: string]: (string);
+    };
+    existing: {
+        [key: string]: (string);
+    };
+};
+
+/**
  * 预览：单个题型工作表的分类计数。
  */
 export type QuestionBankTypeCount = {
@@ -658,6 +702,7 @@ export type QuestionBankTypeCount = {
     valid_count: number;
     exact_duplicate_count: number;
     suspected_duplicate_count: number;
+    invalid_count: number;
     missing_audio_count: number;
 };
 
@@ -2345,6 +2390,12 @@ export type QuestionBankQuestionBankImportConfirmData = {
 };
 
 export type QuestionBankQuestionBankImportConfirmResponse = (QuestionBankImportResult);
+
+export type QuestionBankQuestionBankImportErrorFileData = {
+    formData: Body_question_bank_question_bank_import_error_file;
+};
+
+export type QuestionBankQuestionBankImportErrorFileResponse = ((Blob | File));
 
 export type QuestionBankExportQuestionBankData = {
     /**

@@ -91,7 +91,7 @@ function QuestionLibrary() {
       </nav>
 
       {/* 批量导入导出入口：普通教师自助录题（2026-10 本期范围） */}
-      <QuestionBankIoCard />
+      <QuestionBankIoCard classroom={classroom} />
 
       {/* 第 1 层：主题（单元） */}
       <section

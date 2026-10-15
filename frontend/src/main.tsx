@@ -46,6 +46,7 @@ OpenAPI.interceptors.request.use((config) => {
   if (
     typeof config.url === "string" &&
     (config.url.includes("/admin/question-bank/import-template") ||
+      config.url.includes("/admin/question-bank/import-error-file") ||
       config.url.includes("/admin/question-bank/export"))
   ) {
     config.responseType = "blob"
