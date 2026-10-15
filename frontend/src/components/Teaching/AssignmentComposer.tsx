@@ -181,15 +181,29 @@ export function AssignmentComposer({
     sentencesQuery.isPending ||
     scenariosQuery.isPending ||
     instructionsQuery.isPending
-  )
+  ) {
+    // 题库刷新悬挂期间 ComposerForm 尚未挂载（预选等待条在表单内）——
+    // 有「带入组卷」交接键时把等待提示提到这一层，老师不会无提示干等
+    const hasPreset = Boolean(sessionStorage.getItem(COMPOSER_PRESET_KEY))
     return (
-      <p className="rounded-2xl border p-6 text-muted-foreground">
-        {t({
-          zh: "正在加载可用练习…",
-          en: "Loading available practice…",
-        })}
-      </p>
+      <div className="space-y-3">
+        {hasPreset && (
+          <p className="rounded-xl bg-secondary/70 p-3 text-sm text-muted-foreground">
+            {t({
+              zh: "正在刷新题库并带入本批题目…（网络较慢时请稍候）",
+              en: "Refreshing the question bank and pre-selecting this batch… (may take a moment on slow networks)",
+            })}
+          </p>
+        )}
+        <p className="rounded-2xl border p-6 text-muted-foreground">
+          {t({
+            zh: "正在加载可用练习…",
+            en: "Loading available practice…",
+          })}
+        </p>
+      </div>
     )
+  }
 
   // passages/scenarios 列表接口已改分页信封（limit=None 全量，组卷不变）。
   // ?? [] 兜底：信封缺失（旧 mock/旧缓存）时退化为空列表，不崩 ErrorBoundary。
@@ -401,6 +415,8 @@ function ComposerForm({
   const [presetBlocked, setPresetBlocked] = useState(false)
   /** 刷新成功后仍缺失的题目 id（已被删除等）：等老师确认继续用有效题或取消 */
   const [presetMissing, setPresetMissing] = useState<string[]>([])
+  /** 刷新进行中（含网络悬挂）：给老师可见的等待提示，落地后转入终态 */
+  const [presetWaiting, setPresetWaiting] = useState(false)
   /** invalidate 起始时刻：刷新成功的判据是 dataUpdatedAt 晚于它（区分
    * 「请求失败/离线」与「刷新成功但题目确实不在了」，评审 P2） */
   const presetInvalidatedAtRef = useRef(0)
@@ -410,6 +426,7 @@ function ComposerForm({
     const raw = sessionStorage.getItem(COMPOSER_PRESET_KEY)
     if (raw) {
       presetRawRef.current = raw
+      setPresetWaiting(true)
       presetInvalidatedAtRef.current = Date.now()
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin", "passages"] }),
@@ -476,9 +493,11 @@ function ComposerForm({
     }
     if (allFresh) {
       setPresetMissing(missing)
+      setPresetWaiting(false)
       return
     }
     setPresetBlocked(true)
+    setPresetWaiting(false)
   }, [passages, sentences, scenarios, instructions, presetRefreshed])
 
   /** 消费交接预选（dropIds = 老师确认放弃的缺失项，正常路径为空集） */
@@ -496,6 +515,7 @@ function ComposerForm({
     presetDoneRef.current = true
     setPresetBlocked(false)
     setPresetMissing([])
+    setPresetWaiting(false)
     const keep = (id: string) => !dropIds.has(id)
     const presetScenarioIds = new Set<string>()
     const validQuestions: string[] = []
@@ -539,6 +559,7 @@ function ComposerForm({
     presetDoneRef.current = true
     setPresetBlocked(false)
     setPresetMissing([])
+    setPresetWaiting(false)
   }
 
   // 题目级白名单（批量导入带入组卷时非空）：只出白名单内的问答题，
@@ -830,6 +851,14 @@ function ComposerForm({
               )}
             </div>
           </section>
+          {presetWaiting && (
+            <p className="rounded-xl bg-secondary/70 p-3 text-sm text-muted-foreground">
+              {t({
+                zh: "正在刷新题库并带入本批题目…（网络较慢时请稍候）",
+                en: "Refreshing the question bank and pre-selecting this batch… (may take a moment on slow networks)",
+              })}
+            </p>
+          )}
           {presetMissing.length > 0 && !presetDoneRef.current && (
             <div className="space-y-2 rounded-xl bg-amber-100 p-3 text-sm text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
               <p>

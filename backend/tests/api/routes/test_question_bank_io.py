@@ -2053,6 +2053,103 @@ def test_fingerprint_covers_all_candidates(client: TestClient, db: Session) -> N
     assert resp.status_code == 422, resp.text
 
 
+# ── 第八轮：指纹覆盖启停状态与话题卡结构 ───────────────────────────────
+
+
+def test_fingerprint_detects_active_toggle(client: TestClient, db: Session) -> None:
+    """候选篇目被停用/启用：指纹失配（启停参与查重配置，也须参与指纹）。"""
+    headers = _login_teacher(db, client)
+    seeded = _csv_file(
+        [
+            {
+                "__type__": "文章朗读",
+                "title": "Toggle me",
+                "text": "Toggle candidate body.",
+                "suggested_seconds": "30",
+            }
+        ]
+    )
+    assert _upload(client, headers, seeded, confirm=True).status_code == 200
+
+    file = _csv_file(
+        [
+            {
+                "__type__": "文章朗读",
+                "title": "Toggle me",
+                "text": "Toggle candidate body.",
+                "suggested_seconds": "45",
+            }
+        ]
+    )
+    body = _preview(client, headers, file)
+    assert body["sheets"][0]["suspected_duplicate_count"] == 1
+    fingerprint = body["fingerprint"]
+
+    existing = db.exec(select(Passage).where(Passage.title == "Toggle me")).one()
+    existing.is_active = not existing.is_active
+    db.add(existing)
+    db.commit()
+
+    resp = client.post(
+        f"{QB}/import-confirm",
+        files={"file": ("bank.csv", file, "text/csv")},
+        data={"include_lines": "passage:2", "preview_fingerprint": fingerprint},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+    assert "预览结果已变化" in resp.json()["detail"]
+
+
+def test_fingerprint_detects_bullets_structure_change(
+    client: TestClient, db: Session
+) -> None:
+    """话题卡数组结构变化（两条合并为一条，join 后文本相同）：指纹失配。"""
+    headers = _login_teacher(db, client)
+    seeded = _csv_file(
+        [
+            {
+                **QUESTION_ROW,
+                "text": "Bullets structure?",
+                "exam_kind": "ielts_p2",
+                "exam_level": "PET",
+                "cue_card_bullets": "who\nwhy",
+            }
+        ]
+    )
+    assert _upload(client, headers, seeded, confirm=True).status_code == 200
+
+    file = _csv_file(
+        [
+            {
+                **QUESTION_ROW,
+                "text": "Bullets structure?",
+                "exam_kind": "ielts_p2",
+                "exam_level": "PET",
+                "cue_card_bullets": "who\nwhy\nwhere",
+            }
+        ]
+    )
+    body = _preview(client, headers, file)
+    fingerprint = body["fingerprint"]
+
+    existing = db.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.text == "Bullets structure?")
+    ).one()
+    # join 展示相同（"who / why"），数组结构不同：["who","why"] → ["who / why"]
+    existing.cue_card_bullets = ["who / why"]
+    db.add(existing)
+    db.commit()
+
+    resp = client.post(
+        f"{QB}/import-confirm",
+        files={"file": ("bank.csv", file, "text/csv")},
+        data={"include_lines": "question:2", "preview_fingerprint": fingerprint},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+    assert "预览结果已变化" in resp.json()["detail"]
+
+
 # ── 权限 ─────────────────────────────────────────────────────────────
 
 

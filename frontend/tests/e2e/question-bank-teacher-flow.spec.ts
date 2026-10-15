@@ -317,6 +317,51 @@ test("断网时带入组卷不丢预选，恢复后自动带入", async ({ page 
   ).toBeNull()
 })
 
+test("刷新悬挂时预选显示等待提示，断网落地后转入暂缓", async ({ page }) => {
+  test.setTimeout(120_000)
+  const code = await seedTeacherAndClassroom(page)
+  await loginTeacher(page)
+
+  // 注入交接键（未知 id），先把四个题库请求**悬挂** 4 秒再断开
+  await page.evaluate(() =>
+    sessionStorage.setItem(
+      "esa:qbank:composer-preset",
+      JSON.stringify({ questions: ["00000000-0000-0000-0000-000000000009"] }),
+    ),
+  )
+  const adminRoute =
+    "**/api/v1/admin/{passages,sentences,scenarios,instructions}*"
+  await page.route(adminRoute, (route) => setTimeout(() => route.abort(), 4000))
+
+  // 站内进入课堂：悬挂期间必须看到「正在刷新」等待提示，而非无声等待
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "我的课堂" })
+    .click()
+  await page.waitForURL((url) => url.pathname === "/classrooms")
+  await enterClassroom(page, code)
+  await expect(page.getByText(/正在刷新题库并带入/)).toBeVisible({
+    timeout: 10_000,
+  })
+  // 悬断落地（冷缓存断网）→ 整块「加载失败」明确反馈（不再无声等待），
+  // 等待条消失，交接键保留
+  // 查询默认重试 3 次、每次都被悬断拖 4 秒——终态要等重试耗尽
+  await expect(page.getByText(/练习内容加载失败/)).toBeVisible({
+    timeout: 90_000,
+  })
+  await expect(page.getByText(/正在刷新题库并带入/)).toHaveCount(0)
+  expect(
+    await page.evaluate(() =>
+      sessionStorage.getItem("esa:qbank:composer-preset"),
+    ),
+  ).not.toBeNull()
+
+  // 恢复网络 → 重新加载 → 刷新成功但 id 未知 → 转入缺失确认（既有终态）
+  await page.unroute(adminRoute)
+  await page.getByRole("button", { name: /重新加载/ }).click()
+  await expect(page.getByText(/已不在题库/)).toBeVisible({ timeout: 20_000 })
+})
+
 test("本批题目被删除：缺失确认后继续带入有效题", async ({ page }) => {
   test.setTimeout(120_000)
   const code = await seedTeacherAndClassroom(page)

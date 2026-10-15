@@ -1138,7 +1138,7 @@ class QuestionBankPlan:
     # 展示层（existing）只取代表一条，指纹必须覆盖全部相关候选——
     # 新增/修改第二条同题候选也要让指纹失配（评审 P2）
     fingerprint_candidates: list[
-        tuple[str, int, str, list[tuple[str, dict[str, str]]]]
+        tuple[str, int, str, list[tuple[str, dict[str, Any]]]]
     ] = field(default_factory=list)
     issues: list[QuestionBankImportIssue] = field(default_factory=list)
     suspected_rows: list[QuestionBankSuspectedItem] = field(default_factory=list)
@@ -1157,7 +1157,7 @@ def _excerpt(text: str, limit: int = 60) -> str:
     return text if len(text) <= limit else f"{text[:limit]}…"
 
 
-def _summarize_payload(qtype: str, payload: dict[str, Any]) -> dict[str, str]:
+def _summarize_payload(qtype: str, payload: dict[str, Any]) -> dict[str, Any]:
     """疑似对照：待导入行 / 同批前序行的关键字段快照（canonical 键）。"""
     if qtype == TYPE_PASSAGE:
         return {
@@ -1169,6 +1169,7 @@ def _summarize_payload(qtype: str, payload: dict[str, Any]) -> dict[str, str]:
             "seconds": str(payload["suggested_seconds"]),
             "translation": payload.get("translation") or "",
             "audio": payload.get("audio_url") or "",
+            "_active": bool(payload.get("is_active", True)),
         }
     if qtype == TYPE_REPEAT:
         return {
@@ -1190,6 +1191,7 @@ def _summarize_payload(qtype: str, payload: dict[str, Any]) -> dict[str, str]:
             "level": payload.get("exam_level") or "",
             "prep": str(payload.get("prep_seconds") or ""),
             "cue": " / ".join(payload.get("cue_card_bullets") or []),
+            "_bullets": list(payload.get("cue_card_bullets") or []),
             "translation": payload.get("translation") or "",
             "audio": payload.get("audio_url") or "",
         }
@@ -1239,17 +1241,25 @@ def _suspected(
     reason: str,
     incoming: dict[str, str],
     existing: dict[str, str],
-    candidates: list[tuple[str, dict[str, str]]],
+    candidates: list[tuple[str, dict[str, Any]]],
 ) -> QuestionBankSuspectedItem:
     plan.fingerprint_candidates.append(
         (qtype, line, reason, sorted(candidates, key=lambda pair: pair[0]))
     )
+
+    # 展示层只保留可读字段（响应模型 dict[str,str]）；下划线前缀的
+    # 指纹专用键（_active/_bullets/_topic_active）只在候选全量里参与比对
+    def display(snapshot: dict[str, Any]) -> dict[str, str]:
+        return {
+            key: value for key, value in snapshot.items() if not key.startswith("_")
+        }
+
     return QuestionBankSuspectedItem(
         type=qtype,
         line=line,
         reason=reason,
-        incoming=incoming,
-        existing=existing,
+        incoming=display(incoming),
+        existing=display(existing),
     )
 
 
@@ -1429,7 +1439,7 @@ def _pid_key(passage_id: uuid.UUID | None) -> str:
     return str(passage_id) if passage_id is not None else ""
 
 
-def _summarize_passage_model(p: Passage, ref: _Ref) -> dict[str, str]:
+def _summarize_passage_model(p: Passage, ref: _Ref) -> dict[str, Any]:
     return {
         "title": p.title,
         "text": p.text,
@@ -1439,10 +1449,11 @@ def _summarize_passage_model(p: Passage, ref: _Ref) -> dict[str, str]:
         "seconds": str(p.suggested_seconds),
         "translation": p.translation or "",
         "audio": p.audio_url or "",
+        "_active": bool(p.is_active),
     }
 
 
-def _summarize_sentence_model(s: RepeatSentence, ref: _Ref) -> dict[str, str]:
+def _summarize_sentence_model(s: RepeatSentence, ref: _Ref) -> dict[str, Any]:
     return {
         "text": s.text,
         "passage": ref.passage_titles.get(s.passage_id, "") if s.passage_id else "",
@@ -1455,7 +1466,16 @@ def _summarize_sentence_model(s: RepeatSentence, ref: _Ref) -> dict[str, str]:
     }
 
 
-def _summarize_question_model(q: ScenarioQuestion, ref: _Ref) -> dict[str, str]:
+def _scenario_active(ref: _Ref, scenario_id: uuid.UUID) -> bool:
+    for scenario in ref.scenarios_by_norm.get(
+        _norm_text(ref.scenario_topics.get(scenario_id, "")), []
+    ):
+        if scenario.id == scenario_id:
+            return bool(scenario.is_active)
+    return True
+
+
+def _summarize_question_model(q: ScenarioQuestion, ref: _Ref) -> dict[str, Any]:
     return {
         "text": q.text,
         "topic": ref.scenario_topics.get(q.scenario_id, ""),
@@ -1464,12 +1484,14 @@ def _summarize_question_model(q: ScenarioQuestion, ref: _Ref) -> dict[str, str]:
         "level": q.exam_level or "",
         "prep": str(q.prep_seconds or ""),
         "cue": " / ".join(q.cue_card_bullets or []),
+        "_bullets": list(q.cue_card_bullets or []),
         "translation": q.translation or "",
         "audio": q.audio_url or "",
+        "_topic_active": _scenario_active(ref, q.scenario_id),
     }
 
 
-def _summarize_instruction_model(i: Instruction) -> dict[str, str]:
+def _summarize_instruction_model(i: Instruction) -> dict[str, Any]:
     return {
         "title": i.title or "",
         "text": i.text,
