@@ -323,6 +323,12 @@ function ComposerForm({
       (initialItems.length ? initialItems.map(assignmentItemKey) : null),
   )
   const [title, setTitle] = useState(draft?.state.title ?? initialTitle)
+  const [baseExerciseId, setBaseExerciseId] = useState(
+    draft ? (draft.state.base_exercise_id ?? null) : currentExerciseId,
+  )
+  useEffect(() => {
+    if (!dirtyRef.current) setBaseExerciseId(currentExerciseId)
+  }, [currentExerciseId])
   // 模考模式：整场限时（分钟），确认页点「开始考试」后计时、到时自动交卷、切屏记录
   const [isExam, setIsExam] = useState(draft?.state.is_exam ?? initialIsExam)
   const [examMinutes, setExamMinutes] = useState(
@@ -560,9 +566,7 @@ function ComposerForm({
     ordered_keys: orderedKeys,
     is_exam: isExam,
     exam_minutes: examMinutes,
-    base_exercise_id: draft
-      ? (draft.state.base_exercise_id ?? null)
-      : currentExerciseId,
+    base_exercise_id: baseExerciseId,
   }
   const autosave = useComposerAutosave(
     code,
@@ -685,6 +689,7 @@ function ComposerForm({
             )
               return
             dirtyRef.current = true
+            setBaseExerciseId(currentExerciseId)
             setTitle(initialTitle)
             setTypes(initialTypes)
             setSelection(initialSelection)
@@ -713,7 +718,7 @@ function ComposerForm({
             {t({ zh: "重新加载", en: "Reload" })}
           </Button>
         )}
-        {draft && draft.state.base_exercise_id !== currentExerciseId && (
+        {draft && baseExerciseId !== currentExerciseId && (
           <p className="w-full text-muted-foreground">
             {t({
               zh: "当前发布已变化，草稿仍保留原选题；请核对后再发布。",

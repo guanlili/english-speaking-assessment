@@ -260,3 +260,32 @@ test("@webkit reported issues lead to the affected student", async ({
     "selected",
   )
 })
+
+test("@webkit restoring current selections clears an outdated draft warning", async ({
+  page,
+}) => {
+  const mock = await setup(page)
+  mock.drafts.SOURCE = {
+    revision: 3,
+    state: {
+      ...state,
+      title: "Outdated preparation",
+      base_exercise_id: "older-publication",
+    },
+    updated_at: new Date().toISOString(),
+  }
+  await page.goto("/t/SOURCE")
+  await expect(page.getByText(/当前发布已变化，草稿仍保留原选题/)).toBeVisible()
+  await page
+    .getByRole("button", { name: "恢复当前发布选题", exact: true })
+    .click()
+  await expect(
+    page.getByPlaceholder("例如：第 3 周｜旅行主题口语练习"),
+  ).toHaveValue(exercise.title)
+  await expect
+    .poll(() => mock.drafts.SOURCE?.state.base_exercise_id)
+    .toBe(exercise.id)
+  await expect(page.getByText(/当前发布已变化，草稿仍保留原选题/)).toHaveCount(
+    0,
+  )
+})
