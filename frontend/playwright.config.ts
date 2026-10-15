@@ -4,6 +4,7 @@ import { defineConfig } from "@playwright/test"
 // the serial integration project until their isolation has been checked.
 const mockedFiles = [
   "admin-pagination",
+  "auth-session",
   "attempt-audio",
   "audio-preview",
   "classroom-delete",
@@ -18,6 +19,7 @@ const mockedFiles = [
   "reading-tree",
   "recorder-lifecycle",
   "student-recording-flow",
+  "sentence-pagination",
   "teacher-feedback",
   "teacher-workspace",
 ].map((name) => `**/${name}.spec.ts`)

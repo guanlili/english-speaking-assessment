@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -37,11 +37,11 @@ from app.models import (
     PathUnit,
     PracticeSession,
     TrailData,
-    TrailSession,
     Unit,
 )
 from app.scoring.bands import BAND_ORDER
 from app.services import exam as exam_service
+from app.services import trail as trail_service
 
 logger = logging.getLogger(__name__)
 
@@ -76,125 +76,42 @@ def read_student_trail(
     )
     window_start_utc = window_start.astimezone(ZoneInfo("UTC"))
 
-    attempts = session.exec(
-        select(Attempt)
-        .options(
-            # 学习足迹只要聚合小列：item_snapshot/rubric 等 JSON 大列不进内存
-            # （窗口可达 30 天 × 全部作答）
-            load_only(
-                Attempt.id,  # ty: ignore[invalid-argument-type]
-                Attempt.created_at,  # ty: ignore[invalid-argument-type]
-                Attempt.item_type,  # ty: ignore[invalid-argument-type]
-                Attempt.status,  # ty: ignore[invalid-argument-type]
-                Attempt.session_id,  # ty: ignore[invalid-argument-type]
-                Attempt.overall,  # ty: ignore[invalid-argument-type]
-                Attempt.completeness,  # ty: ignore[invalid-argument-type]
-                Attempt.vocab,  # ty: ignore[invalid-argument-type]
-                # total_minutes 需要 duration_s：缺列 = deferred 属性访问时
-                # 每行触发一次单行 SELECT（90 天窗口可达上千次，2026-10-12 评审）
-                Attempt.duration_s,  # ty: ignore[invalid-argument-type]
-            )
-        )
-        .where(
-            Attempt.student_id == student.id,
-            Attempt.created_at >= window_start_utc,  # type: ignore
-        )
-        .order_by(col(Attempt.created_at))
-    ).all()
-    # 模考反馈可见性（返修R03）：学生视角排除「考试未终结」的作答——
-    # 当天只有一道已评分题时，speaking_avg/completeness_avg 就是该题分数；
-    # 授权教师/管理员查看保持全量。与 today/attempts 出口共用
-    # exam_feedback_locked 判定，不改 ORM、不提前关卷
+    # 查询期间首次评分也可能完成：先固定提交上界，再检查学生全部未落结束
+    # 的考试会话（不能只检查「已有 done 作答」的会话，否则首答刚出分会漏遮罩）。
+    as_of = datetime.now(UTC)
     locked_session_ids: set[uuid.UUID] = set()
     if current_user.role == "student" and not current_user.is_superuser:
-        seen_session_ids = {a.session_id for a in attempts if a.session_id}
-        if seen_session_ids:
-            candidate_sessions = [
-                ps
-                for ps in session.exec(
-                    select(PracticeSession).where(
-                        col(PracticeSession.id).in_(seen_session_ids)  # type: ignore[operator]
-                    )
-                ).all()
-                if ps.assignment_id is not None
-            ]
-            # 批量预取涉及的练习快照（替代逐会话 session.get 的 N+1；90 天
-            # 窗口内会话数随使用线性增长，identity map 只挡重复 assignment）
-            exercises_by_id: dict[uuid.UUID, ClassroomExercise] = {}
-            if candidate_sessions:
-                for ex in session.exec(
-                    select(ClassroomExercise).where(
-                        col(ClassroomExercise.id).in_(  # type: ignore[operator]
-                            [ps.assignment_id for ps in candidate_sessions]
-                        )
-                    )
-                ).all():
-                    exercises_by_id[ex.id] = ex
-            exam_sessions = [
-                ps
-                for ps in candidate_sessions
-                if (exercise := exercises_by_id.get(ps.assignment_id)) is not None
-                and exercise.is_exam
-                and exam_service.exam_feedback_locked(session, ps, exercise)
-            ]
-            locked_session_ids = {ps.id for ps in exam_sessions}
-
-    by_date: dict[str, dict[str, Any]] = {}
-    for attempt in attempts:
-        day = (
-            attempt.created_at.astimezone(tz).date().isoformat()
-            if attempt.created_at
-            else None
+        exam_rows = session.exec(
+            select(PracticeSession, ClassroomExercise)
+            .join(
+                ClassroomExercise,
+                col(PracticeSession.assignment_id) == col(ClassroomExercise.id),
+            )
+            .where(
+                PracticeSession.student_id == student.id,
+                col(PracticeSession.exam_ended_at).is_(None),
+                ClassroomExercise.is_exam,
+            )
+        ).all()
+        first = exam_service.first_submitted_by_session(
+            session, [ps.id for ps, _ in exam_rows if ps.exam_started_at is not None]
         )
-        if day is None or attempt.status != AttemptStatus.DONE:
-            continue
-        if attempt.session_id is not None and attempt.session_id in locked_session_ids:
-            continue  # 考试进行中：该作答的分数不进学生聚合
-        bucket = by_date.setdefault(
-            day,
-            {
-                "speaking": [],
-                "completeness": [],
-                "vocab": None,
-                "count": 0,
-            },
-        )
-        bucket["count"] += 1
-        if attempt.item_type == AttemptItemType.QUESTION:
-            if attempt.overall is not None:
-                bucket["speaking"].append(attempt.overall)
-            # 当日最新一次问答的词汇档（按时间顺序覆盖）
-            if attempt.vocab and isinstance(attempt.vocab, dict):
-                cefr = attempt.vocab.get("cefr")
-                if isinstance(cefr, str):
-                    bucket["vocab"] = cefr
-        elif (
-            attempt.item_type == AttemptItemType.REPEAT
-            and attempt.completeness is not None
-        ):
-            bucket["completeness"].append(attempt.completeness)
+        locked_session_ids = {
+            ps.id
+            for ps, exercise in exam_rows
+            if exam_service.exam_feedback_locked(
+                session, ps, exercise, first_submitted=first.get(ps.id, {})
+            )
+        }
+    summary = trail_service.summarize(
+        session,
+        student.id,
+        window_start_utc,
+        settings.PRACTICE_TZ,
+        locked_session_ids,
+        as_of=as_of,
+    )
 
-    sessions = [
-        TrailSession(
-            date=day,
-            speaking_avg=(
-                round(sum(v["speaking"]) / len(v["speaking"]), 1)
-                if v["speaking"]
-                else None
-            ),
-            repeat_completeness_avg=(
-                round(sum(v["completeness"]) / len(v["completeness"]), 1)
-                if v["completeness"]
-                else None
-            ),
-            vocab_cefr=v["vocab"],
-            attempt_count=v["count"],
-        )
-        for day, v in sorted(by_date.items())
-    ]
-
-    # 最近一轮档位动向（PRD US-10）：对比最近会话的调整后档与开始档。
-    # 先幂等触发一次档位计算（作答后学生可能没再打开 /today）
     band_change: str | None = None
     # 最近一轮档位动向（PRD US-10）：对比最近会话的调整后档与开始档。
     # 先幂等触发一次档位计算（作答后学生可能没再打开 /today）。
@@ -216,42 +133,16 @@ def read_student_trail(
             else:
                 band_change = "down"
 
-    # 累计开口分钟 + 词汇命中（与轨迹窗口一致，只统计已完成作答）。
-    # vocab_counts = 老词表 A2/B1/B2 口径（仅历史作答携带，零变化保留）；
-    # level_counts = 五级词库口径（现行为标准，来自 level_stats）。
-    done_attempts = [a for a in attempts if a.status == AttemptStatus.DONE]
-    total_minutes = round(sum(a.duration_s for a in done_attempts) / 60)
-    vocab_counts: dict[str, int] = {}
-    level_counts: dict[str, int] = {}
-    for a in done_attempts:
-        vocab = a.vocab if isinstance(a.vocab, dict) else None
-        if not vocab:
-            continue
-        hits = vocab.get("hits")
-        if isinstance(hits, dict):
-            for band, words in hits.items():
-                if not isinstance(band, str) or not isinstance(words, list):
-                    continue
-                vocab_counts[band] = vocab_counts.get(band, 0) + len(words)
-        level_stats = vocab.get("level_stats")
-        if isinstance(level_stats, dict):
-            hits_by_level = level_stats.get("hits_by_level")
-            if isinstance(hits_by_level, dict):
-                for level, count in hits_by_level.items():
-                    if not isinstance(level, str) or not isinstance(count, int):
-                        continue
-                    level_counts[level] = level_counts.get(level, 0) + count
-
     return TrailData(
         classroom_code=classroom.code,
         student_id=student.id,
         display_name=student.display_name,
         suffix=student.suffix,
-        sessions=sessions,
+        sessions=summary.sessions,
         band_change=band_change,
-        total_minutes=total_minutes,
-        vocab_counts=vocab_counts,
-        level_counts=level_counts,
+        total_minutes=summary.total_minutes,
+        vocab_counts=summary.vocab_counts,
+        level_counts=summary.level_counts,
     )
 
 

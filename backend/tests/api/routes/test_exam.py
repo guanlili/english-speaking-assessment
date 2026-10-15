@@ -4,13 +4,14 @@ import uuid
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
 from sqlmodel import Session, col, select
 
-from app.models import Passage, PracticeSession
+from app.models import Attempt, Passage, PracticeSession
 from app.services import exam as exam_service
 from tests.utils.audio import wav_upload
 from tests.utils.credential import make_student
@@ -910,8 +911,38 @@ def test_exam_attempt_excluded_from_student_trail_until_ended(
         )
         assert teacher_view["overall"] is not None
 
+        # 累计统计同样属于反馈，不能在考试结束前透露词汇命中。
+        attempt = db.get(Attempt, uuid.UUID(attempt_id))
+        assert attempt is not None
+        attempt.vocab = {
+            "hits": {"B1": ["hidden"]},
+            "level_stats": {"hits_by_level": {"KET": 1}},
+        }
+        db.add(attempt)
+        db.commit()
+
+        # 首次评分在轨迹的可见性检查与聚合查询之间完成，也必须遮蔽。
+        from app.services import trail as trail_service
+
+        original_summary = trail_service.summarize
+        attempt.status = "scoring"
+        db.add(attempt)
+        db.commit()
+
+        def finish_during_query(*args: Any, **kwargs: Any) -> Any:
+            attempt.status = "done"
+            db.add(attempt)
+            db.commit()
+            mp.setattr(trail_service, "summarize", original_summary)
+            return original_summary(*args, **kwargs)
+
+        mp.setattr(trail_service, "summarize", finish_during_query)
+
         # 学生轨迹：考试未终结 → 当天聚合不包含该作答（count 0 / 无 speaking）
         trail = client.get(f"/api/v1/classes/{code}/trail", headers=headers).json()
+        assert trail["total_minutes"] == 0
+        assert trail["vocab_counts"] == {}
+        assert trail["level_counts"] == {}
         # trail 按 PRACTICE_TZ（北京时间）分组；期望 key 必须同口径折算，
         # 用 UTC 日期会在每天 UTC16-24 点窗口跨日 KeyError（CI 实测踩中）
         from zoneinfo import ZoneInfo

@@ -425,3 +425,72 @@ def test_settlement_partial_round_not_settled(
     g = _plan(client, student["headers"])["gamification"]
     assert g["session_stars"] is None
     assert g["xp"] == 0
+
+
+def test_trail_summary_streams_vocab_across_batches_and_timezone_days(
+    client: TestClient,
+    db: Session,
+) -> None:
+    from datetime import UTC, datetime
+
+    from app.services.trail import VOCAB_BATCH_SIZE, summarize
+
+    student = _join(db, client, "跨日统计")
+    student_id = uuid.UUID(student["student"]["id"])
+    count = VOCAB_BATCH_SIZE + 4
+    rows = [
+        Attempt(
+            student_id=student_id,
+            item_id=uuid.uuid4(),
+            item_type="question",
+            audio_path="/tmp/not-read.wav",
+            duration_s=60,
+            status=AttemptStatus.DONE,
+            overall=80,
+            created_at=datetime(2026, 10, 1, 15, 59, tzinfo=UTC),
+            vocab={
+                "cefr": "B1",
+                "hits": {"B1": ["dog"]},
+                "level_stats": {"hits_by_level": {"KET": 1}},
+            },
+        )
+        for _ in range(count)
+    ]
+    rows.append(
+        Attempt(
+            student_id=student_id,
+            item_id=uuid.uuid4(),
+            item_type="repeat",
+            audio_path="/tmp/not-read.wav",
+            duration_s=60,
+            status=AttemptStatus.DONE,
+            completeness=90,
+            created_at=datetime(2026, 10, 1, 16, 0, tzinfo=UTC),
+        )
+    )
+    rows.append(
+        Attempt(
+            student_id=student_id,
+            item_id=uuid.uuid4(),
+            item_type="question",
+            audio_path="/tmp/not-read.wav",
+            duration_s=600,
+            status=AttemptStatus.FAILED,
+            overall=0,
+            created_at=datetime(2026, 10, 1, 16, 0, tzinfo=UTC),
+            vocab={"hits": {"B1": ["excluded"]}},
+        )
+    )
+    db.add_all(rows)
+    db.commit()
+    summary = summarize(
+        db, student_id, datetime(2026, 10, 1, tzinfo=UTC), "Asia/Shanghai", set()
+    )
+    assert [day.date for day in summary.sessions] == ["2026-10-01", "2026-10-02"]
+    assert [day.attempt_count for day in summary.sessions] == [count, 1]
+    assert summary.sessions[0].speaking_avg == 80
+    assert summary.sessions[0].vocab_cefr == "B1"
+    assert summary.sessions[1].repeat_completeness_avg == 90
+    assert summary.total_minutes == count + 1
+    assert summary.vocab_counts == {"B1": count}
+    assert summary.level_counts == {"KET": count}

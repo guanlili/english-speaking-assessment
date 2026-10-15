@@ -870,6 +870,11 @@ export type SentenceFrameUpdate = {
     status?: (string | null);
 };
 
+export type SentencesListOut = {
+    data: Array<SentenceWithPassage>;
+    count: number;
+};
+
 /**
  * 更新复述句请求：缺省不修改；passage_id/translation/audio_url 可 null 清空。
  */
@@ -1859,6 +1864,15 @@ export type AdminCreateSentenceData = {
 };
 
 export type AdminCreateSentenceResponse = (RepeatSentence);
+
+export type AdminListSentencesPageData = {
+    limit?: number;
+    q?: (string | null);
+    skip?: number;
+    standaloneOnly?: boolean;
+};
+
+export type AdminListSentencesPageResponse = (SentencesListOut);
 
 export type AdminListSentencesFlatData = {
     /**

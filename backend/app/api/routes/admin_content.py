@@ -497,6 +497,48 @@ class SentenceWithPassage(RepeatSentence):
     passage_title: str | None = None  # 考试字段自 RepeatSentence 继承
 
 
+class SentencesListOut(SQLModel):
+    data: list[SentenceWithPassage]
+    count: int
+
+
+@router.get("/sentences-page", response_model=SentencesListOut)
+def list_sentences_page(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    q: str | None = Query(default=None, max_length=200),
+    standalone_only: bool = False,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> SentencesListOut:
+    """题库管理分页：过滤与计数同口径，只读取当前页的挂靠篇目标题。"""
+    conditions = []
+    if q and q.strip():
+        conditions.append(
+            col(RepeatSentence.text).icontains(q.strip(), autoescape=True)
+        )
+    if standalone_only:
+        conditions.append(col(RepeatSentence.passage_id).is_(None))
+    count = session.exec(
+        select(func.count()).select_from(RepeatSentence).where(*conditions)
+    ).one()
+    rows = session.exec(
+        select(RepeatSentence, Passage.title)
+        .outerjoin(Passage, col(RepeatSentence.passage_id) == col(Passage.id))
+        .where(*conditions)
+        .order_by(col(RepeatSentence.created_at), col(RepeatSentence.id))
+        .offset(skip)
+        .limit(limit)
+    ).all()
+    return SentencesListOut(
+        data=[
+            SentenceWithPassage(**s.model_dump(), passage_title=title)
+            for s, title in rows
+        ],
+        count=count,
+    )
+
+
 @router.get("/sentences", response_model=list[SentenceWithPassage])
 def list_sentences_flat(
     session: SessionDep,

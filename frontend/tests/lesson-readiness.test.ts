@@ -36,7 +36,13 @@ test("each type only requires its own selection", () => {
   assert.deepEqual(
     inspectSelection(
       { reading: true, repeat: false, qa: false, instruction: false },
-      { passages: ["p1"], sentences: [], scenarioIds: [], instructions: [] },
+      {
+        passages: ["p1"],
+        sentences: [],
+        scenarioIds: [],
+        instructions: [],
+        questions: [],
+      },
       data,
     ).problems,
     [],
@@ -49,6 +55,7 @@ test("each type only requires its own selection", () => {
         sentences: ["s1", "s2"],
         scenarioIds: [],
         instructions: [],
+        questions: [],
       },
       data,
     ).problems,
@@ -57,7 +64,13 @@ test("each type only requires its own selection", () => {
   assert.deepEqual(
     inspectSelection(
       { reading: false, repeat: false, qa: true, instruction: false },
-      { passages: [], sentences: [], scenarioIds: ["sc1"], instructions: [] },
+      {
+        passages: [],
+        sentences: [],
+        scenarioIds: ["sc1"],
+        instructions: [],
+        questions: [],
+      },
       data,
     ).problems,
     [],
@@ -70,6 +83,7 @@ test("each type only requires its own selection", () => {
         sentences: ["s1"],
         scenarioIds: [],
         instructions: ["i1"],
+        questions: [],
       },
       data,
     ).problems,
@@ -85,6 +99,7 @@ test("checked type with empty selection is reported per type", () => {
       sentences: [],
       scenarioIds: [],
       instructions: [],
+      questions: [],
     },
     data,
   )
@@ -104,7 +119,13 @@ test("scenario without questions blocks QA", () => {
   assert.match(
     inspectSelection(
       { reading: false, repeat: false, qa: true, instruction: false },
-      { passages: [], sentences: [], scenarioIds: ["sc2"], instructions: [] },
+      {
+        passages: [],
+        sentences: [],
+        scenarioIds: ["sc2"],
+        instructions: [],
+        questions: [],
+      },
       data,
     ).problems[0].zh,
     /有题目/,
@@ -112,7 +133,13 @@ test("scenario without questions blocks QA", () => {
   assert.match(
     inspectSelection(
       { reading: false, repeat: false, qa: true, instruction: false },
-      { passages: [], sentences: [], scenarioIds: ["sc2"], instructions: [] },
+      {
+        passages: [],
+        sentences: [],
+        scenarioIds: ["sc2"],
+        instructions: [],
+        questions: [],
+      },
       data,
     ).problems[0].en,
     /with questions/,
@@ -128,6 +155,7 @@ test("multiple active QA topics can be selected together", () => {
       sentences: [],
       scenarioIds: ["sc1", "sc3"],
       instructions: [],
+      questions: [],
     },
     { ...data, scenarios: [...data.scenarios, second] },
   )
@@ -146,6 +174,7 @@ test("instructions alone cannot form a lesson", () => {
       sentences: [],
       scenarioIds: [],
       instructions: ["i1"],
+      questions: [],
     },
     data,
   )
@@ -157,7 +186,13 @@ test("instructions alone cannot form a lesson", () => {
 test("no type checked still reports the answerable-type rule", () => {
   const { problems } = inspectSelection(
     none,
-    { passages: [], sentences: [], scenarioIds: [], instructions: [] },
+    {
+      passages: [],
+      sentences: [],
+      scenarioIds: [],
+      instructions: [],
+      questions: [],
+    },
     data,
   )
   assert.equal(problems.length, 1)
