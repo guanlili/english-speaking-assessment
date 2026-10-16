@@ -18,6 +18,7 @@ import InfoHint from "@/components/Common/InfoHint"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { RubricBlock } from "@/components/Practice/FeedbackCard"
 import StudentShell from "@/components/Practice/StudentShell"
+import { TeacherFeedbackBlock } from "@/components/Practice/TeacherFeedbackBlock"
 import VocabBlock from "@/components/Practice/VocabBlock"
 import { Button } from "@/components/ui/button"
 import {
@@ -603,6 +604,20 @@ export function RoundResultPage() {
           </Card>
         )}
 
+        {plan.attempts
+          .filter(
+            (attempt) =>
+              attempt.status !== "done" &&
+              (attempt.teacher_feedback || attempt.teacher_focus),
+          )
+          .map((attempt) => (
+            <div key={attempt.attempt_id} className="space-y-2">
+              <p className="text-sm">
+                {plan.items.find((item) => item.id === attempt.item_id)?.text}
+              </p>
+              <TeacherFeedbackBlock attempt={attempt} />
+            </div>
+          ))}
         {doneItems.map(({ item, attempt }, index) => (
           <Card key={item.id}>
             <CardHeader>
@@ -646,6 +661,7 @@ export function RoundResultPage() {
                   </span>
                 )}
               </div>
+              <TeacherFeedbackBlock attempt={attempt} />
               {attempt.advice && attempt.advice.length > 0 && (
                 <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                   {attempt.advice.map((line) => (

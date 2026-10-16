@@ -2,13 +2,22 @@ FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1
 
-# 国内构建加速：Debian 源换腾讯云镜像（海外构建器可达，不影响正确性）
-RUN sed -i 's|deb.debian.org|mirrors.tencent.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null \
-    || sed -i 's|deb.debian.org|mirrors.tencent.com|g' /etc/apt/sources.list
-
-# 音频转码：浏览器 webm/opus → 方舟支持的 wav
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+# 国内优先镜像；索引过期/不可用时恢复基础镜像的官方源，不关闭有效期校验。
+# 音频转码：浏览器 webm/opus → 方舟支持的 wav。
+RUN set -eu; \
+    sources=/etc/apt/sources.list.d/debian.sources; \
+    if [ ! -f "$sources" ]; then sources=/etc/apt/sources.list; fi; \
+    cp "$sources" /tmp/debian.sources.original; \
+    sed -i 's|deb.debian.org|mirrors.tencent.com|g' "$sources"; \
+    if ! (apt-get update -o APT::Update::Error-Mode=any && \
+        apt-get install -y --no-install-recommends ffmpeg); then \
+        cp /tmp/debian.sources.original "$sources"; \
+        rm -rf /var/lib/apt/lists/*; \
+        apt-get update -o APT::Update::Error-Mode=any; \
+        apt-get install -y --no-install-recommends ffmpeg; \
+    fi; \
+    rm -f /tmp/debian.sources.original; \
+    rm -rf /var/lib/apt/lists/*
 
 # Install uv
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#installing-uv

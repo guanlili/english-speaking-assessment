@@ -37,6 +37,7 @@ export type AssignmentRequest = {
     assign_qa?: (boolean | null);
     items?: (Array<AssignmentItemIn> | null);
     title?: (string | null);
+    draft_revision?: (number | null);
     automated_exam?: boolean;
     is_exam?: boolean;
     time_limit_minutes?: (number | null);
@@ -66,6 +67,11 @@ export type AttemptPublic = {
     rubric?: ({
     [key: string]: unknown;
 } | null);
+    teacher_feedback?: (string | null);
+    teacher_focus?: boolean;
+    teacher_feedback_author?: (string | null);
+    teacher_feedback_at?: (string | null);
+    teacher_feedback_revision?: number;
     error?: (string | null);
     created_at?: (string | null);
 };
@@ -135,6 +141,7 @@ export type BoardItem = {
     status: string;
     overall?: (number | null);
     attempt_id?: (string | null);
+    teacher_focus?: boolean;
 };
 
 export type BoardStudent = {
@@ -237,6 +244,11 @@ export type ClassroomCreate = {
     class_size?: number;
 };
 
+export type ClassroomDiagnostics = {
+    checked_at: string;
+    issues: Array<ClassroomIssue>;
+};
+
 export type ClassroomExercisePublic = {
     id: string;
     classroom_id: string;
@@ -250,6 +262,16 @@ export type ClassroomExercisePublic = {
     is_exam?: boolean;
     time_limit_minutes?: (number | null);
 };
+
+export type ClassroomIssue = {
+    student_id: string;
+    display_name: string;
+    kind: 'device' | 'audio' | 'upload' | 'scoring_slow' | 'scoring_failed';
+    observed_at: string;
+    attempt_id?: (string | null);
+};
+
+export type kind = 'device' | 'audio' | 'upload' | 'scoring_slow' | 'scoring_failed';
 
 export type ClassroomPublic = {
     id: string;
@@ -301,9 +323,45 @@ export type ComposerSelectionIn = {
     items: Array<AssignmentItemIn>;
 };
 
+export type ComposerState = {
+    title: string;
+    types: DraftTypes;
+    selection: DraftSelection;
+    ordered_keys?: (Array<(string)> | null);
+    is_exam: boolean;
+    exam_minutes: number;
+    base_exercise_id?: (string | null);
+};
+
+export type DraftPublic = {
+    revision: number;
+    state: ComposerState;
+    updated_at: string;
+};
+
 export type DraftQuestionOut = {
     text: string;
     suggested_seconds: number;
+};
+
+export type DraftSelection = {
+    passages: Array<(string)>;
+    sentences: Array<(string)>;
+    scenarioIds: Array<(string)>;
+    instructions: Array<(string)>;
+    questions: Array<(string)>;
+};
+
+export type DraftTypes = {
+    reading: boolean;
+    repeat: boolean;
+    qa: boolean;
+    instruction: boolean;
+};
+
+export type DraftWrite = {
+    expected_revision: number;
+    state: ComposerState;
 };
 
 export type ExamFlowEvent = {
@@ -386,6 +444,49 @@ export type ExploreRequest = {
 export type ExploreStarted = {
     session_id: string;
     unit_title: string;
+};
+
+export type FollowupCreate = {
+    source_exercise_id: string;
+    title: string;
+    student_ids: Array<(string)>;
+    item_ids: Array<(string)>;
+};
+
+export type FollowupCreated = {
+    id: string;
+};
+
+export type FollowupItem = {
+    id: string;
+    type: string;
+    text: string;
+};
+
+export type FollowupProgress = {
+    student_id: string;
+    display_name: string;
+    done_count: number;
+    total_count: number;
+    has_pending: boolean;
+    has_failures: boolean;
+    session_id: (string | null);
+};
+
+export type FollowupPublic = {
+    id: string;
+    title: string;
+    status: 'followup' | 'followup_closed';
+    source_exercise_id: (string | null);
+    created_at: (string | null);
+    item_count: number;
+    targets: Array<FollowupProgress>;
+};
+
+export type status = 'followup' | 'followup_closed';
+
+export type FollowupStarted = {
+    session_id: string;
 };
 
 export type FrameFavoriteRequest = {
@@ -592,6 +693,10 @@ export type PlanAttempt = {
     [key: string]: unknown;
 } | null);
     error?: (string | null);
+    teacher_feedback?: (string | null);
+    teacher_focus?: boolean;
+    teacher_feedback_author?: (string | null);
+    teacher_feedback_at?: (string | null);
 };
 
 export type PlanItem = {
@@ -773,6 +878,11 @@ export type RepeatSentence = {
     exam_kind?: (string | null);
     exam_level?: (string | null);
     created_at?: (string | null);
+};
+
+export type RuntimeIssueIn = {
+    session_id: string;
+    issue: ('device' | 'audio' | 'upload' | null);
 };
 
 /**
@@ -1014,6 +1124,12 @@ export type StudentResetRow = {
  */
 export type StudentUpdate = {
     display_name: string;
+};
+
+export type TeacherFeedbackWrite = {
+    text: string;
+    focus?: boolean;
+    expected_revision: number;
 };
 
 export type TodayPlan = {
@@ -2215,6 +2331,13 @@ export type AttemptsReadAttemptData = {
 
 export type AttemptsReadAttemptResponse = (AttemptPublic);
 
+export type AttemptsWriteTeacherFeedbackData = {
+    attemptId: string;
+    requestBody: TeacherFeedbackWrite;
+};
+
+export type AttemptsWriteTeacherFeedbackResponse = (AttemptPublic);
+
 export type AttemptsReadAttemptAudioData = {
     attemptId: string;
 };
@@ -2409,6 +2532,74 @@ export type ClassesRemoveFrameFavoriteData = {
 };
 
 export type ClassesRemoveFrameFavoriteResponse = (Array<SentenceFramePublic>);
+
+export type ClassesReadComposerDraftData = {
+    code: string;
+};
+
+export type ClassesReadComposerDraftResponse = ((DraftPublic | null));
+
+export type ClassesSaveComposerDraftData = {
+    code: string;
+    requestBody: DraftWrite;
+};
+
+export type ClassesSaveComposerDraftResponse = (DraftPublic);
+
+export type ClassesReadExerciseComposerSeedData = {
+    code: string;
+    exerciseId: string;
+};
+
+export type ClassesReadExerciseComposerSeedResponse = (ComposerState);
+
+export type ClassesReportRuntimeIssueData = {
+    code: string;
+    requestBody: RuntimeIssueIn;
+};
+
+export type ClassesReportRuntimeIssueResponse = (unknown);
+
+export type ClassesReadClassroomDiagnosticsData = {
+    code: string;
+};
+
+export type ClassesReadClassroomDiagnosticsResponse = (ClassroomDiagnostics);
+
+export type ClassesReadFollowupItemsData = {
+    code: string;
+    exerciseId: string;
+};
+
+export type ClassesReadFollowupItemsResponse = (Array<FollowupItem>);
+
+export type ClassesCreateClassFollowupData = {
+    code: string;
+    requestBody: FollowupCreate;
+};
+
+export type ClassesCreateClassFollowupResponse = (FollowupCreated);
+
+export type ClassesListClassFollowupsData = {
+    code: string;
+    limit?: number;
+};
+
+export type ClassesListClassFollowupsResponse = (Array<FollowupPublic>);
+
+export type ClassesStartClassFollowupData = {
+    code: string;
+    taskId: string;
+};
+
+export type ClassesStartClassFollowupResponse = (FollowupStarted);
+
+export type ClassesCancelClassFollowupData = {
+    code: string;
+    taskId: string;
+};
+
+export type ClassesCancelClassFollowupResponse = (unknown);
 
 export type LoginReadLoginOptionsResponse = (LoginOptions);
 

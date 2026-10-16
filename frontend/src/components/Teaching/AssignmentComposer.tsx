@@ -7,6 +7,7 @@ import {
   type AssignmentItemIn,
   ClassesService,
   type ClassroomExercisePublic,
+  type DraftPublic,
   type InstructionPublic,
   type PassageWithSentences,
   type ScenarioOut,
@@ -36,6 +37,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { NumberInput } from "@/components/ui/number-input"
+import { useComposerAutosave } from "@/hooks/useComposerAutosave"
 import {
   type ComposerLibrary,
   useComposerLibrary,
@@ -56,7 +58,6 @@ import {
 import { COMPOSER_PRESET_KEY } from "@/lib/questionImport"
 import { normalizeReadingSelection } from "@/lib/reading-selection"
 import { TERMS } from "@/lib/terms"
-import { extractErrorMessage } from "@/utils"
 
 const questionTypes = [
   {
@@ -113,13 +114,44 @@ export function AssignmentComposer({
   onViewHistory?: (exerciseId: string) => void
 }) {
   const { t } = useI18n()
-  const library = useComposerLibrary(assignedItems)
+  const draftQuery = useQuery({
+    queryKey: ["teacher", "composer-draft", code],
+    queryFn: () => ClassesService.readComposerDraft({ code }),
+    refetchOnWindowFocus: false,
+    retry: 1,
+  })
+  const draft = draftQuery.data?.state ? draftQuery.data : null
+  const draftRefs = draft
+    ? [
+        ...draft.state.selection.passages.map((id) => ({
+          type: "passage",
+          id,
+        })),
+        ...draft.state.selection.sentences.map((id) => ({
+          type: "repeat",
+          id,
+        })),
+        ...draft.state.selection.scenarioIds.map((id) => ({
+          type: "scenario",
+          id,
+        })),
+        ...draft.state.selection.questions.map((id) => ({
+          type: "question",
+          id,
+        })),
+        ...draft.state.selection.instructions.map((id) => ({
+          type: "instruction",
+          id,
+        })),
+      ]
+    : []
+  const library = useComposerLibrary([...(assignedItems ?? []), ...draftRefs])
   const exercisesQuery = useQuery({
     queryKey: ["teacher", "exercises", code],
     queryFn: () => ClassesService.listClassroomExercises({ code }),
   })
 
-  if (library.failed)
+  if (library.failed || draftQuery.isError)
     return (
       <div className="space-y-3 rounded-2xl border p-6">
         <p>
@@ -128,12 +160,18 @@ export function AssignmentComposer({
             en: "Failed to load practice content.",
           })}
         </p>
-        <Button variant="outline" onClick={library.retry}>
+        <Button
+          variant="outline"
+          onClick={() => {
+            library.retry()
+            void draftQuery.refetch()
+          }}
+        >
           {t({ zh: "重新加载", en: "Reload" })}
         </Button>
       </div>
     )
-  if (library.pending)
+  if (library.pending || draftQuery.isPending)
     return (
       <p className="rounded-2xl border p-6 text-muted-foreground">
         {t({
@@ -202,6 +240,9 @@ export function AssignmentComposer({
     <ComposerForm
       key={code}
       library={library}
+      draft={draft}
+      draftAvailable={!draftQuery.isError}
+      currentExerciseId={currentExercise?.id ?? null}
       code={code}
       hasUnitAssignment={Boolean(assignment)}
       unitTitle={assignment?.title}
@@ -227,6 +268,9 @@ export function AssignmentComposer({
 
 function ComposerForm({
   library,
+  draft,
+  draftAvailable,
+  currentExerciseId,
   code,
   hasUnitAssignment,
   unitTitle,
@@ -245,6 +289,9 @@ function ComposerForm({
   initialIsExam,
   initialExamMinutes,
 }: {
+  draft: DraftPublic | null
+  draftAvailable: boolean
+  currentExerciseId: string | null
   library: ComposerLibrary
   code: string
   hasUnitAssignment: boolean
@@ -265,18 +312,31 @@ function ComposerForm({
   initialExamMinutes: number
 }) {
   const { t } = useI18n()
-  const [types, setTypes] = useState<LessonTypes>(initialTypes)
-  const [selection, setSelection] = useState<LessonSelection>(initialSelection)
-  const [orderedKeys, setOrderedKeys] = useState<string[] | null>(
-    initialItems.length ? initialItems.map(assignmentItemKey) : null,
+  const [types, setTypes] = useState<LessonTypes>(
+    draft?.state.types ?? initialTypes,
   )
-  const [title, setTitle] = useState(initialTitle)
+  const [selection, setSelection] = useState<LessonSelection>(
+    draft?.state.selection ?? initialSelection,
+  )
+  const [orderedKeys, setOrderedKeys] = useState<string[] | null>(
+    draft?.state.ordered_keys ??
+      (initialItems.length ? initialItems.map(assignmentItemKey) : null),
+  )
+  const [title, setTitle] = useState(draft?.state.title ?? initialTitle)
+  const [baseExerciseId, setBaseExerciseId] = useState(
+    draft ? (draft.state.base_exercise_id ?? null) : currentExerciseId,
+  )
+  useEffect(() => {
+    if (!dirtyRef.current) setBaseExerciseId(currentExerciseId)
+  }, [currentExerciseId])
   // 模考模式：整场限时（分钟），确认页点「开始考试」后计时、到时自动交卷、切屏记录
-  const [isExam, setIsExam] = useState(initialIsExam)
-  const [examMinutes, setExamMinutes] = useState(initialExamMinutes)
+  const [isExam, setIsExam] = useState(draft?.state.is_exam ?? initialIsExam)
+  const [examMinutes, setExamMinutes] = useState(
+    draft?.state.exam_minutes ?? initialExamMinutes,
+  )
   const [previewOpen, setPreviewOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
-  const dirtyRef = useRef(false)
+  const dirtyRef = useRef(Boolean(draft))
   const prevServerTypesRef = useRef(initialTypes)
   const prevServerSelectionRef = useRef(initialSelection)
   const prevServerTitleRef = useRef(initialTitle)
@@ -401,7 +461,14 @@ function ComposerForm({
       ...selection.sentences,
       ...selection.scenarioIds,
       ...selection.instructions,
-    ].some((id) => !knownSelectedIds.has(id))
+    ].some((id) => !knownSelectedIds.has(id)) ||
+    (types.qa &&
+      selection.questions.some(
+        (id) =>
+          !scenarios.some((scenario) =>
+            scenario.questions.some((q) => q.id === id),
+          ),
+      ))
   )
     selectionProblems.push({
       zh: "所选题目的详情尚未加载或已删除，请等待加载完成或重新选题。",
@@ -483,6 +550,7 @@ function ComposerForm({
   )
 
   const changed =
+    Boolean(draft) ||
     isExam !== initialIsExam ||
     (isExam && examMinutes !== initialExamMinutes) ||
     JSON.stringify(types) !== JSON.stringify(initialTypes) ||
@@ -491,13 +559,33 @@ function ComposerForm({
     JSON.stringify(planItems.map(assignmentItemKey)) !==
       JSON.stringify(initialItems.map(assignmentItemKey))
 
+  const draftState = {
+    title,
+    types,
+    selection,
+    ordered_keys: orderedKeys,
+    is_exam: isExam,
+    exam_minutes: examMinutes,
+    base_exercise_id: baseExerciseId,
+  }
+  const autosave = useComposerAutosave(
+    code,
+    draft,
+    draftState,
+    dirtyRef.current,
+    draftAvailable,
+  )
+
   const publish = useMutation({
-    mutationFn: (clear: boolean) =>
-      ClassesService.setAssignment({
+    mutationFn: async (clear: boolean) => {
+      autosave.pause()
+      const revision = await autosave.flush()
+      return ClassesService.setAssignment({
         code,
         requestBody: clear
-          ? { items: [] }
+          ? { items: [], draft_revision: revision }
           : {
+              draft_revision: revision,
               items: planItems,
               title: title.trim() || undefined,
               ...(isExam
@@ -508,11 +596,13 @@ function ComposerForm({
                   }
                 : {}),
             },
-      }),
+      })
+    },
     onSuccess: async (_, clear) => {
       setPreviewOpen(false)
       setClearOpen(false)
       dirtyRef.current = false
+      autosave.published()
       toast.success(
         clear
           ? t({
@@ -533,7 +623,15 @@ function ComposerForm({
         queryClient.invalidateQueries({ queryKey: ["admin", "instructions"] }),
       ])
     },
-    onError: (err) => toast.error(extractErrorMessage(err)),
+    onError: () => {
+      autosave.resume()
+      toast.error(
+        t({
+          zh: "发布失败，草稿已保留；请检查网络或是否有其他设备修改草稿。",
+          en: "Publish failed. Your draft is kept; check the network or changes from another device.",
+        }),
+      )
+    },
   })
 
   const toggleInList = (list: string[], id: string) =>
@@ -548,7 +646,87 @@ function ComposerForm({
   const instructionNo = types.instruction ? nextSectionNo() : null
 
   return (
-    <div className="space-y-5">
+    <fieldset disabled={publish.isPending} className="min-w-0 space-y-5">
+      <div
+        className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4 text-sm"
+        role="status"
+      >
+        <span>
+          {t({
+            zh: "备课草稿（仅自己可见，发布后学生才会收到）",
+            en: "Private draft — students receive it only after publishing",
+          })}
+        </span>
+        <span>
+          {t(
+            autosave.status === "conflict"
+              ? {
+                  zh: "其他设备已修改草稿，请重新加载后继续；当前编辑尚未保存。",
+                  en: "Another device changed this draft. Reload to continue; current edits are unsaved.",
+                }
+              : autosave.status === "error"
+                ? {
+                    zh: "草稿尚未保存，请重试并保持页面打开。",
+                    en: "Draft not saved. Retry and keep this page open.",
+                  }
+                : autosave.status === "saving" || autosave.unsaved
+                  ? { zh: "正在保存…", en: "Saving…" }
+                  : { zh: "已保存", en: "Saved" },
+          )}
+        </span>
+        <Button
+          variant="outline"
+          className="min-h-11"
+          disabled={publish.isPending || autosave.status === "conflict"}
+          onClick={() => {
+            if (
+              !window.confirm(
+                t({
+                  zh: "放弃草稿编辑，恢复当前发布的选题？",
+                  en: "Discard draft edits and restore the current publication selections?",
+                }),
+              )
+            )
+              return
+            dirtyRef.current = true
+            setBaseExerciseId(currentExerciseId)
+            setTitle(initialTitle)
+            setTypes(initialTypes)
+            setSelection(initialSelection)
+            setOrderedKeys(initialItems.map(assignmentItemKey))
+            setIsExam(initialIsExam)
+            setExamMinutes(initialExamMinutes)
+          }}
+        >
+          {t({ zh: "恢复当前发布选题", en: "Restore current selections" })}
+        </Button>
+        {autosave.status === "error" && (
+          <Button
+            variant="outline"
+            className="min-h-11"
+            onClick={() => void autosave.flush().catch(() => {})}
+          >
+            {t({ zh: "重试保存", en: "Retry saving" })}
+          </Button>
+        )}
+        {autosave.status === "conflict" && (
+          <Button
+            variant="outline"
+            className="min-h-11"
+            onClick={() => window.location.reload()}
+          >
+            {t({ zh: "重新加载", en: "Reload" })}
+          </Button>
+        )}
+        {draft && baseExerciseId !== currentExerciseId && (
+          <p className="w-full text-muted-foreground">
+            {t({
+              zh: "当前发布已变化，草稿仍保留原选题；请核对后再发布。",
+              en: "The current publication changed. Your draft keeps its selections; review before publishing.",
+            })}
+          </p>
+        )}
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-secondary/40 px-5 py-4">
         <div>
           <p className="text-xs text-muted-foreground">
@@ -1004,7 +1182,7 @@ function ComposerForm({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </fieldset>
   )
 }
 

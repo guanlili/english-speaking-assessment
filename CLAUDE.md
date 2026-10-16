@@ -206,3 +206,16 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - 组卷四类题库以 20 条分页浏览，`POST /admin/composer-selection` 按引用恢复已发布、跨页选中和导入预选的详情；包含旧朗读子篇归根、问答主题反查与缺失 ID。搜索/翻页不清空选择；新接口只读，无表结构变更。
 - 导入查重只流式扫描相关题型的匹配键，再加载命中候选；保留 Python 的 NFKC/casefold/Unicode 空白规范化，不用 SQL lower 近似替代。
 - API 响应携带 `X-Request-ID`，评分线程继承请求上下文。metrics 仍是进程快照，实例/启动信息识别计数重置，历史查外部调用日志；见 `docs/runtime-observability.md`。E2E 失败保留 trace/截图/视频，组件宿主使用独立 Vite 缓存。
+
+## 教师备课与异常闭环（2026-10-16）
+
+- `ComposerDraft` 保存教师+课堂私有草稿；`class_composer.py` 负责读写与历史引用恢复，版本比较避免并发覆盖。发布携带 `draft_revision`，同一事务清理自己的草稿，失败回滚。迁移 `08033814b327` 同时新增会话设备异常枚举/上报时间。
+- 历史复制先到草稿，不直接发布；保留选题与题序，逐题内容/音频/设置使用当前题库，预览确认后才生效。旧快照和成绩不变。
+- `class_diagnostics.py` 只聚合今日当前发布的最新轮次/作答，设备自报 5 分钟失效，评分超过 120 秒单独提示；不推断未上报设备的在线状态。详见 `docs/teacher-platform-design.md`。
+
+## 教师点评与指定补练（2026-10-16）
+
+- 点评保存在 `Attempt.teacher_feedback/teacher_focus/teacher_feedback_author/teacher_feedback_at/teacher_feedback_revision`，写入口仅授权教师/管理员，版本冲突 409；不改 AI 评分。`AttemptPublic` 和 `PlanAttempt` 均透传，考试未结束时两条出口都遮罩。重点标记透传教师 `BoardItem`。
+- 指定补练复用不可变 `ClassroomExercise`，状态 followup/followup_closed、固定 target_students、source_exercise_id；不写 classroom.current_exercise_id。学生会话 mode=followup，以 student+assignment 唯一，跨天幂等继续。题目来自原发布快照，不读当前题库，禁止换题。
+- 仅课堂教师可选本班成员发布/撤销；学生只见本人目标。当前考试及接收者仍在进行的历史考试不能作为补练来源。撤销在上传预检、落盘后事务内复查，失败清理新文件。
+- `class_followups.py` 负责入口，`services/followups.py` 负责边界；迁移 `b22ce1e19087`。详情与英文说明见 `docs/teacher-platform-design.md`。

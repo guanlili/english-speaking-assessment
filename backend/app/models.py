@@ -1,3 +1,4 @@
+import time
 import uuid
 from datetime import UTC, date, datetime
 from typing import Annotated
@@ -5,7 +6,16 @@ from typing import Annotated
 from fastapi import HTTPException
 from pydantic import EmailStr, field_validator
 from pydantic import Field as PydanticField
-from sqlalchemy import JSON, Column, Date, DateTime, Index, UniqueConstraint, text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Column,
+    Date,
+    DateTime,
+    Index,
+    UniqueConstraint,
+    text,
+)
 from sqlmodel import Field, SQLModel
 
 
@@ -661,6 +671,13 @@ class ClassroomExercise(SQLModel, table=True):
     version_no: int = Field(default=1, ge=1)
     title: str = Field(default="课堂练习", max_length=255)
     status: str = Field(default="published", max_length=16, index=True)
+    # 指定学生补练：独立快照和固定名单，不改变课堂 current_exercise_id。
+    target_students: list[dict[str, str]] | None = Field(
+        default=None, sa_column=Column(JSON, nullable=True)
+    )
+    source_exercise_id: uuid.UUID | None = Field(
+        default=None, foreign_key="classroom_exercise.id", ondelete="SET NULL"
+    )
     # [{type, id, text, translation, audio_url, suggested_seconds, replay_limit, band}]
     snapshot_items: list[dict[str, object]] = Field(
         sa_column=Column("snapshot_items", JSON, nullable=False)
@@ -684,6 +701,30 @@ class ClassroomExercise(SQLModel, table=True):
     # 考试中每题只能作答一次，切屏次数上报给教师
     is_exam: bool = Field(default=False, sa_column_kwargs={"server_default": "false"})
     time_limit_minutes: int | None = Field(default=None, ge=5, le=240)
+
+
+class ComposerDraft(SQLModel, table=True):
+    """每位教师、每间课堂各一份私有组卷草稿。"""
+
+    __tablename__ = "composer_draft"
+    __table_args__ = (
+        UniqueConstraint("classroom_id", "owner_id", name="uq_composer_draft_owner"),
+    )
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    classroom_id: uuid.UUID = Field(
+        foreign_key="classroom.id", ondelete="CASCADE", index=True
+    )
+    owner_id: uuid.UUID = Field(foreign_key="user.id", ondelete="CASCADE", index=True)
+    # 初始版本不从 1 重用，避免发布删除后新建草稿接受旧页面的同号版本。
+    revision: int = Field(
+        default_factory=lambda: time.time_ns() // 1000,
+        sa_column=Column(BigInteger, nullable=False),
+    )
+    state: dict[str, object] = Field(sa_column=Column(JSON, nullable=False))
+    updated_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
 
 
 class ClassroomExercisePublic(SQLModel):
@@ -817,6 +858,13 @@ class PracticeSession(SQLModel, table=True):
             unique=True,
             postgresql_where=text("assignment_id IS NOT NULL"),
         ),
+        Index(
+            "ix_practice_session_followup",
+            "student_id",
+            "assignment_id",
+            unique=True,
+            postgresql_where=text("mode = 'followup' AND assignment_id IS NOT NULL"),
+        ),
         # 自主练习轮（无发布）：daily 模式下每个学生每天只开一条自主轮；
         # 删篇导致 passage_id 变 NULL 时仍落在同一条（COALESCE 保证 NULL 不冲突）。
         Index(
@@ -895,6 +943,11 @@ class PracticeSession(SQLModel, table=True):
     # 份内容，老师此后改题干/话题卡或删题均不影响学生已看到的题目
     exchanged_items: list[dict[str, object]] | None = Field(
         default=None, sa_column=Column("exchanged_items", JSON, nullable=True)
+    )
+    runtime_issue: str | None = Field(default=None, max_length=32)
+    runtime_issue_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
     )
     # 防切屏：前端 visibilitychange 上报的离开次数（教师面板可见）
     tab_switch_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
@@ -986,6 +1039,18 @@ class Attempt(SQLModel, table=True):
     # rubric 四维与模拟分（仅问答 + ark 引擎；PRD US-08）：四维 0-4、mock_score 0-9、
     # upgrades 升级表达。mock 引擎或模型失败时为 null（界面显示「建议暂缺」）
     rubric: dict[str, object] | None = Field(default=None, sa_column=Column(JSON))
+    teacher_feedback: str | None = Field(default=None, max_length=4000)
+    teacher_focus: bool = Field(
+        default=False, sa_column_kwargs={"server_default": "false"}
+    )
+    teacher_feedback_author: str | None = Field(default=None, max_length=255)
+    teacher_feedback_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    teacher_feedback_revision: int = Field(
+        default=0, sa_column_kwargs={"server_default": "0"}
+    )
     error: str | None = Field(default=None, max_length=512)
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
@@ -1015,6 +1080,11 @@ class AttemptPublic(SQLModel):
     advice: list[str] | None = None
     vocab: dict[str, object] | None = None
     rubric: dict[str, object] | None = None
+    teacher_feedback: str | None = None
+    teacher_focus: bool = False
+    teacher_feedback_author: str | None = None
+    teacher_feedback_at: datetime | None = None
+    teacher_feedback_revision: int = 0
     error: str | None = None
     created_at: datetime | None = None
 
@@ -1064,6 +1134,11 @@ class PlanAttempt(SQLModel):
     # rubric 四维与升级表达（问答 + ark）——结果页四维条形用
     rubric: dict[str, object] | None = None
     error: str | None = None
+
+    teacher_feedback: str | None = None
+    teacher_focus: bool = False
+    teacher_feedback_author: str | None = None
+    teacher_feedback_at: datetime | None = None
 
 
 # 学习路径（GET /classes/{code}/path，主题探索与首页消费）
@@ -1171,6 +1246,8 @@ class BoardItem(SQLModel):
     status: str
     overall: int | None = None
     attempt_id: uuid.UUID | None = None
+
+    teacher_focus: bool = False
 
 
 class BoardStudent(SQLModel):

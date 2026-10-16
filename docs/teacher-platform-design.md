@@ -83,3 +83,38 @@ AI 出题是问答编辑器内的辅助能力，生成结果为待审核草稿�
 7. 朗读文章可折叠查看分句，选择一次即选整篇；未拆分文章计为一道题，拆分文章按句展开（预览与题单标注逐句题数）。
 8. 冗余/停用课堂在确认后可删除，清空成员后仍能清理归档历史；评分未结束时保留确认框并提示稍后重试。
 9. 模考每题倒计时到时自动推进，刷新不会回到上一题；最后一题完成/到时进入结果页，结果页可回放但不提供重答入口。普通练习仍可重练。
+
+## 私有备课草稿、历史复制与异常提示（2026-10-16）
+
+- 草稿按教师账号与课堂隔离，编辑标题、选题、题序和考试模式后约 800ms 自动保存到服务器；切换设备可继续。未保存时有状态提示，关闭/刷新有浏览器离开保护。断网时保留页面编辑，恢复后可重试；浏览器崩溃或强制关闭前尚未完成的保存不能保证恢复。
+- 草稿通过版本比较阻止多设备互相覆盖。发生冲突后保留当前页面编辑并提示重新加载，不静默覆盖服务器。登录身份变化后不再提交旧页面的排队保存，也不把迟到响应写入新账号缓存。
+- 发布前等待草稿保存完成，再在同一发布事务中检查版本并清理本人的草稿。发布失败保留草稿；其他教师的草稿不清理。当前发布变化时，旧草稿仍保留并提示核对。可确认放弃编辑、恢复当前发布选题。
+- 发布历史可复制选题、顺序、标题及考试模式到本人有权限的课堂草稿；替换目标已有草稿需明确勾选确认。**新练习使用题库当前的题文、音频和逐题设置**，不是逐字克隆旧快照；旧成绩、作答、计时状态不复制。已删除的材料会在组卷校验中提示，必须处理后才能发布。
+- 学生结果页每 5 秒检查课堂异常。麦克风/播放/提交问题来自学生设备的枚举上报，不包含原始错误、正文或录音；持续问题每分钟刷新，超过 5 分钟失效。无网络的设备不能上报，未作答也不能据此推断离线或设备异常。
+- 服务端仅检查今日、当前发布、当前在班学生的最新课堂轮次。评分失败和排队/处理超过 2 分钟单独提示；每题只看最新作答，后续成功不再展示旧失败。定位学生会展开对应结果，不自动重传、重评或重置考试。
+
+### English
+
+Private drafts are scoped to the teacher and classroom. Edits save to the server after about 800ms and can resume on another device. Failed saves keep the form open for retry; unsaved edits warn on browser exit. A crash or forced close before a save completes can still lose changes. Revision conflicts prevent overwriting another device. Successful publishing checks the draft revision and removes only that teacher's draft in the publication transaction; failure keeps it.
+
+History reuse copies selections, order, title and exam mode into an authorized target classroom's private draft. Replacing an existing draft requires explicit confirmation. New publication uses **current question-bank text, audio and item settings**; it does not clone historical content or copy results. Missing items must be resolved before publishing.
+
+The student-results panel checks issues every five seconds. Device and submission hints are self-reported enums, refreshed every minute while present and expire after five minutes. Offline devices cannot report, and missing answers are not treated as device faults. Server-side scoring alerts use the latest attempt per item in today's current publication only. Finding a student expands their results without retrying uploads or changing exam clocks.
+
+## 教师点评与指定学生补练（2026-10-16）
+
+- 教师在作答详情编辑点评并标记重点；文字、作者、时间及版本独立于 AI 建议/参考分。重点标记在当前最新作答的名单行可见，属于该条作答，不是给学生永久贴标签。保存失败保留编辑；并发冲突需确认重新加载，不能静默覆盖。
+- 学生在练习结果与历史回看中看到教师点评。考试进行中，作答接口与题单接口都不返回点评、作者、时间或重点标记；考试结束后恢复。点评不修改转写、参考分、rubric 或考试成绩。
+- 教师在学生结果页选择来源发布、原题和接收学生，创建独立补练。补练**复制原发布快照**（包括拆句的原题 ID 和题面），与“历史复制到备课草稿使用当前题库”不同。题库编辑/删除不重解释补练题目；补练不复制原作答、不重开考试、不改变全班 current_exercise_id。
+- 接收名单及显示名发布时固定；教师只能选择当前课堂成员。学生只看到自己的任务和自己的进度，不能通过任务 ID 打开他人的任务。原课堂活动仍按 daily 统计，补练使用 followup 模式，跨天继续同一会话，不允许换出任务外的题。
+- 当前活动考试不能布置为补练。使用归档考试时，接收学生若仍在该考试作答，也拒绝发布，避免借普通练习绕过考试反馈边界。补练自身为普通练习，可重练；进度按每题最新作答，评分失败与评分中单独显示，不伪造完成。
+- 教师可撤销补练，已有记录保留；学生不能再开会话或提交新作答。上传开始及音频校验后均复查状态，撤销与提交串行化；如果校验期间撤销，本次文件补偿删除。已接受作答的幂等重传仍返回原回执。
+- 任务列表最多返回最近 50 项（接口上限 100），学生先按本人筛选再限制条数。学生首页每 20 秒更新，教师进度每 10 秒更新。移出课堂的学生不能继续进入原课堂任务。
+
+### English
+
+Teachers can save feedback and a focus mark on an individual recording, independently of AI advice and scores. Students review it with their results; both attempt and plan responses hide teacher feedback while an exam is active. Version checks prevent overwriting another page's edits. Failed saves keep the text for retry.
+
+Targeted practice copies selected items from the **original publication snapshot** into a separate, fixed-recipient task. This differs from history reuse in the composer, which uses current question-bank content. Original scores, exam clocks and the classroom's current publication stay unchanged. Each recipient continues one follow-up session across days; task items cannot be exchanged for unrelated questions. Progress uses the latest attempt per item.
+
+A current exam cannot be used for follow-up practice. Recipients must also finish any still-running earlier exam before receiving its items. Withdrawing a task keeps existing records but blocks new starts and submissions, including cancellation during audio validation. Students see only their own tasks and progress; filtering happens before the list limit.

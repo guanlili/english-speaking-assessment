@@ -19,6 +19,7 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { ClassesService } from "@/client"
 import HeroArt from "@/components/Practice/HeroArt"
+import { StudentFollowups } from "@/components/Practice/StudentFollowups"
 import StudentShell from "@/components/Practice/StudentShell"
 import TopicArt from "@/components/Practice/TopicArt"
 import { Button } from "@/components/ui/button"
@@ -324,6 +325,7 @@ function HomePage() {
             </div>
           </div>
         </section>
+        <StudentFollowups code={code} />
 
         {/* 今日计划 */}
         <Card>

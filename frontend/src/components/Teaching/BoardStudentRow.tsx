@@ -49,6 +49,7 @@ export function BoardStudentRow({
   return (
     <>
       <TableRow
+        id={`student-${student.student_id}`}
         onClick={onToggle}
         data-state={expanded ? "selected" : undefined}
         className="grid cursor-pointer grid-cols-[2.75rem_minmax(0,1fr)_auto] gap-y-3 p-4 hover:bg-secondary/30 lg:table-row lg:p-0"
@@ -93,6 +94,11 @@ export function BoardStudentRow({
               <span className="block break-words whitespace-normal leading-5">
                 {name}
               </span>
+              {student.items.some((item) => item.teacher_focus) && (
+                <span className="text-xs font-medium text-primary">
+                  {t({ zh: "教师重点关注", en: "Teacher focus area" })}
+                </span>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -287,7 +293,7 @@ export function BoardStudentRow({
                       {t({ zh: "评分中", en: "Scoring" })}
                     </span>
                   )}
-                  {item.attempt_id && item.status === "done" && (
+                  {item.attempt_id && item.type !== "instruction" && (
                     <>
                       <RecordingButton
                         key={item.attempt_id}

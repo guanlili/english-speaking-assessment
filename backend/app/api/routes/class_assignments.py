@@ -22,6 +22,7 @@ from app.api.routes.class_shared import (
     router,
 )
 from app.crud import (
+    get_composer_draft,
     get_or_create_today_session,
 )
 from app.models import (
@@ -55,7 +56,10 @@ def list_classroom_exercises(
     _require_classroom_teacher(classroom, current_user)
     exercises = session.exec(
         select(ClassroomExercise)
-        .where(ClassroomExercise.classroom_id == classroom.id)
+        .where(
+            ClassroomExercise.classroom_id == classroom.id,
+            col(ClassroomExercise.status).in_(["published", "archived"]),
+        )
         .order_by(col(ClassroomExercise.version_no).desc())
     ).all()
     return [
@@ -90,6 +94,7 @@ class AssignmentRequest(SQLModel):
     # 可选练习标题；不传时使用“课堂练习”
     title: str | None = None
     # 模考模式：整场限时（分钟，5–240）；is_exam=true 时必填
+    draft_revision: int | None = None
     automated_exam: bool = False
     is_exam: bool = False
     time_limit_minutes: int | None = None
@@ -223,6 +228,7 @@ def read_exercise_results(
                     status=attempt.status,
                     overall=attempt.overall,
                     attempt_id=attempt.id,
+                    teacher_focus=attempt.teacher_focus,
                 )
             )
         exam_switches: int | None = None
@@ -267,6 +273,12 @@ def set_assignment(
     """
     classroom = _get_classroom(session, code)
     _require_classroom_teacher(classroom, current_user)
+    if body.draft_revision is not None:
+        draft = get_composer_draft(session, classroom.id, current_user.id)
+        if (draft.revision if draft else 0) != body.draft_revision:
+            raise HTTPException(409, detail="Draft revision conflict")
+        if draft is not None:
+            session.delete(draft)
     # 题型勾选：显式传值才更新（None=不动）
     if body.assign_reading is not None:
         classroom.assign_reading = body.assign_reading

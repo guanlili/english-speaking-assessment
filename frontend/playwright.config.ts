@@ -12,6 +12,7 @@ const mockedFiles = [
   "exam-automated",
   "exam-rules",
   "general-modes",
+  "feedback-followups",
   "history-pagination",
   "home",
   "instruction-page",
@@ -22,6 +23,7 @@ const mockedFiles = [
   "student-recording-flow",
   "sentence-pagination",
   "teacher-feedback",
+  "teacher-drafts",
   "teacher-workspace",
 ].map((name) => `**/${name}.spec.ts`)
 const mockOnly = process.env.E2E_MOCK_ONLY === "true"

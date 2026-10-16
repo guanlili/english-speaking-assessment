@@ -32,6 +32,7 @@ import { useAttemptSubmit } from "@/hooks/useAttemptSubmit"
 import { useExamClockValue } from "@/hooks/useExamClock"
 import { useNextQuestion } from "@/hooks/useNextQuestion"
 import { useRecordingFlow } from "@/hooks/useRecordingFlow"
+import { useRuntimeIssue } from "@/hooks/useRuntimeIssue"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
@@ -325,6 +326,11 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
     setPinnedItemId,
     setFocusItemId,
   })
+  useRuntimeIssue(
+    code,
+    plan?.session_id,
+    recorder.deviceFault ? "device" : submitError ? "upload" : null,
+  )
 
   // 录音/上传/失败待重传期间的离开保护（站内跳转 + 浏览器关闭/刷新）
   const blockerToastRef = useRef(false)
@@ -746,6 +752,9 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
                         isLastQuestion={isLastQuestion}
                         submitting={submitting}
                         submitError={submitError}
+                        submissionClosed={
+                          submitErrorData?.body?.detail === "Followup cancelled"
+                        }
                         onStart={startRecording}
                         onStop={recorder.stop}
                         onRetry={retrySubmit}

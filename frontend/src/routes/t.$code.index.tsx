@@ -17,7 +17,9 @@ import { AssignmentComposer } from "@/components/Teaching/AssignmentComposer"
 import { BoardRosterCard } from "@/components/Teaching/BoardRosterCard"
 import { BoardStatsCards } from "@/components/Teaching/BoardStatsCards"
 import { BoardTeachingActions } from "@/components/Teaching/BoardTeachingActions"
+import { ClassroomIssues } from "@/components/Teaching/ClassroomIssues"
 import { ExerciseHistory } from "@/components/Teaching/ExerciseHistory"
+import { FollowupManager } from "@/components/Teaching/FollowupManager"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -371,6 +373,19 @@ function TeacherBoardPage() {
             />
           </TabsContent>
           <TabsContent value="results" className="space-y-6">
+            <FollowupManager
+              code={code}
+              students={board.students}
+              currentExerciseId={board.current_exercise?.id}
+            />
+            <ClassroomIssues
+              code={code}
+              onStudent={(id) => {
+                setStatusFilter("all")
+                setNameQuery("")
+                setExpandedId(id)
+              }}
+            />
             {board.current_exercise && (
               <div className="flex flex-col gap-4 rounded-2xl border border-border/80 bg-card p-5 text-sm lg:flex-row lg:items-center">
                 <div className="min-w-0 flex-1 space-y-2">
@@ -450,6 +465,7 @@ function TeacherBoardPage() {
               key={historyExerciseId ?? "history-list"}
               code={code}
               initialExerciseId={historyExerciseId}
+              onCopied={() => setActiveTab("prepare")}
             />
           </TabsContent>
         </Tabs>

@@ -228,7 +228,14 @@ export function useRecordingFlow({
   useEffect(() => {
     if (submitError) {
       const status = submitErrorData?.status
-      if (status === 503) {
+      if (submitErrorData?.body?.detail === "Followup cancelled") {
+        toast.error(t({ zh: "补练已撤销", en: "Practice task withdrawn" }), {
+          description: t({
+            zh: "老师已撤销这项补练，不能继续提交；已有记录仍会保留。",
+            en: "Your teacher withdrew this task. Further submissions are blocked; existing records are kept.",
+          }),
+        })
+      } else if (status === 503) {
         toast.error(t({ zh: "评分队列繁忙", en: "Scoring queue is busy" }), {
           description: t({
             zh: "录音已保留，请稍后点重传",

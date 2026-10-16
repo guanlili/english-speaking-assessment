@@ -14,6 +14,7 @@ from app.models import (
     Attempt,
     Classroom,
     ClassroomExercise,
+    ComposerDraft,
     Passage,
     PassageCreate,
     PracticeSession,
@@ -22,6 +23,7 @@ from app.models import (
     User,
     UserCreate,
     UserUpdate,
+    get_datetime_utc,
 )
 
 logger = logging.getLogger(__name__)
@@ -349,3 +351,64 @@ def create_attempt(*, session: Session, attempt_in: Attempt) -> Attempt:
     session.commit()
     session.refresh(attempt_in)
     return attempt_in
+
+
+def get_composer_draft(
+    session: Session, classroom_id: uuid.UUID, owner_id: uuid.UUID
+) -> ComposerDraft | None:
+    return session.exec(
+        select(ComposerDraft)
+        .where(
+            ComposerDraft.classroom_id == classroom_id,
+            ComposerDraft.owner_id == owner_id,
+        )
+        .with_for_update()
+    ).first()
+
+
+def update_teacher_feedback(
+    session: Session,
+    attempt: Attempt,
+    *,
+    text: str,
+    focus: bool,
+    author: str,
+    expected_revision: int,
+) -> None:
+    session.refresh(attempt, with_for_update=True)
+    if attempt.teacher_feedback_revision != expected_revision:
+        raise HTTPException(409, detail="Teacher feedback revision conflict")
+    attempt.teacher_feedback = text.strip() or None
+    attempt.teacher_focus = focus
+    attempt.teacher_feedback_author = author[:255]
+    attempt.teacher_feedback_at = get_datetime_utc()
+    attempt.teacher_feedback_revision += 1
+    session.add(attempt)
+    session.commit()
+    session.refresh(attempt)
+
+
+def get_or_create_followup_session(
+    session: Session, task: ClassroomExercise, student: Student, today: date
+) -> PracticeSession:
+    existing = session.exec(
+        select(PracticeSession).where(
+            PracticeSession.assignment_id == task.id,
+            PracticeSession.student_id == student.id,
+            PracticeSession.mode == "followup",
+        )
+    ).first()
+    if existing is not None:
+        return existing
+    ps = PracticeSession(
+        classroom_id=task.classroom_id,
+        student_id=student.id,
+        band=student.current_band,
+        session_date=today,
+        assignment_id=task.id,
+        mode="followup",
+    )
+    session.add(ps)
+    session.commit()
+    session.refresh(ps)
+    return ps
