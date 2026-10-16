@@ -42,3 +42,16 @@ export function expressionsStillLocal(
     return trimmed.length > 0 && !saved.has(trimmed)
   })
 }
+
+/** 手动收藏：这次请求的非空文本全部出现在账号列表里，才算成功。 */
+export function manualSaveOutcome(
+  requested: readonly string[],
+  stored: readonly string[],
+): { complete: boolean; missing: string[] } {
+  const missing = [
+    ...new Set(
+      expressionsStillLocal(requested, stored).map((text) => text.trim()),
+    ),
+  ]
+  return { complete: missing.length === 0, missing }
+}

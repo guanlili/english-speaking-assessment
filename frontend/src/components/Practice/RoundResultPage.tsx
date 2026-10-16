@@ -46,6 +46,11 @@ import {
 } from "@/components/ui/tooltip"
 import { useExpressionFavorites } from "@/hooks/useExpressionFavorites"
 import { displayName, loadStudent } from "@/lib/classroom-student"
+import {
+  manualSaveOutcome,
+  readSavedExpressions,
+  saveSavedExpressions,
+} from "@/lib/favorites"
 import { useI18n } from "@/lib/i18n"
 import { EXPLAIN, ITEM_TYPE_LABELS, TERMS } from "@/lib/terms"
 import { extractErrorMessage } from "@/utils"
@@ -681,14 +686,37 @@ export function RoundResultPage() {
                       student
                         ? async (texts) => {
                             try {
-                              await expressions.add.mutateAsync(texts)
-                              toast.success(
+                              const stored =
+                                await expressions.add.mutateAsync(texts)
+                              const outcome = manualSaveOutcome(
+                                texts,
+                                stored.map((row) => row.text),
+                              )
+                              if (outcome.complete) {
+                                toast.success(
+                                  t({
+                                    zh: "已收藏到我的成长",
+                                    en: "Saved to My Growth",
+                                  }),
+                                )
+                                return true
+                              }
+                              const local = readSavedExpressions(student)
+                              const pending = [
+                                ...local,
+                                ...outcome.missing.filter(
+                                  (text) =>
+                                    !local.some((item) => item.trim() === text),
+                                ),
+                              ]
+                              saveSavedExpressions(student, pending)
+                              toast.message(
                                 t({
-                                  zh: "已收藏到我的成长",
-                                  en: "Saved to My Growth",
+                                  zh: `收藏最多 50 条，这次没存上：${outcome.missing.join("；")}`,
+                                  en: `Favorites hold 50. Not saved this time: ${outcome.missing.join("; ")}`,
                                 }),
                               )
-                              return true
+                              return false
                             } catch (err) {
                               toast.error(extractErrorMessage(err))
                               return false

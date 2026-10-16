@@ -5,6 +5,7 @@ import type { StoredStudent } from "../src/lib/classroom-student.ts"
 import {
   expressionsStillLocal,
   LEGACY_SAVED_EXPRESSIONS_KEY,
+  manualSaveOutcome,
   readSavedExpressions,
   savedExpressionsKey,
   saveSavedExpressions,
@@ -94,4 +95,30 @@ test("迁移只清掉服务端确认保存的文本", () => {
     "  extra one  ",
     "extra two",
   ])
+})
+
+test("账号已有 50 条时，新表达不算收藏成功", () => {
+  const stored = Array.from({ length: 50 }, (_, index) => `kept ${index}`)
+  const outcome = manualSaveOutcome(["brand new"], stored)
+  assert.equal(outcome.complete, false)
+  assert.deepEqual(outcome.missing, ["brand new"])
+})
+
+test("账号已有 49 条时，一次两条只确认已经入库的那条", () => {
+  const stored = [
+    ...Array.from({ length: 48 }, (_, index) => `kept ${index}`),
+    "first",
+  ]
+  const outcome = manualSaveOutcome([" first ", "second"], stored)
+  assert.equal(outcome.complete, false)
+  assert.deepEqual(outcome.missing, ["second"])
+})
+
+test("请求里的文本都在账号收藏里才算成功", () => {
+  const outcome = manualSaveOutcome(
+    ["  first  ", "second"],
+    ["first", "second", "older"],
+  )
+  assert.equal(outcome.complete, true)
+  assert.deepEqual(outcome.missing, [])
 })
