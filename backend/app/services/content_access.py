@@ -1,8 +1,9 @@
 """题库编辑权限：创建者与管理员可改/删，存量无主内容（owner_id 为空）所有教师可改。
 
-判定落在「根对象」上：挂篇目的复述句与旧版拆分子篇随原文章，情景问答按题，
-主题（Scenario）是全校共用分组——只有组内每道题都可改时才能改名/启停/删除。
-设计见 docs/question-bank-ownership-design.md。
+判定落在「根对象」上：挂篇目的复述句与旧版拆分子篇随原文章，情景问答按题。
+主题（Scenario）是共用分组：任何教师都能往里加题；改名/启停归主题创建者，
+删除会级联删题，所以组内还有别人的题时只有管理员能删。存量无主主题沿用
+「组内每道题都可改才能管理」。设计见 docs/question-bank-ownership-design.md。
 """
 
 import uuid
@@ -14,11 +15,14 @@ from app.models import (
     Instruction,
     Passage,
     RepeatSentence,
+    Scenario,
     ScenarioQuestion,
     User,
 )
 
 FORBIDDEN_DETAIL = "没有权限：只能修改自己创建的题目"
+SCENARIO_HAS_OTHERS_DETAIL = "没有权限：主题下有其他老师的题目，不能删除"
+EXAM_AUDIO_DETAIL = "没有权限：不能替换其他老师题目的考试音频"
 
 
 def owner_for(user: User) -> uuid.UUID | None:
@@ -49,6 +53,17 @@ def sentence_owner(session: Session, sentence: RepeatSentence) -> uuid.UUID | No
     return passage_owner(session, passage) if passage is not None else None
 
 
+def item_owner(
+    session: Session,
+    item: Passage | RepeatSentence | ScenarioQuestion | Instruction,
+) -> uuid.UUID | None:
+    if isinstance(item, Passage):
+        return passage_owner(session, item)
+    if isinstance(item, RepeatSentence):
+        return sentence_owner(session, item)
+    return item.owner_id
+
+
 def sentence_owner_for(
     session: Session, user: User, passage: Passage | None
 ) -> uuid.UUID | None:
@@ -74,29 +89,36 @@ def require_instruction(user: User, instruction: Instruction) -> None:
     _require(user, instruction.owner_id)
 
 
-def require_scenario(session: Session, user: User, scenario_id: uuid.UUID) -> None:
-    if user.is_superuser:
-        return
-    blocked = session.exec(
-        select(ScenarioQuestion.id)
-        .where(
-            ScenarioQuestion.scenario_id == scenario_id,
-            col(ScenarioQuestion.owner_id).is_not(None),
-            ScenarioQuestion.owner_id != user.id,
-        )
-        .limit(1)
-    ).first()
-    if blocked is not None:
+def _has_others_questions(session: Session, user: User, scenario_id: uuid.UUID) -> bool:
+    return (
+        session.exec(
+            select(ScenarioQuestion.id)
+            .where(
+                ScenarioQuestion.scenario_id == scenario_id,
+                col(ScenarioQuestion.owner_id).is_not(None),
+                ScenarioQuestion.owner_id != user.id,
+            )
+            .limit(1)
+        ).first()
+        is not None
+    )
+
+
+def can_manage_scenario(session: Session, user: User, scenario: Scenario) -> bool:
+    if user.is_superuser or scenario.owner_id == user.id:
+        return True
+    if scenario.owner_id is not None:
+        return False
+    return not _has_others_questions(session, user, scenario.id)
+
+
+def require_scenario(session: Session, user: User, scenario: Scenario) -> None:
+    """改名/启停。"""
+    if not can_manage_scenario(session, user, scenario):
         raise HTTPException(status_code=403, detail=FORBIDDEN_DETAIL)
 
 
-def require_passage_ids(
-    session: Session, user: User, passage_ids: set[uuid.UUID]
-) -> None:
-    """批量校验目标篇目（导入挂靠已有篇目时用）。"""
-    if user.is_superuser or not passage_ids:
-        return
-    for passage in session.exec(
-        select(Passage).where(col(Passage.id).in_(passage_ids))
-    ).all():
-        require_passage(session, user, passage)
+def require_scenario_delete(session: Session, user: User, scenario: Scenario) -> None:
+    require_scenario(session, user, scenario)
+    if not user.is_superuser and _has_others_questions(session, user, scenario.id):
+        raise HTTPException(status_code=403, detail=SCENARIO_HAS_OTHERS_DETAIL)

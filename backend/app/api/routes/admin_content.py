@@ -771,6 +771,7 @@ class ScenarioOut(SQLModel):
     id: uuid.UUID
     topic: str
     is_active: bool
+    owner_id: uuid.UUID | None = None
     questions: list[ScenarioQuestionPublic]
 
 
@@ -823,6 +824,7 @@ def list_scenarios(
                 id=scenario.id,
                 topic=scenario.topic,
                 is_active=scenario.is_active,
+                owner_id=scenario.owner_id,
                 questions=[ScenarioQuestionPublic.model_validate(q) for q in questions],
             )
         )
@@ -831,7 +833,7 @@ def list_scenarios(
 
 @router.post("/scenarios")
 def create_scenario(
-    session: SessionDep, _admin: TeacherUserDep, scenario_in: ScenarioCreate
+    session: SessionDep, current_user: TeacherUserDep, scenario_in: ScenarioCreate
 ) -> Any:
     duplicate = session.exec(
         select(Scenario).where(Scenario.topic == scenario_in.topic)
@@ -839,6 +841,7 @@ def create_scenario(
     if duplicate is not None:
         raise HTTPException(status_code=409, detail="主题已存在")
     scenario = Scenario.model_validate(scenario_in.model_dump())
+    scenario.owner_id = content_access.owner_for(current_user)
     session.add(scenario)
     session.commit()
     session.refresh(scenario)
@@ -852,7 +855,7 @@ def delete_scenario(
     scenario = session.get(Scenario, scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    content_access.require_scenario(session, current_user, scenario_id)
+    content_access.require_scenario_delete(session, current_user, scenario)
     question_ids = session.exec(
         select(ScenarioQuestion.id).where(ScenarioQuestion.scenario_id == scenario_id)
     ).all()
@@ -1286,7 +1289,7 @@ def update_scenario(
     scenario = session.get(Scenario, scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    content_access.require_scenario(session, current_user, scenario_id)
+    content_access.require_scenario(session, current_user, scenario)
     update = scenario_in.model_dump(exclude_unset=True)
     # 主题非空且不允许显式清空
     _reject_null_non_nullable(update, {"topic"})

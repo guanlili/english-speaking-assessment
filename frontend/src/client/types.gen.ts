@@ -395,6 +395,14 @@ export type ExamItemSettings = {
     audio_url?: (string | null);
 };
 
+export type ExamItemSettingsOut = {
+    wait_seconds?: number;
+    after_audio_seconds?: number;
+    prep_seconds?: (number | null);
+    audio_url?: (string | null);
+    can_replace_audio?: boolean;
+};
+
 export type ExamRuntimeState = {
     session_id: string;
     exam: ExamStatus;
@@ -928,6 +936,7 @@ export type ScenarioOut = {
     id: string;
     topic: string;
     is_active: boolean;
+    owner_id?: (string | null);
     questions: Array<ScenarioQuestionPublic>;
 };
 
@@ -2353,7 +2362,7 @@ export type AdminReadExamItemSettingsData = {
     itemType: 'passage' | 'repeat' | 'question' | 'instruction';
 };
 
-export type AdminReadExamItemSettingsResponse = (ExamItemSettings);
+export type AdminReadExamItemSettingsResponse = (ExamItemSettingsOut);
 
 export type AdminUpdateExamItemSettingsData = {
     itemId: string;
@@ -2361,7 +2370,7 @@ export type AdminUpdateExamItemSettingsData = {
     requestBody: ExamItemSettings;
 };
 
-export type AdminUpdateExamItemSettingsResponse = (ExamItemSettings);
+export type AdminUpdateExamItemSettingsResponse = (ExamItemSettingsOut);
 
 export type AdminReadMetricsResponse = (unknown);
 

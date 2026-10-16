@@ -962,7 +962,7 @@ export class AdminService {
      * @param data The data for the request.
      * @param data.itemType
      * @param data.itemId
-     * @returns ExamItemSettings Successful Response
+     * @returns ExamItemSettingsOut Successful Response
      * @throws ApiError
      */
     public static readExamItemSettings(data: AdminReadExamItemSettingsData): CancelablePromise<AdminReadExamItemSettingsResponse> {
@@ -985,7 +985,7 @@ export class AdminService {
      * @param data.itemType
      * @param data.itemId
      * @param data.requestBody
-     * @returns ExamItemSettings Successful Response
+     * @returns ExamItemSettingsOut Successful Response
      * @throws ApiError
      */
     public static updateExamItemSettings(data: AdminUpdateExamItemSettingsData): CancelablePromise<AdminUpdateExamItemSettingsResponse> {

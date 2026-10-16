@@ -65,6 +65,7 @@ interface ScenarioShape {
   id: string
   topic: string
   is_active?: boolean
+  owner_id?: string | null
   questions: QuestionShape[]
 }
 
@@ -238,8 +239,14 @@ function ScenarioCard({
   const { t } = useI18n()
   const { showSuccessToast } = useCustomToast()
   const canEdit = useCanEditContent()
-  // 主题是共用分组：组内题目全部可改时才能改名/启停/删除
-  const topicEditable = scenario.questions.every((q) => canEdit(q.owner_id))
+  // 改名/启停归主题创建者；存量无主主题要组内题目全部可改。删除会连带
+  // 组内题目，有别人的题时只有管理员能删
+  const hasOthersQuestions = scenario.questions.some(
+    (q) => !canEdit(q.owner_id),
+  )
+  const topicEditable = scenario.owner_id
+    ? canEdit(scenario.owner_id)
+    : !hasOthersQuestions
   const [question, setQuestion] = useState({
     text: "",
     seconds: 30,
@@ -445,7 +452,16 @@ function ScenarioCard({
                 zh: `删除情景 ${scenario.topic}`,
                 en: `Delete topic ${scenario.topic}`,
               })}
-              onClick={() => setConfirmDelete(true)}
+              onClick={() =>
+                hasOthersQuestions
+                  ? toast.error(
+                      t({
+                        zh: "主题下有其他老师的题目，不能删除；可以停用，或联系管理员删除",
+                        en: "This topic contains other teachers' questions and can't be deleted. Disable it instead, or ask an administrator.",
+                      }),
+                    )
+                  : setConfirmDelete(true)
+              }
             >
               <Trash2 className="text-destructive" />
             </Button>
