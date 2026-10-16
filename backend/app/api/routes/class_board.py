@@ -213,14 +213,18 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             matching = [s for s in sessions if s.assignment_id == current_exercise.id]
             if matching:
                 session_by_student[sid] = matching[-1]
-            # 当前发布版本没有开始过，就不要回退到已归档版本的同篇目会话。
+            # 当前发布版本没有开始过，就不要回退到已归档版本或课后作业会话。
             continue
+        self_practice = [s for s in sessions if s.assignment_id is None]
         if assigned_passage_id is not None:
-            matching = [s for s in sessions if s.passage_id == assigned_passage_id]
+            matching = [
+                s for s in self_practice if s.passage_id == assigned_passage_id
+            ]
             if matching:
                 session_by_student[sid] = matching[-1]
                 continue
-        session_by_student[sid] = sessions[-1]
+        if self_practice:
+            session_by_student[sid] = self_practice[-1]
 
     # 模考批量终结：预取全班首答后纯计算、单次 commit——替代下方学生循环
     # 内的逐会话 finalize（每会话 2 条查询 + 整行大 JSON，监考轮询热路径）

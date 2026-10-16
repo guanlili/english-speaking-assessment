@@ -70,6 +70,16 @@ from app.services import reading
 logger = logging.getLogger(__name__)
 
 
+def _attempt_item_text(attempt: Attempt) -> str | None:
+    """作答提交时的参考文本。自主练习回看不能改用后来编辑过的题库正文。"""
+    snapshot = attempt.item_snapshot
+    if isinstance(snapshot, dict):
+        text = snapshot.get("text")
+        if isinstance(text, str):
+            return text
+    return None
+
+
 class ClassroomRevision(SQLModel):
     revision: str
 
@@ -87,6 +97,7 @@ def read_classroom_revision(
         {
             "date": str(_today_in_practice_tz()),
             "exercise": str(classroom.current_exercise_id),
+            "homework": str(classroom.homework_exercise_id),
             "unit": str(classroom.current_unit_id),
             "items": classroom.assigned_items,
             "types": [
@@ -121,9 +132,7 @@ def read_today_plan(
         if practice_session is None or practice_session.student_id != student.id:
             raise HTTPException(status_code=404, detail="Session not found")
     elif slot == "homework":
-        practice_session = _resolve_homework_session(
-            session, classroom, student, today
-        )
+        practice_session = _resolve_homework_session(session, classroom, student, today)
     else:
         # daily 当前轮：today / next-question / board 都用同一定位逻辑
         practice_session = _resolve_active_daily_session(
@@ -420,6 +429,7 @@ def read_today_plan(
             vocab=a.vocab if isinstance(a.vocab, dict) else None,
             rubric=a.rubric if isinstance(a.rubric, dict) else None,
             error=a.error,
+            item_text=_attempt_item_text(a),
             teacher_feedback=a.teacher_feedback,
             teacher_focus=a.teacher_focus,
             teacher_feedback_author=a.teacher_feedback_author,

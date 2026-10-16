@@ -657,7 +657,7 @@ export function RoundResultPage() {
                 {attempt.transcript || t({ zh: "（无）", en: "(none)" })}
               </p>
               <SkippedSpans
-                reference={item.text}
+                reference={attempt.item_text ?? item.text}
                 transcript={attempt.transcript}
                 itemType={item.type}
               />

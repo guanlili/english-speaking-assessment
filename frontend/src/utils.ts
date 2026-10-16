@@ -24,6 +24,10 @@ const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
     zh: "老师还没有布置课后作业。",
     en: "No homework has been assigned yet.",
   },
+  课后作业只接受题目列表: {
+    zh: "课后作业只能按题目发布或撤回。",
+    en: "Homework can only be published or withdrawn with a question list.",
+  },
   "Automated exam audio missing: ": {
     zh: "自动考试包含缺少音频的题目。请在题库的「考试流程设置」中上传或生成音频，再重新发布。",
     en: "Some exam items have no audio. Upload or generate audio in Exam flow settings, then publish again.",

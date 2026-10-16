@@ -145,6 +145,7 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
   })
 
   const plan = todayQuery.data
+  const boundSessionId = sessionId ?? (homework ? plan?.session_id : undefined)
   const exam = plan?.exam ?? null
   const examStarted = exam?.started ?? false
   const examActive = exam !== null && !exam.ended
@@ -178,7 +179,7 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
   // 换一题（US-06）：同主题同档未做过；探索轮绑定 session_id
   const { nextQuestionMutation } = useNextQuestion({
     code,
-    sessionId,
+    sessionId: boundSessionId,
     items,
     todayQueryKey,
     nextFlag: nextFlag === true,
@@ -423,7 +424,7 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
         void navigate({
           to: exam ? "/exam/$code/result" : "/p/$code/result",
           params: { code },
-          search: sessionId ? { session: sessionId } : {},
+          search: boundSessionId ? { session: boundSessionId } : {},
         })
       }
     } finally {
@@ -651,7 +652,9 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
           streakDays={plan.gamification?.streak_days}
           xp={plan.gamification?.xp}
           resultsTo={exam ? "/exam/$code/result" : "/p/$code/result"}
-          resultsSearch={sessionId ? { session: sessionId } : undefined}
+          resultsSearch={
+            boundSessionId ? { session: boundSessionId } : undefined
+          }
         />
 
         {exam && (
@@ -818,7 +821,7 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
                 void navigate({
                   to: exam ? "/exam/$code/result" : "/p/$code/result",
                   params: { code },
-                  search: sessionId ? { session: sessionId } : {},
+                  search: boundSessionId ? { session: boundSessionId } : {},
                 })
               }
               setPinnedItemId(null)
@@ -832,7 +835,9 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
           allDone={allDone}
           resultsTo={exam ? "/exam/$code/result" : "/p/$code/result"}
           resultsParams={{ code }}
-          resultsSearch={sessionId ? { session: sessionId } : undefined}
+          resultsSearch={
+            boundSessionId ? { session: boundSessionId } : undefined
+          }
         />
       </div>
     </StudentShell>

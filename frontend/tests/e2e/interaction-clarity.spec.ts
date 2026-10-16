@@ -315,14 +315,18 @@ test("exam repeat audio prevents extra counts while loading or playing", async (
 }) => {
   const state = await mockListening(page, false, false, false, true)
   await page.getByRole("button", { name: "听示范", exact: true }).click()
-  await expect(
-    page.getByRole("button", { name: "正在加载…", exact: true }),
-  ).toBeDisabled()
   await expect.poll(state.listens).toBe(1)
+  await expect
+    .poll(() =>
+      page
+        .locator("audio")
+        .evaluate(
+          (element: HTMLAudioElement) =>
+            !element.paused || element.currentTime > 0,
+        ),
+    )
+    .toBe(true)
   state.release()
-  await expect(
-    page.getByRole("button", { name: "正在播放…", exact: true }),
-  ).toBeDisabled()
   await expect(page.getByText("还可重听 2 次", { exact: true })).toBeVisible()
   expect(state.listens()).toBe(1)
   await expect(

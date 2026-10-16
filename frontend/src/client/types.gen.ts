@@ -36,13 +36,15 @@ export type AssignmentRequest = {
     assign_repeat?: (boolean | null);
     assign_qa?: (boolean | null);
     items?: (Array<AssignmentItemIn> | null);
-    slot?: string;
+    slot?: 'class' | 'homework';
     title?: (string | null);
     draft_revision?: (number | null);
     automated_exam?: boolean;
     is_exam?: boolean;
     time_limit_minutes?: (number | null);
 };
+
+export type slot = 'class' | 'homework';
 
 export type AttemptPublic = {
     id: string;
@@ -712,6 +714,7 @@ export type PlanAttempt = {
     rubric?: ({
     [key: string]: unknown;
 } | null);
+    item_text?: (string | null);
     error?: (string | null);
     teacher_feedback?: (string | null);
     teacher_focus?: boolean;

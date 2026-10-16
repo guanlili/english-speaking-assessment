@@ -1171,6 +1171,8 @@ class PlanAttempt(SQLModel):
     vocab: dict[str, object] | None = None
     # rubric 四维与升级表达（问答 + ark）——结果页四维条形用
     rubric: dict[str, object] | None = None
+    # 提交时的参考文本。回看不能改用后来编辑过的题库正文。
+    item_text: str | None = None
     error: str | None = None
 
     teacher_feedback: str | None = None

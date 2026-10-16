@@ -550,13 +550,24 @@ def _resolve_homework_session(
     student: Student,
     today: date,
 ) -> PracticeSession:
-    """课后作业会话：绑定 homework 发布，不替换课上当前轮。"""
+    """课后作业会话：同一发布跨天续做，重新发布才开新轮。"""
     exercise_id = classroom.homework_exercise_id
     exercise = (
         session.get(ClassroomExercise, exercise_id) if exercise_id is not None else None
     )
     if exercise is None or exercise.status != "published":
         raise HTTPException(status_code=404, detail="没有课后作业")
+    prior = session.exec(
+        select(PracticeSession)
+        .where(
+            PracticeSession.student_id == student.id,
+            PracticeSession.assignment_id == exercise.id,
+            PracticeSession.mode == "daily",
+        )
+        .order_by(col(PracticeSession.created_at).desc())
+    ).first()
+    if prior is not None:
+        return prior
     return get_or_create_today_session(
         session=session,
         classroom=classroom,
