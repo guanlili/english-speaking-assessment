@@ -56,6 +56,7 @@ def update_exam_item_settings(
     item_id: uuid.UUID,
     body: ExamItemSettings,
 ) -> ExamItemSettings:
+    # 不做归属校验：组卷排序行就地设置计时，选用他人题目组考试时也要能调
     item = _item(session, item_type, item_id)
     item.exam_settings = body.model_dump()
     session.add(item)

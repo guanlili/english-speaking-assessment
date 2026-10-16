@@ -4,12 +4,14 @@ import { useState } from "react"
 import { toast } from "sonner"
 import { AdminService, type InstructionPublic } from "@/client"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
+import { ReadOnlyContentBadge } from "@/components/Teaching/ReadOnlyContentBadge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { NumberInput } from "@/components/ui/number-input"
 import { Textarea } from "@/components/ui/textarea"
+import { useCanEditContent } from "@/hooks/useCanEditContent"
 import { useI18n } from "@/lib/i18n"
 import { TERMS } from "@/lib/terms"
 
@@ -39,6 +41,7 @@ export default function InstructionsSection({
 }) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
+  const canEdit = useCanEditContent()
   // 说明内联新建表单（组卷时当场写一条说明，免跳题目库）
   const [newTitle, setNewTitle] = useState("")
   const [newText, setNewText] = useState("")
@@ -138,18 +141,22 @@ export default function InstructionsSection({
                 })}
               </span>
             </label>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-muted-foreground hover:text-destructive"
-              aria-label={t({
-                zh: "删除这条说明",
-                en: "Delete this instruction",
-              })}
-              onClick={() => setDeleteTarget(ins)}
-            >
-              <Trash2 />
-            </Button>
+            {canEdit(ins.owner_id) ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="text-muted-foreground hover:text-destructive"
+                aria-label={t({
+                  zh: "删除这条说明",
+                  en: "Delete this instruction",
+                })}
+                onClick={() => setDeleteTarget(ins)}
+              >
+                <Trash2 />
+              </Button>
+            ) : (
+              <ReadOnlyContentBadge />
+            )}
           </div>
         ))}
       </div>

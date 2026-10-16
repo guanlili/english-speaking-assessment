@@ -26,6 +26,7 @@ import AudioSetter from "@/components/Practice/AudioSetter"
 import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
 import { PassageSentences } from "@/components/Teaching/PassageSentences"
 import { ReadingSentences } from "@/components/Teaching/ReadingSentences"
+import { ReadOnlyContentBadge } from "@/components/Teaching/ReadOnlyContentBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -58,6 +59,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
+import { useCanEditContent } from "@/hooks/useCanEditContent"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
 import { TERMS } from "@/lib/terms"
@@ -784,6 +786,7 @@ function PassageCard({
   onMutated: () => void
 }) {
   const { t } = useI18n()
+  const editable = useCanEditContent()(passage.owner_id)
   const [splitConfirm, setSplitConfirm] = useState(false)
   const [unsplitConfirm, setUnsplitConfirm] = useState(false)
   const splitPassage = useMutation({
@@ -878,6 +881,7 @@ function PassageCard({
                 {t({ zh: "已停用", en: "Disabled" })}
               </Badge>
             )}
+            {!editable && <ReadOnlyContentBadge />}
           </CardDescription>
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-1.5">
@@ -892,7 +896,7 @@ function PassageCard({
               ? t({ zh: "收起", en: "Collapse" })
               : t({ zh: "查看文章", en: "View Text" })}
           </Button>
-          {!passage.reading_split && (
+          {editable && !passage.reading_split && (
             <Button
               variant="outline"
               size="sm"
@@ -908,7 +912,7 @@ function PassageCard({
               {t({ zh: "自动拆分句子", en: "Auto-split Sentences" })}
             </Button>
           )}
-          {passage.reading_split && (
+          {editable && passage.reading_split && (
             <Button
               variant="outline"
               size="sm"
@@ -924,61 +928,67 @@ function PassageCard({
               {t({ zh: "取消拆分", en: "Unsplit" })}
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t({
-              zh: `编辑 ${passage.title}`,
-              en: `Edit ${passage.title}`,
-            })}
-            onClick={(e) => {
-              e.stopPropagation()
-              onEdit()
-            }}
-          >
-            <Pencil />
-          </Button>
+          {editable && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t({
+                zh: `编辑 ${passage.title}`,
+                en: `Edit ${passage.title}`,
+              })}
+              onClick={(e) => {
+                e.stopPropagation()
+                onEdit()
+              }}
+            >
+              <Pencil />
+            </Button>
+          )}
           <ExamItemSettingsButton
             itemType="passage"
             itemId={passage.id}
             text={passage.text ?? ""}
           />
-          <AudioSetter
-            audioUrl={passage.audio_url}
-            text={passage.text ?? ""}
-            stopPropagation
-            onSet={async (audio_url) => {
-              await AdminService.updatePassage({
-                passageId: passage.id,
-                requestBody: {
-                  title: passage.title ?? "",
-                  topic: passage.topic ?? "",
-                  cefr_band: passage.cefr_band ?? "B1",
-                  text: passage.text ?? "",
-                  translation: passage.translation ?? undefined,
-                  audio_url,
-                  suggested_seconds: passage.suggested_seconds ?? 45,
-                  is_active: passage.is_active ?? true,
-                  unit_id: passage.unit_id ?? undefined,
-                },
-              })
-              onMutated()
-            }}
-          />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t({
-              zh: `删除 ${passage.title}`,
-              en: `Delete ${passage.title}`,
-            })}
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete()
-            }}
-          >
-            <Trash2 className="text-destructive" />
-          </Button>
+          {editable && (
+            <AudioSetter
+              audioUrl={passage.audio_url}
+              text={passage.text ?? ""}
+              stopPropagation
+              onSet={async (audio_url) => {
+                await AdminService.updatePassage({
+                  passageId: passage.id,
+                  requestBody: {
+                    title: passage.title ?? "",
+                    topic: passage.topic ?? "",
+                    cefr_band: passage.cefr_band ?? "B1",
+                    text: passage.text ?? "",
+                    translation: passage.translation ?? undefined,
+                    audio_url,
+                    suggested_seconds: passage.suggested_seconds ?? 45,
+                    is_active: passage.is_active ?? true,
+                    unit_id: passage.unit_id ?? undefined,
+                  },
+                })
+                onMutated()
+              }}
+            />
+          )}
+          {editable && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t({
+                zh: `删除 ${passage.title}`,
+                en: `Delete ${passage.title}`,
+              })}
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete()
+              }}
+            >
+              <Trash2 className="text-destructive" />
+            </Button>
+          )}
         </div>
       </CardHeader>
       {expanded && (
@@ -991,8 +1001,13 @@ function PassageCard({
             seconds={passage.reading_sentence_seconds}
             passageId={passage.id}
             onMutated={onMutated}
+            readOnly={!editable}
           />
-          <PassageSentences passage={passage} onMutated={onMutated} />
+          <PassageSentences
+            passage={passage}
+            onMutated={onMutated}
+            readOnly={!editable}
+          />
         </CardContent>
       )}
 

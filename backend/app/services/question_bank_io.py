@@ -55,10 +55,12 @@ from app.models import (
     Scenario,
     ScenarioQuestion,
     Unit,
+    User,
     get_datetime_utc,
     validate_exam_fields,
     validate_question_suggested_seconds,
 )
+from app.services import content_access
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_IMPORT_ROWS = 2000
@@ -2045,8 +2047,11 @@ def apply_import(
     parsed: ParsedFile,
     include_lines: set[tuple[str, int]] | None = None,
     expected_fingerprint: str | None = None,
+    owner: User | None = None,
 ) -> QuestionBankImportResult:
     """确认导入：单事务落库；任何 DB 异常整体回滚。
+
+    owner 为导入人：新建题目记为其创建；复述句挂靠的已有篇目必须可编辑。
 
     并发防重：事务级咨询锁（pg_advisory_xact_lock）串行化所有导入确认——
     适合 PostgreSQL 多进程部署（进程内锁无效）。文件解析在锁外完成；
@@ -2090,6 +2095,17 @@ def apply_import(
                 ),
             )
         plan = plan_import(session, parsed, include_lines)
+        owner_id = content_access.owner_for(owner) if owner is not None else None
+        if owner is not None:
+            content_access.require_passage_ids(
+                session,
+                owner,
+                {
+                    item.passage_id
+                    for item in plan.creates[TYPE_REPEAT]
+                    if item.passage_id is not None
+                },
+            )
         created_scenarios: dict[str, Scenario] = {}
         for topic in plan.new_topics:
             scenario = Scenario(topic=topic, is_active=True)
@@ -2115,6 +2131,7 @@ def apply_import(
                 is_active=payload["is_active"],
                 slug=_generate_slug(payload["title"], used_slugs),
                 unit_id=payload.get("unit_id"),
+                owner_id=owner_id,
             )
             session.add(passage)
             created_passages[_norm_text(passage.title)] = passage
@@ -2137,9 +2154,16 @@ def apply_import(
             if passage_id is None and item.planned_passage_title is not None:
                 planned = created_passages.get(item.planned_passage_title)
                 passage_id = planned.id if planned is not None else None
+            sentence_owner_id = owner_id
             if passage_id is not None:
                 order = per_passage_order.get(passage_id, 0) + 1
                 per_passage_order[passage_id] = order
+                if item.passage_id is not None:
+                    existing = session.get(Passage, item.passage_id)
+                    if existing is not None:
+                        sentence_owner_id = content_access.passage_owner(
+                            session, existing
+                        )
             else:
                 global_order += 1
                 order = global_order
@@ -2153,6 +2177,7 @@ def apply_import(
                 replay_limit=payload["replay_limit"],
                 exam_kind=payload["exam_kind"],
                 exam_level=payload["exam_level"],
+                owner_id=sentence_owner_id,
             )
             session.add(sentence)
             created_items.append(
@@ -2187,6 +2212,7 @@ def apply_import(
                 exam_level=payload["exam_level"],
                 cue_card_bullets=payload["cue_card_bullets"],
                 prep_seconds=payload["prep_seconds"],
+                owner_id=owner_id,
             )
             session.add(question)
             created_items.append(
@@ -2206,6 +2232,7 @@ def apply_import(
                 title=payload["title"],
                 text=payload["text"],
                 suggested_seconds=payload["suggested_seconds"],
+                owner_id=owner_id,
             )
             session.add(instruction)
             created_items.append(

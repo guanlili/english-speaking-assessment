@@ -144,6 +144,10 @@ class Passage(PassageBase, table=True):
     unit_id: uuid.UUID | None = Field(
         default=None, foreign_key="unit.id", ondelete="SET NULL", index=True
     )
+    # 创建者：只有创建者和管理员能改/删；NULL = 存量无主内容，所有教师可改
+    owner_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL", index=True
+    )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -157,6 +161,7 @@ class PassagePublic(PassageBase):
     reading_split: bool = False
     # 所属单元：管理端要能读回指派关系（写入口同为 PassageCreate.unit_id）
     unit_id: uuid.UUID | None = None
+    owner_id: uuid.UUID | None = None
     created_at: datetime | None = None
 
 
@@ -429,6 +434,10 @@ class RepeatSentence(SQLModel, table=True):
     # 分级题型训练（可空=普通课堂内容，含义不变）：题型与级别分别建模
     exam_kind: str | None = Field(default=None, max_length=24)
     exam_level: str | None = Field(default=None, max_length=16)
+    # 创建者：挂篇目的句子按篇目创建者判定权限，独立句按本列
+    owner_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL", index=True
+    )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -469,6 +478,10 @@ class ScenarioQuestion(SQLModel, table=True):
     )
     # 准备时间（秒）：Part 2 话题卡准备（默认建议 60，可按级别缩短）
     prep_seconds: int | None = Field(default=None, ge=10, le=180)
+    # 创建者按题记录：主题（Scenario）是全校共用的分组，不归属个人
+    owner_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL", index=True
+    )
 
 
 class ScenarioQuestionPublic(SQLModel):
@@ -477,6 +490,7 @@ class ScenarioQuestionPublic(SQLModel):
     text: str
     audio_url: str | None = None
     suggested_seconds: int
+    owner_id: uuid.UUID | None = None
     # 分级题型训练（可空=普通情景问法）
     exam_kind: str | None = None
     exam_level: str | None = None
@@ -498,6 +512,9 @@ class Instruction(SQLModel, table=True):
     text: str = Field(min_length=1, max_length=2000)
     # 建议停留秒数：模考窗口时长（普通练习仅作提示，不强制）
     suggested_seconds: int = Field(default=20, ge=5, le=300)
+    owner_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL", index=True
+    )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -513,6 +530,7 @@ class InstructionPublic(SQLModel):
     title: str | None = None
     text: str
     suggested_seconds: int
+    owner_id: uuid.UUID | None = None
 
 
 # 学生点「继续」的确认记录：说明无作答，用 ack 表达「已读」——

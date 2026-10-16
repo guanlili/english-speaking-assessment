@@ -94,7 +94,7 @@ async def question_bank_import_preview(
 @router.post("/import-confirm", response_model=QuestionBankImportResult)
 async def question_bank_import_confirm(
     session: SessionDep,
-    _teacher: TeacherUserDep,
+    current_user: TeacherUserDep,
     file: UploadFile,
     include_lines: str = Form(
         default="",
@@ -117,6 +117,7 @@ async def question_bank_import_confirm(
         parsed,
         decisions,
         expected_fingerprint=preview_fingerprint or None,
+        owner=current_user,
     )
 
 

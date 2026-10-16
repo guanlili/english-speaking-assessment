@@ -13,11 +13,13 @@ export function ReadingSentences({
   seconds,
   passageId,
   onMutated,
+  readOnly = false,
 }: {
   segments: string[]
   seconds?: (number | null)[] | null
   passageId?: string
   onMutated?: () => void
+  readOnly?: boolean
 }) {
   const { t } = useI18n()
   const save = useMutation({
@@ -62,7 +64,7 @@ export function ReadingSentences({
             <p className="min-w-0 flex-1 basis-64 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
               {text}
             </p>
-            {passageId ? (
+            {passageId && !readOnly ? (
               <SentenceDuration
                 key={`${index}-${seconds?.[index]}`}
                 index={index}
