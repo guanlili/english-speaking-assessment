@@ -2,6 +2,7 @@ import { ArrowRight, Mic, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { useRecorder } from "@/hooks/useRecorder"
 import { useI18n } from "@/lib/i18n"
+import type { RecordingLeaveState } from "@/lib/recording-drafts"
 import { EXAM_PRACTICE_NOTE } from "@/lib/terms"
 import { formatSeconds } from "@/lib/time"
 
@@ -26,6 +27,8 @@ export default function RecordArea({
   submitting,
   submitError,
   submissionClosed = false,
+  closedLeaveState,
+  onClosedLeave,
   onStart,
   onStop,
   onRetry,
@@ -45,6 +48,8 @@ export default function RecordArea({
   isLastQuestion: boolean
   submitting: boolean
   submissionClosed?: boolean
+  closedLeaveState: RecordingLeaveState
+  onClosedLeave: () => void
   submitError: boolean
   onStart: () => void
   onStop: () => void
@@ -60,10 +65,33 @@ export default function RecordArea({
         </p>
         <p className="text-sm text-muted-foreground">
           {t({
-            zh: "老师已撤销这项补练，不能继续录音或提交。已有作答记录仍会保留，可返回首页。",
-            en: "Your teacher withdrew this task. Recording and submission are closed; existing answers are kept. You can return home.",
+            zh: "老师已撤销这项补练，不能继续录音或提交。已有作答记录仍会保留。",
+            en: "Your teacher withdrew this task. Recording and submission are closed; existing answers are kept.",
           })}
         </p>
+        <p className="text-sm text-muted-foreground">
+          {closedLeaveState === "blocked"
+            ? t({
+                zh: "正在保存录音草稿，请稍候再离开。",
+                en: "Saving your recording draft. Please wait before leaving.",
+              })
+            : closedLeaveState === "confirm"
+              ? t({
+                  zh: "这段录音未上传，也未能保存到本设备。离开将丢失录音；返回首页前需要确认。",
+                  en: "This recording was neither uploaded nor saved on this device. Leaving will lose it; confirmation is required before returning home.",
+                })
+              : t({
+                  zh: "录音草稿已保存在本设备，但不能再提交到这项补练。现在可以返回首页。",
+                  en: "Your recording draft is saved on this device, but cannot be submitted to this withdrawn task. You can return home now.",
+                })}
+        </p>
+        <Button
+          className="min-h-11"
+          disabled={closedLeaveState === "blocked"}
+          onClick={onClosedLeave}
+        >
+          {t({ zh: "返回首页", en: "Return home" })}
+        </Button>
       </div>
     )
 

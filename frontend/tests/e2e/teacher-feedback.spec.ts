@@ -34,12 +34,36 @@ const items = (version: string) => [
 async function mockTeacher(page: Page, nativeAudio = false) {
   const state = {
     requested: [] as string[],
+    batches: [] as string[][],
+    batchTimes: [] as number[],
     audio: [] as string[],
     fail: false,
     slow: false,
     failAudio: false,
+    unanswered: false,
+    duplicate: false,
+    status: "done",
     engine: "ark",
     rubric: null as Record<string, unknown> | null,
+  }
+  const attempt = (id: string) => ({
+    id,
+    item_id: id.endsWith("1") ? "q1" : "q2",
+    item_type: id.endsWith("1") ? "question" : "passage",
+    status: id.endsWith("1") ? state.status : "done",
+    overall: id.endsWith("1") ? 80 : 60,
+    engine: state.engine,
+    rubric: id.endsWith("1") ? state.rubric : null,
+    duration_s: 5,
+    item_text: `Saved prompt ${id}`,
+    advice: [`Saved rule advice ${id}`],
+  })
+  const boardItems = (version: string) => {
+    const rows = items(version)
+    if (state.duplicate) rows.push({ ...rows[1], item_id: "duplicate-q1" })
+    return state.unanswered
+      ? rows.map((row) => ({ ...row, attempt_id: null, status: "missing" }))
+      : rows
   }
   await page.addInitScript((nativeAudio) => {
     localStorage.setItem("access_token", "teacher-token")
@@ -69,13 +93,13 @@ async function mockTeacher(page: Page, nativeAudio = false) {
     const row = (version: string) => ({
       student_id: "student",
       display_name: "Alice",
-      done_count: 2,
+      done_count: state.unanswered ? 0 : 2,
       total_count: 2,
-      has_pending: false,
-      items: items(version),
+      has_pending: state.status !== "done",
+      items: boardItems(version),
       repeat_avg: 60,
       question_avg: 80,
-      round_status: "all_done",
+      round_status: state.unanswered ? "not_started" : "all_done",
     })
     if (path.endsWith("/users/me"))
       body = { id: "teacher", role: "teacher", is_active: true }
@@ -97,7 +121,23 @@ async function mockTeacher(page: Page, nativeAudio = false) {
     else if (path.endsWith("/exercises")) body = published
     else if (path.endsWith("/results"))
       body = [row(path.includes("/old/") ? "old" : "new")]
-    else if (path.includes("/attempts/")) {
+    else if (path.endsWith("/attempts/batch-read")) {
+      expect(route.request().method()).toBe("POST")
+      expect(route.request().headers().authorization).toBe(
+        "Bearer teacher-token",
+      )
+      const payload = route.request().postDataJSON() as {
+        attempt_ids: string[]
+      }
+      state.batches.push(payload.attempt_ids)
+      state.batchTimes.push(Date.now())
+      if (state.fail) {
+        await route.fulfill({ status: 503, json: { detail: "temporary" } })
+        return
+      }
+      // Deliberately reverse the response to catch index-based rendering.
+      body = [...payload.attempt_ids].reverse().map(attempt)
+    } else if (path.includes("/attempts/")) {
       const id = path.split("/attempts/")[1].split("/")[0]
       if (path.endsWith("/audio")) {
         state.audio.push(id)
@@ -121,18 +161,7 @@ async function mockTeacher(page: Page, nativeAudio = false) {
         await route.fulfill({ status: 503, json: { detail: "temporary" } })
         return
       }
-      body = {
-        id,
-        item_id: id.endsWith("1") ? "q1" : "q2",
-        item_type: id.endsWith("1") ? "question" : "passage",
-        status: "done",
-        overall: id.endsWith("1") ? 80 : 60,
-        engine: state.engine,
-        rubric: id.endsWith("1") ? state.rubric : null,
-        duration_s: 5,
-        item_text: `Saved prompt ${id}`,
-        advice: [`Saved rule advice ${id}`],
-      }
+      body = attempt(id)
     }
     await route.fulfill({ json: body })
   })
@@ -164,12 +193,19 @@ for (const width of [390, 820, 1180]) {
           ),
       ).toBe(true)
     }
+    expect(state.batches).toEqual([])
+    expect(state.requested).toEqual([])
     await page.getByRole("button", { name: "汇总反馈", exact: true }).click()
     const dialog = page.getByRole("dialog")
-    await expect(dialog.getByText("Saved rule advice old-1")).toBeVisible()
-    await expect(dialog.getByText("Saved rule advice old-2")).toBeVisible()
+    await expect(dialog.locator("section").nth(0)).toContainText(
+      "Saved rule advice old-1",
+    )
+    await expect(dialog.locator("section").nth(1)).toContainText(
+      "Saved rule advice old-2",
+    )
     await expect(dialog.getByText("已评分 2/2 题 · 参考分 70")).toBeVisible()
-    expect(state.requested.sort()).toEqual(["old-1", "old-2"])
+    expect(state.batches).toEqual([["old-1", "old-2"]])
+    expect(state.requested).toEqual([])
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -177,6 +213,113 @@ for (const width of [390, 820, 1180]) {
     ).toBe(true)
   })
 }
+test("@webkit summary deduplicates IDs and skips unanswered records", async ({
+  page,
+}) => {
+  const state = await mockTeacher(page)
+  state.duplicate = true
+  await openHistory(page)
+  await page.getByRole("button", { name: "汇总反馈", exact: true }).click()
+  const dialog = page.getByRole("dialog")
+  await expect(dialog.getByText("Saved rule advice old-1")).toHaveCount(2)
+  expect(state.batches).toEqual([["old-1", "old-2"]])
+  expect(state.requested).toEqual([])
+
+  state.duplicate = false
+  state.unanswered = true
+  await openHistory(page)
+  await page.getByRole("button", { name: "汇总反馈", exact: true }).click()
+  await expect(dialog.getByText("这条记录暂无作答反馈。")).toBeVisible()
+  await expect(dialog.getByText("未作答", { exact: true })).toHaveCount(2)
+  expect(state.batches).toHaveLength(1)
+})
+
+for (const pending of ["queued", "scoring", "rubric"] as const) {
+  test(`@webkit summary polls one batch every three seconds for ${pending}`, async ({
+    page,
+  }) => {
+    const state = await mockTeacher(page)
+    state.status = pending === "rubric" ? "done" : pending
+    state.rubric = pending === "rubric" ? { status: "pending" } : null
+    await openHistory(page)
+    await page.getByRole("button", { name: "汇总反馈", exact: true }).click()
+    const dialog = page.getByRole("dialog")
+    await expect(
+      dialog.getByText(
+        pending === "rubric" ? "详细评价正在生成…" : "评分中，反馈会自动更新。",
+        { exact: true },
+      ),
+    ).toBeVisible()
+    expect(state.batches).toEqual([["old-1", "old-2"]])
+    state.status = "done"
+    state.rubric = {
+      fluency: 3,
+      vocabulary: 3,
+      grammar: 3,
+      task: 3,
+      mock_score: 6.5,
+      advice: ["Finished model feedback"],
+    }
+    await expect(dialog.getByText("Finished model feedback")).toBeVisible({
+      timeout: 7000,
+    })
+    expect(state.batches).toEqual([
+      ["old-1", "old-2"],
+      ["old-1", "old-2"],
+    ])
+    expect(state.batchTimes[1] - state.batchTimes[0]).toBeGreaterThanOrEqual(
+      2900,
+    )
+    // Watch a whole polling period after completion; no extra request is allowed.
+    await expect(
+      page.waitForRequest("**/api/v1/attempts/batch-read", { timeout: 3500 }),
+    ).rejects.toThrow(/Timeout/)
+    expect(state.batches).toHaveLength(2)
+    expect(state.requested).toEqual([])
+  })
+}
+
+test("@webkit batch feedback seeds the existing single-attempt cache", async ({
+  page,
+}) => {
+  const state = await mockTeacher(page)
+  await openHistory(page)
+  await page.getByRole("button", { name: "汇总反馈", exact: true }).click()
+  await expect(
+    page.getByRole("dialog").getByText("Saved rule advice old-1"),
+  ).toBeVisible()
+  await page.getByRole("button", { name: "关闭", exact: true }).click()
+  state.fail = true
+  await page
+    .getByRole("button", { name: "查看 Alice 第2题详细反馈", exact: true })
+    .click()
+  const dialog = page.getByRole("dialog")
+  await expect(
+    dialog.getByText("Saved prompt old-1", { exact: true }),
+  ).toBeVisible()
+  await expect(dialog.getByText("作答加载失败，请关闭后重试。")).toHaveCount(0)
+  expect(state.requested).toEqual([])
+  expect(state.batches).toEqual([["old-1", "old-2"]])
+})
+
+test("@webkit closing a pending summary stops batch polling", async ({
+  page,
+}) => {
+  const state = await mockTeacher(page)
+  state.status = "scoring"
+  await openHistory(page)
+  await page.getByRole("button", { name: "汇总反馈", exact: true }).click()
+  await expect(
+    page.getByRole("dialog").getByText("评分中，反馈会自动更新。"),
+  ).toBeVisible()
+  await page.getByRole("button", { name: "关闭", exact: true }).click()
+  await expect(
+    page.waitForRequest("**/api/v1/attempts/batch-read", { timeout: 3500 }),
+  ).rejects.toThrow(/Timeout/)
+  expect(state.batches).toEqual([["old-1", "old-2"]])
+  expect(state.requested).toEqual([])
+})
+
 test("@webkit history recording starts with one click and switches exclusively", async ({
   page,
 }) => {
@@ -209,13 +352,17 @@ test("@webkit feedback loading failure can retry without closing", async ({
   const retry = page
     .getByRole("dialog")
     .getByRole("button", { name: "反馈加载失败，重试" })
-    .first()
   await expect(retry).toBeVisible()
+  expect(state.batches).toHaveLength(2) // One request plus one automatic retry.
   state.fail = false
   await retry.click()
   await expect(
     page.getByRole("dialog").getByText("Saved rule advice old-1"),
   ).toBeVisible()
+  expect(state.batches).toEqual(
+    Array.from({ length: 3 }, () => ["old-1", "old-2"]),
+  )
+  expect(state.requested).toEqual([])
 })
 test("@webkit playback rejection retries at the same button", async ({
   page,

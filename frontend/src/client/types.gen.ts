@@ -46,6 +46,10 @@ export type AssignmentRequest = {
 
 export type slot = 'class' | 'homework';
 
+export type AttemptBatchRead = {
+    attempt_ids: Array<(string)>;
+};
+
 export type AttemptPublic = {
     id: string;
     item_type: string;
@@ -831,6 +835,7 @@ export type QuestionBankOut = {
     order_index: number;
     text: string;
     translation?: (string | null);
+    audio_url?: (string | null);
     suggested_seconds: number;
     exam_kind?: (string | null);
     exam_level?: (string | null);
@@ -2217,6 +2222,36 @@ export type AdminListQuestionBankData = {
 
 export type AdminListQuestionBankResponse = (QuestionBankListOut);
 
+export type AdminCopyPassageData = {
+    passageId: string;
+};
+
+export type AdminCopyPassageResponse = (PassageWithSentences);
+
+export type AdminCopySentenceData = {
+    sentenceId: string;
+};
+
+export type AdminCopySentenceResponse = (SentenceWithPassage);
+
+export type AdminCopyScenarioData = {
+    scenarioId: string;
+};
+
+export type AdminCopyScenarioResponse = (ScenarioOut);
+
+export type AdminCopyQuestionData = {
+    questionId: string;
+};
+
+export type AdminCopyQuestionResponse = (QuestionBankOut);
+
+export type AdminCopyInstructionData = {
+    instructionId: string;
+};
+
+export type AdminCopyInstructionResponse = (InstructionPublic);
+
 export type AdminCreateQuestionsBatchData = {
     requestBody: BatchQuestionCreate;
     scenarioId: string;
@@ -2379,6 +2414,12 @@ export type AttemptsCreateAttemptUploadData = {
 };
 
 export type AttemptsCreateAttemptUploadResponse = (AttemptPublic);
+
+export type AttemptsReadAttemptsBatchData = {
+    requestBody: AttemptBatchRead;
+};
+
+export type AttemptsReadAttemptsBatchResponse = (Array<AttemptPublic>);
 
 export type AttemptsReadAttemptData = {
     attemptId: string;
@@ -2665,6 +2706,8 @@ export type ClassesCreateClassFollowupResponse = (FollowupCreated);
 export type ClassesListClassFollowupsData = {
     code: string;
     limit?: number;
+    offset?: number;
+    status?: 'active' | 'history' | 'all';
 };
 
 export type ClassesListClassFollowupsResponse = (Array<FollowupPublic>);

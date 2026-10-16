@@ -11,11 +11,18 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import field_validator
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Field, Session, SQLModel, select
+from sqlmodel import Field, Session, SQLModel, col, select
 
-from app.api.deps import CurrentUser, OptionalCurrentUser, ScoringSubmitter, SessionDep
+from app.api.deps import (
+    CurrentUser,
+    OptionalCurrentUser,
+    ScoringSubmitter,
+    SessionDep,
+    TeacherUserDep,
+)
 from app.core.config import settings
 from app.core.ratelimit import SlidingWindowLimiter
 from app.core.storage import AUDIO_SUFFIX_TO_MIME as _AUDIO_MIME_BY_SUFFIX
@@ -583,6 +590,65 @@ def create_attempt_upload(
 def _mime_to_suffix(base_mime: str) -> str:
     # 唯一事实源在 app.core.storage（与落盘/回放共用，见该处注释）
     return storage_mime_to_suffix(base_mime)
+
+
+class AttemptBatchRead(SQLModel):
+    attempt_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+
+    @field_validator("attempt_ids")
+    @classmethod
+    def _deduplicate_ids(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        # Validate the raw length first, then preserve first-occurrence order.
+        return list(dict.fromkeys(value))
+
+
+# Keep static paths ahead of /attempts/{attempt_id}.
+@router.post("/attempts/batch-read", response_model=list[AttemptPublic])
+def read_attempts_batch(
+    session: SessionDep,
+    body: AttemptBatchRead,
+    current_user: TeacherUserDep,
+) -> list[AttemptPublic]:
+    """Read up to 100 attempts in request order after authorizing the entire batch."""
+    attempts = session.exec(
+        select(Attempt).where(col(Attempt.id).in_(body.attempt_ids))
+    ).all()
+    by_id = {attempt.id: attempt for attempt in attempts}
+    if len(by_id) != len(body.attempt_ids):
+        raise HTTPException(status_code=404, detail="Attempt not found")
+
+    if not current_user.is_superuser:
+        student_ids = {
+            attempt.student_id for attempt in attempts if attempt.student_id is not None
+        }
+        if student_ids:
+            # Authorize the whole batch without per-attempt ownership queries.
+            authorized_ids = set(
+                session.exec(
+                    select(Student.id)
+                    .join(Classroom, col(Student.classroom_id) == Classroom.id)
+                    .where(
+                        col(Student.id).in_(student_ids),
+                        Classroom.owner_id == current_user.id,
+                    )
+                ).all()
+            )
+            if student_ids != authorized_ids:
+                raise HTTPException(
+                    status_code=403,
+                    detail="没有权限：您不是该作答所属课堂的授权教师",
+                )
+
+    # No projection or partial result is exposed until all access checks pass.
+    return [
+        _attempt_public(
+            by_id[attempt_id],
+            feedback_masked=_feedback_masked_for_user(
+                session, by_id[attempt_id], current_user
+            ),
+        )
+        for attempt_id in body.attempt_ids
+    ]
 
 
 @router.get("/attempts/{attempt_id}", response_model=AttemptPublic)
