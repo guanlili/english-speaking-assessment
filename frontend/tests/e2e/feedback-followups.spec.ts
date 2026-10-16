@@ -85,6 +85,8 @@ async function setup(page: Page, role: "teacher" | "student", lang = "zh") {
     else if (path.endsWith("/followup-items")) json = [item]
     else if (path.endsWith("/diagnostics"))
       json = { checked_at: new Date().toISOString(), issues: [] }
+    else if (path.endsWith("/weak-spots"))
+      json = { word_gaps: [], low_items: [] }
     else if (path.endsWith("/board"))
       json = {
         classroom_code: "COACH",

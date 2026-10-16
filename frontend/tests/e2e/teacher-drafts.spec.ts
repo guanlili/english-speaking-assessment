@@ -102,6 +102,8 @@ async function setup(page: Page, lang = "zh") {
           },
         ],
       }
+    else if (path.endsWith("/weak-spots"))
+      json = { word_gaps: [], low_items: [] }
     else if (path.endsWith("/board"))
       json = {
         classroom_code: code,

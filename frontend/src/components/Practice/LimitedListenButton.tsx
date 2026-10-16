@@ -1,6 +1,6 @@
 /**
- * 限听版标准音：听句复述题专用。每次播放先到服务端计数（防刷真源），
- * 次数用完禁用；replay_limit=0 不限。朗读/问答仍用不限次 SpeakButton。
+ * 限听版标准音：听句复述题专用。音频真正开始播放后才到服务端计数，
+ * 播放失败不扣次数；replay_limit=0 不限。朗读/问答仍用不限次 SpeakButton。
  */
 import { Volume2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
@@ -9,6 +9,7 @@ import { ApiError, ClassesService } from "@/client"
 import { Button } from "@/components/ui/button"
 import type { BiString } from "@/lib/bi"
 import { useI18n } from "@/lib/i18n"
+import { mayControlPlayback, playbackAfterSignal } from "@/lib/listen-playback"
 import { speakEnglish, TTS_RATE_OPTIONS } from "@/lib/tts"
 import { extractErrorMessage } from "@/utils"
 
@@ -46,6 +47,9 @@ export default function LimitedListenButton({
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const countingRef = useRef(false)
   const activeRef = useRef(true)
+  const itemIdRef = useRef(itemId)
+  itemIdRef.current = itemId
+  const suppressSynthError = useRef(false)
   const unlimited = replayLimit === 0
   const remaining = unlimited ? Infinity : Math.max(0, replayLimit - used)
   const exhausted = !unlimited && remaining <= 0
@@ -62,34 +66,111 @@ export default function LimitedListenButton({
     }
   }, [])
 
+  const stillThisItem = (requestedItemId: string) =>
+    mayControlPlayback(activeRef.current, requestedItemId, itemIdRef.current)
+
+  const stopPlayback = () => {
+    if (!stillThisItem(itemId)) return
+    suppressSynthError.current = true
+    audioRef.current?.pause()
+    if (!audioUrl && window.speechSynthesis) window.speechSynthesis.cancel()
+    setPlaying(false)
+  }
+
+  const beginPlayback = () => {
+    if (audioUrl && audioRef.current) {
+      const audio = audioRef.current
+      audio.playbackRate = Number(rate)
+      audio.currentTime = 0
+      if (audio.error) audio.load()
+      return audio
+        .play()
+        .then(() => {
+          if (!activeRef.current) {
+            audio.pause()
+            return false
+          }
+          setPlaying(true)
+          return true
+        })
+        .catch((err: unknown) => {
+          if (!(err instanceof DOMException && err.name === "AbortError"))
+            playbackError()
+          return false
+        })
+    }
+    return new Promise<boolean>((resolve) => {
+      let opened = false
+      let timer = 0
+      const settle = (ok: boolean) => {
+        if (opened) return
+        opened = true
+        window.clearTimeout(timer)
+        resolve(ok)
+      }
+      const noteError = () => {
+        if (suppressSynthError.current) return
+        if (!stillThisItem(itemId)) {
+          settle(false)
+          return
+        }
+        const next = playbackAfterSignal(opened, "error")
+        setPlaying(next.playing)
+        if (next.notify) playbackError()
+        settle(false)
+      }
+      const utterance = speakEnglish(text, {
+        rate: Number(rate),
+        onStart: () => {
+          if (!stillThisItem(itemId)) {
+            settle(false)
+            return
+          }
+          const next = playbackAfterSignal(false, "start")
+          setPlaying(next.playing)
+          settle(true)
+        },
+        onEnd: () => {
+          if (!stillThisItem(itemId)) return
+          setPlaying(playbackAfterSignal(true, "end").playing)
+        },
+        onError: noteError,
+      })
+      if (!utterance) {
+        noteError()
+        return
+      }
+      timer = window.setTimeout(() => {
+        if (!stillThisItem(itemId)) {
+          settle(false)
+          return
+        }
+        suppressSynthError.current = true
+        window.speechSynthesis?.cancel()
+        const next = playbackAfterSignal(false, "error")
+        setPlaying(next.playing)
+        if (next.notify) playbackError()
+        settle(false)
+      }, 2000)
+    })
+  }
+
   const play = async () => {
     if (exhausted || !sessionId || countingRef.current || playing) return
     countingRef.current = true
+    suppressSynthError.current = false
     setLoading(true)
+    const requestedItemId = itemId
     try {
-      const counted = await recordListenCount()
-      if (!counted || !activeRef.current) return
-      if (audioUrl) {
-        if (audioRef.current) {
-          audioRef.current.playbackRate = Number(rate)
-          audioRef.current.currentTime = 0
-          if (audioRef.current.error) audioRef.current.load()
-          await audioRef.current.play()
-          setPlaying(true)
-        }
+      const started = await beginPlayback()
+      if (!stillThisItem(requestedItemId)) return
+      if (!started) {
+        stopPlayback()
         return
       }
-      // TTS 兜底：浏览器合成没有服务端文件，仍走计数
-      setPlaying(true)
-      const utterance = speakEnglish(text, {
-        rate: Number(rate),
-        onEnd: () => setPlaying(false),
-        onError: playbackError,
-      })
-      if (!utterance) playbackError()
-    } catch (err) {
-      if (!(err instanceof DOMException && err.name === "AbortError"))
-        playbackError()
+      const counted = await recordListenCount()
+      if (!stillThisItem(requestedItemId)) return
+      if (!counted) stopPlayback()
     } finally {
       countingRef.current = false
       setLoading(false)
@@ -152,10 +233,10 @@ export default function LimitedListenButton({
         disabled={exhausted || loading || playing || !sessionId}
       >
         <Volume2 />
-        {loading
-          ? t({ zh: "正在加载…", en: "Loading…" })
-          : playing
-            ? t({ zh: "正在播放…", en: "Playing…" })
+        {playing
+          ? t({ zh: "正在播放…", en: "Playing…" })
+          : loading
+            ? t({ zh: "正在加载…", en: "Loading…" })
             : exhausted
               ? t({ zh: "重听次数已用完", en: "No replays left" })
               : t({ zh: "听示范", en: "Listen" })}

@@ -36,12 +36,20 @@ from app.models import (
     BoardStudent,
     ClassroomExercise,
     ClassroomExercisePublic,
+    ClassWeakSpots,
     InstructionAck,
     PracticeSession,
     Student,
+    WeakItem,
+    WeakWord,
 )
 from app.services import exam as exam_service
 from app.services import exercise as exercise_service
+from app.services.class_gaps import (
+    aggregate_low_items,
+    aggregate_word_gaps,
+    snapshot_label,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -578,4 +586,88 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         pending_count=pending_count,
         students=board_students,
         items=skeleton,
+    )
+
+
+@router.get("/{code}/weak-spots", response_model=ClassWeakSpots)
+def read_class_weak_spots(
+    session: SessionDep, code: str, current_user: CurrentUser
+) -> ClassWeakSpots:
+    """今日当前发布的共同漏词和偏低题目。只读已出分的转写，不进名单轮询。"""
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    exercise = (
+        session.get(ClassroomExercise, classroom.current_exercise_id)
+        if classroom.current_exercise_id is not None
+        else None
+    )
+    if exercise is None:
+        return ClassWeakSpots(word_gaps=[], low_items=[])
+    today = _today_in_practice_tz()
+    session_ids = list(
+        session.exec(
+            select(PracticeSession.id).where(
+                PracticeSession.classroom_id == classroom.id,
+                PracticeSession.session_date == today,
+                PracticeSession.mode == "daily",
+                PracticeSession.assignment_id == exercise.id,
+            )
+        ).all()
+    )
+    if not session_ids:
+        return ClassWeakSpots(word_gaps=[], low_items=[])
+    attempts = session.exec(
+        select(Attempt)
+        .options(
+            load_only(
+                Attempt.id,  # ty: ignore[invalid-argument-type]
+                Attempt.student_id,  # ty: ignore[invalid-argument-type]
+                Attempt.item_id,  # ty: ignore[invalid-argument-type]
+                Attempt.item_type,  # ty: ignore[invalid-argument-type]
+                Attempt.overall,  # ty: ignore[invalid-argument-type]
+                Attempt.transcript,  # ty: ignore[invalid-argument-type]
+                Attempt.item_snapshot,  # ty: ignore[invalid-argument-type]
+                Attempt.created_at,  # ty: ignore[invalid-argument-type]
+                Attempt.status,  # ty: ignore[invalid-argument-type]
+            )
+        )
+        .where(
+            col(Attempt.session_id).in_(session_ids),
+            Attempt.status == AttemptStatus.DONE,
+        )
+        .order_by(col(Attempt.created_at))
+    ).all()
+    latest: dict[tuple[uuid.UUID, uuid.UUID], Attempt] = {}
+    for attempt in attempts:
+        if attempt.student_id is None:
+            continue
+        latest[(attempt.student_id, attempt.item_id)] = attempt
+    word_rows: list[tuple[uuid.UUID, str, str]] = []
+    item_rows: list[tuple[uuid.UUID, uuid.UUID, str, str, int | None]] = []
+    for attempt in latest.values():
+        assert attempt.student_id is not None
+        snapshot = (
+            attempt.item_snapshot if isinstance(attempt.item_snapshot, dict) else None
+        )
+        raw_text = snapshot.get("text") if snapshot is not None else None
+        reference = raw_text if isinstance(raw_text, str) else ""
+        if attempt.item_type in (AttemptItemType.PASSAGE, AttemptItemType.REPEAT):
+            word_rows.append((attempt.student_id, reference, attempt.transcript or ""))
+        item_rows.append(
+            (
+                attempt.student_id,
+                attempt.item_id,
+                attempt.item_type,
+                snapshot_label(snapshot, attempt.item_type),
+                attempt.overall,
+            )
+        )
+    return ClassWeakSpots(
+        word_gaps=[
+            WeakWord(word=word, student_count=count)
+            for word, count in aggregate_word_gaps(word_rows)
+        ],
+        low_items=[
+            WeakItem.model_validate(item) for item in aggregate_low_items(item_rows)
+        ],
     )

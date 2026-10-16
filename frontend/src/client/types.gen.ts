@@ -311,6 +311,14 @@ export type ClassSizeUpdate = {
     class_size: number;
 };
 
+/**
+ * 当前发布、今日会话里的共同漏词和偏低题目。
+ */
+export type ClassWeakSpots = {
+    word_gaps: Array<WeakWord>;
+    low_items: Array<WeakItem>;
+};
+
 export type ComposerLibraryData = {
     passages?: Array<PassageWithSentences>;
     sentences?: Array<SentenceWithPassage>;
@@ -444,6 +452,15 @@ export type ExploreRequest = {
 export type ExploreStarted = {
     session_id: string;
     unit_title: string;
+};
+
+export type ExpressionFavoriteCreate = {
+    texts: Array<(string)>;
+};
+
+export type ExpressionFavoritePublic = {
+    id: string;
+    text: string;
 };
 
 export type FollowupCreate = {
@@ -1964,6 +1981,20 @@ export type VocabularyWrongWords = {
     items?: Array<VocabularyWrongWordItem>;
 };
 
+export type WeakItem = {
+    item_id: string;
+    item_type: string;
+    label: string;
+    scored_count: number;
+    avg_overall: number;
+    low_count: number;
+};
+
+export type WeakWord = {
+    word: string;
+    student_count: number;
+};
+
 export type AdminListPassagesData = {
     ids?: (Array<(string)> | null);
     limit?: (number | null);
@@ -2408,6 +2439,12 @@ export type ClassesReadClassBoardData = {
 
 export type ClassesReadClassBoardResponse = (BoardData);
 
+export type ClassesReadClassWeakSpotsData = {
+    code: string;
+};
+
+export type ClassesReadClassWeakSpotsResponse = (ClassWeakSpots);
+
 export type ClassesReadStudentTrailData = {
     code: string;
     /**
@@ -2532,6 +2569,26 @@ export type ClassesRemoveFrameFavoriteData = {
 };
 
 export type ClassesRemoveFrameFavoriteResponse = (Array<SentenceFramePublic>);
+
+export type ClassesListMyExpressionFavoritesData = {
+    code: string;
+};
+
+export type ClassesListMyExpressionFavoritesResponse = (Array<ExpressionFavoritePublic>);
+
+export type ClassesAddExpressionFavoritesData = {
+    code: string;
+    requestBody: ExpressionFavoriteCreate;
+};
+
+export type ClassesAddExpressionFavoritesResponse = (Array<ExpressionFavoritePublic>);
+
+export type ClassesRemoveExpressionFavoriteData = {
+    code: string;
+    favoriteId: string;
+};
+
+export type ClassesRemoveExpressionFavoriteResponse = (Array<ExpressionFavoritePublic>);
 
 export type ClassesReadComposerDraftData = {
     code: string;

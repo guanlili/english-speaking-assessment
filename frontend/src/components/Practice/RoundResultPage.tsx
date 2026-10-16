@@ -12,6 +12,7 @@ import {
   Trophy,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { toast } from "sonner"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
@@ -43,10 +44,16 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { useExpressionFavorites } from "@/hooks/useExpressionFavorites"
 import { displayName, loadStudent } from "@/lib/classroom-student"
-import { savedExpressionsKey } from "@/lib/favorites"
+import {
+  manualSaveOutcome,
+  readSavedExpressions,
+  saveSavedExpressions,
+} from "@/lib/favorites"
 import { useI18n } from "@/lib/i18n"
 import { EXPLAIN, ITEM_TYPE_LABELS, TERMS } from "@/lib/terms"
+import { extractErrorMessage } from "@/utils"
 
 export function RoundResultPage() {
   const { t } = useI18n()
@@ -56,6 +63,7 @@ export function RoundResultPage() {
   })
   const navigate = useNavigate()
   const student = loadStudent(code)
+  const expressions = useExpressionFavorites(code, student)
   // 结果绑定实际完成会话（练习页在录音/完成时传入的 session；探索轮兼容 explore）
   const sessionId = sessionParam ?? exploreSessionId
 
@@ -674,8 +682,47 @@ export function RoundResultPage() {
                   <RubricBlock
                     rubric={attempt.rubric}
                     engine=""
-                    savedExpressionsKey={
-                      student ? savedExpressionsKey(student) : undefined
+                    onSaveUpgrades={
+                      student
+                        ? async (texts) => {
+                            try {
+                              const stored =
+                                await expressions.add.mutateAsync(texts)
+                              const outcome = manualSaveOutcome(
+                                texts,
+                                stored.map((row) => row.text),
+                              )
+                              if (outcome.complete) {
+                                toast.success(
+                                  t({
+                                    zh: "已收藏到我的成长",
+                                    en: "Saved to My Growth",
+                                  }),
+                                )
+                                return true
+                              }
+                              const local = readSavedExpressions(student)
+                              const pending = [
+                                ...local,
+                                ...outcome.missing.filter(
+                                  (text) =>
+                                    !local.some((item) => item.trim() === text),
+                                ),
+                              ]
+                              saveSavedExpressions(student, pending)
+                              toast.message(
+                                t({
+                                  zh: `收藏最多 50 条，这次没存上：${outcome.missing.join("；")}`,
+                                  en: `Favorites hold 50. Not saved this time: ${outcome.missing.join("; ")}`,
+                                }),
+                              )
+                              return false
+                            } catch (err) {
+                              toast.error(extractErrorMessage(err))
+                              return false
+                            }
+                          }
+                        : undefined
                     }
                   />
                   <VocabBlock vocab={attempt.vocab} />

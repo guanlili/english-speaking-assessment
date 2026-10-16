@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { assignmentItemKey } from "@/lib/assignment-order"
+import { itemsUsingDeviceSpeech, passageSpeechItems } from "@/lib/device-speech"
 import { useI18n } from "@/lib/i18n"
 import { ITEM_TYPE_LABELS } from "@/lib/terms"
 import { formatDateTime } from "@/lib/time"
@@ -54,6 +55,42 @@ export function PreviewDialog({
   onPublish: () => void
 }) {
   const { t } = useI18n()
+  const deviceSpeech = itemsUsingDeviceSpeech(
+    planItems.flatMap((item) => {
+      if (item.type === "passage") {
+        const source = selectedPassages.find(
+          (passage) => passage.id === item.id,
+        )
+        return passageSpeechItems({
+          title: source?.title ?? item.id,
+          audioUrl: source?.audio_url,
+          readingSplit: source?.reading_split,
+          segments: source?.reading_segments,
+        })
+      }
+      if (item.type === "repeat") {
+        const source = selectedSentences.find(
+          (sentence) => sentence.id === item.id,
+        )
+        return {
+          type: item.type,
+          label: (source?.text ?? item.id).replace(/\s+/g, " ").slice(0, 60),
+          audioUrl: source?.audio_url,
+        }
+      }
+      if (item.type === "question") {
+        const source = scenarioQuestions.find(
+          (question) => question.id === item.id,
+        )
+        return {
+          type: item.type,
+          label: (source?.text ?? item.id).replace(/\s+/g, " ").slice(0, 60),
+          audioUrl: source?.audio_url,
+        }
+      }
+      return { type: item.type, label: item.id, audioUrl: "skip" }
+    }),
+  )
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
@@ -68,6 +105,18 @@ export function PreviewDialog({
             })}
           </DialogDescription>
         </DialogHeader>
+        {deviceSpeech.length > 0 && (
+          <p className="rounded-xl border border-dashed px-4 py-3 text-sm text-muted-foreground">
+            {t({
+              zh: `以下 ${deviceSpeech.length} 题没有标准音，学生会听到各自设备的合成语音：${deviceSpeech
+                .map((item) => item.label)
+                .join("；")}`,
+              en: `${deviceSpeech.length} item(s) have no model audio, so students hear their device's voice: ${deviceSpeech
+                .map((item) => item.label)
+                .join("; ")}`,
+            })}
+          </p>
+        )}
         <ol className="space-y-3">
           {planItems.map((item, index) => {
             const source =
