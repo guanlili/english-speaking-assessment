@@ -3,6 +3,8 @@ import { Loader2, TriangleAlert } from "lucide-react"
 import { AttemptsService } from "@/client"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { ENGINE_LABELS, RubricBlock } from "@/components/Practice/FeedbackCard"
+import { TeacherFeedbackBlock } from "@/components/Practice/TeacherFeedbackBlock"
+import { TeacherFeedbackEditor } from "@/components/Teaching/TeacherFeedbackEditor"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -35,6 +37,7 @@ export function AttemptFeedbackDialog({
     queryFn: () => AttemptsService.readAttempt({ attemptId: attemptId! }),
     enabled: open && attemptId !== null,
     retry: 1,
+    refetchOnWindowFocus: false,
   })
   const attempt = attemptQuery.data
 
@@ -103,6 +106,12 @@ export function AttemptFeedbackDialog({
 
         {attempt && (
           <div className="space-y-3">
+            <TeacherFeedbackBlock attempt={attempt} />
+            <TeacherFeedbackEditor
+              key={`${attempt.id}:${attempt.teacher_feedback_revision ?? 0}`}
+              attempt={attempt}
+              reload={() => void attemptQuery.refetch()}
+            />
             {/* 题干（提交时快照）：题库此后被编辑/删除不影响此处展示 */}
             {(attempt.item_title || attempt.item_text) && (
               <div>

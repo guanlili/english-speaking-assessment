@@ -273,6 +273,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                     Attempt.item_type,  # ty: ignore[invalid-argument-type]
                     Attempt.status,  # ty: ignore[invalid-argument-type]
                     Attempt.overall,  # ty: ignore[invalid-argument-type]
+                    Attempt.teacher_focus,  # ty: ignore[invalid-argument-type]
                 )
             )
             .where(
@@ -350,6 +351,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                                 status=attempt.status,
                                 overall=attempt.overall,
                                 attempt_id=attempt.id,
+                                teacher_focus=attempt.teacher_focus,
                             )
                         )
             # 复述题位
@@ -376,6 +378,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                         status=attempt.status,
                         overall=attempt.overall,
                         attempt_id=attempt.id,
+                        teacher_focus=attempt.teacher_focus,
                     )
                 )
             # 问答题位
@@ -406,6 +409,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                         status=attempt.status,
                         overall=attempt.overall,
                         attempt_id=attempt.id,
+                        teacher_focus=attempt.teacher_focus,
                     )
                 )
             # 已做但不在骨架的问答题（换题产生的额外题）
@@ -425,6 +429,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
                         status=attempt.status,
                         overall=attempt.overall,
                         attempt_id=attempt.id,
+                        teacher_focus=attempt.teacher_focus,
                     )
                 )
             # 说明题位：已读=done / 未读=missing；不进评分与提交统计

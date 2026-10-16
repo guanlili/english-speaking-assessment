@@ -56,7 +56,10 @@ def list_classroom_exercises(
     _require_classroom_teacher(classroom, current_user)
     exercises = session.exec(
         select(ClassroomExercise)
-        .where(ClassroomExercise.classroom_id == classroom.id)
+        .where(
+            ClassroomExercise.classroom_id == classroom.id,
+            col(ClassroomExercise.status).in_(["published", "archived"]),
+        )
         .order_by(col(ClassroomExercise.version_no).desc())
     ).all()
     return [
@@ -225,6 +228,7 @@ def read_exercise_results(
                     status=attempt.status,
                     overall=attempt.overall,
                     attempt_id=attempt.id,
+                    teacher_focus=attempt.teacher_focus,
                 )
             )
         exam_switches: int | None = None

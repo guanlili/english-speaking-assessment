@@ -671,6 +671,13 @@ class ClassroomExercise(SQLModel, table=True):
     version_no: int = Field(default=1, ge=1)
     title: str = Field(default="课堂练习", max_length=255)
     status: str = Field(default="published", max_length=16, index=True)
+    # 指定学生补练：独立快照和固定名单，不改变课堂 current_exercise_id。
+    target_students: list[dict[str, str]] | None = Field(
+        default=None, sa_column=Column(JSON, nullable=True)
+    )
+    source_exercise_id: uuid.UUID | None = Field(
+        default=None, foreign_key="classroom_exercise.id", ondelete="SET NULL"
+    )
     # [{type, id, text, translation, audio_url, suggested_seconds, replay_limit, band}]
     snapshot_items: list[dict[str, object]] = Field(
         sa_column=Column("snapshot_items", JSON, nullable=False)
@@ -851,6 +858,13 @@ class PracticeSession(SQLModel, table=True):
             unique=True,
             postgresql_where=text("assignment_id IS NOT NULL"),
         ),
+        Index(
+            "ix_practice_session_followup",
+            "student_id",
+            "assignment_id",
+            unique=True,
+            postgresql_where=text("mode = 'followup' AND assignment_id IS NOT NULL"),
+        ),
         # 自主练习轮（无发布）：daily 模式下每个学生每天只开一条自主轮；
         # 删篇导致 passage_id 变 NULL 时仍落在同一条（COALESCE 保证 NULL 不冲突）。
         Index(
@@ -1025,6 +1039,18 @@ class Attempt(SQLModel, table=True):
     # rubric 四维与模拟分（仅问答 + ark 引擎；PRD US-08）：四维 0-4、mock_score 0-9、
     # upgrades 升级表达。mock 引擎或模型失败时为 null（界面显示「建议暂缺」）
     rubric: dict[str, object] | None = Field(default=None, sa_column=Column(JSON))
+    teacher_feedback: str | None = Field(default=None, max_length=4000)
+    teacher_focus: bool = Field(
+        default=False, sa_column_kwargs={"server_default": "false"}
+    )
+    teacher_feedback_author: str | None = Field(default=None, max_length=255)
+    teacher_feedback_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    teacher_feedback_revision: int = Field(
+        default=0, sa_column_kwargs={"server_default": "0"}
+    )
     error: str | None = Field(default=None, max_length=512)
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
@@ -1054,6 +1080,11 @@ class AttemptPublic(SQLModel):
     advice: list[str] | None = None
     vocab: dict[str, object] | None = None
     rubric: dict[str, object] | None = None
+    teacher_feedback: str | None = None
+    teacher_focus: bool = False
+    teacher_feedback_author: str | None = None
+    teacher_feedback_at: datetime | None = None
+    teacher_feedback_revision: int = 0
     error: str | None = None
     created_at: datetime | None = None
 
@@ -1103,6 +1134,11 @@ class PlanAttempt(SQLModel):
     # rubric 四维与升级表达（问答 + ark）——结果页四维条形用
     rubric: dict[str, object] | None = None
     error: str | None = None
+
+    teacher_feedback: str | None = None
+    teacher_focus: bool = False
+    teacher_feedback_author: str | None = None
+    teacher_feedback_at: datetime | None = None
 
 
 # 学习路径（GET /classes/{code}/path，主题探索与首页消费）
@@ -1210,6 +1246,8 @@ class BoardItem(SQLModel):
     status: str
     overall: int | None = None
     attempt_id: uuid.UUID | None = None
+
+    teacher_focus: bool = False
 
 
 class BoardStudent(SQLModel):

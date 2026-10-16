@@ -19,6 +19,7 @@ from app.api.routes import (  # noqa: F401, I001  # 端点注册副作用
     class_frames,
     class_composer,
     class_diagnostics,
+    class_followups,
 )
 from app.api.routes.class_shared import (  # noqa: F401
     _get_classroom,

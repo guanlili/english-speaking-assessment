@@ -13,9 +13,9 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, select
+from sqlmodel import Field, Session, SQLModel, select
 
-from app.api.deps import OptionalCurrentUser, ScoringSubmitter, SessionDep
+from app.api.deps import CurrentUser, OptionalCurrentUser, ScoringSubmitter, SessionDep
 from app.core.config import settings
 from app.core.ratelimit import SlidingWindowLimiter
 from app.core.storage import AUDIO_SUFFIX_TO_MIME as _AUDIO_MIME_BY_SUFFIX
@@ -38,7 +38,7 @@ from app.models import (
 )
 from app.scoring.audio_convert import probe_audio
 from app.services import exam as exam_service
-from app.services import reading
+from app.services import followups, reading
 from app.services.audio_playback import playback_path
 
 logger = logging.getLogger(__name__)
@@ -275,6 +275,11 @@ def _attempt_public(
         public.advice = None
         public.vocab = None
         public.rubric = None
+        public.teacher_feedback = None
+        public.teacher_focus = False
+        public.teacher_feedback_author = None
+        public.teacher_feedback_at = None
+        public.teacher_feedback_revision = 0
         public.error = None
     return public
 
@@ -365,6 +370,8 @@ def create_attempt_upload(
     exam_assignment_id: uuid.UUID | None = None
     if session_id is not None:
         exam_session = session.get(PracticeSession, session_id)
+        if exam_session is not None and student is not None:
+            followups.check_session_open(session, exam_session, student)
         if exam_session is not None and exam_session.assignment_id is not None:
             bound_exercise = session.get(ClassroomExercise, exam_session.assignment_id)
             if bound_exercise is not None and bound_exercise.is_exam:
@@ -479,6 +486,13 @@ def create_attempt_upload(
     # 不留不受 TTL 管理的孤儿。数据库已提交的录音不在补偿范围（被行引用，
     # _delete_unreferenced_audio 会放行），评分投递失败由恢复机制接手
     try:
+        if session_id is not None and student is not None:
+            ps = session.get(PracticeSession, session_id)
+            if ps is not None and ps.mode == followups.FOLLOWUP:
+                task = session.get(ClassroomExercise, ps.assignment_id)
+                if task is not None:
+                    session.refresh(task, with_for_update=True)
+                followups.check_session_open(session, ps, student)
         if exam_one_attempt and session_id is not None:
             # 新短事务：先取发布快照（无锁读），再锁会话行做毫秒级
             # 「复查 + 插入」临界区
@@ -589,6 +603,38 @@ def read_attempt(
         attempt,
         feedback_masked=_feedback_masked_for_user(session, attempt, current_user),
     )
+
+
+class TeacherFeedbackWrite(SQLModel):
+    text: str = Field(max_length=4000)
+    focus: bool = False
+    expected_revision: int = Field(ge=0)
+
+
+@router.put("/attempts/{attempt_id}/teacher-feedback", response_model=AttemptPublic)
+def write_teacher_feedback(
+    session: SessionDep,
+    attempt_id: uuid.UUID,
+    body: TeacherFeedbackWrite,
+    current_user: CurrentUser,
+) -> AttemptPublic:
+    from app.crud import update_teacher_feedback
+
+    attempt = session.get(Attempt, attempt_id)
+    if attempt is None or attempt.student_id is None:
+        raise HTTPException(404, detail="Attempt not found")
+    if current_user.role == "student":
+        raise HTTPException(403, detail="Teacher access required")
+    _require_attempt_access(session, attempt, current_user)
+    update_teacher_feedback(
+        session,
+        attempt,
+        text=body.text,
+        focus=body.focus,
+        author=current_user.full_name or current_user.email or "Teacher",
+        expected_revision=body.expected_revision,
+    )
+    return _attempt_public(attempt)
 
 
 @router.get("/attempts/{attempt_id}/audio")

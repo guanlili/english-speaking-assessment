@@ -67,6 +67,11 @@ export type AttemptPublic = {
     rubric?: ({
     [key: string]: unknown;
 } | null);
+    teacher_feedback?: (string | null);
+    teacher_focus?: boolean;
+    teacher_feedback_author?: (string | null);
+    teacher_feedback_at?: (string | null);
+    teacher_feedback_revision?: number;
     error?: (string | null);
     created_at?: (string | null);
 };
@@ -136,6 +141,7 @@ export type BoardItem = {
     status: string;
     overall?: (number | null);
     attempt_id?: (string | null);
+    teacher_focus?: boolean;
 };
 
 export type BoardStudent = {
@@ -440,6 +446,49 @@ export type ExploreStarted = {
     unit_title: string;
 };
 
+export type FollowupCreate = {
+    source_exercise_id: string;
+    title: string;
+    student_ids: Array<(string)>;
+    item_ids: Array<(string)>;
+};
+
+export type FollowupCreated = {
+    id: string;
+};
+
+export type FollowupItem = {
+    id: string;
+    type: string;
+    text: string;
+};
+
+export type FollowupProgress = {
+    student_id: string;
+    display_name: string;
+    done_count: number;
+    total_count: number;
+    has_pending: boolean;
+    has_failures: boolean;
+    session_id: (string | null);
+};
+
+export type FollowupPublic = {
+    id: string;
+    title: string;
+    status: 'followup' | 'followup_closed';
+    source_exercise_id: (string | null);
+    created_at: (string | null);
+    item_count: number;
+    targets: Array<FollowupProgress>;
+};
+
+export type status = 'followup' | 'followup_closed';
+
+export type FollowupStarted = {
+    session_id: string;
+};
+
 export type FrameFavoriteRequest = {
     frame_id: string;
 };
@@ -644,6 +693,10 @@ export type PlanAttempt = {
     [key: string]: unknown;
 } | null);
     error?: (string | null);
+    teacher_feedback?: (string | null);
+    teacher_focus?: boolean;
+    teacher_feedback_author?: (string | null);
+    teacher_feedback_at?: (string | null);
 };
 
 export type PlanItem = {
@@ -1071,6 +1124,12 @@ export type StudentResetRow = {
  */
 export type StudentUpdate = {
     display_name: string;
+};
+
+export type TeacherFeedbackWrite = {
+    text: string;
+    focus?: boolean;
+    expected_revision: number;
 };
 
 export type TodayPlan = {
@@ -2272,6 +2331,13 @@ export type AttemptsReadAttemptData = {
 
 export type AttemptsReadAttemptResponse = (AttemptPublic);
 
+export type AttemptsWriteTeacherFeedbackData = {
+    attemptId: string;
+    requestBody: TeacherFeedbackWrite;
+};
+
+export type AttemptsWriteTeacherFeedbackResponse = (AttemptPublic);
+
 export type AttemptsReadAttemptAudioData = {
     attemptId: string;
 };
@@ -2499,6 +2565,41 @@ export type ClassesReadClassroomDiagnosticsData = {
 };
 
 export type ClassesReadClassroomDiagnosticsResponse = (ClassroomDiagnostics);
+
+export type ClassesReadFollowupItemsData = {
+    code: string;
+    exerciseId: string;
+};
+
+export type ClassesReadFollowupItemsResponse = (Array<FollowupItem>);
+
+export type ClassesCreateClassFollowupData = {
+    code: string;
+    requestBody: FollowupCreate;
+};
+
+export type ClassesCreateClassFollowupResponse = (FollowupCreated);
+
+export type ClassesListClassFollowupsData = {
+    code: string;
+    limit?: number;
+};
+
+export type ClassesListClassFollowupsResponse = (Array<FollowupPublic>);
+
+export type ClassesStartClassFollowupData = {
+    code: string;
+    taskId: string;
+};
+
+export type ClassesStartClassFollowupResponse = (FollowupStarted);
+
+export type ClassesCancelClassFollowupData = {
+    code: string;
+    taskId: string;
+};
+
+export type ClassesCancelClassFollowupResponse = (unknown);
 
 export type LoginReadLoginOptionsResponse = (LoginOptions);
 

@@ -94,6 +94,11 @@ export function BoardStudentRow({
               <span className="block break-words whitespace-normal leading-5">
                 {name}
               </span>
+              {student.items.some((item) => item.teacher_focus) && (
+                <span className="text-xs font-medium text-primary">
+                  {t({ zh: "教师重点关注", en: "Teacher focus area" })}
+                </span>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -288,7 +293,7 @@ export function BoardStudentRow({
                       {t({ zh: "评分中", en: "Scoring" })}
                     </span>
                   )}
-                  {item.attempt_id && item.status === "done" && (
+                  {item.attempt_id && item.type !== "instruction" && (
                     <>
                       <RecordingButton
                         key={item.attempt_id}

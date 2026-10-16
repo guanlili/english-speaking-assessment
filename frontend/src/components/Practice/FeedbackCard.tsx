@@ -2,6 +2,7 @@ import { Bookmark, Loader2, RefreshCw, TriangleAlert } from "lucide-react"
 import type { ReactNode } from "react"
 import type { AttemptPublic } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
+import { TeacherFeedbackBlock } from "@/components/Practice/TeacherFeedbackBlock"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -227,6 +228,7 @@ function FeedbackCard({
   if (attempt.status === "queued" || attempt.status === "scoring") {
     return (
       <Card>
+        <TeacherFeedbackBlock attempt={attempt} />
         <CardContent className="flex items-center gap-3 py-6">
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
           <span className="text-muted-foreground">
@@ -243,6 +245,7 @@ function FeedbackCard({
   if (attempt.status === "failed") {
     return (
       <Card>
+        <TeacherFeedbackBlock attempt={attempt} />
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <TriangleAlert className="size-4 text-destructive" />
@@ -268,6 +271,7 @@ function FeedbackCard({
 
   return (
     <Card>
+      <TeacherFeedbackBlock attempt={attempt} />
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle className="text-base">
           {t({ zh: "反馈", en: "Feedback" })}

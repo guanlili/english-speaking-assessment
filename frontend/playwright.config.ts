@@ -12,6 +12,7 @@ const mockedFiles = [
   "exam-automated",
   "exam-rules",
   "general-modes",
+  "feedback-followups",
   "history-pagination",
   "home",
   "instruction-page",

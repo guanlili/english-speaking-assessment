@@ -414,6 +414,10 @@ def read_today_plan(
             vocab=a.vocab if isinstance(a.vocab, dict) else None,
             rubric=a.rubric if isinstance(a.rubric, dict) else None,
             error=a.error,
+            teacher_feedback=a.teacher_feedback,
+            teacher_focus=a.teacher_focus,
+            teacher_feedback_author=a.teacher_feedback_author,
+            teacher_feedback_at=a.teacher_feedback_at,
         )
         for a in attempts
     ]
@@ -463,7 +467,7 @@ def read_today_plan(
         assigned_unit_title=assigned_title,
         items=items,
         attempts=plan_attempts,
-        questions_exhausted=exhausted,
+        questions_exhausted=exhausted or practice_session.mode == "followup",
         exam=exam_info,
         gamification=GamificationInfo(
             xp=student.xp,
@@ -512,6 +516,8 @@ def read_next_question(
     # 题单；换来的题经 attempt.item_snapshot 进结果页）。assigned_items 与
     # 发布快照同步：从指派问答题所在情景的题库取未做题，排掉已指派 + 本轮
     # 已做 + 前端传来的全部计划题（含发布全情景题时即用尽）。
+    if practice_session.mode == "followup":
+        raise HTTPException(422, detail="Followup question exchange not allowed")
     # 不再限制 session_id 为空：旧会话（已作答过的轮）同样换题，
     # ScenarioQuestionPublic 透传考试字段（题型/级别/话题卡/准备时间）。
     # 入口与排除集均以**旧会话绑定的练习**为准——老师清除指派后旧会话仍

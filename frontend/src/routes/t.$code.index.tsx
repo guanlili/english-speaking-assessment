@@ -19,6 +19,7 @@ import { BoardStatsCards } from "@/components/Teaching/BoardStatsCards"
 import { BoardTeachingActions } from "@/components/Teaching/BoardTeachingActions"
 import { ClassroomIssues } from "@/components/Teaching/ClassroomIssues"
 import { ExerciseHistory } from "@/components/Teaching/ExerciseHistory"
+import { FollowupManager } from "@/components/Teaching/FollowupManager"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -372,6 +373,11 @@ function TeacherBoardPage() {
             />
           </TabsContent>
           <TabsContent value="results" className="space-y-6">
+            <FollowupManager
+              code={code}
+              students={board.students}
+              currentExerciseId={board.current_exercise?.id}
+            />
             <ClassroomIssues
               code={code}
               onStudent={(id) => {
