@@ -16,6 +16,18 @@ const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
     zh: "句子数量已变化，请刷新后重新设置逐句时长。",
     en: "The sentence count has changed. Refresh and set the sentence durations again.",
   },
+  课后作业不能开启模考: {
+    zh: "课后作业不能开启模考。请关掉模考后再发布为课后作业。",
+    en: "Homework cannot be an exam. Turn off exam mode, then publish it as homework.",
+  },
+  没有课后作业: {
+    zh: "老师还没有布置课后作业。",
+    en: "No homework has been assigned yet.",
+  },
+  课后作业只接受题目列表: {
+    zh: "课后作业只能按题目发布或撤回。",
+    en: "Homework can only be published or withdrawn with a question list.",
+  },
   "Automated exam audio missing: ": {
     zh: "自动考试包含缺少音频的题目。请在题库的「考试流程设置」中上传或生成音频，再重新发布。",
     en: "Some exam items have no audio. Upload or generate audio in Exam flow settings, then publish again.",

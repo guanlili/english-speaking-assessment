@@ -1,6 +1,7 @@
 import { useQueries } from "@tanstack/react-query"
 import { AttemptsService, type BoardItem } from "@/client"
 import { ENGINE_LABELS, RubricBlock } from "@/components/Practice/FeedbackCard"
+import { SkippedSpans } from "@/components/Practice/SkippedSpans"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -178,6 +179,11 @@ export function StudentFeedbackDialog({
                           })}
                         </p>
                       )}
+                      <SkippedSpans
+                        reference={attempt.item_text}
+                        transcript={attempt.transcript}
+                        itemType={attempt.item_type}
+                      />
                       {attempt.item_type === "question" && (
                         <div className="space-y-2">
                           <p className="text-sm font-medium">

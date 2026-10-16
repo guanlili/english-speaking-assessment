@@ -29,6 +29,7 @@ from app.api.routes.class_shared import (
     _repeat_attempts_from_snapshot,
     _repeat_sentences_of_passages,
     _resolve_active_daily_session,
+    _resolve_homework_session,
     _scenario_for_topic,
     _snapshot_int,
     _snapshot_items_of,
@@ -69,6 +70,16 @@ from app.services import reading
 logger = logging.getLogger(__name__)
 
 
+def _attempt_item_text(attempt: Attempt) -> str | None:
+    """作答提交时的参考文本。自主练习回看不能改用后来编辑过的题库正文。"""
+    snapshot = attempt.item_snapshot
+    if isinstance(snapshot, dict):
+        text = snapshot.get("text")
+        if isinstance(text, str):
+            return text
+    return None
+
+
 class ClassroomRevision(SQLModel):
     revision: str
 
@@ -86,6 +97,7 @@ def read_classroom_revision(
         {
             "date": str(_today_in_practice_tz()),
             "exercise": str(classroom.current_exercise_id),
+            "homework": str(classroom.homework_exercise_id),
             "unit": str(classroom.current_unit_id),
             "items": classroom.assigned_items,
             "types": [
@@ -105,6 +117,7 @@ def read_today_plan(
     code: str,
     current_user: StudentUserDep,
     session_id: uuid.UUID | None = Query(default=None),
+    slot: str = Query(default="class"),
 ) -> Any:
     """今天的练习计划：3 句听后复述 + 2 道该档情景问答（US-05）。
 
@@ -118,6 +131,8 @@ def read_today_plan(
         practice_session = session.get(PracticeSession, session_id)
         if practice_session is None or practice_session.student_id != student.id:
             raise HTTPException(status_code=404, detail="Session not found")
+    elif slot == "homework":
+        practice_session = _resolve_homework_session(session, classroom, student, today)
     else:
         # daily 当前轮：today / next-question / board 都用同一定位逻辑
         practice_session = _resolve_active_daily_session(
@@ -414,6 +429,7 @@ def read_today_plan(
             vocab=a.vocab if isinstance(a.vocab, dict) else None,
             rubric=a.rubric if isinstance(a.rubric, dict) else None,
             error=a.error,
+            item_text=_attempt_item_text(a),
             teacher_feedback=a.teacher_feedback,
             teacher_focus=a.teacher_focus,
             teacher_feedback_author=a.teacher_feedback_author,
@@ -460,6 +476,11 @@ def read_today_plan(
         )
         else None
     )
+    homework = (
+        session.get(ClassroomExercise, classroom.homework_exercise_id)
+        if classroom.homework_exercise_id is not None
+        else None
+    )
     return TodayPlan(
         session_id=practice_session.id,
         classroom_code=classroom.code,
@@ -469,6 +490,8 @@ def read_today_plan(
         attempts=plan_attempts,
         questions_exhausted=exhausted or practice_session.mode == "followup",
         exam=exam_info,
+        homework_title=homework.title if homework is not None else None,
+        homework_exercise_id=homework.id if homework is not None else None,
         gamification=GamificationInfo(
             xp=student.xp,
             streak_days=student.streak_days,

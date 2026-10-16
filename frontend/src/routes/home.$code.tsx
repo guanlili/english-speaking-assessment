@@ -316,6 +316,25 @@ function HomePage() {
                           })}
                 <ArrowRight className="transition-transform group-hover:translate-x-1" />
               </Button>
+              {plan?.homework_title && (
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="min-h-11 border-white/30 bg-transparent text-paper-hero hover:bg-white/10"
+                  onClick={() =>
+                    void navigate({
+                      to: "/p/$code",
+                      params: { code },
+                      search: { homework: true },
+                    })
+                  }
+                >
+                  {t({
+                    zh: `课后作业 · ${plan.homework_title}`,
+                    en: `Homework · ${plan.homework_title}`,
+                  })}
+                </Button>
+              )}
               <span className="text-xs text-mint">
                 {t({
                   zh: "轻松开口，不怕说错",

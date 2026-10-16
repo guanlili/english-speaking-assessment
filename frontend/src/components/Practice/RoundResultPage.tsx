@@ -18,6 +18,7 @@ import { ClassesService } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { RubricBlock } from "@/components/Practice/FeedbackCard"
+import { SkippedSpans } from "@/components/Practice/SkippedSpans"
 import StudentShell from "@/components/Practice/StudentShell"
 import { TeacherFeedbackBlock } from "@/components/Practice/TeacherFeedbackBlock"
 import VocabBlock from "@/components/Practice/VocabBlock"
@@ -655,6 +656,11 @@ export function RoundResultPage() {
                 </span>
                 {attempt.transcript || t({ zh: "（无）", en: "(none)" })}
               </p>
+              <SkippedSpans
+                reference={attempt.item_text ?? item.text}
+                transcript={attempt.transcript}
+                itemType={item.type}
+              />
               <Separator />
               <div className="flex items-center gap-4 text-sm">
                 <span className="text-2xl font-bold tabular-nums">

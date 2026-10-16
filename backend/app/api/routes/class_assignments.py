@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import HTTPException
 from sqlmodel import SQLModel, col, select
@@ -91,6 +91,8 @@ class AssignmentRequest(SQLModel):
     assign_qa: bool | None = None
     # 按题指派（三题型独立）：传非空列表则取代单元指派；传空列表=清除回个人路径
     items: list[AssignmentItemIn] | None = None
+    # class=课上当前发布；homework=课后作业，不替换课上发布
+    slot: Literal["class", "homework"] = "class"
     # 可选练习标题；不传时使用“课堂练习”
     title: str | None = None
     # 模考模式：整场限时（分钟，5–240）；is_exam=true 时必填
@@ -259,6 +261,21 @@ def read_exercise_results(
     return out
 
 
+def _consume_assignment_draft(
+    session: SessionDep,
+    classroom: Any,
+    user_id: uuid.UUID,
+    body: AssignmentRequest,
+) -> None:
+    if body.draft_revision is None:
+        return
+    draft = get_composer_draft(session, classroom.id, user_id)
+    if (draft.revision if draft else 0) != body.draft_revision:
+        raise HTTPException(409, detail="Draft revision conflict")
+    if draft is not None:
+        session.delete(draft)
+
+
 @router.put("/{code}/assignment", response_model=AssignmentInfo | None)
 def set_assignment(
     session: SessionDep,
@@ -273,13 +290,47 @@ def set_assignment(
     """
     classroom = _get_classroom(session, code)
     _require_classroom_teacher(classroom, current_user)
-    if body.draft_revision is not None:
-        draft = get_composer_draft(session, classroom.id, current_user.id)
-        if (draft.revision if draft else 0) != body.draft_revision:
-            raise HTTPException(409, detail="Draft revision conflict")
-        if draft is not None:
-            session.delete(draft)
-    # 题型勾选：显式传值才更新（None=不动）
+    if body.slot == "homework":
+        if body.items is None:
+            raise HTTPException(status_code=422, detail="课后作业只接受题目列表")
+        if body.is_exam or body.automated_exam:
+            raise HTTPException(status_code=422, detail="课后作业不能开启模考")
+        _consume_assignment_draft(session, classroom, current_user.id, body)
+        if not body.items:
+            exercise_service.archive_homework_exercise(session, classroom)
+            session.add(classroom)
+            session.commit()
+            return None
+        exercise_service.validate_assignment_items(session, body.items)
+        homework_snapshots: list[dict[str, object]] = []
+        for item in body.items:
+            if item.type == AttemptItemType.PASSAGE:
+                passage = session.get(Passage, item.id)
+                if passage is None:
+                    raise HTTPException(
+                        status_code=404, detail="朗读篇目不存在或已停用"
+                    )
+                homework_snapshots.extend(reading.expand_reading_items(passage))
+            else:
+                homework_snapshots.append(
+                    exercise_service.build_snapshot_item(session, item.type, item.id)
+                )
+        exercise_service.publish_exercise(
+            session=session,
+            classroom=classroom,
+            created_by=current_user.id,
+            snapshots=homework_snapshots,
+            title=body.title,
+            assignment_items=[
+                {"type": str(item.type), "id": str(item.id)} for item in body.items
+            ],
+            slot="homework",
+        )
+        session.commit()
+        return None
+
+    _consume_assignment_draft(session, classroom, current_user.id, body)
+    # 题型勾选：显式传值才更新（None=不动）。课后作业请求不到这里。
     if body.assign_reading is not None:
         classroom.assign_reading = body.assign_reading
     if body.assign_repeat is not None:

@@ -1276,6 +1276,7 @@ export class ClassesService {
      * @param data The data for the request.
      * @param data.code
      * @param data.sessionId
+     * @param data.slot
      * @returns TodayPlan Successful Response
      * @throws ApiError
      */
@@ -1287,7 +1288,8 @@ export class ClassesService {
                 code: data.code
             },
             query: {
-                session_id: data.sessionId
+                session_id: data.sessionId,
+                slot: data.slot
             },
             errors: {
                 422: 'Validation Error'

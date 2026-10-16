@@ -40,6 +40,7 @@ export function PreviewDialog({
   changed,
   problemsCount,
   onPublish,
+  onPublishHomework,
 }: {
   code: string
   open: boolean
@@ -53,6 +54,7 @@ export function PreviewDialog({
   changed: boolean
   problemsCount: number
   onPublish: () => void
+  onPublishHomework?: () => void
 }) {
   const { t } = useI18n()
   const deviceSpeech = itemsUsingDeviceSpeech(
@@ -213,6 +215,18 @@ export function PreviewDialog({
           >
             {t({ zh: "返回修改", en: "Back to Edit" })}
           </Button>
+          {onPublishHomework && (
+            <Button
+              variant="outline"
+              disabled={publishPending || problemsCount > 0}
+              onClick={onPublishHomework}
+            >
+              {t({
+                zh: "发布为课后作业",
+                en: "Publish as homework",
+              })}
+            </Button>
+          )}
           <LoadingButton
             loading={publishPending}
             disabled={problemsCount > 0 || !changed}

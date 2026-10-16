@@ -3,6 +3,7 @@ import { Loader2, TriangleAlert } from "lucide-react"
 import { AttemptsService } from "@/client"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { ENGINE_LABELS, RubricBlock } from "@/components/Practice/FeedbackCard"
+import { SkippedSpans } from "@/components/Practice/SkippedSpans"
 import { TeacherFeedbackBlock } from "@/components/Practice/TeacherFeedbackBlock"
 import { TeacherFeedbackEditor } from "@/components/Teaching/TeacherFeedbackEditor"
 import { Badge } from "@/components/ui/badge"
@@ -165,6 +166,11 @@ export function AttemptFeedbackDialog({
                 ))}
               </ul>
             )}
+            <SkippedSpans
+              reference={attempt.item_text}
+              transcript={attempt.transcript}
+              itemType={attempt.item_type}
+            />
             {attempt.item_type === "question" && (
               <RubricBlock rubric={attempt.rubric} engine={attempt.engine} />
             )}
