@@ -82,13 +82,15 @@ def download_import_template(
 
 @router.post("/import-preview", response_model=QuestionBankImportPreview)
 async def question_bank_import_preview(
-    session: SessionDep, _teacher: TeacherUserDep, file: UploadFile
+    session: SessionDep, current_user: TeacherUserDep, file: UploadFile
 ) -> Any:
     """导入预览：解析、校验、查重与兜底提示，不落库。"""
     filename, raw = await _read_upload(file)
     # 解析与库内比对都放线程池：async 路由里同步跑会卡住事件循环
     parsed = await run_in_threadpool(io_service.parse_upload, filename, raw)
-    return await run_in_threadpool(io_service.preview_import, session, parsed)
+    return await run_in_threadpool(
+        io_service.preview_import, session, parsed, current_user
+    )
 
 
 @router.post("/import-confirm", response_model=QuestionBankImportResult)
@@ -123,14 +125,14 @@ async def question_bank_import_confirm(
 
 @router.post("/import-error-file", response_class=Response, responses=_BINARY_RESPONSES)
 async def question_bank_import_error_file(
-    session: SessionDep, _teacher: TeacherUserDep, file: UploadFile
+    session: SessionDep, current_user: TeacherUserDep, file: UploadFile
 ) -> Response:
     """下载待修正数据：全部错误行的原始字段 + 工作表 + 原始行号 + 原因。
     与上传格式同构，辅助列不干扰解析——修正后可直接重新上传。"""
     filename, raw = await _read_upload(file)
     parsed = await run_in_threadpool(io_service.parse_upload, filename, raw)
     data, filename_out, media_type = await run_in_threadpool(
-        io_service.build_error_file, session, parsed
+        io_service.build_error_file, session, parsed, current_user
     )
     return Response(
         content=data,

@@ -5,6 +5,10 @@ import { AdminService, type SentenceWithPassage } from "@/client"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import Pager from "@/components/Common/Pager"
 import AudioSetter from "@/components/Practice/AudioSetter"
+import {
+  CopyContentButton,
+  invalidateContentQueries,
+} from "@/components/Teaching/CopyContentButton"
 import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
 import { ReadOnlyContentBadge } from "@/components/Teaching/ReadOnlyContentBadge"
 import { Badge } from "@/components/ui/badge"
@@ -96,10 +100,7 @@ export function SentenceLibrary({
     queryFn: () => AdminService.listPassages(),
   })
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["admin", "sentences"] })
-    void queryClient.invalidateQueries({ queryKey: ["admin", "passages"] })
-  }
+  const invalidate = () => invalidateContentQueries(queryClient)
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => AdminService.deleteSentence({ sentenceId: id }),
@@ -288,11 +289,20 @@ export function SentenceLibrary({
                   {!canEdit(s.owner_id) && <ReadOnlyContentBadge />}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-1">
+              <div className="flex max-w-full flex-wrap items-center justify-end gap-1">
+                {s.id && (
+                  <CopyContentButton
+                    label={t({ zh: "复制复述句", en: "Copy repeat sentence" })}
+                    copy={() =>
+                      AdminService.copySentence({ sentenceId: s.id! })
+                    }
+                    onCopied={openEdit}
+                  />
+                )}
                 {canEdit(s.owner_id) && (
                   <Button
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon"
                     aria-label={t({
                       zh: "编辑复述句",
                       en: "Edit repeat sentence",
@@ -330,7 +340,7 @@ export function SentenceLibrary({
                 {canEdit(s.owner_id) && (
                   <Button
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon"
                     aria-label={t({
                       zh: "删除复述句",
                       en: "Delete repeat sentence",

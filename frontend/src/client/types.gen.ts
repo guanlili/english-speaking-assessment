@@ -46,6 +46,10 @@ export type AssignmentRequest = {
 
 export type slot = 'class' | 'homework';
 
+export type AttemptBatchRead = {
+    attempt_ids: Array<(string)>;
+};
+
 export type AttemptPublic = {
     id: string;
     item_type: string;
@@ -393,6 +397,14 @@ export type ExamItemSettings = {
     after_audio_seconds?: number;
     prep_seconds?: (number | null);
     audio_url?: (string | null);
+};
+
+export type ExamItemSettingsOut = {
+    wait_seconds?: number;
+    after_audio_seconds?: number;
+    prep_seconds?: (number | null);
+    audio_url?: (string | null);
+    can_replace_audio?: boolean;
 };
 
 export type ExamRuntimeState = {
@@ -823,6 +835,7 @@ export type QuestionBankOut = {
     order_index: number;
     text: string;
     translation?: (string | null);
+    audio_url?: (string | null);
     suggested_seconds: number;
     exam_kind?: (string | null);
     exam_level?: (string | null);
@@ -928,6 +941,7 @@ export type ScenarioOut = {
     id: string;
     topic: string;
     is_active: boolean;
+    owner_id?: (string | null);
     questions: Array<ScenarioQuestionPublic>;
 };
 
@@ -2208,6 +2222,36 @@ export type AdminListQuestionBankData = {
 
 export type AdminListQuestionBankResponse = (QuestionBankListOut);
 
+export type AdminCopyPassageData = {
+    passageId: string;
+};
+
+export type AdminCopyPassageResponse = (PassageWithSentences);
+
+export type AdminCopySentenceData = {
+    sentenceId: string;
+};
+
+export type AdminCopySentenceResponse = (SentenceWithPassage);
+
+export type AdminCopyScenarioData = {
+    scenarioId: string;
+};
+
+export type AdminCopyScenarioResponse = (ScenarioOut);
+
+export type AdminCopyQuestionData = {
+    questionId: string;
+};
+
+export type AdminCopyQuestionResponse = (QuestionBankOut);
+
+export type AdminCopyInstructionData = {
+    instructionId: string;
+};
+
+export type AdminCopyInstructionResponse = (InstructionPublic);
+
 export type AdminCreateQuestionsBatchData = {
     requestBody: BatchQuestionCreate;
     scenarioId: string;
@@ -2353,7 +2397,7 @@ export type AdminReadExamItemSettingsData = {
     itemType: 'passage' | 'repeat' | 'question' | 'instruction';
 };
 
-export type AdminReadExamItemSettingsResponse = (ExamItemSettings);
+export type AdminReadExamItemSettingsResponse = (ExamItemSettingsOut);
 
 export type AdminUpdateExamItemSettingsData = {
     itemId: string;
@@ -2361,7 +2405,7 @@ export type AdminUpdateExamItemSettingsData = {
     requestBody: ExamItemSettings;
 };
 
-export type AdminUpdateExamItemSettingsResponse = (ExamItemSettings);
+export type AdminUpdateExamItemSettingsResponse = (ExamItemSettingsOut);
 
 export type AdminReadMetricsResponse = (unknown);
 
@@ -2370,6 +2414,12 @@ export type AttemptsCreateAttemptUploadData = {
 };
 
 export type AttemptsCreateAttemptUploadResponse = (AttemptPublic);
+
+export type AttemptsReadAttemptsBatchData = {
+    requestBody: AttemptBatchRead;
+};
+
+export type AttemptsReadAttemptsBatchResponse = (Array<AttemptPublic>);
 
 export type AttemptsReadAttemptData = {
     attemptId: string;
@@ -2656,6 +2706,8 @@ export type ClassesCreateClassFollowupResponse = (FollowupCreated);
 export type ClassesListClassFollowupsData = {
     code: string;
     limit?: number;
+    offset?: number;
+    status?: 'active' | 'history' | 'all';
 };
 
 export type ClassesListClassFollowupsResponse = (Array<FollowupPublic>);

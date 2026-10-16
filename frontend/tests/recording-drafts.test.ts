@@ -12,6 +12,7 @@ import {
   MAX_DRAFTS_PER_OWNER,
   MAX_DRAFTS_TOTAL_BYTES,
   type RecordingDraftInput,
+  recordingLeaveState,
   saveRecordingDraft,
   selectEvictions,
   setDraftClockForTests,
@@ -110,10 +111,148 @@ test("上传接受后的题目级清理：同题不同幂等键一起清，他�
   await saveRecordingDraft(input({ idempotencyKey: "k1" }))
   await saveRecordingDraft(input({ idempotencyKey: "k2", itemId: "item-1" }))
   await saveRecordingDraft(input({ idempotencyKey: "k3", itemId: "item-2" }))
-  await deleteDraftsForItem("user-a", "FLOW", "item-1")
+  await deleteDraftsForItem("user-a", "FLOW", "session-1", "passage", "item-1")
   const metas = await listRecordingDrafts("user-a", "FLOW")
   assert.equal(metas.length, 1)
   assert.equal(metas[0].itemId, "item-2")
+})
+
+for (const [dimension, overrides] of Object.entries({
+  owner: { owner: "user-b" },
+  classroom: { classroomCode: "OTHER" },
+  session: { sessionId: "session-2" },
+  legacySession: { sessionId: null },
+  itemType: { itemType: "question" as const },
+  item: { itemId: "item-2" },
+})) {
+  test(`成功清理只限完整目标：保留不同 ${dimension} 的草稿`, async () => {
+    const other = input(overrides)
+    await saveRecordingDraft(input())
+    await saveRecordingDraft(input({ idempotencyKey: "retry-key" }))
+    await saveRecordingDraft(other)
+    await deleteDraftsForItem(
+      "user-a",
+      "flow",
+      "session-1",
+      "passage",
+      "item-1",
+    )
+    assert.equal(await getRecordingDraft(draftKey(input())), null)
+    assert.equal(
+      await getRecordingDraft(draftKey(input({ idempotencyKey: "retry-key" }))),
+      null,
+    )
+    assert.ok(await getRecordingDraft(draftKey(other)))
+  })
+}
+
+test("无会话目标只清 null 会话，不跨到具名会话", async () => {
+  await saveRecordingDraft(input())
+  const legacy = input({ sessionId: null })
+  await saveRecordingDraft(legacy)
+  await deleteDraftsForItem("user-a", "FLOW", null, "passage", "item-1")
+  assert.equal(await getRecordingDraft(draftKey(legacy)), null)
+  assert.ok(await getRecordingDraft(draftKey(input())))
+})
+
+test("上传先接受：等待同目标所有慢保存提交后再清理，且不阻塞其他会话", async () => {
+  let releaseSave!: (buffer: ArrayBuffer) => void
+  let startedConversion!: () => void
+  const gate = new Promise<ArrayBuffer>((resolve) => {
+    releaseSave = resolve
+  })
+  const converting = new Promise<void>((resolve) => {
+    startedConversion = resolve
+  })
+  const slow = input()
+  slow.blob.arrayBuffer = () => {
+    startedConversion()
+    return gate
+  }
+  const firstSave = saveRecordingDraft(slow)
+  const secondSave = saveRecordingDraft(input({ idempotencyKey: "second" }))
+  const cleanup = deleteDraftsForItem(
+    "user-a",
+    "flow",
+    "session-1",
+    "passage",
+    "item-1",
+  )
+  await converting
+  const other = input({ sessionId: "session-2" })
+  assert.equal(await saveRecordingDraft(other), "saved")
+  releaseSave(new TextEncoder().encode("slow audio").buffer)
+  assert.deepEqual(await Promise.all([firstSave, secondSave]), [
+    "saved",
+    "saved",
+  ])
+  await cleanup
+  assert.deepEqual(
+    (await listRecordingDrafts("user-a", "FLOW")).map((d) => d.key),
+    [draftKey(other)],
+  )
+  // 清理不是永久封禁：后续主动重练仍能保存同题新草稿。
+  assert.equal(
+    await saveRecordingDraft(input({ idempotencyKey: "later" })),
+    "saved",
+  )
+  assert.equal((await listRecordingDrafts("user-a", "FLOW")).length, 2)
+})
+
+const cancelledRecording = {
+  starting: false,
+  recording: false,
+  submitting: false,
+  draftFlushPending: false,
+  submitError: true,
+  hasRecording: true,
+  submissionClosed: true,
+  draftSaveResult: "saved" as const,
+}
+
+test("补练撤销：草稿落盘完成后放行，存储失败或未知则须明确确认", () => {
+  assert.equal(recordingLeaveState(cancelledRecording), "allowed")
+  for (const draftSaveResult of ["quota", "unavailable", null] as const) {
+    assert.equal(
+      recordingLeaveState({ ...cancelledRecording, draftSaveResult }),
+      "confirm",
+    )
+  }
+})
+
+test("撤销仍等待启动/录音/上传/草稿提交，不提前允许离开或丢弃", () => {
+  for (const state of [
+    "starting",
+    "recording",
+    "submitting",
+    "draftFlushPending",
+  ] as const) {
+    for (const draftSaveResult of ["saved", "unavailable", null] as const) {
+      assert.equal(
+        recordingLeaveState({
+          ...cancelledRecording,
+          [state]: true,
+          draftSaveResult,
+        }),
+        "blocked",
+      )
+    }
+  }
+})
+
+test("普通断网上传失败即使已存草稿仍保护，成功或没有录音才放行", () => {
+  assert.equal(
+    recordingLeaveState({ ...cancelledRecording, submissionClosed: false }),
+    "blocked",
+  )
+  assert.equal(
+    recordingLeaveState({ ...cancelledRecording, submitError: false }),
+    "allowed",
+  )
+  assert.equal(
+    recordingLeaveState({ ...cancelledRecording, hasRecording: false }),
+    "allowed",
+  )
 })
 
 test("失败保留：删除从不自动发生（保存后无删除即仍在）", async () => {
@@ -230,7 +369,7 @@ test("环境不可用：无 IndexedDB 时 save=unavailable、list 为空、不�
   // 清理类操作静默成功（TTL 兜底）
   await deleteRecordingDraft("any")
   await clearRecordingDrafts("user-a")
-  await deleteDraftsForItem("user-a", "FLOW", "item-1")
+  await deleteDraftsForItem("user-a", "FLOW", "session-1", "passage", "item-1")
 })
 
 test("draftKey：同目标同幂等键同 key，任一字段不同则不同", () => {

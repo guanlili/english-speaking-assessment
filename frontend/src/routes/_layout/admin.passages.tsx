@@ -23,6 +23,10 @@ import { TopicPicker } from "@/components/Admin/TopicPicker"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import Pager from "@/components/Common/Pager"
 import AudioSetter from "@/components/Practice/AudioSetter"
+import {
+  CopyContentButton,
+  invalidateContentQueries,
+} from "@/components/Teaching/CopyContentButton"
 import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
 import { PassageSentences } from "@/components/Teaching/PassageSentences"
 import { ReadingSentences } from "@/components/Teaching/ReadingSentences"
@@ -175,11 +179,7 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
     queryFn: () => AdminService.listScenarios(),
   })
 
-  const invalidate = () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["admin", "passages"] }),
-      queryClient.invalidateQueries({ queryKey: ["admin", "units"] }),
-    ])
+  const invalidate = () => invalidateContentQueries(queryClient)
 
   const createMutation = useMutation({
     mutationFn: (form: PassageForm) =>
@@ -583,7 +583,7 @@ function TopicGroups({
                   onToggle={() =>
                     onToggle(expandedId === passage.id ? null : passage.id)
                   }
-                  onEdit={() => onEdit(passage)}
+                  onEdit={onEdit}
                   onDelete={() => onDelete(passage)}
                   onMutated={onMutated}
                 />
@@ -614,7 +614,7 @@ function TopicGroups({
               onToggle={() =>
                 onToggle(expandedId === passage.id ? null : passage.id)
               }
-              onEdit={() => onEdit(passage)}
+              onEdit={onEdit}
               onDelete={() => onDelete(passage)}
               onMutated={onMutated}
             />
@@ -781,7 +781,7 @@ function PassageCard({
   unitTitle: string
   expanded: boolean
   onToggle: () => void
-  onEdit: () => void
+  onEdit: (passage: PassageWithSentences) => void
   onDelete: () => void
   onMutated: () => void
 }) {
@@ -885,6 +885,14 @@ function PassageCard({
           </CardDescription>
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-1.5">
+          <CopyContentButton
+            label={t({
+              zh: `复制篇目 ${passage.title}`,
+              en: `Copy passage ${passage.title}`,
+            })}
+            copy={() => AdminService.copyPassage({ passageId: passage.id })}
+            onCopied={onEdit}
+          />
           <Button
             variant="outline"
             size="sm"
@@ -931,14 +939,14 @@ function PassageCard({
           {editable && (
             <Button
               variant="ghost"
-              size="icon-sm"
+              size="icon"
               aria-label={t({
                 zh: `编辑 ${passage.title}`,
                 en: `Edit ${passage.title}`,
               })}
               onClick={(e) => {
                 e.stopPropagation()
-                onEdit()
+                onEdit(passage)
               }}
             >
               <Pencil />
@@ -976,7 +984,7 @@ function PassageCard({
           {editable && (
             <Button
               variant="ghost"
-              size="icon-sm"
+              size="icon"
               aria-label={t({
                 zh: `删除 ${passage.title}`,
                 en: `Delete ${passage.title}`,

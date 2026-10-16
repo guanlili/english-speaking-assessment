@@ -1419,12 +1419,16 @@ def plan_import(
     session: Session,
     parsed: ParsedFile,
     include_lines: set[tuple[str, int]] | None = None,
+    editor: User | None = None,
 ) -> QuestionBankPlan:
     """校验 + 查重 + 兜底解析，产出创建计划（不写库）。
 
     include_lines：老师逐条勾选「导入」的疑似行 (type, line) 集合。
     空集 = 全部疑似默认跳过。集合中任何 token 未命中**当前**疑似行
     （文件或库状态已变化）→ 422 强制重新预览，绝不沿用旧选择。
+
+    editor：导入人。复述句挂靠到其不可编辑的已有篇目时记为错误行——
+    预览、确认、错误文件三处必须传同一个人，口径才一致。
     """
     decisions = include_lines or set()
     ref = _load_reference(session, parsed)
@@ -1445,7 +1449,7 @@ def plan_import(
         by_type.setdefault(row.qtype, []).append(row)
 
     _plan_passages(plan, ref, by_type[TYPE_PASSAGE], decisions)
-    _plan_repeats(plan, ref, by_type[TYPE_REPEAT], decisions)
+    _plan_repeats(plan, ref, by_type[TYPE_REPEAT], decisions, editor)
     _plan_questions(plan, ref, by_type[TYPE_QUESTION], decisions)
     _plan_instructions(plan, ref, by_type[TYPE_INSTRUCTION], decisions)
     return plan
@@ -1656,6 +1660,7 @@ def _plan_repeats(
     ref: _Ref,
     rows: list[_RawRow],
     decisions: set[tuple[str, int]],
+    editor: User | None = None,
 ) -> None:
     counts = plan.counts[TYPE_REPEAT]
     planned_configs: dict[tuple[str, str], list[tuple[Any, ...]]] = {}
@@ -1710,8 +1715,18 @@ def _plan_repeats(
             n_title = _norm_text(payload["passage_title"])
             existing_hits = len(ref.root_passages_by_norm.get(n_title, []))
             planned_hits = planned_titles.get(n_title, 0)
+            reason = None
             if existing_hits + planned_hits > 1:
                 reason = "挂靠篇目匹配到多个同名篇目，请先重命名区分"
+            elif (
+                existing_hits == 1
+                and editor is not None
+                and not content_access.can_edit(
+                    editor, ref.root_passages_by_norm[n_title][0].owner_id
+                )
+            ):
+                reason = "挂靠篇目由其他老师创建，不能往里添加句子；可去掉挂靠篇目作为独立题导入"
+            if reason is not None:
                 counts.invalid += 1
                 plan.issues.append(_issue(TYPE_REPEAT, row.line, reason))
                 plan.error_rows.append(
@@ -2003,8 +2018,10 @@ def _plan_instructions(
 # ── 预览与落库 ───────────────────────────────────────────────────────
 
 
-def preview_import(session: Session, parsed: ParsedFile) -> QuestionBankImportPreview:
-    plan = plan_import(session, parsed)
+def preview_import(
+    session: Session, parsed: ParsedFile, editor: User | None = None
+) -> QuestionBankImportPreview:
+    plan = plan_import(session, parsed, editor=editor)
     sheets = []
     total_valid = 0
     for qtype in QUESTION_BANK_TYPE_ORDER:
@@ -2051,7 +2068,8 @@ def apply_import(
 ) -> QuestionBankImportResult:
     """确认导入：单事务落库；任何 DB 异常整体回滚。
 
-    owner 为导入人：新建题目记为其创建；复述句挂靠的已有篇目必须可编辑。
+    owner 为导入人：新建题目与主题记为其创建；挂靠他人篇目的复述句在规划时
+    已记为错误行（跳过，不影响其余行）。
 
     并发防重：事务级咨询锁（pg_advisory_xact_lock）串行化所有导入确认——
     适合 PostgreSQL 多进程部署（进程内锁无效）。文件解析在锁外完成；
@@ -2075,7 +2093,7 @@ def apply_import(
         # 部分疑似行进入待创建列表、使后续同批同款行在决策计划里变成完全
         # 重复，那是勾选的预期结果（按 exact 正常跳过），不是「预览过期」
         # （评审 P2）；对完全重复行提交勾选仍是过期（基线里它不是疑似）
-        baseline = plan_import(session, parsed)
+        baseline = plan_import(session, parsed, editor=owner)
         if expected_fingerprint and plan_fingerprint(baseline) != expected_fingerprint:
             session.rollback()
             raise HTTPException(
@@ -2094,21 +2112,11 @@ def apply_import(
                     "请重新预览后再确认导入"
                 ),
             )
-        plan = plan_import(session, parsed, include_lines)
+        plan = plan_import(session, parsed, include_lines, editor=owner)
         owner_id = content_access.owner_for(owner) if owner is not None else None
-        if owner is not None:
-            content_access.require_passage_ids(
-                session,
-                owner,
-                {
-                    item.passage_id
-                    for item in plan.creates[TYPE_REPEAT]
-                    if item.passage_id is not None
-                },
-            )
         created_scenarios: dict[str, Scenario] = {}
         for topic in plan.new_topics:
-            scenario = Scenario(topic=topic, is_active=True)
+            scenario = Scenario(topic=topic, is_active=True, owner_id=owner_id)
             session.add(scenario)
             created_scenarios[_norm_text(topic)] = scenario
         session.flush()  # 分配 scenario.id
@@ -2628,7 +2636,9 @@ ERROR_FILE_LINE_HEADER = "原行号\nOriginal line"
 ERROR_FILE_REASON_HEADER = "错误原因\nError reason"
 
 
-def build_error_file(session: Session, parsed: ParsedFile) -> tuple[bytes, str, str]:
+def build_error_file(
+    session: Session, parsed: ParsedFile, editor: User | None = None
+) -> tuple[bytes, str, str]:
     """把当前文件的全部错误行（解析期 + 校验期）生成可回传的修正文件。
 
     - 与上传格式同构（xlsx→xlsx / CSV→CSV），列用标准模板表头 + 两列辅助
@@ -2636,7 +2646,7 @@ def build_error_file(session: Session, parsed: ParsedFile) -> tuple[bytes, str, 
     - 完整清单，不受预览界面 200 条截断限制；
     - 单元格值走同一套 guard/转义规则，原文引号、换行不损坏。
     """
-    plan = plan_import(session, parsed)
+    plan = plan_import(session, parsed, editor=editor)
     error_rows = plan.error_rows
     if not error_rows:
         raise HTTPException(status_code=422, detail="没有需要修正的行")

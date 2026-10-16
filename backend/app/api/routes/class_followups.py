@@ -4,9 +4,11 @@ import uuid
 from datetime import datetime
 from typing import Literal, cast
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Query
+from sqlalchemy import Uuid, column, func, literal
 from sqlalchemy import cast as sql_cast
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Field, SQLModel, col, select
 
 from app.api.deps import CurrentUser, SessionDep, StudentUserDep
@@ -128,10 +130,62 @@ def create_class_followup(
     return FollowupCreated(id=task.id)
 
 
+def _has_incomplete_target(student_id: uuid.UUID | None) -> ColumnElement[bool]:
+    """Correlate against the fixed task snapshots, never today's classroom roster."""
+    targets = func.jsonb_array_elements(
+        func.coalesce(
+            func.nullif(
+                sql_cast(col(ClassroomExercise.target_students), JSONB),
+                literal(JSONB.NULL, JSONB),
+            ),
+            literal([], JSONB),
+        )
+    ).table_valued(column("value", JSONB), name="target", joins_implicitly=True)
+    items = func.jsonb_array_elements(
+        sql_cast(col(ClassroomExercise.snapshot_items), JSONB)
+    ).table_valued(column("value", JSONB), name="item", joins_implicitly=True)
+    latest_status = (
+        select(Attempt.status)
+        .join(PracticeSession, col(Attempt.session_id) == col(PracticeSession.id))
+        .where(
+            PracticeSession.assignment_id == ClassroomExercise.id,
+            PracticeSession.mode == followups.FOLLOWUP,
+            PracticeSession.student_id
+            == sql_cast(targets.c.value["student_id"].astext, Uuid),
+            Attempt.item_id == sql_cast(items.c.value["id"].astext, Uuid),
+        )
+        .order_by(col(Attempt.created_at).desc(), col(Attempt.id).desc())
+        .limit(1)
+        .correlate(ClassroomExercise, targets, items)
+        .scalar_subquery()
+    )
+    incomplete = (
+        select(1)
+        .select_from(targets, items)
+        .where(
+            items.c.value["type"].astext.is_distinct_from("instruction"),
+            # An older success must not hide the latest failed or pending retry.
+            latest_status.is_distinct_from("done"),
+        )
+        .correlate(ClassroomExercise)
+    )
+    if student_id is not None:
+        incomplete = incomplete.where(
+            targets.c.value["student_id"].astext == str(student_id)
+        )
+    return incomplete.exists()
+
+
 @router.get("/{code}/followups", response_model=list[FollowupPublic])
 def list_class_followups(
-    session: SessionDep, code: str, current_user: CurrentUser, limit: int = 50
+    session: SessionDep,
+    code: str,
+    current_user: CurrentUser,
+    status: Literal["active", "history", "all"] = "all",
+    offset: int = Query(default=0, ge=0, le=1_000_000),
+    limit: int = Query(default=50, ge=1, le=100),
 ) -> list[FollowupPublic]:
+    """Page tasks by the caller's unfinished work or history, newest first."""
     classroom = _get_classroom(session, code)
     own_student = (
         _student_profile_of(session, classroom, current_user)
@@ -140,45 +194,43 @@ def list_class_followups(
     )
     if own_student is None:
         _require_classroom_teacher(classroom, current_user)
-    tasks = session.exec(
-        select(ClassroomExercise)
-        .where(
-            ClassroomExercise.classroom_id == classroom.id,
-            col(ClassroomExercise.status).in_(
-                [followups.FOLLOWUP, followups.CANCELLED]
-            ),
-        )
-        .where(
+    statement = select(ClassroomExercise).where(
+        ClassroomExercise.classroom_id == classroom.id,
+        col(ClassroomExercise.status).in_([followups.FOLLOWUP, followups.CANCELLED]),
+    )
+    if own_student is not None:
+        statement = statement.where(
             sql_cast(col(ClassroomExercise.target_students), JSONB).contains(
                 [{"student_id": str(own_student.id)}]
             )
-            if own_student is not None
-            else True
         )
-        .order_by(col(ClassroomExercise.created_at).desc())
+    if status != "all":
+        active = (col(ClassroomExercise.status) == followups.FOLLOWUP) & (
+            _has_incomplete_target(own_student.id if own_student else None)
+        )
+        statement = statement.where(active if status == "active" else ~active)
+    # Both recipient and completion filtering must precede LIMIT/OFFSET.
+    tasks = session.exec(
+        statement.order_by(
+            col(ClassroomExercise.created_at).desc(), col(ClassroomExercise.id).desc()
+        )
+        .offset(offset)
         .limit(limit)
     ).all()
-    visible = [
-        t
-        for t in tasks
-        if own_student is None
-        or any(
-            r.get("student_id") == str(own_student.id) for r in t.target_students or []
-        )
-    ]
-    task_ids = [t.id for t in visible]
+    task_ids = [t.id for t in tasks]
     sessions = (
         session.exec(
             select(PracticeSession).where(
                 col(PracticeSession.assignment_id).in_(task_ids),
                 PracticeSession.mode == followups.FOLLOWUP,
+                PracticeSession.student_id == own_student.id
+                if own_student is not None
+                else True,
             )
         ).all()
         if task_ids
         else []
     )
-    if own_student is not None:
-        sessions = [ps for ps in sessions if ps.student_id == own_student.id]
     by_target = {(ps.assignment_id, str(ps.student_id)): ps for ps in sessions}
     attempts = (
         session.exec(
@@ -195,9 +247,9 @@ def list_class_followups(
         if sessions
         else []
     )
-    latest = {(sid, iid): status for sid, iid, status in attempts}
+    latest = {(sid, iid): attempt_status for sid, iid, attempt_status in attempts}
     result = []
-    for task in visible:
+    for task in tasks:
         ids = {
             uuid.UUID(str(i["id"]))
             for i in task.snapshot_items

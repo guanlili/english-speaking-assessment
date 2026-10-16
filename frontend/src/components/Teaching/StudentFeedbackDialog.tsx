@@ -1,5 +1,5 @@
-import { useQueries } from "@tanstack/react-query"
-import { AttemptsService, type BoardItem } from "@/client"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { type AttemptPublic, AttemptsService, type BoardItem } from "@/client"
 import { ENGINE_LABELS, RubricBlock } from "@/components/Practice/FeedbackCard"
 import { SkippedSpans } from "@/components/Practice/SkippedSpans"
 import { Button } from "@/components/ui/button"
@@ -26,37 +26,52 @@ export function StudentFeedbackDialog({
   onClose: () => void
 }) {
   const { t } = useI18n()
+  const queryClient = useQueryClient()
   const questions = items.filter((item) => item.type !== "instruction")
-  const submitted = questions.filter((item) => item.attempt_id)
-  const queries = useQueries({
-    queries: submitted.map((item) => ({
-      queryKey: ["attempt-detail", item.attempt_id],
-      queryFn: () =>
-        AttemptsService.readAttempt({ attemptId: item.attempt_id! }),
-      enabled: open,
-      retry: 1,
-      refetchInterval: (query: {
-        state: {
-          data?: { status: string; rubric?: Record<string, unknown> | null }
+  const attemptIds = [
+    ...new Set(
+      questions.flatMap((item) => (item.attempt_id ? [item.attempt_id] : [])),
+    ),
+  ].sort()
+  const query = useQuery<AttemptPublic[]>({
+    // Flat IDs let feedback edits invalidate both batch and single-attempt queries.
+    queryKey: ["attempt-detail", "batch", ...attemptIds],
+    queryFn: async ({ signal }) => {
+      const attempts = await AttemptsService.readAttemptsBatch({
+        requestBody: { attempt_ids: attemptIds },
+      })
+      // A cancelled batch must not repopulate caches after logout.
+      if (!signal.aborted) {
+        for (const attempt of attempts) {
+          queryClient.setQueryData(["attempt-detail", attempt.id], attempt)
         }
-      }) => {
-        const attempt = query.state.data
-        return attempt &&
-          (attempt.status === "queued" ||
-            attempt.status === "scoring" ||
-            attempt.rubric?.status === "pending")
-          ? 3000
-          : false
-      },
-    })),
+      }
+      return attempts
+    },
+    enabled: open && attemptIds.length > 0,
+    retry: 1,
+    refetchInterval: (query) =>
+      query.state.data?.some(
+        (attempt) =>
+          attempt.status === "queued" ||
+          attempt.status === "scoring" ||
+          attempt.rubric?.status === "pending",
+      )
+        ? 3000
+        : false,
   })
-  const scores = queries.flatMap((query) =>
-    query.data?.status === "done" && query.data.overall != null
-      ? [query.data.overall]
+  const byId = new Map(query.data?.map((attempt) => [attempt.id, attempt]))
+  const submitted = questions.flatMap((item) => {
+    const attempt = item.attempt_id ? byId.get(item.attempt_id) : undefined
+    return attempt ? [attempt] : []
+  })
+  const scores = submitted.flatMap((attempt) =>
+    attempt.status === "done" && attempt.overall != null
+      ? [attempt.overall]
       : [],
   )
-  const doneCount = queries.filter(
-    (query) => query.data?.status === "done",
+  const doneCount = submitted.filter(
+    (attempt) => attempt.status === "done",
   ).length
   const average = scores.length
     ? Math.round(
@@ -88,7 +103,7 @@ export function StudentFeedbackDialog({
             en: `${doneCount}/${questions.length} items scored · reference score ${average}`,
           })}
         </p>
-        {submitted.length === 0 && (
+        {attemptIds.length === 0 && (
           <p>
             {t({
               zh: "这条记录暂无作答反馈。",
@@ -96,12 +111,27 @@ export function StudentFeedbackDialog({
             })}
           </p>
         )}
+        {attemptIds.length > 0 && query.isPending && (
+          <p role="status">
+            {t({ zh: "正在加载反馈…", en: "Loading feedback…" })}
+          </p>
+        )}
+        {attemptIds.length > 0 && query.isError && (
+          <Button
+            variant="outline"
+            className="min-h-11"
+            onClick={() => void query.refetch()}
+          >
+            {t({
+              zh: "反馈加载失败，重试",
+              en: "Feedback failed to load. Retry",
+            })}
+          </Button>
+        )}
         {questions.map((item, index) => {
-          const query =
-            queries[
-              submitted.findIndex((entry) => entry.item_id === item.item_id)
-            ]
-          const attempt = query?.data
+          const attempt = item.attempt_id
+            ? byId.get(item.attempt_id)
+            : undefined
           return (
             <section
               key={item.item_id}
@@ -120,23 +150,6 @@ export function StudentFeedbackDialog({
                 <p className="text-sm text-muted-foreground">
                   {t({ zh: "未作答", en: "Unanswered" })}
                 </p>
-              )}
-              {query?.isPending && (
-                <p role="status">
-                  {t({ zh: "正在加载反馈…", en: "Loading feedback…" })}
-                </p>
-              )}
-              {query?.isError && (
-                <Button
-                  variant="outline"
-                  className="min-h-11"
-                  onClick={() => void query.refetch()}
-                >
-                  {t({
-                    zh: "反馈加载失败，重试",
-                    en: "Feedback failed to load. Retry",
-                  })}
-                </Button>
               )}
               {attempt && (
                 <>

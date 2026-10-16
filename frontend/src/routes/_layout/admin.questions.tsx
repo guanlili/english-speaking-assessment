@@ -11,6 +11,10 @@ import { AdminService, type QuestionBankOut } from "@/client"
 import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import Pager from "@/components/Common/Pager"
+import {
+  CopyContentButton,
+  invalidateContentQueries,
+} from "@/components/Teaching/CopyContentButton"
 import { ReadOnlyContentBadge } from "@/components/Teaching/ReadOnlyContentBadge"
 import { Button } from "@/components/ui/button"
 import {
@@ -159,10 +163,7 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
   const rows = bankQuery.data?.data ?? []
   const totalCount = bankQuery.data?.count ?? 0
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["admin", "question-bank"] })
-    void queryClient.invalidateQueries({ queryKey: ["admin", "scenarios"] })
-  }
+  const invalidate = () => invalidateContentQueries(queryClient)
 
   // 筛选变化回第一页；末页删空回退（不看 placeholder/失败响应）
   useEffect(() => {
@@ -536,6 +537,12 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
             </p>
           ) : (
             <>
+              <p className="text-xs text-muted-foreground sm:hidden">
+                {t({
+                  zh: "左右滑动表格可查看全部操作",
+                  en: "Swipe the table horizontally to see all actions",
+                })}
+              </p>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -562,34 +569,43 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                       </TableCell>
                       <TableCell>{row.suggested_seconds}s</TableCell>
                       <TableCell className="text-right">
-                        {canEdit(row.owner_id) ? (
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label={t({
-                                zh: "编辑题目",
-                                en: "Edit question",
-                              })}
-                              onClick={() => openEdit(row)}
-                            >
-                              <Pencil />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label={t({
-                                zh: "删除题目",
-                                en: "Delete question",
-                              })}
-                              onClick={() => setToDelete(row)}
-                            >
-                              <Trash2 className="text-destructive" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <ReadOnlyContentBadge />
-                        )}
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <CopyContentButton
+                            label={t({ zh: "复制题目", en: "Copy question" })}
+                            copy={() =>
+                              AdminService.copyQuestion({ questionId: row.id })
+                            }
+                            onCopied={openEdit}
+                          />
+                          {canEdit(row.owner_id) ? (
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label={t({
+                                  zh: "编辑题目",
+                                  en: "Edit question",
+                                })}
+                                onClick={() => openEdit(row)}
+                              >
+                                <Pencil />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label={t({
+                                  zh: "删除题目",
+                                  en: "Delete question",
+                                })}
+                                onClick={() => setToDelete(row)}
+                              >
+                                <Trash2 className="text-destructive" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <ReadOnlyContentBadge />
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

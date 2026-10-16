@@ -67,6 +67,59 @@ function restoreRecord(
 }
 
 export type DraftSaveResult = "saved" | "quota" | "unavailable"
+export type RecordingLeaveState = "allowed" | "blocked" | "confirm"
+
+/** 撤销不可重试；只有落盘完成后，才能安全离开或明确确认丢弃内存录音。 */
+export function recordingLeaveState({
+  starting,
+  recording,
+  submitting,
+  draftFlushPending,
+  submitError,
+  hasRecording,
+  submissionClosed,
+  draftSaveResult,
+}: {
+  starting: boolean
+  recording: boolean
+  submitting: boolean
+  draftFlushPending: boolean
+  submitError: boolean
+  hasRecording: boolean
+  submissionClosed: boolean
+  draftSaveResult: DraftSaveResult | null
+}): RecordingLeaveState {
+  if (starting || recording || submitting || draftFlushPending) return "blocked"
+  if (!submitError || !hasRecording) return "allowed"
+  if (!submissionClosed) return "blocked"
+  return draftSaveResult === "saved" ? "allowed" : "confirm"
+}
+
+type RecordingDraftTarget = Pick<
+  RecordingDraftInput,
+  "owner" | "classroomCode" | "sessionId" | "itemType" | "itemId"
+>
+
+// 同目标的写入/成功清理按调用顺序执行，包含 Blob 转换和事务提交的等待。
+// 上传先返回也不能先删后写；其他会话/题型不必等待这个目标。
+const targetOperations = new Map<string, Promise<void>>()
+function forDraftTarget<T>(
+  target: RecordingDraftTarget,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const key = draftKey({ ...target, idempotencyKey: "" })
+  const previous = targetOperations.get(key) ?? Promise.resolve()
+  const result = previous.then(operation)
+  const settled = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  targetOperations.set(key, settled)
+  void settled.then(() => {
+    if (targetOperations.get(key) === settled) targetOperations.delete(key)
+  })
+  return result
+}
 
 const DB_NAME = "esa-recording-drafts"
 const DB_VERSION = 1
@@ -303,20 +356,22 @@ export async function saveRecordingDraft(
   input: RecordingDraftInput,
   deps?: DraftStoreDeps,
 ): Promise<DraftSaveResult> {
-  try {
-    const db = await openDb()
-    await purgeExpired(db).catch(() => undefined)
-    const own = await readOwnerRecords(db, input.owner)
-    const evictions = selectEvictions(
-      own.map(toMeta),
-      input.blob.size,
-      draftKey(input),
-    )
-    await deleteKeys(db, evictions).catch(() => undefined)
-    return await putWithRetry(db, toRecord(input, clockNow()), deps)
-  } catch {
-    return "unavailable"
-  }
+  return forDraftTarget(input, async () => {
+    try {
+      const db = await openDb()
+      await purgeExpired(db).catch(() => undefined)
+      const own = await readOwnerRecords(db, input.owner)
+      const evictions = selectEvictions(
+        own.map(toMeta),
+        input.blob.size,
+        draftKey(input),
+      )
+      await deleteKeys(db, evictions).catch(() => undefined)
+      return await putWithRetry(db, toRecord(input, clockNow()), deps)
+    } catch {
+      return "unavailable"
+    }
+  })
 }
 
 /**
@@ -369,26 +424,35 @@ export async function deleteRecordingDraft(key: string): Promise<void> {
   }
 }
 
-/** 上传被服务器接受后：清掉该题目的所有草稿（幂等键不同也算，防陈旧重复） */
+/** 上传被服务器接受后：清掉同账号/课堂/会话/题型/题目的全部幂等键草稿。 */
 export async function deleteDraftsForItem(
   owner: string,
   classroomCode: string,
+  sessionId: string | null,
+  itemType: DraftItemType,
   itemId: string,
 ): Promise<void> {
-  try {
-    const db = await openDb()
-    const records = await readOwnerRecords(db, owner)
-    const keys = records
-      .filter(
-        (r) =>
-          r.classroomCode === classroomCode.toUpperCase() &&
-          r.itemId === itemId,
-      )
-      .map((r) => r.key)
-    await deleteKeys(db, keys)
-  } catch {
-    // 同上：TTL 兜底
-  }
+  return forDraftTarget(
+    { owner, classroomCode, sessionId, itemType, itemId },
+    async () => {
+      try {
+        const db = await openDb()
+        const records = await readOwnerRecords(db, owner)
+        const keys = records
+          .filter(
+            (r) =>
+              r.classroomCode === classroomCode.toUpperCase() &&
+              r.sessionId === sessionId &&
+              r.itemType === itemType &&
+              r.itemId === itemId,
+          )
+          .map((r) => r.key)
+        await deleteKeys(db, keys)
+      } catch {
+        // 同上：TTL 兜底
+      }
+    },
+  )
 }
 
 /** 登出清理：只清该账号的草稿（另一账号在同一设备上的草稿保留） */

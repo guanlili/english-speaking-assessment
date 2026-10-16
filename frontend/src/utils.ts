@@ -105,6 +105,12 @@ const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
   "没有权限：只能修改自己创建的题目": {
     en: "No permission: you can only edit questions you created.",
   },
+  "没有权限：主题下有其他老师的题目，不能删除": {
+    en: "No permission: this topic contains other teachers' questions and can't be deleted.",
+  },
+  "没有权限：不能替换其他老师题目的考试音频": {
+    en: "No permission: you can't replace the exam audio on another teacher's item.",
+  },
   "没有权限：该学生账号同时属于其他教师的班级，请联系管理员重置": {
     en: "No permission: this student also belongs to another teacher's class. Ask an administrator to reset the password.",
   },

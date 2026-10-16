@@ -17,6 +17,7 @@ import {
   examPresetsFor,
 } from "@/lib/exam-presets"
 import { type BiString, useI18n } from "@/lib/i18n"
+import { extractErrorMessage } from "@/utils"
 
 const PRESET_LABELS: Record<ExamPresetId, BiString> = {
   "class-reading": { zh: "课堂跟读", en: "Class reading" },
@@ -88,6 +89,9 @@ function SettingsEditor({
   })
   const [edited, setEdited] = useState<ExamItemSettings | null>(null)
   const value = edited ?? query.data
+  // 他人题目：已有考试音频只读，没有时可以补
+  const audioLocked =
+    query.data?.can_replace_audio === false && !!query.data.audio_url
   const mutation = useMutation({
     mutationFn: (requestBody: ExamItemSettings) =>
       AdminService.updateExamItemSettings({ itemType, itemId, requestBody }),
@@ -145,7 +149,12 @@ function SettingsEditor({
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault()
-        mutation.mutate(value)
+        mutation.mutate({
+          wait_seconds: value.wait_seconds,
+          after_audio_seconds: value.after_audio_seconds,
+          prep_seconds: value.prep_seconds,
+          audio_url: value.audio_url,
+        })
       }}
     >
       <p className="text-sm text-muted-foreground">
@@ -198,17 +207,24 @@ function SettingsEditor({
             })}
           </p>
           <span>{t({ zh: "考试播放音频", en: "Exam audio" })}</span>
-          <AudioSetter
-            text={text}
-            audioUrl={value.audio_url}
-            onSet={async (audio_url) => setEdited({ ...value, audio_url })}
-          />
+          {audioLocked ? (
+            <span className="text-sm text-muted-foreground">
+              {t({
+                zh: "已设置（其他老师的题目，不能替换）",
+                en: "Set (another teacher's item; can't be replaced)",
+              })}
+            </span>
+          ) : (
+            <AudioSetter
+              text={text}
+              audioUrl={value.audio_url}
+              onSet={async (audio_url) => setEdited({ ...value, audio_url })}
+            />
+          )}
         </div>
       )}
       {mutation.isError && (
-        <p role="alert">
-          {t({ zh: "保存失败，请重试", en: "Could not save. Please retry." })}
-        </p>
+        <p role="alert">{extractErrorMessage(mutation.error)}</p>
       )}
       <Button type="submit" disabled={mutation.isPending} className="min-h-11">
         {t({ zh: "保存", en: "Save" })}

@@ -54,7 +54,7 @@ from app.models import (
     validate_exam_fields,
     validate_question_suggested_seconds,
 )
-from app.services import content_access, reading
+from app.services import content_access, content_copy, reading
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -771,6 +771,7 @@ class ScenarioOut(SQLModel):
     id: uuid.UUID
     topic: str
     is_active: bool
+    owner_id: uuid.UUID | None = None
     questions: list[ScenarioQuestionPublic]
 
 
@@ -823,6 +824,7 @@ def list_scenarios(
                 id=scenario.id,
                 topic=scenario.topic,
                 is_active=scenario.is_active,
+                owner_id=scenario.owner_id,
                 questions=[ScenarioQuestionPublic.model_validate(q) for q in questions],
             )
         )
@@ -831,7 +833,7 @@ def list_scenarios(
 
 @router.post("/scenarios")
 def create_scenario(
-    session: SessionDep, _admin: TeacherUserDep, scenario_in: ScenarioCreate
+    session: SessionDep, current_user: TeacherUserDep, scenario_in: ScenarioCreate
 ) -> Any:
     duplicate = session.exec(
         select(Scenario).where(Scenario.topic == scenario_in.topic)
@@ -839,6 +841,7 @@ def create_scenario(
     if duplicate is not None:
         raise HTTPException(status_code=409, detail="主题已存在")
     scenario = Scenario.model_validate(scenario_in.model_dump())
+    scenario.owner_id = content_access.owner_for(current_user)
     session.add(scenario)
     session.commit()
     session.refresh(scenario)
@@ -852,7 +855,7 @@ def delete_scenario(
     scenario = session.get(Scenario, scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    content_access.require_scenario(session, current_user, scenario_id)
+    content_access.require_scenario_delete(session, current_user, scenario)
     question_ids = session.exec(
         select(ScenarioQuestion.id).where(ScenarioQuestion.scenario_id == scenario_id)
     ).all()
@@ -937,6 +940,7 @@ class QuestionBankOut(SQLModel):
     order_index: int
     text: str
     translation: str | None = None
+    audio_url: str | None = None
     suggested_seconds: int
     # 分级题型训练（可空=普通情景问法）
     exam_kind: str | None = None
@@ -1007,6 +1011,7 @@ def list_question_bank(
                 order_index=question.order_index,
                 text=question.text,
                 translation=question.translation,
+                audio_url=question.audio_url,
                 suggested_seconds=question.suggested_seconds,
                 exam_kind=question.exam_kind,
                 exam_level=question.exam_level,
@@ -1018,6 +1023,104 @@ def list_question_bank(
         ],
         count=count,
     )
+
+
+@router.post("/passages/{passage_id}/copy", response_model=PassageWithSentences)
+def copy_passage(
+    session: SessionDep, current_user: TeacherUserDep, passage_id: uuid.UUID
+) -> PassageWithSentences:
+    source = session.get(Passage, passage_id)
+    if source is None:
+        raise HTTPException(404, detail="Passage not found")
+    copied = content_copy.copy_passage(
+        session, source, content_access.owner_for(current_user)
+    )
+    session.commit()
+    result = PassageWithSentences.model_validate(copied)
+    result.sentences = list(
+        session.exec(
+            select(RepeatSentence)
+            .where(RepeatSentence.passage_id == copied.id)
+            .order_by(col(RepeatSentence.order_index), col(RepeatSentence.id))
+        ).all()
+    )
+    result.reading_segments = (
+        reading.split_reading_sentences(copied.text) if copied.reading_split else []
+    )
+    result.reading_child_ids = list(
+        session.exec(
+            select(Passage.id).where(Passage.parent_passage_id == copied.id)
+        ).all()
+    )
+    return result
+
+
+@router.post("/sentences/{sentence_id}/copy", response_model=SentenceWithPassage)
+def copy_sentence(
+    session: SessionDep, current_user: TeacherUserDep, sentence_id: uuid.UUID
+) -> SentenceWithPassage:
+    source = session.get(RepeatSentence, sentence_id)
+    if source is None:
+        raise HTTPException(404, detail="Sentence not found")
+    copied = content_copy.copy_sentence(
+        session, source, content_access.owner_for(current_user)
+    )
+    session.commit()
+    return SentenceWithPassage.model_validate(copied)
+
+
+@router.post("/scenarios/{scenario_id}/copy", response_model=ScenarioOut)
+def copy_scenario(
+    session: SessionDep, current_user: TeacherUserDep, scenario_id: uuid.UUID
+) -> ScenarioOut:
+    source = session.get(Scenario, scenario_id)
+    if source is None:
+        raise HTTPException(404, detail="Scenario not found")
+    copied = content_copy.copy_scenario(
+        session, source, content_access.owner_for(current_user)
+    )
+    session.commit()
+    questions = session.exec(
+        select(ScenarioQuestion)
+        .where(ScenarioQuestion.scenario_id == copied.id)
+        .order_by(col(ScenarioQuestion.order_index), col(ScenarioQuestion.id))
+    ).all()
+    return ScenarioOut(
+        **copied.model_dump(),
+        questions=[
+            ScenarioQuestionPublic.model_validate(question) for question in questions
+        ],
+    )
+
+
+@router.post("/questions/{question_id}/copy", response_model=QuestionBankOut)
+def copy_question(
+    session: SessionDep, current_user: TeacherUserDep, question_id: uuid.UUID
+) -> QuestionBankOut:
+    source = session.get(ScenarioQuestion, question_id)
+    if source is None:
+        raise HTTPException(404, detail="Question not found")
+    copied = content_copy.copy_question(
+        session, source, content_access.owner_for(current_user)
+    )
+    session.commit()
+    scenario = session.get(Scenario, copied.scenario_id)
+    assert scenario is not None
+    return QuestionBankOut(**copied.model_dump(), topic=scenario.topic)
+
+
+@router.post("/instructions/{instruction_id}/copy", response_model=InstructionPublic)
+def copy_instruction(
+    session: SessionDep, current_user: TeacherUserDep, instruction_id: uuid.UUID
+) -> InstructionPublic:
+    source = session.get(Instruction, instruction_id)
+    if source is None:
+        raise HTTPException(404, detail="Instruction not found")
+    copied = content_copy.copy_instruction(
+        session, source, content_access.owner_for(current_user)
+    )
+    session.commit()
+    return InstructionPublic.model_validate(copied)
 
 
 class BatchQuestionItem(SQLModel):
@@ -1286,7 +1389,7 @@ def update_scenario(
     scenario = session.get(Scenario, scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    content_access.require_scenario(session, current_user, scenario_id)
+    content_access.require_scenario(session, current_user, scenario)
     update = scenario_in.model_dump(exclude_unset=True)
     # 主题非空且不允许显式清空
     _reject_null_non_nullable(update, {"topic"})

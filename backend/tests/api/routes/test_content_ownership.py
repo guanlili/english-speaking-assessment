@@ -15,7 +15,11 @@ from app.models import (
     ScenarioQuestion,
     User,
 )
-from app.services.content_access import FORBIDDEN_DETAIL
+from app.services.content_access import (
+    EXAM_AUDIO_DETAIL,
+    FORBIDDEN_DETAIL,
+    SCENARIO_HAS_OTHERS_DETAIL,
+)
 from tests.api.routes.test_students import _login_teacher
 
 API = "/api/v1/admin"
@@ -32,9 +36,10 @@ def teachers(
         db.exec(  # type: ignore[call-overload]
             delete(model).where(col(model.owner_id).in_([owner.id, other.id]))
         )
-    db.exec(  # type: ignore[call-overload]
-        delete(Passage).where(col(Passage.owner_id).in_([owner.id, other.id]))
-    )
+    for root in (Passage, Scenario):
+        db.exec(  # type: ignore[call-overload]
+            delete(root).where(col(root.owner_id).in_([owner.id, other.id]))
+        )
     db.commit()
     for user in (owner, other):
         row = db.get(User, user.id)
@@ -43,9 +48,9 @@ def teachers(
     db.commit()
 
 
-def _forbidden(response) -> None:
+def _forbidden(response, detail: str = FORBIDDEN_DETAIL) -> None:
     assert response.status_code == 403, response.text
-    assert response.json()["detail"] == FORBIDDEN_DETAIL
+    assert response.json()["detail"] == detail
 
 
 def _passage(client: TestClient, headers: dict[str, str]) -> dict:
@@ -85,12 +90,6 @@ def test_teacher_cannot_edit_or_delete_others_passage(
             headers=other_headers,
         )
     )
-    # 考试计时在组卷排序行就地设置：选用他人题目组考试也要能调
-    timing = client.put(
-        f"{API}/exam-items/passage/{pid}/settings", json={}, headers=other_headers
-    )
-    assert timing.status_code == 200, timing.text
-
     mine = client.put(
         f"{API}/passages/{pid}", json={"title": "Renamed"}, headers=owner_headers
     )
@@ -181,8 +180,19 @@ def test_questions_are_owned_per_item_and_topic_is_shared(
         json={"topic": f"Owned topic {uuid.uuid4().hex[:6]}"},
         headers=owner_headers,
     ).json()
+    assert scenario["owner_id"] == str(owner.id)
     sid = scenario["id"]
     try:
+        # 空主题也归创建者：别的老师不能停用/删除
+        _forbidden(
+            client.put(
+                f"{API}/scenarios/{sid}",
+                json={"is_active": False},
+                headers=other_headers,
+            )
+        )
+        _forbidden(client.delete(f"{API}/scenarios/{sid}", headers=other_headers))
+
         question = client.post(
             f"{API}/scenarios/{sid}/questions",
             json={"text": "What pets do you like?"},
@@ -225,8 +235,21 @@ def test_questions_are_owned_per_item_and_topic_is_shared(
             ).status_code
             == 200
         )
-        # 组内有他人的题：原作者也不能单方面删整组；管理员可以
-        _forbidden(client.delete(f"{API}/scenarios/{sid}", headers=owner_headers))
+        # 组内有他人的题：创建者仍能改名/启停，但删除会连带别人的题，只有管理员能删
+        renamed = client.put(
+            f"{API}/scenarios/{sid}",
+            json={"topic": f"Renamed topic {uuid.uuid4().hex[:6]}"},
+            headers=owner_headers,
+        )
+        assert renamed.status_code == 200, renamed.text
+        _forbidden(
+            client.delete(f"{API}/scenarios/{sid}", headers=owner_headers),
+            SCENARIO_HAS_OTHERS_DETAIL,
+        )
+        listed = client.get(
+            f"{API}/scenarios", params={"ids": [sid]}, headers=other_headers
+        ).json()["data"][0]
+        assert listed["owner_id"] == str(owner.id)
         assert (
             client.delete(
                 f"{API}/scenarios/{sid}", headers=superuser_token_headers
@@ -240,23 +263,76 @@ def test_questions_are_owned_per_item_and_topic_is_shared(
             db.commit()
 
 
-def test_import_records_owner_and_rejects_attaching_to_others_passage(
+def test_legacy_topic_needs_every_question_editable(
+    client: TestClient, teachers, db: Session
+) -> None:
+    owner_headers, other_headers, _owner = teachers
+    scenario = Scenario(topic=f"Legacy topic {uuid.uuid4().hex[:6]}")
+    db.add(scenario)
+    db.commit()
+    sid = str(scenario.id)
+    try:
+        ok = client.put(
+            f"{API}/scenarios/{sid}", json={"is_active": False}, headers=other_headers
+        )
+        assert ok.status_code == 200, ok.text
+        client.post(
+            f"{API}/scenarios/{sid}/questions",
+            json={"text": "Owned question?"},
+            headers=owner_headers,
+        )
+        _forbidden(
+            client.put(
+                f"{API}/scenarios/{sid}",
+                json={"is_active": True},
+                headers=other_headers,
+            )
+        )
+    finally:
+        db.expire_all()
+        row = db.get(Scenario, scenario.id)
+        if row is not None:
+            db.delete(row)
+            db.commit()
+
+
+def test_import_records_owner_and_skips_attaching_to_others_passage(
     client: TestClient, teachers, db: Session
 ) -> None:
     from tests.api.routes.test_question_bank_io import _csv_file, _upload
 
     owner_headers, other_headers, owner = teachers
     passage = _passage(client, owner_headers)
+    attach_text = f"Attach {uuid.uuid4().hex[:6]}."
+    alone_text = f"Alone {uuid.uuid4().hex[:6]}."
     attach = _csv_file(
         [
             {
                 "__type__": "听句复述",
-                "text": f"Attach {uuid.uuid4().hex[:6]}.",
+                "text": attach_text,
                 "passage_title": passage["title"],
-            }
+            },
+            {"__type__": "听句复述", "text": alone_text},
         ]
     )
-    _forbidden(_upload(client, other_headers, attach, confirm=True))
+    # 预览就标出错误行，确认时只跳过这一行，其余照常导入
+    preview = _upload(client, other_headers, attach)
+    assert preview.status_code == 200, preview.text
+    assert any("其他老师" in issue["reason"] for issue in preview.json()["issues"]), (
+        preview.text
+    )
+    confirmed = _upload(client, other_headers, attach, confirm=True)
+    assert confirmed.status_code == 200, confirmed.text
+    assert (
+        db.exec(
+            select(RepeatSentence).where(RepeatSentence.text == attach_text)
+        ).first()
+        is None
+    )
+    assert (
+        db.exec(select(RepeatSentence).where(RepeatSentence.text == alone_text)).first()
+        is not None
+    )
 
     text = f"Imported {uuid.uuid4().hex[:6]}."
     own = _upload(
@@ -287,3 +363,47 @@ def test_instruction_owner_guard(client: TestClient, teachers) -> None:
         client.delete(f"{API}/instructions/{iid}", headers=owner_headers).status_code
         == 200
     )
+
+
+def test_exam_settings_timing_open_but_audio_only_fillable(
+    client: TestClient, teachers
+) -> None:
+    owner_headers, other_headers, _owner = teachers
+    instruction = client.post(
+        f"{API}/instructions", json={"text": "Part B begins."}, headers=owner_headers
+    ).json()
+    url = f"{API}/exam-items/instruction/{instruction['id']}/settings"
+
+    seen = client.get(url, headers=other_headers).json()
+    assert seen["can_replace_audio"] is False
+    assert client.get(url, headers=owner_headers).json()["can_replace_audio"] is True
+
+    # 组卷选用他人题目：计时可调，缺失的考试音频可补
+    filled = client.put(
+        url,
+        json={"wait_seconds": 9, "audio_url": "/api/v1/content-audio/a.mp3"},
+        headers=other_headers,
+    )
+    assert filled.status_code == 200, filled.text
+    timing = client.put(
+        url,
+        json={"wait_seconds": 5, "audio_url": "/api/v1/content-audio/a.mp3"},
+        headers=other_headers,
+    )
+    assert timing.status_code == 200, timing.text
+    # 已有音频：他人不能替换或清空
+    for audio_url in ("/api/v1/content-audio/b.mp3", None):
+        _forbidden(
+            client.put(
+                url,
+                json={"wait_seconds": 5, "audio_url": audio_url},
+                headers=other_headers,
+            ),
+            EXAM_AUDIO_DETAIL,
+        )
+    replaced = client.put(
+        url,
+        json={"wait_seconds": 5, "audio_url": "/api/v1/content-audio/b.mp3"},
+        headers=owner_headers,
+    )
+    assert replaced.status_code == 200, replaced.text

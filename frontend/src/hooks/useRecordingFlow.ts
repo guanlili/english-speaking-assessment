@@ -7,7 +7,9 @@ import { useRecorder } from "@/hooks/useRecorder"
 import { useI18n } from "@/lib/i18n"
 import {
   currentDraftOwner,
+  type DraftSaveResult,
   deleteDraftsForItem,
+  recordingLeaveState,
   saveRecordingDraft,
 } from "@/lib/recording-drafts"
 import { randomId } from "@/utils"
@@ -82,7 +84,12 @@ export function useRecordingFlow({
   const submittedRef = useRef(false)
   // 批次08B：草稿正在落盘（IndexedDB 写入未完成前保持离开保护——
   // 离开保护与数据落盘完成时机一致）
-  const [draftFlushPending, setDraftFlushPending] = useState(false)
+  const [draftFlushCount, setDraftFlushCount] = useState(0)
+  const [draftSaveResult, setDraftSaveResult] =
+    useState<DraftSaveResult | null>(null)
+  const recordingOwnerRef = useRef<string | null>(null)
+  const submissionClosed =
+    submitError && submitErrorData?.body?.detail === "Followup cancelled"
   // 存储不可用/配额不足的降级提示每次停留最多一次，避免连录连弹
   const draftWarnedRef = useRef(false)
 
@@ -109,10 +116,10 @@ export function useRecordingFlow({
       // 上传期间保留题面；模考上传成功即解除，不等待评分。
       setPinnedItemId(target.itemId)
       // 录完即落草稿（与上传并行）：刷新/断网后仍可恢复。不保存 token，
-      // 属主取 JWT sub；环境不可用时降级为仅内存重传。
-      const owner = currentDraftOwner()
-      if (target?.itemId && owner) {
-        setDraftFlushPending(true)
+      // 属主与录音目标一起钉住；环境不可用时降级为仅内存重传。
+      const owner = recordingOwnerRef.current
+      if (target.itemId && owner) {
+        setDraftFlushCount((count) => count + 1)
         void saveRecordingDraft({
           owner,
           classroomCode: code,
@@ -125,17 +132,22 @@ export function useRecordingFlow({
           blob: rec.blob,
         })
           .then((result) => {
+            // 重录时旧草稿可能仍在写入，不能覆盖新录音的保存结果。
+            if (recordingTargetRef.current === target)
+              setDraftSaveResult(result)
             if (result !== "saved" && !draftWarnedRef.current) {
               draftWarnedRef.current = true
               toast.warning(
                 t({
-                  zh: "本设备无法暂存录音草稿（存储受限或空间不足），请保持页面打开，上传失败时尽快点重传",
-                  en: "This device cannot keep a local recording draft (storage limited or full). Keep this page open and retry the upload soon if it fails.",
+                  zh: "本设备无法暂存录音草稿（存储受限或空间不足），刷新或离开可能丢失尚未上传的录音。",
+                  en: "This device cannot keep a local recording draft (storage limited or full). Refreshing or leaving may lose recordings that have not been uploaded.",
                 }),
               )
             }
           })
-          .finally(() => setDraftFlushPending(false))
+          .finally(() => setDraftFlushCount((count) => count - 1))
+      } else {
+        setDraftSaveResult("unavailable")
       }
       // 使用录音开始时钉住的目标，避免录音期间计划刷新导致提交到新题新轮
       submitRecording({ blob: rec.blob, duration: rec.duration }, target)
@@ -146,14 +158,24 @@ export function useRecordingFlow({
     recording: { blob: Blob; duration: number },
     target: AttemptSubmitTarget,
   ) => {
-    // 统一走 submitAsync：服务器接受（2xx）后删除该题草稿；失败则草稿保留，
-    // 刷新后由恢复卡片按原幂等键重传（不重复扣费）。普通练习与模考同规则。
+    // 统一走 submitAsync：服务器接受（2xx）后删除同目标草稿；失败则保留。
+    // 清理会等同目标已发起的保存全部完成，保护持续到清理事务提交。
+    const owner = recordingOwnerRef.current
     void submitAsync(recording, target)
-      .then(() => {
-        const accepted = target ?? recordingTargetRef.current
-        const owner = currentDraftOwner()
-        if (accepted?.itemId && owner) {
-          void deleteDraftsForItem(owner, code, accepted.itemId)
+      .then(async () => {
+        if (target.itemId && owner) {
+          setDraftFlushCount((count) => count + 1)
+          try {
+            await deleteDraftsForItem(
+              owner,
+              code,
+              target.sessionId ?? null,
+              target.itemType,
+              target.itemId,
+            )
+          } finally {
+            setDraftFlushCount((count) => count - 1)
+          }
         }
         if (!exam) return
         if (target)
@@ -179,6 +201,8 @@ export function useRecordingFlow({
   // 结果页也绑定这个实际完成的会话，不挂到新题新轮。
   const startRecording = () => {
     if (
+      submissionClosed ||
+      submitting ||
       recorder.isStarting() ||
       recorder.status === "recording" ||
       !currentItem ||
@@ -197,6 +221,8 @@ export function useRecordingFlow({
       sessionId,
       idempotencyKey: randomId(),
     }
+    recordingOwnerRef.current = currentDraftOwner()
+    setDraftSaveResult(null)
     setPinnedSessionId(sessionId ?? null)
     setPinnedItemId(currentItem.id)
     recorder.start()
@@ -204,6 +230,7 @@ export function useRecordingFlow({
 
   // 重传：用相同幂等键重新提交同一段录音（断网/超时后恢复）
   const retrySubmit = () => {
+    if (submissionClosed || submitting) return
     if (recorder.recording && recordingTargetRef.current) {
       submittedRef.current = true
       submitRecording(
@@ -218,12 +245,17 @@ export function useRecordingFlow({
 
   // 录音/上传/失败待重传期间的离开保护判定（站内跳转 + 浏览器关闭/刷新）；
   // 草稿落盘未完成也保持保护——离开保护与数据落盘完成时机一致（批次08B）
-  const pendingBlockerActive =
-    recorder.starting ||
-    recorder.status === "recording" ||
-    submitting ||
-    draftFlushPending ||
-    (submitError && Boolean(recorder.recording))
+  const leaveState = recordingLeaveState({
+    starting: recorder.starting,
+    recording: recorder.status === "recording",
+    submitting,
+    draftFlushPending: draftFlushCount > 0,
+    submitError,
+    hasRecording: Boolean(recorder.recording),
+    submissionClosed,
+    draftSaveResult,
+  })
+  const pendingBlockerActive = leaveState !== "allowed"
 
   useEffect(() => {
     if (submitError) {
@@ -301,5 +333,7 @@ export function useRecordingFlow({
     startRecording,
     retrySubmit,
     pendingBlockerActive,
+    submissionClosed,
+    leaveState,
   }
 }
