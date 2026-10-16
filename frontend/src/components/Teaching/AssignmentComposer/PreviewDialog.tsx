@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { assignmentItemKey } from "@/lib/assignment-order"
-import { itemsUsingDeviceSpeech } from "@/lib/device-speech"
+import { itemsUsingDeviceSpeech, passageSpeechItems } from "@/lib/device-speech"
 import { useI18n } from "@/lib/i18n"
 import { ITEM_TYPE_LABELS } from "@/lib/terms"
 import { formatDateTime } from "@/lib/time"
@@ -56,16 +56,17 @@ export function PreviewDialog({
 }) {
   const { t } = useI18n()
   const deviceSpeech = itemsUsingDeviceSpeech(
-    planItems.map((item) => {
+    planItems.flatMap((item) => {
       if (item.type === "passage") {
         const source = selectedPassages.find(
           (passage) => passage.id === item.id,
         )
-        return {
-          type: item.type,
-          label: source?.title ?? item.id,
+        return passageSpeechItems({
+          title: source?.title ?? item.id,
           audioUrl: source?.audio_url,
-        }
+          readingSplit: source?.reading_split,
+          segments: source?.reading_segments,
+        })
       }
       if (item.type === "repeat") {
         const source = selectedSentences.find(

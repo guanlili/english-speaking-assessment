@@ -3,6 +3,7 @@ import { beforeEach, test } from "node:test"
 
 import type { StoredStudent } from "../src/lib/classroom-student.ts"
 import {
+  expressionsStillLocal,
   LEGACY_SAVED_EXPRESSIONS_KEY,
   readSavedExpressions,
   savedExpressionsKey,
@@ -84,4 +85,13 @@ test("收藏去重且保留顺序", () => {
   const a = student("sA", "uA")
   saveSavedExpressions(a, ["first", "second", "first"])
   assert.deepEqual(readSavedExpressions(a), ["first", "second", "first"])
+})
+
+test("迁移只清掉服务端确认保存的文本", () => {
+  const stored = Array.from({ length: 50 }, (_, index) => `saved ${index}`)
+  const pending = [...stored.slice(0, 5), "  extra one  ", "extra two", "   "]
+  assert.deepEqual(expressionsStillLocal(pending, stored), [
+    "  extra one  ",
+    "extra two",
+  ])
 })

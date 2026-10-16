@@ -649,9 +649,8 @@ def read_class_weak_spots(
         snapshot = (
             attempt.item_snapshot if isinstance(attempt.item_snapshot, dict) else None
         )
-        reference = ""
-        if snapshot is not None and isinstance(snapshot.get("text"), str):
-            reference = snapshot["text"]
+        raw_text = snapshot.get("text") if snapshot is not None else None
+        reference = raw_text if isinstance(raw_text, str) else ""
         if attempt.item_type in (AttemptItemType.PASSAGE, AttemptItemType.REPEAT):
             word_rows.append((attempt.student_id, reference, attempt.transcript or ""))
         item_rows.append(

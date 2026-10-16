@@ -85,8 +85,8 @@ export function RubricBlock({
 }: {
   rubric: unknown
   engine: string
-  /** 把升级表达写到当前学生的账号收藏。教师回看不传，按钮不出现。 */
-  onSaveUpgrades?: (texts: string[]) => Promise<void>
+  /** 保存成功返回 true。失败返回 false，按钮保持可重试。 */
+  onSaveUpgrades?: (texts: string[]) => Promise<boolean>
 }) {
   const { t, lang } = useI18n()
   const data = parseRubric(rubric)
@@ -181,7 +181,12 @@ export function RubricBlock({
                   if (!upgrades?.length) return
                   setSaving(true)
                   void onSaveUpgrades(upgrades)
-                    .then(() => setSaved(true))
+                    .then((savedNow) => {
+                      if (savedNow) setSaved(true)
+                    })
+                    .catch(() => {
+                      // 调用方负责提示；这里只保证失败后仍可再点
+                    })
                     .finally(() => setSaving(false))
                 }}
               >

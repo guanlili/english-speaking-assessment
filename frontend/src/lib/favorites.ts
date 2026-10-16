@@ -30,3 +30,15 @@ export function saveSavedExpressions(
 ): void {
   safeLocalStorageSet(savedExpressionsKey(student), expressions)
 }
+
+/** 只丢掉服务端列表里已经有的文本。没存上的留在本机。 */
+export function expressionsStillLocal(
+  pending: readonly string[],
+  stored: readonly string[],
+): string[] {
+  const saved = new Set(stored)
+  return pending.filter((text) => {
+    const trimmed = text.trim()
+    return trimmed.length > 0 && !saved.has(trimmed)
+  })
+}

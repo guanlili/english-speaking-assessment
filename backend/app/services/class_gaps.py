@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from typing import TypedDict
 
 from app.models import AttemptItemType
 from app.scoring.heuristic import tokenize
@@ -101,26 +102,31 @@ def aggregate_low_items(
     rows: list[tuple[uuid.UUID, uuid.UUID, str, str, int | None]],
 ) -> list[dict[str, object]]:
     """(student_id, item_id, item_type, label, overall) → 均分偏低或多人低于 70 的题。"""
-    grouped: dict[uuid.UUID, dict[str, object]] = {}
+
+    class ItemBucket(TypedDict):
+        item_id: uuid.UUID
+        item_type: str
+        label: str
+        scores: list[int]
+
+    grouped: dict[uuid.UUID, ItemBucket] = {}
     for _student_id, item_id, item_type, label, overall in rows:
         if item_type == AttemptItemType.INSTRUCTION or overall is None:
             continue
-        bucket = grouped.setdefault(
-            item_id,
-            {
+        bucket = grouped.get(item_id)
+        if bucket is None:
+            fresh: ItemBucket = {
                 "item_id": item_id,
                 "item_type": item_type,
                 "label": label,
                 "scores": [],
-            },
-        )
-        scores = bucket["scores"]
-        assert isinstance(scores, list)
-        scores.append(overall)
+            }
+            grouped[item_id] = fresh
+            bucket = fresh
+        bucket["scores"].append(overall)
     notable: list[dict[str, object]] = []
     for bucket in grouped.values():
-        scores = bucket["scores"]
-        assert isinstance(scores, list)
+        scores: list[int] = bucket["scores"]
         if not scores:
             continue
         avg = sum(scores) / len(scores)

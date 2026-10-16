@@ -45,6 +45,8 @@ for (const width of [390, 820, 1180]) {
           is_active: true,
           is_superuser: true,
         }
+      else if (path.endsWith("/weak-spots"))
+        json = { word_gaps: [], low_items: [] }
       else if (path.endsWith("/PAGE/board"))
         json = {
           classroom_code: "PAGE",

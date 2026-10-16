@@ -9,6 +9,7 @@ import { ApiError, ClassesService } from "@/client"
 import { Button } from "@/components/ui/button"
 import type { BiString } from "@/lib/bi"
 import { useI18n } from "@/lib/i18n"
+import { mayControlPlayback, playbackAfterSignal } from "@/lib/listen-playback"
 import { speakEnglish, TTS_RATE_OPTIONS } from "@/lib/tts"
 import { extractErrorMessage } from "@/utils"
 
@@ -46,6 +47,8 @@ export default function LimitedListenButton({
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const countingRef = useRef(false)
   const activeRef = useRef(true)
+  const itemIdRef = useRef(itemId)
+  itemIdRef.current = itemId
   const suppressSynthError = useRef(false)
   const unlimited = replayLimit === 0
   const remaining = unlimited ? Infinity : Math.max(0, replayLimit - used)
@@ -63,10 +66,14 @@ export default function LimitedListenButton({
     }
   }, [])
 
+  const stillThisItem = (requestedItemId: string) =>
+    mayControlPlayback(activeRef.current, requestedItemId, itemIdRef.current)
+
   const stopPlayback = () => {
+    if (!stillThisItem(itemId)) return
     suppressSynthError.current = true
     audioRef.current?.pause()
-    if (window.speechSynthesis) window.speechSynthesis.cancel()
+    if (!audioUrl && window.speechSynthesis) window.speechSynthesis.cancel()
     setPlaying(false)
   }
 
@@ -93,44 +100,57 @@ export default function LimitedListenButton({
         })
     }
     return new Promise<boolean>((resolve) => {
-      let settled = false
+      let opened = false
       let timer = 0
-      const finish = (ok: boolean) => {
-        if (settled) return
-        settled = true
+      const settle = (ok: boolean) => {
+        if (opened) return
+        opened = true
         window.clearTimeout(timer)
-        if (!ok) playbackError()
         resolve(ok)
+      }
+      const noteError = () => {
+        if (suppressSynthError.current) return
+        if (!stillThisItem(itemId)) {
+          settle(false)
+          return
+        }
+        const next = playbackAfterSignal(opened, "error")
+        setPlaying(next.playing)
+        if (next.notify) playbackError()
+        settle(false)
       }
       const utterance = speakEnglish(text, {
         rate: Number(rate),
         onStart: () => {
-          if (!activeRef.current) {
-            suppressSynthError.current = true
-            window.speechSynthesis?.cancel()
-            finish(false)
+          if (!stillThisItem(itemId)) {
+            settle(false)
             return
           }
-          if (settled) return
-          settled = true
-          window.clearTimeout(timer)
-          setPlaying(true)
-          resolve(true)
+          const next = playbackAfterSignal(false, "start")
+          setPlaying(next.playing)
+          settle(true)
         },
-        onEnd: () => setPlaying(false),
-        onError: () => {
-          if (suppressSynthError.current) return
-          finish(false)
+        onEnd: () => {
+          if (!stillThisItem(itemId)) return
+          setPlaying(playbackAfterSignal(true, "end").playing)
         },
+        onError: noteError,
       })
       if (!utterance) {
-        finish(false)
+        noteError()
         return
       }
       timer = window.setTimeout(() => {
+        if (!stillThisItem(itemId)) {
+          settle(false)
+          return
+        }
         suppressSynthError.current = true
         window.speechSynthesis?.cancel()
-        finish(false)
+        const next = playbackAfterSignal(false, "error")
+        setPlaying(next.playing)
+        if (next.notify) playbackError()
+        settle(false)
       }, 2000)
     })
   }
@@ -140,13 +160,16 @@ export default function LimitedListenButton({
     countingRef.current = true
     suppressSynthError.current = false
     setLoading(true)
+    const requestedItemId = itemId
     try {
       const started = await beginPlayback()
-      if (!started || !activeRef.current) {
+      if (!stillThisItem(requestedItemId)) return
+      if (!started) {
         stopPlayback()
         return
       }
       const counted = await recordListenCount()
+      if (!stillThisItem(requestedItemId)) return
       if (!counted) stopPlayback()
     } finally {
       countingRef.current = false

@@ -79,6 +79,8 @@ async function mockTeacher(page: Page, nativeAudio = false) {
     })
     if (path.endsWith("/users/me"))
       body = { id: "teacher", role: "teacher", is_active: true }
+    else if (path.endsWith("/weak-spots"))
+      body = { word_gaps: [], low_items: [] }
     else if (path.endsWith("/board"))
       body = {
         classroom_code: "TEACH",

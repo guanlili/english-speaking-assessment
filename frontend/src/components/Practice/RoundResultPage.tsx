@@ -688,8 +688,10 @@ export function RoundResultPage() {
                                   en: "Saved to My Growth",
                                 }),
                               )
+                              return true
                             } catch (err) {
                               toast.error(extractErrorMessage(err))
+                              return false
                             }
                           }
                         : undefined

@@ -166,7 +166,7 @@ test("普通教师：导入 → 查看本批 → 带入组卷 → 发布", async
   // ── 发布（老师检查后自行确认；不自动发布）──
   await composer.getByRole("button", { name: /预览练习/ }).click()
   const previewDialog = page.getByRole("dialog")
-  await expect(previewDialog.getByText(marker)).toBeVisible()
+  await expect(previewDialog.locator("ol").getByText(marker)).toBeVisible()
   // 题目级白名单：同主题旧题不得混入本批题单
   await expect(
     previewDialog.getByText("OLD question that must stay out"),
@@ -189,7 +189,9 @@ test("普通教师：导入 → 查看本批 → 带入组卷 → 发布", async
   // 预览题单 = 第二主题的题（非空、不含旧题）
   await composer2.getByRole("button", { name: /预览练习/ }).click()
   const preview2 = page.getByRole("dialog")
-  await expect(preview2.getByText("Second topic for switching")).toBeVisible()
+  await expect(
+    preview2.locator("ol").getByText("Second topic for switching"),
+  ).toBeVisible()
   await expect(
     preview2.getByText("OLD question that must stay out"),
   ).toHaveCount(0)
