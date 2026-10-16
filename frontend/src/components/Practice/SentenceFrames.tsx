@@ -75,7 +75,7 @@ export default function SentenceFrames({
                   ? t({ zh: "取消收藏", en: "Remove from favorites" })
                   : t({ zh: "收藏这条句型", en: "Favorite this frame" })
               }
-              disabled={frameFavorite.isPending}
+              disabled={frameFavorite.isPending || unfavorite.isPending}
               onClick={() => {
                 if (frame.favorited) {
                   unfavorite.mutate(frame.id)
@@ -83,7 +83,7 @@ export default function SentenceFrames({
                   frameFavorite.mutate(frame.id)
                 }
               }}
-              className="shrink-0 p-1 text-muted-foreground transition-colors hover:text-primary"
+              className="-my-2 -mr-2 flex size-11 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-primary"
             >
               <Star
                 className={

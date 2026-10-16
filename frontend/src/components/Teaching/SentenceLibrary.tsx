@@ -6,6 +6,7 @@ import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import Pager from "@/components/Common/Pager"
 import AudioSetter from "@/components/Practice/AudioSetter"
 import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
+import { ReadOnlyContentBadge } from "@/components/Teaching/ReadOnlyContentBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -36,6 +37,7 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
+import { useCanEditContent } from "@/hooks/useCanEditContent"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
 import { EXAM_LEVEL_LABELS, TERMS, VOCAB_LEVEL_ORDER } from "@/lib/terms"
@@ -58,6 +60,7 @@ export function SentenceLibrary({
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const { t } = useI18n()
+  const canEdit = useCanEditContent()
   const [keyword, setKeyword] = useState("")
   const [search, setSearch] = useState("")
   const [pageIndex, setPageIndex] = useState(0)
@@ -282,54 +285,61 @@ export function SentenceLibrary({
                       {t({ zh: "独立题目", en: "Standalone" })}
                     </Badge>
                   )}
+                  {!canEdit(s.owner_id) && <ReadOnlyContentBadge />}
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t({
-                    zh: "编辑复述句",
-                    en: "Edit repeat sentence",
-                  })}
-                  onClick={() => openEdit(s)}
-                >
-                  <Pencil className="size-3.5" />
-                </Button>
+                {canEdit(s.owner_id) && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t({
+                      zh: "编辑复述句",
+                      en: "Edit repeat sentence",
+                    })}
+                    onClick={() => openEdit(s)}
+                  >
+                    <Pencil className="size-3.5" />
+                  </Button>
+                )}
                 <ExamItemSettingsButton
                   itemType="repeat"
                   itemId={s.id ?? ""}
                   text={s.text ?? ""}
                 />
-                <AudioSetter
-                  audioUrl={s.audio_url}
-                  text={s.text ?? ""}
-                  onSet={async (audio_url) => {
-                    await AdminService.updateSentence({
-                      sentenceId: s.id ?? "",
-                      requestBody: {
-                        order_index: s.order_index ?? 0,
-                        text: s.text ?? "",
-                        translation: s.translation ?? undefined,
-                        audio_url,
-                        suggested_seconds: s.suggested_seconds ?? 12,
-                        replay_limit: s.replay_limit ?? 3,
-                      },
-                    })
-                    invalidate()
-                  }}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t({
-                    zh: "删除复述句",
-                    en: "Delete repeat sentence",
-                  })}
-                  onClick={() => setToDelete(s)}
-                >
-                  <Trash2 className="size-3.5 text-destructive" />
-                </Button>
+                {canEdit(s.owner_id) && (
+                  <AudioSetter
+                    audioUrl={s.audio_url}
+                    text={s.text ?? ""}
+                    onSet={async (audio_url) => {
+                      await AdminService.updateSentence({
+                        sentenceId: s.id ?? "",
+                        requestBody: {
+                          order_index: s.order_index ?? 0,
+                          text: s.text ?? "",
+                          translation: s.translation ?? undefined,
+                          audio_url,
+                          suggested_seconds: s.suggested_seconds ?? 12,
+                          replay_limit: s.replay_limit ?? 3,
+                        },
+                      })
+                      invalidate()
+                    }}
+                  />
+                )}
+                {canEdit(s.owner_id) && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t({
+                      zh: "删除复述句",
+                      en: "Delete repeat sentence",
+                    })}
+                    onClick={() => setToDelete(s)}
+                  >
+                    <Trash2 className="size-3.5 text-destructive" />
+                  </Button>
+                )}
               </div>
             </div>
           ))}

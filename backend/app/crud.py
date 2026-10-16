@@ -119,12 +119,17 @@ def derive_passage_topic(
     return topic
 
 
-def create_passage(*, session: Session, passage_in: PassageCreate) -> Passage:
+def create_passage(
+    *, session: Session, passage_in: PassageCreate, owner_id: uuid.UUID | None = None
+) -> Passage:
     # slug 未填时自动生成（管理端/脚本共用同一套规则）
     slug = passage_in.slug or unique_passage_slug(
         session, slugify_title(passage_in.title)
     )
-    payload = passage_in.model_dump(exclude={"slug"}) | {"slug": slug}
+    payload = passage_in.model_dump(exclude={"slug"}) | {
+        "slug": slug,
+        "owner_id": owner_id,
+    }
     # 挂单元的篇目主题跟随单元（题库三层：主题→篇目→句子）
     payload["topic"] = derive_passage_topic(
         session, passage_in.unit_id, passage_in.topic

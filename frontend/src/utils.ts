@@ -102,6 +102,9 @@ const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
   "没有权限：只能重置学生账号的密码": {
     en: "No permission: only student account passwords can be reset.",
   },
+  "没有权限：只能修改自己创建的题目": {
+    en: "No permission: you can only edit questions you created.",
+  },
   "没有权限：该学生账号同时属于其他教师的班级，请联系管理员重置": {
     en: "No permission: this student also belongs to another teacher's class. Ask an administrator to reset the password.",
   },

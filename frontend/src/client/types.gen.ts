@@ -546,6 +546,7 @@ export type InstructionPublic = {
     title?: (string | null);
     text: string;
     suggested_seconds: number;
+    owner_id?: (string | null);
 };
 
 /**
@@ -634,6 +635,7 @@ export type PassagePublic = {
     slug: string;
     reading_split?: boolean;
     unit_id?: (string | null);
+    owner_id?: (string | null);
     created_at?: (string | null);
 };
 
@@ -682,6 +684,7 @@ export type PassageWithSentences = {
     slug: string;
     reading_split?: boolean;
     unit_id?: (string | null);
+    owner_id?: (string | null);
     created_at?: (string | null);
     sentences?: Array<RepeatSentence>;
     reading_segments?: Array<(string)>;
@@ -825,6 +828,7 @@ export type QuestionBankOut = {
     exam_level?: (string | null);
     cue_card_bullets?: (Array<(string)> | null);
     prep_seconds?: (number | null);
+    owner_id?: (string | null);
 };
 
 /**
@@ -900,6 +904,7 @@ export type RepeatSentence = {
     replay_limit?: number;
     exam_kind?: (string | null);
     exam_level?: (string | null);
+    owner_id?: (string | null);
     created_at?: (string | null);
 };
 
@@ -932,6 +937,7 @@ export type ScenarioQuestionPublic = {
     text: string;
     audio_url?: (string | null);
     suggested_seconds: number;
+    owner_id?: (string | null);
     exam_kind?: (string | null);
     exam_level?: (string | null);
     cue_card_bullets?: (Array<(string)> | null);
@@ -1062,6 +1068,7 @@ export type SentenceWithPassage = {
     replay_limit?: number;
     exam_kind?: (string | null);
     exam_level?: (string | null);
+    owner_id?: (string | null);
     created_at?: (string | null);
     passage_title?: (string | null);
 };

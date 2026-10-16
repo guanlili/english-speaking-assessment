@@ -14,6 +14,7 @@ import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import Pager from "@/components/Common/Pager"
 import AudioSetter from "@/components/Practice/AudioSetter"
 import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
+import { ReadOnlyContentBadge } from "@/components/Teaching/ReadOnlyContentBadge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -38,6 +39,7 @@ import { NumberInput } from "@/components/ui/number-input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
+import { useCanEditContent } from "@/hooks/useCanEditContent"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
 import { extractErrorMessage, randomId } from "@/utils"
@@ -56,6 +58,7 @@ interface QuestionShape {
   translation?: string | null
   audio_url?: string | null
   suggested_seconds?: number
+  owner_id?: string | null
 }
 
 interface ScenarioShape {
@@ -234,6 +237,9 @@ function ScenarioCard({
 }) {
   const { t } = useI18n()
   const { showSuccessToast } = useCustomToast()
+  const canEdit = useCanEditContent()
+  // 主题是共用分组：组内题目全部可改时才能改名/启停/删除
+  const topicEditable = scenario.questions.every((q) => canEdit(q.owner_id))
   const [question, setQuestion] = useState({
     text: "",
     seconds: 30,
@@ -313,6 +319,7 @@ function ScenarioCard({
   const deleteQuestion = useMutation({
     mutationFn: (id: string) => AdminService.deleteQuestion({ questionId: id }),
     onSuccess: () => onMutated(),
+    onError: (err: unknown) => toast.error(extractErrorMessage(err)),
   })
 
   // ── 编辑题目（与题库页/文章朗读一致的弹窗形态）──
@@ -384,22 +391,25 @@ function ScenarioCard({
               aria-label={t({ zh: "情景主题", en: "Q&A topic" })}
               className="h-8 max-w-56 font-medium"
               value={topicDraft}
+              readOnly={!topicEditable}
               onChange={(e) => setTopicDraft(e.target.value)}
             />
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={
-                topicDraft.trim().length === 0 ||
-                topicDraft === scenario.topic ||
-                updateScenario.isPending
-              }
-              onClick={() =>
-                updateScenario.mutate({ topic: topicDraft.trim() })
-              }
-            >
-              {t({ zh: "改名", en: "Rename" })}
-            </Button>
+            {topicEditable && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={
+                  topicDraft.trim().length === 0 ||
+                  topicDraft === scenario.topic ||
+                  updateScenario.isPending
+                }
+                onClick={() =>
+                  updateScenario.mutate({ topic: topicDraft.trim() })
+                }
+              >
+                {t({ zh: "改名", en: "Rename" })}
+              </Button>
+            )}
             {scenario.is_active === false && (
               <Badge variant="secondary">
                 {t({ zh: "已停用", en: "Disabled" })}
@@ -420,23 +430,26 @@ function ScenarioCard({
           <div className="flex items-center gap-2 whitespace-nowrap text-sm">
             <Checkbox
               checked={scenario.is_active !== false}
+              disabled={!topicEditable}
               onCheckedChange={(checked) =>
                 updateScenario.mutate({ is_active: checked === true })
               }
             />
             {t({ zh: "启用", en: "Enabled" })}
           </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t({
-              zh: `删除情景 ${scenario.topic}`,
-              en: `Delete topic ${scenario.topic}`,
-            })}
-            onClick={() => setConfirmDelete(true)}
-          >
-            <Trash2 className="text-destructive" />
-          </Button>
+          {topicEditable && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t({
+                zh: `删除情景 ${scenario.topic}`,
+                en: `Delete topic ${scenario.topic}`,
+              })}
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 className="text-destructive" />
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -464,49 +477,59 @@ function ScenarioCard({
                     <p className="text-sm">
                       {index + 1}. {q.text}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       {t({
                         zh: `建议作答 ${q.suggested_seconds} 秒`,
                         en: `Suggested ${q.suggested_seconds}s`,
                       })}
+                      {!canEdit(q.owner_id) && <ReadOnlyContentBadge />}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t({
-                        zh: `编辑题目 ${index + 1}`,
-                        en: `Edit question ${index + 1}`,
-                      })}
-                      onClick={() => openQEdit(q)}
-                    >
-                      <Pencil className="size-3.5" />
-                    </Button>
+                    {canEdit(q.owner_id) && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t({
+                          zh: `编辑题目 ${index + 1}`,
+                          en: `Edit question ${index + 1}`,
+                        })}
+                        onClick={() => openQEdit(q)}
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                    )}
                     <ExamItemSettingsButton
                       itemType="question"
                       itemId={q.id}
                       text={q.text ?? ""}
                     />
-                    <AudioSetter
-                      audioUrl={q.audio_url}
-                      text={q.text ?? ""}
-                      onSet={async (audio_url) => {
-                        await AdminService.updateQuestion({
-                          questionId: q.id,
-                          requestBody: { audio_url },
-                        })
-                        onMutated()
-                      }}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t({ zh: "删除题目", en: "Delete question" })}
-                      onClick={() => setConfirmDeleteQ(q.id)}
-                    >
-                      <Trash2 className="size-3.5 text-destructive" />
-                    </Button>
+                    {canEdit(q.owner_id) && (
+                      <AudioSetter
+                        audioUrl={q.audio_url}
+                        text={q.text ?? ""}
+                        onSet={async (audio_url) => {
+                          await AdminService.updateQuestion({
+                            questionId: q.id,
+                            requestBody: { audio_url },
+                          })
+                          onMutated()
+                        }}
+                      />
+                    )}
+                    {canEdit(q.owner_id) && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t({
+                          zh: "删除题目",
+                          en: "Delete question",
+                        })}
+                        onClick={() => setConfirmDeleteQ(q.id)}
+                      >
+                        <Trash2 className="size-3.5 text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}

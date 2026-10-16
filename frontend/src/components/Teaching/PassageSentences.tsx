@@ -33,9 +33,11 @@ import { extractErrorMessage } from "@/utils"
 export function PassageSentences({
   passage,
   onMutated,
+  readOnly = false,
 }: {
   passage: PassageWithSentences
   onMutated: () => void
+  readOnly?: boolean
 }) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
@@ -85,30 +87,36 @@ export function PassageSentences({
             })}
           </span>
         </p>
-        <div className="flex gap-1.5">
-          {sentences.length === 0 && (
+        {!readOnly && (
+          <div className="flex gap-1.5">
+            {sentences.length === 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={autoSplit.isPending}
+                title={t({
+                  zh: "从正文选出 3 句，生成听音后复述的题目；学生作答时不显示文字",
+                  en: "Select 3 sentences for listen-and-repeat items; students won't see the text while answering",
+                })}
+                onClick={() => autoSplit.mutate()}
+              >
+                <Scissors />
+                {t({
+                  zh: "生成听句复述题",
+                  en: "Create listen-and-repeat items",
+                })}
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
-              disabled={autoSplit.isPending}
-              title={t({
-                zh: "从正文选出 3 句，生成听音后复述的题目；学生作答时不显示文字",
-                en: "Select 3 sentences for listen-and-repeat items; students won't see the text while answering",
-              })}
-              onClick={() => autoSplit.mutate()}
+              onClick={() => setAddOpen(true)}
             >
-              <Scissors />
-              {t({
-                zh: "生成听句复述题",
-                en: "Create listen-and-repeat items",
-              })}
+              <Plus />
+              {t({ zh: "添加句子", en: "Add Sentence" })}
             </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
-            <Plus />
-            {t({ zh: "添加句子", en: "Add Sentence" })}
-          </Button>
-        </div>
+          </div>
+        )}
       </div>
       {sentences.length === 0 ? (
         <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
@@ -148,51 +156,57 @@ export function PassageSentences({
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-0.5">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t({
-                    zh: "编辑复述句",
-                    en: "Edit repeat sentence",
-                  })}
-                  onClick={() => setEditing(s)}
-                >
-                  <Pencil className="size-3.5" />
-                </Button>
+                {!readOnly && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t({
+                      zh: "编辑复述句",
+                      en: "Edit repeat sentence",
+                    })}
+                    onClick={() => setEditing(s)}
+                  >
+                    <Pencil className="size-3.5" />
+                  </Button>
+                )}
                 <ExamItemSettingsButton
                   itemType="repeat"
                   itemId={s.id ?? ""}
                   text={s.text ?? ""}
                 />
-                <AudioSetter
-                  audioUrl={s.audio_url}
-                  text={s.text ?? ""}
-                  onSet={async (audio_url) => {
-                    await AdminService.updateSentence({
-                      sentenceId: s.id ?? "",
-                      requestBody: {
-                        order_index: s.order_index ?? 0,
-                        text: s.text ?? "",
-                        translation: s.translation ?? undefined,
-                        audio_url,
-                        suggested_seconds: s.suggested_seconds ?? 12,
-                        replay_limit: s.replay_limit ?? 3,
-                      },
-                    })
-                    invalidate()
-                  }}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t({
-                    zh: "删除复述句",
-                    en: "Delete repeat sentence",
-                  })}
-                  onClick={() => setToDelete(s)}
-                >
-                  <Trash2 className="size-3.5 text-destructive" />
-                </Button>
+                {!readOnly && (
+                  <AudioSetter
+                    audioUrl={s.audio_url}
+                    text={s.text ?? ""}
+                    onSet={async (audio_url) => {
+                      await AdminService.updateSentence({
+                        sentenceId: s.id ?? "",
+                        requestBody: {
+                          order_index: s.order_index ?? 0,
+                          text: s.text ?? "",
+                          translation: s.translation ?? undefined,
+                          audio_url,
+                          suggested_seconds: s.suggested_seconds ?? 12,
+                          replay_limit: s.replay_limit ?? 3,
+                        },
+                      })
+                      invalidate()
+                    }}
+                  />
+                )}
+                {!readOnly && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t({
+                      zh: "删除复述句",
+                      en: "Delete repeat sentence",
+                    })}
+                    onClick={() => setToDelete(s)}
+                  >
+                    <Trash2 className="size-3.5 text-destructive" />
+                  </Button>
+                )}
               </div>
             </li>
           ))}

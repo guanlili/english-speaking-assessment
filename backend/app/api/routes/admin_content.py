@@ -54,7 +54,7 @@ from app.models import (
     validate_exam_fields,
     validate_question_suggested_seconds,
 )
-from app.services import reading
+from app.services import content_access, reading
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -367,7 +367,7 @@ def list_passages(
 
 @router.post("/passages", response_model=PassagePublic)
 def create_passage(
-    session: SessionDep, _admin: TeacherUserDep, passage_in: PassageCreate
+    session: SessionDep, current_user: TeacherUserDep, passage_in: PassageCreate
 ) -> Any:
     _require_valid_band(passage_in.cefr_band)
     if passage_in.unit_id is not None and session.get(Unit, passage_in.unit_id) is None:
@@ -378,19 +378,24 @@ def create_passage(
         ).first()
         if duplicate is not None:
             raise HTTPException(status_code=409, detail="slug 已存在")
-    return crud.create_passage(session=session, passage_in=passage_in)
+    return crud.create_passage(
+        session=session,
+        passage_in=passage_in,
+        owner_id=content_access.owner_for(current_user),
+    )
 
 
 @router.put("/passages/{passage_id}", response_model=PassagePublic)
 def update_passage(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    current_user: TeacherUserDep,
     passage_id: uuid.UUID,
     passage_in: PassageUpdate,
 ) -> Any:
     passage = session.get(Passage, passage_id)
     if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
+    content_access.require_passage(session, current_user, passage)
     update = passage_in.model_dump(exclude={"slug"}, exclude_unset=True)
     # 非空字段不允许显式清空（slug 由创建决定，不在此更新）
     _reject_null_non_nullable(
@@ -428,11 +433,12 @@ def update_passage(
 
 @router.delete("/passages/{passage_id}")
 def delete_passage(
-    session: SessionDep, _admin: TeacherUserDep, passage_id: uuid.UUID
+    session: SessionDep, current_user: TeacherUserDep, passage_id: uuid.UUID
 ) -> dict[str, str]:
     passage = session.get(Passage, passage_id)
     if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
+    content_access.require_passage(session, current_user, passage)
     sentence_ids = session.exec(
         select(RepeatSentence.id).where(RepeatSentence.passage_id == passage_id)
     ).all()
@@ -483,14 +489,19 @@ def next_sentence_order(session: Any, passage_id: uuid.UUID | None) -> int:
 @router.post("/passages/{passage_id}/sentences", response_model=RepeatSentence)
 def create_sentence(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    current_user: TeacherUserDep,
     passage_id: uuid.UUID,
     sentence_in: SentenceCreate,
 ) -> Any:
-    if session.get(Passage, passage_id) is None:
+    passage = session.get(Passage, passage_id)
+    if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
+    content_access.require_passage(session, current_user, passage)
     sentence = RepeatSentence.model_validate(sentence_in.model_dump())
     sentence.passage_id = passage_id
+    sentence.owner_id = content_access.sentence_owner_for(
+        session, current_user, passage
+    )
     sentence.order_index = next_sentence_order(session, passage_id)
     session.add(sentence)
     session.commit()
@@ -595,20 +606,24 @@ def list_sentences_flat(
 @router.post("/sentences", response_model=RepeatSentence)
 def create_sentence_standalone(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    current_user: TeacherUserDep,
     sentence_in: SentenceCreate,
 ) -> Any:
     """独立创建复述句（不挂篇目）：题目库三题型互相独立后的复述题入口。
 
     传 passage_id 仍可挂到篇目（自主练习轮会随篇目出现）。
     """
-    if (
-        sentence_in.passage_id is not None
-        and session.get(Passage, sentence_in.passage_id) is None
-    ):
-        raise HTTPException(status_code=404, detail="Passage not found")
+    passage = None
+    if sentence_in.passage_id is not None:
+        passage = session.get(Passage, sentence_in.passage_id)
+        if passage is None:
+            raise HTTPException(status_code=404, detail="Passage not found")
+        content_access.require_passage(session, current_user, passage)
     validate_exam_fields("repeat", sentence_in.exam_kind, sentence_in.exam_level)
     sentence = RepeatSentence.model_validate(sentence_in.model_dump())
+    sentence.owner_id = content_access.sentence_owner_for(
+        session, current_user, passage
+    )
     sentence.order_index = next_sentence_order(session, sentence.passage_id)
     session.add(sentence)
     session.commit()
@@ -619,21 +634,25 @@ def create_sentence_standalone(
 @router.put("/sentences/{sentence_id}", response_model=RepeatSentence)
 def update_sentence(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    current_user: TeacherUserDep,
     sentence_id: uuid.UUID,
     sentence_in: SentenceUpdate,
 ) -> Any:
     sentence = session.get(RepeatSentence, sentence_id)
     if sentence is None:
         raise HTTPException(status_code=404, detail="Sentence not found")
+    content_access.require_sentence(session, current_user, sentence)
     update = sentence_in.model_dump(exclude={"id"}, exclude_unset=True)
     # 非空字段不允许显式清空（text/order_index/suggested_seconds/replay_limit）
     _reject_null_non_nullable(
         update, {"text", "order_index", "suggested_seconds", "replay_limit"}
     )
     if "passage_id" in update and update["passage_id"] is not None:
-        if session.get(Passage, update["passage_id"]) is None:
+        target = session.get(Passage, update["passage_id"])
+        if target is None:
             raise HTTPException(status_code=422, detail="Passage not found")
+        content_access.require_passage(session, current_user, target)
+        update["owner_id"] = content_access.passage_owner(session, target)
     # 部分更新：与原记录合并出完整状态再校验；显式清题型级联清级别
     merged_kind = update.get("exam_kind", sentence.exam_kind)
     merged_level = update.get("exam_level", sentence.exam_level)
@@ -651,11 +670,12 @@ def update_sentence(
 
 @router.delete("/sentences/{sentence_id}")
 def delete_sentence(
-    session: SessionDep, _admin: TeacherUserDep, sentence_id: uuid.UUID
+    session: SessionDep, current_user: TeacherUserDep, sentence_id: uuid.UUID
 ) -> dict[str, str]:
     sentence = session.get(RepeatSentence, sentence_id)
     if sentence is None:
         raise HTTPException(status_code=404, detail="Sentence not found")
+    content_access.require_sentence(session, current_user, sentence)
     _reject_delete_with_queued_attempts(session, sentence_id, AttemptItemType.REPEAT)
     session.delete(sentence)
     session.commit()
@@ -689,10 +709,11 @@ def list_instructions(
 @router.post("/instructions", response_model=InstructionPublic)
 def create_instruction(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    current_user: TeacherUserDep,
     instruction_in: InstructionCreate,
 ) -> Any:
     instruction = Instruction.model_validate(instruction_in.model_dump())
+    instruction.owner_id = content_access.owner_for(current_user)
     session.add(instruction)
     session.commit()
     session.refresh(instruction)
@@ -702,13 +723,14 @@ def create_instruction(
 @router.put("/instructions/{instruction_id}", response_model=InstructionPublic)
 def update_instruction(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    current_user: TeacherUserDep,
     instruction_id: uuid.UUID,
     instruction_in: InstructionUpdate,
 ) -> Any:
     instruction = session.get(Instruction, instruction_id)
     if instruction is None:
         raise HTTPException(status_code=404, detail="Instruction not found")
+    content_access.require_instruction(current_user, instruction)
     update = instruction_in.model_dump(exclude_unset=True)
     _reject_null_non_nullable(update, {"text", "suggested_seconds"})
     instruction.sqlmodel_update(update)
@@ -721,12 +743,13 @@ def update_instruction(
 
 @router.delete("/instructions/{instruction_id}")
 def delete_instruction(
-    session: SessionDep, _admin: TeacherUserDep, instruction_id: uuid.UUID
+    session: SessionDep, current_user: TeacherUserDep, instruction_id: uuid.UUID
 ) -> dict[str, str]:
     """删除安全：发布快照深拷贝文字，历史练习不受影响。"""
     instruction = session.get(Instruction, instruction_id)
     if instruction is None:
         raise HTTPException(status_code=404, detail="Instruction not found")
+    content_access.require_instruction(current_user, instruction)
     session.delete(instruction)
     session.commit()
     return {"message": "deleted"}
@@ -824,11 +847,12 @@ def create_scenario(
 
 @router.delete("/scenarios/{scenario_id}")
 def delete_scenario(
-    session: SessionDep, _admin: TeacherUserDep, scenario_id: uuid.UUID
+    session: SessionDep, current_user: TeacherUserDep, scenario_id: uuid.UUID
 ) -> dict[str, str]:
     scenario = session.get(Scenario, scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
+    content_access.require_scenario(session, current_user, scenario_id)
     question_ids = session.exec(
         select(ScenarioQuestion.id).where(ScenarioQuestion.scenario_id == scenario_id)
     ).all()
@@ -846,7 +870,7 @@ def delete_scenario(
 )
 def create_question(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    current_user: TeacherUserDep,
     scenario_id: uuid.UUID,
     question_in: QuestionCreate,
 ) -> Any:
@@ -868,6 +892,7 @@ def create_question(
         {
             **question_in.model_dump(exclude={"scenario_id", "order_index"}),
             "scenario_id": scenario_id,
+            "owner_id": content_access.owner_for(current_user),
         }
     )
     # 排序号服务端生成：删过中间题后仍单调递增，不信任前端数组长度
@@ -880,11 +905,12 @@ def create_question(
 
 @router.delete("/questions/{question_id}")
 def delete_question(
-    session: SessionDep, _admin: TeacherUserDep, question_id: uuid.UUID
+    session: SessionDep, current_user: TeacherUserDep, question_id: uuid.UUID
 ) -> dict[str, str]:
     question = session.get(ScenarioQuestion, question_id)
     if question is None:
         raise HTTPException(status_code=404, detail="Question not found")
+    content_access.require_question(current_user, question)
     _reject_delete_with_queued_attempts(session, question_id, AttemptItemType.QUESTION)
     session.delete(question)
     session.commit()
@@ -917,6 +943,7 @@ class QuestionBankOut(SQLModel):
     exam_level: str | None = None
     cue_card_bullets: list[str] | None = None
     prep_seconds: int | None = None
+    owner_id: uuid.UUID | None = None
 
 
 @router.get("/questions", response_model=QuestionBankListOut)
@@ -985,6 +1012,7 @@ def list_question_bank(
                 exam_level=question.exam_level,
                 cue_card_bullets=question.cue_card_bullets,
                 prep_seconds=question.prep_seconds,
+                owner_id=question.owner_id,
             )
             for question, topic_name in rows
         ],
@@ -1032,7 +1060,7 @@ class BatchQuestionResult(SQLModel):
 )
 def create_questions_batch(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    current_user: TeacherUserDep,
     scenario_id: uuid.UUID,
     body: BatchQuestionCreate,
 ) -> Any:
@@ -1079,6 +1107,7 @@ def create_questions_batch(
                 text=text,
                 translation=(item.translation or "").strip() or None,
                 suggested_seconds=item.suggested_seconds,
+                owner_id=content_access.owner_for(current_user),
             )
         )
         created += 1
@@ -1249,7 +1278,7 @@ class ScenarioUpdate(SQLModel):
 @router.put("/scenarios/{scenario_id}")
 def update_scenario(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    current_user: TeacherUserDep,
     scenario_id: uuid.UUID,
     scenario_in: ScenarioUpdate,
 ) -> Any:
@@ -1257,6 +1286,7 @@ def update_scenario(
     scenario = session.get(Scenario, scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
+    content_access.require_scenario(session, current_user, scenario_id)
     update = scenario_in.model_dump(exclude_unset=True)
     # 主题非空且不允许显式清空
     _reject_null_non_nullable(update, {"topic"})
@@ -1338,7 +1368,7 @@ class AutoSplitResult(SQLModel):
 )
 def auto_split_sentences(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    current_user: TeacherUserDep,
     passage_id: uuid.UUID,
     target_count: int = 3,
 ) -> Any:
@@ -1351,6 +1381,7 @@ def auto_split_sentences(
     passage = session.get(Passage, passage_id)
     if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
+    content_access.require_passage(session, current_user, passage)
     existing = session.exec(
         select(RepeatSentence).where(RepeatSentence.passage_id == passage_id)
     ).all()
@@ -1378,6 +1409,7 @@ def auto_split_sentences(
             order_index=order,
             text=text,
             suggested_seconds=seconds,
+            owner_id=content_access.passage_owner(session, passage),
         )
         session.add(sentence)
         created.append(sentence)
@@ -1401,7 +1433,7 @@ class PassageSplitResult(SQLModel):
 @router.post("/passages/{passage_id}/split", response_model=PassageSplitResult)
 def split_passage_into_readings(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    current_user: TeacherUserDep,
     passage_id: uuid.UUID,
     mode: Literal["paragraph", "sentence"] = "sentence",
 ) -> Any:
@@ -1409,6 +1441,7 @@ def split_passage_into_readings(
     passage = session.get(Passage, passage_id)
     if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
+    content_access.require_passage(session, current_user, passage)
 
     if passage.parent_passage_id is not None:
         raise HTTPException(status_code=422, detail="请在原文章下拆分句子")
@@ -1431,12 +1464,13 @@ def split_passage_into_readings(
 
 @router.delete("/passages/{passage_id}/split", response_model=PassagePublic)
 def unsplit_passage_readings(
-    session: SessionDep, _admin: TeacherUserDep, passage_id: uuid.UUID
+    session: SessionDep, current_user: TeacherUserDep, passage_id: uuid.UUID
 ) -> Any:
     """取消拆分：此后发布/练习回到整篇一道题；已发布快照不可变不受影响。"""
     passage = session.get(Passage, passage_id)
     if passage is None:
         raise HTTPException(status_code=404, detail="Passage not found")
+    content_access.require_passage(session, current_user, passage)
     if passage.parent_passage_id is not None:
         raise HTTPException(status_code=422, detail="请在原文章下取消拆分")
     if passage.reading_split:
@@ -1504,13 +1538,14 @@ class QuestionUpdate(SQLModel):
 @router.put("/questions/{question_id}", response_model=ScenarioQuestionPublic)
 def update_question(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    current_user: TeacherUserDep,
     question_id: uuid.UUID,
     question_in: QuestionUpdate,
 ) -> Any:
     question = session.get(ScenarioQuestion, question_id)
     if question is None:
         raise HTTPException(status_code=404, detail="Question not found")
+    content_access.require_question(current_user, question)
     update = question_in.model_dump(exclude_unset=True)
     # 非空字段不允许显式清空（band/text/order_index/suggested_seconds 传 null → 422）
     _reject_null_non_nullable(

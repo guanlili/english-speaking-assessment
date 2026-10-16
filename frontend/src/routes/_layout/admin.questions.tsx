@@ -11,6 +11,7 @@ import { AdminService, type QuestionBankOut } from "@/client"
 import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import Pager from "@/components/Common/Pager"
+import { ReadOnlyContentBadge } from "@/components/Teaching/ReadOnlyContentBadge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -49,6 +50,7 @@ import {
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { APP_NAME } from "@/config"
+import { useCanEditContent } from "@/hooks/useCanEditContent"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
 import {
@@ -128,6 +130,7 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const canEdit = useCanEditContent()
 
   const scenariosQuery = useQuery({
     queryKey: ["admin", "scenarios"],
@@ -559,30 +562,34 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                       </TableCell>
                       <TableCell>{row.suggested_seconds}s</TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t({
-                              zh: "编辑题目",
-                              en: "Edit question",
-                            })}
-                            onClick={() => openEdit(row)}
-                          >
-                            <Pencil />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t({
-                              zh: "删除题目",
-                              en: "Delete question",
-                            })}
-                            onClick={() => setToDelete(row)}
-                          >
-                            <Trash2 className="text-destructive" />
-                          </Button>
-                        </div>
+                        {canEdit(row.owner_id) ? (
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={t({
+                                zh: "编辑题目",
+                                en: "Edit question",
+                              })}
+                              onClick={() => openEdit(row)}
+                            >
+                              <Pencil />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={t({
+                                zh: "删除题目",
+                                en: "Delete question",
+                              })}
+                              onClick={() => setToDelete(row)}
+                            >
+                              <Trash2 className="text-destructive" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <ReadOnlyContentBadge />
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
