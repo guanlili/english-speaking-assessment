@@ -531,6 +531,42 @@ def _resolve_active_daily_session(
     )
 
 
+def _passage_anchor(snapshot_items: list[dict[str, object]] | None) -> uuid.UUID | None:
+    if not snapshot_items:
+        return None
+    for item in snapshot_items:
+        if item.get("type") != AttemptItemType.PASSAGE:
+            continue
+        try:
+            return uuid.UUID(str(item.get("parent_id") or item["id"]))
+        except (KeyError, ValueError):  # fmt: skip
+            return None
+    return None
+
+
+def _resolve_homework_session(
+    session: Any,
+    classroom: Classroom,
+    student: Student,
+    today: date,
+) -> PracticeSession:
+    """课后作业会话：绑定 homework 发布，不替换课上当前轮。"""
+    exercise_id = classroom.homework_exercise_id
+    exercise = (
+        session.get(ClassroomExercise, exercise_id) if exercise_id is not None else None
+    )
+    if exercise is None or exercise.status != "published":
+        raise HTTPException(status_code=404, detail="没有课后作业")
+    return get_or_create_today_session(
+        session=session,
+        classroom=classroom,
+        student=student,
+        today=today,
+        passage_id=_passage_anchor(exercise.snapshot_items),
+        assignment_id=exercise.id,
+    )
+
+
 def _parse_snapshot_plan_items(
     snapshot_items: list[dict[str, object]],
 ) -> tuple[

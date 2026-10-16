@@ -29,6 +29,7 @@ from app.api.routes.class_shared import (
     _repeat_attempts_from_snapshot,
     _repeat_sentences_of_passages,
     _resolve_active_daily_session,
+    _resolve_homework_session,
     _scenario_for_topic,
     _snapshot_int,
     _snapshot_items_of,
@@ -105,6 +106,7 @@ def read_today_plan(
     code: str,
     current_user: StudentUserDep,
     session_id: uuid.UUID | None = Query(default=None),
+    slot: str = Query(default="class"),
 ) -> Any:
     """今天的练习计划：3 句听后复述 + 2 道该档情景问答（US-05）。
 
@@ -118,6 +120,10 @@ def read_today_plan(
         practice_session = session.get(PracticeSession, session_id)
         if practice_session is None or practice_session.student_id != student.id:
             raise HTTPException(status_code=404, detail="Session not found")
+    elif slot == "homework":
+        practice_session = _resolve_homework_session(
+            session, classroom, student, today
+        )
     else:
         # daily 当前轮：today / next-question / board 都用同一定位逻辑
         practice_session = _resolve_active_daily_session(
@@ -460,6 +466,11 @@ def read_today_plan(
         )
         else None
     )
+    homework = (
+        session.get(ClassroomExercise, classroom.homework_exercise_id)
+        if classroom.homework_exercise_id is not None
+        else None
+    )
     return TodayPlan(
         session_id=practice_session.id,
         classroom_code=classroom.code,
@@ -469,6 +480,8 @@ def read_today_plan(
         attempts=plan_attempts,
         questions_exhausted=exhausted or practice_session.mode == "followup",
         exam=exam_info,
+        homework_title=homework.title if homework is not None else None,
+        homework_exercise_id=homework.id if homework is not None else None,
         gamification=GamificationInfo(
             xp=student.xp,
             streak_days=student.streak_days,

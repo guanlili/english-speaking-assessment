@@ -577,18 +577,23 @@ function ComposerForm({
   )
 
   const publish = useMutation({
-    mutationFn: async (clear: boolean) => {
+    mutationFn: async (action: {
+      clear?: boolean
+      slot?: "class" | "homework"
+    }) => {
       autosave.pause()
       const revision = await autosave.flush()
+      const slot = action.slot ?? "class"
       return ClassesService.setAssignment({
         code,
-        requestBody: clear
-          ? { items: [], draft_revision: revision }
+        requestBody: action.clear
+          ? { items: [], slot, draft_revision: revision }
           : {
+              slot,
               draft_revision: revision,
               items: planItems,
               title: title.trim() || undefined,
-              ...(isExam
+              ...(isExam && slot !== "homework"
                 ? {
                     is_exam: true,
                     automated_exam: true,
@@ -598,21 +603,26 @@ function ComposerForm({
             },
       })
     },
-    onSuccess: async (_, clear) => {
+    onSuccess: async (_, action) => {
       setPreviewOpen(false)
       setClearOpen(false)
       dirtyRef.current = false
       autosave.published()
       toast.success(
-        clear
+        action.clear
           ? t({
               zh: "已恢复学生自主练习",
               en: "Restored student self practice",
             })
-          : t({
-              zh: "本次课堂练习已发布",
-              en: "Class practice published",
-            }),
+          : action.slot === "homework"
+            ? t({
+                zh: "课后作业已发布，课上练习保持不变",
+                en: "Homework published. The class exercise stays as it is.",
+              })
+            : t({
+                zh: "本次课堂练习已发布",
+                en: "Class practice published",
+              }),
       )
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["teacher", "board", code] }),
@@ -1144,7 +1154,10 @@ function ComposerForm({
         publishPending={publish.isPending}
         changed={changed}
         problemsCount={problems.length}
-        onPublish={() => publish.mutate(false)}
+        onPublish={() => publish.mutate({})}
+        onPublishHomework={
+          isExam ? undefined : () => publish.mutate({ slot: "homework" })
+        }
       />
       <Dialog
         open={clearOpen}
@@ -1175,7 +1188,7 @@ function ComposerForm({
             </Button>
             <LoadingButton
               loading={publish.isPending}
-              onClick={() => publish.mutate(true)}
+              onClick={() => publish.mutate({ clear: true })}
             >
               {t({ zh: "确认恢复", en: "Confirm Restore" })}
             </LoadingButton>

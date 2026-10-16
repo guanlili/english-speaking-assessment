@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link, useParams } from "@tanstack/react-router"
 import {
   ArrowLeft,
@@ -53,6 +53,7 @@ const IDLE_REFRESH_MS = 20000
 function TeacherBoardPage() {
   const { t } = useI18n()
   const { code } = useParams({ from: "/t/$code/" })
+  const queryClient = useQueryClient()
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"prepare" | "results" | "history">(
     "prepare",
@@ -77,6 +78,20 @@ function TeacherBoardPage() {
       (query.state.data?.pending_count ?? 0) > 0
         ? PENDING_REFRESH_MS
         : IDLE_REFRESH_MS,
+  })
+
+  const clearHomework = useMutation({
+    mutationFn: () =>
+      ClassesService.setAssignment({
+        code: code.toUpperCase(),
+        requestBody: { slot: "homework", items: [] },
+      }),
+    onSuccess: async () => {
+      toast.success(t({ zh: "已撤回课后作业", en: "Homework withdrawn" }))
+      await queryClient.invalidateQueries({
+        queryKey: ["teacher", "board", code],
+      })
+    },
   })
 
   if (boardQuery.isPending) {
@@ -272,6 +287,25 @@ function TeacherBoardPage() {
                 </span>
               )}
             </p>
+            {board.homework_title && (
+              <div className="flex flex-wrap items-center gap-3 text-sm text-paper-hero/90">
+                <span>
+                  {t({
+                    zh: `课后作业 · ${board.homework_title}`,
+                    en: `Homework · ${board.homework_title}`,
+                  })}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 border-white/30 bg-transparent text-paper-hero hover:bg-white/10"
+                  disabled={clearHomework.isPending}
+                  onClick={() => clearHomework.mutate()}
+                >
+                  {t({ zh: "撤回课后作业", en: "Withdraw homework" })}
+                </Button>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               {board.teaching_goal && (
                 <Badge

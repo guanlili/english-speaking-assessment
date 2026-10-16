@@ -36,6 +36,7 @@ export type AssignmentRequest = {
     assign_repeat?: (boolean | null);
     assign_qa?: (boolean | null);
     items?: (Array<AssignmentItemIn> | null);
+    slot?: string;
     title?: (string | null);
     draft_revision?: (number | null);
     automated_exam?: boolean;
@@ -133,6 +134,8 @@ export type BoardData = {
     pending_count: number;
     students: Array<BoardStudent>;
     items: Array<BoardItem>;
+    homework_title?: (string | null);
+    homework_exercise_id?: (string | null);
 };
 
 export type BoardItem = {
@@ -1159,6 +1162,8 @@ export type TodayPlan = {
     gamification?: (GamificationInfo | null);
     assigned_unit_title?: (string | null);
     exam?: (ExamStatus | null);
+    homework_title?: (string | null);
+    homework_exercise_id?: (string | null);
 };
 
 export type Token = {
@@ -2421,6 +2426,7 @@ export type ClassesReadClassroomRevisionResponse = (ClassroomRevision);
 export type ClassesReadTodayPlanData = {
     code: string;
     sessionId?: (string | null);
+    slot?: string;
 };
 
 export type ClassesReadTodayPlanResponse = (TodayPlan);

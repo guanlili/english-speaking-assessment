@@ -546,6 +546,11 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         .limit(1)
     ).first()
 
+    homework = (
+        session.get(ClassroomExercise, classroom.homework_exercise_id)
+        if classroom.homework_exercise_id is not None
+        else None
+    )
     return BoardData(
         classroom_code=classroom.code,
         classroom_name=classroom.name,
@@ -586,6 +591,8 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         pending_count=pending_count,
         students=board_students,
         items=skeleton,
+        homework_title=homework.title if homework is not None else None,
+        homework_exercise_id=homework.id if homework is not None else None,
     )
 
 

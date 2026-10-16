@@ -11,6 +11,7 @@ export const Route = createFileRoute("/p/$code/")({
     next?: boolean
     explore?: string
     session?: string
+    homework?: boolean
   } => {
     // 只序列化真值，避免 URL 出现 ?focus=undefined&next=false
     const result: {
@@ -18,11 +19,14 @@ export const Route = createFileRoute("/p/$code/")({
       next?: boolean
       explore?: string
       session?: string
+      homework?: boolean
     } = {}
     if (typeof search.focus === "string") result.focus = search.focus
     if (search.next === true) result.next = true
     if (typeof search.explore === "string") result.explore = search.explore
     if (typeof search.session === "string") result.session = search.session
+    if (search.homework === true || search.homework === "true")
+      result.homework = true
     return result
   },
   head: () => ({

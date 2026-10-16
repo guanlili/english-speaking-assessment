@@ -658,6 +658,13 @@ class Classroom(SQLModel, table=True):
         ondelete="SET NULL",
         index=True,
     )
+    # 课后作业：与课上当前发布分开，再发布课堂练习不会顶掉它。
+    homework_exercise_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="classroom_exercise.id",
+        ondelete="SET NULL",
+        index=True,
+    )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -1254,6 +1261,9 @@ class TodayPlan(SQLModel):
     assigned_unit_title: str | None = None
     # 本轮为模考时的限时与剩余时间（非考试为 null）
     exam: ExamStatus | None = None
+    # 全班课后作业（与当前课堂发布并存；没有则为 null）
+    homework_title: str | None = None
+    homework_exercise_id: uuid.UUID | None = None
 
 
 class NextQuestion(SQLModel):
@@ -1329,6 +1339,8 @@ class BoardData(SQLModel):
     pending_count: int
     students: list[BoardStudent]
     items: list[BoardItem]  # 题目骨架（顺序与各生 items 对齐）
+    homework_title: str | None = None
+    homework_exercise_id: uuid.UUID | None = None
 
 
 class WeakWord(SQLModel):

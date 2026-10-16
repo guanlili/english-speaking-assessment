@@ -254,6 +254,7 @@ def publish_exercise(
     is_exam: bool = False,
     time_limit_minutes: int | None = None,
     assignment_items: list[dict[str, object]] | None = None,
+    slot: str = "class",
 ) -> ClassroomExercise:
     if not snapshots:
         raise HTTPException(status_code=422, detail="练习至少需要包含一道题目")
@@ -311,6 +312,9 @@ def publish_exercise(
                 detail="Automated exam audio missing: " + ", ".join(missing_audio),
             )
 
+    if slot == "homework" and is_exam:
+        raise HTTPException(status_code=422, detail="课后作业不能开启模考")
+
     # 同一课堂并发发布时锁住课堂行，避免版本号重复或互相覆盖当前版本。
     session.exec(
         select(Classroom).where(Classroom.id == classroom.id).with_for_update()
@@ -318,7 +322,7 @@ def publish_exercise(
     exercise = ClassroomExercise(
         classroom_id=classroom.id,
         version_no=next_exercise_version(session, classroom.id),
-        title=exercise_title or "课堂练习",
+        title=exercise_title or ("课后作业" if slot == "homework" else "课堂练习"),
         status="published",
         snapshot_items=snapshots,
         created_by=created_by,
@@ -327,6 +331,11 @@ def publish_exercise(
     )
     session.add(exercise)
     session.flush()
+    if slot == "homework":
+        archive_homework_exercise(session, classroom)
+        classroom.homework_exercise_id = exercise.id
+        session.add(classroom)
+        return exercise
     archive_current_exercise(session, classroom)
     classroom.current_exercise_id = exercise.id
     # 指派镜像只存真实题目 ID：拆句展开只进快照（assigned_items 上的合成 ID
@@ -337,6 +346,18 @@ def publish_exercise(
     ]
     session.add(classroom)
     return exercise
+
+
+def archive_homework_exercise(session: Any, classroom: Classroom) -> None:
+    previous_id = classroom.homework_exercise_id
+    if previous_id is None:
+        return
+    previous = session.get(ClassroomExercise, previous_id)
+    if previous is not None and previous.status == "published":
+        previous.status = "archived"
+        previous.archived_at = get_datetime_utc()
+        session.add(previous)
+    classroom.homework_exercise_id = None
 
 
 def archive_current_exercise(session: Any, classroom: Classroom) -> None:

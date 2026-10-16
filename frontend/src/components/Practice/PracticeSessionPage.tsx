@@ -55,6 +55,7 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
     next: nextFlag,
     explore: exploreSessionId,
     session: sessionParam,
+    homework,
   } = useSearch({ strict: false })
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -93,8 +94,9 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
         "today",
         student?.id,
         ...(sessionId ? [sessionId] : []),
+        ...(homework ? ["homework"] : []),
       ] as const,
-    [code, student?.id, sessionId],
+    [code, student?.id, sessionId, homework],
   )
 
   const todayQuery = useQuery({
@@ -105,6 +107,7 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
       ClassesService.readTodayPlan({
         code: code.toUpperCase(),
         ...(sessionId ? { sessionId } : {}),
+        ...(homework && !sessionId ? { slot: "homework" } : {}),
       }),
     enabled: student !== null,
     refetchInterval: (query) =>

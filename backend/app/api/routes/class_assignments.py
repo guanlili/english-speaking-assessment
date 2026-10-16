@@ -91,6 +91,8 @@ class AssignmentRequest(SQLModel):
     assign_qa: bool | None = None
     # 按题指派（三题型独立）：传非空列表则取代单元指派；传空列表=清除回个人路径
     items: list[AssignmentItemIn] | None = None
+    # class=课上当前发布；homework=课后作业，不替换课上发布
+    slot: str = "class"
     # 可选练习标题；不传时使用“课堂练习”
     title: str | None = None
     # 模考模式：整场限时（分钟，5–240）；is_exam=true 时必填
@@ -288,6 +290,43 @@ def set_assignment(
         classroom.assign_qa = body.assign_qa
 
     if body.items is not None:
+        if body.slot == "homework":
+            if body.is_exam or body.automated_exam:
+                raise HTTPException(status_code=422, detail="课后作业不能开启模考")
+            if not body.items:
+                exercise_service.archive_homework_exercise(session, classroom)
+                session.add(classroom)
+                session.commit()
+                return None
+            exercise_service.validate_assignment_items(session, body.items)
+            homework_snapshots: list[dict[str, object]] = []
+            for item in body.items:
+                if item.type == AttemptItemType.PASSAGE:
+                    passage = session.get(Passage, item.id)
+                    if passage is None:
+                        raise HTTPException(
+                            status_code=404, detail="朗读篇目不存在或已停用"
+                        )
+                    homework_snapshots.extend(reading.expand_reading_items(passage))
+                else:
+                    homework_snapshots.append(
+                        exercise_service.build_snapshot_item(
+                            session, item.type, item.id
+                        )
+                    )
+            exercise_service.publish_exercise(
+                session=session,
+                classroom=classroom,
+                created_by=current_user.id,
+                snapshots=homework_snapshots,
+                title=body.title,
+                assignment_items=[
+                    {"type": str(item.type), "id": str(item.id)} for item in body.items
+                ],
+                slot="homework",
+            )
+            session.commit()
+            return None
         if body.items:
             exercise_service.validate_assignment_items(session, body.items)
             snapshots: list[dict[str, object]] = []

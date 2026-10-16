@@ -11,7 +11,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { useI18n } from "@/lib/i18n"
+import {
+  applyExamPreset,
+  type ExamPresetId,
+  examPresetsFor,
+} from "@/lib/exam-presets"
+import { type BiString, useI18n } from "@/lib/i18n"
+
+const PRESET_LABELS: Record<ExamPresetId, BiString> = {
+  "class-reading": { zh: "课堂跟读", en: "Class reading" },
+  "listen-repeat": { zh: "听句复述", en: "Listen and repeat" },
+  "ielts-part2": { zh: "雅思 Part 2", en: "IELTS Part 2" },
+  "toefl-repeat": { zh: "托福听后复述", en: "TOEFL listen and repeat" },
+}
 
 export default function ExamItemSettingsButton({
   itemType,
@@ -142,6 +154,19 @@ function SettingsEditor({
           en: "Saved to the question bank for future exams. Published exams keep their original settings.",
         })}
       </p>
+      <div className="flex flex-wrap gap-2">
+        {examPresetsFor(itemType).map((preset) => (
+          <Button
+            key={preset.id}
+            type="button"
+            variant="outline"
+            className="min-h-11"
+            onClick={() => setEdited(applyExamPreset(value, preset.settings))}
+          >
+            {t(PRESET_LABELS[preset.id])}
+          </Button>
+        ))}
+      </div>
       {fields
         .filter((f) => f.show)
         .map((f) => (
