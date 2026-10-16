@@ -333,6 +333,37 @@ class SentenceFrame(SQLModel, table=True):
     )
 
 
+class StudentExpressionFavorite(SQLModel, table=True):
+    """评分里收藏的升级表达。挂课堂档案，换设备仍在。"""
+
+    __tablename__ = "student_expression_favorite"
+    __table_args__ = (
+        UniqueConstraint("student_id", "text", name="uq_student_expression_text"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    student_id: uuid.UUID = Field(
+        foreign_key="student.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+    text: str = Field(min_length=1, max_length=500)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class ExpressionFavoritePublic(SQLModel):
+    id: uuid.UUID
+    text: str
+
+
+class ExpressionFavoriteCreate(SQLModel):
+    texts: list[str] = Field(min_length=1, max_length=20)
+
+
 class StudentFrameFavorite(SQLModel, table=True):
     __tablename__ = "student_frame_favorite"
 
@@ -1298,6 +1329,27 @@ class BoardData(SQLModel):
     pending_count: int
     students: list[BoardStudent]
     items: list[BoardItem]  # 题目骨架（顺序与各生 items 对齐）
+
+
+class WeakWord(SQLModel):
+    word: str
+    student_count: int
+
+
+class WeakItem(SQLModel):
+    item_id: uuid.UUID
+    item_type: str
+    label: str
+    scored_count: int
+    avg_overall: float
+    low_count: int
+
+
+class ClassWeakSpots(SQLModel):
+    """当前发布、今日会话里的共同漏词和偏低题目。"""
+
+    word_gaps: list[WeakWord]
+    low_items: list[WeakItem]
 
 
 # 学生进步轨迹（GET /classes/{code}/trail，PRD US-09）

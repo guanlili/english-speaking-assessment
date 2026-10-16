@@ -1,5 +1,5 @@
 import { Bookmark, Loader2, RefreshCw, TriangleAlert } from "lucide-react"
-import type { ReactNode } from "react"
+import { type ReactNode, useState } from "react"
 import type { AttemptPublic } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
 import { TeacherFeedbackBlock } from "@/components/Practice/TeacherFeedbackBlock"
@@ -17,7 +17,6 @@ import type { BiString } from "@/lib/bi"
 import { adviceText, type BilingualAdvice } from "@/lib/bilingual"
 import { useI18n } from "@/lib/i18n"
 import { EXPLAIN } from "@/lib/terms"
-import { safeLocalStorageGet, safeLocalStorageSet } from "@/utils"
 
 // PRD §4：三种分的来源必须在界面上写清（作答级来源徽标，教师逐题反馈弹窗复用）
 export const ENGINE_LABELS: Record<string, BiString> = {
@@ -82,15 +81,17 @@ function parseRubric(raw: unknown): RubricPayload | null {
 export function RubricBlock({
   rubric,
   engine,
-  savedExpressionsKey,
+  onSaveUpgrades,
 }: {
   rubric: unknown
   engine: string
-  /** 按用户隔离的收藏键；缺省时收藏按钮降级为不写（避免写进无归属旧键串号）。 */
-  savedExpressionsKey?: string
+  /** 把升级表达写到当前学生的账号收藏。教师回看不传，按钮不出现。 */
+  onSaveUpgrades?: (texts: string[]) => Promise<void>
 }) {
   const { t, lang } = useI18n()
   const data = parseRubric(rubric)
+  const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   if (data?.status === "pending" || data?.status === "unavailable") {
     return (
@@ -169,26 +170,27 @@ export function RubricBlock({
             <span className="text-muted-foreground">
               {t({ zh: "更高级的说法", en: "More advanced ways to say it" })}
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs"
-              disabled={!savedExpressionsKey}
-              onClick={() => {
-                if (!savedExpressionsKey) return
-                const saved = safeLocalStorageGet<string[]>(
-                  savedExpressionsKey,
-                  [],
-                )
-                const merged = Array.from(
-                  new Set([...saved, ...data.upgrades!]),
-                )
-                safeLocalStorageSet(savedExpressionsKey, merged)
-              }}
-            >
-              <Bookmark />
-              {t({ zh: "收藏表达", en: "Save expression" })}
-            </Button>
+            {onSaveUpgrades ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs"
+                disabled={saving || saved || !data.upgrades?.length}
+                onClick={() => {
+                  const upgrades = data.upgrades
+                  if (!upgrades?.length) return
+                  setSaving(true)
+                  void onSaveUpgrades(upgrades)
+                    .then(() => setSaved(true))
+                    .finally(() => setSaving(false))
+                }}
+              >
+                <Bookmark />
+                {saved
+                  ? t({ zh: "已收藏", en: "Saved" })
+                  : t({ zh: "收藏表达", en: "Save expression" })}
+              </Button>
+            ) : null}
           </div>
           <ul className="list-disc space-y-1 pl-5">
             {data.upgrades.map((u) => (

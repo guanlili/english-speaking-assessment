@@ -7,7 +7,12 @@
  */
 export function speakEnglish(
   text: string,
-  opts: { rate?: number; onEnd?: () => void; onError?: () => void } = {},
+  opts: {
+    rate?: number
+    onStart?: () => void
+    onEnd?: () => void
+    onError?: () => void
+  } = {},
 ): SpeechSynthesisUtterance | null {
   const synth = window.speechSynthesis
   if (!synth) return null
@@ -17,6 +22,7 @@ export function speakEnglish(
   if (opts.rate !== undefined) utterance.rate = opts.rate
   const voice = synth.getVoices().find((v) => v.lang.startsWith("en"))
   if (voice) utterance.voice = voice
+  if (opts.onStart) utterance.onstart = () => opts.onStart?.()
   if (opts.onEnd) utterance.onend = () => opts.onEnd?.()
   if (opts.onError) utterance.onerror = () => opts.onError?.()
   synth.speak(utterance)

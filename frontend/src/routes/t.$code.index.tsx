@@ -17,6 +17,7 @@ import { AssignmentComposer } from "@/components/Teaching/AssignmentComposer"
 import { BoardRosterCard } from "@/components/Teaching/BoardRosterCard"
 import { BoardStatsCards } from "@/components/Teaching/BoardStatsCards"
 import { BoardTeachingActions } from "@/components/Teaching/BoardTeachingActions"
+import { ClassGapsCard } from "@/components/Teaching/ClassGapsCard"
 import { ClassroomIssues } from "@/components/Teaching/ClassroomIssues"
 import { ExerciseHistory } from "@/components/Teaching/ExerciseHistory"
 import { FollowupManager } from "@/components/Teaching/FollowupManager"
@@ -419,6 +420,14 @@ function TeacherBoardPage() {
               classAvg={classAvg}
               inactiveCount={inactiveCount}
             />
+            {board.current_exercise && (
+              <ClassGapsCard
+                code={code}
+                refreshMs={
+                  board.pending_count > 0 ? PENDING_REFRESH_MS : IDLE_REFRESH_MS
+                }
+              />
+            )}
             <BoardRosterCard
               code={code}
               hasStudents={hasStudents}

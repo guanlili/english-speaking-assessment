@@ -25,9 +25,9 @@ import {
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
+import { useExpressionFavorites } from "@/hooks/useExpressionFavorites"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { displayName, loadStudent } from "@/lib/classroom-student"
-import { readSavedExpressions } from "@/lib/favorites"
 import { useI18n } from "@/lib/i18n"
 import {
   EXPLAIN,
@@ -47,6 +47,7 @@ function MyTrailPage() {
   const { t } = useI18n()
   const { code } = useParams({ from: "/me/$code" })
   const student = loadStudent(code)
+  const expressions = useExpressionFavorites(code, student)
 
   const [growthTab, setGrowthTab] = useState<"trail" | "saved">("trail")
   const [period, setPeriod] = useState(30)
@@ -102,9 +103,6 @@ function MyTrailPage() {
   useStudentGuard(code, student, trailQuery)
 
   if (student === null) return null
-
-  // 只读当前登录学生的收藏；旧的无归属收藏不再展示给任何登录者
-  const savedExpressions = readSavedExpressions(student)
 
   return (
     <StudentShell active="me">
@@ -454,20 +452,41 @@ function MyTrailPage() {
               </CardTitle>
               <CardDescription>
                 {t({
-                  zh: "练习中收藏的升级表达，下次试着用出来。",
-                  en: "Upgraded expressions you saved during practice — try using them next time.",
+                  zh: "练习中收藏的升级表达会跟账号走，换设备也能看到。",
+                  en: "Upgraded expressions you save during practice follow your account.",
                 })}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
-              {savedExpressions.map((e) => (
-                <p
-                  key={e}
-                  className="rounded-lg bg-background px-3 py-2 font-serif text-base"
-                >
-                  {e}
+              {expressions.query.isPending ? (
+                <Skeleton className="h-12 rounded-lg" />
+              ) : expressions.query.data &&
+                expressions.query.data.length > 0 ? (
+                expressions.query.data.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-start justify-between gap-2 rounded-lg bg-background px-3 py-2"
+                  >
+                    <p className="font-serif text-base">{item.text}</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 text-xs"
+                      disabled={expressions.remove.isPending}
+                      onClick={() => expressions.remove.mutate(item.id)}
+                    >
+                      {t({ zh: "取消收藏", en: "Remove" })}
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {t({
+                    zh: "还没有收藏。练习反馈里的升级表达可以收到这里，换设备也能看到。",
+                    en: "Nothing saved yet. Save upgraded expressions from practice feedback — they follow your account.",
+                  })}
                 </p>
-              ))}
+              )}
             </CardContent>
           </Card>
         )}
