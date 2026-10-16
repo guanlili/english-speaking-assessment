@@ -32,10 +32,7 @@ test("does not skip words that were read before a repeated word", () => {
 })
 
 test("straight and curly apostrophes are the same word", () => {
-  assert.deepEqual(
-    skippedSpans("I don’t like rain.", "I don't like rain."),
-    [],
-  )
+  assert.deepEqual(skippedSpans("I don’t like rain.", "I don't like rain."), [])
   assert.deepEqual(skippedSpans("Say ‘hello’ please.", "Say hello please."), [])
 })
 

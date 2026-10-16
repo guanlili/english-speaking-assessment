@@ -314,24 +314,31 @@ test("exam repeat audio prevents extra counts while loading or playing", async (
   page,
 }) => {
   const state = await mockListening(page, false, false, false, true)
-  await page.getByRole("button", { name: "听示范", exact: true }).click()
+  const audio = page.locator("audio")
+  await audio.evaluate((element: HTMLAudioElement) => {
+    element.play = () => Promise.resolve()
+  })
+  const listen = page.getByRole("button", {
+    name: /听示范|正在加载…|正在播放…/,
+  })
+  await listen.click()
   await expect.poll(state.listens).toBe(1)
-  await expect
-    .poll(() =>
-      page
-        .locator("audio")
-        .evaluate(
-          (element: HTMLAudioElement) =>
-            !element.paused || element.currentTime > 0,
-        ),
-    )
-    .toBe(true)
+  await expect(listen).toBeDisabled()
+  await listen.click({ force: true })
+  expect(state.listens()).toBe(1)
   state.release()
   await expect(page.getByText("还可重听 2 次", { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole("button", { name: "正在播放…", exact: true }),
+  ).toBeDisabled()
   expect(state.listens()).toBe(1)
+  await audio.evaluate((element: HTMLAudioElement) => {
+    element.dispatchEvent(new Event("ended"))
+  })
   await expect(
     page.getByRole("button", { name: "听示范", exact: true }),
-  ).toBeEnabled({ timeout: 10_000 })
+  ).toBeEnabled()
+  expect(state.listens()).toBe(1)
 })
 
 test("practice repeat playback errors recover and replay remains unlimited", async ({

@@ -217,9 +217,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             continue
         self_practice = [s for s in sessions if s.assignment_id is None]
         if assigned_passage_id is not None:
-            matching = [
-                s for s in self_practice if s.passage_id == assigned_passage_id
-            ]
+            matching = [s for s in self_practice if s.passage_id == assigned_passage_id]
             if matching:
                 session_by_student[sid] = matching[-1]
                 continue
