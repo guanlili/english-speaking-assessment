@@ -25,6 +25,7 @@ export default function RecordArea({
   isLastQuestion,
   submitting,
   submitError,
+  submissionClosed = false,
   onStart,
   onStop,
   onRetry,
@@ -43,6 +44,7 @@ export default function RecordArea({
   attemptFailed: boolean
   isLastQuestion: boolean
   submitting: boolean
+  submissionClosed?: boolean
   submitError: boolean
   onStart: () => void
   onStop: () => void
@@ -50,6 +52,21 @@ export default function RecordArea({
   onExpiredContinue: () => void
 }) {
   const { t } = useI18n()
+  if (submissionClosed)
+    return (
+      <div role="alert" className="space-y-2 rounded-xl border p-4 text-center">
+        <p className="font-medium">
+          {t({ zh: "补练已撤销", en: "Practice task withdrawn" })}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {t({
+            zh: "老师已撤销这项补练，不能继续录音或提交。已有作答记录仍会保留，可返回首页。",
+            en: "Your teacher withdrew this task. Recording and submission are closed; existing answers are kept. You can return home.",
+          })}
+        </p>
+      </div>
+    )
+
   return (
     <div className="flex flex-col items-center gap-1 border-t pt-5 text-center">
       {examKind && (

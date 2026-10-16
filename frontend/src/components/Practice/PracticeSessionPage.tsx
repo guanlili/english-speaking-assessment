@@ -752,6 +752,9 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
                         isLastQuestion={isLastQuestion}
                         submitting={submitting}
                         submitError={submitError}
+                        submissionClosed={
+                          submitErrorData?.body?.detail === "Followup cancelled"
+                        }
                         onStart={startRecording}
                         onStop={recorder.stop}
                         onRetry={retrySubmit}
