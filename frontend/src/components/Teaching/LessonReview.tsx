@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { AttemptsService, type BoardStudent } from "@/client"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
+import { ClassReviewEditor } from "@/components/Teaching/ClassReviewEditor"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -10,19 +11,29 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
 import { useI18n } from "@/lib/i18n"
 export function LessonReview({
   students,
   isExam,
+  code,
+  exerciseId,
+  onDirtyChange,
 }: {
+  code: string
+  exerciseId?: string | null
   students: BoardStudent[]
   isExam: boolean
+  onDirtyChange?: (dirty: boolean) => void
 }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [id, setId] = useState("")
-  const [notes, setNotes] = useState<Record<string, string>>({})
+  const [noteDirty, setNoteDirty] = useState(false)
+  const [summaryDirty, setSummaryDirty] = useState(false)
+  useEffect(() => {
+    onDirtyChange?.(noteDirty || summaryDirty)
+  }, [noteDirty, summaryDirty, onDirtyChange])
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
   // Omit names from both options and projected content; exam responses wait for hand-in.
   const candidates = students.flatMap((student, si) =>
     isExam && !student.exam_ended
@@ -60,12 +71,37 @@ export function LessonReview({
       </p>
       <Button
         className="min-h-11"
-        disabled={!candidates.length}
+        disabled={!candidates.length || !exerciseId}
         onClick={() => setOpen(true)}
       >
         {t({ zh: "打开匿名讲评", en: "Open anonymous discussion" })}
       </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      {exerciseId && (
+        <ClassReviewEditor
+          key={exerciseId}
+          code={code}
+          exerciseId={exerciseId}
+          onDirtyChange={setSummaryDirty}
+        />
+      )}
+      <Dialog
+        open={open}
+        onOpenChange={(value) => {
+          if (
+            !value &&
+            noteDirty &&
+            !window.confirm(
+              t({
+                zh: "放弃未保存的讲评笔记？",
+                en: "Discard unsaved discussion notes?",
+              }),
+            )
+          )
+            return
+          setNoteDirty(false)
+          setOpen(value)
+        }}
+      >
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>
@@ -73,8 +109,8 @@ export function LessonReview({
             </DialogTitle>
             <DialogDescription>
               {t({
-                zh: "页面不展示姓名；声音和回答内容仍可能被同学识别。讲评笔记仅保留在本次页面中。",
-                en: "Names are hidden; voices and answer content may still be recognizable. Notes stay on this page only.",
+                zh: "页面不展示姓名；声音和回答内容仍可能被同学识别。讲评笔记保存后可继续使用，仅授权教师可见。",
+                en: "Names are hidden; voices and answer content may still be recognizable. Saved notes remain available to authorized teachers.",
               })}
             </DialogDescription>
           </DialogHeader>
@@ -83,7 +119,20 @@ export function LessonReview({
             <select
               className="min-h-11 w-full rounded-md border bg-background px-3 text-base"
               value={selected?.id ?? ""}
-              onChange={(event) => setId(event.target.value)}
+              onChange={(event) => {
+                if (
+                  noteDirty &&
+                  !window.confirm(
+                    t({
+                      zh: "放弃当前未保存的讲评笔记并切换示例？",
+                      en: "Discard unsaved notes and switch examples?",
+                    }),
+                  )
+                )
+                  return
+                setNoteDirty(false)
+                setId(event.target.value)
+              }}
             >
               {candidates.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -116,26 +165,15 @@ export function LessonReview({
                 {query.data.transcript ||
                   t({ zh: "暂无转写", en: "No transcript" })}
               </p>
-              <label
-                htmlFor="lesson-discussion-notes"
-                className="block space-y-2"
-              >
-                <span>
-                  {t({
-                    zh: "亮点与下一步建议",
-                    en: "Strengths and next steps",
-                  })}
-                </span>
-                <Textarea
-                  id="lesson-discussion-notes"
-                  className="min-h-32 text-base"
-                  maxLength={4000}
-                  value={notes[query.data.id] ?? ""}
-                  onChange={(event) =>
-                    setNotes({ ...notes, [query.data.id]: event.target.value })
-                  }
+              {exerciseId && (
+                <ClassReviewEditor
+                  key={query.data.id}
+                  code={code}
+                  exerciseId={exerciseId}
+                  attemptId={query.data.id}
+                  onDirtyChange={setNoteDirty}
                 />
-              </label>
+              )}
             </div>
           )}
         </DialogContent>

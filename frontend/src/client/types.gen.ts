@@ -247,6 +247,40 @@ export type BulkResetResult = {
     rows: Array<StudentResetRow>;
 };
 
+export type ClassMessagePublic = {
+    id: string;
+    student_id: string;
+    display_name: string;
+    kind: string;
+    category: (string | null);
+    text: string;
+    created_at: string;
+    read_at: (string | null);
+    resolved_at: (string | null);
+    resolution: (string | null);
+};
+
+export type ClassReviewPublic = {
+    revision?: number;
+    notes?: {
+        [key: string]: (string);
+    };
+    summary?: string;
+    published_summary?: (string | null);
+    published_at?: (string | null);
+};
+
+export type ClassReviewRevision = {
+    expected_revision: number;
+};
+
+export type ClassReviewWrite = {
+    expected_revision: number;
+    attempt_id?: (string | null);
+    note?: (string | null);
+    summary?: (string | null);
+};
+
 export type ClassroomActivityIn = {
     activity?: 'entered' | 'recording' | 'uploading' | 'idle';
     session_id?: (string | null);
@@ -375,11 +409,17 @@ export type ContentCopied = {
     copied_from_id: string;
 };
 
+export type DiagnosticStudentItems = {
+    student_id: string;
+    item_ids: Array<(string)>;
+};
+
 export type DiagnosticTargets = {
     source_exercise_id: string;
     student_ids: Array<(string)>;
     item_ids: Array<(string)>;
     matched_answers: number;
+    targets?: Array<DiagnosticStudentItems>;
 };
 
 export type DraftPublic = {
@@ -572,8 +612,32 @@ export type GenerateRequest = {
     hint?: (string | null);
 };
 
+export type HelpRequestWrite = {
+    request_id: string;
+    category: 'operation' | 'audio' | 'understanding' | 'other';
+    text?: string;
+};
+
+export type category = 'operation' | 'audio' | 'understanding' | 'other';
+
 export type HTTPValidationError = {
     detail?: Array<ValidationError>;
+};
+
+export type IndividualFollowupCreate = {
+    request_id: string;
+    source_exercise_id: string;
+    title: string;
+    targets: Array<IndividualFollowupTarget>;
+};
+
+export type IndividualFollowupCreated = {
+    task_ids: Array<(string)>;
+};
+
+export type IndividualFollowupTarget = {
+    student_id: string;
+    item_ids: Array<(string)>;
 };
 
 /**
@@ -810,6 +874,13 @@ export type PlanItem = {
     frames?: (Array<SentenceFramePublic> | null);
 };
 
+export type PublishedClassSummary = {
+    exercise_id: string;
+    title: string;
+    text: string;
+    published_at: string;
+};
+
 /**
  * 确认导入新建条目引用：支撑「查看本批 / 带入组卷 / 补齐音频」。
  * 无批次表——批次即本次响应，前端按 id 使用现有能力。
@@ -952,6 +1023,12 @@ export type QuestionUpdate = {
     exam_level?: (string | null);
     cue_card_bullets?: (Array<(string)> | null);
     prep_seconds?: (number | null);
+};
+
+export type ReminderWrite = {
+    request_id: string;
+    student_ids: Array<(string)>;
+    text: string;
 };
 
 export type RepeatSentence = {
@@ -2803,6 +2880,13 @@ export type ClassesListClassFollowupsData = {
 
 export type ClassesListClassFollowupsResponse = (Array<FollowupPublic>);
 
+export type ClassesCreateIndividualClassFollowupsData = {
+    code: string;
+    requestBody: IndividualFollowupCreate;
+};
+
+export type ClassesCreateIndividualClassFollowupsResponse = (IndividualFollowupCreated);
+
 export type ClassesStartClassFollowupData = {
     code: string;
     taskId: string;
@@ -2847,6 +2931,85 @@ export type ClassesReadLearningReportData = {
 };
 
 export type ClassesReadLearningReportResponse = (LearningReport);
+
+export type ClassesReadClassReviewData = {
+    code: string;
+    exerciseId: string;
+};
+
+export type ClassesReadClassReviewResponse = (ClassReviewPublic);
+
+export type ClassesSaveClassReviewData = {
+    code: string;
+    exerciseId: string;
+    requestBody: ClassReviewWrite;
+};
+
+export type ClassesSaveClassReviewResponse = (ClassReviewPublic);
+
+export type ClassesPublishClassReviewData = {
+    code: string;
+    exerciseId: string;
+    requestBody: ClassReviewRevision;
+};
+
+export type ClassesPublishClassReviewResponse = (ClassReviewPublic);
+
+export type ClassesWithdrawClassReviewData = {
+    code: string;
+    exerciseId: string;
+    requestBody: ClassReviewRevision;
+};
+
+export type ClassesWithdrawClassReviewResponse = (ClassReviewPublic);
+
+export type ClassesReadPublishedClassSummariesData = {
+    code: string;
+    limit?: number;
+    offset?: number;
+};
+
+export type ClassesReadPublishedClassSummariesResponse = (Array<PublishedClassSummary>);
+
+export type ClassesCreateHelpRequestData = {
+    code: string;
+    requestBody: HelpRequestWrite;
+};
+
+export type ClassesCreateHelpRequestResponse = (ClassMessagePublic);
+
+export type ClassesReadMyClassMessagesData = {
+    code: string;
+    limit?: number;
+    offset?: number;
+};
+
+export type ClassesReadMyClassMessagesResponse = (Array<ClassMessagePublic>);
+
+export type ClassesReadTeacherClassMessagesData = {
+    code: string;
+    kind: 'help' | 'reminder';
+    limit?: number;
+    offset?: number;
+    status?: 'open' | 'all';
+};
+
+export type ClassesReadTeacherClassMessagesResponse = (Array<ClassMessagePublic>);
+
+export type ClassesCreateClassRemindersData = {
+    code: string;
+    requestBody: ReminderWrite;
+};
+
+export type ClassesCreateClassRemindersResponse = (Array<ClassMessagePublic>);
+
+export type ClassesActOnClassMessageData = {
+    action: 'read' | 'resolved' | 'withdrawn';
+    code: string;
+    messageId: string;
+};
+
+export type ClassesActOnClassMessageResponse = (ClassMessagePublic);
 
 export type LoginReadLoginOptionsResponse = (LoginOptions);
 

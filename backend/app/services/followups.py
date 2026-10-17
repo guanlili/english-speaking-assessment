@@ -48,7 +48,14 @@ def create_followup(
     item_ids: list[uuid.UUID],
     title: str,
     creator: uuid.UUID,
+    *,
+    commit: bool = True,
 ) -> ClassroomExercise:
+    session.refresh(classroom, with_for_update=True)
+    for student in students:
+        session.refresh(student)
+        if student.classroom_id != classroom.id:
+            raise HTTPException(422, detail="Invalid followup recipients")
     allowed = {
         str(i["id"])
         for i in source.snapshot_items
@@ -75,9 +82,6 @@ def create_followup(
     ]
     for item in snapshots:
         item.pop("exam_flow", None)
-    session.exec(
-        select(Classroom).where(Classroom.id == classroom.id).with_for_update()
-    ).one()
     task = ClassroomExercise(
         classroom_id=classroom.id,
         version_no=next_exercise_version(session, classroom.id),
@@ -93,6 +97,8 @@ def create_followup(
         is_exam=False,
     )
     session.add(task)
-    session.commit()
+    session.flush()
+    if commit:
+        session.commit()
     session.refresh(task)
     return task

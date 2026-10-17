@@ -124,3 +124,12 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - P2 提供篇目、复述句、情景主题、单题和说明的 `POST /admin/{kind}/{id}/copy`；域逻辑在 `services/content_copy.py`。篇目连同旧子篇和复述句复制，主题连同全部问法复制；单句成为独立句，单题留在共享主题。JSON 设置深拷贝，标准音与考试音频引用保留，不改原题、发布快照或成绩。
 - 复制归属沿用 P1：教师副本归本人，管理员副本为公共内容。仍全校可见，不引入私有库或共享开关；篇目 slug 和主题名称自动去重。前端复制后直接进入副本编辑，说明副本追加到当前草稿、不替换原有选择。
 - 录音上传成功只清理同账号、课堂、会话、题型、题目下的草稿；同目标保存与清理串行，避免慢保存重新留下已上传草稿。补练撤销后，落盘完成可返回首页；存储失败则明确确认丢失后才能离开，普通断网重传保护不变。
+
+
+## P1 教学闭环（2026-10-17）
+
+- 新表 `ClassroomReview`（发布级私有笔记/小结草稿/公开副本/版本）、`FollowupBatch`（逐人补练原子幂等回执）、`ClassroomMessage`（求助、提醒、已读与处理时间）。迁移 `d7d796c9ed2a`，删除课堂级联清理。
+- `class_reviews.py` / `services/classroom_review.py`：教师私有 GET/PUT、显式发布/撤回；学生 `/review-summaries` 先过滤活动考试及个人仍锁定的考试，再分页。笔记校验作答属于同一发布，考试期间禁止讲评该学生未交卷作答。
+- `teaching_actions.py`：逐人题单按集合分组，调用 `create_followup(commit=False)`，全部校验通过后一次提交；课堂锁保护版本与重试，原发布快照不变。诊断接口额外返回逐人 `targets`，保留旧并集字段。
+- `class_messages.py` / `services/classroom_messages.py`：学生求助序列化，提醒按发送请求 ID 去重；教师仅能查看/处理求助，学生仅能撤回本人求助、确认本人提醒。待处理求助与未读提醒在学生查询中优先，教师列表先筛当前成员再分页。
+- 前端 `ClassReviewEditor` / `LessonReview` / `ExerciseHistory` 支持持续讲评；`FollowupManager` 支持逐人预览。`ClassroomContactPanel` 为教师收发入口，`StudentClassroomInbox` 在首页及学习消息可用，`PublishedClassSummaries` 在首页显示公开小结。全部通过生成客户端调用。

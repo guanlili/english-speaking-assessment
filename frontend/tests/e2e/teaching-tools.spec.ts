@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test"
 
 async function setup(page: Page, lang = "zh") {
+  let review = { revision: 0, notes: {} as Record<string, string>, summary: "" }
   const state = {
     requests: [] as { path: string; body: Record<string, unknown> | null }[],
   }
@@ -15,7 +16,18 @@ async function setup(page: Page, lang = "zh") {
       route.request().method() === "GET" ? null : route.request().postDataJSON()
     state.requests.push({ path, body })
     let json: unknown = []
-    if (path.endsWith("/presence"))
+    if (path.endsWith("/review")) {
+      if (body)
+        review = {
+          ...review,
+          revision: review.revision + 1,
+          notes: {
+            ...review.notes,
+            [String(body.attempt_id)]: String(body.note ?? ""),
+          },
+        }
+      json = review
+    } else if (path.endsWith("/presence"))
       json = [
         {
           student_id: "alice",
@@ -172,6 +184,10 @@ test("@webkit anonymous discussion omits names and comparison shows both answers
   await dialog
     .getByLabel("亮点与下一步建议")
     .fill("Clear opening; add a reason.")
+  await dialog.getByRole("button", { name: "保存讲评", exact: true }).click()
+  await expect(
+    dialog.getByText("已保存到这份练习", { exact: true }),
+  ).toBeVisible()
   await page.keyboard.press("Escape")
   await page.getByRole("button", { name: "对比首次与最近一次作答" }).click()
   await expect(page.getByRole("heading", { name: "首次作答" })).toBeVisible()

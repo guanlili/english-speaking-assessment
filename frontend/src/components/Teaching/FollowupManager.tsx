@@ -16,6 +16,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/lib/i18n"
 import { formatDateTime } from "@/lib/time"
 
+import { randomId } from "@/utils"
+
 const PAGE_SIZE = 10
 
 type FollowupManagerProps = {
@@ -259,6 +261,9 @@ function FollowupCreateDialog({
   const [source, setSource] = useState(initialSource)
   const [studentIds, setStudentIds] = useState<string[]>([])
   const [itemIds, setItemIds] = useState<string[]>([])
+  const [individual, setIndividual] = useState(false)
+  const [selections, setSelections] = useState<Record<string, string[]>>({})
+  const request = useRef({ signature: "", id: "" })
   const [rule, setRule] = useState<
     "low_score" | "short_answer" | "missed_word" | "teacher_focus"
   >("low_score")
@@ -274,6 +279,12 @@ function FollowupCreateDialog({
       initialized.current = result.source_exercise_id
       setStudentIds(result.student_ids)
       setItemIds(result.item_ids)
+      setIndividual(Boolean(result.targets))
+      setSelections(
+        Object.fromEntries(
+          (result.targets ?? []).map((row) => [row.student_id, row.item_ids]),
+        ),
+      )
       setDiagnosticMessage(
         t({
           zh: `匹配 ${result.student_ids.length} 人、${result.item_ids.length} 题。请核对下方题目和接收名单后发布。`,
@@ -305,9 +316,26 @@ function FollowupCreateDialog({
       ? values.filter((value) => value !== id)
       : [...values, id]
   const create = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (localStorage.getItem("access_token") !== identity.current)
         throw new Error("Session changed")
+      if (individual) {
+        const body = {
+          source_exercise_id: sourceId,
+          title: title.trim(),
+          targets: studentIds.map((student_id) => ({
+            student_id,
+            item_ids: selections[student_id] ?? [],
+          })),
+        }
+        const signature = JSON.stringify(body)
+        if (request.current.signature !== signature || !request.current.id)
+          request.current = { signature, id: randomId() }
+        return ClassesService.createIndividualClassFollowups({
+          code,
+          requestBody: { ...body, request_id: request.current.id },
+        })
+      }
       return ClassesService.createClassFollowup({
         code,
         requestBody: {
@@ -461,6 +489,8 @@ function FollowupCreateDialog({
               onChange={(event) => {
                 setSource(event.target.value)
                 setItemIds([])
+                setIndividual(false)
+                setSelections({})
                 initialized.current = ""
               }}
             >
@@ -479,29 +509,51 @@ function FollowupCreateDialog({
               })}
             </p>
           )}
-          <fieldset className="min-w-0 space-y-1">
-            <legend className="font-medium">
-              {t({ zh: "选择补练题目", en: "Select practice items" })}
-            </legend>
-            <div className="max-h-60 overflow-y-auto">
-              {(items.data ?? []).map((item, index) => (
-                <label
-                  key={item.id}
-                  className="flex min-h-11 items-center gap-3 py-2 text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    className="size-5 shrink-0"
-                    checked={itemIds.includes(item.id)}
-                    onChange={() => setItemIds(toggle(itemIds, item.id))}
-                  />
-                  <span className="min-w-0 break-words">
-                    {index + 1}. {item.text}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          <label className="flex min-h-11 items-center gap-3">
+            <input
+              className="size-5"
+              type="checkbox"
+              checked={individual}
+              onChange={(event) => {
+                setIndividual(event.target.checked)
+                if (event.target.checked)
+                  setSelections(
+                    Object.fromEntries(studentIds.map((id) => [id, itemIds])),
+                  )
+              }}
+            />
+            <span>
+              {t({
+                zh: "逐人选择题目（发布前预览）",
+                en: "Choose items per student (preview before assigning)",
+              })}
+            </span>
+          </label>
+          {!individual && (
+            <fieldset className="min-w-0 space-y-1">
+              <legend className="font-medium">
+                {t({ zh: "选择补练题目", en: "Select practice items" })}
+              </legend>
+              <div className="max-h-60 overflow-y-auto">
+                {(items.data ?? []).map((item, index) => (
+                  <label
+                    key={item.id}
+                    className="flex min-h-11 items-center gap-3 py-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      className="size-5 shrink-0"
+                      checked={itemIds.includes(item.id)}
+                      onChange={() => setItemIds(toggle(itemIds, item.id))}
+                    />
+                    <span className="min-w-0 break-words">
+                      {index + 1}. {item.text}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <fieldset className="min-w-0 space-y-1">
             <legend className="font-medium">
               {t({ zh: "选择接收学生", en: "Select recipients" })}
@@ -545,6 +597,62 @@ function FollowupCreateDialog({
               ))}
             </div>
           </fieldset>
+          {individual && (
+            <section
+              className="space-y-3"
+              aria-label={t({
+                zh: "逐人补练预览",
+                en: "Individual practice preview",
+              })}
+            >
+              <p className="text-sm text-muted-foreground">
+                {t({
+                  zh: "每位学生只收到自己勾选的题目；相同题目组合会合并为一份补练任务。",
+                  en: "Each student receives only their selected items. Identical selections are grouped into one task.",
+                })}
+              </p>
+              {students
+                .filter((student) => studentIds.includes(student.student_id))
+                .map((student) => (
+                  <fieldset
+                    key={student.student_id}
+                    className="min-w-0 rounded-xl border p-3"
+                  >
+                    <legend className="break-words px-1 font-medium">
+                      {student.display_name} ·{" "}
+                      {(selections[student.student_id] ?? []).length}{" "}
+                      {t({ zh: "题", en: "items" })}
+                    </legend>
+                    {(items.data ?? []).map((item, index) => (
+                      <label
+                        key={item.id}
+                        className="flex min-h-11 items-center gap-3 py-2 text-sm"
+                      >
+                        <input
+                          className="size-5 shrink-0"
+                          type="checkbox"
+                          checked={(
+                            selections[student.student_id] ?? []
+                          ).includes(item.id)}
+                          onChange={() =>
+                            setSelections((values) => ({
+                              ...values,
+                              [student.student_id]: toggle(
+                                values[student.student_id] ?? [],
+                                item.id,
+                              ),
+                            }))
+                          }
+                        />
+                        <span className="min-w-0 break-words">
+                          {index + 1}. {item.text}
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
+                ))}
+            </section>
+          )}
         </fieldset>
         {create.isError && (
           <p role="alert" className="text-sm text-destructive">
@@ -577,7 +685,9 @@ function FollowupCreateDialog({
               !title.trim() ||
               !sourceId ||
               !studentIds.length ||
-              !itemIds.length ||
+              (individual
+                ? studentIds.some((id) => !selections[id]?.length)
+                : !itemIds.length) ||
               items.isFetching ||
               items.isError
             }
