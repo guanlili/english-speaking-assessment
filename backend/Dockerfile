@@ -31,8 +31,9 @@ ENV UV_COMPILE_BYTECODE=1
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#caching
 ENV UV_LINK_MODE=copy
 
-# 国内构建加速：PyPI 走腾讯云镜像
-ENV UV_DEFAULT_INDEX=https://mirrors.cloud.tencent.com/pypi/simple
+# 国内生产构建默认走腾讯镜像；海外 CI 可通过构建参数指定官方源。
+ARG UV_DEFAULT_INDEX=https://mirrors.cloud.tencent.com/pypi/simple
+ENV UV_DEFAULT_INDEX=${UV_DEFAULT_INDEX}
 
 WORKDIR /app/
 
