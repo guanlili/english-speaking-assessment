@@ -567,7 +567,9 @@ for (const width of [390, 820, 1180]) {
     await page
       .getByRole("button", { name: "查看全部学生", exact: true })
       .click()
-    await expect(page.getByText("Alice", { exact: true })).toBeVisible()
+    await expect(
+      page.locator("#student-student").getByText("Alice", { exact: true }),
+    ).toBeVisible()
     for (const language of ["中", "EN"]) {
       await page
         .getByRole("button", { name: language, exact: true })
