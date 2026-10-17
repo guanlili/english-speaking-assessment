@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { createRoot } from "react-dom/client"
 import { Toaster } from "sonner"
-import type { AttemptPublic, BoardStudent } from "@/client"
+import { AdminService, type AttemptPublic, type BoardStudent } from "@/client"
 import { AttemptComparison } from "@/components/Practice/AttemptComparison"
 import { DevicePreflight } from "@/components/Practice/DevicePreflight"
 import { LearningReportCard } from "@/components/Practice/LearningReportCard"
@@ -52,9 +52,12 @@ createRoot(document.getElementById("root")!).render(
         />
         <LearningReportCard code="COACH" studentId="alice" />
         <CopyContentButton
-          kind="question"
-          itemId="item"
-          copiedFromId="source-item"
+          label="复制为我的版本"
+          copy={() =>
+            AdminService.copySchoolContent({ kind: "question", itemId: "item" })
+          }
+          onCopied={() => {}}
+          source={{ kind: "question", id: "source-item" }}
         />
         <AttemptComparison attemptId="answer" />
         <TeacherFeedbackEditor attempt={attempt} reload={() => {}} />

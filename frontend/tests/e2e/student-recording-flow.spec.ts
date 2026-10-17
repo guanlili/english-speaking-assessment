@@ -248,8 +248,10 @@ const draftItems = [
 ] as PlanItem[]
 
 interface DraftMockState {
-  /** "fail"=500（网络/服务器错误，草稿保留）；"reject"=422（服务器判定拒绝）；"ok" */
-  uploadOutcome: "ok" | "fail" | "reject"
+  /** 上传结果可控，撤销与普通网络故障分别回归。 */
+  uploadOutcome: "ok" | "fail" | "offline" | "reject" | "cancelled"
+  uploadRequests: string[]
+  uploadGate?: Promise<void>
   /** today 计划的题目（可换成"老师重新发布"后的内容） */
   planItems: typeof draftItems
   uploads: number
@@ -259,6 +261,7 @@ interface DraftMockState {
 async function mockDraftPractice(page: Page): Promise<DraftMockState> {
   const state: DraftMockState = {
     uploadOutcome: "ok",
+    uploadRequests: [],
     planItems: [draftItems[0], draftItems[1]],
     uploads: 0,
     attempts: [],
@@ -331,6 +334,21 @@ async function mockDraftPractice(page: Page): Promise<DraftMockState> {
       path.endsWith("/attempts") &&
       route.request().method() === "POST"
     ) {
+      state.uploadRequests.push(
+        route.request().postDataBuffer()?.toString("latin1") ?? "",
+      )
+      await state.uploadGate
+      if (state.uploadOutcome === "offline") {
+        await route.abort("internetdisconnected")
+        return
+      }
+      if (state.uploadOutcome === "cancelled") {
+        await route.fulfill({
+          status: 403,
+          json: { detail: "Followup cancelled" },
+        })
+        return
+      }
       if (state.uploadOutcome === "fail") {
         await route.fulfill({ status: 500, json: { detail: "boom" } })
         return
@@ -386,21 +404,339 @@ async function mockDraftPractice(page: Page): Promise<DraftMockState> {
 }
 
 async function recordOneDraftItem(page: Page) {
+  await page
+    .getByRole("button", { name: /^(开始录音|Start recording)$/ })
+    .click()
+  await expect(
+    page.getByRole("button", { name: /^(结束录音|Stop recording)$/ }),
+  ).toBeVisible()
+  await page.clock.runFor(1500)
+  await page
+    .getByRole("button", { name: /^(结束录音|Stop recording)$/ })
+    .click()
+}
+
+interface DraftStorageControl {
+  conversionStarted: boolean
+  releaseSave: () => void
+}
+
+async function holdDraftSave(page: Page, fail: "quota" | null = null) {
+  await page.addInitScript((fail) => {
+    let releaseSave!: () => void
+    const gate = new Promise<void>((resolve) => {
+      releaseSave = resolve
+    })
+    const control: DraftStorageControl = {
+      conversionStarted: false,
+      releaseSave,
+    }
+    Object.assign(window, { draftStorageControl: control })
+    const arrayBuffer = Blob.prototype.arrayBuffer
+    Blob.prototype.arrayBuffer = async function () {
+      if (this.type.startsWith("audio/")) {
+        control.conversionStarted = true
+        await gate
+      }
+      return arrayBuffer.call(this)
+    }
+    if (fail) {
+      const put = IDBObjectStore.prototype.put
+      IDBObjectStore.prototype.put = function (...args) {
+        if (this.name === "drafts")
+          throw new DOMException("Full", "QuotaExceededError")
+        return put.apply(this, args)
+      }
+    }
+  }, fail)
+}
+
+async function releaseDraftSave(page: Page) {
+  await page.evaluate(() => {
+    ;(
+      window as unknown as { draftStorageControl: DraftStorageControl }
+    ).draftStorageControl.releaseSave()
+  })
+}
+
+async function beforeUnloadBlocked(page: Page) {
+  return page.evaluate(() => {
+    const event = new Event("beforeunload", { cancelable: true })
+    window.dispatchEvent(event)
+    return event.defaultPrevented
+  })
+}
+
+async function storedDrafts(page: Page) {
+  return page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("esa-recording-drafts", 1)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    try {
+      return await new Promise<
+        Array<{
+          key: string
+          sessionId: string | null
+          itemType: string
+          idempotencyKey: string
+        }>
+      >((resolve, reject) => {
+        const request = db
+          .transaction("drafts", "readonly")
+          .objectStore("drafts")
+          .getAll()
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+    } finally {
+      db.close()
+    }
+  })
+}
+
+test("@webkit accepted upload waits for draft writes and only cleans the complete target", async ({
+  page,
+}) => {
+  await page.clock.install()
+  const state = await mockDraftPractice(page)
+  await holdDraftSave(page)
+  await page.goto("/p/DRAFT")
+  await expect(page.getByText(draftItems[0].text)).toBeVisible()
+  await page.evaluate(async (itemId) => {
+    const request = indexedDB.open("esa-recording-drafts", 1)
+    const db = await new Promise<IDBDatabase>((resolve) => {
+      request.onsuccess = () => resolve(request.result)
+    })
+    const tx = db.transaction("drafts", "readwrite")
+    for (const [sessionId, itemType, idempotencyKey] of [
+      ["draft-session", "passage", "old-key"],
+      ["other-session", "passage", "other-session-key"],
+      [null, "passage", "legacy-key"],
+      ["draft-session", "question", "other-type-key"],
+    ]) {
+      tx.objectStore("drafts").put({
+        key: [
+          "user",
+          "DRAFT",
+          sessionId ?? "",
+          itemType,
+          itemId,
+          idempotencyKey,
+        ].join("|"),
+        owner: "user",
+        classroomCode: "DRAFT",
+        sessionId,
+        itemType,
+        itemId,
+        idempotencyKey,
+        mimeType: "audio/webm",
+        durationS: 2,
+        createdAt: Date.now(),
+        blob: new TextEncoder().encode("old audio").buffer,
+      })
+    }
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve()
+      tx.onabort = () => reject(tx.error)
+    })
+    db.close()
+  }, draftItems[0].id)
+
+  await recordOneDraftItem(page)
+  await expect.poll(() => state.uploads).toBe(1)
+  await expect(page.getByText("Draft transcript")).toBeVisible()
+  await page.waitForFunction(
+    () =>
+      (window as unknown as { draftStorageControl: DraftStorageControl })
+        .draftStorageControl.conversionStarted,
+  )
+  // 已收到服务器成功，但 Blob 转换仍挂起；旧同目标草稿也不能提前清理。
+  expect(
+    (await storedDrafts(page)).some((d) => d.idempotencyKey === "old-key"),
+  ).toBe(true)
+  expect(await beforeUnloadBlocked(page)).toBe(true)
+  await releaseDraftSave(page)
+  await expect
+    .poll(async () =>
+      (await storedDrafts(page)).map((d) => d.idempotencyKey).sort(),
+    )
+    .toEqual(["legacy-key", "other-session-key", "other-type-key"])
+  await expect.poll(() => beforeUnloadBlocked(page)).toBe(false)
+  await page.reload()
+  const drafts = await storedDrafts(page)
+  expect(drafts).toHaveLength(3)
+  expect(
+    drafts.some(
+      (d) => d.sessionId === "draft-session" && d.itemType === "passage",
+    ),
+  ).toBe(false)
+})
+
+test("@webkit withdrawn followup blocks until its draft is saved, then permits leaving", async ({
+  page,
+}) => {
+  await page.clock.install()
+  const state = await mockDraftPractice(page)
+  state.uploadOutcome = "cancelled"
+  await holdDraftSave(page)
+  await page.goto("/p/DRAFT?session=draft-session")
+  await recordOneDraftItem(page)
+  const home = page.getByRole("button", { name: "返回首页", exact: true })
+  await expect(
+    page.getByText("正在保存录音草稿，请稍候再离开。", { exact: true }),
+  ).toBeVisible()
+  await expect(home).toBeDisabled()
+  await expect(page.getByRole("button", { name: "重传录音" })).toBeHidden()
+  await expect(
+    page.getByRole("button", { name: "开始录音", exact: true }),
+  ).toBeHidden()
+  expect(await beforeUnloadBlocked(page)).toBe(true)
+  await page
+    .getByRole("link", { name: "学习首页", exact: true })
+    .first()
+    .click()
+  await expect(page).toHaveURL(/\/p\/DRAFT/)
+  await releaseDraftSave(page)
+  await expect(home).toBeEnabled()
+  await expect(
+    page.getByText(
+      "录音草稿已保存在本设备，但不能再提交到这项补练。现在可以返回首页。",
+      { exact: true },
+    ),
+  ).toBeVisible()
+  expect(await storedDrafts(page)).toHaveLength(1)
+  expect(await beforeUnloadBlocked(page)).toBe(false)
+  await home.click()
+  await expect(page).toHaveURL(/\/home\/DRAFT/)
+  expect(await storedDrafts(page)).toHaveLength(1)
+  expect(state.uploadRequests).toHaveLength(1)
+})
+
+for (const [width, lang, failure] of [
+  [390, "zh", "unavailable"],
+  [820, "en", "quota"],
+  [1180, "zh", "quota"],
+] as const) {
+  test(`@webkit withdrawn followup confirms unsaved recording loss at ${width} ${lang} ${failure}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.clock.install()
+    const state = await mockDraftPractice(page)
+    state.uploadOutcome = "cancelled"
+    await page.addInitScript(
+      (lang) => localStorage.setItem("esa:lang", lang),
+      lang,
+    )
+    if (failure === "quota") await holdDraftSave(page, "quota")
+    else
+      await page.addInitScript(() => {
+        IDBFactory.prototype.open = () => {
+          throw new DOMException("Denied", "SecurityError")
+        }
+      })
+    await page.goto("/p/DRAFT?session=draft-session")
+    await recordOneDraftItem(page)
+    const home = page.getByRole("button", { name: /^(返回首页|Return home)$/ })
+    if (failure === "quota") {
+      await expect(home).toBeDisabled()
+      await releaseDraftSave(page)
+    }
+    await expect(home).toBeEnabled()
+    await expect(
+      page.getByText(
+        lang === "en"
+          ? "This recording was neither uploaded nor saved on this device. Leaving will lose it; confirmation is required before returning home."
+          : "这段录音未上传，也未能保存到本设备。离开将丢失录音；返回首页前需要确认。",
+        { exact: true },
+      ),
+    ).toBeVisible()
+    expect(await beforeUnloadBlocked(page)).toBe(true)
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true)
+    const box = await home.boundingBox()
+    expect(box?.height).toBeGreaterThanOrEqual(44)
+
+    const dismissed = page.waitForEvent("dialog")
+    void home.click()
+    const first = await dismissed
+    expect(first.type()).toBe("confirm")
+    expect(first.message()).toContain(
+      lang === "en" ? "Leaving will lose it" : "离开将丢失这段录音",
+    )
+    await first.dismiss()
+    await expect(page).toHaveURL(/\/p\/DRAFT/)
+    expect(await beforeUnloadBlocked(page)).toBe(true)
+    // 取消确认不释放保护；第二次从站内侧栏离开仍须确认。
+    const confirmed = page.waitForEvent("dialog")
+    void page
+      .getByRole("link", { name: /^(学习首页|Home)$/ })
+      .first()
+      .click()
+    const second = await confirmed
+    expect(second.type()).toBe("confirm")
+    await second.accept()
+    await expect(page).toHaveURL(/\/home\/DRAFT/)
+    expect(state.uploadRequests).toHaveLength(1)
+  })
+}
+
+test("@webkit ordinary recording, uploading and network failure retain leave protection and retry key", async ({
+  page,
+}) => {
+  await page.clock.install()
+  const state = await mockDraftPractice(page)
+  state.uploadOutcome = "offline"
+  let releaseUpload!: () => void
+  state.uploadGate = new Promise<void>((resolve) => {
+    releaseUpload = resolve
+  })
+  await page.goto("/p/DRAFT")
   await page.getByRole("button", { name: "开始录音", exact: true }).click()
+  await expect(
+    page.getByRole("button", { name: "结束录音", exact: true }),
+  ).toBeVisible()
+  const home = page.getByRole("link", { name: "学习首页", exact: true }).first()
+  await home.click()
+  await expect(page).toHaveURL(/\/p\/DRAFT/)
+  expect(await beforeUnloadBlocked(page)).toBe(true)
   await page.clock.runFor(1500)
   await page.getByRole("button", { name: "结束录音", exact: true }).click()
-}
+  await expect.poll(() => state.uploadRequests.length).toBe(1)
+  await home.click()
+  await expect(page).toHaveURL(/\/p\/DRAFT/)
+  expect(await beforeUnloadBlocked(page)).toBe(true)
+  releaseUpload()
+  await expect(page.getByText("上传失败，录音已保留")).toBeVisible()
+  await expect.poll(async () => (await storedDrafts(page)).length).toBe(1)
+  await home.click()
+  await expect(page).toHaveURL(/\/p\/DRAFT/)
+  expect(await beforeUnloadBlocked(page)).toBe(true)
+  await expect(
+    page.getByRole("button", { name: "重新录", exact: true }),
+  ).toBeVisible()
+  state.uploadOutcome = "ok"
+  await page.getByRole("button", { name: "重传录音" }).click()
+  await expect(page.getByText("Draft transcript")).toBeVisible()
+  await expect.poll(async () => (await storedDrafts(page)).length).toBe(0)
+  expect(state.uploadRequests).toHaveLength(2)
+  const key = (raw: string) =>
+    /name="idempotency_key"\r\n\r\n([^\r]+)\r\n/.exec(raw)?.[1]
+  expect(key(state.uploadRequests[0])).toBeTruthy()
+  expect(key(state.uploadRequests[1])).toBe(key(state.uploadRequests[0]))
+  await home.click()
+  await expect(page).toHaveURL(/\/home\/DRAFT/)
+})
 
 test("draft survives reload after failed upload and can be re-uploaded", {
   tag: "@webkit",
-}, async ({ page, browserName }) => {
-  // playwright-webkit 的 IndexedDB 无法结构化克隆 Blob（put 即撤销事务，
-  // 字符串正常）：草稿存储路径在 WebKit 冒烟中无法覆盖，由真实 iPad Safari
-  // 人工清单承接（docs/manual-ipad-safari-checklist.md）
-  test.skip(
-    browserName === "webkit",
-    "playwright-webkit IDB Blob 克隆不可用，草稿测试仅 chromium 跑",
-  )
+}, async ({ page }) => {
+  // 草稿使用 ArrayBuffer 落盘，Chromium 与 WebKit 都验证真实 IndexedDB。
   await page.clock.install()
   const state = await mockDraftPractice(page)
   state.uploadOutcome = "fail"
@@ -412,7 +748,7 @@ test("draft survives reload after failed upload and can be re-uploaded", {
   // RecordArea 的稳定错误文案（toast「上传失败」与它同名，避免 strict 冲突）
   await expect(page.getByText("上传失败，录音已保留")).toBeVisible()
   // 等草稿落盘完成（IndexedDB 异步写）
-  await page.clock.runFor(300)
+  await expect.poll(async () => (await storedDrafts(page)).length).toBe(1)
 
   // 刷新：内存里的录音没了，只剩草稿——恢复卡出现且明确列出原题
   // （题文在题面与卡片各出现一次，断言限定在卡片区域内）
@@ -432,21 +768,15 @@ test("draft survives reload after failed upload and can be re-uploaded", {
 
 test("server-rejected draft stays with server-authoritative message", {
   tag: "@webkit",
-}, async ({ page, browserName }) => {
-  // playwright-webkit 的 IndexedDB 无法结构化克隆 Blob（put 即撤销事务，
-  // 字符串正常）：草稿存储路径在 WebKit 冒烟中无法覆盖，由真实 iPad Safari
-  // 人工清单承接（docs/manual-ipad-safari-checklist.md）
-  test.skip(
-    browserName === "webkit",
-    "playwright-webkit IDB Blob 克隆不可用，草稿测试仅 chromium 跑",
-  )
+}, async ({ page }) => {
+  // 草稿使用 ArrayBuffer 落盘，Chromium 与 WebKit 都验证真实 IndexedDB。
   await page.clock.install()
   const state = await mockDraftPractice(page)
   state.uploadOutcome = "fail"
 
   await page.goto("/p/DRAFT")
   await recordOneDraftItem(page)
-  await page.clock.runFor(300)
+  await expect.poll(async () => (await storedDrafts(page)).length).toBe(1)
   await page.reload()
   await expect(page.getByText("有未上传的录音草稿")).toBeVisible()
 
@@ -466,21 +796,15 @@ test("server-rejected draft stays with server-authoritative message", {
 
 test("draft for republished plan item offers discard only", {
   tag: "@webkit",
-}, async ({ page, browserName }) => {
-  // playwright-webkit 的 IndexedDB 无法结构化克隆 Blob（put 即撤销事务，
-  // 字符串正常）：草稿存储路径在 WebKit 冒烟中无法覆盖，由真实 iPad Safari
-  // 人工清单承接（docs/manual-ipad-safari-checklist.md）
-  test.skip(
-    browserName === "webkit",
-    "playwright-webkit IDB Blob 克隆不可用，草稿测试仅 chromium 跑",
-  )
+}, async ({ page }) => {
+  // 草稿使用 ArrayBuffer 落盘，Chromium 与 WebKit 都验证真实 IndexedDB。
   await page.clock.install()
   const state = await mockDraftPractice(page)
   state.uploadOutcome = "fail"
 
   await page.goto("/p/DRAFT")
   await recordOneDraftItem(page)
-  await page.clock.runFor(300)
+  await expect.poll(async () => (await storedDrafts(page)).length).toBe(1)
 
   // 老师重新发布计划：草稿的题不在新计划里——不能上传（目标已失效），只能丢弃
   state.planItems = [draftItems[1]]

@@ -38,6 +38,8 @@ async function setup(page: Page, role: "teacher" | "student", lang = "zh") {
     fail: false,
     conflict: false,
     started: 0,
+    failList: false,
+    followupRequests: [] as { status: string; offset: number; limit: number }[],
   }
   page.on("dialog", (dialog) => void dialog.accept())
   await page.addInitScript(
@@ -171,8 +173,14 @@ async function setup(page: Page, role: "teacher" | "student", lang = "zh") {
           })),
         })
         json = { id: "task" }
-      } else
-        json =
+      } else {
+        const status = url.searchParams.get("status") ?? "all"
+        const offset = Number(url.searchParams.get("offset") ?? 0)
+        const limit = Number(url.searchParams.get("limit") ?? 50)
+        state.followupRequests.push({ status, offset, limit })
+        if (state.failList)
+          return route.fulfill({ status: 503, json: { detail: "Unavailable" } })
+        const visible =
           role === "teacher"
             ? state.tasks
             : state.tasks
@@ -183,11 +191,27 @@ async function setup(page: Page, role: "teacher" | "student", lang = "zh") {
                   ),
                 }))
                 .filter((task) => task.targets.length > 0)
+        json = visible
+          .filter((task) => {
+            const active =
+              task.status === "followup" &&
+              task.targets.some((row) => row.done_count < row.total_count)
+            return status === "all" || (status === "active" ? active : !active)
+          })
+          .sort(
+            (a, b) =>
+              (b.created_at ?? "").localeCompare(a.created_at ?? "") ||
+              b.id.localeCompare(a.id),
+          )
+          .slice(offset, offset + limit)
+      }
     } else if (path.endsWith("/followups/task/start")) {
       state.started++
       json = { session_id: "followup-session" }
-    } else if (path.endsWith("/followups/task/cancel")) {
-      state.tasks[0].status = "followup_closed"
+    } else if (/\/followups\/[^/]+\/cancel$/.test(path)) {
+      const parts = path.split("/")
+      const task = state.tasks.find((row) => row.id === parts[parts.length - 2])
+      if (task) task.status = "followup_closed"
       json = null
     } else if (path.endsWith("/revision")) json = { revision: "v1" }
     else if (path.endsWith("/today")) {
@@ -398,3 +422,233 @@ for (const [width, lang] of [
     ).toBe(true)
   })
 }
+
+function pagedTask(
+  index: number,
+  kind: "active" | "done" | "withdrawn",
+): FollowupPublic {
+  const id = `${kind}-${String(index).padStart(3, "0")}`
+  return {
+    id,
+    title: id,
+    status: kind === "withdrawn" ? "followup_closed" : "followup",
+    source_exercise_id: exercise.id,
+    // Active work is deliberately older than more than 50 historical tasks.
+    created_at:
+      kind === "active" ? "2026-01-01T00:00:00Z" : "2026-10-01T00:00:00Z",
+    item_count: 1,
+    targets: [
+      {
+        student_id: "alice",
+        display_name: "Alice",
+        done_count: kind === "done" ? 1 : 0,
+        total_count: 1,
+        has_pending: false,
+        has_failures: false,
+        session_id: kind === "done" ? "followup-session" : null,
+      },
+    ],
+  }
+}
+
+async function openTaskList(
+  page: Page,
+  role: "teacher" | "student",
+  en = false,
+) {
+  await page.goto(role === "teacher" ? "/t/COACH" : "/home/COACH")
+  if (role === "teacher")
+    await page
+      .getByRole("tab", { name: en ? "Student Results" : "学生结果" })
+      .click()
+  return page.getByRole("region", {
+    name:
+      role === "teacher"
+        ? en
+          ? "Targeted practice"
+          : "指定学生补练"
+        : en
+          ? "Practice from your teacher"
+          : "老师布置的补练",
+    exact: true,
+  })
+}
+
+for (const role of ["teacher", "student"] as const) {
+  for (const [width, lang] of [
+    [390, "zh"],
+    [820, "en"],
+    [1180, "zh"],
+  ] as const) {
+    test(`@webkit ${role} follow-up tabs page beyond 50 history tasks at ${width} ${lang}`, async ({
+      page,
+    }) => {
+      const en = lang === "en"
+      await page.setViewportSize({ width, height: 1000 })
+      const state = await setup(page, role, lang)
+      state.tasks = [
+        ...Array.from({ length: 12 }, (_, index) => pagedTask(index, "active")),
+        ...Array.from({ length: 65 }, (_, index) =>
+          pagedTask(index, index % 2 ? "done" : "withdrawn"),
+        ),
+      ]
+      const tasks = await openTaskList(page, role, en)
+      const previous = tasks.getByRole("button", {
+        name: en ? "Previous" : "上一页",
+        exact: true,
+      })
+      const next = tasks.getByRole("button", {
+        name: en ? "Next" : "下一页",
+        exact: true,
+      })
+      await expect(
+        tasks.getByRole("tab", { name: en ? "To do" : "待完成", exact: true }),
+      ).toHaveAttribute("aria-selected", "true")
+      await expect(tasks.locator("article")).toHaveCount(10)
+      await expect(tasks).toContainText("active-011")
+      await expect(tasks).not.toContainText("withdrawn-")
+      await expect(previous).toBeDisabled()
+      await next.click()
+      await expect(tasks.locator("article")).toHaveCount(2)
+      await expect(tasks).toContainText("active-000")
+      await expect(next).toBeDisabled()
+      await tasks
+        .getByRole("tab", { name: en ? "History" : "历史", exact: true })
+        .click()
+      await expect(previous).toBeDisabled()
+      await expect(tasks.locator("article")).toHaveCount(10)
+      await expect(tasks).not.toContainText("active-")
+      for (let number = 2; number <= 7; number++) {
+        await next.click()
+        await expect(
+          tasks.getByText(en ? `Page ${number}` : `第 ${number} 页`, {
+            exact: true,
+          }),
+        ).toBeVisible()
+        await expect(tasks.locator("article")).toHaveCount(
+          number === 7 ? 5 : 10,
+        )
+      }
+      await expect(next).toBeDisabled()
+      await previous.click()
+      await expect(tasks.locator("article")).toHaveCount(10)
+      await tasks
+        .getByRole("tab", { name: en ? "To do" : "待完成", exact: true })
+        .click()
+      await expect(tasks).toContainText("active-011")
+      await expect(previous).toBeDisabled()
+      expect(state.followupRequests).toContainEqual({
+        status: "active",
+        offset: 10,
+        limit: 11,
+      })
+      expect(state.followupRequests).toContainEqual({
+        status: "history",
+        offset: 60,
+        limit: 11,
+      })
+      expect(
+        state.followupRequests.every((request) => request.limit === 11),
+      ).toBe(true)
+      for (const control of await tasks.locator("button").all()) {
+        const box = await control.boundingBox()
+        expect(box?.height).toBeGreaterThanOrEqual(44)
+      }
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true)
+    })
+  }
+
+  test(`${role} follow-up scoring polls move completed work to accessible history`, async ({
+    page,
+  }) => {
+    await page.clock.install()
+    const state = await setup(page, role)
+    const task = pagedTask(0, "active")
+    task.targets[0].session_id = "followup-session"
+    task.targets[0].has_pending = true
+    state.tasks = [task]
+    const tasks = await openTaskList(page, role)
+    await expect(tasks).toContainText("评分中")
+    task.targets[0].has_pending = false
+    task.targets[0].has_failures = true
+    const interval = role === "teacher" ? 10000 : 20000
+    await page.clock.fastForward(interval + 100)
+    await expect(tasks).toContainText("评分失败")
+    expect(state.followupRequests.length).toBeGreaterThanOrEqual(2)
+    task.targets[0].has_failures = false
+    task.targets[0].done_count = 1
+    await page.clock.fastForward(interval + 100)
+    await expect(tasks).toContainText("暂无待完成补练")
+    await tasks.getByRole("tab", { name: "历史", exact: true }).click()
+    await expect(tasks).toContainText(task.title)
+    if (role === "student") {
+      await tasks.getByRole("button", { name: "回看补练", exact: true }).click()
+      await expect(page).toHaveURL(
+        /\/p\/COACH\/result\?session=followup-session/,
+      )
+    }
+  })
+}
+
+test("teacher withdrawal on the final page returns to the previous page", async ({
+  page,
+}) => {
+  const state = await setup(page, "teacher")
+  state.tasks = Array.from({ length: 11 }, (_, index) =>
+    pagedTask(index, "active"),
+  )
+  const tasks = await openTaskList(page, "teacher")
+  await expect(tasks.locator("article")).toHaveCount(10)
+  await tasks.getByRole("button", { name: "下一页", exact: true }).click()
+  await expect(tasks.locator("article")).toHaveCount(1)
+  await tasks.getByRole("button", { name: "撤销补练", exact: true }).click()
+  await expect(tasks.locator("article")).toHaveCount(10)
+  await expect(
+    tasks.getByRole("button", { name: "上一页", exact: true }),
+  ).toBeDisabled()
+  await tasks.getByRole("tab", { name: "历史", exact: true }).click()
+  await expect(tasks.locator("article")).toHaveCount(1)
+  await expect(tasks).toContainText("已撤销")
+})
+
+test("student with only history can reach it from the empty default tab", async ({
+  page,
+}) => {
+  const state = await setup(page, "student")
+  state.tasks = [pagedTask(0, "done"), pagedTask(1, "withdrawn")]
+  const tasks = await openTaskList(page, "student")
+  await expect(tasks).toContainText("暂无待完成补练")
+  await tasks.getByRole("tab", { name: "历史", exact: true }).click()
+  await expect(tasks.locator("article")).toHaveCount(2)
+  await expect(
+    tasks.getByRole("button", { name: "回看补练", exact: true }),
+  ).toBeVisible()
+  await expect(
+    tasks.getByRole("button", { name: "开始补练", exact: true }),
+  ).toHaveCount(0)
+})
+
+test("follow-up page errors keep tabs and allow retry without losing the page", async ({
+  page,
+}) => {
+  const state = await setup(page, "student")
+  state.tasks = Array.from({ length: 12 }, (_, index) =>
+    pagedTask(index, "done"),
+  )
+  const tasks = await openTaskList(page, "student")
+  await tasks.getByRole("tab", { name: "历史", exact: true }).click()
+  await expect(tasks.locator("article")).toHaveCount(10)
+  state.failList = true
+  await tasks.getByRole("button", { name: "下一页", exact: true }).click()
+  await expect(
+    tasks.getByRole("button", { name: "重试", exact: true }),
+  ).toBeVisible({ timeout: 15000 })
+  state.failList = false
+  await tasks.getByRole("button", { name: "重试", exact: true }).click()
+  await expect(tasks.locator("article")).toHaveCount(2)
+  await expect(tasks).toContainText("第 2 页")
+})

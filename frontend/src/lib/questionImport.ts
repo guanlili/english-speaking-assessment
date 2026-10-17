@@ -219,6 +219,13 @@ export function localizeQuestionImportIssue(reason: string): BiString {
         },
       ],
       [
+        /^挂靠篇目由其他老师创建，不能往里添加句子；可去掉挂靠篇目作为独立题导入$/,
+        {
+          zh: "挂靠篇目由其他老师创建，不能往里添加句子；可去掉挂靠篇目作为独立题导入",
+          en: "This passage belongs to another teacher, so sentences can't be added to it. Clear the passage column to import as standalone items.",
+        },
+      ],
+      [
         /^疑似重复：同名同正文篇目已存在，但难度\/秒数等配置不同$/,
         {
           zh: "疑似重复：同名同正文篇目已存在，但配置不同",

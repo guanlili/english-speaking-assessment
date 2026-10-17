@@ -240,9 +240,12 @@ def test_copy_content_creates_independent_owned_version(
         ).status_code
         == 403
     )
-    db.refresh(db.get(Passage, pid))
-    assert db.get(Passage, pid).text == "Frozen original content."
+    original = db.get(Passage, pid)
+    assert original is not None
+    db.refresh(original)
+    assert original.text == "Frozen original content."
     detached = client.post(
         f"/api/v1/admin/content/repeat/{sentence.id}/copy", headers=other_headers
     ).json()
-    assert db.get(RepeatSentence, uuid.UUID(detached["id"])).passage_id is None
+    detached_row = db.get(RepeatSentence, uuid.UUID(detached["id"]))
+    assert detached_row is not None and detached_row.passage_id is None

@@ -8,12 +8,15 @@ import { createFileRoute } from "@tanstack/react-router"
 import { Loader2, Pencil, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
-import { AdminService } from "@/client"
+import { AdminService, type ScenarioOut } from "@/client"
 import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import Pager from "@/components/Common/Pager"
 import AudioSetter from "@/components/Practice/AudioSetter"
-import { CopyContentButton } from "@/components/Teaching/CopyContentButton"
+import {
+  CopyContentButton,
+  invalidateContentQueries,
+} from "@/components/Teaching/CopyContentButton"
 import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
 import { ReadOnlyContentBadge } from "@/components/Teaching/ReadOnlyContentBadge"
 import { Badge } from "@/components/ui/badge"
@@ -61,12 +64,14 @@ interface QuestionShape {
   audio_url?: string | null
   suggested_seconds?: number
   owner_id?: string | null
+  exam_kind?: string | null
 }
 
 interface ScenarioShape {
   id: string
   topic: string
   is_active?: boolean
+  owner_id?: string | null
   questions: QuestionShape[]
 }
 
@@ -76,6 +81,7 @@ export function ScenariosAdmin({ embedded = false }: { embedded?: boolean }) {
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const [keyword, setKeyword] = useState("")
   const [newTopic, setNewTopic] = useState("")
+  const [copiedId, setCopiedId] = useState<string | null>(null)
   // 服务端分页 + 服务端关键词：题库上千后不再整表拉取（limit=None 全量只留给组卷）
   const PAGE_SIZE = 20
   const [pageIndex, setPageIndex] = useState(0)
@@ -116,9 +122,16 @@ export function ScenariosAdmin({ embedded = false }: { embedded?: boolean }) {
     pageIndex,
   ])
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["admin", "scenarios"] })
-    void queryClient.invalidateQueries({ queryKey: ["admin", "question-bank"] })
+  const invalidate = () => invalidateContentQueries(queryClient)
+  const showCopy = (copy: ScenarioOut) => {
+    // Show the returned copy immediately, even when the original was on a later page.
+    queryClient.setQueryData(["admin", "scenarios", copy.topic, 0], {
+      data: [copy],
+      count: 1,
+    })
+    setPageIndex(0)
+    setKeyword(copy.topic)
+    setCopiedId(copy.id)
   }
 
   const createScenario = useMutation({
@@ -212,7 +225,9 @@ export function ScenariosAdmin({ embedded = false }: { embedded?: boolean }) {
         scenarios.map((scenario) => (
           <ScenarioCard
             key={scenario.id}
-            scenario={scenario as ScenarioShape}
+            scenario={scenario}
+            initiallyExpanded={scenario.id === copiedId}
+            onCopied={showCopy}
             onMutated={invalidate}
           />
         ))
@@ -232,16 +247,26 @@ export function ScenariosAdmin({ embedded = false }: { embedded?: boolean }) {
 
 function ScenarioCard({
   scenario,
+  initiallyExpanded,
+  onCopied,
   onMutated,
 }: {
   scenario: ScenarioShape
+  initiallyExpanded: boolean
+  onCopied: (copy: ScenarioOut) => void
   onMutated: () => void
 }) {
   const { t } = useI18n()
   const { showSuccessToast } = useCustomToast()
   const canEdit = useCanEditContent()
-  // 主题是共用分组：组内题目全部可改时才能改名/启停/删除
-  const topicEditable = scenario.questions.every((q) => canEdit(q.owner_id))
+  // 改名/启停归主题创建者；存量无主主题要组内题目全部可改。删除会连带
+  // 组内题目，有别人的题时只有管理员能删
+  const hasOthersQuestions = scenario.questions.some(
+    (q) => !canEdit(q.owner_id),
+  )
+  const topicEditable = scenario.owner_id
+    ? canEdit(scenario.owner_id)
+    : !hasOthersQuestions
   const [question, setQuestion] = useState({
     text: "",
     seconds: 30,
@@ -360,7 +385,7 @@ function ScenarioCard({
     editForm.text.trim().length > 0 &&
     Number.isInteger(editForm.seconds) &&
     editForm.seconds >= 10 &&
-    editForm.seconds <= 60
+    editForm.seconds <= (editingQ?.exam_kind ? 300 : 60)
 
   const updateScenario = useMutation({
     mutationFn: (patch: { topic?: string; is_active?: boolean }) =>
@@ -385,13 +410,13 @@ function ScenarioCard({
   })
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-end justify-between gap-3 space-y-0">
-        <div className="flex-1 space-y-1">
-          <div className="flex items-center gap-2">
+    <Card data-testid={`scenario-${scenario.id}`}>
+      <CardHeader className="flex flex-wrap items-end justify-between gap-3 space-y-0">
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
             <Input
               aria-label={t({ zh: "情景主题", en: "Q&A topic" })}
-              className="h-8 max-w-56 font-medium"
+              className="min-h-11 max-w-56 font-medium"
               value={topicDraft}
               readOnly={!topicEditable}
               onChange={(e) => setTopicDraft(e.target.value)}
@@ -399,6 +424,7 @@ function ScenarioCard({
             {topicEditable && (
               <Button
                 size="sm"
+                className="min-h-11"
                 variant="outline"
                 disabled={
                   topicDraft.trim().length === 0 ||
@@ -428,7 +454,15 @@ function ScenarioCard({
             })}
           </CardDescription>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex max-w-full flex-wrap items-center gap-3">
+          <CopyContentButton
+            label={t({
+              zh: `复制主题 ${scenario.topic}`,
+              en: `Copy topic ${scenario.topic}`,
+            })}
+            copy={() => AdminService.copyScenario({ scenarioId: scenario.id })}
+            onCopied={onCopied}
+          />
           <div className="flex items-center gap-2 whitespace-nowrap text-sm">
             <Checkbox
               checked={scenario.is_active !== false}
@@ -442,12 +476,21 @@ function ScenarioCard({
           {topicEditable && (
             <Button
               variant="ghost"
-              size="icon-sm"
+              size="icon"
               aria-label={t({
                 zh: `删除情景 ${scenario.topic}`,
                 en: `Delete topic ${scenario.topic}`,
               })}
-              onClick={() => setConfirmDelete(true)}
+              onClick={() =>
+                hasOthersQuestions
+                  ? toast.error(
+                      t({
+                        zh: "主题下有其他老师的题目，不能删除；可以停用，或联系管理员删除",
+                        en: "This topic contains other teachers' questions and can't be deleted. Disable it instead, or ask an administrator.",
+                      }),
+                    )
+                  : setConfirmDelete(true)
+              }
             >
               <Trash2 className="text-destructive" />
             </Button>
@@ -455,8 +498,8 @@ function ScenarioCard({
         </div>
       </CardHeader>
       <CardContent>
-        <details>
-          <summary className="cursor-pointer text-sm font-medium text-primary">
+        <details open={initiallyExpanded || undefined}>
+          <summary className="min-h-11 cursor-pointer text-sm font-medium text-primary">
             {t({
               zh: "展开题目 · 手动添加 / AI 起草",
               en: "Questions · Add Manually / AI Draft",
@@ -473,10 +516,10 @@ function ScenarioCard({
               {scenario.questions.map((q, index) => (
                 <div
                   key={q.id}
-                  className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2"
                 >
-                  <div className="space-y-1">
-                    <p className="text-sm">
+                  <div className="min-w-0 flex-1 basis-48 space-y-1">
+                    <p className="break-words text-sm [overflow-wrap:anywhere]">
                       {index + 1}. {q.text}
                     </p>
                     <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -487,16 +530,26 @@ function ScenarioCard({
                       {!canEdit(q.owner_id) && <ReadOnlyContentBadge />}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex max-w-full flex-wrap items-center gap-1">
                     <CopyContentButton
-                      kind="question"
-                      itemId={q.id}
-                      copiedFromId={q.copied_from_id}
+                      source={
+                        q.copied_from_id
+                          ? { kind: "question", id: q.copied_from_id }
+                          : undefined
+                      }
+                      label={t({
+                        zh: `复制题目 ${index + 1}`,
+                        en: `Copy question ${index + 1}`,
+                      })}
+                      copy={() =>
+                        AdminService.copyQuestion({ questionId: q.id })
+                      }
+                      onCopied={openQEdit}
                     />
                     {canEdit(q.owner_id) && (
                       <Button
                         variant="ghost"
-                        size="icon-sm"
+                        size="icon"
                         aria-label={t({
                           zh: `编辑题目 ${index + 1}`,
                           en: `Edit question ${index + 1}`,
@@ -527,7 +580,7 @@ function ScenarioCard({
                     {canEdit(q.owner_id) && (
                       <Button
                         variant="ghost"
-                        size="icon-sm"
+                        size="icon"
                         aria-label={t({
                           zh: "删除题目",
                           en: "Delete question",
@@ -721,15 +774,20 @@ function ScenarioCard({
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="scn-q-seconds">
-                {t({
-                  zh: "建议秒数（10–60）",
-                  en: "Suggested Seconds (10–60)",
-                })}
+                {editingQ?.exam_kind
+                  ? t({
+                      zh: "作答秒数（10–300）",
+                      en: "Answer Seconds (10–300)",
+                    })
+                  : t({
+                      zh: "建议秒数（10–60）",
+                      en: "Suggested Seconds (10–60)",
+                    })}
               </Label>
               <NumberInput
                 id="scn-q-seconds"
                 min={10}
-                max={60}
+                max={editingQ?.exam_kind ? 300 : 60}
                 value={editForm.seconds}
                 onValueChange={(seconds) =>
                   setEditForm((f) => ({ ...f, seconds }))

@@ -1,115 +1,118 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useState } from "react"
-import { toast } from "sonner"
-import { type AdminCopySchoolContentData, AdminService } from "@/client"
-import { Button } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+  type QueryClient,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query"
+import { Copy, Loader2 } from "lucide-react"
+import { useRef } from "react"
+import { toast } from "sonner"
+import { ApiError } from "@/client"
+import {
+  ContentSourceButton,
+  type ContentSourceRef,
+} from "@/components/Teaching/ContentSourceButton"
+import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
-export function CopyContentButton({
-  kind,
-  itemId,
-  copiedFromId,
+
+export function invalidateContentQueries(client: QueryClient) {
+  return Promise.all(
+    [
+      "passages",
+      "sentences",
+      "scenarios",
+      "question-bank",
+      "instructions",
+      "topics",
+      "units",
+      "composer-selection",
+    ].map((kind) => client.invalidateQueries({ queryKey: ["admin", kind] })),
+  )
+}
+
+export function CopyContentButton<T>({
+  copy,
+  onCopied,
+  onStart,
+  label,
+  source,
 }: {
-  kind: AdminCopySchoolContentData["kind"]
-  itemId: string
-  copiedFromId?: string | null
+  copy: () => Promise<T>
+  onCopied: (content: T) => void
+  onStart?: () => void
+  label: string
+  source?: ContentSourceRef
 }) {
   const { t } = useI18n()
-  const client = useQueryClient()
-  const [sourceOpen, setSourceOpen] = useState(false)
-  const source = useQuery({
-    queryKey: ["content-source", kind, copiedFromId],
-    queryFn: () =>
-      AdminService.readSharedContentSource({ kind, itemId: copiedFromId! }),
-    enabled: sourceOpen && Boolean(copiedFromId),
-    retry: false,
-  })
+  const queryClient = useQueryClient()
+  // Block rapid clicks before React renders the pending state; never auto-retry a POST.
+  const inFlight = useRef(false)
   const mutation = useMutation({
-    mutationFn: () => AdminService.copySchoolContent({ kind, itemId }),
-    onSuccess: () => {
-      void client.invalidateQueries({
-        predicate: (query) =>
-          query.queryKey.some(
-            (key) =>
-              typeof key === "string" &&
-              /passage|sentence|question|scenario|instruction|composer/.test(
-                key,
-              ),
-          ),
-      })
+    mutationFn: copy,
+    retry: false,
+    onSuccess: (content) => {
+      onCopied(content)
+      void invalidateContentQueries(queryClient)
       toast.success(
         t({
-          zh: "已复制为你的可编辑版本，可在题库中查找并修改。",
-          en: "Copied to your editable version. Find and edit it in the question bank.",
+          zh: "副本已创建，可立即改编",
+          en: "Copy created and ready to edit",
         }),
       )
     },
-    onError: () =>
-      toast.error(
-        t({ zh: "复制失败，请重试。", en: "Copy failed. Please retry." }),
-      ),
+    onSettled: () => {
+      inFlight.current = false
+    },
   })
+  const errorStatus =
+    mutation.error instanceof ApiError ? mutation.error.status : undefined
+  const errorMessage =
+    errorStatus === 404
+      ? t({
+          zh: "原内容已不存在，请刷新列表后重试",
+          en: "The original no longer exists. Refresh the list and retry.",
+        })
+      : errorStatus === 403
+        ? t({
+            zh: "没有复制权限，请联系管理员",
+            en: "You do not have permission to copy. Contact an administrator.",
+          })
+        : t({
+            zh: "复制失败，请重试；原内容未改动",
+            en: "Copy failed. Please retry; the original is unchanged.",
+          })
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <span className="inline-flex max-w-full flex-col items-start gap-1">
       <Button
+        type="button"
         variant="outline"
-        className="min-h-11"
+        size="sm"
+        className="min-h-11 min-w-11"
+        aria-label={label}
+        aria-busy={mutation.isPending}
         disabled={mutation.isPending}
-        onClick={() => mutation.mutate()}
+        onClick={(event) => {
+          event.stopPropagation()
+          if (inFlight.current) return
+          inFlight.current = true
+          onStart?.()
+          mutation.mutate()
+        }}
       >
-        {t({ zh: "复制为我的版本", en: "Copy to my version" })}
+        {mutation.isPending ? <Loader2 className="animate-spin" /> : <Copy />}
+        {mutation.isPending
+          ? t({ zh: "复制中…", en: "Copying…" })
+          : t({ zh: "复制改编", en: "Copy & edit" })}
       </Button>
-      {copiedFromId && (
-        <Button
-          variant="ghost"
-          className="min-h-11"
-          onClick={() => setSourceOpen(true)}
+      {source && <ContentSourceButton source={source} />}
+      {mutation.isError && (
+        <span
+          role="alert"
+          className="max-w-64 text-left text-xs text-destructive"
         >
-          {t({ zh: "查看副本来源", en: "View copy source" })}
-        </Button>
+          {errorMessage}
+        </span>
       )}
-      <Dialog open={sourceOpen} onOpenChange={setSourceOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {t({ zh: "题目来源", en: "Source material" })}
-            </DialogTitle>
-            <DialogDescription>
-              {t({
-                zh: "这里展示来源题目的当前版本；副本独立保存，不会随来源变化。",
-                en: "This is the current source material. Your copy is independent and does not change with the source.",
-              })}
-            </DialogDescription>
-          </DialogHeader>
-          {source.isPending ? (
-            <p role="status">{t({ zh: "正在加载…", en: "Loading…" })}</p>
-          ) : source.isError ? (
-            <p role="alert">
-              {t({
-                zh: "来源已删除或暂时无法读取，副本仍可正常使用。",
-                en: "The source was deleted or is unavailable. Your copy remains usable.",
-              })}
-            </p>
-          ) : (
-            <div className="space-y-3">
-              <p className="font-medium">{source.data?.title}</p>
-              <p>
-                {source.data?.author_name ??
-                  t({ zh: "校内公共材料", en: "Shared school material" })}
-              </p>
-              <p className="whitespace-pre-wrap break-words">
-                {source.data?.text}
-              </p>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+    </span>
   )
 }

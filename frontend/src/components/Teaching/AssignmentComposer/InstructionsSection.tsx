@@ -1,14 +1,26 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Plus, Trash2 } from "lucide-react"
+import { Pencil, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import { AdminService, type InstructionPublic } from "@/client"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
-import { CopyContentButton } from "@/components/Teaching/CopyContentButton"
+import {
+  CopyContentButton,
+  invalidateContentQueries,
+} from "@/components/Teaching/CopyContentButton"
 import { ReadOnlyContentBadge } from "@/components/Teaching/ReadOnlyContentBadge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { NumberInput } from "@/components/ui/number-input"
 import { Textarea } from "@/components/ui/textarea"
@@ -50,6 +62,70 @@ export default function InstructionsSection({
   const [deleteTarget, setDeleteTarget] = useState<InstructionPublic | null>(
     null,
   )
+  const [editing, setEditing] = useState<InstructionPublic | null>(null)
+  const [editForm, setEditForm] = useState({ title: "", text: "", seconds: 20 })
+  // Newly copied/edited instructions stay reachable even outside the current page or search.
+  const [recent, setRecent] = useState<InstructionPublic[]>([])
+  const remember = (instruction: InstructionPublic) => {
+    setRecent((current) => [
+      instruction,
+      ...current.filter((row) => row.id !== instruction.id),
+    ])
+  }
+  const rows = [
+    ...recent.map(
+      (item) => instructions.find((row) => row.id === item.id) ?? item,
+    ),
+    ...instructions.filter((row) => !recent.some((item) => item.id === row.id)),
+  ]
+  const openEdit = (instruction: InstructionPublic) => {
+    onDirty()
+    setEditing(instruction)
+    setEditForm({
+      title: instruction.title ?? "",
+      text: instruction.text,
+      seconds: instruction.suggested_seconds,
+    })
+  }
+  const updateInstruction = useMutation({
+    mutationFn: () =>
+      AdminService.updateInstruction({
+        instructionId: editing!.id,
+        requestBody: {
+          title: editForm.title.trim() || null,
+          text: editForm.text.trim(),
+          suggested_seconds: editForm.seconds,
+        },
+      }),
+    onSuccess: (updated) => {
+      remember(updated)
+      queryClient.setQueriesData<InstructionPublic[]>(
+        { queryKey: ["admin", "instructions"] },
+        (current) =>
+          current?.map((row) => (row.id === updated.id ? updated : row)),
+      )
+      setEditing(null)
+      void invalidateContentQueries(queryClient)
+      toast.success(
+        t({
+          zh: "说明已更新；已发布内容不变",
+          en: "Instruction updated; published content is unchanged",
+        }),
+      )
+    },
+    onError: () =>
+      toast.error(
+        t({
+          zh: "保存失败，请重试；修改内容已保留",
+          en: "Save failed. Please retry; your edits are kept.",
+        }),
+      ),
+  })
+  const editValid =
+    editForm.text.trim().length > 0 &&
+    Number.isInteger(editForm.seconds) &&
+    editForm.seconds >= 5 &&
+    editForm.seconds <= 300
 
   const createInstruction = useMutation({
     mutationFn: () =>
@@ -64,6 +140,8 @@ export default function InstructionsSection({
       setNewTitle("")
       setNewText("")
       setNewSeconds(20)
+      onDirty()
+      remember(created)
       onAddCreated(created.id)
       toast.success(
         t({
@@ -71,9 +149,7 @@ export default function InstructionsSection({
           en: "Instruction created and added to this lesson",
         }),
       )
-      await queryClient.invalidateQueries({
-        queryKey: ["admin", "instructions"],
-      })
+      await invalidateContentQueries(queryClient)
     },
     onError: () =>
       toast.error(
@@ -84,11 +160,11 @@ export default function InstructionsSection({
   const deleteInstruction = useMutation({
     mutationFn: (id: string) =>
       AdminService.deleteInstruction({ instructionId: id }),
-    onSuccess: async () => {
+    onSuccess: async (_, id) => {
+      onRemoveDeleted(id)
+      setRecent((current) => current.filter((row) => row.id !== id))
       setDeleteTarget(null)
-      await queryClient.invalidateQueries({
-        queryKey: ["admin", "instructions"],
-      })
+      await invalidateContentQueries(queryClient)
     },
     onError: () =>
       toast.error(
@@ -108,7 +184,7 @@ export default function InstructionsSection({
         })}
       </p>
       <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-        {instructions.length === 0 && (
+        {rows.length === 0 && (
           <p className="text-sm text-muted-foreground">
             {t({
               zh: "说明库还是空的，用下方表单新建一条。",
@@ -116,9 +192,10 @@ export default function InstructionsSection({
             })}
           </p>
         )}
-        {instructions.map((ins) => (
+        {rows.map((ins) => (
           <div
             key={ins.id}
+            data-testid={`instruction-${ins.id}`}
             className={`flex flex-wrap items-start gap-3 rounded-lg border p-3 ${selectedIds.includes(ins.id) ? "border-primary/50 bg-primary/5" : ""}`}
           >
             <Checkbox
@@ -129,7 +206,7 @@ export default function InstructionsSection({
             />
             <label
               htmlFor={`pick-instruction-${ins.id}`}
-              className="min-w-0 flex-1 cursor-pointer"
+              className="min-h-11 min-w-0 flex-1 basis-36 cursor-pointer"
             >
               <span className="block truncate text-sm">
                 {ins.title ? `${ins.title} · ` : ""}
@@ -142,27 +219,58 @@ export default function InstructionsSection({
                 })}
               </span>
             </label>
-            <CopyContentButton
-              kind="instruction"
-              itemId={ins.id}
-              copiedFromId={ins.copied_from_id}
-            />
-            {canEdit(ins.owner_id) ? (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="text-muted-foreground hover:text-destructive"
-                aria-label={t({
-                  zh: "删除这条说明",
-                  en: "Delete this instruction",
-                })}
-                onClick={() => setDeleteTarget(ins)}
-              >
-                <Trash2 />
-              </Button>
-            ) : (
-              <ReadOnlyContentBadge />
-            )}
+            <div className="flex max-w-full flex-wrap items-center gap-2">
+              <CopyContentButton
+                source={
+                  ins.copied_from_id
+                    ? { kind: "instruction", id: ins.copied_from_id }
+                    : undefined
+                }
+                label={t({ zh: "复制这条说明", en: "Copy this instruction" })}
+                copy={() =>
+                  AdminService.copyInstruction({ instructionId: ins.id })
+                }
+                onStart={onDirty}
+                onCopied={(copy) => {
+                  remember(copy)
+                  // Append to the draft only; never replace the source or publish here.
+                  onDirty()
+                  if (!selectedIds.includes(copy.id)) onAddCreated(copy.id)
+                  openEdit(copy)
+                }}
+              />
+              {canEdit(ins.owner_id) ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t({
+                      zh: "编辑这条说明",
+                      en: "Edit this instruction",
+                    })}
+                    onClick={() => openEdit(ins)}
+                  >
+                    <Pencil />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:text-destructive"
+                    aria-label={t({
+                      zh: "删除这条说明",
+                      en: "Delete this instruction",
+                    })}
+                    onClick={() => setDeleteTarget(ins)}
+                  >
+                    <Trash2 />
+                  </Button>
+                </>
+              ) : (
+                <ReadOnlyContentBadge />
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -229,6 +337,98 @@ export default function InstructionsSection({
           </LoadingButton>
         </div>
       </div>
+      <Dialog
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open && !updateInstruction.isPending) setEditing(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t({ zh: "编辑题目说明", en: "Edit Instruction" })}
+            </DialogTitle>
+            <DialogDescription>
+              {t({
+                zh: "修改仅用于后续发布；已发布的说明和原有选择不变。复制时会将副本追加到当前草稿。",
+                en: "Edits apply to future publishing only; published instructions and existing selections stay unchanged. Copying adds the copy to the current draft.",
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-instruction-title">
+                {t({ zh: "小标题（可选）", en: "Heading (optional)" })}
+              </Label>
+              <Input
+                id="edit-instruction-title"
+                className="text-base"
+                maxLength={100}
+                value={editForm.title}
+                onChange={(event) => {
+                  onDirty()
+                  setEditForm((form) => ({
+                    ...form,
+                    title: event.target.value,
+                  }))
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-instruction-text">
+                {t({ zh: "说明文字", en: "Instruction text" })}
+              </Label>
+              <Textarea
+                id="edit-instruction-text"
+                className="min-h-24 text-base"
+                maxLength={2000}
+                value={editForm.text}
+                onChange={(event) => {
+                  onDirty()
+                  setEditForm((form) => ({ ...form, text: event.target.value }))
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-instruction-seconds">
+                {t({
+                  zh: "建议停留秒数（5–300）",
+                  en: "Suggested seconds (5–300)",
+                })}
+              </Label>
+              <NumberInput
+                id="edit-instruction-seconds"
+                className="text-base"
+                min={5}
+                max={300}
+                value={editForm.seconds}
+                onValueChange={(seconds) => {
+                  onDirty()
+                  setEditForm((form) => ({ ...form, seconds }))
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={updateInstruction.isPending}
+              onClick={() => setEditing(null)}
+            >
+              {t({ zh: "取消", en: "Cancel" })}
+            </Button>
+            <LoadingButton
+              type="button"
+              disabled={!editValid}
+              loading={updateInstruction.isPending}
+              onClick={() => updateInstruction.mutate()}
+            >
+              {t({ zh: "保存", en: "Save" })}
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ConfirmDialog
         open={deleteTarget !== null}
         title={t({
@@ -242,7 +442,7 @@ export default function InstructionsSection({
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         onConfirm={async () => {
           if (!deleteTarget) return
-          onRemoveDeleted(deleteTarget.id)
+          onDirty()
           await deleteInstruction.mutateAsync(deleteTarget.id)
         }}
       />

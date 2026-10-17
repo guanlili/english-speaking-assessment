@@ -308,6 +308,8 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
     startRecording,
     retrySubmit,
     pendingBlockerActive,
+    submissionClosed,
+    leaveState,
   } = useRecordingFlow({
     code,
     exam,
@@ -357,12 +359,25 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
       )
         return false
       if (!pendingBlockerActive) return false
-      // 同一课堂内练习页互相跳转不算离开（结果页 / 练习页 / 加入页保留原状）
-      if (current.pathname === next.pathname) return false
+      // 同一路径跳转沿用原行为；撤销后切换会话仍须保护未保存录音。
+      if (current.pathname === next.pathname && !submissionClosed) return false
+      if (leaveState === "confirm") {
+        return !window.confirm(
+          t({
+            zh: "补练已撤销，这段录音未上传，也未能保存到本设备。离开将丢失这段录音，确定离开吗？",
+            en: "This task was withdrawn. This recording was neither uploaded nor saved on this device. Leaving will lose it. Leave anyway?",
+          }),
+        )
+      }
       if (!blockerToastRef.current) {
         blockerToastRef.current = true
         toast.warning(
-          t(blockerNotice(recorder.status, submitting, Boolean(exam))),
+          submissionClosed
+            ? t({
+                zh: "正在保存录音草稿，请稍候再离开。",
+                en: "Saving your recording draft. Please wait before leaving.",
+              })
+            : t(blockerNotice(recorder.status, submitting, Boolean(exam))),
         )
         window.setTimeout(() => {
           blockerToastRef.current = false
@@ -695,10 +710,11 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
             <PracticeNavigator
               items={exam ? [currentItem] : items}
               index={exam ? 0 : currentIndex}
-              disabled={pendingBlockerActive}
+              disabled={pendingBlockerActive || submissionClosed}
               onSelect={(id) => {
                 if (
                   exam ||
+                  submissionClosed ||
                   pendingBlockerActive ||
                   recorder.isStarting() ||
                   id === currentItem.id
@@ -768,9 +784,11 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
                         isLastQuestion={isLastQuestion}
                         submitting={submitting}
                         submitError={submitError}
-                        submissionClosed={
-                          submitErrorData?.body?.detail === "Followup cancelled"
-                        }
+                        submissionClosed={submissionClosed}
+                        closedLeaveState={leaveState}
+                        onClosedLeave={() => {
+                          void navigate({ to: "/home/$code", params: { code } })
+                        }}
                         onStart={startRecording}
                         onStop={recorder.stop}
                         onRetry={retrySubmit}

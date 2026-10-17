@@ -1,14 +1,14 @@
 """Copy school question-bank material into an independently editable teacher version."""
 
 import uuid
-from copy import deepcopy
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
-from sqlmodel import SQLModel, select
+from sqlmodel import SQLModel
 
 from app.api.deps import SessionDep, TeacherUserDep
 from app.models import Instruction, Passage, RepeatSentence, ScenarioQuestion
+from app.services import content_access, content_copy
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -34,28 +34,18 @@ def copy_school_content(
     source = session.get(model, item_id)
     if source is None:
         raise HTTPException(404, detail="Content not found")
-    values = deepcopy(source.model_dump(exclude={"id", "created_at", "updated_at"}))
-    values.update(owner_id=current_user.id, copied_from_id=source.id)
-    if kind == "passage":
-        values.update(slug=f"copy-{uuid.uuid4().hex}", parent_passage_id=None)
-    elif kind == "repeat":
-        # A copied sentence must not inherit the source passage owner's rights.
-        values.update(passage_id=None, order_index=0)
-    copy = model.model_validate(values)
-    session.add(copy)
-    session.flush()
-    if kind == "passage":
-        children = session.exec(
-            select(RepeatSentence).where(RepeatSentence.passage_id == source.id)
-        ).all()
-        for child in children:
-            child_values = deepcopy(child.model_dump(exclude={"id", "created_at"}))
-            child_values.update(
-                passage_id=copy.id, owner_id=current_user.id, copied_from_id=child.id
-            )
-            session.add(RepeatSentence.model_validate(child_values))
+    owner_id = content_access.owner_for(current_user)
+    if isinstance(source, Passage):
+        copied = content_copy.copy_passage(session, source, owner_id)
+    elif isinstance(source, RepeatSentence):
+        copied = content_copy.copy_sentence(session, source, owner_id)
+    elif isinstance(source, ScenarioQuestion):
+        copied = content_copy.copy_question(session, source, owner_id)
+    else:
+        copied = content_copy.copy_instruction(session, source, owner_id)
     session.commit()
-    return ContentCopied(id=copy.id, copied_from_id=source.id)
+    assert copied.copied_from_id is not None
+    return ContentCopied(id=copied.id, copied_from_id=copied.copied_from_id)
 
 
 class SharedContentPreview(SQLModel):

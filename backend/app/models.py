@@ -452,6 +452,10 @@ class Scenario(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     topic: str = Field(unique=True, index=True, max_length=100)
     is_active: bool = True
+    # 创建者：改名/启停归创建者；NULL = 存量或管理员建的公共主题
+    owner_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL", index=True
+    )
 
 
 class ScenarioQuestion(SQLModel, table=True):
@@ -482,7 +486,7 @@ class ScenarioQuestion(SQLModel, table=True):
     )
     # 准备时间（秒）：Part 2 话题卡准备（默认建议 60，可按级别缩短）
     prep_seconds: int | None = Field(default=None, ge=10, le=180)
-    # 创建者按题记录：主题（Scenario）是全校共用的分组，不归属个人
+    # 创建者按题记录：主题是共用分组，任何教师都能往别人的主题里加题
     owner_id: uuid.UUID | None = Field(
         default=None, foreign_key="user.id", ondelete="SET NULL", index=True
     )

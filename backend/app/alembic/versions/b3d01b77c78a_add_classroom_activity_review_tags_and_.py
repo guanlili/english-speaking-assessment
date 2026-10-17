@@ -1,7 +1,7 @@
 """add classroom activity review tags and copy provenance
 
 Revision ID: b3d01b77c78a
-Revises: a7d3e9f1c205
+Revises: c4b8e2d6f913
 Create Date: 2026-10-17 14:32:57.085961
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'b3d01b77c78a'
-down_revision = 'a7d3e9f1c205'
+down_revision = 'c4b8e2d6f913'
 branch_labels = None
 depends_on = None
 
