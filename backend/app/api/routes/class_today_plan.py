@@ -430,6 +430,7 @@ def read_today_plan(
             rubric=a.rubric if isinstance(a.rubric, dict) else None,
             error=a.error,
             item_text=_attempt_item_text(a),
+            teacher_review_tags=a.teacher_review_tags,
             teacher_feedback=a.teacher_feedback,
             teacher_focus=a.teacher_focus,
             teacher_feedback_author=a.teacher_feedback_author,

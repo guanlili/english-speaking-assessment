@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link, useParams } from "@tanstack/react-router"
 import { ApiError, ClassesService } from "@/client"
+import { LearningReportCard } from "@/components/Practice/LearningReportCard"
 import TrailView from "@/components/Practice/TrailView"
 import { StudentSessionHistory } from "@/components/Teaching/StudentSessionHistory"
 import { TeachingPageHeader } from "@/components/Teaching/TeachingPageHeader"
@@ -100,6 +101,7 @@ function StudentDetailPage() {
         )}
 
         <TrailView trail={trail} />
+        <LearningReportCard code={code} studentId={studentId} />
         <StudentSessionHistory code={code} studentId={studentId} />
 
         <p className="pb-6 text-center text-xs text-muted-foreground">

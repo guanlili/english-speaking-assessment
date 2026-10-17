@@ -221,6 +221,11 @@ export default function InstructionsSection({
             </label>
             <div className="flex max-w-full flex-wrap items-center gap-2">
               <CopyContentButton
+                source={
+                  ins.copied_from_id
+                    ? { kind: "instruction", id: ins.copied_from_id }
+                    : undefined
+                }
                 label={t({ zh: "复制这条说明", en: "Copy this instruction" })}
                 copy={() =>
                   AdminService.copyInstruction({ instructionId: ins.id })

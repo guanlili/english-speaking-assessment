@@ -45,6 +45,21 @@ async function mockWorkspace(page: Page, lang: string) {
     else if (path.endsWith("/admin/topics")) body = ["Stories"]
     else if (/\/admin\/(scenarios|questions|passages)$/.test(path))
       body = { data: [], count: 0 }
+    else if (path.endsWith("/learning-report"))
+      body = {
+        display_name: "Student",
+        start_date: "2026-10-11",
+        end_date: "2026-10-17",
+        session_count: 0,
+        completed_items: 0,
+        total_items: 0,
+        speaking_minutes: 0,
+        reading_avg: null,
+        question_avg: null,
+        answers: [],
+        has_active_exam: false,
+      }
+    else if (path.endsWith("/exercises")) body = []
     else if (path.endsWith("/trail"))
       body = {
         display_name: "Emma Wilson",

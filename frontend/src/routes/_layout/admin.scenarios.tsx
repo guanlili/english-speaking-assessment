@@ -56,6 +56,7 @@ export const Route = createFileRoute("/_layout/admin/scenarios")({
 })
 
 interface QuestionShape {
+  copied_from_id?: string | null
   id: string
   band: string
   text: string
@@ -531,6 +532,11 @@ function ScenarioCard({
                   </div>
                   <div className="flex max-w-full flex-wrap items-center gap-1">
                     <CopyContentButton
+                      source={
+                        q.copied_from_id
+                          ? { kind: "question", id: q.copied_from_id }
+                          : undefined
+                      }
                       label={t({
                         zh: `复制题目 ${index + 1}`,
                         en: `Copy question ${index + 1}`,

@@ -127,6 +127,7 @@ ReadingSentenceSeconds = Annotated[int, PydanticField(strict=True, ge=1, le=180)
 
 
 class Passage(PassageBase, table=True):
+    copied_from_id: uuid.UUID | None = Field(default=None)
     reading_sentence_seconds: list[ReadingSentenceSeconds | None] | None = Field(
         default=None, sa_type=JSON
     )
@@ -155,6 +156,7 @@ class Passage(PassageBase, table=True):
 
 
 class PassagePublic(PassageBase):
+    copied_from_id: uuid.UUID | None = None
     reading_sentence_seconds: list[ReadingSentenceSeconds | None] | None = None
     id: uuid.UUID
     slug: str
@@ -408,6 +410,7 @@ class SentenceFramePublic(SQLModel):
 
 
 class RepeatSentence(SQLModel, table=True):
+    copied_from_id: uuid.UUID | None = Field(default=None)
     __tablename__ = "repeat_sentence"
 
     exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
@@ -456,6 +459,7 @@ class Scenario(SQLModel, table=True):
 
 
 class ScenarioQuestion(SQLModel, table=True):
+    copied_from_id: uuid.UUID | None = Field(default=None)
     __tablename__ = "scenario_question"
 
     exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
@@ -489,6 +493,7 @@ class ScenarioQuestion(SQLModel, table=True):
 
 
 class ScenarioQuestionPublic(SQLModel):
+    copied_from_id: uuid.UUID | None = None
     id: uuid.UUID
     band: str
     text: str
@@ -506,6 +511,7 @@ class ScenarioQuestionPublic(SQLModel):
 # 学生阅读后点「继续」进入下一题，无录音作答——模考里占一个计时窗口
 # （时长=suggested_seconds，可提前点继续，到时自动翻页），普通练习不强制停留。
 class Instruction(SQLModel, table=True):
+    copied_from_id: uuid.UUID | None = Field(default=None)
     __tablename__ = "instruction"
 
     exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
@@ -530,6 +536,7 @@ class Instruction(SQLModel, table=True):
 
 
 class InstructionPublic(SQLModel):
+    copied_from_id: uuid.UUID | None = None
     id: uuid.UUID
     title: str | None = None
     text: str
@@ -826,6 +833,8 @@ class ClassroomCreate(SQLModel):
 
 # 学生：与登录账号（role=student 的 User）关联；游戏化数据挂在本行
 class Student(SQLModel, table=True):
+    classroom_activity: dict[str, object] | None = Field(default=None, sa_type=JSON)
+
     __tablename__ = "student"
     __table_args__ = (
         # suffix 为 NULL 时：同名只能一个（首个加入的不追加后缀）
@@ -1099,6 +1108,7 @@ class Attempt(SQLModel, table=True):
     # rubric 四维与模拟分（仅问答 + ark 引擎；PRD US-08）：四维 0-4、mock_score 0-9、
     # upgrades 升级表达。mock 引擎或模型失败时为 null（界面显示「建议暂缺」）
     rubric: dict[str, object] | None = Field(default=None, sa_column=Column(JSON))
+    teacher_review_tags: list[str] | None = Field(default=None, sa_type=JSON)
     teacher_feedback: str | None = Field(default=None, max_length=4000)
     teacher_focus: bool = Field(
         default=False, sa_column_kwargs={"server_default": "false"}
@@ -1119,6 +1129,7 @@ class Attempt(SQLModel, table=True):
 
 
 class AttemptPublic(SQLModel):
+    teacher_review_tags: list[str] | None = None
     id: uuid.UUID
     item_type: str
     item_id: uuid.UUID
@@ -1181,6 +1192,7 @@ class PlanItem(SQLModel):
 
 
 class PlanAttempt(SQLModel):
+    teacher_review_tags: list[str] | None = None
     item_id: uuid.UUID
     attempt_id: uuid.UUID
     status: str

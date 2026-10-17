@@ -26,6 +26,7 @@ def copy_passage(
         payload = deepcopy(original.model_dump(exclude={"id", "created_at"}))
         payload.update(
             owner_id=owner_id,
+            copied_from_id=original.id,
             slug=crud.unique_passage_slug(session, f"{original.slug[:85]}-copy"),
             parent_passage_id=(
                 copies[source.id].id if original.parent_passage_id is not None else None
@@ -43,7 +44,11 @@ def copy_passage(
     for sentence in sentences:
         assert sentence.passage_id is not None
         payload = deepcopy(sentence.model_dump(exclude={"id", "created_at"}))
-        payload.update(owner_id=owner_id, passage_id=copies[sentence.passage_id].id)
+        payload.update(
+            owner_id=owner_id,
+            copied_from_id=sentence.id,
+            passage_id=copies[sentence.passage_id].id,
+        )
         session.add(RepeatSentence.model_validate(payload))
     session.flush()
     return copies[source.id]
@@ -53,7 +58,9 @@ def copy_sentence(
     session: Session, source: RepeatSentence, owner_id: uuid.UUID | None
 ) -> RepeatSentence:
     payload = deepcopy(source.model_dump(exclude={"id", "created_at"}))
-    payload.update(owner_id=owner_id, passage_id=None, order_index=0)
+    payload.update(
+        owner_id=owner_id, copied_from_id=source.id, passage_id=None, order_index=0
+    )
     copied = RepeatSentence.model_validate(payload)
     session.add(copied)
     session.flush()
@@ -84,7 +91,9 @@ def copy_scenario(
     ).all()
     for question in questions:
         payload = deepcopy(question.model_dump(exclude={"id"}))
-        payload.update(owner_id=owner_id, scenario_id=copied.id)
+        payload.update(
+            owner_id=owner_id, copied_from_id=question.id, scenario_id=copied.id
+        )
         session.add(ScenarioQuestion.model_validate(payload))
     session.flush()
     return copied
@@ -105,6 +114,7 @@ def copy_question(
     payload = deepcopy(source.model_dump(exclude={"id"}))
     payload.update(
         owner_id=owner_id,
+        copied_from_id=source.id,
         order_index=(last_order if last_order is not None else -1) + 1,
     )
     copied = ScenarioQuestion.model_validate(payload)
@@ -119,6 +129,7 @@ def copy_instruction(
     payload = deepcopy(source.model_dump(exclude={"id", "created_at", "updated_at"}))
     payload.update(
         owner_id=owner_id,
+        copied_from_id=source.id,
         title=f"{source.title[:93]} (copy)" if source.title else None,
     )
     copied = Instruction.model_validate(payload)

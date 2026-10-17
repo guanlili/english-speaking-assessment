@@ -275,7 +275,11 @@ for (const [width, lang] of [
         name: en ? "Teacher feedback text" : "教师点评内容",
       })
       .fill("Use a clear opening and add one detail.")
-    await dialog.getByRole("checkbox").check()
+    await dialog
+      .getByRole("checkbox", {
+        name: en ? "Mark as a focus area" : "标记为重点关注",
+      })
+      .check()
     await dialog
       .getByRole("button", {
         name: en ? "Save teacher feedback" : "保存教师点评",

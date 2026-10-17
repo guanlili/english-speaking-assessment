@@ -292,6 +292,11 @@ export function SentenceLibrary({
               <div className="flex max-w-full flex-wrap items-center justify-end gap-1">
                 {s.id && (
                   <CopyContentButton
+                    source={
+                      s.copied_from_id
+                        ? { kind: "repeat", id: s.copied_from_id }
+                        : undefined
+                    }
                     label={t({ zh: "复制复述句", en: "Copy repeat sentence" })}
                     copy={() =>
                       AdminService.copySentence({ sentenceId: s.id! })

@@ -474,6 +474,7 @@ for (const [width, lang] of [
       "Adapted instruction.",
     )
     await dialog.getByRole("button", { name: /^(取消|Cancel)$/ }).click()
+    await expect(dialog).toHaveCount(0)
     await expect
       .poll(() => mock.drafts[mock.drafts.length - 1]?.selection.instructions)
       .toEqual([instruction.id, extraInstruction.id, "instructions-copy"])

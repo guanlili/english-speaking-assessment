@@ -128,7 +128,9 @@ test("teacher feedback reaches its student and targeted practice leaves original
     await feedback
       .getByRole("textbox", { name: "教师点评内容" })
       .fill("Start clearly and practise linking your ideas.")
-    await feedback.getByRole("checkbox").check()
+    await feedback
+      .getByRole("checkbox", { name: "标记为重点关注", exact: true })
+      .check()
     await feedback.getByRole("button", { name: "保存教师点评" }).click()
     await expect(
       feedback.getByRole("region", { name: "教师点评", exact: true }),

@@ -8,3 +8,9 @@ WAV. It provides a portable playback fixture when Linux WebKit has no
 MediaRecorder. Tests force that fallback locally as well as detecting capability.
 
 The component host uses its own Vite dependency cache, so it can run beside the app dev server without invalidating the app’s optimized dependencies.
+
+`teaching-tools.html` mounts the production classroom status, targeted practice,
+feedback review, anonymous discussion, comparison, report and device-check
+components under one QueryClient. Its Playwright tests mock every API call.
+`teaching-tools.css` explicitly includes the frontend sources so Tailwind utilities
+are generated even with the fixture directory as Vite's isolated root.

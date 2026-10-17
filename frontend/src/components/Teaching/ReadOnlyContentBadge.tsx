@@ -8,7 +8,10 @@ export function ReadOnlyContentBadge() {
   return (
     <Badge variant="secondary" className="gap-1" data-testid="readonly-content">
       <Lock className="size-3" />
-      {t({ zh: "其他老师创建 · 只读", en: "Another teacher's · read-only" })}
+      {t({
+        zh: "校内共享 · 原作者可编辑",
+        en: "School library · author can edit",
+      })}
     </Badge>
   )
 }

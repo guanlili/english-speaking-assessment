@@ -7,6 +7,10 @@ import { Copy, Loader2 } from "lucide-react"
 import { useRef } from "react"
 import { toast } from "sonner"
 import { ApiError } from "@/client"
+import {
+  ContentSourceButton,
+  type ContentSourceRef,
+} from "@/components/Teaching/ContentSourceButton"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
 
@@ -30,11 +34,13 @@ export function CopyContentButton<T>({
   onCopied,
   onStart,
   label,
+  source,
 }: {
   copy: () => Promise<T>
   onCopied: (content: T) => void
   onStart?: () => void
   label: string
+  source?: ContentSourceRef
 }) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
@@ -98,6 +104,7 @@ export function CopyContentButton<T>({
           ? t({ zh: "复制中…", en: "Copying…" })
           : t({ zh: "复制改编", en: "Copy & edit" })}
       </Button>
+      {source && <ContentSourceButton source={source} />}
       {mutation.isError && (
         <span
           role="alert"

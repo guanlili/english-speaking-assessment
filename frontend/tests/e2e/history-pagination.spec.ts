@@ -30,7 +30,22 @@ for (const width of [390, 820, 1180]) {
           overall_avg: 80,
           attempt_ids: offset === 30 ? ["old-attempt"] : [],
         }))
-      } else if (url.pathname.endsWith("/trail"))
+      } else if (url.pathname.endsWith("/learning-report"))
+        body = {
+          display_name: "Student",
+          start_date: "2026-10-11",
+          end_date: "2026-10-17",
+          session_count: 0,
+          completed_items: 0,
+          total_items: 0,
+          speaking_minutes: 0,
+          reading_avg: null,
+          question_avg: null,
+          answers: [],
+          has_active_exam: false,
+        }
+      else if (url.pathname.endsWith("/exercises")) body = []
+      else if (url.pathname.endsWith("/trail"))
         body = {
           display_name: "Student",
           classroom_code: "GENERAL",

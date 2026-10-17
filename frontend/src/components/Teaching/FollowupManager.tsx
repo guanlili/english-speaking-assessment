@@ -259,7 +259,29 @@ function FollowupCreateDialog({
   const [source, setSource] = useState(initialSource)
   const [studentIds, setStudentIds] = useState<string[]>([])
   const [itemIds, setItemIds] = useState<string[]>([])
+  const [rule, setRule] = useState<
+    "low_score" | "short_answer" | "missed_word" | "teacher_focus"
+  >("low_score")
+  const [word, setWord] = useState("")
+  const [diagnosticMessage, setDiagnosticMessage] = useState("")
   const initialized = useRef("")
+  const suggest = useMutation({
+    mutationFn: () =>
+      ClassesService.readDiagnosticTargets({ code, rule, word }),
+    onSuccess: (result) => {
+      if (localStorage.getItem("access_token") !== identity.current) return
+      setSource(result.source_exercise_id)
+      initialized.current = result.source_exercise_id
+      setStudentIds(result.student_ids)
+      setItemIds(result.item_ids)
+      setDiagnosticMessage(
+        t({
+          zh: `匹配 ${result.student_ids.length} 人、${result.item_ids.length} 题。请核对下方题目和接收名单后发布。`,
+          en: `Matched ${result.student_ids.length} students and ${result.item_ids.length} items. Review items and recipients below before assigning.`,
+        }),
+      )
+    },
+  })
   const exercises = useQuery({
     queryKey: ["teacher", "exercises", code],
     queryFn: () => ClassesService.listClassroomExercises({ code }),
@@ -336,7 +358,89 @@ function FollowupCreateDialog({
             })}
           </DialogDescription>
         </DialogHeader>
-        <fieldset disabled={create.isPending} className="min-w-0 space-y-4">
+        <fieldset
+          disabled={create.isPending || suggest.isPending}
+          className="min-w-0 space-y-4"
+        >
+          <div className="space-y-3 rounded-xl border p-3">
+            <h3 className="font-medium">
+              {t({
+                zh: "按今日诊断选择补练",
+                en: "Choose practice from today's diagnostics",
+              })}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {t({
+                zh: "使用当前发布的每人每题最近一次作答。问答少于 15 词仅作教学提示；请核对转写。当前考试不可用于筛选。",
+                en: "Uses each student's latest answer per item in the current publication. Q&A under 15 words is a teaching hint; check the transcript. Current exams cannot be selected.",
+              })}
+            </p>
+            <label className="block space-y-2">
+              <span>{t({ zh: "筛选条件", en: "Filter" })}</span>
+              <select
+                className="min-h-11 w-full rounded-md border bg-background px-3 text-base"
+                value={rule}
+                onChange={(event) => setRule(event.target.value as typeof rule)}
+                disabled={suggest.isPending}
+              >
+                <option value="low_score">
+                  {t({ zh: "参考分低于 70", en: "Reference score below 70" })}
+                </option>
+                <option value="short_answer">
+                  {t({ zh: "问答少于 15 词", en: "Q&A under 15 words" })}
+                </option>
+                <option value="missed_word">
+                  {t({
+                    zh: "转写中漏掉指定内容词",
+                    en: "Specific content word missing in transcript",
+                  })}
+                </option>
+                <option value="teacher_focus">
+                  {t({ zh: "教师重点关注", en: "Teacher focus area" })}
+                </option>
+              </select>
+            </label>
+            {rule === "missed_word" && (
+              <Input
+                aria-label={t({
+                  zh: "要查找的英文内容词",
+                  en: "English content word to find",
+                })}
+                maxLength={100}
+                value={word}
+                onChange={(event) => setWord(event.target.value)}
+              />
+            )}
+            <Button
+              variant="outline"
+              className="min-h-11"
+              disabled={
+                suggest.isPending || (rule === "missed_word" && !word.trim())
+              }
+              onClick={() => {
+                setDiagnosticMessage("")
+                suggest.mutate()
+              }}
+            >
+              {t({
+                zh: "筛选学生和原题",
+                en: "Find students and source items",
+              })}
+            </Button>
+            {suggest.isError && (
+              <p role="alert">
+                {t({
+                  zh: "筛选失败，可能尚无当前练习或正在考试；原有选择已保留。",
+                  en: "Could not filter; there may be no current practice or an exam is active. Existing selections are kept.",
+                })}
+              </p>
+            )}
+            {diagnosticMessage && (
+              <p role="status" className="text-sm">
+                {diagnosticMessage}
+              </p>
+            )}
+          </div>
           <label
             htmlFor="followup-task-title"
             className="block space-y-2 text-sm"
@@ -469,6 +573,7 @@ function FollowupCreateDialog({
             className="min-h-11"
             disabled={
               create.isPending ||
+              suggest.isPending ||
               !title.trim() ||
               !sourceId ||
               !studentIds.length ||

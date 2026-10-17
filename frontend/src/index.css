@@ -306,3 +306,23 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Print the selected learning report without the surrounding navigation/history. */
+@media print {
+  .learning-report {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    border: 0;
+  }
+  .learning-report article {
+    break-inside: avoid;
+  }
+  body:has(.learning-report) * {
+    visibility: hidden;
+  }
+  body:has(.learning-report) .learning-report,
+  body:has(.learning-report) .learning-report * {
+    visibility: visible;
+  }
+}

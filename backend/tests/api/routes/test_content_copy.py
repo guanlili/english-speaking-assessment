@@ -191,7 +191,8 @@ def test_copy_scenario_and_question_keep_content_but_not_ownership(
     assert copied is not None
     assert copied.scenario_id == uuid.UUID(body["id"])
     assert copied.owner_id == uuid.UUID(body["owner_id"])
-    excluded = {"id", "owner_id", "scenario_id"}
+    assert copied.copied_from_id == question.id
+    excluded = {"id", "owner_id", "scenario_id", "copied_from_id"}
     db.refresh(question)
     assert copied.model_dump(exclude=excluded) == question.model_dump(exclude=excluded)
     again = client.post(f"{API}/scenarios/{scenario.id}/copy", headers=other_headers)

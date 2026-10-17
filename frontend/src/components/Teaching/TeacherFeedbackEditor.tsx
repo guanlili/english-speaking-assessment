@@ -17,6 +17,14 @@ export function TeacherFeedbackEditor({
   const client = useQueryClient()
   const identity = useRef(localStorage.getItem("access_token"))
   const [text, setText] = useState(attempt.teacher_feedback ?? "")
+  const [tags, setTags] = useState<
+    Array<"transcript_error" | "advice_unsuitable" | "reviewed">
+  >(
+    (attempt.teacher_review_tags ?? []).filter(
+      (tag): tag is "transcript_error" | "advice_unsuitable" | "reviewed" =>
+        ["transcript_error", "advice_unsuitable", "reviewed"].includes(tag),
+    ),
+  )
   const [focus, setFocus] = useState(attempt.teacher_focus ?? false)
   const save = useMutation({
     mutationFn: () => {
@@ -26,6 +34,7 @@ export function TeacherFeedbackEditor({
         attemptId: attempt.id,
         requestBody: {
           text,
+          review_tags: tags,
           focus,
           expected_revision: attempt.teacher_feedback_revision ?? 0,
         },
@@ -56,6 +65,36 @@ export function TeacherFeedbackEditor({
           en: "Students can review saved feedback after the exam ends. Clear the text and focus mark to remove feedback.",
         })}
       </p>
+      <div className="flex flex-wrap gap-3">
+        {(["reviewed", "transcript_error", "advice_unsuitable"] as const).map(
+          (tag) => (
+            <label
+              key={tag}
+              className="flex min-h-11 items-center gap-2 text-sm"
+            >
+              <input
+                type="checkbox"
+                className="size-5"
+                checked={tags.includes(tag)}
+                onChange={() =>
+                  setTags(
+                    tags.includes(tag)
+                      ? tags.filter((value) => value !== tag)
+                      : [...tags, tag],
+                  )
+                }
+              />
+              {t(
+                tag === "reviewed"
+                  ? { zh: "已由教师复核", en: "Reviewed by teacher" }
+                  : tag === "transcript_error"
+                    ? { zh: "AI 转写有误", en: "AI transcript has errors" }
+                    : { zh: "AI 建议不适用", en: "AI advice unsuitable" },
+              )}
+            </label>
+          ),
+        )}
+      </div>
       <Textarea
         aria-label={t({ zh: "教师点评内容", en: "Teacher feedback text" })}
         className="min-h-28 text-base"

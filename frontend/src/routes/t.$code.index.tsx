@@ -19,8 +19,10 @@ import { BoardStatsCards } from "@/components/Teaching/BoardStatsCards"
 import { BoardTeachingActions } from "@/components/Teaching/BoardTeachingActions"
 import { ClassGapsCard } from "@/components/Teaching/ClassGapsCard"
 import { ClassroomIssues } from "@/components/Teaching/ClassroomIssues"
+import { ClassroomLiveStatus } from "@/components/Teaching/ClassroomLiveStatus"
 import { ExerciseHistory } from "@/components/Teaching/ExerciseHistory"
 import { FollowupManager } from "@/components/Teaching/FollowupManager"
+import { LessonReview } from "@/components/Teaching/LessonReview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -408,6 +410,19 @@ function TeacherBoardPage() {
             />
           </TabsContent>
           <TabsContent value="results" className="space-y-6">
+            <ClassroomLiveStatus
+              code={code}
+              students={board.students}
+              onStudent={(id) => {
+                setStatusFilter("all")
+                setNameQuery("")
+                setExpandedId(id)
+              }}
+            />
+            <LessonReview
+              students={board.students}
+              isExam={board.current_exercise?.is_exam === true}
+            />
             <FollowupManager
               code={code}
               students={board.students}

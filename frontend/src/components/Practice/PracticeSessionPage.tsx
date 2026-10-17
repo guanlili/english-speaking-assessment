@@ -29,6 +29,7 @@ import StepProgressBar from "@/components/Practice/StepProgressBar"
 import StudentShell from "@/components/Practice/StudentShell"
 import { Separator } from "@/components/ui/separator"
 import { useAttemptSubmit } from "@/hooks/useAttemptSubmit"
+import { useClassroomActivity } from "@/hooks/useClassroomActivity"
 import { useExamClockValue } from "@/hooks/useExamClock"
 import { useNextQuestion } from "@/hooks/useNextQuestion"
 import { useRecordingFlow } from "@/hooks/useRecordingFlow"
@@ -332,6 +333,15 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
     setPinnedItemId,
     setFocusItemId,
   })
+  useClassroomActivity(
+    code,
+    recorder.status === "recording"
+      ? "recording"
+      : submitting
+        ? "uploading"
+        : "idle",
+    plan?.session_id,
+  )
   useRuntimeIssue(
     code,
     plan?.session_id,

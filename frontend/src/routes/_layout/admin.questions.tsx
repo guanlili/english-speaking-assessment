@@ -571,6 +571,11 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                       <TableCell className="text-right">
                         <div className="flex flex-wrap items-center justify-end gap-2">
                           <CopyContentButton
+                            source={
+                              row.copied_from_id
+                                ? { kind: "question", id: row.copied_from_id }
+                                : undefined
+                            }
                             label={t({ zh: "复制题目", en: "Copy question" })}
                             copy={() =>
                               AdminService.copyQuestion({ questionId: row.id })

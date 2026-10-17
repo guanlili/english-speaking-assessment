@@ -11,6 +11,7 @@ import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import ExamGroupedProgress from "@/components/Practice/ExamGroupedProgress"
 import { Button } from "@/components/ui/button"
 import { useAutomatedExamState } from "@/hooks/useAutomatedExamState"
+import { useClassroomActivity } from "@/hooks/useClassroomActivity"
 import { useExamAudioDevice } from "@/hooks/useExamAudioDevice"
 import { useExamDraftRecovery } from "@/hooks/useExamDraftRecovery"
 import { useExamPhase } from "@/hooks/useExamPhase"
@@ -240,6 +241,11 @@ export default function AutomatedExamSession({
       refetch: query.refetch,
       setError,
     })
+  useClassroomActivity(
+    code,
+    recorder.status === "recording" ? "recording" : busy ? "uploading" : "idle",
+    plan.session_id,
+  )
   useRuntimeIssue(
     code,
     plan.session_id,

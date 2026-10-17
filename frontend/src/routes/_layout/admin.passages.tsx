@@ -886,6 +886,11 @@ function PassageCard({
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-1.5">
           <CopyContentButton
+            source={
+              passage.copied_from_id
+                ? { kind: "passage", id: passage.copied_from_id }
+                : undefined
+            }
             label={t({
               zh: `复制篇目 ${passage.title}`,
               en: `Copy passage ${passage.title}`,

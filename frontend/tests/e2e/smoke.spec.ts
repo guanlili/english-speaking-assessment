@@ -29,7 +29,7 @@ test("教师演示登录进入教学工作台与题目库三题型", async ({ pa
   await expect(page.getByRole("link", { name: "我的课堂" })).toBeVisible()
 
   // 题目库：三种题型卡
-  await page.getByRole("link", { name: "题目库" }).click()
+  await page.getByRole("link", { name: "题目库", exact: true }).click()
   await expect(
     page.getByRole("heading", { name: "题目库", exact: true }),
   ).toBeVisible()
