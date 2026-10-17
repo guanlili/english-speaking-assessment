@@ -20,7 +20,7 @@ from app.api.routes.class_shared import (
     router,
 )
 from app.models import Attempt, ClassroomExercise, PracticeSession, Student
-from app.services import followups
+from app.services import followups, teaching_actions
 
 
 class FollowupCreate(SQLModel):
@@ -128,6 +128,65 @@ def create_class_followup(
         session, classroom, source, students, body.item_ids, body.title, current_user.id
     )
     return FollowupCreated(id=task.id)
+
+
+class IndividualFollowupTarget(SQLModel):
+    student_id: uuid.UUID
+    item_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+
+
+class IndividualFollowupCreate(SQLModel):
+    request_id: uuid.UUID
+    source_exercise_id: uuid.UUID
+    title: str = Field(min_length=1, max_length=255)
+    targets: list[IndividualFollowupTarget] = Field(min_length=1, max_length=100)
+
+
+class IndividualFollowupCreated(SQLModel):
+    task_ids: list[uuid.UUID]
+
+
+@router.post(
+    "/{code}/followups/individualized", response_model=IndividualFollowupCreated
+)
+def create_individual_class_followups(
+    session: SessionDep,
+    code: str,
+    body: IndividualFollowupCreate,
+    current_user: CurrentUser,
+) -> IndividualFollowupCreated:
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    source = session.get(ClassroomExercise, body.source_exercise_id)
+    if (
+        source is None
+        or source.classroom_id != classroom.id
+        or source.status not in ("published", "archived")
+    ):
+        raise HTTPException(404, detail="Exercise not found")
+    targets = {target.student_id: target.item_ids for target in body.targets}
+    if len(targets) != len(body.targets):
+        raise HTTPException(422, detail="Invalid followup recipients")
+    students = list(
+        session.exec(
+            select(Student).where(
+                Student.classroom_id == classroom.id, col(Student.id).in_(targets)
+            )
+        ).all()
+    )
+    receipt = teaching_actions.create_individual_followups(
+        session,
+        classroom,
+        source,
+        students,
+        targets,
+        body.title,
+        current_user.id,
+        body.request_id,
+    )
+    return IndividualFollowupCreated(
+        task_ids=[uuid.UUID(value) for value in receipt.task_ids]
+    )
 
 
 def _has_incomplete_target(student_id: uuid.UUID | None) -> ColumnElement[bool]:

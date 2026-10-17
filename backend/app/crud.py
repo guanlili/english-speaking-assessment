@@ -14,6 +14,7 @@ from app.models import (
     Attempt,
     Classroom,
     ClassroomExercise,
+    ClassroomReview,
     ComposerDraft,
     Passage,
     PassageCreate,
@@ -420,3 +421,10 @@ def get_or_create_followup_session(
     session.commit()
     session.refresh(ps)
     return ps
+
+
+def get_classroom_review_for_update(
+    session: Session, exercise: ClassroomExercise
+) -> ClassroomReview | None:
+    session.refresh(exercise, with_for_update=True)
+    return session.get(ClassroomReview, exercise.id)

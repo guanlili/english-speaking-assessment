@@ -123,10 +123,10 @@ A current exam cannot be used for follow-up practice. Recipients must also finis
 
 - 实时状态：学生首页及口语作答页每 30 秒上报进入/练习/录音/上传状态，切换状态立即上报，后台页停止心跳。教师结果页每 5 秒读取；90 秒后标为「暂无近期状态」，不推断离线。设备自检有效期为 2 小时；既有异常面板继续展示上传、播放及评分问题。
 - 课前自检：学生首页试录 5 秒，录音只在本页内存中回放，不上传、不开考。回放结束后由学生确认听清，并读取课堂版本接口验证连接，再向本课堂老师上报通过/失败。页面离开释放麦克风与对象 URL。
-- 诊断补练：在现有补练对话框按低于 70 的参考分、少于 15 词的问答、指定内容词漏读或教师重点筛选。只看今日当前发布的每人每题最近一次作答；评分中/失败不匹配，当前考试禁止筛选。筛选只预填学生与原题，核对后点击发布才创建任务。少词/漏词均是转写层面的教学提示，不是发音或能力判定；接收者会得到所选题目的合集，可继续人工调整。
+- 诊断补练：在现有补练对话框按低于 70 的参考分、少于 15 词的问答、指定内容词漏读或教师重点筛选。只看今日当前发布的每人每题最近一次作答；评分中/失败不匹配，当前考试禁止筛选。筛选只预填学生与原题，核对后点击发布才创建任务。少词/漏词均是转写层面的教学提示，不是发音或能力判定；诊断按每位学生匹配原题，预览中可逐人调整；关闭逐人模式时才使用共同题目。
 - 题库复用：沿用现有全校可读、原作者可改的共享规则，新增篇目、独立复述句、问答与说明的复制。副本归当前教师，保存 `copied_from_id`；篇目同时深拷贝复述句与考试设置，独立复制复述句解除原篇目绑定。原题、历史快照和作答不变。标准音文件沿用引用，不复制实体文件；未来增加内容音频清理前必须处理共享引用。
 - 教师复核：在现有乐观锁点评中增加已复核、转写有误、建议不适用标记。学生结果与回看中和教师点评一起显示，考试反馈遮罩同时隐藏复核标记；原始模型转写、建议与参考分不修改。
-- 匿名讲评：教师结果页选择匿名编号的已出分作答，投屏回放、查看题面和转写并记录亮点/建议。考试只允许选择已交卷学生的作答。姓名不显示，但声音或回答内容仍可能暴露身份；讲评笔记仅留在当前页面，不写入教师点评或学生档案。
+- 匿名讲评：教师结果页选择匿名编号的已出分作答，投屏回放、查看题面和转写并记录亮点/建议。考试只允许选择已交卷学生的作答。姓名不显示，但声音或回答内容仍可能暴露身份；讲评笔记按发布练习和作答持久保存，仅课堂授权教师可见，可从学生结果或发布历史重新打开；不写入教师点评或学生档案。
 - 重练对比：普通练习结果页打开录音详情后，可对比同会话同题的首次与最近一次已出分作答，含录音、转写、参考分及建议。不足两次时提示再练。服务端拒绝所有考试的对比请求，不能跨学生、跨会话或跨题读取。
 - 阶段报告：学生「我的成长」与教师「进步轨迹」新增最近 7/30/90 天报告；教师可按发布练习筛选。按课堂时区的练习日筛选会话，再统计期间作答；每题按最近提交状态计完成，评分中/失败不算完成，开口时长包含期间全部提交。跟读和问答均分分别计算，最多展示 6 条近期代表性已出分录音（优先有教师点评/复核的作答）。未结束考试全部排除，支持浏览器打印/保存 PDF；没有数据不生成分数或伪造个性化结论。
 
@@ -135,3 +135,11 @@ A current exam cannot be used for follow-up practice. Recipients must also finis
 Teachers can inspect short-lived classroom activity and device-check results, select follow-up recipients from current-practice diagnostics, copy shared question-bank content into their own editable versions, review AI feedback, and discuss anonymous answer examples. Diagnostic selection always requires a final review and explicit assignment. Device tests retain recordings in browser memory only and never start exams. Classroom activity is self-reported, not proof of attendance or connectivity.
 
 Students can compare their first and latest scored answers to the same regular-practice item within one session. Students and authorized teachers can open a 7/30/90-day learning report, with separate reading/repeat and Q&A averages and selected recordings/teacher feedback. Teachers can filter by publication. Unfinished exams are excluded; original scores and published snapshots remain unchanged. Discussion notes last only for the current page. Browser printing targets the report.
+
+
+## P1 讲评、逐人补练与课堂消息（2026-10-17）
+
+- 讲评共用版本号，保存冲突返回 409，保留本地输入后由老师重新加载；关闭、切换示例及教师页面离开时保护未保存编辑。课堂小结先存私有草稿，再明确发布；继续改草稿不覆盖已发布版本，教师可撤回。学生只看到已发布的班级小结，不接收私有讲评笔记；考试未结束的反馈继续遮罩。
+- 逐人补练预览每个学生的原题组合，相同组合合成一份固定名单任务。一次发布在单事务完成，任何组校验失败均回滚；客户端请求 ID 绑定来源、标题和逐人题单，重试返回原任务，换载荷返回 409。保留共同题目模式。
+- 学生从首页或学习消息举手求助，选择操作、设备、题意等类型并可补充说明；每人同时一条待处理请求，可主动撤回。教师在学生结果面板查看、标记已查看或已处理；学生能看到处理状态。
+- 教师明确选人发送站内提醒，可快捷选择有未提交题目的学生。学生主动点“我已阅读”才记已读；教师不能代为确认。提醒不是练习完成标记，求助和提醒不改变考试计时。消息只在当前课堂成员及所属教师之间可见，发送重试不重复写入。

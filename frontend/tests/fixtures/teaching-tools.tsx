@@ -5,6 +5,9 @@ import { AdminService, type AttemptPublic, type BoardStudent } from "@/client"
 import { AttemptComparison } from "@/components/Practice/AttemptComparison"
 import { DevicePreflight } from "@/components/Practice/DevicePreflight"
 import { LearningReportCard } from "@/components/Practice/LearningReportCard"
+import { PublishedClassSummaries } from "@/components/Practice/PublishedClassSummaries"
+import { StudentClassroomInbox } from "@/components/Practice/StudentClassroomInbox"
+import { ClassroomContactPanel } from "@/components/Teaching/ClassroomContactPanel"
 import { ClassroomLiveStatus } from "@/components/Teaching/ClassroomLiveStatus"
 import { CopyContentButton } from "@/components/Teaching/CopyContentButton"
 import { FollowupManager } from "@/components/Teaching/FollowupManager"
@@ -23,6 +26,10 @@ const student: BoardStudent = {
     { item_id: "item", type: "question", status: "done", attempt_id: "answer" },
   ],
 }
+const p1 = new URLSearchParams(location.search).has("p1")
+const students = p1
+  ? [student, { ...student, student_id: "ben", display_name: "Ben", items: [] }]
+  : [student]
 const attempt: AttemptPublic = {
   id: "answer",
   item_id: "item",
@@ -41,13 +48,18 @@ createRoot(document.getElementById("root")!).render(
       <main className="mx-auto max-w-5xl space-y-6 p-4">
         <ClassroomLiveStatus
           code="COACH"
-          students={[student]}
+          students={students}
           onStudent={() => {}}
         />
-        <LessonReview students={[student]} isExam={false} />
+        <LessonReview
+          code="COACH"
+          exerciseId="source"
+          students={students}
+          isExam={false}
+        />
         <FollowupManager
           code="COACH"
-          students={[student]}
+          students={students}
           currentExerciseId="source"
         />
         <LearningReportCard code="COACH" studentId="alice" />
@@ -62,6 +74,13 @@ createRoot(document.getElementById("root")!).render(
         <AttemptComparison attemptId="answer" />
         <TeacherFeedbackEditor attempt={attempt} reload={() => {}} />
         <DevicePreflight code="COACH" />
+        {p1 && (
+          <>
+            <ClassroomContactPanel code="COACH" students={students} />
+            <StudentClassroomInbox code="COACH" />
+            <PublishedClassSummaries code="COACH" />
+          </>
+        )}
       </main>
       <Toaster />
     </QueryClientProvider>

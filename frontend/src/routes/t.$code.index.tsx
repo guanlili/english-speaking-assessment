@@ -1,5 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute, Link, useParams } from "@tanstack/react-router"
+import {
+  createFileRoute,
+  Link,
+  useBlocker,
+  useParams,
+} from "@tanstack/react-router"
 import {
   ArrowLeft,
   BookA,
@@ -18,6 +23,7 @@ import { BoardRosterCard } from "@/components/Teaching/BoardRosterCard"
 import { BoardStatsCards } from "@/components/Teaching/BoardStatsCards"
 import { BoardTeachingActions } from "@/components/Teaching/BoardTeachingActions"
 import { ClassGapsCard } from "@/components/Teaching/ClassGapsCard"
+import { ClassroomContactPanel } from "@/components/Teaching/ClassroomContactPanel"
 import { ClassroomIssues } from "@/components/Teaching/ClassroomIssues"
 import { ClassroomLiveStatus } from "@/components/Teaching/ClassroomLiveStatus"
 import { ExerciseHistory } from "@/components/Teaching/ExerciseHistory"
@@ -56,6 +62,19 @@ function TeacherBoardPage() {
   const { t } = useI18n()
   const { code } = useParams({ from: "/t/$code/" })
   const queryClient = useQueryClient()
+  const [reviewDirty, setReviewDirty] = useState(false)
+  const allowReviewLeave = () =>
+    !reviewDirty ||
+    window.confirm(
+      t({
+        zh: "放弃未保存的讲评修改？",
+        en: "Discard unsaved discussion edits?",
+      }),
+    )
+  useBlocker({
+    shouldBlockFn: () => !allowReviewLeave(),
+    enableBeforeUnload: reviewDirty,
+  })
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"prepare" | "results" | "history">(
     "prepare",
@@ -65,6 +84,7 @@ function TeacherBoardPage() {
   )
   const historyTabRef = useRef<HTMLButtonElement>(null)
   const viewHistory = (exerciseId: string | null) => {
+    if (!allowReviewLeave()) return
     setHistoryExerciseId(exerciseId)
     setActiveTab("history")
     historyTabRef.current?.focus({ preventScroll: true })
@@ -368,6 +388,7 @@ function TeacherBoardPage() {
               value === "results" ||
               value === "history"
             ) {
+              if (value !== activeTab && !allowReviewLeave()) return
               setActiveTab(value)
             }
           }}
@@ -419,9 +440,13 @@ function TeacherBoardPage() {
                 setExpandedId(id)
               }}
             />
+            <ClassroomContactPanel code={code} students={board.students} />
             <LessonReview
+              code={code}
+              exerciseId={board.current_exercise?.id}
               students={board.students}
               isExam={board.current_exercise?.is_exam === true}
+              onDirtyChange={setReviewDirty}
             />
             <FollowupManager
               code={code}
@@ -522,6 +547,7 @@ function TeacherBoardPage() {
             <ExerciseHistory
               key={historyExerciseId ?? "history-list"}
               code={code}
+              onReviewDirtyChange={setReviewDirty}
               initialExerciseId={historyExerciseId}
               onCopied={() => setActiveTab("prepare")}
             />

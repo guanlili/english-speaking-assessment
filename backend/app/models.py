@@ -2590,3 +2590,87 @@ class VocabularyLevelWordInfo(SQLModel):
 
     level: str | None = None
     all_levels: list[str] = []
+
+
+class ClassroomReview(SQLModel, table=True):
+    """Teacher-only discussion notes and an explicitly published class summary."""
+
+    __tablename__ = "classroom_review"
+    exercise_id: uuid.UUID = Field(
+        primary_key=True, foreign_key="classroom_exercise.id", ondelete="CASCADE"
+    )
+    classroom_id: uuid.UUID = Field(
+        foreign_key="classroom.id", ondelete="CASCADE", index=True
+    )
+    notes: dict[str, str] = Field(
+        default_factory=dict, sa_column=Column(JSON, nullable=False)
+    )
+    summary: str = Field(default="", max_length=4000)
+    published_summary: str | None = Field(default=None, max_length=4000)
+    published_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    revision: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    updated_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+
+class FollowupBatch(SQLModel, table=True):
+    """Receipt for one atomic, idempotent individualized-practice assignment."""
+
+    __tablename__ = "followup_batch"
+    id: uuid.UUID = Field(primary_key=True)
+    classroom_id: uuid.UUID = Field(
+        foreign_key="classroom.id", ondelete="CASCADE", index=True
+    )
+    created_by: uuid.UUID = Field(foreign_key="user.id", ondelete="CASCADE")
+    payload_hash: str = Field(max_length=64)
+    task_ids: list[str] = Field(
+        default_factory=list, sa_column=Column(JSON, nullable=False)
+    )
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+
+class ClassroomMessage(SQLModel, table=True):
+    """A student's help request or a teacher's individually acknowledged reminder."""
+
+    __tablename__ = "classroom_message"
+    __table_args__ = (
+        UniqueConstraint(
+            "classroom_id",
+            "student_id",
+            "kind",
+            "request_id",
+            name="uq_classroom_message_request",
+        ),
+    )
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    classroom_id: uuid.UUID = Field(
+        foreign_key="classroom.id", ondelete="CASCADE", index=True
+    )
+    student_id: uuid.UUID = Field(
+        foreign_key="student.id", ondelete="CASCADE", index=True
+    )
+    created_by: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL"
+    )
+    request_id: uuid.UUID
+    kind: str = Field(max_length=16, index=True)
+    category: str | None = Field(default=None, max_length=32)
+    text: str = Field(default="", max_length=500)
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    read_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    resolution: str | None = Field(default=None, max_length=16)
+    resolved_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )

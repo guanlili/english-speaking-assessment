@@ -22,6 +22,7 @@ import { ClassesService } from "@/client"
 import { Appearance } from "@/components/Common/Appearance"
 import { LanguageToggle } from "@/components/Common/LanguageToggle"
 import { Logo } from "@/components/Common/Logo"
+import { StudentClassroomInbox } from "@/components/Practice/StudentClassroomInbox"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -41,6 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import useAuth from "@/hooks/useAuth"
+import { useClassroomMessages } from "@/hooks/useClassroomMessages"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
 import { TERMS } from "@/lib/terms"
@@ -332,6 +334,10 @@ function StudentShell({
 export default StudentShell
 
 function NotificationBell({ code }: { code: string }) {
+  const messages = useClassroomMessages(code)
+  const unread =
+    messages.data?.filter((row) => row.kind === "reminder" && !row.read_at)
+      .length ?? 0
   const { t } = useI18n()
   const student = loadStudent(code)
   const todayQuery = useQuery({
@@ -363,10 +369,10 @@ function NotificationBell({ code }: { code: string }) {
           variant="ghost"
           size="icon"
           aria-label={t({ zh: "学习消息", en: "Learning updates" })}
-          className="relative size-9 text-muted-foreground sm:size-11"
+          className="relative size-11 text-muted-foreground"
         >
           <Bell className="size-[18px]" />
-          {newBadges.length > 0 && (
+          {(newBadges.length > 0 || unread > 0) && (
             <span className="absolute right-2 top-2 size-2 rounded-full bg-accent-foreground ring-2 ring-card" />
           )}
         </Button>
@@ -378,11 +384,12 @@ function NotificationBell({ code }: { code: string }) {
           </DialogTitle>
           <DialogDescription>
             {t({
-              zh: "今天的练习进度和属于你的小小进步。",
-              en: "Today's practice progress and the small wins that are yours.",
+              zh: "老师的提醒、举手求助，以及今天的练习进度。",
+              en: "Teacher reminders, help requests and today's practice progress.",
             })}
           </DialogDescription>
         </DialogHeader>
+        <StudentClassroomInbox code={code} />
         {todayQuery.isPending ? (
           <p role="status" className="py-5 text-sm text-muted-foreground">
             {t({ zh: "正在加载学习消息…", en: "Loading updates…" })}

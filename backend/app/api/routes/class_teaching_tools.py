@@ -130,11 +130,17 @@ def read_classroom_presence(
     return result
 
 
+class DiagnosticStudentItems(SQLModel):
+    student_id: uuid.UUID
+    item_ids: list[uuid.UUID]
+
+
 class DiagnosticTargets(SQLModel):
     source_exercise_id: uuid.UUID
     student_ids: list[uuid.UUID]
     item_ids: list[uuid.UUID]
     matched_answers: int
+    targets: list[DiagnosticStudentItems] = []
 
 
 @router.get("/{code}/diagnostic-targets", response_model=DiagnosticTargets)
@@ -200,6 +206,15 @@ def read_diagnostic_targets(
         student_ids=sorted({a.student_id for a in matches if a.student_id}, key=str),
         item_ids=sorted({a.item_id for a in matches}, key=str),
         matched_answers=len(matches),
+        targets=[
+            DiagnosticStudentItems(
+                student_id=sid,
+                item_ids=sorted(
+                    {a.item_id for a in matches if a.student_id == sid}, key=str
+                ),
+            )
+            for sid in sorted({a.student_id for a in matches if a.student_id}, key=str)
+        ],
     )
 
 

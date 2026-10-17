@@ -10,10 +10,14 @@
 services:
   prestart:
     build:
+      args:
+        UV_DEFAULT_INDEX: https://pypi.org/simple
       cache_from: ["type=gha,scope=backend"]
       cache_to: ["type=gha,scope=backend,mode=max"]
   backend:
     build:
+      args:
+        UV_DEFAULT_INDEX: https://pypi.org/simple
       cache_from: ["type=gha,scope=backend"]
       cache_to: ["type=gha,scope=backend,mode=max"]
   frontend:

@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
 import { ArrowUpRight, Download, FileText, History } from "lucide-react"
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import type { ClassroomExercisePublic, ExerciseStudentResult } from "@/client"
 import { ClassesService } from "@/client"
 import { AttemptFeedbackDialog } from "@/components/Teaching/AttemptFeedbackDialog"
 import { CopyExerciseDialog } from "@/components/Teaching/CopyExerciseDialog"
+import { LessonReview } from "@/components/Teaching/LessonReview"
 import { RecordingButton } from "@/components/Teaching/RecordingButton"
 import { StudentFeedbackDialog } from "@/components/Teaching/StudentFeedbackDialog"
 import { Badge } from "@/components/ui/badge"
@@ -40,9 +41,11 @@ export function ExerciseHistory({
   code,
   initialExerciseId,
   onCopied,
+  onReviewDirtyChange,
 }: {
   code: string
   initialExerciseId?: string | null
+  onReviewDirtyChange?: (dirty: boolean) => void
   onCopied?: () => void
 }) {
   const { t } = useI18n()
@@ -98,6 +101,7 @@ export function ExerciseHistory({
         code={code}
         exercise={selected}
         onBack={() => setSelectedId(null)}
+        onReviewDirtyChange={onReviewDirtyChange}
       />
     )
 
@@ -190,12 +194,22 @@ function ExerciseResults({
   code,
   exercise,
   onBack,
+  onReviewDirtyChange,
 }: {
   code: string
   exercise: ClassroomExercisePublic
   onBack: () => void
+  onReviewDirtyChange?: (dirty: boolean) => void
 }) {
   const { t } = useI18n()
+  const [reviewDirty, setReviewDirty] = useState(false)
+  const reviewChanged = useCallback(
+    (dirty: boolean) => {
+      setReviewDirty(dirty)
+      onReviewDirtyChange?.(dirty)
+    },
+    [onReviewDirtyChange],
+  )
   const [feedbackStudent, setFeedbackStudent] =
     useState<ExerciseStudentResult | null>(null)
   const [feedbackAttemptId, setFeedbackAttemptId] = useState<string | null>(
@@ -279,7 +293,18 @@ function ExerciseResults({
             variant="ghost"
             size="sm"
             className="mb-1 min-h-11 px-0"
-            onClick={onBack}
+            onClick={() => {
+              if (
+                !reviewDirty ||
+                window.confirm(
+                  t({
+                    zh: "放弃未保存的讲评修改？",
+                    en: "Discard unsaved discussion edits?",
+                  }),
+                )
+              )
+                onBack()
+            }}
           >
             ← {t({ zh: "发布历史", en: "Publish History" })}
           </Button>
@@ -299,6 +324,15 @@ function ExerciseResults({
           </Button>
         )}
       </div>
+      {resultsQuery.isSuccess && (
+        <LessonReview
+          code={code}
+          exerciseId={exercise.id}
+          students={resultsQuery.data}
+          isExam={exercise.is_exam === true}
+          onDirtyChange={reviewChanged}
+        />
+      )}
       {resultsQuery.isPending ? (
         <p className="rounded-xl border p-6 text-muted-foreground">
           {t({ zh: "正在加载结果…", en: "Loading results…" })}

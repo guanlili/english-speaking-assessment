@@ -8,6 +8,7 @@ const mockedFiles = [
   "attempt-audio",
   "audio-preview",
   "classroom-delete",
+  "classroom-p1",
   "composer-pagination",
   "exam-automated",
   "exam-rules",

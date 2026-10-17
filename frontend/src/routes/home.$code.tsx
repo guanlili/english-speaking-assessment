@@ -20,6 +20,8 @@ import { toast } from "sonner"
 import { ClassesService } from "@/client"
 import { DevicePreflight } from "@/components/Practice/DevicePreflight"
 import HeroArt from "@/components/Practice/HeroArt"
+import { PublishedClassSummaries } from "@/components/Practice/PublishedClassSummaries"
+import { StudentClassroomInbox } from "@/components/Practice/StudentClassroomInbox"
 import { StudentFollowups } from "@/components/Practice/StudentFollowups"
 import StudentShell from "@/components/Practice/StudentShell"
 import TopicArt from "@/components/Practice/TopicArt"
@@ -347,6 +349,8 @@ function HomePage() {
             </div>
           </div>
         </section>
+        <StudentClassroomInbox code={code} />
+        <PublishedClassSummaries code={code} />
         <DevicePreflight code={code} />
         <StudentFollowups code={code} />
 
