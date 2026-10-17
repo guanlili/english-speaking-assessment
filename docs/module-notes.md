@@ -108,3 +108,10 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - 指定补练复用不可变 `ClassroomExercise`，状态 followup/followup_closed、固定 target_students、source_exercise_id；不写 classroom.current_exercise_id。学生会话 mode=followup，以 student+assignment 唯一，跨天幂等继续。题目来自原发布快照，不读当前题库，禁止换题。
 - 仅课堂教师可选本班成员发布/撤销；学生只见本人目标。当前考试及接收者仍在进行的历史考试不能作为补练来源。撤销在上传预检、落盘后事务内复查，失败清理新文件。
 - `class_followups.py` 负责入口，`services/followups.py` 负责边界；迁移 `b22ce1e19087`。详情与英文说明见 `docs/teacher-platform-design.md`。
+
+## 课堂教学闭环（2026-10-17）
+
+- `class_teaching_tools.py`：学生自报状态与教师实时名单、诊断补练接收者筛选、权限隔离的阶段报告；`admin_content_copy.py`：四类题目复制；`attempts.py`：普通练习首末次对比与教师复核标签。
+- 数据迁移 `b3d01b77c78a`：学生近期课堂状态 JSON、作答复核标签 JSON、四类题库内容的来源 UUID，全部可空，不回填历史。
+- 前端：`ClassroomLiveStatus`、`DevicePreflight`、`LessonReview`、`LearningReportCard`、`AttemptComparison`；补练对话框与点评编辑器复用既有发布/版本控制。
+- 功能口径、隐私边界与使用入口见 `docs/teacher-platform-design.md`「课堂教学闭环增强」。

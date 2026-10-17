@@ -23,6 +23,7 @@ import { TopicPicker } from "@/components/Admin/TopicPicker"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import Pager from "@/components/Common/Pager"
 import AudioSetter from "@/components/Practice/AudioSetter"
+import { CopyContentButton } from "@/components/Teaching/CopyContentButton"
 import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
 import { PassageSentences } from "@/components/Teaching/PassageSentences"
 import { ReadingSentences } from "@/components/Teaching/ReadingSentences"
@@ -885,6 +886,11 @@ function PassageCard({
           </CardDescription>
         </div>
         <div className="flex max-w-full flex-wrap items-center gap-1.5">
+          <CopyContentButton
+            kind="passage"
+            itemId={passage.id}
+            copiedFromId={passage.copied_from_id}
+          />
           <Button
             variant="outline"
             size="sm"

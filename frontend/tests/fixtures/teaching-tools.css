@@ -1,0 +1,4 @@
+@import "tailwindcss" source("../../");
+@import "../../src/index.css";
+@source "../../src";
+@source "./teaching-tools.tsx";

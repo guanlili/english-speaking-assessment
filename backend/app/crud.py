@@ -379,12 +379,15 @@ def update_teacher_feedback(
     focus: bool,
     author: str,
     expected_revision: int,
+    review_tags: list[str] | None = None,
 ) -> None:
     session.refresh(attempt, with_for_update=True)
     if attempt.teacher_feedback_revision != expected_revision:
         raise HTTPException(409, detail="Teacher feedback revision conflict")
     attempt.teacher_feedback = text.strip() or None
     attempt.teacher_focus = focus
+    if review_tags is not None:
+        attempt.teacher_review_tags = list(dict.fromkeys(review_tags)) or None
     attempt.teacher_feedback_author = author[:255]
     attempt.teacher_feedback_at = get_datetime_utc()
     attempt.teacher_feedback_revision += 1

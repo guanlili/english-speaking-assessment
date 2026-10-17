@@ -47,6 +47,7 @@ export type AssignmentRequest = {
 export type slot = 'class' | 'homework';
 
 export type AttemptPublic = {
+    teacher_review_tags?: (Array<(string)> | null);
     id: string;
     item_type: string;
     item_id: string;
@@ -242,6 +243,14 @@ export type BulkResetResult = {
     rows: Array<StudentResetRow>;
 };
 
+export type ClassroomActivityIn = {
+    activity?: 'entered' | 'recording' | 'uploading' | 'idle';
+    session_id?: (string | null);
+    device_check?: ('passed' | 'failed' | null);
+};
+
+export type activity = 'entered' | 'recording' | 'uploading' | 'idle';
+
 export type ClassroomCreate = {
     name?: string;
     grade?: (string | null);
@@ -277,6 +286,17 @@ export type ClassroomIssue = {
 };
 
 export type kind = 'device' | 'audio' | 'upload' | 'scoring_slow' | 'scoring_failed';
+
+export type ClassroomPresence = {
+    student_id: string;
+    display_name: string;
+    activity: 'entered' | 'recording' | 'uploading' | 'idle' | 'unknown';
+    observed_at?: (string | null);
+    device_check?: ('passed' | 'failed' | null);
+    device_checked_at?: (string | null);
+};
+
+export type activity2 = 'entered' | 'recording' | 'uploading' | 'idle' | 'unknown';
 
 export type ClassroomPublic = {
     id: string;
@@ -344,6 +364,18 @@ export type ComposerState = {
     is_exam: boolean;
     exam_minutes: number;
     base_exercise_id?: (string | null);
+};
+
+export type ContentCopied = {
+    id: string;
+    copied_from_id: string;
+};
+
+export type DiagnosticTargets = {
+    source_exercise_id: string;
+    student_ids: Array<(string)>;
+    item_ids: Array<(string)>;
+    matched_answers: number;
 };
 
 export type DraftPublic = {
@@ -542,6 +574,7 @@ export type InstructionCreate = {
 };
 
 export type InstructionPublic = {
+    copied_from_id?: (string | null);
     id: string;
     title?: (string | null);
     text: string;
@@ -563,6 +596,20 @@ export type LearningPath = {
     unlock_all: boolean;
     assignment?: (AssignmentInfo | null);
     units: Array<PathUnit>;
+};
+
+export type LearningReport = {
+    display_name: string;
+    start_date: string;
+    end_date: string;
+    session_count: number;
+    completed_items: number;
+    total_items: number;
+    speaking_minutes: number;
+    reading_avg: (number | null);
+    question_avg: (number | null);
+    answers: Array<ReportAnswer>;
+    has_active_exam: boolean;
 };
 
 export type ListenRequest = {
@@ -630,6 +677,7 @@ export type PassagePublic = {
     audio_url?: (string | null);
     suggested_seconds?: number;
     is_active?: boolean;
+    copied_from_id?: (string | null);
     reading_sentence_seconds?: (Array<(number | null)> | null);
     id: string;
     slug: string;
@@ -679,6 +727,7 @@ export type PassageWithSentences = {
     audio_url?: (string | null);
     suggested_seconds?: number;
     is_active?: boolean;
+    copied_from_id?: (string | null);
     reading_sentence_seconds?: (Array<(number | null)> | null);
     id: string;
     slug: string;
@@ -703,6 +752,7 @@ export type PathUnit = {
 };
 
 export type PlanAttempt = {
+    teacher_review_tags?: (Array<(string)> | null);
     item_id: string;
     attempt_id: string;
     status: string;
@@ -816,6 +866,7 @@ export type QuestionBankListOut = {
  * 题库全局视图：带上主题，供管理端筛选/搜索。
  */
 export type QuestionBankOut = {
+    copied_from_id?: (string | null);
     id: string;
     scenario_id: string;
     topic: string;
@@ -891,6 +942,7 @@ export type QuestionUpdate = {
 };
 
 export type RepeatSentence = {
+    copied_from_id?: (string | null);
     exam_settings?: ({
     [key: string]: unknown;
 } | null);
@@ -906,6 +958,15 @@ export type RepeatSentence = {
     exam_level?: (string | null);
     owner_id?: (string | null);
     created_at?: (string | null);
+};
+
+export type ReportAnswer = {
+    attempt_id: string;
+    item_type: string;
+    item_text: (string | null);
+    teacher_feedback: (string | null);
+    teacher_review_tags: (Array<(string)> | null);
+    created_at: (string | null);
 };
 
 export type RuntimeIssueIn = {
@@ -932,6 +993,7 @@ export type ScenarioOut = {
 };
 
 export type ScenarioQuestionPublic = {
+    copied_from_id?: (string | null);
     id: string;
     band: string;
     text: string;
@@ -1055,6 +1117,7 @@ export type SentenceUpdate = {
  * 平铺复述句库视图：带所属篇目标题（独立句为 null）。
  */
 export type SentenceWithPassage = {
+    copied_from_id?: (string | null);
     exam_settings?: ({
     [key: string]: unknown;
 } | null);
@@ -1071,6 +1134,13 @@ export type SentenceWithPassage = {
     owner_id?: (string | null);
     created_at?: (string | null);
     passage_title?: (string | null);
+};
+
+export type SharedContentPreview = {
+    id: string;
+    title?: (string | null);
+    text: string;
+    author_name?: (string | null);
 };
 
 export type StudentAccountOut = {
@@ -1157,6 +1227,7 @@ export type StudentUpdate = {
 };
 
 export type TeacherFeedbackWrite = {
+    review_tags?: (Array<('transcript_error' | 'advice_unsuitable' | 'reviewed')> | null);
     text: string;
     focus?: boolean;
     expected_revision: number;
@@ -2342,6 +2413,20 @@ export type AdminCreateSentenceFramesBatchData = {
 
 export type AdminCreateSentenceFramesBatchResponse = (SentenceFrameBatchResult);
 
+export type AdminCopySchoolContentData = {
+    itemId: string;
+    kind: 'passage' | 'repeat' | 'question' | 'instruction';
+};
+
+export type AdminCopySchoolContentResponse = (ContentCopied);
+
+export type AdminReadSharedContentSourceData = {
+    itemId: string;
+    kind: 'passage' | 'repeat' | 'question' | 'instruction';
+};
+
+export type AdminReadSharedContentSourceResponse = (SharedContentPreview);
+
 export type AdminReadComposerSelectionData = {
     requestBody: ComposerSelectionIn;
 };
@@ -2376,6 +2461,12 @@ export type AttemptsReadAttemptData = {
 };
 
 export type AttemptsReadAttemptResponse = (AttemptPublic);
+
+export type AttemptsReadAttemptComparisonData = {
+    attemptId: string;
+};
+
+export type AttemptsReadAttemptComparisonResponse = (Array<AttemptPublic>);
 
 export type AttemptsWriteTeacherFeedbackData = {
     attemptId: string;
@@ -2673,6 +2764,37 @@ export type ClassesCancelClassFollowupData = {
 };
 
 export type ClassesCancelClassFollowupResponse = (unknown);
+
+export type ClassesReportClassroomActivityData = {
+    code: string;
+    requestBody: ClassroomActivityIn;
+};
+
+export type ClassesReportClassroomActivityResponse = (unknown);
+
+export type ClassesReadClassroomPresenceData = {
+    code: string;
+};
+
+export type ClassesReadClassroomPresenceResponse = (Array<ClassroomPresence>);
+
+export type ClassesReadDiagnosticTargetsData = {
+    code: string;
+    itemId?: (string | null);
+    rule: 'low_score' | 'short_answer' | 'missed_word' | 'teacher_focus';
+    word?: string;
+};
+
+export type ClassesReadDiagnosticTargetsResponse = (DiagnosticTargets);
+
+export type ClassesReadLearningReportData = {
+    code: string;
+    days?: number;
+    exerciseId?: (string | null);
+    studentId?: (string | null);
+};
+
+export type ClassesReadLearningReportResponse = (LearningReport);
 
 export type LoginReadLoginOptionsResponse = (LoginOptions);
 

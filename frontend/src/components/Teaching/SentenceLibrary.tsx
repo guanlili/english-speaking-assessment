@@ -5,6 +5,7 @@ import { AdminService, type SentenceWithPassage } from "@/client"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import Pager from "@/components/Common/Pager"
 import AudioSetter from "@/components/Practice/AudioSetter"
+import { CopyContentButton } from "@/components/Teaching/CopyContentButton"
 import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
 import { ReadOnlyContentBadge } from "@/components/Teaching/ReadOnlyContentBadge"
 import { Badge } from "@/components/ui/badge"
@@ -289,6 +290,13 @@ export function SentenceLibrary({
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-1">
+                {s.id && (
+                  <CopyContentButton
+                    kind="repeat"
+                    itemId={s.id}
+                    copiedFromId={s.copied_from_id}
+                  />
+                )}
                 {canEdit(s.owner_id) && (
                   <Button
                     variant="ghost"

@@ -4,6 +4,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 import { AdminService, type InstructionPublic } from "@/client"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
+import { CopyContentButton } from "@/components/Teaching/CopyContentButton"
 import { ReadOnlyContentBadge } from "@/components/Teaching/ReadOnlyContentBadge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -118,7 +119,7 @@ export default function InstructionsSection({
         {instructions.map((ins) => (
           <div
             key={ins.id}
-            className={`flex items-start gap-3 rounded-lg border p-3 ${selectedIds.includes(ins.id) ? "border-primary/50 bg-primary/5" : ""}`}
+            className={`flex flex-wrap items-start gap-3 rounded-lg border p-3 ${selectedIds.includes(ins.id) ? "border-primary/50 bg-primary/5" : ""}`}
           >
             <Checkbox
               id={`pick-instruction-${ins.id}`}
@@ -141,6 +142,11 @@ export default function InstructionsSection({
                 })}
               </span>
             </label>
+            <CopyContentButton
+              kind="instruction"
+              itemId={ins.id}
+              copiedFromId={ins.copied_from_id}
+            />
             {canEdit(ins.owner_id) ? (
               <Button
                 variant="ghost"

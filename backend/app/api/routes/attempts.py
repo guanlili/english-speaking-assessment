@@ -7,13 +7,13 @@ GET  /attempts/{id} 轮询转写与分数
 import logging
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Field, Session, SQLModel, select
+from sqlmodel import Field, Session, SQLModel, col, select
 
 from app.api.deps import CurrentUser, OptionalCurrentUser, ScoringSubmitter, SessionDep
 from app.core.config import settings
@@ -275,6 +275,7 @@ def _attempt_public(
         public.advice = None
         public.vocab = None
         public.rubric = None
+        public.teacher_review_tags = None
         public.teacher_feedback = None
         public.teacher_focus = False
         public.teacher_feedback_author = None
@@ -605,7 +606,46 @@ def read_attempt(
     )
 
 
+@router.get("/attempts/{attempt_id}/comparison", response_model=list[AttemptPublic])
+def read_attempt_comparison(
+    session: SessionDep,
+    attempt_id: uuid.UUID,
+    current_user: CurrentUser,
+) -> list[AttemptPublic]:
+    attempt = session.get(Attempt, attempt_id)
+    if attempt is None or attempt.session_id is None:
+        raise HTTPException(404, detail="Attempt not found")
+    _require_attempt_access(session, attempt, current_user)
+    ps = session.get(PracticeSession, attempt.session_id)
+    exercise = (
+        session.get(ClassroomExercise, ps.assignment_id)
+        if ps and ps.assignment_id
+        else None
+    )
+    if exercise is not None and exercise.is_exam:
+        raise HTTPException(403, detail="Practice comparison unavailable for exams")
+    base = select(Attempt).where(
+        Attempt.session_id == attempt.session_id,
+        Attempt.student_id == attempt.student_id,
+        Attempt.item_id == attempt.item_id,
+        Attempt.item_type == attempt.item_type,
+        Attempt.status == "done",
+    )
+    first = session.exec(
+        base.order_by(col(Attempt.created_at), col(Attempt.id)).limit(1)
+    ).first()
+    latest = session.exec(
+        base.order_by(col(Attempt.created_at).desc(), col(Attempt.id).desc()).limit(1)
+    ).first()
+    if first is None or latest is None or first.id == latest.id:
+        return []
+    return [_attempt_public(first), _attempt_public(latest)]
+
+
 class TeacherFeedbackWrite(SQLModel):
+    review_tags: (
+        list[Literal["transcript_error", "advice_unsuitable", "reviewed"]] | None
+    ) = Field(default=None, max_length=3)
     text: str = Field(max_length=4000)
     focus: bool = False
     expected_revision: int = Field(ge=0)
@@ -631,6 +671,7 @@ def write_teacher_feedback(
         attempt,
         text=body.text,
         focus=body.focus,
+        review_tags=list(body.review_tags) if body.review_tags is not None else None,
         author=current_user.full_name or current_user.email or "Teacher",
         expected_revision=body.expected_revision,
     )

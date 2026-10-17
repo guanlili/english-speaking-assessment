@@ -930,6 +930,8 @@ class QuestionBankListOut(SQLModel):
 class QuestionBankOut(SQLModel):
     """题库全局视图：带上主题，供管理端筛选/搜索。"""
 
+    copied_from_id: uuid.UUID | None = None
+
     id: uuid.UUID
     scenario_id: uuid.UUID
     topic: str
@@ -1013,6 +1015,7 @@ def list_question_bank(
                 cue_card_bullets=question.cue_card_bullets,
                 prep_seconds=question.prep_seconds,
                 owner_id=question.owner_id,
+                copied_from_id=question.copied_from_id,
             )
             for question, topic_name in rows
         ],

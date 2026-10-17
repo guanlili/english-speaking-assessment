@@ -13,6 +13,7 @@ import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import Pager from "@/components/Common/Pager"
 import AudioSetter from "@/components/Practice/AudioSetter"
+import { CopyContentButton } from "@/components/Teaching/CopyContentButton"
 import ExamItemSettingsButton from "@/components/Teaching/ExamItemSettingsButton"
 import { ReadOnlyContentBadge } from "@/components/Teaching/ReadOnlyContentBadge"
 import { Badge } from "@/components/ui/badge"
@@ -52,6 +53,7 @@ export const Route = createFileRoute("/_layout/admin/scenarios")({
 })
 
 interface QuestionShape {
+  copied_from_id?: string | null
   id: string
   band: string
   text: string
@@ -486,6 +488,11 @@ function ScenarioCard({
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
+                    <CopyContentButton
+                      kind="question"
+                      itemId={q.id}
+                      copiedFromId={q.copied_from_id}
+                    />
                     {canEdit(q.owner_id) && (
                       <Button
                         variant="ghost"

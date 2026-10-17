@@ -8,6 +8,7 @@ export function TeacherFeedbackBlock({
 }: {
   attempt: Pick<
     AttemptPublic,
+    | "teacher_review_tags"
     | "teacher_feedback"
     | "teacher_focus"
     | "teacher_feedback_author"
@@ -15,7 +16,12 @@ export function TeacherFeedbackBlock({
   >
 }) {
   const { t, lang } = useI18n()
-  if (!attempt.teacher_feedback && !attempt.teacher_focus) return null
+  if (
+    !attempt.teacher_feedback &&
+    !attempt.teacher_focus &&
+    !attempt.teacher_review_tags?.length
+  )
+    return null
   return (
     <section
       className="space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-4"
@@ -28,6 +34,25 @@ export function TeacherFeedbackBlock({
         {attempt.teacher_focus && (
           <Badge>{t({ zh: "重点关注", en: "Focus area" })}</Badge>
         )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {attempt.teacher_review_tags?.map((tag) => (
+          <Badge key={tag} variant="outline">
+            {t(
+              tag === "transcript_error"
+                ? {
+                    zh: "教师复核：AI 转写有误",
+                    en: "Teacher review: AI transcript has errors",
+                  }
+                : tag === "advice_unsuitable"
+                  ? {
+                      zh: "教师复核：AI 建议不适用",
+                      en: "Teacher review: AI advice unsuitable",
+                    }
+                  : { zh: "已由教师复核", en: "Reviewed by teacher" },
+            )}
+          </Badge>
+        ))}
       </div>
       {attempt.teacher_feedback && (
         <p className="whitespace-pre-wrap break-words text-sm">

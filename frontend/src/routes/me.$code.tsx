@@ -12,6 +12,7 @@ import {
 import { useState } from "react"
 import { ClassesService } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
+import { LearningReportCard } from "@/components/Practice/LearningReportCard"
 import StudentShell from "@/components/Practice/StudentShell"
 import TrailView from "@/components/Practice/TrailView"
 import { Badge } from "@/components/ui/badge"
@@ -439,7 +440,10 @@ function MyTrailPage() {
               )}
             </div>
             {growthTab === "trail" && (
-              <TrailView trail={trailQuery.data} period={period} />
+              <>
+                <TrailView trail={trailQuery.data} period={period} />
+                <LearningReportCard code={code} />
+              </>
             )}
           </>
         )}

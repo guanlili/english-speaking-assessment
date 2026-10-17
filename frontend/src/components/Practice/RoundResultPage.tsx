@@ -17,6 +17,7 @@ import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
+import { AttemptComparison } from "@/components/Practice/AttemptComparison"
 import { RubricBlock } from "@/components/Practice/FeedbackCard"
 import { SkippedSpans } from "@/components/Practice/SkippedSpans"
 import StudentShell from "@/components/Practice/StudentShell"
@@ -792,6 +793,9 @@ export function RoundResultPage() {
                     {t({ zh: "参考分", en: "Reference Score" })}
                   </span>
                 </div>
+                {!isExam && replay.attempt.attempt_id && (
+                  <AttemptComparison attemptId={replay.attempt.attempt_id} />
+                )}
                 {replay.attempt.attempt_id && (
                   <AttemptAudio
                     attemptId={replay.attempt.attempt_id}

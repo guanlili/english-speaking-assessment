@@ -11,6 +11,7 @@ import { AdminService, type QuestionBankOut } from "@/client"
 import { ContentNavigation } from "@/components/Admin/ContentNavigation"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import Pager from "@/components/Common/Pager"
+import { CopyContentButton } from "@/components/Teaching/CopyContentButton"
 import { ReadOnlyContentBadge } from "@/components/Teaching/ReadOnlyContentBadge"
 import { Button } from "@/components/ui/button"
 import {
@@ -562,6 +563,11 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                       </TableCell>
                       <TableCell>{row.suggested_seconds}s</TableCell>
                       <TableCell className="text-right">
+                        <CopyContentButton
+                          kind="question"
+                          itemId={row.id}
+                          copiedFromId={row.copied_from_id}
+                        />
                         {canEdit(row.owner_id) ? (
                           <div className="flex justify-end gap-1">
                             <Button

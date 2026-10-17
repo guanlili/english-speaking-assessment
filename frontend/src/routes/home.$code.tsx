@@ -18,6 +18,7 @@ import {
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { ClassesService } from "@/client"
+import { DevicePreflight } from "@/components/Practice/DevicePreflight"
 import HeroArt from "@/components/Practice/HeroArt"
 import { StudentFollowups } from "@/components/Practice/StudentFollowups"
 import StudentShell from "@/components/Practice/StudentShell"
@@ -40,6 +41,7 @@ import {
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
+import { useClassroomActivity } from "@/hooks/useClassroomActivity"
 import { useClassroomRevision } from "@/hooks/useClassroomRevision"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import {
@@ -81,6 +83,7 @@ const WEEKDAYS: BiString[] = [
 function HomePage() {
   const { t, lang } = useI18n()
   const { code } = useParams({ from: "/home/$code" })
+  useClassroomActivity(code, "entered")
   const navigate = useNavigate({ from: "/home/$code" })
   const student = loadStudent(code)
   useClassroomRevision(code, student?.id)
@@ -344,6 +347,7 @@ function HomePage() {
             </div>
           </div>
         </section>
+        <DevicePreflight code={code} />
         <StudentFollowups code={code} />
 
         {/* 今日计划 */}
