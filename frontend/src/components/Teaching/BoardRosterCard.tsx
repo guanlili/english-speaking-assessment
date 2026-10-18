@@ -39,6 +39,7 @@ export function BoardRosterCard({
   onToggleRow,
   onShareLink,
   onExportCsv,
+  onAssignFollowup,
 }: {
   code: string
   hasStudents: boolean
@@ -54,6 +55,7 @@ export function BoardRosterCard({
   onToggleRow: (studentId: string) => void
   onShareLink: () => void
   onExportCsv: () => void
+  onAssignFollowup?: (studentId: string, itemId: string) => void
 }) {
   const { t } = useI18n()
   return (
@@ -201,6 +203,7 @@ export function BoardRosterCard({
                   key={student.student_id}
                   student={student}
                   code={code}
+                  onAssignFollowup={onAssignFollowup}
                   isExamPublish={isExamPublish}
                   expanded={expandedId === student.student_id}
                   onToggle={() => onToggleRow(student.student_id)}

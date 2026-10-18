@@ -121,7 +121,7 @@ test("teacher feedback reaches its student and targeted practice leaves original
     await page.getByRole("tab", { name: "学生结果" }).click()
     await page.getByRole("button", { name: "展开 Alice 的详情" }).click()
     await page
-      .getByRole("button", { name: "详细反馈", exact: true })
+      .getByRole("button", { name: "查看与点评", exact: true })
       .first()
       .click()
     const feedback = page.getByRole("dialog")

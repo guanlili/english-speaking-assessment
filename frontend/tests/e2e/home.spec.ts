@@ -1,14 +1,17 @@
 import { expect, type Page, test } from "@playwright/test"
 
-/**
- * 学生学习首页：hero 问候、今日计划摘要、连续打卡/XP、周目标环、
- * 开始练习入口跳转。全部 API 在网络层 mock，不依赖后端。
- */
+/** Task-focused student home; all APIs are mocked. */
 
 const CODE = "HOME"
 
 async function mockHome(page: Page) {
-  const state = { revision: "v1", title: "Unit 1 Travel", todayReads: 0 }
+  const state = {
+    revision: "v1",
+    title: "Unit 1 Travel",
+    todayReads: 0,
+    attempts: [] as { item_id: string; status: string }[],
+    exam: null as { started: boolean; ended: boolean } | null,
+  }
   await page.addInitScript(() => {
     localStorage.setItem("access_token", "test-token")
     localStorage.setItem("esa:role", "student")
@@ -54,8 +57,8 @@ async function mockHome(page: Page) {
             suggested_seconds: 60,
           },
         ],
-        attempts: [],
-        exam: null,
+        attempts: state.attempts,
+        exam: state.exam,
         gamification: { xp: 12, streak_days: 3 },
         assigned_unit_title: state.title,
       }
@@ -81,12 +84,12 @@ async function mockHome(page: Page) {
   return state
 }
 
-test("home hero, plan summary and gamification render", async ({ page }) => {
+test("home shows one task summary and opens practice", async ({ page }) => {
   await mockHome(page)
   await page.goto(`/home/${CODE}`)
 
   // hero：问候 + 今日单元 + CTA
-  await expect(page.getByText("YOUR VOICE MATTERS")).toBeVisible()
+  await expect(page.getByRole("heading", { name: /Hi，Student/ })).toBeVisible()
   await expect(page.getByText("Hi，Student。")).toBeVisible()
   await expect(page.getByText("今日练习 · Unit 1 Travel")).toBeVisible()
   await expect(page.getByRole("button", { name: /开始今日练习/ })).toBeVisible()
@@ -95,25 +98,115 @@ test("home hero, plan summary and gamification render", async ({ page }) => {
   await expect(page.getByText("1 篇朗读 + 1 道情景问答")).toBeVisible()
   await expect(page.getByText("0 / 2 已完成")).toBeVisible()
 
-  // 周目标环：今天练过 1 天 / 默认目标 5 天
-  await expect(page.getByText("本周开口目标")).toBeVisible()
-  await expect(page.getByText("1", { exact: true })).toBeVisible()
+  await expect(page.getByText("本周开口目标")).toHaveCount(0)
+  await expect(page.getByText("给今天的你", { exact: true })).toHaveCount(0)
+  await expect(
+    page.getByRole("link", { name: "自主练习", exact: true }),
+  ).toHaveCount(0)
 
   // CTA 跳转练习页
   await page.getByRole("button", { name: /开始今日练习/ }).click()
   await expect(page).toHaveURL(new RegExp(`/p/${CODE}`))
 })
 
-test("home week goal can be adjusted from the card", async ({ page }) => {
-  await mockHome(page)
-  await page.goto(`/home/${CODE}`)
-  await expect(page.getByText("YOUR VOICE MATTERS")).toBeVisible()
+for (const width of [390, 820, 1180]) {
+  for (const lang of ["zh", "en"]) {
+    test(`@webkit task navigation fits ${width}px in ${lang}`, async ({
+      page,
+    }) => {
+      await mockHome(page)
+      await page.addInitScript(
+        (value) => localStorage.setItem("esa:lang", value),
+        lang,
+      )
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(`/home/${CODE}`)
+      await expect(
+        page.getByRole("button", {
+          name: lang === "zh" ? "开始今日练习" : "Start today's practice",
+        }),
+      ).toBeVisible()
+      const navigation = page.getByRole("navigation", {
+        name:
+          lang === "zh"
+            ? width < 768
+              ? "手机学习导航"
+              : "学习导航"
+            : width < 768
+              ? "Mobile learning navigation"
+              : "Learning navigation",
+        exact: true,
+      })
+      await expect(
+        navigation.getByRole("link", {
+          name: lang === "zh" ? "今日任务" : "Today’s Tasks",
+          exact: true,
+        }),
+      ).toBeVisible()
+      await expect(
+        navigation.getByRole("link", {
+          name: lang === "zh" ? "今日练习" : "Today's Practice",
+          exact: true,
+        }),
+      ).toHaveCount(0)
+      if (width < 768) await expect(navigation.getByRole("link")).toHaveCount(3)
+      expect(
+        await page.evaluate(
+          () =>
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        ),
+      ).toBeLessThanOrEqual(1)
+      await page.screenshot({
+        path: `/tmp/student-tasks-${width}-${lang}.png`,
+        fullPage: true,
+      })
+    })
+  }
+}
 
-  await page.getByRole("button", { name: "调整目标" }).click()
-  const dialog = page.getByRole("dialog")
-  await expect(dialog).toBeVisible()
-  await dialog.getByRole("button", { name: "3" }).click()
-  await expect(page.getByText("每周目标已调整为 3 天")).toBeVisible()
+test("failed latest answer does not complete a task or unlock self practice", async ({
+  page,
+}) => {
+  const state = await mockHome(page)
+  state.attempts = [
+    { item_id: "00000000-0000-4000-8000-000000000001", status: "done" },
+    { item_id: "00000000-0000-4000-8000-000000000001", status: "failed" },
+    { item_id: "00000000-0000-4000-8000-000000000002", status: "done" },
+  ]
+  await page.goto(`/home/${CODE}`)
+  await expect(page.getByText("1 / 2 已完成")).toBeVisible()
+  await expect(page.getByRole("button", { name: "继续今日练习" })).toBeVisible()
+  await expect(
+    page.getByRole("link", { name: "自主练习", exact: true }),
+  ).toHaveCount(0)
+})
+
+test("completed practice offers results and optional self practice", async ({
+  page,
+}) => {
+  const state = await mockHome(page)
+  state.attempts = [
+    { item_id: "00000000-0000-4000-8000-000000000001", status: "done" },
+    { item_id: "00000000-0000-4000-8000-000000000002", status: "done" },
+  ]
+  await page.goto(`/home/${CODE}`)
+  await expect(page.getByText("2 / 2 已完成")).toBeVisible()
+  await expect(page.getByRole("button", { name: "查看今日成果" })).toBeVisible()
+  await page.getByRole("link", { name: "自主练习", exact: true }).click()
+  await expect(page).toHaveURL(`/explore/${CODE}`)
+})
+
+test("an active exam keeps the exam entry and hides the optional self practice action", async ({
+  page,
+}) => {
+  const state = await mockHome(page)
+  state.exam = { started: true, ended: false }
+  await page.goto(`/home/${CODE}`)
+  await expect(page.getByRole("button", { name: "继续考试" })).toBeVisible()
+  await expect(
+    page.getByRole("link", { name: "自主练习", exact: true }),
+  ).toHaveCount(0)
 })
 
 test("home sees a new publication and unchanged revisions do not reload the plan", async ({

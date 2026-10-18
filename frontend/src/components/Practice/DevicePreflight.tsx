@@ -125,6 +125,29 @@ export function DevicePreflight({ code }: { code: string }) {
       }
     }
   }
+  if (state === "passed" && !reportFailed) {
+    return (
+      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-5 py-3">
+        <p role="status" className="text-sm text-muted-foreground">
+          {t({
+            zh: "试录、回放和课堂连接检查通过。",
+            en: "Recording, playback and classroom connection checks passed.",
+          })}
+        </p>
+        <Button
+          variant="ghost"
+          className="min-h-11"
+          onClick={() => {
+            setState("idle")
+            setUrl(null)
+            setHeard(false)
+          }}
+        >
+          {t({ zh: "重新检查", en: "Check again" })}
+        </Button>
+      </section>
+    )
+  }
   return (
     <section className="space-y-3 rounded-2xl border bg-card p-5">
       <h2 className="font-semibold">

@@ -27,7 +27,10 @@ import { ClassroomContactPanel } from "@/components/Teaching/ClassroomContactPan
 import { ClassroomIssues } from "@/components/Teaching/ClassroomIssues"
 import { ClassroomLiveStatus } from "@/components/Teaching/ClassroomLiveStatus"
 import { ExerciseHistory } from "@/components/Teaching/ExerciseHistory"
-import { FollowupManager } from "@/components/Teaching/FollowupManager"
+import {
+  FollowupCreateDialog,
+  FollowupManager,
+} from "@/components/Teaching/FollowupManager"
 import { LessonReview } from "@/components/Teaching/LessonReview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -76,6 +79,11 @@ function TeacherBoardPage() {
     shouldBlockFn: () => !allowReviewLeave(),
     enableBeforeUnload: reviewDirty,
   })
+  const [followupTarget, setFollowupTarget] = useState<{
+    sourceId: string
+    studentId: string
+    itemId: string
+  } | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<"prepare" | "results" | "history">(
     "prepare",
@@ -567,8 +575,30 @@ function TeacherBoardPage() {
                 onToggleRow={toggleRow}
                 onShareLink={() => void shareLink()}
                 onExportCsv={exportCsv}
+                onAssignFollowup={
+                  board.current_exercise && !board.current_exercise.is_exam
+                    ? (studentId, itemId) =>
+                        setFollowupTarget({
+                          sourceId: board.current_exercise!.id,
+                          studentId,
+                          itemId,
+                        })
+                    : undefined
+                }
               />
             </div>
+
+            {followupTarget && (
+              <FollowupCreateDialog
+                key={`${followupTarget.sourceId}:${followupTarget.studentId}:${followupTarget.itemId}`}
+                code={code}
+                students={board.students}
+                initialSource={followupTarget.sourceId}
+                initialStudentIds={[followupTarget.studentId]}
+                initialItemIds={[followupTarget.itemId]}
+                onClose={() => setFollowupTarget(null)}
+              />
+            )}
 
             <BoardTeachingActions
               attentionCount={attentionStudents.length}

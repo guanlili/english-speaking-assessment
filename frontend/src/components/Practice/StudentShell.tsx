@@ -3,7 +3,6 @@ import { Link, useParams } from "@tanstack/react-router"
 import {
   ArrowRight,
   ArrowRightLeft,
-  AudioLines,
   Bell,
   BookA,
   ChartLine,
@@ -13,7 +12,6 @@ import {
   Home,
   KeyRound,
   LogOut,
-  Mic,
   Sparkles,
   UsersRound,
 } from "lucide-react"
@@ -45,26 +43,21 @@ import useAuth from "@/hooks/useAuth"
 import { useClassroomMessages } from "@/hooks/useClassroomMessages"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
+import { buildAttemptByItem } from "@/lib/practice-derive"
 import { TERMS } from "@/lib/terms"
 import { cn } from "@/lib/utils"
 
 /** 导航项：label 为双语，渲染处用 t() 取当前语言。
  *
- * 前 4 项 = 手机底部导航（首页/口语/词汇/成长）；主题探索、课堂与帮助
+ * 前 3 项 = 手机底部导航（今日任务/词汇/成长）；主题探索、课堂与帮助
  * 收进次级菜单（侧栏下半区与账户菜单）——2026-10 词汇模块设计。
  */
 const items = [
   {
     key: "home",
     to: "/home/$code",
-    label: { zh: "学习首页", en: "Home" },
+    label: { zh: "今日任务", en: "Today’s Tasks" },
     icon: Home,
-  },
-  {
-    key: "practice",
-    to: "/p/$code",
-    label: TERMS.todayPractice,
-    icon: Mic,
   },
   {
     key: "vocab",
@@ -109,7 +102,7 @@ function StudentShell({
   children,
   wide,
 }: {
-  active: (typeof items)[number]["key"]
+  active: (typeof items)[number]["key"] | "practice"
   children: ReactNode
   wide?: boolean
 }) {
@@ -120,7 +113,8 @@ function StudentShell({
   const name = student
     ? displayName(student)
     : t({ zh: "学习空间", en: "Learning Space" })
-  const current = items.find((item) => item.key === active)
+  const activeKey = active === "practice" || active === "exam" ? "home" : active
+  const current = items.find((item) => item.key === activeKey)
 
   return (
     <div className="flex min-h-svh bg-background">
@@ -132,33 +126,35 @@ function StudentShell({
           <Logo asLink={false} />
         </Link>
         <p className="mb-3 px-3 text-[10px] font-semibold tracking-[0.18em] text-muted-foreground">
-          MY LEARNING SPACE
+          {t({ zh: "我的学习空间", en: "MY LEARNING SPACE" })}
         </p>
         <nav
           aria-label={t({ zh: "学习导航", en: "Learning navigation" })}
           className="grid gap-1.5"
         >
-          {items.map((item, index) => (
-            <Link
-              key={item.key}
-              aria-current={active === item.key ? "page" : undefined}
-              to={item.to}
-              params={{ code }}
-              className={cn(
-                "group flex min-h-12 items-center gap-3 rounded-xl px-3.5 text-sm transition-colors",
-                index === 4 && "mt-6",
-                active === item.key
-                  ? "bg-primary font-semibold text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
-              )}
-            >
-              <item.icon className="size-[18px]" />
-              {t(item.label)}
-              {active === item.key && (
-                <span className="ml-auto size-1.5 rounded-full bg-current" />
-              )}
-            </Link>
-          ))}
+          {items
+            .filter((item) => item.key !== "exam")
+            .map((item, index) => (
+              <Link
+                key={item.key}
+                aria-current={activeKey === item.key ? "page" : undefined}
+                to={item.to}
+                params={{ code }}
+                className={cn(
+                  "group flex min-h-12 items-center gap-3 rounded-xl px-3.5 text-sm transition-colors",
+                  index === 3 && "mt-6",
+                  activeKey === item.key
+                    ? "bg-primary font-semibold text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
+                )}
+              >
+                <item.icon className="size-[18px]" />
+                {t(item.label)}
+                {activeKey === item.key && (
+                  <span className="ml-auto size-1.5 rounded-full bg-current" />
+                )}
+              </Link>
+            ))}
           {/* 多班归属：跨班切换入口（/join = 我的班级 hub，无 $code 参数） */}
           <Link
             to="/join"
@@ -169,21 +165,6 @@ function StudentShell({
           </Link>
         </nav>
         <div className="mt-auto pt-8">
-          <div className="relative overflow-hidden rounded-2xl border border-primary/10 bg-secondary/60 p-4">
-            <AudioLines
-              className="mb-4 size-6 text-primary"
-              aria-hidden="true"
-            />
-            <p className="font-serif text-xl italic text-primary">
-              A little, every day.
-            </p>
-            <p className="mt-2 text-xs leading-6 text-muted-foreground">
-              {t({
-                zh: "不必完美表达，先勇敢说出来。",
-                en: "You don't have to be perfect — be brave and speak first.",
-              })}
-            </p>
-          </div>
           <Link
             to="/classroom/$code"
             params={{ code }}
@@ -212,7 +193,7 @@ function StudentShell({
               to="/home/$code"
               params={{ code }}
               className="md:hidden"
-              aria-label={t({ zh: "学习首页", en: "Home" })}
+              aria-label={t({ zh: "今日任务", en: "Today’s Tasks" })}
             >
               <Logo variant="icon" asLink={false} />
             </Link>
@@ -258,14 +239,17 @@ function StudentShell({
                   {name}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {items.slice(4).map((item) => (
-                  <DropdownMenuItem key={item.key} asChild>
-                    <Link to={item.to} params={{ code }}>
-                      <item.icon />
-                      {t(item.label)}
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
+                {items
+                  .slice(3)
+                  .filter((item) => item.key !== "exam")
+                  .map((item) => (
+                    <DropdownMenuItem key={item.key} asChild>
+                      <Link to={item.to} params={{ code }}>
+                        <item.icon />
+                        {t(item.label)}
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
                 <DropdownMenuItem asChild>
                   <Link to="/join">
                     <ArrowRightLeft />
@@ -307,17 +291,17 @@ function StudentShell({
       </div>
       <nav
         aria-label={t({ zh: "手机学习导航", en: "Mobile learning navigation" })}
-        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-border/80 bg-card/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-border/80 bg-card/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md md:hidden"
       >
-        {items.slice(0, 4).map((item) => (
+        {items.slice(0, 3).map((item) => (
           <Link
             key={item.key}
             to={item.to}
             params={{ code }}
-            aria-current={active === item.key ? "page" : undefined}
+            aria-current={activeKey === item.key ? "page" : undefined}
             className={cn(
               "flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[11px] transition-colors",
-              active === item.key
+              activeKey === item.key
                 ? "bg-secondary font-semibold text-primary"
                 : "text-muted-foreground hover:bg-secondary/50",
             )}
@@ -350,9 +334,12 @@ function NotificationBell({ code }: { code: string }) {
   })
   const plan = todayQuery.data
   const g = plan?.gamification
+  const attempts = buildAttemptByItem(plan?.attempts ?? [])
   const done =
-    plan?.attempts.filter((a) => a.status === "done" || a.status === "failed")
-      .length ?? 0
+    plan?.items.filter(
+      (item) =>
+        item.type !== "instruction" && attempts.get(item.id)?.status === "done",
+    ).length ?? 0
   const total =
     plan?.items.filter((item) => item.type !== "instruction").length ?? 0
   const today = new Date().toLocaleDateString("en-CA")
