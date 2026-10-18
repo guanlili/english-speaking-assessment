@@ -594,7 +594,7 @@ test("@webkit withdrawn followup blocks until its draft is saved, then permits l
   ).toBeHidden()
   expect(await beforeUnloadBlocked(page)).toBe(true)
   await page
-    .getByRole("link", { name: "学习首页", exact: true })
+    .getByRole("link", { name: "今日任务", exact: true })
     .first()
     .click()
   await expect(page).toHaveURL(/\/p\/DRAFT/)
@@ -675,7 +675,7 @@ for (const [width, lang, failure] of [
     // 取消确认不释放保护；第二次从站内侧栏离开仍须确认。
     const confirmed = page.waitForEvent("dialog")
     void page
-      .getByRole("link", { name: /^(学习首页|Home)$/ })
+      .getByRole("link", { name: /^(今日任务|Today’s Tasks)$/ })
       .first()
       .click()
     const second = await confirmed
@@ -701,7 +701,7 @@ test("@webkit ordinary recording, uploading and network failure retain leave pro
   await expect(
     page.getByRole("button", { name: "结束录音", exact: true }),
   ).toBeVisible()
-  const home = page.getByRole("link", { name: "学习首页", exact: true }).first()
+  const home = page.getByRole("link", { name: "今日任务", exact: true }).first()
   await home.click()
   await expect(page).toHaveURL(/\/p\/DRAFT/)
   expect(await beforeUnloadBlocked(page)).toBe(true)
