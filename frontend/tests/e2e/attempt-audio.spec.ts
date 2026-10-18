@@ -138,7 +138,7 @@ for (const width of [390, 820, 1180]) {
     page,
   }) => {
     await mockTeacher(page, width)
-    await page.getByRole("button", { name: "详细反馈", exact: true }).click()
+    await page.getByRole("button", { name: "查看与点评", exact: true }).click()
     const dialog = page.getByRole("dialog")
     const audio = dialog.locator("audio")
     const progress = dialog.getByRole("slider", { name: "录音播放进度" })
@@ -200,14 +200,14 @@ for (const width of [390, 820, 1180]) {
 
 test("@webkit reopening plays on the first click", async ({ page }) => {
   const state = await mockTeacher(page)
-  await page.getByRole("button", { name: "详细反馈", exact: true }).click()
+  await page.getByRole("button", { name: "查看与点评", exact: true }).click()
   const dialog = page.getByRole("dialog")
   const firstUrl = await dialog.locator("audio").getAttribute("src")
   await expect(
     dialog.getByRole("button", { name: "播放录音", exact: true }),
   ).toBeEnabled()
   await page.getByRole("button", { name: "关闭", exact: true }).click()
-  await page.getByRole("button", { name: "详细反馈", exact: true }).click()
+  await page.getByRole("button", { name: "查看与点评", exact: true }).click()
   await expect(
     dialog.getByRole("button", { name: "播放录音", exact: true }),
   ).toBeEnabled()
@@ -227,7 +227,7 @@ test("@webkit audio download failures recover with reload", async ({
   page,
 }) => {
   const state = await mockTeacher(page, 820, true)
-  await page.getByRole("button", { name: "详细反馈", exact: true }).click()
+  await page.getByRole("button", { name: "查看与点评", exact: true }).click()
   const dialog = page.getByRole("dialog")
   await expect(dialog.getByRole("alert")).toContainText("录音加载失败")
   state.fail = false

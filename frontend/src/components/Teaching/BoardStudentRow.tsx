@@ -32,12 +32,14 @@ export function BoardStudentRow({
   expanded,
   onToggle,
   isExamPublish,
+  onAssignFollowup,
 }: {
   student: BoardStudent
   code: string
   expanded: boolean
   onToggle: () => void
   isExamPublish: boolean
+  onAssignFollowup?: (studentId: string, itemId: string) => void
 }) {
   const { t } = useI18n()
   const [summaryOpen, setSummaryOpen] = useState(false)
@@ -312,10 +314,25 @@ export function BoardStudentRow({
                           setFeedbackAttemptId(item.attempt_id!)
                         }}
                       >
-                        {t({ zh: "详细反馈", en: "Detailed Feedback" })}
+                        {t({ zh: "查看与点评", en: "Review & comment" })}
                       </Button>
                     </>
                   )}
+                  {onAssignFollowup &&
+                    !isExamPublish &&
+                    item.type !== "instruction" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-11"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onAssignFollowup(student.student_id, item.item_id)
+                        }}
+                      >
+                        {t({ zh: "补练这题", en: "Assign this item" })}
+                      </Button>
+                    )}
                 </div>
               ))}
               <AttemptFeedbackDialog

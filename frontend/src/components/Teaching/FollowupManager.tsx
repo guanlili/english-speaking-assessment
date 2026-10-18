@@ -271,15 +271,19 @@ function FollowupManagerList({
   )
 }
 
-function FollowupCreateDialog({
+export function FollowupCreateDialog({
   code,
   students,
   initialSource,
+  initialStudentIds = [],
+  initialItemIds,
   onClose,
 }: {
   code: string
   students: BoardStudent[]
   initialSource: string
+  initialStudentIds?: string[]
+  initialItemIds?: string[]
   onClose: () => void
 }) {
   const { t } = useI18n()
@@ -289,8 +293,8 @@ function FollowupCreateDialog({
     t({ zh: "课后巩固练习", en: "Follow-up speaking practice" }),
   )
   const [source, setSource] = useState(initialSource)
-  const [studentIds, setStudentIds] = useState<string[]>([])
-  const [itemIds, setItemIds] = useState<string[]>([])
+  const [studentIds, setStudentIds] = useState<string[]>(initialStudentIds)
+  const [itemIds, setItemIds] = useState<string[]>(initialItemIds ?? [])
   const [individual, setIndividual] = useState(false)
   const [selections, setSelections] = useState<Record<string, string[]>>({})
   const request = useRef({ signature: "", id: "" })
@@ -299,7 +303,7 @@ function FollowupCreateDialog({
   >("low_score")
   const [word, setWord] = useState("")
   const [diagnosticMessage, setDiagnosticMessage] = useState("")
-  const initialized = useRef("")
+  const initialized = useRef(initialItemIds ? initialSource : "")
   const suggest = useMutation({
     mutationFn: () =>
       ClassesService.readDiagnosticTargets({ code, rule, word }),

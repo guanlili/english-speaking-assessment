@@ -33,6 +33,7 @@ async function setup(page: Page, role: "teacher" | "student", lang = "zh") {
       teacher_focus: false,
       teacher_feedback_revision: 0,
     } as AttemptPublic,
+    sourceItems: [item],
     tasks: [] as FollowupPublic[],
     bodies: [] as { student_ids: string[]; item_ids: string[] }[],
     fail: false,
@@ -84,7 +85,7 @@ async function setup(page: Page, role: "teacher" | "student", lang = "zh") {
     )
       json = { data: [], count: 0 }
     else if (path.endsWith("/exercises")) json = [exercise]
-    else if (path.endsWith("/followup-items")) json = [item]
+    else if (path.endsWith("/followup-items")) json = state.sourceItems
     else if (path.endsWith("/diagnostics"))
       json = { checked_at: new Date().toISOString(), issues: [] }
     else if (path.endsWith("/weak-spots"))
@@ -265,7 +266,7 @@ for (const [width, lang] of [
       .click()
     await page
       .getByRole("button", {
-        name: en ? "Detailed Feedback" : "详细反馈",
+        name: en ? "Review & comment" : "查看与点评",
         exact: true,
       })
       .click()
@@ -331,7 +332,7 @@ test("@webkit feedback save failure keeps text and revision conflict requires ex
   await page.goto("/t/COACH")
   await page.getByRole("tab", { name: "学生结果" }).click()
   await page.getByRole("button", { name: "展开 Alice 的详情" }).click()
-  await page.getByRole("button", { name: "详细反馈", exact: true }).click()
+  await page.getByRole("button", { name: "查看与点评", exact: true }).click()
   const dialog = page.getByRole("dialog")
   const input = dialog.getByRole("textbox", { name: "教师点评内容" })
   state.fail = true
@@ -659,4 +660,35 @@ test("follow-up page errors keep tabs and allow retry without losing the page", 
   await tasks.getByRole("button", { name: "重试", exact: true }).click()
   await expect(tasks.locator("article")).toHaveCount(2)
   await expect(tasks).toContainText("第 2 页")
+})
+
+test("assigning from a student item preselects only that student and item", async ({
+  page,
+}) => {
+  const state = await setup(page, "teacher")
+  state.sourceItems.push({
+    ...item,
+    id: "other-item",
+    text: "Another source question.",
+  })
+  await page.goto("/t/COACH")
+  await page.getByRole("tab", { name: "学生结果" }).click()
+  await page.getByRole("button", { name: "展开 Alice 的详情" }).click()
+  await page.getByRole("button", { name: "补练这题", exact: true }).click()
+  const dialog = page.getByRole("dialog")
+  await expect(dialog.getByRole("checkbox", { name: /Alice/ })).toBeChecked()
+  await expect(dialog.getByRole("checkbox", { name: /Ben/ })).not.toBeChecked()
+  await expect(
+    dialog.getByRole("checkbox", { name: /Original frozen/ }),
+  ).toBeChecked()
+  await expect(
+    dialog.getByRole("checkbox", { name: /Another source/ }),
+  ).not.toBeChecked()
+  expect(state.bodies).toHaveLength(0)
+  await dialog.getByRole("button", { name: "确认布置给 1 人" }).click()
+  await expect.poll(() => state.bodies.length).toBe(1)
+  expect(state.bodies[0]).toMatchObject({
+    student_ids: ["alice"],
+    item_ids: ["item"],
+  })
 })
