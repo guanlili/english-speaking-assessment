@@ -62,6 +62,7 @@ function TeacherBoardPage() {
   const { t } = useI18n()
   const { code } = useParams({ from: "/t/$code/" })
   const queryClient = useQueryClient()
+  const rosterRef = useRef<HTMLDivElement>(null)
   const [reviewDirty, setReviewDirty] = useState(false)
   const allowReviewLeave = () =>
     !reviewDirty ||
@@ -184,7 +185,16 @@ function TeacherBoardPage() {
   const hasStudents = board.students.length > 0
 
   const filteredStudents = board.students.filter((st) => {
-    if (statusFilter !== "all" && boardStatusOf(st) !== statusFilter) {
+    if (
+      statusFilter === "unfinished" &&
+      !(st.total_count > 0 && st.done_count < st.total_count)
+    )
+      return false
+    if (
+      statusFilter !== "all" &&
+      statusFilter !== "unfinished" &&
+      boardStatusOf(st) !== statusFilter
+    ) {
       return false
     }
     if (
@@ -432,6 +442,7 @@ function TeacherBoardPage() {
           </TabsContent>
           <TabsContent value="results" className="space-y-6">
             <ClassroomLiveStatus
+              compact
               code={code}
               students={board.students}
               onStudent={(id) => {
@@ -440,27 +451,65 @@ function TeacherBoardPage() {
                 setExpandedId(id)
               }}
             />
-            <ClassroomContactPanel code={code} students={board.students} />
-            <LessonReview
-              code={code}
-              exerciseId={board.current_exercise?.id}
-              students={board.students}
-              isExam={board.current_exercise?.is_exam === true}
-              onDirtyChange={setReviewDirty}
-            />
-            <FollowupManager
-              code={code}
-              students={board.students}
-              currentExerciseId={board.current_exercise?.id}
-            />
-            <ClassroomIssues
-              code={code}
-              onStudent={(id) => {
-                setStatusFilter("all")
-                setNameQuery("")
-                setExpandedId(id)
-              }}
-            />
+            <section
+              className="space-y-4 rounded-2xl border bg-muted/20 p-4 sm:p-5"
+              aria-label={t({ zh: "课堂待办", en: "Classroom actions" })}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold">
+                    {t({ zh: "课堂待办", en: "Classroom actions" })}
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {t({
+                      zh: `仍有 ${board.students.filter((student) => student.total_count > 0 && student.done_count < student.total_count).length} 位学生未完成全部题目；优先处理求助和异常。`,
+                      en: `${board.students.filter((student) => student.total_count > 0 && student.done_count < student.total_count).length} students have unfinished items. Prioritize help and reported issues.`,
+                    })}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="min-h-11"
+                  onClick={() => {
+                    setStatusFilter("unfinished")
+                    setNameQuery("")
+                    rosterRef.current?.scrollIntoView({ block: "start" })
+                  }}
+                >
+                  {t({
+                    zh: "查看未完成学生",
+                    en: "View students with unfinished items",
+                  })}
+                </Button>
+              </div>
+              <div className="grid items-start gap-4 xl:grid-cols-2">
+                <ClassroomContactPanel code={code} students={board.students} />
+                <ClassroomIssues
+                  code={code}
+                  onStudent={(id) => {
+                    setStatusFilter("all")
+                    setNameQuery("")
+                    setExpandedId(id)
+                  }}
+                />
+              </div>
+            </section>
+            <div className="grid items-start gap-4 lg:grid-cols-2">
+              <LessonReview
+                compact
+                code={code}
+                exerciseId={board.current_exercise?.id}
+                students={board.students}
+                isExam={board.current_exercise?.is_exam === true}
+                onDirtyChange={setReviewDirty}
+              />
+              <FollowupManager
+                compact
+                code={code}
+                students={board.students}
+                currentExerciseId={board.current_exercise?.id}
+              />
+            </div>
             {board.current_exercise && (
               <div className="flex flex-col gap-4 rounded-2xl border border-border/80 bg-card p-5 text-sm lg:flex-row lg:items-center">
                 <div className="min-w-0 flex-1 space-y-2">
@@ -502,22 +551,24 @@ function TeacherBoardPage() {
                 }
               />
             )}
-            <BoardRosterCard
-              code={code}
-              hasStudents={hasStudents}
-              filteredStudents={filteredStudents}
-              totalStudents={board.students.length}
-              statusFilter={statusFilter}
-              onStatusFilterChange={setStatusFilter}
-              nameQuery={nameQuery}
-              onNameQueryChange={setNameQuery}
-              onClearFilters={clearFilters}
-              isExamPublish={board.current_exercise?.is_exam === true}
-              expandedId={expandedId}
-              onToggleRow={toggleRow}
-              onShareLink={() => void shareLink()}
-              onExportCsv={exportCsv}
-            />
+            <div ref={rosterRef} id="classroom-roster" className="scroll-mt-4">
+              <BoardRosterCard
+                code={code}
+                hasStudents={hasStudents}
+                filteredStudents={filteredStudents}
+                totalStudents={board.students.length}
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
+                nameQuery={nameQuery}
+                onNameQueryChange={setNameQuery}
+                onClearFilters={clearFilters}
+                isExamPublish={board.current_exercise?.is_exam === true}
+                expandedId={expandedId}
+                onToggleRow={toggleRow}
+                onShareLink={() => void shareLink()}
+                onExportCsv={exportCsv}
+              />
+            </div>
 
             <BoardTeachingActions
               attentionCount={attentionStudents.length}

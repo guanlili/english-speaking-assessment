@@ -101,6 +101,16 @@ export function StudentClassroomInbox({ code }: { code: string }) {
               })}
         </p>
       )}
+      {(active?.reply_text || (!active && lastResolvedHelp?.reply_text)) && (
+        <div className="space-y-2 rounded-xl border p-3">
+          <h3 className="text-sm font-medium">
+            {t({ zh: "老师的答复", en: "Teacher reply" })}
+          </h3>
+          <p className="whitespace-pre-wrap break-words text-sm">
+            {active?.reply_text ?? lastResolvedHelp?.reply_text}
+          </p>
+        </div>
+      )}
       {query.isError ? (
         <Button
           variant="outline"
@@ -208,6 +218,15 @@ export function StudentClassroomInbox({ code }: { code: string }) {
                   <p className="text-xs text-muted-foreground">
                     {formatDateTime(row.created_at, lang)}
                   </p>
+                  {row.due_at && (
+                    <p className="text-sm">
+                      {t({ zh: "截止：", en: "Due: " })}
+                      {formatDateTime(row.due_at, lang)}
+                      {!row.read_at &&
+                        new Date(row.due_at).getTime() < Date.now() &&
+                        ` · ${t({ zh: "已过期，请查看并联系老师", en: "Past due; read this and contact your teacher" })}`}
+                    </p>
+                  )}
                   {row.read_at ? (
                     <p className="text-sm">
                       {t({

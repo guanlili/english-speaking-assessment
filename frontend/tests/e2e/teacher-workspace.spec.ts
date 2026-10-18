@@ -186,3 +186,72 @@ for (const width of [390, 820, 1180]) {
     })
   }
 }
+
+for (const width of [390, 820, 1180]) {
+  test(`@webkit classroom actions prioritize unfinished work at ${width}px`, async ({
+    page,
+  }) => {
+    await mockWorkspace(page, "zh")
+    await page.setViewportSize({ width, height: 1000 })
+    await page.route("**/api/v1/classes/DESIGN/board", async (route) => {
+      await route.fulfill({
+        json: {
+          class_size: 40,
+          students: [
+            {
+              student_id: "unfinished",
+              display_name: "Still practicing",
+              done_count: 1,
+              total_count: 2,
+              has_pending: false,
+              items: [],
+            },
+            {
+              student_id: "finished",
+              display_name: "Already finished",
+              done_count: 2,
+              total_count: 2,
+              has_pending: false,
+              items: [],
+            },
+          ],
+          items: [],
+          submitted_count: 2,
+          pending_count: 0,
+        },
+      })
+    })
+    await page.goto("/t/DESIGN")
+    await page.getByRole("tab", { name: "学生结果", exact: true }).click()
+    const actions = page.getByRole("region", { name: "课堂待办", exact: true })
+    await expect(actions.getByText(/仍有 1 位学生/)).toBeVisible()
+    await actions
+      .getByRole("button", { name: "查看未完成学生", exact: true })
+      .click()
+    await expect(page.getByLabel("练习状态筛选", { exact: true })).toHaveValue(
+      "unfinished",
+    )
+    await expect(
+      page
+        .locator("#classroom-roster")
+        .getByText("Still practicing", { exact: true }),
+    ).toBeVisible()
+    await expect(
+      page
+        .locator("#classroom-roster")
+        .getByText("Already finished", { exact: true }),
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole("button", { name: "布置补练", exact: true }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole("tab", { name: "待完成", exact: true }),
+    ).toBeHidden()
+    await noPageOverflow(page)
+    await page.screenshot({
+      path: test.info().outputPath("classroom-actions.png"),
+      fullPage: true,
+      animations: "disabled",
+    })
+  })
+}

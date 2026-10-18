@@ -258,6 +258,11 @@ export type ClassMessagePublic = {
     read_at: (string | null);
     resolved_at: (string | null);
     resolution: (string | null);
+    reply_text?: (string | null);
+    replied_at?: (string | null);
+    reply_revision?: number;
+    due_at?: (string | null);
+    reminder_of?: (string | null);
 };
 
 export type ClassReviewPublic = {
@@ -563,10 +568,38 @@ export type FollowupCreated = {
     id: string;
 };
 
+export type FollowupEvidence = {
+    attempt_id: string;
+    status: string;
+    engine: string;
+    overall: (number | null);
+    teacher_feedback: (string | null);
+    teacher_focus: boolean;
+    created_at: (string | null);
+};
+
 export type FollowupItem = {
     id: string;
     type: string;
     text: string;
+};
+
+export type FollowupItemOutcome = {
+    item_id: string;
+    text: string;
+    item_type: string;
+    original: (FollowupEvidence | null);
+    followup: (FollowupEvidence | null);
+    reference_change: (number | null);
+};
+
+export type FollowupOutcomes = {
+    task_id: string;
+    title: string;
+    source_title: (string | null);
+    assigned_at: (string | null);
+    total_students: number;
+    students: Array<FollowupStudentOutcome>;
 };
 
 export type FollowupProgress = {
@@ -595,6 +628,14 @@ export type FollowupStarted = {
     session_id: string;
 };
 
+export type FollowupStudentOutcome = {
+    student_id: string;
+    display_name: string;
+    completed_items: number;
+    total_items: number;
+    items: Array<FollowupItemOutcome>;
+};
+
 export type FrameFavoriteRequest = {
     frame_id: string;
 };
@@ -610,6 +651,12 @@ export type GenerateRequest = {
     band?: string;
     count?: number;
     hint?: (string | null);
+};
+
+export type HelpReplyWrite = {
+    text: string;
+    expected_revision: number;
+    resolve?: boolean;
 };
 
 export type HelpRequestWrite = {
@@ -1025,10 +1072,15 @@ export type QuestionUpdate = {
     prep_seconds?: (number | null);
 };
 
+export type ReminderRepeatWrite = {
+    request_id: string;
+};
+
 export type ReminderWrite = {
     request_id: string;
     student_ids: Array<(string)>;
     text: string;
+    due_at?: (string | null);
 };
 
 export type RepeatSentence = {
@@ -2901,6 +2953,15 @@ export type ClassesCancelClassFollowupData = {
 
 export type ClassesCancelClassFollowupResponse = (unknown);
 
+export type ClassesReadFollowupOutcomesData = {
+    code: string;
+    limit?: number;
+    offset?: number;
+    taskId: string;
+};
+
+export type ClassesReadFollowupOutcomesResponse = (FollowupOutcomes);
+
 export type ClassesReportClassroomActivityData = {
     code: string;
     requestBody: ClassroomActivityIn;
@@ -3010,6 +3071,22 @@ export type ClassesActOnClassMessageData = {
 };
 
 export type ClassesActOnClassMessageResponse = (ClassMessagePublic);
+
+export type ClassesReplyToClassHelpData = {
+    code: string;
+    messageId: string;
+    requestBody: HelpReplyWrite;
+};
+
+export type ClassesReplyToClassHelpResponse = (ClassMessagePublic);
+
+export type ClassesRepeatClassReminderData = {
+    code: string;
+    messageId: string;
+    requestBody: ReminderRepeatWrite;
+};
+
+export type ClassesRepeatClassReminderResponse = (ClassMessagePublic);
 
 export type LoginReadLoginOptionsResponse = (LoginOptions);
 

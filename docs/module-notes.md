@@ -133,3 +133,10 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - `teaching_actions.py`：逐人题单按集合分组，调用 `create_followup(commit=False)`，全部校验通过后一次提交；课堂锁保护版本与重试，原发布快照不变。诊断接口额外返回逐人 `targets`，保留旧并集字段。
 - `class_messages.py` / `services/classroom_messages.py`：学生求助序列化，提醒按发送请求 ID 去重；教师仅能查看/处理求助，学生仅能撤回本人求助、确认本人提醒。待处理求助与未读提醒在学生查询中优先，教师列表先筛当前成员再分页。
 - 前端 `ClassReviewEditor` / `LessonReview` / `ExerciseHistory` 支持持续讲评；`FollowupManager` 支持逐人预览。`ClassroomContactPanel` 为教师收发入口，`StudentClassroomInbox` 在首页及学习消息可用，`PublishedClassSummaries` 在首页显示公开小结。全部通过生成客户端调用。
+
+## 补练效果与消息处理闭环（2026-10-18）
+
+- `class_followup_outcomes.py` / `services/followup_outcomes.py` 提供教师专用补练效果，来源与补练会话按课堂/发布/学生/题目隔离，SQL 窗口函数选最新作答，原作答额外限定提交时间不晚于补练发布。来源为活动考试时拒绝，个人考试反馈仍锁定时隐藏原作答。仅同引擎完成记录计算参考分差。
+- `ClassroomMessage` 新增可空 `reply_text/replied_at/due_at/reminder_of` 和默认 0 的 `reply_revision`，迁移 `dbc789e98708`；旧消息语义不变。`class_messages.py` 新增 PUT 求助答复和 POST `/reminders/{id}/repeat`；保留旧标记已处理接口。
+- 再次提醒按课堂→消息的锁顺序串行，绑定原始提醒链，重复请求返回原记录；同链 60 秒冷却。已读确认也按课堂→消息顺序锁定并同步同链已读，不伪造任务完成。截止时间创建时必须含时区且晚于服务端当前时间；重试与重复提醒保留原截止时间。
+- 前端 `FollowupOutcomesDialog` 使用生成客户端按 10 人分页查看证据，可进入 `AttemptFeedbackDialog` 点评，关闭详情后刷新效果。`HelpReplyEditor` 提供带版本答复；`ClassroomContactPanel` 增加历史/未读筛选、截止时间和重复提醒。教师课堂页集中待办，其他工具默认折叠但保留发布操作入口。
