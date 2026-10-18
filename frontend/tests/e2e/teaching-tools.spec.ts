@@ -3,11 +3,20 @@ import { expect, type Page, test } from "@playwright/test"
 async function setup(page: Page, lang = "zh") {
   let review = { revision: 0, notes: {} as Record<string, string>, summary: "" }
   const state = {
+    failDeviceReport: false,
     requests: [] as { path: string; body: Record<string, unknown> | null }[],
   }
   await page.addInitScript((lang) => {
     localStorage.setItem("access_token", "teacher-token")
     localStorage.setItem("esa:lang", lang)
+    localStorage.setItem(
+      "esa:student:COACH",
+      JSON.stringify({
+        id: "alice",
+        user_id: "alice-user",
+        display_name: "Alice",
+      }),
+    )
   }, lang)
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url())
@@ -15,6 +24,14 @@ async function setup(page: Page, lang = "zh") {
     const body =
       route.request().method() === "GET" ? null : route.request().postDataJSON()
     state.requests.push({ path, body })
+    if (
+      state.failDeviceReport &&
+      path.endsWith("/activity") &&
+      body?.device_check === "passed"
+    ) {
+      await route.fulfill({ status: 503, json: { detail: "Unavailable" } })
+      return
+    }
     let json: unknown = []
     if (path.endsWith("/review")) {
       if (body)
@@ -256,12 +273,61 @@ test("@webkit preflight requires playback confirmation before reporting success"
 }) => {
   const state = await setup(page)
   await page.clock.install()
+  await mockPreflightRecorder(page)
+  await page.goto(fixture)
+  await page.getByRole("button", { name: "开始 5 秒试录" }).click()
+  await expect(
+    page.getByRole("button", { name: "试录中，请说一句英语…" }),
+  ).toBeDisabled()
+  await page.clock.runFor(5100)
+  const confirm = page.getByRole("button", { name: "听得清楚，检查课堂连接" })
+  await expect(confirm).toBeVisible({ timeout: 10000 })
+  await expect(confirm).toBeDisabled()
+  expect(
+    state.requests.some(
+      (row) =>
+        row.path.endsWith("/activity") && row.body?.device_check === "passed",
+    ),
+  ).toBe(false)
+  await page.locator("audio[controls]").dispatchEvent("ended")
+  await confirm.click()
+  await expect(page.getByText("试录、回放和课堂连接检查通过。")).toBeVisible()
+  await expect
+    .poll(
+      () =>
+        state.requests.find((row) => row.path.endsWith("/activity"))?.body
+          ?.device_check,
+    )
+    .toBe("passed")
+  expect(
+    state.requests.some(
+      (row) =>
+        row.path.includes("/exam/start") || row.path.endsWith("/attempts"),
+    ),
+  ).toBe(false)
+  const passReports = () =>
+    state.requests.filter((row) => row.body?.device_check === "passed").length
+  expect(passReports()).toBe(1)
+  await page.reload()
+  await expect(page.getByText("试录、回放和课堂连接检查通过。")).toBeVisible()
+  await expect(page.getByRole("button", { name: "开始 5 秒试录" })).toHaveCount(
+    0,
+  )
+  expect(passReports()).toBe(1)
+  await page.clock.fastForward(2 * 60 * 60 * 1000)
+  await expect(
+    page.getByRole("button", { name: "开始 5 秒试录" }),
+  ).toBeVisible()
+  expect(passReports()).toBe(1)
+})
+
+async function mockPreflightRecorder(page: Page) {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
-      value: {
+      value: Object.assign(new EventTarget(), {
         getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }),
-      },
+      }),
     })
     class TestRecorder {
       state = "inactive"
@@ -300,35 +366,110 @@ test("@webkit preflight requires playback confirmation before reporting success"
     }
     window.MediaRecorder = TestRecorder as unknown as typeof MediaRecorder
   })
+}
+
+test("@webkit failed synchronization does not remember a passed device test", async ({
+  page,
+}) => {
+  const state = await setup(page)
+  state.failDeviceReport = true
+  await page.clock.install()
+  await mockPreflightRecorder(page)
   await page.goto(fixture)
   await page.getByRole("button", { name: "开始 5 秒试录" }).click()
-  await expect(
-    page.getByRole("button", { name: "试录中，请说一句英语…" }),
-  ).toBeDisabled()
   await page.clock.runFor(5100)
-  const confirm = page.getByRole("button", { name: "听得清楚，检查课堂连接" })
-  await expect(confirm).toBeVisible({ timeout: 10000 })
-  await expect(confirm).toBeDisabled()
-  expect(
-    state.requests.some(
-      (row) =>
-        row.path.endsWith("/activity") && row.body?.device_check === "passed",
-    ),
-  ).toBe(false)
   await page.locator("audio[controls]").dispatchEvent("ended")
-  await confirm.click()
-  await expect(page.getByText("试录、回放和课堂连接检查通过。")).toBeVisible()
-  await expect
-    .poll(
-      () =>
-        state.requests.find((row) => row.path.endsWith("/activity"))?.body
-          ?.device_check,
-    )
-    .toBe("passed")
+  await page.getByRole("button", { name: "听得清楚，检查课堂连接" }).click()
+  await expect(page.getByRole("alert")).toContainText("自检结果尚未同步给老师")
   expect(
-    state.requests.some(
-      (row) =>
-        row.path.includes("/exam/start") || row.path.endsWith("/attempts"),
+    await page.evaluate(
+      () =>
+        Object.keys(sessionStorage).filter((key) =>
+          key.startsWith("esa:device-check:"),
+        ).length,
     ),
-  ).toBe(false)
+  ).toBe(0)
+  state.failDeviceReport = false
+  await page.getByRole("button", { name: "听得清楚，检查课堂连接" }).click()
+  await expect(page.getByText("试录、回放和课堂连接检查通过。")).toBeVisible()
+  await page.getByRole("button", { name: "重新检查", exact: true }).click()
+  await page.reload()
+  await expect(
+    page.getByRole("button", { name: "开始 5 秒试录" }),
+  ).toBeVisible()
+})
+
+test("@webkit device changes invalidate a remembered check without renewing its report", async ({
+  page,
+}) => {
+  const state = await setup(page)
+  await page.addInitScript(() => {
+    sessionStorage.setItem(
+      `esa:device-check:${JSON.stringify(["alice-user", "alice", "COACH"])}`,
+      String(Date.now()),
+    )
+  })
+  await mockPreflightRecorder(page)
+  await page.goto(fixture)
+  await expect(
+    page.getByRole("button", { name: "重新检查", exact: true }),
+  ).toBeVisible()
+  await page.evaluate(() =>
+    navigator.mediaDevices.dispatchEvent(new Event("devicechange")),
+  )
+  await expect(
+    page.getByRole("button", { name: "开始 5 秒试录" }),
+  ).toBeVisible()
+  expect(
+    state.requests.filter((row) => row.body?.device_check === "passed"),
+  ).toHaveLength(0)
+  expect(
+    await page.evaluate(
+      () =>
+        Object.keys(sessionStorage).filter((key) =>
+          key.startsWith("esa:device-check:"),
+        ).length,
+    ),
+  ).toBe(0)
+})
+
+test("@webkit a late response after account change cannot cache a passed check", async ({
+  page,
+}) => {
+  await setup(page)
+  await page.clock.install()
+  await mockPreflightRecorder(page)
+  let release = () => {}
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let received = false
+  await page.route("**/activity", async (route) => {
+    received = true
+    await pending
+    await route.fulfill({ json: {} })
+  })
+  await page.goto(fixture)
+  await page.getByRole("button", { name: "开始 5 秒试录" }).click()
+  await page.clock.runFor(5100)
+  await page.locator("audio[controls]").dispatchEvent("ended")
+  await page.getByRole("button", { name: "听得清楚，检查课堂连接" }).click()
+  await expect.poll(() => received).toBe(true)
+  await page.evaluate(() =>
+    localStorage.setItem("access_token", "different-account-token"),
+  )
+  const responded = page.waitForResponse((response) =>
+    response.url().endsWith("/activity"),
+  )
+  release()
+  await responded
+  await expect(page.getByText("试录、回放和课堂连接检查通过。")).toHaveCount(0)
+  expect(
+    await page.evaluate(
+      () =>
+        Object.keys(sessionStorage).filter((key) =>
+          key.startsWith("esa:device-check:"),
+        ).length,
+    ),
+  ).toBe(0)
 })

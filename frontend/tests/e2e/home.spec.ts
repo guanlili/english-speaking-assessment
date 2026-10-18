@@ -9,6 +9,9 @@ async function mockHome(page: Page) {
     revision: "v1",
     title: "Unit 1 Travel",
     todayReads: 0,
+    failSummaries: false,
+    failFollowups: false,
+    failMessages: false,
     attempts: [] as { item_id: string; status: string }[],
     exam: null as { started: boolean; ended: boolean } | null,
   }
@@ -27,6 +30,14 @@ async function mockHome(page: Page) {
   })
   await page.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname
+    if (
+      (state.failSummaries && path.endsWith("/review-summaries")) ||
+      (state.failFollowups && path.endsWith("/followups")) ||
+      (state.failMessages && path.endsWith("/my-messages"))
+    ) {
+      await route.fulfill({ status: 503, json: { detail: "Unavailable" } })
+      return
+    }
     let body: unknown = []
     if (path.endsWith("/users/me")) {
       body = {
@@ -157,6 +168,34 @@ for (const width of [390, 820, 1180]) {
             document.documentElement.clientWidth,
         ),
       ).toBeLessThanOrEqual(1)
+      await expect(
+        page.getByRole("button", {
+          name: lang === "zh" ? "查看补练历史" : "View practice history",
+        }),
+      ).toBeVisible()
+      await expect(
+        page.getByRole("region", {
+          name:
+            lang === "zh"
+              ? "老师的课堂小结"
+              : "Class summaries from your teacher",
+        }),
+      ).toHaveCount(0)
+      await expect(
+        page.getByRole("button", {
+          name: lang === "zh" ? "发送求助" : "Send help request",
+        }),
+      ).toBeHidden()
+      const header = page.locator("header")
+      const right = await header.locator(":scope > div").last().boundingBox()
+      const label =
+        width < 640
+          ? header.getByRole("link").first()
+          : header.getByText(lang === "zh" ? "今日任务" : "Today’s Tasks", {
+              exact: true,
+            })
+      const left = await label.boundingBox()
+      expect(left!.x + left!.width).toBeLessThanOrEqual(right!.x + 1)
       await page.screenshot({
         path: `/tmp/student-tasks-${width}-${lang}.png`,
         fullPage: true,
@@ -225,4 +264,49 @@ test("home sees a new publication and unchanged revisions do not reload the plan
     new URL(response.url()).pathname.endsWith("/revision"),
   )
   expect(state.todayReads).toBe(loaded)
+})
+
+test("@webkit empty panels preserve history and help without empty pagination", async ({
+  page,
+}) => {
+  await mockHome(page)
+  await page.goto(`/home/${CODE}`)
+  const tasks = page.getByRole("region", { name: "老师布置的补练" })
+  await tasks.getByRole("button", { name: "查看补练历史" }).click()
+  await expect(tasks.getByText("暂无补练历史。")).toBeVisible()
+  await expect(tasks.getByRole("navigation", { name: "补练分页" })).toHaveCount(
+    0,
+  )
+  const inbox = page.getByRole("region", { name: "课堂消息与求助" })
+  await inbox.getByText("向老师举手求助", { exact: true }).click()
+  await expect(inbox.getByLabel("求助类型")).toBeVisible()
+  await inbox.getByLabel("求助补充说明（可选）").fill("Need help")
+  await inbox.getByText("向老师举手求助", { exact: true }).click()
+  await inbox.getByText("向老师举手求助", { exact: true }).click()
+  await expect(inbox.getByLabel("求助补充说明（可选）")).toHaveValue(
+    "Need help",
+  )
+})
+
+test("@webkit loading errors remain visible instead of becoming empty states", async ({
+  page,
+}) => {
+  const state = await mockHome(page)
+  state.failSummaries = true
+  state.failFollowups = true
+  state.failMessages = true
+  await page.goto(`/home/${CODE}`)
+  await expect(
+    page.getByRole("button", { name: "小结加载失败，重试" }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole("button", { name: "消息加载失败，重试" }),
+  ).toBeVisible()
+  const tasks = page.getByRole("region", { name: "老师布置的补练" })
+  await expect(
+    tasks.getByRole("button", { name: "重试", exact: true }),
+  ).toBeVisible({ timeout: 15000 })
+  await expect(tasks.getByRole("button", { name: "查看补练历史" })).toHaveCount(
+    0,
+  )
 })

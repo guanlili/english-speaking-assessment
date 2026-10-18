@@ -201,7 +201,7 @@ function StudentShell({
               <p className="hidden text-[10px] tracking-[0.14em] text-muted-foreground md:block">
                 CHARCOAL / {t({ zh: "学习空间", en: "Learning Space" })}
               </p>
-              <p className="whitespace-nowrap text-sm font-semibold md:mt-1">
+              <p className="sr-only whitespace-nowrap text-sm font-semibold sm:not-sr-only md:mt-1">
                 {current ? t(current.label) : ""}
               </p>
             </div>
@@ -210,7 +210,7 @@ function StudentShell({
             <Link
               to="/classroom/$code"
               params={{ code }}
-              className="hidden items-center gap-2 rounded-full border border-border/80 bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 sm:flex"
+              className="hidden items-center gap-2 rounded-full border border-border/80 bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 lg:flex"
             >
               <UsersRound className="size-3.5" />{" "}
               {t({ zh: "课堂", en: "Classroom" })} {code}

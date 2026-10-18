@@ -268,6 +268,7 @@ test("@webkit help resolution and reminders require student acknowledgment", asy
   await page.goto(fixture)
   const inbox = page.getByRole("region", { name: "课堂消息与求助" })
   const teacher = page.getByRole("region", { name: "学生求助与站内提醒" })
+  await inbox.getByText("向老师举手求助", { exact: true }).click()
   await inbox.getByLabel("求助补充说明（可选）").fill("My microphone is quiet")
   await inbox.getByRole("button", { name: "发送求助" }).click()
   await expect(inbox.getByText("已向老师求助，等待查看")).toBeVisible()
@@ -303,6 +304,10 @@ test("@webkit P1 controls provide English labels at tablet width", async ({
   await expect(
     page.getByRole("heading", { name: "Student help and reminders" }),
   ).toBeVisible()
+  await expect(
+    page.getByRole("button", { name: "Send help request" }),
+  ).toBeHidden()
+  await page.getByText("Raise your hand for help", { exact: true }).click()
   await expect(
     page.getByRole("button", { name: "Send help request" }),
   ).toBeVisible()

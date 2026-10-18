@@ -7,6 +7,7 @@ export function PublishedClassSummaries({ code }: { code: string }) {
   const { t, lang } = useI18n()
   const [offset, setOffset] = useState(0)
   const query = usePublishedClassSummaries(code, offset)
+  if (query.isSuccess && offset === 0 && query.data.length === 0) return null
   return (
     <section
       aria-label={t({
