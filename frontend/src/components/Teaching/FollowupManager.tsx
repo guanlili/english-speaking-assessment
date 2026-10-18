@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { ApiError, type BoardStudent, ClassesService } from "@/client"
+import { FollowupOutcomesDialog } from "@/components/Teaching/FollowupOutcomesDialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -24,6 +25,7 @@ type FollowupManagerProps = {
   code: string
   students: BoardStudent[]
   currentExerciseId?: string | null
+  compact?: boolean
 }
 
 export function FollowupManager(props: FollowupManagerProps) {
@@ -34,10 +36,12 @@ function FollowupManagerList({
   code,
   students,
   currentExerciseId,
+  compact = false,
 }: FollowupManagerProps) {
   const { t, lang } = useI18n()
   const client = useQueryClient()
   const [open, setOpen] = useState(false)
+  const [outcomeTask, setOutcomeTask] = useState<string | null>(null)
   const [status, setStatus] = useState<"active" | "history">("active")
   const [offset, setOffset] = useState(0)
   const tasks = useQuery({
@@ -107,136 +111,162 @@ function FollowupManagerList({
           onClose={() => setOpen(false)}
         />
       )}
-      <Tabs
-        value={status}
-        onValueChange={(value) => {
-          setStatus(value === "history" ? "history" : "active")
-          setOffset(0)
-        }}
-      >
-        <TabsList
-          className="h-auto"
-          aria-label={t({ zh: "补练状态", en: "Practice status" })}
+      <details open={compact ? undefined : true}>
+        <summary
+          className={`min-h-11 cursor-pointer py-3 font-medium ${compact ? "" : "hidden"}`}
         >
-          <TabsTrigger className="min-h-11" value="active">
-            {t({ zh: "待完成", en: "To do" })}
-          </TabsTrigger>
-          <TabsTrigger className="min-h-11" value="history">
-            {t({ zh: "历史", en: "History" })}
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value={status} className="space-y-3">
-          {tasks.isError ? (
-            <Button
-              variant="outline"
-              className="min-h-11"
-              onClick={() => void tasks.refetch()}
-            >
-              {t({
-                zh: "补练加载失败，点击重试",
-                en: "Could not load tasks. Retry",
-              })}
-            </Button>
-          ) : tasks.isPending ? (
-            <p role="status">{t({ zh: "正在加载…", en: "Loading…" })}</p>
-          ) : pageTasks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {status === "active"
-                ? t({ zh: "暂无待完成补练。", en: "No practice left to do." })
-                : t({ zh: "暂无补练历史。", en: "No practice history yet." })}
-            </p>
-          ) : (
-            pageTasks.map((task) => (
-              <article
-                key={task.id}
-                className="space-y-3 rounded-xl border p-4"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="min-w-0 break-words">
-                    <h3 className="font-medium">{task.title}</h3>
-                    <p className="text-xs text-muted-foreground">
-                      {task.created_at && formatDateTime(task.created_at, lang)}{" "}
-                      ·{" "}
-                      {t({
-                        zh: `${task.item_count} 题 · ${task.targets.filter((row) => row.done_count === row.total_count).length}/${task.targets.length} 人完成`,
-                        en: `${task.item_count} items · ${task.targets.filter((row) => row.done_count === row.total_count).length}/${task.targets.length} completed`,
-                      })}
-                    </p>
-                  </div>
-                  {task.status === "followup_closed" ? (
-                    <span className="text-sm">
-                      {t({ zh: "已撤销", en: "Withdrawn" })}
-                    </span>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      className="min-h-11"
-                      disabled={cancel.isPending}
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            t({
-                              zh: "撤销后学生不能继续提交，已有记录保留。确认撤销？",
-                              en: "Withdraw this task? Further submissions will be blocked; existing records are kept.",
-                            }),
-                          )
-                        )
-                          cancel.mutate(task.id)
-                      }}
-                    >
-                      {t({ zh: "撤销补练", en: "Withdraw task" })}
-                    </Button>
-                  )}
-                </div>
-                <ul className="grid gap-2 text-sm sm:grid-cols-2">
-                  {task.targets.map((row) => (
-                    <li key={row.student_id} className="min-w-0 break-words">
-                      {row.display_name} · {row.done_count}/{row.total_count}{" "}
-                      {row.has_pending
-                        ? t({ zh: "评分中", en: "Scoring" })
-                        : row.has_failures
-                          ? t({
-                              zh: "有评分失败",
-                              en: "Scoring failed",
-                            })
-                          : null}
-                    </li>
-                  ))}
-                </ul>
-              </article>
-            ))
-          )}
-          <nav
-            className="flex flex-wrap items-center gap-3"
-            aria-label={t({ zh: "补练分页", en: "Practice pages" })}
+          {t({
+            zh: "查看任务、进度与补练效果",
+            en: "View tasks, progress and outcomes",
+          })}
+        </summary>
+        <Tabs
+          value={status}
+          onValueChange={(value) => {
+            setStatus(value === "history" ? "history" : "active")
+            setOffset(0)
+          }}
+        >
+          <TabsList
+            className="h-auto"
+            aria-label={t({ zh: "补练状态", en: "Practice status" })}
           >
-            <Button
-              className="min-h-11"
-              variant="outline"
-              disabled={offset === 0 || tasks.isFetching}
-              onClick={() =>
-                setOffset((value) => Math.max(0, value - PAGE_SIZE))
-              }
+            <TabsTrigger className="min-h-11" value="active">
+              {t({ zh: "待完成", en: "To do" })}
+            </TabsTrigger>
+            <TabsTrigger className="min-h-11" value="history">
+              {t({ zh: "历史", en: "History" })}
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value={status} className="space-y-3">
+            {tasks.isError ? (
+              <Button
+                variant="outline"
+                className="min-h-11"
+                onClick={() => void tasks.refetch()}
+              >
+                {t({
+                  zh: "补练加载失败，点击重试",
+                  en: "Could not load tasks. Retry",
+                })}
+              </Button>
+            ) : tasks.isPending ? (
+              <p role="status">{t({ zh: "正在加载…", en: "Loading…" })}</p>
+            ) : pageTasks.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {status === "active"
+                  ? t({ zh: "暂无待完成补练。", en: "No practice left to do." })
+                  : t({ zh: "暂无补练历史。", en: "No practice history yet." })}
+              </p>
+            ) : (
+              pageTasks.map((task) => (
+                <article
+                  key={task.id}
+                  className="space-y-3 rounded-xl border p-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0 break-words">
+                      <h3 className="font-medium">{task.title}</h3>
+                      <p className="text-xs text-muted-foreground">
+                        {task.created_at &&
+                          formatDateTime(task.created_at, lang)}{" "}
+                        ·{" "}
+                        {t({
+                          zh: `${task.item_count} 题 · ${task.targets.filter((row) => row.done_count === row.total_count).length}/${task.targets.length} 人完成`,
+                          en: `${task.item_count} items · ${task.targets.filter((row) => row.done_count === row.total_count).length}/${task.targets.length} completed`,
+                        })}
+                      </p>
+                    </div>
+                    {task.status === "followup_closed" ? (
+                      <span className="text-sm">
+                        {t({ zh: "已撤销", en: "Withdrawn" })}
+                      </span>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        className="min-h-11"
+                        disabled={cancel.isPending}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              t({
+                                zh: "撤销后学生不能继续提交，已有记录保留。确认撤销？",
+                                en: "Withdraw this task? Further submissions will be blocked; existing records are kept.",
+                              }),
+                            )
+                          )
+                            cancel.mutate(task.id)
+                        }}
+                      >
+                        {t({ zh: "撤销补练", en: "Withdraw task" })}
+                      </Button>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={() => setOutcomeTask(task.id)}
+                  >
+                    {t({ zh: "查看补练效果", en: "View follow-up outcomes" })}
+                  </Button>
+                  <ul className="grid gap-2 text-sm sm:grid-cols-2">
+                    {task.targets.map((row) => (
+                      <li key={row.student_id} className="min-w-0 break-words">
+                        {row.display_name} · {row.done_count}/{row.total_count}{" "}
+                        {row.has_pending
+                          ? t({ zh: "评分中", en: "Scoring" })
+                          : row.has_failures
+                            ? t({
+                                zh: "有评分失败",
+                                en: "Scoring failed",
+                              })
+                            : null}
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ))
+            )}
+            <nav
+              className="flex flex-wrap items-center gap-3"
+              aria-label={t({ zh: "补练分页", en: "Practice pages" })}
             >
-              {t({ zh: "上一页", en: "Previous" })}
-            </Button>
-            <span className="text-sm" aria-live="polite">
-              {t({
-                zh: `第 ${offset / PAGE_SIZE + 1} 页`,
-                en: `Page ${offset / PAGE_SIZE + 1}`,
-              })}
-            </span>
-            <Button
-              className="min-h-11"
-              variant="outline"
-              disabled={!hasNext || tasks.isFetching || tasks.isError}
-              onClick={() => setOffset((value) => value + PAGE_SIZE)}
-            >
-              {t({ zh: "下一页", en: "Next" })}
-            </Button>
-          </nav>
-        </TabsContent>
-      </Tabs>
+              <Button
+                className="min-h-11"
+                variant="outline"
+                disabled={offset === 0 || tasks.isFetching}
+                onClick={() =>
+                  setOffset((value) => Math.max(0, value - PAGE_SIZE))
+                }
+              >
+                {t({ zh: "上一页", en: "Previous" })}
+              </Button>
+              <span className="text-sm" aria-live="polite">
+                {t({
+                  zh: `第 ${offset / PAGE_SIZE + 1} 页`,
+                  en: `Page ${offset / PAGE_SIZE + 1}`,
+                })}
+              </span>
+              <Button
+                className="min-h-11"
+                variant="outline"
+                disabled={!hasNext || tasks.isFetching || tasks.isError}
+                onClick={() => setOffset((value) => value + PAGE_SIZE)}
+              >
+                {t({ zh: "下一页", en: "Next" })}
+              </Button>
+            </nav>
+          </TabsContent>
+        </Tabs>
+      </details>
+      {outcomeTask && (
+        <FollowupOutcomesDialog
+          key={outcomeTask}
+          code={code}
+          taskId={outcomeTask}
+          onClose={() => setOutcomeTask(null)}
+        />
+      )}
     </section>
   )
 }

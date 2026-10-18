@@ -62,7 +62,7 @@
 | 练习/考试入口与回看（G01–G05） | `/p/{code}`、`/exam/{code}` | module-notes「通用功能」 |
 | 模考与课堂删除 | `services/exam.py`、`routes/attempts.py` | module-notes「模考模式」 |
 | 自动考试（E01–E10） | `services/exam_flow.py`、`AutomatedExamSession` | module-notes「自动考试流程」 |
-| 教师备课、诊断、点评、补练 | `class_composer.py`、`class_diagnostics.py`、`class_followups.py`、`class_reviews.py`、`class_messages.py` | `docs/teacher-platform-design.md` |
+| 教师备课、诊断、点评、补练 | `class_composer.py`、`class_diagnostics.py`、`class_followups.py`、`class_followup_outcomes.py`、`class_reviews.py`、`class_messages.py` | `docs/teacher-platform-design.md` |
 | 实时课堂 / 自检 / 诊断补练 / 复核 / 讲评 / 对比 / 阶段报告 | `class_teaching_tools.py`、`admin_content_copy.py`、`attempts.py` | `docs/teacher-platform-design.md`「课堂教学闭环增强」 |
 | 运行时与可观测 | `X-Request-ID`、metrics | `docs/runtime-observability.md` |
 | 备份与恢复 | `scripts/backup-local.sh` | `docs/backup-restore.md` |

@@ -461,7 +461,7 @@ async function openTaskList(
     await page
       .getByRole("tab", { name: en ? "Student Results" : "学生结果" })
       .click()
-  return page.getByRole("region", {
+  const tasks = page.getByRole("region", {
     name:
       role === "teacher"
         ? en
@@ -472,6 +472,14 @@ async function openTaskList(
           : "老师布置的补练",
     exact: true,
   })
+  if (role === "teacher")
+    await tasks
+      .getByText(
+        en ? "View tasks, progress and outcomes" : "查看任务、进度与补练效果",
+        { exact: true },
+      )
+      .click()
+  return tasks
 }
 
 for (const role of ["teacher", "student"] as const) {

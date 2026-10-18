@@ -18,7 +18,9 @@ export function LessonReview({
   code,
   exerciseId,
   onDirtyChange,
+  compact = false,
 }: {
+  compact?: boolean
   code: string
   exerciseId?: string | null
   students: BoardStudent[]
@@ -77,12 +79,22 @@ export function LessonReview({
         {t({ zh: "打开匿名讲评", en: "Open anonymous discussion" })}
       </Button>
       {exerciseId && (
-        <ClassReviewEditor
-          key={exerciseId}
-          code={code}
-          exerciseId={exerciseId}
-          onDirtyChange={setSummaryDirty}
-        />
+        <details open={compact ? undefined : true}>
+          <summary
+            className={`min-h-11 cursor-pointer py-3 text-sm font-medium ${compact ? "" : "hidden"}`}
+          >
+            {t({
+              zh: "课堂小结草稿与发布",
+              en: "Draft and publish a class summary",
+            })}
+          </summary>
+          <ClassReviewEditor
+            key={exerciseId}
+            code={code}
+            exerciseId={exerciseId}
+            onDirtyChange={setSummaryDirty}
+          />
+        </details>
       )}
       <Dialog
         open={open}

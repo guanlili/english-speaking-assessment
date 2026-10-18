@@ -2670,6 +2670,20 @@ class ClassroomMessage(SQLModel, table=True):
     read_at: datetime | None = Field(
         default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
     )
+    reply_text: str | None = Field(default=None, max_length=500)
+    replied_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    reply_revision: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    due_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    reminder_of: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="classroom_message.id",
+        ondelete="SET NULL",
+        index=True,
+    )
     resolution: str | None = Field(default=None, max_length=16)
     resolved_at: datetime | None = Field(
         default=None, sa_column=Column(DateTime(timezone=True), nullable=True)

@@ -12,6 +12,7 @@ export type BoardStudentStatus = "inactive" | "practicing" | "done" | "idle"
 /** 名单筛选下拉与 CSV 状态列共用的标签（键序即下拉展示序，勿重排）。 */
 export const BOARD_STATUS_LABELS: Record<string, BiString> = {
   all: { zh: "全部状态", en: "All statuses" },
+  unfinished: { zh: "仍有未完成题目", en: "Has unfinished items" },
   done: { zh: "已提交", en: "Submitted" },
   practicing: { zh: "评分中", en: "Scoring" },
   idle: { zh: "未提交", en: "Not submitted" },

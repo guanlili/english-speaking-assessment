@@ -26,6 +26,7 @@ const student: BoardStudent = {
     { item_id: "item", type: "question", status: "done", attempt_id: "answer" },
   ],
 }
+const compact = new URLSearchParams(location.search).has("compact")
 const p1 = new URLSearchParams(location.search).has("p1")
 const students = p1
   ? [student, { ...student, student_id: "ben", display_name: "Ben", items: [] }]
@@ -47,17 +48,20 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <main className="mx-auto max-w-5xl space-y-6 p-4">
         <ClassroomLiveStatus
+          compact={compact}
           code="COACH"
           students={students}
           onStudent={() => {}}
         />
         <LessonReview
+          compact={compact}
           code="COACH"
           exerciseId="source"
           students={students}
           isExam={false}
         />
         <FollowupManager
+          compact={compact}
           code="COACH"
           students={students}
           currentExerciseId="source"

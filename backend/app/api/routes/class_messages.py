@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import HTTPException, Query
+from pydantic import AwareDatetime
 from sqlalchemy import case
 from sqlmodel import Field, SQLModel, col, select
 
@@ -30,6 +31,11 @@ class ClassMessagePublic(SQLModel):
     read_at: datetime | None
     resolved_at: datetime | None
     resolution: str | None
+    reply_text: str | None = None
+    replied_at: datetime | None = None
+    reply_revision: int = 0
+    due_at: datetime | None = None
+    reminder_of: uuid.UUID | None = None
 
 
 class HelpRequestWrite(SQLModel):
@@ -42,6 +48,7 @@ class ReminderWrite(SQLModel):
     request_id: uuid.UUID
     student_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
     text: str = Field(min_length=1, max_length=500)
+    due_at: AwareDatetime | None = None
 
 
 def public_message(row: ClassroomMessage, student: Student) -> ClassMessagePublic:
@@ -165,7 +172,13 @@ def create_class_reminders(
     if len(students) != len(set(body.student_ids)):
         raise HTTPException(422, detail="Invalid reminder recipients")
     rows = classroom_messages.send_reminders(
-        session, classroom, students, current_user.id, body.request_id, body.text
+        session,
+        classroom,
+        students,
+        current_user.id,
+        body.request_id,
+        body.text,
+        body.due_at,
     )
     by_id = {student.id: student for student in students}
     return [public_message(row, by_id[row.student_id]) for row in rows]
@@ -203,4 +216,68 @@ def act_on_class_message(
             raise HTTPException(403, detail="Class message action forbidden")
     return public_message(
         classroom_messages.acknowledge_message(session, row, action), student
+    )
+
+
+class HelpReplyWrite(SQLModel):
+    text: str = Field(min_length=1, max_length=500)
+    expected_revision: int = Field(ge=0)
+    resolve: bool = True
+
+
+class ReminderRepeatWrite(SQLModel):
+    request_id: uuid.UUID
+
+
+def teacher_message(
+    session: SessionDep, code: str, message_id: uuid.UUID, user: CurrentUser
+) -> tuple[ClassroomMessage, Student]:
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, user)
+    row = session.get(ClassroomMessage, message_id)
+    student = session.get(Student, row.student_id) if row else None
+    if (
+        row is None
+        or row.classroom_id != classroom.id
+        or student is None
+        or student.classroom_id != classroom.id
+    ):
+        raise HTTPException(404, detail="Class message not found")
+    return row, student
+
+
+@router.put(
+    "/{code}/class-messages/{message_id}/reply", response_model=ClassMessagePublic
+)
+def reply_to_class_help(
+    session: SessionDep,
+    code: str,
+    message_id: uuid.UUID,
+    body: HelpReplyWrite,
+    current_user: CurrentUser,
+) -> ClassMessagePublic:
+    row, student = teacher_message(session, code, message_id, current_user)
+    return public_message(
+        classroom_messages.reply_to_help(
+            session, row, body.text, body.expected_revision, body.resolve
+        ),
+        student,
+    )
+
+
+@router.post("/{code}/reminders/{message_id}/repeat", response_model=ClassMessagePublic)
+def repeat_class_reminder(
+    session: SessionDep,
+    code: str,
+    message_id: uuid.UUID,
+    body: ReminderRepeatWrite,
+    current_user: CurrentUser,
+) -> ClassMessagePublic:
+    row, student = teacher_message(session, code, message_id, current_user)
+    classroom = _get_classroom(session, code)
+    return public_message(
+        classroom_messages.repeat_reminder(
+            session, classroom, row, student, current_user.id, body.request_id
+        ),
+        student,
     )
