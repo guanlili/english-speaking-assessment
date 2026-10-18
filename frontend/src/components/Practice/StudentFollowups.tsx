@@ -64,6 +64,33 @@ function StudentFollowupsList({ code }: { code: string }) {
   })
   const tasks = (query.data ?? []).slice(0, PAGE_SIZE)
   const hasNext = (query.data?.length ?? 0) > PAGE_SIZE
+  if (
+    query.isSuccess &&
+    status === "active" &&
+    offset === 0 &&
+    tasks.length === 0
+  ) {
+    return (
+      <section
+        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-5 py-3"
+        aria-label={t({
+          zh: "老师布置的补练",
+          en: "Practice from your teacher",
+        })}
+      >
+        <p className="text-sm text-muted-foreground">
+          {t({ zh: "暂无待完成补练。", en: "No practice left to do." })}
+        </p>
+        <Button
+          variant="ghost"
+          className="min-h-11"
+          onClick={() => setStatus("history")}
+        >
+          {t({ zh: "查看补练历史", en: "View practice history" })}
+        </Button>
+      </section>
+    )
+  }
   return (
     <section
       className="space-y-3 rounded-2xl border bg-card p-5"
@@ -181,35 +208,37 @@ function StudentFollowupsList({ code }: { code: string }) {
               )
             })
           )}
-          <nav
-            className="flex flex-wrap items-center gap-3"
-            aria-label={t({ zh: "补练分页", en: "Practice pages" })}
-          >
-            <Button
-              className="min-h-11"
-              variant="outline"
-              disabled={offset === 0 || query.isFetching}
-              onClick={() =>
-                setOffset((value) => Math.max(0, value - PAGE_SIZE))
-              }
+          {(offset > 0 || hasNext) && (
+            <nav
+              className="flex flex-wrap items-center gap-3"
+              aria-label={t({ zh: "补练分页", en: "Practice pages" })}
             >
-              {t({ zh: "上一页", en: "Previous" })}
-            </Button>
-            <span className="text-sm" aria-live="polite">
-              {t({
-                zh: `第 ${offset / PAGE_SIZE + 1} 页`,
-                en: `Page ${offset / PAGE_SIZE + 1}`,
-              })}
-            </span>
-            <Button
-              className="min-h-11"
-              variant="outline"
-              disabled={!hasNext || query.isFetching || query.isError}
-              onClick={() => setOffset((value) => value + PAGE_SIZE)}
-            >
-              {t({ zh: "下一页", en: "Next" })}
-            </Button>
-          </nav>
+              <Button
+                className="min-h-11"
+                variant="outline"
+                disabled={offset === 0 || query.isFetching}
+                onClick={() =>
+                  setOffset((value) => Math.max(0, value - PAGE_SIZE))
+                }
+              >
+                {t({ zh: "上一页", en: "Previous" })}
+              </Button>
+              <span className="text-sm" aria-live="polite">
+                {t({
+                  zh: `第 ${offset / PAGE_SIZE + 1} 页`,
+                  en: `Page ${offset / PAGE_SIZE + 1}`,
+                })}
+              </span>
+              <Button
+                className="min-h-11"
+                variant="outline"
+                disabled={!hasNext || query.isFetching || query.isError}
+                onClick={() => setOffset((value) => value + PAGE_SIZE)}
+              >
+                {t({ zh: "下一页", en: "Next" })}
+              </Button>
+            </nav>
+          )}
         </TabsContent>
       </Tabs>
     </section>

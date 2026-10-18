@@ -592,7 +592,10 @@ for (const role of ["teacher", "student"] as const) {
     task.targets[0].done_count = 1
     await page.clock.fastForward(interval + 100)
     await expect(tasks).toContainText("暂无待完成补练")
-    await tasks.getByRole("tab", { name: "历史", exact: true }).click()
+    await tasks
+      .getByRole("tab", { name: "历史", exact: true })
+      .or(tasks.getByRole("button", { name: "查看补练历史", exact: true }))
+      .click()
     await expect(tasks).toContainText(task.title)
     if (role === "student") {
       await tasks.getByRole("button", { name: "回看补练", exact: true }).click()
@@ -619,7 +622,10 @@ test("teacher withdrawal on the final page returns to the previous page", async 
   await expect(
     tasks.getByRole("button", { name: "上一页", exact: true }),
   ).toBeDisabled()
-  await tasks.getByRole("tab", { name: "历史", exact: true }).click()
+  await tasks
+    .getByRole("tab", { name: "历史", exact: true })
+    .or(tasks.getByRole("button", { name: "查看补练历史", exact: true }))
+    .click()
   await expect(tasks.locator("article")).toHaveCount(1)
   await expect(tasks).toContainText("已撤销")
 })
@@ -631,7 +637,10 @@ test("student with only history can reach it from the empty default tab", async 
   state.tasks = [pagedTask(0, "done"), pagedTask(1, "withdrawn")]
   const tasks = await openTaskList(page, "student")
   await expect(tasks).toContainText("暂无待完成补练")
-  await tasks.getByRole("tab", { name: "历史", exact: true }).click()
+  await tasks
+    .getByRole("tab", { name: "历史", exact: true })
+    .or(tasks.getByRole("button", { name: "查看补练历史", exact: true }))
+    .click()
   await expect(tasks.locator("article")).toHaveCount(2)
   await expect(
     tasks.getByRole("button", { name: "回看补练", exact: true }),
@@ -649,7 +658,10 @@ test("follow-up page errors keep tabs and allow retry without losing the page", 
     pagedTask(index, "done"),
   )
   const tasks = await openTaskList(page, "student")
-  await tasks.getByRole("tab", { name: "历史", exact: true }).click()
+  await tasks
+    .getByRole("tab", { name: "历史", exact: true })
+    .or(tasks.getByRole("button", { name: "查看补练历史", exact: true }))
+    .click()
   await expect(tasks.locator("article")).toHaveCount(10)
   state.failList = true
   await tasks.getByRole("button", { name: "下一页", exact: true }).click()

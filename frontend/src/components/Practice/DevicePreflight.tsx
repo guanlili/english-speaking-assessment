@@ -1,15 +1,42 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ClassesService } from "@/client"
 import { Button } from "@/components/ui/button"
+import { loadStudent } from "@/lib/classroom-student"
+import {
+  clearDeviceCheck,
+  DEVICE_CHECK_TTL_MS,
+  deviceCheckKey,
+  readDeviceCheck,
+  saveDeviceCheck,
+} from "@/lib/device-preflight"
 import { useI18n } from "@/lib/i18n"
 
 const TEST_RECORDING_MS = 5000
 
 export function DevicePreflight({ code }: { code: string }) {
+  const student = loadStudent(code)
+  const cacheKey = deviceCheckKey(student?.user_id, student?.id, code)
+  return (
+    <DevicePreflightCheck
+      key={cacheKey ?? code.toUpperCase()}
+      code={code}
+      cacheKey={cacheKey}
+    />
+  )
+}
+
+function DevicePreflightCheck({
+  code,
+  cacheKey,
+}: {
+  code: string
+  cacheKey: string | null
+}) {
   const { t } = useI18n()
+  const [passedAt, setPassedAt] = useState(() => readDeviceCheck(cacheKey))
   const [state, setState] = useState<
     "idle" | "recording" | "ready" | "passed" | "failed"
-  >("idle")
+  >(passedAt ? "passed" : "idle")
   const [url, setUrl] = useState<string | null>(null)
   const [heard, setHeard] = useState(false)
   const [reportFailed, setReportFailed] = useState(false)
@@ -22,22 +49,58 @@ export function DevicePreflight({ code }: { code: string }) {
   const mounted = useRef(true)
   const active = useRef(false)
   const identity = useRef(localStorage.getItem("access_token"))
+  const isCurrent = useCallback(
+    () =>
+      mounted.current &&
+      identity.current === localStorage.getItem("access_token"),
+    [],
+  )
   const report = async (device_check: "passed" | "failed") => {
-    if (
-      !mounted.current ||
-      identity.current !== localStorage.getItem("access_token")
-    )
-      return
+    if (!isCurrent()) return false
+    if (device_check === "failed") {
+      clearDeviceCheck(cacheKey)
+      setPassedAt(null)
+    }
+    const currentGeneration = generation.current
     try {
       await ClassesService.reportClassroomActivity({
         code,
         requestBody: { activity: "entered", device_check },
       })
-      if (mounted.current) setReportFailed(false)
+      if (!isCurrent() || currentGeneration !== generation.current) return false
+      setReportFailed(false)
+      return true
     } catch {
-      if (mounted.current) setReportFailed(true)
+      if (isCurrent() && currentGeneration === generation.current)
+        setReportFailed(true)
+      return false
     }
   }
+  useEffect(() => {
+    if (passedAt === null) return
+    const invalidate = () => {
+      if (!isCurrent()) return
+      clearDeviceCheck(cacheKey)
+      setPassedAt(null)
+      setState("idle")
+    }
+    const expire = () => {
+      if (Date.now() < passedAt || Date.now() - passedAt >= DEVICE_CHECK_TTL_MS)
+        invalidate()
+    }
+    const timer = window.setTimeout(
+      expire,
+      Math.max(0, passedAt + DEVICE_CHECK_TTL_MS - Date.now()),
+    )
+    document.addEventListener("visibilitychange", expire)
+    const media = navigator.mediaDevices
+    media?.addEventListener?.("devicechange", invalidate)
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener("visibilitychange", expire)
+      media?.removeEventListener?.("devicechange", invalidate)
+    }
+  }, [passedAt, cacheKey, isCurrent])
   useEffect(() => {
     mounted.current = true
     return () => {
@@ -58,6 +121,9 @@ export function DevicePreflight({ code }: { code: string }) {
   )
   async function start() {
     if (active.current || checkInFlight.current) return
+    if (!isCurrent()) return
+    clearDeviceCheck(cacheKey)
+    setPassedAt(null)
     active.current = true
     const currentGeneration = ++generation.current
     let recorderFailed = false
@@ -65,7 +131,7 @@ export function DevicePreflight({ code }: { code: string }) {
     setUrl(null)
     try {
       const media = await navigator.mediaDevices.getUserMedia({ audio: true })
-      if (!mounted.current || generation.current !== currentGeneration) {
+      if (!isCurrent() || generation.current !== currentGeneration) {
         media.getTracks().forEach((track) => {
           track.stop()
         })
@@ -84,7 +150,7 @@ export function DevicePreflight({ code }: { code: string }) {
         })
         active.current = false
         if (
-          !mounted.current ||
+          !isCurrent() ||
           generation.current !== currentGeneration ||
           recorderFailed
         )
@@ -104,7 +170,7 @@ export function DevicePreflight({ code }: { code: string }) {
           track.stop()
         })
         active.current = false
-        if (mounted.current) {
+        if (isCurrent() && generation.current === currentGeneration) {
           setState("failed")
           void report("failed")
         }
@@ -119,7 +185,7 @@ export function DevicePreflight({ code }: { code: string }) {
         track.stop()
       })
       active.current = false
-      if (mounted.current) {
+      if (isCurrent() && generation.current === currentGeneration) {
         setState("failed")
         void report("failed")
       }
@@ -138,6 +204,8 @@ export function DevicePreflight({ code }: { code: string }) {
           variant="ghost"
           className="min-h-11"
           onClick={() => {
+            clearDeviceCheck(cacheKey)
+            setPassedAt(null)
             setState("idle")
             setUrl(null)
             setHeard(false)
@@ -189,23 +257,35 @@ export function DevicePreflight({ code }: { code: string }) {
             className="min-h-11"
             disabled={!heard || checking || state === "recording"}
             onClick={async () => {
-              if (checkInFlight.current) return
+              if (checkInFlight.current || !isCurrent()) return
               checkInFlight.current = true
               setChecking(true)
+              const currentGeneration = generation.current
+              const checkedAt = Date.now()
               try {
                 await ClassesService.readClassroomRevision({ code })
-                if (mounted.current) {
+                if (!isCurrent() || currentGeneration !== generation.current)
+                  return
+                const reported = await report("passed")
+                if (
+                  reported &&
+                  isCurrent() &&
+                  currentGeneration === generation.current
+                ) {
+                  saveDeviceCheck(cacheKey, checkedAt)
+                  setPassedAt(checkedAt)
                   setState("passed")
-                  void report("passed")
+                  setUrl(null)
                 }
               } catch {
-                if (mounted.current) {
+                if (isCurrent() && currentGeneration === generation.current) {
                   setState("failed")
                   void report("failed")
                 }
               } finally {
                 checkInFlight.current = false
-                if (mounted.current) setChecking(false)
+                if (isCurrent() && currentGeneration === generation.current)
+                  setChecking(false)
               }
             }}
           >

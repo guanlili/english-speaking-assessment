@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { ChevronDown } from "lucide-react"
 import { useRef, useState } from "react"
 import { ApiError, ClassesService, type HelpRequestWrite } from "@/client"
 import { Button } from "@/components/ui/button"
@@ -74,20 +75,29 @@ export function StudentClassroomInbox({ code }: { code: string }) {
     onSuccess: invalidate,
   })
   const reminders = query.data?.filter((row) => row.kind === "reminder") ?? []
+  const hasMessages = Boolean(
+    active ||
+      lastResolvedHelp ||
+      reminders.length ||
+      query.isPending ||
+      query.isError,
+  )
   return (
     <section
       aria-label={t({ zh: "课堂消息与求助", en: "Class messages and help" })}
       className="min-w-0 space-y-4 rounded-2xl border bg-card p-4 sm:p-5"
     >
-      <h2 className="font-semibold">
+      <h2 className={hasMessages ? "font-semibold" : "sr-only"}>
         {t({ zh: "课堂消息与求助", en: "Class messages and help" })}
       </h2>
-      <p className="text-sm text-muted-foreground">
-        {t({
-          zh: "求助会发给本班老师，联网时通常在几秒内送达。考试计时会继续；老师的提醒需要你明确点击已读。",
-          en: "Help goes to your classroom teacher, usually within seconds while online. Exam time keeps running. Mark reminders read yourself.",
-        })}
-      </p>
+      {hasMessages && (
+        <p className="text-sm text-muted-foreground">
+          {t({
+            zh: "求助会发给本班老师，联网时通常在几秒内送达。考试计时会继续；老师的提醒需要你明确点击已读。",
+            en: "Help goes to your classroom teacher, usually within seconds while online. Exam time keeps running. Mark reminders read yourself.",
+          })}
+        </p>
+      )}
       {!active && lastResolvedHelp && (
         <p className="rounded-xl border p-3 text-sm" role="status">
           {lastResolvedHelp.resolution === "resolved"
@@ -163,46 +173,63 @@ export function StudentClassroomInbox({ code }: { code: string }) {
               </Button>
             </div>
           ) : (
-            <fieldset disabled={help.isPending} className="min-w-0 space-y-3">
-              <legend className="mb-2 font-medium">
+            <details className="group/help">
+              <summary className="flex min-h-11 cursor-pointer items-center py-2 font-medium">
                 {t({ zh: "向老师举手求助", en: "Raise your hand for help" })}
-              </legend>
-              <label className="block space-y-2">
-                <span>
-                  {t({
-                    zh: "需要什么帮助？",
-                    en: "What do you need help with?",
+                <ChevronDown
+                  aria-hidden="true"
+                  className="ml-auto size-4 transition-transform group-open/help:rotate-180"
+                />
+              </summary>
+              <fieldset disabled={help.isPending} className="min-w-0 space-y-3">
+                <legend className="sr-only">
+                  {t({ zh: "求助内容", en: "Help request details" })}
+                </legend>
+                {!hasMessages && (
+                  <p className="text-sm text-muted-foreground">
+                    {t({
+                      zh: "求助会发给本班老师；等待答复时，考试计时仍会继续。",
+                      en: "Help goes to your classroom teacher. Exam time keeps running while you wait.",
+                    })}
+                  </p>
+                )}
+                <label className="block space-y-2">
+                  <span>
+                    {t({
+                      zh: "需要什么帮助？",
+                      en: "What do you need help with?",
+                    })}
+                  </span>
+                  <select
+                    aria-label={t({ zh: "求助类型", en: "Help category" })}
+                    className="min-h-11 w-full rounded-md border bg-background px-3 text-base"
+                    value={category}
+                    onChange={(event) =>
+                      setCategory(event.target.value as typeof category)
+                    }
+                  >
+                    {Object.entries(helpCategories).map(([key, label]) => (
+                      <option key={key} value={key}>
+                        {t(label)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Textarea
+                  aria-label={t({
+                    zh: "求助补充说明（可选）",
+                    en: "More details (optional)",
                   })}
-                </span>
-                <select
-                  aria-label={t({ zh: "求助类型", en: "Help category" })}
-                  className="min-h-11 w-full rounded-md border bg-background px-3 text-base"
-                  value={category}
-                  onChange={(event) =>
-                    setCategory(event.target.value as typeof category)
-                  }
-                >
-                  {Object.entries(helpCategories).map(([key, label]) => (
-                    <option key={key} value={key}>
-                      {t(label)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <Textarea
-                aria-label={t({
-                  zh: "求助补充说明（可选）",
-                  en: "More details (optional)",
-                })}
-                className="text-base"
-                maxLength={500}
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-              />
-              <Button className="min-h-11" onClick={() => help.mutate()}>
-                {t({ zh: "发送求助", en: "Send help request" })}
-              </Button>
-            </fieldset>
+                  className="text-base"
+                  maxLength={500}
+                  value={text}
+                  onChange={(event) => setText(event.target.value)}
+                />
+                <Button className="min-h-11" onClick={() => help.mutate()}>
+                  {t({ zh: "发送求助", en: "Send help request" })}
+                </Button>
+              </fieldset>
+            </details>
           )}
           {reminders.length > 0 && (
             <div className="space-y-3">
