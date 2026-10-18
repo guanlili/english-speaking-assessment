@@ -23,6 +23,7 @@ import { SkippedSpans } from "@/components/Practice/SkippedSpans"
 import StudentShell from "@/components/Practice/StudentShell"
 import { TeacherFeedbackBlock } from "@/components/Practice/TeacherFeedbackBlock"
 import VocabBlock from "@/components/Practice/VocabBlock"
+import { WordAlignment } from "@/components/Practice/WordAlignment"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -657,16 +658,46 @@ export function RoundResultPage() {
                 </span>
                 {attempt.transcript || t({ zh: "（无）", en: "(none)" })}
               </p>
-              <SkippedSpans
-                reference={attempt.item_text ?? item.text}
-                transcript={attempt.transcript}
-                itemType={item.type}
-              />
+              {attempt.word_alignment ? (
+                <WordAlignment
+                  reference={attempt.item_text ?? item.text}
+                  alignment={attempt.word_alignment}
+                />
+              ) : (
+                <SkippedSpans
+                  reference={attempt.item_text ?? item.text}
+                  transcript={attempt.transcript}
+                  itemType={item.type}
+                />
+              )}
               <Separator />
-              <div className="flex items-center gap-4 text-sm">
+              <div className="flex flex-wrap items-center gap-4 text-sm">
                 <span className="text-2xl font-bold tabular-nums">
                   {t({ zh: "参考分", en: "Score" })} {attempt.overall ?? "–"}
                 </span>
+                {attempt.previous &&
+                  typeof attempt.previous.overall === "number" &&
+                  attempt.overall != null && (
+                    <span
+                      className={
+                        attempt.overall >= attempt.previous.overall
+                          ? "text-emerald-600"
+                          : "text-red-600"
+                      }
+                    >
+                      {t({ zh: "上次", en: "Last" })}{" "}
+                      <span className="tabular-nums">
+                        {attempt.previous.overall}
+                      </span>{" "}
+                      ·{" "}
+                      {attempt.overall - attempt.previous.overall >= 0
+                        ? "↑"
+                        : "↓"}{" "}
+                      <span className="tabular-nums">
+                        {Math.abs(attempt.overall - attempt.previous.overall)}
+                      </span>
+                    </span>
+                  )}
                 {item.type !== "question" && (
                   <span className="text-muted-foreground">
                     {t({ zh: "完整度", en: "Completeness" })}{" "}

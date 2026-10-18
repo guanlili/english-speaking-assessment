@@ -9,10 +9,14 @@
 
 import re
 from collections import Counter
+from typing import TypedDict
 
 from app.scoring.base import OpenResponseScores, ReadAloudScores
 
 _TOKEN_RE = re.compile(r"[a-z']+")
+# 原文偏移 token（保留原文大小写用于高亮，token 值小写归一）
+_TOKEN_RE_RAW = re.compile(r"[a-z']+", re.IGNORECASE)
+_CONSONANTS = set("bcdfghjklmnpqrstvwxyz")
 
 # B1 学习者朗读约 120-150 词/分钟，目标 2.5 词/秒；
 # 每偏离 1 词/秒扣 50 分（[1.5, 3.5] 词/秒映射到 [50, 100]）
@@ -30,6 +34,152 @@ MAX_WPS_FAST = 3.5
 def tokenize(text: str) -> list[str]:
     """小写化并抽出英文单词（撇号归属单词，如 don't）。"""
     return _TOKEN_RE.findall(text.lower())
+
+
+def tokenize_with_spans(text: str) -> list[tuple[str, int, int]]:
+    """(小写 token, start, end)：end 为原文中的闭偏移（高亮渲染用原文切片）。"""
+    return [
+        (m.group(0).lower(), m.start(), m.end()) for m in _TOKEN_RE_RAW.finditer(text)
+    ]
+
+
+def lemma_variants(token: str) -> list[str]:
+    """轻量词元归一：处理规则屈折（复数/进行时/过去式），不规则形式由词表直接收录。"""
+    variants = [token]
+    if token.endswith("ies") and len(token) > 4:
+        variants.append(token[:-3] + "y")
+    if token.endswith("es") and len(token) > 3:
+        variants.append(token[:-2])
+    if token.endswith("s") and len(token) > 2:
+        variants.append(token[:-1])
+    if token.endswith("ing") and len(token) > 5:
+        stem = token[:-3]
+        variants.append(stem)
+        variants.append(stem + "e")  # making → make
+        if (
+            len(stem) > 2 and stem[-1] == stem[-2] and stem[-1] in _CONSONANTS
+        ):  # running → run
+            variants.append(stem[:-1])
+    if token.endswith("ed") and len(token) > 4:
+        stem = token[:-2]
+        variants.append(stem)
+        variants.append(token[:-1])  # hoped → hope
+        if (
+            len(stem) > 2 and stem[-1] == stem[-2] and stem[-1] in _CONSONANTS
+        ):  # stopped → stop
+            variants.append(stem[:-1])
+    if token.endswith("er") and len(token) > 4:
+        variants.append(token[:-2])
+        variants.append(token[:-1])
+    if token.endswith("est") and len(token) > 5:
+        variants.append(token[:-3])
+        variants.append(token[:-2])
+    return list(dict.fromkeys(variants))
+
+
+class AlignedWord(TypedDict):
+    start: int
+    end: int
+    text: str  # 参考原文切片（保留原大小写）
+    status: str  # correct | missing | error
+    heard: str | None  # error 时：转写中听到的形式
+
+
+class WordAlignment(TypedDict):
+    words: list[AlignedWord]
+    extras: list[dict[str, str]]  # 转写中多读的词
+
+
+def _variant_match(reference_token: str, spoken_token: str) -> bool:
+    """读对判定：原形/词形变体（复数、时态屈折）命中即算读对。"""
+    if reference_token == spoken_token:
+        return True
+    ref_variants = set(lemma_variants(reference_token))
+    spoken_variants = set(lemma_variants(spoken_token))
+    return bool(ref_variants & spoken_variants)
+
+
+def align_words(reference: str, transcript: str) -> WordAlignment:
+    """把转写词对齐到参考词（编辑距离 DP），给每个参考词打状态。
+
+    - correct：有转写词对齐且词形变体命中（dogs → dog 算读对）
+    - error：有转写词对齐但形式不符（heard 记录听到的形式）
+    - missing：参考词没有对齐到任何转写词（漏读）
+    - extras：转写中多出的词（多读）
+
+    结果只用于展示与个人漏词聚合，不参与评分口径（评分仍走多重集命中）。
+    """
+    ref_tokens = tokenize_with_spans(reference)
+    spoken_tokens = tokenize_with_spans(transcript)
+    if not ref_tokens:
+        return {"words": [], "extras": []}
+    if not spoken_tokens:
+        return {
+            "words": [
+                {
+                    "start": start,
+                    "end": end,
+                    "text": reference[start:end],
+                    "status": "missing",
+                    "heard": None,
+                }
+                for _token, start, end in ref_tokens
+            ],
+            "extras": [],
+        }
+
+    rows, cols = len(ref_tokens), len(spoken_tokens)
+    # cost[i][j]：前 i 个参考词对齐前 j 个转写词的最小代价
+    cost = [[0] * (cols + 1) for _ in range(rows + 1)]
+    for i in range(rows + 1):
+        cost[i][0] = i
+    for j in range(cols + 1):
+        cost[0][j] = j
+    for i in range(1, rows + 1):
+        ref_token = ref_tokens[i - 1][0]
+        for j in range(1, cols + 1):
+            match_cost = 0 if _variant_match(ref_token, spoken_tokens[j - 1][0]) else 2
+            cost[i][j] = min(
+                cost[i - 1][j - 1] + match_cost,
+                cost[i - 1][j] + 1,
+                cost[i][j - 1] + 1,
+            )
+
+    # 回溯：matched[i] = None(missing) | ("correct", spoken_idx) | ("error", spoken_idx)
+    matched: list[tuple[str, int] | None] = [None] * rows
+    used_spoken: list[bool] = [False] * cols
+    i, j = rows, cols
+    while i > 0 and j > 0:
+        ref_token = ref_tokens[i - 1][0]
+        same = _variant_match(ref_token, spoken_tokens[j - 1][0])
+        match_cost = 0 if same else 2
+        if cost[i][j] == cost[i - 1][j - 1] + match_cost:
+            matched[i - 1] = ("correct" if same else "error", j - 1)
+            used_spoken[j - 1] = True
+            i -= 1
+            j -= 1
+        elif cost[i][j] == cost[i - 1][j] + 1:
+            i -= 1
+        else:
+            j -= 1
+
+    extras = [{"text": spoken_tokens[k][0]} for k in range(cols) if not used_spoken[k]]
+    words: list[AlignedWord] = []
+    for idx, (_token, start, end) in enumerate(ref_tokens):
+        entry: AlignedWord = {
+            "start": start,
+            "end": end,
+            "text": reference[start:end],
+            "status": "missing",
+            "heard": None,
+        }
+        if matched[idx] is not None:
+            kind, spoken_idx = matched[idx]
+            entry["status"] = kind
+            if kind == "error":
+                entry["heard"] = spoken_tokens[spoken_idx][0]
+        words.append(entry)
+    return {"words": words, "extras": extras}
 
 
 def _clamp_score(value: float) -> int:

@@ -21,7 +21,7 @@ from app.api.routes.class_shared import (
     _assignment_unit,
     _get_classroom,
     _include_type,
-    _latest_done_attempts,
+    _latest_attempts_with_previous,
     _parse_snapshot_plan_items,
     _pick_questions,
     _plan_item_from_snapshot,
@@ -361,7 +361,9 @@ def read_today_plan(
     session.refresh(student)
     session.refresh(practice_session)
 
-    attempts = _latest_done_attempts(session, student.id, practice_session.id)
+    attempts, previous_map = _latest_attempts_with_previous(
+        session, student.id, practice_session.id
+    )
 
     # 追加换题作答：题单外的已作答项（换来的题）补进题单，保证刷新后仍可见、
     # 结果页能展示（来源 attempt.item_snapshot，不依赖活题库）。
@@ -427,10 +429,14 @@ def read_today_plan(
             transcript=a.transcript,
             advice=a.advice,
             vocab=a.vocab if isinstance(a.vocab, dict) else None,
+            word_alignment=(
+                a.word_alignment if isinstance(a.word_alignment, dict) else None
+            ),
             rubric=a.rubric if isinstance(a.rubric, dict) else None,
             error=a.error,
             item_text=_attempt_item_text(a),
             teacher_review_tags=a.teacher_review_tags,
+            previous=previous_map.get(a.item_id),
             teacher_feedback=a.teacher_feedback,
             teacher_focus=a.teacher_focus,
             teacher_feedback_author=a.teacher_feedback_author,

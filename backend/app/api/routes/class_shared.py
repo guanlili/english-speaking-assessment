@@ -464,6 +464,46 @@ def _latest_done_attempts(
     return list(latest.values())
 
 
+def _latest_attempts_with_previous(
+    session: Any, student_id: uuid.UUID, session_id: uuid.UUID
+) -> tuple[list[Attempt], dict[uuid.UUID, dict[str, object] | None]]:
+    """（每条题目的最新作答, 同题上一次 DONE 作答摘要）。
+
+    结果页「重录对比」用：同一 (session, item) 的重录会产生多条 DONE 作答，
+    这里按 created_at 排序取倒数第二条，只带分数小列，不返回整行。
+    首次作答的题为 None。
+    """
+    attempts = session.exec(
+        select(Attempt)
+        .where(
+            Attempt.student_id == student_id,
+            Attempt.session_id == session_id,
+        )
+        .order_by(col(Attempt.created_at), col(Attempt.id))
+    ).all()
+    latest: dict[uuid.UUID, Attempt] = {}
+    done_by_item: dict[uuid.UUID, list[Attempt]] = {}
+    for attempt in attempts:
+        latest[attempt.item_id] = attempt
+        if attempt.status == AttemptStatus.DONE:
+            done_by_item.setdefault(attempt.item_id, []).append(attempt)
+    previous: dict[uuid.UUID, dict[str, object] | None] = {}
+    for item_id, done in done_by_item.items():
+        if len(done) < 2:
+            previous[item_id] = None
+            continue
+        prior = done[-2]
+        previous[item_id] = {
+            "overall": prior.overall,
+            "fluency": prior.fluency,
+            "completeness": prior.completeness,
+            "created_at": prior.created_at.isoformat()
+            if prior.created_at is not None
+            else None,
+        }
+    return list(latest.values()), previous
+
+
 def _repeat_attempts_of_session(
     session: Any, practice_session: PracticeSession
 ) -> list[Attempt]:
