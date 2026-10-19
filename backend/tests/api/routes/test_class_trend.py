@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app.core.config import settings
-from app.models import Attempt, Classroom, PracticeSession
+from app.models import Attempt, Classroom
 from tests.utils.credential import make_student
 
 
