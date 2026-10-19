@@ -59,21 +59,33 @@ def test_class_trend_groups_by_practice_day_for_teacher(
         return datetime.combine(day, datetime.min.time().replace(hour=hour), tz)
 
     _add_done_attempt(
-        db, uuid.UUID(ada["student"]["id"]), item_type="question",
-        created_at=at_day(yesterday, 9), overall=70,
+        db,
+        uuid.UUID(ada["student"]["id"]),
+        item_type="question",
+        created_at=at_day(yesterday, 9),
+        overall=70,
     )
     _add_done_attempt(
-        db, uuid.UUID(ada["student"]["id"]), item_type="question",
-        created_at=at_day(yesterday, 10), overall=80,
+        db,
+        uuid.UUID(ada["student"]["id"]),
+        item_type="question",
+        created_at=at_day(yesterday, 10),
+        overall=80,
     )
     _add_done_attempt(
-        db, uuid.UUID(ada["student"]["id"]), item_type="repeat",
-        created_at=at_day(yesterday, 11), completeness=90,
+        db,
+        uuid.UUID(ada["student"]["id"]),
+        item_type="repeat",
+        created_at=at_day(yesterday, 11),
+        completeness=90,
     )
     # 今天：Ben 一条问答（验证活跃学生去重与当日桶）
     _add_done_attempt(
-        db, uuid.UUID(ben["student"]["id"]), item_type="question",
-        created_at=at_day(today, 9), overall=60,
+        db,
+        uuid.UUID(ben["student"]["id"]),
+        item_type="question",
+        created_at=at_day(today, 9),
+        overall=60,
     )
     # 非 done（queued）不计入
     db.add(
@@ -92,7 +104,9 @@ def test_class_trend_groups_by_practice_day_for_teacher(
     db.flush()
     db.commit()
 
-    resp = client.get(f"/api/v1/classes/{code}/trend?days=14", headers=superuser_token_headers)
+    resp = client.get(
+        f"/api/v1/classes/{code}/trend?days=14", headers=superuser_token_headers
+    )
     assert resp.status_code == 200, resp.text
     days = resp.json()
     assert [d["date"] for d in days] == [str(yesterday), str(today)]
@@ -117,7 +131,5 @@ def test_class_trend_requires_teacher(
     ).json()
     code = classroom["code"]
     stu = make_student(db, client, code, "Stu")
-    resp = client.get(
-        f"/api/v1/classes/{code}/trend", headers=stu["headers"]
-    )
+    resp = client.get(f"/api/v1/classes/{code}/trend", headers=stu["headers"])
     assert resp.status_code == 403
