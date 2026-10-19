@@ -52,7 +52,7 @@ function TrailChart({
 
   return (
     <div className="space-y-1">
-      <p className="text-sm font-medium">{title}</p>
+      {title ? <p className="text-sm font-medium">{title}</p> : null}
       {chart === null ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
           {t({ zh: "暂无数据", en: "No data yet" })}

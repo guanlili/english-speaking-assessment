@@ -1423,6 +1423,19 @@ class TrailSession(SQLModel):
     attempt_count: int = 0
 
 
+# 班级趋势（GET /classes/{code}/trend，教师端：全班均分与活跃度的日聚合）
+class ClassTrendDay(SQLModel):
+    date: str  # YYYY-MM-DD（练习日，按配置时区）
+    # 当日有已完成作答的学生数（DONE 去重）
+    active_students: int = 0
+    # 当日情景问答作答数（DONE）
+    question_attempts: int = 0
+    # 当日问答总评均值（无已完成问答为 null）
+    question_avg: float | None = None
+    # 当日跟读完整度均值（无已完成跟读为 null）
+    repeat_completeness_avg: float | None = None
+
+
 class TrailData(SQLModel):
     classroom_code: str
     student_id: uuid.UUID
