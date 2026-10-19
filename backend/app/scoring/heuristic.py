@@ -44,10 +44,51 @@ def tokenize_with_spans(text: str) -> list[tuple[str, int, int]]:
 
 
 def lemma_variants(token: str) -> list[str]:
-    """轻量词元归一：只处理规则屈折（复数/进行时/过去式）。
+    """词元归一（完整版）：复数/进行时/过去式 + 比较级/最高级规则屈折。
 
-    只从参考词（题目原文，拼写规范）单向生成变体；不做 -er/-est 截词
-    （mother/flower/teacher 等 -er 名词会与比较级混淆，宁可标 error）。
+    供词汇统计等既有口径使用（worker._five_level_stats → attempt.vocab）：
+    其中 -er/-est 规则把 fast/faster/fastest 归一到 fast，历史行为不得变更。
+    注意：逐词对齐不使用本函数（见 _alignment_variants），避免截词误判。
+    """
+    variants = [token]
+    if token.endswith("ies") and len(token) > 4:
+        variants.append(token[:-3] + "y")
+    if token.endswith("es") and len(token) > 3:
+        variants.append(token[:-2])
+    if token.endswith("s") and len(token) > 2:
+        variants.append(token[:-1])
+    if token.endswith("ing") and len(token) > 5:
+        stem = token[:-3]
+        variants.append(stem)
+        variants.append(stem + "e")  # making → make
+        if (
+            len(stem) > 2 and stem[-1] == stem[-2] and stem[-1] in _CONSONANTS
+        ):  # running → run
+            variants.append(stem[:-1])
+    if token.endswith("ed") and len(token) > 4:
+        stem = token[:-2]
+        variants.append(stem)
+        variants.append(token[:-1])  # hoped → hope
+        if (
+            len(stem) > 2 and stem[-1] == stem[-2] and stem[-1] in _CONSONANTS
+        ):  # stopped → stop
+            variants.append(stem[:-1])
+    if token.endswith("er") and len(token) > 4:
+        variants.append(token[:-2])
+        variants.append(token[:-1])
+    if token.endswith("est") and len(token) > 5:
+        variants.append(token[:-3])
+        variants.append(token[:-2])
+    return list(dict.fromkeys(variants))
+
+
+def _alignment_variants(token: str) -> list[str]:
+    """对齐专用保守变体：不含 -er/-est 截词。
+
+    -er 结尾也可能是普通名词（mother/flower/teacher），截词会把 moth/flow
+    误判成 mother/flower 的读对形式。逐词标注宁可标 error（heard 展示听到
+    的形式），也不能把不同单词判等价；故对齐侧不走完整版 lemma_variants，
+    与词汇统计（保留比较级/最高级归一）互不影响。
     """
     variants = [token]
     if token.endswith("ies") and len(token) > 4:
@@ -89,18 +130,19 @@ class WordAlignment(TypedDict):
 
 
 def _variant_match(reference_token: str, spoken_token: str) -> bool:
-    """读对判定：一方的完整拼写精确等于另一方的规则屈折变体。
+    """读对判定：一方的完整拼写精确等于另一方的对齐保守变体。
 
-    只做「词 → 规则变体」的精确包含（dog 在 dogs 的变体里 = 读对；
-    moth 不在 mother 的变体里 = 读错），不做截词候选的交集——
-    交集会把 mother/moth、flower/flow、hoping/hopping 这类拼写不同的词
-    误判成等价。
+    只做「词 → 保守规则变体」的精确包含（dog 在 dogs 的变体里 = 读对；
+    moth 不在 mother 的变体里 = 读错），不做截词候选的交集——交集会把
+    mother/moth、flower/flow、hoping/hopping 这类拼写不同的词误判成等价。
+    对齐侧走 _alignment_variants（不含 -er/-est），与词汇统计的完整
+    lemma_variants 隔离。
     """
     if reference_token == spoken_token:
         return True
     return spoken_token in set(
-        lemma_variants(reference_token)
-    ) or reference_token in set(lemma_variants(spoken_token))
+        _alignment_variants(reference_token)
+    ) or reference_token in set(_alignment_variants(spoken_token))
 
 
 def align_words(reference: str, transcript: str) -> WordAlignment:

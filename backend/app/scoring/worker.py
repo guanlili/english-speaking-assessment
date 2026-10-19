@@ -34,7 +34,12 @@ from app.models import (
 from app.scoring.asr import ArkResponsesAsr, MockAsr
 from app.scoring.audio_convert import convert_to_wav, ensure_ark_supported
 from app.scoring.base import AsrProvider, ContentMissingError, ScoringError
-from app.scoring.heuristic import score_open_response, score_read_aloud, tokenize
+from app.scoring.heuristic import (
+    lemma_variants,
+    score_open_response,
+    score_read_aloud,
+    tokenize,
+)
 from app.scoring.rubric import RUBRIC_PROMPT_VERSION, RubricQuestionContext
 from app.scoring.volc_flash import VolcFlashAsr
 
@@ -117,13 +122,6 @@ def _drain_pending_resubmits(session: Session) -> int:
     return submitted
 
 
-# 词形变体与词级对齐统一在 heuristic（评分与展示共用同一归一口径）
-def _lemma_variants(token: str) -> list[str]:
-    from app.scoring.heuristic import lemma_variants as _lv
-
-    return _lv(token)
-
-
 # 进程内五级词库缓存：签名 = 过滤集 (count, max(created_at))。
 # 词表可发生的变更（导入插入、人工核对、启停用）都会改变过滤集 count，
 # 而 headword/level 不可编辑，故签名一致即可复用，无需 updated_at 列。
@@ -193,8 +191,7 @@ def _five_level_stats(session: Session, transcript: str) -> dict[str, object] | 
             level
             for level in VOCAB_LEVEL_ORDER
             if any(
-                variant in levels.get(level, set())
-                for variant in _lemma_variants(token)
+                variant in levels.get(level, set()) for variant in lemma_variants(token)
             )
         ]
         if not hit_levels:

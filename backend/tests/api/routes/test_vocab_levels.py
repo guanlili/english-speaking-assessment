@@ -389,6 +389,33 @@ def test_speaking_uses_same_level_source(
     assert scoring_worker._five_level_stats(db, "cats distribute") is None
 
 
+def test_five_level_stats_normalizes_comparative_superlative(
+    db: Session,
+) -> None:
+    """词汇统计保留比较级/最高级归一：fast/faster/fastest 都归入 KET（fast）。
+
+    回归：逐词对齐侧已改用保守变体（heuristic._alignment_variants，无 -er/-est
+    截词），但词汇统计链路（worker._five_level_stats → attempt.vocab）必须继续
+    使用完整 lemma_variants，否则当词库只收录基础词时，正常比较级/最高级会被
+    算成未命中，低估学生用词来源统计。
+    """
+    _clear_level_entries(db)
+    db.add(
+        VocabularyLevelEntry(
+            headword="fast", level="KET", meaning_zh="快的", sources=["测试"]
+        )
+    )
+    db.commit()
+
+    stats = scoring_worker._five_level_stats(db, "fast faster fastest")
+    assert isinstance(stats, dict)
+    hits: dict[str, int] = stats["hits_by_level"]  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
+    assert hits == {"KET": 3}
+    unmatched_raw = stats.get("unmatched")
+    unmatched_count = unmatched_raw if isinstance(unmatched_raw, int) else 0
+    assert unmatched_count == 0
+
+
 def test_history_not_reinterpreted(
     client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
