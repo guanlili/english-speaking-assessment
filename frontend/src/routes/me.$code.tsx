@@ -30,6 +30,10 @@ import { APP_NAME } from "@/config"
 import { useExpressionFavorites } from "@/hooks/useExpressionFavorites"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { displayName, loadStudent } from "@/lib/classroom-student"
+import {
+  dimensionTrendCaption,
+  dimensionTrendVisible,
+} from "@/lib/dimension-trend"
 import { useI18n } from "@/lib/i18n"
 import {
   EXPLAIN,
@@ -762,12 +766,12 @@ function DiagnosticsCard({
           </p>
         )}
 
-        {data.dimension_trend && data.dimension_trend.length > 1 ? (
+        {dimensionTrendVisible(data.dimension_trend) ? (
           <div className="space-y-1 pt-1">
             <p className="text-xs font-medium">
-              {t({ zh: "四维趋势", en: "Dimension trend" })}
+              {t(dimensionTrendCaption(data.dimension_trend?.length ?? 0))}
             </p>
-            <DimensionTrendChart points={data.dimension_trend} />
+            <DimensionTrendChart points={data.dimension_trend ?? []} />
           </div>
         ) : null}
       </CardContent>
