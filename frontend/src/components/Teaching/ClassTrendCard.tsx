@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { classTrendHasData, classTrendPoints } from "@/lib/class-trend"
 import { useI18n } from "@/lib/i18n"
 
 /** 教师端班级趋势：全班已完成练习按日的均分与活跃度（最近 14 天）。 */
@@ -30,11 +31,8 @@ function ClassTrendCard({ code }: { code: string }) {
   })
 
   const days = trendQuery.data ?? []
-  const speakingPoints = days.map((d) => ({
-    label: d.date,
-    value: d.question_avg ?? null,
-  }))
-  const hasData = speakingPoints.some((p) => p.value !== null)
+  const speakingPoints = classTrendPoints(days)
+  const hasData = classTrendHasData(days)
 
   return (
     <Card>
