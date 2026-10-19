@@ -47,16 +47,21 @@ export function DimensionTrendChart({ points }: { points: DimensionPoint[] }) {
             {
               x: c.x,
               y: HEIGHT - PADDING - (v / span) * (HEIGHT - PADDING * 2),
+              date: c.point.date,
             },
           ]
         : []
     })
-    if (pts.length < 2) return null
-    const path = pts
-      .map(
-        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`,
-      )
-      .join(" ")
+    if (pts.length === 0) return null
+    const path =
+      pts.length < 2
+        ? null
+        : pts
+            .map(
+              (p, i) =>
+                `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`,
+            )
+            .join(" ")
     return { series: s, path, pts }
   })
 
@@ -96,7 +101,7 @@ export function DimensionTrendChart({ points }: { points: DimensionPoint[] }) {
           )
         })}
         {seriesPaths.map((row) =>
-          row === null ? null : (
+          row === null || row.path === null ? null : (
             <path
               key={row.series.key}
               d={row.path}
@@ -108,7 +113,7 @@ export function DimensionTrendChart({ points }: { points: DimensionPoint[] }) {
             />
           ),
         )}
-        {/* 数据点 */}
+        {/* 数据点（单点维度也显示圆点：仅 1 次作答时趋势不空白） */}
         {seriesPaths.map((row) =>
           row === null
             ? null
@@ -120,7 +125,7 @@ export function DimensionTrendChart({ points }: { points: DimensionPoint[] }) {
                   r={3}
                   fill={row.series.color}
                 >
-                  <title>{`${row.series.key}: ${usable[i].date}`}</title>
+                  <title>{`${row.series.key}: ${p.date}`}</title>
                 </circle>
               )),
         )}
