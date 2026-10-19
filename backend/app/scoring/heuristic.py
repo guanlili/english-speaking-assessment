@@ -44,7 +44,11 @@ def tokenize_with_spans(text: str) -> list[tuple[str, int, int]]:
 
 
 def lemma_variants(token: str) -> list[str]:
-    """轻量词元归一：处理规则屈折（复数/进行时/过去式），不规则形式由词表直接收录。"""
+    """轻量词元归一：只处理规则屈折（复数/进行时/过去式）。
+
+    只从参考词（题目原文，拼写规范）单向生成变体；不做 -er/-est 截词
+    （mother/flower/teacher 等 -er 名词会与比较级混淆，宁可标 error）。
+    """
     variants = [token]
     if token.endswith("ies") and len(token) > 4:
         variants.append(token[:-3] + "y")
@@ -68,12 +72,6 @@ def lemma_variants(token: str) -> list[str]:
             len(stem) > 2 and stem[-1] == stem[-2] and stem[-1] in _CONSONANTS
         ):  # stopped → stop
             variants.append(stem[:-1])
-    if token.endswith("er") and len(token) > 4:
-        variants.append(token[:-2])
-        variants.append(token[:-1])
-    if token.endswith("est") and len(token) > 5:
-        variants.append(token[:-3])
-        variants.append(token[:-2])
     return list(dict.fromkeys(variants))
 
 
@@ -91,12 +89,19 @@ class WordAlignment(TypedDict):
 
 
 def _variant_match(reference_token: str, spoken_token: str) -> bool:
-    """读对判定：原形/词形变体（复数、时态屈折）命中即算读对。"""
+    """读对判定：一方的完整拼写精确等于另一方的规则屈折变体。
+
+    只做「词 → 规则变体」的精确包含（dog 在 dogs 的变体里 = 读对；
+    moth 不在 mother 的变体里 = 读错），不做截词候选的交集——
+    交集会把 mother/moth、flower/flow、hoping/hopping 这类拼写不同的词
+    误判成等价。
+    """
     if reference_token == spoken_token:
         return True
-    ref_variants = set(lemma_variants(reference_token))
-    spoken_variants = set(lemma_variants(spoken_token))
-    return bool(ref_variants & spoken_variants)
+    return (
+        spoken_token in set(lemma_variants(reference_token))
+        or reference_token in set(lemma_variants(spoken_token))
+    )
 
 
 def align_words(reference: str, transcript: str) -> WordAlignment:
@@ -173,8 +178,9 @@ def align_words(reference: str, transcript: str) -> WordAlignment:
             "status": "missing",
             "heard": None,
         }
-        if matched[idx] is not None:
-            kind, spoken_idx = matched[idx]
+        entry_match = matched[idx]
+        if entry_match is not None:
+            kind, spoken_idx = entry_match
             entry["status"] = kind
             if kind == "error":
                 entry["heard"] = spoken_tokens[spoken_idx][0]

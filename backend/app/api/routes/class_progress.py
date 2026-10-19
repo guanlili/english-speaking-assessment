@@ -38,6 +38,7 @@ from app.models import (
     Passage,
     PathUnit,
     PracticeSession,
+    Student,
     StudentDiagnostics,
     TrailData,
     Unit,
@@ -51,7 +52,7 @@ logger = logging.getLogger(__name__)
 
 
 def _feedback_locked_exam_session_ids(
-    session: SessionDep, student: object
+    session: SessionDep, student: Student
 ) -> set[uuid.UUID]:
     """考试反馈遮罩共用的锁定会话集合（trail / diagnostics / my-sessions 同口径）。
 
@@ -66,7 +67,7 @@ def _feedback_locked_exam_session_ids(
             col(PracticeSession.assignment_id) == col(ClassroomExercise.id),
         )
         .where(
-            PracticeSession.student_id == student.id,  # type: ignore[attr-defined]
+            PracticeSession.student_id == student.id,
             col(PracticeSession.exam_ended_at).is_(None),
             ClassroomExercise.is_exam,
         )
@@ -220,12 +221,12 @@ def read_student_diagnostics(
         .order_by(col(Attempt.created_at), col(Attempt.id))
         .options(
             load_only(
-                Attempt.item_type,  # type: ignore[invalid-argument-type]
-                Attempt.item_snapshot,  # type: ignore[invalid-argument-type]
-                Attempt.transcript,  # type: ignore[invalid-argument-type]
-                Attempt.word_alignment,  # type: ignore[invalid-argument-type]
-                Attempt.rubric,  # type: ignore[invalid-argument-type]
-                Attempt.created_at,  # type: ignore[invalid-argument-type]
+                Attempt.item_type,  # ty: ignore[invalid-argument-type]
+                Attempt.item_snapshot,  # ty: ignore[invalid-argument-type]
+                Attempt.transcript,  # ty: ignore[invalid-argument-type]
+                Attempt.word_alignment,  # ty: ignore[invalid-argument-type]
+                Attempt.rubric,  # ty: ignore[invalid-argument-type]
+                Attempt.created_at,  # ty: ignore[invalid-argument-type]
             )
         )
     ).all()
@@ -238,6 +239,9 @@ def read_student_diagnostics(
         if attempt.item_type in (AttemptItemType.PASSAGE, AttemptItemType.REPEAT):
             _accumulate_missed_words(missed, attempt)
         elif attempt.item_type == AttemptItemType.QUESTION:
+            created_at = attempt.created_at
+            if created_at is None:
+                continue
             rubric = attempt.rubric if isinstance(attempt.rubric, dict) else None
             if rubric is None:
                 continue
@@ -247,17 +251,23 @@ def read_student_diagnostics(
             }
             if not all(isinstance(v, (int, float)) for v in values.values()):
                 continue
-            for key, value in values.items():
-                dim_sums[key] = dim_sums.get(key, 0.0) + float(value)  # type: ignore[arg-type]
+            # all() 已保证四个维度都是数值，这里收窄为 float 供求和/趋势使用
+            floats: dict[str, float] = {
+                key: float(value)
+                for key, value in values.items()
+                if isinstance(value, (int, float))
+            }
+            for key, value in floats.items():
+                dim_sums[key] = dim_sums.get(key, 0.0) + value
             dim_count += 1
-            date_key = attempt.created_at.astimezone(tz).date().isoformat()
+            date_key = created_at.astimezone(tz).date().isoformat()
             rubric_points.append(
                 DimensionPoint(
                     date=date_key,
-                    fluency=float(values["fluency"]),  # type: ignore[arg-type]
-                    vocabulary=float(values["vocabulary"]),  # type: ignore[arg-type]
-                    grammar=float(values["grammar"]),  # type: ignore[arg-type]
-                    task=float(values["task"]),  # type: ignore[arg-type]
+                    fluency=floats["fluency"],
+                    vocabulary=floats["vocabulary"],
+                    grammar=floats["grammar"],
+                    task=floats["task"],
                 )
             )
 
@@ -272,7 +282,7 @@ def read_student_diagnostics(
             key=lambda k: means[k],
         )
 
-    top_missed = [
+    top_missed: list[dict[str, object]] = [
         {"word": word, "count": count} for word, count in missed.most_common(12)
     ]
     return StudentDiagnostics(

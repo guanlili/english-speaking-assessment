@@ -1,11 +1,12 @@
 import { useI18n } from "@/lib/i18n"
+import { sliceByCodepoints } from "@/lib/word-alignment"
 
 /**
  * 跟读/复述逐词标注：把词级对齐结果渲染在参考原文上。
  *
  * - correct：正常显示
  * - missing：红底 + 删除线（漏读）
- * - error：黄底 + 波浪下划线，悬停显示听到的形式（读错）
+ * - error：黄底 + 波浪下划线，读错时直接内联显示听到的形式（读错）
  *
  * 只做展示，不做发音评分；旧作答（无 word_alignment）由调用方回退 SkippedSpans。
  */
@@ -31,18 +32,18 @@ export function WordAlignment({
   const words = alignment?.words
   if (!words || words.length === 0) return null
 
-  // 按偏移把原文切成「间隔文本 + 词」，保证标点/空格位置原样
+  // 按码点偏移把原文切成「间隔文本 + 词」，保证标点/空格位置原样
   const segments: { plain?: string; word?: AlignedWordView }[] = []
   let cursor = 0
   for (const word of words) {
     if (word.start > cursor) {
-      segments.push({ plain: reference.slice(cursor, word.start) })
+      segments.push({ plain: sliceByCodepoints(reference, cursor, word.start) })
     }
     segments.push({ word })
     cursor = Math.max(cursor, word.end)
   }
-  if (cursor < reference.length) {
-    segments.push({ plain: reference.slice(cursor) })
+  if (cursor < Array.from(reference).length) {
+    segments.push({ plain: sliceByCodepoints(reference, cursor) })
   }
 
   const extras = alignment?.extras?.filter((e) => e.text) ?? []
@@ -73,6 +74,11 @@ export function WordAlignment({
               }
             >
               {segment.word.text}
+              {segment.word.status === "error" && segment.word.heard && (
+                <span className="ml-0.5 text-xs font-normal not-italic text-amber-900/80">
+                  ({segment.word.heard})
+                </span>
+              )}
             </span>
           ) : (
             <span key={`plain-${index}`}>{segment.plain}</span>
@@ -98,7 +104,10 @@ export function WordAlignment({
           {t({ zh: "漏读", en: "missed" })}
         </span>
         <span className="mx-1 rounded-sm bg-amber-100 px-0.5 text-amber-800 underline decoration-amber-400 decoration-wavy">
-          {t({ zh: "读错", en: "misread" })}
+          {t({
+            zh: "读错（括号内为听到的形式）",
+            en: "misread (heard form in brackets)",
+          })}
         </span>
       </p>
     </div>

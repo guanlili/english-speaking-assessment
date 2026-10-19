@@ -84,3 +84,34 @@ def test_align_contraction_and_punctuation():
     # 撇号归属单词：don't 与 dont 属同一词（归一含撇号差异），形式不同记 error
     statuses = [w["status"] for w in result["words"]]
     assert "error" in statuses or "correct" in statuses
+
+
+def test_align_does_not_conflate_distinct_words():
+    # 反例：截词不能把不同单词判等价（-er 名词 / 近形词）
+    cases = [
+        ("My mother is here.", "my moth is here", "mother"),
+        ("The flower is red.", "the flow is red", "flower"),
+        ("I was hoping.", "i was hopping", "hoping"),
+    ]
+    for reference, transcript, target in cases:
+        result = align_words(reference, transcript)
+        by_word = {w["text"].lower(): w for w in result["words"]}
+        assert by_word[target]["status"] == "error", f"{target} 不应被判读对"
+        assert by_word[target]["heard"] is not None
+
+
+def test_align_offsets_are_unicode_codepoints_with_non_bmp():
+    # 契约：re 偏移按 Unicode 码点计数；🐾 是 1 个码点（UTF-16 里是 2 个码元）。
+    # 🐾 不是单词不进 words，但它在 Dogs 之前的间隔文本里；前端按码点切片
+    # 重建间隔文本（sliceByCodepoints(reference, 0, 2) == "🐾 "），
+    # 不得因 UTF-16 切片把 Dogs 错位。
+    reference = "🐾 Dogs run."
+    result = align_words(reference, "dogs run")
+    words = result["words"]
+    assert words[0]["text"] == "Dogs"
+    assert (words[0]["start"], words[0]["end"]) == (2, 6)
+    assert words[0]["status"] == "correct"
+    # Python 码点索引切片：🐾 + 空格 + Dogs + 空格 + run + .
+    assert reference[0:2] == "🐾 "
+    assert reference[2:6] == "Dogs"
+    assert reference[7:10] == "run"

@@ -93,14 +93,16 @@ function MyTrailPage() {
     enabled: student !== null,
   })
 
-  // 个人弱项诊断（诊断卡 + 四维趋势）：漏词 TOP、最弱维度、四维均值
+  // 个人弱项诊断（诊断卡 + 四维趋势）：漏词 TOP、最弱维度、四维均值；
+  // 与上方 7/30 天切换器联动，period 变化时按所选窗口重新拉取
   const diagnosticsQuery = useQuery({
     retry: 1,
     retryDelay: 500,
-    queryKey: ["classroom", code, "diagnostics", student?.id],
+    queryKey: ["classroom", code, "diagnostics", student?.id, period],
     queryFn: () =>
       ClassesService.readStudentDiagnostics({
         code: code.toUpperCase(),
+        days: period,
       }),
     enabled: student !== null,
   })

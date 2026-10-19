@@ -472,7 +472,9 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             if transcript.strip():
                 from app.scoring.heuristic import align_words
 
-                attempt.word_alignment = align_words(reference_text, scores.transcript)
+                attempt.word_alignment = dict(
+                    align_words(reference_text, scores.transcript)
+                )
         else:
             # 开放问答：无参考文本（PRD §4：2 周只出总评和一句建议）
             question_context = _resolve_question_context(session, attempt)
