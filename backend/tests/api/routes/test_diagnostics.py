@@ -82,10 +82,34 @@ def test_diagnostics_aggregates_missed_words_and_dimensions(
             item_snapshot={"text": "I like green apples."},
             word_alignment={
                 "words": [
-                    {"start": 0, "end": 1, "text": "I", "status": "correct", "heard": None},
-                    {"start": 2, "end": 6, "text": "like", "status": "correct", "heard": None},
-                    {"start": 7, "end": 12, "text": "green", "status": "error", "heard": "gren"},
-                    {"start": 13, "end": 19, "text": "apples", "status": "missing", "heard": None},
+                    {
+                        "start": 0,
+                        "end": 1,
+                        "text": "I",
+                        "status": "correct",
+                        "heard": None,
+                    },
+                    {
+                        "start": 2,
+                        "end": 6,
+                        "text": "like",
+                        "status": "correct",
+                        "heard": None,
+                    },
+                    {
+                        "start": 7,
+                        "end": 12,
+                        "text": "green",
+                        "status": "error",
+                        "heard": "gren",
+                    },
+                    {
+                        "start": 13,
+                        "end": 19,
+                        "text": "apples",
+                        "status": "missing",
+                        "heard": None,
+                    },
                 ],
                 "extras": [],
             },

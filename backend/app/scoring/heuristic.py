@@ -98,10 +98,9 @@ def _variant_match(reference_token: str, spoken_token: str) -> bool:
     """
     if reference_token == spoken_token:
         return True
-    return (
-        spoken_token in set(lemma_variants(reference_token))
-        or reference_token in set(lemma_variants(spoken_token))
-    )
+    return spoken_token in set(
+        lemma_variants(reference_token)
+    ) or reference_token in set(lemma_variants(spoken_token))
 
 
 def align_words(reference: str, transcript: str) -> WordAlignment:
