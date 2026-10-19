@@ -18,8 +18,8 @@ def _add_done_attempt(
     *,
     item_type: str,
     created_at: datetime,
-    overall: float | None = None,
-    completeness: float | None = None,
+    overall: int | None = None,
+    completeness: int | None = None,
 ) -> None:
     db.add(
         Attempt(
