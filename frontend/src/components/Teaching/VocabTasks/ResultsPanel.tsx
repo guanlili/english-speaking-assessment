@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { downloadCsv } from "@/lib/csv"
+import { localDateStamp } from "@/lib/dates"
 import { type BiString, useI18n } from "@/lib/i18n"
 import { EXPLAIN_QUIZ_TAB_SWITCH, TERMS } from "@/lib/terms"
 import { formatTime } from "@/lib/time"
@@ -209,8 +210,8 @@ export function ResultsPanel({
     downloadCsv(
       [header, ...rows],
       t({
-        zh: `课堂${code}-词汇任务-${new Date().toISOString().slice(0, 10)}.csv`,
-        en: `classroom-${code}-vocabulary-${new Date().toISOString().slice(0, 10)}.csv`,
+        zh: `课堂${code}-词汇任务-${localDateStamp()}.csv`,
+        en: `classroom-${code}-vocabulary-${localDateStamp()}.csv`,
       }),
     )
   }

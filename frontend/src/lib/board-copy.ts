@@ -1,5 +1,6 @@
 import type { BoardStudent } from "../client/types.gen.ts"
 import type { BiString } from "./bi.ts"
+import { localDateStamp } from "./dates.ts"
 
 /**
  * 教师课堂面板的文案与序列化纯函数层（从 t.$code.index.tsx 抽出，批次 10-10）：
@@ -121,7 +122,7 @@ export function boardRosterCsv(
     String(st.streak_days ?? 0),
     t(BOARD_STATUS_LABELS[boardStatusOf(st)] ?? { zh: "", en: "" }),
   ])
-  const date = now.toISOString().slice(0, 10)
+  const date = localDateStamp(now)
   const filename = t({
     zh: `课堂${classroomCode}-练习名单-${date}.csv`,
     en: `classroom-${classroomCode}-practice-roster-${date}.csv`,

@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/table"
 import { APP_NAME } from "@/config"
 import { downloadCsv } from "@/lib/csv"
+import { localDateStamp } from "@/lib/dates"
 import { useI18n } from "@/lib/i18n"
 import {
   VOCAB_LEVEL_LABELS,
@@ -266,8 +267,8 @@ function VocabLevelsAdmin() {
         ]),
       ],
       t({
-        zh: `五级词库-待核对-${new Date().toISOString().slice(0, 10)}.csv`,
-        en: `leveled-vocab-needs-review-${new Date().toISOString().slice(0, 10)}.csv`,
+        zh: `五级词库-待核对-${localDateStamp()}.csv`,
+        en: `leveled-vocab-needs-review-${localDateStamp()}.csv`,
       }),
     )
   }
