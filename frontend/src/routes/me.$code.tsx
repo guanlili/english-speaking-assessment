@@ -12,6 +12,7 @@ import {
 import { useState } from "react"
 import { ClassesService } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
+import DimensionTrendChart from "@/components/Practice/DimensionTrendChart"
 import { LearningReportCard } from "@/components/Practice/LearningReportCard"
 import StudentShell from "@/components/Practice/StudentShell"
 import TrailView from "@/components/Practice/TrailView"
@@ -88,6 +89,20 @@ function MyTrailPage() {
     queryFn: () =>
       ClassesService.readStudentTrail({
         code: code.toUpperCase(),
+      }),
+    enabled: student !== null,
+  })
+
+  // 个人弱项诊断（诊断卡 + 四维趋势）：漏词 TOP、最弱维度、四维均值；
+  // 与上方 7/30 天切换器联动，period 变化时按所选窗口重新拉取
+  const diagnosticsQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
+    queryKey: ["classroom", code, "diagnostics", student?.id, period],
+    queryFn: () =>
+      ClassesService.readStudentDiagnostics({
+        code: code.toUpperCase(),
+        days: period,
       }),
     enabled: student !== null,
   })
@@ -441,6 +456,7 @@ function MyTrailPage() {
             </div>
             {growthTab === "trail" && (
               <>
+                <DiagnosticsCard data={diagnosticsQuery.data} />
                 <TrailView trail={trailQuery.data} period={period} />
                 <LearningReportCard code={code} />
               </>
@@ -626,5 +642,135 @@ function MyTrailPage() {
         </p>
       </div>
     </StudentShell>
+  )
+}
+
+const DIMENSION_LABELS = {
+  fluency: { zh: "流利度", en: "Fluency" },
+  vocabulary: { zh: "词汇", en: "Vocabulary" },
+  grammar: { zh: "语法", en: "Grammar" },
+  task: { zh: "任务完成", en: "Task" },
+} as const
+
+/** 个人弱项诊断卡：四维均值 + 最弱维度 + 高频漏词（跟读/复述）。 */
+function DiagnosticsCard({
+  data,
+}: {
+  data?: import("@/client").StudentDiagnostics
+}) {
+  const { t } = useI18n()
+  if (!data) return null
+
+  const means = data.dimension_means ?? {}
+  const meanEntries = Object.entries(means) as [
+    keyof typeof DIMENSION_LABELS,
+    number,
+  ][]
+  const weakest = data.weakest_dimension as
+    | keyof typeof DIMENSION_LABELS
+    | null
+    | undefined
+  const missed = (data.top_missed_words ?? []).filter(
+    (w): w is { word: string; count: number } =>
+      typeof w?.word === "string" && typeof w?.count === "number",
+  )
+  const hasRubric = (data.dimension_count ?? 0) > 0
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">
+          {t({ zh: "我的弱项诊断", en: "My weak spots" })}
+        </CardTitle>
+        <CardDescription>
+          {t({
+            zh: "最近作答的模型四维评分与跟读漏词（不是考试成绩）。",
+            en: "Model dimension scores and missed words from recent attempts — not exam results.",
+          })}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {hasRubric ? (
+          <div className="space-y-2">
+            {meanEntries.map(([key, value]) => (
+              <div key={key} className="flex items-center gap-2">
+                <span className="w-16 shrink-0 text-xs text-muted-foreground">
+                  {t(DIMENSION_LABELS[key] ?? { zh: key, en: key })}
+                </span>
+                <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className={
+                      key === weakest
+                        ? "h-full rounded-full bg-amber-500"
+                        : "h-full rounded-full bg-primary"
+                    }
+                    style={{
+                      width: `${Math.max(Math.round((value / 4) * 100), 3)}%`,
+                    }}
+                  />
+                </div>
+                <span className="w-10 shrink-0 text-right text-xs tabular-nums">
+                  {value.toFixed(1)}
+                  <span className="text-muted-foreground">/4</span>
+                </span>
+              </div>
+            ))}
+            <p className="text-xs text-muted-foreground">
+              {weakest
+                ? t({
+                    zh: `最需要练习：${t(DIMENSION_LABELS[weakest] ?? { zh: weakest, en: weakest })} · 共 ${data.dimension_count} 次问答计入`,
+                    en: `Focus next: ${t(DIMENSION_LABELS[weakest] ?? { zh: weakest, en: weakest })} · from ${data.dimension_count} Q&A attempts`,
+                  })
+                : null}
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t({
+              zh: "再完成几次问答练习后，这里会显示四维评分。",
+              en: "After a few more Q&A rounds, your dimension scores appear here.",
+            })}
+          </p>
+        )}
+
+        {missed.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              {t({
+                zh: "跟读/复述时读错或漏读的词（按次数）",
+                en: "Words you misread or missed when reading aloud (by frequency)",
+              })}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {missed.map((w) => (
+                <span
+                  key={w.word}
+                  className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs"
+                >
+                  <span className="font-medium">{w.word}</span>
+                  <span className="text-muted-foreground">×{w.count}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t({
+              zh: "没有记录到高频漏词，继续保持。",
+              en: "No frequent missed words recorded — keep it up.",
+            })}
+          </p>
+        )}
+
+        {data.dimension_trend && data.dimension_trend.length > 1 ? (
+          <div className="space-y-1 pt-1">
+            <p className="text-xs font-medium">
+              {t({ zh: "四维趋势", en: "Dimension trend" })}
+            </p>
+            <DimensionTrendChart points={data.dimension_trend} />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   )
 }

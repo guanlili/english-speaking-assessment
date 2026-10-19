@@ -2,13 +2,14 @@
 
 import logging
 import uuid
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, Query
 from sqlalchemy.orm import load_only
-from sqlmodel import col, select
+from sqlmodel import col, or_, select
 
 from app.api.deps import (
     CurrentUser,
@@ -31,19 +32,56 @@ from app.models import (
     AttemptItemType,
     AttemptStatus,
     ClassroomExercise,
+    DimensionPoint,
     LearningPath,
     MySessionSummary,
     Passage,
     PathUnit,
     PracticeSession,
+    Student,
+    StudentDiagnostics,
     TrailData,
     Unit,
 )
 from app.scoring.bands import BAND_ORDER
+from app.scoring.heuristic import align_words
 from app.services import exam as exam_service
 from app.services import trail as trail_service
 
 logger = logging.getLogger(__name__)
+
+
+def _feedback_locked_exam_session_ids(
+    session: SessionDep, student: Student
+) -> set[uuid.UUID]:
+    """考试反馈遮罩共用的锁定会话集合（trail / diagnostics / my-sessions 同口径）。
+
+    只排除「已开始且未终结」的考试会话：终结前分数/转写/建议一律不下发。
+    查询期间首次评分也可能完成：先固定提交上界，再检查学生全部未落结束
+    的考试会话（不能只检查「已有 done 作答」的会话，否则首答刚出分会漏遮罩）。
+    """
+    exam_rows = session.exec(
+        select(PracticeSession, ClassroomExercise)
+        .join(
+            ClassroomExercise,
+            col(PracticeSession.assignment_id) == col(ClassroomExercise.id),
+        )
+        .where(
+            PracticeSession.student_id == student.id,
+            col(PracticeSession.exam_ended_at).is_(None),
+            ClassroomExercise.is_exam,
+        )
+    ).all()
+    first = exam_service.first_submitted_by_session(
+        session, [ps.id for ps, _ in exam_rows if ps.exam_started_at is not None]
+    )
+    return {
+        ps.id
+        for ps, exercise in exam_rows
+        if exam_service.exam_feedback_locked(
+            session, ps, exercise, first_submitted=first.get(ps.id, {})
+        )
+    }
 
 
 @router.get("/{code}/trail", response_model=TrailData)
@@ -81,28 +119,7 @@ def read_student_trail(
     as_of = datetime.now(UTC)
     locked_session_ids: set[uuid.UUID] = set()
     if current_user.role == "student" and not current_user.is_superuser:
-        exam_rows = session.exec(
-            select(PracticeSession, ClassroomExercise)
-            .join(
-                ClassroomExercise,
-                col(PracticeSession.assignment_id) == col(ClassroomExercise.id),
-            )
-            .where(
-                PracticeSession.student_id == student.id,
-                col(PracticeSession.exam_ended_at).is_(None),
-                ClassroomExercise.is_exam,
-            )
-        ).all()
-        first = exam_service.first_submitted_by_session(
-            session, [ps.id for ps, _ in exam_rows if ps.exam_started_at is not None]
-        )
-        locked_session_ids = {
-            ps.id
-            for ps, exercise in exam_rows
-            if exam_service.exam_feedback_locked(
-                session, ps, exercise, first_submitted=first.get(ps.id, {})
-            )
-        }
+        locked_session_ids = _feedback_locked_exam_session_ids(session, student)
     summary = trail_service.summarize(
         session,
         student.id,
@@ -144,6 +161,166 @@ def read_student_trail(
         vocab_counts=summary.vocab_counts,
         level_counts=summary.level_counts,
     )
+
+
+@router.get("/{code}/diagnostics/me", response_model=StudentDiagnostics)
+def read_student_diagnostics(
+    session: SessionDep,
+    code: str,
+    current_user: CurrentUser,
+    days: int = Query(default=90, ge=1, le=3650, description="查询最近多少天"),
+    student_id: uuid.UUID | None = Query(
+        default=None, description="教师查看指定学生；学生查看自己时省略"
+    ),
+) -> Any:
+    """个人弱项诊断（成长页诊断卡）：高频漏词 + 四维均值/最弱维度 + 四维趋势。
+
+    路径用 /diagnostics/me 与教师端全班问题列表（/diagnostics，ClassroomDiagnostics）
+    区分：本接口是学生个人数据，只取单生窗口内 DONE 作答。
+    与 trail 同口径：排除未终结考试的反馈；漏词来自词级对齐（新作答）或
+    item_snapshot 回退对齐（历史作答），error/missing 均计入。
+    """
+    classroom = _get_classroom(session, code)
+    if current_user.role == "student" and not current_user.is_superuser:
+        student = _student_profile_of(session, classroom, current_user)
+    else:
+        if student_id is None:
+            raise HTTPException(status_code=422, detail="教师查看需传 student_id")
+        _require_classroom_teacher(classroom, current_user)
+        student = _get_student_of_classroom(session, classroom, student_id)
+
+    tz = ZoneInfo(settings.PRACTICE_TZ)
+    now_tz = datetime.now(tz)
+    window_start = (now_tz - timedelta(days=days)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    window_start_utc = window_start.astimezone(ZoneInfo("UTC"))
+    as_of = datetime.now(UTC)
+    locked_session_ids = (
+        _feedback_locked_exam_session_ids(session, student)
+        if current_user.role == "student" and not current_user.is_superuser
+        else set()
+    )
+
+    conditions = [
+        col(Attempt.student_id) == student.id,
+        col(Attempt.status) == AttemptStatus.DONE,
+        col(Attempt.created_at) >= window_start_utc,
+        col(Attempt.created_at) <= as_of,
+    ]
+    if locked_session_ids:
+        conditions.append(
+            or_(
+                col(Attempt.session_id).is_(None),
+                col(Attempt.session_id).not_in(locked_session_ids),
+            )
+        )
+    rows = session.exec(
+        select(Attempt)
+        .where(*conditions)
+        .order_by(col(Attempt.created_at), col(Attempt.id))
+        .options(
+            load_only(
+                Attempt.item_type,  # ty: ignore[invalid-argument-type]
+                Attempt.item_snapshot,  # ty: ignore[invalid-argument-type]
+                Attempt.transcript,  # ty: ignore[invalid-argument-type]
+                Attempt.word_alignment,  # ty: ignore[invalid-argument-type]
+                Attempt.rubric,  # ty: ignore[invalid-argument-type]
+                Attempt.created_at,  # ty: ignore[invalid-argument-type]
+            )
+        )
+    ).all()
+
+    missed: Counter[str] = Counter()
+    rubric_points: list[DimensionPoint] = []
+    dim_sums: dict[str, float] = {}
+    dim_count = 0
+    for attempt in rows:
+        if attempt.item_type in (AttemptItemType.PASSAGE, AttemptItemType.REPEAT):
+            _accumulate_missed_words(missed, attempt)
+        elif attempt.item_type == AttemptItemType.QUESTION:
+            created_at = attempt.created_at
+            if created_at is None:
+                continue
+            rubric = attempt.rubric if isinstance(attempt.rubric, dict) else None
+            if rubric is None:
+                continue
+            values = {
+                key: rubric.get(key)
+                for key in ("fluency", "vocabulary", "grammar", "task")
+            }
+            if not all(isinstance(v, (int, float)) for v in values.values()):
+                continue
+            # all() 已保证四个维度都是数值，这里收窄为 float 供求和/趋势使用
+            floats: dict[str, float] = {
+                key: float(value)
+                for key, value in values.items()
+                if isinstance(value, (int, float))
+            }
+            for key, value in floats.items():
+                dim_sums[key] = dim_sums.get(key, 0.0) + value
+            dim_count += 1
+            date_key = created_at.astimezone(tz).date().isoformat()
+            rubric_points.append(
+                DimensionPoint(
+                    date=date_key,
+                    fluency=floats["fluency"],
+                    vocabulary=floats["vocabulary"],
+                    grammar=floats["grammar"],
+                    task=floats["task"],
+                )
+            )
+
+    means: dict[str, float] = {}
+    for key in ("fluency", "vocabulary", "grammar", "task"):
+        if key in dim_sums and dim_count:
+            means[key] = round(dim_sums[key] / dim_count, 1)
+    weakest: str | None = None
+    if means:
+        weakest = min(
+            ("fluency", "vocabulary", "grammar", "task"),
+            key=lambda k: means[k],
+        )
+
+    top_missed: list[dict[str, object]] = [
+        {"word": word, "count": count} for word, count in missed.most_common(12)
+    ]
+    return StudentDiagnostics(
+        classroom_code=classroom.code,
+        student_id=student.id,
+        top_missed_words=top_missed,
+        dimension_means=means,
+        weakest_dimension=weakest,
+        dimension_count=dim_count,
+        dimension_trend=rubric_points[-14:],
+    )
+
+
+def _accumulate_missed_words(counter: Counter[str], attempt: Attempt) -> None:
+    """从词级对齐统计漏读/错读词；旧作答（无对齐）用题面快照文本现算。"""
+    alignment = (
+        attempt.word_alignment if isinstance(attempt.word_alignment, dict) else None
+    )
+    words = alignment.get("words") if alignment is not None else None
+    if isinstance(words, list):
+        for entry in words:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("status") in ("missing", "error"):
+                text = entry.get("text")
+                if isinstance(text, str) and text:
+                    counter[text.lower()] += 1
+        return
+    snapshot = (
+        attempt.item_snapshot if isinstance(attempt.item_snapshot, dict) else None
+    )
+    ref = snapshot.get("text") if snapshot else None
+    if not isinstance(ref, str) or not ref or not attempt.transcript:
+        return
+    aligned = align_words(ref, attempt.transcript)
+    for entry in aligned["words"]:
+        if entry["status"] in ("missing", "error"):
+            counter[entry["text"].lower()] += 1
 
 
 @router.get("/{code}/path", response_model=LearningPath)

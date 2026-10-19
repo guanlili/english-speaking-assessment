@@ -1105,6 +1105,11 @@ class Attempt(SQLModel, table=True):
     advice: list[str] | None = Field(default=None, sa_column=Column(JSON))
     # 词汇分析（仅问答作答；PRD US-07）：命中词/覆盖比例/CEFR 参考；词表为空时为 null
     vocab: dict[str, object] | None = Field(default=None, sa_column=Column(JSON))
+    # 词级对齐（仅跟读/复述作答）：参考文本逐词状态（correct/missing/error
+    # + heard）+ 多读词。结果页原文高亮与个人漏词聚合共用，不参与评分。
+    word_alignment: dict[str, object] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
     # rubric 四维与模拟分（仅问答 + ark 引擎；PRD US-08）：四维 0-4、mock_score 0-9、
     # upgrades 升级表达。mock 引擎或模型失败时为 null（界面显示「建议暂缺」）
     rubric: dict[str, object] | None = Field(default=None, sa_column=Column(JSON))
@@ -1150,6 +1155,7 @@ class AttemptPublic(SQLModel):
     overall: int | None = None
     advice: list[str] | None = None
     vocab: dict[str, object] | None = None
+    word_alignment: dict[str, object] | None = None
     rubric: dict[str, object] | None = None
     teacher_feedback: str | None = None
     teacher_focus: bool = False
@@ -1203,11 +1209,16 @@ class PlanAttempt(SQLModel):
     advice: list[str] | None = None
     # 词汇命中分析（问答）：命中词/覆盖率/CEFR——结果页命中词 tags 用
     vocab: dict[str, object] | None = None
+    # 词级对齐（跟读/复述）：参考文本逐词状态，结果页原文高亮用
+    word_alignment: dict[str, object] | None = None
     # rubric 四维与升级表达（问答 + ark）——结果页四维条形用
     rubric: dict[str, object] | None = None
     # 提交时的参考文本。回看不能改用后来编辑过的题库正文。
     item_text: str | None = None
     error: str | None = None
+    # 同题上一次 DONE 作答摘要（重录对比）：{overall, fluency, completeness,
+    # created_at}；首次作答为 null
+    previous: dict[str, object] | None = None
 
     teacher_feedback: str | None = None
     teacher_focus: bool = False
@@ -1426,6 +1437,30 @@ class TrailData(SQLModel):
     vocab_counts: dict[str, int] = {}
     # 五级词库口径的用词来源命中（现行为标准；来自 attempt.vocab.level_stats）
     level_counts: dict[str, int] = {}
+
+
+# 个人弱项诊断（GET /classes/{code}/diagnostics，成长页诊断卡）
+class DimensionPoint(SQLModel):
+    date: str  # 练习日（按配置时区）
+    fluency: float | None = None
+    vocabulary: float | None = None
+    grammar: float | None = None
+    task: float | None = None
+
+
+class StudentDiagnostics(SQLModel):
+    classroom_code: str
+    student_id: uuid.UUID
+    # 个人高频漏词（跟读/复述，窗口 90 天）：[{word, count}]，按 count 降序
+    top_missed_words: list[dict[str, object]] = []
+    # 四维均值（问答 rubric，窗口 90 天；无样本时为空 dict）
+    dimension_means: dict[str, float] = {}
+    # 均值最小的维度（并列取 fluency/vocabulary/grammar/task 顺序）；无样本为 null
+    weakest_dimension: str | None = None
+    # 参与四维统计的问答作答数
+    dimension_count: int = 0
+    # 四维趋势（最近 14 次有完整四维的作答，按时间升序）
+    dimension_trend: list[DimensionPoint] = []
 
 
 # 学生历史练习列表行（GET /classes/{code}/my-sessions）：一次会话一行，

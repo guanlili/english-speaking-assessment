@@ -6,7 +6,6 @@ PRD 不可协商 #4：上传接口立即返回，评分在线程池里异步完�
 """
 
 import logging
-import re
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -35,7 +34,12 @@ from app.models import (
 from app.scoring.asr import ArkResponsesAsr, MockAsr
 from app.scoring.audio_convert import convert_to_wav, ensure_ark_supported
 from app.scoring.base import AsrProvider, ContentMissingError, ScoringError
-from app.scoring.heuristic import score_open_response, score_read_aloud
+from app.scoring.heuristic import (
+    lemma_variants,
+    score_open_response,
+    score_read_aloud,
+    tokenize,
+)
 from app.scoring.rubric import RUBRIC_PROMPT_VERSION, RubricQuestionContext
 from app.scoring.volc_flash import VolcFlashAsr
 
@@ -118,44 +122,6 @@ def _drain_pending_resubmits(session: Session) -> int:
     return submitted
 
 
-_TOKEN_RE = re.compile(r"[a-z']+")
-_CONSONANTS = set("bcdfghjklmnpqrstvwxyz")
-
-
-def _lemma_variants(token: str) -> list[str]:
-    """轻量词元归一：处理规则屈折（复数/进行时/过去式），不规则形式由词表直接收录。"""
-    variants = [token]
-    if token.endswith("ies") and len(token) > 4:
-        variants.append(token[:-3] + "y")
-    if token.endswith("es") and len(token) > 3:
-        variants.append(token[:-2])
-    if token.endswith("s") and len(token) > 2:
-        variants.append(token[:-1])
-    if token.endswith("ing") and len(token) > 5:
-        stem = token[:-3]
-        variants.append(stem)
-        variants.append(stem + "e")  # making → make
-        if (
-            len(stem) > 2 and stem[-1] == stem[-2] and stem[-1] in _CONSONANTS
-        ):  # running → run
-            variants.append(stem[:-1])
-    if token.endswith("ed") and len(token) > 4:
-        stem = token[:-2]
-        variants.append(stem)
-        variants.append(token[:-1])  # hoped → hope
-        if (
-            len(stem) > 2 and stem[-1] == stem[-2] and stem[-1] in _CONSONANTS
-        ):  # stopped → stop
-            variants.append(stem[:-1])
-    if token.endswith("er") and len(token) > 4:
-        variants.append(token[:-2])
-        variants.append(token[:-1])
-    if token.endswith("est") and len(token) > 5:
-        variants.append(token[:-3])
-        variants.append(token[:-2])
-    return list(dict.fromkeys(variants))
-
-
 # 进程内五级词库缓存：签名 = 过滤集 (count, max(created_at))。
 # 词表可发生的变更（导入插入、人工核对、启停用）都会改变过滤集 count，
 # 而 headword/level 不可编辑，故签名一致即可复用，无需 updated_at 列。
@@ -213,7 +179,7 @@ def _five_level_stats(session: Session, transcript: str) -> dict[str, object] | 
     levels = _get_five_level_cache(session)
     if not any(levels.values()):
         return None
-    tokens = set(_TOKEN_RE.findall(transcript.lower()))
+    tokens = set(tokenize(transcript))
     if not tokens:
         return None
     from app.models import VOCAB_LEVEL_ORDER
@@ -225,8 +191,7 @@ def _five_level_stats(session: Session, transcript: str) -> dict[str, object] | 
             level
             for level in VOCAB_LEVEL_ORDER
             if any(
-                variant in levels.get(level, set())
-                for variant in _lemma_variants(token)
+                variant in levels.get(level, set()) for variant in lemma_variants(token)
             )
         ]
         if not hit_levels:
@@ -499,6 +464,14 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             attempt.accuracy = scores.accuracy
             attempt.overall = scores.overall
             attempt.advice = scores.advice
+            # 词级对齐（逐词标注与个人漏词聚合共用）：只在有参考文本的跟读/
+            # 复述题生成；空转写全部 missing，前端据此展示「未识别到语音」
+            if transcript.strip():
+                from app.scoring.heuristic import align_words
+
+                attempt.word_alignment = dict(
+                    align_words(reference_text, scores.transcript)
+                )
         else:
             # 开放问答：无参考文本（PRD §4：2 周只出总评和一句建议）
             question_context = _resolve_question_context(session, attempt)

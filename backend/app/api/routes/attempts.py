@@ -282,6 +282,7 @@ def _attempt_public(
         public.advice = None
         public.vocab = None
         public.rubric = None
+        public.word_alignment = None
         public.teacher_review_tags = None
         public.teacher_feedback = None
         public.teacher_focus = False

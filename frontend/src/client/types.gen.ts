@@ -72,6 +72,9 @@ export type AttemptPublic = {
     vocab?: ({
     [key: string]: unknown;
 } | null);
+    word_alignment?: ({
+    [key: string]: unknown;
+} | null);
     rubric?: ({
     [key: string]: unknown;
 } | null);
@@ -425,6 +428,14 @@ export type DiagnosticTargets = {
     item_ids: Array<(string)>;
     matched_answers: number;
     targets?: Array<DiagnosticStudentItems>;
+};
+
+export type DimensionPoint = {
+    date: string;
+    fluency?: (number | null);
+    vocabulary?: (number | null);
+    grammar?: (number | null);
+    task?: (number | null);
 };
 
 export type DraftPublic = {
@@ -887,11 +898,17 @@ export type PlanAttempt = {
     vocab?: ({
     [key: string]: unknown;
 } | null);
+    word_alignment?: ({
+    [key: string]: unknown;
+} | null);
     rubric?: ({
     [key: string]: unknown;
 } | null);
     item_text?: (string | null);
     error?: (string | null);
+    previous?: ({
+    [key: string]: unknown;
+} | null);
     teacher_feedback?: (string | null);
     teacher_focus?: boolean;
     teacher_feedback_author?: (string | null);
@@ -1308,6 +1325,20 @@ export type StudentClassroomOut = {
     xp: number;
     streak_days: number;
     has_published_task?: boolean;
+};
+
+export type StudentDiagnostics = {
+    classroom_code: string;
+    student_id: string;
+    top_missed_words?: Array<{
+        [key: string]: unknown;
+    }>;
+    dimension_means?: {
+        [key: string]: (number);
+    };
+    weakest_dimension?: (string | null);
+    dimension_count?: number;
+    dimension_trend?: Array<DimensionPoint>;
 };
 
 export type StudentImportLine = {
@@ -2744,6 +2775,20 @@ export type ClassesReadStudentTrailData = {
 };
 
 export type ClassesReadStudentTrailResponse = (TrailData);
+
+export type ClassesReadStudentDiagnosticsData = {
+    code: string;
+    /**
+     * 查询最近多少天
+     */
+    days?: number;
+    /**
+     * 教师查看指定学生；学生查看自己时省略
+     */
+    studentId?: (string | null);
+};
+
+export type ClassesReadStudentDiagnosticsResponse = (StudentDiagnostics);
 
 export type ClassesReadLearningPathData = {
     code: string;

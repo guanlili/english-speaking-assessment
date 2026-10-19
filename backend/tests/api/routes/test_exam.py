@@ -590,6 +590,7 @@ MASKED_ATTEMPT_FIELDS = (
     "advice",
     "vocab",
     "rubric",
+    "word_alignment",
     "error",
 )
 # PlanAttempt（today 计划出口）没有 accuracy 字段，其余同上
