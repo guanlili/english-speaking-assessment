@@ -9,7 +9,7 @@ import {
   Star,
   Trophy,
 } from "lucide-react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { ClassesService } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
 import DimensionTrendChart from "@/components/Practice/DimensionTrendChart"
@@ -25,6 +25,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
 import { useExpressionFavorites } from "@/hooks/useExpressionFavorites"
@@ -35,6 +36,7 @@ import {
   dimensionTrendVisible,
 } from "@/lib/dimension-trend"
 import { useI18n } from "@/lib/i18n"
+import { filterSessions } from "@/lib/practice-history"
 import {
   EXPLAIN,
   FRAME_PURPOSE_LABELS,
@@ -119,6 +121,13 @@ function MyTrailPage() {
     queryFn: () => ClassesService.readMySessions({ code: code.toUpperCase() }),
     enabled: student !== null,
   })
+
+  // 历史练习关键词过滤（本地过滤，数据已全量返回最近 30 轮）
+  const [sessionFilter, setSessionFilter] = useState("")
+  const visibleSessions = useMemo(
+    () => filterSessions(mySessionsQuery.data ?? [], sessionFilter, t),
+    [mySessionsQuery.data, sessionFilter, t],
+  )
 
   useStudentGuard(code, student, trailQuery)
 
@@ -567,73 +576,101 @@ function MyTrailPage() {
                 })}
               </p>
             ) : (
-              <ul className="space-y-2">
-                {(mySessionsQuery.data ?? []).map((row) => (
-                  <li
-                    key={row.session_id}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border px-3 py-2.5"
-                  >
-                    <span className="w-24 shrink-0 text-xs text-muted-foreground">
-                      {/* 练习日按服务端时区落库（YYYY-MM-DD）：直接展示原串，
-                          不经本地时区解析（与轨迹表同口径，避免西半球差一天） */}
-                      {row.session_date}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
-                        <span className="truncate text-sm font-medium">
-                          {row.title ??
-                            t(
-                              row.mode === "explore"
-                                ? { zh: "主题探索", en: "Topic explore" }
-                                : { zh: "自主练习", en: "Self practice" },
-                            )}
-                        </span>
-                        <Badge variant="outline">
-                          {t(
-                            row.is_exam
-                              ? { zh: "考试", en: "Exam" }
-                              : { zh: "练习", en: "Practice" },
-                          )}
-                        </Badge>
-                        {row.mode === "explore" && (
-                          <Badge
-                            variant="outline"
-                            className="shrink-0 text-muted-foreground"
-                          >
-                            {t({ zh: "探索", en: "Explore" })}
-                          </Badge>
-                        )}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {t({
-                          zh: `完成 ${row.done_count}/${row.total_count} 题 · 参考分 ${row.overall_avg ?? "–"}`,
-                          en: `${row.done_count}/${row.total_count} done · ref score ${row.overall_avg ?? "–"}`,
-                        })}
-                      </span>
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="min-h-11 shrink-0"
-                      asChild
-                    >
-                      <Link
-                        to={
-                          row.is_exam ? "/exam/$code/result" : "/p/$code/result"
-                        }
-                        params={{ code }}
-                        search={{ session: row.session_id }}
+              <>
+                <div className="pb-3">
+                  <Input
+                    value={sessionFilter}
+                    onChange={(e) => setSessionFilter(e.target.value)}
+                    placeholder={t({
+                      zh: "按篇目或日期搜索练习…",
+                      en: "Search by title or date…",
+                    })}
+                    aria-label={t({
+                      zh: "搜索历史练习",
+                      en: "Search practice history",
+                    })}
+                    className="max-w-md"
+                  />
+                </div>
+                {visibleSessions.length === 0 ? (
+                  <p className="py-2 text-sm text-muted-foreground">
+                    {t({
+                      zh: "没有匹配的练习记录。",
+                      en: "No matching practice sessions.",
+                    })}
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {visibleSessions.map((row) => (
+                      <li
+                        key={row.session_id}
+                        className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border px-3 py-2.5"
                       >
-                        {t(
-                          row.is_exam && !row.exam_ended
-                            ? { zh: "进入考试", en: "Open exam" }
-                            : { zh: "查看反馈", en: "View Feedback" },
-                        )}
-                      </Link>
-                    </Button>
-                  </li>
-                ))}
-              </ul>
+                        <span className="w-24 shrink-0 text-xs text-muted-foreground">
+                          {/* 练习日按服务端时区落库（YYYY-MM-DD）：直接展示原串，
+                          不经本地时区解析（与轨迹表同口径，避免西半球差一天） */}
+                          {row.session_date}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium">
+                              {row.title ??
+                                t(
+                                  row.mode === "explore"
+                                    ? { zh: "主题探索", en: "Topic explore" }
+                                    : { zh: "自主练习", en: "Self practice" },
+                                )}
+                            </span>
+                            <Badge variant="outline">
+                              {t(
+                                row.is_exam
+                                  ? { zh: "考试", en: "Exam" }
+                                  : { zh: "练习", en: "Practice" },
+                              )}
+                            </Badge>
+                            {row.mode === "explore" && (
+                              <Badge
+                                variant="outline"
+                                className="shrink-0 text-muted-foreground"
+                              >
+                                {t({ zh: "探索", en: "Explore" })}
+                              </Badge>
+                            )}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            {t({
+                              zh: `完成 ${row.done_count}/${row.total_count} 题 · 参考分 ${row.overall_avg ?? "–"}`,
+                              en: `${row.done_count}/${row.total_count} done · ref score ${row.overall_avg ?? "–"}`,
+                            })}
+                          </span>
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="min-h-11 shrink-0"
+                          asChild
+                        >
+                          <Link
+                            to={
+                              row.is_exam
+                                ? "/exam/$code/result"
+                                : "/p/$code/result"
+                            }
+                            params={{ code }}
+                            search={{ session: row.session_id }}
+                          >
+                            {t(
+                              row.is_exam && !row.exam_ended
+                                ? { zh: "进入考试", en: "Open exam" }
+                                : { zh: "查看反馈", en: "View Feedback" },
+                            )}
+                          </Link>
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

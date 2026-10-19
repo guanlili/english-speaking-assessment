@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import useCustomToast from "@/hooks/useCustomToast"
+import { localDateStamp } from "@/lib/dates"
 import { useI18n } from "@/lib/i18n"
 import { questionBankErrorMessage } from "@/lib/questionImport"
 import {
@@ -87,7 +88,7 @@ export function QuestionBankExportDialog({
       const anchor = document.createElement("a")
       document.body.append(anchor)
       anchor.href = url
-      anchor.download = `question-bank-export-${new Date().toISOString().slice(0, 10)}.${format}`
+      anchor.download = `question-bank-export-${localDateStamp()}.${format}`
       anchor.click()
       anchor.remove()
       URL.revokeObjectURL(url)
