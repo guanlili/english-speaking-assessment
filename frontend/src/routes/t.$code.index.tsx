@@ -26,6 +26,7 @@ import { ClassGapsCard } from "@/components/Teaching/ClassGapsCard"
 import { ClassroomContactPanel } from "@/components/Teaching/ClassroomContactPanel"
 import { ClassroomIssues } from "@/components/Teaching/ClassroomIssues"
 import { ClassroomLiveStatus } from "@/components/Teaching/ClassroomLiveStatus"
+import ClassTrendCard from "@/components/Teaching/ClassTrendCard"
 import { ExerciseHistory } from "@/components/Teaching/ExerciseHistory"
 import {
   FollowupCreateDialog,
@@ -551,6 +552,7 @@ function TeacherBoardPage() {
               classAvg={classAvg}
               inactiveCount={inactiveCount}
             />
+            <ClassTrendCard code={code} />
             {board.current_exercise && (
               <ClassGapsCard
                 code={code}

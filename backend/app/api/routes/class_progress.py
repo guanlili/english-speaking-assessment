@@ -32,6 +32,7 @@ from app.models import (
     AttemptItemType,
     AttemptStatus,
     ClassroomExercise,
+    ClassTrendDay,
     DimensionPoint,
     LearningPath,
     MySessionSummary,
@@ -45,6 +46,7 @@ from app.models import (
 )
 from app.scoring.bands import BAND_ORDER
 from app.scoring.heuristic import align_words
+from app.services import class_trend
 from app.services import exam as exam_service
 from app.services import trail as trail_service
 
@@ -441,6 +443,34 @@ def read_student_sessions(
     return _session_history(
         session, student.id, limit, mask_exam_feedback=False, offset=offset
     )
+
+
+@router.get("/{code}/trend", response_model=list[ClassTrendDay])
+def read_class_trend(
+    session: SessionDep,
+    code: str,
+    current_user: CurrentUser,
+    days: int = Query(default=14, ge=1, le=90),
+) -> Any:
+    """教师端班级趋势：全班已完成作答按练习日的聚合（活跃学生/均分/完整度）。
+
+    仅授权教师可看；与 trail 同口径（配置时区切日、status=DONE），
+    考试未终结的作答天然排除。时间窗为最近 N 个自然日（含今天）。
+    """
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    student_ids = [
+        s.id
+        for s in session.exec(
+            select(Student).where(Student.classroom_id == classroom.id)
+        ).all()
+    ]
+    now = datetime.now(ZoneInfo(settings.PRACTICE_TZ))
+    since = (now - timedelta(days=days - 1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    since_utc = since.astimezone(ZoneInfo("UTC"))
+    return class_trend.summarize(session, student_ids, since_utc, settings.PRACTICE_TZ)
 
 
 def _session_history(

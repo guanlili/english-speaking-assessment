@@ -382,6 +382,14 @@ export type ClassSizeUpdate = {
     class_size: number;
 };
 
+export type ClassTrendDay = {
+    date: string;
+    active_students?: number;
+    question_attempts?: number;
+    question_avg?: (number | null);
+    repeat_completeness_avg?: (number | null);
+};
+
 /**
  * 当前发布、今日会话里的共同漏词和偏低题目。
  */
@@ -2811,6 +2819,13 @@ export type ClassesReadStudentSessionsData = {
 };
 
 export type ClassesReadStudentSessionsResponse = (Array<MySessionSummary>);
+
+export type ClassesReadClassTrendData = {
+    code: string;
+    days?: number;
+};
+
+export type ClassesReadClassTrendResponse = (Array<ClassTrendDay>);
 
 export type ClassesReadExamStateData = {
     code: string;
