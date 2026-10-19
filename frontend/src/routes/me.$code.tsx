@@ -113,16 +113,21 @@ function MyTrailPage() {
     enabled: student !== null,
   })
 
-  // 历史练习（第二天回看）：最近会话列表，点「查看反馈」进该轮结果页
+  // 历史练习（第二天回看）：最近会话列表（接口上限 100 轮），
+  // 点「查看反馈」进该轮结果页
   const mySessionsQuery = useQuery({
     retry: 1,
     retryDelay: 500,
     queryKey: ["classroom", code, "my-sessions", student?.id],
-    queryFn: () => ClassesService.readMySessions({ code: code.toUpperCase() }),
+    queryFn: () =>
+      ClassesService.readMySessions({
+        code: code.toUpperCase(),
+        limit: 100,
+      }),
     enabled: student !== null,
   })
 
-  // 历史练习关键词过滤（本地过滤，数据已全量返回最近 30 轮）
+  // 历史练习关键词过滤（本地过滤，数据已全量返回最近 100 轮）
   const [sessionFilter, setSessionFilter] = useState("")
   const visibleSessions = useMemo(
     () => filterSessions(mySessionsQuery.data ?? [], sessionFilter, t),
@@ -533,8 +538,8 @@ function MyTrailPage() {
             </CardTitle>
             <CardDescription>
               {t({
-                zh: "最近 30 轮练习与考试；点「查看反馈」回看当轮每题的转写、参考分与建议。",
-                en: "Your last 30 rounds. View feedback to revisit transcripts, reference scores and tips for each item.",
+                zh: "最近 100 轮练习与考试；点「查看反馈」回看当轮每题的转写、参考分与建议。",
+                en: "Your last 100 rounds. View feedback to revisit transcripts, reference scores and tips for each item.",
               })}
             </CardDescription>
           </CardHeader>
