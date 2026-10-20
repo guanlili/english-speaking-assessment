@@ -9,73 +9,52 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SignupRouteImport } from './routes/signup'
-import { Route as ResetPasswordRouteImport } from './routes/reset-password'
-import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as JoinRouteImport } from './routes/join'
-import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as LayoutRouteImport } from './routes/_layout'
+import { Route as ChangePasswordRouteImport } from './routes/change-password'
+import { Route as JoinRouteImport } from './routes/join'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
-import { Route as VocabCodeRouteImport } from './routes/vocab.$code'
-import { Route as TCodeRouteImport } from './routes/t.$code'
-import { Route as PCodeRouteImport } from './routes/p.$code'
-import { Route as MeCodeRouteImport } from './routes/me.$code'
-import { Route as JCodeRouteImport } from './routes/j.$code'
-import { Route as HomeCodeRouteImport } from './routes/home.$code'
-import { Route as HelpCodeRouteImport } from './routes/help.$code'
-import { Route as ExploreCodeRouteImport } from './routes/explore.$code'
-import { Route as ExamCodeRouteImport } from './routes/exam.$code'
-import { Route as ClassroomCodeRouteImport } from './routes/classroom.$code'
-import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
-import { Route as LayoutCreateRouteImport } from './routes/_layout/create'
-import { Route as LayoutClassroomsRouteImport } from './routes/_layout/classrooms'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
-import { Route as VocabCodeIndexRouteImport } from './routes/vocab.$code.index'
-import { Route as TCodeIndexRouteImport } from './routes/t.$code.index'
-import { Route as PCodeIndexRouteImport } from './routes/p.$code.index'
-import { Route as ExamCodeIndexRouteImport } from './routes/exam.$code.index'
+import { Route as LayoutClassroomsRouteImport } from './routes/_layout/classrooms'
+import { Route as LayoutCreateRouteImport } from './routes/_layout/create'
+import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
+import { Route as ClassroomCodeRouteImport } from './routes/classroom.$code'
+import { Route as ExamCodeRouteImport } from './routes/exam.$code'
+import { Route as ExploreCodeRouteImport } from './routes/explore.$code'
+import { Route as HelpCodeRouteImport } from './routes/help.$code'
+import { Route as HomeCodeRouteImport } from './routes/home.$code'
+import { Route as JCodeRouteImport } from './routes/j.$code'
+import { Route as MeCodeRouteImport } from './routes/me.$code'
+import { Route as PCodeRouteImport } from './routes/p.$code'
+import { Route as TCodeRouteImport } from './routes/t.$code'
+import { Route as VocabCodeRouteImport } from './routes/vocab.$code'
 import { Route as LayoutAdminIndexRouteImport } from './routes/_layout/admin.index'
-import { Route as VocabCodeSelfRouteImport } from './routes/vocab.$code.self'
-import { Route as VocabCodeRecordsRouteImport } from './routes/vocab.$code.records'
-import { Route as VocabCodePracticeRouteImport } from './routes/vocab.$code.practice'
-import { Route as VocabCodeBooksRouteImport } from './routes/vocab.$code.books'
-import { Route as TCodeVocabRouteImport } from './routes/t.$code.vocab'
-import { Route as PCodeResultRouteImport } from './routes/p.$code.result'
-import { Route as ExamCodeResultRouteImport } from './routes/exam.$code.result'
-import { Route as LayoutAdminVocablevelsRouteImport } from './routes/_layout/admin.vocablevels'
-import { Route as LayoutAdminVocabbooksRouteImport } from './routes/_layout/admin.vocabbooks'
-import { Route as LayoutAdminUnitsRouteImport } from './routes/_layout/admin.units'
-import { Route as LayoutAdminSentenceframesRouteImport } from './routes/_layout/admin.sentenceframes'
-import { Route as LayoutAdminScenariosRouteImport } from './routes/_layout/admin.scenarios'
-import { Route as LayoutAdminQuestionsRouteImport } from './routes/_layout/admin.questions'
-import { Route as LayoutAdminPassagesRouteImport } from './routes/_layout/admin.passages'
 import { Route as LayoutAdminClassroomsRouteImport } from './routes/_layout/admin.classrooms'
+import { Route as LayoutAdminPassagesRouteImport } from './routes/_layout/admin.passages'
+import { Route as LayoutAdminQuestionsRouteImport } from './routes/_layout/admin.questions'
+import { Route as LayoutAdminScenariosRouteImport } from './routes/_layout/admin.scenarios'
+import { Route as LayoutAdminSentenceframesRouteImport } from './routes/_layout/admin.sentenceframes'
+import { Route as LayoutAdminUnitsRouteImport } from './routes/_layout/admin.units'
+import { Route as LayoutAdminVocabbooksRouteImport } from './routes/_layout/admin.vocabbooks'
+import { Route as LayoutAdminVocablevelsRouteImport } from './routes/_layout/admin.vocablevels'
+import { Route as ExamCodeIndexRouteImport } from './routes/exam.$code.index'
+import { Route as ExamCodeResultRouteImport } from './routes/exam.$code.result'
+import { Route as PCodeIndexRouteImport } from './routes/p.$code.index'
+import { Route as PCodeResultRouteImport } from './routes/p.$code.result'
+import { Route as TCodeIndexRouteImport } from './routes/t.$code.index'
+import { Route as TCodeVocabRouteImport } from './routes/t.$code.vocab'
+import { Route as VocabCodeIndexRouteImport } from './routes/vocab.$code.index'
+import { Route as VocabCodeBooksRouteImport } from './routes/vocab.$code.books'
+import { Route as VocabCodePracticeRouteImport } from './routes/vocab.$code.practice'
+import { Route as VocabCodeRecordsRouteImport } from './routes/vocab.$code.records'
+import { Route as VocabCodeSelfRouteImport } from './routes/vocab.$code.self'
 import { Route as TCodeSStudentIdRouteImport } from './routes/t.$code.s.$studentId'
 
-const SignupRoute = SignupRouteImport.update({
-  id: '/signup',
-  path: '/signup',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ResetPasswordRoute = ResetPasswordRouteImport.update({
-  id: '/reset-password',
-  path: '/reset-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RecoverPasswordRoute = RecoverPasswordRouteImport.update({
-  id: '/recover-password',
-  path: '/recover-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const JoinRoute = JoinRouteImport.update({
-  id: '/join',
-  path: '/join',
+const LayoutRoute = LayoutRouteImport.update({
+  id: '/_layout',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChangePasswordRoute = ChangePasswordRouteImport.update({
@@ -83,8 +62,29 @@ const ChangePasswordRoute = ChangePasswordRouteImport.update({
   path: '/change-password',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LayoutRoute = LayoutRouteImport.update({
-  id: '/_layout',
+const JoinRoute = JoinRouteImport.update({
+  id: '/join',
+  path: '/join',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RecoverPasswordRoute = RecoverPasswordRouteImport.update({
+  id: '/recover-password',
+  path: '/recover-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LayoutIndexRoute = LayoutIndexRouteImport.update({
@@ -92,64 +92,9 @@ const LayoutIndexRoute = LayoutIndexRouteImport.update({
   path: '/',
   getParentRoute: () => LayoutRoute,
 } as any)
-const VocabCodeRoute = VocabCodeRouteImport.update({
-  id: '/vocab/$code',
-  path: '/vocab/$code',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TCodeRoute = TCodeRouteImport.update({
-  id: '/t/$code',
-  path: '/t/$code',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PCodeRoute = PCodeRouteImport.update({
-  id: '/p/$code',
-  path: '/p/$code',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MeCodeRoute = MeCodeRouteImport.update({
-  id: '/me/$code',
-  path: '/me/$code',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const JCodeRoute = JCodeRouteImport.update({
-  id: '/j/$code',
-  path: '/j/$code',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HomeCodeRoute = HomeCodeRouteImport.update({
-  id: '/home/$code',
-  path: '/home/$code',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HelpCodeRoute = HelpCodeRouteImport.update({
-  id: '/help/$code',
-  path: '/help/$code',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ExploreCodeRoute = ExploreCodeRouteImport.update({
-  id: '/explore/$code',
-  path: '/explore/$code',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ExamCodeRoute = ExamCodeRouteImport.update({
-  id: '/exam/$code',
-  path: '/exam/$code',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ClassroomCodeRoute = ClassroomCodeRouteImport.update({
-  id: '/classroom/$code',
-  path: '/classroom/$code',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const LayoutCreateRoute = LayoutCreateRouteImport.update({
-  id: '/create',
-  path: '/create',
+const LayoutAdminRoute = LayoutAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutClassroomsRoute = LayoutClassroomsRouteImport.update({
@@ -157,84 +102,89 @@ const LayoutClassroomsRoute = LayoutClassroomsRouteImport.update({
   path: '/classrooms',
   getParentRoute: () => LayoutRoute,
 } as any)
-const LayoutAdminRoute = LayoutAdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
+const LayoutCreateRoute = LayoutCreateRouteImport.update({
+  id: '/create',
+  path: '/create',
   getParentRoute: () => LayoutRoute,
 } as any)
-const VocabCodeIndexRoute = VocabCodeIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => VocabCodeRoute,
+const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => LayoutRoute,
 } as any)
-const TCodeIndexRoute = TCodeIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => TCodeRoute,
+const ClassroomCodeRoute = ClassroomCodeRouteImport.update({
+  id: '/classroom/$code',
+  path: '/classroom/$code',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const PCodeIndexRoute = PCodeIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => PCodeRoute,
+const ExamCodeRoute = ExamCodeRouteImport.update({
+  id: '/exam/$code',
+  path: '/exam/$code',
+  getParentRoute: () => rootRouteImport,
 } as any)
-const ExamCodeIndexRoute = ExamCodeIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => ExamCodeRoute,
+const ExploreCodeRoute = ExploreCodeRouteImport.update({
+  id: '/explore/$code',
+  path: '/explore/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HelpCodeRoute = HelpCodeRouteImport.update({
+  id: '/help/$code',
+  path: '/help/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HomeCodeRoute = HomeCodeRouteImport.update({
+  id: '/home/$code',
+  path: '/home/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JCodeRoute = JCodeRouteImport.update({
+  id: '/j/$code',
+  path: '/j/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MeCodeRoute = MeCodeRouteImport.update({
+  id: '/me/$code',
+  path: '/me/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PCodeRoute = PCodeRouteImport.update({
+  id: '/p/$code',
+  path: '/p/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TCodeRoute = TCodeRouteImport.update({
+  id: '/t/$code',
+  path: '/t/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VocabCodeRoute = VocabCodeRouteImport.update({
+  id: '/vocab/$code',
+  path: '/vocab/$code',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const LayoutAdminIndexRoute = LayoutAdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
-const VocabCodeSelfRoute = VocabCodeSelfRouteImport.update({
-  id: '/self',
-  path: '/self',
-  getParentRoute: () => VocabCodeRoute,
-} as any)
-const VocabCodeRecordsRoute = VocabCodeRecordsRouteImport.update({
-  id: '/records',
-  path: '/records',
-  getParentRoute: () => VocabCodeRoute,
-} as any)
-const VocabCodePracticeRoute = VocabCodePracticeRouteImport.update({
-  id: '/practice',
-  path: '/practice',
-  getParentRoute: () => VocabCodeRoute,
-} as any)
-const VocabCodeBooksRoute = VocabCodeBooksRouteImport.update({
-  id: '/books',
-  path: '/books',
-  getParentRoute: () => VocabCodeRoute,
-} as any)
-const TCodeVocabRoute = TCodeVocabRouteImport.update({
-  id: '/vocab',
-  path: '/vocab',
-  getParentRoute: () => TCodeRoute,
-} as any)
-const PCodeResultRoute = PCodeResultRouteImport.update({
-  id: '/result',
-  path: '/result',
-  getParentRoute: () => PCodeRoute,
-} as any)
-const ExamCodeResultRoute = ExamCodeResultRouteImport.update({
-  id: '/result',
-  path: '/result',
-  getParentRoute: () => ExamCodeRoute,
-} as any)
-const LayoutAdminVocablevelsRoute = LayoutAdminVocablevelsRouteImport.update({
-  id: '/vocablevels',
-  path: '/vocablevels',
+const LayoutAdminClassroomsRoute = LayoutAdminClassroomsRouteImport.update({
+  id: '/classrooms',
+  path: '/classrooms',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
-const LayoutAdminVocabbooksRoute = LayoutAdminVocabbooksRouteImport.update({
-  id: '/vocabbooks',
-  path: '/vocabbooks',
+const LayoutAdminPassagesRoute = LayoutAdminPassagesRouteImport.update({
+  id: '/passages',
+  path: '/passages',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
-const LayoutAdminUnitsRoute = LayoutAdminUnitsRouteImport.update({
-  id: '/units',
-  path: '/units',
+const LayoutAdminQuestionsRoute = LayoutAdminQuestionsRouteImport.update({
+  id: '/questions',
+  path: '/questions',
+  getParentRoute: () => LayoutAdminRoute,
+} as any)
+const LayoutAdminScenariosRoute = LayoutAdminScenariosRouteImport.update({
+  id: '/scenarios',
+  path: '/scenarios',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
 const LayoutAdminSentenceframesRoute =
@@ -243,25 +193,75 @@ const LayoutAdminSentenceframesRoute =
     path: '/sentenceframes',
     getParentRoute: () => LayoutAdminRoute,
   } as any)
-const LayoutAdminScenariosRoute = LayoutAdminScenariosRouteImport.update({
-  id: '/scenarios',
-  path: '/scenarios',
+const LayoutAdminUnitsRoute = LayoutAdminUnitsRouteImport.update({
+  id: '/units',
+  path: '/units',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
-const LayoutAdminQuestionsRoute = LayoutAdminQuestionsRouteImport.update({
-  id: '/questions',
-  path: '/questions',
+const LayoutAdminVocabbooksRoute = LayoutAdminVocabbooksRouteImport.update({
+  id: '/vocabbooks',
+  path: '/vocabbooks',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
-const LayoutAdminPassagesRoute = LayoutAdminPassagesRouteImport.update({
-  id: '/passages',
-  path: '/passages',
+const LayoutAdminVocablevelsRoute = LayoutAdminVocablevelsRouteImport.update({
+  id: '/vocablevels',
+  path: '/vocablevels',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
-const LayoutAdminClassroomsRoute = LayoutAdminClassroomsRouteImport.update({
-  id: '/classrooms',
-  path: '/classrooms',
-  getParentRoute: () => LayoutAdminRoute,
+const ExamCodeIndexRoute = ExamCodeIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ExamCodeRoute,
+} as any)
+const ExamCodeResultRoute = ExamCodeResultRouteImport.update({
+  id: '/result',
+  path: '/result',
+  getParentRoute: () => ExamCodeRoute,
+} as any)
+const PCodeIndexRoute = PCodeIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PCodeRoute,
+} as any)
+const PCodeResultRoute = PCodeResultRouteImport.update({
+  id: '/result',
+  path: '/result',
+  getParentRoute: () => PCodeRoute,
+} as any)
+const TCodeIndexRoute = TCodeIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TCodeRoute,
+} as any)
+const TCodeVocabRoute = TCodeVocabRouteImport.update({
+  id: '/vocab',
+  path: '/vocab',
+  getParentRoute: () => TCodeRoute,
+} as any)
+const VocabCodeIndexRoute = VocabCodeIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => VocabCodeRoute,
+} as any)
+const VocabCodeBooksRoute = VocabCodeBooksRouteImport.update({
+  id: '/books',
+  path: '/books',
+  getParentRoute: () => VocabCodeRoute,
+} as any)
+const VocabCodePracticeRoute = VocabCodePracticeRouteImport.update({
+  id: '/practice',
+  path: '/practice',
+  getParentRoute: () => VocabCodeRoute,
+} as any)
+const VocabCodeRecordsRoute = VocabCodeRecordsRouteImport.update({
+  id: '/records',
+  path: '/records',
+  getParentRoute: () => VocabCodeRoute,
+} as any)
+const VocabCodeSelfRoute = VocabCodeSelfRouteImport.update({
+  id: '/self',
+  path: '/self',
+  getParentRoute: () => VocabCodeRoute,
 } as any)
 const TCodeSStudentIdRoute = TCodeSStudentIdRouteImport.update({
   id: '/s/$studentId',
@@ -551,39 +551,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/signup': {
-      id: '/signup'
-      path: '/signup'
-      fullPath: '/signup'
-      preLoaderRoute: typeof SignupRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reset-password': {
-      id: '/reset-password'
-      path: '/reset-password'
-      fullPath: '/reset-password'
-      preLoaderRoute: typeof ResetPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/recover-password': {
-      id: '/recover-password'
-      path: '/recover-password'
-      fullPath: '/recover-password'
-      preLoaderRoute: typeof RecoverPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/join': {
-      id: '/join'
-      path: '/join'
-      fullPath: '/join'
-      preLoaderRoute: typeof JoinRouteImport
+    '/_layout': {
+      id: '/_layout'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof LayoutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/change-password': {
@@ -593,11 +565,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChangePasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_layout': {
-      id: '/_layout'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof LayoutRouteImport
+    '/join': {
+      id: '/join'
+      path: '/join'
+      fullPath: '/join'
+      preLoaderRoute: typeof JoinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/recover-password': {
+      id: '/recover-password'
+      path: '/recover-password'
+      fullPath: '/recover-password'
+      preLoaderRoute: typeof RecoverPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout/': {
@@ -607,88 +607,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutIndexRouteImport
       parentRoute: typeof LayoutRoute
     }
-    '/vocab/$code': {
-      id: '/vocab/$code'
-      path: '/vocab/$code'
-      fullPath: '/vocab/$code'
-      preLoaderRoute: typeof VocabCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/t/$code': {
-      id: '/t/$code'
-      path: '/t/$code'
-      fullPath: '/t/$code'
-      preLoaderRoute: typeof TCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/p/$code': {
-      id: '/p/$code'
-      path: '/p/$code'
-      fullPath: '/p/$code'
-      preLoaderRoute: typeof PCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/me/$code': {
-      id: '/me/$code'
-      path: '/me/$code'
-      fullPath: '/me/$code'
-      preLoaderRoute: typeof MeCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/j/$code': {
-      id: '/j/$code'
-      path: '/j/$code'
-      fullPath: '/j/$code'
-      preLoaderRoute: typeof JCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/home/$code': {
-      id: '/home/$code'
-      path: '/home/$code'
-      fullPath: '/home/$code'
-      preLoaderRoute: typeof HomeCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/help/$code': {
-      id: '/help/$code'
-      path: '/help/$code'
-      fullPath: '/help/$code'
-      preLoaderRoute: typeof HelpCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/explore/$code': {
-      id: '/explore/$code'
-      path: '/explore/$code'
-      fullPath: '/explore/$code'
-      preLoaderRoute: typeof ExploreCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/exam/$code': {
-      id: '/exam/$code'
-      path: '/exam/$code'
-      fullPath: '/exam/$code'
-      preLoaderRoute: typeof ExamCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/classroom/$code': {
-      id: '/classroom/$code'
-      path: '/classroom/$code'
-      fullPath: '/classroom/$code'
-      preLoaderRoute: typeof ClassroomCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_layout/settings': {
-      id: '/_layout/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof LayoutSettingsRouteImport
-      parentRoute: typeof LayoutRoute
-    }
-    '/_layout/create': {
-      id: '/_layout/create'
-      path: '/create'
-      fullPath: '/create'
-      preLoaderRoute: typeof LayoutCreateRouteImport
+    '/_layout/admin': {
+      id: '/_layout/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof LayoutAdminRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/classrooms': {
@@ -698,40 +621,89 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutClassroomsRouteImport
       parentRoute: typeof LayoutRoute
     }
-    '/_layout/admin': {
-      id: '/_layout/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof LayoutAdminRouteImport
+    '/_layout/create': {
+      id: '/_layout/create'
+      path: '/create'
+      fullPath: '/create'
+      preLoaderRoute: typeof LayoutCreateRouteImport
       parentRoute: typeof LayoutRoute
     }
-    '/vocab/$code/': {
-      id: '/vocab/$code/'
-      path: '/'
-      fullPath: '/vocab/$code/'
-      preLoaderRoute: typeof VocabCodeIndexRouteImport
-      parentRoute: typeof VocabCodeRoute
+    '/_layout/settings': {
+      id: '/_layout/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof LayoutSettingsRouteImport
+      parentRoute: typeof LayoutRoute
     }
-    '/t/$code/': {
-      id: '/t/$code/'
-      path: '/'
-      fullPath: '/t/$code/'
-      preLoaderRoute: typeof TCodeIndexRouteImport
-      parentRoute: typeof TCodeRoute
+    '/classroom/$code': {
+      id: '/classroom/$code'
+      path: '/classroom/$code'
+      fullPath: '/classroom/$code'
+      preLoaderRoute: typeof ClassroomCodeRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/p/$code/': {
-      id: '/p/$code/'
-      path: '/'
-      fullPath: '/p/$code/'
-      preLoaderRoute: typeof PCodeIndexRouteImport
-      parentRoute: typeof PCodeRoute
+    '/exam/$code': {
+      id: '/exam/$code'
+      path: '/exam/$code'
+      fullPath: '/exam/$code'
+      preLoaderRoute: typeof ExamCodeRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/exam/$code/': {
-      id: '/exam/$code/'
-      path: '/'
-      fullPath: '/exam/$code/'
-      preLoaderRoute: typeof ExamCodeIndexRouteImport
-      parentRoute: typeof ExamCodeRoute
+    '/explore/$code': {
+      id: '/explore/$code'
+      path: '/explore/$code'
+      fullPath: '/explore/$code'
+      preLoaderRoute: typeof ExploreCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/help/$code': {
+      id: '/help/$code'
+      path: '/help/$code'
+      fullPath: '/help/$code'
+      preLoaderRoute: typeof HelpCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/home/$code': {
+      id: '/home/$code'
+      path: '/home/$code'
+      fullPath: '/home/$code'
+      preLoaderRoute: typeof HomeCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/j/$code': {
+      id: '/j/$code'
+      path: '/j/$code'
+      fullPath: '/j/$code'
+      preLoaderRoute: typeof JCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/me/$code': {
+      id: '/me/$code'
+      path: '/me/$code'
+      fullPath: '/me/$code'
+      preLoaderRoute: typeof MeCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/p/$code': {
+      id: '/p/$code'
+      path: '/p/$code'
+      fullPath: '/p/$code'
+      preLoaderRoute: typeof PCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/t/$code': {
+      id: '/t/$code'
+      path: '/t/$code'
+      fullPath: '/t/$code'
+      preLoaderRoute: typeof TCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vocab/$code': {
+      id: '/vocab/$code'
+      path: '/vocab/$code'
+      fullPath: '/vocab/$code'
+      preLoaderRoute: typeof VocabCodeRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_layout/admin/': {
       id: '/_layout/admin/'
@@ -740,95 +712,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminIndexRouteImport
       parentRoute: typeof LayoutAdminRoute
     }
-    '/vocab/$code/self': {
-      id: '/vocab/$code/self'
-      path: '/self'
-      fullPath: '/vocab/$code/self'
-      preLoaderRoute: typeof VocabCodeSelfRouteImport
-      parentRoute: typeof VocabCodeRoute
-    }
-    '/vocab/$code/records': {
-      id: '/vocab/$code/records'
-      path: '/records'
-      fullPath: '/vocab/$code/records'
-      preLoaderRoute: typeof VocabCodeRecordsRouteImport
-      parentRoute: typeof VocabCodeRoute
-    }
-    '/vocab/$code/practice': {
-      id: '/vocab/$code/practice'
-      path: '/practice'
-      fullPath: '/vocab/$code/practice'
-      preLoaderRoute: typeof VocabCodePracticeRouteImport
-      parentRoute: typeof VocabCodeRoute
-    }
-    '/vocab/$code/books': {
-      id: '/vocab/$code/books'
-      path: '/books'
-      fullPath: '/vocab/$code/books'
-      preLoaderRoute: typeof VocabCodeBooksRouteImport
-      parentRoute: typeof VocabCodeRoute
-    }
-    '/t/$code/vocab': {
-      id: '/t/$code/vocab'
-      path: '/vocab'
-      fullPath: '/t/$code/vocab'
-      preLoaderRoute: typeof TCodeVocabRouteImport
-      parentRoute: typeof TCodeRoute
-    }
-    '/p/$code/result': {
-      id: '/p/$code/result'
-      path: '/result'
-      fullPath: '/p/$code/result'
-      preLoaderRoute: typeof PCodeResultRouteImport
-      parentRoute: typeof PCodeRoute
-    }
-    '/exam/$code/result': {
-      id: '/exam/$code/result'
-      path: '/result'
-      fullPath: '/exam/$code/result'
-      preLoaderRoute: typeof ExamCodeResultRouteImport
-      parentRoute: typeof ExamCodeRoute
-    }
-    '/_layout/admin/vocablevels': {
-      id: '/_layout/admin/vocablevels'
-      path: '/vocablevels'
-      fullPath: '/admin/vocablevels'
-      preLoaderRoute: typeof LayoutAdminVocablevelsRouteImport
-      parentRoute: typeof LayoutAdminRoute
-    }
-    '/_layout/admin/vocabbooks': {
-      id: '/_layout/admin/vocabbooks'
-      path: '/vocabbooks'
-      fullPath: '/admin/vocabbooks'
-      preLoaderRoute: typeof LayoutAdminVocabbooksRouteImport
-      parentRoute: typeof LayoutAdminRoute
-    }
-    '/_layout/admin/units': {
-      id: '/_layout/admin/units'
-      path: '/units'
-      fullPath: '/admin/units'
-      preLoaderRoute: typeof LayoutAdminUnitsRouteImport
-      parentRoute: typeof LayoutAdminRoute
-    }
-    '/_layout/admin/sentenceframes': {
-      id: '/_layout/admin/sentenceframes'
-      path: '/sentenceframes'
-      fullPath: '/admin/sentenceframes'
-      preLoaderRoute: typeof LayoutAdminSentenceframesRouteImport
-      parentRoute: typeof LayoutAdminRoute
-    }
-    '/_layout/admin/scenarios': {
-      id: '/_layout/admin/scenarios'
-      path: '/scenarios'
-      fullPath: '/admin/scenarios'
-      preLoaderRoute: typeof LayoutAdminScenariosRouteImport
-      parentRoute: typeof LayoutAdminRoute
-    }
-    '/_layout/admin/questions': {
-      id: '/_layout/admin/questions'
-      path: '/questions'
-      fullPath: '/admin/questions'
-      preLoaderRoute: typeof LayoutAdminQuestionsRouteImport
+    '/_layout/admin/classrooms': {
+      id: '/_layout/admin/classrooms'
+      path: '/classrooms'
+      fullPath: '/admin/classrooms'
+      preLoaderRoute: typeof LayoutAdminClassroomsRouteImport
       parentRoute: typeof LayoutAdminRoute
     }
     '/_layout/admin/passages': {
@@ -838,12 +726,124 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminPassagesRouteImport
       parentRoute: typeof LayoutAdminRoute
     }
-    '/_layout/admin/classrooms': {
-      id: '/_layout/admin/classrooms'
-      path: '/classrooms'
-      fullPath: '/admin/classrooms'
-      preLoaderRoute: typeof LayoutAdminClassroomsRouteImport
+    '/_layout/admin/questions': {
+      id: '/_layout/admin/questions'
+      path: '/questions'
+      fullPath: '/admin/questions'
+      preLoaderRoute: typeof LayoutAdminQuestionsRouteImport
       parentRoute: typeof LayoutAdminRoute
+    }
+    '/_layout/admin/scenarios': {
+      id: '/_layout/admin/scenarios'
+      path: '/scenarios'
+      fullPath: '/admin/scenarios'
+      preLoaderRoute: typeof LayoutAdminScenariosRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
+    '/_layout/admin/sentenceframes': {
+      id: '/_layout/admin/sentenceframes'
+      path: '/sentenceframes'
+      fullPath: '/admin/sentenceframes'
+      preLoaderRoute: typeof LayoutAdminSentenceframesRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
+    '/_layout/admin/units': {
+      id: '/_layout/admin/units'
+      path: '/units'
+      fullPath: '/admin/units'
+      preLoaderRoute: typeof LayoutAdminUnitsRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
+    '/_layout/admin/vocabbooks': {
+      id: '/_layout/admin/vocabbooks'
+      path: '/vocabbooks'
+      fullPath: '/admin/vocabbooks'
+      preLoaderRoute: typeof LayoutAdminVocabbooksRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
+    '/_layout/admin/vocablevels': {
+      id: '/_layout/admin/vocablevels'
+      path: '/vocablevels'
+      fullPath: '/admin/vocablevels'
+      preLoaderRoute: typeof LayoutAdminVocablevelsRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
+    '/exam/$code/': {
+      id: '/exam/$code/'
+      path: '/'
+      fullPath: '/exam/$code/'
+      preLoaderRoute: typeof ExamCodeIndexRouteImport
+      parentRoute: typeof ExamCodeRoute
+    }
+    '/exam/$code/result': {
+      id: '/exam/$code/result'
+      path: '/result'
+      fullPath: '/exam/$code/result'
+      preLoaderRoute: typeof ExamCodeResultRouteImport
+      parentRoute: typeof ExamCodeRoute
+    }
+    '/p/$code/': {
+      id: '/p/$code/'
+      path: '/'
+      fullPath: '/p/$code/'
+      preLoaderRoute: typeof PCodeIndexRouteImport
+      parentRoute: typeof PCodeRoute
+    }
+    '/p/$code/result': {
+      id: '/p/$code/result'
+      path: '/result'
+      fullPath: '/p/$code/result'
+      preLoaderRoute: typeof PCodeResultRouteImport
+      parentRoute: typeof PCodeRoute
+    }
+    '/t/$code/': {
+      id: '/t/$code/'
+      path: '/'
+      fullPath: '/t/$code/'
+      preLoaderRoute: typeof TCodeIndexRouteImport
+      parentRoute: typeof TCodeRoute
+    }
+    '/t/$code/vocab': {
+      id: '/t/$code/vocab'
+      path: '/vocab'
+      fullPath: '/t/$code/vocab'
+      preLoaderRoute: typeof TCodeVocabRouteImport
+      parentRoute: typeof TCodeRoute
+    }
+    '/vocab/$code/': {
+      id: '/vocab/$code/'
+      path: '/'
+      fullPath: '/vocab/$code/'
+      preLoaderRoute: typeof VocabCodeIndexRouteImport
+      parentRoute: typeof VocabCodeRoute
+    }
+    '/vocab/$code/books': {
+      id: '/vocab/$code/books'
+      path: '/books'
+      fullPath: '/vocab/$code/books'
+      preLoaderRoute: typeof VocabCodeBooksRouteImport
+      parentRoute: typeof VocabCodeRoute
+    }
+    '/vocab/$code/practice': {
+      id: '/vocab/$code/practice'
+      path: '/practice'
+      fullPath: '/vocab/$code/practice'
+      preLoaderRoute: typeof VocabCodePracticeRouteImport
+      parentRoute: typeof VocabCodeRoute
+    }
+    '/vocab/$code/records': {
+      id: '/vocab/$code/records'
+      path: '/records'
+      fullPath: '/vocab/$code/records'
+      preLoaderRoute: typeof VocabCodeRecordsRouteImport
+      parentRoute: typeof VocabCodeRoute
+    }
+    '/vocab/$code/self': {
+      id: '/vocab/$code/self'
+      path: '/self'
+      fullPath: '/vocab/$code/self'
+      preLoaderRoute: typeof VocabCodeSelfRouteImport
+      parentRoute: typeof VocabCodeRoute
     }
     '/t/$code/s/$studentId': {
       id: '/t/$code/s/$studentId'
