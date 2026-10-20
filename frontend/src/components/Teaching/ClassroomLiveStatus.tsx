@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { type BoardStudent, ClassesService } from "@/client"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 
 const labels = {
   entered: { zh: "已进入课堂", en: "In classroom" },
@@ -25,7 +26,7 @@ export function ClassroomLiveStatus({
   const query = useQuery({
     queryKey: ["teacher", "presence", code],
     queryFn: () => ClassesService.readClassroomPresence({ code }),
-    refetchInterval: 5000,
+    refetchInterval: pollWhileVisible(5000),
   })
   return (
     <section className="space-y-3 rounded-2xl border bg-card p-5">

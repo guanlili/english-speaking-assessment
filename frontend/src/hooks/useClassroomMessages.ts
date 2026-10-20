@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { ClassesService } from "@/client"
+import { pollWhileVisible } from "@/lib/poll"
 export const classroomMessagesKey = (code: string) =>
   ["student", "class-messages", code] as const
 export function useClassroomMessages(code: string) {
@@ -15,7 +16,7 @@ export function useClassroomMessages(code: string) {
       return rows
     },
     enabled: Boolean(code),
-    refetchInterval: 15000,
+    refetchInterval: pollWhileVisible(15000),
     retry: 1,
   })
 }
@@ -33,7 +34,7 @@ export function usePublishedClassSummaries(code: string, offset: number) {
       return rows
     },
     enabled: Boolean(code),
-    refetchInterval: 30000,
+    refetchInterval: pollWhileVisible(30000),
     retry: 1,
   })
 }

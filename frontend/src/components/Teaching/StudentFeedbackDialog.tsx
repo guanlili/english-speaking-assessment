@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 import { ITEM_TYPE_LABELS } from "@/lib/terms"
 
 /** Aggregate the actual latest attempts supplied by this publish/session row. */
@@ -50,7 +51,7 @@ export function StudentFeedbackDialog({
     },
     enabled: open && attemptIds.length > 0,
     retry: 1,
-    refetchInterval: (query) =>
+    refetchInterval: pollWhileVisible((query) =>
       query.state.data?.some(
         (attempt) =>
           attempt.status === "queued" ||
@@ -59,6 +60,7 @@ export function StudentFeedbackDialog({
       )
         ? 3000
         : false,
+    ),
   })
   const byId = new Map(query.data?.map((attempt) => [attempt.id, attempt]))
   const submitted = questions.flatMap((item) => {

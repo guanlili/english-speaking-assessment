@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { ClassesService } from "@/client"
 import { useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 import { ITEM_TYPE_LABELS } from "@/lib/terms"
 
 /** 今日当前发布：共同漏词和均分偏低的题。单独请求，不进名单轮询。 */
@@ -16,7 +17,7 @@ export function ClassGapsCard({
     queryKey: ["teacher", "weak-spots", code],
     queryFn: () =>
       ClassesService.readClassWeakSpots({ code: code.toUpperCase() }),
-    refetchInterval: refreshMs,
+    refetchInterval: pollWhileVisible(refreshMs),
   })
   const gaps = query.data
 

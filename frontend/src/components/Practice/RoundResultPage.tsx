@@ -55,6 +55,7 @@ import {
   saveSavedExpressions,
 } from "@/lib/favorites"
 import { useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 import { EXPLAIN, ITEM_TYPE_LABELS, TERMS } from "@/lib/terms"
 import { extractErrorMessage } from "@/utils"
 
@@ -79,7 +80,7 @@ export function RoundResultPage() {
         ...(sessionId ? { sessionId } : {}),
       }),
     enabled: student !== null,
-    refetchInterval: (query) =>
+    refetchInterval: pollWhileVisible((query) =>
       query.state.data?.attempts.some(
         (a) =>
           a.status === "queued" ||
@@ -88,6 +89,7 @@ export function RoundResultPage() {
       )
         ? 2000
         : false,
+    ),
   })
 
   const [replay, setReplay] = useState<{

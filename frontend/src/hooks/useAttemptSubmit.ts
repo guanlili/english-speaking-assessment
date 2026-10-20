@@ -6,6 +6,7 @@ import {
   pollErrorInfo,
   rubricPending,
 } from "@/lib/attempt-polling"
+import { pollWhileVisible } from "@/lib/poll"
 
 export interface AttemptSubmitTarget {
   itemType: "passage" | "repeat" | "question"
@@ -65,7 +66,7 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
     queryFn: () =>
       AttemptsService.readAttempt({ attemptId: attemptId as string }),
     enabled: attemptId !== null,
-    refetchInterval: (query) => {
+    refetchInterval: pollWhileVisible((query) => {
       const data = query.state.data
       const errorInfo = pollErrorInfo(query.state.error)
       if (errorInfo.present) {
@@ -81,7 +82,7 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
         errorStatus: errorInfo.status,
         failureCount: pollFailuresRef.current,
       })
-    },
+    }),
   })
 
   // 只读重试（GET）：轮询因网络/服务器错误停止或退避时由用户触发，
