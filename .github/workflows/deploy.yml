@@ -297,7 +297,10 @@ jobs:
     # 覆盖 SSH 步骤本身（command_timeout 30m）之外的编排开销
     timeout-minutes: 45
     steps:
+      # fetch-depth 0：git bundle 兜底需要完整历史（服务器可能落后多个提交）
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: 从 Secrets 生成 .env（base64 中转，值不进入 shell 源码）
         id: envfile
         # Secrets 只经 env: 进入进程环境，脚本里按变量名引用；
@@ -350,6 +353,23 @@ jobs:
           echo "path_b64=$(printf '%s' "$DEPLOY_PATH" | base64 | tr -d '\n')" >> "$GITHUB_OUTPUT"
           rm -f "$RUNNER_TEMP/deploy.env"
 
+      - name: 打包本次提交为 git bundle（服务器镜像失联时的拉取兜底）
+        # 服务器 origin 走 gh-proxy.com 镜像，2026-10-20 起对匿名访问持续 401；
+        # runner 在境外直连 GitHub 稳定——把本次提交打成 bundle 传过去，
+        # 服务器 git fetch 本地文件即可推进到目标提交，不再依赖任何镜像
+        run: |
+          git bundle create deploy.bundle HEAD
+          git bundle verify deploy.bundle
+
+      - name: 传送 bundle 到服务器
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: deploy.bundle
+          target: /tmp/esa-deploy
+
       - name: 服务器拉代码并重启服务
         uses: appleboy/ssh-action@v1.2.5
         env:
@@ -372,23 +392,32 @@ jobs:
             echo "=== 1/5 checkout 到本次 CI 验证过的提交 ==="
             # 不用 git pull：pull 拿到的是"部署时刻的最新 master"，连续 push 时可能部署到还没过 CI 的提交。
             # reset --hard 到 github.sha 保证部署的永远是这个 run 测过的代码，也兼容紧急回滚后的服务器状态。
-            # 服务器 origin 走 gh-proxy.com 镜像，偶发 403/429 限流（2026-09-28 / 2026-10-08
-            # 两次部署即因此失败）：指数退避重试，总等待约 5 分钟，仍失败才判红。
+            # 服务器 origin 走 gh-proxy.com 镜像：偶发 403/429 退避重试；持续 401（2026-10-20 起
+            # 匿名访问被关）则回退到 CI 传入的 git bundle——部署链不再依赖镜像可用性。
             fetch_ok=0
-            for attempt in 1 2 3 4 5; do
+            for attempt in 1 2 3; do
               if git fetch origin; then fetch_ok=1; break; fi
               echo "git fetch 失败（第 ${attempt} 次），$((attempt * 30)) 秒后重试"
               sleep $((attempt * 30))
             done
-            if [ "$fetch_ok" != "1" ]; then
-              echo "git fetch 重试 5 次后仍失败（gh-proxy 镜像限流？稍后手动 rerun）"
-              exit 1
+            if [ "$fetch_ok" = "1" ]; then
+              if [ "$DEPLOY_SHA" != "$(git rev-parse origin/master)" ]; then
+                echo "Skipping superseded commit; deploy the current master through its own CI run."
+                exit 0
+              fi
+              git reset --hard "$DEPLOY_SHA"
+            else
+              echo "origin 镜像失联，改用 CI 传入的 bundle 拉取本次提交"
+              git fetch /tmp/esa-deploy/deploy.bundle HEAD
+              if [ "$(git rev-parse FETCH_HEAD)" != "$DEPLOY_SHA" ]; then
+                echo "❌ bundle 内容与本次 CI 提交不一致，中止部署"
+                exit 1
+              fi
+              # bundle 只含本次 CI 的提交：跳过 superseded 检查（无法向 origin 求证更新提交，
+              # 但 concurrency 组串行化部署，乱序窗口内旧 run 部署后新 run 会再推进）
+              git reset --hard FETCH_HEAD
             fi
-            if [ "$DEPLOY_SHA" != "$(git rev-parse origin/master)" ]; then
-              echo "Skipping superseded commit; deploy the current master through its own CI run."
-              exit 0
-            fi
-            git reset --hard "$DEPLOY_SHA"
+            rm -f /tmp/esa-deploy/deploy.bundle
 
             echo "=== 2/5 解码 .env 并校验 ==="
             printf '%s' "$ENV_B64" | base64 -d > .env.new
