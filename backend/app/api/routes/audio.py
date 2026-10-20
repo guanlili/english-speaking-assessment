@@ -19,4 +19,9 @@ def read_content_audio(filename: str) -> Any:
     media_type = AUDIO_SUFFIX_TO_MIME.get(
         path.suffix.lower(), "application/octet-stream"
     )
-    return FileResponse(path, media_type=media_type)
+    # 标准音不可变且端点公开：全班同拉一段可被浏览器/代理缓存一天
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )

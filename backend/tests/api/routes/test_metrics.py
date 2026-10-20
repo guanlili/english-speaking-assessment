@@ -84,3 +84,16 @@ def test_metrics_queue_counts_reflect_attempts(
     assert isinstance(scoring["by_status"], dict)
     assert isinstance(scoring["workers_configured"], int)
     assert isinstance(scoring["executor_running"], bool)
+
+
+def test_metrics_db_pool_water_level(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    """db_pool 四项水位为非负整数：考试高峰是否打满在 /admin/metrics 看。"""
+    resp = client.get("/api/v1/admin/metrics", headers=superuser_token_headers)
+    assert resp.status_code == 200
+    pool = resp.json()["db_pool"]
+    assert set(pool) == {"pool_size", "checked_in", "checked_out", "overflow"}
+    for value in pool.values():
+        assert isinstance(value, int) and value >= 0
+    assert pool["pool_size"] >= 1

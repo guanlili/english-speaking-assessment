@@ -16,6 +16,7 @@ from sqlalchemy import func
 from sqlmodel import Session, col, select
 
 from app.api.deps import SessionDep, SuperUserDep
+from app.core import db as _db
 from app.core.config import settings
 from app.core.metrics import call_stats, call_stats_by_prefix
 from app.core.request_context import PROCESS_INFO
@@ -87,11 +88,24 @@ def _scoring_queue_stats(session: Session) -> dict[str, Any]:
     }
 
 
+def _db_pool_stats() -> dict[str, Any]:
+    """连接池实时水位：考试高峰是否打满在这里看，不改参数先看数。
+    pool_size=10/max_overflow=20 是对齐 40 人齐交峰值的既定配置。"""
+    pool = _db.engine.pool
+    return {
+        "pool_size": pool.size(),
+        "checked_in": pool.checkedin(),
+        "checked_out": pool.checkedout(),
+        "overflow": pool.overflow(),
+    }
+
+
 @router.get("")
 def read_metrics(session: SessionDep, _superuser: SuperUserDep) -> Any:
     stats = call_stats()
     return {
         "process": PROCESS_INFO,
+        "db_pool": _db_pool_stats(),
         "scoring": _scoring_queue_stats(session),
         "providers": {
             "asr": {

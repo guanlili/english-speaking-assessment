@@ -761,4 +761,10 @@ def read_attempt_audio(
         raise HTTPException(status_code=404, detail="Audio not found")
     path = playback_path(path)
     safe_mime = _AUDIO_MIME_BY_SUFFIX.get(path.suffix, "application/octet-stream")
-    return FileResponse(path, media_type=safe_mime)
+    # 作答录音不可变：显式允许浏览器缓存一天（讲评反复回放/学生回听不再
+    # 整段重传）。private——响应按人授权，共享代理不得存储
+    return FileResponse(
+        path,
+        media_type=safe_mime,
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
