@@ -86,6 +86,8 @@ def test_upload_and_serve_content_audio(
     assert played.status_code == 200
     assert played.content == payload
     assert played.headers["content-type"].startswith("audio/mpeg")
+    # 标准音不可变且公开：全班同拉一段可被浏览器/代理缓存一天
+    assert played.headers["cache-control"] == "public, max-age=86400"
 
     # 未授权
     assert (

@@ -183,6 +183,8 @@ def test_attempt_audio_roundtrip(
     assert resp.status_code == 200
     assert resp.content == payload
     assert resp.headers["content-type"].startswith("audio/wav")
+    # 录音不可变：允许浏览器缓存一天，回放不再整段重传（private=按人授权）
+    assert resp.headers["cache-control"] == "private, max-age=86400"
 
     assert client.get(f"/api/v1/attempts/{uuid.uuid4()}/audio").status_code == 404
 
