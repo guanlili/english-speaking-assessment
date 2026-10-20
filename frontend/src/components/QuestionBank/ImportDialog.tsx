@@ -121,7 +121,7 @@ function DiffTable({
       </div>
       <button
         type="button"
-        className="text-xs text-primary underline-offset-2 hover:underline"
+        className="-mx-1 flex min-h-11 items-center px-1 text-xs text-primary underline-offset-2 hover:underline"
         onClick={() => setExpanded((v) => !v)}
       >
         {expanded
@@ -545,7 +545,7 @@ export function QuestionBankImportDialog({
                           <div className="flex gap-2">
                             <Button
                               variant={checked ? "default" : "outline"}
-                              className="h-9"
+                              className="min-h-11"
                               onClick={() =>
                                 setDecisions((prev) => ({
                                   ...prev,
@@ -557,7 +557,7 @@ export function QuestionBankImportDialog({
                             </Button>
                             <Button
                               variant={!checked ? "secondary" : "outline"}
-                              className="h-9"
+                              className="min-h-11"
                               onClick={() =>
                                 setDecisions((prev) => ({
                                   ...prev,

@@ -170,6 +170,16 @@ export const EXAM_KIND_LABELS: Record<string, BiString> = {
   ielts_p3: { zh: "IELTS · Part 3", en: "IELTS · Part 3" },
 }
 
+/** 模拟分四维 rubric 维度 key → 双语名（弱项诊断卡 / 四维趋势图共用） */
+export const DIMENSION_LABELS = {
+  fluency: { zh: "流利度", en: "Fluency" },
+  vocabulary: { zh: "词汇", en: "Vocabulary" },
+  grammar: { zh: "语法", en: "Grammar" },
+  task: { zh: "任务完成", en: "Task" },
+} as const satisfies Record<string, BiString>
+
+export type DimensionKey = keyof typeof DIMENSION_LABELS
+
 /** 题型级别徽标的级别名（复用五级） */
 export const EXAM_LEVEL_LABELS: Record<string, BiString> = VOCAB_LEVEL_LABELS
 

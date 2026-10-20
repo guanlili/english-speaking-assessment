@@ -48,7 +48,8 @@ function AttemptAudioPlayer({
     queryKey: ["attempt-audio-blob", attemptId],
     queryFn: () => fetchAudioBlob(attemptId),
     staleTime: Infinity,
-    gcTime: 0,
+    // 5 分钟内重复打开同一段录音（讲评/结果弹窗）不重新下载；过期交给 GC，避免大量录音常驻内存
+    gcTime: 5 * 60 * 1000,
     retry: 1,
   })
   const blob = srcQuery.data

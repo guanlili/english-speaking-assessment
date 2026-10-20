@@ -103,17 +103,23 @@ export function useNextQuestion({
     }
   }, [nextFlag, studentReady, planLoaded, hasExam, nextQuestionMutation])
 
-  // ?next=1 但计划加载失败：提示换题未成功（否则静默无反应）
+  // ?next=1 但计划加载失败：提示换题未成功（否则静默无反应）。
+  // 文案经 ref 解耦：t 进依赖数组会在切语言时重播错误 toast
+  const planErrorToast = () => {
+    toast.error(t({ zh: "换题失败", en: "Couldn't switch question" }), {
+      description: t({
+        zh: "练习计划加载失败，请返回重试",
+        en: "The practice plan failed to load — please go back and retry",
+      }),
+    })
+  }
+  const planErrorToastRef = useRef(planErrorToast)
+  planErrorToastRef.current = planErrorToast
   useEffect(() => {
     if (nextFlag && planError) {
-      toast.error(t({ zh: "换题失败", en: "Couldn't switch question" }), {
-        description: t({
-          zh: "练习计划加载失败，请返回重试",
-          en: "The practice plan failed to load — please go back and retry",
-        }),
-      })
+      planErrorToastRef.current()
     }
-  }, [nextFlag, planError, t])
+  }, [nextFlag, planError])
 
   return { nextQuestionMutation }
 }

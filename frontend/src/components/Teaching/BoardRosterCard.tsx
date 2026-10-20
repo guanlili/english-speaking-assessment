@@ -139,7 +139,12 @@ export function BoardRosterCard({
             })}
           </span>
           {(nameQuery || statusFilter !== "all") && (
-            <Button variant="ghost" size="sm" onClick={onClearFilters}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-11"
+              onClick={onClearFilters}
+            >
               {t({ zh: "清除筛选", en: "Clear Filters" })}
             </Button>
           )}
@@ -171,7 +176,12 @@ export function BoardRosterCard({
                 en: "Try another name, or clear filters to see all students.",
               })}
             </p>
-            <Button variant="outline" size="sm" onClick={onClearFilters}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-11"
+              onClick={onClearFilters}
+            >
               {t({ zh: "查看全部学生", en: "View All Students" })}
             </Button>
           </div>

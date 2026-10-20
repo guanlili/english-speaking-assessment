@@ -158,7 +158,7 @@ export function localizeQuestionImportIssue(reason: string): BiString {
         /^状态无效，可选：启用\/停用$/,
         {
           zh: "状态无效，可选：启用/停用",
-          en: "Invalid status; use 启用 or 停用",
+          en: "Invalid status; use active / inactive (启用 / 停用)",
         },
       ],
       [
