@@ -599,15 +599,34 @@ def bulk_reset_passwords(
         ).all()
     }
     result = BulkResetResult(reset=0, skipped=0, rows=[])
+    # 统一默认密码只做一次 argon2 哈希（与导入路径同款优化；60 人班逐人
+    # 哈希会秒级持有写事务）。守卫与 _ensure_account_reset_allowed 同口径
+    # （角色+超管双标志、跨班归属须本人），批量入口一次预取跨班归属，
+    # 不在循环里逐人查询——两处口径必须同步改
+    shared_hash = get_password_hash(DEFAULT_STUDENT_PASSWORD)
+    cross_owner_user_ids: set[uuid.UUID] = set()
+    if user_ids and not current_user.is_superuser:
+        cross_owner_user_ids = {
+            user_id
+            for user_id, owner_id in session.exec(
+                select(Student.user_id, Classroom.owner_id)
+                .join(Classroom)
+                .where(
+                    col(Student.user_id).in_(user_ids),  # type: ignore[operator]
+                    Student.classroom_id != classroom.id,  # type: ignore[arg-type]
+                )
+            ).all()
+            if user_id is not None and owner_id != current_user.id
+        }
     for s in students:
         user = users_by_id.get(s.user_id) if s.user_id else None
         if user is None:
             continue
-        try:
-            _ensure_account_reset_allowed(
-                session, current_user, user, classroom_id=classroom.id
-            )
-        except HTTPException:
+        if (
+            user.role != "student"
+            or user.is_superuser
+            or user.id in cross_owner_user_ids
+        ):
             result.skipped += 1
             logger.info(
                 "bulk password reset skipped target_user=%s student=%s classroom=%s",
@@ -616,7 +635,7 @@ def bulk_reset_passwords(
                 classroom.id,
             )
             continue
-        user.hashed_password = get_password_hash(DEFAULT_STUDENT_PASSWORD)
+        user.hashed_password = shared_hash
         user.must_change_password = False
         session.add(user)
         result.rows.append(

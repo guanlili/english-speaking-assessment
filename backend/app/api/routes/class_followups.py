@@ -189,8 +189,44 @@ def create_individual_class_followups(
     )
 
 
-def _has_incomplete_target(student_id: uuid.UUID | None) -> ColumnElement[bool]:
-    """Correlate against the fixed task snapshots, never today's classroom roster."""
+def _has_incomplete_target(
+    classroom_id: uuid.UUID, student_id: uuid.UUID | None
+) -> ColumnElement[bool]:
+    """Correlate against the fixed task snapshots, never today's classroom roster.
+
+    最新作答状态先按全班补练会话一次 DISTINCT ON 聚合，再 LEFT JOIN 回
+    JSON 展开行：原实现是每个 (target,item) 对各跑一次相关 LIMIT-1 子查询，
+    history 视图（任务全部完成）必须穷尽所有对，任务×学生×题的乘积会放大
+    成数千次索引查找。LEFT JOIN 未命中（无作答）为 NULL，与原来「无作答
+    即未完成」口径一致。
+    """
+    latest = (
+        select(
+            col(PracticeSession.assignment_id).label("assignment_id"),
+            col(PracticeSession.student_id).label("student_id"),
+            col(Attempt.item_id).label("item_id"),
+            col(Attempt.status).label("status"),
+        )
+        .select_from(Attempt)
+        .join(PracticeSession, col(Attempt.session_id) == col(PracticeSession.id))
+        .where(
+            PracticeSession.classroom_id == classroom_id,
+            PracticeSession.mode == followups.FOLLOWUP,
+            col(PracticeSession.assignment_id).is_not(None),
+        )
+        .order_by(
+            col(PracticeSession.assignment_id),
+            col(PracticeSession.student_id),
+            col(Attempt.item_id),
+            col(Attempt.created_at).desc(),
+            col(Attempt.id).desc(),
+        )
+        .distinct(
+            col(PracticeSession.assignment_id),
+            col(PracticeSession.student_id),
+            col(Attempt.item_id),
+        )
+    ).subquery("latest_followup_status")
     targets = func.jsonb_array_elements(
         func.coalesce(
             func.nullif(
@@ -203,20 +239,19 @@ def _has_incomplete_target(student_id: uuid.UUID | None) -> ColumnElement[bool]:
     items = func.jsonb_array_elements(
         sql_cast(col(ClassroomExercise.snapshot_items), JSONB)
     ).table_valued(column("value", JSONB), name="item", joins_implicitly=True)
-    latest_status = (
-        select(Attempt.status)
-        .join(PracticeSession, col(Attempt.session_id) == col(PracticeSession.id))
+    # latest 按键（任务,学生,题）DISTINCT ON 至多一行：小 EXISTS 探测即可判
+    # 「最新是否 done」；无行（含完全未作答）同样算未完成，与原口径一致。
+    # latest 本身与外层无关联，PG 计划为一次聚合、逐对哈希探测
+    done_row = (
+        select(1)
+        .select_from(latest)
         .where(
-            PracticeSession.assignment_id == ClassroomExercise.id,
-            PracticeSession.mode == followups.FOLLOWUP,
-            PracticeSession.student_id
-            == sql_cast(targets.c.value["student_id"].astext, Uuid),
-            Attempt.item_id == sql_cast(items.c.value["id"].astext, Uuid),
+            latest.c.assignment_id == col(ClassroomExercise.id),
+            latest.c.student_id == sql_cast(targets.c.value["student_id"].astext, Uuid),
+            latest.c.item_id == sql_cast(items.c.value["id"].astext, Uuid),
+            latest.c.status == "done",
         )
-        .order_by(col(Attempt.created_at).desc(), col(Attempt.id).desc())
-        .limit(1)
         .correlate(ClassroomExercise, targets, items)
-        .scalar_subquery()
     )
     incomplete = (
         select(1)
@@ -224,7 +259,7 @@ def _has_incomplete_target(student_id: uuid.UUID | None) -> ColumnElement[bool]:
         .where(
             items.c.value["type"].astext.is_distinct_from("instruction"),
             # An older success must not hide the latest failed or pending retry.
-            latest_status.is_distinct_from("done"),
+            ~done_row.exists(),
         )
         .correlate(ClassroomExercise)
     )
@@ -265,7 +300,9 @@ def list_class_followups(
         )
     if status != "all":
         active = (col(ClassroomExercise.status) == followups.FOLLOWUP) & (
-            _has_incomplete_target(own_student.id if own_student else None)
+            _has_incomplete_target(
+                classroom.id, own_student.id if own_student else None
+            )
         )
         statement = statement.where(active if status == "active" else ~active)
     # Both recipient and completion filtering must precede LIMIT/OFFSET.

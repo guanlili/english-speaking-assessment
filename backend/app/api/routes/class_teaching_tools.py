@@ -6,6 +6,7 @@ from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, Query
+from sqlalchemy.orm import load_only
 from sqlmodel import SQLModel, col, select
 
 from app.api.deps import CurrentUser, SessionDep, StudentUserDep
@@ -174,6 +175,21 @@ def read_diagnostic_targets(
             PracticeSession.mode == "daily",
             Student.classroom_id == classroom.id,
         )
+        .options(
+            # 课上高频刷新：只取判定用的小列，rubric/word_alignment 大 JSON 不进内存
+            load_only(
+                Attempt.id,  # ty: ignore[invalid-argument-type]
+                Attempt.student_id,  # ty: ignore[invalid-argument-type]
+                Attempt.item_id,  # ty: ignore[invalid-argument-type]
+                Attempt.item_type,  # ty: ignore[invalid-argument-type]
+                Attempt.status,  # ty: ignore[invalid-argument-type]
+                Attempt.overall,  # ty: ignore[invalid-argument-type]
+                Attempt.transcript,  # ty: ignore[invalid-argument-type]
+                Attempt.item_snapshot,  # ty: ignore[invalid-argument-type]
+                Attempt.teacher_focus,  # ty: ignore[invalid-argument-type]
+                Attempt.created_at,  # ty: ignore[invalid-argument-type]
+            )
+        )
         .order_by(col(Attempt.created_at), col(Attempt.id))
     ).all()
     latest = {(a.student_id, a.item_id): a for a in rows}
@@ -289,12 +305,26 @@ def read_learning_report(
     visible = []
     total = 0
     active = False
+    # 旧式（无 exam_flow）考试的遮罩判定需要首答时间：批量预取，避免
+    # 循环内逐会话查询（N+1）
+    first = exam_service.first_submitted_by_session(
+        session,
+        [
+            ps.id
+            for ps in sessions
+            if (ex := exercises.get(ps.assignment_id) if ps.assignment_id else None)
+            is not None
+            and ex.is_exam
+        ],
+    )
     for ps in sessions:
         exercise = exercises.get(ps.assignment_id) if ps.assignment_id else None
         locked = (
             exercise is not None
             and exercise.is_exam
-            and exam_service.exam_feedback_locked(session, ps, exercise)
+            and exam_service.exam_feedback_locked(
+                session, ps, exercise, first_submitted=first.get(ps.id, {})
+            )
         )
         # Reports never expose an unfinished exam, even in the teacher preview.
         if locked:

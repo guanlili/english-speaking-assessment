@@ -69,13 +69,20 @@ def create_followup(
             raise HTTPException(
                 422, detail="Active exam cannot be assigned as followup"
             )
-        for ps in session.exec(
+        exam_sessions = session.exec(
             select(PracticeSession).where(
                 PracticeSession.assignment_id == source.id,
                 col(PracticeSession.student_id).in_([s.id for s in students]),
             )
-        ).all():
-            if ps.exam_started_at and exam.exam_feedback_locked(session, ps, source):
+        ).all()
+        # 旧式（无 exam_flow）考试的遮罩判定需要首答时间：一次预取，不逐会话查询
+        first = exam.first_submitted_by_session(
+            session, [ps.id for ps in exam_sessions]
+        )
+        for ps in exam_sessions:
+            if ps.exam_started_at and exam.exam_feedback_locked(
+                session, ps, source, first_submitted=first.get(ps.id, {})
+            ):
                 raise HTTPException(422, detail="Student exam still in progress")
     snapshots = [
         deepcopy(i) for i in source.snapshot_items if str(i.get("id")) in selected

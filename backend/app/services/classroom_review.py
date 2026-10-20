@@ -53,10 +53,18 @@ def save_review(
         classroom = session.get(Classroom, exercise.classroom_id)
         if classroom and classroom.current_exercise_id == exercise.id:
             raise HTTPException(422, detail="Exam review unavailable")
-        for ps in session.exec(
+        publish_sessions = session.exec(
             select(PracticeSession).where(PracticeSession.assignment_id == exercise.id)
-        ).all():
-            if exam.exam_feedback_locked(session, ps, exercise):
+        ).all()
+        # 旧式（无 exam_flow）考试的遮罩判定需要首答时间：全班一次预取，
+        # 不逐会话查询
+        first = exam.first_submitted_by_session(
+            session, [ps.id for ps in publish_sessions]
+        )
+        for ps in publish_sessions:
+            if exam.exam_feedback_locked(
+                session, ps, exercise, first_submitted=first.get(ps.id, {})
+            ):
                 raise HTTPException(422, detail="Exam review unavailable")
     if row is None:
         row = ClassroomReview(

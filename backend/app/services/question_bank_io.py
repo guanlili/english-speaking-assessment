@@ -1420,6 +1420,7 @@ def plan_import(
     parsed: ParsedFile,
     include_lines: set[tuple[str, int]] | None = None,
     editor: User | None = None,
+    ref: _Ref | None = None,
 ) -> QuestionBankPlan:
     """校验 + 查重 + 兜底解析，产出创建计划（不写库）。
 
@@ -1429,9 +1430,14 @@ def plan_import(
 
     editor：导入人。复述句挂靠到其不可编辑的已有篇目时记为错误行——
     预览、确认、错误文件三处必须传同一个人，口径才一致。
+
+    ref：可传入预取的题库引用快照（只读）。_load_reference 依赖文件
+    内容与库状态，与勾选决策无关——确认流程在同一咨询锁内跑
+    baseline 与决策两次规划，共享一份 ref 省掉整套全表流式扫描。
     """
     decisions = include_lines or set()
-    ref = _load_reference(session, parsed)
+    if ref is None:
+        ref = _load_reference(session, parsed)
     plan = QuestionBankPlan(
         existing_slugs=ref.existing_slugs,
         max_question_order=ref.max_question_order,
@@ -2093,7 +2099,10 @@ def apply_import(
         # 部分疑似行进入待创建列表、使后续同批同款行在决策计划里变成完全
         # 重复，那是勾选的预期结果（按 exact 正常跳过），不是「预览过期」
         # （评审 P2）；对完全重复行提交勾选仍是过期（基线里它不是疑似）
-        baseline = plan_import(session, parsed, editor=owner)
+        # 共享一份题库引用快照：baseline 与决策规划只差勾选，_load_reference
+        # 的多趟全表流式扫描（NFKC 归一查重）在本锁内只跑一次
+        shared_ref = _load_reference(session, parsed)
+        baseline = plan_import(session, parsed, editor=owner, ref=shared_ref)
         if expected_fingerprint and plan_fingerprint(baseline) != expected_fingerprint:
             session.rollback()
             raise HTTPException(
@@ -2112,7 +2121,7 @@ def apply_import(
                     "请重新预览后再确认导入"
                 ),
             )
-        plan = plan_import(session, parsed, include_lines, editor=owner)
+        plan = plan_import(session, parsed, include_lines, editor=owner, ref=shared_ref)
         owner_id = content_access.owner_for(owner) if owner is not None else None
         created_scenarios: dict[str, Scenario] = {}
         for topic in plan.new_topics:
@@ -2829,12 +2838,23 @@ def _export_passages(
         conditions.append(Passage.cefr_band == band_upper)
     if active is not None:
         conditions.append(Passage.is_active == active)
+    # MAX_EXPORT_ROWS+1 探测：超限时先于全量组装触发 422，且截断到
+    # MAX+1 就足以精确判定超限（任一题型真行数 > MAX 时截断值必 > MAX）
     passages = session.exec(
         select(Passage)
         .where(*conditions)
         .order_by(col(Passage.created_at), col(Passage.id))
+        .limit(MAX_EXPORT_ROWS + 1)
     ).all()
-    unit_titles = {u.id: u.title for u in session.exec(select(Unit)).all()}
+    unit_ids = {p.unit_id for p in passages if p.unit_id is not None}
+    unit_titles = (
+        {
+            u.id: u.title
+            for u in session.exec(select(Unit).where(col(Unit.id).in_(unit_ids))).all()
+        }
+        if unit_ids
+        else {}
+    )
     return [
         {
             "title": p.title,
@@ -2860,9 +2880,22 @@ def _export_sentences(
     if exam_level is not None:
         stmt = stmt.where(RepeatSentence.exam_level == exam_level)  # type: ignore[arg-type]
     sentences = session.exec(
-        stmt.order_by(col(RepeatSentence.created_at), col(RepeatSentence.id))
+        stmt.order_by(col(RepeatSentence.created_at), col(RepeatSentence.id)).limit(
+            MAX_EXPORT_ROWS + 1
+        )
     ).all()
-    title_map = dict(session.exec(select(Passage.id, Passage.title)).all())
+    passage_ids = {s.passage_id for s in sentences if s.passage_id is not None}
+    title_map = (
+        dict(
+            session.exec(
+                select(Passage.id, Passage.title).where(
+                    col(Passage.id).in_(passage_ids)
+                )
+            ).all()
+        )
+        if passage_ids
+        else {}
+    )
     return [
         {
             "text": s.text,
@@ -2910,6 +2943,7 @@ def _export_questions(
             col(ScenarioQuestion.order_index),
             col(ScenarioQuestion.id),
         )
+        .limit(MAX_EXPORT_ROWS + 1)
     ).all()
     return [
         {
@@ -2931,7 +2965,9 @@ def _export_questions(
 
 def _export_instructions(session: Session) -> list[dict[str, str]]:
     instructions = session.exec(
-        select(Instruction).order_by(col(Instruction.created_at), col(Instruction.id))
+        select(Instruction)
+        .order_by(col(Instruction.created_at), col(Instruction.id))
+        .limit(MAX_EXPORT_ROWS + 1)
     ).all()
     return [
         {

@@ -141,21 +141,39 @@ def read_published_class_summaries(
 ) -> list[PublishedClassSummary]:
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
+    # 只需判定「已发布讲评」的考试是否遮蔽：先把候选收窄到有已发布讲评的
+    # 练习，再扫该生会话（原来无界拉全部考试会话，含快照大 JSON 整行）
+    reviewed_ids = set(
+        session.exec(
+            select(ClassroomReview.exercise_id).where(
+                ClassroomReview.classroom_id == classroom.id,
+                col(ClassroomReview.published_summary).is_not(None),
+            )
+        ).all()
+    )
     blocked = set()
-    for ps, exercise in session.exec(
-        select(PracticeSession, ClassroomExercise)
-        .join(
-            ClassroomExercise,
-            col(PracticeSession.assignment_id) == col(ClassroomExercise.id),
-        )
-        .where(
-            PracticeSession.student_id == student.id,
-            ClassroomExercise.classroom_id == classroom.id,
-            col(ClassroomExercise.is_exam).is_(True),
-        )
-    ).all():
-        if exam.exam_feedback_locked(session, ps, exercise):
-            blocked.add(exercise.id)
+    if reviewed_ids:
+        pairs = session.exec(
+            select(PracticeSession, ClassroomExercise)
+            .join(
+                ClassroomExercise,
+                col(PracticeSession.assignment_id) == col(ClassroomExercise.id),
+            )
+            .where(
+                PracticeSession.student_id == student.id,
+                ClassroomExercise.classroom_id == classroom.id,
+                col(ClassroomExercise.is_exam).is_(True),
+                col(ClassroomExercise.id).in_(reviewed_ids),
+            )
+        ).all()
+        # 旧式（无 exam_flow）考试的遮罩判定需要首答时间：批量预取，
+        # 不在循环里逐会话查询（N+1）
+        first = exam.first_submitted_by_session(session, [ps.id for ps, _ in pairs])
+        for ps, exercise in pairs:
+            if exam.exam_feedback_locked(
+                session, ps, exercise, first_submitted=first.get(ps.id, {})
+            ):
+                blocked.add(exercise.id)
     current = (
         session.get(ClassroomExercise, classroom.current_exercise_id)
         if classroom.current_exercise_id
