@@ -540,20 +540,26 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
   const scoring =
     submitting || (!exam && attemptStatus !== undefined && !attemptTerminal)
 
-  // 评分完成：同步今日计划（进度、升降档后的问答）；保留单题简短反馈，学生点击后继续
+  // 评分完成：同步今日计划（进度、升降档后的问答）；保留单题简短反馈，学生点击后继续。
+  // 文案经 ref 解耦：t 进依赖数组会在切语言时重播 toast 并多做一次 invalidate
+  const attemptFailedToast = () => {
+    toast.error(t({ zh: "这次没有评出来", en: "No score this time" }), {
+      description: t({
+        zh: "可以再录一次",
+        en: "You can record again",
+      }),
+    })
+  }
+  const attemptFailedToastRef = useRef(attemptFailedToast)
+  attemptFailedToastRef.current = attemptFailedToast
   useEffect(() => {
     if (!attemptTerminal) return
     void queryClient.invalidateQueries({ queryKey: todayQueryKey })
     if (attemptFailed && !exam) {
-      toast.error(t({ zh: "这次没有评出来", en: "No score this time" }), {
-        description: t({
-          zh: "可以再录一次",
-          en: "You can record again",
-        }),
-      })
+      attemptFailedToastRef.current()
       return
     }
-  }, [attemptTerminal, attemptFailed, queryClient, todayQueryKey, t, exam])
+  }, [attemptTerminal, attemptFailed, queryClient, todayQueryKey, exam])
 
   // 考试全部完成后进入结果页；练习保留题面，允许继续选题和重练。
   useEffect(() => {

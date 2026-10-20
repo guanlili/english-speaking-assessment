@@ -166,6 +166,8 @@ def read_today_plan(
     expected_items = 0
     exhausted = False
     band = practice_session.question_band or practice_session.band
+    # 仅非快照分支赋值；提前初始化避免快照路径误引用未定义名
+    item_objects = None
 
     if snapshot_items is not None:
         snap_passages, snap_repeats, snap_questions = _parse_snapshot_plan_items(

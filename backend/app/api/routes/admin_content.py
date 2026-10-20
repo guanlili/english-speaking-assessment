@@ -1038,7 +1038,7 @@ def copy_passage(
     copied = content_copy.copy_passage(
         session, source, content_access.owner_for(current_user)
     )
-    session.commit()
+    content_copy.commit_copy(session)
     result = PassageWithSentences.model_validate(copied)
     result.sentences = list(
         session.exec(
@@ -1068,7 +1068,7 @@ def copy_sentence(
     copied = content_copy.copy_sentence(
         session, source, content_access.owner_for(current_user)
     )
-    session.commit()
+    content_copy.commit_copy(session)
     return SentenceWithPassage.model_validate(copied)
 
 
@@ -1082,7 +1082,7 @@ def copy_scenario(
     copied = content_copy.copy_scenario(
         session, source, content_access.owner_for(current_user)
     )
-    session.commit()
+    content_copy.commit_copy(session)
     questions = session.exec(
         select(ScenarioQuestion)
         .where(ScenarioQuestion.scenario_id == copied.id)
@@ -1106,7 +1106,7 @@ def copy_question(
     copied = content_copy.copy_question(
         session, source, content_access.owner_for(current_user)
     )
-    session.commit()
+    content_copy.commit_copy(session)
     scenario = session.get(Scenario, copied.scenario_id)
     assert scenario is not None
     return QuestionBankOut(**copied.model_dump(), topic=scenario.topic)
@@ -1122,7 +1122,7 @@ def copy_instruction(
     copied = content_copy.copy_instruction(
         session, source, content_access.owner_for(current_user)
     )
-    session.commit()
+    content_copy.commit_copy(session)
     return InstructionPublic.model_validate(copied)
 
 

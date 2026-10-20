@@ -43,7 +43,7 @@ def copy_school_content(
         copied = content_copy.copy_question(session, source, owner_id)
     else:
         copied = content_copy.copy_instruction(session, source, owner_id)
-    session.commit()
+    content_copy.commit_copy(session)
     assert copied.copied_from_id is not None
     return ContentCopied(id=copied.id, copied_from_id=copied.copied_from_id)
 

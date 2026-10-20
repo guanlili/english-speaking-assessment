@@ -257,37 +257,45 @@ export function useRecordingFlow({
   })
   const pendingBlockerActive = leaveState !== "allowed"
 
+  // t 引用随语言切换变化：进了依赖数组会在切语言时重播「上传失败」toast。
+  // 文案函数经 ref 解耦，依赖数组不含 t（同 useExamPhase 的 audioFailText）
+  const submitErrorToast = () => {
+    const status = submitErrorData?.status
+    if (submitErrorData?.body?.detail === "Followup cancelled") {
+      toast.error(t({ zh: "补练已撤销", en: "Practice task withdrawn" }), {
+        description: t({
+          zh: "老师已撤销这项补练，不能继续提交；已有记录仍会保留。",
+          en: "Your teacher withdrew this task. Further submissions are blocked; existing records are kept.",
+        }),
+      })
+    } else if (status === 503) {
+      toast.error(t({ zh: "评分队列繁忙", en: "Scoring queue is busy" }), {
+        description: t({
+          zh: "录音已保留，请稍后点重传",
+          en: "Your recording is saved — tap retry in a moment",
+        }),
+      })
+    } else {
+      toast.error(t({ zh: "上传失败", en: "Upload failed" }), {
+        description: t({
+          zh: exam
+            ? "录音已保留，请重传原录音；模考不能重录"
+            : "录音已保留，可以点重传或重新录一次",
+          en: exam
+            ? "Your recording is saved. Retry the original upload; exam items cannot be re-recorded."
+            : "Your recording is saved — retry the upload or record again",
+        }),
+      })
+    }
+  }
+  const submitErrorToastRef = useRef(submitErrorToast)
+  submitErrorToastRef.current = submitErrorToast
+
   useEffect(() => {
     if (submitError) {
-      const status = submitErrorData?.status
-      if (submitErrorData?.body?.detail === "Followup cancelled") {
-        toast.error(t({ zh: "补练已撤销", en: "Practice task withdrawn" }), {
-          description: t({
-            zh: "老师已撤销这项补练，不能继续提交；已有记录仍会保留。",
-            en: "Your teacher withdrew this task. Further submissions are blocked; existing records are kept.",
-          }),
-        })
-      } else if (status === 503) {
-        toast.error(t({ zh: "评分队列繁忙", en: "Scoring queue is busy" }), {
-          description: t({
-            zh: "录音已保留，请稍后点重传",
-            en: "Your recording is saved — tap retry in a moment",
-          }),
-        })
-      } else {
-        toast.error(t({ zh: "上传失败", en: "Upload failed" }), {
-          description: t({
-            zh: exam
-              ? "录音已保留，请重传原录音；模考不能重录"
-              : "录音已保留，可以点重传或重新录一次",
-            en: exam
-              ? "Your recording is saved. Retry the original upload; exam items cannot be re-recorded."
-              : "Your recording is saved — retry the upload or record again",
-          }),
-        })
-      }
+      submitErrorToastRef.current()
     }
-  }, [submitError, submitErrorData, t, exam])
+  }, [submitError])
 
   // 本地倒计时：以服务端 remaining_seconds 为准心，每秒递减仅作展示；
   // 未开考（确认页）不启动——服务端此刻也还没计时

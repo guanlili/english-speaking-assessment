@@ -781,7 +781,12 @@ function ComposerForm({
           </p>
         </div>
         {(hasItemAssignment || hasUnitAssignment) && (
-          <Button variant="ghost" size="sm" onClick={() => setClearOpen(true)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="min-h-11"
+            onClick={() => setClearOpen(true)}
+          >
             {t({ zh: "恢复自主练习", en: "Restore Self Practice" })}
           </Button>
         )}

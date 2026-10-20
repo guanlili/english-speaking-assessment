@@ -2,10 +2,21 @@ import uuid
 from copy import deepcopy
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, func, select
 
 from app import crud
 from app.models import Instruction, Passage, RepeatSentence, Scenario, ScenarioQuestion
+
+
+def commit_copy(session: Session) -> None:
+    """复制类落库的统一提交口：名字探测与插入之间的并发窗口撞唯一
+    约束（主题/slug）时转 409，而不是把 IntegrityError 泄成 500。"""
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(409, detail="Copy name conflict") from None
 
 
 def copy_passage(
@@ -72,16 +83,27 @@ def copy_scenario(
 ) -> Scenario:
     session.refresh(source, with_for_update=True)
     base = f"{source.topic[:93]} (copy)"
-    topic = base
+    # 一次拉回同前缀已占用名（LIKE 通配符转义），不再逐后缀探测查询。
+    # 前缀取所有候选名的公共前缀（最长后缀 " 501"=4 字符 → 100-4=96），
+    # 保证任何候选的碰撞都落在集合内
+    probe_prefix = base[:96]
+    escaped = probe_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    taken = set(
+        session.exec(
+            select(Scenario.topic).where(
+                col(Scenario.topic).like(f"{escaped}%", escape="\\")
+            )
+        ).all()
+    )
+    topic = base if base not in taken else None
     for index in range(2, 502):
-        if (
-            session.exec(select(Scenario.id).where(Scenario.topic == topic)).first()
-            is None
-        ):
-            break
         suffix = f" {index}"
-        topic = f"{base[: 100 - len(suffix)]}{suffix}"
-    else:
+        candidate = f"{base[: 100 - len(suffix)]}{suffix}"
+        if candidate in taken:
+            continue
+        topic = candidate
+        break
+    if topic is None:
         raise HTTPException(409, detail="Copy name conflict")
     copied = Scenario(topic=topic, is_active=source.is_active, owner_id=owner_id)
     session.add(copied)

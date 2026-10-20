@@ -392,7 +392,12 @@ export function ResultsPanel({
             />
             {t({ zh: "刷新", en: "Refresh" })}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => void exportCsv()}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11"
+            onClick={() => void exportCsv()}
+          >
             <Download />
             {t({ zh: "导出", en: "Export" })}
           </Button>

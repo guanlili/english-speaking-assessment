@@ -5,6 +5,7 @@
 
 import type { DimensionPoint } from "@/client"
 import { useI18n } from "@/lib/i18n"
+import { DIMENSION_LABELS } from "@/lib/terms"
 
 const WIDTH = 560
 const HEIGHT = 180
@@ -125,7 +126,7 @@ export function DimensionTrendChart({ points }: { points: DimensionPoint[] }) {
                   r={3}
                   fill={row.series.color}
                 >
-                  <title>{`${row.series.key}: ${p.date}`}</title>
+                  <title>{`${t(DIMENSION_LABELS[row.series.key])}: ${p.date}`}</title>
                 </circle>
               )),
         )}
@@ -167,10 +168,7 @@ export function DimensionTrendChart({ points }: { points: DimensionPoint[] }) {
               className="inline-block size-2.5 rounded-full"
               style={{ backgroundColor: s.color }}
             />
-            {t({
-              zh: s.key,
-              en: s.key,
-            })}
+            {t(DIMENSION_LABELS[s.key])}
           </span>
         ))}
       </div>

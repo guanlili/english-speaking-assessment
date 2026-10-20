@@ -168,7 +168,12 @@ export function AddWordsToBook({
               {addWords.isPending ? <Loader2 className="animate-spin" /> : null}
               {t({ zh: "确认加入", en: "Confirm" })}
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setPreview(null)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-11"
+              onClick={() => setPreview(null)}
+            >
               {t({ zh: "取消", en: "Cancel" })}
             </Button>
           </div>

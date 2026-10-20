@@ -38,6 +38,7 @@ import {
 import { useI18n } from "@/lib/i18n"
 import { filterSessions } from "@/lib/practice-history"
 import {
+  DIMENSION_LABELS,
   EXPLAIN,
   FRAME_PURPOSE_LABELS,
   TERMS,
@@ -411,7 +412,7 @@ function MyTrailPage() {
               })}
             </p>
           </div>
-          <Button variant="outline" size="sm" asChild>
+          <Button variant="outline" size="sm" className="min-h-11" asChild>
             <Link to="/p/$code" params={{ code }}>
               {t({ zh: "回练习页", en: "Back to practice" })}
             </Link>
@@ -445,8 +446,8 @@ function MyTrailPage() {
                     onClick={() => setGrowthTab(v)}
                     className={
                       growthTab === v
-                        ? "rounded-lg bg-card min-h-9 px-3 py-1.5 text-xs font-semibold shadow-sm"
-                        : "rounded-lg min-h-9 px-3 py-1.5 text-xs text-muted-foreground"
+                        ? "rounded-lg bg-card min-h-11 px-3 py-1.5 text-xs font-semibold shadow-sm"
+                        : "rounded-lg min-h-11 px-3 py-1.5 text-xs text-muted-foreground"
                     }
                   >
                     {label}
@@ -462,8 +463,8 @@ function MyTrailPage() {
                       onClick={() => setPeriod(n)}
                       className={
                         period === n
-                          ? "rounded-lg bg-card min-h-9 px-3 py-1.5 text-xs font-semibold shadow-sm"
-                          : "rounded-lg min-h-9 px-3 py-1.5 text-xs text-muted-foreground"
+                          ? "rounded-lg bg-card min-h-11 px-3 py-1.5 text-xs font-semibold shadow-sm"
+                          : "rounded-lg min-h-11 px-3 py-1.5 text-xs text-muted-foreground"
                       }
                     >
                       {t({ zh: `近 ${n} 天`, en: `Last ${n} days` })}
@@ -690,13 +691,6 @@ function MyTrailPage() {
     </StudentShell>
   )
 }
-
-const DIMENSION_LABELS = {
-  fluency: { zh: "流利度", en: "Fluency" },
-  vocabulary: { zh: "词汇", en: "Vocabulary" },
-  grammar: { zh: "语法", en: "Grammar" },
-  task: { zh: "任务完成", en: "Task" },
-} as const
 
 /** 个人弱项诊断卡：四维均值 + 最弱维度 + 高频漏词（跟读/复述）。 */
 function DiagnosticsCard({
