@@ -1121,6 +1121,7 @@ export type RepeatSentence = {
     audio_url?: (string | null);
     suggested_seconds?: number;
     replay_limit?: number;
+    dedup_text_hash?: (string | null);
     exam_kind?: (string | null);
     exam_level?: (string | null);
     owner_id?: (string | null);
@@ -1297,6 +1298,7 @@ export type SentenceWithPassage = {
     audio_url?: (string | null);
     suggested_seconds?: number;
     replay_limit?: number;
+    dedup_text_hash?: (string | null);
     exam_kind?: (string | null);
     exam_level?: (string | null);
     owner_id?: (string | null);

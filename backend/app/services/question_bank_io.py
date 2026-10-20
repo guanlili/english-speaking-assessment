@@ -26,7 +26,6 @@ xlsx 模板与解析共用本文件的列规格（单一事实源）；CSV 与�
 
 import csv
 import io
-import unicodedata
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -60,7 +59,7 @@ from app.models import (
     validate_exam_fields,
     validate_question_suggested_seconds,
 )
-from app.services import content_access
+from app.services import content_access, content_dedup
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_IMPORT_ROWS = 2000
@@ -193,9 +192,9 @@ def _norm_header(raw: Any) -> str:
     return " ".join(str(raw).split()).casefold()
 
 
-def _norm_text(raw: str) -> str:
-    """查重键规范化：NFKC（全角→半角）+ strip + casefold + 内部空白折叠。"""
-    return " ".join(unicodedata.normalize("NFKC", raw).strip().casefold().split())
+# 查重键归一化只有一份定义（services/content_dedup.py）：写入维护与
+# 读取匹配共用，别处复制必然漂移
+_norm_text = content_dedup.norm_text
 
 
 def _cell_str(raw: Any) -> str:
@@ -973,20 +972,39 @@ class _Ref:
 
 
 def _matching_ids(
-    session: Session, statement: Any, wanted: set[str]
+    session: Session,
+    model: Any,
+    text_attr: Any,
+    hash_attr: Any,
+    wanted: set[str],
+    *conditions: Any,
 ) -> list[uuid.UUID]:
-    """Python 保留 NFKC/casefold/Unicode 空白精确语义；只流式读取匹配键。
+    """按归一键匹配存量行：优先走预计算哈希索引（dedup_*_hash 列）。
 
-    不用数据库 lower 近似 casefold（ß/全角/Unicode 空白会漏判）；大文本
-    每次最多 256 行，只有命中的候选才创建完整 ORM 对象。
+    哈希列由 services/content_dedup.py 的 flush 钩子维护、迁移回填存量；
+    NULL 行（理论仅迁移前残留）回退流式拉原文做 Python 归一——NFKC/
+    casefold/Unicode 空白语义 Python 是唯一权威，不用数据库 lower 近似。
     """
     if not wanted:
         return []
-    rows = session.exec(statement.execution_options(yield_per=256))
+    wanted_hashes = [content_dedup.hash_norm(w) for w in wanted]
+    matched = list(
+        session.exec(
+            select(model.id).where(hash_attr.in_(wanted_hashes), *conditions)
+        ).all()
+    )
+    legacy = session.exec(
+        select(model.id, text_attr)
+        .where(col(hash_attr).is_(None), *conditions)
+        .execution_options(yield_per=256)
+    )
     try:
-        return [row_id for row_id, value in rows if _norm_text(value or "") in wanted]
+        matched.extend(
+            row_id for row_id, value in legacy if _norm_text(value or "") in wanted
+        )
     finally:
-        rows.close()
+        legacy.close()
+    return matched
 
 
 def _load_reference(session: Session, parsed: ParsedFile) -> _Ref:
@@ -1009,25 +1027,29 @@ def _load_reference(session: Session, parsed: ParsedFile) -> _Ref:
     passage_ids = set(
         _matching_ids(
             session,
-            select(Passage.id, Passage.title).where(
-                col(Passage.parent_passage_id).is_(None)
-            ),
+            Passage,
+            Passage.title,
+            Passage.dedup_title_hash,
             titles,
+            col(Passage.parent_passage_id).is_(None),
         )
     )
     passage_ids.update(
         _matching_ids(
             session,
-            select(Passage.id, Passage.text).where(
-                col(Passage.parent_passage_id).is_(None)
-            ),
+            Passage,
+            Passage.text,
+            Passage.dedup_text_hash,
             {_norm_text(p["text"]) for p in passage_payloads},
+            col(Passage.parent_passage_id).is_(None),
         )
     )
     units_wanted = {
         _norm_text(p["unit_title"]) for p in passage_payloads if p.get("unit_title")
     }
-    unit_ids = _matching_ids(session, select(Unit.id, Unit.title), units_wanted)
+    unit_ids = _matching_ids(
+        session, Unit, Unit.title, Unit.dedup_title_hash, units_wanted
+    )
     root_passages = (
         list(
             session.exec(select(Passage).where(col(Passage.id).in_(passage_ids))).all()
@@ -1045,13 +1067,17 @@ def _load_reference(session: Session, parsed: ParsedFile) -> _Ref:
     scenario_ids = set(
         _matching_ids(
             session,
-            select(Scenario.id, Scenario.topic),
+            Scenario,
+            Scenario.topic,
+            Scenario.dedup_topic_hash,
             {_norm_text(p["topic"]) for p in question_payloads},
         )
     )
     question_ids = _matching_ids(
         session,
-        select(ScenarioQuestion.id, ScenarioQuestion.text),
+        ScenarioQuestion,
+        ScenarioQuestion.text,
+        ScenarioQuestion.dedup_text_hash,
         {_norm_text(p["text"]) for p in question_payloads},
     )
     questions = (
@@ -1077,7 +1103,9 @@ def _load_reference(session: Session, parsed: ParsedFile) -> _Ref:
     )
     sentence_ids = _matching_ids(
         session,
-        select(RepeatSentence.id, RepeatSentence.text),
+        RepeatSentence,
+        RepeatSentence.text,
+        RepeatSentence.dedup_text_hash,
         {_norm_text(p["text"]) for p in repeat_payloads},
     )
     sentences = (
@@ -1091,7 +1119,9 @@ def _load_reference(session: Session, parsed: ParsedFile) -> _Ref:
     )
     instruction_ids = _matching_ids(
         session,
-        select(Instruction.id, Instruction.text),
+        Instruction,
+        Instruction.text,
+        Instruction.dedup_text_hash,
         {_norm_text(p["text"]) for p in instruction_payloads},
     )
     instructions = (
