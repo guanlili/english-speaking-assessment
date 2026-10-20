@@ -52,6 +52,10 @@ from app.services import trail as trail_service
 
 logger = logging.getLogger(__name__)
 
+# 个人诊断聚合的作答行数上限：诊断卡只展示 top 漏词/四维均值/最近 14 点
+# 趋势，取最近作答封顶即可，不随 days 窗口无界放大
+DIAGNOSTICS_MAX_ATTEMPTS = 2000
+
 
 def _feedback_locked_exam_session_ids(
     session: SessionDep, student: Student
@@ -217,10 +221,13 @@ def read_student_diagnostics(
                 col(Attempt.session_id).not_in(locked_session_ids),
             )
         )
+    # 诊断聚合只承载 top 漏词/四维均值/最近 14 点趋势：按最近作答封顶，
+    # 防止重度学生超长窗口（days 上限 3650）把数千行 4 个 JSON 大列整进内存
     rows = session.exec(
         select(Attempt)
         .where(*conditions)
-        .order_by(col(Attempt.created_at), col(Attempt.id))
+        .order_by(col(Attempt.created_at).desc(), col(Attempt.id).desc())
+        .limit(DIAGNOSTICS_MAX_ATTEMPTS)
         .options(
             load_only(
                 Attempt.item_type,  # ty: ignore[invalid-argument-type]
@@ -232,6 +239,8 @@ def read_student_diagnostics(
             )
         )
     ).all()
+    rows = list(rows)
+    rows.reverse()  # 恢复时间升序，趋势「最近 14 点」口径与原先一致
 
     missed: Counter[str] = Counter()
     rubric_points: list[DimensionPoint] = []
@@ -535,6 +544,25 @@ def _session_history(
         ).all():
             exercises_by_id[exercise.id] = exercise
 
+    # 考试遮罩批量预取首答时间：旧式（无 exam_flow）考试若在循环里
+    # 逐会话判定，每行多 2 条查询（同文件 _locked_exam_session_ids 的范式）
+    exam_session_ids = [
+        ps.id
+        for ps in sessions
+        if (
+            exercise := (
+                exercises_by_id.get(ps.assignment_id)
+                if ps.assignment_id is not None
+                else None
+            )
+        )
+        is not None
+        and exercise.is_exam
+    ]
+    first_by_session = exam_service.first_submitted_by_session(
+        session, exam_session_ids
+    )
+
     rows: list[MySessionSummary] = []
     for ps in sessions:
         latest = latest_by_session.get(ps.id, {})
@@ -566,7 +594,9 @@ def _session_history(
             for item_id in required
             if item_id in latest and latest[item_id].status == AttemptStatus.DONE
         ]
-        exam_locked = exam_service.exam_feedback_locked(session, ps, exercise)
+        exam_locked = exam_service.exam_feedback_locked(
+            session, ps, exercise, first_submitted=first_by_session.get(ps.id, {})
+        )
         feedback_locked = mask_exam_feedback and exam_locked
         overalls = [a.overall for a in done if a.overall is not None]
         rows.append(

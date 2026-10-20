@@ -5,6 +5,7 @@ from datetime import datetime
 
 from fastapi import HTTPException
 from sqlalchemy import func
+from sqlalchemy.orm import load_only
 from sqlmodel import Session, SQLModel, col, select
 
 from app.models import Attempt, Classroom, ClassroomExercise, PracticeSession
@@ -117,6 +118,20 @@ def read_outcomes(
         ).subquery()
         rows = session.exec(
             select(Attempt)
+            .options(
+                # evidence() 只读小列：transcript/rubric/word_alignment 等大 JSON 不进内存
+                load_only(
+                    Attempt.id,  # ty: ignore[invalid-argument-type]
+                    Attempt.student_id,  # ty: ignore[invalid-argument-type]
+                    Attempt.item_id,  # ty: ignore[invalid-argument-type]
+                    Attempt.status,  # ty: ignore[invalid-argument-type]
+                    Attempt.engine,  # ty: ignore[invalid-argument-type]
+                    Attempt.overall,  # ty: ignore[invalid-argument-type]
+                    Attempt.teacher_feedback,  # ty: ignore[invalid-argument-type]
+                    Attempt.teacher_focus,  # ty: ignore[invalid-argument-type]
+                    Attempt.created_at,  # ty: ignore[invalid-argument-type]
+                )
+            )
             .join(ranked, col(Attempt.id) == ranked.c.attempt_id)
             .where(ranked.c.rank == 1)
         ).all()
@@ -126,13 +141,20 @@ def read_outcomes(
     current = latest(task.id, False)
     locked_students = set()
     if source and source.is_exam:
-        for ps in session.exec(
+        exam_sessions = session.exec(
             select(PracticeSession).where(
                 PracticeSession.assignment_id == source.id,
                 col(PracticeSession.student_id).in_(student_ids),
             )
-        ).all():
-            if exam.exam_feedback_locked(session, ps, source):
+        ).all()
+        # 旧式（无 exam_flow）考试的遮罩判定需要首答时间：一次预取，不逐会话查询
+        first = exam.first_submitted_by_session(
+            session, [ps.id for ps in exam_sessions]
+        )
+        for ps in exam_sessions:
+            if exam.exam_feedback_locked(
+                session, ps, source, first_submitted=first.get(ps.id, {})
+            ):
                 locked_students.add(ps.student_id)
     rows = []
     for target in page:
