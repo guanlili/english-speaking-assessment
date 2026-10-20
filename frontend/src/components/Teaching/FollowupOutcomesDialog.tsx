@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 import { formatDateTime } from "@/lib/time"
 
 export function FollowupOutcomesDialog({
@@ -29,7 +30,7 @@ export function FollowupOutcomesDialog({
     queryKey: ["teacher", "followup-outcomes", code, taskId, offset],
     queryFn: () =>
       ClassesService.readFollowupOutcomes({ code, taskId, offset, limit: 10 }),
-    refetchInterval: 10000,
+    refetchInterval: pollWhileVisible(10000),
   })
   const label = (row: FollowupEvidence | null) =>
     !row

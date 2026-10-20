@@ -6,6 +6,7 @@ import { ClassesService } from "@/client"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 
 const PAGE_SIZE = 10
 
@@ -28,7 +29,7 @@ function StudentFollowupsList({ code }: { code: string }) {
         offset,
         limit: PAGE_SIZE + 1,
       }),
-    refetchInterval: 20000,
+    refetchInterval: pollWhileVisible(20000),
   })
   // A scoring update can move the last task on this page to history.
   useEffect(() => {

@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table"
 import { downloadCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 import { ITEM_TYPE_LABELS } from "@/lib/terms"
 import { formatDateTime } from "@/lib/time"
 
@@ -223,8 +224,9 @@ function ExerciseResults({
         exerciseId: exercise.id,
       }),
     // 有学生在评分中时 5 秒刷新（与学生结果面板口径一致），否则不轮询
-    refetchInterval: (query) =>
+    refetchInterval: pollWhileVisible((query) =>
       (query.state.data ?? []).some((row) => row.has_pending) ? 5000 : false,
+    ),
   })
 
   const exportCsv = (rows: ExerciseStudentResult[]) => {

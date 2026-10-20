@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { ClassesService, type ClassroomIssue } from "@/client"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 import { formatDateTime } from "@/lib/time"
 
 const labels = {
@@ -38,7 +39,7 @@ export function ClassroomIssues({
   const query = useQuery({
     queryKey: ["teacher", "diagnostics", code],
     queryFn: () => ClassesService.readClassroomDiagnostics({ code }),
-    refetchInterval: 5000,
+    refetchInterval: pollWhileVisible(5000),
     retry: 1,
   })
   const issues = query.data?.issues ?? []

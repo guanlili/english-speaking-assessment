@@ -48,6 +48,7 @@ import {
 import { copyText } from "@/lib/clipboard"
 import { downloadCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 import { TERMS } from "@/lib/terms"
 
 export const Route = createFileRoute("/t/$code/")({
@@ -106,10 +107,11 @@ function TeacherBoardPage() {
   const boardQuery = useQuery({
     queryKey: ["teacher", "board", code],
     queryFn: () => ClassesService.readClassBoard({ code: code.toUpperCase() }),
-    refetchInterval: (query) =>
+    refetchInterval: pollWhileVisible((query) =>
       (query.state.data?.pending_count ?? 0) > 0
         ? PENDING_REFRESH_MS
         : IDLE_REFRESH_MS,
+    ),
   })
 
   const clearHomework = useMutation({

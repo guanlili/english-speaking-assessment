@@ -37,6 +37,7 @@ import { useRuntimeIssue } from "@/hooks/useRuntimeIssue"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 import { practiceItemCopy } from "@/lib/practice-copy"
 import {
   blockerNotice,
@@ -111,10 +112,11 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
         ...(homework && !sessionId ? { slot: "homework" } : {}),
       }),
     enabled: student !== null,
-    refetchInterval: (query) =>
+    refetchInterval: pollWhileVisible((query) =>
       query.state.data?.attempts.some((a) => !isAttemptTerminal(a.status))
         ? 2000
-        : 30000, // 慢速同步：老师中途指派新单元时学生端最迟 30 秒感知
+        : 30000,
+    ), // 慢速同步：老师中途指派新单元时学生端最迟 30 秒感知
   })
 
   // 身份守卫：无本地身份跳加入页；查询报"学生不存在"清身份重进（5 页共用 hook）

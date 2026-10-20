@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 import { formatDateTime } from "@/lib/time"
 
 import { randomId } from "@/utils"
@@ -53,7 +54,7 @@ function FollowupManagerList({
         offset,
         limit: PAGE_SIZE + 1,
       }),
-    refetchInterval: 10000,
+    refetchInterval: pollWhileVisible(10000),
   })
   useEffect(() => {
     if (

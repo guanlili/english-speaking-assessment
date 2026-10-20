@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { helpCategories } from "@/lib/classroom-message-labels"
 import { useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 import { formatDateTime } from "@/lib/time"
 import { randomId } from "@/utils"
 
@@ -52,7 +53,7 @@ export function ClassroomContactPanel({
       if (!Array.isArray(rows)) throw new Error("Invalid message response")
       return rows
     },
-    refetchInterval: 5000,
+    refetchInterval: pollWhileVisible(5000),
   })
   const reminders = useQuery({
     queryKey: [
@@ -74,7 +75,7 @@ export function ClassroomContactPanel({
       if (!Array.isArray(rows)) throw new Error("Invalid message response")
       return rows
     },
-    refetchInterval: 10000,
+    refetchInterval: pollWhileVisible(10000),
   })
   const invalidate = () => {
     if (identity.current !== localStorage.getItem("access_token")) return

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { ClassesService, type ExamRuntimeState, type TodayPlan } from "@/client"
+import { pollWhileVisible } from "@/lib/poll"
 
 export function useAutomatedExamState(code: string, initialPlan: TodayPlan) {
   const query = useQuery<ExamRuntimeState>({
@@ -11,11 +12,11 @@ export function useAutomatedExamState(code: string, initialPlan: TodayPlan) {
       exam: initialPlan.exam!,
       submitted_item_ids: initialPlan.attempts.map((a) => a.item_id),
     },
-    refetchInterval: (query) => {
+    refetchInterval: pollWhileVisible((query) => {
       if (query.state.error) return 3000
       const exam = query.state.data?.exam
       return !exam?.started || exam.ended ? 3000 : 1000
-    },
+    }),
     retry: 1,
   })
   // 题面冻结于初始发布快照；状态响应不携带题文、评分、rubric 或激励。

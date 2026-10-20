@@ -31,6 +31,7 @@ import {
 import { downloadCsv } from "@/lib/csv"
 import { localDateStamp } from "@/lib/dates"
 import { type BiString, useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 import { EXPLAIN_QUIZ_TAB_SWITCH, TERMS } from "@/lib/terms"
 import { formatTime } from "@/lib/time"
 import { QuizAnswerSheetDialog } from "./QuizAnswerSheetDialog"
@@ -72,8 +73,9 @@ export function ResultsPanel({
         assignmentId: selectedAssignmentId ?? undefined,
       }),
     // 进行中的任务才轮询；历史期数是归档快照不可变，null(无任务) 由指派后失效刷新
-    refetchInterval: (query) =>
+    refetchInterval: pollWhileVisible((query) =>
       query.state.data?.assignment?.status === "active" ? 20_000 : false,
+    ),
   })
   const archive = useMutation({
     mutationFn: (assignmentId: string) =>
