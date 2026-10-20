@@ -29,6 +29,7 @@ from app.models import (
     Unit,
     UserCreate,
 )
+from app.services import content_dedup
 from tests.utils.credential import anonymous, create_student_user, login_headers
 from tests.utils.utils import random_email, random_lower_string
 
@@ -2223,3 +2224,77 @@ def test_repeat_import_streams_unicode_keys_without_materializing_unrelated_tabl
             if row is not None:
                 db.delete(row)
         db.commit()
+
+
+def test_dedup_hashes_maintained_on_write_and_update(
+    client: TestClient, db: Session
+) -> None:
+    """flush 钩子维护 dedup_*_hash：创建即写入、改文本随更新重算，
+    归一化口径（全角空白/大小写折叠）与 content_dedup.norm_text 一致。"""
+    headers = _login_teacher(db, client)
+    file = _csv_file([{**QUESTION_ROW, "text": "Hash maintained."}])
+    resp = _upload(client, headers, file, confirm=True)
+    assert resp.json()["sheets"][0]["created"] == 1
+    row = _one_new(db, ScenarioQuestion)
+    scenario_id = row.scenario_id
+    try:
+        assert row.dedup_text_hash == content_dedup.hash_text("Hash maintained.")
+
+        row.text = "Hash maintained v2."
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        assert row.dedup_text_hash == content_dedup.hash_text("Hash maintained v2.")
+
+        # 全角空格 + 大写 + 多重空白 → 归一后与首版同键
+        row.text = "　Hash　MAINTAINED.  "
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        assert row.dedup_text_hash == content_dedup.hash_text("Hash maintained.")
+    finally:
+        db.delete(row)
+        db.commit()
+        scenario = db.get(Scenario, scenario_id)
+        if scenario is not None:
+            db.delete(scenario)
+            db.commit()
+
+
+def test_matching_falls_back_to_stream_when_hash_missing(
+    client: TestClient, db: Session
+) -> None:
+    """哈希列为 NULL 的存量行（迁移前残留/绕过 ORM 的写入）仍走流式归一
+    判重，语义与预计算路径一致。"""
+    from sqlalchemy import text
+
+    headers = _login_teacher(db, client)
+    file = _csv_file([{**QUESTION_ROW, "text": "Legacy unhashed."}])
+    resp = _upload(client, headers, file, confirm=True)
+    assert resp.json()["sheets"][0]["created"] == 1
+    row = _one_new(db, ScenarioQuestion)
+    scenario_id = row.scenario_id
+    try:
+        db.expunge(row)
+        # connection() 走 SQLAlchemy Connection 层执行原生 SQL：
+        # session.execute 被 ty 按弃用拦截
+        conn = db.connection()
+        conn.execute(
+            text("UPDATE scenario_question SET dedup_text_hash = NULL WHERE id = :id"),
+            {"id": row.id},
+        )
+        db.commit()
+
+        body = _preview(client, headers, file)
+        counts = body["sheets"][0]
+        assert counts["exact_duplicate_count"] == 1
+        assert counts["valid_count"] == 0
+    finally:
+        db.connection().execute(
+            text("DELETE FROM scenario_question WHERE id = :id"), {"id": row.id}
+        )
+        db.commit()
+        scenario = db.get(Scenario, scenario_id)
+        if scenario is not None:
+            db.delete(scenario)
+            db.commit()

@@ -15,6 +15,7 @@ from starlette.responses import JSONResponse
 from app.api.main import api_router
 from app.core.config import settings
 from app.core.request_context import request_id
+from app.services import content_dedup  # noqa: F401 导入即注册查重哈希 flush 钩子
 
 logging.basicConfig(level=logging.INFO)
 request_logger = logging.getLogger("app.requests")

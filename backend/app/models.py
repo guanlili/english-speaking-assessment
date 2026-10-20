@@ -132,6 +132,10 @@ class Passage(PassageBase, table=True):
         default=None, sa_type=JSON
     )
     exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
+    # 题库查重预计算（services/content_dedup.py 维护）：标题/正文的归一键
+    # sha256；导入疑似重复判定走索引，不再全表流式拉原文
+    dedup_title_hash: str | None = Field(default=None, max_length=64, index=True)
+    dedup_text_hash: str | None = Field(default=None, max_length=64, index=True)
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     slug: str = Field(unique=True, index=True, max_length=100)
@@ -196,6 +200,8 @@ class Unit(SQLModel, table=True):
     title: str = Field(min_length=1, max_length=255)
     topic: str = Field(max_length=100)
     is_active: bool = True
+    # 题库查重预计算（services/content_dedup.py 维护）
+    dedup_title_hash: str | None = Field(default=None, max_length=64, index=True)
 
 
 class UnitPublic(SQLModel):
@@ -434,6 +440,8 @@ class RepeatSentence(SQLModel, table=True):
     replay_limit: int = Field(
         default=3, ge=0, le=9, sa_column_kwargs={"server_default": "3"}
     )
+    # 题库查重预计算（services/content_dedup.py 维护）
+    dedup_text_hash: str | None = Field(default=None, max_length=64, index=True)
     # 分级题型训练（可空=普通课堂内容，含义不变）：题型与级别分别建模
     exam_kind: str | None = Field(default=None, max_length=24)
     exam_level: str | None = Field(default=None, max_length=16)
@@ -456,6 +464,8 @@ class Scenario(SQLModel, table=True):
     owner_id: uuid.UUID | None = Field(
         default=None, foreign_key="user.id", ondelete="SET NULL", index=True
     )
+    # 题库查重预计算（services/content_dedup.py 维护）
+    dedup_topic_hash: str | None = Field(default=None, max_length=64, index=True)
 
 
 class ScenarioQuestion(SQLModel, table=True):
@@ -490,6 +500,8 @@ class ScenarioQuestion(SQLModel, table=True):
     owner_id: uuid.UUID | None = Field(
         default=None, foreign_key="user.id", ondelete="SET NULL", index=True
     )
+    # 题库查重预计算（services/content_dedup.py 维护）
+    dedup_text_hash: str | None = Field(default=None, max_length=64, index=True)
 
 
 class ScenarioQuestionPublic(SQLModel):
@@ -525,6 +537,8 @@ class Instruction(SQLModel, table=True):
     owner_id: uuid.UUID | None = Field(
         default=None, foreign_key="user.id", ondelete="SET NULL", index=True
     )
+    # 题库查重预计算（services/content_dedup.py 维护）
+    dedup_text_hash: str | None = Field(default=None, max_length=64, index=True)
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore

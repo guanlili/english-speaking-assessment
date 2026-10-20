@@ -155,3 +155,8 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - `lib/device-preflight.ts` 在当前标签页的 sessionStorage 中按账号 ID、学生 ID、课堂码隔离存储通过时间，不存 token、录音或正文；缺少身份、存储不可用时不缓存，仍可正常自检。试录、回放确认、连接检查和向老师上报全部成功后才写入通过时间。
 - 通过结果最多保留两小时，与服务端设备自检 TTL 一致；读取不续期，也不重新上报 passed，避免延长老师端有效期。页面内到期、返回可见时过期、设备变化或主动重查会失效。重新检查立即清除旧通过记录；上报失败保留试录及重试入口。账号变化/组件卸载后的迟到响应不更新状态或写入缓存。
 - 窄屏顶部保留 Logo 与工具按钮，页面标题对读屏保留、视觉上从 sm 起展示；重复课堂标识从 lg 起显示，避免手机与 iPad 竖屏上标题和工具区重叠。
+
+## 题库查重预计算与补练查询量级验证（2026-10-20）
+
+- 导入查重匹配键预计算：Passage（title/text）、Unit（title）、Scenario（topic）、ScenarioQuestion/RepeatSentence/Instruction（text）六表七列加 `dedup_*_hash`（归一键 sha256，可空+索引）。归一化函数单一事实源在 `services/content_dedup.py`（NFKC + strip + casefold + 空白折叠），`before_flush` 会话级钩子维护所有 ORM 写入路径（CRUD/复制/导入/AI 出题/种子），`question_bank_io._matching_ids` 优先哈希索引、NULL 行回退流式归一（迁移前残留兜底）。casefold/Unicode 空白无法在 SQL 精确复刻，故不用数据库生成列；迁移 `a3f8c1d90e42` 内冻结归一函数回填存量。基准（3000 篇 3KB 正文）：全表流式 634ms → 哈希索引 2.4ms。
+- 补练列表未完成判定（PR#167 改写的量级验证，合成数据 1 课堂）：600 任务 × 40 学生 × 6 题全部完成（history 视图最坏情况，144k 作答）时，旧实现（每 (target,item) 对一次相关 LIMIT-1）墙钟 8.8s / 1.30M buffer 命中 / 144,000 次子计划执行；新实现（全班一次 DISTINCT ON + 逐对小 EXISTS）4.4s / 0.24M。小规模（150 任务）两者墙钟接近但 buffers 差 5.3 倍——全内存命中时 jsonb 展开是共同主成本，buffer 差异在真实缓存压力下才是决定项。结论：随任务×学生×题规模扩大，新实现优势线性放大，PR#167 改写方向正确。
