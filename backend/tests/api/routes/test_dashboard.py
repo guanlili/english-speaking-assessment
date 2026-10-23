@@ -274,3 +274,57 @@ def test_dashboard_overview_and_usage_semantics(
     assert content["users_teacher"] >= 1
     assert content["student_accounts"] >= 3
     assert content["student_profiles"] >= 3
+
+
+def test_dashboard_usage_short_range_keeps_recent_window(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """days<14 时近 14 天窗口比所选区间更早：区间零作答但近窗活跃的课堂
+    必须仍在榜且不算沉默。锁住课堂排行 A 查询的 trim_ts=min(区间,近窗)
+    分支——若只按区间裁剪 join，10 天前的作答进不了近窗计数，该课堂会被
+    误判为沉默。"""
+    _purge_activity(db)
+    classroom = client.post(
+        "/api/v1/classes", json={"class_size": 5}, headers=superuser_token_headers
+    ).json()
+    eve = make_student(db, client, classroom["code"], "Eve")
+
+    tz = ZoneInfo(settings.PRACTICE_TZ)
+    today = datetime.now(tz).date()
+    ten_days_ago = today - timedelta(days=10)
+    ps = _add_session(
+        db,
+        uuid.UUID(classroom["id"]),
+        uuid.UUID(eve["student"]["id"]),
+        ten_days_ago,
+    )
+    _add_attempt(
+        db,
+        uuid.UUID(eve["student"]["id"]),
+        item_type="question",
+        created_at=datetime.combine(
+            ten_days_ago, datetime.min.time().replace(hour=10), tz
+        ),
+        overall=65,
+        session_id=ps.id,
+    )
+    db.commit()
+
+    resp = client.get(
+        "/api/v1/admin/dashboard/usage?days=7", headers=superuser_token_headers
+    )
+    assert resp.status_code == 200, resp.text
+    usage = resp.json()
+    # 区间（7 天）不含 10 天前的作答；课堂仍在榜、近窗活跃 → 不算沉默
+    rows = {r["code"]: r for r in usage["classrooms"]}
+    row = rows[classroom["code"]]
+    assert row["attempts"] == 0
+    assert row["attempts_all"] == 1
+    assert [r["code"] for r in usage["silent_classrooms"]] == []
+    # 趋势点同样不含窗口外作答
+    assert usage["points"] == []
+
+    resp = client.get(
+        "/api/v1/admin/dashboard/overview?days=7", headers=superuser_token_headers
+    )
+    assert resp.json()["range"]["attempts"] == 0
