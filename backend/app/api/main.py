@@ -4,6 +4,7 @@ from app.api.routes import (
     admin_composer,
     admin_content,
     admin_content_copy,
+    admin_dashboard,
     admin_exam,
     admin_question_io,
     attempts,
@@ -29,6 +30,7 @@ api_router.include_router(students.router)
 api_router.include_router(admin_content.router)
 api_router.include_router(admin_content_copy.router)
 api_router.include_router(admin_composer.router)
+api_router.include_router(admin_dashboard.router)
 api_router.include_router(admin_exam.router)
 api_router.include_router(admin_question_io.router)
 api_router.include_router(metrics.router)
