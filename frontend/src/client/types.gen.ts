@@ -425,6 +425,88 @@ export type ContentCopied = {
     copied_from_id: string;
 };
 
+export type DashboardClassroomRow = {
+    classroom_id: string;
+    name: string;
+    code: string;
+    grade: (string | null);
+    owner_name: (string | null);
+    students: number;
+    attempts: number;
+    avg_score: (number | null);
+    attempts_all: number;
+    last_active: (string | null);
+    silent_days: (number | null);
+};
+
+/**
+ * 内容与账号资产计数（全平台存量，不随时间范围变化）。
+ */
+export type DashboardContent = {
+    units: number;
+    passages: number;
+    repeat_sentences: number;
+    scenario_questions: number;
+    instructions: number;
+    vocab_books: number;
+    vocab_words: number;
+    vocab_level_entries: number;
+    users_admin: number;
+    users_teacher: number;
+    student_accounts: number;
+    students_must_change_password: number;
+    student_profiles: number;
+    classrooms_total: number;
+    classrooms_active: number;
+    publishes: number;
+    publishes_exam: number;
+};
+
+/**
+ * 大盘日点：活跃/作答量按全部提交计（含评分失败），均分只算 DONE。
+ */
+export type DashboardDailyPoint = {
+    date: string;
+    active_students: number;
+    active_classrooms: number;
+    attempts: number;
+    attempts_passage: number;
+    attempts_repeat: number;
+    attempts_question: number;
+    scored_failed: number;
+    question_avg: (number | null);
+    repeat_completeness_avg: (number | null);
+};
+
+export type DashboardOverview = {
+    days: number;
+    range_start: string;
+    today: DashboardRangeCards;
+    range: DashboardRangeCards;
+};
+
+/**
+ * 速览卡一组：同一口径下「今日」与「所选区间」各一份。
+ */
+export type DashboardRangeCards = {
+    attempts: number;
+    active_students: number;
+    active_classrooms: number;
+    scored_done: number;
+    scored_failed: number;
+    exam_sessions: number;
+    runtime_issues: number;
+};
+
+export type DashboardUsage = {
+    points: Array<DashboardDailyPoint>;
+    item_distribution: {
+        [key: string]: (number);
+    };
+    classrooms: Array<DashboardClassroomRow>;
+    silent_classrooms: Array<DashboardClassroomRow>;
+};
+
 export type DiagnosticStudentItems = {
     student_id: string;
     item_ids: Array<(string)>;
@@ -2646,6 +2728,20 @@ export type AdminReadComposerSelectionData = {
 };
 
 export type AdminReadComposerSelectionResponse = (ComposerLibraryData);
+
+export type AdminReadDashboardOverviewData = {
+    days?: number;
+};
+
+export type AdminReadDashboardOverviewResponse = (DashboardOverview);
+
+export type AdminReadDashboardUsageData = {
+    days?: number;
+};
+
+export type AdminReadDashboardUsageResponse = (DashboardUsage);
+
+export type AdminReadDashboardContentResponse = (DashboardContent);
 
 export type AdminReadExamItemSettingsData = {
     itemId: string;

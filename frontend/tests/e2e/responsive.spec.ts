@@ -147,6 +147,16 @@ for (const vp of VIEWPORTS) {
     await expectNoHorizontalOverflow(page)
   })
 
+  test(`管理员平台大盘在${vp.name}无横向溢出`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height })
+    await loginTeacherDemo(page)
+    await page.goto("/admin/dashboard")
+    await expect(
+      page.getByRole("heading", { name: /平台大盘|Platform Dashboard/ }),
+    ).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+  })
+
   test(`学生词汇学习页在${vp.name}无横向溢出`, async ({ page }) => {
     await page.setViewportSize({ width: vp.width, height: vp.height })
     await loginStudentDemo(page)

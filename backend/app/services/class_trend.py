@@ -18,7 +18,8 @@ def summarize(
     """按练习日聚合班级 DONE 作答：活跃学生数、问答均分、跟读完整度。
 
     单条窗口聚合查询，不整行拉回（attempts 行含大 JSON 列）；按配置时区
-    切练习日，与 board/trail 同口径。考试未终结的作答不是 DONE，天然排除。
+    切练习日，与 board/trail 同口径。均分只算 DONE 作答（模考作答
+    评分完成即 DONE，同样计入）。
     """
     if not student_ids:
         return []

@@ -463,8 +463,8 @@ def read_class_trend(
 ) -> Any:
     """教师端班级趋势：全班已完成作答按练习日的聚合（活跃学生/均分/完整度）。
 
-    仅授权教师可看；与 trail 同口径（配置时区切日、status=DONE），
-    考试未终结的作答天然排除。时间窗为最近 N 个自然日（含今天）。
+    仅授权教师可看；与 trail 同口径（配置时区切日、status=DONE；模考作答
+    评分完成即 DONE，同样计入）。时间窗为最近 N 个自然日（含今天）。
     """
     classroom = _get_classroom(session, code)
     _require_classroom_teacher(classroom, current_user)

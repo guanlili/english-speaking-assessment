@@ -3,6 +3,7 @@ import {
   BookA,
   ChevronDown,
   Layers,
+  LayoutDashboard,
   Library,
   MessageSquareQuote,
   School,
@@ -41,8 +42,13 @@ const createHubItem: Item[] = [
   },
 ]
 
-// 仅管理员：用户/词表/课堂管理
+// 仅管理员：大盘/用户/词表/课堂管理
 const adminOnlyItems: Item[] = [
+  {
+    icon: LayoutDashboard,
+    title: { zh: "平台大盘", en: "Dashboard" },
+    path: "/admin/dashboard",
+  },
   {
     icon: Layers,
     title: { zh: "单元管理", en: "Units" },

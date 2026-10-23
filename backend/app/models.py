@@ -2750,3 +2750,85 @@ class ClassroomMessage(SQLModel, table=True):
     resolved_at: datetime | None = Field(
         default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
     )
+
+
+# ── 管理员平台大盘（业务数据闭环，2026-10 设计稿）────────────────
+# 口径与教师端一致：练习日按 PRACTICE_TZ 切，均分只算 DONE 作答
+# （模考作答评分完成即 DONE，同样计入；与班级趋势同口径）。
+
+
+class DashboardRangeCards(SQLModel):
+    """速览卡一组：同一口径下「今日」与「所选区间」各一份。"""
+
+    attempts: int
+    active_students: int
+    active_classrooms: int
+    scored_done: int
+    scored_failed: int
+    exam_sessions: int
+    runtime_issues: int
+
+
+class DashboardOverview(SQLModel):
+    days: int
+    range_start: str  # 所选区间首日（含今日），ISO 日期
+    today: DashboardRangeCards
+    range: DashboardRangeCards
+
+
+class DashboardDailyPoint(SQLModel):
+    """大盘日点：活跃/作答量按全部提交计（含评分失败），均分只算 DONE。"""
+
+    date: str
+    active_students: int
+    active_classrooms: int
+    attempts: int
+    attempts_passage: int
+    attempts_repeat: int
+    attempts_question: int
+    scored_failed: int
+    question_avg: float | None
+    repeat_completeness_avg: float | None
+
+
+class DashboardClassroomRow(SQLModel):
+    classroom_id: uuid.UUID
+    name: str
+    code: str
+    grade: str | None
+    owner_name: str | None
+    students: int
+    attempts: int  # 所选区间内提交数
+    avg_score: float | None  # 区间内 DONE 作答 overall 均分
+    attempts_all: int  # 历史累计（从未使用=0）
+    last_active: datetime | None  # 历史最近一次作答（UTC）
+    silent_days: int | None  # 距最近作答天数；从未使用为 None
+
+
+class DashboardUsage(SQLModel):
+    points: list[DashboardDailyPoint]
+    item_distribution: dict[str, int]
+    classrooms: list[DashboardClassroomRow]
+    silent_classrooms: list[DashboardClassroomRow]
+
+
+class DashboardContent(SQLModel):
+    """内容与账号资产计数（全平台存量，不随时间范围变化）。"""
+
+    units: int
+    passages: int
+    repeat_sentences: int
+    scenario_questions: int
+    instructions: int
+    vocab_books: int
+    vocab_words: int
+    vocab_level_entries: int
+    users_admin: int
+    users_teacher: int
+    student_accounts: int
+    students_must_change_password: int
+    student_profiles: int
+    classrooms_total: int
+    classrooms_active: int
+    publishes: int
+    publishes_exam: int
