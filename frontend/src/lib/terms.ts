@@ -136,15 +136,20 @@ export const EXPLAIN = {
     zh: "活跃指当天有提交作答的学生或课堂（含评分失败）；练习日按北京时间切分。",
     en: "Active means a student or classroom with submitted attempts that day (scoring failures included); days split at Beijing midnight.",
   },
-  /** 管理员大盘：分数口径（与教师端班级趋势一致） */
+  /** 管理员大盘：分数口径（与教师端班级趋势一致的 DONE 过滤） */
   dashboard_score: {
-    zh: "均分只统计评分完成的作答；未交卷的模考不计入，与教师端班级趋势同口径。",
-    en: "Averages include only scored attempts; unfinished exams are excluded, matching the teacher class trend.",
+    zh: "均分只统计评分完成（done）的作答；排队中、评分中或评分失败的不计入。",
+    en: "Averages include only attempts with scoring done; queued, in-flight, or failed attempts are excluded.",
   },
   /** 管理员大盘：评分成功率口径 */
   dashboard_success: {
     zh: "评分成功率 = 评分完成 ÷（完成 + 失败），不含排队与评分中的作答。",
     en: "Success rate = scored done ÷ (done + failed); queued and in-flight attempts are excluded.",
+  },
+  /** 管理员大盘：异常与失败口径（累计，非实时） */
+  dashboard_issues: {
+    zh: "区间内上报过设备/音频/上传异常的练习轮数 + 评分失败的作答数（累计口径，学生重试成功也会保留记录）。要看的实时课堂异常请在教师端「课堂诊断」。",
+    en: "Practice rounds that reported a device/audio/upload issue plus failed scoring attempts in range (cumulative; a later successful retry keeps the record). For live classroom issues use the teacher-side diagnostics.",
   },
   /** 管理员大盘：沉默课堂判定 */
   dashboard_silent: {

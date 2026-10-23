@@ -7,9 +7,11 @@ from zoneinfo import ZoneInfo
 from fastapi.testclient import TestClient
 from sqlmodel import Session, delete
 
+from app import crud
 from app.core.config import settings
-from app.models import Attempt, PracticeSession
+from app.models import Attempt, PracticeSession, UserCreate
 from tests.utils.credential import make_student
+from tests.utils.utils import random_email, random_lower_string
 
 PATHS = ("overview", "usage", "content")
 
@@ -72,20 +74,23 @@ def _add_session(
 
 
 def test_dashboard_requires_superuser(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
-    # 无 token 401；教师 403（不触发登出的权限语义）；superuser 200
+    # 无 token 401；教师 403（不触发登出的权限语义）；superuser 200。
+    # 测试库没有种子教师——真建一个账号登录，断言必须实际执行。
     for path in PATHS:
         assert client.get(f"/api/v1/admin/dashboard/{path}").status_code == 401, path
+    email, password = random_email(), random_lower_string()
+    crud.create_user(session=db, user_create=UserCreate(email=email, password=password))
     teacher = client.post(
         "/api/v1/login/access-token",
-        data={"username": "teacher@example.com", "password": "changethis"},
+        data={"username": email, "password": password},
     )
-    if teacher.status_code == 200:
-        headers = {"Authorization": f"Bearer {teacher.json()['access_token']}"}
-        for path in PATHS:
-            resp = client.get(f"/api/v1/admin/dashboard/{path}", headers=headers)
-            assert resp.status_code == 403, path
+    assert teacher.status_code == 200, teacher.text
+    headers = {"Authorization": f"Bearer {teacher.json()['access_token']}"}
+    for path in PATHS:
+        resp = client.get(f"/api/v1/admin/dashboard/{path}", headers=headers)
+        assert resp.status_code == 403, path
     for path in PATHS:
         resp = client.get(
             f"/api/v1/admin/dashboard/{path}", headers=superuser_token_headers

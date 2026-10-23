@@ -60,6 +60,8 @@ def read_dashboard_overview(
     tz = ZoneInfo(settings.PRACTICE_TZ)
     today = datetime.now(tz).date()
     since_date = today - timedelta(days=days - 1)
+    # 区间下界的时间戳形式：让聚合查询先裁剪再 FILTER，数据量增长后不放大
+    since_dt = datetime.combine(since_date, time.min, tz)
 
     day = func.date(func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at)))
     a = (
@@ -86,7 +88,7 @@ def read_dashboard_overview(
                 func.count()
                 .filter(col(Attempt.status) == AttemptStatus.FAILED, day >= since_date)
                 .label("r_failed"),
-            )
+            ).where(col(Attempt.created_at) >= since_dt)
         )
         .one()
     )
@@ -105,6 +107,7 @@ def read_dashboard_overview(
             )
             .select_from(Attempt)
             .join(PracticeSession, col(PracticeSession.id) == col(Attempt.session_id))
+            .where(col(Attempt.created_at) >= since_dt)
         )
         .one()
     )
@@ -138,7 +141,7 @@ def read_dashboard_overview(
                     col(PracticeSession.runtime_issue).is_not(None),
                 )
                 .label("r_issues"),
-            )
+            ).where(col(PracticeSession.session_date) >= since_date)
         )
         .one()
     )

@@ -93,9 +93,9 @@ function OverviewCards({
           value: overview.today.exam_sessions,
         },
         {
-          label: t({ zh: "待处理异常", en: "Open issues" }),
+          label: t({ zh: "异常与失败", en: "Issues & failures" }),
           value: overview.today.runtime_issues + overview.today.scored_failed,
-          hint: EXPLAIN.dashboard_success,
+          hint: EXPLAIN.dashboard_issues,
         },
       ],
     },
@@ -130,9 +130,9 @@ function OverviewCards({
           value: overview.range.exam_sessions,
         },
         {
-          label: t({ zh: "待处理异常", en: "Open issues" }),
+          label: t({ zh: "异常与失败", en: "Issues & failures" }),
           value: overview.range.runtime_issues + overview.range.scored_failed,
-          hint: EXPLAIN.dashboard_success,
+          hint: EXPLAIN.dashboard_issues,
         },
       ],
     },

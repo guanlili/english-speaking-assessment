@@ -10,6 +10,7 @@ import {
   ItemDistributionCard,
   UsageTrendCard,
 } from "@/components/Admin/Dashboard/UsageTrendCard"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { APP_NAME } from "@/config"
 import { useI18n } from "@/lib/i18n"
@@ -21,6 +22,21 @@ const RANGES = [
   { days: 90, zh: "近 90 天", en: "90 days" },
   { days: 3650, zh: "全部", en: "All" },
 ]
+
+/** 查询失败态：说明 + 重试（对齐发布历史的错误模式，不静默留骨架）。 */
+function QueryErrorCard({ retry }: { retry: () => void }) {
+  const { t } = useI18n()
+  return (
+    <Card className="py-6">
+      <CardContent className="flex flex-wrap items-center gap-3 px-6 text-muted-foreground">
+        <span>{t({ zh: "数据加载失败。", en: "Failed to load data." })}</span>
+        <Button variant="outline" size="sm" onClick={retry}>
+          {t({ zh: "重试", en: "Retry" })}
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
 
 function AdminDashboardPage() {
   const { t } = useI18n()
@@ -91,31 +107,45 @@ function AdminDashboardPage() {
         </CardContent>
       </Card>
 
-      <OverviewCards
-        overview={overviewQuery.data}
-        pending={overviewQuery.isPending}
-        rangeLabel={rangeLabel}
-      />
-
-      <div className="grid gap-4 xl:grid-cols-3">
-        <div className="xl:col-span-2">
-          <UsageTrendCard points={usageQuery.data?.points ?? []} />
-        </div>
-        <ItemDistributionCard
-          distribution={usageQuery.data?.item_distribution ?? {}}
+      {overviewQuery.isError ? (
+        <QueryErrorCard retry={() => overviewQuery.refetch()} />
+      ) : (
+        <OverviewCards
+          overview={overviewQuery.data}
+          pending={overviewQuery.isPending}
+          rangeLabel={rangeLabel}
         />
-      </div>
+      )}
 
-      <ClassroomRankCard
-        classrooms={usageQuery.data?.classrooms}
-        silent={usageQuery.data?.silent_classrooms}
-        pending={usageQuery.isPending}
-      />
+      {usageQuery.isError ? (
+        <QueryErrorCard retry={() => usageQuery.refetch()} />
+      ) : (
+        <>
+          <div className="grid gap-4 xl:grid-cols-3">
+            <div className="xl:col-span-2">
+              <UsageTrendCard points={usageQuery.data?.points ?? []} />
+            </div>
+            <ItemDistributionCard
+              distribution={usageQuery.data?.item_distribution ?? {}}
+            />
+          </div>
 
-      <ContentAssetsCard
-        content={contentQuery.data}
-        pending={contentQuery.isPending}
-      />
+          <ClassroomRankCard
+            classrooms={usageQuery.data?.classrooms}
+            silent={usageQuery.data?.silent_classrooms}
+            pending={usageQuery.isPending}
+          />
+        </>
+      )}
+
+      {contentQuery.isError ? (
+        <QueryErrorCard retry={() => contentQuery.refetch()} />
+      ) : (
+        <ContentAssetsCard
+          content={contentQuery.data}
+          pending={contentQuery.isPending}
+        />
+      )}
     </div>
   )
 }

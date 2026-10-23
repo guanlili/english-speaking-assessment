@@ -17,8 +17,9 @@ function UsageTrendCard({ points }: { points: DashboardDailyPoint[] }) {
 
   const total = points.reduce((sum, p) => sum + p.attempts, 0)
   const peak = points.reduce((m, p) => Math.max(m, p.attempts), 0)
+  // label 传完整 ISO 日期：TrailChart 自身会对轴标签做 slice(5) 截月-日
   const chart = (select: (p: DashboardDailyPoint) => number | null) =>
-    points.map((p) => ({ label: p.date.slice(5), value: select(p) }))
+    points.map((p) => ({ label: p.date, value: select(p) }))
 
   return (
     <Card>
@@ -101,6 +102,11 @@ function ItemDistributionCard({
     count: distribution[key] ?? 0,
   }))
   const total = entries.reduce((s, e) => s + e.count, 0)
+  // 括号随语言：中文全角、英文半角
+  const countLabel = (count: number) => {
+    const pct = Math.round((count / total) * 100)
+    return t({ zh: `${count}（${pct}%）`, en: `${count} (${pct}%)` })
+  }
 
   return (
     <Card>
@@ -126,7 +132,7 @@ function ItemDistributionCard({
               <div className="flex items-center justify-between text-sm">
                 <span>{e.label}</span>
                 <span className="tabular-nums text-muted-foreground">
-                  {e.count}（{Math.round((e.count / total) * 100)}%）
+                  {countLabel(e.count)}
                 </span>
               </div>
               <div className="h-2.5 overflow-hidden rounded-full bg-muted">
