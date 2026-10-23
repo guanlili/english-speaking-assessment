@@ -62,74 +62,86 @@ def read_dashboard_overview(
     since_date = today - timedelta(days=days - 1)
 
     day = func.date(func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at)))
-    a = session.execute(
-        select(
-            func.count().filter(day == today).label("t_attempts"),
-            func.count().filter(day >= since_date).label("r_attempts"),
-            func.count(func.distinct(Attempt.student_id))
-            .filter(day == today)
-            .label("t_students"),
-            func.count(func.distinct(Attempt.student_id))
-            .filter(day >= since_date)
-            .label("r_students"),
-            func.count()
-            .filter(col(Attempt.status) == AttemptStatus.DONE, day == today)
-            .label("t_done"),
-            func.count()
-            .filter(col(Attempt.status) == AttemptStatus.DONE, day >= since_date)
-            .label("r_done"),
-            func.count()
-            .filter(col(Attempt.status) == AttemptStatus.FAILED, day == today)
-            .label("t_failed"),
-            func.count()
-            .filter(col(Attempt.status) == AttemptStatus.FAILED, day >= since_date)
-            .label("r_failed"),
+    a = (
+        session.connection()
+        .execute(
+            select(
+                func.count().filter(day == today).label("t_attempts"),
+                func.count().filter(day >= since_date).label("r_attempts"),
+                func.count(func.distinct(Attempt.student_id))
+                .filter(day == today)
+                .label("t_students"),
+                func.count(func.distinct(Attempt.student_id))
+                .filter(day >= since_date)
+                .label("r_students"),
+                func.count()
+                .filter(col(Attempt.status) == AttemptStatus.DONE, day == today)
+                .label("t_done"),
+                func.count()
+                .filter(col(Attempt.status) == AttemptStatus.DONE, day >= since_date)
+                .label("r_done"),
+                func.count()
+                .filter(col(Attempt.status) == AttemptStatus.FAILED, day == today)
+                .label("t_failed"),
+                func.count()
+                .filter(col(Attempt.status) == AttemptStatus.FAILED, day >= since_date)
+                .label("r_failed"),
+            )
         )
-    ).one()
+        .one()
+    )
 
     # 活跃课堂要经会话归属课堂（作答本身没有课堂列）
-    c = session.execute(
-        select(
-            func.count(func.distinct(PracticeSession.classroom_id))
-            .filter(day == today)
-            .label("t_classrooms"),
-            func.count(func.distinct(PracticeSession.classroom_id))
-            .filter(day >= since_date)
-            .label("r_classrooms"),
+    c = (
+        session.connection()
+        .execute(
+            select(
+                func.count(func.distinct(PracticeSession.classroom_id))
+                .filter(day == today)
+                .label("t_classrooms"),
+                func.count(func.distinct(PracticeSession.classroom_id))
+                .filter(day >= since_date)
+                .label("r_classrooms"),
+            )
+            .select_from(Attempt)
+            .join(PracticeSession, col(PracticeSession.id) == col(Attempt.session_id))
         )
-        .select_from(Attempt)
-        .join(PracticeSession, col(PracticeSession.id) == col(Attempt.session_id))
-    ).one()
+        .one()
+    )
 
     # 模考场次与运行异常按 session_date（业务日）统计
-    s = session.execute(
-        select(
-            func.count()
-            .filter(
-                col(PracticeSession.session_date) == today,
-                col(PracticeSession.exam_started_at).is_not(None),
+    s = (
+        session.connection()
+        .execute(
+            select(
+                func.count()
+                .filter(
+                    col(PracticeSession.session_date) == today,
+                    col(PracticeSession.exam_started_at).is_not(None),
+                )
+                .label("t_exams"),
+                func.count()
+                .filter(
+                    col(PracticeSession.session_date) >= since_date,
+                    col(PracticeSession.exam_started_at).is_not(None),
+                )
+                .label("r_exams"),
+                func.count()
+                .filter(
+                    col(PracticeSession.session_date) == today,
+                    col(PracticeSession.runtime_issue).is_not(None),
+                )
+                .label("t_issues"),
+                func.count()
+                .filter(
+                    col(PracticeSession.session_date) >= since_date,
+                    col(PracticeSession.runtime_issue).is_not(None),
+                )
+                .label("r_issues"),
             )
-            .label("t_exams"),
-            func.count()
-            .filter(
-                col(PracticeSession.session_date) >= since_date,
-                col(PracticeSession.exam_started_at).is_not(None),
-            )
-            .label("r_exams"),
-            func.count()
-            .filter(
-                col(PracticeSession.session_date) == today,
-                col(PracticeSession.runtime_issue).is_not(None),
-            )
-            .label("t_issues"),
-            func.count()
-            .filter(
-                col(PracticeSession.session_date) >= since_date,
-                col(PracticeSession.runtime_issue).is_not(None),
-            )
-            .label("r_issues"),
         )
-    ).one()
+        .one()
+    )
 
     return DashboardOverview(
         days=days,
@@ -168,53 +180,61 @@ def read_dashboard_usage(
     recent_ts = datetime.combine(today - timedelta(days=SILENT_DAYS), time.min, tz)
 
     day = func.date(func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at)))
-    rows = session.execute(
-        select(
-            day.label("day"),
-            func.count(func.distinct(Attempt.student_id)).label("active_students"),
-            func.count().label("attempts"),
-            func.count()
-            .filter(col(Attempt.item_type) == AttemptItemType.PASSAGE)
-            .label("attempts_passage"),
-            func.count()
-            .filter(col(Attempt.item_type) == AttemptItemType.REPEAT)
-            .label("attempts_repeat"),
-            func.count()
-            .filter(col(Attempt.item_type) == AttemptItemType.QUESTION)
-            .label("attempts_question"),
-            func.count()
-            .filter(col(Attempt.status) == AttemptStatus.FAILED)
-            .label("scored_failed"),
-            func.avg(Attempt.overall)
-            .filter(
-                col(Attempt.status) == AttemptStatus.DONE,
-                col(Attempt.item_type) == AttemptItemType.QUESTION,
+    rows = (
+        session.connection()
+        .execute(
+            select(
+                day.label("day"),
+                func.count(func.distinct(Attempt.student_id)).label("active_students"),
+                func.count().label("attempts"),
+                func.count()
+                .filter(col(Attempt.item_type) == AttemptItemType.PASSAGE)
+                .label("attempts_passage"),
+                func.count()
+                .filter(col(Attempt.item_type) == AttemptItemType.REPEAT)
+                .label("attempts_repeat"),
+                func.count()
+                .filter(col(Attempt.item_type) == AttemptItemType.QUESTION)
+                .label("attempts_question"),
+                func.count()
+                .filter(col(Attempt.status) == AttemptStatus.FAILED)
+                .label("scored_failed"),
+                func.avg(Attempt.overall)
+                .filter(
+                    col(Attempt.status) == AttemptStatus.DONE,
+                    col(Attempt.item_type) == AttemptItemType.QUESTION,
+                )
+                .label("question_avg"),
+                func.avg(Attempt.completeness)
+                .filter(
+                    col(Attempt.status) == AttemptStatus.DONE,
+                    col(Attempt.item_type) == AttemptItemType.REPEAT,
+                )
+                .label("repeat_avg"),
             )
-            .label("question_avg"),
-            func.avg(Attempt.completeness)
-            .filter(
-                col(Attempt.status) == AttemptStatus.DONE,
-                col(Attempt.item_type) == AttemptItemType.REPEAT,
-            )
-            .label("repeat_avg"),
+            .where(day >= since_date)
+            .group_by(day)
+            .order_by(day)
         )
-        .where(day >= since_date)
-        .group_by(day)
-        .order_by(day)
-    ).all()
+        .all()
+    )
 
-    crows = session.execute(
-        select(
-            day.label("day"),
-            func.count(func.distinct(PracticeSession.classroom_id)).label(
-                "active_classrooms"
-            ),
+    crows = (
+        session.connection()
+        .execute(
+            select(
+                day.label("day"),
+                func.count(func.distinct(PracticeSession.classroom_id)).label(
+                    "active_classrooms"
+                ),
+            )
+            .select_from(Attempt)
+            .join(PracticeSession, col(PracticeSession.id) == col(Attempt.session_id))
+            .where(day >= since_date)
+            .group_by(day)
         )
-        .select_from(Attempt)
-        .join(PracticeSession, col(PracticeSession.id) == col(Attempt.session_id))
-        .where(day >= since_date)
-        .group_by(day)
-    ).all()
+        .all()
+    )
     classrooms_by_day = {row.day: row.active_classrooms for row in crows}
 
     points = [
@@ -240,55 +260,63 @@ def read_dashboard_usage(
 
     # 课堂排行：classroom→session→attempt 是线性链；学生数单独查避免叉积。
     # LEFT JOIN 下 COUNT(*) 会把无作答的课堂行也计 1，必须数非空的 attempt.id。
-    crow = session.execute(
-        select(
-            Classroom.id.label("classroom_id"),
-            Classroom.name,
-            Classroom.code,
-            Classroom.grade,
-            User.full_name.label("owner_full_name"),
-            User.email.label("owner_email"),
-            func.count(col(Attempt.id)).label("attempts_all"),
-            func.count(col(Attempt.id))
-            .filter(col(Attempt.created_at) >= since_ts)
-            .label("attempts_range"),
-            func.count(col(Attempt.id))
-            .filter(col(Attempt.created_at) >= recent_ts)
-            .label("attempts_recent"),
-            func.avg(Attempt.overall)
-            .filter(
-                col(Attempt.created_at) >= since_ts,
-                col(Attempt.status) == AttemptStatus.DONE,
+    crow = (
+        session.connection()
+        .execute(
+            select(
+                col(Classroom.id),
+                col(Classroom.name),
+                col(Classroom.code),
+                col(Classroom.grade),
+                col(User.full_name),
+                col(User.email),
+                func.count(col(Attempt.id)).label("attempts_all"),
+                func.count(col(Attempt.id))
+                .filter(col(Attempt.created_at) >= since_ts)
+                .label("attempts_range"),
+                func.count(col(Attempt.id))
+                .filter(col(Attempt.created_at) >= recent_ts)
+                .label("attempts_recent"),
+                func.avg(Attempt.overall)
+                .filter(
+                    col(Attempt.created_at) >= since_ts,
+                    col(Attempt.status) == AttemptStatus.DONE,
+                )
+                .label("avg_score"),
+                func.max(col(Attempt.created_at)).label("last_active"),
             )
-            .label("avg_score"),
-            func.max(col(Attempt.created_at)).label("last_active"),
+            .select_from(Classroom)
+            .outerjoin(User, col(User.id) == col(Classroom.owner_id))
+            .outerjoin(
+                PracticeSession, col(PracticeSession.classroom_id) == col(Classroom.id)
+            )
+            .outerjoin(Attempt, col(Attempt.session_id) == col(PracticeSession.id))
+            .group_by(
+                col(Classroom.id),
+                col(Classroom.name),
+                col(Classroom.code),
+                col(Classroom.grade),
+                col(User.full_name),
+                col(User.email),
+            )
+            .order_by(
+                desc(
+                    func.count(col(Attempt.id)).filter(
+                        col(Attempt.created_at) >= since_ts
+                    )
+                ),
+                desc(func.count(col(Attempt.id))),
+            )
         )
-        .select_from(Classroom)
-        .outerjoin(User, col(User.id) == col(Classroom.owner_id))
-        .outerjoin(
-            PracticeSession, col(PracticeSession.classroom_id) == col(Classroom.id)
-        )
-        .outerjoin(Attempt, col(Attempt.session_id) == col(PracticeSession.id))
-        .group_by(
-            Classroom.id,
-            Classroom.name,
-            Classroom.code,
-            Classroom.grade,
-            User.full_name,
-            User.email,
-        )
-        .order_by(
-            desc(
-                func.count(col(Attempt.id)).filter(col(Attempt.created_at) >= since_ts)
-            ),
-            desc(func.count(col(Attempt.id))),
-        )
-    ).all()
-    student_counts = dict(
-        session.execute(
-            select(Student.classroom_id, func.count()).group_by(Student.classroom_id)
-        ).all()
+        .all()
     )
+    student_counts: dict[object, int] = {}
+    for cid, cnt in session.connection().execute(
+        select(col(Student.classroom_id), func.count()).group_by(
+            col(Student.classroom_id)
+        )
+    ):
+        student_counts[cid] = cnt
 
     classrooms: list[DashboardClassroomRow] = []
     silent: list[DashboardClassroomRow] = []
@@ -297,12 +325,12 @@ def read_dashboard_usage(
         if row.attempts_all > 0 and row.last_active is not None:
             silent_days = (today - row.last_active.astimezone(tz).date()).days
         item = DashboardClassroomRow(
-            classroom_id=row.classroom_id,
+            classroom_id=row.id,
             name=row.name,
             code=row.code,
             grade=row.grade,
-            owner_name=row.owner_full_name or row.owner_email,
-            students=student_counts.get(row.classroom_id, 0),
+            owner_name=row.full_name or row.email,
+            students=student_counts.get(row.id, 0),
             attempts=row.attempts_range,
             avg_score=_round1(row.avg_score),
             attempts_all=row.attempts_all,
@@ -329,11 +357,17 @@ def read_dashboard_content(
 ) -> DashboardContent:
     def count(model: type) -> int:  # noqa: ANN001
         # 动态 model 走不进 sqlmodel 的标量重载，显式取标量
-        return session.execute(select(func.count()).select_from(model)).scalar_one()
+        return (
+            session.connection()
+            .execute(select(func.count()).select_from(model))
+            .scalar_one()
+        )
 
-    roles = dict(
-        session.execute(select(User.role, func.count()).group_by(User.role)).all()
-    )
+    roles: dict[str, int] = {}
+    for role, cnt in session.connection().execute(
+        select(col(User.role), func.count()).group_by(col(User.role))
+    ):
+        roles[role] = cnt
 
     return DashboardContent(
         units=count(Unit),
@@ -347,20 +381,26 @@ def read_dashboard_content(
         users_admin=roles.get("admin", 0),
         users_teacher=roles.get("teacher", 0),
         student_accounts=roles.get("student", 0),
-        students_must_change_password=session.execute(
+        students_must_change_password=session.connection()
+        .execute(
             select(func.count())
             .select_from(User)
             .where(col(User.role) == "student", col(User.must_change_password))
-        ).scalar_one(),
+        )
+        .scalar_one(),
         student_profiles=count(Student),
         classrooms_total=count(Classroom),
-        classrooms_active=session.execute(
+        classrooms_active=session.connection()
+        .execute(
             select(func.count()).select_from(Classroom).where(col(Classroom.is_active))
-        ).scalar_one(),
+        )
+        .scalar_one(),
         publishes=count(ClassroomExercise),
-        publishes_exam=session.execute(
+        publishes_exam=session.connection()
+        .execute(
             select(func.count())
             .select_from(ClassroomExercise)
             .where(col(ClassroomExercise.is_exam))
-        ).scalar_one(),
+        )
+        .scalar_one(),
     )

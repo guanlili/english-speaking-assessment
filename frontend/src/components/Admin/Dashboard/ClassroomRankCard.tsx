@@ -141,7 +141,9 @@ function ClassroomRankCard({
                       {c.attempts_all}
                     </TableCell>
                     <TableCell className="hidden lg:table-cell text-muted-foreground">
-                      {c.last_active ? formatDateTime(c.last_active, lang) : "—"}
+                      {c.last_active
+                        ? formatDateTime(c.last_active, lang)
+                        : "—"}
                     </TableCell>
                   </TableRow>
                 ))

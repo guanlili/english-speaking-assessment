@@ -28,9 +28,7 @@ test("管理端平台大盘渲染", async ({ page }) => {
 
   // 时间范围档位可切换（切全部触发第二组请求）
   await page.getByRole("tab", { name: /全部|All/ }).click()
-  await expect(
-    page.getByText(/课堂使用排行|Classroom usage/),
-  ).toBeVisible()
+  await expect(page.getByText(/课堂使用排行|Classroom usage/)).toBeVisible()
 
   // 资产区标题在
   await expect(page.getByText(/资产与账号|Content & accounts/)).toBeVisible()
