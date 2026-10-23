@@ -29,7 +29,7 @@ jobs:
 
   backend:
     name: 后端 Lint + 测试
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # 挂起保护：无 timeout 时挂起的 job 会占住 runner 直到 GitHub 默认 6 小时
     timeout-minutes: 30
     services:
@@ -128,7 +128,7 @@ jobs:
 
   frontend:
     name: 前端 Lint + 构建 + 客户端一致性
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -192,7 +192,7 @@ jobs:
             shard: 2
             total: 2
             browsers: chromium webkit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # 45 分钟：浏览器缓存未命中（lockfile 变更/缓存淘汰）时 Chromium+WebKit
     # 全量下载约 20 分钟起，叠加完整栈启动与双浏览器套件，30 分钟会撞线
     # 被强制取消（2026-10-10 PR#101 首次部署实测）；缓存命中时全程 ~10 分钟
@@ -279,7 +279,7 @@ jobs:
     name: E2E 冒烟（主干道）
     needs: [e2e-tests]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - name: 确认所有 E2E 分片通过
@@ -296,7 +296,7 @@ jobs:
     concurrency:
       group: production-deploy
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # 覆盖 SSH 步骤本身（command_timeout 30m）之外的编排开销
     timeout-minutes: 45
     steps:
