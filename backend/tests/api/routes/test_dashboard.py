@@ -1,7 +1,7 @@
 """管理员平台大盘：superuser 门 + 速览/趋势/课堂排行的口径断言。"""
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
@@ -53,7 +53,7 @@ def _add_session(
     db: Session,
     classroom_id: uuid.UUID,
     student_id: uuid.UUID,
-    session_date: object,
+    session_date: date,
     *,
     exam: bool = False,
     issue: str | None = None,
@@ -62,7 +62,7 @@ def _add_session(
         classroom_id=classroom_id,
         student_id=student_id,
         band="B1",
-        session_date=session_date,  # type: ignore[arg-type]
+        session_date=session_date,
         exam_started_at=datetime.now(ZoneInfo(settings.PRACTICE_TZ)) if exam else None,
         runtime_issue=issue,
     )
@@ -112,7 +112,7 @@ def test_dashboard_overview_and_usage_semantics(
     yesterday = today - timedelta(days=1)
     old_day = today - timedelta(days=20)
 
-    def at(day: object, hour: int = 10) -> datetime:
+    def at(day: date, hour: int = 10) -> datetime:
         return datetime.combine(
             day,
             datetime.min.time().replace(hour=hour),
