@@ -238,12 +238,15 @@ jobs:
       # Separate Chromium-only and dual-browser caches; a cold integration job
       # must not save a partial cache under the key used by mocked shards.
       # Restore the previous dual-browser cache when upgrading this workflow.
+      # -icu2 前缀：2026-10-23 runner 镜像升级更换 libicu 版本，旧缓存里的
+      # WebKit 二进制链接 libicu74 启动即挂（libicudata.so.74 not found），
+      # 挪 key 强制冷装重建（key 与 restore 前缀一起挪，避免旧缓存兜底复活）。
       - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-${{ matrix.suite }}
+          key: playwright-icu2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-${{ matrix.suite }}
           restore-keys: |
-            playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-webkit
+            playwright-icu2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-webkit
       - name: 安装依赖与 Chromium/WebKit
         working-directory: frontend
         run: npm ci && npx playwright install --with-deps ${{ matrix.browsers }}
