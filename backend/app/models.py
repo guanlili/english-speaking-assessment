@@ -2754,7 +2754,7 @@ class ClassroomMessage(SQLModel, table=True):
 
 # ── 管理员平台大盘（业务数据闭环，2026-10 设计稿）────────────────
 # 口径与教师端一致：练习日按 PRACTICE_TZ 切，均分只算 DONE 作答
-# （未终结模考的作答不是 DONE，天然排除，与班级趋势同口径）。
+# （模考作答评分完成即 DONE，同样计入；与班级趋势同口径）。
 
 
 class DashboardRangeCards(SQLModel):

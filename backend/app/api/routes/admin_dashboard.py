@@ -1,7 +1,7 @@
 """管理员平台大盘（业务数据闭环）：速览卡 / 趋势 / 课堂排行 / 资产计数。
 
 全部只读聚合，不新建表。口径与教师端一致：练习日按 PRACTICE_TZ 切；
-均分只算 DONE 作答（未终结模考的作答不是 DONE，天然排除，同班级趋势）。
+均分只算 DONE 作答（模考作答评分完成即 DONE，同样计入；同班级趋势口径）。
 活跃定义 = 当天有提交作答（含评分失败），速览卡与趋势共用。
 """
 
@@ -9,7 +9,7 @@ from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Query
-from sqlalchemy import desc, func, select
+from sqlalchemy import and_, func, select
 from sqlmodel import col
 
 from app.api.deps import SessionDep, SuperUserDep
@@ -215,7 +215,8 @@ def read_dashboard_usage(
                 )
                 .label("repeat_avg"),
             )
-            .where(day >= since_date)
+            # 直接比较 created_at（可走索引/裁剪），等价于按练习日 >= since_date
+            .where(col(Attempt.created_at) >= since_ts)
             .group_by(day)
             .order_by(day)
         )
@@ -233,7 +234,7 @@ def read_dashboard_usage(
             )
             .select_from(Attempt)
             .join(PracticeSession, col(PracticeSession.id) == col(Attempt.session_id))
-            .where(day >= since_date)
+            .where(col(Attempt.created_at) >= since_ts)
             .group_by(day)
         )
         .all()
@@ -261,8 +262,13 @@ def read_dashboard_usage(
         AttemptItemType.QUESTION: sum(p.attempts_question for p in points),
     }
 
-    # 课堂排行：classroom→session→attempt 是线性链；学生数单独查避免叉积。
-    # LEFT JOIN 下 COUNT(*) 会把无作答的课堂行也计 1，必须数非空的 attempt.id。
+    # 课堂排行拆两查（评审 P2）：
+    # A 区间/近窗指标——时间裁剪放进外连接条件（WHERE 会把窗口内零作答的
+    #   课堂整行滤掉），裁剪基准取区间与近 14 天窗口的较早者（days<14 时
+    #   近窗更早）；
+    # B 全历史（累计作答/最近活跃，沉默判定要用）——只取三列的轻量查询，
+    #   需扫全表，量级上来后考虑 created_at 索引或日期生成列。
+    trim_ts = min(since_ts, recent_ts)
     crow = (
         session.connection()
         .execute(
@@ -273,7 +279,6 @@ def read_dashboard_usage(
                 col(Classroom.grade),
                 col(User.full_name),
                 col(User.email),
-                func.count(col(Attempt.id)).label("attempts_all"),
                 func.count(col(Attempt.id))
                 .filter(col(Attempt.created_at) >= since_ts)
                 .label("attempts_range"),
@@ -286,14 +291,19 @@ def read_dashboard_usage(
                     col(Attempt.status) == AttemptStatus.DONE,
                 )
                 .label("avg_score"),
-                func.max(col(Attempt.created_at)).label("last_active"),
             )
             .select_from(Classroom)
             .outerjoin(User, col(User.id) == col(Classroom.owner_id))
             .outerjoin(
                 PracticeSession, col(PracticeSession.classroom_id) == col(Classroom.id)
             )
-            .outerjoin(Attempt, col(Attempt.session_id) == col(PracticeSession.id))
+            .outerjoin(
+                Attempt,
+                and_(
+                    col(Attempt.session_id) == col(PracticeSession.id),
+                    col(Attempt.created_at) >= trim_ts,
+                ),
+            )
             .group_by(
                 col(Classroom.id),
                 col(Classroom.name),
@@ -302,17 +312,21 @@ def read_dashboard_usage(
                 col(User.full_name),
                 col(User.email),
             )
-            .order_by(
-                desc(
-                    func.count(col(Attempt.id)).filter(
-                        col(Attempt.created_at) >= since_ts
-                    )
-                ),
-                desc(func.count(col(Attempt.id))),
-            )
         )
         .all()
     )
+    history: dict[object, tuple[int, datetime | None]] = {}
+    for cid, attempts_all, last_active in session.connection().execute(
+        select(
+            col(PracticeSession.classroom_id),
+            func.count(col(Attempt.id)),
+            func.max(col(Attempt.created_at)),
+        )
+        .select_from(Attempt)
+        .join(PracticeSession, col(PracticeSession.id) == col(Attempt.session_id))
+        .group_by(col(PracticeSession.classroom_id))
+    ):
+        history[cid] = (attempts_all, last_active)
     student_counts: dict[object, int] = {}
     for cid, cnt in session.connection().execute(
         select(col(Student.classroom_id), func.count()).group_by(
@@ -324,9 +338,10 @@ def read_dashboard_usage(
     classrooms: list[DashboardClassroomRow] = []
     silent: list[DashboardClassroomRow] = []
     for row in crow:
+        attempts_all, last_active = history.get(row.id, (0, None))
         silent_days = None
-        if row.attempts_all > 0 and row.last_active is not None:
-            silent_days = (today - row.last_active.astimezone(tz).date()).days
+        if attempts_all > 0 and last_active is not None:
+            silent_days = (today - last_active.astimezone(tz).date()).days
         item = DashboardClassroomRow(
             classroom_id=row.id,
             name=row.name,
@@ -336,13 +351,14 @@ def read_dashboard_usage(
             students=student_counts.get(row.id, 0),
             attempts=row.attempts_range,
             avg_score=_round1(row.avg_score),
-            attempts_all=row.attempts_all,
-            last_active=row.last_active,
+            attempts_all=attempts_all,
+            last_active=last_active,
             silent_days=silent_days,
         )
         classrooms.append(item)
-        if row.attempts_all > 0 and row.attempts_recent == 0:
+        if attempts_all > 0 and row.attempts_recent == 0:
             silent.append(item)
+    classrooms.sort(key=lambda r: (-r.attempts, -r.attempts_all))
     silent.sort(key=lambda r: -(r.silent_days or 0))
 
     return DashboardUsage(
