@@ -31,27 +31,33 @@ def _tz() -> ZoneInfo:
 
 def compute_daily_business(session: Session, day: date) -> dict[str, object]:
     """按练习日回算业务量（与大盘 P0 同口径：PRACTICE_TZ 切日）。"""
-    day_expr = func.date(
-        func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at))
+    day_expr = func.date(func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at)))
+    a = (
+        session.connection()
+        .execute(
+            select(
+                func.count().label("attempts"),
+                func.count()
+                .filter(col(Attempt.status) == AttemptStatus.DONE)
+                .label("done"),
+                func.count()
+                .filter(col(Attempt.status) == AttemptStatus.FAILED)
+                .label("failed"),
+                func.count(func.distinct(Attempt.student_id)).label("active"),
+                func.coalesce(func.sum(Attempt.duration_s), 0.0).label("seconds"),
+            ).where(day_expr == day)
+        )
+        .one()
     )
-    a = session.connection().execute(
-        select(
-            func.count().label("attempts"),
-            func.count()
-            .filter(col(Attempt.status) == AttemptStatus.DONE)
-            .label("done"),
-            func.count()
-            .filter(col(Attempt.status) == AttemptStatus.FAILED)
-            .label("failed"),
-            func.count(func.distinct(Attempt.student_id)).label("active"),
-            func.coalesce(func.sum(Attempt.duration_s), 0.0).label("seconds"),
-        ).where(day_expr == day)
-    ).one()
-    sessions = session.connection().execute(
-        select(func.count())
-        .select_from(PracticeSession)
-        .where(col(PracticeSession.session_date) == day)
-    ).scalar_one()
+    sessions = (
+        session.connection()
+        .execute(
+            select(func.count())
+            .select_from(PracticeSession)
+            .where(col(PracticeSession.session_date) == day)
+        )
+        .scalar_one()
+    )
     return {
         "attempts": a.attempts,
         "attempts_done": a.done,
@@ -98,25 +104,25 @@ def upsert_daily_snapshot(
 
 def backfill_history(session: Session, today: date) -> int:
     """补齐 [最早作答日, 昨天] 缺失的快照行（只业务量），返回补行数。"""
-    first = session.connection().execute(
-        select(
-            func.min(
-                func.date(
-                    func.timezone(
-                        settings.PRACTICE_TZ, col(Attempt.created_at)
+    first = (
+        session.connection()
+        .execute(
+            select(
+                func.min(
+                    func.date(
+                        func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at))
                     )
                 )
             )
         )
-    ).scalar_one()
+        .scalar_one()
+    )
     if first is None:
         return 0
     # 最多回看 BACKFILL_MAX_DAYS 天（max 取两者中较晚者，限制回填起点）
     first = max(first, today - timedelta(days=BACKFILL_MAX_DAYS))
     existing: set[date] = set()
-    for d in session.connection().execute(
-        select(col(AdminMetricsDaily.day))
-    ).scalars():
+    for d in session.connection().execute(select(col(AdminMetricsDaily.day))).scalars():
         existing.add(d)
     written = 0
     day = first
@@ -149,11 +155,15 @@ class _DayPeakTracker:
         from app.core.metrics import call_stats
 
         # 队列最老年龄（评分堆积告警的核心数）
-        oldest = session.connection().execute(
-            select(func.min(col(Attempt.created_at))).where(
-                col(Attempt.status) == AttemptStatus.QUEUED
+        oldest = (
+            session.connection()
+            .execute(
+                select(func.min(col(Attempt.created_at))).where(
+                    col(Attempt.status) == AttemptStatus.QUEUED
+                )
             )
-        ).scalar_one()
+            .scalar_one()
+        )
         if oldest is not None:
             age = (datetime.now(oldest.tzinfo) - oldest).total_seconds()
             self.queue_max_age_s = (
@@ -178,9 +188,7 @@ class _DayPeakTracker:
         for kind, values in stats.items():
             base = self._baseline.get(kind)
             calls_delta = values.get("calls", 0) - (base or {}).get("calls", 0)
-            fail_delta = values.get("failures", 0) - (base or {}).get(
-                "failures", 0
-            )
+            fail_delta = values.get("failures", 0) - (base or {}).get("failures", 0)
             if calls_delta < 0 or fail_delta < 0:  # 计数器重启：重置基线
                 self._baseline[kind] = dict(values)
                 calls_delta = 0

@@ -22,7 +22,9 @@ def _purge(db: Session) -> None:
     db.commit()
 
 
-def _attempt(db: Session, student_id: uuid.UUID, day: date, *, status: str, dur: float = 5.0) -> None:
+def _attempt(
+    db: Session, student_id: uuid.UUID, day: date, *, status: str, dur: float = 5.0
+) -> None:
     db.add(
         Attempt(
             item_type="question",
@@ -31,9 +33,7 @@ def _attempt(db: Session, student_id: uuid.UUID, day: date, *, status: str, dur:
             audio_path="t.webm",
             duration_s=dur,
             status=status,
-            created_at=datetime.combine(
-                day, datetime.min.time().replace(hour=10), tz
-            ),
+            created_at=datetime.combine(day, datetime.min.time().replace(hour=10), tz),
         )
     )
     db.flush()
@@ -128,9 +128,7 @@ def test_performance_endpoint_gates_and_shape(
     assert teacher.status_code == 200
     headers = {"Authorization": f"Bearer {teacher.json()['access_token']}"}
     assert (
-        client.get(
-            "/api/v1/admin/dashboard/performance", headers=headers
-        ).status_code
+        client.get("/api/v1/admin/dashboard/performance", headers=headers).status_code
         == 403
     )
 
@@ -141,9 +139,7 @@ def test_performance_endpoint_gates_and_shape(
     assert resp.status_code == 200, resp.text
     body = resp.json()
     # 实时快照与 /admin/metrics 同构
-    assert {"scoring", "providers", "audio_storage", "db_pool"} <= set(
-        body["realtime"]
-    )
+    assert {"scoring", "providers", "audio_storage", "db_pool"} <= set(body["realtime"])
     assert "by_status" in body["realtime"]["scoring"]
     # 历史行形状
     assert [h["date"] for h in body["history"]] == [yesterday.isoformat()]

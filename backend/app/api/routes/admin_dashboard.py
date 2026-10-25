@@ -416,7 +416,9 @@ def read_dashboard_content(
         classrooms_total=count(Classroom),
         classrooms_active=session.connection()
         .execute(
-            sa_select(func.count()).select_from(Classroom).where(col(Classroom.is_active))
+            sa_select(func.count())
+            .select_from(Classroom)
+            .where(col(Classroom.is_active))
         )
         .scalar_one(),
         publishes=count(ClassroomExercise),
