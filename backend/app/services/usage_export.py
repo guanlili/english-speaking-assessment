@@ -181,6 +181,18 @@ def export_sessions(session: Session, limit_days: int) -> io.StringIO:
     if cutoff is not None:
         stmt = stmt.where(col(PracticeSession.created_at) >= cutoff)  # type: ignore[union-attr]
     rows = session.exec(stmt).all()  # type: ignore[arg-type]
+    # 作答聚合一次 GROUP BY 预取（逐轮查询在轮次多时是 N+1）
+    attempt_agg: dict[object, tuple[int, int, float | None, int | None]] = {}
+    for r in session.connection().execute(
+        select(  # ty: ignore[no-matching-overload] - filter 链降级重载
+            col(Attempt.session_id),
+            func.count(),
+            func.count().filter(col(Attempt.status) == AttemptStatus.DONE),
+            func.avg(Attempt.overall).filter(col(Attempt.status) == AttemptStatus.DONE),
+            func.max(Attempt.overall).filter(col(Attempt.status) == AttemptStatus.DONE),
+        ).group_by(col(Attempt.session_id))
+    ):
+        attempt_agg[r[0]] = (r[1], r[2], r[3], r[4])
     header = [
         "练习日期",
         "开始时间",
@@ -282,6 +294,21 @@ def export_students(session: Session) -> io.StringIO:
         "最近练习日",
         "建档日期",
     ]
+    # 作答聚合一次预取（数量/完成/均分/最高/首末/批注）
+    student_agg: dict[object, tuple] = {}
+    for r in session.connection().execute(
+        select(  # ty: ignore[no-matching-overload] - filter 链降级重载
+            col(Attempt.student_id),
+            func.count(),
+            func.count().filter(col(Attempt.status) == AttemptStatus.DONE),
+            func.avg(Attempt.overall).filter(col(Attempt.status) == AttemptStatus.DONE),
+            func.max(Attempt.overall).filter(col(Attempt.status) == AttemptStatus.DONE),
+            func.min(col(Attempt.created_at)),
+            func.max(col(Attempt.created_at)),
+            func.count().filter(col(Attempt.teacher_feedback).is_not(None)),
+        ).group_by(col(Attempt.student_id))
+    ):
+        student_agg[r[0]] = tuple(r[1:])
     # 批量预取：轮次/听音/徽章三张聚合表，避免逐学生 N+1
     session_counts: dict[object, int] = {}
     for sid, n in session.connection().execute(
@@ -309,25 +336,7 @@ def export_students(session: Session) -> io.StringIO:
 
     out: list[list[object]] = [header]
     for s, u, c in rows:
-        aggs = (
-            session.connection()
-            .execute(
-                select(  # ty: ignore[no-matching-overload] - filter 链降级重载
-                    func.count(),
-                    func.count().filter(col(Attempt.status) == AttemptStatus.DONE),
-                    func.avg(Attempt.overall).filter(
-                        col(Attempt.status) == AttemptStatus.DONE
-                    ),
-                    func.max(Attempt.overall).filter(
-                        col(Attempt.status) == AttemptStatus.DONE
-                    ),
-                    func.min(col(Attempt.created_at)),
-                    func.max(col(Attempt.created_at)),
-                    func.count().filter(col(Attempt.teacher_feedback).is_not(None)),
-                ).where(col(Attempt.student_id) == s.id)
-            )
-            .one()
-        )
+        aggs = student_agg.get(s.id, (0, 0, None, None, None, None, 0))
         out.append(
             [
                 s.display_name,

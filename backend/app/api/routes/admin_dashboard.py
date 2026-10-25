@@ -505,10 +505,15 @@ def read_dashboard_cost(
     """
     tz = ZoneInfo(settings.PRACTICE_TZ)
     today = datetime.now(tz).date()
+    # 自然月窗口：从「往前第 months-1 个月的一号」起，避免 31*months 带
+    # 出残月（残月会收整月服务器费）
+    first_month = today.replace(day=1)
+    for _ in range(months - 1):
+        first_month = (first_month.replace(day=1) - timedelta(days=1)).replace(day=1)
 
     rows = session.exec(
         select(AdminMetricsDaily)
-        .where(col(AdminMetricsDaily.day) > today - timedelta(days=31 * months))
+        .where(col(AdminMetricsDaily.day) >= first_month)
         .order_by(col(AdminMetricsDaily.day))
     ).all()
     by_month: dict[str, dict[str, float]] = {}
@@ -522,8 +527,9 @@ def read_dashboard_cost(
                 "attempts": 0.0,
                 "tokens_in": 0.0,
                 "tokens_out": 0.0,
-                "token_days": 0.0,
                 "call_days": 0.0,
+                # 有调用但当日没记到 usage 的天数（缺一天都不切真实基数）
+                "call_days_missing_tokens": 0.0,
             },
         )
         bucket["asr_seconds"] += r.asr_seconds or 0.0
@@ -532,11 +538,13 @@ def read_dashboard_cost(
         bucket["llm_calls"] += calls_today
         if calls_today:
             bucket["call_days"] += 1
-        # 真实 token：当日有记账行才累计（null=未记账，不冒充 0）
-        if r.llm_tokens_in is not None or r.llm_tokens_out is not None:
+        # 真实 token：非 null 才算记到（采样器保证 0 用量不落列）
+        recorded = r.llm_tokens_in is not None or r.llm_tokens_out is not None
+        if calls_today and not recorded:
+            bucket["call_days_missing_tokens"] += 1
+        if recorded:
             bucket["tokens_in"] += r.llm_tokens_in or 0
             bucket["tokens_out"] += r.llm_tokens_out or 0
-            bucket["token_days"] += 1
 
     reconciles = {
         row.month: row for row in session.exec(select(AdminCostReconcile)).all()
@@ -558,14 +566,15 @@ def read_dashboard_cost(
                 "attempts": 0.0,
                 "tokens_in": 0.0,
                 "tokens_out": 0.0,
-                "token_days": 0.0,
                 "call_days": 0.0,
+                "call_days_missing_tokens": 0.0,
             },
         )
         asr_cny = round(b["asr_seconds"] / 3600 * settings.COST_ASR_CNY_PER_HOUR, 2)
-        # LLM 计费基数：有调用且全部调用日都已记账 → 真实 token；
-        # 否则回退调用量估算（切换当月会低估，次月起自愈）
-        token_basis = b["token_days"] > 0 and b["token_days"] >= b["call_days"]
+        # LLM 计费基数：有调用且每个调用日都记到了 usage → 真实 token；
+        # 否则回退调用量估算（历史月靠回填的 rubric 估算；切换当月低估、
+        # 次月起自愈）
+        token_basis = b["call_days"] > 0 and b["call_days_missing_tokens"] == 0
         if token_basis:
             llm_basis = "tokens"
             llm_cny = round(
@@ -609,8 +618,9 @@ def read_dashboard_cost(
             "llm_cny_per_mtok_out": settings.COST_LLM_CNY_PER_MTOK_OUT,
             "server_cny_per_month": settings.COST_SERVER_CNY_PER_MONTH,
         },
-        note="估算口径：ASR 按作答音频秒数×单价（精确）；LLM 按调用量×估算 token"
-        "（问答题 rubric 为主）；服务器为固定月费。实际以云账单为准，可用对账录入校准。",
+        note="ASR 按作答音频秒数×单价（精确）；LLM 优先按真实 token 用量"
+        "（usage 记账覆盖当月全部调用日时），否则按调用量×估算 token"
+        "（历史为问答题 rubric 回算）；服务器为固定月费。实际以云账单为准。",
     )
 
 

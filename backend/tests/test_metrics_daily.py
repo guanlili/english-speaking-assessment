@@ -102,11 +102,13 @@ def test_backfill_only_missing_rows(
     db.commit()
 
     written = backfill_history(db, today)
-    assert written == 3  # day3/day2/day1 各补一行
+    # 只补有作答的日子（空洞日不建零行——月账单聚合不受缺日影响）
+    assert written == 1
     row3 = db.get(AdminMetricsDaily, day3)
     assert row3 is not None and row3.attempts == 1
-    row2 = db.get(AdminMetricsDaily, today - timedelta(days=2))
-    assert row2 is not None and row2.attempts == 0
+    # 回填补 LLM 估算：1 条 done 问答题 → llm_rubric 1 次
+    assert row3.llm_calls_by_kind == {"llm_rubric": 1}
+    assert db.get(AdminMetricsDaily, today - timedelta(days=2)) is None
 
     # 再跑一遍：全部已存在，零写入
     assert backfill_history(db, today) == 0
@@ -270,6 +272,29 @@ def test_cost_endpoint_and_reconcile(
     assert m["actual_cny"] == 260.0
     assert m["deviation_pct"] is not None
     assert db.get(AdminCostReconcile, this_month) is not None
+
+
+def test_current_queue_age_s(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """告警基数是当前排队年龄：无排队 None；有排队为正数。"""
+    from app.core.metrics_daily import current_queue_age_s
+
+    _purge(db)
+    assert current_queue_age_s(db) is None
+    db.add(
+        Attempt(
+            item_type="question",
+            item_id=uuid.uuid4(),
+            audio_path="t.webm",
+            duration_s=3.0,
+            status="queued",
+            created_at=datetime.now(tz) - timedelta(minutes=3),
+        )
+    )
+    db.commit()
+    age = current_queue_age_s(db)
+    assert age is not None and 170 < age < 200
 
 
 def test_queue_age_alert_rate_limited(monkeypatch) -> None:

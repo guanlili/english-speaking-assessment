@@ -11,13 +11,20 @@
 import logging
 import threading
 from datetime import date, datetime, timedelta
+from typing import cast
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlmodel import Session, col
 
 from app.core.config import settings
-from app.models import AdminMetricsDaily, Attempt, AttemptStatus, PracticeSession
+from app.models import (
+    AdminMetricsDaily,
+    Attempt,
+    AttemptItemType,
+    AttemptStatus,
+    PracticeSession,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,36 +118,92 @@ def upsert_daily_snapshot(
 
 
 def backfill_history(session: Session, today: date) -> int:
-    """补齐 [最早作答日, 昨天] 缺失的快照行（只业务量），返回补行数。"""
-    first = (
-        session.connection()
-        .execute(
-            select(
-                func.min(
-                    func.date(
-                        func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at))
-                    )
-                )
+    """补齐 [最早作答日, 昨天] 缺失的快照行（只业务量 + LLM 估算），返回补行数。
+
+    聚合按两条 GROUP BY 一次算完（逐日查询在 lifespan yield 前执行，
+    量上来会挡接流量）；无作答的空洞日不补行（月账单服务器费照算，
+    缺日不影响费用聚合）；LLM 历史无进程计数器，按「问答题 done ≈ 1 次
+    rubric 调用」回算，费用区走估算基数。
+    """
+    day_expr = func.date(func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at)))
+    last = today - timedelta(days=1)
+    cap = today - timedelta(days=BACKFILL_MAX_DAYS)
+    agg: dict[date, dict[str, object]] = {}
+    for row in session.connection().execute(
+        select(
+            day_expr.label("day"),
+            func.count().label("attempts"),
+            func.count()
+            .filter(col(Attempt.status) == AttemptStatus.DONE)
+            .label("done"),
+            func.count()
+            .filter(col(Attempt.status) == AttemptStatus.FAILED)
+            .label("failed"),
+            func.count(func.distinct(Attempt.student_id)).label("active"),
+            func.coalesce(func.sum(Attempt.duration_s), 0.0).label("seconds"),
+            func.count()
+            .filter(
+                col(Attempt.status) == AttemptStatus.DONE,
+                col(Attempt.item_type) == AttemptItemType.QUESTION,
             )
+            .label("question_done"),
         )
-        .scalar_one()
-    )
-    if first is None:
+        .where(day_expr >= cap, day_expr <= last)
+        .group_by(day_expr)
+    ):
+        agg[row.day] = {
+            "attempts": row.attempts,
+            "attempts_done": row.done,
+            "attempts_failed": row.failed,
+            "active_students": row.active,
+            "sessions": 0,
+            "asr_seconds": round(float(row.seconds), 1),
+            "llm_calls_by_kind": (
+                {"llm_rubric": row.question_done} if row.question_done else None
+            ),
+        }
+    if not agg:
         return 0
-    # 最多回看 BACKFILL_MAX_DAYS 天（max 取两者中较晚者，限制回填起点）
-    first = max(first, today - timedelta(days=BACKFILL_MAX_DAYS))
+    for row in session.connection().execute(
+        select(
+            col(PracticeSession.session_date).label("day"),
+            func.count().label("sessions"),
+        )
+        .where(
+            col(PracticeSession.session_date) >= min(agg),
+            col(PracticeSession.session_date) <= last,
+        )
+        .group_by(col(PracticeSession.session_date))
+    ):
+        if row.day in agg:
+            agg[row.day]["sessions"] = row.sessions
     existing: set[date] = set()
     for d in session.connection().execute(select(col(AdminMetricsDaily.day))).scalars():
         existing.add(d)
+    from app.models import get_datetime_utc
+
     written = 0
-    day = first
-    last = today - timedelta(days=1)
-    while day <= last:
-        if day not in existing:
-            upsert_daily_snapshot(session, day)
-            written += 1
-        day += timedelta(days=1)
+    for day in sorted(set(agg) - existing):
+        a = agg[day]
+        llm = a["llm_calls_by_kind"]
+        session.add(
+            AdminMetricsDaily(
+                day=day,
+                attempts=cast(int, a["attempts"]),
+                attempts_done=cast(int, a["attempts_done"]),
+                attempts_failed=cast(int, a["attempts_failed"]),
+                active_students=cast(int, a["active_students"]),
+                sessions=cast(int, a["sessions"]),
+                asr_seconds=cast(float, a["asr_seconds"]),
+                llm_calls_by_kind=cast(  # type: ignore[invalid-argument-type]
+                    "dict[str, int] | None", llm if isinstance(llm, dict) else None
+                ),
+                updated_at=get_datetime_utc(),
+            )
+        )
+        written += 1
     if written:
+        session.commit()
         logger.info("metrics daily backfilled %d rows", written)
     return written
 
@@ -270,14 +333,17 @@ class _DayPeakTracker:
         self.llm_tokens_in = self._carry_tokens_in + proc_in
         self.llm_tokens_out = self._carry_tokens_out + proc_out
 
-        # 采样即落库：重启前的峰值/增量不因部署丢失
+        # 采样即落库：重启前的峰值/增量不因部署丢失。token 只在当日
+        # 真有用量时写——0 也是"未记到"，写 0 会把空采样日冒充"已记账"
+        # （费用区按调用日覆盖率切计费基数）
+        has_tokens = self.llm_tokens_in > 0 or self.llm_tokens_out > 0
         upsert_daily_snapshot(
             session,
             today,
             llm_calls_by_kind=dict(self.llm_calls_by_kind),
             provider_failures=dict(self.provider_failures),
-            llm_tokens_in=self.llm_tokens_in,
-            llm_tokens_out=self.llm_tokens_out,
+            llm_tokens_in=self.llm_tokens_in if has_tokens else None,
+            llm_tokens_out=self.llm_tokens_out if has_tokens else None,
             queue_max_age_s=self.queue_max_age_s,
             pool_max_checked_out=self.pool_max_checked_out,
         )
@@ -291,10 +357,28 @@ _thread: threading.Thread | None = None
 _alert_sent_day: date | None = None
 
 
-def maybe_alert_queue_age(queue_max_age_s: float | None) -> bool:
-    """队列最老排队超阈值时发告警邮件（当日限一封）。
+def current_queue_age_s(session: Session) -> float | None:
+    """当前最老排队年龄（非当日峰值：峰值经 carry 在重启后仍在，
+    队列已清空时不应告警）。"""
+    oldest = (
+        session.connection()
+        .execute(
+            select(func.min(col(Attempt.created_at))).where(
+                col(Attempt.status) == AttemptStatus.QUEUED
+            )
+        )
+        .scalar_one()
+    )
+    if oldest is None:
+        return None
+    return (datetime.now(oldest.tzinfo) - oldest).total_seconds()
+
+
+def maybe_alert_queue_age(queue_age_s: float | None) -> bool:
+    """当前排队年龄超阈值时发告警邮件（当日限一封）。
 
     收件人 COST_ALERT_EMAIL 留空 = 告警邮件关闭（面板红黄标始终有效）。
+    发信由调用方在 Session 关闭之后触发（SMTP 不占数据库连接）。
     返回是否发出。测试通过替换 utils.send_email 验证。
     """
     global _alert_sent_day
@@ -303,8 +387,8 @@ def maybe_alert_queue_age(queue_max_age_s: float | None) -> bool:
     today = datetime.now(_tz()).date()
     if (
         not settings.COST_ALERT_EMAIL
-        or queue_max_age_s is None
-        or queue_max_age_s < settings.ALERT_QUEUE_AGE_S
+        or queue_age_s is None
+        or queue_age_s < settings.ALERT_QUEUE_AGE_S
     ):
         return False
     if _alert_sent_day == today:
@@ -314,9 +398,9 @@ def maybe_alert_queue_age(queue_max_age_s: float | None) -> bool:
     try:
         send_email(
             email_to=settings.COST_ALERT_EMAIL,
-            subject=("[speakup] 评分队列堆积告警 / scoring queue backlog alert"),
+            subject="「Charcoal 开口说」评分队列堆积告警 / scoring queue backlog",
             html_content=(
-                f"<p>评分队列最老排队已 {int(queue_max_age_s / 60)} 分钟"
+                f"<p>评分队列最老排队已 {int(queue_age_s / 60)} 分钟"
                 f"（阈值 {settings.ALERT_QUEUE_AGE_S // 60} 分钟）。</p>"
                 "<p>请查看管理端大盘「性能与稳定」区，并确认评分 worker 状态。</p>"
                 "<p>Oldest queued scoring attempt has exceeded the alert "
@@ -339,6 +423,7 @@ def _daily_loop(stop_event: threading.Event) -> None:
 
         try:
             now_day = datetime.now(tz).date()
+            queue_age: float | None = None
             with Session(engine) as session:
                 if now_day != current_day:
                     # 跨日：峰值/增量重新起算（昨日行已在历次采样中落库）
@@ -346,7 +431,9 @@ def _daily_loop(stop_event: threading.Event) -> None:
                     current_day = now_day
                     continue
                 _tracker.sample(session)
-                maybe_alert_queue_age(_tracker.queue_max_age_s)
+                queue_age = current_queue_age_s(session)
+            # 发信在 Session 关闭之后（SMTP 不占数据库连接）
+            maybe_alert_queue_age(queue_age)
         except Exception:  # noqa: BLE001 - 采样是兜底，失败只记日志
             logger.exception("metrics daily sample failed")
 

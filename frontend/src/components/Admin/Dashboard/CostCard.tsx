@@ -50,10 +50,12 @@ function CostCard() {
     },
   })
 
-  const latest = current?.month ?? ""
   const [amount, setAmount] = useState("")
-  const targetMonth = latest
-  const actual = current?.actual_cny
+  const [reconcileMonth, setReconcileMonth] = useState("")
+  const monthOptions = months.map((m) => m.month)
+  const targetMonth = reconcileMonth || monthOptions[0] || ""
+  const actual =
+    months.find((m) => m.month === targetMonth)?.actual_cny ?? undefined
 
   return (
     <Card>
@@ -63,11 +65,10 @@ function CostCard() {
           <InfoHint label={t(EXPLAIN.dashboard_cost)} />
         </CardTitle>
         <CardDescription>
-          {costQuery.data?.note ??
-            t({
-              zh: "按月估算；实际以云账单为准。",
-              en: "Monthly estimates; actual costs follow cloud bills.",
-            })}
+          {t({
+            zh: "按月估算，实际以云账单为准；LLM 记账覆盖后按真实用量计费。",
+            en: "Monthly estimates; LLM switches to real usage once metered.",
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -75,6 +76,19 @@ function CostCard() {
           <p className="py-6 text-center text-sm text-muted-foreground">
             {t({ zh: "正在加载…", en: "Loading…" })}
           </p>
+        ) : costQuery.isError ? (
+          <div className="flex items-center gap-3 py-6 text-sm text-muted-foreground">
+            <span>
+              {t({ zh: "数据加载失败。", en: "Failed to load data." })}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void costQuery.refetch()}
+            >
+              {t({ zh: "重试", en: "Retry" })}
+            </Button>
+          </div>
         ) : months.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
             {t({ zh: "暂无数据。", en: "No data yet." })}
@@ -183,12 +197,27 @@ function CostCard() {
 
             {/* 对账录入 */}
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed p-3">
+              <label
+                htmlFor="reconcile-month"
+                className="text-sm text-muted-foreground"
+              >
+                {t({ zh: "月份", en: "Month" })}
+              </label>
+              <select
+                id="reconcile-month"
+                value={targetMonth}
+                onChange={(e) => setReconcileMonth(e.target.value)}
+                className="min-h-11 rounded-lg border bg-transparent px-3 text-base"
+                aria-label={t({ zh: "对账月份", en: "Reconcile month" })}
+              >
+                {monthOptions.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
               <span className="text-sm text-muted-foreground">
-                {t({
-                  zh: `${targetMonth} 实际账单`,
-                  en: `Actual bill ${targetMonth}`,
-                })}
-                ：
+                {t({ zh: "实际账单", en: "Actual bill" })}：
               </span>
               <Input
                 type="number"
@@ -220,13 +249,16 @@ function CostCard() {
               >
                 {t({ zh: "保存", en: "Save" })}
               </Button>
-              {current?.deviation_pct != null ? (
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {t({ zh: "偏差", en: "deviation" })}{" "}
-                  {current.deviation_pct > 0 ? "+" : ""}
-                  {current.deviation_pct}%
-                </span>
-              ) : null}
+              {(() => {
+                const chosen = months.find((m) => m.month === targetMonth)
+                return chosen?.deviation_pct != null ? (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {t({ zh: "偏差", en: "deviation" })}{" "}
+                    {chosen.deviation_pct > 0 ? "+" : ""}
+                    {chosen.deviation_pct}%
+                  </span>
+                ) : null
+              })()}
             </div>
           </>
         )}

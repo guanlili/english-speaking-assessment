@@ -153,8 +153,8 @@ export const EXPLAIN = {
   },
   /** 管理员大盘：费用估算口径 */
   dashboard_cost: {
-    zh: "语音识别按作答音频秒数×单价（精确）；语言模型按调用量×估算 token；服务器为固定月费。估算仅供趋势参考，实际以云账单为准，可用「实际账单」录入校准。",
-    en: "ASR is exact (audio seconds × rate); the LLM figure estimates tokens from call counts; the server is a fixed monthly fee. Estimates are indicative — reconcile against actual cloud bills.",
+    zh: "语音识别按作答音频秒数×单价（精确）。语言模型优先按真实 token 用量计费（标记「按真实用量」的月份）；未覆盖的月份按调用量×估算 token 回算（历史为问答题评分调用）。服务器为固定月费。实际以云账单为准，可用实际账单录入校准。",
+    en: 'ASR is exact (audio seconds × rate). LLM prefers real token usage (months marked "metered"); uncovered months fall back to calls × estimated tokens (history proxied by rubric calls). Server is a fixed monthly fee. Reconcile against actual cloud bills.',
   },
   /** 管理员大盘：沉默课堂判定 */
   dashboard_silent: {

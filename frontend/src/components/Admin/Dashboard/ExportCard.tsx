@@ -8,11 +8,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
 
 /** 数据导出：三个口径的 CSV 下载（北京时间、BOM、Excel 直开）。 */
 function ExportCard() {
   const { t } = useI18n()
+  const { showErrorToast } = useCustomToast()
 
   const items = [
     {
@@ -50,14 +52,18 @@ function ExportCard() {
   ]
 
   const save = async (download: () => Promise<string>, filename: string) => {
-    const text = await download()
-    const blob = new Blob([text], { type: "text/csv;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(url)
+    try {
+      const text = await download()
+      const blob = new Blob([text], { type: "text/csv;charset=utf-8" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      showErrorToast(t({ zh: "下载失败，请重试", en: "Download failed, retry" }))
+    }
   }
 
   return (
