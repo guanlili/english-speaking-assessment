@@ -13,6 +13,22 @@ export type AckResult = {
     acked_at: string;
 };
 
+/**
+ * 费用对账：管理员手工录入的当月实际账单金额（估算 vs 实际）。
+ */
+export type AdminCostReconcile = {
+    month: string;
+    amount_cny: number;
+    note?: (string | null);
+    updated_at?: (string | null);
+};
+
+export type AdminCostReconcileIn = {
+    month: string;
+    amount_cny: number;
+    note?: (string | null);
+};
+
 export type AssignmentInfo = {
     unit_id: string;
     title: string;
@@ -460,6 +476,33 @@ export type DashboardContent = {
     classrooms_active: number;
     publishes: number;
     publishes_exam: number;
+};
+
+export type DashboardCost = {
+    months: Array<DashboardCostMonth>;
+    prices: {
+        [key: string]: (number);
+    };
+    note: string;
+};
+
+/**
+ * 费用月度行：分项估算 + 实际对账（未录为 null）。
+ */
+export type DashboardCostMonth = {
+    month: string;
+    asr_seconds: number;
+    llm_calls: number;
+    llm_basis: string;
+    llm_tokens_in?: (number | null);
+    llm_tokens_out?: (number | null);
+    asr_cny: number;
+    llm_cny: number;
+    server_cny: number;
+    total_cny: number;
+    attempts: number;
+    actual_cny?: (number | null);
+    deviation_pct?: (number | null);
 };
 
 /**
@@ -2780,6 +2823,38 @@ export type AdminReadDashboardPerformanceData = {
 };
 
 export type AdminReadDashboardPerformanceResponse = (DashboardPerformance);
+
+export type AdminReadDashboardCostData = {
+    months?: number;
+};
+
+export type AdminReadDashboardCostResponse = (DashboardCost);
+
+export type AdminUpsertCostReconcileData = {
+    requestBody: AdminCostReconcileIn;
+};
+
+export type AdminUpsertCostReconcileResponse = (AdminCostReconcile);
+
+export type AdminExportAttemptsCsvData = {
+    /**
+     * 0=全部
+     */
+    days?: number;
+};
+
+export type AdminExportAttemptsCsvResponse = (unknown);
+
+export type AdminExportSessionsCsvData = {
+    /**
+     * 0=全部
+     */
+    days?: number;
+};
+
+export type AdminExportSessionsCsvResponse = (unknown);
+
+export type AdminExportStudentsCsvResponse = (unknown);
 
 export type AdminReadExamItemSettingsData = {
     itemId: string;

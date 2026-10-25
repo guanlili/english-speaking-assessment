@@ -9,7 +9,12 @@ from sqlmodel import Session, delete, select
 
 from app.core.config import settings
 from app.core.metrics_daily import backfill_history, upsert_daily_snapshot
-from app.models import AdminMetricsDaily, Attempt, PracticeSession
+from app.models import (
+    AdminCostReconcile,
+    AdminMetricsDaily,
+    Attempt,
+    PracticeSession,
+)
 from tests.utils.credential import make_student
 
 tz = ZoneInfo(settings.PRACTICE_TZ)
@@ -19,6 +24,7 @@ def _purge(db: Session) -> None:
     db.exec(delete(Attempt))  # type: ignore[call-overload]
     db.exec(delete(PracticeSession))  # type: ignore[call-overload]
     db.exec(delete(AdminMetricsDaily))  # type: ignore[call-overload]
+    db.exec(delete(AdminCostReconcile))  # type: ignore[call-overload]
     db.commit()
 
 
@@ -96,14 +102,56 @@ def test_backfill_only_missing_rows(
     db.commit()
 
     written = backfill_history(db, today)
-    assert written == 3  # day3/day2/day1 各补一行
+    # 只补有作答的日子（空洞日不建零行——月账单聚合不受缺日影响）
+    assert written == 1
     row3 = db.get(AdminMetricsDaily, day3)
     assert row3 is not None and row3.attempts == 1
-    row2 = db.get(AdminMetricsDaily, today - timedelta(days=2))
-    assert row2 is not None and row2.attempts == 0
+    # 回填补 LLM 估算：1 条 done 问答题 → llm_rubric 1 次
+    assert row3.llm_calls_by_kind == {"llm_rubric": 1}
+    assert db.get(AdminMetricsDaily, today - timedelta(days=2)) is None
 
-    # 再跑一遍：全部已存在，零写入
+    # 再跑一遍：全部已存在，零写入（新行）
     assert backfill_history(db, today) == 0
+
+    # 复审：P1 时期建的存量行（llm 为 null）要被补上估算，非 null 不动
+    day2 = today - timedelta(days=2)
+    stale = AdminMetricsDaily(day=day2)
+    session_kwargs = {
+        "attempts": 0,
+        "attempts_done": 0,
+        "attempts_failed": 0,
+        "active_students": 0,
+        "sessions": 0,
+        "asr_seconds": 0.0,
+    }
+    for k, v in session_kwargs.items():
+        setattr(stale, k, v)
+    db.add(stale)
+    db.commit()
+    # day3 有 1 条 done 问答题：给 day3 造一条「采样器写过」的行（非 null）
+    sampled = db.get(AdminMetricsDaily, day3)
+    assert sampled is not None
+    sampled.llm_calls_by_kind = {"llm_rubric": 99}
+    db.commit()
+
+    backfill_history(db, today)
+    refreshed_stale = db.get(AdminMetricsDaily, day2)
+    assert refreshed_stale is not None
+    # day2 无作答 → 无估算来源，保持 None（不为空数据伪造调用）
+    assert refreshed_stale.llm_calls_by_kind is None
+    # day3 存量非 null → 不被回填估算覆盖
+    sampled_row = db.get(AdminMetricsDaily, day3)
+    assert sampled_row is not None
+    assert sampled_row.llm_calls_by_kind == {"llm_rubric": 99}
+
+    # 换一个有作答但行是 null 的日子：backfill 应补上估算
+    day1 = today - timedelta(days=1)
+    _attempt(db, uuid.UUID(ada["student"]["id"]), day1, status="done")
+    db.commit()
+    backfill_history(db, today)
+    row1 = db.get(AdminMetricsDaily, day1)
+    assert row1 is not None
+    assert row1.llm_calls_by_kind == {"llm_rubric": 1}
 
 
 def test_performance_endpoint_gates_and_shape(
@@ -167,9 +215,11 @@ def test_daily_snapshot_carry_across_tracker_restart(
     client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
     """评审返修：采样即落库 + 重启 carry——新进程的较小计数不覆盖当日累计。"""
+    from app.core import metrics as m
     from app.core.metrics_daily import _DayPeakTracker
 
     _purge(db)
+    m.reset_for_tests()  # 增量基线从零起算：先清共享计数器，防全套污染
     today = datetime.now(tz).date()
 
     # 第一段进程生命：落了当日行（llm 5 次调用、2 失败、池峰 4）
@@ -192,3 +242,271 @@ def test_daily_snapshot_carry_across_tracker_restart(
     # 峰值不回退；空 dict/真值区分由采样路径写真值保证
     assert row.pool_max_checked_out == 4
     assert row.queue_max_age_s == 12.0
+    m.reset_for_tests()
+
+
+def test_cost_endpoint_and_reconcile(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """费用区：月度估算数学 + 对账录入与偏差 + 权限门。"""
+    from app.core.config import settings as cfg
+    from app.models import AdminCostReconcile
+
+    _purge(db)
+    today = datetime.now(tz).date()
+    this_month = f"{today.year:04d}-{today.month:02d}"
+    # 本月 2 条快照：合计 3600s ASR（=1h → ¥4.5）、llm 100 次调用
+    for day in (today - timedelta(days=1), today):
+        upsert_daily_snapshot(
+            db,
+            day,
+            business={
+                "attempts": 10,
+                "attempts_done": 10,
+                "attempts_failed": 0,
+                "active_students": 5,
+                "sessions": 2,
+                "asr_seconds": 1800.0,
+            },
+            llm_calls_by_kind={"llm_rubric": 50},
+        )
+
+    # 401 / 403
+    assert client.get("/api/v1/admin/dashboard/cost").status_code == 401
+    resp = client.get("/api/v1/admin/dashboard/cost", headers=superuser_token_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    months = {m["month"]: m for m in body["months"]}
+    assert this_month in months
+    m = months[this_month]
+    assert m["asr_seconds"] == 3600.0
+    assert m["llm_calls"] == 100
+    assert m["asr_cny"] == round(cfg.COST_ASR_CNY_PER_HOUR, 2)
+    per_call = (
+        cfg.COST_LLM_CNY_PER_MTOK_IN * cfg.COST_LLM_EST_TOKENS_IN
+        + cfg.COST_LLM_CNY_PER_MTOK_OUT * cfg.COST_LLM_EST_TOKENS_OUT
+    ) / 1_000_000
+    assert m["llm_cny"] == round(100 * per_call, 2)
+    assert m["total_cny"] == round(m["asr_cny"] + m["llm_cny"] + m["server_cny"], 2)
+    assert m["attempts"] == 20
+    assert m["actual_cny"] is None
+
+    # 对账录入（合法月份 + 非法月份）
+    resp = client.put(
+        "/api/v1/admin/dashboard/cost/reconcile",
+        json={"month": this_month, "amount_cny": 260.0},
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200
+    assert (
+        client.put(
+            "/api/v1/admin/dashboard/cost/reconcile",
+            json={"month": "2026-13", "amount_cny": 1.0},
+            headers=superuser_token_headers,
+        ).status_code
+        == 422
+    )
+
+    resp = client.get("/api/v1/admin/dashboard/cost", headers=superuser_token_headers)
+    m = {x["month"]: x for x in resp.json()["months"]}[this_month]
+    assert m["actual_cny"] == 260.0
+    assert m["deviation_pct"] is not None
+    assert db.get(AdminCostReconcile, this_month) is not None
+
+
+def test_current_queue_age_s(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """告警基数是当前排队年龄：无排队 None；有排队为正数。"""
+    from app.core.metrics_daily import current_queue_age_s
+
+    _purge(db)
+    assert current_queue_age_s(db) is None
+    db.add(
+        Attempt(
+            item_type="question",
+            item_id=uuid.uuid4(),
+            audio_path="t.webm",
+            duration_s=3.0,
+            status="queued",
+            created_at=datetime.now(tz) - timedelta(minutes=3),
+        )
+    )
+    db.commit()
+    age = current_queue_age_s(db)
+    assert age is not None and 170 < age < 200
+
+
+def test_queue_age_alert_rate_limited(monkeypatch) -> None:
+    """队列告警：超阈发信、当日限一封、阈值内不发、未配置收件人关闭。"""
+    from app.core import metrics_daily
+    from app.core.config import settings as cfg
+
+    sent: list[str] = []
+    monkeypatch.setattr(settings, "COST_ALERT_EMAIL", "ops@example.com")
+    monkeypatch.setattr(
+        "app.utils.send_email", lambda **kw: sent.append(kw["email_to"])
+    )
+    # 重置当日限频标记
+    metrics_daily._alert_sent_day = None
+
+    # 未超阈：不发
+    assert metrics_daily.maybe_alert_queue_age(60) is False
+    assert sent == []
+    # 超阈：发一次；当日再超：限频
+    assert metrics_daily.maybe_alert_queue_age(cfg.ALERT_QUEUE_AGE_S + 1) is True
+    assert sent == ["ops@example.com"]
+    assert metrics_daily.maybe_alert_queue_age(cfg.ALERT_QUEUE_AGE_S + 999) is False
+    assert len(sent) == 1
+    # 未配置收件人：关闭
+    monkeypatch.setattr(settings, "COST_ALERT_EMAIL", "")
+    metrics_daily._alert_sent_day = None
+    assert metrics_daily.maybe_alert_queue_age(cfg.ALERT_QUEUE_AGE_S + 1) is False
+    monkeypatch.setattr(settings, "COST_ALERT_EMAIL", None)
+    assert metrics_daily.maybe_alert_queue_age(cfg.ALERT_QUEUE_AGE_S + 1) is False
+
+
+def test_llm_token_accumulator_and_reset() -> None:
+    """token 累加器：按 kind 累计、快照拷贝、reset 清空、负值钳零。"""
+    from app.core import metrics as m
+
+    m.reset_for_tests()
+    try:
+        m.record_llm_tokens("llm_rubric", prompt_tokens=100, completion_tokens=50)
+        m.record_llm_tokens("llm_rubric", prompt_tokens=30, completion_tokens=20)
+        m.record_llm_tokens("llm_vocab_explain", prompt_tokens=10, completion_tokens=5)
+        m.record_llm_tokens("llm_rubric", prompt_tokens=-5, completion_tokens=0)
+        stats = m.llm_token_stats()
+        assert stats["llm_rubric"] == {"in": 130, "out": 70}
+        assert stats["llm_vocab_explain"] == {"in": 10, "out": 5}
+    finally:
+        m.reset_for_tests()
+    assert m.llm_token_stats() == {}
+
+
+def test_ark_chat_records_usage_tokens(monkeypatch) -> None:
+    """ArkChatClient.chat 成功响应的 usage → token 记账；缺 usage 不炸。"""
+    import httpx
+
+    from app.core import metrics as m
+    from app.scoring.ark_client import ArkChatClient
+
+    m.reset_for_tests()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 120, "completion_tokens": 80},
+            },
+        )
+
+    def handler_no_usage(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    client = ArkChatClient(
+        api_key="k",
+        model="m",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    assert client.chat("s", "u", metric_kind="llm_rubric") == "ok"
+    assert m.llm_token_stats()["llm_rubric"] == {"in": 120, "out": 80}
+
+    client2 = ArkChatClient(
+        api_key="k",
+        model="m",
+        client=httpx.Client(transport=httpx.MockTransport(handler_no_usage)),
+    )
+    assert client2.chat("s", "u", metric_kind="llm_x") == "ok"
+    assert m.llm_token_stats()["llm_x"] == {"in": 0, "out": 0}
+    m.reset_for_tests()
+
+
+def test_cost_prefers_real_tokens_with_fallback(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """费用区 LLM：全调用日有 token → 真实计费；无 token → 估算回退。"""
+    from app.core.config import settings as cfg
+
+    _purge(db)
+    today = datetime.now(tz).date()
+    month = f"{today.year:04d}-{today.month:02d}"
+
+    # 昨日：100 次调用 + 真实 token 记账（当日全记账 → tokens 基数）
+    upsert_daily_snapshot(
+        db,
+        today - timedelta(days=1),
+        business={
+            "attempts": 5,
+            "attempts_done": 5,
+            "attempts_failed": 0,
+            "active_students": 3,
+            "sessions": 1,
+            "asr_seconds": 0.0,
+        },
+        llm_calls_by_kind={"llm_rubric": 100},
+        llm_tokens_in=60_000,
+        llm_tokens_out=60_000,
+    )
+    # 今日：20 次调用、未记账（采样线程未跑）→ 该月混算 → 回退估算
+    upsert_daily_snapshot(
+        db,
+        today,
+        business={
+            "attempts": 2,
+            "attempts_done": 2,
+            "attempts_failed": 0,
+            "active_students": 2,
+            "sessions": 1,
+            "asr_seconds": 0.0,
+        },
+        llm_calls_by_kind={"llm_rubric": 20},
+    )
+    resp = client.get("/api/v1/admin/dashboard/cost", headers=superuser_token_headers)
+    m = {x["month"]: x for x in resp.json()["months"]}[month]
+    # 调用日 2 天、记账日 1 天 → 未全覆盖 → 估算
+    assert m["llm_basis"] == "estimated"
+    assert m["llm_tokens_in"] is None
+
+    # 把今日也补上 token → 全覆盖 → 真实计费
+    upsert_daily_snapshot(
+        db,
+        today,
+        llm_calls_by_kind={"llm_rubric": 20},
+        llm_tokens_in=12_000,
+        llm_tokens_out=12_000,
+    )
+    resp = client.get("/api/v1/admin/dashboard/cost", headers=superuser_token_headers)
+    m = {x["month"]: x for x in resp.json()["months"]}[month]
+    assert m["llm_basis"] == "tokens"
+    assert m["llm_tokens_in"] == 72_000
+    assert m["llm_tokens_out"] == 72_000
+    expected = round(
+        72_000 / 1_000_000 * cfg.COST_LLM_CNY_PER_MTOK_IN
+        + 72_000 / 1_000_000 * cfg.COST_LLM_CNY_PER_MTOK_OUT,
+        2,
+    )
+    assert m["llm_cny"] == expected
+
+
+def test_tracker_token_carry_across_restart(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """token 日累计的重启 carry：新进程不覆盖当日已记 token。"""
+    from app.core import metrics as m
+    from app.core.metrics_daily import _DayPeakTracker
+
+    _purge(db)
+    m.reset_for_tests()
+    today = datetime.now(tz).date()
+    upsert_daily_snapshot(db, today, llm_tokens_in=1000, llm_tokens_out=600)
+    # 「重启」后新进程记了 200/100
+    m.record_llm_tokens("llm_rubric", prompt_tokens=200, completion_tokens=100)
+    tracker = _DayPeakTracker()
+    tracker.sample(db)
+    row = db.get(AdminMetricsDaily, today)
+    assert row is not None
+    assert row.llm_tokens_in == 1200  # carry 1000 + 200
+    assert row.llm_tokens_out == 700
+    m.reset_for_tests()

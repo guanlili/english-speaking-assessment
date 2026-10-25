@@ -5,10 +5,10 @@
 活跃定义 = 当天有提交作答（含评分失败），速览卡与趋势共用。
 """
 
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import and_, func
 from sqlalchemy import select as sa_select
 from sqlmodel import col, select
@@ -17,6 +17,8 @@ from app.api.deps import SessionDep, SuperUserDep
 from app.api.routes.metrics import collect_metrics
 from app.core.config import settings
 from app.models import (
+    AdminCostReconcile,
+    AdminCostReconcileIn,
     AdminMetricsDaily,
     Attempt,
     AttemptItemType,
@@ -25,6 +27,8 @@ from app.models import (
     ClassroomExercise,
     DashboardClassroomRow,
     DashboardContent,
+    DashboardCost,
+    DashboardCostMonth,
     DashboardDailyPoint,
     DashboardMetricsDay,
     DashboardOverview,
@@ -482,3 +486,164 @@ def read_dashboard_performance(
         )
         .scalar_one(),
     )
+
+
+def _month_of(day: date) -> str:
+    return f"{day.year:04d}-{day.month:02d}"
+
+
+@router.get("/cost", response_model=DashboardCost)
+def read_dashboard_cost(
+    session: SessionDep,
+    _admin: SuperUserDep,
+    months: int = Query(default=6, ge=1, le=24),
+) -> DashboardCost:
+    """费用区：按月估算（ASR 按真实秒数精确；LLM 按调用量估 token）。
+
+    估算口径、单价与「以云账单为准」声明见响应 note；对账金额为管理员
+    手工录入的实际账单。
+    """
+    tz = ZoneInfo(settings.PRACTICE_TZ)
+    today = datetime.now(tz).date()
+    # 自然月窗口：从「往前第 months-1 个月的一号」起，避免 31*months 带
+    # 出残月（残月会收整月服务器费）
+    first_month = today.replace(day=1)
+    for _ in range(months - 1):
+        first_month = (first_month.replace(day=1) - timedelta(days=1)).replace(day=1)
+
+    rows = session.exec(
+        select(AdminMetricsDaily)
+        .where(col(AdminMetricsDaily.day) >= first_month)
+        .order_by(col(AdminMetricsDaily.day))
+    ).all()
+    by_month: dict[str, dict[str, float]] = {}
+    for r in rows:
+        m = _month_of(r.day)
+        bucket = by_month.setdefault(
+            m,
+            {
+                "asr_seconds": 0.0,
+                "llm_calls": 0.0,
+                "attempts": 0.0,
+                "tokens_in": 0.0,
+                "tokens_out": 0.0,
+                "call_days": 0.0,
+                # 有调用但当日没记到 usage 的天数（缺一天都不切真实基数）
+                "call_days_missing_tokens": 0.0,
+            },
+        )
+        bucket["asr_seconds"] += r.asr_seconds or 0.0
+        bucket["attempts"] += r.attempts
+        calls_today = sum((r.llm_calls_by_kind or {}).values())
+        bucket["llm_calls"] += calls_today
+        if calls_today:
+            bucket["call_days"] += 1
+        # 真实 token：非 null 才算记到（采样器保证 0 用量不落列）
+        recorded = r.llm_tokens_in is not None or r.llm_tokens_out is not None
+        if calls_today and not recorded:
+            bucket["call_days_missing_tokens"] += 1
+        if recorded:
+            bucket["tokens_in"] += r.llm_tokens_in or 0
+            bucket["tokens_out"] += r.llm_tokens_out or 0
+
+    reconciles = {
+        row.month: row for row in session.exec(select(AdminCostReconcile)).all()
+    }
+
+    est_cny = settings.COST_LLM_CNY_PER_MTOK_IN * settings.COST_LLM_EST_TOKENS_IN
+    est_cny += settings.COST_LLM_CNY_PER_MTOK_OUT * settings.COST_LLM_EST_TOKENS_OUT
+    llm_cny_per_call = est_cny / 1_000_000
+
+    result: list[DashboardCostMonth] = []
+    # 从最早有数据的月份起，逐月输出（无作答的月也输出，服务器成本仍发生）
+    month_keys = sorted(set(by_month) | set(reconciles))
+    for m in month_keys:
+        b = by_month.get(
+            m,
+            {
+                "asr_seconds": 0.0,
+                "llm_calls": 0.0,
+                "attempts": 0.0,
+                "tokens_in": 0.0,
+                "tokens_out": 0.0,
+                "call_days": 0.0,
+                "call_days_missing_tokens": 0.0,
+            },
+        )
+        asr_cny = round(b["asr_seconds"] / 3600 * settings.COST_ASR_CNY_PER_HOUR, 2)
+        # LLM 计费基数：有调用且每个调用日都记到了 usage → 真实 token；
+        # 否则回退调用量估算（历史月靠回填的 rubric 估算；切换当月低估、
+        # 次月起自愈）
+        token_basis = b["call_days"] > 0 and b["call_days_missing_tokens"] == 0
+        if token_basis:
+            llm_basis = "tokens"
+            llm_cny = round(
+                b["tokens_in"] / 1_000_000 * settings.COST_LLM_CNY_PER_MTOK_IN
+                + b["tokens_out"] / 1_000_000 * settings.COST_LLM_CNY_PER_MTOK_OUT,
+                2,
+            )
+        else:
+            llm_basis = "estimated"
+            llm_cny = round(b["llm_calls"] * llm_cny_per_call, 2)
+        server_cny = settings.COST_SERVER_CNY_PER_MONTH
+        total = round(asr_cny + llm_cny + server_cny, 2)
+        actual = reconciles.get(m)
+        deviation = (
+            round((actual.amount_cny - total) / total * 100, 1)
+            if actual and total > 0
+            else None
+        )
+        result.append(
+            DashboardCostMonth(
+                month=m,
+                asr_seconds=round(b["asr_seconds"], 1),
+                llm_calls=int(b["llm_calls"]),
+                llm_basis=llm_basis,
+                llm_tokens_in=int(b["tokens_in"]) if token_basis else None,
+                llm_tokens_out=int(b["tokens_out"]) if token_basis else None,
+                asr_cny=asr_cny,
+                llm_cny=llm_cny,
+                server_cny=server_cny,
+                total_cny=total,
+                attempts=int(b["attempts"]),
+                actual_cny=actual.amount_cny if actual else None,
+                deviation_pct=deviation,
+            )
+        )
+    return DashboardCost(
+        months=result,
+        prices={
+            "asr_cny_per_hour": settings.COST_ASR_CNY_PER_HOUR,
+            "llm_cny_per_mtok_in": settings.COST_LLM_CNY_PER_MTOK_IN,
+            "llm_cny_per_mtok_out": settings.COST_LLM_CNY_PER_MTOK_OUT,
+            "server_cny_per_month": settings.COST_SERVER_CNY_PER_MONTH,
+        },
+        note="ASR 按作答音频秒数×单价（精确）；LLM 优先按真实 token 用量"
+        "（usage 记账覆盖当月全部调用日时），否则按调用量×估算 token"
+        "（历史为问答题 rubric 回算）；服务器为固定月费。实际以云账单为准。",
+    )
+
+
+@router.put("/cost/reconcile", response_model=AdminCostReconcile)
+def upsert_cost_reconcile(
+    payload: AdminCostReconcileIn,
+    session: SessionDep,
+    _admin: SuperUserDep,
+) -> AdminCostReconcile:
+    """录入/更新当月实际账单金额（对账）。"""
+    import re
+
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", payload.month):
+        raise HTTPException(status_code=422, detail="月份格式应为 YYYY-MM")
+    from app.models import get_datetime_utc
+
+    row = session.get(AdminCostReconcile, payload.month)
+    if row is None:
+        row = AdminCostReconcile(month=payload.month, amount_cny=payload.amount_cny)
+        session.add(row)
+    row.amount_cny = payload.amount_cny
+    row.note = payload.note
+    row.updated_at = get_datetime_utc()
+    session.commit()
+    session.refresh(row)
+    return row

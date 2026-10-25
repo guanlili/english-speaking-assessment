@@ -2850,6 +2850,10 @@ class AdminMetricsDaily(SQLModel, table=True):
     asr_seconds: float = Field(default=0.0, sa_column_kwargs={"server_default": "0"})
     # 进程计数器的当日增量（重启容忍：基线重置后增量从 0 起算）
     llm_calls_by_kind: dict[str, int] | None = Field(default=None, sa_type=JSON)
+    # LLM 真实 token 当日累计（Ark usage 记账）；null=当日未记账，
+    # 费用区该月回退「调用次数 × 估算 token」
+    llm_tokens_in: int | None = Field(default=None)
+    llm_tokens_out: int | None = Field(default=None)
     provider_failures: dict[str, int] | None = Field(default=None, sa_type=JSON)
     # 当日观测峰值（60s 采样；无样本为 null）
     queue_max_age_s: float | None = Field(default=None)
@@ -2882,3 +2886,51 @@ class DashboardPerformance(SQLModel):
     realtime: dict[str, object]
     history: list[DashboardMetricsDay]
     runtime_issues_today: int
+
+
+class AdminCostReconcile(SQLModel, table=True):
+    """费用对账：管理员手工录入的当月实际账单金额（估算 vs 实际）。"""
+
+    __tablename__ = "admin_cost_reconcile"
+
+    # 月份 'YYYY-MM'（主键；展示层补 '-01' 成日期处理）
+    month: str = Field(max_length=7, primary_key=True)
+    amount_cny: float = Field(gt=0)
+    note: str | None = Field(default=None, max_length=500)
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class DashboardCostMonth(SQLModel):
+    """费用月度行：分项估算 + 实际对账（未录为 null）。"""
+
+    month: str
+    asr_seconds: float
+    llm_calls: int
+    # tokens = LLM 计费基数来自真实 usage；estimated = 回退调用量估算
+    llm_basis: str
+    llm_tokens_in: int | None = None
+    llm_tokens_out: int | None = None
+    asr_cny: float
+    llm_cny: float
+    server_cny: float
+    total_cny: float
+    attempts: int
+    # 实际账单（对账录入；未录 null）
+    actual_cny: float | None = None
+    deviation_pct: float | None = None
+
+
+class DashboardCost(SQLModel):
+    months: list[DashboardCostMonth]
+    prices: dict[str, float]
+    note: str
+
+
+class AdminCostReconcileIn(SQLModel):
+    # 月份格式 YYYY-MM 在接口层校验（SQLModel Field 不支持 pattern）
+    month: str = Field(max_length=7)
+    amount_cny: float = Field(gt=0)
+    note: str | None = Field(default=None, max_length=500)

@@ -5,6 +5,8 @@ import { useState } from "react"
 import { AdminService } from "@/client"
 import ClassroomRankCard from "@/components/Admin/Dashboard/ClassroomRankCard"
 import ContentAssetsCard from "@/components/Admin/Dashboard/ContentAssetsCard"
+import CostCard from "@/components/Admin/Dashboard/CostCard"
+import ExportCard from "@/components/Admin/Dashboard/ExportCard"
 import OverviewCards from "@/components/Admin/Dashboard/OverviewCards"
 import PerformanceCard from "@/components/Admin/Dashboard/PerformanceCard"
 import {
@@ -163,6 +165,10 @@ function AdminDashboardPage() {
           pending={contentQuery.isPending}
         />
       )}
+
+      <CostCard />
+
+      <ExportCard />
     </div>
   )
 }
