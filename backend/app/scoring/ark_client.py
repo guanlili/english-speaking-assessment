@@ -79,9 +79,20 @@ class ArkChatClient:
                     f"Ark chat 返回 {resp.status_code}: {resp.text[:200]}"
                 )
             try:
-                content = resp.json()["choices"][0]["message"]["content"]
+                body = resp.json()
+                content = body["choices"][0]["message"]["content"]
             except (KeyError, IndexError, TypeError) as exc:
                 raise ArkChatError("Ark chat 响应结构异常") from exc
+            # 费用记账：Ark 兼容 OpenAI 的 usage 字段；缺失/非法不致命
+            usage = body.get("usage") or {}
+            try:
+                metrics.record_llm_tokens(
+                    metric_kind,
+                    prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                    completion_tokens=int(usage.get("completion_tokens") or 0),
+                )
+            except TypeError, ValueError:
+                pass
         except Exception:
             metrics.record_call(
                 metric_kind, ok=False, duration_s=time.perf_counter() - start

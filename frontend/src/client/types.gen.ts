@@ -493,6 +493,9 @@ export type DashboardCostMonth = {
     month: string;
     asr_seconds: number;
     llm_calls: number;
+    llm_basis: string;
+    llm_tokens_in?: (number | null);
+    llm_tokens_out?: (number | null);
     asr_cny: number;
     llm_cny: number;
     server_cny: number;

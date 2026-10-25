@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 # kind -> {"calls": int, "failures": int, "total_seconds": float}
 _stats: dict[str, dict[str, float]] = {}
+# LLM kind -> {"in": prompt_tokens, "out": completion_tokens}（费用记账；
+# 与 call 计数同锁同生命周期，日快照线程取当日增量）
+_llm_tokens: dict[str, dict[str, int]] = {}
 
 
 def record_call(kind: str, *, ok: bool, duration_s: float) -> None:
@@ -74,6 +77,24 @@ def call_stats_by_prefix(prefix: str) -> dict[str, float]:
         }
 
 
+def record_llm_tokens(kind: str, *, prompt_tokens: int, completion_tokens: int) -> None:
+    """记一次 LLM 调用的真实 token 用量（Ark 响应 usage 字段）。
+
+    与 record_call 分开：token 只有成功响应才有，且计费口径独立。
+    """
+    with _lock:
+        entry = _llm_tokens.setdefault(kind, {"in": 0, "out": 0})
+        entry["in"] += max(0, prompt_tokens)
+        entry["out"] += max(0, completion_tokens)
+
+
+def llm_token_stats() -> dict[str, dict[str, int]]:
+    """快照：各 LLM kind 的累计 prompt/completion tokens（重启归零）。"""
+    with _lock:
+        return {kind: dict(entry) for kind, entry in _llm_tokens.items()}
+
+
 def reset_for_tests() -> None:
     with _lock:
         _stats.clear()
+        _llm_tokens.clear()

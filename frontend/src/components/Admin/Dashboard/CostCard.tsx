@@ -99,11 +99,23 @@ function CostCard() {
                 <div className="rounded-xl border p-3">
                   <p className="text-xs text-muted-foreground">
                     {t({ zh: "语言模型", en: "LLM" })}
+                    {current.llm_basis === "tokens" ? (
+                      <span className="ml-1 rounded bg-emerald-500/10 px-1 py-0.5 text-[10px] text-emerald-600">
+                        {t({ zh: "按真实用量", en: "metered" })}
+                      </span>
+                    ) : (
+                      <span className="ml-1 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                        {t({ zh: "估算", en: "estimated" })}
+                      </span>
+                    )}
                   </p>
                   <p className="mt-1 text-sm font-semibold tabular-nums">
                     ¥{current.llm_cny.toFixed(2)}
                   </p>
                   <p className="text-xs text-muted-foreground tabular-nums">
+                    {current.llm_basis === "tokens" && current.llm_tokens_in
+                      ? `${((current.llm_tokens_in + (current.llm_tokens_out ?? 0)) / 1000).toFixed(1)}k ${t({ zh: "tokens", en: "tokens" })} · `
+                      : ""}
                     {current.llm_calls} {t({ zh: "次调用", en: "calls" })}
                   </p>
                 </div>

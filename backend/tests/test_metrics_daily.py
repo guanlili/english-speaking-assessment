@@ -173,9 +173,11 @@ def test_daily_snapshot_carry_across_tracker_restart(
     client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
     """评审返修：采样即落库 + 重启 carry——新进程的较小计数不覆盖当日累计。"""
+    from app.core import metrics as m
     from app.core.metrics_daily import _DayPeakTracker
 
     _purge(db)
+    m.reset_for_tests()  # 增量基线从零起算：先清共享计数器，防全套污染
     today = datetime.now(tz).date()
 
     # 第一段进程生命：落了当日行（llm 5 次调用、2 失败、池峰 4）
@@ -198,6 +200,7 @@ def test_daily_snapshot_carry_across_tracker_restart(
     # 峰值不回退；空 dict/真值区分由采样路径写真值保证
     assert row.pool_max_checked_out == 4
     assert row.queue_max_age_s == 12.0
+    m.reset_for_tests()
 
 
 def test_cost_endpoint_and_reconcile(
@@ -296,3 +299,149 @@ def test_queue_age_alert_rate_limited(monkeypatch) -> None:
     assert metrics_daily.maybe_alert_queue_age(cfg.ALERT_QUEUE_AGE_S + 1) is False
     monkeypatch.setattr(settings, "COST_ALERT_EMAIL", None)
     assert metrics_daily.maybe_alert_queue_age(cfg.ALERT_QUEUE_AGE_S + 1) is False
+
+
+def test_llm_token_accumulator_and_reset() -> None:
+    """token 累加器：按 kind 累计、快照拷贝、reset 清空、负值钳零。"""
+    from app.core import metrics as m
+
+    m.reset_for_tests()
+    try:
+        m.record_llm_tokens("llm_rubric", prompt_tokens=100, completion_tokens=50)
+        m.record_llm_tokens("llm_rubric", prompt_tokens=30, completion_tokens=20)
+        m.record_llm_tokens("llm_vocab_explain", prompt_tokens=10, completion_tokens=5)
+        m.record_llm_tokens("llm_rubric", prompt_tokens=-5, completion_tokens=0)
+        stats = m.llm_token_stats()
+        assert stats["llm_rubric"] == {"in": 130, "out": 70}
+        assert stats["llm_vocab_explain"] == {"in": 10, "out": 5}
+    finally:
+        m.reset_for_tests()
+    assert m.llm_token_stats() == {}
+
+
+def test_ark_chat_records_usage_tokens(monkeypatch) -> None:
+    """ArkChatClient.chat 成功响应的 usage → token 记账；缺 usage 不炸。"""
+    import httpx
+
+    from app.core import metrics as m
+    from app.scoring.ark_client import ArkChatClient
+
+    m.reset_for_tests()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 120, "completion_tokens": 80},
+            },
+        )
+
+    def handler_no_usage(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    client = ArkChatClient(
+        api_key="k",
+        model="m",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    assert client.chat("s", "u", metric_kind="llm_rubric") == "ok"
+    assert m.llm_token_stats()["llm_rubric"] == {"in": 120, "out": 80}
+
+    client2 = ArkChatClient(
+        api_key="k",
+        model="m",
+        client=httpx.Client(transport=httpx.MockTransport(handler_no_usage)),
+    )
+    assert client2.chat("s", "u", metric_kind="llm_x") == "ok"
+    assert m.llm_token_stats()["llm_x"] == {"in": 0, "out": 0}
+    m.reset_for_tests()
+
+
+def test_cost_prefers_real_tokens_with_fallback(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """费用区 LLM：全调用日有 token → 真实计费；无 token → 估算回退。"""
+    from app.core.config import settings as cfg
+
+    _purge(db)
+    today = datetime.now(tz).date()
+    month = f"{today.year:04d}-{today.month:02d}"
+
+    # 昨日：100 次调用 + 真实 token 记账（当日全记账 → tokens 基数）
+    upsert_daily_snapshot(
+        db,
+        today - timedelta(days=1),
+        business={
+            "attempts": 5,
+            "attempts_done": 5,
+            "attempts_failed": 0,
+            "active_students": 3,
+            "sessions": 1,
+            "asr_seconds": 0.0,
+        },
+        llm_calls_by_kind={"llm_rubric": 100},
+        llm_tokens_in=60_000,
+        llm_tokens_out=60_000,
+    )
+    # 今日：20 次调用、未记账（采样线程未跑）→ 该月混算 → 回退估算
+    upsert_daily_snapshot(
+        db,
+        today,
+        business={
+            "attempts": 2,
+            "attempts_done": 2,
+            "attempts_failed": 0,
+            "active_students": 2,
+            "sessions": 1,
+            "asr_seconds": 0.0,
+        },
+        llm_calls_by_kind={"llm_rubric": 20},
+    )
+    resp = client.get("/api/v1/admin/dashboard/cost", headers=superuser_token_headers)
+    m = {x["month"]: x for x in resp.json()["months"]}[month]
+    # 调用日 2 天、记账日 1 天 → 未全覆盖 → 估算
+    assert m["llm_basis"] == "estimated"
+    assert m["llm_tokens_in"] is None
+
+    # 把今日也补上 token → 全覆盖 → 真实计费
+    upsert_daily_snapshot(
+        db,
+        today,
+        llm_calls_by_kind={"llm_rubric": 20},
+        llm_tokens_in=12_000,
+        llm_tokens_out=12_000,
+    )
+    resp = client.get("/api/v1/admin/dashboard/cost", headers=superuser_token_headers)
+    m = {x["month"]: x for x in resp.json()["months"]}[month]
+    assert m["llm_basis"] == "tokens"
+    assert m["llm_tokens_in"] == 72_000
+    assert m["llm_tokens_out"] == 72_000
+    expected = round(
+        72_000 / 1_000_000 * cfg.COST_LLM_CNY_PER_MTOK_IN
+        + 72_000 / 1_000_000 * cfg.COST_LLM_CNY_PER_MTOK_OUT,
+        2,
+    )
+    assert m["llm_cny"] == expected
+
+
+def test_tracker_token_carry_across_restart(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """token 日累计的重启 carry：新进程不覆盖当日已记 token。"""
+    from app.core import metrics as m
+    from app.core.metrics_daily import _DayPeakTracker
+
+    _purge(db)
+    m.reset_for_tests()
+    today = datetime.now(tz).date()
+    upsert_daily_snapshot(db, today, llm_tokens_in=1000, llm_tokens_out=600)
+    # 「重启」后新进程记了 200/100
+    m.record_llm_tokens("llm_rubric", prompt_tokens=200, completion_tokens=100)
+    tracker = _DayPeakTracker()
+    tracker.sample(db)
+    row = db.get(AdminMetricsDaily, today)
+    assert row is not None
+    assert row.llm_tokens_in == 1200  # carry 1000 + 200
+    assert row.llm_tokens_out == 700
+    m.reset_for_tests()

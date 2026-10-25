@@ -75,6 +75,8 @@ def upsert_daily_snapshot(
     business: dict[str, object] | None = None,
     llm_calls_by_kind: dict[str, int] | None = None,
     provider_failures: dict[str, int] | None = None,
+    llm_tokens_in: int | None = None,
+    llm_tokens_out: int | None = None,
     queue_max_age_s: float | None = None,
     pool_max_checked_out: int | None = None,
 ) -> AdminMetricsDaily:
@@ -94,6 +96,10 @@ def upsert_daily_snapshot(
         row.llm_calls_by_kind = llm_calls_by_kind
     if provider_failures is not None:
         row.provider_failures = provider_failures
+    if llm_tokens_in is not None:
+        row.llm_tokens_in = llm_tokens_in
+    if llm_tokens_out is not None:
+        row.llm_tokens_out = llm_tokens_out
     if queue_max_age_s is not None:
         row.queue_max_age_s = queue_max_age_s
     if pool_max_checked_out is not None:
@@ -156,7 +162,12 @@ class _DayPeakTracker:
         self.pool_max_checked_out: int | None = None
         self.llm_calls_by_kind: dict[str, int] = {}
         self.provider_failures: dict[str, int] = {}
+        self.llm_tokens_in = 0
+        self.llm_tokens_out = 0
         self._baseline: dict[str, dict[str, float]] | None = None
+        self._token_baseline: dict[str, dict[str, int]] | None = None
+        self._carry_tokens_in = 0
+        self._carry_tokens_out = 0
         self._carry_llm: dict[str, int] | None = None
         self._carry_fail: dict[str, int] | None = None
 
@@ -173,6 +184,10 @@ class _DayPeakTracker:
                 self.queue_max_age_s = row.queue_max_age_s
             if row.pool_max_checked_out is not None:
                 self.pool_max_checked_out = row.pool_max_checked_out
+            if row.llm_tokens_in is not None:
+                self._carry_tokens_in = row.llm_tokens_in
+            if row.llm_tokens_out is not None:
+                self._carry_tokens_out = row.llm_tokens_out
 
     def sample(self, session: Session) -> None:
         """采样一次并立即落当日行（upsert 幂等）。"""
@@ -211,8 +226,7 @@ class _DayPeakTracker:
 
         # 计数器增量 = carry(当日已落库) + (进程计数器 - 进程内基线)
         stats = call_stats()
-        if self._baseline is None:
-            self._baseline = {k: dict(v) for k, v in stats.items()}
+        self._baseline = self._baseline or {}
         proc_kind: dict[str, int] = {}
         proc_fail: dict[str, int] = {}
         for kind, values in stats.items():
@@ -238,12 +252,32 @@ class _DayPeakTracker:
             for b in {*carry_fail, *proc_fail}
         }
 
+        # LLM 真实 token 日累计 = carry(当日已落库) + 进程增量
+        from app.core.metrics import llm_token_stats
+
+        tokens = llm_token_stats()
+        self._token_baseline = self._token_baseline or {}
+        proc_in = proc_out = 0
+        for kind, entry in tokens.items():
+            base = self._token_baseline.get(kind) or {"in": 0, "out": 0}
+            d_in = entry["in"] - base["in"]
+            d_out = entry["out"] - base["out"]
+            if d_in < 0 or d_out < 0:  # 计数器重启：重置基线
+                self._token_baseline[kind] = dict(entry)
+                d_in = d_out = 0
+            proc_in += d_in
+            proc_out += d_out
+        self.llm_tokens_in = self._carry_tokens_in + proc_in
+        self.llm_tokens_out = self._carry_tokens_out + proc_out
+
         # 采样即落库：重启前的峰值/增量不因部署丢失
         upsert_daily_snapshot(
             session,
             today,
             llm_calls_by_kind=dict(self.llm_calls_by_kind),
             provider_failures=dict(self.provider_failures),
+            llm_tokens_in=self.llm_tokens_in,
+            llm_tokens_out=self.llm_tokens_out,
             queue_max_age_s=self.queue_max_age_s,
             pool_max_checked_out=self.pool_max_checked_out,
         )
