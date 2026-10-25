@@ -43,7 +43,7 @@ def upgrade() -> None:
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
-            nullable=False,
+            nullable=True,
         ),
         sa.PrimaryKeyConstraint("day"),
     )
