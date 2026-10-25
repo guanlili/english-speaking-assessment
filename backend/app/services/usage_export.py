@@ -217,22 +217,7 @@ def export_sessions(session: Session, limit_days: int) -> io.StringIO:
     ]
     out: list[list[object]] = [header]
     for ps, s, u, c, ce in rows:
-        aggs = (
-            session.connection()
-            .execute(
-                select(
-                    func.count(),
-                    func.count().filter(col(Attempt.status) == AttemptStatus.DONE),
-                    func.avg(Attempt.overall).filter(
-                        col(Attempt.status) == AttemptStatus.DONE
-                    ),
-                    func.max(Attempt.overall).filter(
-                        col(Attempt.status) == AttemptStatus.DONE
-                    ),
-                ).where(col(Attempt.session_id) == ps.id)
-            )
-            .one()
-        )
+        aggs = attempt_agg.get(ps.id, (0, 0, None, None))
         used_min = (
             round((ps.exam_ended_at - ps.exam_started_at).total_seconds() / 60, 1)
             if ps.exam_started_at and ps.exam_ended_at

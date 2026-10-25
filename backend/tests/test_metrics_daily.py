@@ -110,8 +110,48 @@ def test_backfill_only_missing_rows(
     assert row3.llm_calls_by_kind == {"llm_rubric": 1}
     assert db.get(AdminMetricsDaily, today - timedelta(days=2)) is None
 
-    # 再跑一遍：全部已存在，零写入
+    # 再跑一遍：全部已存在，零写入（新行）
     assert backfill_history(db, today) == 0
+
+    # 复审：P1 时期建的存量行（llm 为 null）要被补上估算，非 null 不动
+    day2 = today - timedelta(days=2)
+    stale = AdminMetricsDaily(day=day2)
+    session_kwargs = {
+        "attempts": 0,
+        "attempts_done": 0,
+        "attempts_failed": 0,
+        "active_students": 0,
+        "sessions": 0,
+        "asr_seconds": 0.0,
+    }
+    for k, v in session_kwargs.items():
+        setattr(stale, k, v)
+    db.add(stale)
+    db.commit()
+    # day3 有 1 条 done 问答题：给 day3 造一条「采样器写过」的行（非 null）
+    sampled = db.get(AdminMetricsDaily, day3)
+    assert sampled is not None
+    sampled.llm_calls_by_kind = {"llm_rubric": 99}
+    db.commit()
+
+    backfill_history(db, today)
+    refreshed_stale = db.get(AdminMetricsDaily, day2)
+    assert refreshed_stale is not None
+    # day2 无作答 → 无估算来源，保持 None（不为空数据伪造调用）
+    assert refreshed_stale.llm_calls_by_kind is None
+    # day3 存量非 null → 不被回填估算覆盖
+    sampled_row = db.get(AdminMetricsDaily, day3)
+    assert sampled_row is not None
+    assert sampled_row.llm_calls_by_kind == {"llm_rubric": 99}
+
+    # 换一个有作答但行是 null 的日子：backfill 应补上估算
+    day1 = today - timedelta(days=1)
+    _attempt(db, uuid.UUID(ada["student"]["id"]), day1, status="done")
+    db.commit()
+    backfill_history(db, today)
+    row1 = db.get(AdminMetricsDaily, day1)
+    assert row1 is not None
+    assert row1.llm_calls_by_kind == {"llm_rubric": 1}
 
 
 def test_performance_endpoint_gates_and_shape(

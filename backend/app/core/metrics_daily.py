@@ -177,6 +177,27 @@ def backfill_history(session: Session, today: date) -> int:
     ):
         if row.day in agg:
             agg[row.day]["sessions"] = row.sessions
+    # 存量行补 LLM 估算：P1 时期回填建的行没有 llm_calls_by_kind（null），
+    # 只插缺行会让历史月 LLM 恒为 ¥0——对 agg 范围内 llm 为 null 的已有行
+    # 补估算；采样器写过的不动（非 null 即真实/采样数据）
+    patched = 0
+    stale_rows = session.exec(  # ty: ignore[no-matching-overload] - is_ 链
+        select(AdminMetricsDaily).where(
+            col(AdminMetricsDaily.day) >= min(agg),
+            col(AdminMetricsDaily.day) <= last,
+            col(AdminMetricsDaily.llm_calls_by_kind).is_(None),
+        )
+    ).all()
+    for row in stale_rows:
+        a = agg.get(row.day)
+        if not a:
+            continue
+        llm = a["llm_calls_by_kind"]
+        row.llm_calls_by_kind = llm if isinstance(llm, dict) else None
+        patched += 1
+    if patched:
+        session.commit()
+        logger.info("metrics daily backfilled llm estimate for %d rows", patched)
     existing: set[date] = set()
     for d in session.connection().execute(select(col(AdminMetricsDaily.day))).scalars():
         existing.add(d)
