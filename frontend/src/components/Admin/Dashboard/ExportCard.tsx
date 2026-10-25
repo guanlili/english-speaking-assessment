@@ -62,7 +62,9 @@ function ExportCard() {
       a.click()
       URL.revokeObjectURL(url)
     } catch {
-      showErrorToast(t({ zh: "下载失败，请重试", en: "Download failed, retry" }))
+      showErrorToast(
+        t({ zh: "下载失败，请重试", en: "Download failed, retry" }),
+      )
     }
   }
 
