@@ -1,5 +1,6 @@
 """作答音频保留期清理：只删过期终态作答的音频文件，护栏不碰内容音。"""
 
+import time
 import uuid
 from datetime import timedelta
 from pathlib import Path
@@ -242,3 +243,57 @@ def test_purge_settles_same_dir_symlink_without_deleting_target(
     db.refresh(link_row)
     assert link_row.audio_purged_at is not None  # 链接行结算
     assert target.exists()  # 目标音频保留
+
+
+def _age_file(path: Path, days: float) -> None:
+    """把 mtime 拨回 N 天前（孤儿边际窗口用）。"""
+    import os
+
+    old = time.time() - days * 86400
+    os.utime(path, (old, old))
+
+
+def test_orphan_sweep_removes_unreferenced_keeps_referenced_and_content(
+    db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    """孤儿清扫：删无引用旧文件；保住有引用文件、content 子目录与新孤儿。"""
+    referenced = tmp_path / "keep.webm"
+    referenced.write_bytes(b"ref")
+    _make_attempt(db, str(referenced), status=AttemptStatus.DONE, age_days=10)
+    orphan = tmp_path / "orphan.webm"
+    orphan.write_bytes(b"orphan")
+    fresh_orphan = tmp_path / "fresh.webm"  # 落盘未满边际窗口：上传竞态保护
+    fresh_orphan.write_bytes(b"fresh")
+    content_dir = tmp_path / "content"
+    content_dir.mkdir()
+    content_audio = content_dir / "tts-x.mp3"
+    content_audio.write_bytes(b"tts")
+    for p in (referenced, orphan, content_audio):
+        _age_file(p, days=30)
+    # fresh_orphan 刚落盘，mtime 即现在，落在边际窗口内
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+
+    from app.core.audio_retention import purge_orphan_audio
+
+    assert purge_orphan_audio(db) == 1
+    assert not orphan.exists()
+    assert referenced.exists()
+    assert fresh_orphan.exists()
+    assert content_audio.exists()
+
+
+def test_orphan_sweep_independent_of_ttl_setting(
+    db: Session, tmp_path: Path, monkeypatch
+) -> None:
+    """TTL=0（保留期关闭）时孤儿清扫仍回收：与保留期策略无关。"""
+    orphan = tmp_path / "orphan2.webm"
+    orphan.write_bytes(b"x")
+    _age_file(orphan, days=30)
+    monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "AUDIO_TTL_DAYS", 0)
+
+    from app.core.audio_retention import purge_expired_attempt_audio, purge_orphan_audio
+
+    assert purge_expired_attempt_audio(db) == 0
+    assert purge_orphan_audio(db) == 1
+    assert not orphan.exists()
