@@ -17,7 +17,7 @@
   docker compose -f compose.yml logs backend | rg 'provider_call'
   ```
 
-- 评分主线程和详情线程继承请求上下文；外部 ASR/LLM/TTS 调用记 `provider_call`、成功与耗时。重启恢复的后台任务没有原 HTTP 上下文，标为 `background`。`/admin/metrics` 的计数仍为当前进程快照，新增实例 ID、PID 和启动时间，用于识别重启或多 worker，不能跨实例直接计算增量。历史排查使用日志；长期趋势需接日志采集系统，当前没有伪装成持久化指标库。
+- 评分主线程和详情线程继承请求上下文；外部 ASR/LLM/TTS 调用记 `provider_call`、成功与耗时。重启恢复的后台任务没有原 HTTP 上下文，标为 `background`。`/admin/metrics` 的计数仍为当前进程快照，新增实例 ID、PID 和启动时间，用于识别重启或多 worker，不能跨实例直接计算增量。历史排查使用日志；长期趋势另由 `admin_metrics_daily` 日快照表承接（2026-10 大盘 P1：业务量回算 + 运行时峰值采样，跨重启保留），无需外接指标库。
 
   Scoring and detail workers inherit request context; provider logs record outcome and latency. Restart recovery tasks use `background`. Metrics remain per-process counters and now include instance ID, PID, and start time to identify resets or multiple workers. Use logs for historical diagnosis; long-term trends require log collection.
 

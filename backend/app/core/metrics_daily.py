@@ -72,13 +72,15 @@ def upsert_daily_snapshot(
     session: Session,
     day: date,
     *,
+    business: dict[str, object] | None = None,
     llm_calls_by_kind: dict[str, int] | None = None,
     provider_failures: dict[str, int] | None = None,
     queue_max_age_s: float | None = None,
     pool_max_checked_out: int | None = None,
 ) -> AdminMetricsDaily:
     """写/覆盖一行的日快照（按日期幂等；跨日落日与回填共用）。"""
-    business = compute_daily_business(session, day)
+    if business is None:
+        business = compute_daily_business(session, day)
     from app.models import get_datetime_utc
 
     row = session.get(AdminMetricsDaily, day)
@@ -138,7 +140,13 @@ def backfill_history(session: Session, today: date) -> int:
 
 
 class _DayPeakTracker:
-    """当日运行时峰值：60s 采样的内存最大值 + 计数器日增量（重启容忍）。"""
+    """当日运行时峰值：60s 采样，**每次采样即落当日行**（部署重启不丢）。
+
+    重启携带：首次采样把当日已落库的增量读作 carry，本进程日增量 =
+    carry + (进程计数器 - 进程内基线)；峰值取 max(已落库, 本次采样)。
+    写库永远写真值 dict（空 dict = 采样过且为零），与回填的 null
+    （当日无采样）区分。
+    """
 
     def __init__(self) -> None:
         self.reset()
@@ -149,12 +157,35 @@ class _DayPeakTracker:
         self.llm_calls_by_kind: dict[str, int] = {}
         self.provider_failures: dict[str, int] = {}
         self._baseline: dict[str, dict[str, float]] | None = None
+        self._carry_llm: dict[str, int] | None = None
+        self._carry_fail: dict[str, int] | None = None
+
+    def _load_carry(self, session: Session, today: date) -> None:
+        row = session.get(AdminMetricsDaily, today)
+        self._carry_llm = (
+            dict(row.llm_calls_by_kind) if row and row.llm_calls_by_kind else {}
+        )
+        self._carry_fail = (
+            dict(row.provider_failures) if row and row.provider_failures else {}
+        )
+        if row:
+            if row.queue_max_age_s is not None:
+                self.queue_max_age_s = row.queue_max_age_s
+            if row.pool_max_checked_out is not None:
+                self.pool_max_checked_out = row.pool_max_checked_out
 
     def sample(self, session: Session) -> None:
+        """采样一次并立即落当日行（upsert 幂等）。"""
         from app.core import db as _db
         from app.core.metrics import call_stats
 
-        # 队列最老年龄（评分堆积告警的核心数）
+        today = datetime.now(_tz()).date()
+        if self._carry_llm is None or self._carry_fail is None:
+            self._load_carry(session, today)
+        carry_llm: dict[str, int] = self._carry_llm or {}
+        carry_fail: dict[str, int] = self._carry_fail or {}
+
+        # 峰值：最老排队年龄（评分堆积告警的核心数）与连接池水位
         oldest = (
             session.connection()
             .execute(
@@ -171,20 +202,19 @@ class _DayPeakTracker:
                 if self.queue_max_age_s is not None
                 else age
             )
-        # 连接池水位
-        pool = _db.engine.pool
-        checked_out = pool.checkedout()
+        checked_out = _db.engine.pool.checkedout()
         self.pool_max_checked_out = (
             max(self.pool_max_checked_out, checked_out)
             if self.pool_max_checked_out is not None
             else checked_out
         )
-        # 计数器日增量：now - 当日基线（重启后 now < baseline 时基线重置）
+
+        # 计数器增量 = carry(当日已落库) + (进程计数器 - 进程内基线)
         stats = call_stats()
         if self._baseline is None:
             self._baseline = {k: dict(v) for k, v in stats.items()}
-        deltas_kind: dict[str, int] = {}
-        deltas_fail: dict[str, int] = {}
+        proc_kind: dict[str, int] = {}
+        proc_fail: dict[str, int] = {}
         for kind, values in stats.items():
             base = self._baseline.get(kind)
             calls_delta = values.get("calls", 0) - (base or {}).get("calls", 0)
@@ -194,13 +224,29 @@ class _DayPeakTracker:
                 calls_delta = 0
                 fail_delta = 0
             if kind.startswith("llm") and calls_delta:
-                deltas_kind[kind] = int(calls_delta)
+                proc_kind[kind] = int(calls_delta)
             if fail_delta:
                 bucket = "llm" if kind.startswith("llm") else kind
-                deltas_fail[bucket] = deltas_fail.get(bucket, 0) + int(fail_delta)
-        # 增量按日累计（多次采样求和会重复：改为 now - 当日零点基线，直接覆盖）
-        self.llm_calls_by_kind = deltas_kind
-        self.provider_failures = deltas_fail
+                proc_fail[bucket] = proc_fail.get(bucket, 0) + int(fail_delta)
+        # 日累计 = carry + 本进程增量（bucket 级合并，避免多 kind 重复带 carry）
+        self.llm_calls_by_kind = {
+            k: carry_llm.get(k, 0) + proc_kind.get(k, 0)
+            for k in {*carry_llm, *proc_kind}
+        }
+        self.provider_failures = {
+            b: carry_fail.get(b, 0) + proc_fail.get(b, 0)
+            for b in {*carry_fail, *proc_fail}
+        }
+
+        # 采样即落库：重启前的峰值/增量不因部署丢失
+        upsert_daily_snapshot(
+            session,
+            today,
+            llm_calls_by_kind=dict(self.llm_calls_by_kind),
+            provider_failures=dict(self.provider_failures),
+            queue_max_age_s=self.queue_max_age_s,
+            pool_max_checked_out=self.pool_max_checked_out,
+        )
 
 
 _tracker: _DayPeakTracker | None = None
@@ -219,15 +265,7 @@ def _daily_loop(stop_event: threading.Event) -> None:
             now_day = datetime.now(tz).date()
             with Session(engine) as session:
                 if now_day != current_day:
-                    # 跨日：落昨日快照（业务量 + 当日峰值），峰值重新起算
-                    upsert_daily_snapshot(
-                        session,
-                        current_day,
-                        llm_calls_by_kind=_tracker.llm_calls_by_kind or None,
-                        provider_failures=_tracker.provider_failures or None,
-                        queue_max_age_s=_tracker.queue_max_age_s,
-                        pool_max_checked_out=_tracker.pool_max_checked_out,
-                    )
+                    # 跨日：峰值/增量重新起算（昨日行已在历次采样中落库）
                     _tracker.reset()
                     current_day = now_day
                     continue

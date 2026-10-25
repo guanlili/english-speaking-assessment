@@ -652,6 +652,18 @@ def executor_is_running() -> bool:
         return not _executor_stopped and _executor is not None
 
 
+def executor_state() -> str:
+    """评分池三态（大盘性能区读）：
+
+    running = 池已创建且未终局关闭；idle = 尚未创建（首条作答才建，
+    空闲进程的正常状态，不是故障）；stopped = 已终局关闭（进程退出中）。
+    """
+    with _executor_lock:
+        if _executor_stopped:
+            return "stopped"
+        return "running" if _executor is not None else "idle"
+
+
 def get_executor() -> ThreadPoolExecutor:
     """获取（必要时创建）主评分线程池。测试中途排水后复用见
     shutdown_executor(final=False)。"""

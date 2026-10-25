@@ -145,3 +145,50 @@ def test_performance_endpoint_gates_and_shape(
     assert [h["date"] for h in body["history"]] == [yesterday.isoformat()]
     assert body["history"][0]["queue_max_age_s"] == 10.0
     assert body["runtime_issues_today"] == 0
+
+
+def test_pool_stats_expose_capacity_and_worker_tri_state(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    """评审返修：池水位分母必须是配置容量；worker 红标只看 stopped 三态。"""
+    resp = client.get("/api/v1/admin/metrics", headers=superuser_token_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert (
+        body["db_pool"]["capacity"]
+        == body["db_pool"]["pool_size"] + body["db_pool"]["max_overflow"]
+    )
+    assert body["db_pool"]["capacity"] >= 1
+    # 测试进程未终局关闭：idle 或 running，绝不是 stopped
+    assert body["scoring"]["executor_state"] in ("idle", "running")
+
+
+def test_daily_snapshot_carry_across_tracker_restart(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """评审返修：采样即落库 + 重启 carry——新进程的较小计数不覆盖当日累计。"""
+    from app.core.metrics_daily import _DayPeakTracker
+
+    _purge(db)
+    today = datetime.now(tz).date()
+
+    # 第一段进程生命：落了当日行（llm 5 次调用、2 失败、池峰 4）
+    upsert_daily_snapshot(
+        db,
+        today,
+        llm_calls_by_kind={"llm_rubric": 5},
+        provider_failures={"llm": 2},
+        pool_max_checked_out=4,
+        queue_max_age_s=12.0,
+    )
+
+    # 「重启」：新 tracker 首次采样 carry 旧值，不覆盖
+    tracker = _DayPeakTracker()
+    tracker.sample(db)
+    row = db.get(AdminMetricsDaily, today)
+    assert row is not None
+    assert row.llm_calls_by_kind == {"llm_rubric": 5}  # carry 保留，未被 0 覆盖
+    assert row.provider_failures == {"llm": 2}
+    # 峰值不回退；空 dict/真值区分由采样路径写真值保证
+    assert row.pool_max_checked_out == 4
+    assert row.queue_max_age_s == 12.0

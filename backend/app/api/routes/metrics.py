@@ -85,15 +85,23 @@ def _scoring_queue_stats(session: Session) -> dict[str, Any]:
         "oldest_queued_age_s": oldest_queued_age_s,
         "workers_configured": settings.SCORING_WORKERS,
         "executor_running": worker.executor_is_running(),
+        # 三态：idle=池未创建（空闲正常态），stopped=终局关闭；红标只看 stopped
+        "executor_state": worker.executor_state(),
     }
 
 
 def _db_pool_stats() -> dict[str, Any]:
     """连接池实时水位：考试高峰是否打满在这里看，不改参数先看数。
-    pool_size=10/max_overflow=20 是对齐 40 人齐交峰值的既定配置。"""
+    pool_size=10/max_overflow=20 是对齐 40 人齐交峰值的既定配置。
+
+    capacity = pool_size + max_overflow（配置容量）。overflow() 是当前
+    溢出计数：未溢出时为负值（冷启动 -pool_size），且溢出后与
+    checked_out 同涨——不能当分母用。"""
     pool = _db.engine.pool
     return {
         "pool_size": pool.size(),
+        "max_overflow": pool._max_overflow,  # noqa: SLF001 - 容量口径无公开 getter
+        "capacity": pool.size() + pool._max_overflow,  # noqa: SLF001
         "checked_in": pool.checkedin(),
         "checked_out": pool.checkedout(),
         "overflow": pool.overflow(),

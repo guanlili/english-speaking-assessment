@@ -41,10 +41,8 @@ function fmtSeconds(
   })
 }
 
-function fmtBytes(
-  _t: (bi: { zh: string; en: string }) => string,
-  bytes: number,
-): string {
+function fmtBytes(bytes: number): string {
+  if (bytes === 0) return "0"
   const gb = bytes / 1024 ** 3
   if (gb >= 1) return `${gb.toFixed(1)} GB`
   return `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`
@@ -82,9 +80,12 @@ function PerformanceCard({
       oldest_queued_age_s?: number | null
       workers_configured?: number
       executor_running?: boolean
+      executor_state?: "running" | "idle" | "stopped"
     }
     db_pool?: {
       pool_size?: number
+      max_overflow?: number
+      capacity?: number
       checked_in?: number
       checked_out?: number
       overflow?: number
@@ -103,7 +104,10 @@ function PerformanceCard({
   }
   const scoring = rt.scoring
   const pool = rt.db_pool
-  const poolTotal = (pool?.pool_size ?? 0) + (pool?.overflow ?? 0)
+  // 分母 = 配置容量 pool_size + max_overflow（overflow() 当前值可为负且
+  // 溢出后与分子同涨，不能当分母）
+  const poolTotal =
+    pool?.capacity ?? (pool?.pool_size ?? 0) + (pool?.max_overflow ?? 0)
   const poolOut = pool?.checked_out ?? 0
   const providers: Array<{ key: string; label: string }> = [
     { key: "asr", label: t({ zh: "语音识别", en: "ASR" }) },
@@ -137,10 +141,18 @@ function PerformanceCard({
           <span className="text-sm font-medium">
             {t({ zh: "评分队列", en: "Scoring queue" })}
           </span>
-          {scoring?.executor_running === false ? (
+          {scoring?.executor_state === "stopped" ? (
             <Badge variant="destructive">
-              {t({ zh: "worker 未运行", en: "worker down" })}
+              {t({ zh: "评分已停机", en: "scoring stopped" })}
             </Badge>
+          ) : null}
+          {scoring?.executor_state === "idle" ? (
+            <span className="text-xs text-muted-foreground">
+              {t({
+                zh: "空闲（首条作答启动）",
+                en: "idle (starts on first attempt)",
+              })}
+            </span>
           ) : null}
           {Object.entries(scoring?.by_status ?? {}).map(([status, n]) => (
             <Badge key={status} variant="outline" className="tabular-nums">
@@ -223,7 +235,7 @@ function PerformanceCard({
               {t({ zh: "音频存储", en: "Audio storage" })}
             </p>
             <p className="mt-1 text-sm tabular-nums">
-              {fmtBytes(t, rt.audio_storage?.total_bytes ?? 0)}
+              {fmtBytes(rt.audio_storage?.total_bytes ?? 0)}
             </p>
             <p className="text-xs text-muted-foreground tabular-nums">
               {t({ zh: "文件", en: "files" })}{" "}
@@ -280,8 +292,8 @@ function PerformanceCard({
                     className="py-6 text-center text-muted-foreground"
                   >
                     {t({
-                      zh: "还没有日快照（部署后次日起累积）。",
-                      en: "No daily snapshots yet (they accumulate from the day after deploy).",
+                      zh: "暂无快照。部署启动会回填历史业务量；运行时峰值从部署后累积。",
+                      en: "No snapshots yet. Startup backfills business history; runtime peaks accumulate after deploy.",
                     })}
                   </TableCell>
                 </TableRow>

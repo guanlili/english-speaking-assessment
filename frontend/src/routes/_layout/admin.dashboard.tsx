@@ -57,10 +57,10 @@ function AdminDashboardPage() {
     queryFn: () => AdminService.readDashboardContent(),
     staleTime: 5 * 60 * 1000,
   })
-  // 性能区 30s 轮询：页面不可见时暂停（pollWhileVisible 语义）
+  // 性能区固定看近 14 天（与页面时间档解耦：选「全部」不该拉 3650 天）
   const performanceQuery = useQuery({
-    queryKey: ["admin", "dashboard", "performance", days],
-    queryFn: () => AdminService.readDashboardPerformance({ days }),
+    queryKey: ["admin", "dashboard", "performance"],
+    queryFn: () => AdminService.readDashboardPerformance({ days: 14 }),
     refetchInterval: pollWhileVisible(30_000),
   })
 
