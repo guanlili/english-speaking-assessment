@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
-from sqlmodel import Session, delete
+from sqlmodel import Session, delete, select
 
 from app.core.config import settings
 from app.core.metrics_daily import backfill_history, upsert_daily_snapshot
@@ -77,7 +77,7 @@ def test_daily_snapshot_business_and_upsert_idempotent(
     row2 = upsert_daily_snapshot(db, day, queue_max_age_s=42.0, pool_max_checked_out=3)
     assert row2.attempts == 3
     assert row2.queue_max_age_s == 42.0
-    count = len(db.query(AdminMetricsDaily).all())
+    count = len(db.exec(select(AdminMetricsDaily)).all())
     assert count == 1
 
 
