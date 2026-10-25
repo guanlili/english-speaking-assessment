@@ -9,6 +9,11 @@
 排队/评分中的音频仍被 worker 使用。文件删除后回放端点按文件缺失 404，
 前端回放按钮报错即可，无契约变化。
 
+孤儿清扫：学生/课堂被删时 attempt 行级联消失但文件残留，上面的推进式
+清理只按库内记录选候选，永远扫不到它们——本模块另跑一遍「目录里存在、
+库中无任何引用」的反向清扫（与 AUDIO_TTL_DAYS 无关：行的删除决策在级联
+删除时已发生，这里只回收磁盘）。
+
 推进语义（批次06）：候选 = 终态 + 超过保留期 + audio_purged_at IS NULL，
 按 (created_at, id) 稳定排序、每轮至多 PURGE_BATCH_LIMIT 行。处理完成
 （删除或结算）即落标记，后续轮次推进到下一批——此前没有标记，候选超过
@@ -19,6 +24,7 @@
 
 import logging
 import threading
+import time
 from datetime import timedelta
 from pathlib import Path
 
@@ -34,6 +40,9 @@ logger = logging.getLogger(__name__)
 # 单轮清理上限：一次线程迭代删除过多文件会长时间占住磁盘 IO
 PURGE_BATCH_LIMIT = 500
 RETENTION_INTERVAL_S = 24 * 3600
+# 孤儿文件 mtime 边际：文件落盘到 attempt 行建成之间有秒级竞态窗口，
+# 只回收落盘超过 1 天的无引用文件
+ORPHAN_MTIME_MARGIN_S = 24 * 3600
 
 
 def purge_expired_attempt_audio(session: Session) -> int:
@@ -121,6 +130,43 @@ def purge_expired_attempt_audio(session: Session) -> int:
     return purged
 
 
+def purge_orphan_audio(session: Session) -> int:
+    """删除库中已无作答记录引用的孤儿音频文件，返回本轮删除数。
+
+    与保留期（AUDIO_TTL_DAYS）无关：引用行被级联删除时删除决策已发生，
+    这里只回收磁盘。只碰存储根下的直接文件（content/ 子目录不碰）；
+    mtime 落在边际窗口内（新上传竞态）的不动；单轮限量。
+    """
+    storage = Path(settings.AUDIO_STORAGE_DIR).resolve()
+    if not storage.is_dir():
+        return 0
+    referenced = {Path(p).name for p in session.exec(select(Attempt.audio_path)).all()}
+    now = time.time()
+    purged = 0
+    for path in storage.iterdir():
+        if purged >= PURGE_BATCH_LIMIT:
+            break
+        if not path.is_file() or path.is_symlink():
+            continue
+        if path.name in referenced:
+            continue
+        try:
+            if now - path.stat().st_mtime < ORPHAN_MTIME_MARGIN_S:
+                continue
+        except OSError:
+            continue
+        try:
+            playback_cache_path(path).unlink(missing_ok=True)
+            path.unlink()
+            purged += 1
+        except OSError:
+            logger.exception("failed to delete orphan audio %s", path)
+            continue
+    if purged:
+        logger.info("orphan audio sweep deleted %d files", purged)
+    return purged
+
+
 _retention_stop: threading.Event | None = None
 _retention_thread: threading.Thread | None = None
 
@@ -133,6 +179,7 @@ def _retention_loop(stop_event: threading.Event) -> None:
         try:
             with Session(engine) as session:
                 purge_expired_attempt_audio(session)
+                purge_orphan_audio(session)
         except Exception:  # noqa: BLE001 - 清理是兜底，失败只记日志不能带崩线程
             logger.exception("audio retention iteration failed")
 
