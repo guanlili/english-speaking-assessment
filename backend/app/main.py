@@ -69,11 +69,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     from app.core.audio_retention import start_audio_retention, stop_audio_retention
 
     start_audio_retention()
+    # 大盘日快照（业务量回算 + 运行时峰值采样；启动时回填历史）
+    from app.core.metrics_daily import start_metrics_daily, stop_metrics_daily
+
+    start_metrics_daily()
     yield
     # 关闭评分线程池与清扫线程，避免 docker stop 时挂起
     from app.scoring.worker import shutdown_executor, stop_sweeper
 
     stop_audio_retention()
+    stop_metrics_daily()
     stop_sweeper()
     shutdown_executor()
 

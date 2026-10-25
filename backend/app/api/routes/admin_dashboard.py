@@ -9,12 +9,15 @@ from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Query
-from sqlalchemy import and_, func, select
-from sqlmodel import col
+from sqlalchemy import and_, func
+from sqlalchemy import select as sa_select
+from sqlmodel import col, select
 
 from app.api.deps import SessionDep, SuperUserDep
+from app.api.routes.metrics import collect_metrics
 from app.core.config import settings
 from app.models import (
+    AdminMetricsDaily,
     Attempt,
     AttemptItemType,
     AttemptStatus,
@@ -23,7 +26,9 @@ from app.models import (
     DashboardClassroomRow,
     DashboardContent,
     DashboardDailyPoint,
+    DashboardMetricsDay,
     DashboardOverview,
+    DashboardPerformance,
     DashboardRangeCards,
     DashboardUsage,
     Instruction,
@@ -67,7 +72,7 @@ def read_dashboard_overview(
     a = (
         session.connection()
         .execute(
-            select(
+            sa_select(
                 func.count().filter(day == today).label("t_attempts"),
                 func.count().filter(day >= since_date).label("r_attempts"),
                 func.count(func.distinct(Attempt.student_id))
@@ -97,7 +102,7 @@ def read_dashboard_overview(
     c = (
         session.connection()
         .execute(
-            select(
+            sa_select(
                 func.count(func.distinct(PracticeSession.classroom_id))
                 .filter(day == today)
                 .label("t_classrooms"),
@@ -116,7 +121,7 @@ def read_dashboard_overview(
     s = (
         session.connection()
         .execute(
-            select(
+            sa_select(
                 func.count()
                 .filter(
                     col(PracticeSession.session_date) == today,
@@ -186,7 +191,7 @@ def read_dashboard_usage(
     rows = (
         session.connection()
         .execute(
-            select(
+            sa_select(
                 day.label("day"),
                 func.count(func.distinct(Attempt.student_id)).label("active_students"),
                 func.count().label("attempts"),
@@ -226,7 +231,7 @@ def read_dashboard_usage(
     crows = (
         session.connection()
         .execute(
-            select(
+            sa_select(
                 day.label("day"),
                 func.count(func.distinct(PracticeSession.classroom_id)).label(
                     "active_classrooms"
@@ -272,7 +277,7 @@ def read_dashboard_usage(
     crow = (
         session.connection()
         .execute(
-            select(
+            sa_select(
                 col(Classroom.id),
                 col(Classroom.name),
                 col(Classroom.code),
@@ -317,7 +322,7 @@ def read_dashboard_usage(
     )
     history: dict[object, tuple[int, datetime | None]] = {}
     for cid, attempts_all, last_active in session.connection().execute(
-        select(
+        sa_select(
             col(PracticeSession.classroom_id),
             func.count(col(Attempt.id)),
             func.max(col(Attempt.created_at)),
@@ -329,7 +334,7 @@ def read_dashboard_usage(
         history[cid] = (attempts_all, last_active)
     student_counts: dict[object, int] = {}
     for cid, cnt in session.connection().execute(
-        select(col(Student.classroom_id), func.count()).group_by(
+        sa_select(col(Student.classroom_id), func.count()).group_by(
             col(Student.classroom_id)
         )
     ):
@@ -378,13 +383,13 @@ def read_dashboard_content(
         # 动态 model 走不进 sqlmodel 的标量重载，显式取标量
         return (
             session.connection()
-            .execute(select(func.count()).select_from(model))
+            .execute(sa_select(func.count()).select_from(model))
             .scalar_one()
         )
 
     roles: dict[str, int] = {}
     for role, cnt in session.connection().execute(
-        select(col(User.role), func.count()).group_by(col(User.role))
+        sa_select(col(User.role), func.count()).group_by(col(User.role))
     ):
         roles[role] = cnt
 
@@ -402,7 +407,7 @@ def read_dashboard_content(
         student_accounts=roles.get("student", 0),
         students_must_change_password=session.connection()
         .execute(
-            select(func.count())
+            sa_select(func.count())
             .select_from(User)
             .where(col(User.role) == "student", col(User.must_change_password))
         )
@@ -411,15 +416,67 @@ def read_dashboard_content(
         classrooms_total=count(Classroom),
         classrooms_active=session.connection()
         .execute(
-            select(func.count()).select_from(Classroom).where(col(Classroom.is_active))
+            sa_select(func.count()).select_from(Classroom).where(col(Classroom.is_active))
         )
         .scalar_one(),
         publishes=count(ClassroomExercise),
         publishes_exam=session.connection()
         .execute(
-            select(func.count())
+            sa_select(func.count())
             .select_from(ClassroomExercise)
             .where(col(ClassroomExercise.is_exam))
+        )
+        .scalar_one(),
+    )
+
+
+@router.get("/performance", response_model=DashboardPerformance)
+def read_dashboard_performance(
+    session: SessionDep,
+    _admin: SuperUserDep,
+    days: int = Query(default=30, ge=1, le=MAX_DAYS),
+) -> DashboardPerformance:
+    """性能与稳定区：实时快照（与 /admin/metrics 同口径）+ 日快照历史。
+
+    实时计数器自进程启动累计、重启归零（响应里带 note）；历史来自
+    admin_metrics_daily 日快照线程（当日行尚在内存峰值中，未落库）。
+    """
+    tz = ZoneInfo(settings.PRACTICE_TZ)
+    today = datetime.now(tz).date()
+    since_date = today - timedelta(days=days - 1)
+
+    rows = session.exec(
+        select(AdminMetricsDaily)
+        .where(col(AdminMetricsDaily.day) >= since_date)
+        .order_by(col(AdminMetricsDaily.day))
+    ).all()
+    history = [
+        DashboardMetricsDay(
+            date=r.day.isoformat(),
+            attempts=r.attempts,
+            attempts_done=r.attempts_done,
+            attempts_failed=r.attempts_failed,
+            active_students=r.active_students,
+            sessions=r.sessions,
+            asr_seconds=r.asr_seconds,
+            llm_calls_by_kind=r.llm_calls_by_kind,
+            provider_failures=r.provider_failures,
+            queue_max_age_s=r.queue_max_age_s,
+            pool_max_checked_out=r.pool_max_checked_out,
+        )
+        for r in rows
+    ]
+    return DashboardPerformance(
+        realtime=collect_metrics(session),
+        history=history,
+        runtime_issues_today=session.connection()
+        .execute(
+            sa_select(func.count())
+            .select_from(PracticeSession)
+            .where(
+                col(PracticeSession.session_date) == today,
+                col(PracticeSession.runtime_issue).is_not(None),
+            )
         )
         .scalar_one(),
     )

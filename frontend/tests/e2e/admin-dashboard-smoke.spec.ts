@@ -32,4 +32,8 @@ test("管理端平台大盘渲染", async ({ page }) => {
 
   // 资产区标题在
   await expect(page.getByText(/资产与账号|Content & accounts/)).toBeVisible()
+
+  // 性能与稳定区渲染（实时轮询区）
+  await expect(page.getByText(/性能与稳定|Performance & health/)).toBeVisible()
+  await expect(page.getByText("评分队列", { exact: true })).toBeVisible()
 })

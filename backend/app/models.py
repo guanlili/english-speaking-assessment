@@ -2832,3 +2832,57 @@ class DashboardContent(SQLModel):
     classrooms_active: int
     publishes: int
     publishes_exam: int
+
+
+class AdminMetricsDaily(SQLModel, table=True):
+    """大盘日快照：业务量精确回算自明细表；运行时峰值来自进程内采样
+    （重启丢当日峰值前的样本，字段为 null 表示当日无采样）。"""
+
+    __tablename__ = "admin_metrics_daily"
+
+    day: date = Field(sa_type=Date, primary_key=True)
+    attempts: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    attempts_done: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    attempts_failed: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    active_students: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    sessions: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    # 当日作答音频总秒数（ASR 用量计费基数；P2 费用区复用）
+    asr_seconds: float = Field(default=0.0, sa_column_kwargs={"server_default": "0"})
+    # 进程计数器的当日增量（重启容忍：基线重置后增量从 0 起算）
+    llm_calls_by_kind: dict[str, int] | None = Field(
+        default=None, sa_type=JSON
+    )
+    provider_failures: dict[str, int] | None = Field(
+        default=None, sa_type=JSON
+    )
+    # 当日观测峰值（60s 采样；无样本为 null）
+    queue_max_age_s: float | None = Field(default=None)
+    pool_max_checked_out: int | None = Field(default=None)
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class DashboardMetricsDay(SQLModel):
+    """大盘性能区历史行（API 响应用，非表）。"""
+
+    date: str
+    attempts: int
+    attempts_done: int
+    attempts_failed: int
+    active_students: int
+    sessions: int
+    asr_seconds: float
+    llm_calls_by_kind: dict[str, int] | None = None
+    provider_failures: dict[str, int] | None = None
+    queue_max_age_s: float | None = None
+    pool_max_checked_out: int | None = None
+
+
+class DashboardPerformance(SQLModel):
+    """大盘性能区：实时快照（与 /admin/metrics 同口径）+ 日快照历史。"""
+
+    realtime: dict[str, object]
+    history: list[DashboardMetricsDay]
+    runtime_issues_today: int

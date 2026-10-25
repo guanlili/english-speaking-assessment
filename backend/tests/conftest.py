@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.core.db import init_db
 from app.main import app
 from app.models import (
+    AdminMetricsDaily,
     Attempt,
     Classroom,
     Passage,
@@ -120,6 +121,7 @@ def db() -> Generator[Session]:
         session.exec(delete(VocabularyBookItem))  # type: ignore[call-overload]
         session.exec(delete(VocabularyBook))  # type: ignore[call-overload]
         session.exec(delete(VocabularyWord))  # type: ignore[call-overload]
+        session.exec(delete(AdminMetricsDaily))  # type: ignore[call-overload]
         session.exec(delete(Attempt))  # type: ignore[call-overload]
         session.exec(delete(PracticeSession))  # type: ignore[call-overload]
         session.exec(delete(StudentBadge))  # type: ignore[call-overload]

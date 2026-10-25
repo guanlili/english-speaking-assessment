@@ -478,11 +478,43 @@ export type DashboardDailyPoint = {
     repeat_completeness_avg: (number | null);
 };
 
+/**
+ * 大盘性能区历史行（API 响应用，非表）。
+ */
+export type DashboardMetricsDay = {
+    date: string;
+    attempts: number;
+    attempts_done: number;
+    attempts_failed: number;
+    active_students: number;
+    sessions: number;
+    asr_seconds: number;
+    llm_calls_by_kind?: ({
+    [key: string]: (number);
+} | null);
+    provider_failures?: ({
+    [key: string]: (number);
+} | null);
+    queue_max_age_s?: (number | null);
+    pool_max_checked_out?: (number | null);
+};
+
 export type DashboardOverview = {
     days: number;
     range_start: string;
     today: DashboardRangeCards;
     range: DashboardRangeCards;
+};
+
+/**
+ * 大盘性能区：实时快照（与 /admin/metrics 同口径）+ 日快照历史。
+ */
+export type DashboardPerformance = {
+    realtime: {
+        [key: string]: unknown;
+    };
+    history: Array<DashboardMetricsDay>;
+    runtime_issues_today: number;
 };
 
 /**
@@ -2742,6 +2774,12 @@ export type AdminReadDashboardUsageData = {
 export type AdminReadDashboardUsageResponse = (DashboardUsage);
 
 export type AdminReadDashboardContentResponse = (DashboardContent);
+
+export type AdminReadDashboardPerformanceData = {
+    days?: number;
+};
+
+export type AdminReadDashboardPerformanceResponse = (DashboardPerformance);
 
 export type AdminReadExamItemSettingsData = {
     itemId: string;

@@ -100,8 +100,11 @@ def _db_pool_stats() -> dict[str, Any]:
     }
 
 
-@router.get("")
-def read_metrics(session: SessionDep, _superuser: SuperUserDep) -> Any:
+def collect_metrics(session: Session) -> dict[str, Any]:
+    """实时指标快照（评分队列/引擎失败率/连接池/音频存储）。
+
+    /admin/metrics 与大盘性能区共用一份口径；进程内计数器重启归零。
+    """
     stats = call_stats()
     return {
         "process": PROCESS_INFO,
@@ -144,3 +147,8 @@ def read_metrics(session: SessionDep, _superuser: SuperUserDep) -> Any:
         "audio_storage": _audio_storage_stats(),
         "note": "进程内计数器，重启归零；趋势看增量",
     }
+
+
+@router.get("")
+def read_metrics(session: SessionDep, _superuser: SuperUserDep) -> Any:
+    return collect_metrics(session)
