@@ -44,8 +44,7 @@ function ExportCard() {
         zh: "每个学生一行：作答量、均分、XP、连胜",
         en: "One row per student: volume, averages, XP, streaks",
       }),
-      download: () =>
-        AdminService.exportStudentsCsv().then((r) => r as string),
+      download: () => AdminService.exportStudentsCsv().then((r) => r as string),
       filename: "usage-students.csv",
     },
   ]
