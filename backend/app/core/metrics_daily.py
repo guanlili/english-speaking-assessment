@@ -86,6 +86,7 @@ def upsert_daily_snapshot(
     llm_tokens_out: int | None = None,
     queue_max_age_s: float | None = None,
     pool_max_checked_out: int | None = None,
+    audio_orphans: int | None = None,
 ) -> AdminMetricsDaily:
     """写/覆盖一行的日快照（按日期幂等；跨日落日与回填共用）。"""
     if business is None:
@@ -111,6 +112,8 @@ def upsert_daily_snapshot(
         row.queue_max_age_s = queue_max_age_s
     if pool_max_checked_out is not None:
         row.pool_max_checked_out = pool_max_checked_out
+    if audio_orphans is not None:
+        row.audio_orphans = audio_orphans
     row.updated_at = get_datetime_utc()
     session.commit()
     session.refresh(row)
@@ -360,6 +363,10 @@ class _DayPeakTracker:
         # 真有用量时写——0 也是"未记到"，写 0 会把空采样日冒充"已记账"
         # （费用区按调用日覆盖率切计费基数）
         has_tokens = self.llm_tokens_in > 0 or self.llm_tokens_out > 0
+        # 孤儿音频数：复用 /admin/metrics 的 60s 缓存统计（不额外扫盘）
+        from app.api.routes.metrics import _audio_storage_stats
+
+        orphans = _audio_storage_stats(session).get("orphan_count")
         upsert_daily_snapshot(
             session,
             today,
@@ -369,6 +376,7 @@ class _DayPeakTracker:
             llm_tokens_out=self.llm_tokens_out if has_tokens else None,
             queue_max_age_s=self.queue_max_age_s,
             pool_max_checked_out=self.pool_max_checked_out,
+            audio_orphans=orphans,
         )
 
 

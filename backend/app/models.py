@@ -2854,6 +2854,8 @@ class AdminMetricsDaily(SQLModel, table=True):
     # 费用区该月回退「调用次数 × 估算 token」
     llm_tokens_in: int | None = Field(default=None)
     llm_tokens_out: int | None = Field(default=None)
+    # 当日观测到的孤儿音频数（无引用的顶层文件；每日清理循环回收）
+    audio_orphans: int | None = Field(default=None)
     provider_failures: dict[str, int] | None = Field(default=None, sa_type=JSON)
     # 当日观测峰值（60s 采样；无样本为 null）
     queue_max_age_s: float | None = Field(default=None)
@@ -2878,6 +2880,7 @@ class DashboardMetricsDay(SQLModel):
     provider_failures: dict[str, int] | None = None
     queue_max_age_s: float | None = None
     pool_max_checked_out: int | None = None
+    audio_orphans: int | None = None
 
 
 class DashboardPerformance(SQLModel):

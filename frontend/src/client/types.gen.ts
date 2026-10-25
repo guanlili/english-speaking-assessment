@@ -540,6 +540,7 @@ export type DashboardMetricsDay = {
 } | null);
     queue_max_age_s?: (number | null);
     pool_max_checked_out?: (number | null);
+    audio_orphans?: (number | null);
 };
 
 export type DashboardOverview = {

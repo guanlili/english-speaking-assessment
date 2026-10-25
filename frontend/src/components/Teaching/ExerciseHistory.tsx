@@ -150,6 +150,11 @@ export function ExerciseHistory({
                     ? t({ zh: "当前发布", en: "Current publish" })
                     : t({ zh: "已归档", en: "Archived" })}
                 </Badge>
+                {exercise.is_exam && (
+                  <Badge className="border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/10">
+                    {t({ zh: "模考", en: "Exam" })}
+                  </Badge>
+                )}
                 <span>
                   {t({
                     zh: `${exercise.item_count} 道题`,

@@ -469,6 +469,7 @@ def read_dashboard_performance(
             provider_failures=r.provider_failures,
             queue_max_age_s=r.queue_max_age_s,
             pool_max_checked_out=r.pool_max_checked_out,
+            audio_orphans=r.audio_orphans,
         )
         for r in rows
     ]

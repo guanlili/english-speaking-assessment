@@ -532,4 +532,6 @@ def test_tracker_token_carry_across_restart(
     assert row is not None
     assert row.llm_tokens_in == 1200  # carry 1000 + 200
     assert row.llm_tokens_out == 700
+    # 孤儿音频数随采样落当日行（复用 metrics 的缓存统计，此处至少非空）
+    assert isinstance(row.audio_orphans, int)
     m.reset_for_tests()

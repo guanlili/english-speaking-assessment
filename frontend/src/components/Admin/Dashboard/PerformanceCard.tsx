@@ -99,7 +99,11 @@ function PerformanceCard({
         avg_seconds?: number
       }
     >
-    audio_storage?: { total_bytes?: number; file_count?: number }
+    audio_storage?: {
+      total_bytes?: number
+      file_count?: number
+      orphan_count?: number
+    }
     process?: { started_at?: string }
   }
   const scoring = rt.scoring
@@ -240,6 +244,12 @@ function PerformanceCard({
             <p className="text-xs text-muted-foreground tabular-nums">
               {t({ zh: "文件", en: "files" })}{" "}
               {rt.audio_storage?.file_count ?? 0}
+              {(rt.audio_storage?.orphan_count ?? 0) > 0 ? (
+                <span className="ml-1 text-amber-600">
+                  {t({ zh: "孤儿", en: "orphan" })}{" "}
+                  {rt.audio_storage?.orphan_count}
+                </span>
+              ) : null}
             </p>
           </div>
           <div className="rounded-xl border p-3">
@@ -282,13 +292,16 @@ function PerformanceCard({
                 <TableHead className="hidden lg:table-cell text-right">
                   {t({ zh: "引擎失败", en: "Engine failures" })}
                 </TableHead>
+                <TableHead className="hidden lg:table-cell text-right">
+                  {t({ zh: "孤儿音频", en: "Orphans" })}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {history.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className="py-6 text-center text-muted-foreground"
                   >
                     {t({
@@ -325,6 +338,9 @@ function PerformanceCard({
                             0,
                           ) || "—"
                         : "—"}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell text-right tabular-nums">
+                      {h.audio_orphans ?? "—"}
                     </TableCell>
                   </TableRow>
                 ))
