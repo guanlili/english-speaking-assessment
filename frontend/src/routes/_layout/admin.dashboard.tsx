@@ -6,6 +6,7 @@ import { AdminService } from "@/client"
 import ClassroomRankCard from "@/components/Admin/Dashboard/ClassroomRankCard"
 import ContentAssetsCard from "@/components/Admin/Dashboard/ContentAssetsCard"
 import OverviewCards from "@/components/Admin/Dashboard/OverviewCards"
+import PerformanceCard from "@/components/Admin/Dashboard/PerformanceCard"
 import {
   ItemDistributionCard,
   UsageTrendCard,
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { APP_NAME } from "@/config"
 import { useI18n } from "@/lib/i18n"
+import { pollWhileVisible } from "@/lib/poll"
 
 /** 时间档位：值即后端 days 参数；「全部」用大窗口近似。 */
 const RANGES = [
@@ -54,6 +56,12 @@ function AdminDashboardPage() {
     queryKey: ["admin", "dashboard", "content"],
     queryFn: () => AdminService.readDashboardContent(),
     staleTime: 5 * 60 * 1000,
+  })
+  // 性能区固定看近 14 天（与页面时间档解耦：选「全部」不该拉 3650 天）
+  const performanceQuery = useQuery({
+    queryKey: ["admin", "dashboard", "performance"],
+    queryFn: () => AdminService.readDashboardPerformance({ days: 14 }),
+    refetchInterval: pollWhileVisible(30_000),
   })
 
   const rangeLabel =
@@ -136,6 +144,15 @@ function AdminDashboardPage() {
             pending={usageQuery.isPending}
           />
         </>
+      )}
+
+      {performanceQuery.isError ? (
+        <QueryErrorCard retry={() => performanceQuery.refetch()} />
+      ) : (
+        <PerformanceCard
+          data={performanceQuery.data}
+          pending={performanceQuery.isPending}
+        />
       )}
 
       {contentQuery.isError ? (

@@ -89,11 +89,24 @@ def test_metrics_queue_counts_reflect_attempts(
 def test_metrics_db_pool_water_level(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    """db_pool 四项水位为非负整数：考试高峰是否打满在 /admin/metrics 看。"""
+    """db_pool 水位与容量口径：考试高峰是否打满在 /admin/metrics 看。
+
+    capacity = pool_size + max_overflow 是配置容量（大盘水位条的分母）；
+    overflow 是当前溢出计数，未溢出时可为负（冷启动 -pool_size），不做
+    非负断言。
+    """
     resp = client.get("/api/v1/admin/metrics", headers=superuser_token_headers)
     assert resp.status_code == 200
     pool = resp.json()["db_pool"]
-    assert set(pool) == {"pool_size", "checked_in", "checked_out", "overflow"}
-    for value in pool.values():
-        assert isinstance(value, int) and value >= 0
+    assert set(pool) == {
+        "pool_size",
+        "max_overflow",
+        "capacity",
+        "checked_in",
+        "checked_out",
+        "overflow",
+    }
+    for key in ("pool_size", "max_overflow", "capacity", "checked_in"):
+        assert isinstance(pool[key], int) and pool[key] >= 0, key
+    assert pool["capacity"] == pool["pool_size"] + pool["max_overflow"]
     assert pool["pool_size"] >= 1
