@@ -29,11 +29,17 @@ def _purge(db: Session) -> None:
 
 
 def _attempt(
-    db: Session, student_id: uuid.UUID, day: date, *, status: str, dur: float = 5.0
+    db: Session,
+    student_id: uuid.UUID,
+    day: date,
+    *,
+    status: str,
+    dur: float = 5.0,
+    item_type: str = "question",
 ) -> None:
     db.add(
         Attempt(
-            item_type="question",
+            item_type=item_type,
             item_id=uuid.uuid4(),
             student_id=student_id,
             audio_path="t.webm",
@@ -137,7 +143,7 @@ def test_backfill_only_missing_rows(
     backfill_history(db, today)
     refreshed_stale = db.get(AdminMetricsDaily, day2)
     assert refreshed_stale is not None
-    # day2 无作答 → 无估算来源，保持 None（不为空数据伪造调用）
+    # day2 无作答 → 不在 agg，行未被动过（SQL NULL 语义位保持）
     assert refreshed_stale.llm_calls_by_kind is None
     # day3 存量非 null → 不被回填估算覆盖
     sampled_row = db.get(AdminMetricsDaily, day3)
@@ -152,6 +158,23 @@ def test_backfill_only_missing_rows(
     row1 = db.get(AdminMetricsDaily, day1)
     assert row1 is not None
     assert row1.llm_calls_by_kind == {"llm_rubric": 1}
+
+    # 有作答但全非问答题（朗读/跟读）的日子：回算为 {} 而非 None——
+    # JSON 列写 None 会落成 JSON 'null'（测试里给该列赋 None 亦然），
+    # 破坏 SQL NULL=未处理的语义位
+    repeat_day = today - timedelta(days=5)
+    _attempt(
+        db,
+        uuid.UUID(ada["student"]["id"]),
+        repeat_day,
+        status="done",
+        item_type="repeat",
+    )
+    db.commit()
+    backfill_history(db, today)
+    row_r = db.get(AdminMetricsDaily, repeat_day)
+    assert row_r is not None
+    assert row_r.llm_calls_by_kind == {}
 
 
 def test_performance_endpoint_gates_and_shape(

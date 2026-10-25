@@ -193,7 +193,9 @@ def backfill_history(session: Session, today: date) -> int:
         if not a:
             continue
         llm = a["llm_calls_by_kind"]
-        row.llm_calls_by_kind = llm if isinstance(llm, dict) else None
+        # 空估算来源写 {}（回算过、无 LLM 调用）：JSON 列赋 None 会被
+        # 序列化成 JSON 'null'，破坏 SQL NULL=未处理的语义位
+        row.llm_calls_by_kind = llm if isinstance(llm, dict) else {}
         patched += 1
     if patched:
         session.commit()
@@ -216,8 +218,8 @@ def backfill_history(session: Session, today: date) -> int:
                 active_students=cast(int, a["active_students"]),
                 sessions=cast(int, a["sessions"]),
                 asr_seconds=cast(float, a["asr_seconds"]),
-                llm_calls_by_kind=cast(  # type: ignore[invalid-argument-type]
-                    "dict[str, int] | None", llm if isinstance(llm, dict) else None
+                llm_calls_by_kind=cast(
+                    "dict[str, int]", llm if isinstance(llm, dict) else {}
                 ),
                 updated_at=get_datetime_utc(),
             )
