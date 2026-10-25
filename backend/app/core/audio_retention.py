@@ -130,7 +130,6 @@ def purge_expired_attempt_audio(session: Session) -> int:
     return purged
 
 
-
 def purge_orphan_audio(session: Session) -> int:
     """删除库中已无作答记录引用的孤儿音频文件，返回本轮删除数。
 
@@ -141,9 +140,7 @@ def purge_orphan_audio(session: Session) -> int:
     storage = Path(settings.AUDIO_STORAGE_DIR).resolve()
     if not storage.is_dir():
         return 0
-    referenced = {
-        Path(p).name for p in session.exec(select(Attempt.audio_path)).all()
-    }
+    referenced = {Path(p).name for p in session.exec(select(Attempt.audio_path)).all()}
     now = time.time()
     purged = 0
     for path in storage.iterdir():
