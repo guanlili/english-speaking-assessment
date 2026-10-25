@@ -122,6 +122,9 @@ def db() -> Generator[Session]:
         session.exec(delete(VocabularyBook))  # type: ignore[call-overload]
         session.exec(delete(VocabularyWord))  # type: ignore[call-overload]
         session.exec(delete(AdminMetricsDaily))  # type: ignore[call-overload]
+        from app.models import AdminCostReconcile
+
+        session.exec(delete(AdminCostReconcile))  # type: ignore[call-overload]
         session.exec(delete(Attempt))  # type: ignore[call-overload]
         session.exec(delete(PracticeSession))  # type: ignore[call-overload]
         session.exec(delete(StudentBadge))  # type: ignore[call-overload]

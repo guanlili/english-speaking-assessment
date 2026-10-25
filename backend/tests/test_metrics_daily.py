@@ -9,7 +9,12 @@ from sqlmodel import Session, delete, select
 
 from app.core.config import settings
 from app.core.metrics_daily import backfill_history, upsert_daily_snapshot
-from app.models import AdminMetricsDaily, Attempt, PracticeSession
+from app.models import (
+    AdminCostReconcile,
+    AdminMetricsDaily,
+    Attempt,
+    PracticeSession,
+)
 from tests.utils.credential import make_student
 
 tz = ZoneInfo(settings.PRACTICE_TZ)
@@ -19,6 +24,7 @@ def _purge(db: Session) -> None:
     db.exec(delete(Attempt))  # type: ignore[call-overload]
     db.exec(delete(PracticeSession))  # type: ignore[call-overload]
     db.exec(delete(AdminMetricsDaily))  # type: ignore[call-overload]
+    db.exec(delete(AdminCostReconcile))  # type: ignore[call-overload]
     db.commit()
 
 
@@ -192,3 +198,101 @@ def test_daily_snapshot_carry_across_tracker_restart(
     # 峰值不回退；空 dict/真值区分由采样路径写真值保证
     assert row.pool_max_checked_out == 4
     assert row.queue_max_age_s == 12.0
+
+
+def test_cost_endpoint_and_reconcile(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """费用区：月度估算数学 + 对账录入与偏差 + 权限门。"""
+    from app.core.config import settings as cfg
+    from app.models import AdminCostReconcile
+
+    _purge(db)
+    today = datetime.now(tz).date()
+    this_month = f"{today.year:04d}-{today.month:02d}"
+    # 本月 2 条快照：合计 3600s ASR（=1h → ¥4.5）、llm 100 次调用
+    for day in (today - timedelta(days=1), today):
+        upsert_daily_snapshot(
+            db,
+            day,
+            business={
+                "attempts": 10,
+                "attempts_done": 10,
+                "attempts_failed": 0,
+                "active_students": 5,
+                "sessions": 2,
+                "asr_seconds": 1800.0,
+            },
+            llm_calls_by_kind={"llm_rubric": 50},
+        )
+
+    # 401 / 403
+    assert client.get("/api/v1/admin/dashboard/cost").status_code == 401
+    resp = client.get("/api/v1/admin/dashboard/cost", headers=superuser_token_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    months = {m["month"]: m for m in body["months"]}
+    assert this_month in months
+    m = months[this_month]
+    assert m["asr_seconds"] == 3600.0
+    assert m["llm_calls"] == 100
+    assert m["asr_cny"] == round(cfg.COST_ASR_CNY_PER_HOUR, 2)
+    per_call = (
+        cfg.COST_LLM_CNY_PER_MTOK_IN * cfg.COST_LLM_EST_TOKENS_IN
+        + cfg.COST_LLM_CNY_PER_MTOK_OUT * cfg.COST_LLM_EST_TOKENS_OUT
+    ) / 1_000_000
+    assert m["llm_cny"] == round(100 * per_call, 2)
+    assert m["total_cny"] == round(m["asr_cny"] + m["llm_cny"] + m["server_cny"], 2)
+    assert m["attempts"] == 20
+    assert m["actual_cny"] is None
+
+    # 对账录入（合法月份 + 非法月份）
+    resp = client.put(
+        "/api/v1/admin/dashboard/cost/reconcile",
+        json={"month": this_month, "amount_cny": 260.0},
+        headers=superuser_token_headers,
+    )
+    assert resp.status_code == 200
+    assert (
+        client.put(
+            "/api/v1/admin/dashboard/cost/reconcile",
+            json={"month": "2026-13", "amount_cny": 1.0},
+            headers=superuser_token_headers,
+        ).status_code
+        == 422
+    )
+
+    resp = client.get("/api/v1/admin/dashboard/cost", headers=superuser_token_headers)
+    m = {x["month"]: x for x in resp.json()["months"]}[this_month]
+    assert m["actual_cny"] == 260.0
+    assert m["deviation_pct"] is not None
+    assert db.get(AdminCostReconcile, this_month) is not None
+
+
+def test_queue_age_alert_rate_limited(monkeypatch) -> None:
+    """队列告警：超阈发信、当日限一封、阈值内不发、未配置收件人关闭。"""
+    from app.core import metrics_daily
+    from app.core.config import settings as cfg
+
+    sent: list[str] = []
+    monkeypatch.setattr(settings, "COST_ALERT_EMAIL", "ops@example.com")
+    monkeypatch.setattr(
+        "app.utils.send_email", lambda **kw: sent.append(kw["email_to"])
+    )
+    # 重置当日限频标记
+    metrics_daily._alert_sent_day = None
+
+    # 未超阈：不发
+    assert metrics_daily.maybe_alert_queue_age(60) is False
+    assert sent == []
+    # 超阈：发一次；当日再超：限频
+    assert metrics_daily.maybe_alert_queue_age(cfg.ALERT_QUEUE_AGE_S + 1) is True
+    assert sent == ["ops@example.com"]
+    assert metrics_daily.maybe_alert_queue_age(cfg.ALERT_QUEUE_AGE_S + 999) is False
+    assert len(sent) == 1
+    # 未配置收件人：关闭
+    monkeypatch.setattr(settings, "COST_ALERT_EMAIL", "")
+    metrics_daily._alert_sent_day = None
+    assert metrics_daily.maybe_alert_queue_age(cfg.ALERT_QUEUE_AGE_S + 1) is False
+    monkeypatch.setattr(settings, "COST_ALERT_EMAIL", None)
+    assert metrics_daily.maybe_alert_queue_age(cfg.ALERT_QUEUE_AGE_S + 1) is False

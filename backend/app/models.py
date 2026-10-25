@@ -2882,3 +2882,47 @@ class DashboardPerformance(SQLModel):
     realtime: dict[str, object]
     history: list[DashboardMetricsDay]
     runtime_issues_today: int
+
+
+class AdminCostReconcile(SQLModel, table=True):
+    """费用对账：管理员手工录入的当月实际账单金额（估算 vs 实际）。"""
+
+    __tablename__ = "admin_cost_reconcile"
+
+    # 月份 'YYYY-MM'（主键；展示层补 '-01' 成日期处理）
+    month: str = Field(max_length=7, primary_key=True)
+    amount_cny: float = Field(gt=0)
+    note: str | None = Field(default=None, max_length=500)
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class DashboardCostMonth(SQLModel):
+    """费用月度行：分项估算 + 实际对账（未录为 null）。"""
+
+    month: str
+    asr_seconds: float
+    llm_calls: int
+    asr_cny: float
+    llm_cny: float
+    server_cny: float
+    total_cny: float
+    attempts: int
+    # 实际账单（对账录入；未录 null）
+    actual_cny: float | None = None
+    deviation_pct: float | None = None
+
+
+class DashboardCost(SQLModel):
+    months: list[DashboardCostMonth]
+    prices: dict[str, float]
+    note: str
+
+
+class AdminCostReconcileIn(SQLModel):
+    # 月份格式 YYYY-MM 在接口层校验（SQLModel Field 不支持 pattern）
+    month: str = Field(max_length=7)
+    amount_cny: float = Field(gt=0)
+    note: str | None = Field(default=None, max_length=500)

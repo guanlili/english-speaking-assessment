@@ -144,6 +144,20 @@ class Settings(BaseSettings):
     # 是否开放自助注册。代码默认关（安全兜底）；本地 .env.example 开着便于开发演示，
     # 生产由 GitHub Secrets 控制（deploy.yml 默认写 false）
     USERS_OPEN_REGISTRATION: bool = False
+    # ── 大盘费用区（估算口径，实际以云账单为准）─────────────────────
+    # 单价为公开按量价（docs/pricing-assessment-2026-10.md），env 可覆盖
+    COST_ASR_CNY_PER_HOUR: float = 4.5
+    COST_LLM_CNY_PER_MTOK_IN: float = 0.6
+    COST_LLM_CNY_PER_MTOK_OUT: float = 3.6
+    # LLM 单次调用估算 token（问答题 rubric 实测量级 ~600 进 + ~600 出）
+    COST_LLM_EST_TOKENS_IN: int = 600
+    COST_LLM_EST_TOKENS_OUT: int = 600
+    # 服务器固定成本（SA2.LARGE16 裸价；换机时改 env）
+    COST_SERVER_CNY_PER_MONTH: float = 185.0
+    # 队列告警收件人（留空=告警邮件关闭，面板红黄标始终有效）；
+    # 阈值与性能区口径一致：>25 分钟（QUEUED_STALE_TIMEOUT_S 重投预警）
+    COST_ALERT_EMAIL: str | None = None
+    ALERT_QUEUE_AGE_S: int = 25 * 60
 
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":

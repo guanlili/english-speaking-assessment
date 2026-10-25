@@ -254,6 +254,48 @@ _thread_stop: threading.Event | None = None
 _thread: threading.Thread | None = None
 
 
+_alert_sent_day: date | None = None
+
+
+def maybe_alert_queue_age(queue_max_age_s: float | None) -> bool:
+    """队列最老排队超阈值时发告警邮件（当日限一封）。
+
+    收件人 COST_ALERT_EMAIL 留空 = 告警邮件关闭（面板红黄标始终有效）。
+    返回是否发出。测试通过替换 utils.send_email 验证。
+    """
+    global _alert_sent_day
+    from app.core.config import settings
+
+    today = datetime.now(_tz()).date()
+    if (
+        not settings.COST_ALERT_EMAIL
+        or queue_max_age_s is None
+        or queue_max_age_s < settings.ALERT_QUEUE_AGE_S
+    ):
+        return False
+    if _alert_sent_day == today:
+        return False
+    from app.utils import send_email
+
+    try:
+        send_email(
+            email_to=settings.COST_ALERT_EMAIL,
+            subject=("[speakup] 评分队列堆积告警 / scoring queue backlog alert"),
+            html_content=(
+                f"<p>评分队列最老排队已 {int(queue_max_age_s / 60)} 分钟"
+                f"（阈值 {settings.ALERT_QUEUE_AGE_S // 60} 分钟）。</p>"
+                "<p>请查看管理端大盘「性能与稳定」区，并确认评分 worker 状态。</p>"
+                "<p>Oldest queued scoring attempt has exceeded the alert "
+                "threshold. Check the admin dashboard performance zone.</p>"
+            ),
+        )
+    except Exception:  # noqa: BLE001 - 邮件失败不影响采样线程
+        logger.exception("queue age alert email failed")
+        return False
+    _alert_sent_day = today
+    return True
+
+
 def _daily_loop(stop_event: threading.Event) -> None:
     tz = _tz()
     current_day = datetime.now(tz).date()
@@ -270,6 +312,7 @@ def _daily_loop(stop_event: threading.Event) -> None:
                     current_day = now_day
                     continue
                 _tracker.sample(session)
+                maybe_alert_queue_age(_tracker.queue_max_age_s)
         except Exception:  # noqa: BLE001 - 采样是兜底，失败只记日志
             logger.exception("metrics daily sample failed")
 

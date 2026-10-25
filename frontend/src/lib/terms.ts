@@ -151,6 +151,11 @@ export const EXPLAIN = {
     zh: "区间内上报过设备/音频/上传异常的练习轮数 + 评分失败的作答数（累计口径，学生重试成功也会保留记录）。要看的实时课堂异常请在教师端「课堂诊断」。",
     en: "Practice rounds that reported a device/audio/upload issue plus failed scoring attempts in range (cumulative; a later successful retry keeps the record). For live classroom issues use the teacher-side diagnostics.",
   },
+  /** 管理员大盘：费用估算口径 */
+  dashboard_cost: {
+    zh: "语音识别按作答音频秒数×单价（精确）；语言模型按调用量×估算 token；服务器为固定月费。估算仅供趋势参考，实际以云账单为准，可用「实际账单」录入校准。",
+    en: "ASR is exact (audio seconds × rate); the LLM figure estimates tokens from call counts; the server is a fixed monthly fee. Estimates are indicative — reconcile against actual cloud bills.",
+  },
   /** 管理员大盘：沉默课堂判定 */
   dashboard_silent: {
     zh: "历史用过、但最近 14 天零提交的课堂，用于提醒推动使用。",
