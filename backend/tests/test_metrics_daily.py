@@ -99,7 +99,8 @@ def test_backfill_only_missing_rows(
     assert written == 3  # day3/day2/day1 各补一行
     row3 = db.get(AdminMetricsDaily, day3)
     assert row3 is not None and row3.attempts == 1
-    assert db.get(AdminMetricsDaily, today - timedelta(days=2)).attempts == 0
+    row2 = db.get(AdminMetricsDaily, today - timedelta(days=2))
+    assert row2 is not None and row2.attempts == 0
 
     # 再跑一遍：全部已存在，零写入
     assert backfill_history(db, today) == 0
