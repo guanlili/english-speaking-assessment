@@ -34,7 +34,7 @@ _AUDIO_CACHE_TTL_S = 60.0
 def _audio_storage_stats(session: Session) -> dict[str, Any]:
     """统计音频目录（含 content/ 标准音）：总字节、文件数与孤儿数。
 
-    孤儿 = 存储根顶层文件中 basename 不被任何 attempt.audio_path 引用
+    残留（orphan）= 存储根顶层文件中 basename 不被任何 attempt.audio_path 引用
     的数量（删班残留，每日清理循环会回收）；60s 缓存。
     """
     global _audio_cache, _audio_cached_at
