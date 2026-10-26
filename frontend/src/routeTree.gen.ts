@@ -18,6 +18,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
+import { Route as LayoutChangelogRouteImport } from './routes/_layout/changelog'
 import { Route as LayoutClassroomsRouteImport } from './routes/_layout/classrooms'
 import { Route as LayoutCreateRouteImport } from './routes/_layout/create'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
@@ -96,6 +97,11 @@ const LayoutIndexRoute = LayoutIndexRouteImport.update({
 const LayoutAdminRoute = LayoutAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutChangelogRoute = LayoutChangelogRouteImport.update({
+  id: '/changelog',
+  path: '/changelog',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutClassroomsRoute = LayoutClassroomsRouteImport.update({
@@ -284,6 +290,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin': typeof LayoutAdminRouteWithChildren
+  '/changelog': typeof LayoutChangelogRoute
   '/classrooms': typeof LayoutClassroomsRoute
   '/create': typeof LayoutCreateRoute
   '/settings': typeof LayoutSettingsRoute
@@ -327,6 +334,7 @@ export interface FileRoutesByTo {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/changelog': typeof LayoutChangelogRoute
   '/classrooms': typeof LayoutClassroomsRoute
   '/create': typeof LayoutCreateRoute
   '/settings': typeof LayoutSettingsRoute
@@ -370,6 +378,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/_layout/admin': typeof LayoutAdminRouteWithChildren
+  '/_layout/changelog': typeof LayoutChangelogRoute
   '/_layout/classrooms': typeof LayoutClassroomsRoute
   '/_layout/create': typeof LayoutCreateRoute
   '/_layout/settings': typeof LayoutSettingsRoute
@@ -418,6 +427,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/admin'
+    | '/changelog'
     | '/classrooms'
     | '/create'
     | '/settings'
@@ -461,6 +471,7 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/changelog'
     | '/classrooms'
     | '/create'
     | '/settings'
@@ -503,6 +514,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/_layout/admin'
+    | '/_layout/changelog'
     | '/_layout/classrooms'
     | '/_layout/create'
     | '/_layout/settings'
@@ -624,6 +636,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof LayoutAdminRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/changelog': {
+      id: '/_layout/changelog'
+      path: '/changelog'
+      fullPath: '/changelog'
+      preLoaderRoute: typeof LayoutChangelogRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/classrooms': {
@@ -906,6 +925,7 @@ const LayoutAdminRouteWithChildren = LayoutAdminRoute._addFileChildren(
 
 interface LayoutRouteChildren {
   LayoutAdminRoute: typeof LayoutAdminRouteWithChildren
+  LayoutChangelogRoute: typeof LayoutChangelogRoute
   LayoutClassroomsRoute: typeof LayoutClassroomsRoute
   LayoutCreateRoute: typeof LayoutCreateRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
@@ -914,6 +934,7 @@ interface LayoutRouteChildren {
 
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutAdminRoute: LayoutAdminRouteWithChildren,
+  LayoutChangelogRoute: LayoutChangelogRoute,
   LayoutClassroomsRoute: LayoutClassroomsRoute,
   LayoutCreateRoute: LayoutCreateRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,

@@ -13,6 +13,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Index,
+    Text,
     UniqueConstraint,
     text,
 )
@@ -2943,3 +2944,59 @@ class AdminCostReconcileIn(SQLModel):
     month: str = Field(max_length=7)
     amount_cny: float = Field(gt=0)
     note: str | None = Field(default=None, max_length=500)
+
+
+class ChangelogEntry(SQLModel, table=True):
+    """平台更新日志：管理员发布，教师与管理员可见（学生端不开放）。
+
+    date 是面向读者的发布日期（手动指定，允许补录），排序按
+    (date, created_at) 倒序；kind 为空表示无类型标签。
+    """
+
+    __tablename__ = "changelog_entry"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    day: date = Field(sa_type=Date, index=True)
+    kind: str | None = Field(default=None, max_length=16)
+    title_zh: str = Field(min_length=1, max_length=200)
+    title_en: str = Field(min_length=1, max_length=200)
+    body_zh: str | None = Field(default=None, sa_type=Text)
+    body_en: str | None = Field(default=None, sa_type=Text)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class ChangelogCreate(SQLModel):
+    day: date
+    kind: str | None = Field(default=None, max_length=16)
+    title_zh: str = Field(min_length=1, max_length=200)
+    title_en: str = Field(min_length=1, max_length=200)
+    body_zh: str | None = Field(default=None, max_length=5000)
+    body_en: str | None = Field(default=None, max_length=5000)
+
+
+class ChangelogUpdate(SQLModel):
+    day: date | None = None
+    kind: str | None = None
+    title_zh: str | None = Field(default=None, min_length=1, max_length=200)
+    title_en: str | None = Field(default=None, min_length=1, max_length=200)
+    body_zh: str | None = Field(default=None, max_length=5000)
+    body_en: str | None = Field(default=None, max_length=5000)
+
+
+class ChangelogPublic(SQLModel):
+    id: uuid.UUID
+    day: date
+    kind: str | None
+    title_zh: str
+    title_en: str
+    body_zh: str | None
+    body_en: str | None
+    created_at: datetime | None
+    updated_at: datetime | None

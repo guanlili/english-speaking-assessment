@@ -20,6 +20,7 @@ from app.main import app
 from app.models import (
     AdminMetricsDaily,
     Attempt,
+    ChangelogEntry,
     Classroom,
     Passage,
     PracticeSession,
@@ -111,6 +112,7 @@ def db() -> Generator[Session]:
         init_db(session)
         yield session
         # 清理测试库数据（独立库内，无开发数据风险；按外键依赖倒序）
+        session.exec(delete(ChangelogEntry))  # type: ignore[call-overload]
         session.exec(delete(StudentFrameFavorite))  # type: ignore[call-overload]
         session.exec(delete(SentenceFrame))  # type: ignore[call-overload]
         session.exec(delete(VocabularyLevelEntry))  # type: ignore[call-overload]

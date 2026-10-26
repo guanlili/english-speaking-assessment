@@ -160,3 +160,11 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 
 - 导入查重匹配键预计算：Passage（title/text）、Unit（title）、Scenario（topic）、ScenarioQuestion/RepeatSentence/Instruction（text）六表七列加 `dedup_*_hash`（归一键 sha256，可空+索引）。归一化函数单一事实源在 `services/content_dedup.py`（NFKC + strip + casefold + 空白折叠），`before_flush` 会话级钩子维护所有 ORM 写入路径（CRUD/复制/导入/AI 出题/种子），`question_bank_io._matching_ids` 优先哈希索引、NULL 行回退流式归一（迁移前残留兜底）。casefold/Unicode 空白无法在 SQL 精确复刻，故不用数据库生成列；迁移 `a3f8c1d90e42` 内冻结归一函数回填存量。基准（3000 篇 3KB 正文）：全表流式 634ms → 哈希索引 2.4ms。
 - 补练列表未完成判定（PR#167 改写的量级验证，合成数据 1 课堂）：600 任务 × 40 学生 × 6 题全部完成（history 视图最坏情况，144k 作答）时，旧实现（每 (target,item) 对一次相关 LIMIT-1）墙钟 8.8s / 1.30M buffer 命中 / 144,000 次子计划执行；新实现（全班一次 DISTINCT ON + 逐对小 EXISTS）4.4s / 0.24M。小规模（150 任务）两者墙钟接近但 buffers 差 5.3 倍——全内存命中时 jsonb 展开是共同主成本，buffer 差异在真实缓存压力下才是决定项。结论：随任务×学生×题规模扩大，新实现优势线性放大，PR#167 改写方向正确。
+
+## 平台更新日志（2026-10-26）
+
+管理员在界面上发布平台更新，教师与管理员可见（学生端不设入口）。
+
+- **后端** `models.ChangelogEntry`（`day` 面向读者的发布日期 + `kind: feature/improvement/fix/null` + 标题正文各中英）；路由 `api/routes/changelog.py`：`GET /changelog`（TeacherUserDep，按 day/created_at 倒序）、POST/PUT/DELETE 均为 SuperUserDep。PUT 是全量更新（kind 传 null 清标签）。
+- **前端** `_layout/changelog.tsx` 时间线页（管理员多出发布/编辑/删除）；侧栏「平台更新」入口带未读红点——`hooks/useChangelog.ts` 用 localStorage 水位 `esa:changelog-seen`（存最近看过的最新条目日期）对比列表首条 `day`；进入页面即视为已读，红点在侧栏下次渲染时消失。queryKey `["changelog"]` 侧栏与页面共享。
+- **注意**：字段名用 `day` 不用 `date`（与类型注解同名会让 pydantic 报 unevaluable-type）。

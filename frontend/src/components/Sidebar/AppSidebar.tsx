@@ -5,6 +5,7 @@ import {
   Layers,
   LayoutDashboard,
   Library,
+  Megaphone,
   MessageSquareQuote,
   School,
   Users,
@@ -22,6 +23,7 @@ import {
   SidebarMenu,
 } from "@/components/ui/sidebar"
 import useAuth, { cachedRole } from "@/hooks/useAuth"
+import { useChangelogHasNew } from "@/hooks/useChangelog"
 import { useI18n } from "@/lib/i18n"
 import { type Item, isItemActive, Main } from "./Main"
 import { User } from "./User"
@@ -84,6 +86,7 @@ const adminOnlyItems: Item[] = [
 export function AppSidebar() {
   const { t } = useI18n()
   const { user: currentUser } = useAuth()
+  const hasChangelogNew = useChangelogHasNew()
   const currentPath = useRouterState({
     select: (state) => state.location.pathname,
   })
@@ -92,9 +95,19 @@ export function AppSidebar() {
   )
 
   // 教师只需理解课堂与题目；系统配置收纳在管理员区域。
+  // 平台更新对教师与管理员开放（学生端不设入口）。
   const items =
     currentUser?.is_superuser || cachedRole() === "teacher"
-      ? [...baseItems, ...createHubItem]
+      ? [
+          ...baseItems,
+          ...createHubItem,
+          {
+            icon: Megaphone,
+            title: { zh: "平台更新", en: "What's New" },
+            path: "/changelog",
+            dot: hasChangelogNew,
+          },
+        ]
       : baseItems
 
   return (

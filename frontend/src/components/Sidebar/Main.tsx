@@ -17,6 +17,8 @@ export type Item = {
   icon: LucideIcon
   title: BiString
   path: string
+  /** 角标红点（如平台更新有未读）；仅装饰性提示，不承载信息 */
+  dot?: boolean
 }
 
 interface MainProps {
@@ -84,7 +86,15 @@ export function Main({ items, label }: MainProps) {
                       aria-current={isActive ? "page" : undefined}
                       onClick={handleMenuClick}
                     >
-                      <item.icon aria-hidden="true" className="size-4" />
+                      <span className="relative inline-flex">
+                        <item.icon aria-hidden="true" className="size-4" />
+                        {item.dot && (
+                          <span
+                            aria-hidden="true"
+                            className="absolute -right-1.5 -top-1.5 size-2 rounded-full bg-accent-foreground ring-2 ring-sidebar"
+                          />
+                        )}
+                      </span>
                       <span className="group-data-[collapsible=icon]:sr-only">
                         {t(item.title)}
                       </span>
