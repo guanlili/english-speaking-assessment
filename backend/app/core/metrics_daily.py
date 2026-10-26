@@ -225,8 +225,12 @@ def backfill_history(session: Session, today: date) -> int:
             continue
         llm = a["llm_calls_by_kind"]
         # 空估算来源写 {}（回算过、无 LLM 调用）：JSON 列赋 None 会被
-        # 序列化成 JSON 'null'，破坏 SQL NULL=未处理的语义位
-        row.llm_calls_by_kind = llm if isinstance(llm, dict) else {}
+        # 序列化成 JSON 'null'，破坏 SQL NULL=未处理的语义位。
+        # agg 的 value 是 object，isinstance 收窄后仍是 dict[Unknown]，
+        # cast 到列类型（值由 backfill 自建，键为 str、值为 int）
+        row.llm_calls_by_kind = (
+            cast("dict[str, int]", llm) if isinstance(llm, dict) else {}
+        )
         patched += 1
     if patched:
         session.commit()
