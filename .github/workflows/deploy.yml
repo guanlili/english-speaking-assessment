@@ -277,7 +277,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.suite }}-${{ matrix.shard }}
-          path: frontend/test-results/
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
           retention-days: 7
 
   # Keep the existing required check name; deployment must wait for every shard.
@@ -399,7 +401,7 @@ jobs:
             cd "$deploy_path"
             trap 'rm -f .env.new' EXIT
 
-            echo "=== 1/5 checkout 到本次 CI 验证过的提交 ==="
+            echo "=== 1/7 checkout 到本次 CI 验证过的提交 ==="
             # 不用 git pull：pull 拿到的是"部署时刻的最新 master"，连续 push 时可能部署到还没过 CI 的提交。
             # reset --hard 到 github.sha 保证部署的永远是这个 run 测过的代码，也兼容紧急回滚后的服务器状态。
             # 服务器 origin 走 gh-proxy.com 镜像：偶发 403/429 退避重试；持续 401（2026-10-20 起
@@ -429,7 +431,7 @@ jobs:
             fi
             rm -f /tmp/esa-deploy/deploy.bundle
 
-            echo "=== 2/5 解码 .env 并校验 ==="
+            echo "=== 2/7 解码 .env 并校验 ==="
             printf '%s' "$ENV_B64" | base64 -d > .env.new
             chmod 600 .env.new
             # 必填键非空白（生成的每行都是 KEY="value" 形式，值非空即引号间有内容）
@@ -445,11 +447,11 @@ jobs:
               exit 1
             fi
 
-            echo "=== 3/5 原子替换 .env ==="
+            echo "=== 3/7 原子替换 .env ==="
             # 校验全部通过才替换（同文件系统 rename，不存在写一半的 .env）
             mv .env.new .env
 
-            echo "=== 4/6 HTTPS 证书（配置 DP_Id/DP_Key/TLS_DOMAIN 时自动签发，幂等） ==="
+            echo "=== 4/7 HTTPS 证书（配置 DP_Id/DP_Key/TLS_DOMAIN 时自动签发，幂等） ==="
             if grep -Eq '^DP_Id=".+"' .env && grep -Eq '^DP_Key=".+"' .env && grep -Eq '^TLS_DOMAIN=".+"' .env; then
               tls_domain=$(sed -n 's/^TLS_DOMAIN="\([^"]*\)"$/\1/p' .env)
               mkdir -p ssl
@@ -460,6 +462,9 @@ jobs:
                 docker compose -f compose.yml run --rm acme --issue --dns dns_dp -d "$tls_domain" --server letsencrypt --keylength ec-256
                 docker compose -f compose.yml run --rm acme --install-cert -d "$tls_domain" --fullchain-file /ssl/fullchain.pem --key-file /ssl/privkey.pem
                 echo "证书已安装到 ./ssl/，nginx 将以 https 启动"
+                # 本次部署新出现了证书：现有容器的 entrypoint 已按无证书形态
+                # 启动过，后面需要强制重建一次 frontend 让它重新求值 TLS
+                tls_first_issue=1
               else
                 echo "证书已存在，跳过签发（acme daemon 自动续期）"
               fi
@@ -470,7 +475,7 @@ jobs:
               echo "未配置 DNSPod 密钥/域名，保持纯 HTTP（本地与首启兼容）"
             fi
 
-            echo "=== 4.5/6 每日数据库备份（幂等注册，保留 14 天） ==="
+            echo "=== 5/7 每日数据库备份（幂等注册，保留 14 天） ==="
             mkdir -p backups
             chmod 700 backups
             # 完整备份包含数据库、录音/标准音卷和部署配置；失败记入巡检日志。
@@ -488,7 +493,7 @@ jobs:
               exit 1
             fi
 
-            echo "=== 5/6 构建并重启容器 ==="
+            echo "=== 6/7 构建并重启容器 ==="
             docker compose -f compose.yml up -d --build --remove-orphans || {
               echo "--- prestart logs ---"
               docker compose -f compose.yml logs prestart --tail 50
@@ -496,12 +501,15 @@ jobs:
               docker compose -f compose.yml logs backend --tail 50
               exit 1
             }
-            # frontend 的 TLS 形态由 entrypoint 在容器启动时决定；证书后签发不会
-            # 改变 compose 配置，up 不会重建容器 → 部署时强制重建一次重新求值
-            # （前端闪断 1~2 秒，仅部署窗口内）
-            docker compose -f compose.yml up -d --force-recreate --no-deps frontend
+            # frontend 的 TLS 形态由 entrypoint 在容器启动时决定：只有本次部署
+            # 首次签发了证书才需要强制重建（compose up 不会因磁盘上多了证书而
+            # 重建容器）。例行部署不再强重建——消除每次部署 1~2 秒的前端闪断；
+            # 证书续期由每日 04:00 的 nginx reload cron 覆盖（reload 即加载新证书）。
+            if [ "${tls_first_issue:-0}" = "1" ]; then
+              docker compose -f compose.yml up -d --force-recreate --no-deps frontend
+            fi
 
-            echo "=== 6/6 验证（就绪检查 = 含数据库可用性；经 nginx 反代访问）==="
+            echo "=== 7/7 验证（就绪检查 = 含数据库可用性；经 nginx 反代访问）==="
             app_port=$(sed -n 's/^APP_PORT="\([0-9]*\)"$/\1/p' .env)
             healthy=""
             for i in $(seq 1 30); do
@@ -520,5 +528,8 @@ jobs:
             echo "✅ 部署成功"
             docker compose -f compose.yml ps
 
-            echo "=== 清理旧镜像，防止磁盘被悬空镜像占满 ==="
+            echo "=== 清理旧镜像与超额构建缓存，防止磁盘被占满 ==="
             docker image prune -f
+            # 构建缓存每次部署累积且无上限；保留最近 20G，超出按最旧淘汰
+            # （118G 盘，试点期足够）。失败不阻断部署——清理只是容量兜底。
+            docker builder prune -f --keep-storage 20g || true

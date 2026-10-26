@@ -6,7 +6,21 @@ frontend/node_modules
 **/.mypy_cache
 **/.ruff_cache
 .git
-# 任意层级的 .env 都不进构建上下文；.env.development 是 vite 开发配置，需保留
+# 服务器运维目录不进构建上下文（context 是仓库根）：
+# backups 是 14 天全量备份（数据库 + 录音卷归档，GB 级）——不排除的话每次
+# 部署构建都把它们整包传给 daemon；ssl 证书密钥仅卷挂载用，不该进上下文。
+backups
+ssl
+# 本地/CI 测试产物，镜像构建不需要
+test-results
+frontend/test-results
+frontend/playwright-report
+frontend/dist
+frontend/openapi.json
+# 任意层级的 .env 都不进构建上下文；例外：模板与 vite 开发配置
+# （容器 dev target 的 COPY ./frontend ./ 需要 .env.development——此前
+# 仅 !.env.example 只放行了根层级，与注释意图不符，一并修正）
 **/.env
 .env.*
-!.env.example
+!**/.env.example
+!**/.env.development
