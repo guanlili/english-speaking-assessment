@@ -172,7 +172,9 @@ _retention_thread: threading.Thread | None = None
 
 
 def _retention_loop(stop_event: threading.Event) -> None:
-    while not stop_event.wait(RETENTION_INTERVAL_S):
+    # 先执行再等间隔：若先等 24h，频繁部署（每次重启清零计时器）会让
+    # 清扫永远轮不到首轮——2026-10-26 生产实测孤儿 302 个的根因
+    while True:
         # 引擎每轮重新解析：与 scoring sweeper 同一模式，测试覆盖同样生效
         from app.core.db import engine
 
@@ -182,6 +184,8 @@ def _retention_loop(stop_event: threading.Event) -> None:
                 purge_orphan_audio(session)
         except Exception:  # noqa: BLE001 - 清理是兜底，失败只记日志不能带崩线程
             logger.exception("audio retention iteration failed")
+        if stop_event.wait(RETENTION_INTERVAL_S):
+            break
 
 
 def start_audio_retention() -> None:
