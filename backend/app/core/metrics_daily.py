@@ -45,10 +45,13 @@ def _day_bounds_utc(day: date) -> tuple[datetime, datetime]:
 
     PRACTICE_TZ 为固定偏移时区（Asia/Shanghai 无夏令时）时与
     date(timezone(tz, created_at)) == day 严格等价，且 created_at 上的
-    普通索引可用（对 created_at 列套函数不可走索引）。
+    普通索引可用（对 created_at 列套函数不可走索引）。端点各自按当日
+    零点换算（而非 start + 1day）：即便未来配成有夏令时的时区，切换日
+    也只会偏差当日窗口本身的口径，不会算错固定 24h。
     """
     start = datetime.combine(day, time.min, _tz()).astimezone(UTC)
-    return start, start + timedelta(days=1)
+    end = datetime.combine(day + timedelta(days=1), time.min, _tz()).astimezone(UTC)
+    return start, end
 
 
 def compute_daily_business(session: Session, day: date) -> dict[str, object]:
