@@ -382,13 +382,53 @@ jobs:
           echo "path_b64=$(printf '%s' "$DEPLOY_PATH" | base64 | tr -d '\n')" >> "$GITHUB_OUTPUT"
           rm -f "$RUNNER_TEMP/deploy.env"
 
-      - name: 打包本次提交为 git bundle（服务器镜像失联时的拉取兜底）
-        # 服务器 origin 走 gh-proxy.com 镜像，2026-10-20 起对匿名访问持续 401；
-        # runner 在境外直连 GitHub 稳定——把本次提交打成 bundle 传过去，
-        # 服务器 git fetch 本地文件即可推进到目标提交，不再依赖任何镜像
+      - name: 探测服务器当前提交（增量 bundle 的基线）
+        # bundle 只需覆盖服务器落后于目标提交的增量：先问服务器现在在哪，
+        # 再以 merge-base 为基线打包，通常几十 KB（全量 3.1MB 在实测 ~12KB/s
+        # 的跨境 SSH 上要传 4.5 分钟）。探测失败降级 none → 打全量 bundle。
+        id: serverhead
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
-          git bundle create deploy.bundle HEAD
+          umask 077
+          printf '%s' "$SERVER_SSH_KEY" > "$RUNNER_TEMP/deploy_id"
+          chmod 600 "$RUNNER_TEMP/deploy_id"
+          if ! sha=$(ssh -i "$RUNNER_TEMP/deploy_id" -o StrictHostKeyChecking=accept-new \
+              -o ConnectTimeout=15 "$SERVER_USER@$SERVER_HOST" \
+              "cd '$DEPLOY_PATH' 2>/dev/null && git rev-parse HEAD 2>/dev/null || echo none" 2>/dev/null); then
+            sha=none
+          fi
+          rm -f "$RUNNER_TEMP/deploy_id"
+          case "$sha" in ''|*[^0-9a-f]*|*[A-F]*|*' '*) sha=none;; esac
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "服务器当前提交: $sha"
+
+      - name: 打包增量 git bundle（服务器镜像失联时的拉取兜底）
+        # 服务器 origin 走 gh-proxy.com 镜像，偶发 403/429/401；runner 在境外
+        # 直连 GitHub 稳定——把目标提交打进 bundle 传过去，服务器 fetch 本地
+        # 文件即可推进到目标，不再依赖镜像可用性。
+        run: |
+          target=$(git rev-parse HEAD)
+          server_sha="${{ steps.serverhead.outputs.sha }}"
+          base=""
+          if [ "$server_sha" != "none" ] && git cat-file -e "$server_sha^{commit}" 2>/dev/null; then
+            base=$(git merge-base "$target" "$server_sha" || true)
+          fi
+          # 重跑同一提交的部署时 merge-base == 目标：退一格避免打出空 bundle。
+          # ref 必须用 HEAD（不能用裸 SHA）：bundle 内的 ref 名会变成 SHA 本身，
+          # 服务器脚本 fetch 的是 HEAD，对不上会找不到远端 ref
+          [ "$base" = "$target" ] && base=$(git rev-parse HEAD~1)
+          if [ -n "$base" ]; then
+            git bundle create deploy.bundle HEAD "^$base"
+          else
+            echo "服务器历史不可比对（$server_sha），降级全量 bundle"
+            git bundle create deploy.bundle HEAD
+          fi
           git bundle verify deploy.bundle
+          du -h deploy.bundle
 
       - name: 传送 bundle 到服务器
         uses: appleboy/scp-action@v1
@@ -560,3 +600,11 @@ jobs:
             # 构建缓存每次部署累积且无上限；保留最近 20G，超出按最旧淘汰
             # （118G 盘，试点期足够）。失败不阻断部署——清理只是容量兜底。
             docker builder prune -f --keep-storage 20g || true
+            # 一次性回收旧命名镜像：esa-* 显式命名上线前的 <project>-<service>:latest
+            # 带着旧 tag 不算悬空镜像，prune 清不掉；容器已全部由 esa-* 镜像接管，
+            # 首次执行后镜像即不存在，此后本行为无害空转。
+            proj=$(sed -n 's/^COMPOSE_PROJECT_NAME="\([^"]*\)"$/\1/p' .env)
+            if [ -n "$proj" ]; then
+              docker rmi "${proj}-backend:latest" "${proj}-frontend:latest" \
+                         "${proj}-prestart:latest" >/dev/null 2>&1 || true
+            fi
