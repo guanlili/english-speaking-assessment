@@ -602,3 +602,8 @@ def test_tracker_token_carry_across_restart(
     # 孤儿音频数随采样落当日行（复用 metrics 的缓存统计，此处至少非空）
     assert isinstance(row.audio_orphans, int)
     m.reset_for_tests()
+
+
+def test_intentional_failure_for_required_check_verification():
+    """临时实证用例：验证必需检查项会阻塞后端检查挂掉的 PR。验证后即删。"""
+    assert False, "intentional failure for required-check verification"
