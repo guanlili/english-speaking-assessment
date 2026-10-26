@@ -1,8 +1,9 @@
 """大盘日快照：业务量回算 + 运行时峰值采样，每日一行落 admin_metrics_daily。
 
 解决 /admin/metrics 两件事：进程计数器重启归零、没有历史。业务量（作答/
-活跃/会话/ASR 秒数）当日从明细表精确回算；运行时峰值（最老排队年龄、
-连接池水位、引擎失败数）由本线程 60s 采样在内存里记最大值，跨日时写回。
+活跃/会话/ASR 秒数）从明细表回算，但不是每分钟：首采、每小时与跨日落定
+时各算一次（聚合查询不宜进 60s 循环）；运行时峰值（最老排队年龄、连接池
+水位、引擎失败数）由本线程 60s 采样在内存里记最大值，跨日时写回。
 
 线程每天跨日（PRACTICE_TZ）落一行昨日快照；启动时回填缺失的历史行
 （只回算业务量，峰值为 null——重启前的峰值无法追溯）。
@@ -10,7 +11,7 @@
 
 import logging
 import threading
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import cast
 from zoneinfo import ZoneInfo
 
@@ -30,15 +31,36 @@ logger = logging.getLogger(__name__)
 
 SAMPLE_INTERVAL_S = 60
 BACKFILL_MAX_DAYS = 400
+# 业务量回算频率：首次采样立即算一次（进程重启后当日行不空窗），
+# 之后每 N 次采样（约一小时）刷新一次；跨日时对昨日精确落定
+BUSINESS_REFRESH_SAMPLES = 60
 
 
 def _tz() -> ZoneInfo:
     return ZoneInfo(settings.PRACTICE_TZ)
 
 
+def _day_bounds_utc(day: date) -> tuple[datetime, datetime]:
+    """练习日的 UTC 闭开区间 [day 00:00, day+1 00:00)。
+
+    PRACTICE_TZ 为固定偏移时区（Asia/Shanghai 无夏令时）时与
+    date(timezone(tz, created_at)) == day 严格等价，且 created_at 上的
+    普通索引可用（对 created_at 列套函数不可走索引）。端点各自按当日
+    零点换算（而非 start + 1day）：即便未来配成有夏令时的时区，切换日
+    也只会偏差当日窗口本身的口径，不会算错固定 24h。
+    """
+    start = datetime.combine(day, time.min, _tz()).astimezone(UTC)
+    end = datetime.combine(day + timedelta(days=1), time.min, _tz()).astimezone(UTC)
+    return start, end
+
+
 def compute_daily_business(session: Session, day: date) -> dict[str, object]:
-    """按练习日回算业务量（与大盘 P0 同口径：PRACTICE_TZ 切日）。"""
-    day_expr = func.date(func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at)))
+    """按练习日回算业务量（与大盘 P0 同口径：PRACTICE_TZ 切日）。
+
+    时间过滤用 created_at 的 UTC 区间（可走 ix_attempt_created_at），
+    不用 date(timezone(...)) == day（对列套函数，无法走索引）。
+    """
+    start, end = _day_bounds_utc(day)
     a = (
         session.connection()
         .execute(
@@ -52,7 +74,7 @@ def compute_daily_business(session: Session, day: date) -> dict[str, object]:
                 .label("failed"),
                 func.count(func.distinct(Attempt.student_id)).label("active"),
                 func.coalesce(func.sum(Attempt.duration_s), 0.0).label("seconds"),
-            ).where(day_expr == day)
+            ).where(col(Attempt.created_at) >= start, col(Attempt.created_at) < end)
         )
         .one()
     )
@@ -88,7 +110,11 @@ def upsert_daily_snapshot(
     pool_max_checked_out: int | None = None,
     audio_orphans: int | None = None,
 ) -> AdminMetricsDaily:
-    """写/覆盖一行的日快照（按日期幂等；跨日落日与回填共用）。"""
+    """写/覆盖一行的日快照（按日期幂等；跨日落日与回填共用）。
+
+    business=None 时回算当日业务量并覆盖对应列；传空 dict 表示本轮
+    不写业务量列（采样线程降频回算用）。
+    """
     if business is None:
         business = compute_daily_business(session, day)
     from app.models import get_datetime_utc
@@ -131,6 +157,9 @@ def backfill_history(session: Session, today: date) -> int:
     day_expr = func.date(func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at)))
     last = today - timedelta(days=1)
     cap = today - timedelta(days=BACKFILL_MAX_DAYS)
+    # 窗口裁剪用 created_at 区间（可走索引）；day_expr 只用于分组标签
+    cap_start, _ = _day_bounds_utc(cap)
+    _, last_end = _day_bounds_utc(last)
     agg: dict[date, dict[str, object]] = {}
     for row in session.connection().execute(
         select(
@@ -151,7 +180,7 @@ def backfill_history(session: Session, today: date) -> int:
             )
             .label("question_done"),
         )
-        .where(day_expr >= cap, day_expr <= last)
+        .where(col(Attempt.created_at) >= cap_start, col(Attempt.created_at) < last_end)
         .group_by(day_expr)
     ):
         agg[row.day] = {
@@ -184,7 +213,9 @@ def backfill_history(session: Session, today: date) -> int:
     # 只插缺行会让历史月 LLM 恒为 ¥0——对 agg 范围内 llm 为 null 的已有行
     # 补估算；采样器写过的不动（非 null 即真实/采样数据）
     patched = 0
-    stale_rows = session.exec(  # ty: ignore[no-matching-overload] - is_ 链
+    # sqlalchemy 的 select(Model) 走 session.exec 返回 Row 而非实体
+    # （sqlmodel 只解包自家 select），取实体一律走 session.scalars
+    stale_rows = session.scalars(
         select(AdminMetricsDaily).where(
             col(AdminMetricsDaily.day) >= min(agg),
             col(AdminMetricsDaily.day) <= last,
@@ -197,16 +228,44 @@ def backfill_history(session: Session, today: date) -> int:
             continue
         llm = a["llm_calls_by_kind"]
         # 空估算来源写 {}（回算过、无 LLM 调用）：JSON 列赋 None 会被
-        # 序列化成 JSON 'null'，破坏 SQL NULL=未处理的语义位
-        row.llm_calls_by_kind = llm if isinstance(llm, dict) else {}
+        # 序列化成 JSON 'null'，破坏 SQL NULL=未处理的语义位。
+        # agg 的 value 是 object，isinstance 收窄后仍是 dict[Unknown]，
+        # cast 到列类型（值由 backfill 自建，键为 str、值为 int）
+        row.llm_calls_by_kind = (
+            cast("dict[str, int]", llm) if isinstance(llm, dict) else {}
+        )
         patched += 1
     if patched:
         session.commit()
         logger.info("metrics daily backfilled llm estimate for %d rows", patched)
     existing: set[date] = set()
-    for d in session.connection().execute(select(col(AdminMetricsDaily.day))).scalars():
-        existing.add(d)
     from app.models import get_datetime_utc
+
+    refreshed = 0
+    for row in session.scalars(
+        select(AdminMetricsDaily).where(
+            col(AdminMetricsDaily.day) >= min(agg),
+            col(AdminMetricsDaily.day) <= last,
+        )
+    ).all():
+        existing.add(row.day)
+        a = agg.get(row.day)
+        if not a:
+            continue
+        # 已有行的业务量列刷新到精确回算值：采样线程降频回算后，进程中断
+        # 跨日会让该日行停留在最后一次整点回算的值。LLM 列不在此刷新
+        # （上方补丁逻辑单独维护真实/估算的语义位）
+        row.attempts = cast(int, a["attempts"])
+        row.attempts_done = cast(int, a["attempts_done"])
+        row.attempts_failed = cast(int, a["attempts_failed"])
+        row.active_students = cast(int, a["active_students"])
+        row.sessions = cast(int, a["sessions"])
+        row.asr_seconds = cast(float, a["asr_seconds"])
+        row.updated_at = get_datetime_utc()
+        refreshed += 1
+    if refreshed:
+        session.commit()
+        logger.info("metrics daily refreshed business for %d existing rows", refreshed)
 
     written = 0
     for day in sorted(set(agg) - existing):
@@ -253,6 +312,7 @@ class _DayPeakTracker:
         self.provider_failures: dict[str, int] = {}
         self.llm_tokens_in = 0
         self.llm_tokens_out = 0
+        self.samples = 0
         self._baseline: dict[str, dict[str, float]] | None = None
         self._token_baseline: dict[str, dict[str, int]] | None = None
         self._carry_tokens_in = 0
@@ -367,9 +427,19 @@ class _DayPeakTracker:
         from app.api.routes.metrics import _audio_storage_stats
 
         orphans = _audio_storage_stats(session).get("orphan_count")
+        # 业务量回算是聚合查询，不该每分钟跑：首采（重启后当日行立即有值）
+        # 与每 BUSINESS_REFRESH_SAMPLES 次（约一小时）刷新，其余采样只落
+        # 运行时峰值；跨日时由 _daily_loop 对昨日精确落定
+        self.samples += 1
+        business: dict[str, object] = (
+            compute_daily_business(session, today)
+            if self.samples == 1 or self.samples % BUSINESS_REFRESH_SAMPLES == 0
+            else {}
+        )
         upsert_daily_snapshot(
             session,
             today,
+            business=business,
             llm_calls_by_kind=dict(self.llm_calls_by_kind),
             provider_failures=dict(self.provider_failures),
             llm_tokens_in=self.llm_tokens_in if has_tokens else None,
@@ -457,7 +527,16 @@ def _daily_loop(stop_event: threading.Event) -> None:
             queue_age: float | None = None
             with Session(engine) as session:
                 if now_day != current_day:
-                    # 跨日：峰值/增量重新起算（昨日行已在历次采样中落库）
+                    # 跨日：先把昨日行业务量精确落定（采样降频回算后当日行
+                    # 最多滞后一小时），再重置峰值/增量起算（昨日行的运行时
+                    # 峰值已在历次采样中落库，upsert 不传峰值参数不会覆盖）
+                    try:
+                        upsert_daily_snapshot(session, current_day)
+                    except Exception:  # noqa: BLE001 - 落定失败不阻塞采样周期
+                        logger.exception(
+                            "metrics daily rollover recompute failed for %s",
+                            current_day,
+                        )
                     _tracker.reset()
                     current_day = now_day
                     continue
