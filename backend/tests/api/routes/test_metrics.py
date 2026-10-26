@@ -1,5 +1,6 @@
 """运维指标端点（批次 10-10）：superuser 门、计数器语义、队列与存储统计。"""
 
+import uuid
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -7,6 +8,7 @@ from sqlmodel import Session
 
 from app.core import metrics as metrics_module
 from app.core.config import settings
+from app.models import Attempt
 
 
 def test_metrics_requires_superuser(
@@ -57,19 +59,38 @@ def test_metrics_audio_storage_stats(
     monkeypatch,
     client: TestClient,
     superuser_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
     (tmp_path / "attempt.webm").write_bytes(b"x" * 100)
+    # 回放缓存：源在且被引用 → 正常产物，不算孤儿
+    (tmp_path / "attempt.webm.playback.wav").write_bytes(b"x" * 100)
+    # 源已不在（如保留期清理后）残留的缓存 → 算孤儿
+    (tmp_path / "purged.webm.playback.wav").write_bytes(b"x" * 100)
+    (tmp_path / "orphan.webm").write_bytes(b"x" * 100)
     content = tmp_path / "content"
     content.mkdir()
     (content / "tts-a.mp3").write_bytes(b"y" * 50)
+    # 引用 attempt.webm；orphan.webm 无引用；content/ 不算孤儿（永不回收）
+    db.add(
+        Attempt(
+            item_id=uuid.uuid4(),
+            audio_path=str(tmp_path / "attempt.webm"),
+            duration_s=3.0,
+            status="done",
+        )
+    )
+    db.commit()
 
     from app.api.routes import metrics as route_metrics
 
     route_metrics._audio_cache = None  # 清缓存直读
-    stats = route_metrics._audio_storage_stats()
-    assert stats["file_count"] == 2
-    assert stats["total_bytes"] == 150
+    stats = route_metrics._audio_storage_stats(db)
+    assert stats["file_count"] == 5
+    assert stats["total_bytes"] == 450
+    # orphan.webm + purged.webm.playback.wav（源没了的残留缓存）= 2；
+    # attempt.webm 的缓存被豁免
+    assert stats["orphan_count"] == 2
 
 
 def test_metrics_queue_counts_reflect_attempts(

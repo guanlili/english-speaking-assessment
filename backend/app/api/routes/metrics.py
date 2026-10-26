@@ -31,8 +31,12 @@ _audio_cached_at = 0.0
 _AUDIO_CACHE_TTL_S = 60.0
 
 
-def _audio_storage_stats() -> dict[str, Any]:
-    """统计音频目录（含 content/ 标准音）：总字节与文件数，60s 缓存。"""
+def _audio_storage_stats(session: Session) -> dict[str, Any]:
+    """统计音频目录（含 content/ 标准音）：总字节、文件数与孤儿数。
+
+    孤儿 = 存储根顶层文件中 basename 不被任何 attempt.audio_path 引用
+    的数量（删班残留，每日清理循环会回收）；60s 缓存。
+    """
     global _audio_cache, _audio_cached_at
     now = time.monotonic()
     with _audio_cache_lock:
@@ -41,19 +45,35 @@ def _audio_storage_stats() -> dict[str, Any]:
     root = Path(settings.AUDIO_STORAGE_DIR)
     total_bytes = 0
     file_count = 0
+    top_level: set[str] = set()
     if root.is_dir():
         for path in root.rglob("*"):
             try:
                 if path.is_file():
                     total_bytes += path.stat().st_size
                     file_count += 1
+                    if path.parent == root:
+                        top_level.add(path.name)
             except OSError:
                 # 统计期间的删除/权限问题跳过单个文件，不失败整个指标
                 continue
+    referenced = {
+        Path(p).name
+        for p in session.exec(select(Attempt.audio_path)).all()  # type: ignore[arg-type]
+    }
+    # 回放缓存 {源名}.playback.wav 不在引用集里，但源文件仍被引用且在盘上
+    # 时是正常产物，不算孤儿；源没了缓存还留着（保留期清理删源后缓存
+    # 残留的罕见时序）才按孤儿计——与清理侧删除缓存的行为一致
+    playback_exempt = {
+        f"{name}.playback.wav"
+        for name in referenced
+        if name in top_level and f"{name}.playback.wav" in top_level
+    }
     result = {
         "root": str(root),
         "total_bytes": total_bytes,
         "file_count": file_count,
+        "orphan_count": len(top_level - referenced - playback_exempt),
         "approx": True,
     }
     with _audio_cache_lock:
@@ -152,7 +172,7 @@ def collect_metrics(session: Session) -> dict[str, Any]:
                 ),
             },
         },
-        "audio_storage": _audio_storage_stats(),
+        "audio_storage": _audio_storage_stats(session),
         "note": "进程内计数器，重启归零；趋势看增量",
     }
 
