@@ -63,6 +63,10 @@ def test_metrics_audio_storage_stats(
 ) -> None:
     monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
     (tmp_path / "attempt.webm").write_bytes(b"x" * 100)
+    # 回放缓存：源在且被引用 → 正常产物，不算孤儿
+    (tmp_path / "attempt.webm.playback.wav").write_bytes(b"x" * 100)
+    # 源已不在（如保留期清理后）残留的缓存 → 算孤儿
+    (tmp_path / "purged.webm.playback.wav").write_bytes(b"x" * 100)
     (tmp_path / "orphan.webm").write_bytes(b"x" * 100)
     content = tmp_path / "content"
     content.mkdir()
@@ -82,9 +86,11 @@ def test_metrics_audio_storage_stats(
 
     route_metrics._audio_cache = None  # 清缓存直读
     stats = route_metrics._audio_storage_stats(db)
-    assert stats["file_count"] == 3
-    assert stats["total_bytes"] == 250
-    assert stats["orphan_count"] == 1
+    assert stats["file_count"] == 5
+    assert stats["total_bytes"] == 450
+    # orphan.webm + purged.webm.playback.wav（源没了的残留缓存）= 2；
+    # attempt.webm 的缓存被豁免
+    assert stats["orphan_count"] == 2
 
 
 def test_metrics_queue_counts_reflect_attempts(

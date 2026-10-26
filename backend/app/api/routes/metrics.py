@@ -61,11 +61,19 @@ def _audio_storage_stats(session: Session) -> dict[str, Any]:
         Path(p).name
         for p in session.exec(select(Attempt.audio_path)).all()  # type: ignore[arg-type]
     }
+    # 回放缓存 {源名}.playback.wav 不在引用集里，但源文件仍被引用且在盘上
+    # 时是正常产物，不算孤儿；源没了缓存还留着（保留期清理删源后缓存
+    # 残留的罕见时序）才按孤儿计——与清理侧删除缓存的行为一致
+    playback_exempt = {
+        f"{name}.playback.wav"
+        for name in referenced
+        if name in top_level and f"{name}.playback.wav" in top_level
+    }
     result = {
         "root": str(root),
         "total_bytes": total_bytes,
         "file_count": file_count,
-        "orphan_count": len(top_level - referenced),
+        "orphan_count": len(top_level - referenced - playback_exempt),
         "approx": True,
     }
     with _audio_cache_lock:
