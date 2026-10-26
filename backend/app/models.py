@@ -968,6 +968,9 @@ class PracticeSession(SQLModel, table=True):
             unique=True,
             postgresql_where=text("mode = 'explore' AND passage_id IS NOT NULL"),
         ),
+        # 大盘与日快照按练习日统计（session_date == day / GROUP BY）：
+        # 上述唯一索引全部 student_id 打头，纯日期条件不可用
+        Index("ix_practice_session_session_date", "session_date"),
     )
 
     exam_flow_state: dict[str, dict[str, str]] | None = Field(
@@ -1072,6 +1075,9 @@ class Attempt(SQLModel, table=True):
         # board 引擎探测（status=done order by created_at desc limit 1）与
         # 最新作答排序：单靠 status 索引仍要对全部 done 行排序
         Index("ix_attempt_status_created_at", "status", "created_at"),
+        # 大盘区间聚合与日快照回算按 created_at 时间裁剪；status 打头的
+        # 复合索引对纯时间条件不可用
+        Index("ix_attempt_created_at", "created_at"),
     )
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     # 作答对象：passage（MVP 整篇跟读）/ repeat（复述句）/ question（情景问答）

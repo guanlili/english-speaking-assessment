@@ -8,7 +8,11 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, delete, select
 
 from app.core.config import settings
-from app.core.metrics_daily import backfill_history, upsert_daily_snapshot
+from app.core.metrics_daily import (
+    BUSINESS_REFRESH_SAMPLES,
+    backfill_history,
+    upsert_daily_snapshot,
+)
 from app.models import (
     AdminCostReconcile,
     AdminMetricsDaily,
@@ -134,10 +138,12 @@ def test_backfill_only_missing_rows(
         setattr(stale, k, v)
     db.add(stale)
     db.commit()
-    # day3 有 1 条 done 问答题：给 day3 造一条「采样器写过」的行（非 null）
+    # day3 有 1 条 done 问答题：给 day3 造一条「采样器写过」的行（非 null），
+    # 业务量列同时埋一个哨兵值，验证回填会刷新业务量但不碰 LLM 列
     sampled = db.get(AdminMetricsDaily, day3)
     assert sampled is not None
     sampled.llm_calls_by_kind = {"llm_rubric": 99}
+    sampled.attempts = 9999
     db.commit()
 
     backfill_history(db, today)
@@ -145,10 +151,11 @@ def test_backfill_only_missing_rows(
     assert refreshed_stale is not None
     # day2 无作答 → 不在 agg，行未被动过（SQL NULL 语义位保持）
     assert refreshed_stale.llm_calls_by_kind is None
-    # day3 存量非 null → 不被回填估算覆盖
+    # day3 存量非 null → 不被回填估算覆盖；业务量列 → 被精确回算刷新
     sampled_row = db.get(AdminMetricsDaily, day3)
     assert sampled_row is not None
     assert sampled_row.llm_calls_by_kind == {"llm_rubric": 99}
+    assert sampled_row.attempts == 1
 
     # 换一个有作答但行是 null 的日子：backfill 应补上估算
     day1 = today - timedelta(days=1)
@@ -265,6 +272,45 @@ def test_daily_snapshot_carry_across_tracker_restart(
     # 峰值不回退；空 dict/真值区分由采样路径写真值保证
     assert row.pool_max_checked_out == 4
     assert row.queue_max_age_s == 12.0
+    m.reset_for_tests()
+
+
+def test_sample_recomputes_business_hourly_not_per_sample(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """采样降频回算：首采落当日业务量；中间采样只落峰值、不回算（业务量
+    列原样保留）；每 BUSINESS_REFRESH_SAMPLES 次（约一小时）回算刷新。"""
+    from app.core import metrics as m
+    from app.core.metrics_daily import _DayPeakTracker
+
+    _purge(db)
+    m.reset_for_tests()  # 共享计数器清零，防全套污染
+    classroom = client.post(
+        "/api/v1/classes", json={"class_size": 5}, headers=superuser_token_headers
+    ).json()
+    ada = make_student(db, client, classroom["code"], "Ada")
+    today = datetime.now(tz).date()
+    _attempt(db, uuid.UUID(ada["student"]["id"]), today, status="done")
+    db.commit()
+
+    tracker = _DayPeakTracker()
+    tracker.sample(db)  # 首采（samples=1）：回算业务量
+    row = db.get(AdminMetricsDaily, today)
+    assert row is not None and row.attempts == 1
+
+    # 中间采样不回算：业务量列若被回算会把哨兵覆盖回 1
+    row.attempts = 9999
+    db.add(row)
+    db.commit()
+    tracker.sample(db)  # samples=2：非刷新点
+    db.refresh(row)
+    assert row.attempts == 9999
+
+    # 刷新点（samples 达 BUSINESS_REFRESH_SAMPLES）：回算覆盖哨兵
+    tracker.samples = BUSINESS_REFRESH_SAMPLES - 1
+    tracker.sample(db)
+    db.refresh(row)
+    assert row.attempts == 1
     m.reset_for_tests()
 
 
