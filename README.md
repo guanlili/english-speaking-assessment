@@ -275,3 +275,4 @@ english-speaking-assessment/
 | 登录接口限流 | 已按进程内存实现（`login.py`：10 次/5 分钟，IP 与账号双键滑动窗口），未做跨 worker 共享存储——多 worker 部署时限额按进程数放大；更严格的公网限流再评估云防火墙/WAF |
 | 生产环境隐藏 `/docs`、`/redoc` | API 文档公开对内网工具是便利。正式上线面向公网的项目建议关闭（`ENVIRONMENT=production` 时设 `docs_url=None`）或在 Caddy 层加 basic auth |
 | Kubernetes / 多机编排 | 单服务器 docker compose 覆盖当前所有项目规模。规模到了再迁移，不预支复杂度 |
+
