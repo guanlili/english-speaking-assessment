@@ -101,16 +101,12 @@ function buildFormSchema(t: ReturnType<typeof useI18n>["t"]) {
       .string()
       .min(1, { message: t({ zh: "请选择发布日期", en: "Pick a date" }) }),
     kind: z.string(),
-    title_zh: z
-      .string()
-      .min(1, {
-        message: t({ zh: "请输入中文标题", en: "Chinese title is required" }),
-      }),
-    title_en: z
-      .string()
-      .min(1, {
-        message: t({ zh: "请输入英文标题", en: "English title is required" }),
-      }),
+    title_zh: z.string().min(1, {
+      message: t({ zh: "请输入中文标题", en: "Chinese title is required" }),
+    }),
+    title_en: z.string().min(1, {
+      message: t({ zh: "请输入英文标题", en: "English title is required" }),
+    }),
     body_zh: z.string(),
     body_en: z.string(),
   })
