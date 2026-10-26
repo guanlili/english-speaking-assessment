@@ -314,6 +314,27 @@ def test_sample_recomputes_business_hourly_not_per_sample(
     m.reset_for_tests()
 
 
+def test_day_bounds_utc_handles_dst_timezone(monkeypatch) -> None:
+    """DST 防御（评审可选项）：端点各按当日零点换算——夏令时进入日区间
+    23h 而非固定 24h，且端点 UTC 时刻对齐当地零点。"""
+    from app.core import metrics_daily
+
+    monkeypatch.setattr(settings, "PRACTICE_TZ", "America/New_York")
+    # 2026-03-08 是美东夏令时进入日（02:00 → 03:00）：当日 23h
+    start, end = metrics_daily._day_bounds_utc(date(2026, 3, 8))
+    assert (end - start) == timedelta(hours=23)
+    from datetime import UTC
+
+    assert start == datetime(2026, 3, 8, 5, 0, tzinfo=UTC)  # EST 零点 = 05:00Z
+    assert end == datetime(2026, 3, 9, 4, 0, tzinfo=UTC)  # 次日 EDT 零点 = 04:00Z
+    # 非切换日 24h；固定偏移时区（生产 Asia/Shanghai）恒 24h
+    s2, e2 = metrics_daily._day_bounds_utc(date(2026, 3, 15))
+    assert (e2 - s2) == timedelta(hours=24)
+    monkeypatch.setattr(settings, "PRACTICE_TZ", "Asia/Shanghai")
+    s, e = metrics_daily._day_bounds_utc(date(2026, 3, 8))
+    assert (e - s) == timedelta(hours=24)
+
+
 def test_cost_endpoint_and_reconcile(
     client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
