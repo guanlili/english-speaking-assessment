@@ -6,6 +6,9 @@
 #   后端 Lint + 测试               ← deploy.yml job backend
 #   前端 Lint + 构建 + 客户端一致性 ← deploy.yml job frontend
 #   E2E 冒烟（主干道）             ← deploy.yml job e2e
+# 同样须两处同步：下方 paths 列表与 deploy.yml 的 paths-ignore 五组——
+# 单边改动（如 deploy.yml 新增忽略路径而本文件未跟）会让纯该路径 PR 无任何
+# workflow 运行、必需检查永远 pending 卡死合并；反向则混合 PR 语义错位。
 name: CI Fallback (docs-only)
 
 on:
