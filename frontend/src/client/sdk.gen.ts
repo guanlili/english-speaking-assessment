@@ -1524,6 +1524,9 @@ export class ChangelogService {
     /**
      * Update Changelog Entry
      * 全量更新（前端提交完整对象）：kind 传 null 表示清掉类型标签。
+     *
+     * 防御部分提交：DTO 全字段可空，但 day/标题是 NOT NULL 列，缺失时
+     * 与其等数据库约束炸 500，不如此处 422。
      * @param data The data for the request.
      * @param data.entryId
      * @param data.requestBody
