@@ -9,7 +9,7 @@
 排队/评分中的音频仍被 worker 使用。文件删除后回放端点按文件缺失 404，
 前端回放按钮报错即可，无契约变化。
 
-孤儿清扫：学生/课堂被删时 attempt 行级联消失但文件残留，上面的推进式
+残留清扫：学生/课堂被删时 attempt 行级联消失但文件残留，上面的推进式
 清理只按库内记录选候选，永远扫不到它们——本模块另跑一遍「目录里存在、
 库中无任何引用」的反向清扫（与 AUDIO_TTL_DAYS 无关：行的删除决策在级联
 删除时已发生，这里只回收磁盘）。
@@ -131,7 +131,8 @@ def purge_expired_attempt_audio(session: Session) -> int:
 
 
 def purge_orphan_audio(session: Session) -> int:
-    """删除库中已无作答记录引用的孤儿音频文件，返回本轮删除数。
+    """删除库中已无作答记录引用的残留音频文件（平台用语「残留」，
+    行业术语 orphan），返回本轮删除数。
 
     与保留期（AUDIO_TTL_DAYS）无关：引用行被级联删除时删除决策已发生，
     这里只回收磁盘。只碰存储根下的直接文件（content/ 子目录不碰）；
@@ -163,7 +164,7 @@ def purge_orphan_audio(session: Session) -> int:
             logger.exception("failed to delete orphan audio %s", path)
             continue
     if purged:
-        logger.info("orphan audio sweep deleted %d files", purged)
+        logger.info("leftover audio sweep deleted %d files", purged)
     return purged
 
 

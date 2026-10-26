@@ -246,7 +246,7 @@ function PerformanceCard({
               {rt.audio_storage?.file_count ?? 0}
               {(rt.audio_storage?.orphan_count ?? 0) > 0 ? (
                 <span className="ml-1 text-amber-600">
-                  {t({ zh: "孤儿", en: "orphan" })}{" "}
+                  {t({ zh: "残留", en: "leftover" })}{" "}
                   {rt.audio_storage?.orphan_count}
                 </span>
               ) : null}
@@ -293,7 +293,7 @@ function PerformanceCard({
                   {t({ zh: "引擎失败", en: "Engine failures" })}
                 </TableHead>
                 <TableHead className="hidden lg:table-cell text-right">
-                  {t({ zh: "孤儿音频", en: "Orphans" })}
+                  {t({ zh: "残留音频", en: "Leftover audio" })}
                 </TableHead>
               </TableRow>
             </TableHeader>
