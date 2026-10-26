@@ -266,6 +266,36 @@ export type BulkResetResult = {
     rows: Array<StudentResetRow>;
 };
 
+export type ChangelogCreate = {
+    day: string;
+    kind?: (string | null);
+    title_zh: string;
+    title_en: string;
+    body_zh?: (string | null);
+    body_en?: (string | null);
+};
+
+export type ChangelogPublic = {
+    id: string;
+    day: string;
+    kind: (string | null);
+    title_zh: string;
+    title_en: string;
+    body_zh: (string | null);
+    body_en: (string | null);
+    created_at: (string | null);
+    updated_at: (string | null);
+};
+
+export type ChangelogUpdate = {
+    day?: (string | null);
+    kind?: (string | null);
+    title_zh?: (string | null);
+    title_en?: (string | null);
+    body_zh?: (string | null);
+    body_en?: (string | null);
+};
+
 export type ClassMessagePublic = {
     id: string;
     student_id: string;
@@ -2916,6 +2946,29 @@ export type AudioReadContentAudioData = {
 };
 
 export type AudioReadContentAudioResponse = (unknown);
+
+export type ChangelogReadChangelogResponse = (Array<ChangelogPublic>);
+
+export type ChangelogCreateChangelogEntryData = {
+    requestBody: ChangelogCreate;
+};
+
+export type ChangelogCreateChangelogEntryResponse = (ChangelogPublic);
+
+export type ChangelogUpdateChangelogEntryData = {
+    entryId: string;
+    requestBody: ChangelogUpdate;
+};
+
+export type ChangelogUpdateChangelogEntryResponse = (ChangelogPublic);
+
+export type ChangelogDeleteChangelogEntryData = {
+    entryId: string;
+};
+
+export type ChangelogDeleteChangelogEntryResponse = ({
+    [key: string]: (string);
+});
 
 export type ClassesListMyClassroomsResponse = (Array<ClassroomPublic>);
 

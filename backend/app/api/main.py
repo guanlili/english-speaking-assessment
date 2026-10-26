@@ -10,6 +10,7 @@ from app.api.routes import (
     admin_question_io,
     attempts,
     audio,
+    changelog,
     classes,
     login,
     metrics,
@@ -40,3 +41,4 @@ api_router.include_router(audio.router)
 api_router.include_router(vocabulary.router)
 api_router.include_router(vocab_levels.router)
 api_router.include_router(vocab_ai.router)
+api_router.include_router(changelog.router)
