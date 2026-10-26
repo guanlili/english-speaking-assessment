@@ -12,6 +12,9 @@ x-logging: &logging
 #   2. 必填变量的 fail-fast 校验（缺失时 compose 直接报错，不带病启动）
 x-backend-common: &backend-common
   <<: *logging
+  # 显式镜像名（不随 project name 漂移）：prestart/backend 共用同一次构建；
+  # 部署脚本把上一版打成 :rollback 标签，供 scripts/rollback.sh 紧急回退
+  image: esa-backend
   build:
     context: .
     dockerfile: backend/Dockerfile
@@ -89,6 +92,7 @@ services:
 
   frontend:
     <<: *logging
+    image: esa-frontend
     build:
       context: .
       dockerfile: frontend/Dockerfile

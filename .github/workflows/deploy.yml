@@ -77,6 +77,8 @@ jobs:
         run: |
           python3 scripts/test_deploy.py
           python3 scripts/test_backup.py
+          # 回滚脚本只在生产事故时被人手动执行——语法错误拖到那一刻才发现就晚了
+          bash -n scripts/rollback.sh
       - name: 校验 uv.lock 不含镜像源 URL
         run: |
           if grep -qE "tuna\.tsinghua|mirrors\.aliyun|mirrors\.cloud\.tencent|mirrors\.163" uv.lock; then
@@ -256,8 +258,23 @@ jobs:
         timeout-minutes: 15
         working-directory: frontend
         run: npm ci && npx playwright install --with-deps ${{ matrix.browsers }}
-      - name: 构建模拟接口测试使用的前端
+      # mocked 套件用 vite preview 服务 dist/ 静态产物：按 git 跟踪文件的
+      # blob 指纹缓存，前端未变的 PR（纯后端改动/重跑）直接复用、跳过构建。
+      # 指纹用 git ls-files -s 而非 hashFiles 白名单：白名单漏列任何影响
+      # 构建的文件都会测到过期产物，全量跟踪文件指纹不会。
+      - name: 计算前端源码指纹
         if: matrix.suite == 'mocked'
+        id: fronthash
+        run: echo "hash=$(git ls-files -s frontend | git hash-object --stdin | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      - name: 恢复前端构建产物
+        if: matrix.suite == 'mocked'
+        id: distcache
+        uses: actions/cache@v6
+        with:
+          path: frontend/dist
+          key: mocked-dist-${{ runner.os }}-${{ steps.fronthash.outputs.hash }}
+      - name: 构建模拟接口测试使用的前端
+        if: matrix.suite == 'mocked' && steps.distcache.outputs.cache-hit != 'true'
         working-directory: frontend
         run: npm run build
       - name: 运行真实后端 E2E（独立数据库，串行）
@@ -494,6 +511,16 @@ jobs:
             fi
 
             echo "=== 6/7 构建并重启容器 ==="
+            # 先把当前 :latest 打成 :rollback：up --build 之后旧镜像若无任何
+            # 标签即成悬空、会被下面的 prune 清掉。保留上一版供紧急回退
+            # （bash scripts/rollback.sh，秒级、不重新构建）；带标签的镜像
+            # 不属于悬空镜像，prune 清不掉它。首次部署（无 latest）自然跳过。
+            for img in esa-backend esa-frontend; do
+              if docker image inspect "$img:latest" >/dev/null 2>&1; then
+                docker tag "$img:latest" "$img:rollback"
+                echo "$img:rollback 已指向上一版"
+              fi
+            done
             docker compose -f compose.yml up -d --build --remove-orphans || {
               echo "--- prestart logs ---"
               docker compose -f compose.yml logs prestart --tail 50
