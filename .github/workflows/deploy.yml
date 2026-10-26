@@ -1,5 +1,10 @@
 name: CI & Deploy
 
+# 最小 token 权限：所有 job（缓存/产物/SSH 部署）都只需读仓库内容，
+# 显式声明以免随仓库默认设置漂移到 read/write
+permissions:
+  contents: read
+
 on:
   push:
     branches: [master]
@@ -20,7 +25,7 @@ on:
   workflow_dispatch:
 
 # CI 检查按分支分组排队；PR 连续推修复时打断过期的全量检查（省 runner
-# 分钟——一次全链路 40+ 分钟），master 与手动触发不打断进行中的检查
+# 分钟——缓存全命中时一次全链路约 7 分钟），master 与手动触发不打断进行中的检查
 concurrency:
   group: ci-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -237,9 +242,11 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # Separate Chromium-only and dual-browser caches; a cold integration job
-      # must not save a partial cache under the key used by mocked shards.
-      # Restore the previous dual-browser cache when upgrading this workflow.
+      # integration（仅 chromium）与 mocked（双浏览器）各存各的 key；冷起的
+      # integration 分片不得把只含 chromium 的缓存写进 mocked 用的 key。
+      # 精确 key 未命中（lockfile 变更）时前缀兜底到兄弟套件的缓存：
+      # mocked（双浏览器）是 integration 的超集可直接复用；mocked 反向命中
+      # integration 时也省下 chromium 下载，只补装 webkit。
       # -icu2 前缀：2026-10-23 runner 镜像升级更换 libicu 版本，旧缓存里的
       # WebKit 二进制链接 libicu74 启动即挂（libicudata.so.74 not found），
       # 挪 key 强制冷装重建（key 与 restore 前缀一起挪，避免旧缓存兜底复活）。
@@ -248,7 +255,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-icu2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-${{ matrix.suite }}
           restore-keys: |
-            playwright-icu2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-webkit
+            playwright-icu2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-
       - name: 安装依赖与 Chromium/WebKit
         # 浏览器二进制约百 MB，冷装较慢，超时放宽到 15 分钟
         timeout-minutes: 15

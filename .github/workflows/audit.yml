@@ -3,6 +3,10 @@
 # "季度升级依赖" 是流程承诺，这里是发现渠道的机制化兜底。
 name: 依赖审计
 
+# 审计只需读仓库内容；显式声明最小权限
+permissions:
+  contents: read
+
 on:
   schedule:
     - cron: "0 2 * * 1" # 每周一 10:00（北京时间）
@@ -16,7 +20,9 @@ concurrency:
 jobs:
   backend:
     name: 后端 pip-audit
-    runs-on: ubuntu-latest
+    # 钉住 runner 镜像（2026-10-23 latest 切 26.04 的事故教训；audit 虽不跑
+    # 浏览器没被 icu 波及，但同样不留漂移面）
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -28,7 +34,7 @@ jobs:
           uvx pip-audit --requirement /tmp/req.txt
   frontend:
     name: 前端 npm audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
