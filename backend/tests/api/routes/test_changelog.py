@@ -132,6 +132,16 @@ def test_changelog_crud_and_ordering(
         == 422
     )
 
+    # 部分字段 PUT（缺必填）→ 422 而非数据库约束 500
+    assert (
+        client.put(
+            f"/api/v1/changelog/{same_day_later['id']}",
+            json={"kind": "fix"},
+            headers=superuser_token_headers,
+        ).status_code
+        == 422
+    )
+
     # 删除 + 再删 404
     assert (
         client.delete(

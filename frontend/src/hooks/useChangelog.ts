@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 
 import { ChangelogService } from "@/client"
-import useAuth from "@/hooks/useAuth"
+import useAuth, { cachedRole } from "@/hooks/useAuth"
 
 /** 侧栏红点的已读水位：存最近一次看过的最新条目日期（YYYY-MM-DD）。 */
 export const CHANGELOG_SEEN_KEY = "esa:changelog-seen"
@@ -14,7 +14,8 @@ export function useChangelog() {
   return useQuery({
     queryKey: changelogQueryKey,
     queryFn: () => ChangelogService.readChangelog(),
-    enabled: !!user,
+    // 学生不该发这个请求（API 403）——即使壳层已拦，请求仍会发出
+    enabled: !!user && (user.is_superuser || cachedRole() === "teacher"),
     staleTime: 5 * 60 * 1000,
   })
 }

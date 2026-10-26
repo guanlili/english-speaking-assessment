@@ -59,11 +59,25 @@ def update_changelog_entry(
     entry_id: uuid.UUID,
     entry_in: ChangelogUpdate,
 ) -> Any:
-    """全量更新（前端提交完整对象）：kind 传 null 表示清掉类型标签。"""
+    """全量更新（前端提交完整对象）：kind 传 null 表示清掉类型标签。
+
+    防御部分提交：DTO 全字段可空，但 day/标题是 NOT NULL 列，缺失时
+    与其等数据库约束炸 500，不如此处 422。
+    """
     entry = session.get(ChangelogEntry, entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="更新日志不存在")
     _validate_kind(entry_in.kind)
+    missing = [
+        field
+        for field in ("day", "title_zh", "title_en")
+        if getattr(entry_in, field) is None
+    ]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"全量更新缺少必填字段：{'/'.join(missing)}",
+        )
     entry.sqlmodel_update({**entry_in.model_dump(), "updated_at": get_datetime_utc()})
     session.add(entry)
     session.commit()
