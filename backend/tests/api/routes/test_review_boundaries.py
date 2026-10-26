@@ -9,7 +9,6 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app.api.deps import get_scoring_submitter
@@ -26,23 +25,40 @@ from tests.utils.credential import make_student
 
 @pytest.fixture
 def review_exam(client, superuser_token_headers, db, monkeypatch, tmp_path):
-    classroom = _resp_json(client.post(
-        "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
-    ))
+    classroom = _resp_json(
+        client.post(
+            "/api/v1/classes", json={"class_size": 10}, headers=superuser_token_headers
+        )
+    )
     code = classroom["code"]
     made = make_student(db, client, code)
     ids = [uuid.uuid4(), uuid.uuid4()]
-    passages = [Passage(id=item_id, slug=f"review-{item_id}", title="Read",
-                        text="Read this.", cefr_band="B1") for item_id in ids]
+    passages = [
+        Passage(
+            id=item_id,
+            slug=f"review-{item_id}",
+            title="Read",
+            text="Read this.",
+            cefr_band="B1",
+        )
+        for item_id in ids
+    ]
     db.add_all(passages)
     db.commit()
     exercise = ClassroomExercise(
-        classroom_id=uuid.UUID(classroom["id"]), is_exam=True, time_limit_minutes=5,
-        snapshot_items=[{
-            "id": str(item_id), "type": "passage", "text": "Read this.",
-            "suggested_seconds": 5,
-            "exam_flow": ExamItemSettings(wait_seconds=0).model_dump(),
-        } for item_id in ids],
+        classroom_id=uuid.UUID(classroom["id"]),
+        is_exam=True,
+        time_limit_minutes=5,
+        snapshot_items=[
+            {
+                "id": str(item_id),
+                "type": "passage",
+                "text": "Read this.",
+                "suggested_seconds": 5,
+                "exam_flow": ExamItemSettings(wait_seconds=0).model_dump(),
+            }
+            for item_id in ids
+        ],
     )
     db.add(exercise)
     db.flush()
@@ -53,11 +69,14 @@ def review_exam(client, superuser_token_headers, db, monkeypatch, tmp_path):
     clock = [datetime.now(UTC)]
     monkeypatch.setattr(exam, "_now", lambda: clock[0])
     monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
-    app.dependency_overrides[get_scoring_submitter] = lambda: (lambda _id: None)
+    app.dependency_overrides[get_scoring_submitter] = lambda: lambda _id: None
     try:
         sid = _today(client, made["headers"], code)["session_id"]
-        response = client.post(f"/api/v1/classes/{code}/exam/start",
-                               json={"session_id": sid}, headers=made["headers"])
+        response = client.post(
+            f"/api/v1/classes/{code}/exam/start",
+            json={"session_id": sid},
+            headers=made["headers"],
+        )
         assert response.status_code == 200
         yield client, made["headers"], code, sid, ids, clock
     finally:
@@ -70,12 +89,18 @@ def review_exam(client, superuser_token_headers, db, monkeypatch, tmp_path):
 
 def upload(ctx, item_id, key):
     client, headers, _code, sid, _ids, _clock = ctx
-    return client.post("/api/v1/attempts", headers=headers,
-                       files={"audio": wav_upload(2.0)}, data={
-                           "session_id": sid, "item_type": "passage",
-                           "item_id": str(item_id), "duration_s": "2",
-                           "idempotency_key": key,
-                       })
+    return client.post(
+        "/api/v1/attempts",
+        headers=headers,
+        files={"audio": wav_upload(2.0)},
+        data={
+            "session_id": sid,
+            "item_type": "passage",
+            "item_id": str(item_id),
+            "duration_s": "2",
+            "idempotency_key": key,
+        },
+    )
 
 
 def test_fixed_key_reused_for_other_item_is_rejected(review_exam):
@@ -121,41 +146,57 @@ def test_fixed_teacher_cannot_reset_enrolled_admin(client, db, bulk):
     from tests.api.routes.test_students import _cleanup, _login_teacher, _new_classroom
 
     teacher, teacher_headers = _login_teacher(db, client)
-    admin = crud.create_user(session=db, user_create=UserCreate(
-        email=f"review-{uuid.uuid4().hex}@example.com", password=uuid.uuid4().hex,
-        full_name="Isolated Review Admin", role="admin", is_superuser=True,
-    ))
+    admin = crud.create_user(
+        session=db,
+        user_create=UserCreate(
+            email=f"review-{uuid.uuid4().hex}@example.com",
+            password=uuid.uuid4().hex,
+            full_name="Isolated Review Admin",
+            role="admin",
+            is_superuser=True,
+        ),
+    )
     original_hash = admin.hashed_password
-    headers = {"Authorization": "Bearer " + security.create_access_token(
-        admin.id, timedelta(minutes=5), role=admin.role, password_hash=original_hash
-    )}
+    headers = {
+        "Authorization": "Bearer "
+        + security.create_access_token(
+            admin.id, timedelta(minutes=5), role=admin.role, password_hash=original_hash
+        )
+    }
     classroom_id = None
     try:
         classroom = _new_classroom(client, teacher_headers)
         classroom_id = uuid.UUID(classroom["id"])
-        joined = client.post(f"/api/v1/classes/{classroom['code']}/join",
-                             headers=headers, json={})
+        joined = client.post(
+            f"/api/v1/classes/{classroom['code']}/join", headers=headers, json={}
+        )
         assert joined.status_code == 200, joined.text
         student_id = joined.json()["id"]
         if bulk:
-            response = client.post("/api/v1/students/bulk-reset-password",
-                                   params={"classroom_id": str(classroom_id)},
-                                   headers=teacher_headers)
+            response = client.post(
+                "/api/v1/students/bulk-reset-password",
+                params={"classroom_id": str(classroom_id)},
+                headers=teacher_headers,
+            )
             assert response.status_code == 200, response.text
             assert response.json()["skipped"] == 1
             assert response.json()["reset"] == 0
         else:
-            response = client.post(f"/api/v1/students/{student_id}/reset-password",
-                                   headers=teacher_headers)
+            response = client.post(
+                f"/api/v1/students/{student_id}/reset-password", headers=teacher_headers
+            )
             assert response.status_code == 403
             assert response.json()["detail"] == "没有权限：只能重置学生账号的密码"
         db.refresh(admin)
         assert admin.hashed_password == original_hash
-        login = client.post("/api/v1/login/access-token", data={
-            "username": admin.email, "password": security.DEFAULT_STUDENT_PASSWORD
-        })
+        login = client.post(
+            "/api/v1/login/access-token",
+            data={
+                "username": admin.email,
+                "password": security.DEFAULT_STUDENT_PASSWORD,
+            },
+        )
         assert login.status_code == 400
-        print(f"REGRESSION: teacher reset of enrolled admin blocked (bulk={bulk})")
     finally:
         _cleanup(db, classroom_id, teacher, admin)
 
@@ -169,6 +210,7 @@ def test_fixed_asr_runs_without_open_transaction(review_exam, db, monkeypatch):
     assert response.status_code == 200
     observed = []
     with Session(db.get_bind()) as scoring_session:
+
         class StubAsr:
             name = "mock"
 
@@ -179,24 +221,37 @@ def test_fixed_asr_runs_without_open_transaction(review_exam, db, monkeypatch):
         monkeypatch.setattr(worker, "build_asr_provider", StubAsr)
         worker.process_attempt(scoring_session, uuid.UUID(response.json()["id"]))
     assert observed == [False]
-    print("REGRESSION: ASR executed without an open transaction")
 
 
 def test_rubric_requests_update_metrics():
     import json
+
     import httpx
+
     from app.core import metrics
     from app.scoring.rubric import ArkRubricScorer, RubricQuestionContext
 
-    payload = {"fluency": 2, "vocabulary": 2, "grammar": 2, "task": 2,
-               "advice": [], "upgrades": []}
+    payload = {
+        "fluency": 2,
+        "vocabulary": 2,
+        "grammar": 2,
+        "task": 2,
+        "advice": [],
+        "upgrades": [],
+    }
     metrics.reset_for_tests()
-    transport = httpx.MockTransport(lambda _request: httpx.Response(200, json={
-        "choices": [{"message": {"content": json.dumps(payload)}}]
-    }))
+    transport = httpx.MockTransport(
+        lambda _request: httpx.Response(
+            200, json={"choices": [{"message": {"content": json.dumps(payload)}}]}
+        )
+    )
     with httpx.Client(transport=transport) as client:
-        scorer = ArkRubricScorer(api_key="dummy-review-key", model="test",
-                                 base_url="https://review.invalid", client=client)
+        scorer = ArkRubricScorer(
+            api_key="dummy-review-key",
+            model="test",
+            base_url="https://review.invalid",
+            client=client,
+        )
         scorer.score(RubricQuestionContext(text="Describe school."), "I like school.")
     # 评审时的 P3 缺口（rubric 调用不上报 metrics）已修复：调用须计入 llm_rubric
     stats = metrics.call_stats()
