@@ -1,0 +1,47 @@
+# 必需检查项的兜底报告：deploy.yml 对纯文档/评审产物 PR 走 paths-ignore
+# 整体跳过，必需检查名会永远 pending 卡住合并。本 workflow 用相同的
+# job 名在"仅这些路径变更"时直接报成功，让必需检查项在两类 PR 上都有结果。
+#
+# 配对关系（改名须两处同步）：
+#   后端 Lint + 测试               ← deploy.yml job backend
+#   前端 Lint + 构建 + 客户端一致性 ← deploy.yml job frontend
+#   E2E 冒烟（主干道）             ← deploy.yml job e2e
+name: CI Fallback (docs-only)
+
+on:
+  pull_request:
+    paths:
+      - "**.md"
+      - "docs/**"
+      - "reviews/**"
+      - "prototypes/**"
+      - "gui-test-screenshots/**"
+
+concurrency:
+  group: ci-fallback-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: 后端 Lint + 测试
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - run: echo "docs-only change, backend checks skipped"
+
+  frontend:
+    name: 前端 Lint + 构建 + 客户端一致性
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - run: echo "docs-only change, frontend checks skipped"
+
+  e2e:
+    name: E2E 冒烟（主干道）
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - run: echo "docs-only change, e2e checks skipped"
