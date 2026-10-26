@@ -209,18 +209,13 @@ jobs:
       - name: 准备环境变量（local 环境，演示登录可用）
         if: matrix.suite == 'integration'
         run: cp .env.example .env
-      # type=gha 构建缓存需要 docker-container 驱动的构建器；compose 不跟随
-      # buildx 的 --use 全局切换，必须导出 BUILDX_BUILDER 显式指定
-      - name: 启用 GHA 构建缓存构建器
-        if: matrix.suite == 'integration'
-        run: |
-          docker buildx create --use --driver docker-container --name gha-cache-builder
-          echo "BUILDX_BUILDER=gha-cache-builder" >> "$GITHUB_ENV"
       - name: 启动完整栈（db + backend + prestart + frontend）
         if: matrix.suite == 'integration'
-        # -f 跳过本地开发的 compose.override.yml（5173 映射），用生产端口形态；
-        # 追加 compose.ci-build-cache.yml 启用 GHA 层缓存（仅本 job，服务器部署不加载）
-        run: docker compose -f compose.yml -f compose.ci-build-cache.yml up -d --build
+        # -f 跳过本地开发的 compose.override.yml（5173 映射），用生产端口形态。
+        # 曾叠加 compose.ci-build-cache.yml + buildx 构建器走 type=gha 层缓存，
+        # 实测从未生效（up --build 不导出 cache_to：日志 0 条 CACHED、缓存
+        # 列表 0 条 buildkit 条目），而冷构建本就只要 ~100 秒，整套拆除。
+        run: docker compose -f compose.yml up -d --build
       - name: 等待就绪（prestart 迁移 + backend 健康检查，首次较慢）
         if: matrix.suite == 'integration'
         run: |
