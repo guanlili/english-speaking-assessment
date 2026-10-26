@@ -15,7 +15,7 @@
 - EIP 教材原文因版权**不进仓库**，只建内容槽（Passage/RepeatSentence/Scenario/ScenarioQuestion 表）；演示种子用自写 Pets 内容（slug: demo-pets，课堂码 DEMO01）。五级词库原始教材同样不入仓库。
 - 学生账号默认密码统一 `brs123456`，**不强制改密**（2026-09-29 产品决策）。
 - 待办：EIP 教材文本录入；词级发音评分二期（选型结论：火山打底、腾讯 SOE-N 候选）；题库个人/校内共享分层 P2 复制 / P3 共享（P1 编辑保护已实现：教师只能改自己创建的题，管理员与存量内容公共可改；见 `docs/question-bank-ownership-design.md`）。
-- 生产部署已启用：push `master` → CI（lint + 测试 + 客户端一致性 + E2E 汇总）→ 自动部署（`ENABLE_PRODUCTION_DEPLOY` 仓库变量控制），回滚走 revert（见 README「生产部署」）。
+- 生产部署已启用：push `master` → CI（lint + 测试 + 客户端一致性 + E2E 汇总）→ 自动部署（`ENABLE_PRODUCTION_DEPLOY` 仓库变量控制）。回滚常规走 revert；紧急秒级用 `scripts/rollback.sh`（部署链自动保留上一版镜像为 `:rollback` 标签；见 README「回滚」）。
 
 ## 跨模块不变量（改代码时必须守住）
 
@@ -66,6 +66,7 @@
 | 实时课堂 / 自检 / 诊断补练 / 复核 / 讲评 / 对比 / 阶段报告 | `class_teaching_tools.py`、`admin_content_copy.py`、`attempts.py` | `docs/teacher-platform-design.md`「课堂教学闭环增强」 |
 | 运行时与可观测 | `X-Request-ID`、metrics | `docs/runtime-observability.md` |
 | 备份与恢复 | `scripts/backup-local.sh` | `docs/backup-restore.md` |
+| 紧急回滚（秒级切上一版镜像） | `scripts/rollback.sh` | README「回滚」 |
 
 ## 项目结构
 

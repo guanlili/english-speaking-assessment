@@ -1,5 +1,10 @@
 name: CI & Deploy
 
+# 最小 token 权限：所有 job（缓存/产物/SSH 部署）都只需读仓库内容，
+# 显式声明以免随仓库默认设置漂移到 read/write
+permissions:
+  contents: read
+
 on:
   push:
     branches: [master]
@@ -20,7 +25,7 @@ on:
   workflow_dispatch:
 
 # CI 检查按分支分组排队；PR 连续推修复时打断过期的全量检查（省 runner
-# 分钟——一次全链路 40+ 分钟），master 与手动触发不打断进行中的检查
+# 分钟——缓存全命中时一次全链路约 7 分钟），master 与手动触发不打断进行中的检查
 concurrency:
   group: ci-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -72,6 +77,8 @@ jobs:
         run: |
           python3 scripts/test_deploy.py
           python3 scripts/test_backup.py
+          # 回滚脚本只在生产事故时被人手动执行——语法错误拖到那一刻才发现就晚了
+          bash -n scripts/rollback.sh
       - name: 校验 uv.lock 不含镜像源 URL
         run: |
           if grep -qE "tuna\.tsinghua|mirrors\.aliyun|mirrors\.cloud\.tencent|mirrors\.163" uv.lock; then
@@ -204,18 +211,13 @@ jobs:
       - name: 准备环境变量（local 环境，演示登录可用）
         if: matrix.suite == 'integration'
         run: cp .env.example .env
-      # type=gha 构建缓存需要 docker-container 驱动的构建器；compose 不跟随
-      # buildx 的 --use 全局切换，必须导出 BUILDX_BUILDER 显式指定
-      - name: 启用 GHA 构建缓存构建器
-        if: matrix.suite == 'integration'
-        run: |
-          docker buildx create --use --driver docker-container --name gha-cache-builder
-          echo "BUILDX_BUILDER=gha-cache-builder" >> "$GITHUB_ENV"
       - name: 启动完整栈（db + backend + prestart + frontend）
         if: matrix.suite == 'integration'
-        # -f 跳过本地开发的 compose.override.yml（5173 映射），用生产端口形态；
-        # 追加 compose.ci-build-cache.yml 启用 GHA 层缓存（仅本 job，服务器部署不加载）
-        run: docker compose -f compose.yml -f compose.ci-build-cache.yml up -d --build
+        # -f 跳过本地开发的 compose.override.yml（5173 映射），用生产端口形态。
+        # 曾叠加 compose.ci-build-cache.yml + buildx 构建器走 type=gha 层缓存，
+        # 实测从未生效（up --build 不导出 cache_to：日志 0 条 CACHED、缓存
+        # 列表 0 条 buildkit 条目），而冷构建本就只要 ~100 秒，整套拆除。
+        run: docker compose -f compose.yml up -d --build
       - name: 等待就绪（prestart 迁移 + backend 健康检查，首次较慢）
         if: matrix.suite == 'integration'
         run: |
@@ -237,9 +239,11 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # Separate Chromium-only and dual-browser caches; a cold integration job
-      # must not save a partial cache under the key used by mocked shards.
-      # Restore the previous dual-browser cache when upgrading this workflow.
+      # integration（仅 chromium）与 mocked（双浏览器）各存各的 key；冷起的
+      # integration 分片不得把只含 chromium 的缓存写进 mocked 用的 key。
+      # 精确 key 未命中（lockfile 变更）时前缀兜底到兄弟套件的缓存：
+      # mocked（双浏览器）是 integration 的超集可直接复用；mocked 反向命中
+      # integration 时也省下 chromium 下载，只补装 webkit。
       # -icu2 前缀：2026-10-23 runner 镜像升级更换 libicu 版本，旧缓存里的
       # WebKit 二进制链接 libicu74 启动即挂（libicudata.so.74 not found），
       # 挪 key 强制冷装重建（key 与 restore 前缀一起挪，避免旧缓存兜底复活）。
@@ -248,14 +252,29 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-icu2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-${{ matrix.suite }}
           restore-keys: |
-            playwright-icu2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-webkit
+            playwright-icu2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-
       - name: 安装依赖与 Chromium/WebKit
         # 浏览器二进制约百 MB，冷装较慢，超时放宽到 15 分钟
         timeout-minutes: 15
         working-directory: frontend
         run: npm ci && npx playwright install --with-deps ${{ matrix.browsers }}
-      - name: 构建模拟接口测试使用的前端
+      # mocked 套件用 vite preview 服务 dist/ 静态产物：按 git 跟踪文件的
+      # blob 指纹缓存，前端未变的 PR（纯后端改动/重跑）直接复用、跳过构建。
+      # 指纹用 git ls-files -s 而非 hashFiles 白名单：白名单漏列任何影响
+      # 构建的文件都会测到过期产物，全量跟踪文件指纹不会。
+      - name: 计算前端源码指纹
         if: matrix.suite == 'mocked'
+        id: fronthash
+        run: echo "hash=$(git ls-files -s frontend | git hash-object --stdin | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      - name: 恢复前端构建产物
+        if: matrix.suite == 'mocked'
+        id: distcache
+        uses: actions/cache@v6
+        with:
+          path: frontend/dist
+          key: mocked-dist-${{ runner.os }}-${{ steps.fronthash.outputs.hash }}
+      - name: 构建模拟接口测试使用的前端
+        if: matrix.suite == 'mocked' && steps.distcache.outputs.cache-hit != 'true'
         working-directory: frontend
         run: npm run build
       - name: 运行真实后端 E2E（独立数据库，串行）
@@ -275,7 +294,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.suite }}-${{ matrix.shard }}
-          path: frontend/test-results/
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
           retention-days: 7
 
   # Keep the existing required check name; deployment must wait for every shard.
@@ -397,7 +418,7 @@ jobs:
             cd "$deploy_path"
             trap 'rm -f .env.new' EXIT
 
-            echo "=== 1/5 checkout 到本次 CI 验证过的提交 ==="
+            echo "=== 1/7 checkout 到本次 CI 验证过的提交 ==="
             # 不用 git pull：pull 拿到的是"部署时刻的最新 master"，连续 push 时可能部署到还没过 CI 的提交。
             # reset --hard 到 github.sha 保证部署的永远是这个 run 测过的代码，也兼容紧急回滚后的服务器状态。
             # 服务器 origin 走 gh-proxy.com 镜像：偶发 403/429 退避重试；持续 401（2026-10-20 起
@@ -427,7 +448,7 @@ jobs:
             fi
             rm -f /tmp/esa-deploy/deploy.bundle
 
-            echo "=== 2/5 解码 .env 并校验 ==="
+            echo "=== 2/7 解码 .env 并校验 ==="
             printf '%s' "$ENV_B64" | base64 -d > .env.new
             chmod 600 .env.new
             # 必填键非空白（生成的每行都是 KEY="value" 形式，值非空即引号间有内容）
@@ -443,11 +464,11 @@ jobs:
               exit 1
             fi
 
-            echo "=== 3/5 原子替换 .env ==="
+            echo "=== 3/7 原子替换 .env ==="
             # 校验全部通过才替换（同文件系统 rename，不存在写一半的 .env）
             mv .env.new .env
 
-            echo "=== 4/6 HTTPS 证书（配置 DP_Id/DP_Key/TLS_DOMAIN 时自动签发，幂等） ==="
+            echo "=== 4/7 HTTPS 证书（配置 DP_Id/DP_Key/TLS_DOMAIN 时自动签发，幂等） ==="
             if grep -Eq '^DP_Id=".+"' .env && grep -Eq '^DP_Key=".+"' .env && grep -Eq '^TLS_DOMAIN=".+"' .env; then
               tls_domain=$(sed -n 's/^TLS_DOMAIN="\([^"]*\)"$/\1/p' .env)
               mkdir -p ssl
@@ -458,6 +479,9 @@ jobs:
                 docker compose -f compose.yml run --rm acme --issue --dns dns_dp -d "$tls_domain" --server letsencrypt --keylength ec-256
                 docker compose -f compose.yml run --rm acme --install-cert -d "$tls_domain" --fullchain-file /ssl/fullchain.pem --key-file /ssl/privkey.pem
                 echo "证书已安装到 ./ssl/，nginx 将以 https 启动"
+                # 本次部署新出现了证书：现有容器的 entrypoint 已按无证书形态
+                # 启动过，后面需要强制重建一次 frontend 让它重新求值 TLS
+                tls_first_issue=1
               else
                 echo "证书已存在，跳过签发（acme daemon 自动续期）"
               fi
@@ -468,7 +492,7 @@ jobs:
               echo "未配置 DNSPod 密钥/域名，保持纯 HTTP（本地与首启兼容）"
             fi
 
-            echo "=== 4.5/6 每日数据库备份（幂等注册，保留 14 天） ==="
+            echo "=== 5/7 每日数据库备份（幂等注册，保留 14 天） ==="
             mkdir -p backups
             chmod 700 backups
             # 完整备份包含数据库、录音/标准音卷和部署配置；失败记入巡检日志。
@@ -486,7 +510,17 @@ jobs:
               exit 1
             fi
 
-            echo "=== 5/6 构建并重启容器 ==="
+            echo "=== 6/7 构建并重启容器 ==="
+            # 先把当前 :latest 打成 :rollback：up --build 之后旧镜像若无任何
+            # 标签即成悬空、会被下面的 prune 清掉。保留上一版供紧急回退
+            # （bash scripts/rollback.sh，秒级、不重新构建）；带标签的镜像
+            # 不属于悬空镜像，prune 清不掉它。首次部署（无 latest）自然跳过。
+            for img in esa-backend esa-frontend; do
+              if docker image inspect "$img:latest" >/dev/null 2>&1; then
+                docker tag "$img:latest" "$img:rollback"
+                echo "$img:rollback 已指向上一版"
+              fi
+            done
             docker compose -f compose.yml up -d --build --remove-orphans || {
               echo "--- prestart logs ---"
               docker compose -f compose.yml logs prestart --tail 50
@@ -494,12 +528,15 @@ jobs:
               docker compose -f compose.yml logs backend --tail 50
               exit 1
             }
-            # frontend 的 TLS 形态由 entrypoint 在容器启动时决定；证书后签发不会
-            # 改变 compose 配置，up 不会重建容器 → 部署时强制重建一次重新求值
-            # （前端闪断 1~2 秒，仅部署窗口内）
-            docker compose -f compose.yml up -d --force-recreate --no-deps frontend
+            # frontend 的 TLS 形态由 entrypoint 在容器启动时决定：只有本次部署
+            # 首次签发了证书才需要强制重建（compose up 不会因磁盘上多了证书而
+            # 重建容器）。例行部署不再强重建——消除每次部署 1~2 秒的前端闪断；
+            # 证书续期由每日 04:00 的 nginx reload cron 覆盖（reload 即加载新证书）。
+            if [ "${tls_first_issue:-0}" = "1" ]; then
+              docker compose -f compose.yml up -d --force-recreate --no-deps frontend
+            fi
 
-            echo "=== 6/6 验证（就绪检查 = 含数据库可用性；经 nginx 反代访问）==="
+            echo "=== 7/7 验证（就绪检查 = 含数据库可用性；经 nginx 反代访问）==="
             app_port=$(sed -n 's/^APP_PORT="\([0-9]*\)"$/\1/p' .env)
             healthy=""
             for i in $(seq 1 30); do
@@ -518,5 +555,8 @@ jobs:
             echo "✅ 部署成功"
             docker compose -f compose.yml ps
 
-            echo "=== 清理旧镜像，防止磁盘被悬空镜像占满 ==="
+            echo "=== 清理旧镜像与超额构建缓存，防止磁盘被占满 ==="
             docker image prune -f
+            # 构建缓存每次部署累积且无上限；保留最近 20G，超出按最旧淘汰
+            # （118G 盘，试点期足够）。失败不阻断部署——清理只是容量兜底。
+            docker builder prune -f --keep-storage 20g || true
