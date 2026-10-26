@@ -26,6 +26,9 @@ backend/audio/
 # HTTPS 证书（acme.sh 签发到本地，不入库）
 ssl/
 
+# 安全评审材料含攻击细节，仓库公开，不入库（回归测试已收编 backend/tests/api/routes/test_review_boundaries.py）
+reviews/
+
 # 本地容器源码备份（任务审计用，不入库）
 backups/
 .zcode/
