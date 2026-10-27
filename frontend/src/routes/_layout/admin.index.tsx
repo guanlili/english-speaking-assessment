@@ -194,6 +194,9 @@ function UsersTableContent() {
             <SelectItem value="teacher">
               {t({ zh: "教师", en: "Teachers" })}
             </SelectItem>
+            <SelectItem value="admin">
+              {t({ zh: "管理员", en: "Admins" })}
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>

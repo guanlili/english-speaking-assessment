@@ -48,15 +48,24 @@ export function buildUserColumns(t: Translate): ColumnDef<UserTableData>[] {
       ),
     },
     {
-      accessorKey: "is_superuser",
+      accessorKey: "role",
       header: t({ zh: "角色", en: "Role" }),
-      cell: ({ row }) => (
-        <Badge variant={row.original.is_superuser ? "default" : "secondary"}>
-          {row.original.is_superuser
-            ? t({ zh: "管理员", en: "Superuser" })
-            : t({ zh: "普通用户", en: "User" })}
-        </Badge>
-      ),
+      cell: ({ row }) => {
+        const { role, is_superuser } = row.original
+        const isAdmin = is_superuser || role === "admin"
+        const isStudent = !isAdmin && role === "student"
+        return (
+          <Badge
+            variant={isAdmin ? "default" : isStudent ? "outline" : "secondary"}
+          >
+            {isAdmin
+              ? t({ zh: "管理员", en: "Admin" })
+              : isStudent
+                ? t({ zh: "学生", en: "Student" })
+                : t({ zh: "教师", en: "Teacher" })}
+          </Badge>
+        )
+      },
     },
     {
       accessorKey: "is_active",
