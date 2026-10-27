@@ -470,7 +470,8 @@ def test_percentile_on_off_and_small_sample(
     assert "班级样本不足" not in off_text
     assert "泄漏甲" not in off_text
     for score in scores:
-        assert str(score) not in off_text
+        # 作答编号是十六进制，日期里也会出现数字；只查写成一位小数的分数。
+        assert f"{score}.0" not in off_text
 
     shown = client.patch(
         f"{settings.API_V1_STR}/classes/{room.code}/report-settings",
@@ -508,7 +509,7 @@ def test_percentile_on_off_and_small_sample(
     for name in names:
         assert name not in on_text
     for score in scores:
-        assert str(score) not in on_text
+        assert f"{score}.0" not in on_text
     assert on.json()["filter"].get("kind") == "student_report_pdf"
     for name in names:
         assert name not in str(on.json()["filter"])

@@ -342,6 +342,8 @@ def render_student_report(report: StudentReport, dest: Path) -> PdfBuild:
 def _draw(pdf: _ReportPDF, report: StudentReport) -> None:
     pdf.heading("学情报告", 22)
     pdf.small("Personal learning report")
+    pdf.body("参考分不是官方成绩。")
+    pdf.small("These scores are a reference, not an official result.")
     pdf.gap(2)
     pdf.meta("学生", report.display_name, "Student")
     pdf.meta("课堂", f"{report.classroom_name} · {report.classroom_code}", "Classroom")

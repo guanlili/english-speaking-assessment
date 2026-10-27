@@ -187,10 +187,15 @@ export function ExportCenter({ mode }: { mode: "self" | "classroom" }) {
         )
       } else {
         showSuccessToast(
-          t({
-            zh: "已开始打包。完成后会在下面列表里出现，并提示你。",
-            en: "Packing has started. The list below updates when it is ready.",
-          }),
+          isPdfJob(job)
+            ? t({
+                zh: "已开始生成学情报告。完成后会出现在下面的列表里。",
+                en: "The learning report is being built. It will show up in the list below.",
+              })
+            : t({
+                zh: "已开始打包。完成后会在下面列表里出现，并提示你。",
+                en: "Packing has started. The list below updates when it is ready.",
+              }),
         )
       }
       setConfirmOpen(false)
@@ -202,9 +207,14 @@ export function ExportCenter({ mode }: { mode: "self" | "classroom" }) {
 
   const retryJob = useMutation({
     mutationFn: (jobId: string) => ExportsService.retryExport({ jobId }),
-    onSuccess: () => {
+    onSuccess: (job) => {
       showSuccessToast(
-        t({ zh: "已重新开始打包。", en: "Packing has started again." }),
+        isPdfJob(job)
+          ? t({
+              zh: "已重新生成学情报告。",
+              en: "The learning report is being built again.",
+            })
+          : t({ zh: "已重新开始打包。", en: "Packing has started again." }),
       )
       refresh()
     },
