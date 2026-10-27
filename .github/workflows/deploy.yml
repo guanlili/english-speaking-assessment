@@ -202,10 +202,11 @@ jobs:
             total: 2
             browsers: chromium webkit
     runs-on: ubuntu-24.04
-    # 45 分钟：浏览器缓存未命中（lockfile 变更/缓存淘汰）时 Chromium+WebKit
-    # 全量下载约 20 分钟起，叠加完整栈启动与双浏览器套件，30 分钟会撞线
-    # 被强制取消（2026-10-10 PR#101 首次部署实测）；缓存命中时全程 ~10 分钟
-    timeout-minutes: 45
+    # 60 分钟：浏览器缓存未命中（lockfile 变更/缓存淘汰）时 Chromium+WebKit
+    # 全量下载约 20 分钟起，叠加完整栈启动与双浏览器套件（2026-10-10
+    # PR#101 首次部署实测）；安装步骤自身最多 50 分钟（3×15 分钟重试，防
+    # runner 网络劣化，见下方安装步骤注释）。缓存命中时全程 ~10 分钟
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - name: 准备环境变量（local 环境，演示登录可用）
@@ -254,10 +255,36 @@ jobs:
           restore-keys: |
             playwright-icu2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-
       - name: 安装依赖与 Chromium/WebKit
-        # 浏览器二进制约百 MB，冷装较慢，超时放宽到 15 分钟
-        timeout-minutes: 15
+        # runner 网络劣化有两副面孔（2026-10-27 一天内实测两种）：静默挂死
+        # 零输出（run 40555961170）、apt 源爬速单文件数分钟（本 PR 首跑
+        # mocked 1/2，14 分钟只拉了 43/130 个文件）。单次尝试限时 15 分钟
+        # （GNU timeout 把挂死/爬速转成普通失败）+ 重试 2 次：apt 已下载的
+        # 包缓存在 /var/cache/apt/archives 跨尝试复用，慢而正常的安装靠
+        # 累积进度过线。重试前必须清残留进程树：timeout 只杀直接子进程，
+        # 孤儿 apt-get 会持有 dpkg 锁把重试毒化（本 PR 首跑实测撞锁
+        # exit 100）。正常路径（缓存命中）~2 分钟不受影响；步骤 50 分钟 /
+        # job 60 分钟仅在多次重试的劣化场景逼近，届时再失败与原先 15 分钟
+        # 一次性判死等价，不会更糟。
+        timeout-minutes: 50
         working-directory: frontend
-        run: npm ci && npx playwright install --with-deps ${{ matrix.browsers }}
+        env:
+          # 浏览器下载连接停滞时快速报错交给重试，而不是无限挂起
+          PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: "60000"
+        run: |
+          npm ci
+          for i in 1 2 3; do
+            if timeout -k 30 900 npx playwright install --with-deps ${{ matrix.browsers }}; then
+              exit 0
+            fi
+            echo "⚠️ 第 $i 次安装失败或挂起，清理残留进程后重试..."
+            sudo pkill -9 -x apt-get 2>/dev/null || true
+            sudo pkill -9 -x dpkg 2>/dev/null || true
+            sudo pkill -9 -f "playwright install" 2>/dev/null || true
+            sleep 10
+            # 若上次死在 dpkg 安装中途，先修复中断状态，避免重试撞锁
+            sudo dpkg --configure -a || true
+          done
+          exit 1
       # mocked 套件用 vite preview 服务 dist/ 静态产物：按 git 跟踪文件的
       # blob 指纹缓存，前端未变的 PR（纯后端改动/重跑）直接复用、跳过构建。
       # 指纹用 git ls-files -s 而非 hashFiles 白名单：白名单漏列任何影响
