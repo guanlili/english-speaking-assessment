@@ -255,10 +255,14 @@ jobs:
           restore-keys: |
             playwright-icu2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-
       - name: 安装依赖与 Chromium/WebKit
-        # 浏览器二进制约百 MB，偶发下载极慢（单日多次 15 分钟超时，
-        # rerun 即过）：放宽到 25 分钟，job 总超时已同步放宽到 50 分钟
+        # 浏览器二进制约百 MB。官方 CDN 对 runner 偶发甚至持续极慢
+        # （2026-10-26/27 单日六次超时，15 与 25 分钟阈值都撞线），
+        # 改走 npmmirror 二进制镜像（与 Docker 构建国内加速同一思路），
+        # 并保留 25 分钟宽阈值；job 总超时已同步放宽到 50 分钟
         timeout-minutes: 25
         working-directory: frontend
+        env:
+          PLAYWRIGHT_DOWNLOAD_HOST: https://cdn.npmmirror.com/binaries/playwright
         run: npm ci && npx playwright install --with-deps ${{ matrix.browsers }}
       # mocked 套件用 vite preview 服务 dist/ 静态产物：按 git 跟踪文件的
       # blob 指纹缓存，前端未变的 PR（纯后端改动/重跑）直接复用、跳过构建。
