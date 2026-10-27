@@ -108,6 +108,10 @@ services:
     volumes:
       # 证书目录（服务器上由 acme 容器写入；本地开发不存在则为空目录 → 纯 HTTP）
       - ./ssl:/etc/nginx/ssl:ro
+      # outman.press 证书在 ./ssl/outman.press/；conf 由镜像 entrypoint 在证书存在时启用
+    extra_hosts:
+      # 遇己 yujee-web 在宿主机 :8080，供 outman.press 反代
+      - "host.docker.internal:host-gateway"
     depends_on:
       backend:
         condition: service_healthy
