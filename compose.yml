@@ -35,8 +35,11 @@ x-backend-common: &backend-common
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD?Variable not set}
     # 学生录音落盘到独立卷，重建容器不丢
     AUDIO_STORAGE_DIR: /app/audio
+    # 口语原音频 ZIP 与录音卷分开，避免导出包挤占音频盘
+    EXPORT_STORAGE_DIR: /app/export
   volumes:
     - app-audio-data:/app/audio
+    - app-export-data:/app/export
 
 services:
 
@@ -133,4 +136,5 @@ services:
 volumes:
   app-db-data:
   app-audio-data:
+  app-export-data:
   acme-sh-data:

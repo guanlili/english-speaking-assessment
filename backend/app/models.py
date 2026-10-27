@@ -3000,3 +3000,101 @@ class ChangelogPublic(SQLModel):
     body_en: str | None
     created_at: datetime | None
     updated_at: datetime | None
+
+
+# 口语原音频 ZIP 导出。队列在数据库（ExportJob），工人是独立线程池，
+# 不与评分 SCORING_WORKERS 共用。成品在 EXPORT_STORAGE_DIR，到期删除。
+class ExportScope:
+    SELF = "self"
+    CLASSROOM = "classroom"
+
+
+class ExportJobStatus:
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    EXPIRED = "expired"
+
+
+class ExportJob(SQLModel, table=True):
+    __tablename__ = "export_job"
+    __table_args__ = (
+        Index(
+            "ix_export_job_requester_created",
+            "requester_user_id",
+            "created_at",
+        ),
+        Index("ix_export_job_status_expires", "status", "expires_at"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    requester_user_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    # self = 学生（或任何账号）导出自己的作答；classroom = 授权教师导出一班
+    scope: str = Field(max_length=16, index=True)
+    filter_json: dict[str, object] = Field(
+        sa_column=Column("filter_json", JSON, nullable=False)
+    )
+    status: str = Field(default=ExportJobStatus.QUEUED, max_length=16, index=True)
+    progress_done: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    progress_total: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    # 稳定错误码（export_empty / export_all_missing / export_too_large）
+    # 或不可预期失败的短消息。空表示没有错误。
+    error: str | None = Field(default=None, max_length=512)
+    # 仅文件名，相对 EXPORT_STORAGE_DIR，防止把绝对路径透出 API
+    artifact_relpath: str | None = Field(default=None, max_length=255)
+    byte_size: int | None = Field(
+        default=None, sa_column=Column(BigInteger, nullable=True)
+    )
+    included_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    missing_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    download_name: str | None = Field(default=None, max_length=255)
+    confirm_contains_student_audio: bool = Field(
+        default=False, sa_column_kwargs={"server_default": "false"}
+    )
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    started_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    finished_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    expires_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    downloaded_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class ExportAudit(SQLModel, table=True):
+    """导出审计：谁、何时、范围、任务、结果。教师课堂导出必须留痕。"""
+
+    __tablename__ = "export_audit"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    job_id: uuid.UUID | None = Field(
+        default=None, foreign_key="export_job.id", ondelete="CASCADE", index=True
+    )
+    actor_user_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    # create / start / success / fail / download / retry / expire / reject
+    action: str = Field(max_length=16, index=True)
+    scope: str | None = Field(default=None, max_length=16)
+    detail: dict[str, object] | None = Field(
+        default=None, sa_column=Column("detail", JSON, nullable=True)
+    )
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )

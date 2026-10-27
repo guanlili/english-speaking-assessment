@@ -12,6 +12,7 @@ from app.api.routes import (
     audio,
     changelog,
     classes,
+    exports,
     login,
     metrics,
     students,
@@ -28,6 +29,7 @@ api_router.include_router(users.router)
 api_router.include_router(utils.router)
 api_router.include_router(classes.router)
 api_router.include_router(attempts.router)
+api_router.include_router(exports.router)
 api_router.include_router(students.router)
 api_router.include_router(admin_content.router)
 api_router.include_router(admin_content_copy.router)

@@ -13,6 +13,7 @@ import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as JoinRouteImport } from './routes/join'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as MyExportsRouteImport } from './routes/my-exports'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignupRouteImport } from './routes/signup'
@@ -21,6 +22,7 @@ import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as LayoutChangelogRouteImport } from './routes/_layout/changelog'
 import { Route as LayoutClassroomsRouteImport } from './routes/_layout/classrooms'
 import { Route as LayoutCreateRouteImport } from './routes/_layout/create'
+import { Route as LayoutExportsRouteImport } from './routes/_layout/exports'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as ClassroomCodeRouteImport } from './routes/classroom.$code'
 import { Route as ExamCodeRouteImport } from './routes/exam.$code'
@@ -74,6 +76,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MyExportsRoute = MyExportsRouteImport.update({
+  id: '/my-exports',
+  path: '/my-exports',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RecoverPasswordRoute = RecoverPasswordRouteImport.update({
   id: '/recover-password',
   path: '/recover-password',
@@ -112,6 +119,11 @@ const LayoutClassroomsRoute = LayoutClassroomsRouteImport.update({
 const LayoutCreateRoute = LayoutCreateRouteImport.update({
   id: '/create',
   path: '/create',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutExportsRoute = LayoutExportsRouteImport.update({
+  id: '/exports',
+  path: '/exports',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
@@ -286,6 +298,7 @@ export interface FileRoutesByFullPath {
   '/change-password': typeof ChangePasswordRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
+  '/my-exports': typeof MyExportsRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -293,6 +306,7 @@ export interface FileRoutesByFullPath {
   '/changelog': typeof LayoutChangelogRoute
   '/classrooms': typeof LayoutClassroomsRoute
   '/create': typeof LayoutCreateRoute
+  '/exports': typeof LayoutExportsRoute
   '/settings': typeof LayoutSettingsRoute
   '/classroom/$code': typeof ClassroomCodeRoute
   '/exam/$code': typeof ExamCodeRouteWithChildren
@@ -331,12 +345,14 @@ export interface FileRoutesByTo {
   '/change-password': typeof ChangePasswordRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
+  '/my-exports': typeof MyExportsRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/changelog': typeof LayoutChangelogRoute
   '/classrooms': typeof LayoutClassroomsRoute
   '/create': typeof LayoutCreateRoute
+  '/exports': typeof LayoutExportsRoute
   '/settings': typeof LayoutSettingsRoute
   '/classroom/$code': typeof ClassroomCodeRoute
   '/explore/$code': typeof ExploreCodeRoute
@@ -374,6 +390,7 @@ export interface FileRoutesById {
   '/change-password': typeof ChangePasswordRoute
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
+  '/my-exports': typeof MyExportsRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -381,6 +398,7 @@ export interface FileRoutesById {
   '/_layout/changelog': typeof LayoutChangelogRoute
   '/_layout/classrooms': typeof LayoutClassroomsRoute
   '/_layout/create': typeof LayoutCreateRoute
+  '/_layout/exports': typeof LayoutExportsRoute
   '/_layout/settings': typeof LayoutSettingsRoute
   '/classroom/$code': typeof ClassroomCodeRoute
   '/exam/$code': typeof ExamCodeRouteWithChildren
@@ -423,6 +441,7 @@ export interface FileRouteTypes {
     | '/change-password'
     | '/join'
     | '/login'
+    | '/my-exports'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
@@ -430,6 +449,7 @@ export interface FileRouteTypes {
     | '/changelog'
     | '/classrooms'
     | '/create'
+    | '/exports'
     | '/settings'
     | '/classroom/$code'
     | '/exam/$code'
@@ -468,12 +488,14 @@ export interface FileRouteTypes {
     | '/change-password'
     | '/join'
     | '/login'
+    | '/my-exports'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
     | '/changelog'
     | '/classrooms'
     | '/create'
+    | '/exports'
     | '/settings'
     | '/classroom/$code'
     | '/explore/$code'
@@ -510,6 +532,7 @@ export interface FileRouteTypes {
     | '/change-password'
     | '/join'
     | '/login'
+    | '/my-exports'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
@@ -517,6 +540,7 @@ export interface FileRouteTypes {
     | '/_layout/changelog'
     | '/_layout/classrooms'
     | '/_layout/create'
+    | '/_layout/exports'
     | '/_layout/settings'
     | '/classroom/$code'
     | '/exam/$code'
@@ -558,6 +582,7 @@ export interface RootRouteChildren {
   ChangePasswordRoute: typeof ChangePasswordRoute
   JoinRoute: typeof JoinRoute
   LoginRoute: typeof LoginRoute
+  MyExportsRoute: typeof MyExportsRoute
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
@@ -601,6 +626,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/my-exports': {
+      id: '/my-exports'
+      path: '/my-exports'
+      fullPath: '/my-exports'
+      preLoaderRoute: typeof MyExportsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/recover-password': {
@@ -657,6 +689,13 @@ declare module '@tanstack/react-router' {
       path: '/create'
       fullPath: '/create'
       preLoaderRoute: typeof LayoutCreateRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/exports': {
+      id: '/_layout/exports'
+      path: '/exports'
+      fullPath: '/exports'
+      preLoaderRoute: typeof LayoutExportsRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/settings': {
@@ -928,6 +967,7 @@ interface LayoutRouteChildren {
   LayoutChangelogRoute: typeof LayoutChangelogRoute
   LayoutClassroomsRoute: typeof LayoutClassroomsRoute
   LayoutCreateRoute: typeof LayoutCreateRoute
+  LayoutExportsRoute: typeof LayoutExportsRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
 }
@@ -937,6 +977,7 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutChangelogRoute: LayoutChangelogRoute,
   LayoutClassroomsRoute: LayoutClassroomsRoute,
   LayoutCreateRoute: LayoutCreateRoute,
+  LayoutExportsRoute: LayoutExportsRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
 }
@@ -1009,6 +1050,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChangePasswordRoute: ChangePasswordRoute,
   JoinRoute: JoinRoute,
   LoginRoute: LoginRoute,
+  MyExportsRoute: MyExportsRoute,
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,

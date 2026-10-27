@@ -112,6 +112,10 @@ def db() -> Generator[Session]:
         init_db(session)
         yield session
         # 清理测试库数据（独立库内，无开发数据风险；按外键依赖倒序）
+        from app.models import ExportAudit, ExportJob
+
+        session.exec(delete(ExportAudit))  # type: ignore[call-overload]
+        session.exec(delete(ExportJob))  # type: ignore[call-overload]
         session.exec(delete(ChangelogEntry))  # type: ignore[call-overload]
         session.exec(delete(StudentFrameFavorite))  # type: ignore[call-overload]
         session.exec(delete(SentenceFrame))  # type: ignore[call-overload]
@@ -148,6 +152,13 @@ def db() -> Generator[Session]:
         from app.scoring import worker as _worker_mod
 
         _worker_mod.shutdown_executor()
+    except Exception:  # pragma: no cover - 清理阶段兜底
+        pass
+    try:
+        from app.exporting import worker as _export_worker
+
+        _export_worker.stop_sweeper()
+        _export_worker.shutdown_executor()
     except Exception:  # pragma: no cover - 清理阶段兜底
         pass
 

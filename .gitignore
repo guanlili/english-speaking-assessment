@@ -19,6 +19,8 @@ __pycache__/
 
 # 本地直跑后端时的学生录音目录（docker 内在卷里）
 backend/audio/
+# 本地直跑后端时的口语原音频 ZIP（docker 内在独立卷 app-export-data）
+backend/export/
 
 # ZCode 本地工具配置
 .zcodeignore

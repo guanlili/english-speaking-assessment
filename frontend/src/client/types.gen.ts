@@ -755,6 +755,48 @@ export type ExploreStarted = {
     unit_title: string;
 };
 
+export type ExportCreate = {
+    scope: 'self' | 'classroom';
+    from?: (string | null);
+    to?: (string | null);
+    session_id?: (string | null);
+    exercise_id?: (string | null);
+    classroom_id?: (string | null);
+    group_by_item?: boolean;
+    confirm_contains_student_audio?: boolean;
+    recent_days?: (number | null);
+};
+
+export type scope = 'self' | 'classroom';
+
+export type ExportJobPublic = {
+    id: string;
+    scope: string;
+    status: string;
+    progress: number;
+    progress_done: number;
+    progress_total: number;
+    error: (string | null);
+    byte_size: (number | null);
+    included_count: number;
+    missing_count: number;
+    created_at: (string | null);
+    started_at: (string | null);
+    finished_at: (string | null);
+    expires_at: (string | null);
+    downloaded_at: (string | null);
+    download_name: (string | null);
+    filter: {
+        [key: string]: unknown;
+    };
+};
+
+export type ExportJobsPublic = {
+    data: Array<ExportJobPublic>;
+    count: number;
+    unseen_ready: number;
+};
+
 export type ExpressionFavoriteCreate = {
     texts: Array<(string)>;
 };
@@ -3412,6 +3454,32 @@ export type ClassesRepeatClassReminderData = {
 };
 
 export type ClassesRepeatClassReminderResponse = (ClassMessagePublic);
+
+export type ExportsListExportsResponse = (ExportJobsPublic);
+
+export type ExportsCreateExportData = {
+    requestBody: ExportCreate;
+};
+
+export type ExportsCreateExportResponse = (ExportJobPublic);
+
+export type ExportsReadExportData = {
+    jobId: string;
+};
+
+export type ExportsReadExportResponse = (ExportJobPublic);
+
+export type ExportsDownloadExportData = {
+    jobId: string;
+};
+
+export type ExportsDownloadExportResponse = (unknown);
+
+export type ExportsRetryExportData = {
+    jobId: string;
+};
+
+export type ExportsRetryExportResponse = (ExportJobPublic);
 
 export type LoginReadLoginOptionsResponse = (LoginOptions);
 

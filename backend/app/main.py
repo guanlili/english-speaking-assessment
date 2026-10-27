@@ -65,6 +65,19 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     await to_thread.run_sync(startup_recovery)
     start_sweeper()
+    from app.exporting.worker import (
+        reset_executor_for_restart as reset_export_executor,
+    )
+    from app.exporting.worker import (
+        start_sweeper as start_export_sweeper,
+    )
+    from app.exporting.worker import (
+        startup_recovery as export_startup_recovery,
+    )
+
+    reset_export_executor()
+    await to_thread.run_sync(export_startup_recovery)
+    start_export_sweeper()
     # 作答音频保留期清理（AUDIO_TTL_DAYS=0 时线程空转，不删任何文件）
     from app.core.audio_retention import start_audio_retention, stop_audio_retention
 
@@ -81,6 +94,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     stop_metrics_daily()
     stop_sweeper()
     shutdown_executor()
+    from app.exporting.worker import (
+        shutdown_executor as shutdown_export_executor,
+    )
+    from app.exporting.worker import (
+        stop_sweeper as stop_export_sweeper,
+    )
+
+    stop_export_sweeper()
+    shutdown_export_executor()
 
 
 # 生产不对外暴露 /docs、/redoc、/openapi.json（完整 API 面可被匿名枚举）；
