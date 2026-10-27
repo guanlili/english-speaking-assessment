@@ -2,6 +2,7 @@ import { useRouterState } from "@tanstack/react-router"
 import {
   BookA,
   ChevronDown,
+  FolderArchive,
   Layers,
   LayoutDashboard,
   Library,
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/sidebar"
 import useAuth, { cachedRole } from "@/hooks/useAuth"
 import { useChangelogHasNew } from "@/hooks/useChangelog"
+import { useExports } from "@/hooks/useExports"
 import { useI18n } from "@/lib/i18n"
 import { type Item, isItemActive, Main } from "./Main"
 import { User } from "./User"
@@ -87,6 +89,8 @@ export function AppSidebar() {
   const { t } = useI18n()
   const { user: currentUser } = useAuth()
   const hasChangelogNew = useChangelogHasNew()
+  const exportJobs = useExports(cachedRole() !== "student")
+  const unseenExports = exportJobs.data?.unseen_ready ?? 0
   const currentPath = useRouterState({
     select: (state) => state.location.pathname,
   })
@@ -100,6 +104,12 @@ export function AppSidebar() {
     currentUser?.is_superuser || cachedRole() === "teacher"
       ? [
           ...baseItems,
+          {
+            icon: FolderArchive,
+            title: { zh: "录音导出", en: "Audio Export" },
+            path: "/exports",
+            badge: unseenExports > 0 ? unseenExports : undefined,
+          },
           ...createHubItem,
           {
             icon: Megaphone,

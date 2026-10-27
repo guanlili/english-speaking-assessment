@@ -136,6 +136,23 @@ class Settings(BaseSettings):
     # 作答音频保留期（天）：终态作答的录音文件超过保留期后由每日清理线程
     # 删除（评分结果不受影响，仅失去回放）。0 = 不清理（默认，行为不变）
     AUDIO_TTL_DAYS: int = 0
+    # 口语原音频 ZIP 导出（与评分音频卷分开的独立目录；compose 挂 app-export-data）
+    EXPORT_STORAGE_DIR: str = "./export"
+    # 导出包保留天数；到期后下载 410 并删除成品。默认 7 天。
+    EXPORT_TTL_DAYS: int = 7
+    # 导出线程池上限。必须与 SCORING_WORKERS 分开，且不超过 2。
+    EXPORT_WORKERS: int = 2
+    # 单用户同时处于 queued/running 的任务上限，超出 429。
+    EXPORT_MAX_IN_PROGRESS: int = 2
+    # 教师课堂导出默认/最长「最近 N 天」。学生自助导出不套用这扇窗口。
+    EXPORT_RECENT_DAYS_DEFAULT: int = 7
+    EXPORT_RECENT_DAYS_MAX: int = 90
+    # 预估原音频字节超过此值则直接拒绝（不自动分卷）。默认 2GB。
+    EXPORT_MAX_BYTES: int = 2 * 1024 * 1024 * 1024
+    # 产品阈值：文件数或体积达到下列值，或教师课堂导出，必须异步。
+    # 实现上所有导出都走 ExportJob（始终异步），这两项保留为可调记录。
+    EXPORT_ASYNC_MIN_FILES: int = 50
+    EXPORT_ASYNC_MIN_BYTES: int = 50 * 1024 * 1024
     MAX_AUDIO_MB: int = 20
     # 词表 CSV 导入上限（MB），防止超大文件打挂内存
     MAX_VOCAB_CSV_MB: int = 5

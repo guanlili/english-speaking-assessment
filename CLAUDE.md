@@ -64,6 +64,7 @@
 | 自动考试（E01–E10） | `services/exam_flow.py`、`AutomatedExamSession` | module-notes「自动考试流程」 |
 | 教师备课、诊断、点评、补练 | `class_composer.py`、`class_diagnostics.py`、`class_followups.py`、`class_followup_outcomes.py`、`class_reviews.py`、`class_messages.py` | `docs/teacher-platform-design.md` |
 | 平台更新日志（教师/管理员可见） | `routes/changelog.py`、`frontend/src/routes/_layout/changelog.tsx`、`hooks/useChangelog.ts` | module-notes「平台更新日志」 |
+| 口语原音频 ZIP（学生自己 / 教师课堂） | `routes/exports.py`、`services/audio_export.py`、`exporting/worker.py` | module-notes「口语原音频 ZIP」 |
 | 实时课堂 / 自检 / 诊断补练 / 复核 / 讲评 / 对比 / 阶段报告 | `class_teaching_tools.py`、`admin_content_copy.py`、`attempts.py` | `docs/teacher-platform-design.md`「课堂教学闭环增强」 |
 | 运行时与可观测 | `X-Request-ID`、metrics | `docs/runtime-observability.md` |
 | 备份与恢复 | `scripts/backup-local.sh` | `docs/backup-restore.md` |

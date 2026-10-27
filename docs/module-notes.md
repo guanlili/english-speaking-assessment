@@ -168,3 +168,16 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **后端** `models.ChangelogEntry`（`day` 面向读者的发布日期 + `kind: feature/improvement/fix/null` + 标题正文各中英）；路由 `api/routes/changelog.py`：`GET /changelog`（TeacherUserDep，按 day/created_at 倒序）、POST/PUT/DELETE 均为 SuperUserDep。PUT 是全量更新（kind 传 null 清标签）。
 - **前端** `_layout/changelog.tsx` 时间线页（管理员多出发布/编辑/删除）；侧栏「平台更新」入口带未读红点——`hooks/useChangelog.ts` 用 localStorage 水位 `esa:changelog-seen`（存最近看过的最新条目日期）对比列表首条 `day`；进入页面即视为已读，红点在侧栏下次渲染时消失。queryKey `["changelog"]` 侧栏与页面共享。
 - **注意**：字段名用 `day` 不用 `date`（与类型注解同名会让 pydantic 报 unevaluable-type）。
+
+## 口语原音频 ZIP（2026-10-27）
+
+学生导出自己的原始录音、教师导出本班录音。同一迭代，只出 ZIP + 根目录 `manifest.csv`（UTF-8 BOM）。不转码、不进 COS/S3、不用 Redis/Celery。与管理员用量 CSV（`admin_export.py`）无关，那条行为不要改。
+
+- **迁移** `e8a1c4b90d27`（revises `1f4592d70e43`）：表 `export_job`、`export_audit`。任务创建时把筛选条件冻进 `filter_json`，worker 只读这份快照。
+- **接口** `api/routes/exports.py`：`POST /exports` 一律异步返回 `job_id`（H2，不走同步小包）；`GET /exports` 只列请求人自己的任务（含 `unseen_ready`）；`GET /exports/{id}` 请求人或超管可读；`GET /exports/{id}/download` 成功且未过期时流式下载，过期 410 并删文件；`POST /exports/{id}/retry` 只重试 `failed`。教师 `scope=classroom` 必须 `confirm_contains_student_audio=true`，且 `crud.classroom_teacher_allowed`（课堂 `owner_id` 或超管）；跨班 403。学生只能 `scope=self`。进行中任务每人上限 `EXPORT_MAX_IN_PROGRESS`（默认 2）→ 429 `export_too_many_in_progress`。
+- **范围**：排除 `queued`/`scoring`；`done`/`failed` 且磁盘上有原文件才打进包。`audio_purged_at`、缺文件、或 `*.playback.wav` 记 `missing=1` 并继续；全部缺失或零条匹配 → 任务 `failed`（`export_all_missing` / `export_empty`），不写空 ZIP。预估体积 > `EXPORT_MAX_BYTES`（默认 2GiB）在入队前 422 `export_too_large`。教师未传起止日期时默认最近 `EXPORT_RECENT_DAYS_DEFAULT`（7）天。显式范围只填一端，或长于 90 天再加当天结束时刻（`23:59:59`），返回 422 `export_range_too_wide`。日期控件选满 90 天（结束日含当天）可以提交。学生自己的导出不套 90 天窗。
+- **包结构**：前缀 `SpeakUp_`。学生 `SpeakUp_我的录音_{stamp}/` 下按练习或日期分目录；教师默认 `group_by_item` 按题目分目录，文件名用学生姓名或学号。根目录必有 `manifest.csv`。`zip_path` 相对根目录，与包内条目一致。原字节、原后缀，`ZIP_STORED`。文件名清洗；重名追加 attempt id 前 8 位。
+- **Worker** `app/exporting/worker.py`：独立 `ThreadPoolExecutor`，`EXPORT_WORKERS` 钳在 1–2，**不读** `SCORING_WORKERS`。领取用 `FOR UPDATE SKIP LOCKED`。进程重启时把 `running` 打回 `queued` 再提交。每小时清扫已过 `expires_at` 的成功包（`EXPORT_TTL_DAYS`，默认 7）。审计动作 create/start/success/fail/download/retry/expire/reject，另有 `app.export` 结构化日志。意外异常记 `export_failed: …` 并 `logger.exception`，不吞掉。
+- **存储**：`EXPORT_STORAGE_DIR`（容器内 `/app/export`），compose 卷 `app-export-data`，与 `app-audio-data` 分开。磁盘文件名是 `{job_id}.zip`，下载名是 `download_name`。API 不返回绝对路径。
+- **前端**：教师/管理员 `/exports`（侧栏「录音导出」，未下载成功包显示角标）；学生不进 `_layout`，入口是 `/my-exports`（班级页与学生壳账号菜单）。教师提交前二次确认勾选。文案走 `useI18n`；`detail` 稳定码在 `utils.ts` 的 `DETAIL_MESSAGES` 与 `lib/export-copy.ts` 映射。下载用带 Authorization 的 fetch（生成客户端的 download 返回 unknown）。完成/失败用列表刷新 + toast，无新推送或邮件。
+- **配置**：`EXPORT_STORAGE_DIR`、`EXPORT_TTL_DAYS`、`EXPORT_WORKERS`、`EXPORT_MAX_IN_PROGRESS`、`EXPORT_RECENT_DAYS_DEFAULT`、`EXPORT_RECENT_DAYS_MAX`、`EXPORT_MAX_BYTES`、`EXPORT_ASYNC_MIN_FILES`、`EXPORT_ASYNC_MIN_BYTES`。后两个阈值保留为配置，当前没有同步路径。`.env.example` 与 `scripts/generate-deploy-env.sh` 写出 `EXPORT_STORAGE_DIR` / `EXPORT_TTL_DAYS`。
