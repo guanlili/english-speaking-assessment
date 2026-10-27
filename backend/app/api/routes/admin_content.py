@@ -1303,6 +1303,7 @@ class ClassroomUpdate(SQLModel):
     grade: str | None = Field(default=None, max_length=64)
     teaching_goal: str | None = Field(default=None, max_length=255)
     unlock_all: bool | None = None
+    show_report_percentile: bool | None = None
     owner_id: uuid.UUID | None = None
     is_active: bool | None = None
     class_size: int | None = Field(default=None, ge=1, le=100)

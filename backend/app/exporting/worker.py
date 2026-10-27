@@ -20,6 +20,7 @@ from app.models import (
     ExportAudit,
     ExportJob,
     ExportJobStatus,
+    ExportKind,
     get_datetime_utc,
 )
 from app.services.audio_export import (
@@ -249,18 +250,28 @@ def _finish_ok(
 
 
 def process_export_job(job_id: UUID) -> None:
-    """领取并打包一个任务。失败写入 error，不吞掉异常。"""
+    """领取并完成一个任务。ZIP 与学情 PDF 分路，失败写入 error，不吞掉异常。"""
     from app.core.db import engine
 
     with Session(engine) as session:
         job = _claim(session, job_id)
         if job is None:
             return
+        kind = job.kind or ExportKind.AUDIO_ZIP
         filt = dict(job.filter_json)
         scope = job.scope
         group_by_item = bool(filt.get("group_by_item", True))
         download_name = job.download_name
-        candidates = query_candidates(session, filt)
+        requester_user_id = job.requester_user_id
+        candidates = (
+            None
+            if kind == ExportKind.STUDENT_REPORT_PDF
+            else query_candidates(session, filt)
+        )
+    if kind == ExportKind.STUDENT_REPORT_PDF:
+        _process_student_report(job_id, filt, requester_user_id)
+        return
+    assert candidates is not None
     try:
         if present_nbytes(candidates) > settings.EXPORT_MAX_BYTES:
             _finish_failed(
@@ -314,6 +325,90 @@ def process_export_job(job_id: UUID) -> None:
         included=result.included,
         missing=result.missing,
         total=len(candidates),
+        artifact=result.artifact_name,
+        byte_size=result.byte_size,
+    )
+
+
+def _process_student_report(
+    job_id: UUID,
+    filt: dict[str, object],
+    requester_user_id: UUID,
+) -> None:
+    """学情 PDF：短事务读数据，释放后再排版落盘，最后短事务写结果。"""
+    from app.core.db import engine
+    from app.services.audio_export import export_directory
+    from app.services.student_report_pdf import (
+        ReportForbidden,
+        load_student_report,
+        render_student_report,
+    )
+
+    try:
+        with Session(engine) as session:
+            report = load_student_report(session, filt, requester_user_id)
+    except ReportForbidden:
+        _finish_failed(
+            job_id,
+            error="export_report_forbidden",
+            included=0,
+            missing=0,
+            total=0,
+        )
+        return
+    except ValueError as exc:
+        code = str(exc)
+        _finish_failed(
+            job_id,
+            error=code if code.startswith("export_") else "export_failed",
+            included=0,
+            missing=0,
+            total=0,
+        )
+        return
+    except Exception as exc:
+        logger.exception("export job %s failed while reading the report", job_id)
+        _finish_failed(
+            job_id,
+            error=f"export_failed: {exc}"[:512],
+            included=0,
+            missing=0,
+            total=0,
+        )
+        return
+    dest = export_directory() / f"{job_id}.pdf"
+    try:
+        result = render_student_report(report, dest)
+    except Exception as exc:
+        logger.exception("export job %s failed while rendering pdf", job_id)
+        dest.unlink(missing_ok=True)
+        try:
+            _finish_failed(
+                job_id,
+                error=f"export_failed: {exc}"[:512],
+                included=0,
+                missing=0,
+                total=0,
+            )
+        except Exception:
+            logger.exception("export job %s could not record failure", job_id)
+            raise
+        return
+    if result.byte_size > settings.REPORT_PDF_MAX_BYTES:
+        dest.unlink(missing_ok=True)
+        _finish_failed(
+            job_id,
+            error="export_pdf_too_large",
+            included=result.included,
+            missing=0,
+            total=max(result.included, 1),
+        )
+        return
+    _finish_ok(
+        job_id,
+        included=result.included,
+        missing=0,
+        total=max(result.included, 1),
         artifact=result.artifact_name,
         byte_size=result.byte_size,
     )

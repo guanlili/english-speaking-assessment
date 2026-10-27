@@ -149,6 +149,8 @@ class Settings(BaseSettings):
     EXPORT_RECENT_DAYS_MAX: int = 90
     # 预估原音频字节超过此值则直接拒绝（不自动分卷）。默认 2GB。
     EXPORT_MAX_BYTES: int = 2 * 1024 * 1024 * 1024
+    # 学生学情 PDF 成品上限。超过则任务失败，不把超大文件留在导出卷。
+    REPORT_PDF_MAX_BYTES: int = 20 * 1024 * 1024
     # 产品阈值：文件数或体积达到下列值，或教师课堂导出，必须异步。
     # 实现上所有导出都走 ExportJob（始终异步），这两项保留为可调记录。
     EXPORT_ASYNC_MIN_FILES: int = 50

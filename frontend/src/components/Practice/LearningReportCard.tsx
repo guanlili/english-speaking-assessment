@@ -1,9 +1,13 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 import { useState } from "react"
-import { ClassesService } from "@/client"
+import { ClassesService, ExportsService } from "@/client"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { Button } from "@/components/ui/button"
+import { LoadingButton } from "@/components/ui/loading-button"
+import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
+import { handleError } from "@/utils"
 export function LearningReportCard({
   code,
   studentId,
@@ -12,8 +16,39 @@ export function LearningReportCard({
   studentId?: string
 }) {
   const { t } = useI18n()
+  const { showSuccessToast, showErrorToast } = useCustomToast()
   const [days, setDays] = useState(7)
   const [exerciseId, setExerciseId] = useState("")
+  const exportPdf = useMutation({
+    mutationFn: () =>
+      ExportsService.createExport({
+        requestBody: {
+          kind: "student_report_pdf",
+          scope: "self",
+          classroom_code: code,
+          days,
+          exercise_id: exerciseId || undefined,
+        },
+      }),
+    onSuccess: (job) => {
+      if (job.status === "failed") {
+        showErrorToast(
+          t({
+            zh: "学情报告没有生成。",
+            en: "The learning report was not created.",
+          }),
+        )
+        return
+      }
+      showSuccessToast(
+        t({
+          zh: "已开始生成学情报告，可在下载中心保存 PDF。",
+          en: "The learning report is being built. Save the PDF from the download center.",
+        }),
+      )
+    },
+    onError: handleError.bind(showErrorToast),
+  })
   const query = useQuery({
     queryKey: ["learning-report", code, studentId, days, exerciseId],
     queryFn: () =>
@@ -36,14 +71,26 @@ export function LearningReportCard({
         <h2 className="font-semibold">
           {t({ zh: "阶段学习报告", en: "Learning report" })}
         </h2>
-        <Button
-          variant="outline"
-          className="min-h-11 print:hidden"
-          disabled={!report}
-          onClick={() => window.print()}
-        >
-          {t({ zh: "打印 / 保存 PDF", en: "Print / save PDF" })}
-        </Button>
+        <div className="flex flex-wrap gap-2 print:hidden">
+          {!studentId && (
+            <LoadingButton
+              variant="outline"
+              className="min-h-11"
+              loading={exportPdf.isPending}
+              onClick={() => exportPdf.mutate()}
+            >
+              {t({ zh: "生成学情报告 PDF", en: "Build report PDF" })}
+            </LoadingButton>
+          )}
+          <Button
+            variant="outline"
+            className="min-h-11"
+            disabled={!report}
+            onClick={() => window.print()}
+          >
+            {t({ zh: "打印 / 保存 PDF", en: "Print / save PDF" })}
+          </Button>
+        </div>
       </div>
       <div className="flex flex-wrap gap-3 print:hidden">
         <label className="space-x-2">
@@ -176,6 +223,16 @@ export function LearningReportCard({
               en: "Next: complete targeted practice, replay one recording, revise your wording using feedback and compare a new answer to the same item.",
             })}
           </p>
+          {!studentId && (
+            <p className="text-sm print:hidden">
+              <Link to="/my-exports" className="underline">
+                {t({
+                  zh: "到下载中心查看学情报告 PDF",
+                  en: "Open the download center for the PDF",
+                })}
+              </Link>
+            </p>
+          )}
         </>
       )}
     </section>

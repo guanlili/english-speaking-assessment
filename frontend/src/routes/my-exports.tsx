@@ -14,7 +14,7 @@ export const Route = createFileRoute("/my-exports")({
     if (cachedRole() !== "student") throw redirect({ to: "/exports" })
   },
   head: () => ({
-    meta: [{ title: `我的录音 / My Recordings - ${APP_NAME}` }],
+    meta: [{ title: `下载中心 / Download Center - ${APP_NAME}` }],
   }),
 })
 
@@ -36,7 +36,7 @@ function MyExportsPage() {
       </header>
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-16 sm:px-6">
         <h1 className="mb-4 text-2xl font-bold tracking-tight">
-          {t({ zh: "我的录音", en: "My recordings" })}
+          {t({ zh: "下载中心", en: "Download center" })}
         </h1>
         <ExportCenter mode="self" />
       </main>

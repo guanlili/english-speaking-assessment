@@ -709,6 +709,10 @@ class Classroom(SQLModel, table=True):
         ondelete="SET NULL",
         index=True,
     )
+    # 学生个人学情 PDF 是否写入班级位置。默认开；样本不足 5 人时仍不显示数字。
+    show_report_percentile: bool = Field(
+        default=True, sa_column_kwargs={"server_default": "true"}
+    )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -729,6 +733,7 @@ class ClassroomPublic(SQLModel):
     assign_repeat: bool | None = None
     assign_qa: bool | None = None
     current_exercise_id: uuid.UUID | None = None
+    show_report_percentile: bool = True
     created_at: datetime | None = None
 
 
@@ -3009,6 +3014,13 @@ class ExportScope:
     CLASSROOM = "classroom"
 
 
+class ExportKind:
+    """导出成品类型。旧行与未传 kind 的录音任务都是 audio_zip。"""
+
+    AUDIO_ZIP = "audio_zip"
+    STUDENT_REPORT_PDF = "student_report_pdf"
+
+
 class ExportJobStatus:
     QUEUED = "queued"
     RUNNING = "running"
@@ -3034,6 +3046,13 @@ class ExportJob(SQLModel, table=True):
     )
     # self = 学生（或任何账号）导出自己的作答；classroom = 授权教师导出一班
     scope: str = Field(max_length=16, index=True)
+    # audio_zip（默认，含本列加入前的旧行）| student_report_pdf
+    kind: str = Field(
+        default=ExportKind.AUDIO_ZIP,
+        max_length=32,
+        index=True,
+        sa_column_kwargs={"server_default": ExportKind.AUDIO_ZIP},
+    )
     filter_json: dict[str, object] = Field(
         sa_column=Column("filter_json", JSON, nullable=False)
     )

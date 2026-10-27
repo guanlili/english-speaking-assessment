@@ -1,7 +1,8 @@
-"""口语原音频 ZIP 导出。
+"""导出任务：口语原音频 ZIP，以及学生个人学情 PDF。
 
-学生导出自己的录音；教师导出本人课堂。一律排队（ExportJob），
-下载中心轮询进度。detail 用稳定标识，展示文案由前端双语映射。
+学生导出自己的录音或学情报告；教师只导出本人课堂的录音。
+学情 PDF 不接受教师代下。一律排队（ExportJob），下载中心轮询进度。
+detail 用稳定标识，展示文案由前端双语映射。
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from app.models import (
     ClassroomExercise,
     ExportJob,
     ExportJobStatus,
+    ExportKind,
     ExportScope,
     PracticeSession,
     Student,
@@ -38,6 +40,10 @@ from app.services.audio_export import (
     query_candidates,
     window_bounds,
 )
+from app.services.student_report_pdf import (
+    report_download_name,
+    resolve_report_window,
+)
 
 router = APIRouter(prefix="/exports", tags=["exports"])
 
@@ -48,19 +54,25 @@ class ExportCreate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     scope: Literal["self", "classroom"]
+    kind: Literal["audio_zip", "student_report_pdf"] = "audio_zip"
     from_at: datetime | None = Field(default=None, alias="from")
     to: datetime | None = None
     session_id: uuid.UUID | None = None
     exercise_id: uuid.UUID | None = None
     classroom_id: uuid.UUID | None = None
+    classroom_code: str | None = None
+    # 与 classroom_code 同义，方便按「课堂码」提交学情 PDF
+    code: str | None = None
     group_by_item: bool = True
     confirm_contains_student_audio: bool = False
     recent_days: int | None = Field(default=None, ge=1, le=90)
+    days: int | None = Field(default=None, ge=1, le=90)
 
 
 class ExportJobPublic(SQLModel):
     id: uuid.UUID
     scope: str
+    kind: str
     status: str
     progress: int
     progress_done: int
@@ -96,6 +108,7 @@ def _public(job: ExportJob) -> ExportJobPublic:
     return ExportJobPublic(
         id=job.id,
         scope=job.scope,
+        kind=job.kind or ExportKind.AUDIO_ZIP,
         status=job.status,
         progress=progress,
         progress_done=done,
@@ -257,6 +270,120 @@ def _guard_capacity(session: SessionDep, user: User, scope: str) -> None:
         raise HTTPException(status_code=429, detail="export_too_many_in_progress")
 
 
+def _report_code(body: ExportCreate) -> str | None:
+    raw = (body.classroom_code or body.code or "").strip()
+    return raw or None
+
+
+def _create_student_report(
+    session: SessionDep,
+    current_user: User,
+    body: ExportCreate,
+    submitter: ExportSubmitter,
+) -> ExportJobPublic:
+    """学生导出自己的学情 PDF。教师代下直接 403，不建任务。"""
+    if body.scope != ExportScope.SELF or current_user.role != "student":
+        _reject(
+            session,
+            current_user,
+            scope=body.scope,
+            result="export_report_student_only",
+        )
+        raise HTTPException(status_code=403, detail="export_report_student_only")
+    code = _report_code(body)
+    classroom: Classroom | None = None
+    if body.classroom_id is not None:
+        classroom = session.get(Classroom, body.classroom_id)
+        if classroom is None:
+            raise HTTPException(status_code=404, detail="Classroom not found")
+    if code is not None:
+        by_code = session.exec(select(Classroom).where(Classroom.code == code)).first()
+        if by_code is None and code.upper() != code:
+            by_code = session.exec(
+                select(Classroom).where(Classroom.code == code.upper())
+            ).first()
+        if by_code is None:
+            raise HTTPException(status_code=404, detail="Classroom not found")
+        if classroom is not None and by_code.id != classroom.id:
+            raise HTTPException(status_code=422, detail="export_classroom_mismatch")
+        classroom = by_code
+    if classroom is None:
+        raise HTTPException(status_code=422, detail="export_classroom_required")
+    student = session.exec(
+        select(Student).where(
+            Student.user_id == current_user.id,
+            Student.classroom_id == classroom.id,
+        )
+    ).first()
+    if student is None or student.user_id != current_user.id:
+        _reject(
+            session,
+            current_user,
+            scope=body.scope,
+            result="export_report_forbidden",
+            detail={"classroom_id": str(classroom.id)},
+        )
+        raise HTTPException(status_code=403, detail="export_report_forbidden")
+    exercise_title: str | None = None
+    if body.exercise_id is not None:
+        exercise = session.get(ClassroomExercise, body.exercise_id)
+        if exercise is None or exercise.classroom_id != classroom.id:
+            raise HTTPException(status_code=422, detail="export_exercise_mismatch")
+        exercise_title = exercise.title
+    try:
+        start, end = resolve_report_window(
+            start=body.from_at,
+            end=body.to,
+            days=body.days,
+            recent_days=body.recent_days,
+        )
+    except ValueError:
+        raise HTTPException(status_code=422, detail="export_range_too_wide") from None
+    _guard_capacity(session, current_user, body.scope)
+    filt: dict[str, object] = {
+        "kind": ExportKind.STUDENT_REPORT_PDF,
+        "scope": ExportScope.SELF,
+        "requester_user_id": str(current_user.id),
+        "classroom_id": str(classroom.id),
+        "classroom_code": classroom.code,
+        "exercise_id": str(body.exercise_id) if body.exercise_id else None,
+        "exercise_title": exercise_title,
+        "from": start.isoformat(),
+        "to": end.isoformat(),
+        "days": body.days,
+        "recent_days": body.recent_days,
+    }
+    name = report_download_name(
+        student_name=student.display_name,
+        start=start,
+        end=end,
+    )
+    job = ExportJob(
+        requester_user_id=current_user.id,
+        scope=ExportScope.SELF,
+        kind=ExportKind.STUDENT_REPORT_PDF,
+        filter_json=filt,
+        status=ExportJobStatus.QUEUED,
+        download_name=name,
+        confirm_contains_student_audio=False,
+    )
+    session.add(job)
+    session.flush()
+    write_audit(
+        session,
+        job_id=job.id,
+        actor_user_id=current_user.id,
+        action="create",
+        scope=ExportScope.SELF,
+        detail={"result": "queued", "filter": filt},
+    )
+    session.commit()
+    session.refresh(job)
+    submitter(job.id)
+    session.refresh(job)
+    return _public(job)
+
+
 @router.post("", response_model=ExportJobPublic)
 def create_export(
     session: SessionDep,
@@ -265,9 +392,12 @@ def create_export(
     submitter: ExportSubmitter,
 ) -> ExportJobPublic:
     """创建导出任务并立即返回。打包在独立线程池里进行。"""
+    if body.kind == ExportKind.STUDENT_REPORT_PDF:
+        return _create_student_report(session, current_user, body, submitter)
     resolved = _resolve(session, current_user, body)
     _guard_capacity(session, current_user, body.scope)
     filt = {key: value for key, value in resolved.items() if not key.startswith("_")}
+    filt["kind"] = ExportKind.AUDIO_ZIP
     candidates = query_candidates(session, filt)
     # 体积预检不持有行锁；超限直接拒绝，不排队、不分卷。
     session.commit()
@@ -300,6 +430,7 @@ def create_export(
     job = ExportJob(
         requester_user_id=current_user.id,
         scope=body.scope,
+        kind=ExportKind.AUDIO_ZIP,
         filter_json=filt,
         status=ExportJobStatus.QUEUED,
         download_name=name,
@@ -402,14 +533,17 @@ def download_export(
         detail={"result": "downloaded", "byte_size": job.byte_size},
     )
     session.commit()
-    filename = job.download_name or "SpeakUp_export.zip"
+    is_pdf = job.kind == ExportKind.STUDENT_REPORT_PDF or (
+        (job.download_name or "").lower().endswith(".pdf")
+    )
+    ascii_name = "SpeakUp_report.pdf" if is_pdf else "SpeakUp_export.zip"
+    filename = job.download_name or ascii_name
     disposition = (
-        'attachment; filename="SpeakUp_export.zip"; '
-        f"filename*=UTF-8''{quote(filename)}"
+        f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"
     )
     return FileResponse(
         path,
-        media_type="application/zip",
+        media_type="application/pdf" if is_pdf else "application/zip",
         headers={"Content-Disposition": disposition},
     )
 

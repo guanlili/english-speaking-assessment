@@ -28,6 +28,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -389,6 +390,7 @@ function ClassroomCard({
     teaching_goal?: string | null
     is_active: boolean
     class_size: number
+    show_report_percentile?: boolean
   }
   onInvalidated: () => void
 }) {
@@ -398,6 +400,30 @@ function ClassroomCard({
   const [rosterOpen, setRosterOpen] = useState(false)
   const [sizeOpen, setSizeOpen] = useState(false)
   const [sizeValue, setSizeValue] = useState(classroom.class_size)
+
+  const percentileOn = classroom.show_report_percentile !== false
+  const percentileMutation = useMutation({
+    mutationFn: (next: boolean) =>
+      ClassesService.updateReportSettings({
+        code: classroom.code,
+        requestBody: { show_report_percentile: next },
+      }),
+    onSuccess: (_data, next) => {
+      showSuccessToast(
+        next
+          ? t({
+              zh: "学情报告会显示班级位置",
+              en: "Learning reports will include class position",
+            })
+          : t({
+              zh: "学情报告不再显示班级位置",
+              en: "Learning reports will hide class position",
+            }),
+      )
+      onInvalidated()
+    },
+    onError: (error) => showErrorToast(extractErrorMessage(error)),
+  })
 
   const sizeMutation = useMutation({
     mutationFn: (next: number) =>
@@ -540,6 +566,25 @@ function ClassroomCard({
                 en: `Size Limit ${classroom.class_size}`,
               })}
             </Button>
+            <label
+              htmlFor={`report-percentile-${classroom.code}`}
+              className="flex min-h-11 w-full items-center gap-3 text-sm"
+            >
+              <Checkbox
+                id={`report-percentile-${classroom.code}`}
+                checked={percentileOn}
+                disabled={percentileMutation.isPending}
+                onCheckedChange={(checked) =>
+                  percentileMutation.mutate(checked === true)
+                }
+              />
+              <span>
+                {t({
+                  zh: "学情报告显示班级位置",
+                  en: "Show class position on learning reports",
+                })}
+              </span>
+            </label>
             <Button
               variant="ghost"
               size="sm"
