@@ -108,6 +108,10 @@ services:
     volumes:
       # 证书目录（服务器上由 acme 容器写入；本地开发不存在则为空目录 → 纯 HTTP）
       - ./ssl:/etc/nginx/ssl:ro
+      - ./ssl/outman.press:/etc/nginx/ssl/outman.press:ro
+      - ./nginx-extra/outman.press.conf:/etc/nginx/conf.d/outman.press.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       backend:
         condition: service_healthy
