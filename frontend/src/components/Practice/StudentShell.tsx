@@ -263,7 +263,7 @@ function StudentShell({
                 <DropdownMenuItem asChild>
                   <Link to="/my-exports">
                     <FolderArchive />
-                    {t({ zh: "录音导出", en: "Audio Export" })}
+                    {t({ zh: "下载中心", en: "Downloads" })}
                     {unseenExports > 0 ? (
                       <span className="ml-auto grid min-h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
                         {unseenExports > 9 ? "9+" : unseenExports}

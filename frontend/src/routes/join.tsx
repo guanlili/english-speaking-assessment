@@ -98,7 +98,7 @@ function MyClassesPage() {
           to="/my-exports"
           className="mt-4 inline-flex h-11 items-center rounded-xl border border-border/70 px-4 text-sm font-medium hover:bg-secondary"
         >
-          {t({ zh: "导出我的录音", en: "Export my recordings" })}
+          {t({ zh: "下载中心", en: "Download center" })}
         </Link>
 
         {classes.length > 0 && (

@@ -181,3 +181,17 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **存储**：`EXPORT_STORAGE_DIR`（容器内 `/app/export`），compose 卷 `app-export-data`，与 `app-audio-data` 分开。磁盘文件名是 `{job_id}.zip`，下载名是 `download_name`。API 不返回绝对路径。
 - **前端**：教师/管理员 `/exports`（侧栏「录音导出」，未下载成功包显示角标）；学生不进 `_layout`，入口是 `/my-exports`（班级页与学生壳账号菜单）。教师提交前二次确认勾选。文案走 `useI18n`；`detail` 稳定码在 `utils.ts` 的 `DETAIL_MESSAGES` 与 `lib/export-copy.ts` 映射。下载用带 Authorization 的 fetch（生成客户端的 download 返回 unknown）。完成/失败用列表刷新 + toast，无新推送或邮件。
 - **配置**：`EXPORT_STORAGE_DIR`、`EXPORT_TTL_DAYS`、`EXPORT_WORKERS`、`EXPORT_MAX_IN_PROGRESS`、`EXPORT_RECENT_DAYS_DEFAULT`、`EXPORT_RECENT_DAYS_MAX`、`EXPORT_MAX_BYTES`、`EXPORT_ASYNC_MIN_FILES`、`EXPORT_ASYNC_MIN_BYTES`。后两个阈值保留为配置，当前没有同步路径。`.env.example` 与 `scripts/generate-deploy-env.sh` 写出 `EXPORT_STORAGE_DIR` / `EXPORT_TTL_DAYS`。
+
+## 学生个人学情报告 PDF（2026-10-27）
+
+学生自己导出一份学习报告 PDF，走同一条 ExportJob / 导出卷 / 下载中心。不改变 ZIP 的空包失败、清单和权限。不做全班 PDF，也不让教师代学生导出。
+
+- **迁移** `f2b8c4e91a37`（revises `e8a1c4b90d27`）：`export_job.kind`（`audio_zip` 默认，旧行回填）与 `classroom.show_report_percentile`（默认 true）。kind 是真实列，不只写在 `filter_json`。
+- **接口**：`POST /exports` 增加 `kind=student_report_pdf`。必须 `scope=self`，且账号 `role=student`；教师、管理员或其他角色返回 403 `export_report_student_only`。课堂用 `classroom_id`，或 `classroom_code` / `code`。未入班 403 `export_report_forbidden`。`days` 或 `recent_days` 省略时默认最近 90 天；自定义 `from`/`to` 仍不得超过 `EXPORT_RECENT_DAYS_MAX`（90，结束日含当天的余量与课堂 ZIP 相同），否则 422 `export_range_too_wide`。可选 `exercise_id`，必须属于该课堂。
+- **成品**：`services/student_report_pdf.py` 用 fpdf2 排版，字体是仓库内 Noto Sans SC 子集（`app/assets/fonts/NotoSansSC-Regular.otf`，OFL）。章节：封面、概览、趋势表、弱项、作答证据、有教师建议时才加的建议节。正文中文，小节带一行英文小字。证据只有作答编号和「请在 App 中打开」；正文里的 `http(s)` 链接会改成「链接已省略」，不放签名外链，也不写 PDF 注释。下载 `Content-Type: application/pdf`，文件名 `SpeakUp_学情报告_{姓名}_{起止}.pdf`。磁盘文件仍是 `{job_id}.pdf`，目录与 TTL、并发上限和 ZIP 相同。
+- **空数据**：窗口内没有已出分作答时任务 `succeeded`，PDF 写明「本阶段暂无已出分作答」。这和 ZIP 的 `export_empty` 失败不同。
+- **百分位**：同班、同一窗口内，至少 1 次已出分情景问答的「题位最新一次 overall」均值。样本少于 5 人只写「班级样本不足」，不写数字。`show_report_percentile=false` 时整段省略，并且不去读其他同学的分数。报告和 `filter_json` 都不含其他同学的姓名或分数。教师在课堂卡片（或管理员课堂表）里改这个开关；学生不能改。
+- **口径**：概览的轮次、完成题数、开口分钟、跟读参考分对齐学习报告（未结束考试整段排除）。趋势按日汇总已出分的情景问答参考分和听句复述完整度。漏词与四维均值复用个人诊断的对齐和 rubric 规则。
+- **Worker**：按 `kind` 分路。再次核对 `student.user_id == requester`，以及 filter 里的请求人与任务请求人一致；不对就 `failed` / `export_report_forbidden`，不落文件。读库、排版、写结果分成短事务，排版不占着事务。体积超过 `REPORT_PDF_MAX_BYTES`（默认 20MB）则 `export_pdf_too_large` 并删文件。
+- **前端**：学生 `/my-exports` 可在录音 ZIP 和学情 PDF 之间切换，列表用 `kind` 区分。成长页阶段报告在学生自己查看时可以提交同一份 PDF；教师查看该卡时仍只用浏览器打印，不能代下。
+- **回滚**：先退回不含本功能的应用版本。多出来的两列旧代码不会读。确认新代码已下线后，再 `alembic downgrade e8a1c4b90d27` 删列。已生成的 PDF 跟 ZIP 一样到期删除；不要改 ZIP 的打包行为来回滚这一项。

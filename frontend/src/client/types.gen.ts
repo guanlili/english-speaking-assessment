@@ -404,6 +404,7 @@ export type ClassroomPublic = {
     assign_repeat?: (boolean | null);
     assign_qa?: (boolean | null);
     current_exercise_id?: (string | null);
+    show_report_percentile?: boolean;
     created_at?: (string | null);
 };
 
@@ -416,6 +417,7 @@ export type ClassroomUpdate = {
     grade?: (string | null);
     teaching_goal?: (string | null);
     unlock_all?: (boolean | null);
+    show_report_percentile?: (boolean | null);
     owner_id?: (string | null);
     is_active?: (boolean | null);
     class_size?: (number | null);
@@ -757,21 +759,28 @@ export type ExploreStarted = {
 
 export type ExportCreate = {
     scope: 'self' | 'classroom';
+    kind?: 'audio_zip' | 'student_report_pdf';
     from?: (string | null);
     to?: (string | null);
     session_id?: (string | null);
     exercise_id?: (string | null);
     classroom_id?: (string | null);
+    classroom_code?: (string | null);
+    code?: (string | null);
     group_by_item?: boolean;
     confirm_contains_student_audio?: boolean;
     recent_days?: (number | null);
+    days?: (number | null);
 };
 
 export type scope = 'self' | 'classroom';
 
+export type kind2 = 'audio_zip' | 'student_report_pdf';
+
 export type ExportJobPublic = {
     id: string;
     scope: string;
+    kind: string;
     status: string;
     progress: number;
     progress_done: number;
@@ -1365,6 +1374,13 @@ export type ReportAnswer = {
     teacher_feedback: (string | null);
     teacher_review_tags: (Array<(string)> | null);
     created_at: (string | null);
+};
+
+/**
+ * 学生学情 PDF 是否显示班级位置（课堂级，默认开）。
+ */
+export type ReportSettingsUpdate = {
+    show_report_percentile: boolean;
 };
 
 export type RuntimeIssueIn = {
@@ -3035,6 +3051,13 @@ export type ClassesUpdateClassSizeData = {
 };
 
 export type ClassesUpdateClassSizeResponse = (ClassroomPublic);
+
+export type ClassesUpdateReportSettingsData = {
+    code: string;
+    requestBody: ReportSettingsUpdate;
+};
+
+export type ClassesUpdateReportSettingsResponse = (ClassroomPublic);
 
 export type ClassesJoinClassData = {
     code: string;

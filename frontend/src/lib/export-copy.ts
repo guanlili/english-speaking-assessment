@@ -31,6 +31,21 @@ export function exportJobMessage(
       en: "The estimated size is over 2GB. Narrow the dates or exercise and try again.",
     })
   }
+  if (error === "export_pdf_too_large") {
+    return t({
+      zh: "学情报告文件超过 20MB，没有保存。请缩短时间范围后再试。",
+      en: "The learning report was over 20MB and was not saved. Shorten the range and try again.",
+    })
+  }
+  if (
+    error === "export_report_forbidden" ||
+    error === "export_report_student_only"
+  ) {
+    return t({
+      zh: "学情报告只能由学生导出自己的记录。",
+      en: "A learning report can only be exported by the student it belongs to.",
+    })
+  }
   if (error.startsWith("export_failed")) {
     return t({
       zh: `打包失败：${error}`,
@@ -40,9 +55,13 @@ export function exportJobMessage(
   return error
 }
 
-export function exportStatusLabel(status: string, t: T): string {
+export function exportStatusLabel(status: string, t: T, kind?: string): string {
   if (status === "queued") return t({ zh: "排队中", en: "Queued" })
-  if (status === "running") return t({ zh: "打包中", en: "Packing" })
+  if (status === "running") {
+    return kind === "student_report_pdf"
+      ? t({ zh: "生成中", en: "Building" })
+      : t({ zh: "打包中", en: "Packing" })
+  }
   if (status === "succeeded") return t({ zh: "可以下载", en: "Ready" })
   if (status === "failed") return t({ zh: "未生成", en: "Not created" })
   if (status === "expired") return t({ zh: "已过期", en: "Expired" })

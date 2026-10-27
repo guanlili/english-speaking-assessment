@@ -104,6 +104,7 @@ function ClassroomsAdmin() {
       id: string
       patch: {
         unlock_all?: boolean
+        show_report_percentile?: boolean
         owner_id?: string | null
         is_active?: boolean
         class_size?: number
@@ -132,6 +133,18 @@ function ClassroomsAdmin() {
           vars.patch.unlock_all
             ? t({ zh: "已开启一键全开", en: "Unlock-all enabled" })
             : t({ zh: "已恢复顺序解锁", en: "Sequential unlock restored" }),
+        )
+      } else if (typeof vars.patch.show_report_percentile === "boolean") {
+        showSuccessToast(
+          vars.patch.show_report_percentile
+            ? t({
+                zh: "学情报告会显示班级位置",
+                en: "Learning reports will include class position",
+              })
+            : t({
+                zh: "学情报告不再显示班级位置",
+                en: "Learning reports will hide class position",
+              }),
         )
       }
       invalidate()
@@ -262,6 +275,9 @@ function ClassroomsAdmin() {
                   <TableHead>
                     {t({ zh: "解锁方式", en: "Unlock Mode" })}
                   </TableHead>
+                  <TableHead>
+                    {t({ zh: "学情位置", en: "Report position" })}
+                  </TableHead>
                   <TableHead>{t({ zh: "状态", en: "Status" })}</TableHead>
                   <TableHead>
                     {t({ zh: "课堂入口", en: "Entry Links" })}
@@ -359,6 +375,32 @@ function ClassroomsAdmin() {
                           {(c.unlock_all ?? false)
                             ? t({ zh: "一键全开", en: "Unlock All" })
                             : t({ zh: "顺序解锁", en: "Sequential" })}
+                        </label>
+                      </TableCell>
+                      <TableCell>
+                        <label
+                          htmlFor={`report-percentile-${c.code}`}
+                          className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"
+                        >
+                          <Checkbox
+                            id={`report-percentile-${c.code}`}
+                            aria-label={t({
+                              zh: `课堂 ${c.code}：学情报告班级位置`,
+                              en: `Classroom ${c.code}: class position on reports`,
+                            })}
+                            checked={c.show_report_percentile !== false}
+                            onCheckedChange={(checked) =>
+                              updateMutation.mutate({
+                                id: c.id,
+                                patch: {
+                                  show_report_percentile: checked === true,
+                                },
+                              })
+                            }
+                          />
+                          {c.show_report_percentile !== false
+                            ? t({ zh: "显示", en: "Shown" })
+                            : t({ zh: "隐藏", en: "Hidden" })}
                         </label>
                       </TableCell>
                       <TableCell>

@@ -117,8 +117,24 @@ const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
     en: "The estimated size is over 2GB. Narrow the dates or exercise and try again.",
   },
   export_range_too_wide: {
-    zh: "课堂导出最长 90 天。请缩短时间范围。",
-    en: "Classroom export covers at most 90 days. Shorten the range.",
+    zh: "时间范围最长 90 天。请缩短后再导出。",
+    en: "The range can cover at most 90 days. Shorten it and try again.",
+  },
+  export_report_student_only: {
+    zh: "学情报告只能由学生本人导出，教师不能代为导出。",
+    en: "Only a student can export their own learning report.",
+  },
+  export_report_forbidden: {
+    zh: "只能导出你已加入课堂里的本人学情报告。",
+    en: "You can only export your own learning report for a class you have joined.",
+  },
+  export_classroom_mismatch: {
+    zh: "课堂码和课堂不是同一间。",
+    en: "The classroom code does not match that classroom.",
+  },
+  export_pdf_too_large: {
+    zh: "学情报告文件超过 20MB，没有保存。请缩短时间范围后再试。",
+    en: "The learning report was over 20MB and was not saved. Shorten the range and try again.",
   },
   export_too_many_in_progress: {
     zh: "你已有两个导出任务在进行。请等它们完成后再试。",
