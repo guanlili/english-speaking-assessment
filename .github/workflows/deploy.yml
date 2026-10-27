@@ -202,10 +202,11 @@ jobs:
             total: 2
             browsers: chromium webkit
     runs-on: ubuntu-24.04
-    # 45 分钟：浏览器缓存未命中（lockfile 变更/缓存淘汰）时 Chromium+WebKit
-    # 全量下载约 20 分钟起，叠加完整栈启动与双浏览器套件，30 分钟会撞线
-    # 被强制取消（2026-10-10 PR#101 首次部署实测）；缓存命中时全程 ~10 分钟
-    timeout-minutes: 45
+    # 50 分钟：浏览器缓存未命中（lockfile 变更/缓存淘汰）时 Chromium+WebKit
+    # 全量下载 20 分钟起（2026-10-27 单日四次 15 分钟装依赖超时，全部
+    # rerun 即过——偶发 CDN 极慢而非持续故障），叠加完整栈启动与双浏览器
+    # 套件；缓存命中时全程 ~10 分钟
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v7
       - name: 准备环境变量（local 环境，演示登录可用）
@@ -254,8 +255,9 @@ jobs:
           restore-keys: |
             playwright-icu2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-
       - name: 安装依赖与 Chromium/WebKit
-        # 浏览器二进制约百 MB，冷装较慢，超时放宽到 15 分钟
-        timeout-minutes: 15
+        # 浏览器二进制约百 MB，偶发下载极慢（单日多次 15 分钟超时，
+        # rerun 即过）：放宽到 25 分钟，job 总超时已同步放宽到 50 分钟
+        timeout-minutes: 25
         working-directory: frontend
         run: npm ci && npx playwright install --with-deps ${{ matrix.browsers }}
       # mocked 套件用 vite preview 服务 dist/ 静态产物：按 git 跟踪文件的
