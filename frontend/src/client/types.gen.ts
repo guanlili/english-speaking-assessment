@@ -1060,6 +1060,9 @@ export type PassagePublic = {
     is_active?: boolean;
     copied_from_id?: (string | null);
     reading_sentence_seconds?: (Array<(number | null)> | null);
+    reading_sentence_audio?: ({
+    [key: string]: (string);
+} | null);
     id: string;
     slug: string;
     reading_split?: boolean;
@@ -1088,6 +1091,9 @@ export type PassageSplitResult = {
 export type PassageUpdate = {
     reading_sentence_seconds?: (Array<(number | null)> | null);
     reading_sentence_texts?: (Array<(string)> | null);
+    reading_sentence_audio?: ({
+    [key: string]: (string);
+} | null);
     title?: (string | null);
     topic?: (string | null);
     cefr_band?: (string | null);
@@ -1110,6 +1116,9 @@ export type PassageWithSentences = {
     is_active?: boolean;
     copied_from_id?: (string | null);
     reading_sentence_seconds?: (Array<(number | null)> | null);
+    reading_sentence_audio?: ({
+    [key: string]: (string);
+} | null);
     id: string;
     slug: string;
     reading_split?: boolean;

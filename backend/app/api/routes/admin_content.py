@@ -199,6 +199,8 @@ class PassageUpdate(SQLModel):
 
     reading_sentence_seconds: list[ReadingSentenceSeconds | None] | None = None
     reading_sentence_texts: list[str] | None = None
+    # 拆句配音：键=句子原文，值=标准音地址；null 清空
+    reading_sentence_audio: dict[str, str] | None = None
 
     title: str | None = Field(default=None, min_length=1, max_length=255)
     topic: str | None = Field(default=None, max_length=100)
@@ -419,6 +421,16 @@ def update_passage(
             raise HTTPException(422, detail="Reading sentence durations count mismatch")
     elif segments != reading.split_reading_sentences(passage.text):
         update["reading_sentence_seconds"] = None
+    if "reading_sentence_audio" in update:
+        audio_map = update["reading_sentence_audio"]
+        if audio_map is not None:
+            if any(len(url) > 1024 for url in audio_map.values()):
+                raise HTTPException(422, detail="Reading sentence audio url too long")
+            # 键按当前分句修剪：正文编辑后失配的旧键自然淘汰，字典不随时间膨胀
+            update["reading_sentence_audio"] = {
+                key: url for key, url in audio_map.items() if key in segments
+            }
+        # 正文变更但未传配音字典时不重置：文本键自适应，未命中句子等同未配音
     passage.sqlmodel_update(update)
     # 主题单一事实源：挂单元的篇目 topic 一律跟随单元，显式传入值不生效
     if passage.unit_id is not None:

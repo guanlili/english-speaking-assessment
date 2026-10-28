@@ -1012,6 +1012,7 @@ function PassageCard({
           <ReadingSentences
             segments={passage.reading_segments ?? []}
             seconds={passage.reading_sentence_seconds}
+            audio={passage.reading_sentence_audio}
             passageId={passage.id}
             onMutated={onMutated}
             readOnly={!editable}
