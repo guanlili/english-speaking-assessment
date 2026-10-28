@@ -322,8 +322,9 @@ jobs:
       group: production-deploy
       cancel-in-progress: false
     runs-on: ubuntu-24.04
-    # 覆盖 SSH 步骤本身（command_timeout 30m）之外的编排开销
-    timeout-minutes: 45
+    # 覆盖 SSH 步骤本身（command_timeout 50m）之外的编排开销；
+    # 服务器冷构建（腾讯镜像直连）15–20 分钟量级，60 分钟留足余量
+    timeout-minutes: 60
     steps:
       # fetch-depth 0：git bundle 兜底需要完整历史（服务器可能落后多个提交）
       - uses: actions/checkout@v7
@@ -452,7 +453,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 30m
+          command_timeout: 50m
           envs: ENV_B64,PATH_B64,DEPLOY_SHA
           script: |
             set -e
@@ -468,7 +469,8 @@ jobs:
             # 匿名访问被关）则回退到 CI 传入的 git bundle——部署链不再依赖镜像可用性。
             fetch_ok=0
             for attempt in 1 2 3; do
-              if git fetch origin; then fetch_ok=1; break; fi
+              # 单次 fetch 限时：gh-proxy 偶发挂死时，无超时的 TCP 连接会静默吃掉部署预算
+              if timeout 90 git fetch origin; then fetch_ok=1; break; fi
               echo "git fetch 失败（第 ${attempt} 次），$((attempt * 30)) 秒后重试"
               sleep $((attempt * 30))
             done
@@ -529,8 +531,14 @@ jobs:
                 echo "证书已存在，跳过签发（acme daemon 自动续期）"
               fi
               # 每日 04:00 平滑重载 nginx：夜间续期出的新证书最迟一天内加载（reload 无感幂等）
+              # 注册写法说明：crontab 为空时 `crontab -l` 退出码 1 会被 set -e 放大成
+              # 「注册子 shell 在 echo 前被掐死 + crontab - 收到空输入反而清空任务表」的
+              # 自抹除死锁——每日备份与证书重载曾因此从未生效（2026-10-29 定位）。
+              # 稳妥写法：先落到临时文件再整体写入，任何 crontab 初始状态都不致命。
               reload_cmd="cd '$PWD' && docker compose -f compose.yml exec -T frontend nginx -s reload"
-              (crontab -l 2>/dev/null | grep -v 'nginx -s reload'; echo "0 4 * * * $reload_cmd") | crontab -
+              { crontab -l 2>/dev/null || true; } | grep -v 'nginx -s reload' > /tmp/cron-register.new || true
+              echo "0 4 * * * $reload_cmd" >> /tmp/cron-register.new
+              crontab /tmp/cron-register.new && rm -f /tmp/cron-register.new
             else
               echo "未配置 DNSPod 密钥/域名，保持纯 HTTP（本地与首启兼容）"
             fi
@@ -541,7 +549,9 @@ jobs:
             # 完整备份包含数据库、录音/标准音卷和部署配置；失败记入巡检日志。
             # 清理旧版 cron，避免迁移后重复运行。部署前的数据库快照仍单独保留。
             backup_cmd="cd '$PWD' && bash scripts/backup-local.sh || date >> '$PWD/backups/backup-failure.log'"
-            (crontab -l 2>/dev/null | grep -v -e 'app-.*sql.gz' -e 'scripts/backup-local.sh'; echo "30 3 * * * $backup_cmd") | crontab -
+            { crontab -l 2>/dev/null || true; } | grep -v -e 'app-.*sql.gz' -e 'scripts/backup-local.sh' > /tmp/cron-register.new || true
+            echo "30 3 * * * $backup_cmd" >> /tmp/cron-register.new
+            crontab /tmp/cron-register.new && rm -f /tmp/cron-register.new
             # 部署时顺手做一次当次备份，保证改库前总有快照；失败则中止部署（不能无快照改库）
             dump_tmp="backups/app-$(date +%Y%m%d-%H%M)-predeploy.sql"
             if docker compose -f compose.yml exec -T db sh -c 'pg_dump -U ${POSTGRES_USER} ${POSTGRES_DB}' > "$dump_tmp"; then

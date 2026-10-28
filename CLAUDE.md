@@ -69,6 +69,7 @@
 | 运行时与可观测 | `X-Request-ID`、metrics | `docs/runtime-observability.md` |
 | 备份与恢复 | `scripts/backup-local.sh` | `docs/backup-restore.md` |
 | 紧急回滚（秒级切上一版镜像） | `scripts/rollback.sh` | README「回滚」 |
+| 部署链稳定性（lock 镜像改写/cron 注册/超时） | `backend/Dockerfile`、`.github/workflows/deploy.yml` | module-notes「部署链稳定化」 |
 
 ## 项目结构
 
