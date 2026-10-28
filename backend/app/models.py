@@ -134,9 +134,7 @@ class Passage(PassageBase, table=True):
     )
     # 拆句配音按句子原文寻址而非下标：改一句正文不影响其余句子的配音，
     # 正文编辑后失配的旧键不再命中（等同未配音，前端 speechSynthesis 兜底）。
-    reading_sentence_audio: dict[str, str] | None = Field(
-        default=None, sa_type=JSON
-    )
+    reading_sentence_audio: dict[str, str] | None = Field(default=None, sa_type=JSON)
     exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
     # 题库查重预计算（services/content_dedup.py 维护）：标题/正文的归一键
     # sha256；导入疑似重复判定走索引，不再全表流式拉原文

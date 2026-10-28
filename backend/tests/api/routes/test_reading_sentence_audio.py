@@ -32,9 +32,7 @@ def test_sentence_audio_set_publish_clear_and_prune(
             endpoint,
             json={
                 "reading_sentence_texts": ["Read this.", "Read that!"],
-                "reading_sentence_audio": {
-                    "Read that!": "/api/v1/audio/content/a.wav"
-                },
+                "reading_sentence_audio": {"Read that!": "/api/v1/audio/content/a.wav"},
             },
             headers=headers,
         )
@@ -90,9 +88,7 @@ def test_sentence_audio_set_publish_clear_and_prune(
             endpoint,
             json={
                 "reading_sentence_texts": ["Read this.", "Read that!"],
-                "reading_sentence_audio": {
-                    "Read that!": "/api/v1/audio/content/a.wav"
-                },
+                "reading_sentence_audio": {"Read that!": "/api/v1/audio/content/a.wav"},
             },
             headers=headers,
         )
