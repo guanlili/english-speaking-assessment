@@ -195,3 +195,14 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **Worker**：按 `kind` 分路。再次核对 `student.user_id == requester`，以及 filter 里的请求人与任务请求人一致；不对就 `failed` / `export_report_forbidden`，不落文件。读库、排版、写结果分成短事务，排版不占着事务。体积超过 `REPORT_PDF_MAX_BYTES`（默认 20MB）则 `export_pdf_too_large` 并删文件。
 - **前端**：学生 `/my-exports` 可在录音 ZIP 和学情 PDF 之间切换，列表用 `kind` 区分。成长页阶段报告在学生自己查看时可以提交同一份 PDF；教师查看该卡时仍只用浏览器打印，不能代下。
 - **回滚**：先退回不含本功能的应用版本。多出来的两列旧代码不会读。确认新代码已下线后，再 `alembic downgrade e8a1c4b90d27` 删列。已生成的 PDF 跟 ZIP 一样到期删除；不要改 ZIP 的打包行为来回滚这一项。
+
+## 部署链稳定化（2026-10-29）
+
+2026-10-28 深夜 PR#202 上线事故的根治批次。根因：根 `pyproject.toml` 锁官方 PyPI（为 CI 海外 runner），`uv.lock` 639 个下载 URL 全是 `files.pythonhosted.org`；`uv sync --frozen` 只认 lock URL，`UV_DEFAULT_INDEX` 镜像 ENV 对锁定轮子无效——服务器本地构建依赖全部跨境下载，缓存被清后叠加晚高峰限速（KB/s 级）45 分钟必死，且未完成的下载不进缓存、重试从头来。
+
+- **lock 镜像改写（backend/Dockerfile 两处 uv sync）**：构建时 `sed` 把 lock 副本的 URL 前缀改写到 `mirrors.cloud.tencent.com/pypi/packages/`（与官方源 `/packages/` 路径同构、文件 sha256 相同，uv 哈希校验照常生效；同机实测 17MB/s）。绑定挂载只读，sed 输出到 `uv.lock` 新文件。**git 内的 lock 保持官方源不动**——CI「校验 uv.lock 不含镜像源 URL」检查照常通过，海外 runner 不受影响。
+- **缓存纪律**：`--mount=type=cache`（uv 缓存）是冷构建的防火墙，**任何情况下不得 `docker buildx prune --filter type=exec.cachemount`**（2026-10-28 事故的直接导火索）。
+- **cron 注册自抹除修复（deploy.yml 两处）**：crontab 为空时 `crontab -l` 退出码 1，`set -e` 把 `(crontab -l | grep -v …; echo …) | crontab -` 的注册子 shell 在 echo 前掐死，`crontab -` 收到空输入反而清空任务表——空表永远自锁，每日备份（03:30）与 nginx 证书重载（04:00）**从未生效过**。新写法：过滤结果落 `/tmp/cron-register.new` 再 `crontab <file>` 整体写入，任何初始状态幂等。2026-10-29 已在生产手动注册恢复，代码修复随本批合入。
+- **超时**：deploy job `timeout-minutes` 45→60、SSH `command_timeout` 30m→50m（镜像直连冷构建 15–20 分钟量级，留足余量）。
+- **git fetch 单次限时**：gh-proxy 偶发挂死时无超时的 TCP 连接会静默吃预算，`timeout 90 git fetch origin` + 原有三次退避重试。
+- **验收**：清空构建缓存后冷构建部署演练通过（见 Notion 需求池条目）。方案选型：CI 构建镜像推 GHCR/TCR 的拉取式部署经评审否决（引入新服务，2026-10-29 李梨拍板不做）。
