@@ -78,9 +78,10 @@ def expand_reading_items(passage: Passage) -> list[dict[str, object]]:
             "sentence_index": index + 1,
             "sentence_total": total,
             "text": sentence,
-            # 整篇中文提示/标准音对单句不对位，不透传
+            # 整篇中文提示不对位，不透传；句子标准音按原文从配音表寻址，
+            # 未配音句子为空（前端 speechSynthesis 兜底）
             "translation": None,
-            "audio_url": None,
+            "audio_url": (passage.reading_sentence_audio or {}).get(sentence),
             "suggested_seconds": (
                 passage.reading_sentence_seconds[index]
                 if passage.reading_sentence_seconds

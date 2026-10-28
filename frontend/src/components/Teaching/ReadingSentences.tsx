@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query"
 import { useState } from "react"
 import { toast } from "sonner"
 import { AdminService } from "@/client"
+import AudioSetter from "@/components/Practice/AudioSetter"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useI18n } from "@/lib/i18n"
@@ -11,12 +12,15 @@ import { extractErrorMessage } from "@/utils"
 export function ReadingSentences({
   segments,
   seconds,
+  audio,
   passageId,
   onMutated,
   readOnly = false,
 }: {
   segments: string[]
   seconds?: (number | null)[] | null
+  /** 按句子原文寻址的配音表：教师单句生成，学生端未配音句子走设备合成兜底 */
+  audio?: Record<string, string> | null
   passageId?: string
   onMutated?: () => void
   readOnly?: boolean
@@ -39,6 +43,26 @@ export function ReadingSentences({
     },
     onError: (err) => toast.error(extractErrorMessage(err)),
   })
+  const saveAudio = useMutation({
+    mutationFn: ({ text, url }: { text: string; url: string | null }) => {
+      // 按原文寻址：清音删键；后端按当前分句修剪失配旧键
+      const next: Record<string, string> = { ...(audio ?? {}) }
+      if (url === null) delete next[text]
+      else next[text] = url
+      return AdminService.updatePassage({
+        passageId: passageId!,
+        requestBody: {
+          reading_sentence_texts: segments,
+          reading_sentence_audio: next,
+        },
+      })
+    },
+    // 成功提示由 AudioSetter 统一给出（生成/上传/清除各有文案）
+    onSuccess: async () => {
+      await onMutated?.()
+    },
+    onError: (err) => toast.error(extractErrorMessage(err)),
+  })
   if (segments.length === 0) return null
   return (
     <div className="space-y-2" data-testid="reading-sentences">
@@ -50,8 +74,8 @@ export function ReadingSentences({
       </p>
       <p className="text-xs text-muted-foreground">
         {t({
-          zh: "选这篇文章即按句出题，学生逐句朗读。每句可设置 1–180 秒，留空使用自动时长；修改正文拆句内容后需重新设置。",
-          en: "Selecting this article creates one question per sentence. Set 1–180 seconds per sentence, or leave blank for automatic timing. Changing sentence text resets these settings.",
+          zh: "选这篇文章即按句出题，学生逐句朗读。每句可设置 1–180 秒（留空使用自动时长）并单独生成配音；修改正文拆句内容后需重新设置时长，改动过的句子需重新配音。",
+          en: "Selecting this article creates one question per sentence. Set 1–180 seconds per sentence (or leave blank for automatic timing) and generate audio for each. Changing sentence text resets durations, and edited sentences need new audio.",
         })}
       </p>
       <ol className="ml-2 space-y-2 border-l-2 pl-3 sm:ml-4 sm:pl-4">
@@ -65,13 +89,20 @@ export function ReadingSentences({
               {text}
             </p>
             {passageId && !readOnly ? (
-              <SentenceDuration
-                key={`${index}-${seconds?.[index]}`}
-                index={index}
-                seconds={seconds?.[index] ?? null}
-                pending={save.isPending}
-                onSave={(value) => save.mutate({ index, value })}
-              />
+              <>
+                <SentenceDuration
+                  key={`${index}-${seconds?.[index]}`}
+                  index={index}
+                  seconds={seconds?.[index] ?? null}
+                  pending={save.isPending}
+                  onSave={(value) => save.mutate({ index, value })}
+                />
+                <AudioSetter
+                  audioUrl={audio?.[text]}
+                  text={text}
+                  onSet={(url) => saveAudio.mutateAsync({ text, url })}
+                />
+              </>
             ) : seconds?.[index] != null ? (
               <span>
                 {t({ zh: `${seconds[index]} 秒`, en: `${seconds[index]}s` })}
