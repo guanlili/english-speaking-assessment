@@ -297,7 +297,7 @@ function StudentShell({
           {children}
         </main>
         <footer className="px-6 pb-6 pt-4 text-center text-[11px] tracking-wide text-muted-foreground">
-          Charcoal ·{" "}
+          BELP ·{" "}
           {t({
             zh: "每一种声音，都值得被听见。",
             en: "Every voice deserves to be heard.",

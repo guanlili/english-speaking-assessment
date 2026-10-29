@@ -228,7 +228,7 @@ def test_student_exports_only_own_original_bytes(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["status"] == "succeeded"
-    assert body["download_name"].startswith("SpeakUp_我的录音_")
+    assert body["download_name"].startswith("BELP_我的录音_")
     assert body["included_count"] == 1
     download = client.get(
         f"{settings.API_V1_STR}/exports/{body['id']}/download",
@@ -346,7 +346,7 @@ def test_teacher_classroom_group_by_item_and_cross_class_forbidden(
     # exercise filter keeps only Alice's passage; Bob's question has no session
     assert body["status"] == "succeeded"
     assert body["included_count"] == 1
-    assert body["download_name"].startswith("SpeakUp_七年级一班_宠物练习_")
+    assert body["download_name"].startswith("BELP_七年级一班_宠物练习_")
     download = client.get(
         f"{settings.API_V1_STR}/exports/{body['id']}/download",
         headers=headers,

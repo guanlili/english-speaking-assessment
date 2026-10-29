@@ -649,7 +649,7 @@ def download_export(
     is_pdf = job.kind == ExportKind.STUDENT_REPORT_PDF or (
         (job.download_name or "").lower().endswith(".pdf")
     )
-    ascii_name = "SpeakUp_report.pdf" if is_pdf else "SpeakUp_export.zip"
+    ascii_name = "BELP_report.pdf" if is_pdf else "BELP_export.zip"
     filename = job.download_name or ascii_name
     disposition = (
         f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"

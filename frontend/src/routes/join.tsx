@@ -283,8 +283,8 @@ function MyClassesPage() {
       </main>
       <footer className="px-6 pb-6 text-center text-xs text-muted-foreground">
         {t({
-          zh: "Charcoal 开口说 · 参考反馈仅用于学习，不代表官方考试成绩",
-          en: "Charcoal · Reference feedback is for learning only, not official exam results",
+          zh: "BELP · 参考反馈仅用于学习，不代表官方考试成绩",
+          en: "BELP · Reference feedback is for learning only, not official exam results",
         })}
       </footer>
     </div>

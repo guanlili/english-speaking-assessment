@@ -79,7 +79,7 @@ async function saveZip(job: ExportJobPublic): Promise<void> {
   const url = URL.createObjectURL(blob)
   const link = document.createElement("a")
   link.href = url
-  link.download = job.download_name || "SpeakUp_export.zip"
+  link.download = job.download_name || "BELP_export.zip"
   link.click()
   URL.revokeObjectURL(url)
 }

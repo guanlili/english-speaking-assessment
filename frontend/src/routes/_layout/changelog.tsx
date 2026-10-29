@@ -52,7 +52,7 @@ export const Route = createFileRoute("/_layout/changelog")({
   head: () => ({
     meta: [
       {
-        title: "平台更新 | What's New | Charcoal 开口说",
+        title: "平台更新 | What's New | BELP",
       },
     ],
   }),

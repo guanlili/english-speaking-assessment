@@ -174,7 +174,7 @@ def download_name_for(
 ) -> str:
     stamp = to_shanghai(now).strftime("%Y%m%d-%H%M")
     if scope == ExportScope.SELF:
-        root = f"SpeakUp_我的录音_{stamp}"
+        root = f"BELP_我的录音_{stamp}"
     else:
         klass = sanitize_component(classroom_name or "课堂", "课堂", 24)
         if exercise_title:
@@ -186,10 +186,10 @@ def download_name_for(
             )
         else:
             middle = "录音"
-        root = f"SpeakUp_{klass}_{middle}_{stamp}"
+        root = f"BELP_{klass}_{middle}_{stamp}"
     root = _ILLEGAL.sub("_", root).strip(" ._")
-    if not root.startswith("SpeakUp_"):
-        root = f"SpeakUp_{root}"
+    if not root.startswith("BELP_"):
+        root = f"BELP_{root}"
     return f"{root[:180]}.zip"
 
 
@@ -515,10 +515,10 @@ def build_zip(
 
 
 def root_from_download_name(download_name: str | None) -> str:
-    name = download_name or "SpeakUp_export.zip"
+    name = download_name or "BELP_export.zip"
     if name.lower().endswith(".zip"):
         name = name[:-4]
-    return sanitize_component(name, "SpeakUp_export", 180)
+    return sanitize_component(name, "BELP_export", 180)
 
 
 def window_bounds(

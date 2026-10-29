@@ -499,7 +499,7 @@ def maybe_alert_queue_age(queue_age_s: float | None) -> bool:
     try:
         send_email(
             email_to=settings.COST_ALERT_EMAIL,
-            subject="「Charcoal 开口说」评分队列堆积告警 / scoring queue backlog",
+            subject="「BELP」评分队列堆积告警 / scoring queue backlog",
             html_content=(
                 f"<p>评分队列最老排队已 {int(queue_age_s / 60)} 分钟"
                 f"（阈值 {settings.ALERT_QUEUE_AGE_S // 60} 分钟）。</p>"

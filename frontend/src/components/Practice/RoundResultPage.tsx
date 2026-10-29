@@ -176,7 +176,7 @@ export function RoundResultPage() {
     return { doneItems: scored, weakest: weakestId }
   }, [plan])
 
-  // 本轮汇总（Charcoal 4 统计卡）
+  // 本轮汇总（BELP 4 统计卡）
   const roundStats = useMemo(() => {
     const done = doneItems.map((d) => d.attempt)
     const avg = (nums: Array<number | null | undefined>) => {

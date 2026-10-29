@@ -1,6 +1,6 @@
 # CLAUDE.md — 项目规范
 
-> 本项目为「Charcoal 开口说」英语口语学习平台（视觉与交互参照 prototypes/speakup 原型），基于 lili-full-stack 模板创建。品牌 2026-10 由 SpeakUp 更名而来（Charcoal 为暂定名，规避与市面雅思口语平台重名）；品牌名统一定义在 `frontend/src/config.ts` 的 APP_NAME，改名只需动文案层，视觉素材（Logo 图形/插画）暂不重做。
+> 本项目为「BRS English Learning Platform」（简称 **BELP**）英语口语学习平台（视觉与交互参照 prototypes/speakup 原型），基于 lili-full-stack 模板创建。品牌沿革：SpeakUp → Charcoal（暂定）→ BRS English Learning Platform（2026-10-29 正式定名）；全名与简称统一定义在 `frontend/src/config.ts`（APP_NAME / APP_NAME_SHORT），改名只需动文案层，视觉素材（Logo 图形/插画）暂不重做。
 >
 > 本文件只放规则、不变量与流程。各模块的实现细节、关键路径和迁移号见 **[docs/module-notes.md](docs/module-notes.md)**——改动某模块前先读对应章节。
 

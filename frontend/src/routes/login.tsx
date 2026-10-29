@@ -337,7 +337,10 @@ function Login() {
             YOUR CLASSROOM AWAITS
           </p>
           <h2 className="text-2xl font-semibold tracking-tight sm:text-[28px]">
-            {t({ zh: "欢迎来到 Charcoal", en: "Welcome to Charcoal" })}
+            {t({
+              zh: "欢迎来到 BRS English Learning Platform",
+              en: "Welcome to BRS English Learning Platform",
+            })}
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {t({
