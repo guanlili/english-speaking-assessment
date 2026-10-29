@@ -56,3 +56,19 @@ Restore only into a new isolated host or Compose project, never an existing prod
 4. 验证 `/api/v1/utils/ready-check/`，登录教师与学生账号，核对课堂、发布快照和历史成绩，实际回放一条录音和一条标准音。仅校验和通过不等于业务恢复完成。记录结果及耗时，演练成功后再按实际事故制定生产切换方案。
 
    Check readiness, teacher/student login, classrooms, published snapshots, historical results, and actual playback of one recording and one content audio file. Checksums alone do not prove successful recovery. Record the outcome and duration before planning any production cutover.
+
+## 演练记录 / Drill log
+
+### 2026-10-30 隔离库演练（zocode 执行）
+
+| 项 | 结果 |
+|---|---|
+| 备份包 | `bundle-20261028T193117Z-VJ0QnxZE`（2026-10-29 03:30 本机时间，commit `5c4ae79`；当月 cron 修复后的首个完整包） |
+| 校验 | `scripts/verify-backup.sh` 四件套全部 OK |
+| 数据库恢复 | 在生产 db 容器内**新建隔离库** `recovery_drill_20261030` 导入 dump，`ON_ERROR_STOP=on` 全程无错；建库 + 导入共约 1 秒（dump 1.3 MB） |
+| 行数比对 | user 262=262、student 364=364、classroom 20=20、scenario_question/passage/repeat_sentence/sentence_frame 全一致；attempt 2763（生产 4533）、practice_session 323（396）、changelog 23（28）——差异全部为备份时点之后的当日使用（10-29 单日 +1770 作答）与当日新增条目；vocab_level_entry 备份为 0 属实（五级词库 10-29 白天生产首导） |
+| 音频包 | 3,032 个文件；抽验 `04f1334b-….m4a` 19,067 B 完整解出；生产当前 5,011 个文件（备份后当日新增，属预期增长） |
+| 清理 | 演练库已 `DROP`，临时文件已清，未触碰生产库 |
+| 未覆盖 | 未做整栈拉起、登录与录音回放——下一档演练按上文「隔离恢复演练」在独立 Compose 项目执行 |
+
+Drill against `bundle-20261028T193117Z-VJ0QnxZE`: checksums OK; the dump restored into an isolated database inside the production DB container in ~1s with `ON_ERROR_STOP=on`; per-table counts match snapshot semantics (all deltas are post-backup activity, including the same-day five-level vocab import); one audio member extracted intact; the drill database was dropped afterwards. Full isolated-host bring-up with login/playback remains the next-level drill.
