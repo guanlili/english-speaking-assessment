@@ -436,12 +436,19 @@ jobs:
           fi
           # 调试留痕：探测曾连续返回空/none（增量从未生效）；sha 为十六进制无敏感
           echo "probe raw output: [$sha]"
+          echo "deploy path bytes: $(printf '%s' "$DEPLOY_PATH" | wc -c)"
           case "$sha" in ''|*[^0-9a-f]*|*[A-F]*|*' '*) sha=none;; esac
+          # 拉取预检 ×3 重试：gh-proxy 抖动（403/429 瞬时）是常态，单次判定太脆
           fetch=fail
-          if ssh -i "$RUNNER_TEMP/deploy_id" -o ConnectTimeout=15 "$SERVER_USER@$SERVER_HOST" \
-              "cd '$DEPLOY_PATH' 2>/dev/null && timeout 90 git fetch origin" >/dev/null 2>&1; then
-            fetch=ok
-          fi
+          for attempt in 1 2 3; do
+            if ssh -i "$RUNNER_TEMP/deploy_id" -o ConnectTimeout=15 "$SERVER_USER@$SERVER_HOST" \
+                "cd '$DEPLOY_PATH' 2>/dev/null && timeout 90 git fetch origin" >/dev/null 2>&1; then
+              fetch=ok
+              break
+            fi
+            echo "拉取预检失败（第 ${attempt} 次），10 秒后重试"
+            sleep 10
+          done
           rm -f "$RUNNER_TEMP/deploy_id"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "fetch=$fetch" >> "$GITHUB_OUTPUT"
