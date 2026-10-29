@@ -9,7 +9,9 @@ import { expect, test } from "@playwright/test"
 test("登录页渲染与学生/教师入口切换", { tag: "@webkit" }, async ({ page }) => {
   await page.goto("/login")
   await expect(
-    page.getByRole("heading", { name: "欢迎来到 BRS English Learning Platform" }),
+    page.getByRole("heading", {
+      name: "欢迎来到 BRS English Learning Platform",
+    }),
   ).toBeVisible()
   // 默认教师 Tab：邮箱输入
   await expect(page.getByPlaceholder("请输入你的邮箱")).toBeVisible()

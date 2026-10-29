@@ -266,7 +266,7 @@ def test_empty_report_succeeds_without_links(
     assert body["kind"] == "student_report_pdf"
     assert body["included_count"] == 0
     assert body["error"] is None
-    assert body["download_name"].startswith("SpeakUp_学情报告_王小明_")
+    assert body["download_name"].startswith("BELP_学情报告_王小明_")
     assert body["download_name"].endswith(".pdf")
     download = client.get(
         f"{settings.API_V1_STR}/exports/{body['id']}/download",
@@ -570,7 +570,7 @@ def test_worker_rejects_mismatched_requester(db: Session, client: TestClient) ->
             "to": now.isoformat(),
         },
         status=ExportJobStatus.QUEUED,
-        download_name="SpeakUp_学情报告_越权.pdf",
+        download_name="BELP_学情报告_越权.pdf",
     )
     db.add(job)
     db.commit()
@@ -592,7 +592,7 @@ def test_worker_rejects_mismatched_requester(db: Session, client: TestClient) ->
             "to": now.isoformat(),
         },
         status=ExportJobStatus.QUEUED,
-        download_name="SpeakUp_学情报告_错人.pdf",
+        download_name="BELP_学情报告_错人.pdf",
     )
     db.add(mismatched)
     db.commit()
