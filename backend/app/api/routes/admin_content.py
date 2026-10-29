@@ -1260,10 +1260,9 @@ def _active_passage_counts(session: SessionDep) -> dict[uuid.UUID, int]:
     return {unit_id: count for unit_id, count in rows if unit_id is not None}
 
 
+# 单元增删改仅管理员：教师页面只读单元（出题选择），与权限矩阵一致
 @router.post("/units", response_model=UnitPublic)
-def create_unit(
-    session: SessionDep, _admin: TeacherUserDep, unit_in: UnitCreate
-) -> Any:
+def create_unit(session: SessionDep, _admin: SuperUserDep, unit_in: UnitCreate) -> Any:
     unit = Unit.model_validate(unit_in)
     session.add(unit)
     session.commit()
@@ -1274,7 +1273,7 @@ def create_unit(
 @router.put("/units/{unit_id}", response_model=UnitPublic)
 def update_unit(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    _admin: SuperUserDep,
     unit_id: uuid.UUID,
     unit_in: UnitUpdate,
 ) -> Any:
@@ -1300,7 +1299,7 @@ def update_unit(
 
 @router.delete("/units/{unit_id}")
 def delete_unit(
-    session: SessionDep, _admin: TeacherUserDep, unit_id: uuid.UUID
+    session: SessionDep, _admin: SuperUserDep, unit_id: uuid.UUID
 ) -> dict[str, str]:
     unit = session.get(Unit, unit_id)
     if unit is None:
@@ -1788,10 +1787,11 @@ class SentenceFramesListOut(SQLModel):
     count: int
 
 
+# 句型库管理整套端点仅管理员：前端唯一调用方是 /admin/sentenceframes 管理页
 @router.get("/sentence-frames", response_model=SentenceFramesListOut)
 def list_sentence_frames(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    _admin: SuperUserDep,
     level: str | None = Query(default=None, description="五级筛选"),
     purpose: str | None = Query(default=None, description="表达用途筛选"),
     exam_kind: str | None = Query(default=None, description="题型筛选"),
@@ -1832,7 +1832,7 @@ def list_sentence_frames(
 @router.post("/sentence-frames", response_model=SentenceFramePublic)
 def create_sentence_frame(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    _admin: SuperUserDep,
     frame_in: SentenceFrameCreate,
 ) -> Any:
     _validate_frame_fields(
@@ -1848,7 +1848,7 @@ def create_sentence_frame(
 @router.put("/sentence-frames/{frame_id}", response_model=SentenceFramePublic)
 def update_sentence_frame(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    _admin: SuperUserDep,
     frame_id: uuid.UUID,
     frame_in: SentenceFrameUpdate,
 ) -> Any:
@@ -1893,7 +1893,7 @@ class SentenceFrameBatchResult(SQLModel):
 @router.post("/sentence-frames/batch", response_model=SentenceFrameBatchResult)
 def create_sentence_frames_batch(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    _admin: SuperUserDep,
     items: list[SentenceFrameBatchItem],
 ) -> Any:
     """批量创建句型：无效行跳过并报告；同 (级别, 用途, 英文) 重复跳过。"""
@@ -1947,7 +1947,7 @@ def create_sentence_frames_batch(
 
 @router.delete("/sentence-frames/{frame_id}")
 def delete_sentence_frame(
-    session: SessionDep, _admin: TeacherUserDep, frame_id: uuid.UUID
+    session: SessionDep, _admin: SuperUserDep, frame_id: uuid.UUID
 ) -> dict[str, str]:
     frame = session.get(SentenceFrame, frame_id)
     if frame is None:
