@@ -68,6 +68,7 @@ export function PreviewDialog({
           audioUrl: source?.audio_url,
           readingSplit: source?.reading_split,
           segments: source?.reading_segments,
+          sentenceAudio: source?.reading_sentence_audio,
         })
       }
       if (item.type === "repeat") {

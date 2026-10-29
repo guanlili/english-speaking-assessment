@@ -43,3 +43,33 @@ test("split articles do not inherit the whole-passage audio", () => {
   )
   assert.deepEqual(whole, [])
 })
+
+test("split sentences with per-sentence audio count as voiced", () => {
+  const flagged = itemsUsingDeviceSpeech(
+    passageSpeechItems({
+      title: "Pets",
+      audioUrl: null,
+      readingSplit: true,
+      segments: ["I have a cat.", "It is small.", "It likes fish."],
+      sentenceAudio: {
+        "I have a cat.": "/audio/content/cat.wav",
+        "It likes fish.": "/audio/content/fish.wav",
+      },
+    }),
+  )
+  // 只有未配音的句子计为缺音；已配音句子不再被误报
+  assert.deepEqual(
+    flagged.map((item) => item.label),
+    ["It is small."],
+  )
+  // 全部句子配音后零打扰
+  const allVoiced = itemsUsingDeviceSpeech(
+    passageSpeechItems({
+      title: "Pets",
+      readingSplit: true,
+      segments: ["A.", "B."],
+      sentenceAudio: { "A.": "/audio/a.wav", "B.": "/audio/b.wav" },
+    }),
+  )
+  assert.deepEqual(allVoiced, [])
+})
