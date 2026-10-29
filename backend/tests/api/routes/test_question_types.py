@@ -210,7 +210,7 @@ def test_teacher_can_manage_content_but_not_classrooms(
 ) -> None:
     teacher, headers = _teacher(db, client)
 
-    # 教师可建篇目/情景/题库/单元
+    # 教师可建篇目/情景/题库；单元与句型库管理仅管理员（权限矩阵 2026-10）
     passage = client.post(
         "/api/v1/admin/passages",
         json={"title": "教师出的篇目", "text": "Teacher made.", "topic": "Pets"},
@@ -223,12 +223,14 @@ def test_teacher_can_manage_content_but_not_classrooms(
     )
     assert scenario.status_code == 200
 
+    # 教师读单元供出题选择；增删改 403
+    assert client.get("/api/v1/admin/units", headers=headers).status_code == 200
     unit = client.post(
         "/api/v1/admin/units",
         json={"order_index": 99, "title": "U99", "topic": "Pets"},
         headers=headers,
     )
-    assert unit.status_code == 200
+    assert unit.status_code == 403
 
     # 课堂管理仍仅管理员：教师 403
     classroom = _classroom(client, superuser_token_headers)
@@ -252,7 +254,6 @@ def test_teacher_can_manage_content_but_not_classrooms(
     for path in (
         f"/api/v1/admin/passages/{passage.json()['id']}",
         f"/api/v1/admin/scenarios/{scenario.json()['id']}",
-        f"/api/v1/admin/units/{unit.json()['id']}",
     ):
         client.delete(path, headers=superuser_token_headers)
 
