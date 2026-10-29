@@ -182,6 +182,14 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **前端**：教师/管理员 `/exports`（侧栏「录音导出」，未下载成功包显示角标）；学生不进 `_layout`，入口是 `/my-exports`（班级页与学生壳账号菜单）。教师提交前二次确认勾选。文案走 `useI18n`；`detail` 稳定码在 `utils.ts` 的 `DETAIL_MESSAGES` 与 `lib/export-copy.ts` 映射。下载用带 Authorization 的 fetch（生成客户端的 download 返回 unknown）。完成/失败用列表刷新 + toast，无新推送或邮件。
 - **配置**：`EXPORT_STORAGE_DIR`、`EXPORT_TTL_DAYS`、`EXPORT_WORKERS`、`EXPORT_MAX_IN_PROGRESS`、`EXPORT_RECENT_DAYS_DEFAULT`、`EXPORT_RECENT_DAYS_MAX`、`EXPORT_MAX_BYTES`、`EXPORT_ASYNC_MIN_FILES`、`EXPORT_ASYNC_MIN_BYTES`。后两个阈值保留为配置，当前没有同步路径。`.env.example` 与 `scripts/generate-deploy-env.sh` 写出 `EXPORT_STORAGE_DIR` / `EXPORT_TTL_DAYS`。
 
+## 教师班级分析报告 PDF（2026-10-29）
+
+教师导出本班窗口内分析报告，走同一 ExportJob / 下载中心；`kind=class_report_pdf`，零迁移（kind 为 str 列）。仅本班 owner/管理员（`classroom_teacher_allowed`），学生 403 `export_class_report_teacher_only`；不支持 exercise/session 过滤（422 `export_exercise_not_supported`）；窗口与学生报告同口径（默认最近 90 天、`resolve_report_window` 上限）。文件名 `SpeakUp_班级报告_{班名}_{起止}.pdf`，成品上限复用 `REPORT_PDF_MAX_BYTES`。
+
+- **章节**：班级概览（活跃/作答量/问答均分/跟读完整度）、分数分布（每生均分分段 + 全员列表）、进步趋势（复用 `class_trend.summarize`，按 PRACTICE_TZ 切日）、题项对比（得分最低前 20 题位，由低到高）。排版复用学情报告 `_ReportPDF` 原语与中文字体。
+- **口径**：每生均分=窗口内情景问答每题位最新一次参考分均值（与学情报告/百分位同源）；题项对比覆盖所有有参考分题型，同样按题位最新一次；未结束考试排除（`_locked_exam_session_ids`）；正文不含作答 ID 与外链。
+- **前端**：`ExportCenter` classroom 模式新增「班级报告 PDF」tab（录音 ZIP 专属的练习过滤/分组/确认弹窗在该 kind 下隐藏）；列表徽标三分；`export-copy` 文案 kind 感知。
+
 ## 学生个人学情报告 PDF（2026-10-27）
 
 学生自己导出一份学习报告 PDF，走同一条 ExportJob / 导出卷 / 下载中心。不改变 ZIP 的空包失败、清单和权限。不做全班 PDF，也不让教师代学生导出。

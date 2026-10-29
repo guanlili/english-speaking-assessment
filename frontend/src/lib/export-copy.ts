@@ -33,8 +33,14 @@ export function exportJobMessage(
   }
   if (error === "export_pdf_too_large") {
     return t({
-      zh: "学情报告文件超过 20MB，没有保存。请缩短时间范围后再试。",
-      en: "The learning report was over 20MB and was not saved. Shorten the range and try again.",
+      zh: "报告文件超过 20MB，没有保存。请缩短时间范围后再试。",
+      en: "The report was over 20MB and was not saved. Shorten the range and try again.",
+    })
+  }
+  if (error === "export_class_report_teacher_only") {
+    return t({
+      zh: "班级报告只能由本课堂的授权教师导出。",
+      en: "Class reports can only be exported by the classroom's teacher.",
     })
   }
   if (
@@ -42,8 +48,8 @@ export function exportJobMessage(
     error === "export_report_student_only"
   ) {
     return t({
-      zh: "学情报告只能由学生导出自己的记录。",
-      en: "A learning report can only be exported by the student it belongs to.",
+      zh: "没有权限导出这份报告，只能导出与本人相关的记录。",
+      en: "No permission to export this report; only your own records can be exported.",
     })
   }
   if (error.startsWith("export_failed")) {
@@ -58,7 +64,7 @@ export function exportJobMessage(
 export function exportStatusLabel(status: string, t: T, kind?: string): string {
   if (status === "queued") return t({ zh: "排队中", en: "Queued" })
   if (status === "running") {
-    return kind === "student_report_pdf"
+    return kind?.endsWith("_report_pdf")
       ? t({ zh: "生成中", en: "Building" })
       : t({ zh: "打包中", en: "Packing" })
   }

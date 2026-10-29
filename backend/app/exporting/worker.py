@@ -265,11 +265,14 @@ def process_export_job(job_id: UUID) -> None:
         requester_user_id = job.requester_user_id
         candidates = (
             None
-            if kind == ExportKind.STUDENT_REPORT_PDF
+            if kind in (ExportKind.STUDENT_REPORT_PDF, ExportKind.CLASS_REPORT_PDF)
             else query_candidates(session, filt)
         )
     if kind == ExportKind.STUDENT_REPORT_PDF:
         _process_student_report(job_id, filt, requester_user_id)
+        return
+    if kind == ExportKind.CLASS_REPORT_PDF:
+        _process_class_report(job_id, filt, requester_user_id)
         return
     assert candidates is not None
     try:
@@ -325,6 +328,90 @@ def process_export_job(job_id: UUID) -> None:
         included=result.included,
         missing=result.missing,
         total=len(candidates),
+        artifact=result.artifact_name,
+        byte_size=result.byte_size,
+    )
+
+
+def _process_class_report(
+    job_id: UUID,
+    filt: dict[str, object],
+    requester_user_id: UUID,
+) -> None:
+    """班级分析 PDF：与学情 PDF 同构——短事务读、事务外排版、短事务写结果。"""
+    from app.core.db import engine
+    from app.services.audio_export import export_directory
+    from app.services.class_report_pdf import (
+        ReportForbidden,
+        load_class_report,
+        render_class_report,
+    )
+
+    try:
+        with Session(engine) as session:
+            report = load_class_report(session, filt, requester_user_id)
+    except ReportForbidden:
+        _finish_failed(
+            job_id,
+            error="export_report_forbidden",
+            included=0,
+            missing=0,
+            total=0,
+        )
+        return
+    except ValueError as exc:
+        code = str(exc)
+        _finish_failed(
+            job_id,
+            error=code if code.startswith("export_") else "export_failed",
+            included=0,
+            missing=0,
+            total=0,
+        )
+        return
+    except Exception as exc:
+        logger.exception("export job %s failed while reading the class report", job_id)
+        _finish_failed(
+            job_id,
+            error=f"export_failed: {exc}"[:512],
+            included=0,
+            missing=0,
+            total=0,
+        )
+        return
+    dest = export_directory() / f"{job_id}.pdf"
+    try:
+        result = render_class_report(report, dest)
+    except Exception as exc:
+        logger.exception("export job %s failed while rendering class pdf", job_id)
+        dest.unlink(missing_ok=True)
+        try:
+            _finish_failed(
+                job_id,
+                error=f"export_failed: {exc}"[:512],
+                included=0,
+                missing=0,
+                total=0,
+            )
+        except Exception:
+            logger.exception("export job %s could not record failure", job_id)
+            raise
+        return
+    if result.byte_size > settings.REPORT_PDF_MAX_BYTES:
+        dest.unlink(missing_ok=True)
+        _finish_failed(
+            job_id,
+            error="export_pdf_too_large",
+            included=result.included,
+            missing=0,
+            total=max(result.included, 1),
+        )
+        return
+    _finish_ok(
+        job_id,
+        included=result.included,
+        missing=0,
+        total=max(result.included, 1),
         artifact=result.artifact_name,
         byte_size=result.byte_size,
     )

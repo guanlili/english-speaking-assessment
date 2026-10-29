@@ -3023,6 +3023,7 @@ class ExportKind:
 
     AUDIO_ZIP = "audio_zip"
     STUDENT_REPORT_PDF = "student_report_pdf"
+    CLASS_REPORT_PDF = "class_report_pdf"
 
 
 class ExportJobStatus:
