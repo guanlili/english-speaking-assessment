@@ -357,6 +357,12 @@ class ClassSizeUpdate(SQLModel):
     class_size: int = Field(ge=1, le=100)
 
 
+class ReportSettingsUpdate(SQLModel):
+    """学生学情 PDF 是否显示班级位置（课堂级，默认开）。"""
+
+    show_report_percentile: bool
+
+
 @router.patch("/{code}", response_model=ClassroomPublic)
 def update_class_size(
     session: SessionDep,
@@ -377,6 +383,27 @@ def update_class_size(
         session=session, classroom=classroom, new_size=body.class_size
     )
     classroom.class_size = body.class_size
+    session.add(classroom)
+    session.commit()
+    session.refresh(classroom)
+    return classroom
+
+
+@router.patch("/{code}/report-settings", response_model=ClassroomPublic)
+def update_report_settings(
+    session: SessionDep,
+    code: str,
+    current_user: CurrentUser,
+    body: ReportSettingsUpdate,
+) -> Any:
+    """课堂级开关：学生学情 PDF 是否写入班级位置。本人课堂或管理员。"""
+    classroom = get_classroom_by_code(session=session, code=code.upper())
+    if classroom is None:
+        classroom = get_classroom_by_code(session=session, code=code)
+    if classroom is None:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+    _require_classroom_teacher(classroom, current_user)
+    classroom.show_report_percentile = body.show_report_percentile
     session.add(classroom)
     session.commit()
     session.refresh(classroom)

@@ -90,14 +90,83 @@ const DETAIL_MESSAGES: Record<string, { zh?: string; en: string }> = {
   },
   该句不在本轮练习内: { en: "This sentence is not in the current round." },
   该句不在本轮篇目内: { en: "This sentence is not in this round's passage." },
-  "没有权限：该练习轮不属于你本人": {
-    en: "No permission: this practice round belongs to someone else.",
-  },
   "没有权限：您不是该作答所属课堂的授权教师": {
     en: "No permission: you are not the authorized teacher for this classroom.",
   },
   "没有权限：只能管理自己课堂的学生": {
     en: "No permission: you can only manage students in your own classroom.",
+  },
+  "没有权限：只能查看自己的导出任务": {
+    en: "No permission: you can only view your own export jobs.",
+  },
+  "没有权限：课堂录音导出仅限该课堂授权教师": {
+    en: "No permission: only the authorized teacher of this classroom can export recordings.",
+  },
+  "没有权限：您不是该课堂的授权教师，请联系管理员绑定后再查看": {
+    en: "No permission: you are not the authorized teacher for this classroom.",
+  },
+  "没有权限：该练习轮不属于你本人": {
+    en: "No permission: this practice round is not yours.",
+  },
+  export_confirm_required: {
+    zh: "导出课堂录音前需要再次确认：压缩包里是学生的原始音频。",
+    en: "Confirm again before exporting. The package contains students' original audio.",
+  },
+  export_too_large: {
+    zh: "预计体积超过 2GB。请缩小时间范围或练习范围后再导出。",
+    en: "The estimated size is over 2GB. Narrow the dates or exercise and try again.",
+  },
+  export_range_too_wide: {
+    zh: "时间范围最长 90 天。请缩短后再导出。",
+    en: "The range can cover at most 90 days. Shorten it and try again.",
+  },
+  export_report_student_only: {
+    zh: "学情报告只能由学生本人导出，教师不能代为导出。",
+    en: "Only a student can export their own learning report.",
+  },
+  export_report_forbidden: {
+    zh: "只能导出你已加入课堂里的本人学情报告。",
+    en: "You can only export your own learning report for a class you have joined.",
+  },
+  export_classroom_mismatch: {
+    zh: "课堂码和课堂不是同一间。",
+    en: "The classroom code does not match that classroom.",
+  },
+  export_pdf_too_large: {
+    zh: "学情报告文件超过 20MB，没有保存。请缩短时间范围后再试。",
+    en: "The learning report was over 20MB and was not saved. Shorten the range and try again.",
+  },
+  export_too_many_in_progress: {
+    zh: "你已有两个导出任务在进行。请等它们完成后再试。",
+    en: "You already have two exports in progress. Wait for them to finish.",
+  },
+  export_expired: {
+    zh: "这个录音包已超过 7 天，文件已清理。请重新导出。",
+    en: "This package is older than 7 days and has been removed. Export it again.",
+  },
+  export_not_ready: {
+    zh: "录音包还没准备好，或这次没有生成文件。",
+    en: "The package is not ready, or no file was created.",
+  },
+  export_retry_not_failed: {
+    zh: "只有失败的任务可以重试。",
+    en: "Only a failed export can be retried.",
+  },
+  export_classroom_required: {
+    zh: "请选择要导出的课堂。",
+    en: "Choose a classroom to export.",
+  },
+  export_exercise_mismatch: {
+    zh: "这个练习不属于所选课堂。",
+    en: "That exercise does not belong to the selected classroom.",
+  },
+  export_session_mismatch: {
+    zh: "这个练习轮不属于所选范围。",
+    en: "That practice round is outside the selected range.",
+  },
+  "Export job not found": {
+    zh: "找不到这个导出任务。",
+    en: "Export job not found.",
   },
   "没有权限：只能重置学生账号的密码": {
     en: "No permission: only student account passwords can be reset.",

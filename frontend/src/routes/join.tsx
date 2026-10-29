@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
-import { createFileRoute, useNavigate } from "@tanstack/react-router"
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { ArrowRight, ArrowRightLeft, CalendarCheck, Flame } from "lucide-react"
 import { useEffect, useState } from "react"
 import {
@@ -94,6 +94,12 @@ function MyClassesPage() {
             en: "Tasks from each of your classes are kept separate. Pick one to continue, or join a new class with its code.",
           })}
         </p>
+        <Link
+          to="/my-exports"
+          className="mt-4 inline-flex h-11 items-center rounded-xl border border-border/70 px-4 text-sm font-medium hover:bg-secondary"
+        >
+          {t({ zh: "下载中心", en: "Download center" })}
+        </Link>
 
         {classes.length > 0 && (
           <p className="mt-4 inline-flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border/70 bg-secondary/50 px-4 py-2.5 text-xs text-muted-foreground">
@@ -277,8 +283,8 @@ function MyClassesPage() {
       </main>
       <footer className="px-6 pb-6 text-center text-xs text-muted-foreground">
         {t({
-          zh: "Charcoal 开口说 · 参考反馈仅用于学习，不代表官方考试成绩",
-          en: "Charcoal · Reference feedback is for learning only, not official exam results",
+          zh: "BELP · 参考反馈仅用于学习，不代表官方考试成绩",
+          en: "BELP · Reference feedback is for learning only, not official exam results",
         })}
       </footer>
     </div>

@@ -1,6 +1,6 @@
 # CLAUDE.md — 项目规范
 
-> 本项目为「Charcoal 开口说」英语口语学习平台（视觉与交互参照 prototypes/speakup 原型），基于 lili-full-stack 模板创建。品牌 2026-10 由 SpeakUp 更名而来（Charcoal 为暂定名，规避与市面雅思口语平台重名）；品牌名统一定义在 `frontend/src/config.ts` 的 APP_NAME，改名只需动文案层，视觉素材（Logo 图形/插画）暂不重做。
+> 本项目为「BRS English Learning Platform」（简称 **BELP**）英语口语学习平台（视觉与交互参照 prototypes/speakup 原型），基于 lili-full-stack 模板创建。品牌沿革：SpeakUp → Charcoal（暂定）→ BRS English Learning Platform（2026-10-29 正式定名）；全名与简称统一定义在 `frontend/src/config.ts`（APP_NAME / APP_NAME_SHORT），改名只需动文案层，视觉素材（Logo 图形/插画）暂不重做。
 >
 > 本文件只放规则、不变量与流程。各模块的实现细节、关键路径和迁移号见 **[docs/module-notes.md](docs/module-notes.md)**——改动某模块前先读对应章节。
 
@@ -64,10 +64,12 @@
 | 自动考试（E01–E10） | `services/exam_flow.py`、`AutomatedExamSession` | module-notes「自动考试流程」 |
 | 教师备课、诊断、点评、补练 | `class_composer.py`、`class_diagnostics.py`、`class_followups.py`、`class_followup_outcomes.py`、`class_reviews.py`、`class_messages.py` | `docs/teacher-platform-design.md` |
 | 平台更新日志（教师/管理员可见） | `routes/changelog.py`、`frontend/src/routes/_layout/changelog.tsx`、`hooks/useChangelog.ts` | module-notes「平台更新日志」 |
+| 口语原音频 ZIP / 学生学情 PDF | `routes/exports.py`、`services/audio_export.py`、`services/student_report_pdf.py`、`exporting/worker.py` | module-notes「口语原音频 ZIP」「学生个人学情报告 PDF」 |
 | 实时课堂 / 自检 / 诊断补练 / 复核 / 讲评 / 对比 / 阶段报告 | `class_teaching_tools.py`、`admin_content_copy.py`、`attempts.py` | `docs/teacher-platform-design.md`「课堂教学闭环增强」 |
 | 运行时与可观测 | `X-Request-ID`、metrics | `docs/runtime-observability.md` |
 | 备份与恢复 | `scripts/backup-local.sh` | `docs/backup-restore.md` |
 | 紧急回滚（秒级切上一版镜像） | `scripts/rollback.sh` | README「回滚」 |
+| 部署链稳定性（lock 镜像改写/cron 注册/超时） | `backend/Dockerfile`、`.github/workflows/deploy.yml` | module-notes「部署链稳定化」 |
 
 ## 项目结构
 

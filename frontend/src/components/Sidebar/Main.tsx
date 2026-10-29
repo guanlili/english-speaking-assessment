@@ -19,6 +19,8 @@ export type Item = {
   path: string
   /** 角标红点（如平台更新有未读）；仅装饰性提示，不承载信息 */
   dot?: boolean
+  /** 未下载的导出包数量 */
+  badge?: number
 }
 
 interface MainProps {
@@ -94,6 +96,11 @@ export function Main({ items, label }: MainProps) {
                             className="absolute -right-1.5 -top-1.5 size-2 rounded-full bg-accent-foreground ring-2 ring-sidebar"
                           />
                         )}
+                        {item.badge ? (
+                          <span className="absolute -right-2 -top-2 grid min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-4 text-primary-foreground ring-2 ring-sidebar group-data-[collapsible=icon]:ring-sidebar">
+                            {item.badge > 9 ? "9+" : item.badge}
+                          </span>
+                        ) : null}
                       </span>
                       <span className="group-data-[collapsible=icon]:sr-only">
                         {t(item.title)}

@@ -404,6 +404,7 @@ export type ClassroomPublic = {
     assign_repeat?: (boolean | null);
     assign_qa?: (boolean | null);
     current_exercise_id?: (string | null);
+    show_report_percentile?: boolean;
     created_at?: (string | null);
 };
 
@@ -416,6 +417,7 @@ export type ClassroomUpdate = {
     grade?: (string | null);
     teaching_goal?: (string | null);
     unlock_all?: (boolean | null);
+    show_report_percentile?: (boolean | null);
     owner_id?: (string | null);
     is_active?: (boolean | null);
     class_size?: (number | null);
@@ -755,6 +757,55 @@ export type ExploreStarted = {
     unit_title: string;
 };
 
+export type ExportCreate = {
+    scope: 'self' | 'classroom';
+    kind?: 'audio_zip' | 'student_report_pdf' | 'class_report_pdf';
+    from?: (string | null);
+    to?: (string | null);
+    session_id?: (string | null);
+    exercise_id?: (string | null);
+    classroom_id?: (string | null);
+    classroom_code?: (string | null);
+    code?: (string | null);
+    group_by_item?: boolean;
+    confirm_contains_student_audio?: boolean;
+    recent_days?: (number | null);
+    days?: (number | null);
+};
+
+export type scope = 'self' | 'classroom';
+
+export type kind2 = 'audio_zip' | 'student_report_pdf' | 'class_report_pdf';
+
+export type ExportJobPublic = {
+    id: string;
+    scope: string;
+    kind: string;
+    status: string;
+    progress: number;
+    progress_done: number;
+    progress_total: number;
+    error: (string | null);
+    byte_size: (number | null);
+    included_count: number;
+    missing_count: number;
+    created_at: (string | null);
+    started_at: (string | null);
+    finished_at: (string | null);
+    expires_at: (string | null);
+    downloaded_at: (string | null);
+    download_name: (string | null);
+    filter: {
+        [key: string]: unknown;
+    };
+};
+
+export type ExportJobsPublic = {
+    data: Array<ExportJobPublic>;
+    count: number;
+    unseen_ready: number;
+};
+
 export type ExpressionFavoriteCreate = {
     texts: Array<(string)>;
 };
@@ -1009,6 +1060,9 @@ export type PassagePublic = {
     is_active?: boolean;
     copied_from_id?: (string | null);
     reading_sentence_seconds?: (Array<(number | null)> | null);
+    reading_sentence_audio?: ({
+    [key: string]: (string);
+} | null);
     id: string;
     slug: string;
     reading_split?: boolean;
@@ -1037,6 +1091,9 @@ export type PassageSplitResult = {
 export type PassageUpdate = {
     reading_sentence_seconds?: (Array<(number | null)> | null);
     reading_sentence_texts?: (Array<(string)> | null);
+    reading_sentence_audio?: ({
+    [key: string]: (string);
+} | null);
     title?: (string | null);
     topic?: (string | null);
     cefr_band?: (string | null);
@@ -1059,6 +1116,9 @@ export type PassageWithSentences = {
     is_active?: boolean;
     copied_from_id?: (string | null);
     reading_sentence_seconds?: (Array<(number | null)> | null);
+    reading_sentence_audio?: ({
+    [key: string]: (string);
+} | null);
     id: string;
     slug: string;
     reading_split?: boolean;
@@ -1323,6 +1383,13 @@ export type ReportAnswer = {
     teacher_feedback: (string | null);
     teacher_review_tags: (Array<(string)> | null);
     created_at: (string | null);
+};
+
+/**
+ * 学生学情 PDF 是否显示班级位置（课堂级，默认开）。
+ */
+export type ReportSettingsUpdate = {
+    show_report_percentile: boolean;
 };
 
 export type RuntimeIssueIn = {
@@ -2994,6 +3061,13 @@ export type ClassesUpdateClassSizeData = {
 
 export type ClassesUpdateClassSizeResponse = (ClassroomPublic);
 
+export type ClassesUpdateReportSettingsData = {
+    code: string;
+    requestBody: ReportSettingsUpdate;
+};
+
+export type ClassesUpdateReportSettingsResponse = (ClassroomPublic);
+
 export type ClassesJoinClassData = {
     code: string;
     requestBody: StudentJoin;
@@ -3412,6 +3486,32 @@ export type ClassesRepeatClassReminderData = {
 };
 
 export type ClassesRepeatClassReminderResponse = (ClassMessagePublic);
+
+export type ExportsListExportsResponse = (ExportJobsPublic);
+
+export type ExportsCreateExportData = {
+    requestBody: ExportCreate;
+};
+
+export type ExportsCreateExportResponse = (ExportJobPublic);
+
+export type ExportsReadExportData = {
+    jobId: string;
+};
+
+export type ExportsReadExportResponse = (ExportJobPublic);
+
+export type ExportsDownloadExportData = {
+    jobId: string;
+};
+
+export type ExportsDownloadExportResponse = (unknown);
+
+export type ExportsRetryExportData = {
+    jobId: string;
+};
+
+export type ExportsRetryExportResponse = (ExportJobPublic);
 
 export type LoginReadLoginOptionsResponse = (LoginOptions);
 

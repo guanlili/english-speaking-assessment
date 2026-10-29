@@ -35,8 +35,11 @@ x-backend-common: &backend-common
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD?Variable not set}
     # 学生录音落盘到独立卷，重建容器不丢
     AUDIO_STORAGE_DIR: /app/audio
+    # 口语原音频 ZIP 与录音卷分开，避免导出包挤占音频盘
+    EXPORT_STORAGE_DIR: /app/export
   volumes:
     - app-audio-data:/app/audio
+    - app-export-data:/app/export
 
 services:
 
@@ -108,6 +111,10 @@ services:
     volumes:
       # 证书目录（服务器上由 acme 容器写入；本地开发不存在则为空目录 → 纯 HTTP）
       - ./ssl:/etc/nginx/ssl:ro
+      # outman.press 证书在 ./ssl/outman.press/；conf 由镜像 entrypoint 在证书存在时启用
+    extra_hosts:
+      # 遇己 yujee-web 在宿主机 :8080，供 outman.press 反代
+      - "host.docker.internal:host-gateway"
     depends_on:
       backend:
         condition: service_healthy
@@ -129,4 +136,5 @@ services:
 volumes:
   app-db-data:
   app-audio-data:
+  app-export-data:
   acme-sh-data:

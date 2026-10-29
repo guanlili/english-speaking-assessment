@@ -9,6 +9,7 @@ import {
   ChevronDown,
   CircleHelp,
   ClipboardCheck,
+  FolderArchive,
   Home,
   KeyRound,
   LogOut,
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import useAuth from "@/hooks/useAuth"
 import { useClassroomMessages } from "@/hooks/useClassroomMessages"
+import { useExports } from "@/hooks/useExports"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
 import { buildAttemptByItem } from "@/lib/practice-derive"
@@ -108,6 +110,8 @@ function StudentShell({
 }) {
   const { t } = useI18n()
   const { logout } = useAuth()
+  const exportJobs = useExports()
+  const unseenExports = exportJobs.data?.unseen_ready ?? 0
   const { code = "" } = useParams({ strict: false })
   const student = loadStudent(code)
   const name = student
@@ -257,6 +261,17 @@ function StudentShell({
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
+                  <Link to="/my-exports">
+                    <FolderArchive />
+                    {t({ zh: "下载中心", en: "Downloads" })}
+                    {unseenExports > 0 ? (
+                      <span className="ml-auto grid min-h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                        {unseenExports > 9 ? "9+" : unseenExports}
+                      </span>
+                    ) : null}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
                   <a href="/change-password">
                     <KeyRound />
                     {t({ zh: "修改密码", en: "Change password" })}
@@ -282,7 +297,7 @@ function StudentShell({
           {children}
         </main>
         <footer className="px-6 pb-6 pt-4 text-center text-[11px] tracking-wide text-muted-foreground">
-          Charcoal ·{" "}
+          BELP ·{" "}
           {t({
             zh: "每一种声音，都值得被听见。",
             en: "Every voice deserves to be heard.",

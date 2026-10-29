@@ -21,6 +21,8 @@ dependencies = [
     "pwdlib[argon2,bcrypt]>=0.3.0",
     # 题库批量导入导出：xlsx 模板生成与解析（纯 Python，无编译依赖）
     "openpyxl>=3.1.5,<4.0.0",
+    # 学生个人学情 PDF（服务端排版；中文走仓库内 Noto Sans SC）
+    "fpdf2>=2.8.3,<3.0.0",
 ]
 
 [dependency-groups]
@@ -30,6 +32,8 @@ dev = [
     "ruff<1.0.0,>=0.2.2",
     "coverage<8.0.0,>=7.4.3",
     "pytest-rerunfailures>=15",
+    # 学情 PDF 冒烟：抽出中文，确认字体真的写进了页面
+    "pypdf>=6.0.0,<7.0.0",
 ]
 
 [build-system]

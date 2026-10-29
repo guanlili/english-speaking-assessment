@@ -1,5 +1,5 @@
 import { Download } from "lucide-react"
-import { AdminService } from "@/client"
+import { AdminService, ApiError } from "@/client"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -10,6 +10,12 @@ import {
 } from "@/components/ui/card"
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
+
+function errorDetail(err: unknown): string | undefined {
+  if (!(err instanceof ApiError)) return undefined
+  const body = err.body as { detail?: unknown } | undefined
+  return typeof body?.detail === "string" ? body.detail : undefined
+}
 
 /** 数据导出：三个口径的 CSV 下载（北京时间、BOM、Excel 直开）。 */
 function ExportCard() {
@@ -61,7 +67,16 @@ function ExportCard() {
       a.download = filename
       a.click()
       URL.revokeObjectURL(url)
-    } catch {
+    } catch (err) {
+      if (errorDetail(err) === "usage_export_too_many_rows") {
+        showErrorToast(
+          t({
+            zh: "导出行数超过上限，全量导出被拒绝：请联系运维调高 USAGE_EXPORT_MAX_ROWS",
+            en: "Row cap exceeded; the full export was rejected. Ask ops to raise USAGE_EXPORT_MAX_ROWS.",
+          }),
+        )
+        return
+      }
       showErrorToast(
         t({ zh: "下载失败，请重试", en: "Download failed, retry" }),
       )

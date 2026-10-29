@@ -132,6 +132,9 @@ class Passage(PassageBase, table=True):
     reading_sentence_seconds: list[ReadingSentenceSeconds | None] | None = Field(
         default=None, sa_type=JSON
     )
+    # 拆句配音按句子原文寻址而非下标：改一句正文不影响其余句子的配音，
+    # 正文编辑后失配的旧键不再命中（等同未配音，前端 speechSynthesis 兜底）。
+    reading_sentence_audio: dict[str, str] | None = Field(default=None, sa_type=JSON)
     exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
     # 题库查重预计算（services/content_dedup.py 维护）：标题/正文的归一键
     # sha256；导入疑似重复判定走索引，不再全表流式拉原文
@@ -163,6 +166,7 @@ class Passage(PassageBase, table=True):
 class PassagePublic(PassageBase):
     copied_from_id: uuid.UUID | None = None
     reading_sentence_seconds: list[ReadingSentenceSeconds | None] | None = None
+    reading_sentence_audio: dict[str, str] | None = None
     id: uuid.UUID
     slug: str
     reading_split: bool = False
@@ -709,6 +713,10 @@ class Classroom(SQLModel, table=True):
         ondelete="SET NULL",
         index=True,
     )
+    # 学生个人学情 PDF 是否写入班级位置。默认开；样本不足 5 人时仍不显示数字。
+    show_report_percentile: bool = Field(
+        default=True, sa_column_kwargs={"server_default": "true"}
+    )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -729,6 +737,7 @@ class ClassroomPublic(SQLModel):
     assign_repeat: bool | None = None
     assign_qa: bool | None = None
     current_exercise_id: uuid.UUID | None = None
+    show_report_percentile: bool = True
     created_at: datetime | None = None
 
 
@@ -1465,7 +1474,7 @@ class TrailData(SQLModel):
     sessions: list[TrailSession]
     # 最近一轮的档位动向（PRD US-10：维持/升/降）；不足一轮为 null
     band_change: str | None = None
-    # 累计开口分钟（Σ作答时长；Charcoal 成长页统计）
+    # 累计开口分钟（Σ作答时长；BELP 成长页统计）
     total_minutes: int = 0
     # 累计词汇命中次数按档（老词表 A2/B1/B2 口径；仅历史作答携带，零变化保留）
     vocab_counts: dict[str, int] = {}
@@ -3000,3 +3009,116 @@ class ChangelogPublic(SQLModel):
     body_en: str | None
     created_at: datetime | None
     updated_at: datetime | None
+
+
+# 口语原音频 ZIP 导出。队列在数据库（ExportJob），工人是独立线程池，
+# 不与评分 SCORING_WORKERS 共用。成品在 EXPORT_STORAGE_DIR，到期删除。
+class ExportScope:
+    SELF = "self"
+    CLASSROOM = "classroom"
+
+
+class ExportKind:
+    """导出成品类型。旧行与未传 kind 的录音任务都是 audio_zip。"""
+
+    AUDIO_ZIP = "audio_zip"
+    STUDENT_REPORT_PDF = "student_report_pdf"
+    CLASS_REPORT_PDF = "class_report_pdf"
+
+
+class ExportJobStatus:
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    EXPIRED = "expired"
+
+
+class ExportJob(SQLModel, table=True):
+    __tablename__ = "export_job"
+    __table_args__ = (
+        Index(
+            "ix_export_job_requester_created",
+            "requester_user_id",
+            "created_at",
+        ),
+        Index("ix_export_job_status_expires", "status", "expires_at"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    requester_user_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    # self = 学生（或任何账号）导出自己的作答；classroom = 授权教师导出一班
+    scope: str = Field(max_length=16, index=True)
+    # audio_zip（默认，含本列加入前的旧行）| student_report_pdf
+    kind: str = Field(
+        default=ExportKind.AUDIO_ZIP,
+        max_length=32,
+        index=True,
+        sa_column_kwargs={"server_default": ExportKind.AUDIO_ZIP},
+    )
+    filter_json: dict[str, object] = Field(
+        sa_column=Column("filter_json", JSON, nullable=False)
+    )
+    status: str = Field(default=ExportJobStatus.QUEUED, max_length=16, index=True)
+    progress_done: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    progress_total: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    # 稳定错误码（export_empty / export_all_missing / export_too_large）
+    # 或不可预期失败的短消息。空表示没有错误。
+    error: str | None = Field(default=None, max_length=512)
+    # 仅文件名，相对 EXPORT_STORAGE_DIR，防止把绝对路径透出 API
+    artifact_relpath: str | None = Field(default=None, max_length=255)
+    byte_size: int | None = Field(
+        default=None, sa_column=Column(BigInteger, nullable=True)
+    )
+    included_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    missing_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    download_name: str | None = Field(default=None, max_length=255)
+    confirm_contains_student_audio: bool = Field(
+        default=False, sa_column_kwargs={"server_default": "false"}
+    )
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    started_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    finished_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    expires_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    downloaded_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class ExportAudit(SQLModel, table=True):
+    """导出审计：谁、何时、范围、任务、结果。教师课堂导出必须留痕。"""
+
+    __tablename__ = "export_audit"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    job_id: uuid.UUID | None = Field(
+        default=None, foreign_key="export_job.id", ondelete="CASCADE", index=True
+    )
+    actor_user_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    # create / start / success / fail / download / retry / expire / reject
+    action: str = Field(max_length=16, index=True)
+    scope: str | None = Field(default=None, max_length=16)
+    detail: dict[str, object] | None = Field(
+        default=None, sa_column=Column("detail", JSON, nullable=True)
+    )
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )

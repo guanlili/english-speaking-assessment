@@ -168,3 +168,50 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **后端** `models.ChangelogEntry`（`day` 面向读者的发布日期 + `kind: feature/improvement/fix/null` + 标题正文各中英）；路由 `api/routes/changelog.py`：`GET /changelog`（TeacherUserDep，按 day/created_at 倒序）、POST/PUT/DELETE 均为 SuperUserDep。PUT 是全量更新（kind 传 null 清标签）。
 - **前端** `_layout/changelog.tsx` 时间线页（管理员多出发布/编辑/删除）；侧栏「平台更新」入口带未读红点——`hooks/useChangelog.ts` 用 localStorage 水位 `esa:changelog-seen`（存最近看过的最新条目日期）对比列表首条 `day`；进入页面即视为已读，红点在侧栏下次渲染时消失。queryKey `["changelog"]` 侧栏与页面共享。
 - **注意**：字段名用 `day` 不用 `date`（与类型注解同名会让 pydantic 报 unevaluable-type）。
+
+## 口语原音频 ZIP（2026-10-27）
+
+学生导出自己的原始录音、教师导出本班录音。同一迭代，只出 ZIP + 根目录 `manifest.csv`（UTF-8 BOM）。不转码、不进 COS/S3、不用 Redis/Celery。与管理员用量 CSV（`admin_export.py`）无关，那条行为不要改。
+
+- **迁移** `e8a1c4b90d27`（revises `1f4592d70e43`）：表 `export_job`、`export_audit`。任务创建时把筛选条件冻进 `filter_json`，worker 只读这份快照。
+- **接口** `api/routes/exports.py`：`POST /exports` 一律异步返回 `job_id`（H2，不走同步小包）；`GET /exports` 只列请求人自己的任务（含 `unseen_ready`）；`GET /exports/{id}` 请求人或超管可读；`GET /exports/{id}/download` 成功且未过期时流式下载，过期 410 并删文件；`POST /exports/{id}/retry` 只重试 `failed`。教师 `scope=classroom` 必须 `confirm_contains_student_audio=true`，且 `crud.classroom_teacher_allowed`（课堂 `owner_id` 或超管）；跨班 403。学生只能 `scope=self`。进行中任务每人上限 `EXPORT_MAX_IN_PROGRESS`（默认 2）→ 429 `export_too_many_in_progress`。
+- **范围**：排除 `queued`/`scoring`；`done`/`failed` 且磁盘上有原文件才打进包。`audio_purged_at`、缺文件、或 `*.playback.wav` 记 `missing=1` 并继续；全部缺失或零条匹配 → 任务 `failed`（`export_all_missing` / `export_empty`），不写空 ZIP。预估体积 > `EXPORT_MAX_BYTES`（默认 2GiB）在入队前 422 `export_too_large`。教师未传起止日期时默认最近 `EXPORT_RECENT_DAYS_DEFAULT`（7）天。显式范围只填一端，或长于 90 天再加当天结束时刻（`23:59:59`），返回 422 `export_range_too_wide`。日期控件选满 90 天（结束日含当天）可以提交。学生自己的导出 2026-10-29 起同样套窗：默认最近 90 天（与学情 PDF 对齐）、显式 `from`/`to` 可选且跨度同样受限；另设行数硬上限 `EXPORT_MAX_ROWS`（默认 2 万，含音频已被清理的历史行），超限入队前 422 `export_too_many_attempts`——这是窗口之外的第二道界，防六表 join 全量载入内存。
+- **包结构**：前缀 `SpeakUp_`。学生 `SpeakUp_我的录音_{stamp}/` 下按练习或日期分目录；教师默认 `group_by_item` 按题目分目录，文件名用学生姓名或学号。根目录必有 `manifest.csv`。`zip_path` 相对根目录，与包内条目一致。原字节、原后缀，`ZIP_STORED`。文件名清洗；重名追加 attempt id 前 8 位。
+- **Worker** `app/exporting/worker.py`：独立 `ThreadPoolExecutor`，`EXPORT_WORKERS` 钳在 1–2，**不读** `SCORING_WORKERS`。领取用 `FOR UPDATE SKIP LOCKED`。进程重启时把 `running` 打回 `queued` 再提交。每小时清扫已过 `expires_at` 的成功包（`EXPORT_TTL_DAYS`，默认 7）。审计动作 create/start/success/fail/download/retry/expire/reject，另有 `app.export` 结构化日志。意外异常记 `export_failed: …` 并 `logger.exception`，不吞掉。
+- **存储**：`EXPORT_STORAGE_DIR`（容器内 `/app/export`），compose 卷 `app-export-data`，与 `app-audio-data` 分开。磁盘文件名是 `{job_id}.zip`，下载名是 `download_name`。API 不返回绝对路径。
+- **前端**：教师/管理员 `/exports`（侧栏「录音导出」，未下载成功包显示角标）；学生不进 `_layout`，入口是 `/my-exports`（班级页与学生壳账号菜单）。教师提交前二次确认勾选。文案走 `useI18n`；`detail` 稳定码在 `utils.ts` 的 `DETAIL_MESSAGES` 与 `lib/export-copy.ts` 映射。下载用带 Authorization 的 fetch（生成客户端的 download 返回 unknown）。完成/失败用列表刷新 + toast，无新推送或邮件。
+- **配置**：`EXPORT_STORAGE_DIR`、`EXPORT_TTL_DAYS`、`EXPORT_WORKERS`、`EXPORT_MAX_IN_PROGRESS`、`EXPORT_RECENT_DAYS_DEFAULT`、`EXPORT_RECENT_DAYS_MAX`、`EXPORT_MAX_BYTES`、`EXPORT_ASYNC_MIN_FILES`、`EXPORT_ASYNC_MIN_BYTES`。后两个阈值保留为配置，当前没有同步路径。`.env.example` 与 `scripts/generate-deploy-env.sh` 写出 `EXPORT_STORAGE_DIR` / `EXPORT_TTL_DAYS`。
+
+## 教师班级分析报告 PDF（2026-10-29）
+
+教师导出本班窗口内分析报告，走同一 ExportJob / 下载中心；`kind=class_report_pdf`，零迁移（kind 为 str 列）。仅本班 owner/管理员（`classroom_teacher_allowed`），学生 403 `export_class_report_teacher_only`；不支持 exercise/session 过滤（422 `export_exercise_not_supported`）；窗口与学生报告同口径（默认最近 90 天、`resolve_report_window` 上限）。文件名 `SpeakUp_班级报告_{班名}_{起止}.pdf`，成品上限复用 `REPORT_PDF_MAX_BYTES`。
+
+- **章节**：班级概览（活跃/作答量/问答均分/跟读完整度）、分数分布（每生均分分段 + 全员列表）、进步趋势（复用 `class_trend.summarize`，按 PRACTICE_TZ 切日）、题项对比（得分最低前 20 题位，由低到高）。排版复用学情报告 `_ReportPDF` 原语与中文字体。
+- **口径**：每生均分=窗口内情景问答每题位最新一次参考分均值（与学情报告/百分位同源）；题项对比覆盖所有有参考分题型，同样按题位最新一次；未结束考试排除（`_locked_exam_session_ids`）；正文不含作答 ID 与外链。
+- **前端**：`ExportCenter` classroom 模式新增「班级报告 PDF」tab（录音 ZIP 专属的练习过滤/分组/确认弹窗在该 kind 下隐藏）；列表徽标三分；`export-copy` 文案 kind 感知。
+
+## 学生个人学情报告 PDF（2026-10-27）
+
+学生自己导出一份学习报告 PDF，走同一条 ExportJob / 导出卷 / 下载中心。不改变 ZIP 的空包失败、清单和权限。不做全班 PDF，也不让教师代学生导出。
+
+- **迁移** `f2b8c4e91a37`（revises `e8a1c4b90d27`）：`export_job.kind`（`audio_zip` 默认，旧行回填）与 `classroom.show_report_percentile`（默认 true）。kind 是真实列，不只写在 `filter_json`。
+- **接口**：`POST /exports` 增加 `kind=student_report_pdf`。必须 `scope=self`，且账号 `role=student`；教师、管理员或其他角色返回 403 `export_report_student_only`。课堂用 `classroom_id`，或 `classroom_code` / `code`。未入班 403 `export_report_forbidden`。`days` 或 `recent_days` 省略时默认最近 90 天；自定义 `from`/`to` 仍不得超过 `EXPORT_RECENT_DAYS_MAX`（90，结束日含当天的余量与课堂 ZIP 相同），否则 422 `export_range_too_wide`。可选 `exercise_id`，必须属于该课堂。
+- **成品**：`services/student_report_pdf.py` 用 fpdf2 排版，字体是仓库内 Noto Sans SC 子集（`app/assets/fonts/NotoSansSC-Regular.otf`，OFL）。章节：封面、概览、趋势表、弱项、作答证据、有教师建议时才加的建议节。正文中文，小节带一行英文小字。证据只有作答编号和「请在 App 中打开」；正文里的 `http(s)` 链接会改成「链接已省略」，不放签名外链，也不写 PDF 注释。下载 `Content-Type: application/pdf`，文件名 `SpeakUp_学情报告_{姓名}_{起止}.pdf`。磁盘文件仍是 `{job_id}.pdf`，目录与 TTL、并发上限和 ZIP 相同。
+- **空数据**：窗口内没有已出分作答时任务 `succeeded`，PDF 写明「本阶段暂无已出分作答」。这和 ZIP 的 `export_empty` 失败不同。
+- **百分位**：同班、同一窗口内，至少 1 次已出分情景问答的「题位最新一次 overall」均值。样本少于 5 人只写「班级样本不足」，不写数字。`show_report_percentile=false` 时整段省略，并且不去读其他同学的分数。报告和 `filter_json` 都不含其他同学的姓名或分数。教师在课堂卡片（或管理员课堂表）里改这个开关；学生不能改。
+- **口径**：概览的轮次、完成题数、开口分钟、跟读参考分对齐学习报告（未结束考试整段排除）。趋势按日汇总已出分的情景问答参考分和听句复述完整度。漏词与四维均值复用个人诊断的对齐和 rubric 规则。
+- **Worker**：按 `kind` 分路。再次核对 `student.user_id == requester`，以及 filter 里的请求人与任务请求人一致；不对就 `failed` / `export_report_forbidden`，不落文件。读库、排版、写结果分成短事务，排版不占着事务。体积超过 `REPORT_PDF_MAX_BYTES`（默认 20MB）则 `export_pdf_too_large` 并删文件。
+- **前端**：学生 `/my-exports` 可在录音 ZIP 和学情 PDF 之间切换，列表用 `kind` 区分。成长页阶段报告在学生自己查看时可以提交同一份 PDF；教师查看该卡时仍只用浏览器打印，不能代下。
+- **回滚**：先退回不含本功能的应用版本。多出来的两列旧代码不会读。确认新代码已下线后，再 `alembic downgrade e8a1c4b90d27` 删列。已生成的 PDF 跟 ZIP 一样到期删除；不要改 ZIP 的打包行为来回滚这一项。
+
+## 部署链稳定化（2026-10-29）
+
+2026-10-28 深夜 PR#202 上线事故的根治批次。根因：根 `pyproject.toml` 锁官方 PyPI（为 CI 海外 runner），`uv.lock` 639 个下载 URL 全是 `files.pythonhosted.org`；`uv sync --frozen` 只认 lock URL，`UV_DEFAULT_INDEX` 镜像 ENV 对锁定轮子无效——服务器本地构建依赖全部跨境下载，缓存被清后叠加晚高峰限速（KB/s 级）45 分钟必死，且未完成的下载不进缓存、重试从头来。
+
+- **lock 镜像改写（backend/Dockerfile 两处 uv sync）**：构建时 `sed` 把 lock 副本的 URL 前缀改写到 `mirrors.cloud.tencent.com/pypi/packages/`（与官方源 `/packages/` 路径同构、文件 sha256 相同，uv 哈希校验照常生效；同机实测 17MB/s）。绑定挂载只读，sed 输出到 `uv.lock` 新文件。**git 内的 lock 保持官方源不动**——CI「校验 uv.lock 不含镜像源 URL」检查照常通过，海外 runner 不受影响。
+- **缓存纪律**：`--mount=type=cache`（uv 缓存）是冷构建的防火墙，**任何情况下不得 `docker buildx prune --filter type=exec.cachemount`**（2026-10-28 事故的直接导火索）。
+- **cron 注册自抹除修复（deploy.yml 两处）**：crontab 为空时 `crontab -l` 退出码 1，`set -e` 把 `(crontab -l | grep -v …; echo …) | crontab -` 的注册子 shell 在 echo 前掐死，`crontab -` 收到空输入反而清空任务表——空表永远自锁，每日备份（03:30）与 nginx 证书重载（04:00）**从未生效过**。新写法：过滤结果落 `/tmp/cron-register.new` 再 `crontab <file>` 整体写入，任何初始状态幂等。2026-10-29 已在生产手动注册恢复，代码修复随本批合入。
+- **超时**：deploy job `timeout-minutes` 45→60、SSH `command_timeout` 30m→50m（镜像直连冷构建 15–20 分钟量级，留足余量）。
+- **git fetch 单次限时**：gh-proxy 偶发挂死时无超时的 TCP 连接会静默吃预算，`timeout 90 git fetch origin` + 原有三次退避重试。
+- **验收**：清空构建缓存后冷构建部署演练通过（见 Notion 需求池条目）。方案选型：CI 构建镜像推 GHCR/TCR 的拉取式部署经评审否决（引入新服务，2026-10-29 李梨拍板不做）。
+- **惰性 bundle 传输（2026-10-29 提速批）**：实测部署 28 分钟中 bundle 跨境 scp 占 13 分钟——增量探测自上线起持续返回 none（从未生效），每次都在传全量 3.1MB 过 ~4KB/s 跨境线。改为「拉取预检」：探测步骤让服务器先经 gh-proxy 自行 `git fetch`（国内下行秒级），成功则 scp 步骤整体跳过；失败才传全量 bundle 兜底。探测原文输出进日志（`probe raw output`）待定位根因。健康日部署整体 28→约 15 分钟（剩余大头是 master CI 复跑）。极端窗口（预检成功、部署时拉取又失败）会因缺 bundle 显式失败，重跑即恢复。

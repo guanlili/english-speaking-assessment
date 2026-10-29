@@ -202,11 +202,11 @@ jobs:
             total: 2
             browsers: chromium webkit
     runs-on: ubuntu-24.04
-    # 50 分钟：浏览器缓存未命中（lockfile 变更/缓存淘汰）时 Chromium+WebKit
-    # 全量下载 20 分钟起（2026-10-27 单日四次 15 分钟装依赖超时，全部
-    # rerun 即过——偶发 CDN 极慢而非持续故障），叠加完整栈启动与双浏览器
-    # 套件；缓存命中时全程 ~10 分钟
-    timeout-minutes: 50
+    # 60 分钟：浏览器缓存未命中（lockfile 变更/缓存淘汰）时 Chromium+WebKit
+    # 全量下载约 20 分钟起，叠加完整栈启动与双浏览器套件（2026-10-10
+    # PR#101 首次部署实测）；安装步骤自身最多 50 分钟（3×15 分钟重试，防
+    # runner 网络劣化，见下方安装步骤注释）。缓存命中时全程 ~10 分钟
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - name: 准备环境变量（local 环境，演示登录可用）
@@ -255,15 +255,40 @@ jobs:
           restore-keys: |
             playwright-icu2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}-
       - name: 安装依赖与 Chromium/WebKit
-        # 浏览器二进制约百 MB。官方 CDN 对 runner 偶发甚至持续极慢
-        # （2026-10-26/27 单日六次超时，15 与 25 分钟阈值都撞线），
-        # 改走 npmmirror 二进制镜像（与 Docker 构建国内加速同一思路），
-        # 并保留 25 分钟宽阈值；job 总超时已同步放宽到 50 分钟
-        timeout-minutes: 25
+        # runner 网络劣化有两副面孔（2026-10-27 一天内实测两种）：静默挂死
+        # 零输出（run 40555961170）、apt 源爬速单文件数分钟（本 PR 首跑
+        # mocked 1/2，14 分钟只拉了 43/130 个文件）。单次尝试限时 15 分钟
+        # （GNU timeout 把挂死/爬速转成普通失败）+ 重试 2 次：apt 已下载的
+        # 包缓存在 /var/cache/apt/archives 跨尝试复用，慢而正常的安装靠
+        # 累积进度过线。重试前必须清残留进程树：timeout 只杀直接子进程，
+        # 孤儿 apt-get 会持有 dpkg 锁把重试毒化（本 PR 首跑实测撞锁
+        # exit 100）。正常路径（缓存命中）~2 分钟不受影响；步骤 50 分钟 /
+        # job 60 分钟仅在多次重试的劣化场景逼近，届时再失败与原先 15 分钟
+        # 一次性判死等价，不会更糟。
+        timeout-minutes: 50
         working-directory: frontend
         env:
+          # 浏览器下载连接停滞时快速报错交给重试，而不是无限挂起
+          PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: "60000"
+          # 浏览器二进制改走 npmmirror 镜像（与 Docker 构建国内加速同一思路；
+          # 2026-10-26/27 官方 CDN 对 runner 偶发持续极慢，镜像后冷装大幅提速，
+          # 重试兜底很少再需要触发）
           PLAYWRIGHT_DOWNLOAD_HOST: https://cdn.npmmirror.com/binaries/playwright
-        run: npm ci && npx playwright install --with-deps ${{ matrix.browsers }}
+        run: |
+          npm ci
+          for i in 1 2 3; do
+            if timeout -k 30 900 npx playwright install --with-deps ${{ matrix.browsers }}; then
+              exit 0
+            fi
+            echo "⚠️ 第 $i 次安装失败或挂起，清理残留进程后重试..."
+            sudo pkill -9 -x apt-get 2>/dev/null || true
+            sudo pkill -9 -x dpkg 2>/dev/null || true
+            sudo pkill -9 -f "playwright install" 2>/dev/null || true
+            sleep 10
+            # 若上次死在 dpkg 安装中途，先修复中断状态，避免重试撞锁
+            sudo dpkg --configure -a || true
+          done
+          exit 1
       # mocked 套件用 vite preview 服务 dist/ 静态产物：按 git 跟踪文件的
       # blob 指纹缓存，前端未变的 PR（纯后端改动/重跑）直接复用、跳过构建。
       # 指纹用 git ls-files -s 而非 hashFiles 白名单：白名单漏列任何影响
@@ -328,8 +353,9 @@ jobs:
       group: production-deploy
       cancel-in-progress: false
     runs-on: ubuntu-24.04
-    # 覆盖 SSH 步骤本身（command_timeout 30m）之外的编排开销
-    timeout-minutes: 45
+    # 覆盖 SSH 步骤本身（command_timeout 50m）之外的编排开销；
+    # 服务器冷构建（腾讯镜像直连）15–20 分钟量级，60 分钟留足余量
+    timeout-minutes: 60
     steps:
       # fetch-depth 0：git bundle 兜底需要完整历史（服务器可能落后多个提交）
       - uses: actions/checkout@v7
@@ -357,6 +383,9 @@ jobs:
           SCORING_WORKERS: ${{ secrets.SCORING_WORKERS }}
           # 未设 Secret 时为空串，generate-deploy-env.sh 会落默认值 0（不清理）
           AUDIO_TTL_DAYS: ${{ secrets.AUDIO_TTL_DAYS }}
+          # 未设 Secret 时为空串，脚本落 /app/export 与 7 天
+          EXPORT_STORAGE_DIR: ${{ secrets.EXPORT_STORAGE_DIR }}
+          EXPORT_TTL_DAYS: ${{ secrets.EXPORT_TTL_DAYS }}
           COST_ALERT_EMAIL: ${{ secrets.COST_ALERT_EMAIL }}
           USERS_OPEN_REGISTRATION: ${{ secrets.USERS_OPEN_REGISTRATION || 'false' }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
@@ -388,10 +417,12 @@ jobs:
           echo "path_b64=$(printf '%s' "$DEPLOY_PATH" | base64 | tr -d '\n')" >> "$GITHUB_OUTPUT"
           rm -f "$RUNNER_TEMP/deploy.env"
 
-      - name: 探测服务器当前提交（增量 bundle 的基线）
-        # bundle 只需覆盖服务器落后于目标提交的增量：先问服务器现在在哪，
-        # 再以 merge-base 为基线打包，通常几十 KB（全量 3.1MB 在实测 ~12KB/s
-        # 的跨境 SSH 上要传 4.5 分钟）。探测失败降级 none → 打全量 bundle。
+      - name: 探测服务器提交与拉取能力（bundle 仅在拉取失败时传输）
+        # 两件事：①问服务器现在在哪（增量 bundle 的打包基线）；②让服务器先
+        # 经 gh-proxy 自行 git fetch 一次（国内下行，秒级）。预检成功则本次
+        # 部署完全跳过 bundle 跨境 scp——2026-10-29 实测全量 3.1MB 在
+        # ~4KB/s 跨境 SSH 上要传 13 分钟，且探测曾持续返回 none（增量从未
+        # 生效），每次都在付全量税。拉取失败时仍传全量 bundle 兜底，不降级。
         id: serverhead
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
@@ -407,10 +438,18 @@ jobs:
               "cd '$DEPLOY_PATH' 2>/dev/null && git rev-parse HEAD 2>/dev/null || echo none" 2>/dev/null); then
             sha=none
           fi
-          rm -f "$RUNNER_TEMP/deploy_id"
+          # 调试留痕：探测曾连续返回空/none（增量从未生效）；sha 为十六进制无敏感
+          echo "probe raw output: [$sha]"
           case "$sha" in ''|*[^0-9a-f]*|*[A-F]*|*' '*) sha=none;; esac
+          fetch=fail
+          if ssh -i "$RUNNER_TEMP/deploy_id" -o ConnectTimeout=15 "$SERVER_USER@$SERVER_HOST" \
+              "cd '$DEPLOY_PATH' 2>/dev/null && timeout 90 git fetch origin" >/dev/null 2>&1; then
+            fetch=ok
+          fi
+          rm -f "$RUNNER_TEMP/deploy_id"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "服务器当前提交: $sha"
+          echo "fetch=$fetch" >> "$GITHUB_OUTPUT"
+          echo "服务器当前提交: $sha；拉取预检: $fetch（bundle $([ "$fetch" = ok ] && echo 跳过传输 || echo 需要传输)）"
 
       - name: 打包增量 git bundle（服务器镜像失联时的拉取兜底）
         # 服务器 origin 走 gh-proxy.com 镜像，偶发 403/429/401；runner 在境外
@@ -436,7 +475,11 @@ jobs:
           git bundle verify deploy.bundle
           du -h deploy.bundle
 
-      - name: 传送 bundle 到服务器
+      - name: 传送 bundle 到服务器（仅拉取预检失败时）
+        # 拉取预检成功 = 服务器能自己拿到提交，跨境 scp（全量 3.1MB ≈ 13 分钟）
+        # 完全跳过；预检失败（gh-proxy 故障）才传兜底。极端窗口（预检成功但
+        # 部署时拉取又失败）会因缺 bundle 文件显式失败，重跑即恢复。
+        if: steps.serverhead.outputs.fetch == 'fail'
         uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -455,7 +498,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          command_timeout: 30m
+          command_timeout: 50m
           envs: ENV_B64,PATH_B64,DEPLOY_SHA
           script: |
             set -e
@@ -471,7 +514,8 @@ jobs:
             # 匿名访问被关）则回退到 CI 传入的 git bundle——部署链不再依赖镜像可用性。
             fetch_ok=0
             for attempt in 1 2 3; do
-              if git fetch origin; then fetch_ok=1; break; fi
+              # 单次 fetch 限时：gh-proxy 偶发挂死时，无超时的 TCP 连接会静默吃掉部署预算
+              if timeout 90 git fetch origin; then fetch_ok=1; break; fi
               echo "git fetch 失败（第 ${attempt} 次），$((attempt * 30)) 秒后重试"
               sleep $((attempt * 30))
             done
@@ -532,8 +576,14 @@ jobs:
                 echo "证书已存在，跳过签发（acme daemon 自动续期）"
               fi
               # 每日 04:00 平滑重载 nginx：夜间续期出的新证书最迟一天内加载（reload 无感幂等）
+              # 注册写法说明：crontab 为空时 `crontab -l` 退出码 1 会被 set -e 放大成
+              # 「注册子 shell 在 echo 前被掐死 + crontab - 收到空输入反而清空任务表」的
+              # 自抹除死锁——每日备份与证书重载曾因此从未生效（2026-10-29 定位）。
+              # 稳妥写法：先落到临时文件再整体写入，任何 crontab 初始状态都不致命。
               reload_cmd="cd '$PWD' && docker compose -f compose.yml exec -T frontend nginx -s reload"
-              (crontab -l 2>/dev/null | grep -v 'nginx -s reload'; echo "0 4 * * * $reload_cmd") | crontab -
+              { crontab -l 2>/dev/null || true; } | grep -v 'nginx -s reload' > /tmp/cron-register.new || true
+              echo "0 4 * * * $reload_cmd" >> /tmp/cron-register.new
+              crontab /tmp/cron-register.new && rm -f /tmp/cron-register.new
             else
               echo "未配置 DNSPod 密钥/域名，保持纯 HTTP（本地与首启兼容）"
             fi
@@ -544,7 +594,9 @@ jobs:
             # 完整备份包含数据库、录音/标准音卷和部署配置；失败记入巡检日志。
             # 清理旧版 cron，避免迁移后重复运行。部署前的数据库快照仍单独保留。
             backup_cmd="cd '$PWD' && bash scripts/backup-local.sh || date >> '$PWD/backups/backup-failure.log'"
-            (crontab -l 2>/dev/null | grep -v -e 'app-.*sql.gz' -e 'scripts/backup-local.sh'; echo "30 3 * * * $backup_cmd") | crontab -
+            { crontab -l 2>/dev/null || true; } | grep -v -e 'app-.*sql.gz' -e 'scripts/backup-local.sh' > /tmp/cron-register.new || true
+            echo "30 3 * * * $backup_cmd" >> /tmp/cron-register.new
+            crontab /tmp/cron-register.new && rm -f /tmp/cron-register.new
             # 部署时顺手做一次当次备份，保证改库前总有快照；失败则中止部署（不能无快照改库）
             dump_tmp="backups/app-$(date +%Y%m%d-%H%M)-predeploy.sql"
             if docker compose -f compose.yml exec -T db sh -c 'pg_dump -U ${POSTGRES_USER} ${POSTGRES_DB}' > "$dump_tmp"; then

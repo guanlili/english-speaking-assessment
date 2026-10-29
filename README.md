@@ -189,6 +189,12 @@ HTTP 明文意味着 JWT token 和登录密码裸奔公网、浏览器标"不安
    `systemctl reload caddy` 生效，证书自动申请续期。安全组需放行 80/443。
 3. **改 Secret**：`FRONTEND_HOST` 改为 `https://项目名.你的域名.com`，push 触发重新部署即可（CORS 自动跟随，代码零改动）。
 
+### 同机附加域名 · outman.press（遇己）
+
+SpeakUp 生产 CVM 上与遇己（宿主机 `:8080`）共存时，**仅 nginx/证书**变更：`nginx-extra/outman.press.conf` + `frontend/entrypoint.sh`（有 `./ssl/outman.press/` 证书才启用）。`:80` 对 `outman.press` / `www` 只做 **301** 到 `https://outman.press`（不反代上游）；`:443` 反代 `host.docker.internal:8080`。不改 SpeakUp 主站 `server_name` 与业务 API。
+
+DevOps 备份、`nginx -t`、双站冒烟与回滚步骤见 **[nginx-extra/README.md](nginx-extra/README.md)**。
+
 ### 运行时与故障定位 / Runtime diagnostics
 
 课堂发布版本同步、自动考试轻量轮询、请求关联 ID 与 E2E 失败现场的使用说明见 [运行时诊断](docs/runtime-observability.md)。

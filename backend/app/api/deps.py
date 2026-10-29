@@ -45,6 +45,16 @@ ScoringSubmitter = Annotated[
 ]
 
 
+def get_export_submitter() -> Callable[[uuid.UUID], None]:
+    """原音频 ZIP 任务提交器。测试可覆写为同步执行。"""
+    from app.exporting.worker import submit_export_job
+
+    return submit_export_job
+
+
+ExportSubmitter = Annotated[Callable[[uuid.UUID], None], Depends(get_export_submitter)]
+
+
 def get_current_user(session: SessionDep, token: TokenDep) -> User:
     try:
         payload = jwt.decode(
