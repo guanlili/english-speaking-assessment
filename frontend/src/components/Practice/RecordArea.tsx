@@ -7,7 +7,7 @@ import { EXAM_PRACTICE_NOTE } from "@/lib/terms"
 import { formatSeconds } from "@/lib/time"
 
 /**
- * 录音区（Charcoal：大圆钮 + 波形）：
+ * 录音区（BELP：大圆钮 + 波形）：
  * 录音中（波形+停止）/ 上传失败待重传 / 待开始（大麦克风钮）三态。
  * 按钮 aria-label 双语；圆钮 72px 触控目标。
  */

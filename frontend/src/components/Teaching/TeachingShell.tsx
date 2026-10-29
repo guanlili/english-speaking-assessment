@@ -143,7 +143,7 @@ function getWorkspaceContext(pathname: string): WorkspaceContext {
   return (
     workspaceRoutes[path] ?? {
       title: { zh: "教学工作空间", en: "Teaching Workspace" },
-      section: { zh: "Charcoal · 开口说", en: "Charcoal" },
+      section: { zh: "BELP · 开口说", en: "BELP" },
       description: {
         zh: "让每一次开口，都有收获。",
         en: "Make every attempt to speak count.",

@@ -175,9 +175,9 @@ def report_download_name(*, student_name: str, start: datetime, end: datetime) -
     span = (
         f"{to_shanghai(start).strftime('%Y%m%d')}-{to_shanghai(end).strftime('%Y%m%d')}"
     )
-    root = sanitize_component(f"SpeakUp_学情报告_{who}_{span}", "SpeakUp_学情报告", 180)
-    if not root.startswith("SpeakUp_"):
-        root = f"SpeakUp_{root}"
+    root = sanitize_component(f"BELP_学情报告_{who}_{span}", "BELP_学情报告", 180)
+    if not root.startswith("BELP_"):
+        root = f"BELP_{root}"
     return f"{root[:180]}.pdf"
 
 

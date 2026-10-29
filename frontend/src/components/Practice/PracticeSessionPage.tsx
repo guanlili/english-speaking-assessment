@@ -73,7 +73,7 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
   const [pinnedSessionId, setPinnedSessionId] = useState<string | null>(
     sessionParam ?? null,
   )
-  // 复述题「收起原文」练记忆（Charcoal）
+  // 复述题「收起原文」练记忆（BELP）
   const [hideText, setHideText] = useState(false)
   // 模考任何已接收的提交都锁定，包含 queued/failed（录音状态机读写）
   const acceptedExamItemsRef = useRef(new Set<string>())
