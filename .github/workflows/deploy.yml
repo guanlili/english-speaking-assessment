@@ -270,6 +270,10 @@ jobs:
         env:
           # 浏览器下载连接停滞时快速报错交给重试，而不是无限挂起
           PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: "60000"
+          # 浏览器二进制改走 npmmirror 镜像（与 Docker 构建国内加速同一思路；
+          # 2026-10-26/27 官方 CDN 对 runner 偶发持续极慢，镜像后冷装大幅提速，
+          # 重试兜底很少再需要触发）
+          PLAYWRIGHT_DOWNLOAD_HOST: https://cdn.npmmirror.com/binaries/playwright
         run: |
           npm ci
           for i in 1 2 3; do
