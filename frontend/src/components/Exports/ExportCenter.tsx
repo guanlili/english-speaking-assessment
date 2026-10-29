@@ -49,10 +49,12 @@ function isPast(iso: string | null): boolean {
 }
 
 function isPdfJob(job: ExportJobPublic): boolean {
-  return (
-    job.kind === "student_report_pdf" ||
-    job.filter?.kind === "student_report_pdf"
-  )
+  const kind = job.kind ?? job.filter?.kind
+  return kind === "student_report_pdf" || kind === "class_report_pdf"
+}
+
+function isClassReportJob(job: ExportJobPublic): boolean {
+  return (job.kind ?? job.filter?.kind) === "class_report_pdf"
 }
 
 async function saveZip(job: ExportJobPublic): Promise<void> {
@@ -101,7 +103,7 @@ export function ExportCenter({ mode }: { mode: "self" | "classroom" }) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
   const [exportKind, setExportKind] = useState<
-    "audio_zip" | "student_report_pdf"
+    "audio_zip" | "student_report_pdf" | "class_report_pdf"
   >("audio_zip")
   const [reportDays, setReportDays] = useState(90)
   const [reportClassroomId, setReportClassroomId] = useState("")
@@ -279,6 +281,32 @@ export function ExportCenter({ mode }: { mode: "self" | "classroom" }) {
       createJob.mutate(report)
       return
     }
+    if (mode === "classroom" && exportKind === "class_report_pdf") {
+      if ((fromDate && !toDate) || (!fromDate && toDate)) {
+        showErrorToast(
+          t({
+            zh: "自定义范围需要同时填写开始和结束日期。",
+            en: "A custom range needs both a start and an end date.",
+          }),
+        )
+        return
+      }
+      const report: ExportCreate = {
+        kind: "class_report_pdf",
+        scope: "classroom",
+        classroom_id: classroomId,
+        group_by_item: false,
+        confirm_contains_student_audio: false,
+      }
+      if (fromDate && toDate) {
+        report.from = new Date(`${fromDate}T00:00:00`).toISOString()
+        report.to = new Date(`${toDate}T23:59:59`).toISOString()
+      } else {
+        report.days = reportDays
+      }
+      createJob.mutate(report)
+      return
+    }
     const body: ExportCreate = {
       scope: mode === "classroom" ? "classroom" : "self",
       group_by_item: mode === "classroom" ? groupByItem : false,
@@ -331,6 +359,28 @@ export function ExportCenter({ mode }: { mode: "self" | "classroom" }) {
                   en: "Only your own original recordings are included. Scoring still in progress is left out. If there is nothing to pack, no empty file is created. Files stay for 7 days.",
                 })}
         </p>
+        {mode === "classroom" && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={exportKind === "audio_zip" ? "default" : "outline"}
+              className="h-11"
+              onClick={() => setExportKind("audio_zip")}
+            >
+              {t({ zh: "录音包", en: "Audio package" })}
+            </Button>
+            <Button
+              type="button"
+              variant={
+                exportKind === "class_report_pdf" ? "default" : "outline"
+              }
+              className="h-11"
+              onClick={() => setExportKind("class_report_pdf")}
+            >
+              {t({ zh: "班级报告 PDF", en: "Class report PDF" })}
+            </Button>
+          </div>
+        )}
         {mode === "self" && (
           <div className="mt-4 flex flex-wrap gap-2">
             <Button
@@ -429,7 +479,7 @@ export function ExportCenter({ mode }: { mode: "self" | "classroom" }) {
               </select>
             </label>
           )}
-          {mode === "classroom" && (
+          {mode === "classroom" && exportKind === "audio_zip" && (
             <label className="grid gap-1.5 text-sm sm:col-span-2">
               <span className="font-medium">
                 {t({ zh: "练习（可选）", en: "Exercise (optional)" })}
@@ -478,7 +528,7 @@ export function ExportCenter({ mode }: { mode: "self" | "classroom" }) {
               onChange={(event) => setToDate(event.target.value)}
             />
           </label>
-          {mode === "classroom" && (
+          {mode === "classroom" && exportKind === "audio_zip" && (
             <label
               htmlFor="group-by-item"
               className="flex min-h-11 items-center gap-3 text-sm sm:col-span-2"
@@ -499,17 +549,28 @@ export function ExportCenter({ mode }: { mode: "self" | "classroom" }) {
         </div>
         <div className="mt-5">
           {mode === "classroom" ? (
-            <Button
-              type="button"
-              className="h-11"
-              onClick={() => {
-                setConfirmed(false)
-                setConfirmOpen(true)
-              }}
-              disabled={!classroomId || createJob.isPending}
-            >
-              {t({ zh: "导出录音", en: "Export recordings" })}
-            </Button>
+            exportKind === "class_report_pdf" ? (
+              <Button
+                type="button"
+                className="h-11"
+                onClick={() => submit(true)}
+                disabled={!classroomId || createJob.isPending}
+              >
+                {t({ zh: "导出班级报告", en: "Export class report" })}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                className="h-11"
+                onClick={() => {
+                  setConfirmed(false)
+                  setConfirmOpen(true)
+                }}
+                disabled={!classroomId || createJob.isPending}
+              >
+                {t({ zh: "导出录音", en: "Export recordings" })}
+              </Button>
+            )
           ) : (
             <LoadingButton
               type="button"
@@ -582,9 +643,11 @@ export function ExportCenter({ mode }: { mode: "self" | "classroom" }) {
                     <div className="min-w-0">
                       <p className="break-all text-sm font-semibold">
                         <span className="mr-2 inline-flex min-h-6 items-center rounded-full bg-secondary px-2 text-xs font-medium">
-                          {pdf
-                            ? t({ zh: "学情报告", en: "Report" })
-                            : t({ zh: "录音包", en: "Audio" })}
+                          {isClassReportJob(job)
+                            ? t({ zh: "班级报告", en: "Class report" })
+                            : pdf
+                              ? t({ zh: "学情报告", en: "Report" })
+                              : t({ zh: "录音包", en: "Audio" })}
                         </span>
                         {job.download_name || job.id}
                       </p>

@@ -759,7 +759,7 @@ export type ExploreStarted = {
 
 export type ExportCreate = {
     scope: 'self' | 'classroom';
-    kind?: 'audio_zip' | 'student_report_pdf';
+    kind?: 'audio_zip' | 'student_report_pdf' | 'class_report_pdf';
     from?: (string | null);
     to?: (string | null);
     session_id?: (string | null);
@@ -775,7 +775,7 @@ export type ExportCreate = {
 
 export type scope = 'self' | 'classroom';
 
-export type kind2 = 'audio_zip' | 'student_report_pdf';
+export type kind2 = 'audio_zip' | 'student_report_pdf' | 'class_report_pdf';
 
 export type ExportJobPublic = {
     id: string;
