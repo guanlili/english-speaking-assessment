@@ -42,7 +42,7 @@ export function invalidateAdminUserCache() {
 
 /**
  * /admin 的布局路由：用户管理在 index，内容管理在 /admin/passages 等子路由。
- * 权限：管理员全部可进；教师仅限内容四页（三种题型的出题与管理）。
+ * 权限：管理员全部可进；教师仅限内容三页（三种题型的出题与管理）。
  */
 export const Route = createFileRoute("/_layout/admin")({
   beforeLoad: async ({ location }) => {

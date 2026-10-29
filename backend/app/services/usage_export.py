@@ -71,6 +71,12 @@ def _cutoff(limit_days: int) -> datetime | None:
     return datetime.now(_tz()) - timedelta(days=limit_days)
 
 
+def _guard_rows(count: int) -> None:
+    """行数护栏超限即拒（稳定标识由路由层转 422），不产出部分 CSV。"""
+    if count > settings.USAGE_EXPORT_MAX_ROWS:
+        raise ValueError("usage_export_too_many_rows")
+
+
 def export_attempts(session: Session, limit_days: int) -> io.StringIO:
     """作答明细：一行一次录音（时间正序）。limit_days=0 表示全部。"""
     stmt = (
@@ -102,7 +108,10 @@ def export_attempts(session: Session, limit_days: int) -> io.StringIO:
     cutoff = _cutoff(limit_days)
     if cutoff is not None:
         stmt = stmt.where(col(Attempt.created_at) >= cutoff)  # type: ignore[union-attr]
+    # 行数护栏：LIMIT 上限+1 探测，超限即拒，不全量载入（与学生音频导出同思路）
+    stmt = stmt.limit(settings.USAGE_EXPORT_MAX_ROWS + 1)
     rows = session.exec(stmt).all()  # type: ignore[arg-type]
+    _guard_rows(len(rows))
     header = [
         "日期",
         "时间",
@@ -180,7 +189,9 @@ def export_sessions(session: Session, limit_days: int) -> io.StringIO:
     cutoff = _cutoff(limit_days)
     if cutoff is not None:
         stmt = stmt.where(col(PracticeSession.created_at) >= cutoff)  # type: ignore[union-attr]
+    stmt = stmt.limit(settings.USAGE_EXPORT_MAX_ROWS + 1)
     rows = session.exec(stmt).all()  # type: ignore[arg-type]
+    _guard_rows(len(rows))
     # 作答聚合一次 GROUP BY 预取（逐轮查询在轮次多时是 N+1）
     attempt_agg: dict[object, tuple[int, int, float | None, int | None]] = {}
     for r in session.connection().execute(
@@ -252,12 +263,15 @@ def export_sessions(session: Session, limit_days: int) -> io.StringIO:
 
 def export_students(session: Session) -> io.StringIO:
     """学生汇总：一行一个学生档案（课堂内排序）。"""
-    rows = session.exec(
+    stmt = (
         select(Student, User, Classroom)
         .join(User, col(User.id) == col(Student.user_id), isouter=True)
         .join(Classroom, col(Classroom.id) == col(Student.classroom_id))
         .order_by(col(Classroom.name), col(Student.display_name))
-    ).all()
+        .limit(settings.USAGE_EXPORT_MAX_ROWS + 1)
+    )
+    rows = session.exec(stmt).all()
+    _guard_rows(len(rows))
     header = [
         "学生",
         "区分码",

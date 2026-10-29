@@ -180,6 +180,9 @@ class Settings(BaseSettings):
     # 阈值与性能区口径一致：>25 分钟（QUEUED_STALE_TIMEOUT_S 重投预警）
     COST_ALERT_EMAIL: str | None = None
     ALERT_QUEUE_AGE_S: int = 25 * 60
+    # 管理员使用记录 CSV（/admin/export）行数硬上限，防 days=0 全量载入内存；
+    # 与学生音频导出的 EXPORT_MAX_ROWS 相互独立。超限 422 usage_export_too_many_rows
+    USAGE_EXPORT_MAX_ROWS: int = 50000
 
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":
