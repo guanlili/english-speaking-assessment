@@ -10,6 +10,7 @@ from sqlmodel import Session, col, select
 from app.core.db import SCHOOL_LIFE_TOPIC, _seed_school_life_questions
 from app.models import Scenario, ScenarioQuestion
 from tests.utils.credential import create_student_user, login_headers
+from tests.utils.user import authentication_token_from_email
 
 
 @pytest.fixture
@@ -919,4 +920,76 @@ def test_update_content_null_and_partial_semantics(
         client.delete(
             f"/api/v1/admin/passages/{passage['id']}",
             headers=superuser_token_headers,
+        )
+
+
+def test_admin_only_zones_reject_teacher(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """权限矩阵落地：教师可读单元（出题选择用）；单元增删改与句型库管理 403。"""
+    email = "teacher-perm-matrix@example.com"
+    client.post(
+        "/api/v1/users/",
+        json={"email": email, "password": "OldPassw0rd123", "role": "teacher"},
+        headers=superuser_token_headers,
+    )
+    teacher = authentication_token_from_email(client=client, email=email, db=db)
+    # 读：教师出题页需要单元与主题列表
+    assert client.get("/api/v1/admin/units", headers=teacher).status_code == 200
+    assert client.get("/api/v1/admin/topics", headers=teacher).status_code == 200
+    # 单元增删改：仅管理员
+    assert (
+        client.post(
+            "/api/v1/admin/units",
+            json={"order_index": 1, "title": "越权单元", "topic": "PermTopic"},
+            headers=teacher,
+        ).status_code
+        == 403
+    )
+    unit = client.post(
+        "/api/v1/admin/units",
+        json={"order_index": 1, "title": "权限单元", "topic": "PermTopic"},
+        headers=superuser_token_headers,
+    ).json()
+    try:
+        assert (
+            client.put(
+                f"/api/v1/admin/units/{unit['id']}",
+                json={"title": "改"},
+                headers=teacher,
+            ).status_code
+            == 403
+        )
+        assert (
+            client.delete(
+                f"/api/v1/admin/units/{unit['id']}", headers=teacher
+            ).status_code
+            == 403
+        )
+        # 句型库管理整套：仅管理员
+        assert (
+            client.get("/api/v1/admin/sentence-frames", headers=teacher).status_code
+            == 403
+        )
+        frame_body = {
+            "level": "KET",
+            "purpose": "opinion",
+            "text_en": "I like it.",
+            "text_zh": "我喜欢它。",
+        }
+        assert (
+            client.post(
+                "/api/v1/admin/sentence-frames", json=frame_body, headers=teacher
+            ).status_code
+            == 403
+        )
+        assert (
+            client.post(
+                "/api/v1/admin/sentence-frames/batch", json=[], headers=teacher
+            ).status_code
+            == 403
+        )
+    finally:
+        client.delete(
+            f"/api/v1/admin/units/{unit['id']}", headers=superuser_token_headers
         )

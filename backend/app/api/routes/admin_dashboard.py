@@ -6,6 +6,7 @@
 """
 
 from datetime import date, datetime, time, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query
@@ -383,57 +384,45 @@ def read_dashboard_content(
     session: SessionDep,
     _admin: SuperUserDep,
 ) -> DashboardContent:
-    def count(model: type) -> int:  # noqa: ANN001
-        # 动态 model 走不进 sqlmodel 的标量重载，显式取标量
-        return (
-            session.connection()
-            .execute(sa_select(func.count()).select_from(model))
-            .scalar_one()
-        )
+    def _sub(model: type, *conditions: Any) -> Any:  # noqa: ANN001
+        # 17 个计数一趟取回（scalar 子查询），替代此前 19 次串行数据库往返
+        stmt = sa_select(func.count()).select_from(model)
+        if conditions:
+            stmt = stmt.where(*conditions)
+        return stmt.scalar_subquery()
 
-    roles: dict[str, int] = {}
-    for role, cnt in session.connection().execute(
-        sa_select(col(User.role), func.count()).group_by(col(User.role))
-    ):
-        roles[role] = cnt
-
-    return DashboardContent(
-        units=count(Unit),
-        passages=count(Passage),
-        repeat_sentences=count(RepeatSentence),
-        scenario_questions=count(ScenarioQuestion),
-        instructions=count(Instruction),
-        vocab_books=count(VocabularyBook),
-        vocab_words=count(VocabularyWord),
-        vocab_level_entries=count(VocabularyLevelEntry),
-        users_admin=roles.get("admin", 0),
-        users_teacher=roles.get("teacher", 0),
-        student_accounts=roles.get("student", 0),
-        students_must_change_password=session.connection()
+    row = (
+        session.connection()
         .execute(
-            sa_select(func.count())
-            .select_from(User)
-            .where(col(User.role) == "student", col(User.must_change_password))
+            sa_select(
+                _sub(Unit).label("units"),
+                _sub(Passage).label("passages"),
+                _sub(RepeatSentence).label("repeat_sentences"),
+                _sub(ScenarioQuestion).label("scenario_questions"),
+                _sub(Instruction).label("instructions"),
+                _sub(VocabularyBook).label("vocab_books"),
+                _sub(VocabularyWord).label("vocab_words"),
+                _sub(VocabularyLevelEntry).label("vocab_level_entries"),
+                _sub(User, col(User.role) == "admin").label("users_admin"),
+                _sub(User, col(User.role) == "teacher").label("users_teacher"),
+                _sub(User, col(User.role) == "student").label("student_accounts"),
+                _sub(
+                    User,
+                    col(User.role) == "student",
+                    col(User.must_change_password),
+                ).label("students_must_change_password"),
+                _sub(Student).label("student_profiles"),
+                _sub(Classroom).label("classrooms_total"),
+                _sub(Classroom, col(Classroom.is_active)).label("classrooms_active"),
+                _sub(ClassroomExercise).label("publishes"),
+                _sub(ClassroomExercise, col(ClassroomExercise.is_exam)).label(
+                    "publishes_exam"
+                ),
+            )
         )
-        .scalar_one(),
-        student_profiles=count(Student),
-        classrooms_total=count(Classroom),
-        classrooms_active=session.connection()
-        .execute(
-            sa_select(func.count())
-            .select_from(Classroom)
-            .where(col(Classroom.is_active))
-        )
-        .scalar_one(),
-        publishes=count(ClassroomExercise),
-        publishes_exam=session.connection()
-        .execute(
-            sa_select(func.count())
-            .select_from(ClassroomExercise)
-            .where(col(ClassroomExercise.is_exam))
-        )
-        .scalar_one(),
+        .one()
     )
+    return DashboardContent(**dict(row._mapping))
 
 
 @router.get("/performance", response_model=DashboardPerformance)

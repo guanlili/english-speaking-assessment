@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, delete
 
@@ -106,3 +107,21 @@ def test_export_sessions_and_students_csv(
     # 轮次/作答聚合列有值（本测试造的 1 轮 1 答）
     assert ada_rows[0].split(",")[5] == "1"  # 练习轮次
     assert ada_rows[0].split(",")[6] == "1"  # 作答总数
+
+
+def test_export_row_cap_rejects_with_stable_detail(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """行数护栏：超过 USAGE_EXPORT_MAX_ROWS 一律 422 稳定标识，不产出部分 CSV。"""
+    _seed(client, superuser_token_headers, db, "AdaC")
+    # 0 → LIMIT 1 探测，任一行即超限；三口径同护栏
+    monkeypatch.setattr(settings, "USAGE_EXPORT_MAX_ROWS", 0)
+    for path in ("attempts", "sessions", "students"):
+        resp = client.get(
+            f"/api/v1/admin/export/{path}", headers=superuser_token_headers
+        )
+        assert resp.status_code == 422, path
+        assert resp.json()["detail"] == "usage_export_too_many_rows", path
