@@ -207,7 +207,8 @@ def test_student_exports_only_own_original_bytes(
     room = _classroom(db, teacher)
     alice_user, alice, alice_headers = _enroll(db, client, room, "李雷")
     _bob_user, bob, _bob_headers = _enroll(db, client, room, "韩梅梅")
-    created = datetime(2026, 10, 27, 2, 30, tzinfo=UTC)
+    # 相对日期：自助导出 2026-10-29 起默认套 90 天窗，固定日期会在墙钟推进后越窗
+    created = datetime.now(UTC) - timedelta(days=2)
     payload = b"webm-original-bytes"
     path = _audio(tmp_path, "alice.webm", payload)
     playback = tmp_path / "alice.webm.playback.wav"
@@ -241,7 +242,10 @@ def test_student_exports_only_own_original_bytes(
         assert rows[0]["attempt_id"] == str(attempt.id)
         assert rows[0]["student_no"] == alice_user.username
         assert rows[0]["student_name"] == "李雷"
-        assert rows[0]["created_at"] == "2026-10-27 10:30:00"
+        # manifest 时间为北京时间（UTC+8）口径；随相对日期动态计算
+        assert rows[0]["created_at"] == (created + timedelta(hours=8)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
         assert rows[0]["missing"] == "0"
         assert rows[0]["overall"] == "85"
         stored = f"{body['download_name'][:-4]}/{rows[0]['zip_path']}"
@@ -718,7 +722,8 @@ def test_filename_collision_appends_attempt_id(
     room = _classroom(db, teacher)
     _user, student, headers = _enroll(db, client, room, "李雷")
     item_id = uuid.uuid4()
-    created = datetime(2026, 10, 27, 1, 2, 3, tzinfo=UTC)
+    # 相对日期：同上，防墙钟推进后越出 90 天自助窗口
+    created = datetime.now(UTC) - timedelta(days=2)
     first = _attempt(
         db,
         student,
@@ -809,3 +814,74 @@ def test_playback_path_is_not_packed(
             == b"original-clip"
         )
         assert all(not name.endswith(".playback.wav") for name in archive.namelist())
+
+
+def test_student_self_window_defaults_and_span_limit(
+    client: TestClient, db: Session, sync_exports, tmp_path
+) -> None:
+    """学生自助 ZIP 2026-10-29 起套窗：默认最近 90 天；显式跨度超限 422。"""
+    teacher, _ = _teacher(db, client)
+    room = _classroom(db, teacher)
+    _user, student, headers = _enroll(db, client, room, "窗口")
+    now = datetime.now(UTC)
+    fresh = _attempt(
+        db,
+        student,
+        _audio(tmp_path, "fresh.webm", b"fresh"),
+        created_at=now - timedelta(days=5),
+    )
+    _attempt(
+        db,
+        student,
+        _audio(tmp_path, "old.webm", b"old"),
+        created_at=now - timedelta(days=120),
+    )
+    response = client.post(
+        f"{settings.API_V1_STR}/exports",
+        headers=headers,
+        json={"scope": "self"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["included_count"] == 1
+    with _zip(
+        client.get(
+            f"{settings.API_V1_STR}/exports/{response.json()['id']}/download",
+            headers=headers,
+        )
+    ) as archive:
+        rows = _manifest(archive)
+        assert [row["attempt_id"] for row in rows] == [str(fresh.id)]
+    too_wide = client.post(
+        f"{settings.API_V1_STR}/exports",
+        headers=headers,
+        json={
+            "scope": "self",
+            "from": (now - timedelta(days=200)).isoformat(),
+            "to": now.isoformat(),
+        },
+    )
+    assert too_wide.status_code == 422, too_wide.text
+    assert too_wide.json()["detail"] == "export_range_too_wide"
+
+
+def test_export_row_cap_rejects_before_enqueue(
+    client: TestClient,
+    db: Session,
+    sync_exports,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """行数护栏：候选超过 EXPORT_MAX_ROWS 时入队前 422 export_too_many_attempts。"""
+    monkeypatch.setattr(settings, "EXPORT_MAX_ROWS", 2)
+    teacher, _ = _teacher(db, client)
+    room = _classroom(db, teacher)
+    _user, student, headers = _enroll(db, client, room, "行数")
+    for index in range(3):
+        _attempt(db, student, _audio(tmp_path, f"cap{index}.webm", b"bytes"))
+    response = client.post(
+        f"{settings.API_V1_STR}/exports",
+        headers=headers,
+        json={"scope": "self"},
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == "export_too_many_attempts"

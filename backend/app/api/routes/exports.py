@@ -398,7 +398,18 @@ def create_export(
     _guard_capacity(session, current_user, body.scope)
     filt = {key: value for key, value in resolved.items() if not key.startswith("_")}
     filt["kind"] = ExportKind.AUDIO_ZIP
-    candidates = query_candidates(session, filt)
+    try:
+        candidates = query_candidates(session, filt)
+    except ValueError as exc:
+        # 行数护栏超限（export_too_many_attempts）：拒绝并留档，不入队
+        _reject(
+            session,
+            current_user,
+            scope=body.scope,
+            result=str(exc),
+            detail={"max_rows": settings.EXPORT_MAX_ROWS},
+        )
+        raise HTTPException(status_code=422, detail=str(exc)) from None
     # 体积预检不持有行锁；超限直接拒绝，不排队、不分卷。
     session.commit()
     if present_nbytes(candidates) > settings.EXPORT_MAX_BYTES:

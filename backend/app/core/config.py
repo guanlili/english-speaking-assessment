@@ -144,11 +144,14 @@ class Settings(BaseSettings):
     EXPORT_WORKERS: int = 2
     # 单用户同时处于 queued/running 的任务上限，超出 429。
     EXPORT_MAX_IN_PROGRESS: int = 2
-    # 教师课堂导出默认/最长「最近 N 天」。学生自助导出不套用这扇窗口。
+    # 教师课堂导出默认/最长「最近 N 天」；学生自助默认最近 90 天（与学情 PDF 对齐）。
     EXPORT_RECENT_DAYS_DEFAULT: int = 7
     EXPORT_RECENT_DAYS_MAX: int = 90
     # 预估原音频字节超过此值则直接拒绝（不自动分卷）。默认 2GB。
     EXPORT_MAX_BYTES: int = 2 * 1024 * 1024 * 1024
+    # 导出候选行数硬上限（窗口护栏之外的第二道界，防全量载入内存）；
+    # 含音频已被保留策略清理的历史行。超限入队前 422 export_too_many_attempts。
+    EXPORT_MAX_ROWS: int = 20000
     # 学生学情 PDF 成品上限。超过则任务失败，不把超大文件留在导出卷。
     REPORT_PDF_MAX_BYTES: int = 20 * 1024 * 1024
     # 产品阈值：文件数或体积达到下列值，或教师课堂导出，必须异步。
