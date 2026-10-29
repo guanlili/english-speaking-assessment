@@ -187,10 +187,10 @@ def load_class_report(
     )
     latest: dict[
         tuple[uuid.UUID, uuid.UUID, uuid.UUID],
-        tuple[datetime, uuid.UUID, int],
+        tuple[datetime, uuid.UUID, int, str | None],
     ] = {}
     for row in session.connection().execute(latest_stmt).all():
-        student_id, session_id, item_id, _item_type, overall, created_at, attempt_id = (
+        student_id, session_id, item_id, item_type, overall, created_at, attempt_id = (
             row
         )
         if student_id is None or session_id is None or created_at is None:
@@ -200,16 +200,20 @@ def load_class_report(
         key = (student_id, session_id, item_id)
         previous = latest.get(key)
         if previous is None or (created_at, attempt_id) >= (previous[0], previous[1]):
-            latest[key] = (created_at, attempt_id, overall)
+            latest[key] = (created_at, attempt_id, overall, item_type)
 
+    # 每生均分只算情景问答（与学情报告/百分位同源、与页首 question_avg 同口径）；
+    # 题项对比保持全题型（跟读/复述的 overall 同样有参考意义）
     per_student: dict[uuid.UUID, list[int]] = {}
     per_item: dict[uuid.UUID, list[int]] = {}
     for (student_id, _session_id, item_id), (
         _created,
         _attempt_id,
         overall,
+        item_type,
     ) in latest.items():
-        per_student.setdefault(student_id, []).append(overall)
+        if item_type == AttemptItemType.QUESTION:
+            per_student.setdefault(student_id, []).append(overall)
         per_item.setdefault(item_id, []).append(overall)
 
     students = tuple(

@@ -192,6 +192,10 @@ def test_class_report_succeeds(
     assert "李雷" in text and "韩梅梅" in text
     assert "无作答" in text
     assert "题项对比" in text
+    # 口径钉死：李雷的每生均分只算情景问答（90 分、1 个题位），
+    # 跟读 overall=70 不得混入（混入会算出 80.0 / 2 个题位）
+    assert "90.0 · 1" in text
+    assert "80.0" not in text
     assert str(a1.id) not in text  # 作答证据不放 ID，只有统计
     assert "http" not in text.lower()
 
