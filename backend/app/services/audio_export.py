@@ -251,7 +251,11 @@ def query_candidates(
     if end is not None:
         stmt = stmt.where(col(Attempt.created_at) <= end)
     stmt = stmt.order_by(col(Attempt.created_at), col(Attempt.id))
+    # 行数护栏：LIMIT 上限+1 探测，超限即拒，不再全量载入（含音频已清理的历史行）
+    stmt = stmt.limit(settings.EXPORT_MAX_ROWS + 1)
     rows = session.exec(stmt).all()
+    if len(rows) > settings.EXPORT_MAX_ROWS:
+        raise ValueError("export_too_many_attempts")
     candidates: list[ExportCandidate] = []
     for attempt, student, user, classroom, practice, exercise in rows:
         snapshot = attempt.item_snapshot or {}
@@ -524,20 +528,23 @@ def window_bounds(
     end: datetime | None,
     recent_days: int | None,
 ) -> tuple[datetime | None, datetime | None]:
-    """教师课堂导出默认最近 7 天、最长 90 天。学生自助不套这扇窗口。"""
+    """窗口护栏：课堂默认最近 7 天、学生自助默认最近 90 天，跨度上限一致。
+
+    学生自助 2026-10-29 起与学情 PDF 语义对齐（原「不套窗口」决策废除，
+    导出无界防护：query_candidates 不再全量载入历史行）。
+    """
     if start is not None and start.tzinfo is None:
         start = start.replace(tzinfo=UTC)
     if end is not None and end.tzinfo is None:
         end = end.replace(tzinfo=UTC)
-    if scope != ExportScope.CLASSROOM:
-        return start, end
     max_days = settings.EXPORT_RECENT_DAYS_MAX
+    default_days = (
+        settings.EXPORT_RECENT_DAYS_DEFAULT
+        if scope == ExportScope.CLASSROOM
+        else max_days
+    )
     if start is None and end is None:
-        days = (
-            recent_days
-            if recent_days is not None
-            else settings.EXPORT_RECENT_DAYS_DEFAULT
-        )
+        days = recent_days if recent_days is not None else default_days
         if days < 1 or days > max_days:
             raise ValueError("export_range_too_wide")
         end_at = datetime.now(UTC)
