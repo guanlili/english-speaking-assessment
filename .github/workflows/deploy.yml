@@ -413,10 +413,12 @@ jobs:
           echo "path_b64=$(printf '%s' "$DEPLOY_PATH" | base64 | tr -d '\n')" >> "$GITHUB_OUTPUT"
           rm -f "$RUNNER_TEMP/deploy.env"
 
-      - name: 探测服务器当前提交（增量 bundle 的基线）
-        # bundle 只需覆盖服务器落后于目标提交的增量：先问服务器现在在哪，
-        # 再以 merge-base 为基线打包，通常几十 KB（全量 3.1MB 在实测 ~12KB/s
-        # 的跨境 SSH 上要传 4.5 分钟）。探测失败降级 none → 打全量 bundle。
+      - name: 探测服务器提交与拉取能力（bundle 仅在拉取失败时传输）
+        # 两件事：①问服务器现在在哪（增量 bundle 的打包基线）；②让服务器先
+        # 经 gh-proxy 自行 git fetch 一次（国内下行，秒级）。预检成功则本次
+        # 部署完全跳过 bundle 跨境 scp——2026-10-29 实测全量 3.1MB 在
+        # ~4KB/s 跨境 SSH 上要传 13 分钟，且探测曾持续返回 none（增量从未
+        # 生效），每次都在付全量税。拉取失败时仍传全量 bundle 兜底，不降级。
         id: serverhead
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
@@ -432,10 +434,18 @@ jobs:
               "cd '$DEPLOY_PATH' 2>/dev/null && git rev-parse HEAD 2>/dev/null || echo none" 2>/dev/null); then
             sha=none
           fi
-          rm -f "$RUNNER_TEMP/deploy_id"
+          # 调试留痕：探测曾连续返回空/none（增量从未生效）；sha 为十六进制无敏感
+          echo "probe raw output: [$sha]"
           case "$sha" in ''|*[^0-9a-f]*|*[A-F]*|*' '*) sha=none;; esac
+          fetch=fail
+          if ssh -i "$RUNNER_TEMP/deploy_id" -o ConnectTimeout=15 "$SERVER_USER@$SERVER_HOST" \
+              "cd '$DEPLOY_PATH' 2>/dev/null && timeout 90 git fetch origin" >/dev/null 2>&1; then
+            fetch=ok
+          fi
+          rm -f "$RUNNER_TEMP/deploy_id"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "服务器当前提交: $sha"
+          echo "fetch=$fetch" >> "$GITHUB_OUTPUT"
+          echo "服务器当前提交: $sha；拉取预检: $fetch（bundle $([ "$fetch" = ok ] && echo 跳过传输 || echo 需要传输)）"
 
       - name: 打包增量 git bundle（服务器镜像失联时的拉取兜底）
         # 服务器 origin 走 gh-proxy.com 镜像，偶发 403/429/401；runner 在境外
@@ -461,7 +471,11 @@ jobs:
           git bundle verify deploy.bundle
           du -h deploy.bundle
 
-      - name: 传送 bundle 到服务器
+      - name: 传送 bundle 到服务器（仅拉取预检失败时）
+        # 拉取预检成功 = 服务器能自己拿到提交，跨境 scp（全量 3.1MB ≈ 13 分钟）
+        # 完全跳过；预检失败（gh-proxy 故障）才传兜底。极端窗口（预检成功但
+        # 部署时拉取又失败）会因缺 bundle 文件显式失败，重跑即恢复。
+        if: steps.serverhead.outputs.fetch == 'fail'
         uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
