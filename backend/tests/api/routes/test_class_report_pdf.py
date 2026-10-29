@@ -178,7 +178,7 @@ def test_class_report_succeeds(
     assert body["status"] == "succeeded", body
     assert body["kind"] == "class_report_pdf"
     assert body["included_count"] == 3
-    assert body["download_name"].startswith("SpeakUp_班级报告_宠物班_")
+    assert body["download_name"].startswith("BELP_班级报告_宠物班_")
     assert body["download_name"].endswith(".pdf")
     download = client.get(
         f"{settings.API_V1_STR}/exports/{body['id']}/download",
