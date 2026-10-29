@@ -33,3 +33,19 @@
 - 导入查重只对本批涉及的题型分批读取规范化匹配键，再加载命中的候选详情；沿用 Python NFKC、casefold 与 Unicode 空白规则。匹配键扫描仍随相关表增长，不宣称已变成常数时间索引查找；如后续需要进一步提速，应引入可迁移、全写入路径一致维护的规范化索引列。
 
   Import planning streams matching keys only for relevant question types and materializes matching candidates. Python normalization semantics are unchanged. Key scans still scale with the relevant tables; indexed normalized columns are a separate migration if larger datasets justify them.
+
+- 队列告警邮件默认关闭（`COST_ALERT_EMAIL` 留空即关闭，大盘红黄标不受影响）。启用只需配置，零代码改动：评分队列最老排队超过 25 分钟（`ALERT_QUEUE_AGE_S`）时向收件人发双语告警，当日限一封。部署流水线已映射所需 Secrets，步骤：
+
+  1. 仓库 Settings → Secrets and variables → Actions → New repository secret，逐个添加 `SMTP_HOST`、`SMTP_USER`、`SMTP_PASSWORD`、`EMAILS_FROM_EMAIL`（如平台已有可用邮件配置可跳过）与 `COST_ALERT_EMAIL`（收件邮箱）。`SMTP_TLS`/`SMTP_SSL`/`SMTP_PORT` 未配置时默认 `True`/`False`/`587`。
+  2. Secret 名必须与 deploy.yml 的映射逐字一致——拼错不会报错，只会静默不生效。
+  3. 部署后在 backend 容器内验证配置已生效，并发一封测试邮件确认链路（凭据从 settings 读取，不落命令行）：
+
+  ```bash
+  docker compose -f compose.yml exec backend python -c "from app.core.config import settings; print(settings.emails_enabled, bool(settings.COST_ALERT_EMAIL))"
+  # 期望输出：True True
+  docker compose -f compose.yml exec backend python -c "from app.core.config import settings; from app.utils import send_email; send_email(email_to=settings.COST_ALERT_EMAIL, subject='[BELP] queue alert test', html_content='<p>队列告警链路测试</p>'); print('sent')"
+  ```
+
+  4. 关闭方式：删除 `COST_ALERT_EMAIL` secret 并重新部署。
+
+  The queue alert email ships disabled (`COST_ALERT_EMAIL` empty); dashboard badges are unaffected. Enabling is configuration-only: when the oldest queued attempt exceeds 25 minutes, a bilingual alert is sent at most once per day. Add `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAILS_FROM_EMAIL`, and `COST_ALERT_EMAIL` as repository secrets (names must match deploy.yml exactly — typos fail silently), redeploy, then verify inside the backend container that `emails_enabled` and `COST_ALERT_EMAIL` are both set and send a probe email via `app.utils.send_email`. Remove the secret and redeploy to disable.
