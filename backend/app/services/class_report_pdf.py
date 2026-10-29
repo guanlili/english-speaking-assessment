@@ -112,10 +112,12 @@ def load_class_report(
     start = _aware(start)
     end = _aware(end)
 
-    roster = session.exec(
+    roster = session.exec(  # ty: ignore[no-matching-overload]
         select(Student, User)
         .outerjoin(User, col(Student.user_id) == User.id)
-        .where(Student.classroom_id == classroom.id)
+        .where(
+            Student.classroom_id == classroom.id  # ty: ignore[invalid-argument-type]
+        )
         .order_by(Student.display_name)
     ).all()
     student_ids = [student.id for student, _ in roster]
@@ -236,7 +238,7 @@ def load_class_report(
         title_rows = (
             session.connection()
             .execute(
-                select(Attempt.item_id, Attempt.item_snapshot)
+                select(Attempt.item_id, Attempt.item_snapshot)  # ty: ignore[no-matching-overload]
                 .distinct(Attempt.item_id)
                 .where(col(Attempt.item_id).in_(list(per_item.keys())))
                 .order_by(Attempt.item_id, col(Attempt.created_at).desc())
