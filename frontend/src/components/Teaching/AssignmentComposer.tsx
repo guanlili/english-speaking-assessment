@@ -586,7 +586,7 @@ function ComposerForm({
       const slot = action.slot ?? "class"
       return ClassesService.setAssignment({
         code,
-        requestBody: action.clear
+        assignmentRequest: action.clear
           ? { items: [], slot, draft_revision: revision }
           : {
               slot,

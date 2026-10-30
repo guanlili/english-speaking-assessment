@@ -23,7 +23,7 @@ export function StudentSessionHistory({
     queryFn: ({ pageParam }) =>
       ClassesService.readStudentSessions({
         code: code.toUpperCase(),
-        studentId,
+        student_id: studentId,
         limit: HISTORY_PAGE_SIZE,
         offset: pageParam,
       }),

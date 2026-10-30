@@ -44,8 +44,8 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
         type: variables.blob.type || "audio/webm",
       })
       return AttemptsService.createAttemptUpload({
-        formData: {
-          audio: file as unknown as string,
+        bodyAttemptsCreateAttemptUpload: {
+          audio: file,
           item_type: t.itemType,
           item_id: t.itemId,
           duration_s: Math.round(variables.duration * 10) / 10,
@@ -64,7 +64,7 @@ export function useAttemptSubmit(target: AttemptSubmitTarget) {
   const attemptQuery = useQuery({
     queryKey: ["attempt", attemptId],
     queryFn: () =>
-      AttemptsService.readAttempt({ attemptId: attemptId as string }),
+      AttemptsService.readAttempt({ attempt_id: attemptId as string }),
     enabled: attemptId !== null,
     refetchInterval: pollWhileVisible((query) => {
       const data = query.state.data

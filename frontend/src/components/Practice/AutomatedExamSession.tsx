@@ -108,7 +108,7 @@ export default function AutomatedExamSession({
     }) =>
       ClassesService.advanceExamFlow({
         code,
-        requestBody,
+        examFlowEvent: requestBody,
       }),
     retry: 2,
     onSuccess: () => {
@@ -133,10 +133,10 @@ export default function AutomatedExamSession({
     setPendingDraft(input)
     try {
       await AttemptsService.createAttemptUpload({
-        formData: {
+        bodyAttemptsCreateAttemptUpload: {
           audio: new File([input.blob], "exam.webm", {
             type: input.mimeType,
-          }) as unknown as string,
+          }),
           item_type: input.itemType,
           item_id: input.itemId,
           session_id: input.sessionId ?? undefined,
@@ -326,7 +326,7 @@ export default function AutomatedExamSession({
       if (document.hidden)
         void ClassesService.reportExamViolation({
           code,
-          requestBody: { session_id: plan.session_id },
+          examViolationRequest: { session_id: plan.session_id },
         }).catch(() => undefined)
     }
     document.addEventListener("visibilitychange", report)

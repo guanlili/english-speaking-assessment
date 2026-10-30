@@ -21,7 +21,10 @@ export function ExamSessionPage() {
   const query = useQuery({
     queryKey: ["exam-entry", code, student?.id, sessionId],
     queryFn: () =>
-      ClassesService.readTodayPlan({ code: code.toUpperCase(), sessionId }),
+      ClassesService.readTodayPlan({
+        code: code.toUpperCase(),
+        session_id: sessionId,
+      }),
     enabled: !!student,
     retry: 1,
     placeholderData: (previous) => previous,

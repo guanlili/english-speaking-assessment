@@ -31,8 +31,8 @@ export const UserActionsMenu = ({ user }: UserActionsMenuProps) => {
   const toggleActiveMutation = useMutation({
     mutationFn: (next: boolean) =>
       UsersService.updateUser({
-        userId: user.id,
-        requestBody: { is_active: next },
+        user_id: user.id,
+        userUpdate: { is_active: next },
       }),
     onSuccess: (_data, next) => {
       showSuccessToast(

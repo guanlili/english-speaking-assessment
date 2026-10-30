@@ -24,8 +24,8 @@ export function HelpReplyEditor({
         throw new Error("Session changed")
       return ClassesService.replyToClassHelp({
         code,
-        messageId: message.id,
-        requestBody: {
+        message_id: message.id,
+        helpReplyWrite: {
           text: text.trim(),
           resolve,
           expected_revision: revision.current,

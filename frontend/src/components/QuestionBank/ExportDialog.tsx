@@ -76,14 +76,18 @@ export function QuestionBankExportDialog({
   const download = async () => {
     setDownloading(true)
     try {
-      const blob = await QuestionBankService.exportQuestionBank({
-        types,
-        topic: topic === ALL ? undefined : topic,
-        examKind: examKind === ALL ? undefined : examKind,
-        examLevel: examLevel === ALL ? undefined : examLevel,
-        q: keyword.trim() || undefined,
-        format,
-      })
+      const blob = await QuestionBankService.exportQuestionBank(
+        {
+          types,
+          topic: topic === ALL ? undefined : topic,
+          exam_kind: examKind === ALL ? undefined : examKind,
+          exam_level: examLevel === ALL ? undefined : examLevel,
+          q: keyword.trim() || undefined,
+          format,
+        },
+        // xlsx/csv 二进制响应（0.99 迁移：fetch 客户端按调用点声明 parseAs）
+        { parseAs: "blob" },
+      )
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement("a")
       document.body.append(anchor)

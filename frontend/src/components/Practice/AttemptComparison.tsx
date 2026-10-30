@@ -9,7 +9,8 @@ export function AttemptComparison({ attemptId }: { attemptId: string }) {
   const [open, setOpen] = useState(false)
   const query = useQuery({
     queryKey: ["attempt-comparison", attemptId],
-    queryFn: () => AttemptsService.readAttemptComparison({ attemptId }),
+    queryFn: () =>
+      AttemptsService.readAttemptComparison({ attempt_id: attemptId }),
     enabled: open,
     retry: false,
   })

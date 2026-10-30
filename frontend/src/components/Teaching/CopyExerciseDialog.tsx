@@ -33,7 +33,7 @@ export function CopyExerciseDialog({
   const [replace, setReplace] = useState(false)
   const classes = useQuery({
     queryKey: ["classrooms"],
-    queryFn: ClassesService.listMyClassrooms,
+    queryFn: () => ClassesService.listMyClassrooms(),
   })
   const draft = useQuery({
     queryKey: ["teacher", "composer-draft", target],
@@ -44,14 +44,14 @@ export function CopyExerciseDialog({
     mutationFn: async () => {
       const state = await ClassesService.readExerciseComposerSeed({
         code,
-        exerciseId: exercise.id,
+        exercise_id: exercise.id,
       })
       if (localStorage.getItem("access_token") !== identityToken.current)
         throw new Error("Session changed")
       const classroom = classes.data?.find((row) => row.code === target)
       return ClassesService.saveComposerDraft({
         code: target,
-        requestBody: {
+        draftWrite: {
           expected_revision: draft.data?.revision ?? 0,
           state: {
             ...state,

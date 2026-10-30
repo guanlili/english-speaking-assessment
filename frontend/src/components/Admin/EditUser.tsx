@@ -98,7 +98,7 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
 
   const mutation = useMutation({
     mutationFn: (data: z.infer<typeof formSchema>) =>
-      UsersService.updateUser({ userId: user.id, requestBody: data }),
+      UsersService.updateUser({ user_id: user.id, userUpdate: data }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "用户已更新", en: "User updated successfully" }))
       setIsOpen(false)

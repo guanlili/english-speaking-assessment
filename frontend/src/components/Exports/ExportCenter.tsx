@@ -171,7 +171,7 @@ export function ExportCenter({ mode }: { mode: "self" | "classroom" }) {
 
   const createJob = useMutation({
     mutationFn: (body: ExportCreate) =>
-      ExportsService.createExport({ requestBody: body }),
+      ExportsService.createExport({ exportCreate: body }),
     onSuccess: (job) => {
       if (job.status === "failed")
         showErrorToast(exportJobMessage(job.error, t))
@@ -208,7 +208,7 @@ export function ExportCenter({ mode }: { mode: "self" | "classroom" }) {
   })
 
   const retryJob = useMutation({
-    mutationFn: (jobId: string) => ExportsService.retryExport({ jobId }),
+    mutationFn: (job_id: string) => ExportsService.retryExport({ job_id }),
     onSuccess: (job) => {
       showSuccessToast(
         isPdfJob(job)

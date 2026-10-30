@@ -65,7 +65,7 @@ function DevicePreflightCheck({
     try {
       await ClassesService.reportClassroomActivity({
         code,
-        requestBody: { activity: "entered", device_check },
+        classroomActivityIn: { activity: "entered", device_check },
       })
       if (!isCurrent() || currentGeneration !== generation.current) return false
       setReportFailed(false)

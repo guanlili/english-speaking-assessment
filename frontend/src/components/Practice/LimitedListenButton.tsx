@@ -193,7 +193,7 @@ export default function LimitedListenButton({
     try {
       const result = await ClassesService.recordListen({
         code,
-        requestBody: { session_id: sessionId, item_id: itemId },
+        listenRequest: { session_id: sessionId, item_id: itemId },
       })
       setUsed((prev) => Math.max(prev, result.listen_used))
       return true

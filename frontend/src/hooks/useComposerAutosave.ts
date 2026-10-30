@@ -46,7 +46,7 @@ export function useComposerAutosave(
       try {
         const result = await ClassesService.saveComposerDraft({
           code,
-          requestBody: { expected_revision: revision.current, state: value },
+          draftWrite: { expected_revision: revision.current, state: value },
         })
         if (localStorage.getItem("access_token") !== identityToken.current)
           throw new Error("Session changed")

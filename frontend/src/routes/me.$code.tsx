@@ -75,7 +75,7 @@ function MyTrailPage() {
     mutationFn: (frameId: string) =>
       ClassesService.removeFrameFavorite({
         code: code.toUpperCase(),
-        frameId,
+        frame_id: frameId,
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({

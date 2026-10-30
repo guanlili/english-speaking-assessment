@@ -22,7 +22,7 @@ export function LearningReportCard({
   const exportPdf = useMutation({
     mutationFn: () =>
       ExportsService.createExport({
-        requestBody: {
+        exportCreate: {
           kind: "student_report_pdf",
           scope: "self",
           classroom_code: code,
@@ -54,9 +54,9 @@ export function LearningReportCard({
     queryFn: () =>
       ClassesService.readLearningReport({
         code,
-        studentId,
+        student_id: studentId,
         days,
-        exerciseId: exerciseId || undefined,
+        exercise_id: exerciseId || undefined,
       }),
   })
   const exercises = useQuery({

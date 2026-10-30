@@ -70,7 +70,7 @@ function ExplorePage() {
     mutationFn: (unitId: string) =>
       ClassesService.startExplore({
         code: code.toUpperCase(),
-        requestBody: { unit_id: unitId },
+        exploreRequest: { unit_id: unitId },
       }),
     onSuccess: (data) => {
       // 进入练习页（explore session 计划由练习页通过 session_id 拉取）

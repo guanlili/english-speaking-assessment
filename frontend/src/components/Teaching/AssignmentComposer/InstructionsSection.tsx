@@ -90,8 +90,8 @@ export default function InstructionsSection({
   const updateInstruction = useMutation({
     mutationFn: () =>
       AdminService.updateInstruction({
-        instructionId: editing!.id,
-        requestBody: {
+        instruction_id: editing!.id,
+        instructionUpdate: {
           title: editForm.title.trim() || null,
           text: editForm.text.trim(),
           suggested_seconds: editForm.seconds,
@@ -130,7 +130,7 @@ export default function InstructionsSection({
   const createInstruction = useMutation({
     mutationFn: () =>
       AdminService.createInstruction({
-        requestBody: {
+        instructionCreate: {
           text: newText.trim(),
           title: newTitle.trim() || null,
           suggested_seconds: newSeconds,
@@ -159,7 +159,7 @@ export default function InstructionsSection({
 
   const deleteInstruction = useMutation({
     mutationFn: (id: string) =>
-      AdminService.deleteInstruction({ instructionId: id }),
+      AdminService.deleteInstruction({ instruction_id: id }),
     onSuccess: async (_, id) => {
       onRemoveDeleted(id)
       setRecent((current) => current.filter((row) => row.id !== id))
@@ -228,7 +228,7 @@ export default function InstructionsSection({
                 }
                 label={t({ zh: "复制这条说明", en: "Copy this instruction" })}
                 copy={() =>
-                  AdminService.copyInstruction({ instructionId: ins.id })
+                  AdminService.copyInstruction({ instruction_id: ins.id })
                 }
                 onStart={onDirty}
                 onCopied={(copy) => {

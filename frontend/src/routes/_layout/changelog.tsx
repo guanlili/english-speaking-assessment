@@ -162,10 +162,10 @@ function EntryDialog({
       }
       return editing
         ? ChangelogService.updateChangelogEntry({
-            entryId: editing.id,
-            requestBody: body,
+            entry_id: editing.id,
+            changelogUpdate: body,
           })
-        : ChangelogService.createChangelogEntry({ requestBody: body })
+        : ChangelogService.createChangelogEntry({ changelogCreate: body })
     },
     onSuccess: () => {
       showSuccessToast(
@@ -351,7 +351,7 @@ function ChangelogPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (entry: ChangelogPublic) =>
-      ChangelogService.deleteChangelogEntry({ entryId: entry.id }),
+      ChangelogService.deleteChangelogEntry({ entry_id: entry.id }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "已删除", en: "Deleted" }))
       setToDelete(null)

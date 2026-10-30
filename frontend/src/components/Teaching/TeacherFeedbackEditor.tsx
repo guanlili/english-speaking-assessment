@@ -31,8 +31,8 @@ export function TeacherFeedbackEditor({
       if (localStorage.getItem("access_token") !== identity.current)
         throw new Error("Session changed")
       return AttemptsService.writeTeacherFeedback({
-        attemptId: attempt.id,
-        requestBody: {
+        attempt_id: attempt.id,
+        teacherFeedbackWrite: {
           text,
           review_tags: tags,
           focus,

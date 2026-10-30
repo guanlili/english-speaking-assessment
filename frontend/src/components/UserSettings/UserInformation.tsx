@@ -64,7 +64,7 @@ const UserInformation = () => {
 
   const mutation = useMutation({
     mutationFn: (data: UserUpdateMe) =>
-      UsersService.updateUserMe({ requestBody: data }),
+      UsersService.updateUserMe({ userUpdateMe: data }),
     onSuccess: () => {
       showSuccessToast(
         t({ zh: "用户信息已更新", en: "User updated successfully" }),

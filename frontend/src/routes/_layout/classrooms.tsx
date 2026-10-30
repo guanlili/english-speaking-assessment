@@ -86,7 +86,7 @@ function MyClassroomsPage() {
   const createMutation = useMutation({
     mutationFn: () =>
       ClassesService.createClass({
-        requestBody: {
+        classroomCreate: {
           name: className.trim(),
           grade: grade.trim() || undefined,
           teaching_goal: teachingGoal.trim() || undefined,
@@ -406,7 +406,7 @@ function ClassroomCard({
     mutationFn: (next: boolean) =>
       ClassesService.updateReportSettings({
         code: classroom.code,
-        requestBody: { show_report_percentile: next },
+        reportSettingsUpdate: { show_report_percentile: next },
       }),
     onSuccess: (_data, next) => {
       showSuccessToast(
@@ -429,7 +429,7 @@ function ClassroomCard({
     mutationFn: (next: number) =>
       ClassesService.updateClassSize({
         code: classroom.code,
-        requestBody: { class_size: next },
+        classSizeUpdate: { class_size: next },
       }),
     onSuccess: (data) => {
       showSuccessToast(
@@ -465,7 +465,10 @@ function ClassroomCard({
   const [deleteOpen, setDeleteOpen] = useState(false)
   const deleteMutation = useMutation({
     mutationFn: () =>
-      ClassesService.deleteClass({ code: classroom.code, deleteHistory: true }),
+      ClassesService.deleteClass({
+        code: classroom.code,
+        delete_history: true,
+      }),
     onSuccess: () => {
       showSuccessToast(
         t({
@@ -711,7 +714,7 @@ function StudentImportDialog({
   const mutation = useMutation({
     mutationFn: () =>
       StudentsService.importStudents({
-        requestBody: { classroom_id: classroomId, lines },
+        studentImportRequest: { classroom_id: classroomId, lines },
       }),
     onSuccess: (res) => {
       setResult(res)
@@ -872,7 +875,7 @@ function StudentRosterDialog({
   const { t } = useI18n()
   const rosterQuery = useQuery({
     queryKey: ["students", classroomId],
-    queryFn: () => StudentsService.listStudents({ classroomId }),
+    queryFn: () => StudentsService.listStudents({ classroom_id: classroomId }),
     enabled: open,
   })
   const [removeTarget, setRemoveTarget] = useState<string | null>(null)
@@ -891,8 +894,8 @@ function StudentRosterDialog({
   const renameMutation = useMutation({
     mutationFn: ({ studentId, name }: { studentId: string; name: string }) =>
       StudentsService.updateStudent({
-        studentId,
-        requestBody: { display_name: name },
+        student_id: studentId,
+        studentUpdate: { display_name: name },
       }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "姓名已更新", en: "Name updated" }))
@@ -910,7 +913,11 @@ function StudentRosterDialog({
       studentId: string
       deleteHistory?: boolean
     }) =>
-      StudentsService.removeStudent({ studentId, purge: true, deleteHistory }),
+      StudentsService.removeStudent({
+        student_id: studentId,
+        purge: true,
+        delete_history: deleteHistory,
+      }),
     onSuccess: (res) => {
       showSuccessToast(
         t({
@@ -944,7 +951,7 @@ function StudentRosterDialog({
 
   const resetMutation = useMutation({
     mutationFn: (studentId: string) =>
-      StudentsService.resetStudentPassword({ studentId }),
+      StudentsService.resetStudentPassword({ student_id: studentId }),
     onSuccess: () => {
       showSuccessToast(
         t({
@@ -961,7 +968,8 @@ function StudentRosterDialog({
     : null
 
   const bulkResetMutation = useMutation({
-    mutationFn: () => StudentsService.bulkResetPasswords({ classroomId }),
+    mutationFn: () =>
+      StudentsService.bulkResetPasswords({ classroom_id: classroomId }),
     onSuccess: (res) => {
       setBulkDone(res.reset)
       showSuccessToast(
@@ -981,7 +989,7 @@ function StudentRosterDialog({
 
   const removeMutation = useMutation({
     mutationFn: (studentId: string) =>
-      StudentsService.removeStudent({ studentId }),
+      StudentsService.removeStudent({ student_id: studentId }),
     onSuccess: () => {
       showSuccessToast(
         t({

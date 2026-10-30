@@ -226,7 +226,7 @@ function ExerciseResults({
     queryFn: () =>
       ClassesService.readExerciseResults({
         code: code.toUpperCase(),
-        exerciseId: exercise.id,
+        exercise_id: exercise.id,
       }),
     // 有学生在评分中时 5 秒刷新（与学生结果面板口径一致），否则不轮询
     refetchInterval: pollWhileVisible((query) =>

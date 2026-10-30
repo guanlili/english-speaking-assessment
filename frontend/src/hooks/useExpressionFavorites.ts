@@ -45,7 +45,7 @@ export function useExpressionFavorites(
         const batch = pending.slice(0, BATCH)
         const stored = await ClassesService.addExpressionFavorites({
           code: classroomCode,
-          requestBody: { texts: batch },
+          expressionFavoriteCreate: { texts: batch },
         })
         if (cancelled) return
         const before = pending.length
@@ -81,7 +81,7 @@ export function useExpressionFavorites(
     mutationFn: (texts: string[]) =>
       ClassesService.addExpressionFavorites({
         code: classroomCode,
-        requestBody: { texts },
+        expressionFavoriteCreate: { texts },
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({
@@ -93,7 +93,7 @@ export function useExpressionFavorites(
     mutationFn: (favoriteId: string) =>
       ClassesService.removeExpressionFavorite({
         code: classroomCode,
-        favoriteId,
+        favorite_id: favoriteId,
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({

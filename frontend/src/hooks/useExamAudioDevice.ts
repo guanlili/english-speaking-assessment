@@ -71,7 +71,7 @@ export function useExamAudioDevice({
       if (!exam?.started)
         await ClassesService.startExam({
           code,
-          requestBody: { session_id: plan.session_id },
+          examStartRequest: { session_id: plan.session_id },
         })
       await refetch()
       setArmed(true)

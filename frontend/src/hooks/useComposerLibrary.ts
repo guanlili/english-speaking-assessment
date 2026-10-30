@@ -180,7 +180,9 @@ export function useComposerLibrary(
     queryKey: selectionKey,
     queryFn: () =>
       AdminService.readComposerSelection({
-        requestBody: { items: JSON.parse(signature) as AssignmentItemIn[] },
+        composerSelectionIn: {
+          items: JSON.parse(signature) as AssignmentItemIn[],
+        },
       }),
     placeholderData: (previous) => previous ?? cached,
   })

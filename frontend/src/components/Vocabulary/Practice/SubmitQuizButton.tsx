@@ -18,7 +18,7 @@ export function SubmitQuizButton({
   const { t } = useI18n()
   const submit = useMutation({
     mutationFn: () =>
-      VocabularyService.submitQuizSession({ sessionId: sessionId as string }),
+      VocabularyService.submitQuizSession({ session_id: sessionId as string }),
     onSuccess: () => {
       toast.success(t({ zh: "已交卷。", en: "Submitted." }))
       onDone()

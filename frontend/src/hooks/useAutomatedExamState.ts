@@ -6,7 +6,10 @@ export function useAutomatedExamState(code: string, initialPlan: TodayPlan) {
   const query = useQuery<ExamRuntimeState>({
     queryKey: ["automated-exam-state", code, initialPlan.session_id],
     queryFn: () =>
-      ClassesService.readExamState({ code, sessionId: initialPlan.session_id }),
+      ClassesService.readExamState({
+        code,
+        session_id: initialPlan.session_id,
+      }),
     initialData: {
       session_id: initialPlan.session_id,
       exam: initialPlan.exam!,

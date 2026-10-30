@@ -81,7 +81,7 @@ export function WordExplanationDialog({
     setError(false)
     VocabularyAiService.wordExplanation({
       code: code.toUpperCase(),
-      requestBody: {
+      vocabularyAiExplanationRequest: {
         headword,
         meaning_zh: meaningZh,
         part_of_speech: partOfSpeech ?? undefined,
@@ -304,7 +304,10 @@ export function SessionInsightDialog({
     mutationFn: (opts: { force: boolean }) =>
       VocabularyAiService.sessionInsight({
         code: code.toUpperCase(),
-        requestBody: { session_id: sessionId as string, force: opts.force },
+        vocabularyAiSessionInsightRequest: {
+          session_id: sessionId as string,
+          force: opts.force,
+        },
       }),
     onSuccess: (result) => setData(result as VocabularyAiSessionInsight),
     onError: (err) => aiErrorToast(err, t),
@@ -381,7 +384,11 @@ export function OverallInsightDialog({
     mutationFn: (opts: { force: boolean }) =>
       VocabularyAiService.overallInsight({
         code: code.toUpperCase(),
-        requestBody: { limit: 10, days: 30, force: opts.force },
+        vocabularyAiOverallInsightRequest: {
+          limit: 10,
+          days: 30,
+          force: opts.force,
+        },
       }),
     onSuccess: (result) => setData(result as VocabularyAiOverallInsight),
     onError: (err) => aiErrorToast(err, t),

@@ -9,7 +9,7 @@ import { type UserPublic, UsersService } from "@/client"
 export function useCanEditContent(): (ownerId?: string | null) => boolean {
   const { data: user } = useQuery<UserPublic | null, Error>({
     queryKey: ["currentUser"],
-    queryFn: UsersService.readUserMe,
+    queryFn: () => UsersService.readUserMe(),
     enabled: localStorage.getItem("access_token") !== null,
     staleTime: 5 * 60 * 1000,
   })

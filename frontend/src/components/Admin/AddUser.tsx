@@ -105,7 +105,7 @@ const AddUser = () => {
 
   const mutation = useMutation({
     mutationFn: (data: UserCreate) =>
-      UsersService.createUser({ requestBody: data }),
+      UsersService.createUser({ userCreate: data }),
     onSuccess: () => {
       showSuccessToast(
         t({ zh: "用户创建成功", en: "User created successfully" }),

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 
 import {
-  type Body_login_login_access_token as AccessToken,
+  type BodyLoginLoginAccessToken as AccessToken,
   LoginService,
   type UserPublic,
   type UserRegister,
@@ -36,14 +36,14 @@ const useAuth = () => {
 
   const { data: user } = useQuery<UserPublic | null, Error>({
     queryKey: ["currentUser"],
-    queryFn: UsersService.readUserMe,
+    queryFn: () => UsersService.readUserMe(),
     enabled: isLoggedIn(),
     staleTime: 5 * 60 * 1000,
   })
 
   const signUpMutation = useMutation({
     mutationFn: (data: UserRegister) =>
-      UsersService.registerUser({ requestBody: data }),
+      UsersService.registerUser({ userRegister: data }),
     onSuccess: () => {
       navigate({ to: "/login" })
     },
@@ -55,7 +55,7 @@ const useAuth = () => {
 
   const login = async (data: AccessToken) => {
     const response = await LoginService.loginAccessToken({
-      formData: data,
+      bodyLoginLoginAccessToken: data,
     })
     // 身份切换前取消旧请求并清空缓存，避免共享查询键复用上一账号数据。
     await queryClient.cancelQueries()

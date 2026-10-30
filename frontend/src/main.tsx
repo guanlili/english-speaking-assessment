@@ -7,9 +7,10 @@ import {
 import { createRouter, RouterProvider } from "@tanstack/react-router"
 import { lazy, StrictMode, Suspense } from "react"
 import ReactDOM from "react-dom/client"
-import { ApiError, OpenAPI } from "./client"
+import { ApiError } from "./client"
 import RoutePending from "./components/Pending/RoutePending"
 import { ThemeProvider } from "./components/theme-provider"
+import { setupApiClient } from "./lib/api-client"
 import "./index.css"
 import { routeTree } from "./routeTree.gen"
 
@@ -33,26 +34,9 @@ const Toaster = lazy(() =>
   import("./components/ui/sonner").then((m) => ({ default: m.Toaster })),
 )
 
-// 生产部署由流水线注入空串（同源相对路径）；本地 preview 构建未注入时
-// 显式回退空串——undefined 会让 SDK 拼出 /undefined/api/... 全 404
-OpenAPI.BASE = import.meta.env.VITE_API_URL ?? ""
-OpenAPI.TOKEN = async () => {
-  return localStorage.getItem("access_token") || ""
-}
-// 题库导入模板/批量导出是二进制响应（xlsx）：生成客户端不设 axios
-// responseType，默认会把字节当文本解析出乱码。请求拦截器按端点补
-// responseType=blob（不改生成代码的唯一入口）。
-OpenAPI.interceptors.request.use((config) => {
-  if (
-    typeof config.url === "string" &&
-    (config.url.includes("/admin/question-bank/import-template") ||
-      config.url.includes("/admin/question-bank/import-error-file") ||
-      config.url.includes("/admin/question-bank/export"))
-  ) {
-    config.responseType = "blob"
-  }
-  return config
-})
+// API 客户端启动配置（token/错误包装/throwOnError）抽到 lib/api-client，
+// 与 e2e fixture 入口共用——fixture 不走 main.tsx，漏配会让错误静默 resolve
+setupApiClient()
 
 const handleApiError = (error: Error) => {
   // 只在 401（token 无效/过期）时登出；403 是"已登录但权限不足"，

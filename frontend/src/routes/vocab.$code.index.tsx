@@ -90,7 +90,7 @@ function VocabHomePage() {
     mutationFn: (assignmentId: string) =>
       VocabularyService.startVocabSession({
         code: code.toUpperCase(),
-        requestBody: { assignment_id: assignmentId, round: "new" },
+        vocabularySessionCreate: { assignment_id: assignmentId, round: "new" },
       }),
     onSuccess: (_data, assignmentId) => {
       void queryClient.invalidateQueries({ queryKey: ["vocab", code] })
@@ -118,7 +118,7 @@ function VocabHomePage() {
     mutationFn: () =>
       VocabularyService.startStudentSession({
         code: code.toUpperCase(),
-        requestBody: { kind: "review" },
+        vocabularyStudentSessionCreate: { kind: "review" },
       }),
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ["vocab", code] })

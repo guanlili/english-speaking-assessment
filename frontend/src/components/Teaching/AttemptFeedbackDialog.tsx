@@ -35,7 +35,7 @@ export function AttemptFeedbackDialog({
   const { t } = useI18n()
   const attemptQuery = useQuery({
     queryKey: ["attempt-detail", attemptId],
-    queryFn: () => AttemptsService.readAttempt({ attemptId: attemptId! }),
+    queryFn: () => AttemptsService.readAttempt({ attempt_id: attemptId! }),
     enabled: open && attemptId !== null,
     retry: 1,
     refetchOnWindowFocus: false,

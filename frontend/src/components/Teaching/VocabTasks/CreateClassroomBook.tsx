@@ -2,7 +2,12 @@ import { useMutation } from "@tanstack/react-query"
 import { Loader2, Upload } from "lucide-react"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
-import { ApiError, VocabLevelsService, VocabularyService } from "@/client"
+import {
+  ApiError,
+  type VocabLevelsImportWordsFromLevelsResponse,
+  VocabLevelsService,
+  VocabularyService,
+} from "@/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useI18n } from "@/lib/i18n"
@@ -35,14 +40,15 @@ export function CreateClassroomBook({
       let bookId: string | null = null
       let finalBookId = ""
       for (let round = 0; round < 40; round += 1) {
-        const data = await VocabLevelsService.importWordsFromLevels({
-          requestBody: {
-            level: fromLevel as string,
-            classroom_id: bookId ? null : classroomId,
-            book_id: bookId,
-            new_book_title: title.trim() || null,
-          },
-        })
+        const data: VocabLevelsImportWordsFromLevelsResponse =
+          await VocabLevelsService.importWordsFromLevels({
+            vocabularyFromLevelsRequest: {
+              level: fromLevel as string,
+              classroom_id: bookId ? null : classroomId,
+              book_id: bookId,
+              new_book_title: title.trim() || null,
+            },
+          })
         totalCreated += data.created_count ?? 0
         totalSkipped += data.skipped_existing ?? 0
         bookId = data.id
@@ -85,7 +91,7 @@ export function CreateClassroomBook({
   const importPreview = useMutation({
     mutationFn: (file: File) =>
       VocabularyService.importVocabPreview({
-        formData: { file: file as unknown as string },
+        bodyVocabularyImportVocabPreview: { file: file },
       }),
     onSuccess: (data) => {
       setPreview({
@@ -121,7 +127,7 @@ export function CreateClassroomBook({
   const create = useMutation({
     mutationFn: () =>
       VocabularyService.createBook({
-        requestBody: {
+        vocabularyBookCreate: {
           title: title.trim() || t({ zh: "班级词库", en: "Classroom book" }),
           scope: "classroom",
           classroom_id: classroomId,

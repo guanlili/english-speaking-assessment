@@ -77,7 +77,7 @@ function ClassroomsAdmin() {
 
   const createMutation = useMutation({
     mutationFn: () =>
-      ClassesService.createClass({ requestBody: { class_size: 60 } }),
+      ClassesService.createClass({ classroomCreate: { class_size: 60 } }),
     onSuccess: (data) => {
       showSuccessToast(
         t({
@@ -109,7 +109,11 @@ function ClassroomsAdmin() {
         is_active?: boolean
         class_size?: number
       }
-    }) => AdminService.updateClassroom({ classroomId: id, requestBody: patch }),
+    }) =>
+      AdminService.updateClassroom({
+        classroom_id: id,
+        classroomUpdate: patch,
+      }),
     onSuccess: (_data, vars) => {
       if ("owner_id" in vars.patch) {
         showSuccessToast(
@@ -160,7 +164,7 @@ function ClassroomsAdmin() {
 
   const deactivateMutation = useMutation({
     mutationFn: (id: string) =>
-      AdminService.deactivateClassroom({ classroomId: id }),
+      AdminService.deactivateClassroom({ classroom_id: id }),
     onSuccess: () => {
       showSuccessToast(
         t({

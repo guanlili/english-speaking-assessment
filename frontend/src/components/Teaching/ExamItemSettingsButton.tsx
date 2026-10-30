@@ -85,7 +85,11 @@ function SettingsEditor({
   const queryClient = useQueryClient()
   const query = useQuery({
     queryKey: ["exam-settings", itemType, itemId],
-    queryFn: () => AdminService.readExamItemSettings({ itemType, itemId }),
+    queryFn: () =>
+      AdminService.readExamItemSettings({
+        item_type: itemType,
+        item_id: itemId,
+      }),
   })
   const [edited, setEdited] = useState<ExamItemSettings | null>(null)
   const value = edited ?? query.data
@@ -94,7 +98,11 @@ function SettingsEditor({
     query.data?.can_replace_audio === false && !!query.data.audio_url
   const mutation = useMutation({
     mutationFn: (requestBody: ExamItemSettings) =>
-      AdminService.updateExamItemSettings({ itemType, itemId, requestBody }),
+      AdminService.updateExamItemSettings({
+        item_type: itemType,
+        item_id: itemId,
+        examItemSettings: requestBody,
+      }),
     onSuccess: (data) => {
       // 用返回值同步缓存：60s staleTime 内重开弹窗必须看到刚保存的值，
       // 否则下次保存会把旧值一起写回。

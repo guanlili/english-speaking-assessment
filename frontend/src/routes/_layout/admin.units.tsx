@@ -107,8 +107,8 @@ export function UnitsAdmin({ embedded = false }: { embedded?: boolean }) {
         is_active: form.is_active,
       }
       return editing
-        ? AdminService.updateUnit({ unitId: editing.id, requestBody: body })
-        : AdminService.createUnit({ requestBody: body })
+        ? AdminService.updateUnit({ unit_id: editing.id, unitUpdate: body })
+        : AdminService.createUnit({ unitCreate: body })
     },
     onSuccess: () => {
       showSuccessToast(
@@ -129,7 +129,7 @@ export function UnitsAdmin({ embedded = false }: { embedded?: boolean }) {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => AdminService.deleteUnit({ unitId: id }),
+    mutationFn: (id: string) => AdminService.deleteUnit({ unit_id: id }),
     onSuccess: () => {
       showSuccessToast(
         t({

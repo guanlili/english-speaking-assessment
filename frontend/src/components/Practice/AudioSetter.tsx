@@ -114,7 +114,7 @@ function AudioSetter({
 
   const ttsMutation = useMutation({
     mutationFn: () =>
-      AdminService.generateStandardAudio({ requestBody: { text } }),
+      AdminService.generateStandardAudio({ ttsRequest: { text } }),
     onSuccess: async (data) => {
       await onSet(data.audio_url ?? null)
       toast.success(t({ zh: "标准音已生成", en: "Audio generated" }))
@@ -131,7 +131,7 @@ function AudioSetter({
   const uploadMutation = useMutation({
     mutationFn: (file: File) =>
       AdminService.uploadStandardAudio({
-        formData: { file: file as unknown as string },
+        bodyAdminUploadStandardAudio: { file: file },
       }),
     onSuccess: async (data) => {
       await onSet(data.audio_url ?? null)

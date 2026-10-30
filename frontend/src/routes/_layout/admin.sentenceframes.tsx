@@ -126,7 +126,7 @@ function SentenceFramesAdmin() {
   const createMutation = useMutation({
     mutationFn: () =>
       AdminService.createSentenceFrame({
-        requestBody: {
+        sentenceFrameCreate: {
           level: form.level,
           purpose: form.purpose,
           exam_kind: form.exam_kind || null,
@@ -155,8 +155,8 @@ function SentenceFramesAdmin() {
       requestBody: Record<string, unknown>
     }) =>
       AdminService.updateSentenceFrame({
-        frameId: payload.id,
-        requestBody: payload.requestBody,
+        frame_id: payload.id,
+        sentenceFrameUpdate: payload.requestBody,
       }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "句型已更新", en: "Frame updated" }))
@@ -174,7 +174,7 @@ function SentenceFramesAdmin() {
 
   const deleteMutation = useMutation({
     mutationFn: (frameId: string) =>
-      AdminService.deleteSentenceFrame({ frameId }),
+      AdminService.deleteSentenceFrame({ frame_id: frameId }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "句型已删除", en: "Frame deleted" }))
       invalidate()
@@ -208,7 +208,7 @@ function SentenceFramesAdmin() {
   const batchMutation = useMutation({
     mutationFn: () =>
       AdminService.createSentenceFramesBatch({
-        requestBody: parseBatchCsv(batchText),
+        body: parseBatchCsv(batchText),
       }),
     onSuccess: (data) => {
       showSuccessToast(

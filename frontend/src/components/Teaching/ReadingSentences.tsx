@@ -48,8 +48,8 @@ export function ReadingSentences({
   const save = useMutation({
     mutationFn: ({ index, value }: { index: number; value: number | null }) =>
       AdminService.updatePassage({
-        passageId: passageId!,
-        requestBody: {
+        passage_id: passageId!,
+        passageUpdate: {
           reading_sentence_texts: segments,
           reading_sentence_seconds: segments.map((_, i) =>
             i === index ? value : (seconds?.[i] ?? null),
@@ -69,8 +69,8 @@ export function ReadingSentences({
       if (url === null) delete next[text]
       else next[text] = url
       return AdminService.updatePassage({
-        passageId: passageId!,
-        requestBody: {
+        passage_id: passageId!,
+        passageUpdate: {
           reading_sentence_texts: segments,
           reading_sentence_audio: next,
         },
@@ -94,13 +94,13 @@ export function ReadingSentences({
     for (const text of targets) {
       try {
         const res = await AdminService.generateStandardAudio({
-          requestBody: { text },
+          ttsRequest: { text },
         })
         if (!res.audio_url) throw new Error("tts empty audio_url")
         dict = { ...dict, [text]: res.audio_url }
         await AdminService.updatePassage({
-          passageId,
-          requestBody: {
+          passage_id: passageId,
+          passageUpdate: {
             reading_sentence_texts: segments,
             reading_sentence_audio: dict,
           },
