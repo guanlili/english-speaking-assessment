@@ -27,7 +27,12 @@ logger = logging.getLogger(__name__)
 MAX_ADVICE = 3
 MAX_UPGRADES = 2
 DIMENSION_MAX = 4
-_shared_client = httpx.Client(timeout=60)
+_shared_client = httpx.Client(
+    # 连接建立失败快速暴露（不再吃满整个 read 预算）；池上限显式化，
+    # 默认 keepalive 已够用，这里主要是把取值落到代码而非隐式默认
+    timeout=httpx.Timeout(connect=10, read=60, write=30, pool=10),
+    limits=httpx.Limits(max_connections=32, max_keepalive_connections=8),
+)
 
 # rubric 四维之和（0-16）→ 0-9 模拟分（PRD：映射表放在配置中）
 RUBRIC_TO_SCORE: list[float] = [
