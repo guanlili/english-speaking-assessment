@@ -210,8 +210,8 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
   const batchMutation = useMutation({
     mutationFn: () =>
       AdminService.createQuestionsBatch({
-        scenarioId: scenarioId ?? "",
-        requestBody: { items: parsed.items },
+        scenario_id: scenarioId ?? "",
+        batchQuestionCreate: { items: parsed.items },
       }),
     onSuccess: (result) => {
       if (result.failed.length === 0) {
@@ -276,8 +276,8 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
   const updateMutation = useMutation({
     mutationFn: () =>
       AdminService.updateQuestion({
-        questionId: editing!.id,
-        requestBody: {
+        question_id: editing!.id,
+        questionUpdate: {
           text: editForm.text.trim(),
           translation: editForm.translation.trim() || null,
           suggested_seconds: editForm.suggested_seconds,
@@ -312,7 +312,8 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => AdminService.deleteQuestion({ questionId: id }),
+    mutationFn: (id: string) =>
+      AdminService.deleteQuestion({ question_id: id }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "题目已删除", en: "Question deleted" }))
       setToDelete(null)
@@ -578,7 +579,7 @@ export function QuestionsAdmin({ embedded = false }: { embedded?: boolean }) {
                             }
                             label={t({ zh: "复制题目", en: "Copy question" })}
                             copy={() =>
-                              AdminService.copyQuestion({ questionId: row.id })
+                              AdminService.copyQuestion({ question_id: row.id })
                             }
                             onCopied={openEdit}
                           />

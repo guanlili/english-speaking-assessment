@@ -42,7 +42,7 @@ function ChangePasswordPage() {
   const mutation = useMutation({
     mutationFn: () =>
       UsersService.updatePasswordMe({
-        requestBody: { current_password: current, new_password: next },
+        updatePassword: { current_password: current, new_password: next },
       }),
     onSuccess: () => {
       localStorage.setItem("esa:must-change-pw", "0")

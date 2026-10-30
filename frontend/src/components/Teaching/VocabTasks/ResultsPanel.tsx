@@ -70,7 +70,7 @@ export function ResultsPanel({
     queryFn: () =>
       VocabularyService.readVocabResults({
         code: code.toUpperCase(),
-        assignmentId: selectedAssignmentId ?? undefined,
+        assignment_id: selectedAssignmentId ?? undefined,
       }),
     // 进行中的任务才轮询；历史期数是归档快照不可变，null(无任务) 由指派后失效刷新
     refetchInterval: pollWhileVisible((query) =>
@@ -81,7 +81,7 @@ export function ResultsPanel({
     mutationFn: (assignmentId: string) =>
       VocabularyService.archiveVocabAssignment({
         code: code.toUpperCase(),
-        assignmentId,
+        assignment_id: assignmentId,
       }),
     onSuccess: () => {
       toast.success(t({ zh: "任务已结束。", en: "Task archived." }))
@@ -96,7 +96,7 @@ export function ResultsPanel({
     mutationFn: (assignmentId: string) =>
       VocabularyService.publishQuizGrades({
         code: code.toUpperCase(),
-        assignmentId,
+        assignment_id: assignmentId,
       }),
     onSuccess: () => {
       toast.success(t({ zh: "成绩已公布。", en: "Grades published." }))
@@ -109,7 +109,7 @@ export function ResultsPanel({
     mutationFn: (assignmentId: string) =>
       VocabularyService.publishQuizAnswers({
         code: code.toUpperCase(),
-        assignmentId,
+        assignment_id: assignmentId,
       }),
     onSuccess: () => {
       toast.success(
@@ -127,8 +127,8 @@ export function ResultsPanel({
     mutationFn: (payload: { assignmentId: string; studentId: string }) =>
       VocabularyService.grantQuizRetake({
         code: code.toUpperCase(),
-        assignmentId: payload.assignmentId,
-        studentId: payload.studentId,
+        assignment_id: payload.assignmentId,
+        student_id: payload.studentId,
       }),
     onSuccess: () => {
       toast.success(t({ zh: "已授权补考一次。", en: "One retake granted." }))
@@ -167,7 +167,7 @@ export function ResultsPanel({
       // 测验用服务端导出（固定名单 + 成绩/切屏/终结方式口径）
       const csv = await VocabularyService.exportQuizResults({
         code: code.toUpperCase(),
-        assignmentId: assignment.id,
+        assignment_id: assignment.id,
       })
       const blob = new Blob([csv as string], {
         type: "text/csv;charset=utf-8",

@@ -33,7 +33,7 @@ function CostCard() {
 
   const reconcileMutation = useMutation({
     mutationFn: (payload: { month: string; amount_cny: number }) =>
-      AdminService.upsertCostReconcile({ requestBody: payload }),
+      AdminService.upsertCostReconcile({ adminCostReconcileIn: payload }),
     onSuccess: (_data, vars) => {
       showSuccessToast(
         t({

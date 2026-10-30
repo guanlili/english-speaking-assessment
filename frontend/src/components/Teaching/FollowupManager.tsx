@@ -69,7 +69,7 @@ function FollowupManagerList({
   const hasNext = (tasks.data?.length ?? 0) > PAGE_SIZE
   const cancel = useMutation({
     mutationFn: (taskId: string) =>
-      ClassesService.cancelClassFollowup({ code, taskId }),
+      ClassesService.cancelClassFollowup({ code, task_id: taskId }),
     onSuccess: () => {
       void client.invalidateQueries({
         queryKey: ["teacher", "followups", code],
@@ -336,7 +336,7 @@ export function FollowupCreateDialog({
   const items = useQuery({
     queryKey: ["teacher", "followup-items", code, sourceId],
     queryFn: () =>
-      ClassesService.readFollowupItems({ code, exerciseId: sourceId }),
+      ClassesService.readFollowupItems({ code, exercise_id: sourceId }),
     enabled: Boolean(sourceId),
     refetchOnWindowFocus: false,
   })
@@ -368,12 +368,12 @@ export function FollowupCreateDialog({
           request.current = { signature, id: randomId() }
         return ClassesService.createIndividualClassFollowups({
           code,
-          requestBody: { ...body, request_id: request.current.id },
+          individualFollowupCreate: { ...body, request_id: request.current.id },
         })
       }
       return ClassesService.createClassFollowup({
         code,
-        requestBody: {
+        followupCreate: {
           source_exercise_id: sourceId,
           title: title.trim(),
           student_ids: studentIds,

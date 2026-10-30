@@ -25,7 +25,7 @@ export function AddWordsToBook({
   const importPreview = useMutation({
     mutationFn: (file: File) =>
       VocabularyService.importVocabPreview({
-        formData: { file: file as unknown as string },
+        bodyVocabularyImportVocabPreview: { file: file },
       }),
     onSuccess: (data) => {
       setPreview({
@@ -61,8 +61,8 @@ export function AddWordsToBook({
   const addWords = useMutation({
     mutationFn: () =>
       VocabularyService.addBookWords({
-        bookId,
-        requestBody: preview?.words ?? [],
+        book_id: bookId,
+        body: preview?.words ?? [],
       }),
     onSuccess: (data) => {
       const submitted = preview?.words.length ?? 0

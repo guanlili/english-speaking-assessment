@@ -25,7 +25,7 @@ export default function SentenceFrames({
     mutationFn: (frameId: string) =>
       ClassesService.addFrameFavorite({
         code: code.toUpperCase(),
-        requestBody: { frame_id: frameId },
+        frameFavoriteRequest: { frame_id: frameId },
       }),
     onSuccess: () =>
       void queryClient.invalidateQueries({ queryKey: todayQueryKey }),
@@ -34,7 +34,7 @@ export default function SentenceFrames({
     mutationFn: (frameId: string) =>
       ClassesService.removeFrameFavorite({
         code: code.toUpperCase(),
-        frameId,
+        frame_id: frameId,
       }),
     onSuccess: () =>
       void queryClient.invalidateQueries({ queryKey: todayQueryKey }),

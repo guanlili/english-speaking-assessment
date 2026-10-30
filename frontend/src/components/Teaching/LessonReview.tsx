@@ -57,7 +57,7 @@ export function LessonReview({
   const selected = candidates.find((item) => item.id === id) ?? candidates[0]
   const query = useQuery({
     queryKey: ["lesson-review", selected?.id],
-    queryFn: () => AttemptsService.readAttempt({ attemptId: selected!.id }),
+    queryFn: () => AttemptsService.readAttempt({ attempt_id: selected!.id }),
     enabled: open && Boolean(selected),
   })
   return (

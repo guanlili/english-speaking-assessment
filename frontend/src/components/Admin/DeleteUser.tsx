@@ -40,8 +40,8 @@ const DeleteUser = ({ id, label, onSuccess }: DeleteUserProps) => {
   const mutation = useMutation({
     mutationFn: (targetId: string) =>
       UsersService.deleteUser({
-        userId: targetId,
-        requestBody: { password },
+        user_id: targetId,
+        userDeleteRequest: { password },
       }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "账号已删除", en: "User deleted successfully" }))

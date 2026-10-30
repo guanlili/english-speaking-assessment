@@ -118,7 +118,7 @@ function TeacherBoardPage() {
     mutationFn: () =>
       ClassesService.setAssignment({
         code: code.toUpperCase(),
-        requestBody: { slot: "homework", items: [] },
+        assignmentRequest: { slot: "homework", items: [] },
       }),
     onSuccess: async () => {
       toast.success(t({ zh: "已撤回课后作业", en: "Homework withdrawn" }))

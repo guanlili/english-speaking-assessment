@@ -185,7 +185,7 @@ export function QuestionBankImportDialog({
   const previewMutation = useMutation({
     mutationFn: (args: { target: File; epoch: number }) =>
       QuestionBankService.questionBankImportPreview({
-        formData: { file: args.target as unknown as string },
+        bodyQuestionBankQuestionBankImportPreview: { file: args.target },
       }).then((data) => ({ data, epoch: args.epoch })),
     onSuccess: ({ data, epoch }) => {
       if (epoch !== epochRef.current) {
@@ -207,8 +207,8 @@ export function QuestionBankImportDialog({
       fingerprint: string
     }) =>
       QuestionBankService.questionBankImportConfirm({
-        formData: {
-          file: args.target as unknown as string,
+        bodyQuestionBankQuestionBankImportConfirm: {
+          file: args.target,
           include_lines: args.includeLines,
           preview_fingerprint: args.fingerprint,
         },
@@ -231,9 +231,13 @@ export function QuestionBankImportDialog({
 
   const fixFileMutation = useMutation({
     mutationFn: (target: File) =>
-      QuestionBankService.questionBankImportErrorFile({
-        formData: { file: target as unknown as string },
-      }),
+      QuestionBankService.questionBankImportErrorFile(
+        {
+          bodyQuestionBankQuestionBankImportErrorFile: { file: target },
+        },
+        // xlsx/csv 二进制响应（0.99 迁移：fetch 客户端按调用点声明 parseAs）
+        { parseAs: "blob" },
+      ),
     onSuccess: (blob, target) => {
       downloadBlob(
         blob,

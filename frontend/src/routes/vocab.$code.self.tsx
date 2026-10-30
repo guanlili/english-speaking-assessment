@@ -93,7 +93,7 @@ function VocabSelfPracticePage() {
     queryFn: () =>
       VocabularyService.readStudentSession({
         code: code.toUpperCase(),
-        sessionId: sessionParam as string,
+        session_id: sessionParam as string,
       }),
     enabled: student !== null && sessionParam !== undefined,
   })
@@ -178,8 +178,8 @@ function VocabSelfPracticePage() {
         }
       }
       return VocabularyService.submitVocabAnswer({
-        sessionId: sessionParam as string,
-        requestBody: {
+        session_id: sessionParam as string,
+        vocabularyAnswerRequest: {
           item_index: payload.itemIndex,
           prompt_type: payload.promptType,
           answer: payload.answer,

@@ -22,7 +22,7 @@ export function useClassroomActivity(
             return
           return ClassesService.reportClassroomActivity({
             code,
-            requestBody: { activity, session_id: sessionId },
+            classroomActivityIn: { activity, session_id: sessionId },
           }).catch(() => {})
         })
     }

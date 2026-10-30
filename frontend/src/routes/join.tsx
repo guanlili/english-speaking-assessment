@@ -61,7 +61,7 @@ function MyClassesPage() {
   // 入班幂等：新设备/本地身份被清后也能一键直达，不在 /j/$code 二次确认
   const enterMutation = useMutation({
     mutationFn: (classCode: string) =>
-      ClassesService.joinClass({ code: classCode, requestBody: {} }),
+      ClassesService.joinClass({ code: classCode, studentJoin: {} }),
     onSuccess: (student, classCode) => {
       saveStudent(classCode, student)
       void navigate({ to: "/home/$code", params: { code: classCode } })

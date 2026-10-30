@@ -56,7 +56,7 @@ export function PassageSentences({
 
   const autoSplit = useMutation({
     mutationFn: () =>
-      AdminService.autoSplitSentences({ passageId: passage.id ?? "" }),
+      AdminService.autoSplitSentences({ passage_id: passage.id ?? "" }),
     onSuccess: (data) => {
       showSuccessToast(
         t({
@@ -180,8 +180,8 @@ export function PassageSentences({
                     text={s.text ?? ""}
                     onSet={async (audio_url) => {
                       await AdminService.updateSentence({
-                        sentenceId: s.id ?? "",
-                        requestBody: {
+                        sentence_id: s.id ?? "",
+                        sentenceUpdate: {
                           order_index: s.order_index ?? 0,
                           text: s.text ?? "",
                           translation: s.translation ?? undefined,
@@ -244,7 +244,7 @@ export function PassageSentences({
         }}
         onConfirm={async () => {
           if (toDelete?.id) {
-            await AdminService.deleteSentence({ sentenceId: toDelete.id })
+            await AdminService.deleteSentence({ sentence_id: toDelete.id })
             setToDelete(null)
             invalidate()
           }
@@ -301,8 +301,8 @@ function SentenceFormDialog({
     mutationFn: () => {
       if (editing) {
         return AdminService.updateSentence({
-          sentenceId: editing.id ?? "",
-          requestBody: {
+          sentence_id: editing.id ?? "",
+          sentenceUpdate: {
             order_index: editing.order_index ?? 0,
             text: text.trim(),
             translation: translation.trim() || null,
@@ -315,7 +315,7 @@ function SentenceFormDialog({
         })
       }
       return AdminService.createSentenceStandalone({
-        requestBody: {
+        sentenceCreate: {
           order_index: 0,
           text: text.trim(),
           suggested_seconds: seconds,

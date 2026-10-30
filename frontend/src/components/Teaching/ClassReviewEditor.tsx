@@ -70,8 +70,8 @@ export function ClassReviewEditor({
       if (action === "save")
         return ClassesService.saveClassReview({
           code,
-          exerciseId,
-          requestBody: {
+          exercise_id: exerciseId,
+          classReviewWrite: {
             expected_revision: draft.revision,
             ...(attemptId
               ? { attempt_id: attemptId, note: draft.text }
@@ -80,8 +80,16 @@ export function ClassReviewEditor({
         })
       const requestBody = { expected_revision: draft.revision }
       return action === "publish"
-        ? ClassesService.publishClassReview({ code, exerciseId, requestBody })
-        : ClassesService.withdrawClassReview({ code, exerciseId, requestBody })
+        ? ClassesService.publishClassReview({
+            code,
+            exercise_id: exerciseId,
+            classReviewRevision: requestBody,
+          })
+        : ClassesService.withdrawClassReview({
+            code,
+            exercise_id: exerciseId,
+            classReviewRevision: requestBody,
+          })
     },
     onSuccess: (result) => {
       if (identity.current !== localStorage.getItem("access_token")) return

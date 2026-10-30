@@ -183,7 +183,7 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
 
   const createMutation = useMutation({
     mutationFn: (form: PassageForm) =>
-      AdminService.createPassage({ requestBody: toRequestBody(form) }),
+      AdminService.createPassage({ passageCreate: toRequestBody(form) }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "篇目已创建", en: "Passage created" }))
       invalidate()
@@ -194,8 +194,8 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
   const updateMutation = useMutation({
     mutationFn: ({ id, form }: { id: string; form: PassageForm }) =>
       AdminService.updatePassage({
-        passageId: id,
-        requestBody: toRequestBody(form),
+        passage_id: id,
+        passageUpdate: toRequestBody(form),
       }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "篇目已更新", en: "Passage updated" }))
@@ -206,7 +206,7 @@ export function PassagesAdmin({ embedded = false }: { embedded?: boolean }) {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => AdminService.deletePassage({ passageId: id }),
+    mutationFn: (id: string) => AdminService.deletePassage({ passage_id: id }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "已删除", en: "Deleted" }))
       setToDelete(null)
@@ -791,7 +791,7 @@ function PassageCard({
   const [unsplitConfirm, setUnsplitConfirm] = useState(false)
   const splitPassage = useMutation({
     mutationFn: () =>
-      AdminService.splitPassageIntoReadings({ passageId: passage.id }),
+      AdminService.splitPassageIntoReadings({ passage_id: passage.id }),
     onSuccess: (data) => {
       toast.success(
         t({
@@ -816,7 +816,7 @@ function PassageCard({
   })
   const unsplitPassage = useMutation({
     mutationFn: () =>
-      AdminService.unsplitPassageReadings({ passageId: passage.id }),
+      AdminService.unsplitPassageReadings({ passage_id: passage.id }),
     onSuccess: () => {
       toast.success(
         t({
@@ -895,7 +895,7 @@ function PassageCard({
               zh: `复制篇目 ${passage.title}`,
               en: `Copy passage ${passage.title}`,
             })}
-            copy={() => AdminService.copyPassage({ passageId: passage.id })}
+            copy={() => AdminService.copyPassage({ passage_id: passage.id })}
             onCopied={onEdit}
           />
           <Button
@@ -969,8 +969,8 @@ function PassageCard({
               stopPropagation
               onSet={async (audio_url) => {
                 await AdminService.updatePassage({
-                  passageId: passage.id,
-                  requestBody: {
+                  passage_id: passage.id,
+                  passageUpdate: {
                     title: passage.title ?? "",
                     topic: passage.topic ?? "",
                     cefr_band: passage.cefr_band ?? "B1",

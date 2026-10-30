@@ -13,7 +13,11 @@ import { CopyContentButton } from "@/components/Teaching/CopyContentButton"
 import { FollowupManager } from "@/components/Teaching/FollowupManager"
 import { LessonReview } from "@/components/Teaching/LessonReview"
 import { TeacherFeedbackEditor } from "@/components/Teaching/TeacherFeedbackEditor"
+import { setupApiClient } from "@/lib/api-client"
 import { I18nProvider } from "@/lib/i18n"
+
+setupApiClient()
+
 import "./teaching-tools.css"
 
 const student: BoardStudent = {
@@ -70,7 +74,10 @@ createRoot(document.getElementById("root")!).render(
         <CopyContentButton
           label="复制为我的版本"
           copy={() =>
-            AdminService.copySchoolContent({ kind: "question", itemId: "item" })
+            AdminService.copySchoolContent({
+              kind: "question",
+              item_id: "item",
+            })
           }
           onCopied={() => {}}
           source={{ kind: "question", id: "source-item" }}

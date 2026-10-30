@@ -3,7 +3,11 @@ import { useState } from "react"
 import { createRoot } from "react-dom/client"
 import AttemptAudio from "@/components/Practice/AttemptAudio"
 import { useRecorder } from "@/hooks/useRecorder"
+import { setupApiClient } from "@/lib/api-client"
 import { I18nProvider } from "@/lib/i18n"
+
+setupApiClient()
+
 import "@/index.css"
 
 const queryClient = new QueryClient()

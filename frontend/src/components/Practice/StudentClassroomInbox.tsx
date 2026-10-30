@@ -42,7 +42,7 @@ export function StudentClassroomInbox({ code }: { code: string }) {
         request.current = { signature, id: randomId() }
       return ClassesService.createHelpRequest({
         code,
-        requestBody: {
+        helpRequestWrite: {
           request_id: request.current.id,
           category,
           text: text.trim(),
@@ -70,7 +70,7 @@ export function StudentClassroomInbox({ code }: { code: string }) {
     }) => {
       if (identity.current !== localStorage.getItem("access_token"))
         throw new Error("Session changed")
-      return ClassesService.actOnClassMessage({ code, messageId: id, action })
+      return ClassesService.actOnClassMessage({ code, message_id: id, action })
     },
     onSuccess: invalidate,
   })

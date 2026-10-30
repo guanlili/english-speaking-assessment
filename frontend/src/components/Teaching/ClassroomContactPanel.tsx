@@ -93,7 +93,7 @@ export function ClassroomContactPanel({
     }) => {
       if (identity.current !== localStorage.getItem("access_token"))
         throw new Error("Session changed")
-      return ClassesService.actOnClassMessage({ code, messageId: id, action })
+      return ClassesService.actOnClassMessage({ code, message_id: id, action })
     },
     onSuccess: () => {
       setHelpOffset(0)
@@ -113,7 +113,7 @@ export function ClassroomContactPanel({
         request.current = { signature, id: randomId() }
       return ClassesService.createClassReminders({
         code,
-        requestBody: {
+        reminderWrite: {
           request_id: request.current.id,
           student_ids: studentIds,
           text: text.trim(),
@@ -136,8 +136,8 @@ export function ClassroomContactPanel({
       repeatRequests.current[messageId] ??= randomId()
       return ClassesService.repeatClassReminder({
         code,
-        messageId,
-        requestBody: { request_id: repeatRequests.current[messageId] },
+        message_id: messageId,
+        reminderRepeatWrite: { request_id: repeatRequests.current[messageId] },
       })
     },
     onSuccess: (_, messageId) => {

@@ -29,7 +29,12 @@ export function FollowupOutcomesDialog({
   const query = useQuery({
     queryKey: ["teacher", "followup-outcomes", code, taskId, offset],
     queryFn: () =>
-      ClassesService.readFollowupOutcomes({ code, taskId, offset, limit: 10 }),
+      ClassesService.readFollowupOutcomes({
+        code,
+        task_id: taskId,
+        offset,
+        limit: 10,
+      }),
     refetchInterval: pollWhileVisible(10000),
   })
   const label = (row: FollowupEvidence | null) =>

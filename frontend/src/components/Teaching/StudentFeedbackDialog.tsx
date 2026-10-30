@@ -39,7 +39,7 @@ export function StudentFeedbackDialog({
     queryKey: ["attempt-detail", "batch", ...attemptIds],
     queryFn: async ({ signal }) => {
       const attempts = await AttemptsService.readAttemptsBatch({
-        requestBody: { attempt_ids: attemptIds },
+        attemptBatchRead: { attempt_ids: attemptIds },
       })
       // A cancelled batch must not repopulate caches after logout.
       if (!signal.aborted) {

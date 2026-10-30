@@ -129,7 +129,7 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
       if (sid !== undefined) {
         await ClassesService.startExam({
           code: code.toUpperCase(),
-          requestBody: { session_id: sid },
+          examStartRequest: { session_id: sid },
         })
       }
     },
@@ -402,7 +402,7 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
     mutationFn: (itemId: string) =>
       ClassesService.recordInstructionAck({
         code: code.toUpperCase(),
-        requestBody: {
+        ackRequest: {
           session_id: plan?.session_id ?? "",
           item_id: itemId,
         },
@@ -503,7 +503,7 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
         hiddenAtRef.current = Date.now()
         void ClassesService.reportExamViolation({
           code: code.toUpperCase(),
-          requestBody: { session_id: sessionId },
+          examViolationRequest: { session_id: sessionId },
         }).catch(() => {
           /* 上报失败不打断考试 */
         })
@@ -529,7 +529,10 @@ export function PracticeSessionPage({ mode }: { mode: "practice" | "exam" }) {
       if (awaySeconds <= 0) return
       void ClassesService.reportExamViolation({
         code: code.toUpperCase(),
-        requestBody: { session_id: sessionId, away_seconds: awaySeconds },
+        examViolationRequest: {
+          session_id: sessionId,
+          away_seconds: awaySeconds,
+        },
       }).catch(() => {
         /* 时长补报失败仅损失该次时长，次数已记 */
       })

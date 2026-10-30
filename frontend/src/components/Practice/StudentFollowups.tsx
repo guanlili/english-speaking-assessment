@@ -45,7 +45,7 @@ function StudentFollowupsList({ code }: { code: string }) {
     mutationFn: (taskId: string) => {
       if (localStorage.getItem("access_token") !== identity.current)
         throw new Error("Session changed")
-      return ClassesService.startClassFollowup({ code, taskId })
+      return ClassesService.startClassFollowup({ code, task_id: taskId })
     },
     onSuccess: async (result) => {
       if (localStorage.getItem("access_token") !== identity.current) return

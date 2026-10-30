@@ -90,8 +90,8 @@ function VocabPracticePage() {
     queryFn: () =>
       VocabularyService.readVocabToday({
         code: code.toUpperCase(),
-        assignmentId: assignmentParam,
-        roundNo: roundParam ? Number(roundParam) : undefined,
+        assignment_id: assignmentParam,
+        round_no: roundParam ? Number(roundParam) : undefined,
       }),
     enabled: student !== null,
   })
@@ -195,7 +195,7 @@ function VocabPracticePage() {
     mutationFn: (payload: { assignmentId: string; round?: string }) =>
       VocabularyService.startVocabSession({
         code: code.toUpperCase(),
-        requestBody: {
+        vocabularySessionCreate: {
           assignment_id: payload.assignmentId,
           ...(payload.round ? { round: payload.round } : {}),
         },
@@ -278,7 +278,7 @@ function VocabPracticePage() {
     const onVisibility = () => {
       if (document.visibilityState === "hidden") {
         void VocabularyService.reportQuizTabSwitch({
-          sessionId: sessionId as string,
+          session_id: sessionId as string,
         }).catch(() => undefined)
       }
     }
@@ -318,8 +318,8 @@ function VocabPracticePage() {
         }
       }
       return VocabularyService.submitVocabAnswer({
-        sessionId: sessionId as string,
-        requestBody: {
+        session_id: sessionId as string,
+        vocabularyAnswerRequest: {
           item_index: payload.itemIndex,
           prompt_type: payload.promptType,
           answer: payload.answer,

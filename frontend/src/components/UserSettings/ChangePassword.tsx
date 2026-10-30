@@ -80,7 +80,7 @@ const ChangePassword = () => {
 
   const mutation = useMutation({
     mutationFn: (data: UpdatePassword) =>
-      UsersService.updatePasswordMe({ requestBody: data }),
+      UsersService.updatePasswordMe({ updatePassword: data }),
     onSuccess: () => {
       showSuccessToast(
         t({ zh: "密码已更新", en: "Password updated successfully" }),

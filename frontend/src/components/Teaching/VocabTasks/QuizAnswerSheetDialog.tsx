@@ -41,9 +41,9 @@ export function QuizAnswerSheetDialog({
     queryFn: () =>
       VocabularyService.readQuizAnswerSheet({
         code: code.toUpperCase(),
-        assignmentId,
-        studentId: student?.student_id as string,
-        roundNo: effectiveRound ?? undefined,
+        assignment_id: assignmentId,
+        student_id: student?.student_id as string,
+        round_no: effectiveRound ?? undefined,
       }),
     enabled: student !== null,
   })

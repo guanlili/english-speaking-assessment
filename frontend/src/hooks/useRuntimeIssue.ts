@@ -21,7 +21,7 @@ export function useRuntimeIssue(
           return
         return ClassesService.reportRuntimeIssue({
           code,
-          requestBody: { session_id: sessionId, issue },
+          runtimeIssueIn: { session_id: sessionId, issue },
         }).catch(() => {})
       })
     }

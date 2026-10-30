@@ -174,12 +174,15 @@ jobs:
       - name: 校验前端客户端无漂移
         working-directory: frontend
         run: |
-          npx openapi-ts
+          # 必须走 generate-client 脚本而非裸 npx openapi-ts：脚本含 0.99 迁移的
+          # 后处理（ThrowOnError 默认值/响应类型 200 收窄/barrel 追加导出），
+          # 提交物与再生成物才同构（2026-10-30 实测裸跑必报漂移）
+          npm run generate-client -- --local
           if [ -n "$(git status --porcelain src/client/)" ]; then
             git status --porcelain src/client/
             git --no-pager diff src/client/ | head -100
             echo "❌ 前端 src/client/ 与后端 OpenAPI 不一致（后端接口改动后未重新生成客户端）。"
-            echo "   修复：docker compose up -d 后执行 cd frontend && npm run generate-client，提交 src/client/ 的变更。"
+            echo "   修复：cd frontend && npm run generate-client -- --local，提交 src/client/ 的变更。"
             exit 1
           fi
 

@@ -62,7 +62,7 @@ export function AiDraftPanel({
   const generate = useMutation({
     mutationFn: () =>
       VocabularyAiService.generateWordDrafts({
-        requestBody: {
+        vocabularyAiWordDraftsRequest: {
           theme: theme.trim(),
           level,
           count,
@@ -105,7 +105,7 @@ export function AiDraftPanel({
   const importDrafts = useMutation({
     mutationFn: (rows: EditableDraft[]) =>
       VocabularyAiService.importWordDrafts({
-        requestBody: {
+        vocabularyAiWordDraftImportRequest: {
           book_id: bookId as string,
           drafts: rows.map((row) => ({
             headword: row.headword.trim(),

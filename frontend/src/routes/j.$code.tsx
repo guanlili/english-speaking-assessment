@@ -51,7 +51,7 @@ function JoinPage() {
     mutationFn: () =>
       ClassesService.joinClass({
         code: code.toUpperCase(),
-        requestBody: {},
+        studentJoin: {},
       }),
     onSuccess: (student) => {
       saveStudent(code, student)

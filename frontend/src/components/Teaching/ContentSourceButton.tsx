@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { useI18n } from "@/lib/i18n"
 export type ContentSourceRef = {
-  kind: AdminReadSharedContentSourceData["kind"]
+  kind: AdminReadSharedContentSourceData["path"]["kind"]
   id: string
 }
 export function ContentSourceButton({ source }: { source: ContentSourceRef }) {
@@ -22,7 +22,7 @@ export function ContentSourceButton({ source }: { source: ContentSourceRef }) {
     queryFn: () =>
       AdminService.readSharedContentSource({
         kind: source.kind,
-        itemId: source.id,
+        item_id: source.id,
       }),
     enabled: open,
     retry: false,

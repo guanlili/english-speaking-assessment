@@ -26,7 +26,7 @@ function StudentDetailPage() {
     queryFn: () =>
       ClassesService.readStudentTrail({
         code: code.toUpperCase(),
-        studentId,
+        student_id: studentId,
       }),
   })
 

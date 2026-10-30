@@ -124,7 +124,7 @@ function VocabBooksPage() {
     queryFn: () =>
       VocabularyService.readStudentBook({
         code: code.toUpperCase(),
-        bookId: selectedBookId as string,
+        book_id: selectedBookId as string,
         search: debouncedWordSearch.trim() || undefined,
       }),
     enabled: student !== null && selectedBookId !== null,
@@ -144,7 +144,7 @@ function VocabBooksPage() {
     mutationFn: () =>
       VocabularyService.startStudentSession({
         code: code.toUpperCase(),
-        requestBody: {
+        vocabularyStudentSessionCreate: {
           kind: "self",
           book_id: selectedBookId,
           word_count: wordCount,

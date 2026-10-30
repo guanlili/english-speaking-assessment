@@ -90,7 +90,7 @@ export function SentenceLibrary({
     queryFn: () =>
       AdminService.listSentencesPage({
         q: search || undefined,
-        standaloneOnly,
+        standalone_only: standaloneOnly,
         skip: pageIndex * PAGE_SIZE,
         limit: PAGE_SIZE,
       }),
@@ -103,7 +103,8 @@ export function SentenceLibrary({
   const invalidate = () => invalidateContentQueries(queryClient)
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => AdminService.deleteSentence({ sentenceId: id }),
+    mutationFn: (id: string) =>
+      AdminService.deleteSentence({ sentence_id: id }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "复述句已删除", en: "Repeat sentence deleted" }))
       setToDelete(null)
@@ -136,8 +137,8 @@ export function SentenceLibrary({
   const updateMutation = useMutation({
     mutationFn: () =>
       AdminService.updateSentence({
-        sentenceId: editing?.id ?? "",
-        requestBody: {
+        sentence_id: editing?.id ?? "",
+        sentenceUpdate: {
           order_index: editing?.order_index ?? 0,
           text: editForm.text.trim(),
           translation: editForm.translation.trim() || null,
@@ -299,7 +300,7 @@ export function SentenceLibrary({
                     }
                     label={t({ zh: "复制复述句", en: "Copy repeat sentence" })}
                     copy={() =>
-                      AdminService.copySentence({ sentenceId: s.id! })
+                      AdminService.copySentence({ sentence_id: s.id! })
                     }
                     onCopied={openEdit}
                   />
@@ -328,8 +329,8 @@ export function SentenceLibrary({
                     text={s.text ?? ""}
                     onSet={async (audio_url) => {
                       await AdminService.updateSentence({
-                        sentenceId: s.id ?? "",
-                        requestBody: {
+                        sentence_id: s.id ?? "",
+                        sentenceUpdate: {
                           order_index: s.order_index ?? 0,
                           text: s.text ?? "",
                           translation: s.translation ?? undefined,
@@ -546,7 +547,8 @@ function AutoSplitCard({
   const selected = ready.find((p) => p.id === passageId)
 
   const split = useMutation({
-    mutationFn: () => AdminService.autoSplitSentences({ passageId }),
+    mutationFn: () =>
+      AdminService.autoSplitSentences({ passage_id: passageId }),
     onSuccess: (data) => {
       showSuccessToast(
         t({
@@ -635,7 +637,7 @@ function NewSentenceCard({
   const create = useMutation({
     mutationFn: () =>
       AdminService.createSentenceStandalone({
-        requestBody: {
+        sentenceCreate: {
           order_index: 0,
           text: text.trim(),
           suggested_seconds: seconds,

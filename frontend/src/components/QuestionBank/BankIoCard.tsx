@@ -28,7 +28,11 @@ export function QuestionBankIoCard({ classroom }: { classroom?: string }) {
   const downloadTemplate = async (format: "xlsx" | "csv") => {
     setDownloading(true)
     try {
-      const blob = await QuestionBankService.downloadImportTemplate({ format })
+      const blob = await QuestionBankService.downloadImportTemplate(
+        { format },
+        // xlsx/csv 二进制响应（0.99 迁移：fetch 客户端按调用点声明 parseAs）
+        { parseAs: "blob" },
+      )
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement("a")
       document.body.append(anchor)

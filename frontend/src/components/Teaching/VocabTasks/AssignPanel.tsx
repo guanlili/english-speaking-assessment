@@ -52,7 +52,7 @@ export function AssignPanel({
     queryKey: ["vocab-teacher", "book", bookId, levelFilter],
     queryFn: () =>
       VocabularyService.readBook({
-        bookId: bookId as string,
+        book_id: bookId as string,
         level: levelFilter === "all" ? undefined : levelFilter,
       }),
     enabled: bookId !== null,
@@ -97,7 +97,7 @@ export function AssignPanel({
     mutationFn: () =>
       VocabularyService.publishVocabAssignment({
         code: code.toUpperCase(),
-        requestBody: {
+        vocabularyAssignmentCreate: {
           title: title.trim() || null,
           word_ids: Array.from(selected),
           prompt_types: [

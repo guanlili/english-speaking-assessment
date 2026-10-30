@@ -9,7 +9,8 @@ export function useClassReview(
 ) {
   return useQuery({
     queryKey: classReviewKey(code, exerciseId),
-    queryFn: () => ClassesService.readClassReview({ code, exerciseId }),
+    queryFn: () =>
+      ClassesService.readClassReview({ code, exercise_id: exerciseId }),
     enabled: enabled && Boolean(exerciseId),
     refetchOnWindowFocus: false,
     retry: 1,

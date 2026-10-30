@@ -74,7 +74,8 @@ function VocabBooksAdmin() {
   const [openBookId, setOpenBookId] = useState<string | null>(null)
   const detailQuery = useQuery({
     queryKey: ["admin", "vocab-book", openBookId],
-    queryFn: () => VocabularyService.readBook({ bookId: openBookId as string }),
+    queryFn: () =>
+      VocabularyService.readBook({ book_id: openBookId as string }),
     enabled: openBookId !== null,
   })
 
@@ -87,7 +88,7 @@ function VocabBooksAdmin() {
   const importPreview = useMutation({
     mutationFn: (file: File) =>
       VocabularyService.importVocabPreview({
-        formData: { file: file as unknown as string },
+        bodyVocabularyImportVocabPreview: { file: file },
       }),
     onSuccess: (data) => {
       setPreview({
@@ -123,7 +124,7 @@ function VocabBooksAdmin() {
   const createBook = useMutation({
     mutationFn: (payload: { title: string; words: PreviewState["rows"] }) =>
       VocabularyService.createBook({
-        requestBody: {
+        vocabularyBookCreate: {
           title: payload.title,
           scope: "public",
           description: null,
@@ -157,8 +158,8 @@ function VocabBooksAdmin() {
   const archiveBook = useMutation({
     mutationFn: (bookId: string) =>
       VocabularyService.updateBook({
-        bookId,
-        requestBody: { status: "archived" },
+        book_id: bookId,
+        vocabularyBookUpdate: { status: "archived" },
       }),
     onSuccess: () => {
       toast.success(t({ zh: "词库已归档。", en: "Book archived." }))
@@ -169,8 +170,8 @@ function VocabBooksAdmin() {
   const addWords = useMutation({
     mutationFn: (payload: { bookId: string; words: PreviewState["rows"] }) =>
       VocabularyService.addBookWords({
-        bookId: payload.bookId,
-        requestBody: payload.words,
+        book_id: payload.bookId,
+        body: payload.words,
       }),
     onSuccess: (data) => {
       toast.success(
@@ -188,8 +189,8 @@ function VocabBooksAdmin() {
   const removeWord = useMutation({
     mutationFn: (payload: { bookId: string; wordId: string }) =>
       VocabularyService.removeBookWord({
-        bookId: payload.bookId,
-        wordId: payload.wordId,
+        book_id: payload.bookId,
+        word_id: payload.wordId,
       }),
     onSuccess: () => {
       toast.success(t({ zh: "词条已移除。", en: "Word removed." }))

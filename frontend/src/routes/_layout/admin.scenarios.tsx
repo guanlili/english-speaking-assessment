@@ -136,7 +136,9 @@ export function ScenariosAdmin({ embedded = false }: { embedded?: boolean }) {
 
   const createScenario = useMutation({
     mutationFn: () =>
-      AdminService.createScenario({ requestBody: { topic: newTopic.trim() } }),
+      AdminService.createScenario({
+        scenarioCreate: { topic: newTopic.trim() },
+      }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "情景已创建", en: "Topic created" }))
       setNewTopic("")
@@ -283,8 +285,8 @@ function ScenarioCard({
   const addQuestion = useMutation({
     mutationFn: (body: { text: string; seconds: number }) =>
       AdminService.createQuestion({
-        scenarioId: scenario.id,
-        requestBody: {
+        scenario_id: scenario.id,
+        questionCreate: {
           scenario_id: scenario.id,
           text: body.text,
           suggested_seconds: body.seconds,
@@ -308,8 +310,8 @@ function ScenarioCard({
   const generateMutation = useMutation({
     mutationFn: () =>
       AdminService.generateQuestions({
-        scenarioId: scenario.id,
-        requestBody: {
+        scenario_id: scenario.id,
+        generateRequest: {
           count: gen.count,
           ...(gen.hint ? { hint: gen.hint } : {}),
         },
@@ -344,7 +346,8 @@ function ScenarioCard({
   }
 
   const deleteQuestion = useMutation({
-    mutationFn: (id: string) => AdminService.deleteQuestion({ questionId: id }),
+    mutationFn: (id: string) =>
+      AdminService.deleteQuestion({ question_id: id }),
     onSuccess: () => onMutated(),
     onError: (err: unknown) => toast.error(extractErrorMessage(err)),
   })
@@ -367,8 +370,8 @@ function ScenarioCard({
   const updateQuestion = useMutation({
     mutationFn: () =>
       AdminService.updateQuestion({
-        questionId: editingQ!.id,
-        requestBody: {
+        question_id: editingQ!.id,
+        questionUpdate: {
           text: editForm.text.trim(),
           translation: editForm.translation.trim() || null,
           suggested_seconds: editForm.seconds,
@@ -390,8 +393,8 @@ function ScenarioCard({
   const updateScenario = useMutation({
     mutationFn: (patch: { topic?: string; is_active?: boolean }) =>
       AdminService.updateScenario({
-        scenarioId: scenario.id,
-        requestBody: patch,
+        scenario_id: scenario.id,
+        scenarioUpdate: patch,
       }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "情景已更新", en: "Topic updated" }))
@@ -401,7 +404,7 @@ function ScenarioCard({
   })
 
   const deleteScenario = useMutation({
-    mutationFn: () => AdminService.deleteScenario({ scenarioId: scenario.id }),
+    mutationFn: () => AdminService.deleteScenario({ scenario_id: scenario.id }),
     onSuccess: () => {
       setConfirmDelete(false)
       onMutated()
@@ -460,7 +463,7 @@ function ScenarioCard({
               zh: `复制主题 ${scenario.topic}`,
               en: `Copy topic ${scenario.topic}`,
             })}
-            copy={() => AdminService.copyScenario({ scenarioId: scenario.id })}
+            copy={() => AdminService.copyScenario({ scenario_id: scenario.id })}
             onCopied={onCopied}
           />
           <div className="flex items-center gap-2 whitespace-nowrap text-sm">
@@ -542,7 +545,7 @@ function ScenarioCard({
                         en: `Copy question ${index + 1}`,
                       })}
                       copy={() =>
-                        AdminService.copyQuestion({ questionId: q.id })
+                        AdminService.copyQuestion({ question_id: q.id })
                       }
                       onCopied={openQEdit}
                     />
@@ -570,8 +573,8 @@ function ScenarioCard({
                         text={q.text ?? ""}
                         onSet={async (audio_url) => {
                           await AdminService.updateQuestion({
-                            questionId: q.id,
-                            requestBody: { audio_url },
+                            question_id: q.id,
+                            questionUpdate: { audio_url },
                           })
                           onMutated()
                         }}

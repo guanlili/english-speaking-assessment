@@ -107,8 +107,8 @@ function VocabLevelsAdmin() {
           sourceLabel.trim() || pendingFile.name.replace(/\.[^.]+$/, ""),
       }
       const data = await VocabLevelsService.vocabLevelImportPreview({
-        formData: {
-          file: pendingFile as unknown as string,
+        bodyVocabLevelsVocabLevelImportPreview: {
+          file: pendingFile,
           level: params.level,
           source_label: params.sourceLabel,
         },
@@ -139,8 +139,8 @@ function VocabLevelsAdmin() {
       // 用预览时固定的参数（评审 P2-5）
       if (!previewParams) throw new Error("no preview")
       return VocabLevelsService.vocabLevelImportConfirm({
-        formData: {
-          file: previewParams.file as unknown as string,
+        bodyVocabLevelsVocabLevelImportConfirm: {
+          file: previewParams.file,
           level: previewParams.level,
           source_label: previewParams.sourceLabel,
         },
@@ -191,7 +191,7 @@ function VocabLevelsAdmin() {
     queryKey: ["admin", "vocab-levels", "entries", reviewFilter, page],
     queryFn: () =>
       VocabLevelsService.listVocabLevelEntries({
-        needsReview: reviewFilter === "needs_review" ? true : undefined,
+        needs_review: reviewFilter === "needs_review" ? true : undefined,
         limit: PAGE_SIZE,
         offset: page * PAGE_SIZE,
       }),
@@ -205,8 +205,8 @@ function VocabLevelsAdmin() {
       markReviewed: boolean
     }) =>
       VocabLevelsService.updateVocabLevelEntry({
-        entryId: payload.id,
-        requestBody: {
+        entry_id: payload.id,
+        vocabularyLevelEntryUpdate: {
           meaning_zh: payload.meaning.trim() || null,
           part_of_speech: payload.pos.trim() || null,
           needs_review: payload.markReviewed ? false : undefined,
@@ -241,7 +241,7 @@ function VocabLevelsAdmin() {
     const all: NonNullable<typeof entriesQuery.data> = []
     for (let offset = 0; ; offset += 500) {
       const batch = await VocabLevelsService.listVocabLevelEntries({
-        needsReview: reviewFilter === "needs_review" ? true : undefined,
+        needs_review: reviewFilter === "needs_review" ? true : undefined,
         limit: 500,
         offset,
       })
