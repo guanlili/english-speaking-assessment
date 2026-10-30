@@ -25,6 +25,7 @@ from app.models import (
     QuestionBankImportPreview,
     QuestionBankImportResult,
 )
+from app.services import question_bank_export as export_service
 from app.services import question_bank_io as io_service
 
 router = APIRouter(prefix="/admin/question-bank", tags=["question-bank"])
@@ -72,7 +73,7 @@ def download_import_template(
     format: Literal["xlsx", "csv"] = Query(default="xlsx"),
 ) -> Response:
     """导入模板：xlsx（按题型分工作表 + 下拉选项 + 说明页）或 CSV（题型列）。"""
-    data, filename, media_type = io_service.build_template(format)
+    data, filename, media_type = export_service.build_template(format)
     return Response(
         content=data,
         media_type=media_type,
@@ -132,7 +133,7 @@ async def question_bank_import_error_file(
     filename, raw = await _read_upload(file)
     parsed = await run_in_threadpool(io_service.parse_upload, filename, raw)
     data, filename_out, media_type = await run_in_threadpool(
-        io_service.build_error_file, session, parsed, current_user
+        export_service.build_error_file, session, parsed, current_user
     )
     return Response(
         content=data,
@@ -160,7 +161,7 @@ def export_question_bank(
     format: Literal["xlsx", "csv"] = Query(default="xlsx"),
 ) -> Response:
     """批量导出：筛选条件镜像现有列表接口；导出格式可直接再次导入。"""
-    data, filename, media_type = io_service.export_bank(
+    data, filename, media_type = export_service.export_bank(
         session,
         types=types,
         topic=topic,
