@@ -147,7 +147,7 @@ function VocabSelfPracticePage() {
       const firstUnanswered = (plan.items ?? []).findIndex(
         (item) => !item.answered,
       )
-      setCurrent(firstUnanswered >= 0 ? firstUnanswered : 0)
+      setCurrent(Math.max(firstUnanswered, 0))
     }
   }, [plan])
 
