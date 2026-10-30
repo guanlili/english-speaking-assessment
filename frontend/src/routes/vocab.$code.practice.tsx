@@ -175,7 +175,7 @@ function VocabPracticePage() {
     const firstUnanswered = (todayQuery.data.items ?? []).findIndex(
       (item) => !item.answered,
     )
-    setCurrent(firstUnanswered >= 0 ? firstUnanswered : 0)
+    setCurrent(Math.max(firstUnanswered, 0))
   }, [todayQuery.data])
 
   // 会话号与任务强绑定：优先用 today 返回（key 已含任务 ID），

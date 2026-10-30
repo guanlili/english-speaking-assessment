@@ -390,6 +390,9 @@ jobs:
           EXPORT_STORAGE_DIR: ${{ secrets.EXPORT_STORAGE_DIR }}
           EXPORT_TTL_DAYS: ${{ secrets.EXPORT_TTL_DAYS }}
           COST_ALERT_EMAIL: ${{ secrets.COST_ALERT_EMAIL }}
+          # 前端 Sentry 错误上报（构建期注入）：链路 compose→Dockerfile→vite 已就绪，
+          # Secret 留空 = 不打包 Sentry（现状行为不变）
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           USERS_OPEN_REGISTRATION: ${{ secrets.USERS_OPEN_REGISTRATION || 'false' }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
