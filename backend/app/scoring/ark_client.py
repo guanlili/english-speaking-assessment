@@ -16,7 +16,12 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_shared_client = httpx.Client(timeout=60)
+_shared_client = httpx.Client(
+    # 连接建立失败快速暴露（不再吃满整个 read 预算）；池上限显式化，
+    # 默认 keepalive 已够用，这里主要是把取值落到代码而非隐式默认
+    timeout=httpx.Timeout(connect=10, read=60, write=30, pool=10),
+    limits=httpx.Limits(max_connections=32, max_keepalive_connections=8),
+)
 
 
 # Seed Lite 家族前缀：API 调用名带日期后缀（-260428 等），按前缀匹配才能
