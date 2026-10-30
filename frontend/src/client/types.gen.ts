@@ -2755,31 +2755,6 @@ export type AdminCreateQuestionsBatchData = {
 
 export type AdminCreateQuestionsBatchResponse = (BatchQuestionResult);
 
-export type AdminListUnitsResponse = (Array<UnitPublic>);
-
-export type AdminCreateUnitData = {
-    requestBody: UnitCreate;
-};
-
-export type AdminCreateUnitResponse = (UnitPublic);
-
-export type AdminUpdateUnitData = {
-    requestBody: UnitUpdate;
-    unitId: string;
-};
-
-export type AdminUpdateUnitResponse = (UnitPublic);
-
-export type AdminDeleteUnitData = {
-    unitId: string;
-};
-
-export type AdminDeleteUnitResponse = ({
-    [key: string]: (string);
-});
-
-export type AdminListTopicsResponse = (Array<(string)>);
-
 export type AdminListClassroomsResponse = (Array<ClassroomPublic>);
 
 export type AdminDeactivateClassroomData = {
@@ -2835,6 +2810,31 @@ export type AdminUploadStandardAudioData = {
 };
 
 export type AdminUploadStandardAudioResponse = (AudioUrlResult);
+
+export type AdminListUnitsResponse = (Array<UnitPublic>);
+
+export type AdminCreateUnitData = {
+    requestBody: UnitCreate;
+};
+
+export type AdminCreateUnitResponse = (UnitPublic);
+
+export type AdminUpdateUnitData = {
+    requestBody: UnitUpdate;
+    unitId: string;
+};
+
+export type AdminUpdateUnitResponse = (UnitPublic);
+
+export type AdminDeleteUnitData = {
+    unitId: string;
+};
+
+export type AdminDeleteUnitResponse = ({
+    [key: string]: (string);
+});
+
+export type AdminListTopicsResponse = (Array<(string)>);
 
 export type AdminListSentenceFramesData = {
     /**

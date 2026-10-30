@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { AdminListPassagesData, AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminListSentencesPageData, AdminListSentencesPageResponse, AdminListSentencesFlatData, AdminListSentencesFlatResponse, AdminCreateSentenceStandaloneData, AdminCreateSentenceStandaloneResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListInstructionsData, AdminListInstructionsResponse, AdminCreateInstructionData, AdminCreateInstructionResponse, AdminUpdateInstructionData, AdminUpdateInstructionResponse, AdminDeleteInstructionData, AdminDeleteInstructionResponse, AdminListScenariosData, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminUpdateScenarioData, AdminUpdateScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminListQuestionBankData, AdminListQuestionBankResponse, AdminCopyPassageData, AdminCopyPassageResponse, AdminCopySentenceData, AdminCopySentenceResponse, AdminCopyScenarioData, AdminCopyScenarioResponse, AdminCopyQuestionData, AdminCopyQuestionResponse, AdminCopyInstructionData, AdminCopyInstructionResponse, AdminCreateQuestionsBatchData, AdminCreateQuestionsBatchResponse, AdminListUnitsResponse, AdminCreateUnitData, AdminCreateUnitResponse, AdminUpdateUnitData, AdminUpdateUnitResponse, AdminDeleteUnitData, AdminDeleteUnitResponse, AdminListTopicsResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminUpdateClassroomData, AdminUpdateClassroomResponse, AdminGenerateQuestionsData, AdminGenerateQuestionsResponse, AdminAutoSplitSentencesData, AdminAutoSplitSentencesResponse, AdminSplitPassageIntoReadingsData, AdminSplitPassageIntoReadingsResponse, AdminUnsplitPassageReadingsData, AdminUnsplitPassageReadingsResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AdminListSentenceFramesData, AdminListSentenceFramesResponse, AdminCreateSentenceFrameData, AdminCreateSentenceFrameResponse, AdminUpdateSentenceFrameData, AdminUpdateSentenceFrameResponse, AdminDeleteSentenceFrameData, AdminDeleteSentenceFrameResponse, AdminCreateSentenceFramesBatchData, AdminCreateSentenceFramesBatchResponse, AdminCopySchoolContentData, AdminCopySchoolContentResponse, AdminReadSharedContentSourceData, AdminReadSharedContentSourceResponse, AdminReadComposerSelectionData, AdminReadComposerSelectionResponse, AdminReadDashboardOverviewData, AdminReadDashboardOverviewResponse, AdminReadDashboardUsageData, AdminReadDashboardUsageResponse, AdminReadDashboardContentResponse, AdminReadDashboardPerformanceData, AdminReadDashboardPerformanceResponse, AdminReadDashboardCostData, AdminReadDashboardCostResponse, AdminUpsertCostReconcileData, AdminUpsertCostReconcileResponse, AdminExportAttemptsCsvData, AdminExportAttemptsCsvResponse, AdminExportSessionsCsvData, AdminExportSessionsCsvResponse, AdminExportStudentsCsvResponse, AdminReadExamItemSettingsData, AdminReadExamItemSettingsResponse, AdminUpdateExamItemSettingsData, AdminUpdateExamItemSettingsResponse, AdminReadMetricsResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptsBatchData, AttemptsReadAttemptsBatchResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptComparisonData, AttemptsReadAttemptComparisonResponse, AttemptsWriteTeacherFeedbackData, AttemptsWriteTeacherFeedbackResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ChangelogReadChangelogResponse, ChangelogCreateChangelogEntryData, ChangelogCreateChangelogEntryResponse, ChangelogUpdateChangelogEntryData, ChangelogUpdateChangelogEntryResponse, ChangelogDeleteChangelogEntryData, ChangelogDeleteChangelogEntryResponse, ClassesListMyClassroomsResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesDeleteClassData, ClassesDeleteClassResponse, ClassesUpdateClassSizeData, ClassesUpdateClassSizeResponse, ClassesUpdateReportSettingsData, ClassesUpdateReportSettingsResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadClassroomRevisionData, ClassesReadClassroomRevisionResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadClassWeakSpotsData, ClassesReadClassWeakSpotsResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, ClassesReadStudentDiagnosticsData, ClassesReadStudentDiagnosticsResponse, ClassesReadLearningPathData, ClassesReadLearningPathResponse, ClassesReadMySessionsData, ClassesReadMySessionsResponse, ClassesReadStudentSessionsData, ClassesReadStudentSessionsResponse, ClassesReadClassTrendData, ClassesReadClassTrendResponse, ClassesReadExamStateData, ClassesReadExamStateResponse, ClassesStartExamData, ClassesStartExamResponse, ClassesReportExamViolationData, ClassesReportExamViolationResponse, ClassesRecordListenData, ClassesRecordListenResponse, ClassesRecordInstructionAckData, ClassesRecordInstructionAckResponse, ClassesAdvanceExamFlowData, ClassesAdvanceExamFlowResponse, ClassesListClassroomExercisesData, ClassesListClassroomExercisesResponse, ClassesReadExerciseResultsData, ClassesReadExerciseResultsResponse, ClassesSetAssignmentData, ClassesSetAssignmentResponse, ClassesStartExploreData, ClassesStartExploreResponse, ClassesListMyFrameFavoritesData, ClassesListMyFrameFavoritesResponse, ClassesAddFrameFavoriteData, ClassesAddFrameFavoriteResponse, ClassesRemoveFrameFavoriteData, ClassesRemoveFrameFavoriteResponse, ClassesListMyExpressionFavoritesData, ClassesListMyExpressionFavoritesResponse, ClassesAddExpressionFavoritesData, ClassesAddExpressionFavoritesResponse, ClassesRemoveExpressionFavoriteData, ClassesRemoveExpressionFavoriteResponse, ClassesReadComposerDraftData, ClassesReadComposerDraftResponse, ClassesSaveComposerDraftData, ClassesSaveComposerDraftResponse, ClassesReadExerciseComposerSeedData, ClassesReadExerciseComposerSeedResponse, ClassesReportRuntimeIssueData, ClassesReportRuntimeIssueResponse, ClassesReadClassroomDiagnosticsData, ClassesReadClassroomDiagnosticsResponse, ClassesReadFollowupItemsData, ClassesReadFollowupItemsResponse, ClassesCreateClassFollowupData, ClassesCreateClassFollowupResponse, ClassesListClassFollowupsData, ClassesListClassFollowupsResponse, ClassesCreateIndividualClassFollowupsData, ClassesCreateIndividualClassFollowupsResponse, ClassesStartClassFollowupData, ClassesStartClassFollowupResponse, ClassesCancelClassFollowupData, ClassesCancelClassFollowupResponse, ClassesReadFollowupOutcomesData, ClassesReadFollowupOutcomesResponse, ClassesReportClassroomActivityData, ClassesReportClassroomActivityResponse, ClassesReadClassroomPresenceData, ClassesReadClassroomPresenceResponse, ClassesReadDiagnosticTargetsData, ClassesReadDiagnosticTargetsResponse, ClassesReadLearningReportData, ClassesReadLearningReportResponse, ClassesReadClassReviewData, ClassesReadClassReviewResponse, ClassesSaveClassReviewData, ClassesSaveClassReviewResponse, ClassesPublishClassReviewData, ClassesPublishClassReviewResponse, ClassesWithdrawClassReviewData, ClassesWithdrawClassReviewResponse, ClassesReadPublishedClassSummariesData, ClassesReadPublishedClassSummariesResponse, ClassesCreateHelpRequestData, ClassesCreateHelpRequestResponse, ClassesReadMyClassMessagesData, ClassesReadMyClassMessagesResponse, ClassesReadTeacherClassMessagesData, ClassesReadTeacherClassMessagesResponse, ClassesCreateClassRemindersData, ClassesCreateClassRemindersResponse, ClassesActOnClassMessageData, ClassesActOnClassMessageResponse, ClassesReplyToClassHelpData, ClassesReplyToClassHelpResponse, ClassesRepeatClassReminderData, ClassesRepeatClassReminderResponse, ExportsListExportsResponse, ExportsCreateExportData, ExportsCreateExportResponse, ExportsReadExportData, ExportsReadExportResponse, ExportsDownloadExportData, ExportsDownloadExportResponse, ExportsRetryExportData, ExportsRetryExportResponse, LoginReadLoginOptionsResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginLoginDemoResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, QuestionBankDownloadImportTemplateData, QuestionBankDownloadImportTemplateResponse, QuestionBankQuestionBankImportPreviewData, QuestionBankQuestionBankImportPreviewResponse, QuestionBankQuestionBankImportConfirmData, QuestionBankQuestionBankImportConfirmResponse, QuestionBankQuestionBankImportErrorFileData, QuestionBankQuestionBankImportErrorFileResponse, QuestionBankExportQuestionBankData, QuestionBankExportQuestionBankResponse, StudentsUpdateStudentData, StudentsUpdateStudentResponse, StudentsRemoveStudentData, StudentsRemoveStudentResponse, StudentsImportStudentsData, StudentsImportStudentsResponse, StudentsListStudentsData, StudentsListStudentsResponse, StudentsListMyEnrollmentsResponse, StudentsResetStudentPasswordData, StudentsResetStudentPasswordResponse, StudentsBulkResetPasswordsData, StudentsBulkResetPasswordsResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse, VocabLevelsVocabLevelStatsResponse, VocabLevelsVocabLevelImportPreviewData, VocabLevelsVocabLevelImportPreviewResponse, VocabLevelsVocabLevelImportConfirmData, VocabLevelsVocabLevelImportConfirmResponse, VocabLevelsListVocabLevelEntriesData, VocabLevelsListVocabLevelEntriesResponse, VocabLevelsUpdateVocabLevelEntryData, VocabLevelsUpdateVocabLevelEntryResponse, VocabLevelsListTeachingWordsByLevelData, VocabLevelsListTeachingWordsByLevelResponse, VocabLevelsImportWordsFromLevelsData, VocabLevelsImportWordsFromLevelsResponse, VocabularyImportVocabPreviewData, VocabularyImportVocabPreviewResponse, VocabularyListBooksResponse, VocabularyCreateBookData, VocabularyCreateBookResponse, VocabularyReadBookData, VocabularyReadBookResponse, VocabularyUpdateBookData, VocabularyUpdateBookResponse, VocabularyAddBookWordsData, VocabularyAddBookWordsResponse, VocabularyRemoveBookWordData, VocabularyRemoveBookWordResponse, VocabularyUpdateWordData, VocabularyUpdateWordResponse, VocabularyListAssignmentsData, VocabularyListAssignmentsResponse, VocabularyPublishVocabAssignmentData, VocabularyPublishVocabAssignmentResponse, VocabularyArchiveVocabAssignmentData, VocabularyArchiveVocabAssignmentResponse, VocabularyReadVocabResultsData, VocabularyReadVocabResultsResponse, VocabularyReadVocabTodayData, VocabularyReadVocabTodayResponse, VocabularyStartVocabSessionData, VocabularyStartVocabSessionResponse, VocabularySubmitVocabAnswerData, VocabularySubmitVocabAnswerResponse, VocabularySubmitQuizSessionData, VocabularySubmitQuizSessionResponse, VocabularyReportQuizTabSwitchData, VocabularyReportQuizTabSwitchResponse, VocabularyPublishQuizGradesData, VocabularyPublishQuizGradesResponse, VocabularyPublishQuizAnswersData, VocabularyPublishQuizAnswersResponse, VocabularyGrantQuizRetakeData, VocabularyGrantQuizRetakeResponse, VocabularyReadQuizAnswerSheetData, VocabularyReadQuizAnswerSheetResponse, VocabularyExportQuizResultsData, VocabularyExportQuizResultsResponse, VocabularyReadWrongWordsData, VocabularyReadWrongWordsResponse, VocabularyListStudentBooksData, VocabularyListStudentBooksResponse, VocabularyReadStudentBookData, VocabularyReadStudentBookResponse, VocabularyStartStudentSessionData, VocabularyStartStudentSessionResponse, VocabularyReadStudentSessionData, VocabularyReadStudentSessionResponse, VocabularyReadStudentHistoryData, VocabularyReadStudentHistoryResponse, VocabularyAiGenerateWordDraftsData, VocabularyAiGenerateWordDraftsResponse, VocabularyAiImportWordDraftsData, VocabularyAiImportWordDraftsResponse, VocabularyAiWordExplanationData, VocabularyAiWordExplanationResponse, VocabularyAiSessionInsightData, VocabularyAiSessionInsightResponse, VocabularyAiOverallInsightData, VocabularyAiOverallInsightResponse } from './types.gen';
+import type { AdminListPassagesData, AdminListPassagesResponse, AdminCreatePassageData, AdminCreatePassageResponse, AdminUpdatePassageData, AdminUpdatePassageResponse, AdminDeletePassageData, AdminDeletePassageResponse, AdminCreateSentenceData, AdminCreateSentenceResponse, AdminListSentencesPageData, AdminListSentencesPageResponse, AdminListSentencesFlatData, AdminListSentencesFlatResponse, AdminCreateSentenceStandaloneData, AdminCreateSentenceStandaloneResponse, AdminUpdateSentenceData, AdminUpdateSentenceResponse, AdminDeleteSentenceData, AdminDeleteSentenceResponse, AdminListInstructionsData, AdminListInstructionsResponse, AdminCreateInstructionData, AdminCreateInstructionResponse, AdminUpdateInstructionData, AdminUpdateInstructionResponse, AdminDeleteInstructionData, AdminDeleteInstructionResponse, AdminListScenariosData, AdminListScenariosResponse, AdminCreateScenarioData, AdminCreateScenarioResponse, AdminDeleteScenarioData, AdminDeleteScenarioResponse, AdminUpdateScenarioData, AdminUpdateScenarioResponse, AdminCreateQuestionData, AdminCreateQuestionResponse, AdminDeleteQuestionData, AdminDeleteQuestionResponse, AdminUpdateQuestionData, AdminUpdateQuestionResponse, AdminListQuestionBankData, AdminListQuestionBankResponse, AdminCopyPassageData, AdminCopyPassageResponse, AdminCopySentenceData, AdminCopySentenceResponse, AdminCopyScenarioData, AdminCopyScenarioResponse, AdminCopyQuestionData, AdminCopyQuestionResponse, AdminCopyInstructionData, AdminCopyInstructionResponse, AdminCreateQuestionsBatchData, AdminCreateQuestionsBatchResponse, AdminListClassroomsResponse, AdminDeactivateClassroomData, AdminDeactivateClassroomResponse, AdminUpdateClassroomData, AdminUpdateClassroomResponse, AdminGenerateQuestionsData, AdminGenerateQuestionsResponse, AdminAutoSplitSentencesData, AdminAutoSplitSentencesResponse, AdminSplitPassageIntoReadingsData, AdminSplitPassageIntoReadingsResponse, AdminUnsplitPassageReadingsData, AdminUnsplitPassageReadingsResponse, AdminGenerateStandardAudioData, AdminGenerateStandardAudioResponse, AdminUploadStandardAudioData, AdminUploadStandardAudioResponse, AdminListUnitsResponse, AdminCreateUnitData, AdminCreateUnitResponse, AdminUpdateUnitData, AdminUpdateUnitResponse, AdminDeleteUnitData, AdminDeleteUnitResponse, AdminListTopicsResponse, AdminListSentenceFramesData, AdminListSentenceFramesResponse, AdminCreateSentenceFrameData, AdminCreateSentenceFrameResponse, AdminUpdateSentenceFrameData, AdminUpdateSentenceFrameResponse, AdminDeleteSentenceFrameData, AdminDeleteSentenceFrameResponse, AdminCreateSentenceFramesBatchData, AdminCreateSentenceFramesBatchResponse, AdminCopySchoolContentData, AdminCopySchoolContentResponse, AdminReadSharedContentSourceData, AdminReadSharedContentSourceResponse, AdminReadComposerSelectionData, AdminReadComposerSelectionResponse, AdminReadDashboardOverviewData, AdminReadDashboardOverviewResponse, AdminReadDashboardUsageData, AdminReadDashboardUsageResponse, AdminReadDashboardContentResponse, AdminReadDashboardPerformanceData, AdminReadDashboardPerformanceResponse, AdminReadDashboardCostData, AdminReadDashboardCostResponse, AdminUpsertCostReconcileData, AdminUpsertCostReconcileResponse, AdminExportAttemptsCsvData, AdminExportAttemptsCsvResponse, AdminExportSessionsCsvData, AdminExportSessionsCsvResponse, AdminExportStudentsCsvResponse, AdminReadExamItemSettingsData, AdminReadExamItemSettingsResponse, AdminUpdateExamItemSettingsData, AdminUpdateExamItemSettingsResponse, AdminReadMetricsResponse, AttemptsCreateAttemptUploadData, AttemptsCreateAttemptUploadResponse, AttemptsReadAttemptsBatchData, AttemptsReadAttemptsBatchResponse, AttemptsReadAttemptData, AttemptsReadAttemptResponse, AttemptsReadAttemptComparisonData, AttemptsReadAttemptComparisonResponse, AttemptsWriteTeacherFeedbackData, AttemptsWriteTeacherFeedbackResponse, AttemptsReadAttemptAudioData, AttemptsReadAttemptAudioResponse, AudioReadContentAudioData, AudioReadContentAudioResponse, ChangelogReadChangelogResponse, ChangelogCreateChangelogEntryData, ChangelogCreateChangelogEntryResponse, ChangelogUpdateChangelogEntryData, ChangelogUpdateChangelogEntryResponse, ChangelogDeleteChangelogEntryData, ChangelogDeleteChangelogEntryResponse, ClassesListMyClassroomsResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesDeleteClassData, ClassesDeleteClassResponse, ClassesUpdateClassSizeData, ClassesUpdateClassSizeResponse, ClassesUpdateReportSettingsData, ClassesUpdateReportSettingsResponse, ClassesJoinClassData, ClassesJoinClassResponse, ClassesReadClassroomRevisionData, ClassesReadClassroomRevisionResponse, ClassesReadTodayPlanData, ClassesReadTodayPlanResponse, ClassesReadNextQuestionData, ClassesReadNextQuestionResponse, ClassesReadClassBoardData, ClassesReadClassBoardResponse, ClassesReadClassWeakSpotsData, ClassesReadClassWeakSpotsResponse, ClassesReadStudentTrailData, ClassesReadStudentTrailResponse, ClassesReadStudentDiagnosticsData, ClassesReadStudentDiagnosticsResponse, ClassesReadLearningPathData, ClassesReadLearningPathResponse, ClassesReadMySessionsData, ClassesReadMySessionsResponse, ClassesReadStudentSessionsData, ClassesReadStudentSessionsResponse, ClassesReadClassTrendData, ClassesReadClassTrendResponse, ClassesReadExamStateData, ClassesReadExamStateResponse, ClassesStartExamData, ClassesStartExamResponse, ClassesReportExamViolationData, ClassesReportExamViolationResponse, ClassesRecordListenData, ClassesRecordListenResponse, ClassesRecordInstructionAckData, ClassesRecordInstructionAckResponse, ClassesAdvanceExamFlowData, ClassesAdvanceExamFlowResponse, ClassesListClassroomExercisesData, ClassesListClassroomExercisesResponse, ClassesReadExerciseResultsData, ClassesReadExerciseResultsResponse, ClassesSetAssignmentData, ClassesSetAssignmentResponse, ClassesStartExploreData, ClassesStartExploreResponse, ClassesListMyFrameFavoritesData, ClassesListMyFrameFavoritesResponse, ClassesAddFrameFavoriteData, ClassesAddFrameFavoriteResponse, ClassesRemoveFrameFavoriteData, ClassesRemoveFrameFavoriteResponse, ClassesListMyExpressionFavoritesData, ClassesListMyExpressionFavoritesResponse, ClassesAddExpressionFavoritesData, ClassesAddExpressionFavoritesResponse, ClassesRemoveExpressionFavoriteData, ClassesRemoveExpressionFavoriteResponse, ClassesReadComposerDraftData, ClassesReadComposerDraftResponse, ClassesSaveComposerDraftData, ClassesSaveComposerDraftResponse, ClassesReadExerciseComposerSeedData, ClassesReadExerciseComposerSeedResponse, ClassesReportRuntimeIssueData, ClassesReportRuntimeIssueResponse, ClassesReadClassroomDiagnosticsData, ClassesReadClassroomDiagnosticsResponse, ClassesReadFollowupItemsData, ClassesReadFollowupItemsResponse, ClassesCreateClassFollowupData, ClassesCreateClassFollowupResponse, ClassesListClassFollowupsData, ClassesListClassFollowupsResponse, ClassesCreateIndividualClassFollowupsData, ClassesCreateIndividualClassFollowupsResponse, ClassesStartClassFollowupData, ClassesStartClassFollowupResponse, ClassesCancelClassFollowupData, ClassesCancelClassFollowupResponse, ClassesReadFollowupOutcomesData, ClassesReadFollowupOutcomesResponse, ClassesReportClassroomActivityData, ClassesReportClassroomActivityResponse, ClassesReadClassroomPresenceData, ClassesReadClassroomPresenceResponse, ClassesReadDiagnosticTargetsData, ClassesReadDiagnosticTargetsResponse, ClassesReadLearningReportData, ClassesReadLearningReportResponse, ClassesReadClassReviewData, ClassesReadClassReviewResponse, ClassesSaveClassReviewData, ClassesSaveClassReviewResponse, ClassesPublishClassReviewData, ClassesPublishClassReviewResponse, ClassesWithdrawClassReviewData, ClassesWithdrawClassReviewResponse, ClassesReadPublishedClassSummariesData, ClassesReadPublishedClassSummariesResponse, ClassesCreateHelpRequestData, ClassesCreateHelpRequestResponse, ClassesReadMyClassMessagesData, ClassesReadMyClassMessagesResponse, ClassesReadTeacherClassMessagesData, ClassesReadTeacherClassMessagesResponse, ClassesCreateClassRemindersData, ClassesCreateClassRemindersResponse, ClassesActOnClassMessageData, ClassesActOnClassMessageResponse, ClassesReplyToClassHelpData, ClassesReplyToClassHelpResponse, ClassesRepeatClassReminderData, ClassesRepeatClassReminderResponse, ExportsListExportsResponse, ExportsCreateExportData, ExportsCreateExportResponse, ExportsReadExportData, ExportsReadExportResponse, ExportsDownloadExportData, ExportsDownloadExportResponse, ExportsRetryExportData, ExportsRetryExportResponse, LoginReadLoginOptionsResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginLoginDemoResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, QuestionBankDownloadImportTemplateData, QuestionBankDownloadImportTemplateResponse, QuestionBankQuestionBankImportPreviewData, QuestionBankQuestionBankImportPreviewResponse, QuestionBankQuestionBankImportConfirmData, QuestionBankQuestionBankImportConfirmResponse, QuestionBankQuestionBankImportErrorFileData, QuestionBankQuestionBankImportErrorFileResponse, QuestionBankExportQuestionBankData, QuestionBankExportQuestionBankResponse, StudentsUpdateStudentData, StudentsUpdateStudentResponse, StudentsRemoveStudentData, StudentsRemoveStudentResponse, StudentsImportStudentsData, StudentsImportStudentsResponse, StudentsListStudentsData, StudentsListStudentsResponse, StudentsListMyEnrollmentsResponse, StudentsResetStudentPasswordData, StudentsResetStudentPasswordResponse, StudentsBulkResetPasswordsData, StudentsBulkResetPasswordsResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsReadyCheckResponse, VocabLevelsVocabLevelStatsResponse, VocabLevelsVocabLevelImportPreviewData, VocabLevelsVocabLevelImportPreviewResponse, VocabLevelsVocabLevelImportConfirmData, VocabLevelsVocabLevelImportConfirmResponse, VocabLevelsListVocabLevelEntriesData, VocabLevelsListVocabLevelEntriesResponse, VocabLevelsUpdateVocabLevelEntryData, VocabLevelsUpdateVocabLevelEntryResponse, VocabLevelsListTeachingWordsByLevelData, VocabLevelsListTeachingWordsByLevelResponse, VocabLevelsImportWordsFromLevelsData, VocabLevelsImportWordsFromLevelsResponse, VocabularyImportVocabPreviewData, VocabularyImportVocabPreviewResponse, VocabularyListBooksResponse, VocabularyCreateBookData, VocabularyCreateBookResponse, VocabularyReadBookData, VocabularyReadBookResponse, VocabularyUpdateBookData, VocabularyUpdateBookResponse, VocabularyAddBookWordsData, VocabularyAddBookWordsResponse, VocabularyRemoveBookWordData, VocabularyRemoveBookWordResponse, VocabularyUpdateWordData, VocabularyUpdateWordResponse, VocabularyListAssignmentsData, VocabularyListAssignmentsResponse, VocabularyPublishVocabAssignmentData, VocabularyPublishVocabAssignmentResponse, VocabularyArchiveVocabAssignmentData, VocabularyArchiveVocabAssignmentResponse, VocabularyReadVocabResultsData, VocabularyReadVocabResultsResponse, VocabularyReadVocabTodayData, VocabularyReadVocabTodayResponse, VocabularyStartVocabSessionData, VocabularyStartVocabSessionResponse, VocabularySubmitVocabAnswerData, VocabularySubmitVocabAnswerResponse, VocabularySubmitQuizSessionData, VocabularySubmitQuizSessionResponse, VocabularyReportQuizTabSwitchData, VocabularyReportQuizTabSwitchResponse, VocabularyPublishQuizGradesData, VocabularyPublishQuizGradesResponse, VocabularyPublishQuizAnswersData, VocabularyPublishQuizAnswersResponse, VocabularyGrantQuizRetakeData, VocabularyGrantQuizRetakeResponse, VocabularyReadQuizAnswerSheetData, VocabularyReadQuizAnswerSheetResponse, VocabularyExportQuizResultsData, VocabularyExportQuizResultsResponse, VocabularyReadWrongWordsData, VocabularyReadWrongWordsResponse, VocabularyListStudentBooksData, VocabularyListStudentBooksResponse, VocabularyReadStudentBookData, VocabularyReadStudentBookResponse, VocabularyStartStudentSessionData, VocabularyStartStudentSessionResponse, VocabularyReadStudentSessionData, VocabularyReadStudentSessionResponse, VocabularyReadStudentHistoryData, VocabularyReadStudentHistoryResponse, VocabularyAiGenerateWordDraftsData, VocabularyAiGenerateWordDraftsResponse, VocabularyAiImportWordDraftsData, VocabularyAiImportWordDraftsResponse, VocabularyAiWordExplanationData, VocabularyAiWordExplanationResponse, VocabularyAiSessionInsightData, VocabularyAiSessionInsightResponse, VocabularyAiOverallInsightData, VocabularyAiOverallInsightResponse } from './types.gen';
 
 export class AdminService {
     /**
@@ -645,93 +645,6 @@ export class AdminService {
     }
     
     /**
-     * List Units
-     * @returns UnitPublic Successful Response
-     * @throws ApiError
-     */
-    public static listUnits(): CancelablePromise<AdminListUnitsResponse> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/api/v1/admin/units'
-        });
-    }
-    
-    /**
-     * Create Unit
-     * @param data The data for the request.
-     * @param data.requestBody
-     * @returns UnitPublic Successful Response
-     * @throws ApiError
-     */
-    public static createUnit(data: AdminCreateUnitData): CancelablePromise<AdminCreateUnitResponse> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/api/v1/admin/units',
-            body: data.requestBody,
-            mediaType: 'application/json',
-            errors: {
-                422: 'Validation Error'
-            }
-        });
-    }
-    
-    /**
-     * Update Unit
-     * @param data The data for the request.
-     * @param data.unitId
-     * @param data.requestBody
-     * @returns UnitPublic Successful Response
-     * @throws ApiError
-     */
-    public static updateUnit(data: AdminUpdateUnitData): CancelablePromise<AdminUpdateUnitResponse> {
-        return __request(OpenAPI, {
-            method: 'PUT',
-            url: '/api/v1/admin/units/{unit_id}',
-            path: {
-                unit_id: data.unitId
-            },
-            body: data.requestBody,
-            mediaType: 'application/json',
-            errors: {
-                422: 'Validation Error'
-            }
-        });
-    }
-    
-    /**
-     * Delete Unit
-     * @param data The data for the request.
-     * @param data.unitId
-     * @returns string Successful Response
-     * @throws ApiError
-     */
-    public static deleteUnit(data: AdminDeleteUnitData): CancelablePromise<AdminDeleteUnitResponse> {
-        return __request(OpenAPI, {
-            method: 'DELETE',
-            url: '/api/v1/admin/units/{unit_id}',
-            path: {
-                unit_id: data.unitId
-            },
-            errors: {
-                422: 'Validation Error'
-            }
-        });
-    }
-    
-    /**
-     * List Topics
-     * 已有主题词表（篇目/单元/情景的 topic 并集）：录入时从列表选，不再自由输入。
-     * @returns string Successful Response
-     * @throws ApiError
-     */
-    public static listTopics(): CancelablePromise<AdminListTopicsResponse> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/api/v1/admin/topics'
-        });
-    }
-    
-    /**
      * List Classrooms
      * @returns ClassroomPublic Successful Response
      * @throws ApiError
@@ -925,6 +838,93 @@ export class AdminService {
             errors: {
                 422: 'Validation Error'
             }
+        });
+    }
+    
+    /**
+     * List Units
+     * @returns UnitPublic Successful Response
+     * @throws ApiError
+     */
+    public static listUnits(): CancelablePromise<AdminListUnitsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/admin/units'
+        });
+    }
+    
+    /**
+     * Create Unit
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns UnitPublic Successful Response
+     * @throws ApiError
+     */
+    public static createUnit(data: AdminCreateUnitData): CancelablePromise<AdminCreateUnitResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/admin/units',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Unit
+     * @param data The data for the request.
+     * @param data.unitId
+     * @param data.requestBody
+     * @returns UnitPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateUnit(data: AdminUpdateUnitData): CancelablePromise<AdminUpdateUnitResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/admin/units/{unit_id}',
+            path: {
+                unit_id: data.unitId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Delete Unit
+     * @param data The data for the request.
+     * @param data.unitId
+     * @returns string Successful Response
+     * @throws ApiError
+     */
+    public static deleteUnit(data: AdminDeleteUnitData): CancelablePromise<AdminDeleteUnitResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/admin/units/{unit_id}',
+            path: {
+                unit_id: data.unitId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * List Topics
+     * 已有主题词表（篇目/单元/情景的 topic 并集）：录入时从列表选，不再自由输入。
+     * @returns string Successful Response
+     * @throws ApiError
+     */
+    public static listTopics(): CancelablePromise<AdminListTopicsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/admin/topics'
         });
     }
     
