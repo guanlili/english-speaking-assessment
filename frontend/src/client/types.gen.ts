@@ -11469,131 +11469,6 @@ export type AdminCreateQuestionsBatchResponses = {
 
 export type AdminCreateQuestionsBatchResponse = AdminCreateQuestionsBatchResponses[200 & keyof AdminCreateQuestionsBatchResponses];
 
-export type AdminListUnitsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/admin/units';
-};
-
-export type AdminListUnitsResponses = {
-    /**
-     * Response Admin-List Units
-     *
-     * Successful Response
-     */
-    200: Array<UnitPublic>;
-};
-
-export type AdminListUnitsResponse = AdminListUnitsResponses[200 & keyof AdminListUnitsResponses];
-
-export type AdminCreateUnitData = {
-    body: UnitCreate;
-    path?: never;
-    query?: never;
-    url: '/api/v1/admin/units';
-};
-
-export type AdminCreateUnitErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminCreateUnitError = AdminCreateUnitErrors[keyof AdminCreateUnitErrors];
-
-export type AdminCreateUnitResponses = {
-    /**
-     * Successful Response
-     */
-    200: UnitPublic;
-};
-
-export type AdminCreateUnitResponse = AdminCreateUnitResponses[200 & keyof AdminCreateUnitResponses];
-
-export type AdminDeleteUnitData = {
-    body?: never;
-    path: {
-        /**
-         * Unit Id
-         */
-        unit_id: string;
-    };
-    query?: never;
-    url: '/api/v1/admin/units/{unit_id}';
-};
-
-export type AdminDeleteUnitErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminDeleteUnitError = AdminDeleteUnitErrors[keyof AdminDeleteUnitErrors];
-
-export type AdminDeleteUnitResponses = {
-    /**
-     * Response Admin-Delete Unit
-     *
-     * Successful Response
-     */
-    200: {
-        [key: string]: string;
-    };
-};
-
-export type AdminDeleteUnitResponse = AdminDeleteUnitResponses[200 & keyof AdminDeleteUnitResponses];
-
-export type AdminUpdateUnitData = {
-    body: UnitUpdate;
-    path: {
-        /**
-         * Unit Id
-         */
-        unit_id: string;
-    };
-    query?: never;
-    url: '/api/v1/admin/units/{unit_id}';
-};
-
-export type AdminUpdateUnitErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminUpdateUnitError = AdminUpdateUnitErrors[keyof AdminUpdateUnitErrors];
-
-export type AdminUpdateUnitResponses = {
-    /**
-     * Successful Response
-     */
-    200: UnitPublic;
-};
-
-export type AdminUpdateUnitResponse = AdminUpdateUnitResponses[200 & keyof AdminUpdateUnitResponses];
-
-export type AdminListTopicsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/admin/topics';
-};
-
-export type AdminListTopicsResponses = {
-    /**
-     * Response Admin-List Topics
-     *
-     * Successful Response
-     */
-    200: Array<string>;
-};
-
-export type AdminListTopicsResponse = AdminListTopicsResponses[200 & keyof AdminListTopicsResponses];
-
 export type AdminListClassroomsData = {
     body?: never;
     path?: never;
@@ -11857,6 +11732,131 @@ export type AdminUploadStandardAudioResponses = {
 };
 
 export type AdminUploadStandardAudioResponse = AdminUploadStandardAudioResponses[200 & keyof AdminUploadStandardAudioResponses];
+
+export type AdminListUnitsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/units';
+};
+
+export type AdminListUnitsResponses = {
+    /**
+     * Response Admin-List Units
+     *
+     * Successful Response
+     */
+    200: Array<UnitPublic>;
+};
+
+export type AdminListUnitsResponse = AdminListUnitsResponses[200 & keyof AdminListUnitsResponses];
+
+export type AdminCreateUnitData = {
+    body: UnitCreate;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/units';
+};
+
+export type AdminCreateUnitErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminCreateUnitError = AdminCreateUnitErrors[keyof AdminCreateUnitErrors];
+
+export type AdminCreateUnitResponses = {
+    /**
+     * Successful Response
+     */
+    200: UnitPublic;
+};
+
+export type AdminCreateUnitResponse = AdminCreateUnitResponses[200 & keyof AdminCreateUnitResponses];
+
+export type AdminDeleteUnitData = {
+    body?: never;
+    path: {
+        /**
+         * Unit Id
+         */
+        unit_id: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/units/{unit_id}';
+};
+
+export type AdminDeleteUnitErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminDeleteUnitError = AdminDeleteUnitErrors[keyof AdminDeleteUnitErrors];
+
+export type AdminDeleteUnitResponses = {
+    /**
+     * Response Admin-Delete Unit
+     *
+     * Successful Response
+     */
+    200: {
+        [key: string]: string;
+    };
+};
+
+export type AdminDeleteUnitResponse = AdminDeleteUnitResponses[200 & keyof AdminDeleteUnitResponses];
+
+export type AdminUpdateUnitData = {
+    body: UnitUpdate;
+    path: {
+        /**
+         * Unit Id
+         */
+        unit_id: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/units/{unit_id}';
+};
+
+export type AdminUpdateUnitErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminUpdateUnitError = AdminUpdateUnitErrors[keyof AdminUpdateUnitErrors];
+
+export type AdminUpdateUnitResponses = {
+    /**
+     * Successful Response
+     */
+    200: UnitPublic;
+};
+
+export type AdminUpdateUnitResponse = AdminUpdateUnitResponses[200 & keyof AdminUpdateUnitResponses];
+
+export type AdminListTopicsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/topics';
+};
+
+export type AdminListTopicsResponses = {
+    /**
+     * Response Admin-List Topics
+     *
+     * Successful Response
+     */
+    200: Array<string>;
+};
+
+export type AdminListTopicsResponse = AdminListTopicsResponses[200 & keyof AdminListTopicsResponses];
 
 export type AdminListSentenceFramesData = {
     body?: never;

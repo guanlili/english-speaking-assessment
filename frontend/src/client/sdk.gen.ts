@@ -2738,91 +2738,6 @@ export class AdminService {
     }
     
     /**
-     * List Units
-     */
-    public static listUnits<ThrowOnError extends boolean = true>(options?: Options<never, ThrowOnError>): RequestResult<AdminListUnitsResponses, unknown, ThrowOnError, 'data'> {
-        return (options?.client ?? client).get<AdminListUnitsResponses, unknown, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/units',
-            ...options
-        });
-    }
-    
-    /**
-     * Create Unit
-     */
-    public static createUnit<ThrowOnError extends boolean = true>(parameters: {
-        unitCreate: UnitCreate;
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminCreateUnitResponses, AdminCreateUnitErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ key: 'unitCreate', map: 'body' }] }]);
-        return (options?.client ?? client).post<AdminCreateUnitResponses, AdminCreateUnitErrors, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/units',
-            ...options,
-            ...params,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options?.headers,
-                ...params.headers
-            }
-        });
-    }
-    
-    /**
-     * Delete Unit
-     */
-    public static deleteUnit<ThrowOnError extends boolean = true>(parameters: {
-        unit_id: string;
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminDeleteUnitResponses, AdminDeleteUnitErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'unit_id' }] }]);
-        return (options?.client ?? client).delete<AdminDeleteUnitResponses, AdminDeleteUnitErrors, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/units/{unit_id}',
-            ...options,
-            ...params
-        });
-    }
-    
-    /**
-     * Update Unit
-     */
-    public static updateUnit<ThrowOnError extends boolean = true>(parameters: {
-        unit_id: string;
-        unitUpdate: UnitUpdate;
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminUpdateUnitResponses, AdminUpdateUnitErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'unit_id' }, { key: 'unitUpdate', map: 'body' }] }]);
-        return (options?.client ?? client).put<AdminUpdateUnitResponses, AdminUpdateUnitErrors, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/units/{unit_id}',
-            ...options,
-            ...params,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options?.headers,
-                ...params.headers
-            }
-        });
-    }
-    
-    /**
-     * List Topics
-     *
-     * 已有主题词表（篇目/单元/情景的 topic 并集）：录入时从列表选，不再自由输入。
-     */
-    public static listTopics<ThrowOnError extends boolean = true>(options?: Options<never, ThrowOnError>): RequestResult<AdminListTopicsResponses, unknown, ThrowOnError, 'data'> {
-        return (options?.client ?? client).get<AdminListTopicsResponses, unknown, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/topics',
-            ...options
-        });
-    }
-    
-    /**
      * List Classrooms
      */
     public static listClassrooms<ThrowOnError extends boolean = true>(options?: Options<never, ThrowOnError>): RequestResult<AdminListClassroomsResponses, unknown, ThrowOnError, 'data'> {
@@ -3004,6 +2919,91 @@ export class AdminService {
                 ...options?.headers,
                 ...params.headers
             }
+        });
+    }
+    
+    /**
+     * List Units
+     */
+    public static listUnits<ThrowOnError extends boolean = true>(options?: Options<never, ThrowOnError>): RequestResult<AdminListUnitsResponses, unknown, ThrowOnError, 'data'> {
+        return (options?.client ?? client).get<AdminListUnitsResponses, unknown, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/units',
+            ...options
+        });
+    }
+    
+    /**
+     * Create Unit
+     */
+    public static createUnit<ThrowOnError extends boolean = true>(parameters: {
+        unitCreate: UnitCreate;
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminCreateUnitResponses, AdminCreateUnitErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ key: 'unitCreate', map: 'body' }] }]);
+        return (options?.client ?? client).post<AdminCreateUnitResponses, AdminCreateUnitErrors, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/units',
+            ...options,
+            ...params,
+            headers: {
+                'Content-Type': 'application/json',
+                ...options?.headers,
+                ...params.headers
+            }
+        });
+    }
+    
+    /**
+     * Delete Unit
+     */
+    public static deleteUnit<ThrowOnError extends boolean = true>(parameters: {
+        unit_id: string;
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminDeleteUnitResponses, AdminDeleteUnitErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'unit_id' }] }]);
+        return (options?.client ?? client).delete<AdminDeleteUnitResponses, AdminDeleteUnitErrors, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/units/{unit_id}',
+            ...options,
+            ...params
+        });
+    }
+    
+    /**
+     * Update Unit
+     */
+    public static updateUnit<ThrowOnError extends boolean = true>(parameters: {
+        unit_id: string;
+        unitUpdate: UnitUpdate;
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminUpdateUnitResponses, AdminUpdateUnitErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'unit_id' }, { key: 'unitUpdate', map: 'body' }] }]);
+        return (options?.client ?? client).put<AdminUpdateUnitResponses, AdminUpdateUnitErrors, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/units/{unit_id}',
+            ...options,
+            ...params,
+            headers: {
+                'Content-Type': 'application/json',
+                ...options?.headers,
+                ...params.headers
+            }
+        });
+    }
+    
+    /**
+     * List Topics
+     *
+     * 已有主题词表（篇目/单元/情景的 topic 并集）：录入时从列表选，不再自由输入。
+     */
+    public static listTopics<ThrowOnError extends boolean = true>(options?: Options<never, ThrowOnError>): RequestResult<AdminListTopicsResponses, unknown, ThrowOnError, 'data'> {
+        return (options?.client ?? client).get<AdminListTopicsResponses, unknown, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/topics',
+            ...options
         });
     }
     
