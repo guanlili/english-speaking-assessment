@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import Field, SQLModel, col, func, select
 
 from app.api.deps import SessionDep, SuperUserDep, TeacherUserDep
-from app.api.routes.admin_content import _reject_null_non_nullable
+from app.api.routes._content_common import _reject_null_non_nullable
 from app.models import (
     EXAM_KIND_QUESTION,
     Passage,
