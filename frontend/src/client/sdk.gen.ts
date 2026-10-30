@@ -2143,6 +2143,187 @@ export class StudentsService {
 
 export class AdminService {
     /**
+     * Copy Passage
+     */
+    public static copyPassage<ThrowOnError extends boolean = true>(parameters: {
+        passage_id: string;
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminCopyPassageResponses, AdminCopyPassageErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'passage_id' }] }]);
+        return (options?.client ?? client).post<AdminCopyPassageResponses, AdminCopyPassageErrors, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/passages/{passage_id}/copy',
+            ...options,
+            ...params
+        });
+    }
+    
+    /**
+     * Copy Sentence
+     */
+    public static copySentence<ThrowOnError extends boolean = true>(parameters: {
+        sentence_id: string;
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminCopySentenceResponses, AdminCopySentenceErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'sentence_id' }] }]);
+        return (options?.client ?? client).post<AdminCopySentenceResponses, AdminCopySentenceErrors, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/sentences/{sentence_id}/copy',
+            ...options,
+            ...params
+        });
+    }
+    
+    /**
+     * Copy Scenario
+     */
+    public static copyScenario<ThrowOnError extends boolean = true>(parameters: {
+        scenario_id: string;
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminCopyScenarioResponses, AdminCopyScenarioErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'scenario_id' }] }]);
+        return (options?.client ?? client).post<AdminCopyScenarioResponses, AdminCopyScenarioErrors, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/scenarios/{scenario_id}/copy',
+            ...options,
+            ...params
+        });
+    }
+    
+    /**
+     * Copy Question
+     */
+    public static copyQuestion<ThrowOnError extends boolean = true>(parameters: {
+        question_id: string;
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminCopyQuestionResponses, AdminCopyQuestionErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'question_id' }] }]);
+        return (options?.client ?? client).post<AdminCopyQuestionResponses, AdminCopyQuestionErrors, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/questions/{question_id}/copy',
+            ...options,
+            ...params
+        });
+    }
+    
+    /**
+     * Copy Instruction
+     */
+    public static copyInstruction<ThrowOnError extends boolean = true>(parameters: {
+        instruction_id: string;
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminCopyInstructionResponses, AdminCopyInstructionErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'instruction_id' }] }]);
+        return (options?.client ?? client).post<AdminCopyInstructionResponses, AdminCopyInstructionErrors, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/instructions/{instruction_id}/copy',
+            ...options,
+            ...params
+        });
+    }
+    
+    /**
+     * List Classrooms
+     */
+    public static listClassrooms<ThrowOnError extends boolean = true>(options?: Options<never, ThrowOnError>): RequestResult<AdminListClassroomsResponses, unknown, ThrowOnError, 'data'> {
+        return (options?.client ?? client).get<AdminListClassroomsResponses, unknown, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/classrooms',
+            ...options
+        });
+    }
+    
+    /**
+     * Deactivate Classroom
+     */
+    public static deactivateClassroom<ThrowOnError extends boolean = true>(parameters: {
+        classroom_id: string;
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminDeactivateClassroomResponses, AdminDeactivateClassroomErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'classroom_id' }] }]);
+        return (options?.client ?? client).delete<AdminDeactivateClassroomResponses, AdminDeactivateClassroomErrors, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/classrooms/{classroom_id}',
+            ...options,
+            ...params
+        });
+    }
+    
+    /**
+     * Update Classroom
+     *
+     * 更新课堂设置：unlock_all（一键解锁）、owner_id（绑定授权教师）、启停、班容。
+     */
+    public static updateClassroom<ThrowOnError extends boolean = true>(parameters: {
+        classroom_id: string;
+        classroomUpdate: ClassroomUpdate;
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminUpdateClassroomResponses, AdminUpdateClassroomErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'classroom_id' }, { key: 'classroomUpdate', map: 'body' }] }]);
+        return (options?.client ?? client).put<AdminUpdateClassroomResponses, AdminUpdateClassroomErrors, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/classrooms/{classroom_id}',
+            ...options,
+            ...params,
+            headers: {
+                'Content-Type': 'application/json',
+                ...options?.headers,
+                ...params.headers
+            }
+        });
+    }
+    
+    /**
+     * Generate Standard Audio
+     *
+     * 用语音合成生成标准音并落盘，返回可回放的相对 URL。
+     *
+     * 内容寻址缓存：同 (模型, 音色, 文本) 命中已有文件直接返回，不重复合成扣费。
+     */
+    public static generateStandardAudio<ThrowOnError extends boolean = true>(parameters: {
+        ttsRequest: TtsRequest;
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminGenerateStandardAudioResponses, AdminGenerateStandardAudioErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ key: 'ttsRequest', map: 'body' }] }]);
+        return (options?.client ?? client).post<AdminGenerateStandardAudioResponses, AdminGenerateStandardAudioErrors, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/audio/tts',
+            ...options,
+            ...params,
+            headers: {
+                'Content-Type': 'application/json',
+                ...options?.headers,
+                ...params.headers
+            }
+        });
+    }
+    
+    /**
+     * Upload Standard Audio
+     *
+     * 上传现成音频（学校已有的录音/外教音频），作为标准音使用。
+     */
+    public static uploadStandardAudio<ThrowOnError extends boolean = true>(parameters: {
+        bodyAdminUploadStandardAudio: BodyAdminUploadStandardAudio;
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminUploadStandardAudioResponses, AdminUploadStandardAudioErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ key: 'bodyAdminUploadStandardAudio', map: 'body' }] }]);
+        return (options?.client ?? client).post<AdminUploadStandardAudioResponses, AdminUploadStandardAudioErrors, ThrowOnError, 'data'>({
+            ...formDataBodySerializer,
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/audio/upload',
+            ...options,
+            ...params,
+            headers: {
+                'Content-Type': null,
+                ...options?.headers,
+                ...params.headers
+            }
+        });
+    }
+    
+    /**
      * List Passages
      *
      * 管理端篇目列表：按「根篇目」分页（拆句子篇不单占一行）+ 关键词过滤。
@@ -2457,6 +2638,43 @@ export class AdminService {
     }
     
     /**
+     * Unsplit Passage Readings
+     *
+     * 取消拆分：此后发布/练习回到整篇一道题；已发布快照不可变不受影响。
+     */
+    public static unsplitPassageReadings<ThrowOnError extends boolean = true>(parameters: {
+        passage_id: string;
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminUnsplitPassageReadingsResponses, AdminUnsplitPassageReadingsErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'passage_id' }] }]);
+        return (options?.client ?? client).delete<AdminUnsplitPassageReadingsResponses, AdminUnsplitPassageReadingsErrors, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/passages/{passage_id}/split',
+            ...options,
+            ...params
+        });
+    }
+    
+    /**
+     * Split Passage Into Readings
+     *
+     * 启用逐句拆分：发布/练习时该文章按句展开成多道朗读题（见 services/reading.py）。
+     */
+    public static splitPassageIntoReadings<ThrowOnError extends boolean = true>(parameters: {
+        passage_id: string;
+        mode?: 'paragraph' | 'sentence';
+    }, options?: Options<never, ThrowOnError>): RequestResult<AdminSplitPassageIntoReadingsResponses, AdminSplitPassageIntoReadingsErrors, ThrowOnError, 'data'> {
+        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'passage_id' }, { in: 'query', key: 'mode' }] }]);
+        return (options?.client ?? client).post<AdminSplitPassageIntoReadingsResponses, AdminSplitPassageIntoReadingsErrors, ThrowOnError, 'data'>({
+            responseStyle: 'data',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/passages/{passage_id}/split',
+            ...options,
+            ...params
+        });
+    }
+    
+    /**
      * List Scenarios
      *
      * 问答题库主题列表：分页 + 主题关键词（limit=None 全量，组卷选择器兼容）。
@@ -2634,86 +2852,6 @@ export class AdminService {
     }
     
     /**
-     * Copy Passage
-     */
-    public static copyPassage<ThrowOnError extends boolean = true>(parameters: {
-        passage_id: string;
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminCopyPassageResponses, AdminCopyPassageErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'passage_id' }] }]);
-        return (options?.client ?? client).post<AdminCopyPassageResponses, AdminCopyPassageErrors, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/passages/{passage_id}/copy',
-            ...options,
-            ...params
-        });
-    }
-    
-    /**
-     * Copy Sentence
-     */
-    public static copySentence<ThrowOnError extends boolean = true>(parameters: {
-        sentence_id: string;
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminCopySentenceResponses, AdminCopySentenceErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'sentence_id' }] }]);
-        return (options?.client ?? client).post<AdminCopySentenceResponses, AdminCopySentenceErrors, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/sentences/{sentence_id}/copy',
-            ...options,
-            ...params
-        });
-    }
-    
-    /**
-     * Copy Scenario
-     */
-    public static copyScenario<ThrowOnError extends boolean = true>(parameters: {
-        scenario_id: string;
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminCopyScenarioResponses, AdminCopyScenarioErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'scenario_id' }] }]);
-        return (options?.client ?? client).post<AdminCopyScenarioResponses, AdminCopyScenarioErrors, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/scenarios/{scenario_id}/copy',
-            ...options,
-            ...params
-        });
-    }
-    
-    /**
-     * Copy Question
-     */
-    public static copyQuestion<ThrowOnError extends boolean = true>(parameters: {
-        question_id: string;
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminCopyQuestionResponses, AdminCopyQuestionErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'question_id' }] }]);
-        return (options?.client ?? client).post<AdminCopyQuestionResponses, AdminCopyQuestionErrors, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/questions/{question_id}/copy',
-            ...options,
-            ...params
-        });
-    }
-    
-    /**
-     * Copy Instruction
-     */
-    public static copyInstruction<ThrowOnError extends boolean = true>(parameters: {
-        instruction_id: string;
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminCopyInstructionResponses, AdminCopyInstructionErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'instruction_id' }] }]);
-        return (options?.client ?? client).post<AdminCopyInstructionResponses, AdminCopyInstructionErrors, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/instructions/{instruction_id}/copy',
-            ...options,
-            ...params
-        });
-    }
-    
-    /**
      * Create Questions Batch
      *
      * 批量录入问法：逐条校验，合法的入库，非法的带原因返回（部分成功）。
@@ -2727,58 +2865,6 @@ export class AdminService {
             responseStyle: 'data',
             security: [{ scheme: 'bearer', type: 'http' }],
             url: '/api/v1/admin/scenarios/{scenario_id}/questions/batch',
-            ...options,
-            ...params,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options?.headers,
-                ...params.headers
-            }
-        });
-    }
-    
-    /**
-     * List Classrooms
-     */
-    public static listClassrooms<ThrowOnError extends boolean = true>(options?: Options<never, ThrowOnError>): RequestResult<AdminListClassroomsResponses, unknown, ThrowOnError, 'data'> {
-        return (options?.client ?? client).get<AdminListClassroomsResponses, unknown, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/classrooms',
-            ...options
-        });
-    }
-    
-    /**
-     * Deactivate Classroom
-     */
-    public static deactivateClassroom<ThrowOnError extends boolean = true>(parameters: {
-        classroom_id: string;
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminDeactivateClassroomResponses, AdminDeactivateClassroomErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'classroom_id' }] }]);
-        return (options?.client ?? client).delete<AdminDeactivateClassroomResponses, AdminDeactivateClassroomErrors, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/classrooms/{classroom_id}',
-            ...options,
-            ...params
-        });
-    }
-    
-    /**
-     * Update Classroom
-     *
-     * 更新课堂设置：unlock_all（一键解锁）、owner_id（绑定授权教师）、启停、班容。
-     */
-    public static updateClassroom<ThrowOnError extends boolean = true>(parameters: {
-        classroom_id: string;
-        classroomUpdate: ClassroomUpdate;
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminUpdateClassroomResponses, AdminUpdateClassroomErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'classroom_id' }, { key: 'classroomUpdate', map: 'body' }] }]);
-        return (options?.client ?? client).put<AdminUpdateClassroomResponses, AdminUpdateClassroomErrors, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/classrooms/{classroom_id}',
             ...options,
             ...params,
             headers: {
@@ -2833,92 +2919,6 @@ export class AdminService {
             url: '/api/v1/admin/passages/{passage_id}/sentences/auto-split',
             ...options,
             ...params
-        });
-    }
-    
-    /**
-     * Unsplit Passage Readings
-     *
-     * 取消拆分：此后发布/练习回到整篇一道题；已发布快照不可变不受影响。
-     */
-    public static unsplitPassageReadings<ThrowOnError extends boolean = true>(parameters: {
-        passage_id: string;
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminUnsplitPassageReadingsResponses, AdminUnsplitPassageReadingsErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'passage_id' }] }]);
-        return (options?.client ?? client).delete<AdminUnsplitPassageReadingsResponses, AdminUnsplitPassageReadingsErrors, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/passages/{passage_id}/split',
-            ...options,
-            ...params
-        });
-    }
-    
-    /**
-     * Split Passage Into Readings
-     *
-     * 启用逐句拆分：发布/练习时该文章按句展开成多道朗读题（见 services/reading.py）。
-     */
-    public static splitPassageIntoReadings<ThrowOnError extends boolean = true>(parameters: {
-        passage_id: string;
-        mode?: 'paragraph' | 'sentence';
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminSplitPassageIntoReadingsResponses, AdminSplitPassageIntoReadingsErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ in: 'path', key: 'passage_id' }, { in: 'query', key: 'mode' }] }]);
-        return (options?.client ?? client).post<AdminSplitPassageIntoReadingsResponses, AdminSplitPassageIntoReadingsErrors, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/passages/{passage_id}/split',
-            ...options,
-            ...params
-        });
-    }
-    
-    /**
-     * Generate Standard Audio
-     *
-     * 用语音合成生成标准音并落盘，返回可回放的相对 URL。
-     *
-     * 内容寻址缓存：同 (模型, 音色, 文本) 命中已有文件直接返回，不重复合成扣费。
-     */
-    public static generateStandardAudio<ThrowOnError extends boolean = true>(parameters: {
-        ttsRequest: TtsRequest;
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminGenerateStandardAudioResponses, AdminGenerateStandardAudioErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ key: 'ttsRequest', map: 'body' }] }]);
-        return (options?.client ?? client).post<AdminGenerateStandardAudioResponses, AdminGenerateStandardAudioErrors, ThrowOnError, 'data'>({
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/audio/tts',
-            ...options,
-            ...params,
-            headers: {
-                'Content-Type': 'application/json',
-                ...options?.headers,
-                ...params.headers
-            }
-        });
-    }
-    
-    /**
-     * Upload Standard Audio
-     *
-     * 上传现成音频（学校已有的录音/外教音频），作为标准音使用。
-     */
-    public static uploadStandardAudio<ThrowOnError extends boolean = true>(parameters: {
-        bodyAdminUploadStandardAudio: BodyAdminUploadStandardAudio;
-    }, options?: Options<never, ThrowOnError>): RequestResult<AdminUploadStandardAudioResponses, AdminUploadStandardAudioErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ key: 'bodyAdminUploadStandardAudio', map: 'body' }] }]);
-        return (options?.client ?? client).post<AdminUploadStandardAudioResponses, AdminUploadStandardAudioErrors, ThrowOnError, 'data'>({
-            ...formDataBodySerializer,
-            responseStyle: 'data',
-            security: [{ scheme: 'bearer', type: 'http' }],
-            url: '/api/v1/admin/audio/upload',
-            ...options,
-            ...params,
-            headers: {
-                'Content-Type': null,
-                ...options?.headers,
-                ...params.headers
-            }
         });
     }
     

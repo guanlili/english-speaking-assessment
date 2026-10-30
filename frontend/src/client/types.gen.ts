@@ -10519,6 +10519,288 @@ export type StudentsBulkResetPasswordsResponses = {
 
 export type StudentsBulkResetPasswordsResponse = StudentsBulkResetPasswordsResponses[200 & keyof StudentsBulkResetPasswordsResponses];
 
+export type AdminCopyPassageData = {
+    body?: never;
+    path: {
+        /**
+         * Passage Id
+         */
+        passage_id: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/passages/{passage_id}/copy';
+};
+
+export type AdminCopyPassageErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminCopyPassageError = AdminCopyPassageErrors[keyof AdminCopyPassageErrors];
+
+export type AdminCopyPassageResponses = {
+    /**
+     * Successful Response
+     */
+    200: PassageWithSentences;
+};
+
+export type AdminCopyPassageResponse = AdminCopyPassageResponses[200 & keyof AdminCopyPassageResponses];
+
+export type AdminCopySentenceData = {
+    body?: never;
+    path: {
+        /**
+         * Sentence Id
+         */
+        sentence_id: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/sentences/{sentence_id}/copy';
+};
+
+export type AdminCopySentenceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminCopySentenceError = AdminCopySentenceErrors[keyof AdminCopySentenceErrors];
+
+export type AdminCopySentenceResponses = {
+    /**
+     * Successful Response
+     */
+    200: SentenceWithPassage;
+};
+
+export type AdminCopySentenceResponse = AdminCopySentenceResponses[200 & keyof AdminCopySentenceResponses];
+
+export type AdminCopyScenarioData = {
+    body?: never;
+    path: {
+        /**
+         * Scenario Id
+         */
+        scenario_id: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/scenarios/{scenario_id}/copy';
+};
+
+export type AdminCopyScenarioErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminCopyScenarioError = AdminCopyScenarioErrors[keyof AdminCopyScenarioErrors];
+
+export type AdminCopyScenarioResponses = {
+    /**
+     * Successful Response
+     */
+    200: ScenarioOut;
+};
+
+export type AdminCopyScenarioResponse = AdminCopyScenarioResponses[200 & keyof AdminCopyScenarioResponses];
+
+export type AdminCopyQuestionData = {
+    body?: never;
+    path: {
+        /**
+         * Question Id
+         */
+        question_id: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/questions/{question_id}/copy';
+};
+
+export type AdminCopyQuestionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminCopyQuestionError = AdminCopyQuestionErrors[keyof AdminCopyQuestionErrors];
+
+export type AdminCopyQuestionResponses = {
+    /**
+     * Successful Response
+     */
+    200: QuestionBankOut;
+};
+
+export type AdminCopyQuestionResponse = AdminCopyQuestionResponses[200 & keyof AdminCopyQuestionResponses];
+
+export type AdminCopyInstructionData = {
+    body?: never;
+    path: {
+        /**
+         * Instruction Id
+         */
+        instruction_id: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/instructions/{instruction_id}/copy';
+};
+
+export type AdminCopyInstructionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminCopyInstructionError = AdminCopyInstructionErrors[keyof AdminCopyInstructionErrors];
+
+export type AdminCopyInstructionResponses = {
+    /**
+     * Successful Response
+     */
+    200: InstructionPublic;
+};
+
+export type AdminCopyInstructionResponse = AdminCopyInstructionResponses[200 & keyof AdminCopyInstructionResponses];
+
+export type AdminListClassroomsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/classrooms';
+};
+
+export type AdminListClassroomsResponses = {
+    /**
+     * Response Admin-List Classrooms
+     *
+     * Successful Response
+     */
+    200: Array<ClassroomPublic>;
+};
+
+export type AdminListClassroomsResponse = AdminListClassroomsResponses[200 & keyof AdminListClassroomsResponses];
+
+export type AdminDeactivateClassroomData = {
+    body?: never;
+    path: {
+        /**
+         * Classroom Id
+         */
+        classroom_id: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/classrooms/{classroom_id}';
+};
+
+export type AdminDeactivateClassroomErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminDeactivateClassroomError = AdminDeactivateClassroomErrors[keyof AdminDeactivateClassroomErrors];
+
+export type AdminDeactivateClassroomResponses = {
+    /**
+     * Response Admin-Deactivate Classroom
+     *
+     * Successful Response
+     */
+    200: {
+        [key: string]: string;
+    };
+};
+
+export type AdminDeactivateClassroomResponse = AdminDeactivateClassroomResponses[200 & keyof AdminDeactivateClassroomResponses];
+
+export type AdminUpdateClassroomData = {
+    body: ClassroomUpdate;
+    path: {
+        /**
+         * Classroom Id
+         */
+        classroom_id: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/classrooms/{classroom_id}';
+};
+
+export type AdminUpdateClassroomErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminUpdateClassroomError = AdminUpdateClassroomErrors[keyof AdminUpdateClassroomErrors];
+
+export type AdminUpdateClassroomResponses = {
+    /**
+     * Successful Response
+     */
+    200: ClassroomPublic;
+};
+
+export type AdminUpdateClassroomResponse = AdminUpdateClassroomResponses[200 & keyof AdminUpdateClassroomResponses];
+
+export type AdminGenerateStandardAudioData = {
+    body: TtsRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/audio/tts';
+};
+
+export type AdminGenerateStandardAudioErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminGenerateStandardAudioError = AdminGenerateStandardAudioErrors[keyof AdminGenerateStandardAudioErrors];
+
+export type AdminGenerateStandardAudioResponses = {
+    /**
+     * Successful Response
+     */
+    200: AudioUrlResult;
+};
+
+export type AdminGenerateStandardAudioResponse = AdminGenerateStandardAudioResponses[200 & keyof AdminGenerateStandardAudioResponses];
+
+export type AdminUploadStandardAudioData = {
+    body: BodyAdminUploadStandardAudio;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/audio/upload';
+};
+
+export type AdminUploadStandardAudioErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminUploadStandardAudioError = AdminUploadStandardAudioErrors[keyof AdminUploadStandardAudioErrors];
+
+export type AdminUploadStandardAudioResponses = {
+    /**
+     * Successful Response
+     */
+    200: AudioUrlResult;
+};
+
+export type AdminUploadStandardAudioResponse = AdminUploadStandardAudioResponses[200 & keyof AdminUploadStandardAudioResponses];
+
 export type AdminListPassagesData = {
     body?: never;
     path?: never;
@@ -10998,6 +11280,71 @@ export type AdminUpdateInstructionResponses = {
 
 export type AdminUpdateInstructionResponse = AdminUpdateInstructionResponses[200 & keyof AdminUpdateInstructionResponses];
 
+export type AdminUnsplitPassageReadingsData = {
+    body?: never;
+    path: {
+        /**
+         * Passage Id
+         */
+        passage_id: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/passages/{passage_id}/split';
+};
+
+export type AdminUnsplitPassageReadingsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminUnsplitPassageReadingsError = AdminUnsplitPassageReadingsErrors[keyof AdminUnsplitPassageReadingsErrors];
+
+export type AdminUnsplitPassageReadingsResponses = {
+    /**
+     * Successful Response
+     */
+    200: PassagePublic;
+};
+
+export type AdminUnsplitPassageReadingsResponse = AdminUnsplitPassageReadingsResponses[200 & keyof AdminUnsplitPassageReadingsResponses];
+
+export type AdminSplitPassageIntoReadingsData = {
+    body?: never;
+    path: {
+        /**
+         * Passage Id
+         */
+        passage_id: string;
+    };
+    query?: {
+        /**
+         * Mode
+         */
+        mode?: 'paragraph' | 'sentence';
+    };
+    url: '/api/v1/admin/passages/{passage_id}/split';
+};
+
+export type AdminSplitPassageIntoReadingsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminSplitPassageIntoReadingsError = AdminSplitPassageIntoReadingsErrors[keyof AdminSplitPassageIntoReadingsErrors];
+
+export type AdminSplitPassageIntoReadingsResponses = {
+    /**
+     * Successful Response
+     */
+    200: PassageSplitResult;
+};
+
+export type AdminSplitPassageIntoReadingsResponse = AdminSplitPassageIntoReadingsResponses[200 & keyof AdminSplitPassageIntoReadingsResponses];
+
 export type AdminListScenariosData = {
     body?: never;
     path?: never;
@@ -11289,156 +11636,6 @@ export type AdminListQuestionBankResponses = {
 
 export type AdminListQuestionBankResponse = AdminListQuestionBankResponses[200 & keyof AdminListQuestionBankResponses];
 
-export type AdminCopyPassageData = {
-    body?: never;
-    path: {
-        /**
-         * Passage Id
-         */
-        passage_id: string;
-    };
-    query?: never;
-    url: '/api/v1/admin/passages/{passage_id}/copy';
-};
-
-export type AdminCopyPassageErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminCopyPassageError = AdminCopyPassageErrors[keyof AdminCopyPassageErrors];
-
-export type AdminCopyPassageResponses = {
-    /**
-     * Successful Response
-     */
-    200: PassageWithSentences;
-};
-
-export type AdminCopyPassageResponse = AdminCopyPassageResponses[200 & keyof AdminCopyPassageResponses];
-
-export type AdminCopySentenceData = {
-    body?: never;
-    path: {
-        /**
-         * Sentence Id
-         */
-        sentence_id: string;
-    };
-    query?: never;
-    url: '/api/v1/admin/sentences/{sentence_id}/copy';
-};
-
-export type AdminCopySentenceErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminCopySentenceError = AdminCopySentenceErrors[keyof AdminCopySentenceErrors];
-
-export type AdminCopySentenceResponses = {
-    /**
-     * Successful Response
-     */
-    200: SentenceWithPassage;
-};
-
-export type AdminCopySentenceResponse = AdminCopySentenceResponses[200 & keyof AdminCopySentenceResponses];
-
-export type AdminCopyScenarioData = {
-    body?: never;
-    path: {
-        /**
-         * Scenario Id
-         */
-        scenario_id: string;
-    };
-    query?: never;
-    url: '/api/v1/admin/scenarios/{scenario_id}/copy';
-};
-
-export type AdminCopyScenarioErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminCopyScenarioError = AdminCopyScenarioErrors[keyof AdminCopyScenarioErrors];
-
-export type AdminCopyScenarioResponses = {
-    /**
-     * Successful Response
-     */
-    200: ScenarioOut;
-};
-
-export type AdminCopyScenarioResponse = AdminCopyScenarioResponses[200 & keyof AdminCopyScenarioResponses];
-
-export type AdminCopyQuestionData = {
-    body?: never;
-    path: {
-        /**
-         * Question Id
-         */
-        question_id: string;
-    };
-    query?: never;
-    url: '/api/v1/admin/questions/{question_id}/copy';
-};
-
-export type AdminCopyQuestionErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminCopyQuestionError = AdminCopyQuestionErrors[keyof AdminCopyQuestionErrors];
-
-export type AdminCopyQuestionResponses = {
-    /**
-     * Successful Response
-     */
-    200: QuestionBankOut;
-};
-
-export type AdminCopyQuestionResponse = AdminCopyQuestionResponses[200 & keyof AdminCopyQuestionResponses];
-
-export type AdminCopyInstructionData = {
-    body?: never;
-    path: {
-        /**
-         * Instruction Id
-         */
-        instruction_id: string;
-    };
-    query?: never;
-    url: '/api/v1/admin/instructions/{instruction_id}/copy';
-};
-
-export type AdminCopyInstructionErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminCopyInstructionError = AdminCopyInstructionErrors[keyof AdminCopyInstructionErrors];
-
-export type AdminCopyInstructionResponses = {
-    /**
-     * Successful Response
-     */
-    200: InstructionPublic;
-};
-
-export type AdminCopyInstructionResponse = AdminCopyInstructionResponses[200 & keyof AdminCopyInstructionResponses];
-
 export type AdminCreateQuestionsBatchData = {
     body: BatchQuestionCreate;
     path: {
@@ -11468,88 +11665,6 @@ export type AdminCreateQuestionsBatchResponses = {
 };
 
 export type AdminCreateQuestionsBatchResponse = AdminCreateQuestionsBatchResponses[200 & keyof AdminCreateQuestionsBatchResponses];
-
-export type AdminListClassroomsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/admin/classrooms';
-};
-
-export type AdminListClassroomsResponses = {
-    /**
-     * Response Admin-List Classrooms
-     *
-     * Successful Response
-     */
-    200: Array<ClassroomPublic>;
-};
-
-export type AdminListClassroomsResponse = AdminListClassroomsResponses[200 & keyof AdminListClassroomsResponses];
-
-export type AdminDeactivateClassroomData = {
-    body?: never;
-    path: {
-        /**
-         * Classroom Id
-         */
-        classroom_id: string;
-    };
-    query?: never;
-    url: '/api/v1/admin/classrooms/{classroom_id}';
-};
-
-export type AdminDeactivateClassroomErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminDeactivateClassroomError = AdminDeactivateClassroomErrors[keyof AdminDeactivateClassroomErrors];
-
-export type AdminDeactivateClassroomResponses = {
-    /**
-     * Response Admin-Deactivate Classroom
-     *
-     * Successful Response
-     */
-    200: {
-        [key: string]: string;
-    };
-};
-
-export type AdminDeactivateClassroomResponse = AdminDeactivateClassroomResponses[200 & keyof AdminDeactivateClassroomResponses];
-
-export type AdminUpdateClassroomData = {
-    body: ClassroomUpdate;
-    path: {
-        /**
-         * Classroom Id
-         */
-        classroom_id: string;
-    };
-    query?: never;
-    url: '/api/v1/admin/classrooms/{classroom_id}';
-};
-
-export type AdminUpdateClassroomErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminUpdateClassroomError = AdminUpdateClassroomErrors[keyof AdminUpdateClassroomErrors];
-
-export type AdminUpdateClassroomResponses = {
-    /**
-     * Successful Response
-     */
-    200: ClassroomPublic;
-};
-
-export type AdminUpdateClassroomResponse = AdminUpdateClassroomResponses[200 & keyof AdminUpdateClassroomResponses];
 
 export type AdminGenerateQuestionsData = {
     body: GenerateRequest;
@@ -11617,121 +11732,6 @@ export type AdminAutoSplitSentencesResponses = {
 };
 
 export type AdminAutoSplitSentencesResponse = AdminAutoSplitSentencesResponses[200 & keyof AdminAutoSplitSentencesResponses];
-
-export type AdminUnsplitPassageReadingsData = {
-    body?: never;
-    path: {
-        /**
-         * Passage Id
-         */
-        passage_id: string;
-    };
-    query?: never;
-    url: '/api/v1/admin/passages/{passage_id}/split';
-};
-
-export type AdminUnsplitPassageReadingsErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminUnsplitPassageReadingsError = AdminUnsplitPassageReadingsErrors[keyof AdminUnsplitPassageReadingsErrors];
-
-export type AdminUnsplitPassageReadingsResponses = {
-    /**
-     * Successful Response
-     */
-    200: PassagePublic;
-};
-
-export type AdminUnsplitPassageReadingsResponse = AdminUnsplitPassageReadingsResponses[200 & keyof AdminUnsplitPassageReadingsResponses];
-
-export type AdminSplitPassageIntoReadingsData = {
-    body?: never;
-    path: {
-        /**
-         * Passage Id
-         */
-        passage_id: string;
-    };
-    query?: {
-        /**
-         * Mode
-         */
-        mode?: 'paragraph' | 'sentence';
-    };
-    url: '/api/v1/admin/passages/{passage_id}/split';
-};
-
-export type AdminSplitPassageIntoReadingsErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminSplitPassageIntoReadingsError = AdminSplitPassageIntoReadingsErrors[keyof AdminSplitPassageIntoReadingsErrors];
-
-export type AdminSplitPassageIntoReadingsResponses = {
-    /**
-     * Successful Response
-     */
-    200: PassageSplitResult;
-};
-
-export type AdminSplitPassageIntoReadingsResponse = AdminSplitPassageIntoReadingsResponses[200 & keyof AdminSplitPassageIntoReadingsResponses];
-
-export type AdminGenerateStandardAudioData = {
-    body: TtsRequest;
-    path?: never;
-    query?: never;
-    url: '/api/v1/admin/audio/tts';
-};
-
-export type AdminGenerateStandardAudioErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminGenerateStandardAudioError = AdminGenerateStandardAudioErrors[keyof AdminGenerateStandardAudioErrors];
-
-export type AdminGenerateStandardAudioResponses = {
-    /**
-     * Successful Response
-     */
-    200: AudioUrlResult;
-};
-
-export type AdminGenerateStandardAudioResponse = AdminGenerateStandardAudioResponses[200 & keyof AdminGenerateStandardAudioResponses];
-
-export type AdminUploadStandardAudioData = {
-    body: BodyAdminUploadStandardAudio;
-    path?: never;
-    query?: never;
-    url: '/api/v1/admin/audio/upload';
-};
-
-export type AdminUploadStandardAudioErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type AdminUploadStandardAudioError = AdminUploadStandardAudioErrors[keyof AdminUploadStandardAudioErrors];
-
-export type AdminUploadStandardAudioResponses = {
-    /**
-     * Successful Response
-     */
-    200: AudioUrlResult;
-};
-
-export type AdminUploadStandardAudioResponse = AdminUploadStandardAudioResponses[200 & keyof AdminUploadStandardAudioResponses];
 
 export type AdminListUnitsData = {
     body?: never;

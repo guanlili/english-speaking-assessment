@@ -6,14 +6,13 @@ from fastapi import APIRouter, HTTPException
 from sqlmodel import Field, SQLModel, col, select
 
 from app.api.deps import SessionDep, TeacherUserDep
-from app.api.routes.admin_content import (
+from app.api.routes.admin_passages import (
     PassageWithSentences,
-    ScenarioOut,
     SentenceWithPassage,
     list_passages,
-    list_scenarios,
     list_sentences_flat,
 )
+from app.api.routes.admin_scenarios import ScenarioOut, list_scenarios
 from app.models import (
     AssignmentItemIn,
     Instruction,

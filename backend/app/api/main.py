@@ -7,7 +7,9 @@ from app.api.routes import (
     admin_dashboard,
     admin_exam,
     admin_export,
+    admin_passages,
     admin_question_io,
+    admin_scenarios,
     admin_taxonomy,
     attempts,
     audio,
@@ -33,6 +35,8 @@ api_router.include_router(attempts.router)
 api_router.include_router(exports.router)
 api_router.include_router(students.router)
 api_router.include_router(admin_content.router)
+api_router.include_router(admin_passages.router)
+api_router.include_router(admin_scenarios.router)
 api_router.include_router(admin_taxonomy.router)
 api_router.include_router(admin_content_copy.router)
 api_router.include_router(admin_composer.router)
