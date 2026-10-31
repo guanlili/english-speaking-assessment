@@ -59,12 +59,13 @@ def _create_test_database() -> Engine:
         admin_uri, isolation_level="AUTOCOMMIT", poolclass=NullPool
     )
     with admin_engine.connect() as conn:
-        exists = conn.execute(
-            text("SELECT 1 FROM pg_database WHERE datname = :name"),
-            {"name": settings.POSTGRES_DB_TEST},
-        ).scalar()
-        if not exists:
-            conn.execute(text(f'CREATE DATABASE "{settings.POSTGRES_DB_TEST}"'))
+        # 每轮 drop+recreate：CI 重跑时 PG 服务容器复用，上一轮残留的
+        # 共享测试库数据（尤其多租户 B2 的跨租户同号用户）会让超管全局
+        # 登录命中歧义拒绝——脏数据是 KeyError: 'access_token' 的根因
+        conn.execute(
+            text(f'DROP DATABASE IF EXISTS "{settings.POSTGRES_DB_TEST}" WITH (FORCE)')
+        )
+        conn.execute(text(f'CREATE DATABASE "{settings.POSTGRES_DB_TEST}"'))
     admin_engine.dispose()
     return create_engine(str(settings.SQLALCHEMY_DATABASE_TEST_URI))
 

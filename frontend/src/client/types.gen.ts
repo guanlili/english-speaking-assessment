@@ -4271,6 +4271,26 @@ export type ScenariosListOut = {
 };
 
 /**
+ * SchoolLoginInfo
+ *
+ * 学校入口受限读取（V1.0 FR-02）：仅登录页展示所需字段，不含账号信息。
+ */
+export type SchoolLoginInfo = {
+    /**
+     * Slug
+     */
+    slug: string;
+    /**
+     * Name Zh
+     */
+    name_zh: string;
+    /**
+     * Name En
+     */
+    name_en?: string | null;
+};
+
+/**
  * SentenceCreate
  *
  * 新建复述句请求（独立创建或挂篇目）。
@@ -7461,10 +7481,47 @@ export type LoginReadLoginOptionsResponses = {
 
 export type LoginReadLoginOptionsResponse = LoginReadLoginOptionsResponses[200 & keyof LoginReadLoginOptionsResponses];
 
+export type LoginReadSchoolLoginInfoData = {
+    body?: never;
+    path: {
+        /**
+         * Slug
+         */
+        slug: string;
+    };
+    query?: never;
+    url: '/api/v1/login/school/{slug}';
+};
+
+export type LoginReadSchoolLoginInfoErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type LoginReadSchoolLoginInfoError = LoginReadSchoolLoginInfoErrors[keyof LoginReadSchoolLoginInfoErrors];
+
+export type LoginReadSchoolLoginInfoResponses = {
+    /**
+     * Successful Response
+     */
+    200: SchoolLoginInfo;
+};
+
+export type LoginReadSchoolLoginInfoResponse = LoginReadSchoolLoginInfoResponses[200 & keyof LoginReadSchoolLoginInfoResponses];
+
 export type LoginLoginAccessTokenData = {
     body: BodyLoginLoginAccessToken;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * School
+         *
+         * 学校码（多租户 B2）
+         */
+        school?: string | null;
+    };
     url: '/api/v1/login/access-token';
 };
 

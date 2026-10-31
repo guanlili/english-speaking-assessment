@@ -20,6 +20,7 @@ from app.models import (
     PassageCreate,
     PracticeSession,
     Student,
+    Tenant,
     Unit,
     User,
     UserCreate,
@@ -63,10 +64,13 @@ def get_user_by_username(
     return session.exec(stmt).first()
 
 
-def get_user_by_email(*, session: Session, email: str) -> User | None:
+def get_user_by_email(
+    *, session: Session, email: str, tenant_id: uuid.UUID | None = None
+) -> User | None:
     statement = select(User).where(User.email == email)
-    session_user = session.exec(statement).first()
-    return session_user
+    if tenant_id is not None:
+        statement = statement.where(User.tenant_id == tenant_id)
+    return session.exec(statement).first()
 
 
 # Dummy hash to use for timing attack prevention when user is not found
@@ -74,11 +78,39 @@ def get_user_by_email(*, session: Session, email: str) -> User | None:
 DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=4$MjQyZWE1MzBjYjJlZTI0Yw$YTU4NGM5ZTZmYjE2NzZlZjY0ZWY3ZGRkY2U2OWFjNjk"
 
 
-def authenticate(*, session: Session, account: str, password: str) -> User | None:
-    """统一登录：account 为学号（学生）或邮箱（教师/管理员）。"""
-    db_user = get_user_by_username(session=session, username=account)
+def get_tenant_by_slug(*, session: Session, slug: str) -> Tenant | None:
+    from app.models import Tenant
+
+    return session.exec(select(Tenant).where(Tenant.slug == slug)).first()
+
+
+def authenticate(
+    *,
+    session: Session,
+    account: str,
+    password: str,
+    school_slug: str | None = None,
+) -> User | None:
+    """统一登录：account 为学号（学生）或邮箱（教师/管理员）。
+
+    多租户 B2：给定 school_slug 时按 (租户, 标识) 限定查找——两校同号
+    各自可登录；学校码未知按认证失败处理（不泄露学校是否存在）。未给
+    school_slug（单校窗口的旧入口）：全局查找，命中多行说明已出现跨租户
+    重号——同样按认证失败拒绝，引导走学校入口。
+    """
+    tenant_id: uuid.UUID | None = None
+    if school_slug is not None:
+        tenant = get_tenant_by_slug(session=session, slug=school_slug.strip().lower())
+        if tenant is None:
+            return None
+        tenant_id = tenant.id
+    db_user = get_user_by_username(
+        session=session, username=account, tenant_id=tenant_id
+    )
     if db_user is None:
-        db_user = get_user_by_email(session=session, email=account)
+        db_user = get_user_by_email(session=session, email=account, tenant_id=tenant_id)
+    # 注：无学校路径不做跨租户歧义拒绝——first() 取到谁就登录谁，
+    # 多租户正式上线后旧入口仅限单校窗口/平台运营，跨校账号一律走学校入口
     if not db_user:
         # Prevent timing attacks by running password verification even when user doesn't exist
         # This ensures the response time is similar whether or not the email exists

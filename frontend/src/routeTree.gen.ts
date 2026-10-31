@@ -48,6 +48,7 @@ import { Route as ExamCodeIndexRouteImport } from './routes/exam.$code.index'
 import { Route as ExamCodeResultRouteImport } from './routes/exam.$code.result'
 import { Route as PCodeIndexRouteImport } from './routes/p.$code.index'
 import { Route as PCodeResultRouteImport } from './routes/p.$code.result'
+import { Route as SSchoolSlugLoginRouteImport } from './routes/s.$schoolSlug.login'
 import { Route as TCodeIndexRouteImport } from './routes/t.$code.index'
 import { Route as TCodeVocabRouteImport } from './routes/t.$code.vocab'
 import { Route as VocabCodeIndexRouteImport } from './routes/vocab.$code.index'
@@ -252,6 +253,11 @@ const PCodeResultRoute = PCodeResultRouteImport.update({
   path: '/result',
   getParentRoute: () => PCodeRoute,
 } as any)
+const SSchoolSlugLoginRoute = SSchoolSlugLoginRouteImport.update({
+  id: '/s/$schoolSlug/login',
+  path: '/s/$schoolSlug/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TCodeIndexRoute = TCodeIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -329,6 +335,7 @@ export interface FileRoutesByFullPath {
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
   '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
+  '/s/$schoolSlug/login': typeof SSchoolSlugLoginRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
@@ -372,6 +379,7 @@ export interface FileRoutesByTo {
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
   '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
+  '/s/$schoolSlug/login': typeof SSchoolSlugLoginRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
@@ -422,6 +430,7 @@ export interface FileRoutesById {
   '/_layout/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
   '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
+  '/s/$schoolSlug/login': typeof SSchoolSlugLoginRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
@@ -472,6 +481,7 @@ export interface FileRouteTypes {
     | '/admin/vocablevels'
     | '/exam/$code/result'
     | '/p/$code/result'
+    | '/s/$schoolSlug/login'
     | '/t/$code/vocab'
     | '/vocab/$code/books'
     | '/vocab/$code/practice'
@@ -515,6 +525,7 @@ export interface FileRouteTypes {
     | '/admin/vocablevels'
     | '/exam/$code/result'
     | '/p/$code/result'
+    | '/s/$schoolSlug/login'
     | '/t/$code/vocab'
     | '/vocab/$code/books'
     | '/vocab/$code/practice'
@@ -564,6 +575,7 @@ export interface FileRouteTypes {
     | '/_layout/admin/vocablevels'
     | '/exam/$code/result'
     | '/p/$code/result'
+    | '/s/$schoolSlug/login'
     | '/t/$code/vocab'
     | '/vocab/$code/books'
     | '/vocab/$code/practice'
@@ -596,6 +608,7 @@ export interface RootRouteChildren {
   PCodeRoute: typeof PCodeRouteWithChildren
   TCodeRoute: typeof TCodeRouteWithChildren
   VocabCodeRoute: typeof VocabCodeRouteWithChildren
+  SSchoolSlugLoginRoute: typeof SSchoolSlugLoginRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -873,6 +886,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PCodeResultRouteImport
       parentRoute: typeof PCodeRoute
     }
+    '/s/$schoolSlug/login': {
+      id: '/s/$schoolSlug/login'
+      path: '/s/$schoolSlug/login'
+      fullPath: '/s/$schoolSlug/login'
+      preLoaderRoute: typeof SSchoolSlugLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/t/$code/': {
       id: '/t/$code/'
       path: '/'
@@ -1064,6 +1084,7 @@ const rootRouteChildren: RootRouteChildren = {
   PCodeRoute: PCodeRouteWithChildren,
   TCodeRoute: TCodeRouteWithChildren,
   VocabCodeRoute: VocabCodeRouteWithChildren,
+  SSchoolSlugLoginRoute: SSchoolSlugLoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
