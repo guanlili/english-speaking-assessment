@@ -658,6 +658,36 @@ export type BodyLoginLoginAccessToken = {
 };
 
 /**
+ * Body_login-login_platform_token
+ */
+export type BodyLoginLoginPlatformToken = {
+    /**
+     * Grant Type
+     */
+    grant_type?: string | null;
+    /**
+     * Username
+     */
+    username: string;
+    /**
+     * Password
+     */
+    password: string;
+    /**
+     * Scope
+     */
+    scope?: string;
+    /**
+     * Client Id
+     */
+    client_id?: string | null;
+    /**
+     * Client Secret
+     */
+    client_secret?: string | null;
+};
+
+/**
  * Body_question-bank-question_bank_import_confirm
  */
 export type BodyQuestionBankQuestionBankImportConfirm = {
@@ -3560,6 +3590,22 @@ export type PlanItem = {
 };
 
 /**
+ * PlatformOperatorPublic
+ *
+ * 平台运营自述（/login/platform/me）：只暴露展示所需字段。
+ */
+export type PlatformOperatorPublic = {
+    /**
+     * Email
+     */
+    email: string;
+    /**
+     * Full Name
+     */
+    full_name?: string | null;
+};
+
+/**
  * PublishedClassSummary
  */
 export type PublishedClassSummary = {
@@ -5202,10 +5248,6 @@ export type UserCreate = {
      */
     is_active?: boolean;
     /**
-     * Is Superuser
-     */
-    is_superuser?: boolean;
-    /**
      * Full Name
      */
     full_name?: string | null;
@@ -5251,10 +5293,6 @@ export type UserPublic = {
      * Is Active
      */
     is_active?: boolean;
-    /**
-     * Is Superuser
-     */
-    is_superuser?: boolean;
     /**
      * Full Name
      */
@@ -5311,10 +5349,6 @@ export type UserUpdate = {
      * Is Active
      */
     is_active?: boolean | null;
-    /**
-     * Is Superuser
-     */
-    is_superuser?: boolean | null;
     /**
      * Full Name
      */
@@ -7543,6 +7577,47 @@ export type LoginLoginAccessTokenResponses = {
 
 export type LoginLoginAccessTokenResponse = LoginLoginAccessTokenResponses[200 & keyof LoginLoginAccessTokenResponses];
 
+export type LoginLoginPlatformTokenData = {
+    body: BodyLoginLoginPlatformToken;
+    path?: never;
+    query?: never;
+    url: '/api/v1/login/platform-token';
+};
+
+export type LoginLoginPlatformTokenErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type LoginLoginPlatformTokenError = LoginLoginPlatformTokenErrors[keyof LoginLoginPlatformTokenErrors];
+
+export type LoginLoginPlatformTokenResponses = {
+    /**
+     * Successful Response
+     */
+    200: Token;
+};
+
+export type LoginLoginPlatformTokenResponse = LoginLoginPlatformTokenResponses[200 & keyof LoginLoginPlatformTokenResponses];
+
+export type LoginReadPlatformOperatorMeData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/login/platform/me';
+};
+
+export type LoginReadPlatformOperatorMeResponses = {
+    /**
+     * Successful Response
+     */
+    200: PlatformOperatorPublic;
+};
+
+export type LoginReadPlatformOperatorMeResponse = LoginReadPlatformOperatorMeResponses[200 & keyof LoginReadPlatformOperatorMeResponses];
+
 export type LoginTestTokenData = {
     body?: never;
     path?: never;
@@ -7574,6 +7649,22 @@ export type LoginLoginDemoResponses = {
 };
 
 export type LoginLoginDemoResponse = LoginLoginDemoResponses[200 & keyof LoginLoginDemoResponses];
+
+export type LoginLoginPlatformDemoData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/login/platform-demo';
+};
+
+export type LoginLoginPlatformDemoResponses = {
+    /**
+     * Successful Response
+     */
+    200: Token;
+};
+
+export type LoginLoginPlatformDemoResponse = LoginLoginPlatformDemoResponses[200 & keyof LoginLoginPlatformDemoResponses];
 
 export type LoginRecoverPasswordData = {
     body?: never;

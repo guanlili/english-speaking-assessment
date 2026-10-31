@@ -8,14 +8,18 @@ export const CHANGELOG_SEEN_KEY = "esa:changelog-seen"
 
 export const changelogQueryKey = ["changelog"] as const
 
-/** 平台更新日志列表（教师与管理员共用；侧栏红点与页面同键共享缓存）。 */
+/** 平台更新日志列表（教师/校级管理员/平台运营共用；侧栏红点与页面同键共享缓存）。 */
 export function useChangelog() {
   const { user } = useAuth()
   return useQuery({
     queryKey: changelogQueryKey,
     queryFn: () => ChangelogService.readChangelog(),
     // 学生不该发这个请求（API 403）——即使壳层已拦，请求仍会发出
-    enabled: !!user && (user.is_superuser || cachedRole() === "teacher"),
+    enabled:
+      !!user &&
+      (cachedRole() === "teacher" ||
+        cachedRole() === "admin" ||
+        cachedRole() === "operator"),
     staleTime: 5 * 60 * 1000,
   })
 }

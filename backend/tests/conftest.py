@@ -87,7 +87,6 @@ def db() -> Generator[Session]:
             f"points at the application database ({settings.POSTGRES_DB}). "
             "Tests DELETE all rows — set POSTGRES_DB_TEST to a dedicated database."
         )
-
     engine = _create_test_database()
     # 测试库独立于 Alembic 迁移直接建表（模板测试不需要迁移链），
     # checkfirst 保证重复运行安全
@@ -167,6 +166,18 @@ def db() -> Generator[Session]:
     engine.dispose()
 
 
+# 登录限流器为应用全局态（10 次/300s，IP 桶只按失败累积）：负向登录
+# 测试的失败计数会跨模块累积，把后续模块 fixture 的正常登录顶到 429
+# （B3 全量曾因 +1 个故意失败登录触发）。每个用例前后清零，测试间不共享。
+@pytest.fixture(autouse=True)
+def _reset_login_rate_limiter() -> Generator[None]:
+    from app.api.routes.login import _login_attempts
+
+    _login_attempts.clear()
+    yield
+    _login_attempts.clear()
+
+
 # db 为 session 级 autouse fixture，pytest 保证它先于 module 级的 client 实例化
 # （dependency_overrides 在 TestClient 发出任何请求前已注册）
 @pytest.fixture(scope="module")
@@ -178,6 +189,14 @@ def client() -> Generator[TestClient]:
 @pytest.fixture(scope="module")
 def superuser_token_headers(client: TestClient) -> dict[str, str]:
     return get_superuser_token_headers(client)
+
+
+@pytest.fixture(scope="module")
+def operator_token_headers(client: TestClient) -> dict[str, str]:
+    """平台运营 token（B3）：平台路由专用——用户/大盘/目录/更新日志写。"""
+    from tests.utils.utils import get_operator_token_headers
+
+    return get_operator_token_headers(client)
 
 
 @pytest.fixture(scope="module")

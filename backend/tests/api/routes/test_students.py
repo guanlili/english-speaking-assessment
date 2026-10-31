@@ -678,7 +678,6 @@ def test_teacher_cannot_reset_enrolled_admin(
             password=random_lower_string(),
             full_name="Enrolled Admin",
             role="admin",
-            is_superuser=True,
         ),
     )
     original_hash = admin.hashed_password
@@ -782,11 +781,12 @@ def test_teacher_cannot_reset_cross_class_shared_student(
 
 
 @pytest.mark.parametrize("bulk", [False, True])
-def test_teacher_cannot_reset_superuser_flagged_student(
+def test_teacher_cannot_reset_role_elevated_student(
     client: TestClient, db: Session, bulk: bool
 ) -> None:
-    """role=student 但 is_superuser=True 的分叉账号（update_user 逐字段盲写
-    可造成）：实际高权限账号同样不得被教师重置——角色守卫必须双标志判定。
+    """班内有学生档案、账号却被改成 admin 角色（update_user 盲写 role 仍可
+    造成）：高权限账号同样不得被教师重置。B3 起角色单源（is_superuser 已
+    移除），守卫只认 role。
     """
     from app.models import UserUpdate
     from tests.utils.credential import make_student
@@ -801,10 +801,8 @@ def test_teacher_cannot_reset_superuser_flagged_student(
         student_id = made["student"]["id"]
         target = made["user"]
 
-        crud.update_user(
-            session=db, db_user=target, user_in=UserUpdate(is_superuser=True)
-        )
-        assert target.role == "student" and target.is_superuser is True
+        crud.update_user(session=db, db_user=target, user_in=UserUpdate(role="admin"))
+        assert target.role == "admin"
         original_hash = target.hashed_password
 
         if bulk:

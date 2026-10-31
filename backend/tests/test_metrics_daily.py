@@ -185,7 +185,7 @@ def test_backfill_only_missing_rows(
 
 
 def test_performance_endpoint_gates_and_shape(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
     _purge(db)
     yesterday = datetime.now(tz).date() - timedelta(days=1)
@@ -207,12 +207,12 @@ def test_performance_endpoint_gates_and_shape(
     headers = {"Authorization": f"Bearer {teacher.json()['access_token']}"}
     assert (
         client.get("/api/v1/admin/dashboard/performance", headers=headers).status_code
-        == 403
+        == 401
     )
 
     resp = client.get(
         "/api/v1/admin/dashboard/performance?days=7",
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -226,10 +226,10 @@ def test_performance_endpoint_gates_and_shape(
 
 
 def test_pool_stats_expose_capacity_and_worker_tri_state(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient, operator_token_headers: dict[str, str]
 ) -> None:
     """评审返修：池水位分母必须是配置容量；worker 红标只看 stopped 三态。"""
-    resp = client.get("/api/v1/admin/metrics", headers=superuser_token_headers)
+    resp = client.get("/api/v1/admin/metrics", headers=operator_token_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert (
@@ -336,7 +336,7 @@ def test_day_bounds_utc_handles_dst_timezone(monkeypatch) -> None:
 
 
 def test_cost_endpoint_and_reconcile(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
     """费用区：月度估算数学 + 对账录入与偏差 + 权限门。"""
     from app.core.config import settings as cfg
@@ -363,7 +363,7 @@ def test_cost_endpoint_and_reconcile(
 
     # 401 / 403
     assert client.get("/api/v1/admin/dashboard/cost").status_code == 401
-    resp = client.get("/api/v1/admin/dashboard/cost", headers=superuser_token_headers)
+    resp = client.get("/api/v1/admin/dashboard/cost", headers=operator_token_headers)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     months = {m["month"]: m for m in body["months"]}
@@ -385,19 +385,19 @@ def test_cost_endpoint_and_reconcile(
     resp = client.put(
         "/api/v1/admin/dashboard/cost/reconcile",
         json={"month": this_month, "amount_cny": 260.0},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 200
     assert (
         client.put(
             "/api/v1/admin/dashboard/cost/reconcile",
             json={"month": "2026-13", "amount_cny": 1.0},
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
         ).status_code
         == 422
     )
 
-    resp = client.get("/api/v1/admin/dashboard/cost", headers=superuser_token_headers)
+    resp = client.get("/api/v1/admin/dashboard/cost", headers=operator_token_headers)
     m = {x["month"]: x for x in resp.json()["months"]}[this_month]
     assert m["actual_cny"] == 260.0
     assert m["deviation_pct"] is not None
@@ -514,7 +514,7 @@ def test_ark_chat_records_usage_tokens(monkeypatch) -> None:
 
 
 def test_cost_prefers_real_tokens_with_fallback(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
     """费用区 LLM：全调用日有 token → 真实计费；无 token → 估算回退。"""
     from app.core.config import settings as cfg
@@ -553,7 +553,7 @@ def test_cost_prefers_real_tokens_with_fallback(
         },
         llm_calls_by_kind={"llm_rubric": 20},
     )
-    resp = client.get("/api/v1/admin/dashboard/cost", headers=superuser_token_headers)
+    resp = client.get("/api/v1/admin/dashboard/cost", headers=operator_token_headers)
     m = {x["month"]: x for x in resp.json()["months"]}[month]
     # 调用日 2 天、记账日 1 天 → 未全覆盖 → 估算
     assert m["llm_basis"] == "estimated"
@@ -567,7 +567,7 @@ def test_cost_prefers_real_tokens_with_fallback(
         llm_tokens_in=12_000,
         llm_tokens_out=12_000,
     )
-    resp = client.get("/api/v1/admin/dashboard/cost", headers=superuser_token_headers)
+    resp = client.get("/api/v1/admin/dashboard/cost", headers=operator_token_headers)
     m = {x["month"]: x for x in resp.json()["months"]}[month]
     assert m["llm_basis"] == "tokens"
     assert m["llm_tokens_in"] == 72_000

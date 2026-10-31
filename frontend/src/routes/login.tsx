@@ -240,8 +240,8 @@ function DemoEntry() {
     mutationFn: (_role: "teacher" | "admin") => LoginService.loginDemo(),
     onSuccess: (data, role) => {
       localStorage.setItem("access_token", data.access_token)
-      // 演示登录走的是超管 token：必须同步角色缓存，否则之前有学生
-      // 登录过的浏览器会被教师路由的 student 守卫误重定向到加入页
+      // 演示登录走的是种子校级 admin token：必须同步角色缓存，否则之前
+      // 有学生登录过的浏览器会被教师路由的 student 守卫误重定向到加入页
       localStorage.setItem("esa:role", "admin")
       window.location.href =
         role === "teacher" ? "/t/DEMO01" : "/admin/passages"
@@ -254,6 +254,24 @@ function DemoEntry() {
         }),
       ),
   })
+  // 运营演示（B3）：种子校级 admin 只覆盖校内职能，平台页需运营身份
+  const operatorDemoMutation = useMutation({
+    mutationFn: () => LoginService.loginPlatformDemo(),
+    onSuccess: (data) => {
+      localStorage.setItem("access_token", data.access_token)
+      localStorage.setItem("esa:role", "operator")
+      window.location.href = "/admin/dashboard"
+    },
+    onError: () =>
+      toast.error(
+        t({
+          zh: "运营演示入口不可用，请使用运营账号登录",
+          en: "Operator demo unavailable, please sign in with your account",
+        }),
+      ),
+  })
+  const anyDemoPending =
+    demoMutation.isPending || operatorDemoMutation.isPending
   return (
     <details className="border-t border-brand-ink/10 pt-4 text-xs text-muted-foreground dark:border-border">
       <summary className="cursor-pointer rounded-sm py-1.5 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
@@ -264,11 +282,11 @@ function DemoEntry() {
           <RouterLink
             to="/j/$code"
             params={{ code: "DEMO01" }}
-            aria-disabled={demoMutation.isPending}
-            tabIndex={demoMutation.isPending ? -1 : undefined}
+            aria-disabled={anyDemoPending}
+            tabIndex={anyDemoPending ? -1 : undefined}
             className="aria-disabled:pointer-events-none aria-disabled:opacity-50"
             onClick={(event) => {
-              if (demoMutation.isPending) event.preventDefault()
+              if (anyDemoPending) event.preventDefault()
             }}
           >
             {t({ zh: "学生演示", en: "Student demo" })}
@@ -281,7 +299,7 @@ function DemoEntry() {
             variant="outline"
             size="sm"
             className="h-9 rounded-lg"
-            disabled={demoMutation.isPending}
+            disabled={anyDemoPending}
             onClick={() => demoMutation.mutate(role)}
           >
             {demoMutation.isPending && demoMutation.variables === role
@@ -291,16 +309,28 @@ function DemoEntry() {
                 : t({ zh: "管理员演示", en: "Admin demo" })}
           </Button>
         ))}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-9 rounded-lg"
+          disabled={anyDemoPending}
+          onClick={() => operatorDemoMutation.mutate()}
+        >
+          {operatorDemoMutation.isPending
+            ? t({ zh: "进入中…", en: "Entering…" })
+            : t({ zh: "运营演示", en: "Operator demo" })}
+        </Button>
       </div>
       <p role="status" aria-atomic="true" className="sr-only">
-        {demoMutation.isPending
+        {anyDemoPending
           ? t({
               zh: "正在进入演示，请稍候。",
               en: "Entering demo, please wait.",
             })
           : ""}
       </p>
-      {demoMutation.isError && (
+      {(demoMutation.isError || operatorDemoMutation.isError) && (
         <p role="alert" className="mt-3 leading-5 text-destructive">
           {t({
             zh: "演示入口不可用，请使用账号登录。",
@@ -550,6 +580,17 @@ function Login() {
           </p>
         )}
         {options.data?.demo_enabled && <DemoEntry />}
+        <p className="text-muted-foreground mt-6 text-center text-xs">
+          <RouterLink
+            className="underline-offset-4 hover:underline"
+            to="/platform/login"
+          >
+            {t({
+              zh: "平台运营入口",
+              en: "Platform operator sign-in",
+            })}
+          </RouterLink>
+        </p>
       </div>
     </LoginLayout>
   )

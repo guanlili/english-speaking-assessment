@@ -106,6 +106,19 @@ class Settings(BaseSettings):
     EMAIL_TEST_USER: EmailStr = "test@example.com"
     FIRST_SUPERUSER: EmailStr
     FIRST_SUPERUSER_PASSWORD: str
+    # 平台运营种子账号（多租户 B3）：默认沿用首超管凭据——单校过渡窗口内
+    # 旧管理员事实上就是运营者，不配新 Secrets 也能完成身份拆分；多校商用
+    # 前必须拆开独立凭据（设计稿：平台运营账号单独建立，不自动升级旧管理员）
+    FIRST_OPERATOR_EMAIL: EmailStr | None = None
+    FIRST_OPERATOR_PASSWORD: str | None = None
+
+    @property
+    def first_operator_email(self) -> str:
+        return str(self.FIRST_OPERATOR_EMAIL or self.FIRST_SUPERUSER)
+
+    @property
+    def first_operator_password(self) -> str:
+        return self.FIRST_OPERATOR_PASSWORD or self.FIRST_SUPERUSER_PASSWORD
 
     # ── 口语评测评分（PRD §7.2：引擎藏在可替换接口后面）──
     # mock=离线演示/测试；ark=火山方舟（需 ARK_API_KEY，模型名必须带日期后缀）
@@ -201,6 +214,10 @@ class Settings(BaseSettings):
         self._check_default_secret("POSTGRES_PASSWORD", self.POSTGRES_PASSWORD)
         self._check_default_secret(
             "FIRST_SUPERUSER_PASSWORD", self.FIRST_SUPERUSER_PASSWORD
+        )
+        # 运营凭据兜底取首超管值时同样纳入脱敏清单（避免日志泄露）
+        self._check_default_secret(
+            "FIRST_OPERATOR_PASSWORD", self.first_operator_password
         )
 
         return self

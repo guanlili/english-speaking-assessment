@@ -1,21 +1,22 @@
 import { expect, type Page, test } from "@playwright/test"
 
 /**
- * 管理员平台大盘冒烟（依赖本地演示超管登录）：页面能开、速览卡/排行/
+ * 管理员平台大盘冒烟（依赖本地演示运营登录——B3 起大盘归平台运营）：页面能开、速览卡/排行/
  * 资产区渲染。只读不写。教师 403 语义由后端测试覆盖。
  */
 
-async function loginAdminDemo(page: Page) {
+async function loginOperatorDemo(page: Page) {
+  // B3 起平台大盘只认运营身份（演示一键运营会话）
   await page.goto("/login")
   await page.getByText("本地演示体验", { exact: false }).click()
-  await page.getByRole("button", { name: "教师演示" }).click()
-  await page.waitForURL((url) => !url.pathname.includes("/login"), {
+  await page.getByRole("button", { name: "运营演示" }).click()
+  await page.waitForURL((url) => url.pathname.includes("/admin"), {
     timeout: 15_000,
   })
 }
 
 test("管理端平台大盘渲染", async ({ page }) => {
-  await loginAdminDemo(page)
+  await loginOperatorDemo(page)
   await page.goto("/admin/dashboard")
 
   await expect(

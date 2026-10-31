@@ -24,6 +24,10 @@ export const cachedRole = (): string | null => localStorage.getItem("esa:role")
 export const isStudentLoggedIn = () =>
   isLoggedIn() && cachedRole() === "student"
 
+/** 平台运营会话（多租户 B3）：独立身份，学校端点对其 401 */
+export const isOperatorLoggedIn = () =>
+  isLoggedIn() && cachedRole() === "operator"
+
 /** 批量导入的初始密码：首登需要先改密 */
 export const mustChangePassword = () =>
   localStorage.getItem("esa:must-change-pw") === "1"
@@ -33,13 +37,31 @@ const useAuth = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { showErrorToast } = useCustomToast()
+  const operator = isOperatorLoggedIn()
 
-  const { data: user } = useQuery<UserPublic | null, Error>({
+  const { data: schoolUser } = useQuery<UserPublic | null, Error>({
     queryKey: ["currentUser"],
     queryFn: () => UsersService.readUserMe(),
-    enabled: isLoggedIn(),
+    // 运营 token 打学校端点一律 401——不发这个请求
+    enabled: isLoggedIn() && !operator,
     staleTime: 5 * 60 * 1000,
   })
+
+  const { data: operatorMe } = useQuery({
+    queryKey: ["platformOperator"],
+    queryFn: () => LoginService.readPlatformOperatorMe(),
+    enabled: operator,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // 运营会话：以运营自述充当 currentUser（仅展示字段，role 固定 operator）
+  const user = operator
+    ? ({
+        email: operatorMe?.email,
+        full_name: operatorMe?.full_name ?? null,
+        role: "operator",
+      } as unknown as UserPublic)
+    : schoolUser
 
   const signUpMutation = useMutation({
     mutationFn: (data: UserRegister) =>

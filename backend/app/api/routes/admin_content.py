@@ -18,7 +18,7 @@ from pydantic import field_validator
 from sqlmodel import Field, SQLModel, col, select
 
 from app import crud
-from app.api.deps import SessionDep, SuperUserDep, TeacherUserDep
+from app.api.deps import PlatformOperatorDep, SessionDep, TeacherUserDep
 from app.api.routes._content_common import (
     _strip_blank,
     _strip_nonempty,
@@ -169,13 +169,13 @@ class ClassroomUpdate(SQLModel):
 
 
 @router.get("/classrooms", response_model=list[ClassroomPublic])
-def list_classrooms(session: SessionDep, _admin: SuperUserDep) -> Any:
+def list_classrooms(session: SessionDep, _operator: PlatformOperatorDep) -> Any:
     return session.exec(select(Classroom).order_by(col(Classroom.created_at))).all()
 
 
 @router.delete("/classrooms/{classroom_id}")
 def deactivate_classroom(
-    session: SessionDep, _admin: SuperUserDep, classroom_id: uuid.UUID
+    session: SessionDep, _operator: PlatformOperatorDep, classroom_id: uuid.UUID
 ) -> dict[str, str]:
     classroom = session.get(Classroom, classroom_id)
     if classroom is None:
@@ -189,7 +189,7 @@ def deactivate_classroom(
 @router.put("/classrooms/{classroom_id}", response_model=ClassroomPublic)
 def update_classroom(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
     classroom_id: uuid.UUID,
     classroom_in: ClassroomUpdate,
 ) -> Any:
@@ -205,7 +205,7 @@ def update_classroom(
         owner = session.get(_User, update["owner_id"])
         if owner is None:
             raise HTTPException(status_code=422, detail="教师账号不存在")
-        if not owner.is_superuser and owner.role != "teacher":
+        if owner.role not in ("admin", "teacher"):
             raise HTTPException(status_code=422, detail="被绑定账号不是教师角色")
     if update.get("class_size") is not None:
         crud.ensure_class_size_feasible(

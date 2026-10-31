@@ -53,12 +53,17 @@ def teacher_auth(client: TestClient, superuser_token_headers: dict[str, str]) ->
 def _make_unit_passage(
     db: Session, headers: dict, client: TestClient, order: int, title: str
 ) -> dict:
-    """建第二/第三个单元 + 篇目（第一个由种子提供）。"""
-    unit = client.post(
-        "/api/v1/admin/units",
-        json={"order_index": order, "title": title, "topic": "Pets"},
-        headers=headers,
-    ).json()
+    """建第二/第三个单元 + 篇目（第一个由种子提供）。
+
+    B3 起建单元是平台路由（运营 token）：教师视角的测试直插 DB 造数，
+    篇目创建仍是校内业务走 API。"""
+    from app.models import Unit
+
+    unit_row = Unit(order_index=order, title=title, topic="Pets")
+    db.add(unit_row)
+    db.commit()
+    db.refresh(unit_row)
+    unit = {"id": str(unit_row.id)}
     passage = client.post(
         "/api/v1/admin/passages",
         json={
@@ -119,6 +124,7 @@ def test_sequential_unlock_and_advance(
     client: TestClient,
     inline_scoring: None,
     superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
     db: Session,
 ) -> None:
     """两个单元：第二关锁 → 完成第一关一轮 → 解锁，今日篇目推进。"""
@@ -143,12 +149,12 @@ def test_sequential_unlock_and_advance(
 
     # 老师全开开关也生效
     classroom_id = client.get(
-        "/api/v1/admin/classrooms", headers=superuser_token_headers
+        "/api/v1/admin/classrooms", headers=operator_token_headers
     ).json()[0]["id"]
     updated = client.put(
         f"/api/v1/admin/classrooms/{classroom_id}",
         json={"unlock_all": True},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert updated.status_code == 200
     assert updated.json()["unlock_all"] is True
@@ -158,17 +164,21 @@ def test_sequential_unlock_and_advance(
     reset = client.put(
         f"/api/v1/admin/classrooms/{classroom_id}",
         json={"unlock_all": False},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert reset.status_code == 200
     assert reset.json()["unlock_all"] is False
 
 
-def test_unit_crud(client: TestClient, superuser_token_headers: dict[str, str]) -> None:
+def test_unit_crud(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+) -> None:
     created = client.post(
         "/api/v1/admin/units",
         json={"order_index": 9, "title": "临时单元", "topic": "Test"},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert created.status_code == 200
     unit = created.json()
@@ -176,7 +186,7 @@ def test_unit_crud(client: TestClient, superuser_token_headers: dict[str, str]) 
     upd = client.put(
         f"/api/v1/admin/units/{unit['id']}",
         json={"title": "改名单元"},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert upd.json()["title"] == "改名单元"
 
@@ -185,7 +195,7 @@ def test_unit_crud(client: TestClient, superuser_token_headers: dict[str, str]) 
 
     assert (
         client.delete(
-            f"/api/v1/admin/units/{unit['id']}", headers=superuser_token_headers
+            f"/api/v1/admin/units/{unit['id']}", headers=operator_token_headers
         ).status_code
         == 200
     )

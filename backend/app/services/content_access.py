@@ -27,11 +27,11 @@ EXAM_AUDIO_DETAIL = "没有权限：不能替换其他老师题目的考试音�
 
 def owner_for(user: User) -> uuid.UUID | None:
     """新建题目的归属：管理员录入的是全校公共内容（无主），教师录入的归本人。"""
-    return None if user.is_superuser else user.id
+    return None if user.role == "admin" else user.id
 
 
 def can_edit(user: User, owner_id: uuid.UUID | None) -> bool:
-    return user.is_superuser or owner_id is None or owner_id == user.id
+    return user.role == "admin" or owner_id is None or owner_id == user.id
 
 
 def _require(user: User, owner_id: uuid.UUID | None) -> None:
@@ -105,7 +105,7 @@ def _has_others_questions(session: Session, user: User, scenario_id: uuid.UUID) 
 
 
 def can_manage_scenario(session: Session, user: User, scenario: Scenario) -> bool:
-    if user.is_superuser or scenario.owner_id == user.id:
+    if user.role == "admin" or scenario.owner_id == user.id:
         return True
     if scenario.owner_id is not None:
         return False
@@ -120,5 +120,5 @@ def require_scenario(session: Session, user: User, scenario: Scenario) -> None:
 
 def require_scenario_delete(session: Session, user: User, scenario: Scenario) -> None:
     require_scenario(session, user, scenario)
-    if not user.is_superuser and _has_others_questions(session, user, scenario.id):
+    if user.role != "admin" and _has_others_questions(session, user, scenario.id):
         raise HTTPException(status_code=403, detail=SCENARIO_HAS_OTHERS_DETAIL)

@@ -32,6 +32,7 @@ import { Route as HomeCodeRouteImport } from './routes/home.$code'
 import { Route as JCodeRouteImport } from './routes/j.$code'
 import { Route as MeCodeRouteImport } from './routes/me.$code'
 import { Route as PCodeRouteImport } from './routes/p.$code'
+import { Route as PlatformLoginRouteImport } from './routes/platform.login'
 import { Route as TCodeRouteImport } from './routes/t.$code'
 import { Route as VocabCodeRouteImport } from './routes/vocab.$code'
 import { Route as LayoutAdminIndexRouteImport } from './routes/_layout/admin.index'
@@ -170,6 +171,11 @@ const MeCodeRoute = MeCodeRouteImport.update({
 const PCodeRoute = PCodeRouteImport.update({
   id: '/p/$code',
   path: '/p/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlatformLoginRoute = PlatformLoginRouteImport.update({
+  id: '/platform/login',
+  path: '/platform/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TCodeRoute = TCodeRouteImport.update({
@@ -322,6 +328,7 @@ export interface FileRoutesByFullPath {
   '/j/$code': typeof JCodeRoute
   '/me/$code': typeof MeCodeRoute
   '/p/$code': typeof PCodeRouteWithChildren
+  '/platform/login': typeof PlatformLoginRoute
   '/t/$code': typeof TCodeRouteWithChildren
   '/vocab/$code': typeof VocabCodeRouteWithChildren
   '/admin/classrooms': typeof LayoutAdminClassroomsRoute
@@ -367,6 +374,7 @@ export interface FileRoutesByTo {
   '/home/$code': typeof HomeCodeRoute
   '/j/$code': typeof JCodeRoute
   '/me/$code': typeof MeCodeRoute
+  '/platform/login': typeof PlatformLoginRoute
   '/': typeof LayoutIndexRoute
   '/admin/classrooms': typeof LayoutAdminClassroomsRoute
   '/admin/dashboard': typeof LayoutAdminDashboardRoute
@@ -416,6 +424,7 @@ export interface FileRoutesById {
   '/j/$code': typeof JCodeRoute
   '/me/$code': typeof MeCodeRoute
   '/p/$code': typeof PCodeRouteWithChildren
+  '/platform/login': typeof PlatformLoginRoute
   '/t/$code': typeof TCodeRouteWithChildren
   '/vocab/$code': typeof VocabCodeRouteWithChildren
   '/_layout/': typeof LayoutIndexRoute
@@ -468,6 +477,7 @@ export interface FileRouteTypes {
     | '/j/$code'
     | '/me/$code'
     | '/p/$code'
+    | '/platform/login'
     | '/t/$code'
     | '/vocab/$code'
     | '/admin/classrooms'
@@ -513,6 +523,7 @@ export interface FileRouteTypes {
     | '/home/$code'
     | '/j/$code'
     | '/me/$code'
+    | '/platform/login'
     | '/'
     | '/admin/classrooms'
     | '/admin/dashboard'
@@ -561,6 +572,7 @@ export interface FileRouteTypes {
     | '/j/$code'
     | '/me/$code'
     | '/p/$code'
+    | '/platform/login'
     | '/t/$code'
     | '/vocab/$code'
     | '/_layout/'
@@ -606,6 +618,7 @@ export interface RootRouteChildren {
   JCodeRoute: typeof JCodeRoute
   MeCodeRoute: typeof MeCodeRoute
   PCodeRoute: typeof PCodeRouteWithChildren
+  PlatformLoginRoute: typeof PlatformLoginRoute
   TCodeRoute: typeof TCodeRouteWithChildren
   VocabCodeRoute: typeof VocabCodeRouteWithChildren
   SSchoolSlugLoginRoute: typeof SSchoolSlugLoginRoute
@@ -772,6 +785,13 @@ declare module '@tanstack/react-router' {
       path: '/p/$code'
       fullPath: '/p/$code'
       preLoaderRoute: typeof PCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/platform/login': {
+      id: '/platform/login'
+      path: '/platform/login'
+      fullPath: '/platform/login'
+      preLoaderRoute: typeof PlatformLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/t/$code': {
@@ -1082,6 +1102,7 @@ const rootRouteChildren: RootRouteChildren = {
   JCodeRoute: JCodeRoute,
   MeCodeRoute: MeCodeRoute,
   PCodeRoute: PCodeRouteWithChildren,
+  PlatformLoginRoute: PlatformLoginRoute,
   TCodeRoute: TCodeRouteWithChildren,
   VocabCodeRoute: VocabCodeRouteWithChildren,
   SSchoolSlugLoginRoute: SSchoolSlugLoginRoute,

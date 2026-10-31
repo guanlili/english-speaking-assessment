@@ -20,7 +20,7 @@ def test_get_users_superuser_me(
     current_user = r.json()
     assert current_user
     assert current_user["is_active"] is True
-    assert current_user["is_superuser"]
+    assert current_user["role"] == "admin"
     assert current_user["email"] == settings.FIRST_SUPERUSER
 
 
@@ -31,12 +31,11 @@ def test_get_users_normal_user_me(
     current_user = r.json()
     assert current_user
     assert current_user["is_active"] is True
-    assert current_user["is_superuser"] is False
     assert current_user["email"] == settings.EMAIL_TEST_USER
 
 
 def test_create_user_new_email(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
     with (
         patch("app.utils.send_email", return_value=None),
@@ -48,7 +47,7 @@ def test_create_user_new_email(
         data = {"email": username, "password": password}
         r = client.post(
             f"{settings.API_V1_STR}/users/",
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
             json=data,
         )
         assert 200 <= r.status_code < 300
@@ -58,8 +57,8 @@ def test_create_user_new_email(
         assert user.email == created_user["email"]
 
 
-def test_get_existing_user_as_superuser(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+def test_get_existing_user_as_operator(
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
     username = random_email()
     password = random_lower_string()
@@ -68,7 +67,7 @@ def test_get_existing_user_as_superuser(
     user_id = user.id
     r = client.get(
         f"{settings.API_V1_STR}/users/{user_id}",
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert 200 <= r.status_code < 300
     api_user = r.json()
@@ -77,12 +76,12 @@ def test_get_existing_user_as_superuser(
     assert existing_user.email == api_user["email"]
 
 
-def test_get_non_existing_user_as_superuser(
-    client: TestClient, superuser_token_headers: dict[str, str]
+def test_get_non_existing_user_as_operator(
+    client: TestClient, operator_token_headers: dict[str, str]
 ) -> None:
     r = client.get(
         f"{settings.API_V1_STR}/users/{uuid.uuid4()}",
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert r.status_code == 404
     assert r.json() == {"detail": "User not found"}
@@ -104,10 +103,13 @@ def test_get_existing_user_current_user(client: TestClient, db: Session) -> None
     a_token = tokens["access_token"]
     headers = {"Authorization": f"Bearer {a_token}"}
 
+    # B3 起详情端点是运营通道：本人自读走 /users/me（学校 token 打详情 → 401）
     r = client.get(
         f"{settings.API_V1_STR}/users/{user_id}",
         headers=headers,
     )
+    assert r.status_code == 401
+    r = client.get(f"{settings.API_V1_STR}/users/me", headers=headers)
     assert 200 <= r.status_code < 300
     api_user = r.json()
     existing_user = crud.get_user_by_email(session=db, email=username)
@@ -126,8 +128,8 @@ def test_get_existing_user_permissions_error(
         f"{settings.API_V1_STR}/users/{user.id}",
         headers=normal_user_token_headers,
     )
-    assert r.status_code == 403
-    assert r.json() == {"detail": "The user doesn't have enough privileges"}
+    # B3：学校 token 对 platform 受众无效 → 401
+    assert r.status_code == 401
 
 
 def test_get_non_existing_user_permissions_error(
@@ -140,12 +142,11 @@ def test_get_non_existing_user_permissions_error(
         f"{settings.API_V1_STR}/users/{user_id}",
         headers=normal_user_token_headers,
     )
-    assert r.status_code == 403
-    assert r.json() == {"detail": "The user doesn't have enough privileges"}
+    assert r.status_code == 401
 
 
 def test_create_user_existing_username(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
     username = random_email()
     # username = email
@@ -155,7 +156,7 @@ def test_create_user_existing_username(
     data = {"email": username, "password": password}
     r = client.post(
         f"{settings.API_V1_STR}/users/",
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
         json=data,
     )
     created_user = r.json()
@@ -174,11 +175,12 @@ def test_create_user_by_normal_user(
         headers=normal_user_token_headers,
         json=data,
     )
-    assert r.status_code == 403
+    # B3：学校 token 对 platform 受众无效 → 401（不再是无权限 403）
+    assert r.status_code == 401
 
 
 def test_retrieve_users(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
     username = random_email()
     password = random_lower_string()
@@ -190,7 +192,7 @@ def test_retrieve_users(
     user_in2 = UserCreate(email=username2, password=password2)
     crud.create_user(session=db, user_create=user_in2)
 
-    r = client.get(f"{settings.API_V1_STR}/users/", headers=superuser_token_headers)
+    r = client.get(f"{settings.API_V1_STR}/users/", headers=operator_token_headers)
     all_users = r.json()
 
     assert len(all_users["data"]) > 1
@@ -328,7 +330,6 @@ def test_register_user(client: TestClient, db: Session) -> None:
     assert created_user["full_name"] == full_name
     # 开放注册是匿名入口：只能开出 student 账号（默认 teacher 是提权跳板）
     assert created_user["role"] == "student"
-    assert created_user["is_superuser"] is False
 
     user_query = select(User).where(User.email == username)
     user_db = db.exec(user_query).first()
@@ -372,7 +373,7 @@ def test_register_user_already_exists_error(client: TestClient) -> None:
 
 
 def test_update_user(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
     username = random_email()
     password = random_lower_string()
@@ -382,7 +383,7 @@ def test_update_user(
     data = {"full_name": "Updated_full_name"}
     r = client.patch(
         f"{settings.API_V1_STR}/users/{user.id}",
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
         json=data,
     )
     assert r.status_code == 200
@@ -398,12 +399,12 @@ def test_update_user(
 
 
 def test_update_user_not_exists(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient, operator_token_headers: dict[str, str]
 ) -> None:
     data = {"full_name": "Updated_full_name"}
     r = client.patch(
         f"{settings.API_V1_STR}/users/{uuid.uuid4()}",
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
         json=data,
     )
     assert r.status_code == 404
@@ -411,7 +412,7 @@ def test_update_user_not_exists(
 
 
 def test_update_user_email_exists(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
     username = random_email()
     password = random_lower_string()
@@ -426,7 +427,7 @@ def test_update_user_email_exists(
     data = {"email": user2.email}
     r = client.patch(
         f"{settings.API_V1_STR}/users/{user.id}",
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
         json=data,
     )
     assert r.status_code == 409
@@ -460,20 +461,20 @@ def test_delete_user_me(client: TestClient, db: Session) -> None:
     assert result is None
 
 
-def test_delete_user_me_as_superuser(
+def test_delete_user_me_as_school_admin(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
+    """校级 admin 不可自删（学校不能失去唯一管理员；运营在独立身份内）。"""
     r = client.delete(
         f"{settings.API_V1_STR}/users/me",
         headers=superuser_token_headers,
     )
     assert r.status_code == 403
-    response = r.json()
-    assert response["detail"] == "Super users are not allowed to delete themselves"
+    assert "不支持自助删除" in r.json()["detail"]
 
 
-def test_delete_user_super_user(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+def test_delete_user_by_operator(
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
     username = random_email()
     password = random_lower_string()
@@ -483,7 +484,7 @@ def test_delete_user_super_user(
     r = client.request(
         "DELETE",
         f"{settings.API_V1_STR}/users/{user_id}",
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
         json={"password": settings.FIRST_SUPERUSER_PASSWORD},
     )
     assert r.status_code == 200
@@ -494,33 +495,42 @@ def test_delete_user_super_user(
 
 
 def test_delete_user_not_found(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient, operator_token_headers: dict[str, str]
 ) -> None:
     r = client.request(
         "DELETE",
         f"{settings.API_V1_STR}/users/{uuid.uuid4()}",
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
         json={"password": "any-password"},
     )
     assert r.status_code == 404
     assert r.json()["detail"] == "User not found"
 
 
-def test_delete_user_current_super_user_error(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+def test_delete_school_admin_by_operator_succeeds(
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
-    super_user = crud.get_user_by_email(session=db, email=settings.FIRST_SUPERUSER)
-    assert super_user
-    user_id = super_user.id
-
-    r = client.request(
-        "DELETE",
-        f"{settings.API_V1_STR}/users/{user_id}",
-        headers=superuser_token_headers,
-        json={"password": "any-password"},
+    """B3：校级 admin 不再是不可删的"超级账号"——运营可按密码复核删除。"""
+    admin = crud.create_user(
+        session=db,
+        user_create=UserCreate(
+            email=random_email(), password=random_lower_string(), role="admin"
+        ),
     )
-    assert r.status_code == 403
-    assert r.json()["detail"] == "Super users are not allowed to delete themselves"
+    try:
+        r = client.request(
+            "DELETE",
+            f"{settings.API_V1_STR}/users/{admin.id}",
+            headers=operator_token_headers,
+            json={"password": settings.FIRST_SUPERUSER_PASSWORD},
+        )
+        assert r.status_code == 200
+        assert crud.get_user_by_email(session=db, email=admin.email or "") is None
+    finally:
+        row = db.get(User, admin.id)
+        if row is not None:
+            db.delete(row)
+            db.commit()
 
 
 def test_delete_user_without_privileges(
@@ -535,18 +545,18 @@ def test_delete_user_without_privileges(
         f"{settings.API_V1_STR}/users/{user.id}",
         headers=normal_user_token_headers,
     )
-    assert r.status_code == 403
-    assert r.json()["detail"] == "The user doesn't have enough privileges"
+    # B3：学校 token 对 platform 受众无效 → 401
+    assert r.status_code == 401
 
 
 def test_users_pagination_beyond_100(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
     """121 个合成账号：skip/limit 分页可访问第 101/121 个；参数越界 422。"""
     from uuid import uuid4
 
     baseline = client.get(
-        f"{settings.API_V1_STR}/users/", headers=superuser_token_headers
+        f"{settings.API_V1_STR}/users/", headers=operator_token_headers
     ).json()["count"]
 
     marker = uuid4().hex[:8]
@@ -558,7 +568,6 @@ def test_users_pagination_beyond_100(
             full_name=f"分页用户{i:03d}",
             hashed_password=get_password_hash(random_lower_string()),
             is_active=True,
-            is_superuser=False,
             # 部分账号同一时间戳：排序必须带 id 保证稳定
             created_at=same_ts if i % 2 == 0 else None,
         )
@@ -573,7 +582,7 @@ def test_users_pagination_beyond_100(
             resp = client.get(
                 f"{settings.API_V1_STR}/users/",
                 params={"skip": skip, "limit": limit},
-                headers=superuser_token_headers,
+                headers=operator_token_headers,
             )
             assert resp.status_code == 200, resp.text
             body = resp.json()
@@ -587,12 +596,12 @@ def test_users_pagination_beyond_100(
         r1 = client.get(
             f"{settings.API_V1_STR}/users/",
             params={"skip": 0, "limit": 100},
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
         ).json()["data"]
         r2 = client.get(
             f"{settings.API_V1_STR}/users/",
             params={"skip": 0, "limit": 100},
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
         ).json()["data"]
         assert [u["id"] for u in r1] == [u["id"] for u in r2]
 
@@ -601,7 +610,7 @@ def test_users_pagination_beyond_100(
             resp = client.get(
                 f"{settings.API_V1_STR}/users/",
                 params=params,
-                headers=superuser_token_headers,
+                headers=operator_token_headers,
             )
             assert resp.status_code == 422, params
     finally:
@@ -614,7 +623,7 @@ def test_users_pagination_beyond_100(
 
 
 def test_delete_user_requires_admin_password_confirmation(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
     """删除账号必须带管理员密码：错密码 403；不传 body 422；正确密码删除成功。"""
     target = crud.create_user(
@@ -627,14 +636,14 @@ def test_delete_user_requires_admin_password_confirmation(
         # 无 body → 422（密码复核是必填）
         r = client.delete(
             f"{settings.API_V1_STR}/users/{target.id}",
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
         )
         assert r.status_code == 422
         # 错密码 → 403 稳定 detail
         r = client.request(
             "DELETE",
             f"{settings.API_V1_STR}/users/{target.id}",
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
             json={"password": "definitely-wrong-pass"},
         )
         assert r.status_code == 403
@@ -646,7 +655,7 @@ def test_delete_user_requires_admin_password_confirmation(
         r = client.request(
             "DELETE",
             f"{settings.API_V1_STR}/users/{target.id}",
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
             json={"password": settings.FIRST_SUPERUSER_PASSWORD},
         )
         assert r.status_code == 200
@@ -659,7 +668,7 @@ def test_delete_user_requires_admin_password_confirmation(
 
 
 def test_read_users_search_and_role_filter(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
     """列表搜索（学号/姓名/邮箱）与角色筛选生效，count 同口径。"""
     marker = f"probe{uuid.uuid4().hex[:8]}"
@@ -675,7 +684,7 @@ def test_read_users_search_and_role_filter(
     try:
         r = client.get(
             f"{settings.API_V1_STR}/users",
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
             params={"q": marker, "role": "student"},
         )
         assert r.status_code == 200
@@ -686,7 +695,7 @@ def test_read_users_search_and_role_filter(
         # 姓名关键词也命中
         r = client.get(
             f"{settings.API_V1_STR}/users",
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
             params={"q": f"搜索测试{marker}"},
         )
         assert r.json()["count"] == 1
@@ -694,7 +703,7 @@ def test_read_users_search_and_role_filter(
         # 角色不匹配 → 0
         r = client.get(
             f"{settings.API_V1_STR}/users",
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
             params={"q": marker, "role": "teacher"},
         )
         assert r.json()["count"] == 0

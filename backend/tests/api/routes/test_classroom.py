@@ -430,6 +430,7 @@ def test_create_classroom_as_superuser(
 def test_unit_switch_starts_new_round_preserving_attempts(
     client: TestClient,
     superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
     inline_scoring: Callable[[dict[str, str]], None],
     db: Session,
 ) -> None:
@@ -460,7 +461,7 @@ def test_unit_switch_starts_new_round_preserving_attempts(
         unit = client.post(
             "/api/v1/admin/units",
             json={"order_index": 1, "title": "Unit 2 · Pets Daily", "topic": "Pets"},
-            headers=headers,
+            headers=operator_token_headers,
         ).json()
         created["unit"] = uuid.UUID(unit["id"])
         passage = client.post(
@@ -603,6 +604,7 @@ def test_question_list_stable_after_submit(
 def test_explore_next_question_binds_to_session(
     client: TestClient,
     superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
     inline_scoring: Any,
     db: Session,
 ) -> None:
@@ -616,7 +618,7 @@ def test_explore_next_question_binds_to_session(
         unit = client.post(
             "/api/v1/admin/units",
             json={"order_index": 99, "title": "Food", "topic": "Food"},
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
         ).json()
         created["unit"] = uuid.UUID(unit["id"])
         passage = client.post(
@@ -712,6 +714,7 @@ def test_explore_next_question_binds_to_session(
 def test_abac_board_shows_current_assignment(
     client: TestClient,
     superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
     inline_scoring: Any,
     db: Session,
 ) -> None:
@@ -738,7 +741,7 @@ def test_abac_board_shows_current_assignment(
         unit_b = client.post(
             "/api/v1/admin/units",
             json={"order_index": 50, "title": "Unit B", "topic": "Pets"},
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
         ).json()
         created["unit_b"] = uuid.UUID(unit_b["id"])
         passage_b = client.post(
@@ -937,6 +940,7 @@ def test_update_class_size_owner_guard_and_bounds(
     db: Session,
     client: TestClient,
     superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
 ) -> None:
     """建班后调整人数上限：本人/管理员可改；不低于现有档案数；越界 422。"""
     owner = _teacher_login(db, client, f"size-owner-{uuid.uuid4().hex[:8]}@example.com")
@@ -1021,13 +1025,13 @@ def test_update_class_size_owner_guard_and_bounds(
     resp = client.put(
         f"/api/v1/admin/classrooms/{classroom_id}",
         json={"class_size": 1},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 422
     resp = client.put(
         f"/api/v1/admin/classrooms/{classroom_id}",
         json={"class_size": 90},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["class_size"] == 90

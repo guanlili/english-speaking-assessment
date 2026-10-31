@@ -271,7 +271,7 @@ def _require_classroom_teacher(classroom: Classroom, current_user: User) -> None
 def list_my_classrooms(session: SessionDep, current_user: CurrentUser) -> Any:
     """课堂列表：管理员看全部，教师看自己名下的（工作台「我的课堂」）。"""
     stmt = select(Classroom).order_by(col(Classroom.created_at).desc())  # type: ignore[union-attr]
-    if not current_user.is_superuser:
+    if current_user.role != "admin":
         stmt = stmt.where(Classroom.owner_id == current_user.id)  # type: ignore[arg-type]
     return session.exec(stmt).all()
 

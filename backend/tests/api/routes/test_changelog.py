@@ -33,9 +33,12 @@ def _post_entry(client: TestClient, headers: dict[str, str], **overrides) -> dic
 
 
 def test_changelog_permission_gates(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
-    """未登录 401；学生 403；教师可读不可写；管理员可读可写。"""
+    """未登录 401；学生 403；教师可读不可写；平台运营可写（B3）。"""
     _purge(db)
     assert client.get("/api/v1/changelog").status_code == 401
 
@@ -59,7 +62,7 @@ def test_changelog_permission_gates(
     assert login.status_code == 200
     teacher_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
-    # 教师只读：读 200，写 403
+    # 教师只读：读 200，写 401（B3：学校 token 打平台写路由 → audience 拒绝）
     assert client.get("/api/v1/changelog", headers=teacher_headers).status_code == 200
     assert (
         client.post(
@@ -67,15 +70,15 @@ def test_changelog_permission_gates(
             json={"day": "2026-10-26", "title_zh": "x", "title_en": "x"},
             headers=teacher_headers,
         ).status_code
-        == 403
+        == 401
     )
 
-    # 管理员可读可写
+    # 校级 admin 可读；写归平台运营
     assert (
         client.get("/api/v1/changelog", headers=superuser_token_headers).status_code
         == 200
     )
-    assert _post_entry(client, superuser_token_headers)["kind"] == "feature"
+    assert _post_entry(client, operator_token_headers)["kind"] == "feature"
 
     # 自清理（共享库规约）：课堂级联学生，教师账号一并删
     from tests.api.routes.test_students import _cleanup
@@ -85,13 +88,16 @@ def test_changelog_permission_gates(
 
 
 def test_changelog_crud_and_ordering(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     _purge(db)
-    older = _post_entry(client, superuser_token_headers, day="2026-10-01")
-    newer = _post_entry(client, superuser_token_headers, day="2026-10-26")
+    older = _post_entry(client, operator_token_headers, day="2026-10-01")
+    newer = _post_entry(client, operator_token_headers, day="2026-10-26")
     same_day_later = _post_entry(
-        client, superuser_token_headers, day="2026-10-26", title_zh="后发"
+        client, operator_token_headers, day="2026-10-26", title_zh="后发"
     )
 
     resp = client.get("/api/v1/changelog", headers=superuser_token_headers)
@@ -111,7 +117,7 @@ def test_changelog_crud_and_ordering(
             "body_zh": None,
             "body_en": None,
         },
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 200
     assert resp.json()["kind"] is None
@@ -127,7 +133,7 @@ def test_changelog_crud_and_ordering(
                 "title_zh": "x",
                 "title_en": "x",
             },
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
         ).status_code
         == 422
     )
@@ -137,7 +143,7 @@ def test_changelog_crud_and_ordering(
         client.put(
             f"/api/v1/changelog/{same_day_later['id']}",
             json={"kind": "fix"},
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
         ).status_code
         == 422
     )
@@ -145,13 +151,13 @@ def test_changelog_crud_and_ordering(
     # 删除 + 再删 404
     assert (
         client.delete(
-            f"/api/v1/changelog/{older['id']}", headers=superuser_token_headers
+            f"/api/v1/changelog/{older['id']}", headers=operator_token_headers
         ).status_code
         == 200
     )
     assert (
         client.delete(
-            f"/api/v1/changelog/{older['id']}", headers=superuser_token_headers
+            f"/api/v1/changelog/{older['id']}", headers=operator_token_headers
         ).status_code
         == 404
     )

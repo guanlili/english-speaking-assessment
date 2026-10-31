@@ -105,7 +105,7 @@ def read_student_trail(
     学生账号省略 student_id 看自己；教师/管理员传 student_id（授权范围内）。
     """
     classroom = _get_classroom(session, code)
-    if current_user.role == "student" and not current_user.is_superuser:
+    if current_user.role == "student":
         student = _student_profile_of(session, classroom, current_user)
     else:
         if student_id is None:
@@ -124,7 +124,7 @@ def read_student_trail(
     # 的考试会话（不能只检查「已有 done 作答」的会话，否则首答刚出分会漏遮罩）。
     as_of = datetime.now(UTC)
     locked_session_ids: set[uuid.UUID] = set()
-    if current_user.role == "student" and not current_user.is_superuser:
+    if current_user.role == "student":
         locked_session_ids = _feedback_locked_exam_session_ids(session, student)
     summary = trail_service.summarize(
         session,
@@ -187,7 +187,7 @@ def read_student_diagnostics(
     item_snapshot 回退对齐（历史作答），error/missing 均计入。
     """
     classroom = _get_classroom(session, code)
-    if current_user.role == "student" and not current_user.is_superuser:
+    if current_user.role == "student":
         student = _student_profile_of(session, classroom, current_user)
     else:
         if student_id is None:
@@ -204,7 +204,7 @@ def read_student_diagnostics(
     as_of = datetime.now(UTC)
     locked_session_ids = (
         _feedback_locked_exam_session_ids(session, student)
-        if current_user.role == "student" and not current_user.is_superuser
+        if current_user.role == "student"
         else set()
     )
 

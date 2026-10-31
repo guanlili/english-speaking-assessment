@@ -14,7 +14,7 @@ from sqlalchemy import and_, func
 from sqlalchemy import select as sa_select
 from sqlmodel import col, select
 
-from app.api.deps import SessionDep, SuperUserDep
+from app.api.deps import PlatformOperatorDep, SessionDep
 from app.api.routes.metrics import collect_metrics
 from app.core.config import settings
 from app.models import (
@@ -64,7 +64,7 @@ def _round1(value: float | None) -> float | None:
 @router.get("/overview", response_model=DashboardOverview)
 def read_dashboard_overview(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
     days: int = Query(default=7, ge=1, le=MAX_DAYS),
 ) -> DashboardOverview:
     tz = ZoneInfo(settings.PRACTICE_TZ)
@@ -183,7 +183,7 @@ def read_dashboard_overview(
 @router.get("/usage", response_model=DashboardUsage)
 def read_dashboard_usage(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
     days: int = Query(default=30, ge=1, le=MAX_DAYS),
 ) -> DashboardUsage:
     tz = ZoneInfo(settings.PRACTICE_TZ)
@@ -382,7 +382,7 @@ def read_dashboard_usage(
 @router.get("/content", response_model=DashboardContent)
 def read_dashboard_content(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
 ) -> DashboardContent:
     def _sub(model: type, *conditions: Any) -> Any:  # noqa: ANN001
         # 17 个计数一趟取回（scalar 子查询），替代此前 19 次串行数据库往返
@@ -428,7 +428,7 @@ def read_dashboard_content(
 @router.get("/performance", response_model=DashboardPerformance)
 def read_dashboard_performance(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
     days: int = Query(default=30, ge=1, le=MAX_DAYS),
 ) -> DashboardPerformance:
     """性能与稳定区：实时快照（与 /admin/metrics 同口径）+ 日快照历史。
@@ -485,7 +485,7 @@ def _month_of(day: date) -> str:
 @router.get("/cost", response_model=DashboardCost)
 def read_dashboard_cost(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
     months: int = Query(default=6, ge=1, le=24),
 ) -> DashboardCost:
     """费用区：按月估算（ASR 按真实秒数精确；LLM 按调用量估 token）。
@@ -618,7 +618,7 @@ def read_dashboard_cost(
 def upsert_cost_reconcile(
     payload: AdminCostReconcileIn,
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
 ) -> AdminCostReconcile:
     """录入/更新当月实际账单金额（对账）。"""
     import re

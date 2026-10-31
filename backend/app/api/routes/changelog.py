@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from sqlmodel import col, select
 
-from app.api.deps import SessionDep, SuperUserDep, TeacherUserDep
+from app.api.deps import PlatformOperatorDep, SessionDep, StaffOrOperatorDep
 from app.models import (
     ChangelogCreate,
     ChangelogEntry,
@@ -29,8 +29,11 @@ def _validate_kind(kind: str | None) -> None:
 
 
 @router.get("", response_model=list[ChangelogPublic])
-def read_changelog(session: SessionDep, _user: TeacherUserDep) -> Any:
-    """按发布日期倒序返回全部更新日志（量级小，不分页）。"""
+def read_changelog(session: SessionDep, _reader: StaffOrOperatorDep) -> Any:
+    """按发布日期倒序返回全部更新日志（量级小，不分页）。
+
+    读=学校教职工与平台运营（多态门）；写=仅平台运营。
+    """
     return session.exec(
         select(ChangelogEntry).order_by(
             col(ChangelogEntry.day).desc(), col(ChangelogEntry.created_at).desc()
@@ -41,7 +44,7 @@ def read_changelog(session: SessionDep, _user: TeacherUserDep) -> Any:
 @router.post("", response_model=ChangelogPublic)
 def create_changelog_entry(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
     entry_in: ChangelogCreate,
 ) -> Any:
     _validate_kind(entry_in.kind)
@@ -55,7 +58,7 @@ def create_changelog_entry(
 @router.put("/{entry_id}", response_model=ChangelogPublic)
 def update_changelog_entry(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
     entry_id: uuid.UUID,
     entry_in: ChangelogUpdate,
 ) -> Any:
@@ -87,7 +90,7 @@ def update_changelog_entry(
 
 @router.delete("/{entry_id}")
 def delete_changelog_entry(
-    session: SessionDep, _admin: SuperUserDep, entry_id: uuid.UUID
+    session: SessionDep, _operator: PlatformOperatorDep, entry_id: uuid.UUID
 ) -> dict[str, str]:
     entry = session.get(ChangelogEntry, entry_id)
     if entry is None:

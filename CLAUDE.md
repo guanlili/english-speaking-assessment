@@ -125,7 +125,7 @@ E2E：新测试文件默认进入真实后端的 `chromium` 项目；确认所�
 1. **后端**：在 `models.py` 加数据模型 → 在 `crud.py` 加增删改查 → 在 `api/routes/` 加新路由文件 → 在 `api/main.py` 注册路由
 2. **数据库迁移**：`docker compose exec backend alembic revision --autogenerate -m "add xxx"` → `alembic upgrade head`
 3. **前端 API 客户端**：后端改完后重新生成 → `cd frontend && npm run generate-client`（脚本会从运行中的 backend 容器导出最新 OpenAPI 规范再生成）
-4. **前端页面**：在 `routes/_layout/` 加新页面，在 `frontend/src/components/Sidebar/AppSidebar.tsx` 的 `baseItems` 里加导航链接（Admin 入口已按 `is_superuser` 条件展示，可参考）
+4. **前端页面**：在 `routes/_layout/` 加新页面，在 `frontend/src/components/Sidebar/AppSidebar.tsx` 的 `baseItems` 里加导航链接（平台区块按运营身份 `esa:role=operator` 展示，校级业务按 `role` 判定——多租户 B3 起无 `is_superuser`）
 5. **文档**：模块实现细节写进 `docs/module-notes.md`（或模块自己的设计文档），并在本文件「模块索引」加一行；只有新增跨模块规则时才改本文件正文。
 
 ## 双语准则（平台级，2026-09-30 起）

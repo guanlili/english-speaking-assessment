@@ -7,11 +7,23 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import SQLModel
 
 from app import crud
-from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.api.deps import (
+    CurrentUser,
+    PlatformOperatorDep,
+    SessionDep,
+    get_current_platform_operator,
+)
 from app.core import security
 from app.core.config import settings
 from app.core.ratelimit import SlidingWindowLimiter
-from app.models import Message, NewPassword, Token, UserPublic, UserUpdate
+from app.models import (
+    Message,
+    NewPassword,
+    PlatformOperatorPublic,
+    Token,
+    UserPublic,
+    UserUpdate,
+)
 from app.utils import (
     generate_password_reset_token,
     generate_reset_password_email,
@@ -133,6 +145,53 @@ def login_access_token(
     )
 
 
+@router.post("/login/platform-token")
+def login_platform_token(
+    request: Request,
+    session: SessionDep,
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+) -> Token:
+    """平台运营登录（多租户 B3）：独立身份 + 独立 audience（设计稿 §3.2）。
+
+    签发 typ=operator/aud=platform 的 token——只被平台运营门接受，
+    学校用户端点一律拒收（deps.get_current_user）。与学校登录共用
+    限流器但分桶计数。
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    account = form_data.username.strip().lower()
+    _check_login_rate_limit(f"ip:{client_ip}")
+    _check_login_rate_limit(f"op:{account}")
+    operator = crud.authenticate_platform_operator(
+        session=session, email=form_data.username.strip(), password=form_data.password
+    )
+    if not operator:
+        raise HTTPException(status_code=400, detail="账号或密码不正确")
+    if not operator.is_active:
+        raise HTTPException(status_code=400, detail="Inactive operator")
+    _login_limiter.record_success(f"ip:{client_ip}", refund_only=True)
+    _record_login_success(f"op:{account}")
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return Token(
+        access_token=security.create_access_token(
+            operator.id,
+            expires_delta=access_token_expires,
+            role="operator",
+            password_hash=operator.hashed_password,
+            audience="platform",
+            token_type="operator",
+        )
+    )
+
+
+@router.get("/login/platform/me", response_model=PlatformOperatorPublic)
+def read_platform_operator_me(
+    response: Response, operator: PlatformOperatorDep
+) -> PlatformOperatorPublic:
+    """运营自述（前端运营会话的 currentUser 等价物）：仅展示字段。"""
+    response.headers["Cache-Control"] = "no-store"
+    return PlatformOperatorPublic(email=operator.email, full_name=operator.full_name)
+
+
 @router.post("/login/test-token", response_model=UserPublic)
 def test_token(current_user: CurrentUser) -> Any:
     """
@@ -160,6 +219,39 @@ def login_demo(session: SessionDep) -> Token:
             expires_delta=access_token_expires,
             role=user.role,
             password_hash=user.hashed_password,
+        )
+    )
+
+
+@router.post("/login/platform-demo")
+def login_platform_demo(session: SessionDep) -> Token:
+    """运营演示登录（仅 local）：为种子运营账号直接签发 operator token。
+
+    与 /login/demo（学校侧）对偶——B3 身份拆分后平台页（大盘/单元/
+    句型库/用户管理）只认运营身份，e2e 与本地演示需要一键运营会话。
+    """
+    if settings.ENVIRONMENT != "local":
+        raise HTTPException(status_code=404, detail="Not Found")
+    from sqlmodel import select as _select
+
+    from app.models import PlatformOperator
+
+    operator = session.exec(
+        _select(PlatformOperator).where(
+            PlatformOperator.email == settings.first_operator_email
+        )
+    ).first()
+    if operator is None or not operator.is_active:
+        raise HTTPException(status_code=404, detail="Not Found")
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return Token(
+        access_token=security.create_access_token(
+            operator.id,
+            expires_delta=access_token_expires,
+            role="operator",
+            password_hash=operator.hashed_password,
+            audience="platform",
+            token_type="operator",
         )
     )
 
@@ -228,7 +320,7 @@ def reset_password(session: SessionDep, body: NewPassword) -> Message:
 
 @router.post(
     "/password-recovery-html-content/{email}",
-    dependencies=[Depends(get_current_active_superuser)],
+    dependencies=[Depends(get_current_platform_operator)],
     response_class=HTMLResponse,
 )
 def recover_password_html_content(email: str, session: SessionDep) -> Any:

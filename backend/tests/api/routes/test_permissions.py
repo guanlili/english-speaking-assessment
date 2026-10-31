@@ -125,7 +125,10 @@ def test_classroom_code_grants_no_teacher_power(
 
 
 def test_non_owner_teacher_forbidden_and_owner_allowed(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """教师有独立身份；课堂未绑定/绑定他人 → 403，绑定本人 → 200。"""
     classroom = _create_classroom(client, superuser_token_headers)
@@ -145,7 +148,7 @@ def test_non_owner_teacher_forbidden_and_owner_allowed(
     resp = client.put(
         f"/api/v1/admin/classrooms/{classroom['id']}",
         json={"owner_id": str(teacher_a.id)},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["owner_id"] == str(teacher_a.id)
@@ -178,14 +181,16 @@ def test_non_owner_teacher_forbidden_and_owner_allowed(
 
 
 def test_owner_binding_rejects_unknown_user(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
 ) -> None:
     """绑定不存在的教师账号 → 422（不静默产生无主课堂）。"""
     classroom = _create_classroom(client, superuser_token_headers)
     resp = client.put(
         f"/api/v1/admin/classrooms/{classroom['id']}",
         json={"owner_id": str(uuid.uuid4())},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 422
 
@@ -364,6 +369,7 @@ def test_submit_requires_own_jwt(
 def test_attempt_audio_access_matrix(
     client: TestClient,
     superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
     noop_scoring: None,
     db: Session,
 ) -> None:
@@ -374,7 +380,7 @@ def test_attempt_audio_access_matrix(
     resp = client.put(
         f"/api/v1/admin/classrooms/{classroom['id']}",
         json={"owner_id": str(owner.id)},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 200
 
@@ -432,7 +438,10 @@ def test_attempt_status_poll_requires_credential(
 
 
 def test_trail_access_matrix(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """轨迹：学生看自己；教师缺 student_id 422、非属主 403、属主/管理员 200。"""
     classroom = _create_classroom(client, superuser_token_headers)
@@ -442,7 +451,7 @@ def test_trail_access_matrix(
     resp = client.put(
         f"/api/v1/admin/classrooms/{classroom['id']}",
         json={"owner_id": str(owner.id)},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 200
 
@@ -492,7 +501,10 @@ def test_trail_access_matrix(
 
 
 def test_closed_classroom_hides_from_students(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """课堂停用后学生请求 404（前端据此清身份回加入页），不再出题。"""
     classroom = _create_classroom(client, superuser_token_headers)
@@ -505,7 +517,7 @@ def test_closed_classroom_hides_from_students(
     closed = client.put(
         f"/api/v1/admin/classrooms/{classroom['id']}",
         json={"is_active": False},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert closed.status_code == 200
     assert closed.json()["is_active"] is False

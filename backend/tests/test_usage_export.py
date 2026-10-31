@@ -53,16 +53,19 @@ def _seed(client: TestClient, headers: dict[str, str], db: Session, name: str) -
     db.commit()
 
 
-def test_export_requires_superuser(client: TestClient) -> None:
+def test_export_requires_operator(client: TestClient) -> None:
     for path in ("attempts", "sessions", "students"):
         assert client.get(f"/api/v1/admin/export/{path}").status_code == 401, path
 
 
 def test_export_attempts_csv(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    operator_token_headers: dict[str, str],
+    superuser_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     _seed(client, superuser_token_headers, db, "AdaA")
-    resp = client.get("/api/v1/admin/export/attempts", headers=superuser_token_headers)
+    resp = client.get("/api/v1/admin/export/attempts", headers=operator_token_headers)
     assert resp.status_code == 200
     text = resp.text
     assert text[0] == "\ufeff"  # BOM（Excel 直开）
@@ -76,30 +79,36 @@ def test_export_attempts_csv(
 
 
 def test_export_attempts_days_filter(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    operator_token_headers: dict[str, str],
+    superuser_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     _seed(client, superuser_token_headers, db, "AdaA")
     # days=1：今天的作答在窗口内
     resp = client.get(
-        "/api/v1/admin/export/attempts?days=1", headers=superuser_token_headers
+        "/api/v1/admin/export/attempts?days=1", headers=operator_token_headers
     )
     assert len(resp.text.strip().splitlines()) == 2
     # days=0=全部 同样
-    resp = client.get("/api/v1/admin/export/attempts", headers=superuser_token_headers)
+    resp = client.get("/api/v1/admin/export/attempts", headers=operator_token_headers)
     assert len(resp.text.strip().splitlines()) == 2
 
 
 def test_export_sessions_and_students_csv(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    operator_token_headers: dict[str, str],
+    superuser_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     _seed(client, superuser_token_headers, db, "AdaS")
-    resp = client.get("/api/v1/admin/export/sessions", headers=superuser_token_headers)
+    resp = client.get("/api/v1/admin/export/sessions", headers=operator_token_headers)
     lines = resp.text.strip().splitlines()
     assert lines[0].startswith("\ufeff练习日期,开始时间,学生")
     assert len(lines) == 2  # 一轮练习
     assert "课堂练习" in lines[1]
 
-    resp = client.get("/api/v1/admin/export/students", headers=superuser_token_headers)
+    resp = client.get("/api/v1/admin/export/students", headers=operator_token_headers)
     lines = resp.text.strip().splitlines()
     assert lines[0].startswith("\ufeff学生,区分码,学号,课堂,当前档位,练习轮次")
     # 共享测试库可能残留其他档案——按本测试唯一名断言
@@ -111,6 +120,7 @@ def test_export_sessions_and_students_csv(
 
 def test_export_row_cap_rejects_with_stable_detail(
     client: TestClient,
+    operator_token_headers: dict[str, str],
     superuser_token_headers: dict[str, str],
     db: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -121,7 +131,7 @@ def test_export_row_cap_rejects_with_stable_detail(
     monkeypatch.setattr(settings, "USAGE_EXPORT_MAX_ROWS", 0)
     for path in ("attempts", "sessions", "students"):
         resp = client.get(
-            f"/api/v1/admin/export/{path}", headers=superuser_token_headers
+            f"/api/v1/admin/export/{path}", headers=operator_token_headers
         )
         assert resp.status_code == 422, path
         assert resp.json()["detail"] == "usage_export_too_many_rows", path

@@ -1,4 +1,4 @@
-"""管理员平台大盘：superuser 门 + 速览/趋势/课堂排行的口径断言。"""
+"""管理员平台大盘：平台运营门（B3）+ 速览/趋势/课堂排行的口径断言。"""
 
 import uuid
 from datetime import date, datetime, timedelta
@@ -73,11 +73,11 @@ def _add_session(
     return row
 
 
-def test_dashboard_requires_superuser(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+def test_dashboard_requires_operator(
+    client: TestClient, operator_token_headers: dict[str, str], db: Session
 ) -> None:
-    # 无 token 401；教师 403（不触发登出的权限语义）；superuser 200。
-    # 测试库没有种子教师——真建一个账号登录，断言必须实际执行。
+    # 无 token 401；学校 token（教师/校级 admin）对 platform 受众无效 → 401；
+    # 平台运营 200。测试库没有种子教师——真建一个账号登录，断言必须实际执行。
     for path in PATHS:
         assert client.get(f"/api/v1/admin/dashboard/{path}").status_code == 401, path
     email, password = random_email(), random_lower_string()
@@ -90,16 +90,19 @@ def test_dashboard_requires_superuser(
     headers = {"Authorization": f"Bearer {teacher.json()['access_token']}"}
     for path in PATHS:
         resp = client.get(f"/api/v1/admin/dashboard/{path}", headers=headers)
-        assert resp.status_code == 403, path
+        assert resp.status_code == 401, path
     for path in PATHS:
         resp = client.get(
-            f"/api/v1/admin/dashboard/{path}", headers=superuser_token_headers
+            f"/api/v1/admin/dashboard/{path}", headers=operator_token_headers
         )
         assert resp.status_code == 200, path
 
 
 def test_dashboard_overview_and_usage_semantics(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     _purge_activity(db)
     class_a = client.post(
@@ -187,7 +190,7 @@ def test_dashboard_overview_and_usage_semantics(
 
     # ── overview：今日卡与 7 天区间卡 ──────────────────────────
     resp = client.get(
-        "/api/v1/admin/dashboard/overview?days=7", headers=superuser_token_headers
+        "/api/v1/admin/dashboard/overview?days=7", headers=operator_token_headers
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -214,7 +217,7 @@ def test_dashboard_overview_and_usage_semantics(
 
     # ── usage：日点、题型分布、课堂排行、沉默课堂 ───────────────
     resp = client.get(
-        "/api/v1/admin/dashboard/usage?days=30", headers=superuser_token_headers
+        "/api/v1/admin/dashboard/usage?days=30", headers=operator_token_headers
     )
     assert resp.status_code == 200, resp.text
     usage = resp.json()
@@ -263,21 +266,22 @@ def test_dashboard_overview_and_usage_semantics(
     assert codes == [class_b["code"]]
 
     # ── content：资产计数冒烟 ──────────────────────────────────
-    resp = client.get(
-        "/api/v1/admin/dashboard/content", headers=superuser_token_headers
-    )
+    resp = client.get("/api/v1/admin/dashboard/content", headers=operator_token_headers)
     assert resp.status_code == 200, resp.text
     content = resp.json()
     assert content["classrooms_total"] >= 2
     assert content["classrooms_active"] >= 2
-    # 测试库不走迁移，种子超管的 role 停在默认 teacher（生产由迁移双写 admin）
-    assert content["users_teacher"] >= 1
+    # 种子首账号 B3 起即校级 admin（init_db 显式 role="admin"）
+    assert content["users_admin"] >= 1
     assert content["student_accounts"] >= 3
     assert content["student_profiles"] >= 3
 
 
 def test_dashboard_usage_short_range_keeps_recent_window(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """days<14 时近 14 天窗口比所选区间更早：区间零作答但近窗活跃的课堂
     必须仍在榜且不算沉默。锁住课堂排行 A 查询的 trim_ts=min(区间,近窗)
@@ -311,7 +315,7 @@ def test_dashboard_usage_short_range_keeps_recent_window(
     db.commit()
 
     resp = client.get(
-        "/api/v1/admin/dashboard/usage?days=7", headers=superuser_token_headers
+        "/api/v1/admin/dashboard/usage?days=7", headers=operator_token_headers
     )
     assert resp.status_code == 200, resp.text
     usage = resp.json()
@@ -325,6 +329,6 @@ def test_dashboard_usage_short_range_keeps_recent_window(
     assert usage["points"] == []
 
     resp = client.get(
-        "/api/v1/admin/dashboard/overview?days=7", headers=superuser_token_headers
+        "/api/v1/admin/dashboard/overview?days=7", headers=operator_token_headers
     )
     assert resp.json()["range"]["attempts"] == 0

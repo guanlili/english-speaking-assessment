@@ -7,7 +7,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import SessionDep, SuperUserDep
+from app.api.deps import PlatformOperatorDep, SessionDep
 from app.services import usage_export
 
 router = APIRouter(prefix="/admin/export", tags=["admin"])
@@ -25,7 +25,7 @@ def _csv_response(buf, filename: str) -> StreamingResponse:
 @router.get("/attempts")
 def export_attempts_csv(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
     days: int = Query(default=0, ge=0, le=3650, description="0=全部"),
 ) -> StreamingResponse:
     try:
@@ -38,7 +38,7 @@ def export_attempts_csv(
 @router.get("/sessions")
 def export_sessions_csv(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
     days: int = Query(default=0, ge=0, le=3650, description="0=全部"),
 ) -> StreamingResponse:
     try:
@@ -51,7 +51,7 @@ def export_sessions_csv(
 @router.get("/students")
 def export_students_csv(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
 ) -> StreamingResponse:
     try:
         buf = usage_export.export_students(session)
