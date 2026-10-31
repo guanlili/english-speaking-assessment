@@ -270,7 +270,8 @@ function DemoEntry() {
         }),
       ),
   })
-  const anyDemoPending = demoMutation.isPending || operatorDemoMutation.isPending
+  const anyDemoPending =
+    demoMutation.isPending || operatorDemoMutation.isPending
   return (
     <details className="border-t border-brand-ink/10 pt-4 text-xs text-muted-foreground dark:border-border">
       <summary className="cursor-pointer rounded-sm py-1.5 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
