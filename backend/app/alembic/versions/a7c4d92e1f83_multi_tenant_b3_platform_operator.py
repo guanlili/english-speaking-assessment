@@ -28,7 +28,7 @@ depends_on = None
 
 def upgrade():
     op.create_table(
-        'platform_operator',
+        'platformoperator',
         sa.Column('id', sa.Uuid(), nullable=False),
         sa.Column('email', sa.String(length=255), nullable=False),
         sa.Column('full_name', sa.String(length=255), nullable=True),
@@ -38,7 +38,7 @@ def upgrade():
         sa.PrimaryKeyConstraint('id'),
     )
     op.create_index(
-        op.f('ix_platform_operator_email'), 'platform_operator', ['email'], unique=True
+        op.f('ix_platformoperator_email'), 'platformoperator', ['email'], unique=True
     )
     # 先把全局超管语义收敛进 role，再删列（role 自 b7d2e8f41a9c 起存在）
     op.execute("UPDATE \"user\" SET role = 'admin' WHERE is_superuser = true")
@@ -53,6 +53,6 @@ def downgrade():
     # 镜像恢复：校级 admin 还原为超管标志（单校窗口内语义等价）
     op.execute("UPDATE \"user\" SET is_superuser = true WHERE role = 'admin'")
     op.drop_index(
-        op.f('ix_platform_operator_email'), table_name='platform_operator'
+        op.f('ix_platformoperator_email'), table_name='platformoperator'
     )
-    op.drop_table('platform_operator')
+    op.drop_table('platformoperator')
