@@ -153,7 +153,6 @@ def test_fixed_teacher_cannot_reset_enrolled_admin(client, db, bulk):
             password=uuid.uuid4().hex,
             full_name="Isolated Review Admin",
             role="admin",
-            is_superuser=True,
         ),
     )
     original_hash = admin.hashed_password
