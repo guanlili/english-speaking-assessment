@@ -15,7 +15,7 @@ from fastapi import APIRouter
 from sqlalchemy import func
 from sqlmodel import Session, col, select
 
-from app.api.deps import SessionDep, SuperUserDep
+from app.api.deps import PlatformOperatorDep, SessionDep
 from app.core import db as _db
 from app.core.config import settings
 from app.core.metrics import call_stats, call_stats_by_prefix
@@ -178,5 +178,5 @@ def collect_metrics(session: Session) -> dict[str, Any]:
 
 
 @router.get("")
-def read_metrics(session: SessionDep, _superuser: SuperUserDep) -> Any:
+def read_metrics(session: SessionDep, _operator: PlatformOperatorDep) -> Any:
     return collect_metrics(session)

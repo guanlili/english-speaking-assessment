@@ -201,7 +201,7 @@ def act_on_class_message(
     student = session.get(Student, row.student_id)
     if student is None or student.classroom_id != classroom.id:
         raise HTTPException(404, detail="Class message not found")
-    if current_user.role == "student" and not current_user.is_superuser:
+    if current_user.role == "student":
         own = _student_profile_of(session, classroom, current_user)
         if own.id != row.student_id:
             raise HTTPException(404, detail="Class message not found")

@@ -739,7 +739,10 @@ def test_old_session_exchange_ignores_current_assignment_changes(
 
 
 def test_frame_recommendation_and_favorites(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """PR B：题目按实际难度注入推荐句型（通用+题型匹配、排除错误级别）；
     学生收藏后 today 中 favorited 标记，取消后恢复；句型不进作答快照。"""
@@ -773,7 +776,7 @@ def test_frame_recommendation_and_favorites(
                 "text_en": "In my opinion, ...",
                 "text_zh": "在我看来……",
             },
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
         )
     )
     f_p1 = _resp_json(
@@ -786,7 +789,7 @@ def test_frame_recommendation_and_favorites(
                 "text_en": "My favorite ... is ...",
                 "text_zh": "我最喜欢的……是……",
             },
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
         )
     )
     _resp_json(
@@ -798,7 +801,7 @@ def test_frame_recommendation_and_favorites(
                 "text_en": "wrong level frame",
                 "text_zh": "错误级别",
             },
-            headers=superuser_token_headers,
+            headers=operator_token_headers,
         )
     )
 
@@ -887,14 +890,17 @@ def test_frame_recommendation_and_favorites(
             "text_en": "x",
             "text_zh": "x",
         },
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 422
     _cleanup_classroom(db, classroom["id"])
 
 
 def test_sentence_frames_batch_import(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """批量导入：无效行跳过并报告；同 (级别,用途,英文) 去重；有题型缺级别 422 不需要——batch 逐行校验。"""
     items = [
@@ -926,7 +932,7 @@ def test_sentence_frames_batch_import(
     resp = client.post(
         "/api/v1/admin/sentence-frames/batch",
         json=items,
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -938,13 +944,13 @@ def test_sentence_frames_batch_import(
     resp = client.post(
         "/api/v1/admin/sentence-frames/batch",
         json=items[:1],
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["created"] == 0
 
     stats = client.get(
-        "/api/v1/admin/sentence-frames", headers=superuser_token_headers
+        "/api/v1/admin/sentence-frames", headers=operator_token_headers
     ).json()["data"]
     # 种子句型存在：只断言本测试创建的句型都在（不依赖库总量）
     created_texts = {"I think ...", "The reason is ..."}

@@ -1,6 +1,6 @@
 import uuid
 from collections.abc import Callable, Generator
-from typing import Annotated
+from typing import Annotated, Any
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -12,7 +12,7 @@ from sqlmodel import Session
 from app.core import db as _db
 from app.core import security
 from app.core.config import settings
-from app.models import TokenPayload, User
+from app.models import PlatformOperator, TokenPayload, User
 
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"
@@ -68,6 +68,14 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # B3 身份拆分：运营 token（独立 audience）不能当学校用户用——学校
+    # 身份与运营身份互不冒用（设计稿 §3.2）
+    if token_data.typ == "operator":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     user = session.get(User, token_data.sub)
     if not user:
         raise HTTPException(
@@ -90,34 +98,130 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-def get_current_active_superuser(current_user: CurrentUser) -> User:
-    if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=403, detail="The user doesn't have enough privileges"
+def get_current_platform_operator(
+    session: SessionDep, token: TokenDep
+) -> PlatformOperator:
+    """平台运营门（多租户 B3）：独立身份 + 独立 audience 凭证（设计稿 §3.2）。
+
+    只认 typ=operator 的运营 token；学校用户 token 到这里一律 403
+    （已认证但身份不符），token 无效/过期仍是 401。运营账号状态与
+    密码指纹实时查库——停用/改密立即生效，不等 token 自然过期。
+    """
+    try:
+        # 独立 audience 校验（JWT 规范路径）：学校 token 无 aud 声明，
+        # 在此直接 InvalidAudienceError → 401；运营 token 必须 aud=platform
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[security.ALGORITHM],
+            audience="platform",
         )
-    return current_user
+        token_data = TokenPayload(**payload)
+    except (InvalidTokenError, ValidationError):  # fmt: skip
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if token_data.typ != "operator":
+        raise HTTPException(status_code=403, detail="该操作需要平台运营身份")
+    operator = session.get(PlatformOperator, token_data.sub)
+    if operator is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if token_data.pwd != security.password_fingerprint(operator.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="登录凭证已失效，请重新登录",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not operator.is_active:
+        raise HTTPException(status_code=403, detail="Inactive operator")
+    return operator
 
 
-SuperUserDep = Annotated[User, Depends(get_current_active_superuser)]
+PlatformOperatorDep = Annotated[
+    PlatformOperator, Depends(get_current_platform_operator)
+]
 
 
 def _require_role(current_user: User, *allowed: str) -> User:
-    """角色门：admin 恒通过（admin ⇔ is_superuser 的不变量见 models.UserBase）。"""
-    if current_user.is_superuser or current_user.role in allowed:
+    """角色门：校级 admin 恒通过（校级管理员 ⇔ role=="admin"，B3 起无全局超管）。"""
+    if current_user.role == "admin" or current_user.role in allowed:
         return current_user
     raise HTTPException(status_code=403, detail=f"该操作需要角色：{'/'.join(allowed)}")
 
 
 def get_current_teacher(current_user: CurrentUser) -> User:
-    """教师或管理员（内容/课堂/学生账号管理类操作）。"""
+    """教师或校级管理员（内容/课堂/学生账号管理类操作）。"""
     return _require_role(current_user, "teacher")
 
 
 def get_current_student(current_user: CurrentUser) -> User:
     """仅学生（学生端练习链路）。"""
-    if not current_user.is_superuser and current_user.role != "student":
+    if current_user.role != "student" and current_user.role != "admin":
         raise HTTPException(status_code=403, detail="该操作仅限学生账号")
     return current_user
+
+
+def get_current_staff_or_operator(
+    session: SessionDep, token: TokenDep
+) -> User | PlatformOperator:
+    """多态身份门（B3）：学校教职工（teacher/admin）或平台运营任一即可。
+
+    用于「平台发布、两类身份都要读」的端点（更新日志列表）。一次解码后
+    按 typ 声明分流：运营 token 走运营表校验，学校 token 走用户表校验；
+    token 无效/过期仍是 401，身份不符是 403。
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[security.ALGORITHM],
+            options={"verify_aud": False},
+        )
+        token_data = TokenPayload(**payload)
+    except (InvalidTokenError, ValidationError):  # fmt: skip
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if token_data.typ == "operator":
+        operator = session.get(PlatformOperator, token_data.sub)
+        if operator is None or token_data.pwd != security.password_fingerprint(
+            operator.hashed_password
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not operator.is_active:
+            raise HTTPException(status_code=403, detail="Inactive operator")
+        return operator
+    user = session.get(User, token_data.sub)
+    if user is None or token_data.pwd != security.password_fingerprint(
+        user.hashed_password
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Inactive user")
+    if user.role not in ("teacher", "admin"):
+        raise HTTPException(status_code=403, detail="该操作需要教职工或平台运营身份")
+    return user
+
+
+# 注意：别名类型用 Any——User | PlatformOperator 的 union 会被 FastAPI
+# 当成请求体模型解析（GET 无 body → 422），依赖注入只关心函数不看注解
+StaffOrOperatorDep = Annotated[Any, Depends(get_current_staff_or_operator)]
 
 
 TeacherUserDep = Annotated[User, Depends(get_current_teacher)]
@@ -130,6 +234,7 @@ def get_optional_current_user(
     """可选登录：无 Authorization / token 无效时返回 None（不报 401）。
 
     用于「学生凭证或教师凭证二选一」的端点（如音频回放）。
+    运营 token（typ=operator）不是学校身份，同样按匿名处理。
     """
     if not token:
         return None
@@ -139,6 +244,8 @@ def get_optional_current_user(
         )
         token_data = TokenPayload(**payload)
     except (InvalidTokenError, ValidationError):  # fmt: skip
+        return None
+    if token_data.typ == "operator":
         return None
     user = session.get(User, token_data.sub)
     if user is None or not user.is_active:

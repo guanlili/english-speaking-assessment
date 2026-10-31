@@ -296,14 +296,14 @@ def test_use_invalid_token_returns_401(client: TestClient) -> None:
 
 
 def test_demo_login_issues_admin_token(client: TestClient) -> None:
-    """演示登录（仅 local）：token 可访问管理端接口。"""
+    """演示登录（仅 local）：种子账号 B3 起为校级 admin（学校侧全部职能）。"""
     resp = client.post("/api/v1/login/demo")
     assert resp.status_code == 200
     token = resp.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     me = client.get("/api/v1/users/me", headers=headers)
     assert me.status_code == 200
-    assert me.json()["is_superuser"] is True
+    assert me.json()["role"] == "admin"
 
 
 def test_password_change_invalidates_old_tokens(

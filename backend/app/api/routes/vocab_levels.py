@@ -19,7 +19,7 @@ from fastapi import APIRouter, Form, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlmodel import Field, Session, SQLModel, col, select
 
-from app.api.deps import SessionDep, SuperUserDep, TeacherUserDep
+from app.api.deps import PlatformOperatorDep, SessionDep, TeacherUserDep
 from app.api.routes.classes import _require_classroom_teacher
 from app.api.routes.vocabulary import (
     VocabularyWordIn,
@@ -62,7 +62,7 @@ async def _read_upload(file: UploadFile) -> str:
 
 
 @router.get("/admin/vocab-levels/stats", response_model=VocabularyLevelStats)
-def vocab_level_stats(session: SessionDep, _admin: SuperUserDep) -> Any:
+def vocab_level_stats(session: SessionDep, _operator: PlatformOperatorDep) -> Any:
     """各级数量、词组数、待人工核对数与来源统计。"""
     return levels_service.level_stats(session)
 
@@ -72,7 +72,7 @@ def vocab_level_stats(session: SessionDep, _admin: SuperUserDep) -> Any:
 )
 async def vocab_level_import_preview(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
     file: UploadFile,
     level: str = Form(...),
     source_label: str = Form(...),
@@ -95,7 +95,7 @@ async def vocab_level_import_preview(
 )
 async def vocab_level_import_confirm(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
     file: UploadFile,
     level: str = Form(...),
     source_label: str = Form(...),
@@ -122,7 +122,7 @@ async def vocab_level_import_confirm(
 )
 def list_vocab_level_entries(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
     level: str | None = Query(default=None),
     needs_review: bool | None = Query(default=None),
     headword: str | None = Query(default=None),
@@ -154,7 +154,7 @@ def list_vocab_level_entries(
 )
 def update_vocab_level_entry(
     session: SessionDep,
-    _admin: SuperUserDep,
+    _operator: PlatformOperatorDep,
     entry_id: uuid.UUID,
     entry_in: VocabularyLevelEntryUpdate,
 ) -> Any:
@@ -186,7 +186,7 @@ def update_vocab_level_entry(
 
 def _visible_book_ids(session: Session, current_user: User) -> list[uuid.UUID] | None:
     """当前教师可见的词库 id（公共库或本人班级库）；管理员返回 None 表示不限。"""
-    if current_user.is_superuser:
+    if current_user.role == "admin":
         return None
     rows = session.exec(
         select(VocabularyBook.id).where(

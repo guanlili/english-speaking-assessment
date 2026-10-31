@@ -223,23 +223,24 @@ def test_teacher_can_manage_content_but_not_classrooms(
     )
     assert scenario.status_code == 200
 
-    # 教师读单元供出题选择；增删改 403
+    # 教师读单元供出题选择；平台写操作 401（B3：学校 token 对 platform
+    # 受众无效——单元增删改与课堂管理都归平台运营）
     assert client.get("/api/v1/admin/units", headers=headers).status_code == 200
     unit = client.post(
         "/api/v1/admin/units",
         json={"order_index": 99, "title": "U99", "topic": "Pets"},
         headers=headers,
     )
-    assert unit.status_code == 403
+    assert unit.status_code == 401
 
-    # 课堂管理仍仅管理员：教师 403
+    # 课堂管理仍仅平台运营：教师 401
     classroom = _classroom(client, superuser_token_headers)
     resp = client.put(
         f"/api/v1/admin/classrooms/{classroom['id']}",
         json={"is_active": False},
         headers=headers,
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
     # 学生不能碰内容
     made = make_student(db, client, classroom["code"], "好奇学生")
@@ -717,14 +718,16 @@ def test_split_expansion_over_limit_rejected(
 def test_explore_split_passage_sentence_fallback(
     client: TestClient,
     superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
     db: Session,
 ) -> None:
     """自主练习（非发布会话）：拆句篇目逐句出题，合成 ID 提交走展开兜底。"""
     headers = superuser_token_headers
+    # 建单元是平台路由（B3）：用运营 token；篇目/拆句是校内业务用校级 token
     unit = client.post(
         "/api/v1/admin/units",
         json={"order_index": 95, "title": "Explore Split", "topic": "ExploreSplit"},
-        headers=headers,
+        headers=operator_token_headers,
     ).json()
     created = client.post(
         "/api/v1/admin/passages",

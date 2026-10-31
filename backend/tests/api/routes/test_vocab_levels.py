@@ -111,14 +111,17 @@ def _upload(
 
 
 def test_import_merge_sources_and_homographs(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """同级重复合并（来源保留）；同词不同释义 = 同形异义各成一行。"""
     _clear_level_entries(db)
     # 第一次导入：barbecue(DAY1) 与 apartment(DAY9)
     resp = _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "KET",
         [
             ["headword", "part_of_speech", "meaning_zh"],
@@ -134,7 +137,7 @@ def test_import_merge_sources_and_homographs(
     # 第二次导入：同一词（大小写不同）同释义 → 合并，来源追加；同词不同释义 → 同形异义新行
     resp = _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "KET",
         [
             ["headword", "part_of_speech", "meaning_zh"],
@@ -166,13 +169,16 @@ def test_import_merge_sources_and_homographs(
 
 
 def test_cross_level_duplicate_effective_lowest(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """跨级重复：同词多级各占一行；实际难度 = 最早（最易）一级；预览有冲突提示。"""
     _clear_level_entries(db)
     resp = _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "KET",
         [["headword", "meaning_zh"], ["lemon", "柠檬"]],
         confirm=True,
@@ -182,7 +188,7 @@ def test_cross_level_duplicate_effective_lowest(
     # 预览 CET4 再导入 lemon：应报跨级冲突（已存在于 KET）
     preview = _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "CET4",
         [["headword", "meaning_zh"], ["lemon", "柠檬"]],
         confirm=False,
@@ -196,7 +202,7 @@ def test_cross_level_duplicate_effective_lowest(
 
     resp = _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "CET4",
         [["headword", "meaning_zh"], ["lemon", "柠檬"]],
         confirm=True,
@@ -216,13 +222,16 @@ def test_cross_level_duplicate_effective_lowest(
 
 
 def test_preview_reports_invalid_and_counts(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """预览：无效行报告 + 导入后各级数量；确认导入各级数量正确。"""
     _clear_level_entries(db)
     preview = _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "PET",
         [["headword", "meaning_zh"], ["cat", "猫"], ["", "空行头"], ["123bad", "坏词"]],
         confirm=False,
@@ -238,21 +247,21 @@ def test_preview_reports_invalid_and_counts(
 
     resp = _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "PET",
         [["headword", "meaning_zh"], ["cat", "猫"], ["", "空行头"], ["123bad", "坏词"]],
         confirm=True,
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["skipped_invalid"] == 1
-    stats = client.get(f"{LEVELS}/stats", headers=superuser_token_headers).json()
+    stats = client.get(f"{LEVELS}/stats", headers=operator_token_headers).json()
     pet = next(level for level in stats["levels"] if level["level"] == "PET")
     assert pet["entry_count"] == 1
 
 
 def test_import_rollback_on_failure(
     client: TestClient,
-    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
     db: Session,
     monkeypatch,
 ) -> None:
@@ -270,7 +279,7 @@ def test_import_rollback_on_failure(
     with pytest.raises(RuntimeError, match="模拟提交失败"):
         _upload(
             client,
-            superuser_token_headers,
+            operator_token_headers,
             "CET4",
             [["headword", "meaning_zh"], ["sincere", "真诚的"], ["mood", "情绪"]],
             confirm=True,
@@ -286,7 +295,10 @@ def test_import_rollback_on_failure(
 
 
 def test_teaching_words_by_level_same_source(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """背单词按级别选词：读同一分级数据源，实际难度取最低级；同义词不进可接受拼写。"""
     _clear_level_entries(db)
@@ -307,14 +319,14 @@ def test_teaching_words_by_level_same_source(
     # 分级数据：lemon 在 KET 与 CET4（带释义——缺释义行默认不参与统计）
     _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "KET",
         [["headword", "meaning_zh"], ["lemon", "柠檬"]],
         confirm=True,
     )
     _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "CET4",
         [["headword", "meaning_zh"], ["lemon", "柠檬"]],
         confirm=True,
@@ -344,7 +356,10 @@ def test_teaching_words_by_level_same_source(
 
 
 def test_speaking_uses_same_level_source(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """口语用词来源级别：与背单词读同一 vocab_level_entry；待核对行不计入。"""
     _clear_level_entries(db)
@@ -417,7 +432,10 @@ def test_five_level_stats_normalizes_comparative_superlative(
 
 
 def test_history_not_reinterpreted(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """历史不漂移：旧的 A2/B1/B2 词汇分析 JSON 与已发布快照在五级导入后原样保留。"""
     _clear_level_entries(db)
@@ -442,7 +460,7 @@ def test_history_not_reinterpreted(
 
     # 五级导入 cat（包括同词）
     _upload(
-        client, superuser_token_headers, "KET", [["headword"], ["cat"]], confirm=True
+        client, operator_token_headers, "KET", [["headword"], ["cat"]], confirm=True
     )
 
     db.expire_all()
@@ -456,14 +474,17 @@ def test_history_not_reinterpreted(
 
 
 def test_same_batch_duplicates_and_sense_allocation(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """批内同词同释义合并为一行；既有 sense 后再导入多个新释义，sense_no 连续不冲突。"""
     _clear_level_entries(db)
     # 空库同批两行 cat,猫 → 合并 1 行（来源合并），duplicate_in_file 提示
     preview = _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "KET",
         [
             ["headword", "meaning_zh", "sources"],
@@ -479,7 +500,7 @@ def test_same_batch_duplicates_and_sense_allocation(
 
     resp = _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "KET",
         [
             ["headword", "meaning_zh", "sources"],
@@ -500,7 +521,7 @@ def test_same_batch_duplicates_and_sense_allocation(
     # 既有 cat sense1；同批导入两个新释义 → sense 2、3（不再撞唯一约束）
     resp = _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "KET",
         [
             ["headword", "meaning_zh"],
@@ -523,7 +544,10 @@ def test_same_batch_duplicates_and_sense_allocation(
 
 
 def test_ocr_csv_preserves_review_and_sources(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """OCR 产物 CSV（needs_review/sources 列）：状态与来源逐行保留；
     未核对行不参与两模块统计，人工核对 + 补释义后才计入。"""
@@ -537,7 +561,7 @@ def test_ocr_csv_preserves_review_and_sources(
         f"{LEVELS}/import-confirm",
         files={"file": ("pet.csv", csv_text.encode("utf-8"), "text/csv")},
         data={"level": "PET", "source_label": "PET扫描件OCR"},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 200, resp.text
 
@@ -558,7 +582,7 @@ def test_ocr_csv_preserves_review_and_sources(
     resp = client.patch(
         f"{LEVELS}/entries/{quiet.id}",
         json={"meaning_zh": "安静的", "needs_review": False},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 200, resp.text
     mapping = levels_service.effective_level_map(db, ["quiet"])
@@ -569,13 +593,16 @@ def test_ocr_csv_preserves_review_and_sources(
     resp = client.patch(
         f"{LEVELS}/entries/{alike.id}",
         json={"needs_review": False},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert resp.status_code == 422
 
 
 def test_teacher_imports_from_levels(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """教师从已核对分级词条创建班级词库并发布：未核对/缺释义跳过；快照语义不变。"""
     _clear_level_entries(db)
@@ -645,7 +672,10 @@ def test_teacher_imports_from_levels(
 
 
 def test_level_filter_pagination_across_pages(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """按级别选词分页：先过滤后分页，混合级别下不漏词、无空页。"""
     _clear_level_entries(db)
@@ -660,7 +690,7 @@ def test_level_filter_pagination_across_pages(
     assert resp.status_code == 200, resp.text
     _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "KET",
         [
             ["headword", "meaning_zh"],
@@ -672,7 +702,7 @@ def test_level_filter_pagination_across_pages(
     )
     _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "PET",
         [["headword", "meaning_zh"], ["petword", "P"]],
         confirm=True,
@@ -696,7 +726,10 @@ def test_level_filter_pagination_across_pages(
 
 
 def test_level_words_scoped_to_visible_books(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """按级别选词的可见性：教师只能看到公共库/自己词库的词，读不到他人班级词库。"""
     teacher_a, headers_a = _login_teacher(db, client)
@@ -722,7 +755,7 @@ def test_level_words_scoped_to_visible_books(
     # 分级数据：两个词都在 KET
     _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "KET",
         [["headword", "meaning_zh"], ["privet", "女贞"], ["pubword", "公共"]],
         confirm=True,
@@ -754,7 +787,10 @@ def test_level_words_scoped_to_visible_books(
 
 
 def test_from_levels_paginates_and_filters_effective_level(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """从分级建库：先排除已入库再限量（多页续导）；按实际难度筛选（来源级别≠实际难度）。"""
     classroom = _create_classroom(client, superuser_token_headers)
@@ -763,14 +799,14 @@ def test_from_levels_paginates_and_filters_effective_level(
     # 分级：lemon 在 KET+CET4（实际难度 KET）；cet4only 仅 CET4
     _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "KET",
         [["headword", "meaning_zh"], ["lemon", "柠檬"]],
         confirm=True,
     )
     _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "CET4",
         [["headword", "meaning_zh"], ["lemon", "柠檬"], ["cet4only", "仅四级"]],
         confirm=True,
@@ -797,7 +833,7 @@ def test_from_levels_paginates_and_filters_effective_level(
     # 多页续导：3 个候选 + limit=1 → 三批全部入book，无遗漏
     _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "CET4",
         [
             ["headword", "meaning_zh"],
@@ -828,12 +864,15 @@ def test_from_levels_paginates_and_filters_effective_level(
 
 
 def test_sense_allocation_counts_archived_rows(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """归档行占用 sense 序号：归档 sense1 后重新导入同词 → 新行 sense2，不撞约束。"""
     resp = _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "KET",
         [["headword", "meaning_zh"], ["mango", "芒果"]],
         confirm=True,
@@ -849,7 +888,7 @@ def test_sense_allocation_counts_archived_rows(
     # 同词同释义重新导入：不再匹配 active 行 → 新建；sense 计入归档行 → sense 2
     resp = _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "KET",
         [["headword", "meaning_zh"], ["mango", "芒果"]],
         confirm=True,
@@ -866,7 +905,10 @@ def test_sense_allocation_counts_archived_rows(
 
 
 def test_word_in_two_visible_books_deduped(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """同一词行挂在两本可见词库（两个 VocabularyBookItem）：级别查询按 id
     去重只返回一次，不占重复分页位。"""
@@ -895,7 +937,7 @@ def test_word_in_two_visible_books_deduped(
     db.commit()
     _upload(
         client,
-        superuser_token_headers,
+        operator_token_headers,
         "KET",
         [["headword", "meaning_zh"], ["twin", "双"]],
         confirm=True,
@@ -911,7 +953,10 @@ def test_word_in_two_visible_books_deduped(
 
 
 def test_from_levels_rejects_archived_book(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """归档词库禁写：from-levels 对已归档 book_id 返回 422（与加词接口同门禁）。"""
     classroom = _create_classroom(client, superuser_token_headers)

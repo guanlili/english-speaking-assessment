@@ -25,7 +25,10 @@ def _passages(client: TestClient, headers: dict[str, str]) -> list[dict]:
 
 
 def test_list_pagination_envelope(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
     """四个管理列表的分页语义：limit=None 全量（组卷兼容）；skip/limit 分页 +
     count 反映过滤后总数；非法参数 422；无 token 401 不变。"""
@@ -69,7 +72,7 @@ def test_list_pagination_envelope(
 
     # 句型库 / 篇目：同信封结构
     frames = client.get(
-        "/api/v1/admin/sentence-frames", headers=superuser_token_headers
+        "/api/v1/admin/sentence-frames", headers=operator_token_headers
     ).json()
     assert set(frames.keys()) == {"data", "count"}
     passages = client.get(
@@ -309,9 +312,12 @@ def test_school_life_seed_preserves_teacher_changes(db: Session) -> None:
 
 
 def test_classroom_admin(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
-    listing = client.get("/api/v1/admin/classrooms", headers=superuser_token_headers)
+    listing = client.get("/api/v1/admin/classrooms", headers=operator_token_headers)
     assert listing.status_code == 200
     codes = [c["code"] for c in listing.json()]
     assert "DEMO01" in codes
@@ -321,7 +327,7 @@ def test_classroom_admin(
     ).json()
     deactivate = client.delete(
         f"/api/v1/admin/classrooms/{created['id']}",
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     assert deactivate.status_code == 200
     # 停用后加入应 404（先过学生登录闸门：未登录会先 401）
@@ -424,7 +430,9 @@ def test_passage_cefr_band_is_enum(
 
 
 def test_admin_topics_are_union_and_sorted(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
 ) -> None:
     passage = client.post(
         "/api/v1/admin/passages",
@@ -434,7 +442,7 @@ def test_admin_topics_are_union_and_sorted(
     unit = client.post(
         "/api/v1/admin/units",
         json={"order_index": 99, "title": "u1", "topic": "主题U"},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     ).json()
     scenario = client.post(
         "/api/v1/admin/scenarios",
@@ -450,7 +458,7 @@ def test_admin_topics_are_union_and_sorted(
     finally:
         _purge_passage(client, superuser_token_headers, passage["id"])
         client.delete(
-            f"/api/v1/admin/units/{unit['id']}", headers=superuser_token_headers
+            f"/api/v1/admin/units/{unit['id']}", headers=operator_token_headers
         )
         client.delete(
             f"/api/v1/admin/scenarios/{scenario['id']}", headers=superuser_token_headers
@@ -458,12 +466,14 @@ def test_admin_topics_are_union_and_sorted(
 
 
 def test_unit_passage_count_and_assignment_read_back(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
 ) -> None:
     unit = client.post(
         "/api/v1/admin/units",
         json={"order_index": 98, "title": "计数单元", "topic": "CountTopic"},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     ).json()
     passage: dict | None = None
     classroom: dict | None = None
@@ -508,12 +518,12 @@ def test_unit_passage_count_and_assignment_read_back(
         if passage is not None:
             _purge_passage(client, superuser_token_headers, passage["id"])
         client.delete(
-            f"/api/v1/admin/units/{unit['id']}", headers=superuser_token_headers
+            f"/api/v1/admin/units/{unit['id']}", headers=operator_token_headers
         )
         if classroom is not None:
             client.delete(
                 f"/api/v1/admin/classrooms/{classroom['id']}",
-                headers=superuser_token_headers,
+                headers=operator_token_headers,
             )
 
 
@@ -924,32 +934,36 @@ def test_update_content_null_and_partial_semantics(
 
 
 def test_admin_only_zones_reject_teacher(
-    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
 ) -> None:
-    """权限矩阵落地：教师可读单元（出题选择用）；单元增删改与句型库管理 403。"""
+    """权限矩阵落地：教师可读单元（出题选择用）；单元增删改与句型库管理
+    归平台运营（B3）——教师 token 打平台路由一律 401（audience 拒绝）。"""
     email = "teacher-perm-matrix@example.com"
     client.post(
         "/api/v1/users/",
         json={"email": email, "password": "OldPassw0rd123", "role": "teacher"},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     )
     teacher = authentication_token_from_email(client=client, email=email, db=db)
     # 读：教师出题页需要单元与主题列表
     assert client.get("/api/v1/admin/units", headers=teacher).status_code == 200
     assert client.get("/api/v1/admin/topics", headers=teacher).status_code == 200
-    # 单元增删改：仅管理员
+    # 单元增删改：平台运营专属（教师 401）
     assert (
         client.post(
             "/api/v1/admin/units",
             json={"order_index": 1, "title": "越权单元", "topic": "PermTopic"},
             headers=teacher,
         ).status_code
-        == 403
+        == 401
     )
     unit = client.post(
         "/api/v1/admin/units",
         json={"order_index": 1, "title": "权限单元", "topic": "PermTopic"},
-        headers=superuser_token_headers,
+        headers=operator_token_headers,
     ).json()
     try:
         assert (
@@ -958,18 +972,18 @@ def test_admin_only_zones_reject_teacher(
                 json={"title": "改"},
                 headers=teacher,
             ).status_code
-            == 403
+            == 401
         )
         assert (
             client.delete(
                 f"/api/v1/admin/units/{unit['id']}", headers=teacher
             ).status_code
-            == 403
+            == 401
         )
-        # 句型库管理整套：仅管理员
+        # 句型库管理整套：平台运营专属（教师 401）
         assert (
             client.get("/api/v1/admin/sentence-frames", headers=teacher).status_code
-            == 403
+            == 401
         )
         frame_body = {
             "level": "KET",
@@ -981,15 +995,15 @@ def test_admin_only_zones_reject_teacher(
             client.post(
                 "/api/v1/admin/sentence-frames", json=frame_body, headers=teacher
             ).status_code
-            == 403
+            == 401
         )
         assert (
             client.post(
                 "/api/v1/admin/sentence-frames/batch", json=[], headers=teacher
             ).status_code
-            == 403
+            == 401
         )
     finally:
         client.delete(
-            f"/api/v1/admin/units/{unit['id']}", headers=superuser_token_headers
+            f"/api/v1/admin/units/{unit['id']}", headers=operator_token_headers
         )

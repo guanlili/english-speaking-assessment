@@ -333,7 +333,7 @@ function EntryDialog({
 function ChangelogPage() {
   const { t, lang } = useI18n()
   const { user } = useAuth()
-  const isAdmin = !!user?.is_superuser
+  const isAdmin = user?.role === "operator"
   const { data, isPending, isError } = useChangelog()
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()

@@ -1,4 +1,4 @@
-"""运维指标端点（批次 10-10）：superuser 门、计数器语义、队列与存储统计。"""
+"""运维指标端点（批次 10-10）：平台运营门（B3）、计数器语义、队列与存储统计。"""
 
 import uuid
 from pathlib import Path
@@ -11,10 +11,10 @@ from app.core.config import settings
 from app.models import Attempt
 
 
-def test_metrics_requires_superuser(
-    client: TestClient, superuser_token_headers: dict[str, str]
+def test_metrics_requires_operator(
+    client: TestClient, operator_token_headers: dict[str, str]
 ) -> None:
-    # 无 token 401；普通教师 403（不触发登出的权限语义）
+    # 无 token 401；学校 token（含校级 admin）对 platform 受众无效 → 401
     assert client.get("/api/v1/admin/metrics").status_code == 401
     teacher = client.post(
         "/api/v1/login/access-token",
@@ -22,9 +22,9 @@ def test_metrics_requires_superuser(
     )
     if teacher.status_code == 200:
         headers = {"Authorization": f"Bearer {teacher.json()['access_token']}"}
-        assert client.get("/api/v1/admin/metrics", headers=headers).status_code == 403
-    # superuser 200 且三层结构齐备
-    resp = client.get("/api/v1/admin/metrics", headers=superuser_token_headers)
+        assert client.get("/api/v1/admin/metrics", headers=headers).status_code == 401
+    # 平台运营 200 且三层结构齐备
+    resp = client.get("/api/v1/admin/metrics", headers=operator_token_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert set(body.keys()) >= {"scoring", "providers", "audio_storage"}
@@ -58,7 +58,7 @@ def test_metrics_audio_storage_stats(
     tmp_path: Path,
     monkeypatch,
     client: TestClient,
-    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
     db: Session,
 ) -> None:
     monkeypatch.setattr(settings, "AUDIO_STORAGE_DIR", str(tmp_path))
@@ -95,11 +95,11 @@ def test_metrics_audio_storage_stats(
 
 def test_metrics_queue_counts_reflect_attempts(
     client: TestClient,
-    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
     db: Session,
 ) -> None:
     """scoring.by_status 来自 Attempt 聚合：字段结构与计数口径冒烟。"""
-    resp = client.get("/api/v1/admin/metrics", headers=superuser_token_headers)
+    resp = client.get("/api/v1/admin/metrics", headers=operator_token_headers)
     assert resp.status_code == 200
     scoring = resp.json()["scoring"]
     assert isinstance(scoring["by_status"], dict)
@@ -108,7 +108,7 @@ def test_metrics_queue_counts_reflect_attempts(
 
 
 def test_metrics_db_pool_water_level(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient, operator_token_headers: dict[str, str]
 ) -> None:
     """db_pool 水位与容量口径：考试高峰是否打满在 /admin/metrics 看。
 
@@ -116,7 +116,7 @@ def test_metrics_db_pool_water_level(
     overflow 是当前溢出计数，未溢出时可为负（冷启动 -pool_size），不做
     非负断言。
     """
-    resp = client.get("/api/v1/admin/metrics", headers=superuser_token_headers)
+    resp = client.get("/api/v1/admin/metrics", headers=operator_token_headers)
     assert resp.status_code == 200
     pool = resp.json()["db_pool"]
     assert set(pool) == {

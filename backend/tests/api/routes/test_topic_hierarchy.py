@@ -16,11 +16,18 @@ from tests.utils.credential import make_student
 def _make_unit(
     client: TestClient, headers: dict, topic: str, title: str, order: int = 90
 ) -> dict:
-    return client.post(
-        "/api/v1/admin/units",
-        json={"order_index": order, "title": title, "topic": topic},
-        headers=headers,
-    ).json()
+    """B3 起建单元是平台路由：直插 DB 造数（单元改主题的级联仍走 API 验证）。"""
+    from sqlmodel import Session as _Session
+
+    from app.core.db import engine as _engine
+    from app.models import Unit
+
+    with _Session(_engine) as _db:
+        row = Unit(order_index=order, title=title, topic=topic)
+        _db.add(row)
+        _db.commit()
+        _db.refresh(row)
+        return {"id": str(row.id)}
 
 
 def _make_passage(
@@ -46,7 +53,9 @@ def _make_passage(
 
 
 def test_passage_topic_derives_from_unit(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
 ) -> None:
     """挂单元篇目的主题始终等于单元主题：建/改篇目、改单元都一样。"""
     headers = superuser_token_headers
@@ -67,7 +76,9 @@ def test_passage_topic_derives_from_unit(
 
     # 单元改主题 → 属下篇目级联跟随
     resp = client.put(
-        f"/api/v1/admin/units/{unit['id']}", json={"topic": "Food"}, headers=headers
+        f"/api/v1/admin/units/{unit['id']}",
+        json={"topic": "Food"},
+        headers=operator_token_headers,
     )
     assert resp.status_code == 200
     topics = {
@@ -80,7 +91,7 @@ def test_passage_topic_derives_from_unit(
     invalid = client.put(
         f"/api/v1/admin/units/{unit['id']}",
         json={"topic": None},
-        headers=headers,
+        headers=operator_token_headers,
     )
     assert invalid.status_code == 422
 

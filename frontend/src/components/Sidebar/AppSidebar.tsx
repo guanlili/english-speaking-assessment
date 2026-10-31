@@ -46,7 +46,7 @@ const createHubItem: Item[] = [
   },
 ]
 
-// 仅管理员：大盘/用户/词表/课堂管理
+// 仅平台运营（B3 身份拆分）：大盘/用户/词表目录/单元/句型/课堂管理
 const adminOnlyItems: Item[] = [
   {
     icon: LayoutDashboard,
@@ -69,11 +69,6 @@ const adminOnlyItems: Item[] = [
     path: "/admin/vocablevels",
   },
   {
-    icon: BookA,
-    title: { zh: "词库管理", en: "Word Books" },
-    path: "/admin/vocabbooks",
-  },
-  {
     icon: MessageSquareQuote,
     title: { zh: "句型库", en: "Sentence Frames" },
     path: "/admin/sentenceframes",
@@ -85,39 +80,54 @@ const adminOnlyItems: Item[] = [
   },
 ]
 
+// 校级管理员（学校业务，不随身份拆分外流）
+const schoolAdminExtraItems: Item[] = [
+  {
+    icon: BookA,
+    title: { zh: "词库管理", en: "Word Books" },
+    path: "/admin/vocabbooks",
+  },
+]
+
 export function AppSidebar() {
   const { t } = useI18n()
   const { user: currentUser } = useAuth()
   const hasChangelogNew = useChangelogHasNew()
-  const exportJobs = useExports(cachedRole() !== "student")
+  const role = cachedRole()
+  const isOperator = role === "operator"
+  const isSchoolStaff = role === "teacher" || role === "admin"
+  const exportJobs = useExports(isSchoolStaff)
   const unseenExports = exportJobs.data?.unseen_ready ?? 0
   const currentPath = useRouterState({
     select: (state) => state.location.pathname,
   })
-  const isAdminActive = adminOnlyItems.some((item) =>
-    isItemActive(item.path, currentPath),
-  )
+  const isAdminActive =
+    adminOnlyItems.some((item) => isItemActive(item.path, currentPath)) ||
+    schoolAdminExtraItems.some((item) => isItemActive(item.path, currentPath))
 
-  // 教师只需理解课堂与题目；系统配置收纳在管理员区域。
-  // 平台更新对教师与管理员开放（学生端不设入口）。
-  const items =
-    currentUser?.is_superuser || cachedRole() === "teacher"
-      ? [
-          ...baseItems,
-          {
-            icon: FolderArchive,
-            title: { zh: "录音导出", en: "Audio Export" },
-            path: "/exports",
-            badge: unseenExports > 0 ? unseenExports : undefined,
-          },
-          ...createHubItem,
-          {
-            icon: Megaphone,
-            title: { zh: "平台更新", en: "What's New" },
-            path: "/changelog",
-            dot: hasChangelogNew,
-          },
-        ]
+  // 教师只需理解课堂与题目；校级管理员另见校内词库管理；
+  // 平台运营只见平台区块（B3 身份拆分）。平台更新对教职工开放。
+  const changelogItem: Item = {
+    icon: Megaphone,
+    title: { zh: "平台更新", en: "What's New" },
+    path: "/changelog",
+    dot: hasChangelogNew,
+  }
+  const items = isSchoolStaff
+    ? [
+        ...baseItems,
+        {
+          icon: FolderArchive,
+          title: { zh: "录音导出", en: "Audio Export" },
+          path: "/exports",
+          badge: unseenExports > 0 ? unseenExports : undefined,
+        },
+        ...createHubItem,
+        ...(role === "admin" ? schoolAdminExtraItems : []),
+        changelogItem,
+      ]
+    : isOperator
+      ? [changelogItem]
       : baseItems
 
   return (
@@ -141,7 +151,7 @@ export function AppSidebar() {
             en: "Leave more time for students to speak.",
           })}
         </p>
-        {currentUser?.is_superuser && (
+        {(isOperator || role === "admin") && (
           <div className="mt-4 border-t border-sidebar-border pt-4">
             {/* 新的管理页面默认展开，原生 details 仍允许手动收起。 */}
             <details
@@ -151,20 +161,28 @@ export function AppSidebar() {
             >
               <summary className="mx-2 mb-2 flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring [&::-webkit-details-marker]:hidden">
                 <span className={isAdminActive ? "text-primary" : undefined}>
-                  {t({ zh: "平台设置", en: "Platform Settings" })}
+                  {isOperator
+                    ? t({ zh: "平台设置", en: "Platform Settings" })
+                    : t({ zh: "校内管理", en: "School Settings" })}
                 </span>
                 <span className="text-[10px] font-normal text-muted-foreground">
-                  {t({ zh: "管理员", en: "Admin" })}
+                  {isOperator
+                    ? t({ zh: "运营", en: "Operator" })
+                    : t({ zh: "管理员", en: "Admin" })}
                 </span>
                 <ChevronDown
                   aria-hidden="true"
                   className="ml-auto size-3.5 -rotate-90 transition-transform group-open/admin:rotate-0 motion-reduce:transition-none"
                 />
               </summary>
-              <Main items={adminOnlyItems} />
+              <Main
+                items={isOperator ? adminOnlyItems : schoolAdminExtraItems}
+              />
             </details>
             <div className="hidden group-data-[collapsible=icon]:block">
-              <Main items={adminOnlyItems} />
+              <Main
+                items={isOperator ? adminOnlyItems : schoolAdminExtraItems}
+              />
             </div>
           </div>
         )}

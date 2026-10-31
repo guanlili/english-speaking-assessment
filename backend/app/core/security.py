@@ -18,7 +18,8 @@ password_hash = PasswordHash(
 
 ALGORITHM = "HS256"
 
-# 三级角色：admin（=is_superuser）/ teacher / student
+# 校级三角色：admin（校级管理员）/ teacher / student。
+# 平台运营是独立身份（PlatformOperator 表 + operator token），不在角色集内
 VALID_ROLES = {"admin", "teacher", "student"}
 
 
@@ -28,12 +29,19 @@ def create_access_token(
     role: str | None = None,
     password_hash: str = "",
     tenant_id: str | None = None,
+    audience: str | None = None,
+    token_type: str | None = None,
 ) -> str:
     expire = datetime.now(UTC) + expires_delta
     to_encode: dict[str, Any] = {"exp": expire, "sub": str(subject)}
     if role is not None:
         # 角色随 token 下发供前端分流；权限判定始终查库
         to_encode["role"] = role
+    if audience is not None:
+        # 多租户 B3：平台运营独立 audience（设计稿 §3.2「独立 audience 的凭证」）
+        to_encode["aud"] = audience
+    if token_type is not None:
+        to_encode["typ"] = token_type
     if tenant_id is not None:
         # 多租户 B2：租户声明供前端上下文与后续请求侧展示；
         # 权限/归属判定始终查库，不以 token 声明为准（V1.0 §5）

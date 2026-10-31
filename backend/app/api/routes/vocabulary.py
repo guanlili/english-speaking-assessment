@@ -131,7 +131,7 @@ def _assignment_public(assignment: VocabularyAssignment) -> VocabularyAssignment
 
 
 def _book_visible(book: VocabularyBook, current_user: User) -> bool:
-    if current_user.is_superuser:
+    if current_user.role == "admin":
         return True
     if book.scope == "public":
         return True
@@ -251,7 +251,7 @@ def list_books(session: SessionDep, current_user: TeacherUserDep) -> Any:
     不把别人的班级词库整表拉回 Python 再丢掉。
     """
     statement = select(VocabularyBook).order_by(col(VocabularyBook.created_at))
-    if not current_user.is_superuser:
+    if current_user.role != "admin":
         statement = statement.where(
             (col(VocabularyBook.scope) == "public")  # type: ignore[union-attr]
             | (col(VocabularyBook.owner_id) == current_user.id)  # type: ignore[union-attr]
@@ -271,7 +271,7 @@ def create_book(
         raise HTTPException(
             status_code=422, detail="词库作用域必须是 public 或 classroom"
         )
-    if scope == "public" and not current_user.is_superuser:
+    if scope == "public" and current_user.role != "admin":
         raise HTTPException(
             status_code=403, detail="公共词库由管理员维护，教师可创建班级词库"
         )
@@ -462,7 +462,7 @@ def update_word(
     if word is None:
         raise HTTPException(status_code=404, detail="词条不存在")
     # 权限：管理员任意；教师只能改自己班级词库里的词
-    if not current_user.is_superuser:
+    if current_user.role != "admin":
         editable_book = session.exec(
             select(VocabularyBook.id)
             .join(

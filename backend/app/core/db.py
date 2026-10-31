@@ -590,11 +590,32 @@ def init_db(session: Session) -> None:
         select(User).where(User.email == settings.FIRST_SUPERUSER)
     ).first()
     if not user:
+        # B3 起首账号即校级 admin（不再有全局超管语义；跨校运营在
+        # PlatformOperator 表，凭据独立 audience）
         user_in = UserCreate(
             email=settings.FIRST_SUPERUSER,
             password=settings.FIRST_SUPERUSER_PASSWORD,
-            is_superuser=True,
+            role="admin",
         )
         user = crud.create_user(session=session, user_create=user_in)
+
+    # 平台运营种子（多租户 B3）：幂等 upsert；凭据默认沿用首超管
+    # （单校过渡窗口），可用 FIRST_OPERATOR_EMAIL/PASSWORD 覆盖拆分
+    from app.core.security import get_password_hash
+    from app.models import PlatformOperator
+
+    operator = session.exec(
+        select(PlatformOperator).where(
+            PlatformOperator.email == settings.first_operator_email
+        )
+    ).first()
+    if operator is None:
+        session.add(
+            PlatformOperator(
+                email=settings.first_operator_email,
+                hashed_password=get_password_hash(settings.first_operator_password),
+            )
+        )
+        session.commit()
 
     _seed_practice_content(session)

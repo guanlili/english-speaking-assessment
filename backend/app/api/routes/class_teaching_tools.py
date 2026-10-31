@@ -267,7 +267,7 @@ def read_learning_report(
     exercise_id: uuid.UUID | None = None,
 ) -> LearningReport:
     classroom = _get_classroom(session, code)
-    if current_user.role == "student" and not current_user.is_superuser:
+    if current_user.role == "student":
         student = _student_profile_of(session, classroom, current_user)
         if student_id is not None and student_id != student.id:
             raise HTTPException(403, detail="No permission")

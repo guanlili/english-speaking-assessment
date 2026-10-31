@@ -550,6 +550,17 @@ function Login() {
           </p>
         )}
         {options.data?.demo_enabled && <DemoEntry />}
+        <p className="text-muted-foreground mt-6 text-center text-xs">
+          <RouterLink
+            className="underline-offset-4 hover:underline"
+            to="/platform/login"
+          >
+            {t({
+              zh: "平台运营入口",
+              en: "Platform operator sign-in",
+            })}
+          </RouterLink>
+        </p>
       </div>
     </LoginLayout>
   )

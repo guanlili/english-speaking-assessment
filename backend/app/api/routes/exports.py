@@ -167,7 +167,7 @@ def _visible(session: SessionDep, job_id: uuid.UUID, user: User) -> ExportJob:
     job = session.get(ExportJob, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Export job not found")
-    if job.requester_user_id != user.id and not user.is_superuser:
+    if job.requester_user_id != user.id and user.role != "admin":
         raise HTTPException(status_code=403, detail="没有权限：只能查看自己的导出任务")
     return job
 
@@ -177,7 +177,7 @@ def _resolve(session: SessionDep, user: User, body: ExportCreate) -> dict[str, o
     classroom_code: str | None = None
     exercise_title: str | None = None
     if body.scope == ExportScope.CLASSROOM:
-        if user.role == "student" and not user.is_superuser:
+        if user.role == "student":
             _reject(session, user, scope=body.scope, result="forbidden")
             raise HTTPException(
                 status_code=403,
@@ -669,7 +669,7 @@ def retry_export(
     submitter: ExportSubmitter,
 ) -> ExportJobPublic:
     job = _visible(session, job_id, current_user)
-    if job.requester_user_id != current_user.id and not current_user.is_superuser:
+    if job.requester_user_id != current_user.id and current_user.role != "admin":
         raise HTTPException(status_code=403, detail="没有权限：只能查看自己的导出任务")
     if job.status != ExportJobStatus.FAILED:
         raise HTTPException(status_code=409, detail="export_retry_not_failed")

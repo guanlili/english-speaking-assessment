@@ -185,7 +185,7 @@ def _resolve_submit_student(
         return None
     if current_user is None:
         raise HTTPException(status_code=401, detail="请先登录后再提交课堂作答")
-    if not current_user.is_superuser and current_user.role != "student":
+    if current_user.role != "student" and current_user.role != "admin":
         raise HTTPException(status_code=403, detail="该操作仅限学生账号")
     practice_session = session.get(PracticeSession, session_id)
     if practice_session is None:
@@ -222,7 +222,7 @@ def _require_attempt_access(
     ):
         return
     # 教师/管理员通道
-    if current_user.is_superuser:
+    if current_user.role == "admin":
         return
     if student is not None:
         classroom = session.get(Classroom, student.classroom_id)
@@ -619,7 +619,7 @@ def read_attempts_batch(
     if len(by_id) != len(body.attempt_ids):
         raise HTTPException(status_code=404, detail="Attempt not found")
 
-    if not current_user.is_superuser:
+    if current_user.role != "admin":
         student_ids = {
             attempt.student_id for attempt in attempts if attempt.student_id is not None
         }

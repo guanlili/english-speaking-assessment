@@ -8,8 +8,9 @@ from sqlmodel import SQLModel, col, func, select
 from app import crud
 from app.api.deps import (
     CurrentUser,
+    PlatformOperatorDep,
     SessionDep,
-    get_current_active_superuser,
+    get_current_platform_operator,
 )
 from app.core.config import settings
 from app.core.ratelimit import SlidingWindowLimiter
@@ -37,7 +38,7 @@ USERS_MAX_LIMIT = 200
 
 @router.get(
     "/",
-    dependencies=[Depends(get_current_active_superuser)],
+    dependencies=[Depends(get_current_platform_operator)],
     response_model=UsersPublic,
 )
 def read_users(
@@ -76,12 +77,15 @@ def read_users(
 
 
 @router.post(
-    "/", dependencies=[Depends(get_current_active_superuser)], response_model=UserPublic
+    "/",
+    dependencies=[Depends(get_current_platform_operator)],
+    response_model=UserPublic,
 )
 def create_user(*, session: SessionDep, user_in: UserCreate) -> Any:
     """
     Create new user. 学生账号建议走 /students/import 批量建号；
-    此处后台单个建号支持 teacher/admin（admin 自动置 is_superuser）。
+    此处后台单个建号支持 teacher/admin（平台运营通道，B3 起门禁为
+    PlatformOperator；校级管理员自助建号随 D 期学校管理补齐）。
     """
     from app.core.security import VALID_ROLES
 
@@ -103,11 +107,6 @@ def create_user(*, session: SessionDep, user_in: UserCreate) -> Any:
         user = crud.get_user_by_username(session=session, username=user_in.username)
         if user:
             raise HTTPException(status_code=400, detail="该学号已存在")
-    # 维护不变量：role==admin ⇔ is_superuser
-    if user_in.role == "admin":
-        user_in.is_superuser = True
-    elif user_in.role is not None and user_in.is_superuser:
-        user_in.role = "admin"
 
     user = crud.create_user(session=session, user_create=user_in)
     if settings.emails_enabled and user_in.email:
@@ -180,9 +179,10 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     """
     Delete own user.
     """
-    if current_user.is_superuser:
+    # 校级管理员不可自删（避免学校失去唯一管理员；平台运营在独立身份内）
+    if current_user.role == "admin":
         raise HTTPException(
-            status_code=403, detail="Super users are not allowed to delete themselves"
+            status_code=403, detail="管理员账号不支持自助删除，请联系平台运营"
         )
     session.delete(current_user)
     session.commit()
@@ -221,19 +221,12 @@ def register_user(session: SessionDep, user_in: UserRegister, request: Request) 
 
 @router.get("/{user_id}", response_model=UserPublic)
 def read_user_by_id(
-    user_id: uuid.UUID, session: SessionDep, current_user: CurrentUser
+    user_id: uuid.UUID, session: SessionDep, _operator: PlatformOperatorDep
 ) -> Any:
     """
-    Get a specific user by id.
+    Get a specific user by id（B3 起为平台运营通道；本人自读走 /users/me）。
     """
     user = session.get(User, user_id)
-    if user == current_user:
-        return user
-    if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=403,
-            detail="The user doesn't have enough privileges",
-        )
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return user
@@ -241,7 +234,7 @@ def read_user_by_id(
 
 @router.patch(
     "/{user_id}",
-    dependencies=[Depends(get_current_active_superuser)],
+    dependencies=[Depends(get_current_platform_operator)],
     response_model=UserPublic,
 )
 def update_user(
@@ -277,26 +270,23 @@ class UserDeleteRequest(SQLModel):
     password: str = Field(min_length=1, max_length=128)
 
 
-@router.delete("/{user_id}", dependencies=[Depends(get_current_active_superuser)])
+@router.delete("/{user_id}", dependencies=[Depends(get_current_platform_operator)])
 def delete_user(
     session: SessionDep,
-    current_user: CurrentUser,
+    operator: PlatformOperatorDep,
     user_id: uuid.UUID,
     body: UserDeleteRequest,
 ) -> Message:
     """
     Delete a user（系统级删除：该账号在所有班的档案与作答一并清除）。
 
-    需管理员密码复核；不能删除自己。
+    B3 起为平台运营通道：密码复核针对运营账号自身（运营与学校账号
+    分属两表，不存在"删到自己"——自删保护在 /users/me 对应实现）。
     """
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if user == current_user:
-        raise HTTPException(
-            status_code=403, detail="Super users are not allowed to delete themselves"
-        )
-    verified, _ = verify_password(body.password, current_user.hashed_password)
+    verified, _ = verify_password(body.password, operator.hashed_password)
     if not verified:
         raise HTTPException(status_code=403, detail="管理员密码不正确，删除已拒绝")
     session.delete(user)

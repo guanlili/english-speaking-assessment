@@ -53,13 +53,12 @@ def _ensure_account_reset_allowed(
     名下所有班级档案都有权限——否则 B 班教师可重置共享学生/被拉进班的
     管理员，用公开默认密码冒充其在其他班级作答（账号接管面）。
 
-    角色与超管标志必须同时判定：update_user 逐字段盲写，role=student 与
-    is_superuser=True 可以并存（不变量只在建号/迁移时维护），而全站管理员
-    门禁认的是 is_superuser——只看 role 会放行实际超管账号。
+    B3 起角色单源（is_superuser 已移除）：目标角色只认 role=="student"，
+    校级管理员恒可重置；旧「role=student 与超管标志并存」的盲写风险不复存在。
     """
-    if user.role != "student" or user.is_superuser:
+    if user.role != "student":
         raise HTTPException(status_code=403, detail="没有权限：只能重置学生账号的密码")
-    if current_user.is_superuser:
+    if current_user.role == "admin":
         return
     # join 走 Student.classroom_id 外键推断，不写 onclause（ty 会把列 == 判成 bool）
     other_owners = session.exec(
@@ -374,7 +373,6 @@ def import_students(
         user = User(
             email=None,
             is_active=True,
-            is_superuser=False,
             full_name=full_name or None,
             role="student",
             username=username,
@@ -616,11 +614,11 @@ def bulk_reset_passwords(
     result = BulkResetResult(reset=0, skipped=0, rows=[])
     # 统一默认密码只做一次 argon2 哈希（与导入路径同款优化；60 人班逐人
     # 哈希会秒级持有写事务）。守卫与 _ensure_account_reset_allowed 同口径
-    # （角色+超管双标志、跨班归属须本人），批量入口一次预取跨班归属，
+    # （角色单源+跨班归属须本人），批量入口一次预取跨班归属，
     # 不在循环里逐人查询——两处口径必须同步改
     shared_hash = get_password_hash(DEFAULT_STUDENT_PASSWORD)
     cross_owner_user_ids: set[uuid.UUID] = set()
-    if user_ids and not current_user.is_superuser:
+    if user_ids and current_user.role != "admin":
         cross_owner_user_ids = {
             user_id
             for user_id, owner_id in session.exec(
@@ -637,11 +635,7 @@ def bulk_reset_passwords(
         user = users_by_id.get(s.user_id) if s.user_id else None
         if user is None:
             continue
-        if (
-            user.role != "student"
-            or user.is_superuser
-            or user.id in cross_owner_user_ids
-        ):
+        if user.role != "student" or user.id in cross_owner_user_ids:
             result.skipped += 1
             logger.info(
                 "bulk password reset skipped target_user=%s student=%s classroom=%s",

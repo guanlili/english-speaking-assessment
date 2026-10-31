@@ -18,6 +18,7 @@ from app.models import (
     ComposerDraft,
     Passage,
     PassageCreate,
+    PlatformOperator,
     PracticeSession,
     Student,
     Tenant,
@@ -127,6 +128,33 @@ def authenticate(
     return db_user
 
 
+def authenticate_platform_operator(
+    *, session: Session, email: str, password: str
+) -> PlatformOperator | None:
+    """平台运营登录（多租户 B3）：独立表、独立端点、独立 token audience。
+
+    与学校 authenticate 完全分离——运营不在 user 表内查找，学校账号
+    不能经运营入口登录（反之亦然）。
+    """
+    operator = session.exec(
+        select(PlatformOperator).where(PlatformOperator.email == email.strip().lower())
+    ).first()
+    if not operator:
+        verify_password(password, DUMMY_HASH)
+        return None
+    verified, updated_password_hash = verify_password(
+        password, operator.hashed_password
+    )
+    if not verified:
+        return None
+    if updated_password_hash:
+        operator.hashed_password = updated_password_hash
+        session.add(operator)
+        session.commit()
+        session.refresh(operator)
+    return operator
+
+
 def slugify_title(title: str) -> str:
     """标题 → slug；无 ASCII 词元（纯中文）时用随机码兜底。"""
     base = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
@@ -198,10 +226,11 @@ def get_classroom_by_code(*, session: Session, code: str) -> Classroom | None:
 def classroom_teacher_allowed(classroom: Classroom, user: User) -> bool:
     """教师越权判定唯一事实源（纯函数，不抛错）：
 
-    本班 owner（绑定教师）或管理员可过；owner 未绑定的课堂任何教师都
-    不可过（课堂码不是教师凭据）。students / class_shared 两套适配层
-    停用课堂与 403 文案语义不同，但判定核心必须是同一个。"""
-    if user.is_superuser:
+    本班 owner（绑定教师）或校级管理员可过；owner 未绑定的课堂任何教师
+    都不可过（课堂码不是教师凭据）。students / class_shared 两套适配层
+    停用课堂与 403 文案语义不同，但判定核心必须是同一个。
+    B3 起管理员判定认 role=="admin"（is_superuser 已随身份拆分移除）。"""
+    if user.role == "admin":
         return True
     return classroom.owner_id is not None and classroom.owner_id == user.id
 
