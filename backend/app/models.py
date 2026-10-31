@@ -24,6 +24,29 @@ def get_datetime_utc() -> datetime:
     return datetime.now(UTC)
 
 
+# ── 多租户地基（B1）─────────────────────────────────────────────────
+# 默认租户用固定 UUID：迁移的 server_default、模型 default 与 initial_data
+# 种子三处共用同一常量，保证「写入路径漏设 tenant_id 也会落到默认租户」的
+# 单校兼容窗口在 DB 层面成立（设计稿 §9-2「旧进程漏写」的兜底）。
+DEFAULT_TENANT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
+
+class Tenant(SQLModel, table=True):
+    """租户=一所独立管理的学校（V1.0 §2）。原校标识须由管理员核实后改名。"""
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    slug: str = Field(unique=True, index=True, max_length=32)
+    name_zh: str = Field(max_length=120)
+    name_en: str | None = Field(default=None, max_length=120)
+    # 生命周期首两态先落地；其余四态随 D 期学校运营补齐
+    status: str = Field(default="active", max_length=16, index=True)
+    timezone: str = Field(default="Asia/Shanghai", max_length=64)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
 # Shared properties
 class UserBase(SQLModel):
     # 学生无邮箱：email 可空（学号登录），教师/管理员必填（API 层校验）
@@ -77,10 +100,26 @@ class UpdatePassword(SQLModel):
 # Database model, database table inferred from class name
 class User(UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    # 租户归属：B1 起列级默认兜底（ORM default + server_default 双保险），
+    # 全表 NOT NULL——存量由迁移回填，增量不可能漏写
+    tenant_id: uuid.UUID = Field(
+        default=DEFAULT_TENANT_ID,
+        foreign_key="tenant.id",
+        nullable=False,
+        sa_column_kwargs={"server_default": text(f"'{DEFAULT_TENANT_ID}'")},
+        index=True,
+    )
     hashed_password: str
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+    # 校内唯一（登录解析走 (tenant_id, 标识)，见 B2）；旧的全局唯一索引
+    # 在单校窗口内与复合唯一等价，收紧期（设计稿 §9-5）随登录改造一并移除
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "username", name="uq_user_tenant_username"),
+        UniqueConstraint("tenant_id", "email", name="uq_user_tenant_email"),
     )
 
 
@@ -670,6 +709,14 @@ class QuestionBankImportResult(SQLModel):
 class Classroom(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     code: str = Field(unique=True, index=True, max_length=16)
+    # 租户归属随 owner 落库（B1 列级默认兜底，收紧期改为显式注入+复核）
+    tenant_id: uuid.UUID = Field(
+        default=DEFAULT_TENANT_ID,
+        foreign_key="tenant.id",
+        nullable=False,
+        sa_column_kwargs={"server_default": text(f"'{DEFAULT_TENANT_ID}'")},
+        index=True,
+    )
     # 教师自定义课堂信息；课堂难度由发布时选择的内容决定，不再依赖档位。
     name: str = Field(default="未命名课堂", max_length=120)
     grade: str | None = Field(default=None, max_length=64)
@@ -858,6 +905,14 @@ class ClassroomCreate(SQLModel):
 # 学生：与登录账号（role=student 的 User）关联；游戏化数据挂在本行
 class Student(SQLModel, table=True):
     classroom_activity: dict[str, object] | None = Field(default=None, sa_type=JSON)
+    # 租户随课堂推导（B1 列级默认兜底；回填/收紧期校验与课堂一致）
+    tenant_id: uuid.UUID = Field(
+        default=DEFAULT_TENANT_ID,
+        foreign_key="tenant.id",
+        nullable=False,
+        sa_column_kwargs={"server_default": text(f"'{DEFAULT_TENANT_ID}'")},
+        index=True,
+    )
 
     __tablename__ = "student"
     __table_args__ = (

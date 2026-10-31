@@ -21,6 +21,7 @@ from app.api.deps import (
 from app.core.config import settings
 from app.crud import (
     ClassroomFullError,
+    CrossTenantJoinError,
     classroom_teacher_allowed,
     create_classroom,
     ensure_class_size_feasible,
@@ -470,6 +471,12 @@ def join_class(
         raise HTTPException(
             status_code=409,
             detail="班级人数已满，请联系老师调整课堂容量",
+        ) from None
+    except CrossTenantJoinError:
+        # 跨校加入：不泄露他校课堂存在性以外的信息（V1.0 AC-03）
+        raise HTTPException(
+            status_code=403,
+            detail="该课堂不属于你所在的学校，无法加入",
         ) from None
 
 

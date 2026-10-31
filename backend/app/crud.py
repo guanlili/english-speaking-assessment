@@ -54,10 +54,13 @@ def update_user(*, session: Session, db_user: User, user_in: UserUpdate) -> Any:
     return db_user
 
 
-def get_user_by_username(*, session: Session, username: str) -> User | None:
-    return session.exec(
-        select(User).where(User.username == username)  # type: ignore[arg-type]
-    ).first()
+def get_user_by_username(
+    *, session: Session, username: str, tenant_id: uuid.UUID | None = None
+) -> User | None:
+    stmt = select(User).where(User.username == username)  # type: ignore[arg-type]
+    if tenant_id is not None:
+        stmt = stmt.where(User.tenant_id == tenant_id)
+    return session.exec(stmt).first()
 
 
 def get_user_by_email(*, session: Session, email: str) -> User | None:
@@ -194,6 +197,10 @@ class ClassroomFullError(Exception):
     """入班被拒：班内学生档案数已达课堂容量上限（class_size）。"""
 
 
+class CrossTenantJoinError(Exception):
+    """账号租户与课堂租户不一致（多租户 B1 守卫）。路由层转 403。"""
+
+
 def join_classroom(
     *, session: Session, classroom: Classroom, user: User, display_name: str | None
 ) -> Student:
@@ -203,6 +210,10 @@ def join_classroom(
     并发用 IntegrityError 重试（user/classroom 唯一索引与显示名唯一约束）；
     班内档案数达到 class_size 时抛 ClassroomFullError（路由转 409）。
     """
+    # 多租户守卫（B1）：账号与课堂必须同租户，跨校加入直接拒绝
+    # （V1.0 FR-03/AC-01；单租户窗口内恒通过，行为不变）
+    if user.tenant_id != classroom.tenant_id:
+        raise CrossTenantJoinError()
     existing = session.exec(
         select(Student).where(
             Student.classroom_id == classroom.id,  # type: ignore[arg-type]

@@ -254,11 +254,14 @@ def import_students(
     # 密码哈希昂贵（argon2 数十毫秒/次），同一默认密码只哈希一次
     hashed_default_password = get_password_hash(DEFAULT_STUDENT_PASSWORD)
     wanted_usernames = {line.username.strip() for line in body.lines}
+    # 多租户守卫（B1）：候选账号仅限目标课堂同租户——他校同学号账号
+    # 不进入「已有账号加入本班」候选（V1.0 FR-03；单租户窗口行为不变）
     existing_users: dict[str, User] = {
         u.username: u
         for u in session.exec(
             select(User).where(
-                col(User.username).in_(wanted_usernames)  # type: ignore[operator]
+                col(User.username).in_(wanted_usernames),  # type: ignore[operator]
+                User.tenant_id == classroom.tenant_id,
             )
         ).all()
         if u.username is not None
@@ -335,6 +338,12 @@ def import_students(
                     if orphan is None
                     else orphan
                 )
+            except crud.CrossTenantJoinError:
+                # 他校同号账号已不进候选，正常到不了这里；守卫兜底
+                row.error = "该学号属于其他学校账号，无法加入本班"
+                result.skipped += 1
+                result.rows.append(row)
+                continue
             except ClassroomFullError:
                 row.error = f"班级人数已满（上限 {classroom.class_size} 人）"
                 result.skipped += 1
@@ -392,6 +401,12 @@ def import_students(
                     user=user,
                     display_name=full_name or username,
                 )
+            except crud.CrossTenantJoinError:
+                # 他校同号账号已不进候选，正常到不了这里；守卫兜底
+                row.error = "该学号属于其他学校账号，无法加入本班"
+                result.skipped += 1
+                result.rows.append(row)
+                continue
             except ClassroomFullError:
                 row.error = f"班级人数已满（上限 {classroom.class_size} 人）"
                 result.skipped += 1
