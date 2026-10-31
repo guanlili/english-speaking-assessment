@@ -52,19 +52,16 @@ async function mockAdmin(page: Page): Promise<AdminMock> {
   }
   await page.addInitScript(() => {
     localStorage.setItem("access_token", "test-token")
-    localStorage.setItem("esa:role", "admin")
+    // B3 起用户管理页归平台运营（校级 admin 会被 /admin 守卫送回工作台）
+    localStorage.setItem("esa:role", "operator")
   })
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url())
     const path = url.pathname
-    if (path.endsWith("/users/me")) {
+    if (path.endsWith("/login/platform/me")) {
+      // 运营自述（运营会话的 currentUser 等价物）
       return route.fulfill({
-        json: {
-          id: "admin-me",
-          role: "admin",
-          is_active: true,
-          is_superuser: true,
-        },
+        json: { email: "operator@example.com", full_name: "运营演示" },
       })
     }
     if (path.endsWith("/users/") && route.request().method() === "GET") {

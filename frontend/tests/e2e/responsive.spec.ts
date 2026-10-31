@@ -59,6 +59,16 @@ async function loginTeacherDemo(page: import("@playwright/test").Page) {
   })
 }
 
+async function loginOperatorDemo(page: import("@playwright/test").Page) {
+  // B3 起平台大盘只认运营身份
+  await page.goto("/login")
+  await page.getByText("本地演示体验", { exact: false }).click()
+  await page.getByRole("button", { name: "运营演示" }).click()
+  await page.waitForURL((url) => url.pathname.includes("/admin"), {
+    timeout: 15_000,
+  })
+}
+
 /** 学生学号登录（本地演示学生 student）并完成一次幂等入班，
  * 让浏览器建立本课堂的学生身份（词汇页守卫依赖本地身份）。
  * 密码：CI 种子是 demo1234；本地开发库可能被批量重置为 brs123456，依次尝试。 */
@@ -149,7 +159,7 @@ for (const vp of VIEWPORTS) {
 
   test(`管理员平台大盘在${vp.name}无横向溢出`, async ({ page }) => {
     await page.setViewportSize({ width: vp.width, height: vp.height })
-    await loginTeacherDemo(page)
+    await loginOperatorDemo(page)
     await page.goto("/admin/dashboard")
     await expect(
       page.getByRole("heading", { name: /平台大盘|Platform Dashboard/ }),

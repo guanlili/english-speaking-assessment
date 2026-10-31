@@ -18,8 +18,9 @@ const TEACHER_ALLOWED = [
 /** 校级管理员在教师三页之外加校内词库管理 */
 const SCHOOL_ADMIN_ALLOWED = [...TEACHER_ALLOWED, "/admin/vocabbooks"]
 
-/** 平台运营专属页（后端 PlatformOperatorDep） */
+/** 平台运营专属页（后端 PlatformOperatorDep）；"/admin" 本身=用户管理 */
 const OPERATOR_ALLOWED = [
+  "/admin",
   "/admin/dashboard",
   "/admin/units",
   "/admin/vocablevels",

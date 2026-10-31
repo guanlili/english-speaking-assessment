@@ -7650,6 +7650,22 @@ export type LoginLoginDemoResponses = {
 
 export type LoginLoginDemoResponse = LoginLoginDemoResponses[200 & keyof LoginLoginDemoResponses];
 
+export type LoginLoginPlatformDemoData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/login/platform-demo';
+};
+
+export type LoginLoginPlatformDemoResponses = {
+    /**
+     * Successful Response
+     */
+    200: Token;
+};
+
+export type LoginLoginPlatformDemoResponse = LoginLoginPlatformDemoResponses[200 & keyof LoginLoginPlatformDemoResponses];
+
 export type LoginRecoverPasswordData = {
     body?: never;
     path: {

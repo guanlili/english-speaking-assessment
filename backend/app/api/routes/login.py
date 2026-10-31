@@ -223,6 +223,39 @@ def login_demo(session: SessionDep) -> Token:
     )
 
 
+@router.post("/login/platform-demo")
+def login_platform_demo(session: SessionDep) -> Token:
+    """运营演示登录（仅 local）：为种子运营账号直接签发 operator token。
+
+    与 /login/demo（学校侧）对偶——B3 身份拆分后平台页（大盘/单元/
+    句型库/用户管理）只认运营身份，e2e 与本地演示需要一键运营会话。
+    """
+    if settings.ENVIRONMENT != "local":
+        raise HTTPException(status_code=404, detail="Not Found")
+    from sqlmodel import select as _select
+
+    from app.models import PlatformOperator
+
+    operator = session.exec(
+        _select(PlatformOperator).where(
+            PlatformOperator.email == settings.first_operator_email
+        )
+    ).first()
+    if operator is None or not operator.is_active:
+        raise HTTPException(status_code=404, detail="Not Found")
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return Token(
+        access_token=security.create_access_token(
+            operator.id,
+            expires_delta=access_token_expires,
+            role="operator",
+            password_hash=operator.hashed_password,
+            audience="platform",
+            token_type="operator",
+        )
+    )
+
+
 @router.post("/password-recovery/{email}")
 def recover_password(email: str, request: Request, session: SessionDep) -> Message:
     """

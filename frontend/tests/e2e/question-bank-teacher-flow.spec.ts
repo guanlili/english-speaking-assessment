@@ -11,15 +11,19 @@ const TEACHER_EMAIL = "e2e-teacher-flow@example.com"
 const TEACHER_PASSWORD = "e2e-teacher-pass-123"
 
 async function seedTeacherAndClassroom(page: Page): Promise<string> {
-  const demo = await page.request.post("/api/v1/login/demo")
-  expect(demo.ok()).toBeTruthy()
-  const adminToken = ((await demo.json()) as { access_token: string })
-    .access_token
-  const auth = { Authorization: `Bearer ${adminToken}` }
+  // B3 起建账号是平台路由：用运营演示 token（种子账号建教师）。
+  // 学校业务（课堂/题库）继续走校级 admin 的 demo token。
+  const operatorDemo = await page.request.post("/api/v1/login/platform-demo")
+  expect(operatorDemo.ok()).toBeTruthy()
+  const operatorToken = (
+    (await operatorDemo.json()) as {
+      access_token: string
+    }
+  ).access_token
 
-  // 建普通教师（角色 teacher，非超管）；已存在则复用
+  // 建普通教师（角色 teacher）；已存在则复用
   await page.request.post("/api/v1/users/", {
-    headers: auth,
+    headers: { Authorization: `Bearer ${operatorToken}` },
     data: {
       email: TEACHER_EMAIL,
       password: TEACHER_PASSWORD,

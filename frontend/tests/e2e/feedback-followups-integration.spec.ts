@@ -12,6 +12,12 @@ test("teacher feedback reaches its student and targeted practice leaves original
   const adminToken = ((await demo.json()) as { access_token: string })
     .access_token
   const adminHeaders = { Authorization: `Bearer ${adminToken}` }
+  // B3 起建账号是平台路由：学生建号走运营 token（课堂/篇目仍走校级）
+  const operatorDemo = await page.request.post("/api/v1/login/platform-demo")
+  expect(operatorDemo.ok()).toBeTruthy()
+  const operatorHeaders = {
+    Authorization: `Bearer ${((await operatorDemo.json()) as { access_token: string }).access_token}`,
+  }
   const classroom = await page.request.post("/api/v1/classes", {
     headers: adminHeaders,
     data: { class_size: 10 },
@@ -24,7 +30,7 @@ test("teacher feedback reaches its student and targeted practice leaves original
     for (const name of ["Alice", "Ben"]) {
       const username = `followup-${name}-${Date.now()}`
       const created = await page.request.post("/api/v1/users/", {
-        headers: adminHeaders,
+        headers: operatorHeaders,
         data: {
           username,
           full_name: name,
