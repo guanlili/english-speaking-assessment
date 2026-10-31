@@ -27,12 +27,17 @@ def create_access_token(
     expires_delta: timedelta,
     role: str | None = None,
     password_hash: str = "",
+    tenant_id: str | None = None,
 ) -> str:
     expire = datetime.now(UTC) + expires_delta
     to_encode: dict[str, Any] = {"exp": expire, "sub": str(subject)}
     if role is not None:
         # 角色随 token 下发供前端分流；权限判定始终查库
         to_encode["role"] = role
+    if tenant_id is not None:
+        # 多租户 B2：租户声明供前端上下文与后续请求侧展示；
+        # 权限/归属判定始终查库，不以 token 声明为准（V1.0 §5）
+        to_encode["tid"] = tenant_id
     if password_hash:
         # 密码哈希指纹绑定：改密/重置后旧 token 立即失效
         to_encode["pwd"] = password_fingerprint(password_hash)

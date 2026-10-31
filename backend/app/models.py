@@ -49,18 +49,18 @@ class Tenant(SQLModel, table=True):
 
 # Shared properties
 class UserBase(SQLModel):
-    # 学生无邮箱：email 可空（学号登录），教师/管理员必填（API 层校验）
-    email: EmailStr | None = Field(
-        default=None, unique=True, index=True, max_length=255
-    )
+    # 学生无邮箱：email 可空（学号登录），教师/管理员必填（API 层校验）。
+    # 唯一性由 (tenant_id, email) 复合承接（B2 去全局唯一——两校可同邮箱）
+    email: EmailStr | None = Field(default=None, index=True, max_length=255)
     is_active: bool = True
     is_superuser: bool = False
     full_name: str | None = Field(default=None, max_length=255)
     # 三级角色：admin（=is_superuser）/ teacher / student。
     # 不变量：role=="admin" ⇔ is_superuser，建号与迁移双写保持一致
     role: str = Field(default="teacher", max_length=16, index=True)
-    # 学号（student 登录名）；教师/管理员为空。PG 唯一索引对 NULL 不去重，可空唯一安全
-    username: str | None = Field(default=None, unique=True, index=True, max_length=64)
+    # 学号（student 登录名）；教师/管理员为空。唯一性由
+    # (tenant_id, username) 复合承接（B2 起两校可同号——多租户前提）
+    username: str | None = Field(default=None, index=True, max_length=64)
     # 批量导入的初始密码标记：首登后前端强制改密，改密接口清位
     must_change_password: bool = Field(default=False)
 
@@ -2583,6 +2583,9 @@ class TokenPayload(SQLModel):
     role: str | None = None
     # 签发时的密码哈希前缀：与库中不一致（改密/重置过）则 token 失效
     pwd: str | None = None
+    # 多租户 B2：签发时的租户（旧 token 无此字段=单校窗口兼容）；
+    # 前端用于学校上下文展示，归属判定仍查库
+    tid: str | None = None
 
 
 class NewPassword(SQLModel):

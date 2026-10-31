@@ -1,7 +1,7 @@
 from datetime import timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import SQLModel
@@ -54,14 +54,48 @@ def read_login_options(response: Response) -> LoginOptions:
     )
 
 
+class SchoolLoginInfo(SQLModel):
+    """学校入口受限读取（V1.0 FR-02）：仅登录页展示所需字段，不含账号信息。"""
+
+    slug: str
+    name_zh: str
+    name_en: str | None = None
+
+
+@router.get("/login/school/{slug}", response_model=SchoolLoginInfo)
+def read_school_login_info(slug: str, response: Response) -> SchoolLoginInfo:
+    # 公开端点（登录引导）：no-store 防缓存学校枚举；未知/停用统一 404
+    response.headers["Cache-Control"] = "no-store"
+    from sqlmodel import Session as _Session
+    from sqlmodel import select as _select
+
+    from app.core.db import engine as _engine
+    from app.models import Tenant
+
+    with _Session(_engine) as session:
+        tenant = session.exec(
+            _select(Tenant).where(Tenant.slug == slug.strip().lower())
+        ).first()
+    if tenant is None or tenant.status != "active":
+        raise HTTPException(status_code=404, detail="学校不存在或未开放")
+    return SchoolLoginInfo(
+        slug=tenant.slug, name_zh=tenant.name_zh, name_en=tenant.name_en
+    )
+
+
 @router.post("/login/access-token")
 def login_access_token(
     request: Request,
     session: SessionDep,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    school: str | None = Query(default=None, description="学校码（多租户 B2）"),
 ) -> Token:
     """
-    OAuth2 compatible token login, get an access token for future requests
+    OAuth2 compatible token login, get an access token for future requests.
+
+    多租户 B2：school 查询参数可选——传入则按 (租户, 标识) 限定查找，
+    两校同号各自登录；不传则全局查找（单校窗口兼容）。用 Query 而非
+    表单字段：不干预 OAuth2 标准表单解析，兼容性最稳。
     """
     client_ip = request.client.host if request.client else "unknown"
     # 双维度限流：IP 桶（NAT 出口共享，防横向刷）+ 账号桶（防针对单账号爆破）。
@@ -71,8 +105,13 @@ def login_access_token(
     _check_login_rate_limit(f"ip:{client_ip}")
     _check_login_rate_limit(f"user:{account}")
 
+    # 未知学校/密码错误/跨租户歧义统一同文案——不泄露存在性（AC-01/03）
+    school_slug = school.strip().lower() if school else None
     user = crud.authenticate(
-        session=session, account=form_data.username.strip(), password=form_data.password
+        session=session,
+        account=form_data.username.strip(),
+        password=form_data.password,
+        school_slug=school_slug,
     )
     if not user:
         raise HTTPException(status_code=400, detail="账号或密码不正确")
@@ -89,6 +128,7 @@ def login_access_token(
             expires_delta=access_token_expires,
             role=user.role,
             password_hash=user.hashed_password,
+            tenant_id=str(user.tenant_id),
         )
     )
 
