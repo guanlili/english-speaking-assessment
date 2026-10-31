@@ -3,6 +3,7 @@ from sqlmodel import Session, create_engine, select
 from app import crud
 from app.core.config import settings
 from app.models import (
+    DEFAULT_TENANT_ID,
     Classroom,
     Passage,
     PassageCreate,
@@ -10,6 +11,7 @@ from app.models import (
     Scenario,
     ScenarioQuestion,
     Student,
+    Tenant,
     User,
     UserCreate,
 )
@@ -571,6 +573,18 @@ def init_db(session: Session) -> None:
 
     # This works because the models are already imported and registered from app.models
     # SQLModel.metadata.create_all(engine)
+
+    # 默认租户（多租户 B1）：固定 UUID 幂等 upsert——迁移链与测试库
+    # create_all 两条建表路径共用同一常量（models.DEFAULT_TENANT_ID）
+    if session.get(Tenant, DEFAULT_TENANT_ID) is None:
+        session.add(
+            Tenant(
+                id=DEFAULT_TENANT_ID,
+                slug="default",
+                name_zh="默认学校（待核实改名）",
+            )
+        )
+        session.commit()
 
     user = session.exec(
         select(User).where(User.email == settings.FIRST_SUPERUSER)
