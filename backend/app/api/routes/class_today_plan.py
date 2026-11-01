@@ -282,7 +282,7 @@ def read_today_plan(
                 # 用锚点篇目确定 topic 取情景题；主题未配情景时降级为无问答，
                 # 不让整轮题单 404（朗读/复述照常）
                 anchor = reading_passages[0]
-                scenario = _scenario_for_topic(session, anchor.topic)
+                scenario = _scenario_for_topic(session, anchor.topic, anchor.tenant_id)
                 band = _question_band_for_session(session, practice_session, student)
                 if scenario is None:
                     exhausted = True
@@ -705,7 +705,7 @@ def read_next_question(
     if passage is None:
         return NextQuestion(question=None, exhausted=True)
 
-    scenario = _scenario_for_topic(session, passage.topic)
+    scenario = _scenario_for_topic(session, passage.topic, passage.tenant_id)
     if scenario is None:
         # 主题未配情景：与「题库为空」同口径，优雅返回无题而非 404
         return NextQuestion(question=None, exhausted=True)

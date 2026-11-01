@@ -161,11 +161,20 @@ def slugify_title(title: str) -> str:
     return base[:90].strip("-") or f"p-{uuid.uuid4().hex[:8]}"
 
 
-def unique_passage_slug(session: Session, base: str) -> str:
-    """slug 撞名时追加 -2/-3…（上限后换随机后缀，避免死循环）。"""
+def unique_passage_slug(
+    session: Session, base: str, tenant_id: uuid.UUID | None = None
+) -> str:
+    """slug 撞名时追加 -2/-3…（上限后换随机后缀，避免死循环）。
+
+    C2：slug 校内唯一——给定 tenant_id 时查重限定本校（他校占名不再
+    排空本校可用 slug）；None 保持旧行为（种子/脚本全局查重）。
+    """
     slug = base
     for i in range(2, 500):
-        if session.exec(select(Passage).where(Passage.slug == slug)).first() is None:
+        stmt = select(Passage).where(Passage.slug == slug)
+        if tenant_id is not None:
+            stmt = stmt.where(Passage.tenant_id == tenant_id)
+        if session.exec(stmt).first() is None:
             return slug
         suffix = f"-{i}"
         slug = f"{base[: 100 - len(suffix)]}{suffix}"
@@ -184,11 +193,15 @@ def derive_passage_topic(
 
 
 def create_passage(
-    *, session: Session, passage_in: PassageCreate, owner_id: uuid.UUID | None = None
+    *,
+    session: Session,
+    passage_in: PassageCreate,
+    owner_id: uuid.UUID | None = None,
+    tenant_id: uuid.UUID | None = None,
 ) -> Passage:
-    # slug 未填时自动生成（管理端/脚本共用同一套规则）
+    # slug 未填时自动生成（管理端/脚本共用同一套规则）；查重范围随租户
     slug = passage_in.slug or unique_passage_slug(
-        session, slugify_title(passage_in.title)
+        session, slugify_title(passage_in.title), tenant_id=tenant_id
     )
     payload = passage_in.model_dump(exclude={"slug"}) | {
         "slug": slug,

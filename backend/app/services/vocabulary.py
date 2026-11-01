@@ -675,6 +675,10 @@ def recognize_answer_replay(
     ).first()
     if existing is None:
         return None
+    # 幂等键全局唯一（设计稿 §4.3）：跨租户命中按不存在处理——不泄露
+    # 他校是否存在同键作答，也不会把他校回执当本次结果返回
+    if existing.tenant_id != vocab_session.tenant_id:
+        return None
     same = (
         existing.session_id == vocab_session.id
         and existing.item_index == item_index

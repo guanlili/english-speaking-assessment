@@ -208,12 +208,21 @@ def _require_attempt_access(
     attempt: Attempt,
     current_user: User | None,
 ) -> None:
-    """音频/作答访问：本人学生（登录账号比对）或授权教师（管理员）可访问。"""
+    """音频/作答访问：本人学生（登录账号比对）或授权教师（管理员）可访问。
+
+    C2：登录用户另做租户核验——跨校命中（幂等键全局唯一撞他校行）按
+    不存在处理，不泄露他校作答（归属链判定本就挡住了越权读，这里是
+    匿名作答分支的等价防线）。
+    """
     if attempt.student_id is None:
-        # 匿名演示作答（公开练习页）：没有归属主体可保护，按随机 UUID 回放
+        # 匿名演示作答（公开练习页）：没有归属主体可保护，按随机 UUID 回放；
+        # 匿名提交无登录态，租户即默认租户，无跨校可比
         return
     if current_user is None:
         raise HTTPException(status_code=401, detail="请先登录")
+    if attempt.tenant_id != current_user.tenant_id:
+        # 幂等键全局唯一（设计稿 §4.3）：他校行不得当回执读
+        raise HTTPException(status_code=404, detail="Attempt not found")
     student = session.get(Student, attempt.student_id)
     if (
         student is not None

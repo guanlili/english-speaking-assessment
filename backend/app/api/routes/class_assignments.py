@@ -420,7 +420,9 @@ def set_assignment(
                 )
         if classroom.assign_qa is not False:
             # 主题未配情景时跳过问答快照，朗读/复述照常发布（不阻断发布）
-            scenario = _scenario_for_topic(session, passages[0].topic)
+            scenario = _scenario_for_topic(
+                session, passages[0].topic, passages[0].tenant_id
+            )
             if scenario is not None:
                 questions = session.exec(
                     select(ScenarioQuestion)

@@ -64,7 +64,10 @@ def copy_passage(
     if source is None:
         raise HTTPException(404, detail="Passage not found")
     copied = content_copy.copy_passage(
-        session, source, content_access.owner_for(current_user)
+        session,
+        source,
+        content_access.owner_for(current_user),
+        target_tenant_id=current_user.tenant_id,
     )
     content_copy.commit_copy(session)
     result = PassageWithSentences.model_validate(copied)
@@ -108,7 +111,10 @@ def copy_scenario(
     if source is None:
         raise HTTPException(404, detail="Scenario not found")
     copied = content_copy.copy_scenario(
-        session, source, content_access.owner_for(current_user)
+        session,
+        source,
+        content_access.owner_for(current_user),
+        target_tenant_id=current_user.tenant_id,
     )
     content_copy.commit_copy(session)
     questions = session.exec(

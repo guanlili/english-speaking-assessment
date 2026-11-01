@@ -214,6 +214,7 @@ def record_listen(
 
     params = {
         "iid": uuid.uuid4(),
+        "tid": practice_session.tenant_id,  # C2：作用域含租户（随会话行）
         "sid": student.id,
         "sess": practice_session.id,
         "item": sentence.id,
@@ -222,8 +223,9 @@ def record_listen(
         # 不限次：直接原子自增（原生 UPSERT，并发安全）
         used = session.execute(  # ty: ignore[deprecated]
             text(
-                "INSERT INTO item_listen (id, student_id, session_id, item_id, count)"
-                " VALUES (:iid, :sid, :sess, :item, 1)"
+                "INSERT INTO item_listen"
+                " (tenant_id, id, student_id, session_id, item_id, count)"
+                " VALUES (:tid, :iid, :sid, :sess, :item, 1)"
                 " ON CONFLICT ON CONSTRAINT uq_item_listen_scope"
                 " DO UPDATE SET count = item_listen.count + 1"
                 " RETURNING count"
@@ -236,8 +238,9 @@ def record_listen(
     # 有限次：原子自增 + WHERE 上限保护；到上限时 UPDATE 不执行、无返回行
     result = session.execute(  # ty: ignore[deprecated]
         text(
-            "INSERT INTO item_listen (id, student_id, session_id, item_id, count)"
-            " VALUES (:iid, :sid, :sess, :item, 1)"
+            "INSERT INTO item_listen"
+            " (tenant_id, id, student_id, session_id, item_id, count)"
+            " VALUES (:tid, :iid, :sid, :sess, :item, 1)"
             " ON CONFLICT ON CONSTRAINT uq_item_listen_scope"
             " DO UPDATE SET count = item_listen.count + 1"
             " WHERE item_listen.count < :limit"

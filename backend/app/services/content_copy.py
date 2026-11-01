@@ -20,7 +20,10 @@ def commit_copy(session: Session) -> None:
 
 
 def copy_passage(
-    session: Session, source: Passage, owner_id: uuid.UUID | None
+    session: Session,
+    source: Passage,
+    owner_id: uuid.UUID | None,
+    target_tenant_id: uuid.UUID | None = None,
 ) -> Passage:
     if source.parent_passage_id is not None:
         parent = session.get(Passage, source.parent_passage_id)
@@ -35,10 +38,15 @@ def copy_passage(
     copies: dict[uuid.UUID, Passage] = {}
     for original in sources:
         payload = deepcopy(original.model_dump(exclude={"id", "created_at"}))
+        if target_tenant_id is not None:
+            # C2 复制到本校：租户与 slug 查重都按目标校（deepcopy 会带源校值）
+            payload["tenant_id"] = target_tenant_id
         payload.update(
             owner_id=owner_id,
             copied_from_id=original.id,
-            slug=crud.unique_passage_slug(session, f"{original.slug[:85]}-copy"),
+            slug=crud.unique_passage_slug(
+                session, f"{original.slug[:85]}-copy", tenant_id=target_tenant_id
+            ),
             parent_passage_id=(
                 copies[source.id].id if original.parent_passage_id is not None else None
             ),
@@ -55,6 +63,8 @@ def copy_passage(
     for sentence in sentences:
         assert sentence.passage_id is not None
         payload = deepcopy(sentence.model_dump(exclude={"id", "created_at"}))
+        if target_tenant_id is not None:
+            payload["tenant_id"] = target_tenant_id
         payload.update(
             owner_id=owner_id,
             copied_from_id=sentence.id,
@@ -79,7 +89,10 @@ def copy_sentence(
 
 
 def copy_scenario(
-    session: Session, source: Scenario, owner_id: uuid.UUID | None
+    session: Session,
+    source: Scenario,
+    owner_id: uuid.UUID | None,
+    target_tenant_id: uuid.UUID | None = None,
 ) -> Scenario:
     session.refresh(source, with_for_update=True)
     base = f"{source.topic[:93]} (copy)"
@@ -88,13 +101,13 @@ def copy_scenario(
     # 保证任何候选的碰撞都落在集合内
     probe_prefix = base[:96]
     escaped = probe_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    taken = set(
-        session.exec(
-            select(Scenario.topic).where(
-                col(Scenario.topic).like(f"{escaped}%", escape="\\")
-            )
-        ).all()
+    taken_stmt = select(Scenario.topic).where(
+        col(Scenario.topic).like(f"{escaped}%", escape="\\")
     )
+    if target_tenant_id is not None:
+        # C2：占用名探测限定目标校（topic 校内唯一）
+        taken_stmt = taken_stmt.where(Scenario.tenant_id == target_tenant_id)
+    taken = set(session.exec(taken_stmt).all())
     topic = base if base not in taken else None
     for index in range(2, 502):
         suffix = f" {index}"
@@ -105,7 +118,12 @@ def copy_scenario(
         break
     if topic is None:
         raise HTTPException(409, detail="Copy name conflict")
-    copied = Scenario(topic=topic, is_active=source.is_active, owner_id=owner_id)
+    copied = Scenario(
+        topic=topic,
+        is_active=source.is_active,
+        owner_id=owner_id,
+        **({"tenant_id": target_tenant_id} if target_tenant_id is not None else {}),
+    )
     session.add(copied)
     session.flush()
     questions = session.exec(
@@ -113,6 +131,8 @@ def copy_scenario(
     ).all()
     for question in questions:
         payload = deepcopy(question.model_dump(exclude={"id"}))
+        if target_tenant_id is not None:
+            payload["tenant_id"] = target_tenant_id
         payload.update(
             owner_id=owner_id, copied_from_id=question.id, scenario_id=copied.id
         )

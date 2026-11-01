@@ -159,8 +159,12 @@ def list_scenarios(
 def create_scenario(
     session: SessionDep, current_user: TeacherUserDep, scenario_in: ScenarioCreate
 ) -> Any:
+    # C2：topic 校内唯一——查重限定本校
     duplicate = session.exec(
-        select(Scenario).where(Scenario.topic == scenario_in.topic)
+        select(Scenario).where(
+            Scenario.topic == scenario_in.topic,
+            Scenario.tenant_id == current_user.tenant_id,
+        )
     ).first()
     if duplicate is not None:
         raise HTTPException(status_code=409, detail="主题已存在")
@@ -485,8 +489,12 @@ def update_scenario(
     # 主题非空且不允许显式清空
     _reject_null_non_nullable(update, {"topic"})
     if "topic" in update:
+        # C2：查重限定本校（他校同名不挡本校改名）
         duplicate = session.exec(
-            select(Scenario).where(Scenario.topic == update["topic"])
+            select(Scenario).where(
+                Scenario.topic == update["topic"],
+                Scenario.tenant_id == current_user.tenant_id,
+            )
         ).first()
         if duplicate is not None and duplicate.id != scenario_id:
             raise HTTPException(status_code=409, detail="主题已存在")

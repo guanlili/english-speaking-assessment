@@ -233,8 +233,12 @@ def create_passage(
     if passage_in.unit_id is not None and session.get(Unit, passage_in.unit_id) is None:
         raise HTTPException(status_code=422, detail="Unit not found")
     if passage_in.slug:
+        # C2：slug 校内唯一——查重限定本校（他校同名不挡本校创建）
         duplicate = session.exec(
-            select(Passage).where(Passage.slug == passage_in.slug)
+            select(Passage).where(
+                Passage.slug == passage_in.slug,
+                Passage.tenant_id == current_user.tenant_id,
+            )
         ).first()
         if duplicate is not None:
             raise HTTPException(status_code=409, detail="slug 已存在")
@@ -242,6 +246,7 @@ def create_passage(
         session=session,
         passage_in=passage_in,
         owner_id=content_access.owner_for(current_user),
+        tenant_id=current_user.tenant_id,
     )
 
 

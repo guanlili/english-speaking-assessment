@@ -207,9 +207,17 @@ def _active_passage(session: Any, student: Student | None = None) -> Passage:
     return passage
 
 
-def _scenario_for_topic(session: Any, topic: str) -> Scenario | None:
-    """按主题取情景；主题未配置情景时返回 None（调用方降级，不阻断练习）。"""
-    return session.exec(select(Scenario).where(Scenario.topic == topic)).first()
+def _scenario_for_topic(
+    session: Any, topic: str, tenant_id: uuid.UUID | None = None
+) -> Scenario | None:
+    """按主题取情景；主题未配置情景时返回 None（调用方降级，不阻断练习）。
+
+    C2：给定 tenant_id（课堂码链路）限定本校——两校同名主题时取本校行。
+    """
+    stmt = select(Scenario).where(Scenario.topic == topic)
+    if tenant_id is not None:
+        stmt = stmt.where(Scenario.tenant_id == tenant_id)
+    return session.exec(stmt).first()
 
 
 def _get_classroom(session: SessionDep, code: str) -> Classroom:
