@@ -101,7 +101,7 @@ def test_ac04_cross_classroom_isolated(
     client: TestClient, db: Session, b_tenant
 ) -> None:
     """跨校课堂码：乙校 token 打甲校课堂链路 → 404（应用层守卫）。"""
-    teacher_a = _mk_teacher(db, DEFAULT_TENANT_ID, "a")
+    _mk_teacher(db, DEFAULT_TENANT_ID, "a")  # 甲校教师在位（场景需要）
     class_a = Classroom(code=f"C5A{_tag[:6].upper()}", class_size=5)
     db.add(class_a)
     db.commit()
@@ -118,7 +118,7 @@ def test_ac05_cross_content_invisible(
 ) -> None:
     """跨校内容：乙校教师读甲校篇目详情/主题 → 404（归属查询按学校会话
     过滤在 RLS 激活的生产上由数据库强制；应用层 404 语义一致）。"""
-    teacher_a = _mk_teacher(db, DEFAULT_TENANT_ID, "ca")
+    _mk_teacher(db, DEFAULT_TENANT_ID, "ca")
     passage_a = Passage(title="甲校篇", text="a", slug=f"c5-{_tag}-pa")
     db.add(passage_a)
     db.commit()
@@ -137,7 +137,7 @@ def test_ac06_cross_student_attempt_isolated(
     client: TestClient, db: Session, b_tenant
 ) -> None:
     """跨校学生/作答：乙校 token 直取甲校作答 URL → 404/403，不泄内容。"""
-    teacher_a = _mk_teacher(db, DEFAULT_TENANT_ID, "sa")
+    _mk_teacher(db, DEFAULT_TENANT_ID, "sa")
     class_a = Classroom(code=f"C5S{_tag[:6].upper()}", class_size=5)
     db.add(class_a)
     db.flush()
