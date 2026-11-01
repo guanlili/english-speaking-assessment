@@ -20,7 +20,7 @@ def test_get_users_superuser_me(
     current_user = r.json()
     assert current_user
     assert current_user["is_active"] is True
-    assert current_user["role"] == "admin"
+    assert current_user["role"] == "school_admin"
     assert current_user["email"] == settings.FIRST_SUPERUSER
 
 
@@ -514,7 +514,7 @@ def test_delete_school_admin_by_operator_succeeds(
     admin = crud.create_user(
         session=db,
         user_create=UserCreate(
-            email=random_email(), password=random_lower_string(), role="admin"
+            email=random_email(), password=random_lower_string(), role="school_admin"
         ),
     )
     try:

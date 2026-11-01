@@ -95,7 +95,9 @@ export function AppSidebar() {
   const hasChangelogNew = useChangelogHasNew()
   const role = cachedRole()
   const isOperator = role === "operator"
-  const isSchoolStaff = role === "teacher" || role === "admin"
+  // 双值兼容：旧会话缓存/旧 token 的 admin 直到重登（C5b 改名过渡）
+  const isSchoolAdmin = role === "school_admin" || role === "admin"
+  const isSchoolStaff = role === "teacher" || isSchoolAdmin
   const exportJobs = useExports(isSchoolStaff)
   const unseenExports = exportJobs.data?.unseen_ready ?? 0
   const currentPath = useRouterState({
@@ -123,7 +125,7 @@ export function AppSidebar() {
           badge: unseenExports > 0 ? unseenExports : undefined,
         },
         ...createHubItem,
-        ...(role === "admin" ? schoolAdminExtraItems : []),
+        ...(isSchoolAdmin ? schoolAdminExtraItems : []),
         changelogItem,
       ]
     : isOperator
@@ -151,7 +153,7 @@ export function AppSidebar() {
             en: "Leave more time for students to speak.",
           })}
         </p>
-        {(isOperator || role === "admin") && (
+        {(isOperator || isSchoolAdmin) && (
           <div className="mt-4 border-t border-sidebar-border pt-4">
             {/* 新的管理页面默认展开，原生 details 仍允许手动收起。 */}
             <details

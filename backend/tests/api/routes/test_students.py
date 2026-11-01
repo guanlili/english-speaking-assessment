@@ -677,7 +677,7 @@ def test_teacher_cannot_reset_enrolled_admin(
             email=random_email(),
             password=random_lower_string(),
             full_name="Enrolled Admin",
-            role="admin",
+            role="school_admin",
         ),
     )
     original_hash = admin.hashed_password
@@ -801,8 +801,10 @@ def test_teacher_cannot_reset_role_elevated_student(
         student_id = made["student"]["id"]
         target = made["user"]
 
-        crud.update_user(session=db, db_user=target, user_in=UserUpdate(role="admin"))
-        assert target.role == "admin"
+        crud.update_user(
+            session=db, db_user=target, user_in=UserUpdate(role="school_admin")
+        )
+        assert target.role == "school_admin"
         original_hash = target.hashed_password
 
         if bulk:

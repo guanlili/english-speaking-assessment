@@ -181,7 +181,7 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     Delete own user.
     """
     # 校级管理员不可自删（避免学校失去唯一管理员；平台运营在独立身份内）
-    if current_user.role == "admin":
+    if current_user.role == "school_admin":
         raise HTTPException(
             status_code=403, detail="管理员账号不支持自助删除，请联系平台运营"
         )

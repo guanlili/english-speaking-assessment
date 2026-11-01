@@ -58,7 +58,7 @@ def _ensure_account_reset_allowed(
     """
     if user.role != "student":
         raise HTTPException(status_code=403, detail="没有权限：只能重置学生账号的密码")
-    if current_user.role == "admin":
+    if current_user.role == "school_admin":
         return
     # join 走 Student.classroom_id 外键推断，不写 onclause（ty 会把列 == 判成 bool）
     other_owners = session.exec(
@@ -618,7 +618,7 @@ def bulk_reset_passwords(
     # 不在循环里逐人查询——两处口径必须同步改
     shared_hash = get_password_hash(DEFAULT_STUDENT_PASSWORD)
     cross_owner_user_ids: set[uuid.UUID] = set()
-    if user_ids and current_user.role != "admin":
+    if user_ids and current_user.role != "school_admin":
         cross_owner_user_ids = {
             user_id
             for user_id, owner_id in session.exec(

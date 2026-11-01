@@ -84,7 +84,10 @@ export const Route = createFileRoute("/_layout/admin")({
     try {
       const user = await readUserMeCached(token)
       const prefixes =
-        user.role === "admin" ? SCHOOL_ADMIN_ALLOWED : TEACHER_ALLOWED
+        // 旧值 admin 兼容（重登后为 school_admin）
+        user.role === "school_admin" || user.role === "admin"
+          ? SCHOOL_ADMIN_ALLOWED
+          : TEACHER_ALLOWED
       if (!pathAllowed(location.pathname, prefixes)) {
         throw redirect({ to: "/" })
       }

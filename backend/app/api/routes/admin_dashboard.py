@@ -403,7 +403,7 @@ def read_dashboard_content(
                 _sub(VocabularyBook).label("vocab_books"),
                 _sub(VocabularyWord).label("vocab_words"),
                 _sub(VocabularyLevelEntry).label("vocab_level_entries"),
-                _sub(User, col(User.role) == "admin").label("users_admin"),
+                _sub(User, col(User.role) == "school_admin").label("users_admin"),
                 _sub(User, col(User.role) == "teacher").label("users_teacher"),
                 _sub(User, col(User.role) == "student").label("student_accounts"),
                 _sub(
