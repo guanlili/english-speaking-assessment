@@ -79,12 +79,10 @@ def find_orphan_audio_files(
 
 
 def _collect_referenced_paths() -> list[str]:
-    from sqlmodel import select
+    from sqlmodel import Session, select
 
     from app.core.db import engine
     from app.models import Attempt
-
-    from sqlmodel import Session
 
     with Session(engine) as session:
         return list(
@@ -133,9 +131,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     root_resolved = root.resolve()
     # 删除前重查引用：候选选出后可能已有新作答入库（返修E）
-    fresh_refs = {
-        Path(p).name: p for p in _collect_referenced_paths() if p
-    }
+    fresh_refs = {Path(p).name: p for p in _collect_referenced_paths() if p}
     fresh_resolved = {str(Path(p).resolve()) for p in fresh_refs.values() if p}
     now_ts = time.time()
     cutoff = now_ts - args.min_age_hours * 3600

@@ -56,15 +56,45 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = ""
     # 测试专用库（conftest 会拒绝它指向开发库）。默认挂在同一实例上，CI/本地零配置
     POSTGRES_DB_TEST: str = "app_test"
-    # 多租户 C4：平台通道连接（平台运营路由/后台平台任务，BYPASSRLS 角色）。
-    # 未配置时回落主连接——C4a 部署形态（owner 连接对 RLS 天然豁免，行为
-    # 与 C3 等价）；C4b 切换时注入 PLATFORM_POSTGRES_* Secrets 即真正激活
+    # 多租户 C4b 连接分层（全部「用户名+密码配齐才生效，否则回落」）：
+    # - POSTGRES_USER/PASSWORD：admin/owner——迁移、角色管理、初始数据
+    #   （prestart 专用；应用业务流量不得使用）
+    # - APP_POSTGRES_*：业务受限角色 esa_app（NOBYPASSRLS，受 RLS 约束）
+    # - PLATFORM_POSTGRES_*：平台通道 esa_platform（BYPASSRLS，跨租户口径）
+    # 未配齐 = 全部回落 owner = 不激活（开发/CI 形态；生产注入 Secrets 激活）
+    APP_POSTGRES_USER: str | None = None
+    APP_POSTGRES_PASSWORD: str | None = None
     PLATFORM_POSTGRES_USER: str | None = None
     PLATFORM_POSTGRES_PASSWORD: str | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
+    def app_db_user(self) -> str:
+        return self.APP_POSTGRES_USER or self.POSTGRES_USER
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def app_db_password(self) -> str:
+        return self.APP_POSTGRES_PASSWORD or self.POSTGRES_PASSWORD
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def SQLALCHEMY_DATABASE_URI(self) -> PostgresDsn:
+        """应用业务连接（受限角色；未配齐回落 owner）。"""
+        return PostgresDsn.build(
+            scheme="postgresql+psycopg",
+            username=self.app_db_user,
+            password=self.app_db_password,
+            host=self.POSTGRES_SERVER,
+            port=self.POSTGRES_PORT,
+            path=self.POSTGRES_DB,
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def SQLALCHEMY_ADMIN_DATABASE_URI(self) -> PostgresDsn:
+        """admin/owner 连接：Alembic 迁移、角色管理、初始数据种子
+        （prestart 专用——绕 RLS 的合法窗口，应用运行时不得使用）。"""
         return PostgresDsn.build(
             scheme="postgresql+psycopg",
             username=self.POSTGRES_USER,
@@ -89,11 +119,11 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def SQLALCHEMY_PLATFORM_DATABASE_URI(self) -> PostgresDsn:
-        """平台通道连接：配置了专用凭据则用之，否则与主连接同（C4a 形态）。"""
+        """平台通道连接：配齐回落业务受限连接（未激活时与主连接同源）。"""
         return PostgresDsn.build(
             scheme="postgresql+psycopg",
-            username=self.PLATFORM_POSTGRES_USER or self.POSTGRES_USER,
-            password=self.PLATFORM_POSTGRES_PASSWORD or self.POSTGRES_PASSWORD,
+            username=self.PLATFORM_POSTGRES_USER or self.app_db_user,
+            password=self.PLATFORM_POSTGRES_PASSWORD or self.app_db_password,
             host=self.POSTGRES_SERVER,
             port=self.POSTGRES_PORT,
             path=self.POSTGRES_DB,

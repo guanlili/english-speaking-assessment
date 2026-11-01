@@ -139,7 +139,7 @@ class QueryCounter:
 
 def _seed(engine, students: int, old_done: int, pending: int, books: int):
     """合成数据：课堂+学生+词汇任务作答 + 学期量旧 done + 词库。"""
-    from sqlmodel import SQLModel, Session
+    from sqlmodel import Session, SQLModel
 
     from app.models import (
         Attempt,
@@ -180,9 +180,7 @@ def _seed(engine, students: int, old_done: int, pending: int, books: int):
         session.add(book)
         # 其它教师的班级词库：对本教师不可见（测量 SQL 可见性过滤）
         other_teachers = [
-            User(
-                email=f"perf-other-{i:02d}@test.com", hashed_password="x"
-            )
+            User(email=f"perf-other-{i:02d}@test.com", hashed_password="x")
             for i in range(10)
         ]
         session.add_all(other_teachers)
@@ -321,14 +319,14 @@ def main() -> int:
     from app.scoring import worker
 
     set_engine(engine)
-    classroom_id = _seed(
-        engine, args.students, args.old_done, args.pending, args.books
-    )
+    classroom_id = _seed(engine, args.students, args.old_done, args.pending, args.books)
 
     from app.services import vocabulary as vocab_service
 
-    print(f"合成规模：{args.students} 学生 / {args.old_done} 旧 done / "
-          f"{args.pending} pending / {args.books} 词库\n")
+    print(
+        f"合成规模：{args.students} 学生 / {args.old_done} 旧 done / "
+        f"{args.pending} pending / {args.books} 词库\n"
+    )
 
     # 禁止清扫真实投递（只测查询路径）
     import app.scoring.worker as worker_mod
@@ -343,8 +341,12 @@ def main() -> int:
             with QueryCounter(engine) as c:
                 start = time.perf_counter()
                 worker.sweep_orphans(session)
-                _report("sweep_orphans 候选", c, time.perf_counter() - start,
-                        f"旧 done={args.old_done}, pending={args.pending}")
+                _report(
+                    "sweep_orphans 候选",
+                    c,
+                    time.perf_counter() - start,
+                    f"旧 done={args.old_done}, pending={args.pending}",
+                )
 
         with Session(engine) as session:
             from sqlmodel import select as _select
@@ -359,8 +361,12 @@ def main() -> int:
             with QueryCounter(engine) as c:
                 start = time.perf_counter()
                 books = list_books(session, teacher)
-                _report("list_books(管理员)", c, time.perf_counter() - start,
-                        f"可见 {len(books)}/{args.books} 本")
+                _report(
+                    "list_books(管理员)",
+                    c,
+                    time.perf_counter() - start,
+                    f"可见 {len(books)}/{args.books} 本",
+                )
             other = session.exec(
                 _select(User).where(User.email == "perf-other-00@test.com")
             ).first()
@@ -368,15 +374,23 @@ def main() -> int:
             with QueryCounter(engine) as c:
                 start = time.perf_counter()
                 books = list_books(session, other)
-                _report("list_books(普通教师)", c, time.perf_counter() - start,
-                        f"可见 {len(books)}/{args.books} 本（SQL 过滤）")
+                _report(
+                    "list_books(普通教师)",
+                    c,
+                    time.perf_counter() - start,
+                    f"可见 {len(books)}/{args.books} 本（SQL 过滤）",
+                )
 
         with Session(engine) as session:
             with QueryCounter(engine) as c:
                 start = time.perf_counter()
                 rows = vocab_service.teacher_assignment_rows(session, classroom_id)
-                _report("teacher_assignment_rows", c, time.perf_counter() - start,
-                        f"{args.students} 学生全历史（当前 1 任务）")
+                _report(
+                    "teacher_assignment_rows",
+                    c,
+                    time.perf_counter() - start,
+                    f"{args.students} 学生全历史（当前 1 任务）",
+                )
 
         with Session(engine) as session:
             from sqlmodel import select as _select2
@@ -388,8 +402,12 @@ def main() -> int:
             with QueryCounter(engine) as c:
                 start = time.perf_counter()
                 wrong = vocab_service.wrong_word_items(session, stu.id)
-                _report("wrong_word_items (today count)", c,
-                        time.perf_counter() - start, f"错词 {len(wrong)} 个")
+                _report(
+                    "wrong_word_items (today count)",
+                    c,
+                    time.perf_counter() - start,
+                    f"错词 {len(wrong)} 个",
+                )
     finally:
         set_engine(None)
         engine.dispose()
@@ -403,9 +421,7 @@ def main() -> int:
                 admin_uri, isolation_level="AUTOCOMMIT", poolclass=NullPool
             )
             with admin.connect() as conn:
-                conn.execute(
-                    text(f'DROP DATABASE "{PERF_DB_NAME}" WITH (FORCE)')
-                )
+                conn.execute(text(f'DROP DATABASE "{PERF_DB_NAME}" WITH (FORCE)'))
             admin.dispose()
     return 0
 
