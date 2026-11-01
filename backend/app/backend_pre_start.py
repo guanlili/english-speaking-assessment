@@ -4,7 +4,7 @@ from sqlalchemy import Engine
 from sqlmodel import Session, select
 from tenacity import after_log, before_log, retry, stop_after_attempt, wait_fixed
 
-from app.core.db import engine
+from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,7 +31,14 @@ def init(db_engine: Engine) -> None:
 
 def main() -> None:
     logger.info("Initializing service")
-    init(engine)
+    # C4b：探活走 admin 连接——受限角色（esa_app）此刻可能尚未创建
+    from sqlalchemy import create_engine
+
+    engine = create_engine(str(settings.SQLALCHEMY_ADMIN_DATABASE_URI))
+    try:
+        init(engine)
+    finally:
+        engine.dispose()
     logger.info("Service finished initializing")
 
 

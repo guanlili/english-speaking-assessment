@@ -380,6 +380,11 @@ jobs:
           FIRST_SUPERUSER: ${{ secrets.FIRST_SUPERUSER }}
           FIRST_SUPERUSER_PASSWORD: ${{ secrets.FIRST_SUPERUSER_PASSWORD }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          # 多租户 C4b：受限/平台角色凭据（配齐即激活 RLS；未设为空串=回落 owner）
+          APP_POSTGRES_USER: ${{ secrets.APP_POSTGRES_USER }}
+          APP_POSTGRES_PASSWORD: ${{ secrets.APP_POSTGRES_PASSWORD }}
+          PLATFORM_POSTGRES_USER: ${{ secrets.PLATFORM_POSTGRES_USER }}
+          PLATFORM_POSTGRES_PASSWORD: ${{ secrets.PLATFORM_POSTGRES_PASSWORD }}
           APP_PORT: ${{ secrets.APP_PORT }}
           WORKERS: ${{ secrets.WORKERS || '1' }}
           # 未设 Secret 时为空串，generate-deploy-env.sh 会落默认值 8
