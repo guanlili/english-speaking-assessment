@@ -4077,6 +4077,10 @@ export type RepeatSentence = {
      */
     copied_from_id?: string | null;
     /**
+     * Tenant Id
+     */
+    tenant_id?: string;
+    /**
      * Exam Settings
      */
     exam_settings?: {
@@ -4608,6 +4612,10 @@ export type SentenceWithPassage = {
      * Copied From Id
      */
     copied_from_id?: string | null;
+    /**
+     * Tenant Id
+     */
+    tenant_id?: string;
     /**
      * Exam Settings
      */
