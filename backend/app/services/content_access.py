@@ -39,6 +39,21 @@ def _require(user: User, owner_id: uuid.UUID | None) -> None:
         raise HTTPException(status_code=403, detail=FORBIDDEN_DETAIL)
 
 
+def require_same_tenant(user: User, obj: object) -> None:
+    """多租户 C5a：跨校对象按不存在处理（404）。
+
+    owner 编辑权（can_edit）不含租户维度——公共内容（owner_id=None）
+    在旧单校语义下全校可编辑，多租户后他校教师不得触碰。生产 RLS 会
+    在数据库层拦 WITH CHECK；本守卫是应用层纵深防御，也让无 RLS 的
+    测试环境锁住同一语义。对象无 tenant_id 属性时跳过（未挂租户的
+    平台资源）。
+    """
+    obj_tenant = getattr(obj, "tenant_id", None)
+    if obj_tenant is not None and obj_tenant != user.tenant_id:
+        # 中性文案：跨校对象按不存在处理（不泄露具体资源类型与存在性）
+        raise HTTPException(status_code=404, detail="资源不存在或不可访问")
+
+
 def passage_owner(session: Session, passage: Passage) -> uuid.UUID | None:
     if passage.parent_passage_id is None:
         return passage.owner_id
@@ -74,18 +89,22 @@ def sentence_owner_for(
 
 
 def require_passage(session: Session, user: User, passage: Passage) -> None:
+    require_same_tenant(user, passage)
     _require(user, passage_owner(session, passage))
 
 
 def require_sentence(session: Session, user: User, sentence: RepeatSentence) -> None:
+    require_same_tenant(user, sentence)
     _require(user, sentence_owner(session, sentence))
 
 
 def require_question(user: User, question: ScenarioQuestion) -> None:
+    require_same_tenant(user, question)
     _require(user, question.owner_id)
 
 
 def require_instruction(user: User, instruction: Instruction) -> None:
+    require_same_tenant(user, instruction)
     _require(user, instruction.owner_id)
 
 
@@ -114,6 +133,7 @@ def can_manage_scenario(session: Session, user: User, scenario: Scenario) -> boo
 
 def require_scenario(session: Session, user: User, scenario: Scenario) -> None:
     """改名/启停。"""
+    require_same_tenant(user, scenario)
     if not can_manage_scenario(session, user, scenario):
         raise HTTPException(status_code=403, detail=FORBIDDEN_DETAIL)
 
