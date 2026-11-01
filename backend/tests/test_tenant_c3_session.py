@@ -133,7 +133,7 @@ def test_worker_rebinds_by_task_row(db: Session) -> None:
     def spy(session: Session, attempt_id: uuid.UUID) -> None:
         captured.append(current_tenant_id())
 
-    worker_mod.process_attempt = spy  # type: ignore[assignment]
+    worker_mod.process_attempt = spy  # ty: ignore[invalid-assignment]
     try:
         # 空上下文投递（模拟重试 Timer 线程）：worker 内部仍应绑定任务行租户
         from contextvars import copy_context
