@@ -20,4 +20,6 @@
 
 ## 项目管理试点
 
-执行前及收尾时阅读 [docs/project-management.md](docs/project-management.md)，按其中约定关联 Issue、PR、验证与交付证据。实际人工工时未经本人确认保持未记录；内部管理信息不得写入公开正文。既有 #222 双轨试运行约定仍有效，需求版本冲突先记录并澄清。
+执行前及收尾时阅读 [docs/project-management.md](docs/project-management.md)，按其中约定关联 Issue、PR、验证与交付证据。实际人工工时未经本人确认保持未记录；客户归属与工时可按用户确认范围公开记录，凭据与学生个人信息不得入库。既有 #222 双轨试运行约定仍有效，需求版本冲突先记录并澄清。
+
+项目身份、客户归属和试点基线见 [docs/project-profile.md](docs/project-profile.md)。
