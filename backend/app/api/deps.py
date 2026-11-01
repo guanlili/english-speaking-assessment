@@ -90,6 +90,15 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
             detail="登录凭证已失效，请重新登录",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # C3：token 租户声明与用户行不一致（伪造 tid 或账号迁移后旧 token）→ 401。
+    # 中间件按 tid 预设了请求上下文，这里保证它与库中事实一致后上下文才可信。
+    # 无 tid 的旧 token（演示登录等）不比对——上下文为空，鉴权照常按用户行执行
+    if token_data.tid is not None and token_data.tid != str(user.tenant_id):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="登录凭证已失效，请重新登录",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Inactive user")
     return user
@@ -252,6 +261,9 @@ def get_optional_current_user(
         return None
     # 改密后的旧 token 同样按无效处理（与 get_current_user 一致，只是静默降级为匿名）
     if token_data.pwd != security.password_fingerprint(user.hashed_password):
+        return None
+    # C3：租户声明不一致按无效处理（与 get_current_user 同口径，静默降级）
+    if token_data.tid is not None and token_data.tid != str(user.tenant_id):
         return None
     return user
 

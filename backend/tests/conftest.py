@@ -67,7 +67,12 @@ def _create_test_database() -> Engine:
         )
         conn.execute(text(f'CREATE DATABASE "{settings.POSTGRES_DB_TEST}"'))
     admin_engine.dispose()
-    return create_engine(str(settings.SQLALCHEMY_DATABASE_TEST_URI))
+    from app.core.tenant_context import install_tenant_bind
+
+    engine = create_engine(str(settings.SQLALCHEMY_DATABASE_TEST_URI))
+    # 与生产引擎同款租户事务绑定（C3）：测试里的 tenant_scope 语义与线上一致
+    install_tenant_bind(engine)
+    return engine
 
 
 @pytest.fixture(scope="session", autouse=True)
