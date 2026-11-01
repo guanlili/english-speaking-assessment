@@ -14,13 +14,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.models import (
-    Attempt,
     DEFAULT_TENANT_ID,
+    Attempt,
+    Classroom,
     Passage,
     PracticeSession,
     Scenario,
     Student,
-    Classroom,
     Tenant,
     VocabularyAnswer,
     VocabularySession,
@@ -172,7 +172,6 @@ def test_attempt_idempotent_cross_tenant_treated_as_missing(db: Session) -> None
 
 def test_vocab_answer_idempotent_cross_tenant_no_replay(db: Session) -> None:
     """词汇作答幂等重放：跨租户命中按无重放处理（不返回他校回执）。"""
-    from datetime import date as _date
 
     from app.services.vocabulary import recognize_answer_replay
 
