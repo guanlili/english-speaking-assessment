@@ -29,12 +29,17 @@ def _make_default_engine():
     # pool_pre_ping：PG 重启/连接被防火墙掐断后，借出前先探活，避免整批
     # "server closed the connection" 直到应用重启才恢复；
     # 池上限对齐「40 人班级齐交」的同步路由线程池峰值（默认 5+10 偏紧）
-    return create_engine(
+    from app.core.tenant_context import install_tenant_bind
+
+    engine = create_engine(
         str(settings.SQLALCHEMY_DATABASE_URI),
         pool_pre_ping=True,
         pool_size=10,
         max_overflow=20,
     )
+    # 多租户 C3：每次事务开始按 ContextVar 重绑 set_config（未绑定时零开销）
+    install_tenant_bind(engine)
+    return engine
 
 
 _default_engine = _make_default_engine()

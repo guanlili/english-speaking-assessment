@@ -219,6 +219,7 @@ def login_demo(session: SessionDep) -> Token:
             expires_delta=access_token_expires,
             role=user.role,
             password_hash=user.hashed_password,
+            tenant_id=str(user.tenant_id),
         )
     )
 

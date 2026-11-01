@@ -164,6 +164,45 @@ async def security_headers_middleware(request: Request, call_next: Any) -> Respo
     return response
 
 
+# 多租户 C3：请求级租户上下文。从 Bearer token 的 tid 声明（B2 签发）
+# 提取租户写入 ContextVar——引擎 begin 事件据此对每次事务执行
+# set_config（RLS 激活前的纯管线：策略尚不存在，只有上下文在流动）。
+# 解码失败/无 token/无 tid（匿名、运营 token）一律不设上下文。
+# tid 与用户行的最终一致性由 get_current_user 校验（伪造/过期绑定 → 401），
+# 这里不做 DB 查证——鉴权依赖本就要查库，重复查证没有意义。
+@app.middleware("http")
+async def tenant_context_middleware(request: Request, call_next: Any) -> Response:
+    import uuid as _uuid
+
+    import jwt as _jwt
+
+    from app.core import security as _security
+    from app.core.config import settings as _settings
+    from app.core.tenant_context import _TENANT_CTX
+
+    token = request.headers.get("Authorization", "")
+    reset_token = None
+    if token.startswith("Bearer "):
+        try:
+            payload = _jwt.decode(
+                token[len("Bearer ") :],
+                _settings.SECRET_KEY,
+                algorithms=[_security.ALGORITHM],
+                options={"verify_aud": False},
+            )
+            tid = payload.get("tid")
+            if isinstance(tid, str):
+                reset_token = _TENANT_CTX.set(_uuid.UUID(tid))
+        except ValueError, _jwt.InvalidTokenError:
+            # 无效 token 不在此处拦截：鉴权依赖给出标准 401，中间件只管上下文
+            pass
+    try:
+        return await call_next(request)
+    finally:
+        if reset_token is not None:
+            _TENANT_CTX.reset(reset_token)
+
+
 @app.exception_handler(Exception)
 async def unexpected_error(request: Request, _exc: Exception) -> JSONResponse:
     return JSONResponse(

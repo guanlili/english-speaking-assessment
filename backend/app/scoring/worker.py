@@ -608,9 +608,18 @@ def _complete_detail(
 
 def _run_in_worker(attempt_id: uuid.UUID) -> None:
     # 延迟导入避免与 app.api.deps 的导入环
-    from app.core.db import engine
+    from contextlib import nullcontext
 
-    with Session(engine) as session:
+    from app.core.db import engine
+    from app.core.tenant_context import tenant_scope
+
+    # 多租户 C3：按任务行租户重绑（投递方上下文可能是 HTTP 请求的，也
+    # 可能是重试 Timer/启动恢复的空上下文——任务自身归属才是事实源；
+    # 领取查询本身不设上下文，C4 RLS 激活时领取通道单独处理）
+    with Session(engine) as probe:
+        row = probe.get(Attempt, attempt_id)
+        scope = tenant_scope(row.tenant_id) if row is not None else nullcontext()
+    with scope, Session(engine) as session:
         process_attempt(session, attempt_id)
         # 失败重排队后必须重新投递，否则作答会永久卡在 queued
         # （retry_count 上限兜底，不会无限循环；测试直接调 process_attempt 不走这里）

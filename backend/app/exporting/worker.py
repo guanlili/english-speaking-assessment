@@ -502,7 +502,19 @@ def _process_student_report(
 
 
 def _run(job_id: UUID) -> None:
-    process_export_job(job_id)
+    from contextlib import nullcontext
+
+    from sqlmodel import Session as _Session
+
+    from app.core.db import engine as _engine
+    from app.core.tenant_context import tenant_scope
+
+    # 多租户 C3：按任务行租户重绑（同评分 worker 口径；领取查询不设上下文）
+    with _Session(_engine) as probe:
+        row = probe.get(ExportJob, job_id)
+        scope = tenant_scope(row.tenant_id) if row is not None else nullcontext()
+    with scope:
+        process_export_job(job_id)
 
 
 def delete_artifact(relpath: str | None) -> None:
