@@ -151,9 +151,9 @@ def _claim(session: Session, job_id: UUID) -> ExportJob | None:
 
 
 def _progress(job_id: UUID, done: int, total: int) -> None:
-    from app.core.db import engine
+    from app.core.db import platform_engine
 
-    with Session(engine) as session:
+    with Session(platform_engine) as session:
         job = session.get(ExportJob, job_id)
         if job is None or job.status != ExportJobStatus.RUNNING:
             return
@@ -171,9 +171,9 @@ def _finish_failed(
     missing: int,
     total: int,
 ) -> None:
-    from app.core.db import engine
+    from app.core.db import platform_engine
 
-    with Session(engine) as session:
+    with Session(platform_engine) as session:
         job = session.get(ExportJob, job_id)
         if job is None or job.status != ExportJobStatus.RUNNING:
             logger.error("export job %s missing while recording failure", job_id)
@@ -213,9 +213,9 @@ def _finish_ok(
     artifact: str,
     byte_size: int,
 ) -> None:
-    from app.core.db import engine
+    from app.core.db import platform_engine
 
-    with Session(engine) as session:
+    with Session(platform_engine) as session:
         job = session.get(ExportJob, job_id)
         if job is None or job.status != ExportJobStatus.RUNNING:
             logger.error("export job %s missing while recording success", job_id)
@@ -251,9 +251,9 @@ def _finish_ok(
 
 def process_export_job(job_id: UUID) -> None:
     """领取并完成一个任务。ZIP 与学情 PDF 分路，失败写入 error，不吞掉异常。"""
-    from app.core.db import engine
+    from app.core.db import platform_engine
 
-    with Session(engine) as session:
+    with Session(platform_engine) as session:
         job = _claim(session, job_id)
         if job is None:
             return
@@ -339,7 +339,7 @@ def _process_class_report(
     requester_user_id: UUID,
 ) -> None:
     """班级分析 PDF：与学情 PDF 同构——短事务读、事务外排版、短事务写结果。"""
-    from app.core.db import engine
+    from app.core.db import platform_engine
     from app.services.audio_export import export_directory
     from app.services.class_report_pdf import (
         ReportForbidden,
@@ -348,7 +348,7 @@ def _process_class_report(
     )
 
     try:
-        with Session(engine) as session:
+        with Session(platform_engine) as session:
             report = load_class_report(session, filt, requester_user_id)
     except ReportForbidden:
         _finish_failed(
@@ -423,7 +423,7 @@ def _process_student_report(
     requester_user_id: UUID,
 ) -> None:
     """学情 PDF：短事务读数据，释放后再排版落盘，最后短事务写结果。"""
-    from app.core.db import engine
+    from app.core.db import platform_engine
     from app.services.audio_export import export_directory
     from app.services.student_report_pdf import (
         ReportForbidden,
@@ -432,7 +432,7 @@ def _process_student_report(
     )
 
     try:
-        with Session(engine) as session:
+        with Session(platform_engine) as session:
             report = load_student_report(session, filt, requester_user_id)
     except ReportForbidden:
         _finish_failed(
@@ -506,7 +506,7 @@ def _run(job_id: UUID) -> None:
 
     from sqlmodel import Session as _Session
 
-    from app.core.db import engine as _engine
+    from app.core.db import platform_engine as _engine
     from app.core.tenant_context import tenant_scope
 
     # 多租户 C3：按任务行租户重绑（同评分 worker 口径；领取查询不设上下文）
@@ -561,9 +561,9 @@ def expire_due_exports(session: Session) -> int:
 
 def startup_recovery() -> None:
     """进程重启后：运行中的任务退回队列并重投，同时清一次到期成品。"""
-    from app.core.db import engine
+    from app.core.db import platform_engine
 
-    with Session(engine) as session:
+    with Session(platform_engine) as session:
         running = session.exec(
             select(ExportJob).where(ExportJob.status == ExportJobStatus.RUNNING)
         ).all()
@@ -585,10 +585,10 @@ def startup_recovery() -> None:
 
 def _sweep_loop(stop_event: threading.Event) -> None:
     while not stop_event.wait(SWEEP_INTERVAL_S):
-        from app.core.db import engine
+        from app.core.db import platform_engine
 
         try:
-            with Session(engine) as session:
+            with Session(platform_engine) as session:
                 expire_due_exports(session)
         except Exception:
             logger.exception("export sweeper iteration failed")

@@ -520,12 +520,12 @@ def _daily_loop(stop_event: threading.Event) -> None:
     current_day = datetime.now(tz).date()
     assert _tracker is not None
     while not stop_event.wait(SAMPLE_INTERVAL_S):
-        from app.core.db import engine
+        from app.core.db import platform_engine
 
         try:
             now_day = datetime.now(tz).date()
             queue_age: float | None = None
-            with Session(engine) as session:
+            with Session(platform_engine) as session:
                 if now_day != current_day:
                     # 跨日：先把昨日行业务量精确落定（采样降频回算后当日行
                     # 最多滞后一小时），再重置峰值/增量起算（昨日行的运行时
@@ -553,12 +553,12 @@ def start_metrics_daily() -> None:
     global _tracker, _thread_stop, _thread
     if _thread is not None and _thread.is_alive():
         return
-    from app.core.db import engine
+    from app.core.db import platform_engine
 
     _tracker = _DayPeakTracker()
     tz = _tz()
     try:
-        with Session(engine) as session:
+        with Session(platform_engine) as session:
             backfill_history(session, datetime.now(tz).date())
     except Exception:  # noqa: BLE001 - 回填失败不阻塞启动
         logger.exception("metrics daily backfill failed at startup")

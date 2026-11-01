@@ -14,7 +14,7 @@ from sqlalchemy import and_, func
 from sqlalchemy import select as sa_select
 from sqlmodel import col, select
 
-from app.api.deps import PlatformOperatorDep, SessionDep
+from app.api.deps import PlatformOperatorDep, PlatformSessionDep
 from app.api.routes.metrics import collect_metrics
 from app.core.config import settings
 from app.models import (
@@ -63,7 +63,7 @@ def _round1(value: float | None) -> float | None:
 
 @router.get("/overview", response_model=DashboardOverview)
 def read_dashboard_overview(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     days: int = Query(default=7, ge=1, le=MAX_DAYS),
 ) -> DashboardOverview:
@@ -182,7 +182,7 @@ def read_dashboard_overview(
 
 @router.get("/usage", response_model=DashboardUsage)
 def read_dashboard_usage(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     days: int = Query(default=30, ge=1, le=MAX_DAYS),
 ) -> DashboardUsage:
@@ -381,7 +381,7 @@ def read_dashboard_usage(
 
 @router.get("/content", response_model=DashboardContent)
 def read_dashboard_content(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
 ) -> DashboardContent:
     def _sub(model: type, *conditions: Any) -> Any:  # noqa: ANN001
@@ -427,7 +427,7 @@ def read_dashboard_content(
 
 @router.get("/performance", response_model=DashboardPerformance)
 def read_dashboard_performance(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     days: int = Query(default=30, ge=1, le=MAX_DAYS),
 ) -> DashboardPerformance:
@@ -484,7 +484,7 @@ def _month_of(day: date) -> str:
 
 @router.get("/cost", response_model=DashboardCost)
 def read_dashboard_cost(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     months: int = Query(default=6, ge=1, le=24),
 ) -> DashboardCost:
@@ -617,7 +617,7 @@ def read_dashboard_cost(
 @router.put("/cost/reconcile", response_model=AdminCostReconcile)
 def upsert_cost_reconcile(
     payload: AdminCostReconcileIn,
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
 ) -> AdminCostReconcile:
     """录入/更新当月实际账单金额（对账）。"""

@@ -19,7 +19,12 @@ from fastapi import APIRouter, Form, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlmodel import Field, Session, SQLModel, col, select
 
-from app.api.deps import PlatformOperatorDep, SessionDep, TeacherUserDep
+from app.api.deps import (
+    PlatformOperatorDep,
+    PlatformSessionDep,
+    SessionDep,
+    TeacherUserDep,
+)
 from app.api.routes.classes import _require_classroom_teacher
 from app.api.routes.vocabulary import (
     VocabularyWordIn,
@@ -62,7 +67,9 @@ async def _read_upload(file: UploadFile) -> str:
 
 
 @router.get("/admin/vocab-levels/stats", response_model=VocabularyLevelStats)
-def vocab_level_stats(session: SessionDep, _operator: PlatformOperatorDep) -> Any:
+def vocab_level_stats(
+    session: PlatformSessionDep, _operator: PlatformOperatorDep
+) -> Any:
     """各级数量、词组数、待人工核对数与来源统计。"""
     return levels_service.level_stats(session)
 
@@ -71,7 +78,7 @@ def vocab_level_stats(session: SessionDep, _operator: PlatformOperatorDep) -> An
     "/admin/vocab-levels/import-preview", response_model=VocabularyLevelImportPreview
 )
 async def vocab_level_import_preview(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     file: UploadFile,
     level: str = Form(...),
@@ -94,7 +101,7 @@ async def vocab_level_import_preview(
     "/admin/vocab-levels/import-confirm", response_model=VocabularyLevelImportResult
 )
 async def vocab_level_import_confirm(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     file: UploadFile,
     level: str = Form(...),
@@ -121,7 +128,7 @@ async def vocab_level_import_confirm(
     "/admin/vocab-levels/entries", response_model=list[VocabularyLevelEntryPublic]
 )
 def list_vocab_level_entries(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     level: str | None = Query(default=None),
     needs_review: bool | None = Query(default=None),
@@ -153,7 +160,7 @@ def list_vocab_level_entries(
     response_model=VocabularyLevelEntryPublic,
 )
 def update_vocab_level_entry(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     entry_id: uuid.UUID,
     entry_in: VocabularyLevelEntryUpdate,
