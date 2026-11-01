@@ -32,12 +32,16 @@ from app.models import (
     User,
 )
 
-_tag = uuid.uuid4().hex[:8]
+
+def _uid() -> str:
+    """每次调用唯一标识：CI 的失败重试（rerun）会重跑用例——module 级
+    常量会让重试撞唯一键（首次尝试已插入），函数级唯一免疫重试与顺序。"""
+    return uuid.uuid4().hex[:8]
 
 
 def _mk_teacher(db: Session, tenant_id, name: str) -> User:
     user = User(
-        email=f"c5-{name}-{_tag}@example.com",
+        email=f"c5-{name}-{_uid()}@example.com",
         hashed_password="x",
         role="teacher",
         tenant_id=tenant_id,
@@ -62,7 +66,7 @@ def _token(user: User, tenant_id) -> dict[str, str]:
 
 @pytest.fixture(scope="module")
 def b_tenant(db: Session) -> Tenant:
-    row = Tenant(slug=f"c5b-{_tag}", name_zh="C5 乙校")
+    row = Tenant(slug=f"c5b-{_uid()}", name_zh="C5 乙校")
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -73,7 +77,7 @@ def test_ac12_write_inherits_context_tenant(db: Session, b_tenant) -> None:
     """写入侧继承（C5a 核心）：乙校上下文的 ORM 写入自动落乙校；
     无上下文回落默认（B1 兜底不变）。"""
     # 无上下文（测试直插通道）：回落默认租户
-    p_default = Passage(title="默认", text="d", slug=f"c5-{_tag}-d")
+    p_default = Passage(title="默认", text="d", slug=f"c5-{_uid()}-d")
     db.add(p_default)
     db.commit()
     db.refresh(p_default)
@@ -83,14 +87,14 @@ def test_ac12_write_inherits_context_tenant(db: Session, b_tenant) -> None:
     # （default_factory 是构造期求值；真实业务的对象构造都在请求处理内，
     # 上下文由中间件保证——语义成立）
     with tenant_scope(b_tenant.id):
-        p_b = Passage(title="乙校", text="b", slug=f"c5-{_tag}-b")
+        p_b = Passage(title="乙校", text="b", slug=f"c5-{_uid()}-b")
         db.add(p_b)
         db.commit()
         db.refresh(p_b)
     assert p_b.tenant_id == b_tenant.id
 
     with tenant_scope(b_tenant.id):
-        c_b = Classroom(code=f"C5B{_tag[:6].upper()}", class_size=5)
+        c_b = Classroom(code=f"C5B{_uid()[:6].upper()}", class_size=5)
         db.add(c_b)
         db.commit()
         db.refresh(c_b)
@@ -102,7 +106,7 @@ def test_ac04_cross_classroom_isolated(
 ) -> None:
     """跨校课堂码：乙校 token 打甲校课堂链路 → 404（应用层守卫）。"""
     _mk_teacher(db, DEFAULT_TENANT_ID, "a")  # 甲校教师在位（场景需要）
-    class_a = Classroom(code=f"C5A{_tag[:6].upper()}", class_size=5)
+    class_a = Classroom(code=f"C5A{_uid()[:6].upper()}", class_size=5)
     db.add(class_a)
     db.commit()
 
@@ -119,7 +123,7 @@ def test_ac05_cross_content_invisible(
     """跨校内容：乙校教师读甲校篇目详情/主题 → 404（归属查询按学校会话
     过滤在 RLS 激活的生产上由数据库强制；应用层 404 语义一致）。"""
     _mk_teacher(db, DEFAULT_TENANT_ID, "ca")
-    passage_a = Passage(title="甲校篇", text="a", slug=f"c5-{_tag}-pa")
+    passage_a = Passage(title="甲校篇", text="a", slug=f"c5-{_uid()}-pa")
     db.add(passage_a)
     db.commit()
 
@@ -138,7 +142,7 @@ def test_ac06_cross_student_attempt_isolated(
 ) -> None:
     """跨校学生/作答：乙校 token 直取甲校作答 URL → 404/403，不泄内容。"""
     _mk_teacher(db, DEFAULT_TENANT_ID, "sa")
-    class_a = Classroom(code=f"C5S{_tag[:6].upper()}", class_size=5)
+    class_a = Classroom(code=f"C5S{_uid()[:6].upper()}", class_size=5)
     db.add(class_a)
     db.flush()
     student_a = Student(classroom_id=class_a.id, display_name="甲校生")
@@ -212,7 +216,7 @@ def test_ac01_same_username_two_schools(
     from app import crud
     from app.core.security import get_password_hash
 
-    shared = f"shared-{_tag}@example.com"
+    shared = f"shared-{_uid()}@example.com"
     u_a = User(
         email=shared,
         hashed_password=get_password_hash("pw-a-12345678"),
