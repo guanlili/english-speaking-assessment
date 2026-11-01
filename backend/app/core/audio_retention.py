@@ -177,10 +177,10 @@ def _retention_loop(stop_event: threading.Event) -> None:
     # 清扫永远轮不到首轮——2026-10-26 生产实测孤儿 302 个的根因
     while True:
         # 引擎每轮重新解析：与 scoring sweeper 同一模式，测试覆盖同样生效
-        from app.core.db import engine
+        from app.core.db import platform_engine
 
         try:
-            with Session(engine) as session:
+            with Session(platform_engine) as session:
                 purge_expired_attempt_audio(session)
                 purge_orphan_audio(session)
         except Exception:  # noqa: BLE001 - 清理是兜底，失败只记日志不能带崩线程

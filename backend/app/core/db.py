@@ -17,12 +17,19 @@ from app.models import (
 )
 
 _engine_override: object | None = None
+_platform_engine_override: object | None = None
 
 
 def set_engine(engine_obj: object | None) -> None:
     """测试/CLI 用：覆盖全局 engine，所有从 core.db 取 engine 的路径都受影响。"""
     global _engine_override
     _engine_override = engine_obj
+
+
+def set_platform_engine(engine_obj: object | None) -> None:
+    """测试用：覆盖平台通道 engine（未覆盖时回落主 engine 覆盖值/默认平台引擎）。"""
+    global _platform_engine_override
+    _platform_engine_override = engine_obj
 
 
 def _make_default_engine():
@@ -42,11 +49,38 @@ def _make_default_engine():
     return engine
 
 
+def _make_platform_engine():
+    """平台通道引擎（C4）：平台运营路由/后台平台任务用。
+
+    C4a 形态（未配 PLATFORM_POSTGRES_*）与主连接同——owner 对 RLS 天然
+    豁免，行为与 C3 等价；C4b 注入 BYPASSRLS 角色凭据后即生产激活。
+    平台通道不装租户绑定：它按定义就是跨租户口径（装了也会因 BYPASSRLS
+    无效果，不装避免每次事务多一次 set_config 往返）。
+    """
+    return create_engine(
+        str(settings.SQLALCHEMY_PLATFORM_DATABASE_URI),
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+    )
+
+
 _default_engine = _make_default_engine()
+_default_platform_engine = _make_platform_engine()
 
 
 def _get_engine():
     return _engine_override if _engine_override is not None else _default_engine
+
+
+def _get_platform_engine() -> object:
+    if _platform_engine_override is not None:
+        return _platform_engine_override
+    # 测试覆盖了主 engine 而未覆盖平台通道时，平台回落主覆盖引擎
+    # （测试库里的平台操作仍指向测试库）
+    if _engine_override is not None:
+        return _engine_override
+    return _default_platform_engine
 
 
 # 模块属性名保持 `engine`，get_db/worker/启动脚本均以 `from app.core.db import engine` 取值。
@@ -54,6 +88,8 @@ def _get_engine():
 def __getattr__(name):
     if name == "engine":
         return _get_engine()
+    if name == "platform_engine":
+        return _get_platform_engine()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

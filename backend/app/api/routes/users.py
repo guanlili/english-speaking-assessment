@@ -9,6 +9,7 @@ from app import crud
 from app.api.deps import (
     CurrentUser,
     PlatformOperatorDep,
+    PlatformSessionDep,
     SessionDep,
     get_current_platform_operator,
 )
@@ -42,7 +43,7 @@ USERS_MAX_LIMIT = 200
     response_model=UsersPublic,
 )
 def read_users(
-    session: SessionDep,
+    session: PlatformSessionDep,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=USERS_MAX_LIMIT),
     q: str | None = Query(default=None, max_length=128),
@@ -81,7 +82,7 @@ def read_users(
     dependencies=[Depends(get_current_platform_operator)],
     response_model=UserPublic,
 )
-def create_user(*, session: SessionDep, user_in: UserCreate) -> Any:
+def create_user(*, session: PlatformSessionDep, user_in: UserCreate) -> Any:
     """
     Create new user. 学生账号建议走 /students/import 批量建号；
     此处后台单个建号支持 teacher/admin（平台运营通道，B3 起门禁为
@@ -221,7 +222,7 @@ def register_user(session: SessionDep, user_in: UserRegister, request: Request) 
 
 @router.get("/{user_id}", response_model=UserPublic)
 def read_user_by_id(
-    user_id: uuid.UUID, session: SessionDep, _operator: PlatformOperatorDep
+    user_id: uuid.UUID, session: PlatformSessionDep, _operator: PlatformOperatorDep
 ) -> Any:
     """
     Get a specific user by id（B3 起为平台运营通道；本人自读走 /users/me）。
@@ -239,7 +240,7 @@ def read_user_by_id(
 )
 def update_user(
     *,
-    session: SessionDep,
+    session: PlatformSessionDep,
     user_id: uuid.UUID,
     user_in: UserUpdate,
 ) -> Any:
@@ -272,7 +273,7 @@ class UserDeleteRequest(SQLModel):
 
 @router.delete("/{user_id}", dependencies=[Depends(get_current_platform_operator)])
 def delete_user(
-    session: SessionDep,
+    session: PlatformSessionDep,
     operator: PlatformOperatorDep,
     user_id: uuid.UUID,
     body: UserDeleteRequest,

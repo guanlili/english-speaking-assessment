@@ -30,6 +30,20 @@ def get_db() -> Generator[Session]:
 
 
 SessionDep = Annotated[Session, Depends(get_db)]
+
+
+def get_platform_db() -> Generator[Session]:
+    """平台通道会话（C4）：平台运营路由/跨租户口径操作专用。
+
+    引擎来自 core.db.platform_engine——C4a 形态与主连接同（RLS 对 owner
+    豁免，行为不变）；C4b 切 BYPASSRLS 凭据后这些路由即按平台口径通行。
+    学校业务端点不得使用本依赖（语义即「无租户边界」）。
+    """
+    with Session(_db.platform_engine) as session:  # type: ignore[attr-defined]
+        yield session
+
+
+PlatformSessionDep = Annotated[Session, Depends(get_platform_db)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
 

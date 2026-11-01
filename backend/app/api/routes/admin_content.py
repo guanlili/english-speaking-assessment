@@ -18,7 +18,12 @@ from pydantic import field_validator
 from sqlmodel import Field, SQLModel, col, select
 
 from app import crud
-from app.api.deps import PlatformOperatorDep, SessionDep, TeacherUserDep
+from app.api.deps import (
+    PlatformOperatorDep,
+    PlatformSessionDep,
+    SessionDep,
+    TeacherUserDep,
+)
 from app.api.routes._content_common import (
     _strip_blank,
     _strip_nonempty,
@@ -175,13 +180,13 @@ class ClassroomUpdate(SQLModel):
 
 
 @router.get("/classrooms", response_model=list[ClassroomPublic])
-def list_classrooms(session: SessionDep, _operator: PlatformOperatorDep) -> Any:
+def list_classrooms(session: PlatformSessionDep, _operator: PlatformOperatorDep) -> Any:
     return session.exec(select(Classroom).order_by(col(Classroom.created_at))).all()
 
 
 @router.delete("/classrooms/{classroom_id}")
 def deactivate_classroom(
-    session: SessionDep, _operator: PlatformOperatorDep, classroom_id: uuid.UUID
+    session: PlatformSessionDep, _operator: PlatformOperatorDep, classroom_id: uuid.UUID
 ) -> dict[str, str]:
     classroom = session.get(Classroom, classroom_id)
     if classroom is None:
@@ -194,7 +199,7 @@ def deactivate_classroom(
 
 @router.put("/classrooms/{classroom_id}", response_model=ClassroomPublic)
 def update_classroom(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     classroom_id: uuid.UUID,
     classroom_in: ClassroomUpdate,

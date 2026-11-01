@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = ""
     # 测试专用库（conftest 会拒绝它指向开发库）。默认挂在同一实例上，CI/本地零配置
     POSTGRES_DB_TEST: str = "app_test"
+    # 多租户 C4：平台通道连接（平台运营路由/后台平台任务，BYPASSRLS 角色）。
+    # 未配置时回落主连接——C4a 部署形态（owner 连接对 RLS 天然豁免，行为
+    # 与 C3 等价）；C4b 切换时注入 PLATFORM_POSTGRES_* Secrets 即真正激活
+    PLATFORM_POSTGRES_USER: str | None = None
+    PLATFORM_POSTGRES_PASSWORD: str | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -79,6 +84,19 @@ class Settings(BaseSettings):
             host=self.POSTGRES_SERVER,
             port=self.POSTGRES_PORT,
             path=self.POSTGRES_DB_TEST,
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def SQLALCHEMY_PLATFORM_DATABASE_URI(self) -> PostgresDsn:
+        """平台通道连接：配置了专用凭据则用之，否则与主连接同（C4a 形态）。"""
+        return PostgresDsn.build(
+            scheme="postgresql+psycopg",
+            username=self.PLATFORM_POSTGRES_USER or self.POSTGRES_USER,
+            password=self.PLATFORM_POSTGRES_PASSWORD or self.POSTGRES_PASSWORD,
+            host=self.POSTGRES_SERVER,
+            port=self.POSTGRES_PORT,
+            path=self.POSTGRES_DB,
         )
 
     SMTP_TLS: bool = True
