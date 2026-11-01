@@ -209,6 +209,10 @@ ReadingSentenceSeconds = Annotated[int, PydanticField(strict=True, ge=1, le=180)
 class Passage(PassageBase, table=True):
     # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
     tenant_id: uuid.UUID = _tenant_id_field()
+    # C2：slug 校内唯一（两校可同名；单校窗口与旧全局唯一等价）
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "slug", name="uq_passage_tenant_slug"),
+    )
 
     copied_from_id: uuid.UUID | None = Field(default=None)
     reading_sentence_seconds: list[ReadingSentenceSeconds | None] | None = Field(
@@ -224,7 +228,8 @@ class Passage(PassageBase, table=True):
     dedup_text_hash: str | None = Field(default=None, max_length=64, index=True)
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    slug: str = Field(unique=True, index=True, max_length=100)
+    # 唯一性由 (tenant_id, slug) 复合承接（C2）；索引保留供查找
+    slug: str = Field(index=True, max_length=100)
     # 题库保留整篇文章；发布/学生题单按句展开为独立朗读题。
     reading_split: bool = False
     # 旧版拆分产生的独立篇目保留 ID/历史，归入原文章后不再单独选题。
@@ -557,9 +562,14 @@ class RepeatSentence(SQLModel, table=True):
 class Scenario(SQLModel, table=True):
     # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
     tenant_id: uuid.UUID = _tenant_id_field()
+    # C2：topic 校内唯一（两校可同名主题；单校窗口与旧全局唯一等价）
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "topic", name="uq_scenario_tenant_topic"),
+    )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    topic: str = Field(unique=True, index=True, max_length=100)
+    # 唯一性由 (tenant_id, topic) 复合承接（C2）；索引保留供查找
+    topic: str = Field(index=True, max_length=100)
     is_active: bool = True
     # 创建者：改名/启停归创建者；NULL = 存量或管理员建的公共主题
     owner_id: uuid.UUID | None = Field(
@@ -950,9 +960,16 @@ class ClassroomExercisePublic(SQLModel):
 # 听句复述的播放计数（防刷）：一个学生一轮里对一道题听了多少次标准音
 class ItemListen(SQLModel, table=True):
     __tablename__ = "item_listen"
+    # C2：作用域加租户前缀（跨校学生/会话 UUID 本不重叠，加列是 RLS 收口
+    # 前 UPSERT 语义与租户核验的正统化）；class_runtime 的原生 UPSERT
+    # 按本约束名引用，两处必须同步
     __table_args__ = (
         UniqueConstraint(
-            "student_id", "session_id", "item_id", name="uq_item_listen_scope"
+            "tenant_id",
+            "student_id",
+            "session_id",
+            "item_id",
+            name="uq_item_listen_scope",
         ),
     )
     # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
