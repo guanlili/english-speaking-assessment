@@ -63,15 +63,21 @@ def test_engine_bind_sets_config_inside_scope(db: Session) -> None:
     """tenant_scope 内新事务的 current_setting 即租户；作用域外不残留。"""
     with Session(engine) as s:
         with tenant_scope(DEFAULT_TENANT_ID):
-            got = s.connection().execute(
-                text("select current_setting('app.tenant_id', true)")
-            ).scalar_one()
+            got = (
+                s.connection()
+                .execute(text("select current_setting('app.tenant_id', true)"))
+                .scalar_one()
+            )
             assert got == str(DEFAULT_TENANT_ID)
         # 事务级设置随事务结束失效；作用域外的新事务读回空串
         s.commit()
-        after = s.connection().execute(
-            text("select coalesce(current_setting('app.tenant_id', true), '')")
-        ).scalar_one()
+        after = (
+            s.connection()
+            .execute(
+                text("select coalesce(current_setting('app.tenant_id', true), '')")
+            )
+            .scalar_one()
+        )
         assert after == ""
 
 
