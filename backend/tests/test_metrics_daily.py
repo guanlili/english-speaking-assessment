@@ -345,8 +345,16 @@ def test_cost_endpoint_and_reconcile(
     _purge(db)
     today = datetime.now(tz).date()
     this_month = f"{today.year:04d}-{today.month:02d}"
-    # 本月 2 条快照：合计 3600s ASR（=1h → ¥4.5）、llm 100 次调用
-    for day in (today - timedelta(days=1), today):
+    # 本月快照：合计 3600s ASR（=1h → ¥4.5）、llm 100 次调用。
+    # 月初 1 号时「昨天」已属上月（快照按月分桶是对的）——只造今天一条，
+    # 断言口径动态折半，避免跨月窗口 flake
+    month_days = [
+        d
+        for d in (today - timedelta(days=1), today)
+        if f"{d.year:04d}-{d.month:02d}" == this_month
+    ]
+    n_days = len(month_days)
+    for day in month_days:
         upsert_daily_snapshot(
             db,
             day,
@@ -369,16 +377,16 @@ def test_cost_endpoint_and_reconcile(
     months = {m["month"]: m for m in body["months"]}
     assert this_month in months
     m = months[this_month]
-    assert m["asr_seconds"] == 3600.0
-    assert m["llm_calls"] == 100
-    assert m["asr_cny"] == round(cfg.COST_ASR_CNY_PER_HOUR, 2)
+    assert m["asr_seconds"] == 1800.0 * n_days
+    assert m["llm_calls"] == 50 * n_days
+    assert m["asr_cny"] == round(1800.0 * n_days / 3600 * cfg.COST_ASR_CNY_PER_HOUR, 2)
     per_call = (
         cfg.COST_LLM_CNY_PER_MTOK_IN * cfg.COST_LLM_EST_TOKENS_IN
         + cfg.COST_LLM_CNY_PER_MTOK_OUT * cfg.COST_LLM_EST_TOKENS_OUT
     ) / 1_000_000
-    assert m["llm_cny"] == round(100 * per_call, 2)
+    assert m["llm_cny"] == round(50 * n_days * per_call, 2)
     assert m["total_cny"] == round(m["asr_cny"] + m["llm_cny"] + m["server_cny"], 2)
-    assert m["attempts"] == 20
+    assert m["attempts"] == 10 * n_days
     assert m["actual_cny"] is None
 
     # 对账录入（合法月份 + 非法月份）
@@ -522,23 +530,27 @@ def test_cost_prefers_real_tokens_with_fallback(
     _purge(db)
     today = datetime.now(tz).date()
     month = f"{today.year:04d}-{today.month:02d}"
+    # 月初 1 号时昨天属上月：该日跳过（估算分支失去「未全覆盖」对照，
+    # 但真实计费断言仍成立——token 断言口径按本月实际造数日数折算）
+    yesterday_in_month = (today - timedelta(days=1)).month == today.month
 
     # 昨日：100 次调用 + 真实 token 记账（当日全记账 → tokens 基数）
-    upsert_daily_snapshot(
-        db,
-        today - timedelta(days=1),
-        business={
-            "attempts": 5,
-            "attempts_done": 5,
-            "attempts_failed": 0,
-            "active_students": 3,
-            "sessions": 1,
-            "asr_seconds": 0.0,
-        },
-        llm_calls_by_kind={"llm_rubric": 100},
-        llm_tokens_in=60_000,
-        llm_tokens_out=60_000,
-    )
+    if yesterday_in_month:
+        upsert_daily_snapshot(
+            db,
+            today - timedelta(days=1),
+            business={
+                "attempts": 5,
+                "attempts_done": 5,
+                "attempts_failed": 0,
+                "active_students": 3,
+                "sessions": 1,
+                "asr_seconds": 0.0,
+            },
+            llm_calls_by_kind={"llm_rubric": 100},
+            llm_tokens_in=60_000,
+            llm_tokens_out=60_000,
+        )
     # 今日：20 次调用、未记账（采样线程未跑）→ 该月混算 → 回退估算
     upsert_daily_snapshot(
         db,
@@ -555,9 +567,10 @@ def test_cost_prefers_real_tokens_with_fallback(
     )
     resp = client.get("/api/v1/admin/dashboard/cost", headers=operator_token_headers)
     m = {x["month"]: x for x in resp.json()["months"]}[month]
-    # 调用日 2 天、记账日 1 天 → 未全覆盖 → 估算
-    assert m["llm_basis"] == "estimated"
-    assert m["llm_tokens_in"] is None
+    if yesterday_in_month:
+        # 调用日 2 天、记账日 1 天 → 未全覆盖 → 估算
+        assert m["llm_basis"] == "estimated"
+        assert m["llm_tokens_in"] is None
 
     # 把今日也补上 token → 全覆盖 → 真实计费
     upsert_daily_snapshot(
@@ -570,11 +583,13 @@ def test_cost_prefers_real_tokens_with_fallback(
     resp = client.get("/api/v1/admin/dashboard/cost", headers=operator_token_headers)
     m = {x["month"]: x for x in resp.json()["months"]}[month]
     assert m["llm_basis"] == "tokens"
-    assert m["llm_tokens_in"] == 72_000
-    assert m["llm_tokens_out"] == 72_000
+    # 昨日 60k + 今日 12k；月初只有今日 12k
+    total_tokens = 72_000 if yesterday_in_month else 12_000
+    assert m["llm_tokens_in"] == total_tokens
+    assert m["llm_tokens_out"] == total_tokens
     expected = round(
-        72_000 / 1_000_000 * cfg.COST_LLM_CNY_PER_MTOK_IN
-        + 72_000 / 1_000_000 * cfg.COST_LLM_CNY_PER_MTOK_OUT,
+        total_tokens / 1_000_000 * cfg.COST_LLM_CNY_PER_MTOK_IN
+        + total_tokens / 1_000_000 * cfg.COST_LLM_CNY_PER_MTOK_OUT,
         2,
     )
     assert m["llm_cny"] == expected

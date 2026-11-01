@@ -1,7 +1,7 @@
 import time
 import uuid
 from datetime import UTC, date, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import HTTPException
 from pydantic import EmailStr, field_validator
@@ -29,6 +29,20 @@ def get_datetime_utc() -> datetime:
 # 种子三处共用同一常量，保证「写入路径漏设 tenant_id 也会落到默认租户」的
 # 单校兼容窗口在 DB 层面成立（设计稿 §9-2「旧进程漏写」的兜底）。
 DEFAULT_TENANT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
+
+def _tenant_id_field() -> Any:
+    """租户归属列工厂（B1 锚点定式：默认租户兜底，存量自动归位、增量漏写不可能）。
+
+    C1 只落数据地基——查询侧租户过滤随 C3 RLS 收口。
+    """
+    return Field(
+        default=DEFAULT_TENANT_ID,
+        foreign_key="tenant.id",
+        nullable=False,
+        sa_column_kwargs={"server_default": text(f"'{DEFAULT_TENANT_ID}'")},
+        index=True,
+    )
 
 
 class Tenant(SQLModel, table=True):
@@ -193,6 +207,9 @@ ReadingSentenceSeconds = Annotated[int, PydanticField(strict=True, ge=1, le=180)
 
 
 class Passage(PassageBase, table=True):
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
+
     copied_from_id: uuid.UUID | None = Field(default=None)
     reading_sentence_seconds: list[ReadingSentenceSeconds | None] | None = Field(
         default=None, sa_type=JSON
@@ -265,6 +282,9 @@ class PassageCreate(PassageBase):
 
 # 学习单元（EIP 教材单元 → 学生端主题探索/学习路径）；顺序解锁 + 老师可全开
 class Unit(SQLModel, table=True):
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
+
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     order_index: int = Field(default=0, ge=0, index=True)
     title: str = Field(min_length=1, max_length=255)
@@ -399,6 +419,8 @@ FRAME_PURPOSES = (
 
 class SentenceFrame(SQLModel, table=True):
     __tablename__ = "sentence_frame"
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     # 共享五级（必填）：推荐时按题目实际难度匹配
@@ -423,6 +445,8 @@ class StudentExpressionFavorite(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint("student_id", "text", name="uq_student_expression_text"),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     student_id: uuid.UUID = Field(
@@ -471,6 +495,8 @@ class StudentFrameFavorite(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint("student_id", "frame_id", name="uq_student_frame_favorite"),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
 
 class SentenceFramePublic(SQLModel):
@@ -488,6 +514,8 @@ class SentenceFramePublic(SQLModel):
 class RepeatSentence(SQLModel, table=True):
     copied_from_id: uuid.UUID | None = Field(default=None)
     __tablename__ = "repeat_sentence"
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
 
@@ -527,6 +555,9 @@ class RepeatSentence(SQLModel, table=True):
 
 # 情景主题（来自 EIP），同主题一组问法分属低/中/高档（PRD §8.4）
 class Scenario(SQLModel, table=True):
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
+
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     topic: str = Field(unique=True, index=True, max_length=100)
     is_active: bool = True
@@ -541,6 +572,8 @@ class Scenario(SQLModel, table=True):
 class ScenarioQuestion(SQLModel, table=True):
     copied_from_id: uuid.UUID | None = Field(default=None)
     __tablename__ = "scenario_question"
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
 
@@ -595,6 +628,8 @@ class ScenarioQuestionPublic(SQLModel):
 class Instruction(SQLModel, table=True):
     copied_from_id: uuid.UUID | None = Field(default=None)
     __tablename__ = "instruction"
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     exam_settings: dict[str, object] | None = Field(default=None, sa_type=JSON)
 
@@ -637,6 +672,8 @@ class InstructionAck(SQLModel, table=True):
             "student_id", "session_id", "item_id", name="uq_instruction_ack_scope"
         ),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     student_id: uuid.UUID = Field(foreign_key="student.id", ondelete="CASCADE")
@@ -827,6 +864,8 @@ class ClassroomExercise(SQLModel, table=True):
             "classroom_id", "version_no", name="uq_classroom_exercise_version"
         ),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     classroom_id: uuid.UUID = Field(
@@ -874,6 +913,9 @@ class ComposerDraft(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint("classroom_id", "owner_id", name="uq_composer_draft_owner"),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
+
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     classroom_id: uuid.UUID = Field(
         foreign_key="classroom.id", ondelete="CASCADE", index=True
@@ -913,6 +955,8 @@ class ItemListen(SQLModel, table=True):
             "student_id", "session_id", "item_id", name="uq_item_listen_scope"
         ),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     student_id: uuid.UUID = Field(foreign_key="student.id", ondelete="CASCADE")
@@ -990,6 +1034,8 @@ class Student(SQLModel, table=True):
 # 徽章发放记录；定义见 app/scoring/gamification.py 的 BADGES 常量
 class StudentBadge(SQLModel, table=True):
     __tablename__ = "student_badge"
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: int | None = Field(default=None, primary_key=True)
     student_id: uuid.UUID = Field(
@@ -1063,6 +1109,8 @@ class PracticeSession(SQLModel, table=True):
         # 上述唯一索引全部 student_id 打头，纯日期条件不可用
         Index("ix_practice_session_session_date", "session_date"),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     exam_flow_state: dict[str, dict[str, str]] | None = Field(
         default=None, sa_type=JSON
@@ -1170,6 +1218,9 @@ class Attempt(SQLModel, table=True):
         # 复合索引对纯时间条件不可用
         Index("ix_attempt_created_at", "created_at"),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
+
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     # 作答对象：passage（MVP 整篇跟读）/ repeat（复述句）/ question（情景问答）
     item_type: str = Field(default=AttemptItemType.PASSAGE, max_length=16, index=True)
@@ -1617,6 +1668,8 @@ class VocabularyWord(SQLModel, table=True):
     """一条可考的词义；同形异义各有独立行（不共用 lemma 唯一约束）。"""
 
     __tablename__ = "vocabulary_word"
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     # 词形展示与判分主拼写；判分另接受 accepted_spellings 里的显式变体
@@ -1642,6 +1695,8 @@ class VocabularyBook(SQLModel, table=True):
     """词库：公共（管理员维护）或班级（教师自建）。版本化编辑不删旧任务。"""
 
     __tablename__ = "vocabulary_book"
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     title: str = Field(min_length=1, max_length=255)
@@ -1670,6 +1725,8 @@ class VocabularyBookItem(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint("book_id", "word_id", name="uq_vocab_book_word"),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     book_id: uuid.UUID = Field(
@@ -1696,6 +1753,8 @@ class VocabularyAssignment(SQLModel, table=True):
             "classroom_id", "version_no", name="uq_vocab_assignment_version"
         ),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     classroom_id: uuid.UUID = Field(
@@ -1758,6 +1817,8 @@ class VocabularyAssignmentTarget(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint("assignment_id", "student_id", name="uq_vocab_target_student"),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     assignment_id: uuid.UUID = Field(
@@ -1824,6 +1885,8 @@ class VocabularySession(SQLModel, table=True):
             ),
         ),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     classroom_id: uuid.UUID = Field(
@@ -1900,6 +1963,8 @@ class VocabularyAnswer(SQLModel, table=True):
         UniqueConstraint("idempotency_key", name="uq_vocab_answer_idempotency_key"),
         Index("ix_vocab_answer_session_item", "session_id", "item_index"),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     session_id: uuid.UUID = Field(
@@ -2351,6 +2416,8 @@ class VocabularyAiCache(SQLModel, table=True):
     """
 
     __tablename__ = "vocabulary_ai_cache"
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     cache_key: str = Field(max_length=128, unique=True)
@@ -2654,6 +2721,8 @@ class VocabularyLevelEntry(SQLModel, table=True):
         UniqueConstraint("headword", "level", "sense_no", name="uq_vocab_level_sense"),
         Index("ix_vocab_level_level_headword", "level", "headword"),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     # 匹配键：NFKC + 去首尾空白 + casefold（与拼写判分同口径）
@@ -2763,6 +2832,9 @@ class ClassroomReview(SQLModel, table=True):
     """Teacher-only discussion notes and an explicitly published class summary."""
 
     __tablename__ = "classroom_review"
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
+
     exercise_id: uuid.UUID = Field(
         primary_key=True, foreign_key="classroom_exercise.id", ondelete="CASCADE"
     )
@@ -2788,6 +2860,9 @@ class FollowupBatch(SQLModel, table=True):
     """Receipt for one atomic, idempotent individualized-practice assignment."""
 
     __tablename__ = "followup_batch"
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
+
     id: uuid.UUID = Field(primary_key=True)
     classroom_id: uuid.UUID = Field(
         foreign_key="classroom.id", ondelete="CASCADE", index=True
@@ -2816,6 +2891,9 @@ class ClassroomMessage(SQLModel, table=True):
             name="uq_classroom_message_request",
         ),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
+
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     classroom_id: uuid.UUID = Field(
         foreign_key="classroom.id", ondelete="CASCADE", index=True
@@ -3133,6 +3211,8 @@ class ExportJob(SQLModel, table=True):
         ),
         Index("ix_export_job_status_expires", "status", "expires_at"),
     )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     requester_user_id: uuid.UUID = Field(
@@ -3193,6 +3273,8 @@ class ExportAudit(SQLModel, table=True):
     """导出审计：谁、何时、范围、任务、结果。教师课堂导出必须留痕。"""
 
     __tablename__ = "export_audit"
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     job_id: uuid.UUID | None = Field(
