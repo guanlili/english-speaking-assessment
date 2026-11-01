@@ -117,3 +117,19 @@ passage（slug 全局唯一→改 (tenant_id,slug)）、repeat_sentence、scenar
 - 技术路线全部验证可行，无阻断项；四个高风险耦合点已有明确解法方向。
 - B 期（租户与身份，5-8 人日）建议首批 PR 切分：①Tenant/PlatformOperator 模型+迁移+双角色落地 ②(tenant_id, username/email) 复合唯一+登录租户解析+/s/{slug}/login ③TenantSession 工厂（原型转正）+HTTP 依赖注入 ④导入/加入跨校阻断 ⑤is_superuser 全量替换审计。每批走既有流程：PR → CI 全量 → 合并 → 双轨回填。
 - 估时复核（V1.0 §8 要求）：C 期 10-15 人日维持「偏紧」判断——35 表中 8 张 D 类裁决 + 约束/索引复合化工作量集中在 C；建议 B 期结束后按实际 PR 体感再校一次。
+
+---
+
+## 7. C 期执行切分（B 期完成后定稿，2026-11-01）
+
+B 期四刀已全部部署生产（A=#233 盘点 / B1=#234 租户地基 / B2=#235 学校入口 / B3=#236 运营独立身份）。C 期目标=全业务隔离（V1.0 §5），按「先落数据、再接上下文、最后收紧策略」三段推进，每刀独立可部署可回滚：
+
+| 刀 | 内容 | 依赖 | 风险点 |
+|---|---|---|---|
+| **C1 业务表租户落列** | 30 张业务表 tenant_id（B1 锚点定式推广：NOT NULL+server_default 默认租户+单列索引+命名 FK）。零查询行为变化，纯数据地基 | B1 | 无（增量漏写不可能；清单补漏 VocabularyBookItem） |
+| **C2 复合唯一与 UPSERT 适配** | §2-1/§2-2：passage.slug、scenario.topic 改 (tenant_id, X) 唯一；item_listen UPSERT 改按新约束名引用；幂等键（attempt/vocabulary_answer）保留全局唯一+命中租户核验 | C1 | class_runtime.py 原生 SQL 按约束名引用；词书/课堂码首期保留全局唯一（兼容旧入口） |
+| **C3 TenantSession 接线** | 原型转正进 get_db：登录租户随请求注入 ContextVar；后台 8 类任务按任务行 tenant_id 显式重绑（§1.4）；缺上下文默认放行（单租户窗口）→ 收紧开关 | C1 | worker/copy_context 提交路径；导出/评分/清扫线程自建 Session 全量排查 |
+| **C4 RLS 激活与双角色** | 全表 ENABLE+FORCE RLS + 策略（原型已验证）；DDL/运行双数据库角色切换（§4 表）；平台运营全局聚合走受控 BYPASSRLS 会话；缺上下文默认拒绝 | C3 | 就绪探针/迁移通道不能被拦死；备份 pg_dump 口径不变 |
+| **C5 越权验收与收口** | AC-01~12 合成双校测试全过；旧全局索引/兜底默认清理（设计稿 §9-5 收紧期）；role 值改名 admin→school_admin | C4 | 全链路回归面最大，e2e 补双租户场景 |
+
+阶段门：C4 前任何一刀都可独立上线不破坏单租户现状（默认租户=唯一真值）；C4 是不可逆点（回滚镜像须过「含 RLS 迁移链」检查，rollback.sh 增检查项随 C5 落地）。
