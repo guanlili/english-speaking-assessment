@@ -18,3 +18,9 @@
 6. 全站用户可见文案必须中英双语（外教使用）：前端用 `useI18n().t({ zh, en })`，参考实现见登录页；后端 `detail` 文案是稳定标识不得随意改措辞。详见 CLAUDE.md「双语准则」。
 7. 三端自适应（桌面/手机/iPad）：表单控件字号 ≥16px 防 iOS 聚焦放大、触控目标 ≥44px、新页面过 390/820/1180 三档宽度。详见 CLAUDE.md「三端自适应准则」。
 8. 多租户：新业务表用 `_tenant_id_field()` 工厂加租户列；跨校/平台口径用 `PlatformSessionDep`（学校端点禁用）；角色值 school_admin/teacher/student。RLS 已在生产强制，详见 CLAUDE.md「跨模块不变量」多租户条。
+
+## 项目管理试点
+
+执行前及收尾时阅读 [docs/project-management.md](docs/project-management.md)，按其中约定关联 Issue、PR、验证与交付证据。实际人工工时未经本人确认保持未记录；客户归属与工时可按用户确认范围公开记录，凭据与学生个人信息不得入库。既有 #222 双轨试运行约定仍有效，需求版本冲突先记录并澄清。
+
+项目身份、客户归属和试点基线见 [docs/project-profile.md](docs/project-profile.md)。
