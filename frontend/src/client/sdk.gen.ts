@@ -249,13 +249,17 @@ export class UsersService {
      * Create User
      *
      * Create new user. 学生账号建议走 /students/import 批量建号；
-     * 此处后台单个建号支持 teacher/admin（平台运营通道，B3 起门禁为
+     * 此处后台单个建号支持 teacher/school_admin（平台运营通道，B3 起门禁为
      * PlatformOperator；校级管理员自助建号随 D 期学校管理补齐）。
+     *
+     * 多租户 D1：school 指定目标学校（slug）——不传落默认学校；两校同
+     * 邮箱/学号各自合法，查重按目标学校内进行。
      */
     public static createUser<ThrowOnError extends boolean = true>(parameters: {
+        school?: string | null;
         userCreate: UserCreate;
     }, options?: Options<never, ThrowOnError>): RequestResult<UsersCreateUserResponses, UsersCreateUserErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ key: 'userCreate', map: 'body' }] }]);
+        const params = buildClientParams([parameters], [{ args: [{ in: 'query', key: 'school' }, { key: 'userCreate', map: 'body' }] }]);
         return (options?.client ?? client).post<UsersCreateUserResponses, UsersCreateUserErrors, ThrowOnError, 'data'>({
             responseStyle: 'data',
             security: [{ scheme: 'bearer', type: 'http' }],
