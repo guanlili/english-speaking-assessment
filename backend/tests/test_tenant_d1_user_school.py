@@ -95,6 +95,7 @@ def test_create_user_without_school_defaults(
     )
     assert resp.status_code == 200, resp.text
     row = db.exec(select(User).where(User.email == email)).first()
+    assert row is not None
     assert row.tenant_id == DEFAULT_TENANT_ID
     db.delete(row)
     db.commit()
