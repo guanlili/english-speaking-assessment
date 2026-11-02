@@ -6,7 +6,12 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from sqlmodel import col, select
 
-from app.api.deps import PlatformOperatorDep, SessionDep, StaffOrOperatorDep
+from app.api.deps import (
+    PlatformOperatorDep,
+    PlatformSessionDep,
+    SessionDep,
+    StaffOrOperatorDep,
+)
 from app.models import (
     ChangelogCreate,
     ChangelogEntry,
@@ -43,7 +48,7 @@ def read_changelog(session: SessionDep, _reader: StaffOrOperatorDep) -> Any:
 
 @router.post("", response_model=ChangelogPublic)
 def create_changelog_entry(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     entry_in: ChangelogCreate,
 ) -> Any:
@@ -57,7 +62,7 @@ def create_changelog_entry(
 
 @router.put("/{entry_id}", response_model=ChangelogPublic)
 def update_changelog_entry(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     entry_id: uuid.UUID,
     entry_in: ChangelogUpdate,
@@ -90,7 +95,7 @@ def update_changelog_entry(
 
 @router.delete("/{entry_id}")
 def delete_changelog_entry(
-    session: SessionDep, _operator: PlatformOperatorDep, entry_id: uuid.UUID
+    session: PlatformSessionDep, _operator: PlatformOperatorDep, entry_id: uuid.UUID
 ) -> dict[str, str]:
     entry = session.get(ChangelogEntry, entry_id)
     if entry is None:

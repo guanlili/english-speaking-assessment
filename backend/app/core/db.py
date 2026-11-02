@@ -1,4 +1,4 @@
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, col, create_engine, select
 
 from app import crud
 from app.core.config import settings
@@ -17,6 +17,7 @@ from app.models import (
 )
 
 _engine_override: object | None = None
+_platform_engine_override: object | None = None
 
 
 def set_engine(engine_obj: object | None) -> None:
@@ -25,23 +26,61 @@ def set_engine(engine_obj: object | None) -> None:
     _engine_override = engine_obj
 
 
+def set_platform_engine(engine_obj: object | None) -> None:
+    """测试用：覆盖平台通道 engine（未覆盖时回落主 engine 覆盖值/默认平台引擎）。"""
+    global _platform_engine_override
+    _platform_engine_override = engine_obj
+
+
 def _make_default_engine():
     # pool_pre_ping：PG 重启/连接被防火墙掐断后，借出前先探活，避免整批
     # "server closed the connection" 直到应用重启才恢复；
     # 池上限对齐「40 人班级齐交」的同步路由线程池峰值（默认 5+10 偏紧）
-    return create_engine(
+    from app.core.tenant_context import install_tenant_bind
+
+    engine = create_engine(
         str(settings.SQLALCHEMY_DATABASE_URI),
         pool_pre_ping=True,
         pool_size=10,
         max_overflow=20,
     )
+    # 多租户 C3：每次事务开始按 ContextVar 重绑 set_config（未绑定时零开销）
+    install_tenant_bind(engine)
+    return engine
+
+
+def _make_platform_engine():
+    """平台通道引擎（C4）：平台运营路由/后台平台任务用。
+
+    C4a 形态（未配 PLATFORM_POSTGRES_*）与主连接同——owner 对 RLS 天然
+    豁免，行为与 C3 等价；C4b 注入 BYPASSRLS 角色凭据后即生产激活。
+    平台通道不装租户绑定：它按定义就是跨租户口径（装了也会因 BYPASSRLS
+    无效果，不装避免每次事务多一次 set_config 往返）。
+    """
+    return create_engine(
+        str(settings.SQLALCHEMY_PLATFORM_DATABASE_URI),
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+    )
 
 
 _default_engine = _make_default_engine()
+_default_platform_engine = _make_platform_engine()
 
 
 def _get_engine():
     return _engine_override if _engine_override is not None else _default_engine
+
+
+def _get_platform_engine() -> object:
+    if _platform_engine_override is not None:
+        return _platform_engine_override
+    # 测试覆盖了主 engine 而未覆盖平台通道时，平台回落主覆盖引擎
+    # （测试库里的平台操作仍指向测试库）
+    if _engine_override is not None:
+        return _engine_override
+    return _default_platform_engine
 
 
 # 模块属性名保持 `engine`，get_db/worker/启动脚本均以 `from app.core.db import engine` 取值。
@@ -49,6 +88,8 @@ def _get_engine():
 def __getattr__(name):
     if name == "engine":
         return _get_engine()
+    if name == "platform_engine":
+        return _get_platform_engine()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -586,6 +627,16 @@ def init_db(session: Session) -> None:
         )
         session.commit()
 
+    # C5b 改名自愈：create_all 建库路径不走迁移，共享测试库里的存量
+    # 种子账号可能仍是旧值 admin——幂等对齐（迁移 e6f2c8a3d5b1 同款）
+    from sqlalchemy import update as _update
+
+    session.exec(  # type: ignore[call-overload]
+        _update(User)
+        .where(col(User.role) == "admin")  # type: ignore[arg-type]
+        .values(role="school_admin")
+    )
+
     user = session.exec(
         select(User).where(User.email == settings.FIRST_SUPERUSER)
     ).first()
@@ -595,7 +646,7 @@ def init_db(session: Session) -> None:
         user_in = UserCreate(
             email=settings.FIRST_SUPERUSER,
             password=settings.FIRST_SUPERUSER_PASSWORD,
-            role="admin",
+            role="school_admin",
         )
         user = crud.create_user(session=session, user_create=user_in)
 

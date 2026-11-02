@@ -13,5 +13,9 @@ export function useCanEditContent(): (ownerId?: string | null) => boolean {
     enabled: localStorage.getItem("access_token") !== null,
     staleTime: 5 * 60 * 1000,
   })
-  return (ownerId) => !ownerId || user?.role === "admin" || ownerId === user?.id
+  return (ownerId) =>
+    !ownerId ||
+    user?.role === "school_admin" ||
+    user?.role === "admin" || // 旧值兼容（C5b 过渡）
+    ownerId === user?.id
 }

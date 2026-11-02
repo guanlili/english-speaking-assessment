@@ -26,7 +26,7 @@ export const Route = createFileRoute("/_layout/settings")({
 function UserSettings() {
   const { user: currentUser } = useAuth()
   const finalTabs =
-    currentUser?.role === "admin"
+    currentUser?.role === "school_admin" || currentUser?.role === "admin"
       ? tabsConfig
       : tabsConfig.filter((t) => t.value !== "danger-zone")
 

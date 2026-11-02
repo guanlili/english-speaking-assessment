@@ -31,13 +31,26 @@ def get_datetime_utc() -> datetime:
 DEFAULT_TENANT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 
-def _tenant_id_field() -> Any:
-    """租户归属列工厂（B1 锚点定式：默认租户兜底，存量自动归位、增量漏写不可能）。
+def _current_tenant_or_default() -> uuid.UUID:
+    """写入侧租户继承（C5a）：ORM default 取当前上下文租户。
 
-    C1 只落数据地基——查询侧租户过滤随 C3 RLS 收口。
+    学校请求的上下文由 C3 中间件从 token tid 注入——乙校教师/学生的
+    写入自动落乙校（RLS WITH CHECK 才放行）；无上下文（admin 通道种子、
+    测试直插、平台任务未带 scope）回落默认租户（B1 兜底语义不变）。
+    """
+    from app.core.tenant_context import current_tenant_id
+
+    return current_tenant_id() or DEFAULT_TENANT_ID
+
+
+def _tenant_id_field() -> Any:
+    """租户归属列工厂（B1 锚点定式 + C5a 写入侧继承）。
+
+    default 动态继承当前上下文租户（见 _current_tenant_or_default）；
+    server_default 保留固定默认租户（DB 层兜底只服务 admin/迁移通道）。
     """
     return Field(
-        default=DEFAULT_TENANT_ID,
+        default_factory=_current_tenant_or_default,
         foreign_key="tenant.id",
         nullable=False,
         sa_column_kwargs={"server_default": text(f"'{DEFAULT_TENANT_ID}'")},
@@ -135,13 +148,7 @@ class User(UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     # 租户归属：B1 起列级默认兜底（ORM default + server_default 双保险），
     # 全表 NOT NULL——存量由迁移回填，增量不可能漏写
-    tenant_id: uuid.UUID = Field(
-        default=DEFAULT_TENANT_ID,
-        foreign_key="tenant.id",
-        nullable=False,
-        sa_column_kwargs={"server_default": text(f"'{DEFAULT_TENANT_ID}'")},
-        index=True,
-    )
+    tenant_id: uuid.UUID = _tenant_id_field()
     hashed_password: str
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
@@ -783,13 +790,7 @@ class Classroom(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     code: str = Field(unique=True, index=True, max_length=16)
     # 租户归属随 owner 落库（B1 列级默认兜底，收紧期改为显式注入+复核）
-    tenant_id: uuid.UUID = Field(
-        default=DEFAULT_TENANT_ID,
-        foreign_key="tenant.id",
-        nullable=False,
-        sa_column_kwargs={"server_default": text(f"'{DEFAULT_TENANT_ID}'")},
-        index=True,
-    )
+    tenant_id: uuid.UUID = _tenant_id_field()
     # 教师自定义课堂信息；课堂难度由发布时选择的内容决定，不再依赖档位。
     name: str = Field(default="未命名课堂", max_length=120)
     grade: str | None = Field(default=None, max_length=64)
@@ -993,13 +994,7 @@ class ClassroomCreate(SQLModel):
 class Student(SQLModel, table=True):
     classroom_activity: dict[str, object] | None = Field(default=None, sa_type=JSON)
     # 租户随课堂推导（B1 列级默认兜底；回填/收紧期校验与课堂一致）
-    tenant_id: uuid.UUID = Field(
-        default=DEFAULT_TENANT_ID,
-        foreign_key="tenant.id",
-        nullable=False,
-        sa_column_kwargs={"server_default": text(f"'{DEFAULT_TENANT_ID}'")},
-        index=True,
-    )
+    tenant_id: uuid.UUID = _tenant_id_field()
 
     __tablename__ = "student"
     __table_args__ = (

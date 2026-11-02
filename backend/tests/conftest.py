@@ -67,7 +67,75 @@ def _create_test_database() -> Engine:
         )
         conn.execute(text(f'CREATE DATABASE "{settings.POSTGRES_DB_TEST}"'))
     admin_engine.dispose()
-    return create_engine(str(settings.SQLALCHEMY_DATABASE_TEST_URI))
+    from app.core.tenant_context import install_tenant_bind
+
+    engine = create_engine(str(settings.SQLALCHEMY_DATABASE_TEST_URI))
+    # 与生产引擎同款租户事务绑定（C3）：测试里的 tenant_scope 语义与线上一致
+    install_tenant_bind(engine)
+    return engine
+
+
+def _setup_rls_and_roles(engine) -> None:
+    """多租户 C4a：建表后立刻铺 RLS 策略与受限角色（此刻无并发连接，
+    ALTER TABLE 的 ACCESS EXCLUSIVE 锁不会与 session 级 db fixture 的
+    idle-in-transaction 连接互堵——测试中途铺设曾把全量锁死 15 分钟）。
+
+    与迁移 b5d9e4f1a8c7 同语句；角色是集群级对象，幂等创建。
+    """
+    from app.alembic.versions.b5d9e4f1a8c7_multi_tenant_c4a_rls_policies import (
+        POLICY,
+        RLS_TABLES,
+    )
+
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as c:
+        # ALTER/DROP POLICY 要 ACCESS EXCLUSIVE 锁：任何挂在 app_test 上的
+        # idle-in-transaction 连接（上一轮被杀进程的遗留、或在途模块的
+        # 活事务）都会把铺设死锁。测试库独占，先清场再拿锁；
+        # lock_timeout 兜底防无限等待
+        c.execute(
+            text(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname = current_database() AND pid <> pg_backend_pid()"
+            )
+        )
+        c.execute(text("SET lock_timeout = '10s'"))
+        for table in RLS_TABLES:
+            c.execute(text(f"DROP POLICY IF EXISTS tenant_isolation ON {table}"))
+            c.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
+            c.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+            c.execute(
+                text(
+                    f"CREATE POLICY tenant_isolation ON {table} "
+                    f"USING ({POLICY}) WITH CHECK ({POLICY})"
+                )
+            )
+        for role, pw in [
+            ("esa_app_test", "esa_app_test_pw"),
+            ("esa_platform_test", "esa_platform_test_pw"),
+        ]:
+            c.execute(
+                text(
+                    f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles "
+                    f"WHERE rolname = '{role}') THEN "
+                    f"CREATE ROLE {role} LOGIN PASSWORD '{pw}'; END IF; END $$"
+                )
+            )
+        c.execute(
+            text(
+                "ALTER ROLE esa_app_test NOSUPERUSER NOBYPASSRLS "
+                "NOCREATEROLE NOCREATEDB"
+            )
+        )
+        c.execute(text("ALTER ROLE esa_platform_test NOSUPERUSER BYPASSRLS"))
+        for role in ("esa_app_test", "esa_platform_test"):
+            c.execute(text(f"GRANT USAGE ON SCHEMA public TO {role}"))
+            c.execute(
+                text(
+                    f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES "
+                    f"IN SCHEMA public TO {role}"
+                )
+            )
+            c.execute(text(f"GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO {role}"))
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -91,6 +159,8 @@ def db() -> Generator[Session]:
     # 测试库独立于 Alembic 迁移直接建表（模板测试不需要迁移链），
     # checkfirst 保证重复运行安全
     SQLModel.metadata.create_all(engine)
+    # 多租户 C4a：建表后无并发连接的窗口铺 RLS 策略与受限角色
+    _setup_rls_and_roles(engine)
 
     # 全局 engine 覆盖：worker、startup_recovery、get_db 依赖全部使用测试库
     # （core.db.__getattr__ 动态返回覆盖引擎，避免任何模块级 import 拿到开发库）

@@ -31,7 +31,9 @@ target_metadata = SQLModel.metadata
 
 
 def get_url():
-    return str(settings.SQLALCHEMY_DATABASE_URI)
+    # C4b：迁移走 admin/owner 连接（受限角色无 DDL 权限；owner 绕 RLS，
+    # 回填类迁移在激活后依然可行）
+    return str(settings.SQLALCHEMY_ADMIN_DATABASE_URI)
 
 
 def run_migrations_offline():

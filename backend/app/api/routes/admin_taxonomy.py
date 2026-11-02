@@ -10,7 +10,12 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import Field, SQLModel, col, func, select
 
-from app.api.deps import PlatformOperatorDep, SessionDep, TeacherUserDep
+from app.api.deps import (
+    PlatformOperatorDep,
+    PlatformSessionDep,
+    SessionDep,
+    TeacherUserDep,
+)
 from app.api.routes._content_common import _reject_null_non_nullable
 from app.models import (
     EXAM_KIND_QUESTION,
@@ -56,7 +61,7 @@ def _active_passage_counts(session: SessionDep) -> dict[uuid.UUID, int]:
 # 单元增删改仅管理员：教师页面只读单元（出题选择），与权限矩阵一致
 @router.post("/units", response_model=UnitPublic)
 def create_unit(
-    session: SessionDep, _operator: PlatformOperatorDep, unit_in: UnitCreate
+    session: PlatformSessionDep, _operator: PlatformOperatorDep, unit_in: UnitCreate
 ) -> Any:
     unit = Unit.model_validate(unit_in)
     session.add(unit)
@@ -67,7 +72,7 @@ def create_unit(
 
 @router.put("/units/{unit_id}", response_model=UnitPublic)
 def update_unit(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     unit_id: uuid.UUID,
     unit_in: UnitUpdate,
@@ -94,7 +99,7 @@ def update_unit(
 
 @router.delete("/units/{unit_id}")
 def delete_unit(
-    session: SessionDep, _operator: PlatformOperatorDep, unit_id: uuid.UUID
+    session: PlatformSessionDep, _operator: PlatformOperatorDep, unit_id: uuid.UUID
 ) -> dict[str, str]:
     unit = session.get(Unit, unit_id)
     if unit is None:
@@ -175,7 +180,7 @@ class SentenceFramesListOut(SQLModel):
 # 句型库管理整套端点仅管理员：前端唯一调用方是 /admin/sentenceframes 管理页
 @router.get("/sentence-frames", response_model=SentenceFramesListOut)
 def list_sentence_frames(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     level: str | None = Query(default=None, description="五级筛选"),
     purpose: str | None = Query(default=None, description="表达用途筛选"),
@@ -216,7 +221,7 @@ def list_sentence_frames(
 
 @router.post("/sentence-frames", response_model=SentenceFramePublic)
 def create_sentence_frame(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     frame_in: SentenceFrameCreate,
 ) -> Any:
@@ -232,7 +237,7 @@ def create_sentence_frame(
 
 @router.put("/sentence-frames/{frame_id}", response_model=SentenceFramePublic)
 def update_sentence_frame(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     frame_id: uuid.UUID,
     frame_in: SentenceFrameUpdate,
@@ -277,7 +282,7 @@ class SentenceFrameBatchResult(SQLModel):
 
 @router.post("/sentence-frames/batch", response_model=SentenceFrameBatchResult)
 def create_sentence_frames_batch(
-    session: SessionDep,
+    session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
     items: list[SentenceFrameBatchItem],
 ) -> Any:
@@ -332,7 +337,7 @@ def create_sentence_frames_batch(
 
 @router.delete("/sentence-frames/{frame_id}")
 def delete_sentence_frame(
-    session: SessionDep, _operator: PlatformOperatorDep, frame_id: uuid.UUID
+    session: PlatformSessionDep, _operator: PlatformOperatorDep, frame_id: uuid.UUID
 ) -> dict[str, str]:
     frame = session.get(SentenceFrame, frame_id)
     if frame is None:

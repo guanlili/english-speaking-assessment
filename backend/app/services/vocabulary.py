@@ -129,7 +129,9 @@ def resolve_publish_words(
     超过实际可出题量——清单里多余/归档词直接 422，避免静默缩水）。
     """
     allowed_book_ids: set[uuid.UUID] | None = (
-        None if viewer.role == "admin" else visible_book_ids_for(session, viewer.id)
+        None
+        if viewer.role == "school_admin"
+        else visible_book_ids_for(session, viewer.id)
     )
 
     def _book_allowed(book: VocabularyBook) -> bool:
@@ -1792,7 +1794,7 @@ def get_book_or_404(session: Session, book_id: uuid.UUID) -> VocabularyBook:
 
 def require_book_editor(book: VocabularyBook, current_user: User) -> None:
     """词库编辑权：公共词库仅管理员；班级词库为本班教师或管理员。"""
-    if current_user.role == "admin":
+    if current_user.role == "school_admin":
         return
     if (
         book.scope == "classroom"

@@ -560,12 +560,12 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
 def _complete_detail(
     attempt_id: uuid.UUID, context: RubricQuestionContext, transcript: str
 ) -> None:
-    from app.core.db import engine
+    from app.core.db import platform_engine
 
     # 执行开始即续期（返修R06）：排队时刻换成执行时刻，清扫的 120 秒
     # 超时从此计——线程池排队再久也不会被误判；已被清扫关闭（非
     # pending）则放弃本次调用，不烧费用
-    with Session(engine) as session:
+    with Session(platform_engine) as session:
         attempt = session.get(Attempt, attempt_id)
         if attempt is not None and attempt.status == AttemptStatus.DONE:
             session.refresh(attempt, with_for_update=True)
@@ -586,7 +586,7 @@ def _complete_detail(
                 return
 
     result = _score_rubric(context, transcript)
-    with Session(engine) as session:
+    with Session(platform_engine) as session:
         attempt = session.get(Attempt, attempt_id)
         if attempt is not None and attempt.status == AttemptStatus.DONE:
             # 行锁内确认 rubric 仍处于 pending：先到先得，迟到的旧 detail
@@ -608,9 +608,18 @@ def _complete_detail(
 
 def _run_in_worker(attempt_id: uuid.UUID) -> None:
     # 延迟导入避免与 app.api.deps 的导入环
-    from app.core.db import engine
+    from contextlib import nullcontext
 
-    with Session(engine) as session:
+    from app.core.db import platform_engine
+    from app.core.tenant_context import tenant_scope
+
+    # 多租户 C3：按任务行租户重绑（投递方上下文可能是 HTTP 请求的，也
+    # 可能是重试 Timer/启动恢复的空上下文——任务自身归属才是事实源；
+    # 领取查询本身不设上下文，C4 RLS 激活时领取通道单独处理）
+    with Session(platform_engine) as probe:
+        row = probe.get(Attempt, attempt_id)
+        scope = tenant_scope(row.tenant_id) if row is not None else nullcontext()
+    with scope, Session(platform_engine) as session:
         process_attempt(session, attempt_id)
         # 失败重排队后必须重新投递，否则作答会永久卡在 queued
         # （retry_count 上限兜底，不会无限循环；测试直接调 process_attempt 不走这里）
@@ -888,9 +897,9 @@ def sweep_orphans(session: Session) -> int:
 
 def startup_recovery() -> None:
     """进程启动时恢复僵尸 scoring 作答并重新提交评分。"""
-    from app.core.db import engine
+    from app.core.db import platform_engine
 
-    with Session(engine) as session:
+    with Session(platform_engine) as session:
         # 同 sweep_orphans：SQL 层筛「rubric 处于 pending」+ load_only 窄列，
         # 启动不把整个学期的 DONE 行拉回 Python；挂起按详情阶段开始时刻
         # 判定（详见 _detail_stale）
@@ -952,10 +961,10 @@ _sweeper_thread: threading.Thread | None = None
 def _sweep_loop(stop_event: threading.Event) -> None:
     while not stop_event.wait(SWEEP_INTERVAL_S):
         # 引擎每轮重新解析：测试用 set_engine/monkeypatch 覆盖后，清扫也跟着指向目标库
-        from app.core.db import engine
+        from app.core.db import platform_engine
 
         try:
-            with Session(engine) as session:
+            with Session(platform_engine) as session:
                 sweep_orphans(session)
         except Exception:  # noqa: BLE001 - 清扫是兜底，失败只记日志不能带崩线程
             logger.exception("scoring sweeper iteration failed")

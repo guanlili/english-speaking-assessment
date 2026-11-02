@@ -30,6 +30,20 @@ def get_db() -> Generator[Session]:
 
 
 SessionDep = Annotated[Session, Depends(get_db)]
+
+
+def get_platform_db() -> Generator[Session]:
+    """平台通道会话（C4）：平台运营路由/跨租户口径操作专用。
+
+    引擎来自 core.db.platform_engine——C4a 形态与主连接同（RLS 对 owner
+    豁免，行为不变）；C4b 切 BYPASSRLS 凭据后这些路由即按平台口径通行。
+    学校业务端点不得使用本依赖（语义即「无租户边界」）。
+    """
+    with Session(_db.platform_engine) as session:  # type: ignore[attr-defined]
+        yield session
+
+
+PlatformSessionDep = Annotated[Session, Depends(get_platform_db)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
 
@@ -85,6 +99,15 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
         )
     # token 绑定签发时的密码哈希指纹：改密/重置后旧 token 失效（含不带 pwd 声明的旧格式 token）
     if token_data.pwd != security.password_fingerprint(user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="登录凭证已失效，请重新登录",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    # C3：token 租户声明与用户行不一致（伪造 tid 或账号迁移后旧 token）→ 401。
+    # 中间件按 tid 预设了请求上下文，这里保证它与库中事实一致后上下文才可信。
+    # 无 tid 的旧 token（演示登录等）不比对——上下文为空，鉴权照常按用户行执行
+    if token_data.tid is not None and token_data.tid != str(user.tenant_id):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="登录凭证已失效，请重新登录",
@@ -149,8 +172,8 @@ PlatformOperatorDep = Annotated[
 
 
 def _require_role(current_user: User, *allowed: str) -> User:
-    """角色门：校级 admin 恒通过（校级管理员 ⇔ role=="admin"，B3 起无全局超管）。"""
-    if current_user.role == "admin" or current_user.role in allowed:
+    """角色门：校级 admin 恒通过（校级管理员 ⇔ role=="school_admin"，B3 起无全局超管）。"""
+    if current_user.role == "school_admin" or current_user.role in allowed:
         return current_user
     raise HTTPException(status_code=403, detail=f"该操作需要角色：{'/'.join(allowed)}")
 
@@ -162,7 +185,7 @@ def get_current_teacher(current_user: CurrentUser) -> User:
 
 def get_current_student(current_user: CurrentUser) -> User:
     """仅学生（学生端练习链路）。"""
-    if current_user.role != "student" and current_user.role != "admin":
+    if current_user.role != "student" and current_user.role != "school_admin":
         raise HTTPException(status_code=403, detail="该操作仅限学生账号")
     return current_user
 
@@ -214,7 +237,7 @@ def get_current_staff_or_operator(
         )
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Inactive user")
-    if user.role not in ("teacher", "admin"):
+    if user.role not in ("teacher", "school_admin"):
         raise HTTPException(status_code=403, detail="该操作需要教职工或平台运营身份")
     return user
 
@@ -252,6 +275,9 @@ def get_optional_current_user(
         return None
     # 改密后的旧 token 同样按无效处理（与 get_current_user 一致，只是静默降级为匿名）
     if token_data.pwd != security.password_fingerprint(user.hashed_password):
+        return None
+    # C3：租户声明不一致按无效处理（与 get_current_user 同口径，静默降级）
+    if token_data.tid is not None and token_data.tid != str(user.tenant_id):
         return None
     return user
 

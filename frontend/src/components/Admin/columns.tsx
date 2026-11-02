@@ -52,7 +52,7 @@ export function buildUserColumns(t: Translate): ColumnDef<UserTableData>[] {
       header: t({ zh: "角色", en: "Role" }),
       cell: ({ row }) => {
         const { role } = row.original
-        const isAdmin = role === "admin"
+        const isAdmin = role === "school_admin" || role === "admin"
         const isStudent = !isAdmin && role === "student"
         return (
           <Badge

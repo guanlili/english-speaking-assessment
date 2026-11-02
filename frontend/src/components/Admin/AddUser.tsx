@@ -51,7 +51,18 @@ function buildFormSchema(t: ReturnType<typeof useI18n>["t"]) {
         }),
       }),
       full_name: z.string().optional(),
-      role: z.enum(["teacher", "admin"]),
+      role: z.enum(["teacher", "school_admin"]),
+      school: z
+        .string()
+        .trim()
+        .regex(/^[a-z0-9][a-z0-9-]{1,30}$/, {
+          message: t({
+            zh: "学校码：小写字母/数字/连字符",
+            en: "School code: lowercase letters, digits, hyphens",
+          }),
+        })
+        .optional()
+        .or(z.literal("")),
       password: z
         .string()
         .min(1, {
@@ -100,12 +111,19 @@ const AddUser = () => {
       password: "",
       confirm_password: "",
       is_active: true,
+      school: "",
     },
   })
 
+  // 多租户 D1：可选学校码（运营给指定学校建号；留空=默认学校）
   const mutation = useMutation({
-    mutationFn: (data: UserCreate) =>
-      UsersService.createUser({ userCreate: data }),
+    mutationFn: (data: UserCreate & { school?: string }) => {
+      const { school, ...userCreate } = data
+      return UsersService.createUser({
+        userCreate,
+        ...(school?.trim() ? { school: school.trim() } : {}),
+      })
+    },
     onSuccess: () => {
       showSuccessToast(
         t({ zh: "用户创建成功", en: "User created successfully" }),
@@ -187,6 +205,35 @@ const AddUser = () => {
 
               <FormField
                 control={form.control}
+                name="school"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t({ zh: "学校码", en: "School code" })}{" "}
+                      <span className="text-muted-foreground text-xs">
+                        {t({
+                          zh: "（选填，给其他学校建号时填写）",
+                          en: " (optional, for another school)",
+                        })}
+                      </span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={t({
+                          zh: "留空=默认学校",
+                          en: "Empty = default school",
+                        })}
+                        type="text"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="password"
                 render={({ field }) => (
                   <FormItem>
@@ -248,7 +295,7 @@ const AddUser = () => {
                         <SelectItem value="teacher">
                           {t({ zh: "教师", en: "Teacher" })}
                         </SelectItem>
-                        <SelectItem value="admin">
+                        <SelectItem value="school_admin">
                           {t({ zh: "管理员", en: "Admin" })}
                         </SelectItem>
                       </SelectContent>

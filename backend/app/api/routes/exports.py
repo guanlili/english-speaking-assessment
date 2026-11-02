@@ -167,7 +167,7 @@ def _visible(session: SessionDep, job_id: uuid.UUID, user: User) -> ExportJob:
     job = session.get(ExportJob, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Export job not found")
-    if job.requester_user_id != user.id and user.role != "admin":
+    if job.requester_user_id != user.id and user.role != "school_admin":
         raise HTTPException(status_code=403, detail="没有权限：只能查看自己的导出任务")
     return job
 
@@ -669,7 +669,7 @@ def retry_export(
     submitter: ExportSubmitter,
 ) -> ExportJobPublic:
     job = _visible(session, job_id, current_user)
-    if job.requester_user_id != current_user.id and current_user.role != "admin":
+    if job.requester_user_id != current_user.id and current_user.role != "school_admin":
         raise HTTPException(status_code=403, detail="没有权限：只能查看自己的导出任务")
     if job.status != ExportJobStatus.FAILED:
         raise HTTPException(status_code=409, detail="export_retry_not_failed")

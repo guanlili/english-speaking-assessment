@@ -302,7 +302,7 @@ def test_demo_login_issues_admin_token(client: TestClient) -> None:
     headers = {"Authorization": f"Bearer {token}"}
     me = client.get("/api/v1/users/me", headers=headers)
     assert me.status_code == 200
-    assert me.json()["role"] == "admin"
+    assert me.json()["role"] == "school_admin"
 
 
 def test_password_change_invalidates_old_tokens(

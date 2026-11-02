@@ -20,7 +20,7 @@ ALGORITHM = "HS256"
 
 # 校级三角色：admin（校级管理员）/ teacher / student。
 # 平台运营是独立身份（PlatformOperator 表 + operator token），不在角色集内
-VALID_ROLES = {"admin", "teacher", "student"}
+VALID_ROLES = {"school_admin", "teacher", "student"}
 
 
 def create_access_token(

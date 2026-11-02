@@ -32,9 +32,18 @@ from app.models import (
 logger = logging.getLogger(__name__)
 
 
-def create_user(*, session: Session, user_create: UserCreate) -> User:
+def create_user(
+    *,
+    session: Session,
+    user_create: UserCreate,
+    tenant_id: uuid.UUID | None = None,
+) -> User:
+    """建号。tenant_id 显式指定目标学校（多租户 D1 平台建号通道）；
+    None 时由模型工厂接管（请求上下文继承或回落默认，见 C5a）。"""
+    extra: dict[str, uuid.UUID] = {"tenant_id": tenant_id} if tenant_id else {}
     db_obj = User.model_validate(
-        user_create, update={"hashed_password": get_password_hash(user_create.password)}
+        user_create,
+        update={"hashed_password": get_password_hash(user_create.password)} | extra,
     )
     session.add(db_obj)
     session.commit()
@@ -242,8 +251,8 @@ def classroom_teacher_allowed(classroom: Classroom, user: User) -> bool:
     本班 owner（绑定教师）或校级管理员可过；owner 未绑定的课堂任何教师
     都不可过（课堂码不是教师凭据）。students / class_shared 两套适配层
     停用课堂与 403 文案语义不同，但判定核心必须是同一个。
-    B3 起管理员判定认 role=="admin"（is_superuser 已随身份拆分移除）。"""
-    if user.role == "admin":
+    B3 起管理员判定认 role=="school_admin"（is_superuser 已随身份拆分移除）。"""
+    if user.role == "school_admin":
         return True
     return classroom.owner_id is not None and classroom.owner_id == user.id
 
