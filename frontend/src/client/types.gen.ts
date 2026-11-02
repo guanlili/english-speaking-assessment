@@ -5016,6 +5016,82 @@ export type TeacherFeedbackWrite = {
 };
 
 /**
+ * TenantAdminPublic
+ *
+ * 运营视角的学校行：基础字段 + 账号数（排空校/核对开通）。
+ */
+export type TenantAdminPublic = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Slug
+     */
+    slug: string;
+    /**
+     * Name Zh
+     */
+    name_zh: string;
+    /**
+     * Name En
+     */
+    name_en: string | null;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Timezone
+     */
+    timezone: string;
+    /**
+     * Created At
+     */
+    created_at?: unknown | null;
+    /**
+     * User Count
+     */
+    user_count?: number;
+};
+
+/**
+ * TenantCreate
+ */
+export type TenantCreate = {
+    /**
+     * Slug
+     */
+    slug: string;
+    /**
+     * Name Zh
+     */
+    name_zh: string;
+    /**
+     * Name En
+     */
+    name_en?: string | null;
+};
+
+/**
+ * TenantUpdate
+ */
+export type TenantUpdate = {
+    /**
+     * Name Zh
+     */
+    name_zh?: string | null;
+    /**
+     * Name En
+     */
+    name_en?: string | null;
+    /**
+     * Status
+     */
+    status?: string | null;
+};
+
+/**
  * TodayPlan
  */
 export type TodayPlan = {
@@ -5325,6 +5401,10 @@ export type UserPublic = {
      * Created At
      */
     created_at?: string | null;
+    /**
+     * Tenant Id
+     */
+    tenant_id?: string | null;
 };
 
 /**
@@ -7779,6 +7859,12 @@ export type UsersReadUsersData = {
          * Role
          */
         role?: string | null;
+        /**
+         * School
+         *
+         * 学校码筛选（D2）
+         */
+        school?: string | null;
     };
     url: '/api/v1/users/';
 };
@@ -12189,6 +12275,79 @@ export type AdminCreateSentenceFramesBatchResponses = {
 };
 
 export type AdminCreateSentenceFramesBatchResponse = AdminCreateSentenceFramesBatchResponses[200 & keyof AdminCreateSentenceFramesBatchResponses];
+
+export type AdminListTenantsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/tenants';
+};
+
+export type AdminListTenantsResponses = {
+    /**
+     * Response Admin-List Tenants
+     *
+     * Successful Response
+     */
+    200: Array<TenantAdminPublic>;
+};
+
+export type AdminListTenantsResponse = AdminListTenantsResponses[200 & keyof AdminListTenantsResponses];
+
+export type AdminCreateTenantData = {
+    body: TenantCreate;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/tenants';
+};
+
+export type AdminCreateTenantErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminCreateTenantError = AdminCreateTenantErrors[keyof AdminCreateTenantErrors];
+
+export type AdminCreateTenantResponses = {
+    /**
+     * Successful Response
+     */
+    200: TenantAdminPublic;
+};
+
+export type AdminCreateTenantResponse = AdminCreateTenantResponses[200 & keyof AdminCreateTenantResponses];
+
+export type AdminUpdateTenantData = {
+    body: TenantUpdate;
+    path: {
+        /**
+         * Tenant Id
+         */
+        tenant_id: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/tenants/{tenant_id}';
+};
+
+export type AdminUpdateTenantErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminUpdateTenantError = AdminUpdateTenantErrors[keyof AdminUpdateTenantErrors];
+
+export type AdminUpdateTenantResponses = {
+    /**
+     * Successful Response
+     */
+    200: TenantAdminPublic;
+};
+
+export type AdminUpdateTenantResponse = AdminUpdateTenantResponses[200 & keyof AdminUpdateTenantResponses];
 
 export type AdminCopySchoolContentData = {
     body?: never;

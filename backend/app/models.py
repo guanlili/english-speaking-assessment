@@ -167,6 +167,8 @@ class User(UserBase, table=True):
 class UserPublic(UserBase):
     id: uuid.UUID
     created_at: datetime | None = None
+    # 所属学校（D2 运营视角：用户管理的学校维度；学校侧端点恒为本校）
+    tenant_id: uuid.UUID | None = None
 
 
 class UsersPublic(SQLModel):

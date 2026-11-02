@@ -22,6 +22,7 @@ const SCHOOL_ADMIN_ALLOWED = [...TEACHER_ALLOWED, "/admin/vocabbooks"]
 const OPERATOR_ALLOWED = [
   "/admin",
   "/admin/dashboard",
+  "/admin/schools",
   "/admin/units",
   "/admin/vocablevels",
   "/admin/sentenceframes",
