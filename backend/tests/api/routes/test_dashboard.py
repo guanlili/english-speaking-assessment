@@ -271,7 +271,7 @@ def test_dashboard_overview_and_usage_semantics(
     content = resp.json()
     assert content["classrooms_total"] >= 2
     assert content["classrooms_active"] >= 2
-    # 种子首账号 B3 起即校级 admin（init_db 显式 role="admin"）
+    # 种子首账号 B3 起即校级 admin（init_db 显式 role="school_admin"）
     assert content["users_admin"] >= 1
     assert content["student_accounts"] >= 3
     assert content["student_profiles"] >= 3

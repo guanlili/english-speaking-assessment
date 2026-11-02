@@ -237,7 +237,7 @@ def test_ac01_same_username_two_schools(
     db.refresh(u_b)
     assert u_b.tenant_id == b_tenant.id
 
-    # 按乙校解析登录命中乙校账号
+    # 按乙校解析登录命中乙校账号（两校同号各自可登录 = AC-01 本体）
     got = crud.authenticate(
         session=db,
         account=shared,
@@ -245,9 +245,13 @@ def test_ac01_same_username_two_schools(
         school_slug=b_tenant.slug,
     )
     assert got is not None and got.id == u_b.id
+    # 按甲校（默认租户 slug）解析命中甲校账号
     got_a = crud.authenticate(
         session=db,
         account=shared,
         password="pw-a-12345678",
+        school_slug="default",
     )
     assert got_a is not None and got_a.id == u_a.id
+    # 无 school 的全局查找在跨租户重号下 first() 命中顺序不定（单校窗口
+    # 兼容通道，不构成验收语义）——不做断言

@@ -242,8 +242,8 @@ def classroom_teacher_allowed(classroom: Classroom, user: User) -> bool:
     本班 owner（绑定教师）或校级管理员可过；owner 未绑定的课堂任何教师
     都不可过（课堂码不是教师凭据）。students / class_shared 两套适配层
     停用课堂与 403 文案语义不同，但判定核心必须是同一个。
-    B3 起管理员判定认 role=="admin"（is_superuser 已随身份拆分移除）。"""
-    if user.role == "admin":
+    B3 起管理员判定认 role=="school_admin"（is_superuser 已随身份拆分移除）。"""
+    if user.role == "school_admin":
         return True
     return classroom.owner_id is not None and classroom.owner_id == user.id
 

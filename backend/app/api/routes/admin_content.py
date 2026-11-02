@@ -216,7 +216,7 @@ def update_classroom(
         owner = session.get(_User, update["owner_id"])
         if owner is None:
             raise HTTPException(status_code=422, detail="教师账号不存在")
-        if owner.role not in ("admin", "teacher"):
+        if owner.role not in ("school_admin", "teacher"):
             raise HTTPException(status_code=422, detail="被绑定账号不是教师角色")
     if update.get("class_size") is not None:
         crud.ensure_class_size_feasible(

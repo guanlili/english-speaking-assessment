@@ -1,4 +1,4 @@
-from sqlmodel import Session, create_engine, select
+from sqlmodel import Session, col, create_engine, select
 
 from app import crud
 from app.core.config import settings
@@ -627,6 +627,16 @@ def init_db(session: Session) -> None:
         )
         session.commit()
 
+    # C5b 改名自愈：create_all 建库路径不走迁移，共享测试库里的存量
+    # 种子账号可能仍是旧值 admin——幂等对齐（迁移 e6f2c8a3d5b1 同款）
+    from sqlalchemy import update as _update
+
+    session.exec(  # type: ignore[call-overload]
+        _update(User)
+        .where(col(User.role) == "admin")  # type: ignore[arg-type]
+        .values(role="school_admin")
+    )
+
     user = session.exec(
         select(User).where(User.email == settings.FIRST_SUPERUSER)
     ).first()
@@ -636,7 +646,7 @@ def init_db(session: Session) -> None:
         user_in = UserCreate(
             email=settings.FIRST_SUPERUSER,
             password=settings.FIRST_SUPERUSER_PASSWORD,
-            role="admin",
+            role="school_admin",
         )
         user = crud.create_user(session=session, user_create=user_in)
 

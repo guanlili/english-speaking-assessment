@@ -51,7 +51,7 @@ function buildFormSchema(t: ReturnType<typeof useI18n>["t"]) {
         }),
       }),
       full_name: z.string().optional(),
-      role: z.enum(["teacher", "admin"]),
+      role: z.enum(["teacher", "school_admin"]),
       password: z
         .string()
         .min(1, {
@@ -248,7 +248,7 @@ const AddUser = () => {
                         <SelectItem value="teacher">
                           {t({ zh: "教师", en: "Teacher" })}
                         </SelectItem>
-                        <SelectItem value="admin">
+                        <SelectItem value="school_admin">
                           {t({ zh: "管理员", en: "Admin" })}
                         </SelectItem>
                       </SelectContent>

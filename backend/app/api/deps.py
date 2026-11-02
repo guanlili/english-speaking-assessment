@@ -172,8 +172,8 @@ PlatformOperatorDep = Annotated[
 
 
 def _require_role(current_user: User, *allowed: str) -> User:
-    """角色门：校级 admin 恒通过（校级管理员 ⇔ role=="admin"，B3 起无全局超管）。"""
-    if current_user.role == "admin" or current_user.role in allowed:
+    """角色门：校级 admin 恒通过（校级管理员 ⇔ role=="school_admin"，B3 起无全局超管）。"""
+    if current_user.role == "school_admin" or current_user.role in allowed:
         return current_user
     raise HTTPException(status_code=403, detail=f"该操作需要角色：{'/'.join(allowed)}")
 
@@ -185,7 +185,7 @@ def get_current_teacher(current_user: CurrentUser) -> User:
 
 def get_current_student(current_user: CurrentUser) -> User:
     """仅学生（学生端练习链路）。"""
-    if current_user.role != "student" and current_user.role != "admin":
+    if current_user.role != "student" and current_user.role != "school_admin":
         raise HTTPException(status_code=403, detail="该操作仅限学生账号")
     return current_user
 
@@ -237,7 +237,7 @@ def get_current_staff_or_operator(
         )
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Inactive user")
-    if user.role not in ("teacher", "admin"):
+    if user.role not in ("teacher", "school_admin"):
         raise HTTPException(status_code=403, detail="该操作需要教职工或平台运营身份")
     return user
 

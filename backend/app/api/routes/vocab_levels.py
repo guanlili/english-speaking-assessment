@@ -193,7 +193,7 @@ def update_vocab_level_entry(
 
 def _visible_book_ids(session: Session, current_user: User) -> list[uuid.UUID] | None:
     """当前教师可见的词库 id（公共库或本人班级库）；管理员返回 None 表示不限。"""
-    if current_user.role == "admin":
+    if current_user.role == "school_admin":
         return None
     rows = session.exec(
         select(VocabularyBook.id).where(
