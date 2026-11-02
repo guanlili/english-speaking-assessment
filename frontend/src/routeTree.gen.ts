@@ -46,6 +46,7 @@ import { Route as LayoutAdminSentenceframesRouteImport } from './routes/_layout/
 import { Route as LayoutAdminUnitsRouteImport } from './routes/_layout/admin.units'
 import { Route as LayoutAdminVocabbooksRouteImport } from './routes/_layout/admin.vocabbooks'
 import { Route as LayoutAdminVocablevelsRouteImport } from './routes/_layout/admin.vocablevels'
+import { Route as LayoutSchoolMembersRouteImport } from './routes/_layout/school.members'
 import { Route as ExamCodeIndexRouteImport } from './routes/exam.$code.index'
 import { Route as ExamCodeResultRouteImport } from './routes/exam.$code.result'
 import { Route as PCodeIndexRouteImport } from './routes/p.$code.index'
@@ -245,6 +246,11 @@ const LayoutAdminVocablevelsRoute = LayoutAdminVocablevelsRouteImport.update({
   path: '/vocablevels',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
+const LayoutSchoolMembersRoute = LayoutSchoolMembersRouteImport.update({
+  id: '/school/members',
+  path: '/school/members',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const ExamCodeIndexRoute = ExamCodeIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -347,6 +353,7 @@ export interface FileRoutesByFullPath {
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
+  '/school/members': typeof LayoutSchoolMembersRoute
   '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/s/$schoolSlug/login': typeof SSchoolSlugLoginRoute
@@ -393,6 +400,7 @@ export interface FileRoutesByTo {
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
+  '/school/members': typeof LayoutSchoolMembersRoute
   '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/s/$schoolSlug/login': typeof SSchoolSlugLoginRoute
@@ -446,6 +454,7 @@ export interface FileRoutesById {
   '/_layout/admin/units': typeof LayoutAdminUnitsRoute
   '/_layout/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/_layout/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
+  '/_layout/school/members': typeof LayoutSchoolMembersRoute
   '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
   '/s/$schoolSlug/login': typeof SSchoolSlugLoginRoute
@@ -499,6 +508,7 @@ export interface FileRouteTypes {
     | '/admin/units'
     | '/admin/vocabbooks'
     | '/admin/vocablevels'
+    | '/school/members'
     | '/exam/$code/result'
     | '/p/$code/result'
     | '/s/$schoolSlug/login'
@@ -545,6 +555,7 @@ export interface FileRouteTypes {
     | '/admin/units'
     | '/admin/vocabbooks'
     | '/admin/vocablevels'
+    | '/school/members'
     | '/exam/$code/result'
     | '/p/$code/result'
     | '/s/$schoolSlug/login'
@@ -597,6 +608,7 @@ export interface FileRouteTypes {
     | '/_layout/admin/units'
     | '/_layout/admin/vocabbooks'
     | '/_layout/admin/vocablevels'
+    | '/_layout/school/members'
     | '/exam/$code/result'
     | '/p/$code/result'
     | '/s/$schoolSlug/login'
@@ -897,6 +909,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminVocablevelsRouteImport
       parentRoute: typeof LayoutAdminRoute
     }
+    '/_layout/school/members': {
+      id: '/_layout/school/members'
+      path: '/school/members'
+      fullPath: '/school/members'
+      preLoaderRoute: typeof LayoutSchoolMembersRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/exam/$code/': {
       id: '/exam/$code/'
       path: '/'
@@ -1031,6 +1050,7 @@ interface LayoutRouteChildren {
   LayoutExportsRoute: typeof LayoutExportsRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
+  LayoutSchoolMembersRoute: typeof LayoutSchoolMembersRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
@@ -1041,6 +1061,7 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutExportsRoute: LayoutExportsRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
+  LayoutSchoolMembersRoute: LayoutSchoolMembersRoute,
 }
 
 const LayoutRouteWithChildren =
