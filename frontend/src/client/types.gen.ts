@@ -7804,7 +7804,14 @@ export type UsersReadUsersResponse = UsersReadUsersResponses[200 & keyof UsersRe
 export type UsersCreateUserData = {
     body: UserCreate;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * School
+         *
+         * 学校码（多租户 D1：给该校建号）
+         */
+        school?: string | null;
+    };
     url: '/api/v1/users/';
 };
 

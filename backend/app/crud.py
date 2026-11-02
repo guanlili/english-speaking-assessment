@@ -32,9 +32,18 @@ from app.models import (
 logger = logging.getLogger(__name__)
 
 
-def create_user(*, session: Session, user_create: UserCreate) -> User:
+def create_user(
+    *,
+    session: Session,
+    user_create: UserCreate,
+    tenant_id: uuid.UUID | None = None,
+) -> User:
+    """建号。tenant_id 显式指定目标学校（多租户 D1 平台建号通道）；
+    None 时由模型工厂接管（请求上下文继承或回落默认，见 C5a）。"""
+    extra: dict[str, uuid.UUID] = {"tenant_id": tenant_id} if tenant_id else {}
     db_obj = User.model_validate(
-        user_create, update={"hashed_password": get_password_hash(user_create.password)}
+        user_create,
+        update={"hashed_password": get_password_hash(user_create.password)} | extra,
     )
     session.add(db_obj)
     session.commit()

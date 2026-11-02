@@ -82,13 +82,24 @@ def read_users(
     dependencies=[Depends(get_current_platform_operator)],
     response_model=UserPublic,
 )
-def create_user(*, session: PlatformSessionDep, user_in: UserCreate) -> Any:
+def create_user(
+    *,
+    session: PlatformSessionDep,
+    user_in: UserCreate,
+    school: str | None = Query(
+        default=None, description="学校码（多租户 D1：给该校建号）"
+    ),
+) -> Any:
     """
     Create new user. 学生账号建议走 /students/import 批量建号；
-    此处后台单个建号支持 teacher/admin（平台运营通道，B3 起门禁为
+    此处后台单个建号支持 teacher/school_admin（平台运营通道，B3 起门禁为
     PlatformOperator；校级管理员自助建号随 D 期学校管理补齐）。
+
+    多租户 D1：school 指定目标学校（slug）——不传落默认学校；两校同
+    邮箱/学号各自合法，查重按目标学校内进行。
     """
     from app.core.security import VALID_ROLES
+    from app.models import DEFAULT_TENANT_ID, Tenant
 
     if user_in.role == "student" and not user_in.username:
         raise HTTPException(status_code=422, detail="学生账号必须提供学号")
@@ -97,19 +108,34 @@ def create_user(*, session: PlatformSessionDep, user_in: UserCreate) -> Any:
     if not user_in.role or user_in.role != "student":
         if not user_in.email:
             raise HTTPException(status_code=422, detail="教师/管理员必须提供邮箱")
+
+    # 学校解析：未传=默认学校（单校窗口兼容）；未知/停用统一 422 稳定标识
+    tenant_id = DEFAULT_TENANT_ID
+    if school:
+        row = session.exec(
+            select(Tenant).where(Tenant.slug == school.strip().lower())
+        ).first()
+        if row is None or row.status != "active":
+            raise HTTPException(status_code=422, detail="学校码无效或未开放")
+        tenant_id = row.id
+
     if user_in.email:
-        user = crud.get_user_by_email(session=session, email=user_in.email)
+        user = crud.get_user_by_email(
+            session=session, email=user_in.email, tenant_id=tenant_id
+        )
         if user:
             raise HTTPException(
                 status_code=400,
                 detail="The user with this email already exists in the system.",
             )
     if user_in.username:
-        user = crud.get_user_by_username(session=session, username=user_in.username)
+        user = crud.get_user_by_username(
+            session=session, username=user_in.username, tenant_id=tenant_id
+        )
         if user:
             raise HTTPException(status_code=400, detail="该学号已存在")
 
-    user = crud.create_user(session=session, user_create=user_in)
+    user = crud.create_user(session=session, user_create=user_in, tenant_id=tenant_id)
     if settings.emails_enabled and user_in.email:
         email_data = generate_new_account_email(
             email_to=user_in.email, username=user_in.email
