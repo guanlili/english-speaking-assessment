@@ -111,7 +111,9 @@ def authenticate(
     tenant_id: uuid.UUID | None = None
     if school_slug is not None:
         tenant = get_tenant_by_slug(session=session, slug=school_slug.strip().lower())
-        if tenant is None:
+        # 未知或已停用学校同样按认证失败处理（D2：停用即挡新登录，
+        # 与入口端点 404 同口径，不给直连 API 留绕行缝）
+        if tenant is None or tenant.status != "active":
             return None
         tenant_id = tenant.id
     db_user = get_user_by_username(

@@ -48,11 +48,23 @@ def read_users(
     limit: int = Query(default=100, ge=1, le=USERS_MAX_LIMIT),
     q: str | None = Query(default=None, max_length=128),
     role: str | None = Query(default=None, max_length=16),
+    school: str | None = Query(
+        default=None, max_length=32, description="学校码筛选（D2）"
+    ),
 ) -> Any:
     """
-    Retrieve users（管理员；支持按学号/姓名/邮箱模糊搜索与角色筛选）。
+    Retrieve users（平台运营；学号/姓名/邮箱模糊搜索、角色与学校筛选）。
     """
+    from app.models import Tenant
+
     conditions = []
+    if school:
+        tenant = session.exec(
+            select(Tenant).where(Tenant.slug == school.strip().lower())
+        ).first()
+        if tenant is None:
+            raise HTTPException(status_code=422, detail="学校码无效")
+        conditions.append(User.tenant_id == tenant.id)
     if q and q.strip():
         conditions.append(
             col(User.username).icontains(q.strip())  # type: ignore[union-attr]

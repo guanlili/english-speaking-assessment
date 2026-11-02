@@ -41,6 +41,7 @@ import { Route as LayoutAdminDashboardRouteImport } from './routes/_layout/admin
 import { Route as LayoutAdminPassagesRouteImport } from './routes/_layout/admin.passages'
 import { Route as LayoutAdminQuestionsRouteImport } from './routes/_layout/admin.questions'
 import { Route as LayoutAdminScenariosRouteImport } from './routes/_layout/admin.scenarios'
+import { Route as LayoutAdminSchoolsRouteImport } from './routes/_layout/admin.schools'
 import { Route as LayoutAdminSentenceframesRouteImport } from './routes/_layout/admin.sentenceframes'
 import { Route as LayoutAdminUnitsRouteImport } from './routes/_layout/admin.units'
 import { Route as LayoutAdminVocabbooksRouteImport } from './routes/_layout/admin.vocabbooks'
@@ -218,6 +219,11 @@ const LayoutAdminScenariosRoute = LayoutAdminScenariosRouteImport.update({
   path: '/scenarios',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
+const LayoutAdminSchoolsRoute = LayoutAdminSchoolsRouteImport.update({
+  id: '/schools',
+  path: '/schools',
+  getParentRoute: () => LayoutAdminRoute,
+} as any)
 const LayoutAdminSentenceframesRoute =
   LayoutAdminSentenceframesRouteImport.update({
     id: '/sentenceframes',
@@ -336,6 +342,7 @@ export interface FileRoutesByFullPath {
   '/admin/passages': typeof LayoutAdminPassagesRoute
   '/admin/questions': typeof LayoutAdminQuestionsRoute
   '/admin/scenarios': typeof LayoutAdminScenariosRoute
+  '/admin/schools': typeof LayoutAdminSchoolsRoute
   '/admin/sentenceframes': typeof LayoutAdminSentenceframesRoute
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
@@ -381,6 +388,7 @@ export interface FileRoutesByTo {
   '/admin/passages': typeof LayoutAdminPassagesRoute
   '/admin/questions': typeof LayoutAdminQuestionsRoute
   '/admin/scenarios': typeof LayoutAdminScenariosRoute
+  '/admin/schools': typeof LayoutAdminSchoolsRoute
   '/admin/sentenceframes': typeof LayoutAdminSentenceframesRoute
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
@@ -433,6 +441,7 @@ export interface FileRoutesById {
   '/_layout/admin/passages': typeof LayoutAdminPassagesRoute
   '/_layout/admin/questions': typeof LayoutAdminQuestionsRoute
   '/_layout/admin/scenarios': typeof LayoutAdminScenariosRoute
+  '/_layout/admin/schools': typeof LayoutAdminSchoolsRoute
   '/_layout/admin/sentenceframes': typeof LayoutAdminSentenceframesRoute
   '/_layout/admin/units': typeof LayoutAdminUnitsRoute
   '/_layout/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
@@ -485,6 +494,7 @@ export interface FileRouteTypes {
     | '/admin/passages'
     | '/admin/questions'
     | '/admin/scenarios'
+    | '/admin/schools'
     | '/admin/sentenceframes'
     | '/admin/units'
     | '/admin/vocabbooks'
@@ -530,6 +540,7 @@ export interface FileRouteTypes {
     | '/admin/passages'
     | '/admin/questions'
     | '/admin/scenarios'
+    | '/admin/schools'
     | '/admin/sentenceframes'
     | '/admin/units'
     | '/admin/vocabbooks'
@@ -581,6 +592,7 @@ export interface FileRouteTypes {
     | '/_layout/admin/passages'
     | '/_layout/admin/questions'
     | '/_layout/admin/scenarios'
+    | '/_layout/admin/schools'
     | '/_layout/admin/sentenceframes'
     | '/_layout/admin/units'
     | '/_layout/admin/vocabbooks'
@@ -850,6 +862,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminScenariosRouteImport
       parentRoute: typeof LayoutAdminRoute
     }
+    '/_layout/admin/schools': {
+      id: '/_layout/admin/schools'
+      path: '/schools'
+      fullPath: '/admin/schools'
+      preLoaderRoute: typeof LayoutAdminSchoolsRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
     '/_layout/admin/sentenceframes': {
       id: '/_layout/admin/sentenceframes'
       path: '/sentenceframes'
@@ -978,6 +997,7 @@ interface LayoutAdminRouteChildren {
   LayoutAdminPassagesRoute: typeof LayoutAdminPassagesRoute
   LayoutAdminQuestionsRoute: typeof LayoutAdminQuestionsRoute
   LayoutAdminScenariosRoute: typeof LayoutAdminScenariosRoute
+  LayoutAdminSchoolsRoute: typeof LayoutAdminSchoolsRoute
   LayoutAdminSentenceframesRoute: typeof LayoutAdminSentenceframesRoute
   LayoutAdminUnitsRoute: typeof LayoutAdminUnitsRoute
   LayoutAdminVocabbooksRoute: typeof LayoutAdminVocabbooksRoute
@@ -991,6 +1011,7 @@ const LayoutAdminRouteChildren: LayoutAdminRouteChildren = {
   LayoutAdminPassagesRoute: LayoutAdminPassagesRoute,
   LayoutAdminQuestionsRoute: LayoutAdminQuestionsRoute,
   LayoutAdminScenariosRoute: LayoutAdminScenariosRoute,
+  LayoutAdminSchoolsRoute: LayoutAdminSchoolsRoute,
   LayoutAdminSentenceframesRoute: LayoutAdminSentenceframesRoute,
   LayoutAdminUnitsRoute: LayoutAdminUnitsRoute,
   LayoutAdminVocabbooksRoute: LayoutAdminVocabbooksRoute,

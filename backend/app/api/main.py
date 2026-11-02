@@ -11,6 +11,7 @@ from app.api.routes import (
     admin_question_io,
     admin_scenarios,
     admin_taxonomy,
+    admin_tenants,
     attempts,
     audio,
     changelog,
@@ -38,6 +39,7 @@ api_router.include_router(admin_content.router)
 api_router.include_router(admin_passages.router)
 api_router.include_router(admin_scenarios.router)
 api_router.include_router(admin_taxonomy.router)
+api_router.include_router(admin_tenants.router)
 api_router.include_router(admin_content_copy.router)
 api_router.include_router(admin_composer.router)
 api_router.include_router(admin_dashboard.router)

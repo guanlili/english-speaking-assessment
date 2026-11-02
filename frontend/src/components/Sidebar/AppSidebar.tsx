@@ -78,6 +78,11 @@ const adminOnlyItems: Item[] = [
     title: { zh: "课堂管理", en: "Classrooms" },
     path: "/admin/classrooms",
   },
+  {
+    icon: School,
+    title: { zh: "学校管理", en: "Schools" },
+    path: "/admin/schools",
+  },
 ]
 
 // 校级管理员（学校业务，不随身份拆分外流）

@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import { RefreshCw, Search } from "lucide-react"
 import { Suspense, useEffect, useMemo, useRef, useState } from "react"
-import { type UserPublic, UsersService } from "@/client"
+import { AdminService, type UserPublic, UsersService } from "@/client"
 import AddUser from "@/components/Admin/AddUser"
 import {
   buildUserColumns,
@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { APP_NAME } from "@/config"
-import useAuth from "@/hooks/useAuth"
+import useAuth, { cachedRole } from "@/hooks/useAuth"
 import { useI18n } from "@/lib/i18n"
 
 const USERS_PAGE_SIZE = 25
@@ -30,6 +30,7 @@ function getUsersQueryOptions(
   pageSize: number,
   q: string,
   role: string,
+  school: string,
 ) {
   return {
     queryFn: () =>
@@ -38,6 +39,7 @@ function getUsersQueryOptions(
         limit: pageSize,
         q: q || undefined,
         role: role || undefined,
+        school: school || undefined,
       }),
     // 页码与每页条数进 key：切页翻新请求；前缀 ["users"] 仍覆盖增删改失效
     queryKey: ["users", pageIndex, pageSize, q, role],
@@ -67,6 +69,15 @@ function UsersTableContent() {
   const [searchInput, setSearchInput] = useState("")
   const [search, setSearch] = useState("")
   const [role, setRole] = useState("all")
+  // 多租户 D2：学校过滤（运营视角；默认隐藏）
+  const [school, setSchool] = useState("all")
+  const isOperator = cachedRole() === "operator"
+  const { data: tenants } = useQuery({
+    queryKey: ["admin", "tenants"],
+    queryFn: () => AdminService.listTenants(),
+    enabled: isOperator,
+    staleTime: 5 * 60 * 1000,
+  })
   // 首次渲染不排定时器：mount 350ms 后的 setPageIndex(0) 会在用户
   // 已翻页时把页码拉回第一页（生产环境实测把翻页请求作废）
   const searchFirstRun = useRef(true)
@@ -94,6 +105,7 @@ function UsersTableContent() {
       pageSize,
       search,
       role === "all" ? "" : role,
+      school === "all" ? "" : school,
     ),
   )
 
@@ -194,11 +206,34 @@ function UsersTableContent() {
             <SelectItem value="teacher">
               {t({ zh: "教师", en: "Teachers" })}
             </SelectItem>
-            <SelectItem value="admin">
+            <SelectItem value="school_admin">
               {t({ zh: "管理员", en: "Admins" })}
             </SelectItem>
           </SelectContent>
         </Select>
+        {isOperator && (
+          <Select
+            value={school}
+            onValueChange={(next) => {
+              setSchool(next)
+              setPageIndex(0)
+            }}
+          >
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">
+                {t({ zh: "全部学校", en: "All Schools" })}
+              </SelectItem>
+              {(tenants ?? []).map((tn) => (
+                <SelectItem key={tn.id} value={tn.slug}>
+                  {tn.name_zh}（{tn.slug}）
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
       <DataTable
         columns={columns}
