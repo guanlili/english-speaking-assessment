@@ -2996,6 +2996,52 @@ export type LoginOptions = {
 };
 
 /**
+ * MemberCreate
+ */
+export type MemberCreate = {
+    /**
+     * Email
+     */
+    email: string;
+    /**
+     * Full Name
+     */
+    full_name?: string | null;
+    /**
+     * Password
+     */
+    password: string;
+};
+
+/**
+ * MemberUpdate
+ */
+export type MemberUpdate = {
+    /**
+     * Is Active
+     */
+    is_active?: boolean | null;
+    /**
+     * Password
+     */
+    password?: string | null;
+};
+
+/**
+ * MembersPublic
+ */
+export type MembersPublic = {
+    /**
+     * Data
+     */
+    data: Array<UserPublic>;
+    /**
+     * Count
+     */
+    count: number;
+};
+
+/**
  * Message
  */
 export type Message = {
@@ -12348,6 +12394,95 @@ export type AdminUpdateTenantResponses = {
 };
 
 export type AdminUpdateTenantResponse = AdminUpdateTenantResponses[200 & keyof AdminUpdateTenantResponses];
+
+export type SchoolListMembersData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Q
+         */
+        q?: string | null;
+        /**
+         * Role
+         */
+        role?: string | null;
+    };
+    url: '/api/v1/school/members';
+};
+
+export type SchoolListMembersErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SchoolListMembersError = SchoolListMembersErrors[keyof SchoolListMembersErrors];
+
+export type SchoolListMembersResponses = {
+    /**
+     * Successful Response
+     */
+    200: MembersPublic;
+};
+
+export type SchoolListMembersResponse = SchoolListMembersResponses[200 & keyof SchoolListMembersResponses];
+
+export type SchoolCreateMemberData = {
+    body: MemberCreate;
+    path?: never;
+    query?: never;
+    url: '/api/v1/school/members';
+};
+
+export type SchoolCreateMemberErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SchoolCreateMemberError = SchoolCreateMemberErrors[keyof SchoolCreateMemberErrors];
+
+export type SchoolCreateMemberResponses = {
+    /**
+     * Successful Response
+     */
+    200: UserPublic;
+};
+
+export type SchoolCreateMemberResponse = SchoolCreateMemberResponses[200 & keyof SchoolCreateMemberResponses];
+
+export type SchoolUpdateMemberData = {
+    body: MemberUpdate;
+    path: {
+        /**
+         * User Id
+         */
+        user_id: string;
+    };
+    query?: never;
+    url: '/api/v1/school/members/{user_id}';
+};
+
+export type SchoolUpdateMemberErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SchoolUpdateMemberError = SchoolUpdateMemberErrors[keyof SchoolUpdateMemberErrors];
+
+export type SchoolUpdateMemberResponses = {
+    /**
+     * Successful Response
+     */
+    200: UserPublic;
+};
+
+export type SchoolUpdateMemberResponse = SchoolUpdateMemberResponses[200 & keyof SchoolUpdateMemberResponses];
 
 export type AdminCopySchoolContentData = {
     body?: never;

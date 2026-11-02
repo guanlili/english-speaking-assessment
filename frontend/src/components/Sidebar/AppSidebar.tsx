@@ -9,6 +9,7 @@ import {
   Megaphone,
   MessageSquareQuote,
   School,
+  UserRoundCog,
   Users,
   UsersRound,
 } from "lucide-react"
@@ -87,6 +88,11 @@ const adminOnlyItems: Item[] = [
 
 // 校级管理员（学校业务，不随身份拆分外流）
 const schoolAdminExtraItems: Item[] = [
+  {
+    icon: UserRoundCog,
+    title: { zh: "教师管理", en: "Teacher Accounts" },
+    path: "/school/members",
+  },
   {
     icon: BookA,
     title: { zh: "词库管理", en: "Word Books" },

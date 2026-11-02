@@ -19,6 +19,7 @@ from app.api.routes import (
     exports,
     login,
     metrics,
+    school_members,
     students,
     users,
     utils,
@@ -40,6 +41,7 @@ api_router.include_router(admin_passages.router)
 api_router.include_router(admin_scenarios.router)
 api_router.include_router(admin_taxonomy.router)
 api_router.include_router(admin_tenants.router)
+api_router.include_router(school_members.router)
 api_router.include_router(admin_content_copy.router)
 api_router.include_router(admin_composer.router)
 api_router.include_router(admin_dashboard.router)

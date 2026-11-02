@@ -18,6 +18,19 @@ const isLoggedIn = () => {
   return localStorage.getItem("access_token") !== null
 }
 
+/** 读 JWT payload（不验签——仅路由分流；权限始终由服务端裁决） */
+export const decodeJwtPayload = (
+  token: string,
+): Record<string, unknown> | null => {
+  try {
+    const part = token.split(".")[1] ?? ""
+    const padded = part.replace(/-/g, "+").replace(/_/g, "/")
+    return JSON.parse(atob(padded + "=".repeat((4 - (padded.length % 4)) % 4)))
+  } catch {
+    return null
+  }
+}
+
 /** 登录角色（login 时缓存；仅用于路由分流，权限判定在服务端） */
 export const cachedRole = (): string | null => localStorage.getItem("esa:role")
 
@@ -79,6 +92,16 @@ const useAuth = () => {
     const response = await LoginService.loginAccessToken({
       bodyLoginLoginAccessToken: data,
     })
+    // 统一入口（四角色完善）：token 是运营身份时走运营通道——
+    // /users/me 对运营 token 是 401（身份分离），不能走学校用户流程
+    const payload = decodeJwtPayload(response.access_token)
+    if (payload?.typ === "operator") {
+      localStorage.setItem("access_token", response.access_token)
+      localStorage.setItem("esa:role", "operator")
+      queryClient.clear()
+      window.location.href = "/admin/dashboard"
+      return { role: "operator" } as UserPublic
+    }
     // 身份切换前取消旧请求并清空缓存，避免共享查询键复用上一账号数据。
     await queryClient.cancelQueries()
     queryClient.clear()

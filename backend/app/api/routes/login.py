@@ -108,6 +108,10 @@ def login_access_token(
     多租户 B2：school 查询参数可选——传入则按 (租户, 标识) 限定查找，
     两校同号各自登录；不传则全局查找（单校窗口兼容）。用 Query 而非
     表单字段：不干预 OAuth2 标准表单解析，兼容性最稳。
+
+    统一入口（四角色完善）：不带 school 时先按平台管理员（邮箱）解析
+    ——命中即发运营 token（独立 audience，身份分离不变）；学校页面
+    （带 school）不回退，保持学校入口纯净。
     """
     client_ip = request.client.host if request.client else "unknown"
     # 双维度限流：IP 桶（NAT 出口共享，防横向刷）+ 账号桶（防针对单账号爆破）。
@@ -117,14 +121,44 @@ def login_access_token(
     _check_login_rate_limit(f"ip:{client_ip}")
     _check_login_rate_limit(f"user:{account}")
 
-    # 未知学校/密码错误/跨租户歧义统一同文案——不泄露存在性（AC-01/03）
     school_slug = school.strip().lower() if school else None
+
     user = crud.authenticate(
         session=session,
         account=form_data.username.strip(),
         password=form_data.password,
         school_slug=school_slug,
     )
+
+    # 平台管理员回退（四角色统一入口）：**学校身份优先**——仅当学校
+    # 认证失败、且是通用入口（无 school）+ 邮箱形态（运营无学号）时，
+    # 才按运营表解析。同邮箱双身份（种子回退过渡态，如首超管=种子
+    # 运营）学校身份胜出、行为与历史一致；专用邮箱的运营由此统一入口
+    if user is None and school_slug is None and "@" in account:
+        operator = crud.authenticate_platform_operator(
+            session=session,
+            email=form_data.username.strip(),
+            password=form_data.password,
+        )
+        if operator is not None:
+            if not operator.is_active:
+                raise HTTPException(status_code=400, detail="Inactive operator")
+            _login_limiter.record_success(f"ip:{client_ip}", refund_only=True)
+            _record_login_success(f"user:{account}")
+            return Token(
+                access_token=security.create_access_token(
+                    operator.id,
+                    expires_delta=timedelta(
+                        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+                    ),
+                    role="operator",
+                    password_hash=operator.hashed_password,
+                    audience="platform",
+                    token_type="operator",
+                )
+            )
+
+    # 未知学校/密码错误/跨租户歧义统一同文案——不泄露存在性（AC-01/03）
     if not user:
         raise HTTPException(status_code=400, detail="账号或密码不正确")
     elif not user.is_active:
