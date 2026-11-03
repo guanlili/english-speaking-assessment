@@ -54,8 +54,12 @@ ENV PATH="/app/.venv/bin:$PATH"
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock.src \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    sed 's|https://files.pythonhosted.org/packages/|https://mirrors.cloud.tencent.com/pypi/packages/|g' uv.lock.src > uv.lock \
-    && uv sync --frozen --no-install-workspace --no-dev --package app
+    if ! (sed 's|https://files.pythonhosted.org/packages/|https://mirrors.cloud.tencent.com/pypi/packages/|g' uv.lock.src > uv.lock \
+          && UV_DEFAULT_INDEX=https://pypi.org/simple uv sync --frozen --no-install-workspace --no-dev --package app); then \
+        echo '::warning::腾讯 PyPI 镜像不可用，回退官方源'; \
+        cp uv.lock.src uv.lock; \
+        UV_DEFAULT_INDEX=https://pypi.org/simple uv sync --frozen --no-install-workspace --no-dev --package app; \
+    fi
 
 COPY ./backend/scripts /app/backend/scripts
 
@@ -69,8 +73,12 @@ COPY ./backend/app /app/backend/app
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock.src \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    sed 's|https://files.pythonhosted.org/packages/|https://mirrors.cloud.tencent.com/pypi/packages/|g' uv.lock.src > uv.lock \
-    && uv sync --frozen --no-dev --package app
+    if ! (sed 's|https://files.pythonhosted.org/packages/|https://mirrors.cloud.tencent.com/pypi/packages/|g' uv.lock.src > uv.lock \
+          && UV_DEFAULT_INDEX=https://pypi.org/simple uv sync --frozen --no-dev --package app); then \
+        echo '::warning::腾讯 PyPI 镜像不可用，回退官方源'; \
+        cp uv.lock.src uv.lock; \
+        UV_DEFAULT_INDEX=https://pypi.org/simple uv sync --frozen --no-dev --package app; \
+    fi
 
 WORKDIR /app/backend/
 
