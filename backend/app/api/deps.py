@@ -12,7 +12,7 @@ from sqlmodel import Session
 from app.core import db as _db
 from app.core import security
 from app.core.config import settings
-from app.models import PlatformOperator, TokenPayload, User
+from app.models import PlatformOperator, Tenant, TokenPayload, User
 
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"
@@ -69,6 +69,18 @@ def get_export_submitter() -> Callable[[uuid.UUID], None]:
 ExportSubmitter = Annotated[Callable[[uuid.UUID], None], Depends(get_export_submitter)]
 
 
+def _tenant_active(session: Session, user: User) -> bool:
+    """学校侧身份的租户活性门（D2/设计稿 §5.1）：停用即时生效，不等 token
+    自然过期——此前只有新登录被挡，存量 token 直到过期前仍可访问本校业务。
+
+    Tenant 按主键直取：每请求一次单行查询（租户表每校一行，量级为校数，
+    无 N+1）；不做跨请求缓存——缓存会重新引入本门要消除的时滞。
+    租户行缺失按不活跃处理（防御性默认拒绝；FK 正常时不可达）。
+    """
+    tenant = session.get(Tenant, user.tenant_id)
+    return tenant is not None and tenant.status == "active"
+
+
 def get_current_user(session: SessionDep, token: TokenDep) -> User:
     try:
         payload = jwt.decode(
@@ -115,6 +127,12 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
         )
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Inactive user")
+    # 学校停用 → 403（Inactive user 同族）：凭证本身仍有效，是租户级服务
+    # 暂停，不是 token 失效——401 会触发前端自动登出，语义留给 401 通道。
+    # default 租户被 PATCH 守卫永不允许停用；平台运营走
+    # get_current_platform_operator，不经过本依赖，不受影响。
+    if not _tenant_active(session, user):
+        raise HTTPException(status_code=403, detail="Inactive tenant")
     return user
 
 
@@ -248,6 +266,9 @@ def get_current_staff_or_operator(
         )
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Inactive user")
+    # 学校停用同族 403（运营 token 分支不受影响）
+    if not _tenant_active(session, user):
+        raise HTTPException(status_code=403, detail="Inactive tenant")
     if user.role not in ("teacher", "school_admin"):
         raise HTTPException(status_code=403, detail="该操作需要教职工或平台运营身份")
     return user
@@ -289,6 +310,9 @@ def get_optional_current_user(
         return None
     # C3：租户声明不一致按无效处理（与 get_current_user 同口径，静默降级）
     if token_data.tid is not None and token_data.tid != str(user.tenant_id):
+        return None
+    # 学校停用同样静默降级为匿名——不留存量 token 旁路（与 get_current_user 同口径）
+    if not _tenant_active(session, user):
         return None
     return user
 
