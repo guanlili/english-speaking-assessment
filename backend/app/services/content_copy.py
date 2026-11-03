@@ -76,9 +76,15 @@ def copy_passage(
 
 
 def copy_sentence(
-    session: Session, source: RepeatSentence, owner_id: uuid.UUID | None
+    session: Session,
+    source: RepeatSentence,
+    owner_id: uuid.UUID | None,
+    target_tenant_id: uuid.UUID | None = None,
 ) -> RepeatSentence:
     payload = deepcopy(source.model_dump(exclude={"id", "created_at"}))
+    if target_tenant_id is not None:
+        # C2 复制到本校：deepcopy 会带源校 tenant_id，覆盖为目标校
+        payload["tenant_id"] = target_tenant_id
     payload.update(
         owner_id=owner_id, copied_from_id=source.id, passage_id=None, order_index=0
     )
@@ -142,7 +148,10 @@ def copy_scenario(
 
 
 def copy_question(
-    session: Session, source: ScenarioQuestion, owner_id: uuid.UUID | None
+    session: Session,
+    source: ScenarioQuestion,
+    owner_id: uuid.UUID | None,
+    target_tenant_id: uuid.UUID | None = None,
 ) -> ScenarioQuestion:
     scenario = session.get(Scenario, source.scenario_id)
     if scenario is None:
@@ -154,6 +163,9 @@ def copy_question(
         )
     ).one()
     payload = deepcopy(source.model_dump(exclude={"id"}))
+    if target_tenant_id is not None:
+        # C2 复制到本校：deepcopy 会带源校 tenant_id，覆盖为目标校
+        payload["tenant_id"] = target_tenant_id
     payload.update(
         owner_id=owner_id,
         copied_from_id=source.id,
@@ -166,9 +178,15 @@ def copy_question(
 
 
 def copy_instruction(
-    session: Session, source: Instruction, owner_id: uuid.UUID | None
+    session: Session,
+    source: Instruction,
+    owner_id: uuid.UUID | None,
+    target_tenant_id: uuid.UUID | None = None,
 ) -> Instruction:
     payload = deepcopy(source.model_dump(exclude={"id", "created_at", "updated_at"}))
+    if target_tenant_id is not None:
+        # C2 复制到本校：deepcopy 会带源校 tenant_id，覆盖为目标校
+        payload["tenant_id"] = target_tenant_id
     payload.update(
         owner_id=owner_id,
         copied_from_id=source.id,

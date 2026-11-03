@@ -68,6 +68,7 @@ def copy_passage(
     source = session.get(Passage, passage_id)
     if source is None:
         raise HTTPException(404, detail="Passage not found")
+    content_access.require_same_tenant(current_user, source)
     copied = content_copy.copy_passage(
         session,
         source,
@@ -101,8 +102,12 @@ def copy_sentence(
     source = session.get(RepeatSentence, sentence_id)
     if source is None:
         raise HTTPException(404, detail="Sentence not found")
+    content_access.require_same_tenant(current_user, source)
     copied = content_copy.copy_sentence(
-        session, source, content_access.owner_for(current_user)
+        session,
+        source,
+        content_access.owner_for(current_user),
+        target_tenant_id=current_user.tenant_id,
     )
     content_copy.commit_copy(session)
     return SentenceWithPassage.model_validate(copied)
@@ -115,6 +120,7 @@ def copy_scenario(
     source = session.get(Scenario, scenario_id)
     if source is None:
         raise HTTPException(404, detail="Scenario not found")
+    content_access.require_same_tenant(current_user, source)
     copied = content_copy.copy_scenario(
         session,
         source,
@@ -142,8 +148,12 @@ def copy_question(
     source = session.get(ScenarioQuestion, question_id)
     if source is None:
         raise HTTPException(404, detail="Question not found")
+    content_access.require_same_tenant(current_user, source)
     copied = content_copy.copy_question(
-        session, source, content_access.owner_for(current_user)
+        session,
+        source,
+        content_access.owner_for(current_user),
+        target_tenant_id=current_user.tenant_id,
     )
     content_copy.commit_copy(session)
     scenario = session.get(Scenario, copied.scenario_id)
@@ -158,8 +168,12 @@ def copy_instruction(
     source = session.get(Instruction, instruction_id)
     if source is None:
         raise HTTPException(404, detail="Instruction not found")
+    content_access.require_same_tenant(current_user, source)
     copied = content_copy.copy_instruction(
-        session, source, content_access.owner_for(current_user)
+        session,
+        source,
+        content_access.owner_for(current_user),
+        target_tenant_id=current_user.tenant_id,
     )
     content_copy.commit_copy(session)
     return InstructionPublic.model_validate(copied)
