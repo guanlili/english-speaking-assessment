@@ -776,7 +776,7 @@ def test_frame_recommendation_and_favorites(
                 "text_en": "In my opinion, ...",
                 "text_zh": "在我看来……",
             },
-            headers=operator_token_headers,
+            headers=superuser_token_headers,
         )
     )
     f_p1 = _resp_json(
@@ -789,7 +789,7 @@ def test_frame_recommendation_and_favorites(
                 "text_en": "My favorite ... is ...",
                 "text_zh": "我最喜欢的……是……",
             },
-            headers=operator_token_headers,
+            headers=superuser_token_headers,
         )
     )
     _resp_json(
@@ -801,7 +801,7 @@ def test_frame_recommendation_and_favorites(
                 "text_en": "wrong level frame",
                 "text_zh": "错误级别",
             },
-            headers=operator_token_headers,
+            headers=superuser_token_headers,
         )
     )
 
@@ -890,7 +890,7 @@ def test_frame_recommendation_and_favorites(
             "text_en": "x",
             "text_zh": "x",
         },
-        headers=operator_token_headers,
+        headers=superuser_token_headers,
     )
     assert resp.status_code == 422
     _cleanup_classroom(db, classroom["id"])
@@ -932,7 +932,7 @@ def test_sentence_frames_batch_import(
     resp = client.post(
         "/api/v1/admin/sentence-frames/batch",
         json=items,
-        headers=operator_token_headers,
+        headers=superuser_token_headers,
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -944,13 +944,13 @@ def test_sentence_frames_batch_import(
     resp = client.post(
         "/api/v1/admin/sentence-frames/batch",
         json=items[:1],
-        headers=operator_token_headers,
+        headers=superuser_token_headers,
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["created"] == 0
 
     stats = client.get(
-        "/api/v1/admin/sentence-frames", headers=operator_token_headers
+        "/api/v1/admin/sentence-frames", headers=superuser_token_headers
     ).json()["data"]
     # 种子句型存在：只断言本测试创建的句型都在（不依赖库总量）
     created_texts = {"I think ...", "The reason is ..."}

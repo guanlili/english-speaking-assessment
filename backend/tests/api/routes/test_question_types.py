@@ -231,7 +231,7 @@ def test_teacher_can_manage_content_but_not_classrooms(
         json={"order_index": 99, "title": "U99", "topic": "Pets"},
         headers=headers,
     )
-    assert unit.status_code == 401
+    assert unit.status_code == 403
 
     # 课堂管理仍仅平台运营：教师 401
     classroom = _classroom(client, superuser_token_headers)
@@ -727,7 +727,7 @@ def test_explore_split_passage_sentence_fallback(
     unit = client.post(
         "/api/v1/admin/units",
         json={"order_index": 95, "title": "Explore Split", "topic": "ExploreSplit"},
-        headers=operator_token_headers,
+        headers=superuser_token_headers,
     ).json()
     created = client.post(
         "/api/v1/admin/passages",

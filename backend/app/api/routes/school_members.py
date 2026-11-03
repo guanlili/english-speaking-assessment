@@ -12,14 +12,14 @@
 """
 
 import uuid
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import Field, SQLModel, col, select
 from sqlmodel import Session as SASession
 
 from app import crud
-from app.api.deps import CurrentUser, SessionDep
+from app.api.deps import SchoolAdminDep, SessionDep
 from app.core.ratelimit import SlidingWindowLimiter
 from app.core.security import get_password_hash
 from app.models import User, UserCreate, UserPublic
@@ -27,15 +27,6 @@ from app.models import User, UserCreate, UserPublic
 router = APIRouter(prefix="/school/members", tags=["school"])
 
 _member_limiter = SlidingWindowLimiter(limit=20, window_s=300)
-
-
-def _require_school_admin(current_user: CurrentUser) -> User:
-    if current_user.role != "school_admin":
-        raise HTTPException(status_code=403, detail="该操作仅限学校管理员")
-    return current_user
-
-
-SchoolAdminDep = Annotated[User, Depends(_require_school_admin)]
 
 
 class MemberCreate(SQLModel):

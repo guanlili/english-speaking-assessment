@@ -461,7 +461,7 @@ def test_unit_switch_starts_new_round_preserving_attempts(
         unit = client.post(
             "/api/v1/admin/units",
             json={"order_index": 1, "title": "Unit 2 · Pets Daily", "topic": "Pets"},
-            headers=operator_token_headers,
+            headers=superuser_token_headers,
         ).json()
         created["unit"] = uuid.UUID(unit["id"])
         passage = client.post(
@@ -618,7 +618,7 @@ def test_explore_next_question_binds_to_session(
         unit = client.post(
             "/api/v1/admin/units",
             json={"order_index": 99, "title": "Food", "topic": "Food"},
-            headers=operator_token_headers,
+            headers=superuser_token_headers,
         ).json()
         created["unit"] = uuid.UUID(unit["id"])
         passage = client.post(
@@ -741,7 +741,7 @@ def test_abac_board_shows_current_assignment(
         unit_b = client.post(
             "/api/v1/admin/units",
             json={"order_index": 50, "title": "Unit B", "topic": "Pets"},
-            headers=operator_token_headers,
+            headers=superuser_token_headers,
         ).json()
         created["unit_b"] = uuid.UUID(unit_b["id"])
         passage_b = client.post(

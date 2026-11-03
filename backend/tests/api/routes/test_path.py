@@ -178,7 +178,7 @@ def test_unit_crud(
     created = client.post(
         "/api/v1/admin/units",
         json={"order_index": 9, "title": "临时单元", "topic": "Test"},
-        headers=operator_token_headers,
+        headers=superuser_token_headers,
     )
     assert created.status_code == 200
     unit = created.json()
@@ -186,7 +186,7 @@ def test_unit_crud(
     upd = client.put(
         f"/api/v1/admin/units/{unit['id']}",
         json={"title": "改名单元"},
-        headers=operator_token_headers,
+        headers=superuser_token_headers,
     )
     assert upd.json()["title"] == "改名单元"
 
@@ -195,7 +195,7 @@ def test_unit_crud(
 
     assert (
         client.delete(
-            f"/api/v1/admin/units/{unit['id']}", headers=operator_token_headers
+            f"/api/v1/admin/units/{unit['id']}", headers=superuser_token_headers
         ).status_code
         == 200
     )
