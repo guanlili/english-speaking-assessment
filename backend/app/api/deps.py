@@ -183,6 +183,17 @@ def get_current_teacher(current_user: CurrentUser) -> User:
     return _require_role(current_user, "teacher")
 
 
+def get_current_school_admin(current_user: CurrentUser) -> User:
+    """校级管理员门：本校题库 taxonomy（单元/句型库）与校内成员管理。
+    教师可读目录（选题用），写归 school_admin（V1.0 §3.2「管理本校题库」）。"""
+    if current_user.role != "school_admin":
+        raise HTTPException(status_code=403, detail="该操作仅限学校管理员")
+    return current_user
+
+
+SchoolAdminDep = Annotated[User, Depends(get_current_school_admin)]
+
+
 def get_current_student(current_user: CurrentUser) -> User:
     """仅学生（学生端练习链路）。"""
     if current_user.role != "student" and current_user.role != "school_admin":

@@ -55,11 +55,6 @@ const adminOnlyItems: Item[] = [
     path: "/admin/dashboard",
   },
   {
-    icon: Layers,
-    title: { zh: "单元管理", en: "Units" },
-    path: "/admin/units",
-  },
-  {
     icon: Users,
     title: { zh: "用户与权限", en: "Users & Permissions" },
     path: "/admin",
@@ -68,11 +63,6 @@ const adminOnlyItems: Item[] = [
     icon: BookA,
     title: { zh: "五级词库", en: "Leveled Word Source" },
     path: "/admin/vocablevels",
-  },
-  {
-    icon: MessageSquareQuote,
-    title: { zh: "句型库", en: "Sentence Frames" },
-    path: "/admin/sentenceframes",
   },
   {
     icon: UsersRound,
@@ -92,6 +82,16 @@ const schoolAdminExtraItems: Item[] = [
     icon: UserRoundCog,
     title: { zh: "教师管理", en: "Teacher Accounts" },
     path: "/school/members",
+  },
+  {
+    icon: Layers,
+    title: { zh: "单元管理", en: "Units" },
+    path: "/admin/units",
+  },
+  {
+    icon: MessageSquareQuote,
+    title: { zh: "句型库", en: "Sentence Frames" },
+    path: "/admin/sentenceframes",
   },
   {
     icon: BookA,

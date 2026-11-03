@@ -72,7 +72,7 @@ def test_list_pagination_envelope(
 
     # 句型库 / 篇目：同信封结构
     frames = client.get(
-        "/api/v1/admin/sentence-frames", headers=operator_token_headers
+        "/api/v1/admin/sentence-frames", headers=superuser_token_headers
     ).json()
     assert set(frames.keys()) == {"data", "count"}
     passages = client.get(
@@ -442,7 +442,7 @@ def test_admin_topics_are_union_and_sorted(
     unit = client.post(
         "/api/v1/admin/units",
         json={"order_index": 99, "title": "u1", "topic": "主题U"},
-        headers=operator_token_headers,
+        headers=superuser_token_headers,
     ).json()
     scenario = client.post(
         "/api/v1/admin/scenarios",
@@ -458,7 +458,7 @@ def test_admin_topics_are_union_and_sorted(
     finally:
         _purge_passage(client, superuser_token_headers, passage["id"])
         client.delete(
-            f"/api/v1/admin/units/{unit['id']}", headers=operator_token_headers
+            f"/api/v1/admin/units/{unit['id']}", headers=superuser_token_headers
         )
         client.delete(
             f"/api/v1/admin/scenarios/{scenario['id']}", headers=superuser_token_headers
@@ -473,7 +473,7 @@ def test_unit_passage_count_and_assignment_read_back(
     unit = client.post(
         "/api/v1/admin/units",
         json={"order_index": 98, "title": "计数单元", "topic": "CountTopic"},
-        headers=operator_token_headers,
+        headers=superuser_token_headers,
     ).json()
     passage: dict | None = None
     classroom: dict | None = None
@@ -518,7 +518,7 @@ def test_unit_passage_count_and_assignment_read_back(
         if passage is not None:
             _purge_passage(client, superuser_token_headers, passage["id"])
         client.delete(
-            f"/api/v1/admin/units/{unit['id']}", headers=operator_token_headers
+            f"/api/v1/admin/units/{unit['id']}", headers=superuser_token_headers
         )
         if classroom is not None:
             client.delete(
@@ -951,19 +951,19 @@ def test_admin_only_zones_reject_teacher(
     # 读：教师出题页需要单元与主题列表
     assert client.get("/api/v1/admin/units", headers=teacher).status_code == 200
     assert client.get("/api/v1/admin/topics", headers=teacher).status_code == 200
-    # 单元增删改：平台运营专属（教师 401）
+    # 单元增删改：校级管理员专属（教师 403——纠偏后归学校侧）
     assert (
         client.post(
             "/api/v1/admin/units",
             json={"order_index": 1, "title": "越权单元", "topic": "PermTopic"},
             headers=teacher,
         ).status_code
-        == 401
+        == 403
     )
     unit = client.post(
         "/api/v1/admin/units",
         json={"order_index": 1, "title": "权限单元", "topic": "PermTopic"},
-        headers=operator_token_headers,
+        headers=superuser_token_headers,
     ).json()
     try:
         assert (
@@ -972,18 +972,18 @@ def test_admin_only_zones_reject_teacher(
                 json={"title": "改"},
                 headers=teacher,
             ).status_code
-            == 401
+            == 403
         )
         assert (
             client.delete(
                 f"/api/v1/admin/units/{unit['id']}", headers=teacher
             ).status_code
-            == 401
+            == 403
         )
-        # 句型库管理整套：平台运营专属（教师 401）
+        # 句型库管理整套：校级管理员专属（教师 403——纠偏后归学校侧）
         assert (
             client.get("/api/v1/admin/sentence-frames", headers=teacher).status_code
-            == 401
+            == 403
         )
         frame_body = {
             "level": "KET",
@@ -995,15 +995,15 @@ def test_admin_only_zones_reject_teacher(
             client.post(
                 "/api/v1/admin/sentence-frames", json=frame_body, headers=teacher
             ).status_code
-            == 401
+            == 403
         )
         assert (
             client.post(
                 "/api/v1/admin/sentence-frames/batch", json=[], headers=teacher
             ).status_code
-            == 401
+            == 403
         )
     finally:
         client.delete(
-            f"/api/v1/admin/units/{unit['id']}", headers=operator_token_headers
+            f"/api/v1/admin/units/{unit['id']}", headers=superuser_token_headers
         )

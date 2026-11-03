@@ -78,7 +78,7 @@ def test_passage_topic_derives_from_unit(
     resp = client.put(
         f"/api/v1/admin/units/{unit['id']}",
         json={"topic": "Food"},
-        headers=operator_token_headers,
+        headers=superuser_token_headers,
     )
     assert resp.status_code == 200
     topics = {
@@ -91,7 +91,7 @@ def test_passage_topic_derives_from_unit(
     invalid = client.put(
         f"/api/v1/admin/units/{unit['id']}",
         json={"topic": None},
-        headers=operator_token_headers,
+        headers=superuser_token_headers,
     )
     assert invalid.status_code == 422
 
