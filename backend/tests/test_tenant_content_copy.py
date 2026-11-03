@@ -19,7 +19,7 @@ instructions}/{id}/copy 与共享复制 /admin/content/{kind}/{id}/copy。
 
 import uuid
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -197,8 +197,9 @@ def test_same_school_copy_ok_and_lands_in_own_tenant(
         assert resp.status_code == 200, (key, resp.status_code, resp.text)
         copied = db.get(model, uuid.UUID(resp.json()["id"]))
         assert copied is not None, key
-        assert copied.tenant_id == b_tenant.id, key
-        assert copied.tenant_id != DEFAULT_TENANT_ID, key
+        copied_row = cast(Any, copied)
+        assert copied_row.tenant_id == b_tenant.id, key
+        assert copied_row.tenant_id != DEFAULT_TENANT_ID, key
 
 
 def test_same_school_copy_default_tenant(
@@ -211,7 +212,8 @@ def test_same_school_copy_default_tenant(
         resp = client.post(url, headers=headers)
         assert resp.status_code == 200, (key, resp.status_code, resp.text)
         copied = db.get(model, uuid.UUID(resp.json()["id"]))
-        assert copied is not None and copied.tenant_id == DEFAULT_TENANT_ID, key
+        copied_row = cast(Any, copied)
+        assert copied_row is not None and copied_row.tenant_id == DEFAULT_TENANT_ID, key
 
 
 def _preview_url(copy_url: str) -> str:
