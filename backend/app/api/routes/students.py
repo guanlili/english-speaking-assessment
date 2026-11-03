@@ -41,6 +41,9 @@ def _get_classroom_in_scope(
     classroom = session.get(Classroom, classroom_id)
     if classroom is None or not classroom.is_active:
         raise HTTPException(status_code=404, detail="Classroom not found")
+    if classroom.tenant_id != current_user.tenant_id:
+        # 跨校课堂按不存在处理（CLAUDE.md 不变量④；与 RLS 激活环境对齐）
+        raise HTTPException(status_code=404, detail="Classroom not found")
     if not crud.classroom_teacher_allowed(classroom, current_user):
         raise HTTPException(status_code=403, detail="没有权限：只能管理自己课堂的学生")
     return classroom
@@ -58,6 +61,10 @@ def _ensure_account_reset_allowed(
     """
     if user.role != "student":
         raise HTTPException(status_code=403, detail="没有权限：只能重置学生账号的密码")
+    if user.tenant_id != current_user.tenant_id:
+        # 目标账号归属他校：按不存在处理（正常链路到不了这里——课堂已先做
+        # 租户核验；这是账号级凭证的最后一道防线）
+        raise HTTPException(status_code=404, detail="User not found")
     if current_user.role == "school_admin":
         return
     # join 走 Student.classroom_id 外键推断，不写 onclause（ty 会把列 == 判成 bool）

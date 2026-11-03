@@ -497,7 +497,10 @@ export class ClassesService {
     /**
      * List My Classrooms
      *
-     * 课堂列表：管理员看全部，教师看自己名下的（工作台「我的课堂」）。
+     * 课堂列表：管理员看本校全部，教师看自己名下的（工作台「我的课堂」）。
+     *
+     * 多租户：管理员的「看全部」限定本校（RLS 激活环境由数据库强制，这里
+     * 是无 RLS 环境的应用层等价防线）。
      */
     public static listMyClassrooms<ThrowOnError extends boolean = true>(options?: Options<never, ThrowOnError>): RequestResult<ClassesListMyClassroomsResponses, unknown, ThrowOnError, 'data'> {
         return (options?.client ?? client).get<ClassesListMyClassroomsResponses, unknown, ThrowOnError, 'data'>({
