@@ -192,15 +192,18 @@ def update_vocab_level_entry(
 
 
 def _visible_book_ids(session: Session, current_user: User) -> list[uuid.UUID] | None:
-    """当前教师可见的词库 id（公共库或本人班级库）；管理员返回 None 表示不限。"""
-    if current_user.role == "school_admin":
-        return None
-    rows = session.exec(
-        select(VocabularyBook.id).where(
-            (VocabularyBook.scope == "public")
+    """当前教师可见的词库 id（本校公共库或本人班级库）；管理员=本校全部。
+
+    多租户：谓词始终带本校过滤——他校词库在 RLS 激活环境本就不可见，
+    这里是无 RLS 环境的应用层等价防线（CLAUDE.md 不变量④）。
+    """
+    conditions = [VocabularyBook.tenant_id == current_user.tenant_id]
+    if current_user.role != "school_admin":
+        conditions.append(
+            (VocabularyBook.scope == "public")  # type: ignore[union-attr]
             | (VocabularyBook.owner_id == current_user.id)  # type: ignore[operator]
         )
-    ).all()
+    rows = session.exec(select(VocabularyBook.id).where(*conditions)).all()
     return list(rows)
 
 
@@ -225,8 +228,11 @@ def list_teaching_words_by_level(
     """
     levels_service.validate_level(level)
     visible_ids = _visible_book_ids(session, current_user)
+    # 多租户：词行也按本校过滤——同词头的他校词行在 RLS 激活环境不可见，
+    # 无 RLS 环境保持同语义（CLAUDE.md 不变量④）
     headword_stmt = select(VocabularyWord.headword).where(
-        VocabularyWord.status == "active"
+        VocabularyWord.status == "active",
+        VocabularyWord.tenant_id == current_user.tenant_id,
     )
     if visible_ids is not None:
         headword_stmt = headword_stmt.join(
@@ -246,6 +252,7 @@ def list_teaching_words_by_level(
         select(VocabularyWord)
         .where(
             VocabularyWord.status == "active",
+            VocabularyWord.tenant_id == current_user.tenant_id,
             col(VocabularyWord.headword).in_(matched_headwords),  # type: ignore[operator]
         )
         .order_by(col(VocabularyWord.headword), col(VocabularyWord.id))

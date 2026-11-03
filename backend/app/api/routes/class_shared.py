@@ -277,10 +277,16 @@ def _require_classroom_teacher(classroom: Classroom, current_user: User) -> None
 
 @router.get("", response_model=list[ClassroomPublic])
 def list_my_classrooms(session: SessionDep, current_user: CurrentUser) -> Any:
-    """课堂列表：管理员看全部，教师看自己名下的（工作台「我的课堂」）。"""
+    """课堂列表：管理员看本校全部，教师看自己名下的（工作台「我的课堂」）。
+
+    多租户：管理员的「看全部」限定本校（RLS 激活环境由数据库强制，这里
+    是无 RLS 环境的应用层等价防线）。
+    """
     stmt = select(Classroom).order_by(col(Classroom.created_at).desc())  # type: ignore[union-attr]
     if current_user.role != "school_admin":
         stmt = stmt.where(Classroom.owner_id == current_user.id)  # type: ignore[arg-type]
+    else:
+        stmt = stmt.where(Classroom.tenant_id == current_user.tenant_id)  # type: ignore[arg-type]
     return session.exec(stmt).all()
 
 

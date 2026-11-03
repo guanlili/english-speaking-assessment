@@ -167,6 +167,10 @@ def _visible(session: SessionDep, job_id: uuid.UUID, user: User) -> ExportJob:
     job = session.get(ExportJob, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Export job not found")
+    if job.tenant_id != user.tenant_id:
+        # 跨校按不存在处理（CLAUDE.md 多租户不变量④；与 RLS 语义对齐——
+        # 无 RLS 的测试/开发/配置回落环境行为不回退，不泄露他校任务存在性）
+        raise HTTPException(status_code=404, detail="Export job not found")
     if job.requester_user_id != user.id and user.role != "school_admin":
         raise HTTPException(status_code=403, detail="没有权限：只能查看自己的导出任务")
     return job
@@ -186,7 +190,8 @@ def _resolve(session: SessionDep, user: User, body: ExportCreate) -> dict[str, o
         if body.classroom_id is None:
             raise HTTPException(status_code=422, detail="export_classroom_required")
         classroom = session.get(Classroom, body.classroom_id)
-        if classroom is None:
+        if classroom is None or classroom.tenant_id != user.tenant_id:
+            # 跨校课堂按不存在处理（同 RLS 语义，见 _visible 注释）
             raise HTTPException(status_code=404, detail="Classroom not found")
         if not classroom_teacher_allowed(classroom, user):
             _reject(
@@ -223,6 +228,10 @@ def _resolve(session: SessionDep, user: User, body: ExportCreate) -> dict[str, o
     else:
         if body.session_id is not None:
             practice = session.get(PracticeSession, body.session_id)
+            if practice is not None and practice.tenant_id != user.tenant_id:
+                # 跨校按不存在处理：与 RLS 语义一致（否则 403 与「id 不存在」
+                # 的 403 不同响应会构成存在性预言——保持两者同为 403）
+                practice = None
             student = (
                 session.get(Student, practice.student_id)
                 if practice is not None
@@ -234,6 +243,8 @@ def _resolve(session: SessionDep, user: User, body: ExportCreate) -> dict[str, o
                 )
         if body.exercise_id is not None:
             exercise = session.get(ClassroomExercise, body.exercise_id)
+            if exercise is not None and exercise.tenant_id != user.tenant_id:
+                exercise = None  # 跨校按不存在处理（同上，静默忽略不取标题）
             if exercise is not None:
                 exercise_title = exercise.title
     try:
@@ -312,6 +323,9 @@ def _create_student_report(
         classroom = by_code
     if classroom is None:
         raise HTTPException(status_code=422, detail="export_classroom_required")
+    if classroom.tenant_id != current_user.tenant_id:
+        # 跨校课堂（含按课堂码命中他校）按不存在处理（同 RLS 语义）
+        raise HTTPException(status_code=404, detail="Classroom not found")
     student = session.exec(
         select(Student).where(
             Student.user_id == current_user.id,
@@ -423,6 +437,9 @@ def _create_class_report(
         classroom = by_code
     if classroom is None:
         raise HTTPException(status_code=422, detail="export_classroom_required")
+    if classroom.tenant_id != current_user.tenant_id:
+        # 跨校课堂（含按课堂码命中他校）按不存在处理（同 RLS 语义）
+        raise HTTPException(status_code=404, detail="Classroom not found")
     if not classroom_teacher_allowed(classroom, current_user):
         _reject(
             session,

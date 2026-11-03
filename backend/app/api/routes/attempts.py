@@ -621,8 +621,13 @@ def read_attempts_batch(
     current_user: TeacherUserDep,
 ) -> list[AttemptPublic]:
     """Read up to 100 attempts in request order after authorizing the entire batch."""
+    # 多租户：查询先按本校过滤——他校 id 与不存在的 id 同为 404，不泄露
+    # 他校作答存在性（与 RLS 激活环境行为一致，CLAUDE.md 不变量④）
     attempts = session.exec(
-        select(Attempt).where(col(Attempt.id).in_(body.attempt_ids))
+        select(Attempt).where(
+            col(Attempt.id).in_(body.attempt_ids),
+            Attempt.tenant_id == current_user.tenant_id,
+        )
     ).all()
     by_id = {attempt.id: attempt for attempt in attempts}
     if len(by_id) != len(body.attempt_ids):

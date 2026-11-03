@@ -131,6 +131,10 @@ def _assignment_public(assignment: VocabularyAssignment) -> VocabularyAssignment
 
 
 def _book_visible(book: VocabularyBook, current_user: User) -> bool:
+    # 多租户：先按本校过滤（他校词库在 RLS 激活环境本就查不到；
+    # 无 RLS 环境保持同语义，CLAUDE.md 不变量④）
+    if book.tenant_id != current_user.tenant_id:
+        return False
     if current_user.role == "school_admin":
         return True
     if book.scope == "public":
@@ -251,6 +255,8 @@ def list_books(session: SessionDep, current_user: TeacherUserDep) -> Any:
     不把别人的班级词库整表拉回 Python 再丢掉。
     """
     statement = select(VocabularyBook).order_by(col(VocabularyBook.created_at))
+    # 多租户：可见性谓词始终带本校过滤（管理员「全见」= 本校全见）
+    statement = statement.where(VocabularyBook.tenant_id == current_user.tenant_id)  # type: ignore[union-attr]
     if current_user.role != "school_admin":
         statement = statement.where(
             (col(VocabularyBook.scope) == "public")  # type: ignore[union-attr]
@@ -460,6 +466,9 @@ def update_word(
     """编辑词条（词库内容版本化更新；历史任务与报告仍按发布快照）。"""
     word = session.get(VocabularyWord, word_id)
     if word is None:
+        raise HTTPException(status_code=404, detail="词条不存在")
+    if word.tenant_id != current_user.tenant_id:
+        # 跨校词条按不存在处理（CLAUDE.md 不变量④；与 RLS 激活环境对齐）
         raise HTTPException(status_code=404, detail="词条不存在")
     # 权限：管理员任意；教师只能改自己班级词库里的词
     if current_user.role != "school_admin":

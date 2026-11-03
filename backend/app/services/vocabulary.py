@@ -103,11 +103,17 @@ def validate_prompt_types(prompt_types: list[str]) -> list[str]:
     return cleaned
 
 
-def visible_book_ids_for(session: Session, user_id: uuid.UUID) -> set[uuid.UUID]:
-    """教师可用的词库 id 集合：全部公共词库 + 自己名下的班级词库（管理员另走全通过）。"""
+def visible_book_ids_for(session: Session, user: User) -> set[uuid.UUID]:
+    """教师可用的词库 id 集合：本校公共词库 + 自己名下的班级词库。
+
+    多租户：谓词始终带本校过滤（他校词库在 RLS 激活环境本就不可见，
+    这里是无 RLS 环境的应用层等价防线，CLAUDE.md 不变量④）。
+    """
     rows = session.exec(
         select(VocabularyBook.id).where(
-            (VocabularyBook.scope == "public") | (VocabularyBook.owner_id == user_id)  # type: ignore[operator]
+            VocabularyBook.tenant_id == user.tenant_id,
+            (VocabularyBook.scope == "public")  # type: ignore[union-attr]
+            | (VocabularyBook.owner_id == user.id),  # type: ignore[operator]
         )
     ).all()
     return set(rows)
@@ -121,18 +127,25 @@ def resolve_publish_words(
 ) -> list[VocabularyWord]:
     """发布词单解析：整本词库（active 词、按 position）或显式词清单。
 
-    权限：来源词库必须对发布教师可见（公共库或本人班级库；管理员不限），
-    显式 word_ids 的每个词也必须归属至少一本可见词库——否则可借发布/结果
-    接口读到其他教师私有词条的拼写与释义。
+    权限：来源词库必须对发布教师可见（本校公共库或本人班级库；管理员=
+    本校全部），显式 word_ids 的每个词也必须归属至少一本可见词库——否则可借
+    发布/结果接口读到其他教师私有词条的拼写与释义。
 
     发布校验三口径：所选词数、可出题数、最终题数一致（题量不允许
     超过实际可出题量——清单里多余/归档词直接 422，避免静默缩水）。
     """
-    allowed_book_ids: set[uuid.UUID] | None = (
-        None
-        if viewer.role == "school_admin"
-        else visible_book_ids_for(session, viewer.id)
-    )
+    allowed_book_ids: set[uuid.UUID]
+    if viewer.role == "school_admin":
+        # 管理员=本校全部词库（跨校他校词库不放行，与 RLS 激活环境对齐）
+        allowed_book_ids = set(
+            session.exec(
+                select(VocabularyBook.id).where(
+                    VocabularyBook.tenant_id == viewer.tenant_id
+                )
+            ).all()
+        )
+    else:
+        allowed_book_ids = visible_book_ids_for(session, viewer)
 
     def _book_allowed(book: VocabularyBook) -> bool:
         return allowed_book_ids is None or book.id in allowed_book_ids
@@ -1793,7 +1806,13 @@ def get_book_or_404(session: Session, book_id: uuid.UUID) -> VocabularyBook:
 
 
 def require_book_editor(book: VocabularyBook, current_user: User) -> None:
-    """词库编辑权：公共词库仅管理员；班级词库为本班教师或管理员。"""
+    """词库编辑权：公共词库仅管理员；班级词库为本班教师或管理员。
+
+    多租户：管理员放行只在本校成立——跨校词库按不存在处理
+    （CLAUDE.md 不变量④，与 RLS 激活环境对齐）。
+    """
+    if book.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="词库不存在")
     if current_user.role == "school_admin":
         return
     if (
