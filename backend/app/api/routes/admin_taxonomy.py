@@ -34,7 +34,12 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 @router.get("/units", response_model=list[UnitPublic])
 def list_units(session: SessionDep, _admin: TeacherUserDep) -> Any:
-    units = session.exec(select(Unit).order_by(col(Unit.order_index))).all()
+    # 多租户：列表只返回本校单元（与 RLS 双防线一致，未激活形态下防跨校读）
+    units = session.exec(
+        select(Unit)
+        .where(col(Unit.tenant_id) == _admin.tenant_id)  # type: ignore[union-attr]
+        .order_by(col(Unit.order_index))
+    ).all()
     counts = _active_passage_counts(session)
     return [
         UnitPublic(
@@ -191,6 +196,8 @@ def list_sentence_frames(
     limit: int | None = Query(default=None, ge=1, le=500),
 ) -> Any:
     conditions: list[Any] = []
+    # 多租户：列表只返回本校句型（与 RLS 双防线一致，未激活形态下防跨校读）
+    conditions.append(SentenceFrame.tenant_id == _admin.tenant_id)  # type: ignore[arg-type]
     if level is not None:
         conditions.append(SentenceFrame.level == level)  # type: ignore[arg-type]
     if purpose is not None:

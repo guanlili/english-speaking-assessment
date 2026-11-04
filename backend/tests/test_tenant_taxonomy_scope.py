@@ -285,3 +285,40 @@ def test_same_school_update_frame_ok(
         json={"status": "active"},
     )
     assert resp.status_code == 200, resp.text
+
+
+# ── 跨校读隔离：list 端点只返回本校数据 ────────────────────
+# list_units / list_sentence_frames 此前 `select(Model)` 全表无 tenant 过滤，
+# 乙校 token 可列出 default 校全部单元/句型（生产 RLS 兜住、未激活形态泄露）。
+# 现补 tenant 过滤（双防线一致）。断言 default 校对象不可见、本校对象可见。
+
+
+def test_cross_school_list_units_scoped(
+    client: TestClient,
+    teacher_b: User,
+    b_tenant: Tenant,
+    default_unit: Unit,
+    b_unit: Unit,
+) -> None:
+    resp = client.get("/api/v1/admin/units", headers=_token(teacher_b, b_tenant.id))
+    assert resp.status_code == 200, resp.text
+    ids = {u["id"] for u in resp.json()}
+    assert str(b_unit.id) in ids  # 本校单元可见
+    assert str(default_unit.id) not in ids  # 跨校单元不可见（未过滤会泄漏）
+
+
+def test_cross_school_list_frames_scoped(
+    client: TestClient,
+    sa_b: User,
+    b_tenant: Tenant,
+    default_frame: SentenceFrame,
+    b_frame: SentenceFrame,
+) -> None:
+    resp = client.get(
+        "/api/v1/admin/sentence-frames", headers=_token(sa_b, b_tenant.id)
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json().get("data", resp.json())
+    ids = {f["id"] for f in data}
+    assert str(b_frame.id) in ids  # 本校句型可见
+    assert str(default_frame.id) not in ids  # 跨校句型不可见（未过滤会泄漏）
