@@ -205,8 +205,10 @@ def create_question(
     scenario_id: uuid.UUID,
     question_in: QuestionCreate,
 ) -> Any:
-    if session.get(Scenario, scenario_id) is None:
+    scenario = session.get(Scenario, scenario_id)
+    if scenario is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
+    content_access.require_same_tenant(current_user, scenario)
     if question_in.band not in VALID_BANDS:
         raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
     validate_exam_fields(
@@ -401,8 +403,10 @@ def create_questions_batch(
     body: BatchQuestionCreate,
 ) -> Any:
     """批量录入问法：逐条校验，合法的入库，非法的带原因返回（部分成功）。"""
-    if session.get(Scenario, scenario_id) is None:
+    scenario = session.get(Scenario, scenario_id)
+    if scenario is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
+    content_access.require_same_tenant(current_user, scenario)
     if body.band not in VALID_BANDS:
         raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
     if not body.items:
@@ -522,7 +526,7 @@ class DraftQuestionOut(SQLModel):
 )
 def generate_questions(
     session: SessionDep,
-    _admin: TeacherUserDep,
+    current_user: TeacherUserDep,
     scenario_id: uuid.UUID,
     body: GenerateRequest,
 ) -> Any:
@@ -535,6 +539,7 @@ def generate_questions(
     scenario = session.get(Scenario, scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
+    content_access.require_same_tenant(current_user, scenario)
     if body.band not in VALID_BANDS:
         raise HTTPException(status_code=422, detail="band 必须是 A2/B1/B2")
     try:
