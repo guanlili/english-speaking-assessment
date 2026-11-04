@@ -24,8 +24,14 @@ from app.models import (
 )
 
 
-def validate_assignment_items(session: Any, items: list[AssignmentItemIn]) -> None:
+def validate_assignment_items(
+    session: Any, items: list[AssignmentItemIn], tenant_id: uuid.UUID
+) -> None:
     """按题指派引用校验：题型合法且对象存在（朗读要求启用）。
+
+    多租户：批量查询一律限定本校（tenant_id 过滤）——跨校题目按不存在
+    处理（404），他校内容不得被指派进本校作业（C5 应用层防线，无 RLS
+    环境同等生效）。
 
     按题型分组的 in_() 批量查询替代逐题 session.get（指派上限 100 题，
     该函数在发布热路径上）。校验过的行进 session 身份映射，调用方随后
@@ -47,14 +53,20 @@ def validate_assignment_items(session: Any, items: list[AssignmentItemIn]) -> No
     passages_by_id: dict[uuid.UUID, Passage] = {}
     if passage_ids:
         for obj in session.exec(
-            select(Passage).where(col(Passage.id).in_(passage_ids))
+            select(Passage).where(
+                col(Passage.id).in_(passage_ids),
+                col(Passage.tenant_id) == tenant_id,
+            )
         ).all():
             passages_by_id[obj.id] = obj
     sentence_ids = [i.id for i in items if i.type == "repeat"]
     sentences_by_id: dict[uuid.UUID, RepeatSentence] = {}
     if sentence_ids:
         for obj in session.exec(
-            select(RepeatSentence).where(col(RepeatSentence.id).in_(sentence_ids))
+            select(RepeatSentence).where(
+                col(RepeatSentence.id).in_(sentence_ids),
+                col(RepeatSentence.tenant_id) == tenant_id,
+            )
         ).all():
             sentences_by_id[obj.id] = obj
     question_ids = [i.id for i in items if i.type == "question"]
@@ -62,21 +74,30 @@ def validate_assignment_items(session: Any, items: list[AssignmentItemIn]) -> No
     scenario_ids: set[uuid.UUID] = set()
     if question_ids:
         for obj in session.exec(
-            select(ScenarioQuestion).where(col(ScenarioQuestion.id).in_(question_ids))
+            select(ScenarioQuestion).where(
+                col(ScenarioQuestion.id).in_(question_ids),
+                col(ScenarioQuestion.tenant_id) == tenant_id,
+            )
         ).all():
             questions_by_id[obj.id] = obj
             scenario_ids.add(obj.scenario_id)
     scenarios_by_id: dict[uuid.UUID, Scenario] = {}
     if scenario_ids:
         for obj in session.exec(
-            select(Scenario).where(col(Scenario.id).in_(scenario_ids))
+            select(Scenario).where(
+                col(Scenario.id).in_(scenario_ids),
+                col(Scenario.tenant_id) == tenant_id,
+            )
         ).all():
             scenarios_by_id[obj.id] = obj
     instruction_ids = [i.id for i in items if i.type == AttemptItemType.INSTRUCTION]
     instructions_by_id: dict[uuid.UUID, Instruction] = {}
     if instruction_ids:
         for obj in session.exec(
-            select(Instruction).where(col(Instruction.id).in_(instruction_ids))
+            select(Instruction).where(
+                col(Instruction.id).in_(instruction_ids),
+                col(Instruction.tenant_id) == tenant_id,
+            )
         ).all():
             instructions_by_id[obj.id] = obj
 
@@ -127,14 +148,18 @@ def resolve_assigned_items(
     passages_by_id = {}
     if ids_by_type["passage"]:
         for obj in session.exec(
-            select(Passage).where(col(Passage.id).in_(list(ids_by_type["passage"])))
+            select(Passage).where(
+                col(Passage.id).in_(list(ids_by_type["passage"])),
+                col(Passage.tenant_id) == classroom.tenant_id,
+            )
         ).all():
             passages_by_id[str(obj.id)] = obj
     sentences_by_id = {}
     if ids_by_type["repeat"]:
         for obj in session.exec(
             select(RepeatSentence).where(
-                col(RepeatSentence.id).in_(list(ids_by_type["repeat"]))
+                col(RepeatSentence.id).in_(list(ids_by_type["repeat"])),
+                col(RepeatSentence.tenant_id) == classroom.tenant_id,
             )
         ).all():
             sentences_by_id[str(obj.id)] = obj
@@ -142,7 +167,8 @@ def resolve_assigned_items(
     if ids_by_type["question"]:
         for obj in session.exec(
             select(ScenarioQuestion).where(
-                col(ScenarioQuestion.id).in_(list(ids_by_type["question"]))
+                col(ScenarioQuestion.id).in_(list(ids_by_type["question"])),
+                col(ScenarioQuestion.tenant_id) == classroom.tenant_id,
             )
         ).all():
             questions_by_id[str(obj.id)] = obj
@@ -171,12 +197,21 @@ def resolve_assigned_items(
 
 
 def build_snapshot_item(
-    session: Any, item_type: str, item_id: uuid.UUID
+    session: Any, item_type: str, item_id: uuid.UUID, tenant_id: uuid.UUID
 ) -> dict[str, object]:
-    """把题目当前内容复制进发布快照。题库后续编辑不影响已发布练习。"""
+    """把题目当前内容复制进发布快照。题库后续编辑不影响已发布练习。
+
+    多租户：快照来源必须是本校对象——跨校题目按不存在处理（404），
+    防止他校内容经快照进入本校发布（C5 应用层防线）。
+    """
     if item_type == AttemptItemType.PASSAGE:
         item = session.get(Passage, item_id)
-        if item is None or not item.is_active or item.parent_passage_id is not None:
+        if (
+            item is None
+            or not item.is_active
+            or item.parent_passage_id is not None
+            or item.tenant_id != tenant_id
+        ):
             raise HTTPException(status_code=404, detail="朗读篇目不存在或已停用")
         return {
             "type": item_type,
@@ -190,7 +225,7 @@ def build_snapshot_item(
         }
     if item_type == AttemptItemType.REPEAT:
         item = session.get(RepeatSentence, item_id)
-        if item is None:
+        if item is None or item.tenant_id != tenant_id:
             raise HTTPException(status_code=404, detail="复述句不存在")
         return {
             "type": item_type,
@@ -206,7 +241,7 @@ def build_snapshot_item(
         }
     if item_type == AttemptItemType.INSTRUCTION:
         item = session.get(Instruction, item_id)
-        if item is None:
+        if item is None or item.tenant_id != tenant_id:
             raise HTTPException(status_code=404, detail="题目说明不存在")
         return {
             "type": item_type,
@@ -216,7 +251,7 @@ def build_snapshot_item(
             "suggested_seconds": item.suggested_seconds,
         }
     item = session.get(ScenarioQuestion, item_id)
-    if item is None:
+    if item is None or item.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="问答题不存在")
     return {
         "type": item_type,

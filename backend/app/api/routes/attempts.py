@@ -44,8 +44,8 @@ from app.models import (
     User,
 )
 from app.scoring.audio_convert import probe_audio
+from app.services import content_access, followups, reading
 from app.services import exam as exam_service
-from app.services import followups, reading
 from app.services.audio_playback import playback_path
 
 logger = logging.getLogger(__name__)
@@ -90,8 +90,14 @@ def _snapshot_attempt_item(
     item_type: str,
     item_id: uuid.UUID,
     session_id: uuid.UUID | None,
+    user: User | None,
 ) -> dict[str, object]:
-    """复制提交时题目内容，评分时不读取后来被编辑的题库。"""
+    """复制提交时题目内容，评分时不读取后来被编辑的题库。
+
+    多租户：会话归属他校/无会话路径直接按 id 读题库时，登录用户必须
+    命中本校对象（C5 应用层防线）——跨校题目按不存在处理（404），
+    不泄露他校内容；匿名（仅本地演示）无租户可比，维持原行为。
+    """
     if item_type not in {
         AttemptItemType.PASSAGE,
         AttemptItemType.REPEAT,
@@ -127,6 +133,8 @@ def _snapshot_attempt_item(
             if sentence_item is not None:
                 return sentence_item
             raise HTTPException(status_code=404, detail="题目不存在")
+        if user is not None:
+            content_access.require_same_tenant(user, item)
         return {
             "type": item_type,
             "id": str(item.id),
@@ -137,6 +145,8 @@ def _snapshot_attempt_item(
         item = session.get(RepeatSentence, item_id)
         if item is None:
             raise HTTPException(status_code=404, detail="题目不存在")
+        if user is not None:
+            content_access.require_same_tenant(user, item)
         return {
             "type": item_type,
             "id": str(item.id),
@@ -149,6 +159,8 @@ def _snapshot_attempt_item(
     item = session.get(ScenarioQuestion, item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="题目不存在")
+    if user is not None:
+        content_access.require_same_tenant(user, item)
     return {
         "type": item_type,
         "id": str(item.id),
@@ -434,7 +446,9 @@ def create_attempt_upload(
     student_id = student.id if student is not None else None
     session.commit()
 
-    item_snapshot = _snapshot_attempt_item(session, item_type, item_id, session_id)
+    item_snapshot = _snapshot_attempt_item(
+        session, item_type, item_id, session_id, current_user
+    )
     # 事务边界②：快照查询开启的只读事务到此为止——body 读取与 probe
     # 全程零事务零连接
     session.commit()

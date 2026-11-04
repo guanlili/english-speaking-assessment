@@ -613,7 +613,7 @@ def read_next_question(
             # 考试字段）绑定到会话——提交与结果页读这份内容，老师此后改
             # 题干/话题卡或删题均不影响学生已看到的题目
             snapshot = exercise_service.build_snapshot_item(
-                session, AttemptItemType.QUESTION, chosen.id
+                session, AttemptItemType.QUESTION, chosen.id, student.tenant_id
             )
             # 行级锁后追加：并发连点换一题不会互相覆盖丢授权
             locked_session = session.exec(
