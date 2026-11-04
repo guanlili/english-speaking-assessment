@@ -24,6 +24,7 @@ from app.models import (
     StudentExpressionFavorite,
     StudentFrameFavorite,
 )
+from app.services import content_access
 
 MAX_EXPRESSION_FAVORITES = 50
 
@@ -80,6 +81,7 @@ def add_frame_favorite(
     frame = session.get(SentenceFrame, body.frame_id)
     if frame is None or frame.status != "active":
         raise HTTPException(status_code=404, detail="句型不存在")
+    content_access.require_same_tenant(current_user, frame)
     existing = session.exec(
         select(StudentFrameFavorite).where(
             StudentFrameFavorite.student_id == student.id,  # type: ignore[arg-type]

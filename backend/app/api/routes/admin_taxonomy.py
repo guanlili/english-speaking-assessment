@@ -27,6 +27,7 @@ from app.models import (
     UnitPublic,
     UnitUpdate,
 )
+from app.services import content_access
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -72,13 +73,14 @@ def create_unit(
 @router.put("/units/{unit_id}", response_model=UnitPublic)
 def update_unit(
     session: SessionDep,
-    _admin: SchoolAdminDep,
+    current_user: SchoolAdminDep,
     unit_id: uuid.UUID,
     unit_in: UnitUpdate,
 ) -> Any:
     unit = session.get(Unit, unit_id)
     if unit is None:
         raise HTTPException(status_code=404, detail="Unit not found")
+    content_access.require_same_tenant(current_user, unit)
     update = unit_in.model_dump(exclude_unset=True)
     # 非空字段不允许显式清空
     _reject_null_non_nullable(update, {"title", "topic", "order_index", "is_active"})
@@ -98,11 +100,12 @@ def update_unit(
 
 @router.delete("/units/{unit_id}")
 def delete_unit(
-    session: SessionDep, _admin: SchoolAdminDep, unit_id: uuid.UUID
+    session: SessionDep, current_user: SchoolAdminDep, unit_id: uuid.UUID
 ) -> dict[str, str]:
     unit = session.get(Unit, unit_id)
     if unit is None:
         raise HTTPException(status_code=404, detail="Unit not found")
+    content_access.require_same_tenant(current_user, unit)
     session.delete(unit)  # 篇目 unit_id 置空（SET NULL）
     session.commit()
     return {"message": "deleted"}
@@ -237,13 +240,14 @@ def create_sentence_frame(
 @router.put("/sentence-frames/{frame_id}", response_model=SentenceFramePublic)
 def update_sentence_frame(
     session: SessionDep,
-    _admin: SchoolAdminDep,
+    current_user: SchoolAdminDep,
     frame_id: uuid.UUID,
     frame_in: SentenceFrameUpdate,
 ) -> Any:
     frame = session.get(SentenceFrame, frame_id)
     if frame is None:
         raise HTTPException(status_code=404, detail="Sentence frame not found")
+    content_access.require_same_tenant(current_user, frame)
     update = frame_in.model_dump(exclude_unset=True)
     _validate_frame_fields(
         update.get("level", frame.level),
@@ -336,11 +340,12 @@ def create_sentence_frames_batch(
 
 @router.delete("/sentence-frames/{frame_id}")
 def delete_sentence_frame(
-    session: SessionDep, _admin: SchoolAdminDep, frame_id: uuid.UUID
+    session: SessionDep, current_user: SchoolAdminDep, frame_id: uuid.UUID
 ) -> dict[str, str]:
     frame = session.get(SentenceFrame, frame_id)
     if frame is None:
         raise HTTPException(status_code=404, detail="Sentence frame not found")
+    content_access.require_same_tenant(current_user, frame)
     session.delete(frame)
     session.commit()
     return {"message": "deleted"}
