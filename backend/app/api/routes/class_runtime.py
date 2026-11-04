@@ -190,7 +190,7 @@ def record_listen(
     if practice_session is None or practice_session.student_id != student.id:
         raise HTTPException(status_code=404, detail="Session not found")
     sentence = session.get(RepeatSentence, body.item_id)
-    if sentence is None:
+    if sentence is None or sentence.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=404, detail="Sentence not found")
     replay_limit: int | None = sentence.replay_limit
     if practice_session.assignment_id is not None:

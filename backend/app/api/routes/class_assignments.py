@@ -301,7 +301,9 @@ def set_assignment(
             session.add(classroom)
             session.commit()
             return None
-        exercise_service.validate_assignment_items(session, body.items)
+        exercise_service.validate_assignment_items(
+            session, body.items, current_user.tenant_id
+        )
         homework_snapshots: list[dict[str, object]] = []
         for item in body.items:
             if item.type == AttemptItemType.PASSAGE:
@@ -313,7 +315,9 @@ def set_assignment(
                 homework_snapshots.extend(reading.expand_reading_items(passage))
             else:
                 homework_snapshots.append(
-                    exercise_service.build_snapshot_item(session, item.type, item.id)
+                    exercise_service.build_snapshot_item(
+                        session, item.type, item.id, current_user.tenant_id
+                    )
                 )
         exercise_service.publish_exercise(
             session=session,
@@ -340,7 +344,9 @@ def set_assignment(
 
     if body.items is not None:
         if body.items:
-            exercise_service.validate_assignment_items(session, body.items)
+            exercise_service.validate_assignment_items(
+                session, body.items, current_user.tenant_id
+            )
             snapshots: list[dict[str, object]] = []
             for item in body.items:
                 if item.type == AttemptItemType.PASSAGE:
@@ -354,7 +360,7 @@ def set_assignment(
                 else:
                     snapshots.append(
                         exercise_service.build_snapshot_item(
-                            session, item.type, item.id
+                            session, item.type, item.id, current_user.tenant_id
                         )
                     )
             exercise_service.publish_exercise(
@@ -393,7 +399,11 @@ def set_assignment(
             session.commit()
             return None
         unit = session.get(Unit, body_update["unit_id"])
-        if unit is None or not unit.is_active:
+        if (
+            unit is None
+            or not unit.is_active
+            or unit.tenant_id != current_user.tenant_id
+        ):
             raise HTTPException(status_code=404, detail="Unit not found")
         passages = list(
             session.exec(
@@ -414,7 +424,10 @@ def set_assignment(
             for passage in passages:
                 snapshots.extend(
                     exercise_service.build_snapshot_item(
-                        session, AttemptItemType.REPEAT, sentence.id
+                        session,
+                        AttemptItemType.REPEAT,
+                        sentence.id,
+                        current_user.tenant_id,
                     )
                     for sentence in unit_sentences_by_passage.get(passage.id, [])
                 )
@@ -431,7 +444,10 @@ def set_assignment(
                 ).all()
                 snapshots.extend(
                     exercise_service.build_snapshot_item(
-                        session, AttemptItemType.QUESTION, question.id
+                        session,
+                        AttemptItemType.QUESTION,
+                        question.id,
+                        current_user.tenant_id,
                     )
                     for question in questions
                 )
@@ -456,7 +472,7 @@ def set_assignment(
     if classroom.current_unit_id is None:
         return None
     current = session.get(Unit, classroom.current_unit_id)
-    if current is None:
+    if current is None or current.tenant_id != current_user.tenant_id:
         return None
     return AssignmentInfo(unit_id=current.id, title=current.title)
 
@@ -481,7 +497,7 @@ def start_explore(
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
     unit = session.get(Unit, body.unit_id)
-    if unit is None or not unit.is_active:
+    if unit is None or not unit.is_active or unit.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=404, detail="Unit not found")
     passage = session.exec(
         select(Passage).where(Passage.unit_id == unit.id, Passage.is_active).limit(1)
