@@ -329,14 +329,5 @@ export function safeLocalStorageSet(key: string, value: unknown): boolean {
   }
 }
 
-export function randomId(): string {
-  // crypto.randomUUID 仅在安全上下文（HTTPS/localhost）可用：纯 HTTP 部署下是
-  // undefined，点"开始录音"会直接 TypeError。降级到时间戳+随机数
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
-    return crypto.randomUUID()
-  }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-}
+// UUID 生成实现见 lib/random-id.ts；此处保留原导出路径，调用方无感
+export { randomId } from "./lib/random-id.ts"
