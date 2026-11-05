@@ -444,8 +444,11 @@ jobs:
           umask 077
           printf '%s' "$SERVER_SSH_KEY" > "$RUNNER_TEMP/deploy_id"
           chmod 600 "$RUNNER_TEMP/deploy_id"
+          # ConnectTimeout 30s：2026-11-04 实测 runner→大陆服务器跨境链路恶化时（scp 仅
+          # 10.6 KB/s），15s 内 ssh 握手未完成就被判失败 → 误判 sha=none → 全量 bundle。
+          # 服务器侧复现同一探测命令秒回（HEAD=目标提交），证明 15s 是纯超时误判。
           if ! sha=$(ssh -i "$RUNNER_TEMP/deploy_id" -o StrictHostKeyChecking=accept-new \
-              -o ConnectTimeout=15 "$SERVER_USER@$SERVER_HOST" \
+              -o ConnectTimeout=30 "$SERVER_USER@$SERVER_HOST" \
               "cd '$DEPLOY_PATH' 2>/dev/null && git rev-parse HEAD 2>/dev/null || echo none" 2>/dev/null); then
             sha=none
           fi
@@ -453,10 +456,11 @@ jobs:
           echo "probe raw output: [$sha]"
           echo "deploy path bytes: $(printf '%s' "$DEPLOY_PATH" | wc -c)"
           case "$sha" in ''|*[^0-9a-f]*|*[A-F]*|*' '*) sha=none;; esac
-          # 拉取预检 ×3 重试：gh-proxy 抖动（403/429 瞬时）是常态，单次判定太脆
+          # 拉取预检 ×3 重试：gh-proxy 抖动（403/429 瞬时）是常态，单次判定太脆。
+          # ConnectTimeout 同为 30s：慢链路下 15s 会让预检误判 fail 并白传全量 bundle。
           fetch=fail
           for attempt in 1 2 3; do
-            if ssh -i "$RUNNER_TEMP/deploy_id" -o ConnectTimeout=15 "$SERVER_USER@$SERVER_HOST" \
+            if ssh -i "$RUNNER_TEMP/deploy_id" -o ConnectTimeout=30 "$SERVER_USER@$SERVER_HOST" \
                 "cd '$DEPLOY_PATH' 2>/dev/null && timeout 90 git fetch origin" >/dev/null 2>&1; then
               fetch=ok
               break
