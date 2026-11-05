@@ -8,7 +8,7 @@ $ARGUMENTS — 功能名称，例如 `order`（订单）、`product`（产品）
 
 ## 执行步骤
 
-1. **后端 Model**：在 `backend/app/models.py` 中添加 SQLModel 数据模型（参考现有 Item 模型的写法）
+1. **后端 Model**：在 `backend/app/models/<对应域>.py`（content/classroom/learning/vocabulary/admin）中添加 SQLModel 数据模型；`app/models/__init__.py` 会自动再导出，调用方仍用 `from app.models import X`
 
 2. **后端 CRUD**：在 `backend/app/crud.py` 中添加对应的增删改查函数
 

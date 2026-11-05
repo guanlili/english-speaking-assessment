@@ -1,6 +1,6 @@
 # 创建数据库迁移
 
-当 `backend/app/models.py` 有改动后，生成并应用 Alembic 迁移文件。
+当 `backend/app/models/` 下有改动后，生成并应用 Alembic 迁移文件。
 
 ## 参数
 
