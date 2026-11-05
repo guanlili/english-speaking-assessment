@@ -32,6 +32,7 @@ from app.models import (
     Student,
     User,
 )
+from app.services.csv_safety import csv_safe_row
 
 logger = logging.getLogger(__name__)
 
@@ -397,26 +398,28 @@ def _manifest_csv(
             created = to_shanghai(candidate.created_at).strftime("%Y-%m-%d %H:%M:%S")
         missing = 0 if candidate.attempt_id in paths else 1
         writer.writerow(
-            [
-                str(candidate.attempt_id),
-                str(candidate.student_id),
-                candidate.student_name,
-                candidate.student_no,
-                candidate.classroom_code,
-                candidate.classroom_name,
-                str(candidate.session_id or ""),
-                str(candidate.exercise_id or ""),
-                candidate.item_type,
-                str(candidate.item_id),
-                candidate.item_title,
-                created,
-                f"{candidate.duration_s:.2f}",
-                "" if candidate.overall is None else str(candidate.overall),
-                candidate.status,
-                candidate.audio_mime,
-                paths.get(candidate.attempt_id, ""),
-                str(missing),
-            ]
+            csv_safe_row(
+                [
+                    str(candidate.attempt_id),
+                    str(candidate.student_id),
+                    candidate.student_name,
+                    candidate.student_no,
+                    candidate.classroom_code,
+                    candidate.classroom_name,
+                    str(candidate.session_id or ""),
+                    str(candidate.exercise_id or ""),
+                    candidate.item_type,
+                    str(candidate.item_id),
+                    candidate.item_title,
+                    created,
+                    f"{candidate.duration_s:.2f}",
+                    "" if candidate.overall is None else candidate.overall,
+                    candidate.status,
+                    candidate.audio_mime,
+                    paths.get(candidate.attempt_id, ""),
+                    str(missing),
+                ]
+            )
         )
     return buffer.getvalue().encode("utf-8")
 

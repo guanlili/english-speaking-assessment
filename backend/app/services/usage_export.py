@@ -24,6 +24,7 @@ from app.models import (
     Student,
     User,
 )
+from app.services.csv_safety import csv_safe_row
 
 BOM = "\ufeff"
 
@@ -60,7 +61,8 @@ def _num(v: float | int | None) -> object:
 def _csv(rows: list[list[object]]) -> io.StringIO:
     buf = io.StringIO()
     buf.write(BOM)
-    csv.writer(buf).writerows(rows)
+    # 学生姓名/教师反馈等用户可控文本必须挡公式前缀（Excel/WPS 打开即求值）
+    csv.writer(buf).writerows(csv_safe_row(row) for row in rows)
     buf.seek(0)
     return buf
 
