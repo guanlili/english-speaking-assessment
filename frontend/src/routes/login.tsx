@@ -6,13 +6,14 @@ import {
   redirect,
 } from "@tanstack/react-router"
 import { AlertCircle, ArrowRight, Presentation, UsersRound } from "lucide-react"
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 import type { BodyLoginLoginAccessToken as AccessToken } from "@/client"
 import { LoginService } from "@/client"
 import { LoginLayout } from "@/components/Common/LoginLayout"
+import { RememberLogin } from "@/components/Common/RememberLogin"
 import { Button } from "@/components/ui/button"
 import {
   Form,
@@ -116,6 +117,7 @@ function StudentLogin({ loginMutation }: { loginMutation: LoginMutation }) {
     mode: "onBlur",
     defaultValues: { username: "", password: "" },
   })
+  const [remember, setRemember] = useState(false)
   return (
     <Form {...form}>
       <form
@@ -127,7 +129,7 @@ function StudentLogin({ loginMutation }: { loginMutation: LoginMutation }) {
           if (loginMutation.isError) loginMutation.reset()
         }}
         onSubmit={form.handleSubmit((data) => {
-          if (!loginMutation.isPending) loginMutation.mutate(data)
+          if (!loginMutation.isPending) loginMutation.mutate({ data, remember })
         })}
         noValidate
       >
@@ -207,6 +209,12 @@ function StudentLogin({ loginMutation }: { loginMutation: LoginMutation }) {
           )}
         />
         {loginMutation.isError && <LoginError error={loginMutation.error} />}
+        <RememberLogin
+          checked={remember}
+          onCheckedChange={setRemember}
+          disabled={loginMutation.isPending}
+          testId="student-remember-checkbox"
+        />
         <LoadingButton
           type="submit"
           className={submitClassName}
@@ -352,8 +360,9 @@ function Login() {
     mode: "onBlur",
     defaultValues: { username: "", password: "" },
   })
+  const [remember, setRemember] = useState(false)
   const onSubmit = (data: FormData) => {
-    if (!loginMutation.isPending) loginMutation.mutate(data)
+    if (!loginMutation.isPending) loginMutation.mutate({ data, remember })
   }
 
   return (
@@ -503,6 +512,12 @@ function Login() {
                 {loginMutation.isError && (
                   <LoginError error={loginMutation.error} />
                 )}
+                <RememberLogin
+                  checked={remember}
+                  onCheckedChange={setRemember}
+                  disabled={loginMutation.isPending}
+                  testId="remember-checkbox"
+                />
                 <LoadingButton
                   className={submitClassName}
                   type="submit"

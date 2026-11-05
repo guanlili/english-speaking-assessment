@@ -88,9 +88,14 @@ const useAuth = () => {
     },
   })
 
-  const login = async (data: AccessToken) => {
+  const login = async (credentials: {
+    data: AccessToken
+    remember?: boolean
+  }) => {
     const response = await LoginService.loginAccessToken({
-      bodyLoginLoginAccessToken: data,
+      bodyLoginLoginAccessToken: credentials.data,
+      // 默认 24 小时；勾选「7 天内免登录」才发长效 token
+      remember: credentials.remember ?? false,
     })
     // 统一入口（四角色完善）：token 是运营身份时走运营通道——
     // /users/me 对运营 token 是 401（身份分离），不能走学校用户流程

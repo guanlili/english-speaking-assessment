@@ -60,9 +60,14 @@ export class LoginService {
      */
     public static loginAccessToken<ThrowOnError extends boolean = true>(parameters: {
         school?: string | null;
+        remember?: boolean;
         bodyLoginLoginAccessToken: BodyLoginLoginAccessToken;
     }, options?: Options<never, ThrowOnError>): RequestResult<LoginLoginAccessTokenResponses, LoginLoginAccessTokenErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ in: 'query', key: 'school' }, { key: 'bodyLoginLoginAccessToken', map: 'body' }] }]);
+        const params = buildClientParams([parameters], [{ args: [
+                    { in: 'query', key: 'school' },
+                    { in: 'query', key: 'remember' },
+                    { key: 'bodyLoginLoginAccessToken', map: 'body' }
+                ] }]);
         return (options?.client ?? client).post<LoginLoginAccessTokenResponses, LoginLoginAccessTokenErrors, ThrowOnError, 'data'>({
             ...urlSearchParamsBodySerializer,
             responseStyle: 'data',
@@ -87,9 +92,10 @@ export class LoginService {
      * 限流器但分桶计数。
      */
     public static loginPlatformToken<ThrowOnError extends boolean = true>(parameters: {
+        remember?: boolean;
         bodyLoginLoginPlatformToken: BodyLoginLoginPlatformToken;
     }, options?: Options<never, ThrowOnError>): RequestResult<LoginLoginPlatformTokenResponses, LoginLoginPlatformTokenErrors, ThrowOnError, 'data'> {
-        const params = buildClientParams([parameters], [{ args: [{ key: 'bodyLoginLoginPlatformToken', map: 'body' }] }]);
+        const params = buildClientParams([parameters], [{ args: [{ in: 'query', key: 'remember' }, { key: 'bodyLoginLoginPlatformToken', map: 'body' }] }]);
         return (options?.client ?? client).post<LoginLoginPlatformTokenResponses, LoginLoginPlatformTokenErrors, ThrowOnError, 'data'>({
             ...urlSearchParamsBodySerializer,
             responseStyle: 'data',

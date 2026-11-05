@@ -7689,6 +7689,12 @@ export type LoginLoginAccessTokenData = {
          * 学校码（多租户 B2）
          */
         school?: string | null;
+        /**
+         * Remember
+         *
+         * 记住登录：7 天有效；否则默认 24 小时
+         */
+        remember?: boolean;
     };
     url: '/api/v1/login/access-token';
 };
@@ -7714,7 +7720,14 @@ export type LoginLoginAccessTokenResponse = LoginLoginAccessTokenResponses[200 &
 export type LoginLoginPlatformTokenData = {
     body: BodyLoginLoginPlatformToken;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Remember
+         *
+         * 记住登录：7 天有效；否则默认 24 小时
+         */
+        remember?: boolean;
+    };
     url: '/api/v1/login/platform-token';
 };
 
