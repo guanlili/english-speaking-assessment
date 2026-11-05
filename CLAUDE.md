@@ -80,7 +80,14 @@ backend/app/
 ├── services/       # 域逻辑（快照、考试、词汇等边界规则）
 ├── scoring/        # 评分引擎接口与实现（ASR/rubric/TTS/worker）
 ├── core/           # 配置、安全、数据库连接
-├── models.py       # SQLModel 数据模型（数据库表结构）
+├── models/         # SQLModel 数据模型（按域拆分，__init__ 统一再导出）
+│   ├── base.py       # 租户列工厂与公共常量
+│   ├── core.py       # 租户/用户/令牌
+│   ├── content.py    # 篇目/单元/复述/情境/说明/题库
+│   ├── classroom.py  # 课堂/学生/作答
+│   ├── learning.py   # 学习路径/今日计划/看板/诊断
+│   ├── vocabulary.py # 词库与五级分级
+│   └── admin.py      # 运营指标/成本/变更日志/导出
 ├── crud.py         # 数据库增删改查操作
 └── main.py         # 应用入口
 
@@ -123,7 +130,7 @@ E2E：新测试文件默认进入真实后端的 `chromium` 项目；确认所�
 
 > 本节是流程的唯一权威版本（README 只留概览指向这里）。
 
-1. **后端**：在 `models.py` 加数据模型 → 在 `crud.py` 加增删改查 → 在 `api/routes/` 加新路由文件 → 在 `api/main.py` 注册路由
+1. **后端**：在 `models/<对应域>.py` 加数据模型（按域放置，不要新建顶层模型文件；对外仍以 `from app.models import X` 引用） → 在 `crud.py` 加增删改查 → 在 `api/routes/` 加新路由文件 → 在 `api/main.py` 注册路由
 2. **数据库迁移**：`docker compose exec backend alembic revision --autogenerate -m "add xxx"` → `alembic upgrade head`
 3. **前端 API 客户端**：后端改完后重新生成 → `cd frontend && npm run generate-client`（脚本会从运行中的 backend 容器导出最新 OpenAPI 规范再生成）
 4. **前端页面**：在 `routes/_layout/` 加新页面，在 `frontend/src/components/Sidebar/AppSidebar.tsx` 的 `baseItems` 里加导航链接（平台区块按运营身份 `esa:role=operator` 展示，校级业务按 `role` 判定——多租户 B3 起无 `is_superuser`）
