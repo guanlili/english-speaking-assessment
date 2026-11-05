@@ -2,11 +2,13 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation } from "@tanstack/react-query"
 import { createFileRoute, redirect } from "@tanstack/react-router"
 import { ArrowLeft, ShieldCheck } from "lucide-react"
+import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 import { LoginService } from "@/client"
 import { LoginLayout } from "@/components/Common/LoginLayout"
+import { RememberLogin } from "@/components/Common/RememberLogin"
 import { Button } from "@/components/ui/button"
 import {
   Form,
@@ -50,12 +52,15 @@ function PlatformLoginPage() {
     defaultValues: { email: "", password: "" },
   })
 
+  const [remember, setRemember] = useState(false)
   const submit = useMutation({
-    mutationFn: (data: FormData) =>
+    mutationFn: (payload: { data: FormData; remember: boolean }) =>
       LoginService.loginPlatformToken({
+        // 运营账号安全要求更高：默认 24 小时，勾选后才 7 天
+        remember: payload.remember,
         bodyLoginLoginPlatformToken: {
-          username: data.email,
-          password: data.password,
+          username: payload.data.email,
+          password: payload.data.password,
         },
       }).then(async (response) => {
         const token = (response as unknown as { access_token: string })
@@ -102,7 +107,9 @@ function PlatformLoginPage() {
 
       <Form {...form}>
         <form
-          onSubmit={form.handleSubmit((data) => submit.mutate(data))}
+          onSubmit={form.handleSubmit((data) =>
+            submit.mutate({ data, remember }),
+          )}
           className="space-y-4"
           noValidate
         >
@@ -145,6 +152,12 @@ function PlatformLoginPage() {
                 <FormMessage />
               </FormItem>
             )}
+          />
+          <RememberLogin
+            checked={remember}
+            onCheckedChange={setRemember}
+            disabled={submit.isPending}
+            testId="platform-remember-checkbox"
           />
           <LoadingButton
             type="submit"

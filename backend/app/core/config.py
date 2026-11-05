@@ -31,8 +31,11 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     # 必填：若给默认随机值，环境变量丢失时不报错，多 worker 下各进程密钥不同，token 时好时坏
     SECRET_KEY: str
-    # 60 minutes * 24 hours * 8 days = 8 days
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
+    # 默认 24 小时：共用设备（机房/平板）离座后最迟一天失效；
+    # 勾选「7 天内免登录」的 token 用 ACCESS_TOKEN_REMEMBER_MINUTES。
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+    # 60 minutes * 24 hours * 7 days = 7 days（用户主动勾选记住登录）
+    ACCESS_TOKEN_REMEMBER_MINUTES: int = 60 * 24 * 7
     FRONTEND_HOST: str = "http://localhost:5173"
     ENVIRONMENT: Literal["local", "staging", "production"] = "local"
 

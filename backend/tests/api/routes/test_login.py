@@ -1,5 +1,7 @@
+from datetime import UTC, datetime
 from unittest.mock import patch
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 from pwdlib.hashers.bcrypt import BcryptHasher
@@ -107,6 +109,37 @@ def test_get_access_token(client: TestClient) -> None:
     assert r.status_code == 200
     assert "access_token" in tokens
     assert tokens["access_token"]
+
+
+def test_login_remember_extends_session_expiry(client: TestClient) -> None:
+    """默认会话 24 小时；remember=true 才签发 7 天 token。
+
+    默认缩短是为了共用设备（机房/平板）离座后尽快失效；
+    个人设备由用户主动勾选「7 天内免登录」。
+    """
+    login_data = {
+        "username": settings.FIRST_SUPERUSER,
+        "password": settings.FIRST_SUPERUSER_PASSWORD,
+    }
+    default_r = client.post(
+        f"{settings.API_V1_STR}/login/access-token", data=login_data
+    )
+    remember_r = client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data=login_data,
+        params={"remember": "true"},
+    )
+    assert default_r.status_code == 200
+    assert remember_r.status_code == 200
+    now = datetime.now(UTC).timestamp()
+    default_exp = jwt.decode(
+        default_r.json()["access_token"], options={"verify_signature": False}
+    )["exp"]
+    remember_exp = jwt.decode(
+        remember_r.json()["access_token"], options={"verify_signature": False}
+    )["exp"]
+    assert default_exp - now == pytest.approx(24 * 3600, abs=60)
+    assert remember_exp - now == pytest.approx(7 * 24 * 3600, abs=60)
 
 
 def test_get_access_token_incorrect_password(client: TestClient) -> None:

@@ -95,12 +95,25 @@ def read_school_login_info(slug: str, response: Response) -> SchoolLoginInfo:
     )
 
 
+def _session_expiry(remember: bool) -> timedelta:
+    """登录态有效期：默认 24 小时（共用设备离座后尽快失效），记住登录 7 天。"""
+    minutes = (
+        settings.ACCESS_TOKEN_REMEMBER_MINUTES
+        if remember
+        else settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+    return timedelta(minutes=minutes)
+
+
 @router.post("/login/access-token")
 def login_access_token(
     request: Request,
     session: SessionDep,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     school: str | None = Query(default=None, description="学校码（多租户 B2）"),
+    remember: bool = Query(
+        default=False, description="记住登录：7 天有效；否则默认 24 小时"
+    ),
 ) -> Token:
     """
     OAuth2 compatible token login, get an access token for future requests.
@@ -148,9 +161,7 @@ def login_access_token(
             return Token(
                 access_token=security.create_access_token(
                     operator.id,
-                    expires_delta=timedelta(
-                        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-                    ),
+                    expires_delta=_session_expiry(remember),
                     role="operator",
                     password_hash=operator.hashed_password,
                     audience="platform",
@@ -163,7 +174,7 @@ def login_access_token(
         raise HTTPException(status_code=400, detail="账号或密码不正确")
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = _session_expiry(remember)
     # 账号桶整桶清空（成功即本人）；IP 桶只退还本次占用的额度、保留
     # 失败计数——NAT 出口共享，成功清桶会让「喷洒+成功」交替绕过限流
     _login_limiter.record_success(f"ip:{client_ip}", refund_only=True)
@@ -184,6 +195,9 @@ def login_platform_token(
     request: Request,
     session: SessionDep,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    remember: bool = Query(
+        default=False, description="记住登录：7 天有效；否则默认 24 小时"
+    ),
 ) -> Token:
     """平台运营登录（多租户 B3）：独立身份 + 独立 audience（设计稿 §3.2）。
 
@@ -204,7 +218,7 @@ def login_platform_token(
         raise HTTPException(status_code=400, detail="Inactive operator")
     _login_limiter.record_success(f"ip:{client_ip}", refund_only=True)
     _record_login_success(f"op:{account}")
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = _session_expiry(remember)
     return Token(
         access_token=security.create_access_token(
             operator.id,
