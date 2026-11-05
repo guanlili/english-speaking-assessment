@@ -73,6 +73,7 @@ from app.models import (
 from app.services import vocab_levels as vocab_levels_service
 from app.services import vocab_quiz
 from app.services import vocabulary as vocab_service
+from app.services.csv_safety import csv_safe
 from app.services.vocabulary import (
     MAX_BOOK_WORDS,
     _create_word,
@@ -1281,18 +1282,13 @@ def read_quiz_answer_sheet(
     return vocab_service.student_plan(session, vocab_session, reveal=True)
 
 
-_CSV_TEXT_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
-
-
 def _csv_text_cell(value: object) -> object:
-    """CSV 公式注入防护：用户可控文本以 =/+/-/@ 或制表/回车开头时加 ' 前缀。
+    """CSV 公式注入防护：实现收敛到 services/csv_safety.py，与前端 csv.ts 同规则。
 
-    Excel/WPS 会把这类开头当公式执行（姓名字段来自导入与用户输入）；
-    前缀单引号是最保守的通用转义。数字类型原样保留（不破坏成绩列）。
+    Excel/WPS 会把 = + - @ / 制表 / 回车 开头当公式执行（姓名来自导入与
+    用户输入）；前缀单引号是最保守的通用转义，数字类型原样保留。
     """
-    if isinstance(value, str) and value[:1] in _CSV_TEXT_FORMULA_PREFIXES:
-        return "'" + value
-    return value
+    return csv_safe(value)
 
 
 @router.get("/classes/{code}/vocabulary/assignments/{assignment_id}/results-export")
