@@ -1,0 +1,96 @@
+name: 运维巡检（存活性 + 磁盘水位）
+
+# 每小时一次的轻量巡检，只读探测，不改任何生产状态：
+#   1) 从公网探 /api/v1/utils/health-check/ —— 部署成功但服务实际挂掉时，CI 是绿的，只有外部探测能发现。
+#   2) 看服务器磁盘水位 —— 音频、导出文件、备份都在涨，撑满前要有人知道。
+#
+# 失败即 GitHub Actions 红灯（仓库 owner 会收到邮件）。这里刻意不自动建 issue：
+# 逐小时建 issue 会淹没真正需要处理的事项，红灯 + 邮件足够。
+# 手动补跑：Actions 页面点 Run workflow。
+
+on:
+  schedule:
+    - cron: "7 * * * *" # 每小时第 7 分钟，避开整点拥堵（GitHub cron 本身有几分钟延迟，可接受）
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ops-watch
+  cancel-in-progress: false
+
+env:
+  # 公网存活性探测目标（与部署流水线末尾的健康检查同一路径）
+  HEALTH_URL: https://outman.website/api/v1/utils/health-check/
+  # 磁盘两档阈值（%）——只在这里改
+  DISK_WARN_PCT: "70"
+  DISK_CRIT_PCT: "85"
+
+jobs:
+  uptime:
+    name: 外部存活性
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 三次探测 health-check（任一次 200 即视为存活）
+        run: |
+          set -u
+          ok=0
+          code=000
+          for attempt in 1 2 3; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$HEALTH_URL" || echo 000)
+            echo "第 ${attempt} 次探测 ${HEALTH_URL} → HTTP ${code}"
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            [ "$attempt" -lt 3 ] && sleep 10
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::外部存活性巡检失败：连续 3 次未拿到 200（最后 HTTP ${code}）"
+            exit 1
+          fi
+          echo "外部存活性正常（HTTP 200）"
+
+  disk:
+    name: 磁盘水位
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检查根分区与 /opt 使用率
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          WARN_PCT: ${{ env.DISK_WARN_PCT }}
+          CRIT_PCT: ${{ env.DISK_CRIT_PCT }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 2m
+          envs: WARN_PCT,CRIT_PCT
+          script: |
+            set -eu
+            # 逐分区检查（/ 与 /opt 可能是同一分区，也可能是独立挂载）
+            worst=0
+            worst_mount=
+            for mnt in / /opt; do
+              [ -d "$mnt" ] || continue
+              line=$(df -P "$mnt" | awk 'NR==2')
+              used=$(echo "$line" | awk '{print $5}' | tr -d '%')
+              avail=$(echo "$line" | awk '{print $4}')
+              total=$(echo "$line" | awk '{print $2}')
+              echo "挂载 $mnt：已用 ${used}%（可用 ${avail}KB / 共 ${total}KB）"
+              if [ "$used" -gt "$worst" ]; then
+                worst=$used
+                worst_mount=$mnt
+              fi
+            done
+
+            echo "df -h:"
+            df -h / /opt 2>/dev/null || df -h /
+
+            if [ "$worst" -ge "$CRIT_PCT" ]; then
+              echo "::error::磁盘告警：${worst_mount} 已用 ${worst}%（告警阈值 ${CRIT_PCT}%）"
+              exit 1
+            elif [ "$worst" -ge "$WARN_PCT" ]; then
+              echo "::warning::磁盘预警：${worst_mount} 已用 ${worst}%（预警阈值 ${WARN_PCT}%）"
+            else
+              echo "磁盘水位正常（最高 ${worst}%，${worst_mount}）"
+            fi
