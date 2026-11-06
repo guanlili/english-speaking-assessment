@@ -1,29 +1,17 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router"
 import confetti from "canvas-confetti"
-import {
-  ArrowRight,
-  Flame,
-  Play,
-  Repeat,
-  Shuffle,
-  Sparkles,
-  Star,
-  Trophy,
-} from "lucide-react"
+import { ArrowRight, Repeat, Shuffle } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { ClassesService } from "@/client"
-import InfoHint from "@/components/Common/InfoHint"
-import AttemptAudio from "@/components/Practice/AttemptAudio"
-import { AttemptComparison } from "@/components/Practice/AttemptComparison"
-import { RubricBlock } from "@/components/Practice/FeedbackCard"
-import { SkippedSpans } from "@/components/Practice/SkippedSpans"
+import { RoundItemCard } from "@/components/Practice/RoundResult/RoundItemCard"
+import { RoundReplayDialog } from "@/components/Practice/RoundResult/RoundReplayDialog"
+import { RoundStatsGrid } from "@/components/Practice/RoundResult/RoundStatsGrid"
+import { SessionStarsCard } from "@/components/Practice/RoundResult/SessionStarsCard"
 import StudentShell from "@/components/Practice/StudentShell"
 import { TeacherFeedbackBlock } from "@/components/Practice/TeacherFeedbackBlock"
-import VocabBlock from "@/components/Practice/VocabBlock"
-import { WordAlignment } from "@/components/Practice/WordAlignment"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -32,21 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 import { useExpressionFavorites } from "@/hooks/useExpressionFavorites"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import {
@@ -56,7 +30,6 @@ import {
 } from "@/lib/favorites"
 import { useI18n } from "@/lib/i18n"
 import { pollWhileVisible } from "@/lib/poll"
-import { EXPLAIN, ITEM_TYPE_LABELS, TERMS } from "@/lib/terms"
 import { extractErrorMessage } from "@/utils"
 
 export function RoundResultPage() {
@@ -230,6 +203,46 @@ export function RoundResultPage() {
     }
   }, [doneItems])
 
+  // 收藏表达：从逐题卡片提到页面级，子组件只负责渲染
+  const saveUpgrades = student
+    ? async (texts: string[]) => {
+        try {
+          const stored = await expressions.add.mutateAsync(texts)
+          const outcome = manualSaveOutcome(
+            texts,
+            stored.map((row) => row.text),
+          )
+          if (outcome.complete) {
+            toast.success(
+              t({
+                zh: "已收藏到我的成长",
+                en: "Saved to My Growth",
+              }),
+            )
+            return true
+          }
+          const local = readSavedExpressions(student)
+          const pending = [
+            ...local,
+            ...outcome.missing.filter(
+              (text) => !local.some((item) => item.trim() === text),
+            ),
+          ]
+          saveSavedExpressions(student, pending)
+          toast.message(
+            t({
+              zh: `收藏最多 50 条，这次没存上：${outcome.missing.join("；")}`,
+              en: `Favorites hold 50. Not saved this time: ${outcome.missing.join("; ")}`,
+            }),
+          )
+          return false
+        } catch (err) {
+          toast.error(extractErrorMessage(err))
+          return false
+        }
+      }
+    : undefined
+
   if (student === null) {
     return (
       <div className="flex min-h-screen items-center justify-center text-muted-foreground">
@@ -316,139 +329,11 @@ export function RoundResultPage() {
         )}
 
         {gamification && gamification.session_stars !== null && (
-          <section className="flex flex-wrap items-center gap-5 rounded-3xl bg-secondary p-6">
-            <span className="-rotate-8 grid size-20 shrink-0 place-items-center rounded-[26px] bg-primary text-yellow-300">
-              <Trophy className="size-9" />
-            </span>
-            <div className="min-w-40 flex-1">
-              <p className="text-[10px] font-bold tracking-[0.2em] text-primary">
-                EVERY WORD COUNTS
-              </p>
-              <h2 className="mt-1.5 text-xl font-bold">
-                {t({
-                  zh: "比起完美，开口本身就很棒。",
-                  en: "Speaking up itself is wonderful — perfection can wait.",
-                })}
-              </h2>
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      role="img"
-                      aria-label={t({
-                        zh: `本轮星级：${gamification.session_stars} / 3`,
-                        en: `Stars this round: ${gamification.session_stars} / 3`,
-                      })}
-                      className="flex items-center gap-1"
-                    >
-                      {[1, 2, 3].map((n) => (
-                        <Star
-                          key={n}
-                          className={
-                            n <= (gamification.session_stars ?? 0)
-                              ? "size-5 fill-yellow-400 text-yellow-400"
-                              : "size-5 text-muted-foreground/30"
-                          }
-                          style={{
-                            animation: `star-pop 0.4s ease-out ${n * 0.25}s both`,
-                          }}
-                        />
-                      ))}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-64 text-xs leading-relaxed">
-                    {t(EXPLAIN.stars)}
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="flex items-center gap-1 font-semibold">
-                      <Sparkles className="size-4 text-primary" />
-                      XP {gamification.xp}
-                      <span className="sr-only">{t(EXPLAIN.xp)}</span>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-64 text-xs leading-relaxed">
-                    {t(EXPLAIN.xp)}
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="flex items-center gap-1 text-muted-foreground">
-                      <Flame className="size-4 text-orange-500" />
-                      {t({
-                        zh: `连胜 ${gamification.streak_days} 天`,
-                        en: `Streak ${gamification.streak_days} days`,
-                      })}
-                      <span className="sr-only">{t(EXPLAIN.streak)}</span>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-64 text-xs leading-relaxed">
-                    {t(EXPLAIN.streak)}
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                {t(EXPLAIN.stars)}
-              </p>
-              {newBadges.length > 0 && (
-                <p className="mt-2 flex items-center gap-1 text-sm">
-                  <span className="font-semibold">
-                    {t({ zh: "本轮获得徽章：", en: "New badges this round:" })}
-                  </span>
-                  {newBadges
-                    .map((b) => b.label)
-                    .join(t({ zh: "、", en: ", " }))}
-                  <InfoHint label={t(EXPLAIN.badges)} />
-                </p>
-              )}
-            </div>
-          </section>
+          <SessionStarsCard gamification={gamification} newBadges={newBadges} />
         )}
-
         {doneItems.length > 0 && (
           <>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {(
-                [
-                  [
-                    t({ zh: "参考分", en: "Reference Score" }),
-                    roundStats.overall,
-                    t({ zh: "本轮均值", en: "Round average" }),
-                  ],
-                  [
-                    t({ zh: "完整度参考", en: "Completeness" }),
-                    roundStats.completeness,
-                    t(TERMS.typeRepeat),
-                  ],
-                  [
-                    t({ zh: "流利度参考", en: "Fluency" }),
-                    roundStats.fluency,
-                    t({ zh: "全部题目", en: "All items" }),
-                  ],
-                  [
-                    t({ zh: "词汇覆盖", en: "Vocabulary" }),
-                    roundStats.vocabCefr
-                      ? t({ zh: "已分析（历史口径）", en: "Analyzed (legacy)" })
-                      : "–",
-                    t({
-                      zh: "老词表口径仅历史作答保留；现行为五级词库口径",
-                      en: "Legacy wordlist kept for past answers; current standard is five-level",
-                    }),
-                  ],
-                ] as const
-              ).map(([label, value, note]) => (
-                <Card key={label}>
-                  <CardContent className="py-4">
-                    <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className="mt-1 text-2xl font-bold tabular-nums">
-                      {value === null ? "–" : value}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">{note}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            <RoundStatsGrid roundStats={roundStats} />
 
             {(roundStats.hitWords.length > 0 || roundStats.rubric) && (
               <div className="grid gap-5 md:grid-cols-2">
@@ -632,244 +517,31 @@ export function RoundResultPage() {
             </div>
           ))}
         {doneItems.map(({ item, attempt }, index) => (
-          <Card key={item.id}>
-            <CardHeader>
-              <CardDescription>
-                {index + 1}.{" "}
-                {t(
-                  ITEM_TYPE_LABELS[item.type] ?? {
-                    zh: item.type,
-                    en: item.type,
-                  },
-                )}
-                {item.sentence_index != null &&
-                  item.sentence_total != null &&
-                  ` · ${t({
-                    zh: `第 ${item.sentence_index}/${item.sentence_total} 句`,
-                    en: `Sentence ${item.sentence_index}/${item.sentence_total}`,
-                  })}`}
-              </CardDescription>
-              <CardTitle className="text-sm leading-relaxed font-medium whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                {item.text}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm leading-relaxed">
-                <span className="text-muted-foreground">
-                  {t({ zh: "转写：", en: "Transcript:" })}
-                </span>
-                {attempt.transcript || t({ zh: "（无）", en: "(none)" })}
-              </p>
-              {attempt.word_alignment ? (
-                <WordAlignment
-                  reference={attempt.item_text ?? item.text}
-                  alignment={attempt.word_alignment}
-                />
-              ) : (
-                <SkippedSpans
-                  reference={attempt.item_text ?? item.text}
-                  transcript={attempt.transcript}
-                  itemType={item.type}
-                />
-              )}
-              <Separator />
-              <div className="flex flex-wrap items-center gap-4 text-sm">
-                <span className="text-2xl font-bold tabular-nums">
-                  {t({ zh: "参考分", en: "Score" })} {attempt.overall ?? "–"}
-                </span>
-                {attempt.previous &&
-                  typeof attempt.previous.overall === "number" &&
-                  attempt.overall != null && (
-                    <span
-                      className={
-                        attempt.overall >= attempt.previous.overall
-                          ? "text-emerald-600"
-                          : "text-red-600"
-                      }
-                    >
-                      {t({ zh: "上次", en: "Last" })}{" "}
-                      <span className="tabular-nums">
-                        {attempt.previous.overall}
-                      </span>{" "}
-                      ·{" "}
-                      {attempt.overall - attempt.previous.overall >= 0
-                        ? "↑"
-                        : "↓"}{" "}
-                      <span className="tabular-nums">
-                        {Math.abs(attempt.overall - attempt.previous.overall)}
-                      </span>
-                    </span>
-                  )}
-                {item.type !== "question" && (
-                  <span className="text-muted-foreground">
-                    {t({ zh: "完整度", en: "Completeness" })}{" "}
-                    {attempt.completeness ?? "–"} ·{" "}
-                    {t({ zh: "流利度", en: "Fluency" })}{" "}
-                    {attempt.fluency ?? "–"}
-                  </span>
-                )}
-              </div>
-              <TeacherFeedbackBlock attempt={attempt} />
-              {attempt.advice && attempt.advice.length > 0 && (
-                <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                  {attempt.advice.map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
-                </ul>
-              )}
-              {item.type === "question" && (
-                <>
-                  <RubricBlock
-                    rubric={attempt.rubric}
-                    engine=""
-                    onSaveUpgrades={
-                      student
-                        ? async (texts) => {
-                            try {
-                              const stored =
-                                await expressions.add.mutateAsync(texts)
-                              const outcome = manualSaveOutcome(
-                                texts,
-                                stored.map((row) => row.text),
-                              )
-                              if (outcome.complete) {
-                                toast.success(
-                                  t({
-                                    zh: "已收藏到我的成长",
-                                    en: "Saved to My Growth",
-                                  }),
-                                )
-                                return true
-                              }
-                              const local = readSavedExpressions(student)
-                              const pending = [
-                                ...local,
-                                ...outcome.missing.filter(
-                                  (text) =>
-                                    !local.some((item) => item.trim() === text),
-                                ),
-                              ]
-                              saveSavedExpressions(student, pending)
-                              toast.message(
-                                t({
-                                  zh: `收藏最多 50 条，这次没存上：${outcome.missing.join("；")}`,
-                                  en: `Favorites hold 50. Not saved this time: ${outcome.missing.join("; ")}`,
-                                }),
-                              )
-                              return false
-                            } catch (err) {
-                              toast.error(extractErrorMessage(err))
-                              return false
-                            }
-                          }
-                        : undefined
-                    }
-                  />
-                  <VocabBlock vocab={attempt.vocab} />
-                </>
-              )}
-              {attempt.attempt_id && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setReplay({ item, attempt })}
-                >
-                  <Play />
-                  {t({ zh: "回听这一题", en: "Replay this item" })}
-                </Button>
-              )}
-            </CardContent>
-          </Card>
+          <RoundItemCard
+            key={item.id}
+            item={item}
+            attempt={attempt}
+            index={index}
+            onSaveUpgrades={saveUpgrades}
+            onReplay={() => setReplay({ item, attempt })}
+          />
         ))}
 
-        {/* 回看弹窗：转写 + 自己的录音 */}
-        <Dialog
-          open={replay !== null}
-          onOpenChange={(o) => !o && setReplay(null)}
-        >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {replay && (
-                  <>
-                    {t(
-                      ITEM_TYPE_LABELS[replay.item.type] ?? {
-                        zh: replay.item.type,
-                        en: replay.item.type,
-                      },
-                    )}{" "}
-                    · {t({ zh: "回看这次表达", en: "Review this attempt" })}
-                  </>
-                )}
-              </DialogTitle>
-              <DialogDescription>{replay?.item.text}</DialogDescription>
-            </DialogHeader>
-            {replay && (
-              <div className="space-y-3">
-                <div>
-                  <p className="mb-1 text-xs text-muted-foreground">
-                    {t({
-                      zh: "你说了什么（转写）",
-                      en: "What you said (transcript)",
-                    })}
-                  </p>
-                  <p className="rounded-lg bg-background p-3 text-sm leading-relaxed">
-                    {replay.attempt.transcript ||
-                      t({ zh: "（无转写）", en: "(no transcript)" })}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="text-2xl font-bold tabular-nums">
-                    {replay.attempt.overall ?? "–"}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {t({ zh: "参考分", en: "Reference Score" })}
-                  </span>
-                </div>
-                {!isExam && replay.attempt.attempt_id && (
-                  <AttemptComparison attemptId={replay.attempt.attempt_id} />
-                )}
-                {replay.attempt.attempt_id && (
-                  <AttemptAudio
-                    attemptId={replay.attempt.attempt_id}
-                    preload="metadata"
-                    className="w-full"
-                  />
-                )}
-                <p className="text-xs text-muted-foreground">
-                  {t({
-                    zh: "听一听自己刚才的声音，找出下一句想说得更好的地方。",
-                    en: "Listen to your own voice and find the next sentence you'd like to say better.",
-                  })}
-                </p>
-              </div>
-            )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setReplay(null)}>
-                {t({ zh: "关闭", en: "Close" })}
-              </Button>
-              {!isExam && (
-                <Button
-                  onClick={() => {
-                    if (replay) {
-                      void navigate({
-                        to: "/p/$code",
-                        params: { code },
-                        search: {
-                          focus: replay.item.id,
-                          ...(sessionId ? { session: sessionId } : {}),
-                        },
-                      })
-                    }
-                  }}
-                >
-                  <Repeat />
-                  {t({ zh: "再练这一题", en: "Practice this item again" })}
-                </Button>
-              )}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <RoundReplayDialog
+          replay={replay}
+          isExam={isExam}
+          onClose={() => setReplay(null)}
+          onPracticeAgain={(itemId) =>
+            void navigate({
+              to: "/p/$code",
+              params: { code },
+              search: {
+                focus: itemId,
+                ...(sessionId ? { session: sessionId } : {}),
+              },
+            })
+          }
+        />
 
         <div className="flex flex-wrap gap-3">
           {!isExam && weakest && (
