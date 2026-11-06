@@ -544,7 +544,6 @@ def test_confirm_unit_match_attaches_existing(client: TestClient, db: Session) -
 def test_confirm_rollback_on_failure(
     client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.services import question_bank_io as svc
 
     headers = _login_teacher(db, client)
     before_counts = (
@@ -555,7 +554,7 @@ def test_confirm_rollback_on_failure(
     def _boom(session: Session) -> None:
         raise RuntimeError("injected failure")
 
-    monkeypatch.setattr(svc, "_commit", _boom)
+    monkeypatch.setattr("app.services.question_bank_apply._commit", _boom)
     resp = _upload(client, headers, _csv_file([QUESTION_ROW]), confirm=True)
     assert resp.status_code == 500
     assert len(_new_rows(db, Passage)) == before_counts[0]
@@ -1630,7 +1629,10 @@ def test_integrity_conflict_returns_409(
     # 计划生成后，库内出现同名主题 → 陈旧计划插入必撞 topic 唯一约束
     db.add(Scenario(topic="ConflictTopic"))
     db.commit()
-    monkeypatch.setattr(svc, "plan_import", lambda *args, **kwargs: stale_plan)
+    monkeypatch.setattr(
+        "app.services.question_bank_apply.plan_import",
+        lambda *args, **kwargs: stale_plan,
+    )
 
     resp = _upload(client, headers, file, confirm=True)
     assert resp.status_code == 409, resp.text
