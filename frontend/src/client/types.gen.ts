@@ -9007,7 +9007,16 @@ export type ClassesListClassroomExercisesData = {
          */
         code: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number | null;
+    };
     url: '/api/v1/classes/{code}/exercises';
 };
 
@@ -9137,7 +9146,16 @@ export type ClassesListMyFrameFavoritesData = {
          */
         code: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number | null;
+    };
     url: '/api/v1/classes/{code}/frame-favorites';
 };
 
@@ -10721,6 +10739,14 @@ export type StudentsListStudentsData = {
          * Classroom Id
          */
         classroom_id: string;
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number | null;
     };
     url: '/api/v1/students';
 };
@@ -10748,9 +10774,27 @@ export type StudentsListStudentsResponse = StudentsListStudentsResponses[200 & k
 export type StudentsListMyEnrollmentsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number | null;
+    };
     url: '/api/v1/students/me/classrooms';
 };
+
+export type StudentsListMyEnrollmentsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type StudentsListMyEnrollmentsError = StudentsListMyEnrollmentsErrors[keyof StudentsListMyEnrollmentsErrors];
 
 export type StudentsListMyEnrollmentsResponses = {
     /**
@@ -10980,9 +11024,27 @@ export type AdminCopyInstructionResponse = AdminCopyInstructionResponses[200 & k
 export type AdminListClassroomsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number | null;
+    };
     url: '/api/v1/admin/classrooms';
 };
+
+export type AdminListClassroomsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminListClassroomsError = AdminListClassroomsErrors[keyof AdminListClassroomsErrors];
 
 export type AdminListClassroomsResponses = {
     /**
@@ -12044,9 +12106,27 @@ export type AdminAutoSplitSentencesResponse = AdminAutoSplitSentencesResponses[2
 export type AdminListUnitsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number | null;
+    };
     url: '/api/v1/admin/units';
 };
+
+export type AdminListUnitsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminListUnitsError = AdminListUnitsErrors[keyof AdminListUnitsErrors];
 
 export type AdminListUnitsResponses = {
     /**
@@ -12338,9 +12418,27 @@ export type AdminCreateSentenceFramesBatchResponse = AdminCreateSentenceFramesBa
 export type AdminListTenantsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number | null;
+    };
     url: '/api/v1/admin/tenants';
 };
+
+export type AdminListTenantsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminListTenantsError = AdminListTenantsErrors[keyof AdminListTenantsErrors];
 
 export type AdminListTenantsResponses = {
     /**
@@ -13144,9 +13242,27 @@ export type VocabularyImportVocabPreviewResponse = VocabularyImportVocabPreviewR
 export type VocabularyListBooksData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number | null;
+    };
     url: '/api/v1/vocabulary/books';
 };
+
+export type VocabularyListBooksErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyListBooksError = VocabularyListBooksErrors[keyof VocabularyListBooksErrors];
 
 export type VocabularyListBooksResponses = {
     /**
@@ -13864,6 +13980,14 @@ export type VocabularyListStudentBooksData = {
          * Search
          */
         search?: string | null;
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number | null;
     };
     url: '/api/v1/classes/{code}/vocabulary/student/books';
 };

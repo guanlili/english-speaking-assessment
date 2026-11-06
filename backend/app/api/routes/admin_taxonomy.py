@@ -15,6 +15,7 @@ from app.api.deps import (
     SessionDep,
     TeacherUserDep,
 )
+from app.api.pagination import paged
 from app.api.routes._content_common import _reject_null_non_nullable
 from app.models import (
     EXAM_KIND_QUESTION,
@@ -33,12 +34,21 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.get("/units", response_model=list[UnitPublic])
-def list_units(session: SessionDep, _admin: TeacherUserDep) -> Any:
+def list_units(
+    session: SessionDep,
+    _admin: TeacherUserDep,
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
+) -> Any:
     # 多租户：列表只返回本校单元（与 RLS 双防线一致，未激活形态下防跨校读）
     units = session.exec(
-        select(Unit)
-        .where(col(Unit.tenant_id) == _admin.tenant_id)  # type: ignore[union-attr]
-        .order_by(col(Unit.order_index))
+        paged(
+            select(Unit)
+            .where(col(Unit.tenant_id) == _admin.tenant_id)  # type: ignore[union-attr]
+            .order_by(col(Unit.order_index)),
+            offset,
+            limit,
+        )
     ).all()
     counts = _active_passage_counts(session)
     return [

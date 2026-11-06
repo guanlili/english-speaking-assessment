@@ -15,6 +15,7 @@ from sqlmodel import Session as SASession
 from sqlmodel import SQLModel, col, func, select
 
 from app.api.deps import PlatformOperatorDep, PlatformSessionDep
+from app.api.pagination import paged
 from app.models import DEFAULT_TENANT_ID, Tenant, User
 
 router = APIRouter(prefix="/admin/tenants", tags=["admin"])
@@ -67,8 +68,15 @@ def _with_counts(session: SASession, rows: list[Tenant]) -> list[TenantAdminPubl
 
 
 @router.get("", response_model=list[TenantAdminPublic])
-def list_tenants(session: PlatformSessionDep, _operator: PlatformOperatorDep) -> Any:
-    rows = session.exec(select(Tenant).order_by(col(Tenant.created_at))).all()
+def list_tenants(
+    session: PlatformSessionDep,
+    _operator: PlatformOperatorDep,
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=200),
+) -> Any:
+    rows = session.exec(
+        paged(select(Tenant).order_by(col(Tenant.created_at)), offset, limit)
+    ).all()
     return _with_counts(session, list(rows))
 
 

@@ -12,7 +12,7 @@ import logging
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import field_validator
 from sqlmodel import Field, SQLModel, col, select
@@ -24,6 +24,7 @@ from app.api.deps import (
     SessionDep,
     TeacherUserDep,
 )
+from app.api.pagination import paged
 from app.api.routes._content_common import (
     _strip_blank,
     _strip_nonempty,
@@ -194,8 +195,17 @@ class ClassroomUpdate(SQLModel):
 
 
 @router.get("/classrooms", response_model=list[ClassroomPublic])
-def list_classrooms(session: PlatformSessionDep, _operator: PlatformOperatorDep) -> Any:
-    return session.exec(select(Classroom).order_by(col(Classroom.created_at))).all()
+def list_classrooms(
+    session: PlatformSessionDep,
+    _operator: PlatformOperatorDep,
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
+) -> Any:
+    """课堂列表：默认全量（limit=None），可传 offset/limit 收窄。"""
+    statement = paged(
+        select(Classroom).order_by(col(Classroom.created_at)), offset, limit
+    )
+    return session.exec(statement).all()
 
 
 @router.delete("/classrooms/{classroom_id}")

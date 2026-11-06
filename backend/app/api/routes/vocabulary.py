@@ -24,6 +24,7 @@ from sqlalchemy import update
 from sqlmodel import Session, col, select
 
 from app.api.deps import SessionDep, StudentUserDep, TeacherUserDep
+from app.api.pagination import paged
 from app.api.routes.classes import (
     _get_classroom,
     _require_classroom_teacher,
@@ -249,7 +250,12 @@ async def import_vocab_preview(_teacher: TeacherUserDep, file: UploadFile) -> An
 
 
 @router.get("/vocabulary/books", response_model=list[VocabularyBookPublic])
-def list_books(session: SessionDep, current_user: TeacherUserDep) -> Any:
+def list_books(
+    session: SessionDep,
+    current_user: TeacherUserDep,
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=200),
+) -> Any:
     """词库列表：公共词库全体教师可见；班级词库仅本班教师（管理员全见）。
 
     可见性在 SQL 层过滤（与 _book_visible 同谓词：public 或本人创建），
@@ -263,7 +269,7 @@ def list_books(session: SessionDep, current_user: TeacherUserDep) -> Any:
             (col(VocabularyBook.scope) == "public")  # type: ignore[union-attr]
             | (col(VocabularyBook.owner_id) == current_user.id)  # type: ignore[union-attr]
         )
-    books = session.exec(statement).all()
+    books = session.exec(paged(statement, offset, limit)).all()
     counts = _book_word_count(session, [b.id for b in books])
     return [_book_public(b, counts.get(b.id, 0)) for b in books]
 
@@ -1444,6 +1450,8 @@ def list_student_books(
     code: str,
     current_user: StudentUserDep,
     search: str | None = Query(default=None, max_length=64),
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=200),
 ) -> Any:
     """学生可浏览的词库：active 公共词库 + 本班词库，支持按词库名称搜索。"""
     classroom = _get_classroom(session, code)
@@ -1461,6 +1469,11 @@ def list_student_books(
         needle = search.strip().casefold()
         if needle:
             books = [b for b in books if needle in b.title.casefold()]
+    # 搜索是 Python 侧过滤，故切片放在过滤之后，避免分页丢命中
+    if offset:
+        books = books[offset:]
+    if limit is not None:
+        books = books[:limit]
     counts = vocab_service.student_book_word_counts(session, [b.id for b in books])
     return [_book_public(b, counts.get(b.id, 0)) for b in books]
 

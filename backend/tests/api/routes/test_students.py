@@ -1115,3 +1115,55 @@ def test_teacher_gate_unified_across_adapters(client: TestClient, db: Session) -
         assert db.get(Student, uuid.UUID(student_id)) is not None
     finally:
         _cleanup(db, classroom_id, owner, stranger)
+
+
+def test_list_students_pagination(client: TestClient, db: Session) -> None:
+    """名单分页：不传 limit 保持全量（向后兼容），传 offset/limit 才收窄。"""
+    teacher, headers = _login_teacher(db, client)
+    classroom_id = None
+    try:
+        classroom_id = uuid.UUID(_new_classroom(client, headers)["id"])
+        suffix = uuid.uuid4().hex[:6]
+        _import(
+            client,
+            headers,
+            str(classroom_id),
+            [
+                {"username": f"pg{suffix}{i}", "full_name": f"分页学生{i}"}
+                for i in range(3)
+            ],
+        )
+        params = {"classroom_id": str(classroom_id)}
+
+        listing = client.get("/api/v1/students", params=params, headers=headers)
+        assert listing.status_code == 200, listing.text
+        full = listing.json()
+        assert len(full) >= 3
+
+        first_page = client.get(
+            "/api/v1/students", params={**params, "limit": 2}, headers=headers
+        )
+        assert first_page.status_code == 200, first_page.text
+        rows = first_page.json()
+        assert len(rows) == 2
+        assert [r["student"]["display_name"] for r in rows] == [
+            r["student"]["display_name"] for r in full[:2]
+        ]
+
+        second_page = client.get(
+            "/api/v1/students",
+            params={**params, "offset": 2, "limit": 2},
+            headers=headers,
+        )
+        assert second_page.status_code == 200, second_page.text
+        assert [r["student"]["display_name"] for r in second_page.json()] == [
+            r["student"]["display_name"] for r in full[2:4]
+        ]
+
+        # 非法参数被校验拦下（FastAPI 的 ge 约束）
+        bad = client.get(
+            "/api/v1/students", params={**params, "limit": 0}, headers=headers
+        )
+        assert bad.status_code == 422
+    finally:
+        _cleanup(db, classroom_id, teacher)

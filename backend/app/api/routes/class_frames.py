@@ -4,13 +4,14 @@ import logging
 import uuid
 from typing import Any
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Query
 from sqlmodel import SQLModel, col, select
 
 from app.api.deps import (
     SessionDep,
     StudentUserDep,
 )
+from app.api.pagination import paged
 from app.api.routes.class_shared import (
     _get_classroom,
     _student_profile_of,
@@ -40,19 +41,27 @@ class FrameFavoriteRequest(SQLModel):
 
 @router.get("/{code}/frame-favorites", response_model=list[SentenceFramePublic])
 def list_my_frame_favorites(
-    session: SessionDep, code: str, current_user: StudentUserDep
+    session: SessionDep,
+    code: str,
+    current_user: StudentUserDep,
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
 ) -> Any:
     """我的句型收藏（跨设备：挂课堂档案，同账号任何设备可见）。"""
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
     favorites = session.exec(
-        select(SentenceFrame)
-        .join(
-            StudentFrameFavorite,
-            StudentFrameFavorite.frame_id == SentenceFrame.id,  # ty: ignore[invalid-argument-type]
+        paged(
+            select(SentenceFrame)
+            .join(
+                StudentFrameFavorite,
+                StudentFrameFavorite.frame_id == SentenceFrame.id,  # ty: ignore[invalid-argument-type]
+            )
+            .where(StudentFrameFavorite.student_id == student.id)  # type: ignore[arg-type]
+            .order_by(col(StudentFrameFavorite.created_at).desc()),
+            offset,
+            limit,
         )
-        .where(StudentFrameFavorite.student_id == student.id)  # type: ignore[arg-type]
-        .order_by(col(StudentFrameFavorite.created_at).desc())
     ).all()
     return [
         SentenceFramePublic(

@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import Any, Literal
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Query
 from sqlmodel import SQLModel, col, select
 
 from app.api.deps import (
@@ -12,6 +12,7 @@ from app.api.deps import (
     SessionDep,
     StudentUserDep,
 )
+from app.api.pagination import paged
 from app.api.routes.class_shared import (
     _get_classroom,
     _repeat_sentences_of_passages,
@@ -49,18 +50,26 @@ logger = logging.getLogger(__name__)
 
 @router.get("/{code}/exercises", response_model=list[ClassroomExercisePublic])
 def list_classroom_exercises(
-    session: SessionDep, code: str, current_user: CurrentUser
+    session: SessionDep,
+    code: str,
+    current_user: CurrentUser,
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=200),
 ) -> Any:
     """课堂练习历史：发布版本只读，供教师回看与后续结果页使用。"""
     classroom = _get_classroom(session, code)
     _require_classroom_teacher(classroom, current_user)
     exercises = session.exec(
-        select(ClassroomExercise)
-        .where(
-            ClassroomExercise.classroom_id == classroom.id,
-            col(ClassroomExercise.status).in_(["published", "archived"]),
+        paged(
+            select(ClassroomExercise)
+            .where(
+                ClassroomExercise.classroom_id == classroom.id,
+                col(ClassroomExercise.status).in_(["published", "archived"]),
+            )
+            .order_by(col(ClassroomExercise.version_no).desc()),
+            offset,
+            limit,
         )
-        .order_by(col(ClassroomExercise.version_no).desc())
     ).all()
     return [
         ClassroomExercisePublic(
