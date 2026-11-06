@@ -26,6 +26,7 @@
 - **题目说明（instruction）不算题**：不计入题量、进度、完成分母和最终反馈，只保留已读确认与考试计时窗口。
 - **事务里不做慢操作**：ASR/LLM 网络调用、ffprobe、落盘不得持有打开事务或行锁；先短事务判定 → 释放 → 慢操作 → 新短事务复查并写入。
 - **权限**：课堂类接口以课堂教师归属判定；重置密码只作用于学生角色账号；401 只用于 token 无效/过期，403 用于权限不足（详见 `AI_RULES.md`）。
+- **列表端点分页（2026-11 起）**：返回 `list[...]` 的列表端点不得裸 `.all()` 返回全量，统一用 `app/api/pagination.py` 的 `paged(statement, offset, limit)`，签名 `offset: int = Query(default=0, ge=0)` + `limit: int | None = Query(default=None, ge=1, le=N)`（不传 limit = 不封顶，对既有调用零行为变化）；确需全量的端点（按天聚合、缺考补全、注释声明量级小）要在 docstring 写明理由。
 - **多租户隔离（2026-11 起，RLS 已在生产强制）**：① 新业务表一律用 `models._tenant_id_field()` 工厂加租户列（写入自动继承请求上下文所属学校，勿手写 default）；② 学校业务查询默认信任 RLS 过滤，平台/跨校口径的端点用 `PlatformSessionDep`、后台任务用 `core.db.platform_engine`（语义=无租户边界，学校端点禁用）；③ 角色只有 school_admin/teacher/student（前端判定双兼容旧值 admin 到过渡期结束），无 is_superuser；④ 跨校对象访问按 404 处理不泄露存在性；⑤ 新唯一约束默认 (tenant_id, X) 复合。详见 `docs/multi-tenant-design.md` 与 A 期清单 §7。
 
 ### 术语表（2026-09 统一，前端单一事实源 `frontend/src/lib/terms.ts`）

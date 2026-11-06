@@ -17,6 +17,7 @@ from sqlmodel import Session, SQLModel, col, select
 
 from app import crud
 from app.api.deps import SessionDep, StudentUserDep, TeacherUserDep
+from app.api.pagination import paged
 from app.core.security import DEFAULT_STUDENT_PASSWORD, get_password_hash
 from app.crud import ClassroomFullError
 from app.models import (
@@ -433,13 +434,19 @@ def list_students(
     session: SessionDep,
     current_user: TeacherUserDep,
     classroom_id: uuid.UUID = Query(...),
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
 ) -> Any:
     """课堂学生名单（带学号与改密状态）。"""
     classroom = _get_classroom_in_scope(session, current_user, classroom_id)
     students = session.exec(
-        select(Student)
-        .where(Student.classroom_id == classroom.id)  # type: ignore[arg-type]
-        .order_by(col(Student.display_name))
+        paged(
+            select(Student)
+            .where(Student.classroom_id == classroom.id)  # type: ignore[arg-type]
+            .order_by(col(Student.display_name)),
+            offset,
+            limit,
+        )
     ).all()
     users_by_id = {
         u.id: u
@@ -488,6 +495,8 @@ class StudentClassroomOut(SQLModel):
 def list_my_enrollments(
     session: SessionDep,
     current_user: StudentUserDep,
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=100),
 ) -> Any:
     """学生本人已加入的全部班级（多班归属）：登录后选班入口。
 
@@ -495,16 +504,20 @@ def list_my_enrollments(
     档案各自独立，卡片展示各班的。
     """
     rows = session.exec(
-        select(Student, Classroom)
-        .join(
-            Classroom,
-            Classroom.id == Student.classroom_id,  # ty: ignore[invalid-argument-type]
+        paged(
+            select(Student, Classroom)
+            .join(
+                Classroom,
+                Classroom.id == Student.classroom_id,  # ty: ignore[invalid-argument-type]
+            )
+            .where(
+                Student.user_id == current_user.id,  # type: ignore[arg-type]
+                col(Classroom.is_active).is_(True),
+            )
+            .order_by(col(Student.created_at)),
+            offset,
+            limit,
         )
-        .where(
-            Student.user_id == current_user.id,  # type: ignore[arg-type]
-            col(Classroom.is_active).is_(True),
-        )
-        .order_by(col(Student.created_at))
     ).all()
     exercise_ids = [
         classroom.current_exercise_id
