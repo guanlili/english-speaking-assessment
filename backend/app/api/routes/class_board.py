@@ -54,21 +54,16 @@ from app.services.class_gaps import (
 logger = logging.getLogger(__name__)
 
 
-@router.get("/{code}/board", response_model=BoardData)
-def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) -> Any:
-    """老师名单表（PRD §8.5 2 周）：谁交了、每题分数、音频；允许先显示评分中。
+def _resolve_board_skeleton(
+    session: Any,
+    classroom: Any,
+    current_exercise: ClassroomExercise | None,
+    assigned_unit_board: Any,
+) -> tuple[list[Any], Any, list[Any], list[Any], list[Any], bool, list[BoardItem]]:
+    """解析本轮题位骨架：发布快照优先，其次按题指派，最后单元/自主路径。
 
-    需要教师身份：本课指派教师或管理员（课堂码不能当教师凭据）。
+    返回 (朗读篇目, 锚点篇目, 复述句, 问答, 说明, 是否含朗读, 骨架)。
     """
-    classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
-    today = _today_in_practice_tz()
-
-    current_exercise = (
-        session.get(ClassroomExercise, classroom.current_exercise_id)
-        if classroom.current_exercise_id is not None
-        else None
-    )
     # 已发布版本优先：名单表也必须按快照渲染，避免题库编辑后题位漂移。
     if current_exercise is not None:
         snapshot_refs: dict[str, list[_BoardRef]] = {
@@ -96,7 +91,6 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         resolved = exercise_service.resolve_assigned_items(session, classroom)
         # 说明只随按题发布进卷子；旧路径（单元指派）补空桶保持四元组同构
         board_item_objects = (*resolved, []) if resolved is not None else None
-    assigned_unit_board = _assignment_unit(session, classroom)
     include_reading = include_repeat = False
     if board_item_objects is not None:
         (
@@ -188,7 +182,281 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
             ] + skeleton
         # 非按题指派：每位学生问答题不同，骨架不占位，在每生作答里展示
         board_questions = []
+    return (
+        board_passages,
+        board_passage,
+        board_repeat_sentences,
+        board_questions,
+        board_instructions,
+        include_reading,
+        skeleton,
+    )
 
+
+def _build_student_row(
+    student: Student,
+    practice_session: PracticeSession | None,
+    attempts: list[Attempt],
+    *,
+    board_passages: list[Any],
+    board_repeat_sentences: list[Any],
+    board_questions: list[Any],
+    board_instructions: list[Any],
+    include_reading: bool,
+    ack_keys: set[tuple[uuid.UUID, uuid.UUID]],
+    recent_student_ids: set[uuid.UUID],
+    week_ago: datetime,
+    exam: ClassroomExercise | None,
+) -> tuple[BoardStudent, bool, bool, bool]:
+    """按当前题单骨架 + 作答渲染单个学生行（纯内存组装，无 DB 往返）。
+
+    返回 (行数据, 是否已提交, 是否已完成, 是否评分中)。
+    """
+    items: list[BoardItem] = []
+    repeat_scores: list[float] = []
+    question_scores: list[float] = []
+    has_pending = False
+    round_status = "not_started"
+
+    # 未开始当前轮的学生不渲染骨架（教师面板口径：not_started = 空题单）。
+    # 已开始的学生按当前题单骨架 + 作答渲染，缺的题位显示 missing。
+    if practice_session is not None:
+        latest: dict[uuid.UUID, Attempt] = {}
+        for attempt in attempts:
+            latest[attempt.item_id] = attempt
+
+        def _status_for(
+            item_id: uuid.UUID, _latest: dict[uuid.UUID, Attempt] = latest
+        ) -> Attempt | None:
+            return _latest.get(item_id)
+
+        # 朗读题位
+        if include_reading:
+            for board_p in board_passages:
+                attempt = _status_for(board_p.id)
+                if attempt is None:
+                    items.append(
+                        BoardItem(
+                            item_id=board_p.id,
+                            type=AttemptItemType.PASSAGE,
+                            status="missing",
+                        )
+                    )
+                else:
+                    if attempt.status in (
+                        AttemptStatus.QUEUED,
+                        AttemptStatus.SCORING,
+                    ):
+                        has_pending = True
+                    if (
+                        attempt.status == AttemptStatus.DONE
+                        and attempt.overall is not None
+                    ):
+                        repeat_scores.append(attempt.overall)
+                    items.append(
+                        BoardItem(
+                            item_id=board_p.id,
+                            type=AttemptItemType.PASSAGE,
+                            status=attempt.status,
+                            overall=attempt.overall,
+                            attempt_id=attempt.id,
+                            teacher_focus=attempt.teacher_focus,
+                        )
+                    )
+        # 复述题位
+        for s in board_repeat_sentences:
+            attempt = _status_for(s.id)
+            if attempt is None:
+                items.append(
+                    BoardItem(
+                        item_id=s.id, type=AttemptItemType.REPEAT, status="missing"
+                    )
+                )
+                continue
+            if (
+                attempt.status == AttemptStatus.QUEUED
+                or attempt.status == AttemptStatus.SCORING
+            ):
+                has_pending = True
+            if attempt.status == AttemptStatus.DONE and attempt.overall is not None:
+                repeat_scores.append(attempt.overall)
+            items.append(
+                BoardItem(
+                    item_id=s.id,
+                    type=AttemptItemType.REPEAT,
+                    status=attempt.status,
+                    overall=attempt.overall,
+                    attempt_id=attempt.id,
+                    teacher_focus=attempt.teacher_focus,
+                )
+            )
+        # 问答题位
+        rendered_qids: set[uuid.UUID] = set()
+        for board_q in board_questions:
+            rendered_qids.add(board_q.id)
+            attempt = _status_for(board_q.id)
+            if attempt is None:
+                items.append(
+                    BoardItem(
+                        item_id=board_q.id,
+                        type=AttemptItemType.QUESTION,
+                        status="missing",
+                    )
+                )
+                continue
+            if attempt.status in (
+                AttemptStatus.QUEUED,
+                AttemptStatus.SCORING,
+            ):
+                has_pending = True
+            if attempt.status == AttemptStatus.DONE and attempt.overall is not None:
+                question_scores.append(attempt.overall)
+            items.append(
+                BoardItem(
+                    item_id=board_q.id,
+                    type=AttemptItemType.QUESTION,
+                    status=attempt.status,
+                    overall=attempt.overall,
+                    attempt_id=attempt.id,
+                    teacher_focus=attempt.teacher_focus,
+                )
+            )
+        # 已做但不在骨架的问答题（换题产生的额外题）
+        for item_id, attempt in latest.items():
+            if attempt.item_type != AttemptItemType.QUESTION:
+                continue
+            if item_id in rendered_qids:
+                continue
+            if attempt.status in (AttemptStatus.QUEUED, AttemptStatus.SCORING):
+                has_pending = True
+            if attempt.status == AttemptStatus.DONE and attempt.overall is not None:
+                question_scores.append(attempt.overall)
+            items.append(
+                BoardItem(
+                    item_id=item_id,
+                    type=AttemptItemType.QUESTION,
+                    status=attempt.status,
+                    overall=attempt.overall,
+                    attempt_id=attempt.id,
+                    teacher_focus=attempt.teacher_focus,
+                )
+            )
+        # 说明题位：已读=done / 未读=missing；不进评分与提交统计
+        for board_i in board_instructions:
+            items.append(
+                BoardItem(
+                    item_id=board_i.id,
+                    type=AttemptItemType.INSTRUCTION,
+                    status=(
+                        AttemptStatus.DONE
+                        if (student.id, board_i.id) in ack_keys
+                        else "missing"
+                    ),
+                )
+            )
+
+    # 统一统计口径：not_started / scoring / in_progress / all_done / has_failures
+    # 说明无作答，不参与统计（只展示已读状态）
+    stat_items = [i for i in items if i.type != AttemptItemType.INSTRUCTION]
+    non_missing = [i for i in stat_items if i.status != "missing"]
+    terminal = [
+        i for i in stat_items if i.status in (AttemptStatus.DONE, AttemptStatus.FAILED)
+    ]
+    if not non_missing:
+        round_status = "not_started"
+    elif has_pending:
+        round_status = "scoring"
+    elif len(terminal) < len(stat_items):
+        round_status = "in_progress"
+    elif all(i.status == AttemptStatus.DONE for i in terminal):
+        round_status = "all_done"
+    else:
+        round_status = "has_failures"
+
+    done_count = sum(1 for i in stat_items if i.status == AttemptStatus.DONE)
+    submitted = any(i.status != "missing" for i in stat_items)
+    completed = round_status in ("all_done", "has_failures")
+    pending = has_pending
+    joined_before_window = (
+        student.created_at is not None
+        and student.created_at.astimezone(ZoneInfo(settings.PRACTICE_TZ)).date()
+        < week_ago.date()
+    )
+    inactive = joined_before_window and student.id not in recent_student_ids
+    # 模考监考：当前发布为考试时，给出该生切屏次数/离屏时长/用时/是否交卷
+    exam_switches: int | None = None
+    exam_switch_seconds: int | None = None
+    exam_used: int | None = None
+    exam_ended_flag: bool | None = None
+    if exam is not None and exam.is_exam:
+        ps = practice_session
+        if ps is not None and ps.exam_started_at is not None:
+            # 终结已在循环外批量完成；这里只读字段
+            exam_switches = ps.tab_switch_count
+            exam_switch_seconds = ps.tab_switch_seconds
+            exam_used = exam_service.exam_time_used_seconds(ps)
+            exam_ended_flag = ps.exam_ended_at is not None
+    return (
+        BoardStudent(
+            student_id=student.id,
+            display_name=student.display_name,
+            suffix=student.suffix,
+            done_count=done_count,
+            total_count=len(stat_items),
+            repeat_avg=(
+                round(sum(repeat_scores) / len(repeat_scores), 1)
+                if repeat_scores
+                else None
+            ),
+            question_avg=(
+                round(sum(question_scores) / len(question_scores), 1)
+                if question_scores
+                else None
+            ),
+            has_pending=has_pending,
+            exam_tab_switches=exam_switches,
+            exam_tab_switch_seconds=exam_switch_seconds,
+            exam_time_used_seconds=exam_used,
+            exam_ended=exam_ended_flag,
+            round_status=round_status,
+            inactive_days7=inactive,
+            xp=student.xp,
+            streak_days=student.streak_days,
+            items=items,
+        ),
+        submitted,
+        completed,
+        pending,
+    )
+
+
+@router.get("/{code}/board", response_model=BoardData)
+def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) -> Any:
+    """老师名单表（PRD §8.5 2 周）：谁交了、每题分数、音频；允许先显示评分中。
+
+    需要教师身份：本课指派教师或管理员（课堂码不能当教师凭据）。
+    """
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    today = _today_in_practice_tz()
+
+    current_exercise = (
+        session.get(ClassroomExercise, classroom.current_exercise_id)
+        if classroom.current_exercise_id is not None
+        else None
+    )
+    assigned_unit_board = _assignment_unit(session, classroom)
+    (
+        board_passages,
+        board_passage,
+        board_repeat_sentences,
+        board_questions,
+        board_instructions,
+        include_reading,
+        skeleton,
+    ) = _resolve_board_skeleton(
+        session, classroom, current_exercise, assigned_unit_board
+    )
     students = session.exec(
         select(Student).where(Student.classroom_id == classroom.id)
     ).all()
@@ -312,225 +580,29 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
 
     for student in students:
         practice_session = session_by_student.get(student.id)
-        items: list[BoardItem] = []
-        repeat_scores: list[float] = []
-        question_scores: list[float] = []
-        has_pending = False
-        round_status = "not_started"
-
-        # 未开始当前轮的学生不渲染骨架（教师面板口径：not_started = 空题单）。
-        # 已开始的学生按当前题单骨架 + 作答渲染，缺的题位显示 missing。
-        if practice_session is not None:
-            attempts = attempts_map.get((student.id, practice_session.id), [])
-            latest: dict[uuid.UUID, Attempt] = {}
-            for attempt in attempts:
-                latest[attempt.item_id] = attempt
-
-            def _status_for(
-                item_id: uuid.UUID, _latest: dict[uuid.UUID, Attempt] = latest
-            ) -> Attempt | None:
-                return _latest.get(item_id)
-
-            # 朗读题位
-            if include_reading:
-                for board_p in board_passages:
-                    attempt = _status_for(board_p.id)
-                    if attempt is None:
-                        items.append(
-                            BoardItem(
-                                item_id=board_p.id,
-                                type=AttemptItemType.PASSAGE,
-                                status="missing",
-                            )
-                        )
-                    else:
-                        if attempt.status in (
-                            AttemptStatus.QUEUED,
-                            AttemptStatus.SCORING,
-                        ):
-                            has_pending = True
-                        if (
-                            attempt.status == AttemptStatus.DONE
-                            and attempt.overall is not None
-                        ):
-                            repeat_scores.append(attempt.overall)
-                        items.append(
-                            BoardItem(
-                                item_id=board_p.id,
-                                type=AttemptItemType.PASSAGE,
-                                status=attempt.status,
-                                overall=attempt.overall,
-                                attempt_id=attempt.id,
-                                teacher_focus=attempt.teacher_focus,
-                            )
-                        )
-            # 复述题位
-            for s in board_repeat_sentences:
-                attempt = _status_for(s.id)
-                if attempt is None:
-                    items.append(
-                        BoardItem(
-                            item_id=s.id, type=AttemptItemType.REPEAT, status="missing"
-                        )
-                    )
-                    continue
-                if (
-                    attempt.status == AttemptStatus.QUEUED
-                    or attempt.status == AttemptStatus.SCORING
-                ):
-                    has_pending = True
-                if attempt.status == AttemptStatus.DONE and attempt.overall is not None:
-                    repeat_scores.append(attempt.overall)
-                items.append(
-                    BoardItem(
-                        item_id=s.id,
-                        type=AttemptItemType.REPEAT,
-                        status=attempt.status,
-                        overall=attempt.overall,
-                        attempt_id=attempt.id,
-                        teacher_focus=attempt.teacher_focus,
-                    )
-                )
-            # 问答题位
-            rendered_qids: set[uuid.UUID] = set()
-            for board_q in board_questions:
-                rendered_qids.add(board_q.id)
-                attempt = _status_for(board_q.id)
-                if attempt is None:
-                    items.append(
-                        BoardItem(
-                            item_id=board_q.id,
-                            type=AttemptItemType.QUESTION,
-                            status="missing",
-                        )
-                    )
-                    continue
-                if attempt.status in (
-                    AttemptStatus.QUEUED,
-                    AttemptStatus.SCORING,
-                ):
-                    has_pending = True
-                if attempt.status == AttemptStatus.DONE and attempt.overall is not None:
-                    question_scores.append(attempt.overall)
-                items.append(
-                    BoardItem(
-                        item_id=board_q.id,
-                        type=AttemptItemType.QUESTION,
-                        status=attempt.status,
-                        overall=attempt.overall,
-                        attempt_id=attempt.id,
-                        teacher_focus=attempt.teacher_focus,
-                    )
-                )
-            # 已做但不在骨架的问答题（换题产生的额外题）
-            for item_id, attempt in latest.items():
-                if attempt.item_type != AttemptItemType.QUESTION:
-                    continue
-                if item_id in rendered_qids:
-                    continue
-                if attempt.status in (AttemptStatus.QUEUED, AttemptStatus.SCORING):
-                    has_pending = True
-                if attempt.status == AttemptStatus.DONE and attempt.overall is not None:
-                    question_scores.append(attempt.overall)
-                items.append(
-                    BoardItem(
-                        item_id=item_id,
-                        type=AttemptItemType.QUESTION,
-                        status=attempt.status,
-                        overall=attempt.overall,
-                        attempt_id=attempt.id,
-                        teacher_focus=attempt.teacher_focus,
-                    )
-                )
-            # 说明题位：已读=done / 未读=missing；不进评分与提交统计
-            for board_i in board_instructions:
-                items.append(
-                    BoardItem(
-                        item_id=board_i.id,
-                        type=AttemptItemType.INSTRUCTION,
-                        status=(
-                            AttemptStatus.DONE
-                            if (student.id, board_i.id) in ack_keys
-                            else "missing"
-                        ),
-                    )
-                )
-
-        # 统一统计口径：not_started / scoring / in_progress / all_done / has_failures
-        # 说明无作答，不参与统计（只展示已读状态）
-        stat_items = [i for i in items if i.type != AttemptItemType.INSTRUCTION]
-        non_missing = [i for i in stat_items if i.status != "missing"]
-        terminal = [
-            i
-            for i in stat_items
-            if i.status in (AttemptStatus.DONE, AttemptStatus.FAILED)
-        ]
-        if not non_missing:
-            round_status = "not_started"
-        elif has_pending:
-            round_status = "scoring"
-        elif len(terminal) < len(stat_items):
-            round_status = "in_progress"
-        elif all(i.status == AttemptStatus.DONE for i in terminal):
-            round_status = "all_done"
-        else:
-            round_status = "has_failures"
-
-        done_count = sum(1 for i in stat_items if i.status == AttemptStatus.DONE)
-        if any(i.status != "missing" for i in stat_items):
-            submitted_count += 1
-        if round_status in ("all_done", "has_failures"):
-            completed_count += 1
-        if has_pending:
-            pending_count += 1
-        joined_before_window = (
-            student.created_at is not None
-            and student.created_at.astimezone(ZoneInfo(settings.PRACTICE_TZ)).date()
-            < week_ago.date()
+        attempts = (
+            attempts_map.get((student.id, practice_session.id), [])
+            if practice_session is not None
+            else []
         )
-        inactive = joined_before_window and student.id not in recent_student_ids
-        # 模考监考：当前发布为考试时，给出该生切屏次数/离屏时长/用时/是否交卷
-        exam_switches: int | None = None
-        exam_switch_seconds: int | None = None
-        exam_used: int | None = None
-        exam_ended_flag: bool | None = None
-        if current_exercise is not None and current_exercise.is_exam:
-            ps = session_by_student.get(student.id)
-            if ps is not None and ps.exam_started_at is not None:
-                # 终结已在循环外批量完成；这里只读字段
-                exam_switches = ps.tab_switch_count
-                exam_switch_seconds = ps.tab_switch_seconds
-                exam_used = exam_service.exam_time_used_seconds(ps)
-                exam_ended_flag = ps.exam_ended_at is not None
-        board_students.append(
-            BoardStudent(
-                student_id=student.id,
-                display_name=student.display_name,
-                suffix=student.suffix,
-                done_count=done_count,
-                total_count=len(stat_items),
-                repeat_avg=(
-                    round(sum(repeat_scores) / len(repeat_scores), 1)
-                    if repeat_scores
-                    else None
-                ),
-                question_avg=(
-                    round(sum(question_scores) / len(question_scores), 1)
-                    if question_scores
-                    else None
-                ),
-                has_pending=has_pending,
-                exam_tab_switches=exam_switches,
-                exam_tab_switch_seconds=exam_switch_seconds,
-                exam_time_used_seconds=exam_used,
-                exam_ended=exam_ended_flag,
-                round_status=round_status,
-                inactive_days7=inactive,
-                xp=student.xp,
-                streak_days=student.streak_days,
-                items=items,
-            )
+        row, is_submitted, is_completed, is_pending = _build_student_row(
+            student,
+            practice_session,
+            attempts,
+            board_passages=board_passages,
+            board_repeat_sentences=board_repeat_sentences,
+            board_questions=board_questions,
+            board_instructions=board_instructions,
+            include_reading=include_reading,
+            ack_keys=ack_keys,
+            recent_student_ids=recent_student_ids,
+            week_ago=week_ago,
+            exam=current_exercise,
         )
+        submitted_count += 1 if is_submitted else 0
+        completed_count += 1 if is_completed else 0
+        pending_count += 1 if is_pending else 0
+        board_students.append(row)
 
     # 交了的在前，其次按完成数降序，再按名字
     board_students.sort(

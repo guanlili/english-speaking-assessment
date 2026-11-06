@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException, Query
-from sqlmodel import SQLModel, col, select
+from sqlmodel import Session, SQLModel, col, select
 
 from app.api.deps import (
     SessionDep,
@@ -55,6 +55,7 @@ from app.models import (
     ScenarioQuestionPublic,
     SentenceFrame,
     SentenceFramePublic,
+    Student,
     StudentFrameFavorite,
     TodayPlan,
 )
@@ -111,57 +112,122 @@ def read_classroom_revision(
     return ClassroomRevision(revision=hashlib.sha256(content.encode()).hexdigest())
 
 
-@router.get("/{code}/today", response_model=TodayPlan)
-def read_today_plan(
-    session: SessionDep,
-    code: str,
-    current_user: StudentUserDep,
-    session_id: uuid.UUID | None = Query(default=None),
-    slot: str = Query(default="class"),
-) -> Any:
-    """今天的练习计划：3 句听后复述 + 2 道该档情景问答（US-05）。
+def _append_switched_items(
+    items: list[PlanItem],
+    attempts: list[Attempt],
+    listen_counts: dict[uuid.UUID, int],
+) -> None:
+    """题单外的已作答项（换来的题）补进题单，保证刷新后仍可见。"""
+    # 追加换题作答：题单外的已作答项（换来的题）补进题单，保证刷新后仍可见、
+    # 结果页能展示（来源 attempt.item_snapshot，不依赖活题库）。
+    # 不纳入结算必做（required_ids 已在 settle 前固定）。
+    plan_item_ids = {item.id for item in items}
+    for a in attempts:
+        if a.item_id in plan_item_ids:
+            continue
+        snapshot_item = a.item_snapshot if isinstance(a.item_snapshot, dict) else None
+        extra = (
+            _plan_item_from_snapshot(snapshot_item, listen_counts)
+            if snapshot_item is not None
+            else None
+        )
+        if extra is not None:
+            items.append(extra)
+            plan_item_ids.add(a.item_id)
 
-    传 session_id 时返回该会话的计划（主题探索的自由练习轮）。
+
+def _inject_exam_frames(
+    session: Session,
+    student: Student,
+    items: list[PlanItem],
+) -> None:
+    """分级题型训练：为考试题按难度/题型注入可替换句型（仅展示层）。"""
+    # 分级题型训练：为考试题注入可替换句型（按题目实际难度与题型匹配；
+    # 通用句型 exam_kind 为空也推荐）。仅展示层注入，不进作答快照。
+    exam_plan_items = [item for item in items if item.exam_kind]
+    if exam_plan_items:
+        all_frames = session.exec(
+            select(SentenceFrame).where(SentenceFrame.status == "active")
+        ).all()
+        favorite_ids = set(
+            session.exec(
+                select(StudentFrameFavorite.frame_id).where(
+                    StudentFrameFavorite.student_id == student.id  # type: ignore[arg-type]
+                )
+            ).all()
+        )
+        for item in exam_plan_items:
+            matched = [
+                frame
+                for frame in all_frames
+                if frame.level == item.exam_level
+                and frame.exam_kind in (None, item.exam_kind)
+            ]
+            item.frames = [
+                SentenceFramePublic(
+                    id=frame.id,
+                    level=frame.level,
+                    purpose=frame.purpose,
+                    exam_kind=frame.exam_kind,
+                    text_en=frame.text_en,
+                    text_zh=frame.text_zh,
+                    favorited=frame.id in favorite_ids,
+                )
+                for frame in matched[:6]
+            ]
+
+
+def _build_plan_attempts(
+    attempts: list[Attempt],
+    previous_map: dict[uuid.UUID, Any],
+    feedback_locked: bool,
+) -> list[PlanAttempt]:
+    """作答行 → 计划返回体；考试反馈遮罩期间只回执状态。"""
+    # 模考反馈遮罩（服务端口径）：考试终结前学生只能拿到作答状态回执，
+    # 分数/转写/建议等反馈字段一律不下发——前端不显示不构成安全边界
+    full_attempts = [
+        PlanAttempt(
+            item_id=a.item_id,
+            attempt_id=a.id,
+            status=a.status,
+            overall=a.overall,
+            completeness=a.completeness,
+            fluency=a.fluency,
+            transcript=a.transcript,
+            advice=a.advice,
+            vocab=a.vocab if isinstance(a.vocab, dict) else None,
+            word_alignment=(
+                a.word_alignment if isinstance(a.word_alignment, dict) else None
+            ),
+            rubric=a.rubric if isinstance(a.rubric, dict) else None,
+            error=a.error,
+            item_text=_attempt_item_text(a),
+            teacher_review_tags=a.teacher_review_tags,
+            previous=previous_map.get(a.item_id),
+            teacher_feedback=a.teacher_feedback,
+            teacher_focus=a.teacher_focus,
+            teacher_feedback_author=a.teacher_feedback_author,
+            teacher_feedback_at=a.teacher_feedback_at,
+        )
+        for a in attempts
+    ]
+    return [
+        exam_service.masked_plan_attempt(pa) if feedback_locked else pa
+        for pa in full_attempts
+    ]
+
+
+def _resolve_plan_items(
+    session: Session,
+    classroom: Any,
+    student: Student,
+    practice_session: PracticeSession,
+    snapshot_items: list[dict[str, object]] | None,
+) -> tuple[list[PlanItem], int, bool, str, dict[uuid.UUID, int], Any]:
+    """解析本轮题单：发布快照优先，其次按题指派，最后单元/自主路径。
+
+    返回 (题单, 结算必做数, 是否无题可练, 档位, 重听计数, 指派题目)。
     """
-    classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
-    today = _today_in_practice_tz()
-
-    if session_id is not None:
-        practice_session = session.get(PracticeSession, session_id)
-        if practice_session is None or practice_session.student_id != student.id:
-            raise HTTPException(status_code=404, detail="Session not found")
-    elif slot == "homework":
-        practice_session = _resolve_homework_session(session, classroom, student, today)
-    else:
-        # daily 当前轮：today / next-question / board 都用同一定位逻辑
-        practice_session = _resolve_active_daily_session(
-            session, classroom, student, today
-        )
-
-    # 快照优先：发布会话绑定的 exercise 始终作为题单来源（删题也从快照读）
-    snapshot_items: list[dict[str, object]] | None = None
-    bound_exercise: ClassroomExercise | None = None
-    if practice_session.assignment_id is not None:
-        bound_exercise = session.get(ClassroomExercise, practice_session.assignment_id)
-        if bound_exercise is not None:
-            snapshot_items = bound_exercise.snapshot_items
-
-    # 模考生命周期：开考由学生在确认页显式触发（POST /exam/start），
-    # today 只做到时惰性终结与状态透出（未开考不计时）
-    exam_info = None
-    if bound_exercise is not None and bound_exercise.is_exam:
-        exam_service.finalize_if_expired(session, practice_session, bound_exercise)
-        exam_info = exam_service.exam_status_payload(
-            session, practice_session, bound_exercise
-        )
-    # 反馈遮罩判定提前：考试终结前跳过激励结算——settle 会按分数落
-    # stars/XP，GamificationInfo 直出 practice_session.stars 会把分数档
-    # （≥85→3 星）提前泄露给考生本人，XP 同步跳变（2026-10-12 评审）
-    feedback_locked = exam_service.exam_feedback_locked(
-        session, practice_session, bound_exercise
-    )
-
     items: list[PlanItem] = []
     expected_items = 0
     exhausted = False
@@ -342,6 +408,77 @@ def read_today_plan(
             for q in questions
         ]
         expected_items = len(items)
+    return (
+        items,
+        expected_items,
+        exhausted,
+        band,
+        listen_counts,
+        item_objects,
+    )
+
+
+@router.get("/{code}/today", response_model=TodayPlan)
+def read_today_plan(
+    session: SessionDep,
+    code: str,
+    current_user: StudentUserDep,
+    session_id: uuid.UUID | None = Query(default=None),
+    slot: str = Query(default="class"),
+) -> Any:
+    """今天的练习计划：3 句听后复述 + 2 道该档情景问答（US-05）。
+
+    传 session_id 时返回该会话的计划（主题探索的自由练习轮）。
+    """
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(session, classroom, current_user)
+    today = _today_in_practice_tz()
+
+    if session_id is not None:
+        practice_session = session.get(PracticeSession, session_id)
+        if practice_session is None or practice_session.student_id != student.id:
+            raise HTTPException(status_code=404, detail="Session not found")
+    elif slot == "homework":
+        practice_session = _resolve_homework_session(session, classroom, student, today)
+    else:
+        # daily 当前轮：today / next-question / board 都用同一定位逻辑
+        practice_session = _resolve_active_daily_session(
+            session, classroom, student, today
+        )
+
+    # 快照优先：发布会话绑定的 exercise 始终作为题单来源（删题也从快照读）
+    snapshot_items: list[dict[str, object]] | None = None
+    bound_exercise: ClassroomExercise | None = None
+    if practice_session.assignment_id is not None:
+        bound_exercise = session.get(ClassroomExercise, practice_session.assignment_id)
+        if bound_exercise is not None:
+            snapshot_items = bound_exercise.snapshot_items
+
+    # 模考生命周期：开考由学生在确认页显式触发（POST /exam/start），
+    # today 只做到时惰性终结与状态透出（未开考不计时）
+    exam_info = None
+    if bound_exercise is not None and bound_exercise.is_exam:
+        exam_service.finalize_if_expired(session, practice_session, bound_exercise)
+        exam_info = exam_service.exam_status_payload(
+            session, practice_session, bound_exercise
+        )
+    # 反馈遮罩判定提前：考试终结前跳过激励结算——settle 会按分数落
+    # stars/XP，GamificationInfo 直出 practice_session.stars 会把分数档
+    # （≥85→3 星）提前泄露给考生本人，XP 同步跳变（2026-10-12 评审）
+    feedback_locked = exam_service.exam_feedback_locked(
+        session, practice_session, bound_exercise
+    )
+
+    (
+        items,
+        expected_items,
+        exhausted,
+        band,
+        listen_counts,
+        item_objects,
+    ) = _resolve_plan_items(
+        session, classroom, student, practice_session, snapshot_items
+    )
 
     # 激励结算（幂等）：本轮全部终态时计算星/XP/连胜/徽章。
     # 考试反馈遮罩期间跳过：结算产物（stars/XP）会绕过 attempts 遮罩
@@ -367,89 +504,11 @@ def read_today_plan(
         session, student.id, practice_session.id
     )
 
-    # 追加换题作答：题单外的已作答项（换来的题）补进题单，保证刷新后仍可见、
-    # 结果页能展示（来源 attempt.item_snapshot，不依赖活题库）。
-    # 不纳入结算必做（required_ids 已在 settle 前固定）。
-    plan_item_ids = {item.id for item in items}
-    for a in attempts:
-        if a.item_id in plan_item_ids:
-            continue
-        snapshot_item = a.item_snapshot if isinstance(a.item_snapshot, dict) else None
-        extra = (
-            _plan_item_from_snapshot(snapshot_item, listen_counts)
-            if snapshot_item is not None
-            else None
-        )
-        if extra is not None:
-            items.append(extra)
-            plan_item_ids.add(a.item_id)
+    _append_switched_items(items, attempts, listen_counts)
 
-    # 分级题型训练：为考试题注入可替换句型（按题目实际难度与题型匹配；
-    # 通用句型 exam_kind 为空也推荐）。仅展示层注入，不进作答快照。
-    exam_plan_items = [item for item in items if item.exam_kind]
-    if exam_plan_items:
-        all_frames = session.exec(
-            select(SentenceFrame).where(SentenceFrame.status == "active")
-        ).all()
-        favorite_ids = set(
-            session.exec(
-                select(StudentFrameFavorite.frame_id).where(
-                    StudentFrameFavorite.student_id == student.id  # type: ignore[arg-type]
-                )
-            ).all()
-        )
-        for item in exam_plan_items:
-            matched = [
-                frame
-                for frame in all_frames
-                if frame.level == item.exam_level
-                and frame.exam_kind in (None, item.exam_kind)
-            ]
-            item.frames = [
-                SentenceFramePublic(
-                    id=frame.id,
-                    level=frame.level,
-                    purpose=frame.purpose,
-                    exam_kind=frame.exam_kind,
-                    text_en=frame.text_en,
-                    text_zh=frame.text_zh,
-                    favorited=frame.id in favorite_ids,
-                )
-                for frame in matched[:6]
-            ]
+    _inject_exam_frames(session, student, items)
 
-    # 模考反馈遮罩（服务端口径）：考试终结前学生只能拿到作答状态回执，
-    # 分数/转写/建议等反馈字段一律不下发——前端不显示不构成安全边界
-    full_attempts = [
-        PlanAttempt(
-            item_id=a.item_id,
-            attempt_id=a.id,
-            status=a.status,
-            overall=a.overall,
-            completeness=a.completeness,
-            fluency=a.fluency,
-            transcript=a.transcript,
-            advice=a.advice,
-            vocab=a.vocab if isinstance(a.vocab, dict) else None,
-            word_alignment=(
-                a.word_alignment if isinstance(a.word_alignment, dict) else None
-            ),
-            rubric=a.rubric if isinstance(a.rubric, dict) else None,
-            error=a.error,
-            item_text=_attempt_item_text(a),
-            teacher_review_tags=a.teacher_review_tags,
-            previous=previous_map.get(a.item_id),
-            teacher_feedback=a.teacher_feedback,
-            teacher_focus=a.teacher_focus,
-            teacher_feedback_author=a.teacher_feedback_author,
-            teacher_feedback_at=a.teacher_feedback_at,
-        )
-        for a in attempts
-    ]
-    plan_attempts = [
-        exam_service.masked_plan_attempt(pa) if feedback_locked else pa
-        for pa in full_attempts
-    ]
+    plan_attempts = _build_plan_attempts(attempts, previous_map, feedback_locked)
 
     badges = [
         BadgePublic(
