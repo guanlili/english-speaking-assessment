@@ -60,7 +60,7 @@
 - **组卷选择恢复**（`POST /admin/composer-selection`）：不可见 ID 归入现有的「缺失」分支，界面已有处理。
 - **取消共享 / 删除**：只影响他人后续组卷；他人草稿里的引用落入「缺失」，已发布快照与成绩不变（沿用现有不变量）。
 - **复制**：`POST /admin/{kind}/{id}/copy` 深拷贝根对象与子对象（篇目连同复述句、主题连同全部问法），新对象 `owner=当前用户, visibility=private`，记录 `copied_from_id`（可选列，用于界面显示"复制自"）。标准音 URL 直接沿用：内容音频目前没有任何删除路径，共享文件安全；以后如果加音频清理，需要先改成引用计数。
-- **导入查重**（`services/question_bank_io.py` `_matching_ids` 等）：候选集合改为 `visible_filter` 范围，否则会把别人的私有题当成重复、或泄露其存在。导入新建的内容归导入人。
+- **导入查重**（`services/question_bank_ref.py` `_matching_ids` 等）：候选集合改为 `visible_filter` 范围，否则会把别人的私有题当成重复、或泄露其存在。导入新建的内容归导入人。
 - **导出**：仅导出可见内容。
 - **AI 出题 / 自动拆句**：沿用编辑权限。
 

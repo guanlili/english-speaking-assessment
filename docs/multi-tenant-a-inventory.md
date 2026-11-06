@@ -41,7 +41,7 @@ passage（slug 全局唯一→改 (tenant_id,slug)）、repeat_sentence、scenar
 
 ### 1.3 裸 SQL / Core execute 路径（TenantSession 必须覆盖）
 
-- **原生 text() 三处**：class_runtime.py:223/237（item_listen 原子 UPSERT，按约束名 `uq_item_listen_scope` 引用）；question_bank_io.py:2118（pg_advisory_xact_lock 导入锁）；utils.py:66（就绪探针 SELECT 1，不能被 RLS 拦死）。
+- **原生 text() 三处**：class_runtime.py:223/237（item_listen 原子 UPSERT，按约束名 `uq_item_listen_scope` 引用）；question_bank_apply.py（pg_advisory_xact_lock 导入锁）；utils.py:66（就绪探针 SELECT 1，不能被 RLS 拦死）。
 - **Core update() 经 session.execute() 八处**：audio_retention.py:117（音频批量结算）、scoring/worker.py:877/927（评分清扫/启动恢复）、vocabulary.py:444 与 services/vocabulary.py:1894（词书版本自增）、vocab_quiz.py:315（切屏计数）、services/exam.py:569/590（考试切屏）。
 - **connection().execute 聚合查询六处**：usage_export.py:197/298/313/322/329（全平台 CSV 导出）、admin_dashboard.py:329/341（课堂累计/活跃）、metrics_daily.py:164/199（日快照回算）、class_report_pdf.py:192、trail.py:51、class_trend.py:27。
 - **行锁路径**（FOR UPDATE / SKIP LOCKED，RLS 下语义已由原型 P4d 验证）：scoring/worker.py:357/391/731/868/918、exporting/worker.py:132、services/exam.py:288/293、exam_flow.py:222。
