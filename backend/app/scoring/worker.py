@@ -338,6 +338,104 @@ def _score_rubric(
         return None
 
 
+def _transcribe_audio(
+    attempt_id: uuid.UUID, audio_path_str: str, audio_mime: str
+) -> tuple[str, str]:
+    """读音频 → 转码为 provider 可接受格式 → ASR 转写，返回 (转写, 引擎名)。
+
+    纯外部调用与 CPU 转换，不碰数据库：调用方在租约校验与 checkpoint 里
+    负责落库与续租。
+    """
+    audio_path = Path(audio_path_str)
+    audio = audio_path.read_bytes()
+    provider = build_asr_provider()
+    # 方舟不接受浏览器 webm/opus：转 16kHz wav 再送（本地 mock 原样）
+    conversion_start = perf_counter()
+    if provider.name == "volc_flash":
+        audio, effective_mime = convert_to_wav(audio, ".audio")
+    elif provider.name == "ark":
+        audio, effective_mime = ensure_ark_supported(audio, audio_mime)
+    else:
+        effective_mime = audio_mime
+    conversion_ms = (perf_counter() - conversion_start) * 1000
+    asr_start = perf_counter()
+    try:
+        transcript = provider.transcribe(audio, effective_mime)
+        metrics.record_call("asr", ok=True, duration_s=perf_counter() - asr_start)
+    except Exception:
+        metrics.record_call("asr", ok=False, duration_s=perf_counter() - asr_start)
+        raise
+    logger.info(
+        "ASR attempt=%s provider=%s conversion_ms=%.0f recognition_ms=%.0f",
+        attempt_id,
+        provider.name,
+        conversion_ms,
+        (perf_counter() - asr_start) * 1000,
+    )
+    engine = provider.name
+    return transcript, engine
+
+
+def _apply_scores(
+    session: Session,
+    attempt: Attempt,
+    transcript: str,
+    engine: str,
+    duration_s: float,
+) -> tuple[RubricQuestionContext, str] | None:
+    """按题型填分：跟读/复述走参考文本对齐，开放问答走总评 + 词汇/rubric。
+
+    返回详情任务参数（开放问答且引擎支持时），否则 None。
+    """
+    detail_request: tuple[RubricQuestionContext, str] | None = None
+    read_aloud = _resolve_read_aloud_item(session, attempt)
+    if read_aloud is not None:
+        reference_text, suggested_seconds = read_aloud
+        scores = score_read_aloud(
+            transcript=transcript,
+            reference_text=reference_text,
+            duration_s=duration_s,
+            suggested_seconds=suggested_seconds,
+        )
+        attempt.transcript = scores.transcript
+        attempt.completeness = scores.completeness
+        attempt.fluency = scores.fluency
+        attempt.accuracy = scores.accuracy
+        attempt.overall = scores.overall
+        attempt.advice = scores.advice
+        # 词级对齐（逐词标注与个人漏词聚合共用）：只在有参考文本的跟读/
+        # 复述题生成；空转写全部 missing，前端据此展示「未识别到语音」
+        if transcript.strip():
+            from app.scoring.heuristic import align_words
+
+            attempt.word_alignment = dict(
+                align_words(reference_text, scores.transcript)
+            )
+    else:
+        # 开放问答：无参考文本（PRD §4：2 周只出总评和一句建议）
+        question_context = _resolve_question_context(session, attempt)
+        open_scores = score_open_response(transcript, duration_s)
+        attempt.transcript = open_scores.transcript
+        attempt.fluency = open_scores.fluency
+        attempt.overall = open_scores.overall
+        attempt.advice = open_scores.advice
+        # 词汇分析（PRD US-07）：只统计问答转写；词表为空时留 null
+        attempt.vocab = _analyze_vocab(session, transcript)
+        # rubric 四维与模拟分（PRD US-08）：仅 ark 引擎；失败降级不出假分
+        # 空转写（没说话/识别不到）不出 0 分模拟——界面显示暂缺
+        if engine in {"ark", "volc_flash"} and transcript.strip():
+            # 详情任务入队（返修R06）：queued_at 是排队时刻；真正开始
+            # 执行时 _complete_detail 会改写为 executing + pending_since。
+            # 挂起超时按阶段判定——合法的线程池排队不该被当线程丢失
+            attempt.rubric = {
+                "status": "pending",
+                "phase": "queued",
+                "queued_at": datetime.now(UTC).isoformat(),
+            }
+            detail_request = (question_context, transcript)
+    return detail_request
+
+
 def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
     """同步评分一条作答。可在线程池中调用，也可在测试中直接调用。
 
@@ -405,37 +503,9 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             engine = cached_engine or settings.SCORING_PROVIDER
             logger.info("ASR attempt=%s reused cached transcript", attempt_id)
         else:
-            audio_path = Path(audio_path_str)
-            audio = audio_path.read_bytes()
-            provider = build_asr_provider()
-            # 方舟不接受浏览器 webm/opus：转 16kHz wav 再送（本地 mock 原样）
-            conversion_start = perf_counter()
-            if provider.name == "volc_flash":
-                audio, effective_mime = convert_to_wav(audio, ".audio")
-            elif provider.name == "ark":
-                audio, effective_mime = ensure_ark_supported(audio, audio_mime)
-            else:
-                effective_mime = audio_mime
-            conversion_ms = (perf_counter() - conversion_start) * 1000
-            asr_start = perf_counter()
-            try:
-                transcript = provider.transcribe(audio, effective_mime)
-                metrics.record_call(
-                    "asr", ok=True, duration_s=perf_counter() - asr_start
-                )
-            except Exception:
-                metrics.record_call(
-                    "asr", ok=False, duration_s=perf_counter() - asr_start
-                )
-                raise
-            logger.info(
-                "ASR attempt=%s provider=%s conversion_ms=%.0f recognition_ms=%.0f",
-                attempt_id,
-                provider.name,
-                conversion_ms,
-                (perf_counter() - asr_start) * 1000,
+            transcript, engine = _transcribe_audio(
+                attempt_id, audio_path_str, audio_mime
             )
-            engine = provider.name
             if not lease_valid():
                 raise _LeaseLostError(attempt_id)
             # checkpoint：转写成功立即落库（同步保存真实 ASR provider），
@@ -449,51 +519,7 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             session.commit()
             lease_token = renewal
 
-        read_aloud = _resolve_read_aloud_item(session, attempt)
-        if read_aloud is not None:
-            reference_text, suggested_seconds = read_aloud
-            scores = score_read_aloud(
-                transcript=transcript,
-                reference_text=reference_text,
-                duration_s=duration_s,
-                suggested_seconds=suggested_seconds,
-            )
-            attempt.transcript = scores.transcript
-            attempt.completeness = scores.completeness
-            attempt.fluency = scores.fluency
-            attempt.accuracy = scores.accuracy
-            attempt.overall = scores.overall
-            attempt.advice = scores.advice
-            # 词级对齐（逐词标注与个人漏词聚合共用）：只在有参考文本的跟读/
-            # 复述题生成；空转写全部 missing，前端据此展示「未识别到语音」
-            if transcript.strip():
-                from app.scoring.heuristic import align_words
-
-                attempt.word_alignment = dict(
-                    align_words(reference_text, scores.transcript)
-                )
-        else:
-            # 开放问答：无参考文本（PRD §4：2 周只出总评和一句建议）
-            question_context = _resolve_question_context(session, attempt)
-            open_scores = score_open_response(transcript, duration_s)
-            attempt.transcript = open_scores.transcript
-            attempt.fluency = open_scores.fluency
-            attempt.overall = open_scores.overall
-            attempt.advice = open_scores.advice
-            # 词汇分析（PRD US-07）：只统计问答转写；词表为空时留 null
-            attempt.vocab = _analyze_vocab(session, transcript)
-            # rubric 四维与模拟分（PRD US-08）：仅 ark 引擎；失败降级不出假分
-            # 空转写（没说话/识别不到）不出 0 分模拟——界面显示暂缺
-            if engine in {"ark", "volc_flash"} and transcript.strip():
-                # 详情任务入队（返修R06）：queued_at 是排队时刻；真正开始
-                # 执行时 _complete_detail 会改写为 executing + pending_since。
-                # 挂起超时按阶段判定——合法的线程池排队不该被当线程丢失
-                attempt.rubric = {
-                    "status": "pending",
-                    "phase": "queued",
-                    "queued_at": datetime.now(UTC).isoformat(),
-                }
-                detail_request = (question_context, transcript)
+        detail_request = _apply_scores(session, attempt, transcript, engine, duration_s)
 
         if not lease_valid():
             raise _LeaseLostError(attempt_id)
