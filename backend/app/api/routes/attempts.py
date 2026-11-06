@@ -384,15 +384,7 @@ def create_attempt_upload(
                 ),
             )
 
-    # 限流（评分是付费链路：每次提交 = 一次 ASR 转写）：学生按人、其余按
-    # IP。放在幂等重放之后——断网重传同键不占配额。60 次/5 分钟对正常
-    # 作答节奏（录音 ≥3 秒 + 上传 + 轮询）极宽松，只挡脚本刷接口
-    if student is not None:
-        _attempt_user_limiter.check(f"student:{student.id}")
-    else:
-        _attempt_ip_limiter.check(
-            f"ip:{request.client.host if request.client else 'unknown'}"
-        )
+    _enforce_submit_rate_limit(student, request)
 
     # 模考门禁：整场限时（服务端强约束）+ 每题一次作答。
     # 放在幂等检查之后：同一次录音断网重试（同幂等键）不受影响
@@ -453,57 +445,9 @@ def create_attempt_upload(
     # 全程零事务零连接
     session.commit()
 
-    if duration_s < MIN_DURATION_S:
-        raise HTTPException(status_code=422, detail="录音太短（不足 1 秒），请再录一次")
+    audio_bytes, mime_type, suffix, duration_s = _read_audio_payload(audio, duration_s)
 
-    # 限量读取：分段读入并即时检查大小上限（bytearray 增量拼接，避免 O(n²)）
-    max_bytes = settings.MAX_AUDIO_MB * 1024 * 1024
-    data = bytearray()
-    while True:
-        chunk = audio.file.read(_CHUNK_SIZE)
-        if not chunk:
-            break
-        data.extend(chunk)
-        if len(data) > max_bytes:
-            raise HTTPException(
-                status_code=413, detail=f"音频超过 {settings.MAX_AUDIO_MB}MB 上限"
-            )
-    if not data:
-        raise HTTPException(status_code=422, detail="音频为空，请再录一次")
-    audio_bytes = bytes(data)
-
-    # 真实格式/音轨/时长校验：ffprobe，不信客户端上报值
-    mime_type = audio.content_type or "audio/webm"
-    base_mime = mime_type.split(";")[0].strip().lower()
-    suffix = _mime_to_suffix(base_mime)
-    probe = probe_audio(audio_bytes, suffix)
-    if probe is None:
-        raise HTTPException(status_code=422, detail="音频文件无效或损坏，请重新录音")
-    if not probe.has_audio:
-        raise HTTPException(status_code=422, detail="文件中没有音频音轨，请重新录音")
-    if probe.channels is not None and probe.channels > 2:
-        raise HTTPException(status_code=422, detail="音轨数异常，请重新录音")
-    actual_duration = probe.duration_s
-    if actual_duration is not None:
-        if actual_duration < MIN_DURATION_S:
-            raise HTTPException(
-                status_code=422, detail="录音太短（不足 1 秒），请再录一次"
-            )
-        if abs(actual_duration - duration_s) > DURATION_TOLERANCE_S:
-            # 时长明显不符：以探测值为准重算，避免被恶意上报值利用
-            duration_s = actual_duration
-
-    # 队列容量检查：繁忙时拒绝，前端保留录音提示稍后重试
-    queued_count = session.exec(
-        select(func.count(Attempt.id)).where(  # type: ignore
-            Attempt.status == AttemptStatus.QUEUED
-        )
-    ).one()
-    if queued_count >= MAX_QUEUE_SIZE:
-        raise HTTPException(
-            status_code=503,
-            detail="评分队列繁忙，请稍后重试",
-        )
+    _enforce_queue_capacity(session)
 
     # 事务边界③：队列计数的只读事务结束，落盘在事务外（本地磁盘写也
     # 不占连接）
@@ -796,3 +740,80 @@ def read_attempt_audio(
         media_type=safe_mime,
         headers={"Cache-Control": "private, max-age=86400"},
     )
+
+
+def _enforce_submit_rate_limit(student: Student | None, request: Request) -> None:
+    """评分是付费链路（每次提交 = 一次 ASR）：学生按人、其余按 IP 限流。"""
+    # 限流（评分是付费链路：每次提交 = 一次 ASR 转写）：学生按人、其余按
+    # IP。放在幂等重放之后——断网重传同键不占配额。60 次/5 分钟对正常
+    # 作答节奏（录音 ≥3 秒 + 上传 + 轮询）极宽松，只挡脚本刷接口
+    if student is not None:
+        _attempt_user_limiter.check(f"student:{student.id}")
+    else:
+        _attempt_ip_limiter.check(
+            f"ip:{request.client.host if request.client else 'unknown'}"
+        )
+
+
+def _read_audio_payload(
+    audio: UploadFile, duration_s: float
+) -> tuple[bytes, str, str, float]:
+    """分段读入并校验音频：大小上限、ffprobe 真实格式/音轨/时长。
+
+    返回 (音频字节, 原始 MIME, 文件名后缀, 以探测值修正后的时长)。
+    """
+    if duration_s < MIN_DURATION_S:
+        raise HTTPException(status_code=422, detail="录音太短（不足 1 秒），请再录一次")
+
+    # 限量读取：分段读入并即时检查大小上限（bytearray 增量拼接，避免 O(n²)）
+    max_bytes = settings.MAX_AUDIO_MB * 1024 * 1024
+    data = bytearray()
+    while True:
+        chunk = audio.file.read(_CHUNK_SIZE)
+        if not chunk:
+            break
+        data.extend(chunk)
+        if len(data) > max_bytes:
+            raise HTTPException(
+                status_code=413, detail=f"音频超过 {settings.MAX_AUDIO_MB}MB 上限"
+            )
+    if not data:
+        raise HTTPException(status_code=422, detail="音频为空，请再录一次")
+    audio_bytes = bytes(data)
+
+    # 真实格式/音轨/时长校验：ffprobe，不信客户端上报值
+    mime_type = audio.content_type or "audio/webm"
+    base_mime = mime_type.split(";")[0].strip().lower()
+    suffix = _mime_to_suffix(base_mime)
+    probe = probe_audio(audio_bytes, suffix)
+    if probe is None:
+        raise HTTPException(status_code=422, detail="音频文件无效或损坏，请重新录音")
+    if not probe.has_audio:
+        raise HTTPException(status_code=422, detail="文件中没有音频音轨，请重新录音")
+    if probe.channels is not None and probe.channels > 2:
+        raise HTTPException(status_code=422, detail="音轨数异常，请重新录音")
+    actual_duration = probe.duration_s
+    if actual_duration is not None:
+        if actual_duration < MIN_DURATION_S:
+            raise HTTPException(
+                status_code=422, detail="录音太短（不足 1 秒），请再录一次"
+            )
+        if abs(actual_duration - duration_s) > DURATION_TOLERANCE_S:
+            # 时长明显不符：以探测值为准重算，避免被恶意上报值利用
+            duration_s = actual_duration
+    return audio_bytes, mime_type, suffix, duration_s
+
+
+def _enforce_queue_capacity(session: SessionDep) -> None:
+    """队列繁忙时按稳定 503 拒绝（前端保留录音提示稍后重试）。"""
+    # 队列容量检查：繁忙时拒绝，前端保留录音提示稍后重试
+    queued_count = session.exec(
+        select(func.count(Attempt.id)).where(  # type: ignore
+            Attempt.status == AttemptStatus.QUEUED
+        )
+    ).one()
+    if queued_count >= MAX_QUEUE_SIZE:
+        raise HTTPException(
+            status_code=503,
+            detail="评分队列繁忙，请稍后重试",
+        )

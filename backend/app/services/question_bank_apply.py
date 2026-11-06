@@ -1,5 +1,7 @@
 """题库导入落库：单事务确认导入（咨询锁 + 指纹对账 + 整体回滚）。"""
 
+import uuid
+
 from fastapi import (
     HTTPException,
 )
@@ -34,6 +36,7 @@ from app.services.question_bank_parse import (
     ParsedFile,
 )
 from app.services.question_bank_plan import (
+    QuestionBankPlan,
     _excerpt,
     plan_fingerprint,
     plan_import,
@@ -117,146 +120,15 @@ def apply_import(
             )
         plan = plan_import(session, parsed, include_lines, editor=owner, ref=shared_ref)
         owner_id = content_access.owner_for(owner) if owner is not None else None
-        created_scenarios: dict[str, Scenario] = {}
-        for topic in plan.new_topics:
-            scenario = Scenario(topic=topic, is_active=True, owner_id=owner_id)
-            session.add(scenario)
-            created_scenarios[_norm_text(topic)] = scenario
-        session.flush()  # 分配 scenario.id
-
-        created_items: list[QuestionBankCreatedItem] = []
-        used_slugs = set(plan.existing_slugs)
-        created_passages: dict[str, Passage] = {}
-        for item in plan.creates[TYPE_PASSAGE]:
-            payload = item.payload
-            passage = Passage(
-                title=payload["title"],
-                topic=crud.derive_passage_topic(
-                    session, payload.get("unit_id"), payload["topic"]
-                ),
-                cefr_band=payload["cefr_band"],
-                text=payload["text"],
-                translation=payload["translation"],
-                audio_url=payload["audio_url"],
-                suggested_seconds=payload["suggested_seconds"],
-                is_active=payload["is_active"],
-                slug=_generate_slug(payload["title"], used_slugs),
-                unit_id=payload.get("unit_id"),
-                owner_id=owner_id,
-            )
-            session.add(passage)
-            created_passages[_norm_text(passage.title)] = passage
-            created_items.append(
-                QuestionBankCreatedItem(
-                    type=TYPE_PASSAGE,
-                    id=str(passage.id),
-                    label=payload["title"],
-                    needs_audio=False,
-                    audio_missing=not payload["audio_url"],
-                )
-            )
-        session.flush()  # 分配 passage.id，供复述句挂靠
-
-        per_passage_order = dict(plan.max_sentence_order_by_passage)
-        global_order = plan.max_sentence_order_global
-        for item in plan.creates[TYPE_REPEAT]:
-            payload = item.payload
-            passage_id = item.passage_id
-            if passage_id is None and item.planned_passage_title is not None:
-                planned = created_passages.get(item.planned_passage_title)
-                passage_id = planned.id if planned is not None else None
-            sentence_owner_id = owner_id
-            if passage_id is not None:
-                order = per_passage_order.get(passage_id, 0) + 1
-                per_passage_order[passage_id] = order
-                if item.passage_id is not None:
-                    existing = session.get(Passage, item.passage_id)
-                    if existing is not None:
-                        sentence_owner_id = content_access.passage_owner(
-                            session, existing
-                        )
-            else:
-                global_order += 1
-                order = global_order
-            sentence = RepeatSentence(
-                passage_id=passage_id,
-                order_index=order,
-                text=payload["text"],
-                translation=payload["translation"],
-                audio_url=payload["audio_url"],
-                suggested_seconds=payload["suggested_seconds"],
-                replay_limit=payload["replay_limit"],
-                exam_kind=payload["exam_kind"],
-                exam_level=payload["exam_level"],
-                owner_id=sentence_owner_id,
-            )
-            session.add(sentence)
-            created_items.append(
-                QuestionBankCreatedItem(
-                    type=TYPE_REPEAT,
-                    id=str(sentence.id),
-                    label=_excerpt(payload["text"]),
-                    needs_audio=True,  # 题面不显示文字 + 模考开考检查（见 exam-audio-check）
-                    audio_missing=not payload["audio_url"],
-                )
-            )
-
-        question_order = dict(plan.max_question_order)
-        for item in plan.creates[TYPE_QUESTION]:
-            payload = item.payload
-            if item.scenario_id is not None:
-                scenario_id = item.scenario_id
-            else:
-                scenario = created_scenarios[_norm_text(item.new_topic or "")]
-                scenario_id = scenario.id
-            order = question_order.get(scenario_id, 0) + 1
-            question_order[scenario_id] = order
-            question = ScenarioQuestion(
-                scenario_id=scenario_id,
-                band="B1",
-                order_index=order,
-                text=payload["text"],
-                translation=payload["translation"],
-                audio_url=payload["audio_url"],
-                suggested_seconds=payload["suggested_seconds"],
-                exam_kind=payload["exam_kind"],
-                exam_level=payload["exam_level"],
-                cue_card_bullets=payload["cue_card_bullets"],
-                prep_seconds=payload["prep_seconds"],
-                owner_id=owner_id,
-            )
-            session.add(question)
-            created_items.append(
-                QuestionBankCreatedItem(
-                    type=TYPE_QUESTION,
-                    id=str(question.id),
-                    label=_excerpt(payload["text"]),
-                    topic=payload["topic"],
-                    needs_audio=True,  # 自动考试拒收缺音频的非朗读题（exercise.py）
-                    audio_missing=not payload["audio_url"],
-                )
-            )
-
-        for item in plan.creates[TYPE_INSTRUCTION]:
-            payload = item.payload
-            instruction = Instruction(
-                title=payload["title"],
-                text=payload["text"],
-                suggested_seconds=payload["suggested_seconds"],
-                owner_id=owner_id,
-            )
-            session.add(instruction)
-            created_items.append(
-                QuestionBankCreatedItem(
-                    type=TYPE_INSTRUCTION,
-                    id=str(instruction.id),
-                    label=payload["title"] or _excerpt(payload["text"]),
-                    needs_audio=True,  # 自动考试同样要求说明有音频（exam_settings）
-                    # 说明的考试音频存于 exam_settings.audio_url，导入不写 → 恒缺，
-                    # 在发布考试的题目设置里配置
-                    audio_missing=True,
-                )
-            )
+        created_scenarios = _create_scenarios(session, plan, owner_id)
+        created_passages, created_items = _create_passages(session, plan, owner_id)
+        created_items.extend(
+            _create_repeat_sentences(session, plan, owner_id, created_passages)
+        )
+        created_items.extend(
+            _create_questions(session, plan, owner_id, created_scenarios)
+        )
+        created_items.extend(_create_instructions(session, plan, owner_id))
         _commit(session)
     except HTTPException:
         session.rollback()
@@ -275,6 +147,194 @@ def apply_import(
             status_code=500, detail="导入失败，已整体回滚，请重试"
         ) from exc
 
+    return _build_import_result(plan, decisions, created_items)
+
+
+def _create_scenarios(
+    session: Session, plan: QuestionBankPlan, owner_id: uuid.UUID | None
+) -> dict[str, Scenario]:
+    """新建主题（归一键 → 对象），供问答题挂靠。"""
+    created_scenarios: dict[str, Scenario] = {}
+    for topic in plan.new_topics:
+        scenario = Scenario(topic=topic, is_active=True, owner_id=owner_id)
+        session.add(scenario)
+        created_scenarios[_norm_text(topic)] = scenario
+    session.flush()  # 分配 scenario.id
+    return created_scenarios
+
+
+def _create_passages(
+    session: Session, plan: QuestionBankPlan, owner_id: uuid.UUID | None
+) -> tuple[dict[str, Passage], list[QuestionBankCreatedItem]]:
+    """新建篇目（含 slug 去重与单元推导），flush 出 id 供复述句挂靠。"""
+    created_items: list[QuestionBankCreatedItem] = []
+    used_slugs = set(plan.existing_slugs)
+    used_slugs = set(plan.existing_slugs)
+    created_passages: dict[str, Passage] = {}
+    for item in plan.creates[TYPE_PASSAGE]:
+        payload = item.payload
+        passage = Passage(
+            title=payload["title"],
+            topic=crud.derive_passage_topic(
+                session, payload.get("unit_id"), payload["topic"]
+            ),
+            cefr_band=payload["cefr_band"],
+            text=payload["text"],
+            translation=payload["translation"],
+            audio_url=payload["audio_url"],
+            suggested_seconds=payload["suggested_seconds"],
+            is_active=payload["is_active"],
+            slug=_generate_slug(payload["title"], used_slugs),
+            unit_id=payload.get("unit_id"),
+            owner_id=owner_id,
+        )
+        session.add(passage)
+        created_passages[_norm_text(passage.title)] = passage
+        created_items.append(
+            QuestionBankCreatedItem(
+                type=TYPE_PASSAGE,
+                id=str(passage.id),
+                label=payload["title"],
+                needs_audio=False,
+                audio_missing=not payload["audio_url"],
+            )
+        )
+    session.flush()  # 分配 passage.id，供复述句挂靠
+    return created_passages, created_items
+
+
+def _create_repeat_sentences(
+    session: Session,
+    plan: QuestionBankPlan,
+    owner_id: uuid.UUID | None,
+    created_passages: dict[str, Passage],
+) -> list[QuestionBankCreatedItem]:
+    """新建复述句（按篇目/全局分别续序号，挂靠他人篇目继承其归属）。"""
+    created_items: list[QuestionBankCreatedItem] = []
+    per_passage_order = dict(plan.max_sentence_order_by_passage)
+    global_order = plan.max_sentence_order_global
+    for item in plan.creates[TYPE_REPEAT]:
+        payload = item.payload
+        passage_id = item.passage_id
+        if passage_id is None and item.planned_passage_title is not None:
+            planned = created_passages.get(item.planned_passage_title)
+            passage_id = planned.id if planned is not None else None
+        sentence_owner_id = owner_id
+        if passage_id is not None:
+            order = per_passage_order.get(passage_id, 0) + 1
+            per_passage_order[passage_id] = order
+            if item.passage_id is not None:
+                existing = session.get(Passage, item.passage_id)
+                if existing is not None:
+                    sentence_owner_id = content_access.passage_owner(session, existing)
+        else:
+            global_order += 1
+            order = global_order
+        sentence = RepeatSentence(
+            passage_id=passage_id,
+            order_index=order,
+            text=payload["text"],
+            translation=payload["translation"],
+            audio_url=payload["audio_url"],
+            suggested_seconds=payload["suggested_seconds"],
+            replay_limit=payload["replay_limit"],
+            exam_kind=payload["exam_kind"],
+            exam_level=payload["exam_level"],
+            owner_id=sentence_owner_id,
+        )
+        session.add(sentence)
+        created_items.append(
+            QuestionBankCreatedItem(
+                type=TYPE_REPEAT,
+                id=str(sentence.id),
+                label=_excerpt(payload["text"]),
+                needs_audio=True,  # 题面不显示文字 + 模考开考检查（见 exam-audio-check）
+                audio_missing=not payload["audio_url"],
+            )
+        )
+    return created_items
+
+
+def _create_questions(
+    session: Session,
+    plan: QuestionBankPlan,
+    owner_id: uuid.UUID | None,
+    created_scenarios: dict[str, Scenario],
+) -> list[QuestionBankCreatedItem]:
+    """新建问答题（按主题续 order_index）。"""
+    created_items: list[QuestionBankCreatedItem] = []
+    question_order = dict(plan.max_question_order)
+    for item in plan.creates[TYPE_QUESTION]:
+        payload = item.payload
+        if item.scenario_id is not None:
+            scenario_id = item.scenario_id
+        else:
+            scenario = created_scenarios[_norm_text(item.new_topic or "")]
+            scenario_id = scenario.id
+        order = question_order.get(scenario_id, 0) + 1
+        question_order[scenario_id] = order
+        question = ScenarioQuestion(
+            scenario_id=scenario_id,
+            band="B1",
+            order_index=order,
+            text=payload["text"],
+            translation=payload["translation"],
+            audio_url=payload["audio_url"],
+            suggested_seconds=payload["suggested_seconds"],
+            exam_kind=payload["exam_kind"],
+            exam_level=payload["exam_level"],
+            cue_card_bullets=payload["cue_card_bullets"],
+            prep_seconds=payload["prep_seconds"],
+            owner_id=owner_id,
+        )
+        session.add(question)
+        created_items.append(
+            QuestionBankCreatedItem(
+                type=TYPE_QUESTION,
+                id=str(question.id),
+                label=_excerpt(payload["text"]),
+                topic=payload["topic"],
+                needs_audio=True,  # 自动考试拒收缺音频的非朗读题（exercise.py）
+                audio_missing=not payload["audio_url"],
+            )
+        )
+    return created_items
+
+
+def _create_instructions(
+    session: Session, plan: QuestionBankPlan, owner_id: uuid.UUID | None
+) -> list[QuestionBankCreatedItem]:
+    """新建题目说明（考试音频在 exam_settings 配置，导入恒记缺音频）。"""
+    created_items: list[QuestionBankCreatedItem] = []
+    for item in plan.creates[TYPE_INSTRUCTION]:
+        payload = item.payload
+        instruction = Instruction(
+            title=payload["title"],
+            text=payload["text"],
+            suggested_seconds=payload["suggested_seconds"],
+            owner_id=owner_id,
+        )
+        session.add(instruction)
+        created_items.append(
+            QuestionBankCreatedItem(
+                type=TYPE_INSTRUCTION,
+                id=str(instruction.id),
+                label=payload["title"] or _excerpt(payload["text"]),
+                needs_audio=True,  # 自动考试同样要求说明有音频（exam_settings）
+                # 说明的考试音频存于 exam_settings.audio_url，导入不写 → 恒缺，
+                # 在发布考试的题目设置里配置
+                audio_missing=True,
+            )
+        )
+    return created_items
+
+
+def _build_import_result(
+    plan: QuestionBankPlan,
+    decisions: set[tuple[str, int]],
+    created_items: list[QuestionBankCreatedItem],
+) -> QuestionBankImportResult:
+    """按类型汇总导入结果（跳过数按勾选回填，缺音频累计）。"""
     sheets = []
     missing_total = 0
     for qtype in QUESTION_BANK_TYPE_ORDER:
@@ -302,6 +362,13 @@ def apply_import(
                 missing_audio_count=counts.missing_audio,
             )
         )
+    return QuestionBankImportResult(
+        sheets=sheets,
+        created_topics=plan.new_topics,
+        created_items=created_items,
+        issues=plan.issues[:MAX_ISSUES],
+        missing_audio_total=missing_total,
+    )
     return QuestionBankImportResult(
         sheets=sheets,
         created_topics=plan.new_topics,

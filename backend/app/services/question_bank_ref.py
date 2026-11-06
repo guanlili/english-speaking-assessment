@@ -114,6 +114,21 @@ def _matching_ids(
     return matched
 
 
+@dataclass(frozen=True)
+class _Candidates:
+    """查重候选集合：一次收集，索引构建阶段只读。"""
+
+    passage_ids: set[uuid.UUID]
+    scenario_ids: set[uuid.UUID]
+    units: list[Unit]
+    root_passages: list[Passage]
+    scenarios: list[Scenario]
+    questions: list[ScenarioQuestion]
+    sentences: list[RepeatSentence]
+    instructions: list[Instruction]
+    passage_title_rows: list[tuple[uuid.UUID, str]]
+
+
 def _load_reference(session: Session, parsed: ParsedFile) -> _Ref:
     payloads: dict[str, list[dict[str, Any]]] = {
         kind: [] for kind in QUESTION_BANK_TYPE_ORDER
@@ -123,6 +138,14 @@ def _load_reference(session: Session, parsed: ParsedFile) -> _Ref:
             payloads[row.qtype].append(BUILDERS[row.qtype](row.cells))
         except _RowError:
             continue  # 规划阶段仍返回原行错误；无效行不需要读取候选
+    candidates = _collect_candidates(session, payloads)
+    return _build_ref(session, payloads, candidates)
+
+
+def _collect_candidates(
+    session: Session, payloads: dict[str, list[dict[str, Any]]]
+) -> _Candidates:
+    """按归一键批量捞库内候选（标题/正文/主题/题干各走一次索引查询）。"""
     passage_payloads = payloads[TYPE_PASSAGE]
     repeat_payloads = payloads[TYPE_REPEAT]
     question_payloads = payloads[TYPE_QUESTION]
@@ -250,7 +273,37 @@ def _load_reference(session: Session, parsed: ParsedFile) -> _Ref:
         if linked_ids
         else []
     )
+    return _Candidates(
+        passage_ids=passage_ids,
+        scenario_ids=scenario_ids,
+        units=units,
+        root_passages=root_passages,
+        scenarios=scenarios,
+        questions=questions,
+        sentences=sentences,
+        instructions=instructions,
+        passage_title_rows=list(passage_title_rows),
+    )
 
+
+def _build_ref(
+    session: Session,
+    payloads: dict[str, list[dict[str, Any]]],
+    candidates: _Candidates,
+) -> _Ref:
+    """把候选集合摊成各类查重索引（含序号上限与现有 slug）。"""
+    passage_payloads = payloads[TYPE_PASSAGE]
+    repeat_payloads = payloads[TYPE_REPEAT]
+    question_payloads = payloads[TYPE_QUESTION]
+    passage_ids = candidates.passage_ids
+    scenario_ids = candidates.scenario_ids
+    units = candidates.units
+    root_passages = candidates.root_passages
+    scenarios = candidates.scenarios
+    questions = candidates.questions
+    sentences = candidates.sentences
+    instructions = candidates.instructions
+    passage_title_rows = candidates.passage_title_rows
     units_by_norm: dict[str, list[Unit]] = {}
     for unit in units:
         units_by_norm.setdefault(_norm_text(unit.title), []).append(unit)
