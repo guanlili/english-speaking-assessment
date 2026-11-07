@@ -26,13 +26,7 @@ from app.api.deps import (
     TeacherUserDep,
 )
 from app.api.routes.classes import _require_classroom_teacher
-from app.api.routes.vocabulary import (
-    VocabularyWordIn,
-    _book_public,
-    _create_word,
-    _get_book,
-    _require_book_editor,
-)
+from app.api.routes.vocabulary_shared import _book_public
 from app.models import (
     Classroom,
     User,
@@ -46,10 +40,20 @@ from app.models import (
     VocabularyLevelImportResult,
     VocabularyLevelStats,
     VocabularyWord,
+    VocabularyWordIn,
     VocabularyWordPublic,
 )
 from app.services import vocab_levels as levels_service
-from app.services.vocabulary import normalize_spelling
+from app.services.vocabulary import (
+    _create_word,
+    normalize_spelling,
+)
+from app.services.vocabulary import (
+    get_book_or_404 as _get_book,
+)
+from app.services.vocabulary import (
+    require_book_editor as _require_book_editor,
+)
 
 router = APIRouter(tags=["vocab-levels"])
 
