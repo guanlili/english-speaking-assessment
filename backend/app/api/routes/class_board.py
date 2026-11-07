@@ -65,124 +65,155 @@ def _resolve_board_skeleton(
 
     返回 (朗读篇目, 锚点篇目, 复述句, 问答, 说明, 是否含朗读, 骨架)。
     """
-    # 已发布版本优先：名单表也必须按快照渲染，避免题库编辑后题位漂移。
+    board_item_objects: tuple[list[Any], list[Any], list[Any], list[Any]] | None = None
     if current_exercise is not None:
-        snapshot_refs: dict[str, list[_BoardRef]] = {
-            AttemptItemType.PASSAGE: [],
-            AttemptItemType.REPEAT: [],
-            AttemptItemType.QUESTION: [],
-            AttemptItemType.INSTRUCTION: [],
-        }
-        for item in current_exercise.snapshot_items:
-            item_type = str(item.get("type", ""))
-            item_id = item.get("id")
-            if item_type not in snapshot_refs or item_id is None:
-                continue
-            try:
-                snapshot_refs[item_type].append(_BoardRef(uuid.UUID(str(item_id))))
-            except ValueError:
-                logger.warning("invalid exercise snapshot item id: %s", item_id)
-        board_item_objects = (
-            snapshot_refs[AttemptItemType.PASSAGE],
-            snapshot_refs[AttemptItemType.REPEAT],
-            snapshot_refs[AttemptItemType.QUESTION],
-            snapshot_refs[AttemptItemType.INSTRUCTION],
-        )
+        board_item_objects = _snapshot_board_refs(current_exercise)
     else:
-        resolved = exercise_service.resolve_assigned_items(session, classroom)
-        # 说明只随按题发布进卷子；旧路径（单元指派）补空桶保持四元组同构
-        board_item_objects = (*resolved, []) if resolved is not None else None
-    include_reading = include_repeat = False
+        board_item_objects = _assigned_board_refs(session, classroom)
     if board_item_objects is not None:
-        (
-            board_passages,
-            board_sentences,
-            board_questions,
-            board_instructions,
-        ) = board_item_objects
-        board_passage = board_passages[0] if board_passages else None
-        include_reading = True
-        include_repeat = True
-        skeleton = (
-            [
-                BoardItem(
-                    item_id=p.id,
-                    type=AttemptItemType.PASSAGE,
-                    status="missing",
-                )
-                for p in board_passages
-            ]
-            + [
-                BoardItem(
-                    item_id=s.id,
-                    type=AttemptItemType.REPEAT,
-                    status="missing",
-                )
-                for s in board_sentences
-            ]
-            + [
-                BoardItem(
-                    item_id=q.id,
-                    type=AttemptItemType.QUESTION,
-                    status="missing",
-                )
-                for q in board_questions
-            ]
-            + [
-                BoardItem(
-                    item_id=i.id,
-                    type=AttemptItemType.INSTRUCTION,
-                    status="missing",
-                )
-                for i in board_instructions
-            ]
-        )
-        # 按题轮的学生行渲染需要这些集合
-        board_repeat_sentences = board_sentences
-    else:
-        # 当前指派单元的篇目（面板和档位计算都用它，不用全局首篇）；
-        # 组内多篇各自占一个朗读题位，锚点（第一篇）用于会话匹配
-        if assigned_unit_board is not None:
-            board_passages = _assigned_active_passages(session, classroom)
-        else:
-            board_passages = []
-        board_passage = board_passages[0] if board_passages else None
-        if board_passage is None:
-            board_passage = _active_passage(session)
-            board_passages = [board_passage]
+        return _skeleton_from_published_items(board_item_objects)
+    return _skeleton_from_unit_path(session, classroom, assigned_unit_board)
 
-        # 题目骨架：按指派题型裁剪（复述默认含；朗读勾选后含）
-        include_reading = _include_type(classroom, "reading")
-        include_repeat = _include_type(classroom, "repeat")
-        board_questions = []
-        board_repeat_sentences = []
-        # 说明只随按题发布进卷子，单元指派/自主路径永远没有说明题位
-        board_instructions = []
-        if include_repeat:
-            board_sentences_by_passage = _repeat_sentences_of_passages(
-                session, board_passages
+
+def _snapshot_board_refs(
+    current_exercise: ClassroomExercise,
+) -> tuple[list[_BoardRef], list[_BoardRef], list[_BoardRef], list[_BoardRef]]:
+    """已发布快照优先：名单表也必须按快照渲染，避免题库编辑后题位漂移。"""
+    snapshot_refs: dict[str, list[_BoardRef]] = {
+        AttemptItemType.PASSAGE: [],
+        AttemptItemType.REPEAT: [],
+        AttemptItemType.QUESTION: [],
+        AttemptItemType.INSTRUCTION: [],
+    }
+    for item in current_exercise.snapshot_items:
+        item_type = str(item.get("type", ""))
+        item_id = item.get("id")
+        if item_type not in snapshot_refs or item_id is None:
+            continue
+        try:
+            snapshot_refs[item_type].append(_BoardRef(uuid.UUID(str(item_id))))
+        except ValueError:
+            logger.warning("invalid exercise snapshot item id: %s", item_id)
+    return (
+        snapshot_refs[AttemptItemType.PASSAGE],
+        snapshot_refs[AttemptItemType.REPEAT],
+        snapshot_refs[AttemptItemType.QUESTION],
+        snapshot_refs[AttemptItemType.INSTRUCTION],
+    )
+
+
+def _assigned_board_refs(
+    session: Any, classroom: Any
+) -> tuple[list[Any], list[Any], list[Any], list[Any]] | None:
+    """按题指派的题位；单元指派路径补空说明桶保持四元组同构。"""
+    resolved = exercise_service.resolve_assigned_items(session, classroom)
+    # 说明只随按题发布进卷子；旧路径（单元指派）补空桶保持四元组同构
+    return (*resolved, []) if resolved is not None else None
+
+
+def _skeleton_from_published_items(
+    board_item_objects: tuple[list[Any], list[Any], list[Any], list[Any]],
+) -> tuple[list[Any], Any, list[Any], list[Any], list[Any], bool, list[BoardItem]]:
+    """按题发布路径：四类题位直接落骨架，朗读与复述恒含。"""
+    (
+        board_passages,
+        board_sentences,
+        board_questions,
+        board_instructions,
+    ) = board_item_objects
+    board_passage = board_passages[0] if board_passages else None
+    skeleton = (
+        [
+            BoardItem(
+                item_id=p.id,
+                type=AttemptItemType.PASSAGE,
+                status="missing",
             )
-            for p in board_passages:
-                board_repeat_sentences.extend(board_sentences_by_passage.get(p.id, []))
-        skeleton = [
+            for p in board_passages
+        ]
+        + [
             BoardItem(
                 item_id=s.id,
                 type=AttemptItemType.REPEAT,
                 status="missing",
             )
-            for s in board_repeat_sentences
+            for s in board_sentences
         ]
-        if include_reading:
-            skeleton = [
-                BoardItem(
-                    item_id=p.id,
-                    type=AttemptItemType.PASSAGE,
-                    status="missing",
-                )
-                for p in board_passages
-            ] + skeleton
-        # 非按题指派：每位学生问答题不同，骨架不占位，在每生作答里展示
-        board_questions = []
+        + [
+            BoardItem(
+                item_id=q.id,
+                type=AttemptItemType.QUESTION,
+                status="missing",
+            )
+            for q in board_questions
+        ]
+        + [
+            BoardItem(
+                item_id=i.id,
+                type=AttemptItemType.INSTRUCTION,
+                status="missing",
+            )
+            for i in board_instructions
+        ]
+    )
+    return (
+        board_passages,
+        board_passage,
+        board_sentences,
+        board_questions,
+        board_instructions,
+        True,
+        skeleton,
+    )
+
+
+def _skeleton_from_unit_path(
+    session: Any, classroom: Any, assigned_unit_board: Any
+) -> tuple[list[Any], Any, list[Any], list[Any], list[Any], bool, list[BoardItem]]:
+    """单元指派/自主路径：篇目按当前单元取，题位按勾选题型裁剪。"""
+    # 当前指派单元的篇目（面板和档位计算都用它，不用全局首篇）；
+    # 组内多篇各自占一个朗读题位，锚点（第一篇）用于会话匹配
+    if assigned_unit_board is not None:
+        board_passages = _assigned_active_passages(session, classroom)
+    else:
+        board_passages = []
+    board_passage = board_passages[0] if board_passages else None
+    if board_passage is None:
+        board_passage = _active_passage(session)
+        board_passages = [board_passage]
+
+    # 题目骨架：按指派题型裁剪（复述默认含；朗读勾选后含）
+    include_reading = _include_type(classroom, "reading")
+    include_repeat = _include_type(classroom, "repeat")
+    board_questions = []
+    board_repeat_sentences = []
+    # 说明只随按题发布进卷子，单元指派/自主路径永远没有说明题位
+    board_instructions = []
+    if include_repeat:
+        board_sentences_by_passage = _repeat_sentences_of_passages(
+            session, board_passages
+        )
+        for p in board_passages:
+            board_repeat_sentences.extend(board_sentences_by_passage.get(p.id, []))
+    skeleton = [
+        BoardItem(
+            item_id=s.id,
+            type=AttemptItemType.REPEAT,
+            status="missing",
+        )
+        for s in board_repeat_sentences
+    ]
+    if include_reading:
+        skeleton = [
+            BoardItem(
+                item_id=p.id,
+                type=AttemptItemType.PASSAGE,
+                status="missing",
+            )
+            for p in board_passages
+        ] + skeleton
+    # 非按题指派：每位学生问答题不同，骨架不占位，在每生作答里展示
+    board_questions = []
     return (
         board_passages,
         board_passage,
