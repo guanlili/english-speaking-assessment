@@ -217,6 +217,207 @@ def _build_plan_attempts(
     ]
 
 
+def _plan_items_from_snapshot(
+    session: Session,
+    student: Student,
+    practice_session: PracticeSession,
+    snapshot_items: list[dict[str, object]],
+    band: str,
+) -> tuple[list[PlanItem], int, str, dict[uuid.UUID, int]]:
+    """发布快照路径：题单、档位升降、重听与说明确认都按快照里的 ID 查。
+
+    返回 (题单, 结算必做数, 档位, 重听计数)。
+    """
+    snap_passages, snap_repeats, snap_questions = _parse_snapshot_plan_items(
+        snapshot_items
+    )
+    snapshot_repeat_ids = [uuid.UUID(str(r["id"])) for r in snap_repeats]
+
+    # 重听计数（按快照中的复述句 ID 查）
+    listen_counts: dict[uuid.UUID, int] = {}
+    if snapshot_repeat_ids:
+        listens = session.exec(
+            select(ItemListen).where(
+                ItemListen.student_id == student.id,  # type: ignore[arg-type]
+                ItemListen.session_id == practice_session.id,  # type: ignore[arg-type]
+                col(ItemListen.item_id).in_(snapshot_repeat_ids),  # type: ignore[operator]
+            )
+        ).all()
+        listen_counts = {ln.item_id: ln.count for ln in listens}
+
+    # 升降档：用快照中复述句的作答判断，不要求复述句仍存在
+    if snap_repeats and practice_session.question_band is None:
+        done_repeats = _repeat_attempts_from_snapshot(
+            session, practice_session, snapshot_repeat_ids
+        )
+        band = _question_band_for_session(
+            session,
+            practice_session,
+            student,
+            repeat_count_override=len(snap_repeats),
+            done_repeat_override=done_repeats,
+        )
+
+    # 题目说明的「继续」确认时间（按快照中的说明 ID 查本会话 ack）
+    instruction_ids = [
+        uuid.UUID(str(it["id"]))
+        for it in snapshot_items
+        if str(it.get("type", "")) == AttemptItemType.INSTRUCTION and it.get("id")
+    ]
+    ack_times: dict[uuid.UUID, datetime] = {}
+    if instruction_ids:
+        acks = session.exec(
+            select(InstructionAck).where(
+                InstructionAck.student_id == student.id,  # type: ignore[arg-type]
+                InstructionAck.session_id == practice_session.id,  # type: ignore[arg-type]
+                col(InstructionAck.item_id).in_(instruction_ids),  # type: ignore[operator]
+            )
+        ).all()
+        ack_times = {ack.item_id: ack.created_at for ack in acks if ack.created_at}
+
+    items = [
+        item
+        for item in (
+            _plan_item_from_snapshot(snapshot_item, listen_counts, ack_times)
+            for snapshot_item in snapshot_items
+        )
+        if item is not None
+    ]
+    # 结算必做数 = 实际可用题单（快照条目可能因缺 id/文本被过滤）；
+    # 题目说明无作答，不进结算分母
+    expected_items = len(
+        [item for item in items if item.type != AttemptItemType.INSTRUCTION]
+    )
+    return items, expected_items, band, listen_counts
+
+
+def _plan_items_dynamic(
+    session: Session,
+    classroom: Any,
+    student: Student,
+    practice_session: PracticeSession,
+    band: str,
+) -> tuple[list[PlanItem], int, bool, str, dict[uuid.UUID, int], Any]:
+    """非发布路径：单元指派或自主练习重建题单。
+
+    返回 (题单, 结算必做数, 是否无题可练, 档位, 重听计数, 指派题目)。
+    """
+    items: list[PlanItem] = []
+    exhausted = False
+    # 非快照分支才有指派题目对象
+    item_objects = exercise_service.resolve_assigned_items(session, classroom)
+    if item_objects is not None and practice_session.mode == "daily":
+        # 按题指派但未走快照（兼容旧路径，或尚未发布快照的旧课堂）
+        item_passages, item_sentences, item_questions = item_objects
+        reading_passages = item_passages
+        sentences = item_sentences
+        questions = item_questions
+        # 按题指派时，题单由 assigned_items 决定，不再按题型勾选裁剪
+        include_reading_build = bool(reading_passages)
+    else:
+        if (
+            practice_session.mode == "explore"
+            and practice_session.passage_id is not None
+        ):
+            passage = session.get(Passage, practice_session.passage_id)
+            if passage is None:
+                raise HTTPException(status_code=404, detail="Passage not found")
+            reading_passages = [passage]
+        elif _assignment_unit(session, classroom) is not None:
+            reading_passages = _assigned_active_passages(session, classroom)
+            if practice_session.passage_id is None or not reading_passages:
+                raise HTTPException(
+                    status_code=404,
+                    detail="指派的单元还没有篇目，请联系老师",
+                )
+        elif practice_session.passage_id is not None:
+            passage = session.get(Passage, practice_session.passage_id)
+            if passage is None:
+                raise HTTPException(status_code=404, detail="Passage not found")
+            reading_passages = [passage]
+        else:
+            passage = _active_passage(session, student)
+            reading_passages = [passage]
+
+        include_reading = _include_type(classroom, "reading")
+        include_repeat = _include_type(classroom, "repeat")
+        include_qa = _include_type(classroom, "qa")
+        sentences = []
+        if include_repeat:
+            sentences_by_passage = _repeat_sentences_of_passages(
+                session, reading_passages
+            )
+            for p in reading_passages:
+                sentences.extend(sentences_by_passage.get(p.id, []))
+        questions = []
+        exhausted = False
+        if include_qa:
+            # 用锚点篇目确定 topic 取情景题；主题未配情景时降级为无问答，
+            # 不让整轮题单 404（朗读/复述照常）
+            anchor = reading_passages[0]
+            scenario = _scenario_for_topic(session, anchor.topic, anchor.tenant_id)
+            band = _question_band_for_session(session, practice_session, student)
+            if scenario is None:
+                exhausted = True
+            else:
+                questions, exhausted = _pick_questions(
+                    session, scenario, student.id, QUESTIONS_PER_ROUND
+                )
+        include_reading_build = include_reading
+
+    # 重听计数
+    listen_counts: dict[uuid.UUID, int] = {}
+    if sentences:
+        listens = session.exec(
+            select(ItemListen).where(
+                ItemListen.student_id == student.id,  # type: ignore[arg-type]
+                ItemListen.session_id == practice_session.id,  # type: ignore[arg-type]
+                col(ItemListen.item_id).in_([s.id for s in sentences]),
+            )
+        ).all()
+        listen_counts = {ln.item_id: ln.count for ln in listens}
+
+    if include_reading_build:
+        # 拆句的篇目展开成逐句条目（与发布快照同一算法），未拆分保持整篇
+        for p in reading_passages:
+            for snapshot in reading.expand_reading_items(p):
+                item = _plan_item_from_snapshot(snapshot)
+                if item is not None:
+                    items.append(item)
+    items += [
+        PlanItem(
+            type=AttemptItemType.REPEAT,
+            id=s.id,
+            text=s.text,
+            translation=s.translation,
+            audio_url=s.audio_url,
+            suggested_seconds=s.suggested_seconds,
+            replay_limit=s.replay_limit,
+            listen_used=listen_counts.get(s.id, 0),
+            exam_kind=s.exam_kind,
+            exam_level=s.exam_level,
+        )
+        for s in sentences
+    ]
+    items += [
+        PlanItem(
+            type=AttemptItemType.QUESTION,
+            id=q.id,
+            text=q.text,
+            translation=q.translation,
+            audio_url=q.audio_url,
+            suggested_seconds=q.suggested_seconds,
+            exam_kind=q.exam_kind,
+            exam_level=q.exam_level,
+            cue_card_bullets=q.cue_card_bullets,
+            prep_seconds=q.prep_seconds,
+        )
+        for q in questions
+    ]
+    expected_items = len(items)
+    return items, expected_items, exhausted, band, listen_counts, item_objects
+
+
 def _resolve_plan_items(
     session: Session,
     classroom: Any,
@@ -228,194 +429,99 @@ def _resolve_plan_items(
 
     返回 (题单, 结算必做数, 是否无题可练, 档位, 重听计数, 指派题目)。
     """
-    items: list[PlanItem] = []
-    expected_items = 0
-    exhausted = False
     band = practice_session.question_band or practice_session.band
-    # 仅非快照分支赋值；提前初始化避免快照路径误引用未定义名
-    item_objects = None
-
     if snapshot_items is not None:
-        snap_passages, snap_repeats, snap_questions = _parse_snapshot_plan_items(
-            snapshot_items
+        items, expected_items, band, listen_counts = _plan_items_from_snapshot(
+            session, student, practice_session, snapshot_items, band
         )
-        snapshot_repeat_ids = [uuid.UUID(str(r["id"])) for r in snap_repeats]
+        return items, expected_items, False, band, listen_counts, None
+    return _plan_items_dynamic(session, classroom, student, practice_session, band)
 
-        # 重听计数（按快照中的复述句 ID 查）
-        listen_counts: dict[uuid.UUID, int] = {}
-        if snapshot_repeat_ids:
-            listens = session.exec(
-                select(ItemListen).where(
-                    ItemListen.student_id == student.id,  # type: ignore[arg-type]
-                    ItemListen.session_id == practice_session.id,  # type: ignore[arg-type]
-                    col(ItemListen.item_id).in_(snapshot_repeat_ids),  # type: ignore[operator]
-                )
-            ).all()
-            listen_counts = {ln.item_id: ln.count for ln in listens}
 
-        # 升降档：用快照中复述句的作答判断，不要求复述句仍存在
-        if snap_repeats and practice_session.question_band is None:
-            done_repeats = _repeat_attempts_from_snapshot(
-                session, practice_session, snapshot_repeat_ids
-            )
-            band = _question_band_for_session(
-                session,
-                practice_session,
-                student,
-                repeat_count_override=len(snap_repeats),
-                done_repeat_override=done_repeats,
-            )
+def _open_practice_session(
+    session: Session,
+    classroom: Any,
+    student: Student,
+    today: Any,
+    session_id: uuid.UUID | None,
+    *,
+    slot: str = "class",
+) -> PracticeSession:
+    """定位会话：显式 session_id 优先，其次作业槽，最后当日活动 daily 轮。"""
+    if session_id is not None:
+        practice_session = session.get(PracticeSession, session_id)
+        if practice_session is None or practice_session.student_id != student.id:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return practice_session
+    if slot == "homework":
+        return _resolve_homework_session(session, classroom, student, today)
+    # daily 当前轮：today / next-question / board 都用同一定位逻辑
+    return _resolve_active_daily_session(session, classroom, student, today)
 
-        # 题目说明的「继续」确认时间（按快照中的说明 ID 查本会话 ack）
-        instruction_ids = [
-            uuid.UUID(str(it["id"]))
-            for it in snapshot_items
-            if str(it.get("type", "")) == AttemptItemType.INSTRUCTION and it.get("id")
-        ]
-        ack_times: dict[uuid.UUID, datetime] = {}
-        if instruction_ids:
-            acks = session.exec(
-                select(InstructionAck).where(
-                    InstructionAck.student_id == student.id,  # type: ignore[arg-type]
-                    InstructionAck.session_id == practice_session.id,  # type: ignore[arg-type]
-                    col(InstructionAck.item_id).in_(instruction_ids),  # type: ignore[operator]
-                )
-            ).all()
-            ack_times = {ack.item_id: ack.created_at for ack in acks if ack.created_at}
 
-        items = [
-            item
-            for item in (
-                _plan_item_from_snapshot(snapshot_item, listen_counts, ack_times)
-                for snapshot_item in snapshot_items
-            )
-            if item is not None
-        ]
-        # 结算必做数 = 实际可用题单（快照条目可能因缺 id/文本被过滤）；
-        # 题目说明无作答，不进结算分母
-        expected_items = len(
-            [item for item in items if item.type != AttemptItemType.INSTRUCTION]
+def _load_plan_snapshot(
+    session: Session, practice_session: PracticeSession
+) -> tuple[list[dict[str, object]] | None, ClassroomExercise | None]:
+    """快照优先：发布会话绑定的 exercise 始终作为题单来源（删题也从快照读）。"""
+    bound_exercise: ClassroomExercise | None = None
+    snapshot_items: list[dict[str, object]] | None = None
+    if practice_session.assignment_id is not None:
+        bound_exercise = session.get(ClassroomExercise, practice_session.assignment_id)
+        if bound_exercise is not None:
+            snapshot_items = bound_exercise.snapshot_items
+    return snapshot_items, bound_exercise
+
+
+def _exam_lifecycle_info(
+    session: Session,
+    practice_session: PracticeSession,
+    bound_exercise: ClassroomExercise | None,
+) -> Any:
+    """模考生命周期：开考由学生显式触发，today 只做到时惰性终结与状态透出。"""
+    if bound_exercise is None or not bound_exercise.is_exam:
+        return None
+    exam_service.finalize_if_expired(session, practice_session, bound_exercise)
+    return exam_service.exam_status_payload(session, practice_session, bound_exercise)
+
+
+def _badge_publics(rows: Any) -> list[BadgePublic]:
+    """徽章行 → 对外结构（未知 key 直接透出原始 key）。"""
+    return [
+        BadgePublic(
+            key=b.badge_key,
+            label=BADGE_BY_KEY[b.badge_key].label
+            if b.badge_key in BADGE_BY_KEY
+            else b.badge_key,
+            description=BADGE_BY_KEY[b.badge_key].description
+            if b.badge_key in BADGE_BY_KEY
+            else "",
+            awarded_at=b.awarded_at,
         )
-    else:
-        # 非发布路径：单元指派或自主练习
-        item_objects = exercise_service.resolve_assigned_items(session, classroom)
-        if item_objects is not None and practice_session.mode == "daily":
-            # 按题指派但未走快照（兼容旧路径，或尚未发布快照的旧课堂）
-            item_passages, item_sentences, item_questions = item_objects
-            reading_passages = item_passages
-            sentences = item_sentences
-            questions = item_questions
-            # 按题指派时，题单由 assigned_items 决定，不再按题型勾选裁剪
-            include_reading_build = bool(reading_passages)
-        else:
-            if (
-                practice_session.mode == "explore"
-                and practice_session.passage_id is not None
-            ):
-                passage = session.get(Passage, practice_session.passage_id)
-                if passage is None:
-                    raise HTTPException(status_code=404, detail="Passage not found")
-                reading_passages = [passage]
-            elif _assignment_unit(session, classroom) is not None:
-                reading_passages = _assigned_active_passages(session, classroom)
-                if practice_session.passage_id is None or not reading_passages:
-                    raise HTTPException(
-                        status_code=404,
-                        detail="指派的单元还没有篇目，请联系老师",
-                    )
-            elif practice_session.passage_id is not None:
-                passage = session.get(Passage, practice_session.passage_id)
-                if passage is None:
-                    raise HTTPException(status_code=404, detail="Passage not found")
-                reading_passages = [passage]
-            else:
-                passage = _active_passage(session, student)
-                reading_passages = [passage]
+        for b in rows
+    ]
 
-            include_reading = _include_type(classroom, "reading")
-            include_repeat = _include_type(classroom, "repeat")
-            include_qa = _include_type(classroom, "qa")
-            sentences = []
-            if include_repeat:
-                sentences_by_passage = _repeat_sentences_of_passages(
-                    session, reading_passages
-                )
-                for p in reading_passages:
-                    sentences.extend(sentences_by_passage.get(p.id, []))
-            questions = []
-            exhausted = False
-            if include_qa:
-                # 用锚点篇目确定 topic 取情景题；主题未配情景时降级为无问答，
-                # 不让整轮题单 404（朗读/复述照常）
-                anchor = reading_passages[0]
-                scenario = _scenario_for_topic(session, anchor.topic, anchor.tenant_id)
-                band = _question_band_for_session(session, practice_session, student)
-                if scenario is None:
-                    exhausted = True
-                else:
-                    questions, exhausted = _pick_questions(
-                        session, scenario, student.id, QUESTIONS_PER_ROUND
-                    )
-            include_reading_build = include_reading
 
-        # 重听计数
-        listen_counts: dict[uuid.UUID, int] = {}
-        if sentences:
-            listens = session.exec(
-                select(ItemListen).where(
-                    ItemListen.student_id == student.id,  # type: ignore[arg-type]
-                    ItemListen.session_id == practice_session.id,  # type: ignore[arg-type]
-                    col(ItemListen.item_id).in_([s.id for s in sentences]),
-                )
-            ).all()
-            listen_counts = {ln.item_id: ln.count for ln in listens}
+def _assigned_title(
+    exercise: ClassroomExercise | None,
+    assigned_unit: Any,
+    practice_session: PracticeSession,
+    item_objects: Any,
+    session_id: uuid.UUID | None,
+) -> str | None:
+    """标题口径：教师显式命名的练习 > 单元名 > 老师指派 > 无。
 
-        if include_reading_build:
-            # 拆句的篇目展开成逐句条目（与发布快照同一算法），未拆分保持整篇
-            for p in reading_passages:
-                for snapshot in reading.expand_reading_items(p):
-                    item = _plan_item_from_snapshot(snapshot)
-                    if item is not None:
-                        items.append(item)
-        items += [
-            PlanItem(
-                type=AttemptItemType.REPEAT,
-                id=s.id,
-                text=s.text,
-                translation=s.translation,
-                audio_url=s.audio_url,
-                suggested_seconds=s.suggested_seconds,
-                replay_limit=s.replay_limit,
-                listen_used=listen_counts.get(s.id, 0),
-                exam_kind=s.exam_kind,
-                exam_level=s.exam_level,
-            )
-            for s in sentences
-        ]
-        items += [
-            PlanItem(
-                type=AttemptItemType.QUESTION,
-                id=q.id,
-                text=q.text,
-                translation=q.translation,
-                audio_url=q.audio_url,
-                suggested_seconds=q.suggested_seconds,
-                exam_kind=q.exam_kind,
-                exam_level=q.exam_level,
-                cue_card_bullets=q.cue_card_bullets,
-                prep_seconds=q.prep_seconds,
-            )
-            for q in questions
-        ]
-        expected_items = len(items)
-    return (
-        items,
-        expected_items,
-        exhausted,
-        band,
-        listen_counts,
-        item_objects,
-    )
+    兼容旧版“课堂练习”默认标题：学生端继续看到单元/老师指派语义，
+    教师显式填写的练习名称则优先展示。
+    """
+    if exercise is not None and exercise.title != "课堂练习":
+        return exercise.title
+    if assigned_unit:
+        return assigned_unit.title
+    if practice_session.assignment_id is not None or (
+        item_objects is not None and session_id is None
+    ):
+        return "老师指派"
+    return None
 
 
 @router.get("/{code}/today", response_model=TodayPlan)
@@ -433,35 +539,11 @@ def read_today_plan(
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
     today = _today_in_practice_tz()
-
-    if session_id is not None:
-        practice_session = session.get(PracticeSession, session_id)
-        if practice_session is None or practice_session.student_id != student.id:
-            raise HTTPException(status_code=404, detail="Session not found")
-    elif slot == "homework":
-        practice_session = _resolve_homework_session(session, classroom, student, today)
-    else:
-        # daily 当前轮：today / next-question / board 都用同一定位逻辑
-        practice_session = _resolve_active_daily_session(
-            session, classroom, student, today
-        )
-
-    # 快照优先：发布会话绑定的 exercise 始终作为题单来源（删题也从快照读）
-    snapshot_items: list[dict[str, object]] | None = None
-    bound_exercise: ClassroomExercise | None = None
-    if practice_session.assignment_id is not None:
-        bound_exercise = session.get(ClassroomExercise, practice_session.assignment_id)
-        if bound_exercise is not None:
-            snapshot_items = bound_exercise.snapshot_items
-
-    # 模考生命周期：开考由学生在确认页显式触发（POST /exam/start），
-    # today 只做到时惰性终结与状态透出（未开考不计时）
-    exam_info = None
-    if bound_exercise is not None and bound_exercise.is_exam:
-        exam_service.finalize_if_expired(session, practice_session, bound_exercise)
-        exam_info = exam_service.exam_status_payload(
-            session, practice_session, bound_exercise
-        )
+    practice_session = _open_practice_session(
+        session, classroom, student, today, session_id, slot=slot
+    )
+    snapshot_items, bound_exercise = _load_plan_snapshot(session, practice_session)
+    exam_info = _exam_lifecycle_info(session, practice_session, bound_exercise)
     # 反馈遮罩判定提前：考试终结前跳过激励结算——settle 会按分数落
     # stars/XP，GamificationInfo 直出 practice_session.stars 会把分数档
     # （≥85→3 星）提前泄露给考生本人，XP 同步跳变（2026-10-12 评审）
@@ -503,26 +585,10 @@ def read_today_plan(
     attempts, previous_map = _latest_attempts_with_previous(
         session, student.id, practice_session.id
     )
-
     _append_switched_items(items, attempts, listen_counts)
-
     _inject_exam_frames(session, student, items)
-
     plan_attempts = _build_plan_attempts(attempts, previous_map, feedback_locked)
-
-    badges = [
-        BadgePublic(
-            key=b.badge_key,
-            label=BADGE_BY_KEY[b.badge_key].label
-            if b.badge_key in BADGE_BY_KEY
-            else b.badge_key,
-            description=BADGE_BY_KEY[b.badge_key].description
-            if b.badge_key in BADGE_BY_KEY
-            else "",
-            awarded_at=b.awarded_at,
-        )
-        for b in student_badges(session, student.id)
-    ]
+    badges = _badge_publics(student_badges(session, student.id))
 
     assigned_unit = _assignment_unit(session, classroom)
     exercise = (
@@ -530,19 +596,8 @@ def read_today_plan(
         if practice_session.assignment_id is not None
         else None
     )
-    # 兼容旧版“课堂练习”默认标题：学生端继续看到单元/老师指派语义，
-    # 教师显式填写的练习名称则优先展示。
-    assigned_title = (
-        exercise.title
-        if exercise is not None and exercise.title != "课堂练习"
-        else assigned_unit.title
-        if assigned_unit
-        else "老师指派"
-        if (
-            practice_session.assignment_id is not None
-            or (item_objects is not None and session_id is None)
-        )
-        else None
+    assigned_title = _assigned_title(
+        exercise, assigned_unit, practice_session, item_objects, session_id
     )
     homework = (
         session.get(ClassroomExercise, classroom.homework_exercise_id)
@@ -571,6 +626,202 @@ def read_today_plan(
     )
 
 
+def _next_question_from_assigned(
+    session: Session,
+    classroom: Any,
+    student: Student,
+    practice_session: PracticeSession,
+    exclude_id_set: set[uuid.UUID],
+) -> NextQuestion:
+    """按题指派/已指派集合：追加一道计划外新题；无候选则返回用尽。
+
+    换题语义 = 追加一道**计划外新题**（学生可再答，结算仍按原题单；
+    换来的题经 attempt.item_snapshot 进结果页）。assigned_items 与发布快照
+    同步：从指派问答题所在情景的题库取未做题，排掉已指派 + 本轮已做 +
+    前端传来的全部计划题（含发布全情景题时即用尽）。
+    """
+    scenario = None
+    assigned_question_ids: set[uuid.UUID] = set()
+    bound_exercise = (
+        session.get(ClassroomExercise, practice_session.assignment_id)
+        if practice_session.assignment_id is not None
+        else None
+    )
+    if bound_exercise is not None:
+        for item in _snapshot_items_of(
+            bound_exercise.snapshot_items, AttemptItemType.QUESTION
+        ):
+            assigned_question_ids.add(uuid.UUID(str(item.get("id"))))
+            if scenario is None:
+                scenario = session.get(
+                    Scenario, uuid.UUID(str(item.get("scenario_id")))
+                )
+    # 绑定练习存在：情景缺失（被删）或停用都明确禁止换题——不漂移到
+    # 重发后的新主题
+    if scenario is None or not scenario.is_active:
+        if bound_exercise is not None:
+            return NextQuestion(question=None, exhausted=True)
+        item_objects = exercise_service.resolve_assigned_items(session, classroom)
+        if item_objects is not None:
+            _, _, item_questions = item_objects
+            for q in item_questions:
+                assigned_question_ids.add(q.id)
+                if scenario is None:
+                    scenario = session.get(Scenario, q.scenario_id)
+            if scenario is None or not scenario.is_active:
+                return NextQuestion(question=None, exhausted=True)
+    assert scenario is not None  # 上方两个分支已保证非空
+
+    done_ids = {
+        attempt.item_id
+        for attempt in session.exec(
+            select(Attempt).where(
+                Attempt.session_id == practice_session.id,
+                Attempt.item_type == AttemptItemType.QUESTION,
+            )
+        ).all()
+    }
+    questions, exhausted = _pick_questions(
+        session,
+        scenario,
+        student.id,
+        limit=999,
+        fill_with_done=False,
+    )
+    excluded = exclude_id_set | done_ids | assigned_question_ids
+    candidates = [q for q in questions if q.id not in excluded]
+    if candidates:
+        chosen = candidates[0]
+        # 授权快照：换题返回的同时把该题**完整快照**（发布时刻内容，含考试
+        # 字段）绑定到会话——提交与结果页读这份内容，老师此后改题干/话题卡
+        # 或删题均不影响学生已看到的题目
+        snapshot = exercise_service.build_snapshot_item(
+            session, AttemptItemType.QUESTION, chosen.id, student.tenant_id
+        )
+        # 行级锁后追加：并发连点换一题不会互相覆盖丢授权
+        locked_session = session.exec(
+            select(PracticeSession)
+            .where(PracticeSession.id == practice_session.id)
+            .with_for_update()
+        ).one()
+        exchanged = list(locked_session.exchanged_items or [])
+        if not any(item.get("id") == snapshot["id"] for item in exchanged):
+            locked_session.exchanged_items = exchanged + [snapshot]
+            session.add(locked_session)
+            session.commit()
+        return NextQuestion(
+            question=ScenarioQuestionPublic.model_validate(chosen),
+            exhausted=False,
+        )
+    return NextQuestion(question=None, exhausted=exhausted)
+
+
+def _next_question_from_snapshot(
+    session: Session,
+    practice_session: PracticeSession,
+    exclude_ids: list[uuid.UUID] | None,
+) -> NextQuestion | None:
+    """发布会话的换题列表来自快照（不需要活题）。
+
+    返回 None 表示该分支不适用（绑定练习缺失），交回上层继续。
+    """
+    exercise = (
+        session.get(ClassroomExercise, practice_session.assignment_id)
+        if practice_session.assignment_id is not None
+        else None
+    )
+    if exercise is None:
+        return None
+    question_snapshots = _snapshot_items_of(
+        exercise.snapshot_items, AttemptItemType.QUESTION
+    )
+    done_ids = {
+        attempt.item_id
+        for attempt in session.exec(
+            select(Attempt).where(
+                Attempt.session_id == practice_session.id,
+                Attempt.item_type == AttemptItemType.QUESTION,
+            )
+        ).all()
+    }
+    excluded = set(exclude_ids or []) | done_ids
+    # 换题优先换到「快照内其他未做题」（分级题型训练：老师选的题都
+    # 是有效题，轮内换题不跳过其他未做题）；快照内取完再 exhausted，
+    # 上层 assigned_items 回退分支会继续从情景题库补新题
+    candidate = next(
+        (
+            item
+            for item in question_snapshots
+            if uuid.UUID(str(item["id"])) not in excluded
+        ),
+        None,
+    )
+    if candidate is None:
+        return NextQuestion(question=None, exhausted=True)
+    cue_bullets = candidate.get("cue_card_bullets")
+    return NextQuestion(
+        question=ScenarioQuestionPublic(
+            id=uuid.UUID(str(candidate["id"])),
+            band=str(candidate.get("band") or "B1"),
+            text=str(candidate.get("text") or ""),
+            audio_url=(
+                str(candidate["audio_url"])
+                if candidate.get("audio_url") is not None
+                else None
+            ),
+            suggested_seconds=_snapshot_int(candidate.get("suggested_seconds"), 20),
+            # 分级题型训练：换一题同样透传（话题卡/准备时间不丢）
+            exam_kind=(
+                str(candidate["exam_kind"])
+                if candidate.get("exam_kind") is not None
+                else None
+            ),
+            exam_level=(
+                str(candidate["exam_level"])
+                if candidate.get("exam_level") is not None
+                else None
+            ),
+            cue_card_bullets=(
+                [str(b) for b in cue_bullets]
+                if isinstance(cue_bullets, list) and cue_bullets
+                else None
+            ),
+            prep_seconds=_snapshot_optional_int(candidate.get("prep_seconds")),
+        ),
+        exhausted=False,
+    )
+
+
+def _next_question_from_passage(
+    session: Session,
+    student: Student,
+    practice_session: PracticeSession,
+    exclude_id_set: set[uuid.UUID],
+) -> NextQuestion:
+    """非发布会话：用锚点篇目确定情景，从题库取未做题。"""
+    if practice_session.passage_id is not None:
+        passage = session.get(Passage, practice_session.passage_id)
+    else:
+        passage = _active_passage(session, student)
+    if passage is None:
+        return NextQuestion(question=None, exhausted=True)
+
+    scenario = _scenario_for_topic(session, passage.topic, passage.tenant_id)
+    if scenario is None:
+        # 主题未配情景：与「题库为空」同口径，优雅返回无题而非 404
+        return NextQuestion(question=None, exhausted=True)
+    questions, exhausted = _pick_questions(
+        session, scenario, student.id, limit=999, fill_with_done=False
+    )
+    candidates = [q for q in questions if q.id not in exclude_id_set]
+    if not candidates:
+        return NextQuestion(question=None, exhausted=exhausted)
+    return NextQuestion(
+        question=ScenarioQuestionPublic.model_validate(candidates[0]),
+        exhausted=False,
+    )
+
+
 @router.get("/{code}/next-question", response_model=NextQuestion)
 def read_next_question(
     session: SessionDep,
@@ -587,15 +838,9 @@ def read_next_question(
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
     today = _today_in_practice_tz()
-
-    if session_id is not None:
-        practice_session = session.get(PracticeSession, session_id)
-        if practice_session is None or practice_session.student_id != student.id:
-            raise HTTPException(status_code=404, detail="Session not found")
-    else:
-        practice_session = _resolve_active_daily_session(
-            session, classroom, student, today
-        )
+    practice_session = _open_practice_session(
+        session, classroom, student, today, session_id
+    )
 
     # 模考不允许换题（题单以发布快照为准）
     if practice_session.assignment_id is not None:
@@ -603,10 +848,6 @@ def read_next_question(
         if bound is not None and bound.is_exam:
             raise HTTPException(status_code=422, detail="考试中不能换题")
 
-    # 按题指派：换题语义 = 追加一道**计划外新题**（学生可再答，结算仍按原
-    # 题单；换来的题经 attempt.item_snapshot 进结果页）。assigned_items 与
-    # 发布快照同步：从指派问答题所在情景的题库取未做题，排掉已指派 + 本轮
-    # 已做 + 前端传来的全部计划题（含发布全情景题时即用尽）。
     if practice_session.mode == "followup":
         raise HTTPException(422, detail="Followup question exchange not allowed")
     # 不再限制 session_id 为空：旧会话（已作答过的轮）同样换题，
@@ -616,166 +857,14 @@ def read_next_question(
     # 优先绑定练习：重发另一主题后旧会话不漂移；绑定情景缺失/停用则明确
     # 禁止换题；仅绑定练习本身缺失（历史数据）才回退当前指派。
     if practice_session.assignment_id is not None or classroom.assigned_items:
-        scenario = None
-        assigned_question_ids: set[uuid.UUID] = set()
-        bound_exercise = (
-            session.get(ClassroomExercise, practice_session.assignment_id)
-            if practice_session.assignment_id is not None
-            else None
+        return _next_question_from_assigned(
+            session, classroom, student, practice_session, exclude_id_set
         )
-        if bound_exercise is not None:
-            for item in _snapshot_items_of(
-                bound_exercise.snapshot_items, AttemptItemType.QUESTION
-            ):
-                assigned_question_ids.add(uuid.UUID(str(item.get("id"))))
-                if scenario is None:
-                    scenario = session.get(
-                        Scenario, uuid.UUID(str(item.get("scenario_id")))
-                    )
-        # 绑定练习存在：情景缺失（被删）或停用都明确禁止换题——不漂移到
-        # 重发后的新主题
-        if scenario is None or not scenario.is_active:
-            if bound_exercise is not None:
-                return NextQuestion(question=None, exhausted=True)
-            item_objects = exercise_service.resolve_assigned_items(session, classroom)
-            if item_objects is not None:
-                _, _, item_questions = item_objects
-                for q in item_questions:
-                    assigned_question_ids.add(q.id)
-                    if scenario is None:
-                        scenario = session.get(Scenario, q.scenario_id)
-                if scenario is None or not scenario.is_active:
-                    return NextQuestion(question=None, exhausted=True)
-        assert scenario is not None  # 上方两个分支已保证非空
-
-        done_ids = {
-            attempt.item_id
-            for attempt in session.exec(
-                select(Attempt).where(
-                    Attempt.session_id == practice_session.id,
-                    Attempt.item_type == AttemptItemType.QUESTION,
-                )
-            ).all()
-        }
-        questions, exhausted = _pick_questions(
-            session,
-            scenario,
-            student.id,
-            limit=999,
-            fill_with_done=False,
-        )
-        excluded = exclude_id_set | done_ids | assigned_question_ids
-        candidates = [q for q in questions if q.id not in excluded]
-        if candidates:
-            chosen = candidates[0]
-            # 授权快照：换题返回的同时把该题**完整快照**（发布时刻内容，含
-            # 考试字段）绑定到会话——提交与结果页读这份内容，老师此后改
-            # 题干/话题卡或删题均不影响学生已看到的题目
-            snapshot = exercise_service.build_snapshot_item(
-                session, AttemptItemType.QUESTION, chosen.id, student.tenant_id
-            )
-            # 行级锁后追加：并发连点换一题不会互相覆盖丢授权
-            locked_session = session.exec(
-                select(PracticeSession)
-                .where(PracticeSession.id == practice_session.id)
-                .with_for_update()
-            ).one()
-            exchanged = list(locked_session.exchanged_items or [])
-            if not any(item.get("id") == snapshot["id"] for item in exchanged):
-                locked_session.exchanged_items = exchanged + [snapshot]
-                session.add(locked_session)
-                session.commit()
-            return NextQuestion(
-                question=ScenarioQuestionPublic.model_validate(chosen),
-                exhausted=False,
-            )
-        return NextQuestion(question=None, exhausted=exhausted)
-
-    # 快照优先：发布会话的换题列表来自快照（不需要活题；已指派题被排除后取快照剩余）
     if practice_session.assignment_id is not None:
-        exercise = session.get(ClassroomExercise, practice_session.assignment_id)
-        if exercise is not None:
-            question_snapshots = _snapshot_items_of(
-                exercise.snapshot_items, AttemptItemType.QUESTION
-            )
-            done_ids = {
-                attempt.item_id
-                for attempt in session.exec(
-                    select(Attempt).where(
-                        Attempt.session_id == practice_session.id,
-                        Attempt.item_type == AttemptItemType.QUESTION,
-                    )
-                ).all()
-            }
-            excluded = set(exclude_ids or []) | done_ids
-            # 换题优先换到「快照内其他未做题」（分级题型训练：老师选的题都
-            # 是有效题，轮内换题不跳过其他未做题）；快照内取完再 exhausted，
-            # 上层 assigned_items 回退分支会继续从情景题库补新题
-            candidate = next(
-                (
-                    item
-                    for item in question_snapshots
-                    if uuid.UUID(str(item["id"])) not in excluded
-                ),
-                None,
-            )
-            if candidate is None:
-                return NextQuestion(question=None, exhausted=True)
-            cue_bullets = candidate.get("cue_card_bullets")
-            return NextQuestion(
-                question=ScenarioQuestionPublic(
-                    id=uuid.UUID(str(candidate["id"])),
-                    band=str(candidate.get("band") or "B1"),
-                    text=str(candidate.get("text") or ""),
-                    audio_url=(
-                        str(candidate["audio_url"])
-                        if candidate.get("audio_url") is not None
-                        else None
-                    ),
-                    suggested_seconds=_snapshot_int(
-                        candidate.get("suggested_seconds"), 20
-                    ),
-                    # 分级题型训练：换一题同样透传（话题卡/准备时间不丢）
-                    exam_kind=(
-                        str(candidate["exam_kind"])
-                        if candidate.get("exam_kind") is not None
-                        else None
-                    ),
-                    exam_level=(
-                        str(candidate["exam_level"])
-                        if candidate.get("exam_level") is not None
-                        else None
-                    ),
-                    cue_card_bullets=(
-                        [str(b) for b in cue_bullets]
-                        if isinstance(cue_bullets, list) and cue_bullets
-                        else None
-                    ),
-                    prep_seconds=_snapshot_optional_int(candidate.get("prep_seconds")),
-                ),
-                exhausted=False,
-            )
-
+        answer = _next_question_from_snapshot(session, practice_session, exclude_ids)
+        if answer is not None:
+            return answer
     # 非发布会话：用锚点篇目确定情景，从题库取未做题
-    if practice_session.passage_id is not None:
-        passage = session.get(Passage, practice_session.passage_id)
-    else:
-        passage = _active_passage(session, student)
-    if passage is None:
-        return NextQuestion(question=None, exhausted=True)
-
-    scenario = _scenario_for_topic(session, passage.topic, passage.tenant_id)
-    if scenario is None:
-        # 主题未配情景：与「题库为空」同口径，优雅返回无题而非 404
-        return NextQuestion(question=None, exhausted=True)
-    questions, exhausted = _pick_questions(
-        session, scenario, student.id, limit=999, fill_with_done=False
-    )
-    excluded = set(exclude_ids or [])
-    candidates = [q for q in questions if q.id not in excluded]
-    if not candidates:
-        return NextQuestion(question=None, exhausted=exhausted)
-    return NextQuestion(
-        question=ScenarioQuestionPublic.model_validate(candidates[0]),
-        exhausted=False,
+    return _next_question_from_passage(
+        session, student, practice_session, exclude_id_set
     )
