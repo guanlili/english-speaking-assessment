@@ -343,6 +343,219 @@ def _idempotent_existing(
     return existing
 
 
+def _idempotent_receipt(
+    session: Session, existing: Attempt, current_user: User | None
+) -> AttemptPublic:
+    """幂等命中的回执：同样校验归属（防越权读他人作答后当回执返回）。"""
+    _require_attempt_access(session, existing, current_user)
+    return _attempt_public(
+        existing,
+        feedback_masked=_feedback_masked_for_user(session, existing, current_user),
+    )
+
+
+def _exam_gate(
+    session: Session,
+    session_id: uuid.UUID | None,
+    student: Student | None,
+    current_user: User | None,
+    item_type: str,
+    item_id: uuid.UUID,
+    idempotency_key: str | None,
+) -> tuple[bool, uuid.UUID | None, AttemptPublic | None]:
+    """模考门禁：整场限时（服务端强约束）+ 每题一次作答。
+
+    放在幂等检查之后：同一次录音断网重试（同幂等键）不受影响。
+    返回 (是否每题一次, 绑定的练习 id, 命中幂等时的现成回执)。
+    """
+    exam_one_attempt = False
+    exam_assignment_id: uuid.UUID | None = None
+    if session_id is not None:
+        exam_session = session.get(PracticeSession, session_id)
+        if exam_session is not None and student is not None:
+            followups.check_session_open(session, exam_session, student)
+        if exam_session is not None and exam_session.assignment_id is not None:
+            bound_exercise = session.get(ClassroomExercise, exam_session.assignment_id)
+            if bound_exercise is not None and bound_exercise.is_exam:
+                # 预检阶段串行化：锁内在锁外各查一次幂等/每题一次，快速
+                # 拦掉大多数重复；事务边界① 即释放。并发封口以边界②后的
+                # 「锁内复查 + 插入」新短事务为准（毫秒级临界区）
+                session.refresh(exam_session, with_for_update=True)
+                if idempotency_key:
+                    existing = _idempotent_existing(
+                        session, idempotency_key, item_type, item_id, session_id
+                    )
+                    if existing is not None:
+                        return (
+                            False,
+                            None,
+                            _idempotent_receipt(session, existing, current_user),
+                        )
+                already = session.exec(
+                    select(Attempt.id).where(
+                        Attempt.session_id == session_id,  # type: ignore[arg-type]
+                        Attempt.item_id == item_id,
+                    )
+                ).first()
+                if already is not None:
+                    raise HTTPException(
+                        status_code=422, detail="考试中每题只能作答一次"
+                    )
+                exam_service.require_exam_open(session, exam_session, bound_exercise)
+                exam_service.require_current_item(
+                    session, exam_session, bound_exercise, item_type, item_id
+                )
+                exam_one_attempt = True
+                exam_assignment_id = exam_session.assignment_id
+    return exam_one_attempt, exam_assignment_id, None
+
+
+def _prepare_attempt_payload(
+    session: Session,
+    item_type: str,
+    item_id: uuid.UUID,
+    session_id: uuid.UUID | None,
+    current_user: User | None,
+    audio: UploadFile,
+    duration_s: float,
+) -> tuple[Any, Path, str, float]:
+    """题目快照 + 音频校验 + 队列容量 + 落盘，全程不占事务（边界②③）。
+
+    返回 (题目快照, 音频路径, mime, 时长)。
+    """
+    item_snapshot = _snapshot_attempt_item(
+        session, item_type, item_id, session_id, current_user
+    )
+    # 事务边界②：快照查询开启的只读事务到此为止——body 读取与 probe
+    # 全程零事务零连接
+    session.commit()
+
+    audio_bytes, mime_type, suffix, duration_s = _read_audio_payload(audio, duration_s)
+
+    _enforce_queue_capacity(session)
+
+    # 事务边界③：队列计数的只读事务结束，落盘在事务外（本地磁盘写也
+    # 不占连接）
+    session.commit()
+    audio_path = save_audio_file(audio_bytes, mime_type)
+    return item_snapshot, audio_path, mime_type, duration_s
+
+
+def _recheck_exam_guards(
+    session: Session,
+    session_id: uuid.UUID | None,
+    student: Student | None,
+    exam_one_attempt: bool,
+    exam_assignment_id: uuid.UUID | None,
+    item_id: uuid.UUID,
+) -> None:
+    """落盘后的并发兜底：followup 锁 + 考试会话行锁内的「复查」前置。
+
+    模考同题并发兜底：上面的 already 检查是 check-then-insert，双击/断网
+    重试并发时两个请求都能通过预检查。对考试会话行加锁后复查——锁只包住
+    「复查 + 插入」的毫秒级临界区（音频校验在锁外），第二个请求在锁内
+    看到首个作答后 422，不会产生双份作答/双倍评分费。
+    """
+    if session_id is not None and student is not None:
+        ps = session.get(PracticeSession, session_id)
+        if ps is not None and ps.mode == followups.FOLLOWUP:
+            task = session.get(ClassroomExercise, ps.assignment_id)
+            if task is not None:
+                session.refresh(task, with_for_update=True)
+            followups.check_session_open(session, ps, student)
+    if exam_one_attempt and session_id is not None:
+        # 新短事务：先取发布快照（无锁读），再锁会话行做毫秒级
+        # 「复查 + 插入」临界区
+        bound_exercise = session.get(ClassroomExercise, exam_assignment_id)
+        locked_session = session.exec(
+            select(PracticeSession)
+            .where(PracticeSession.id == session_id)
+            .with_for_update()
+        ).first()
+        if locked_session is not None and bound_exercise is not None:
+            # 锁内复查整场截止：音频校验（probe 可达秒级）期间可能跨过
+            # 截止，与预检查同一口径再判一次；纯时间判定不 commit，
+            # 不释放本临界区行锁
+            exam_service.require_deadline_not_passed(locked_session, bound_exercise)
+            already = session.exec(
+                select(Attempt.id).where(
+                    Attempt.session_id == session_id,  # type: ignore[arg-type]
+                    Attempt.item_id == item_id,
+                )
+            ).first()
+            if already is not None:
+                raise HTTPException(status_code=422, detail="考试中每题只能作答一次")
+
+
+def _insert_attempt(
+    session: Session,
+    attempt: Attempt,
+    *,
+    student: Student | None,
+    session_id: uuid.UUID | None,
+    current_user: User | None,
+    exam_one_attempt: bool,
+    exam_assignment_id: uuid.UUID | None,
+    idempotency_key: str | None,
+    item_type: str,
+    item_id: uuid.UUID,
+) -> Attempt | AttemptPublic:
+    """锁内复查后插入；幂等并发撞唯一键时回退返回既有作答。
+
+    上传补偿（批次06）：落盘成功但持久化失败（考试门禁/幂等并发撞唯一
+    约束/数据库故障）时，本次写入的文件没有任何记录引用——补偿删除，
+    不留不受 TTL 管理的孤儿。数据库已提交的录音不在补偿范围（被行引用，
+    _delete_unreferenced_audio 会放行），评分投递失败由恢复机制接手。
+    """
+    audio_path = Path(attempt.audio_path)
+    try:
+        _recheck_exam_guards(
+            session,
+            session_id,
+            student,
+            exam_one_attempt,
+            exam_assignment_id,
+            item_id,
+        )
+        attempt = create_attempt(session=session, attempt_in=attempt)
+    except IntegrityError as exc:
+        session.rollback()
+        if idempotency_key and "idempotency_key" in str(exc.orig):
+            try:
+                existing = _idempotent_existing(
+                    session, idempotency_key, item_type, item_id, session_id
+                )
+            except HTTPException:
+                # 键指向别的题目/会话：新作答存不进（全局唯一键）、旧回执不能
+                # 返回（串题）——补偿删除本次文件后按稳定 422 拒绝
+                _delete_unreferenced_audio(session, audio_path)
+                raise
+            if existing is not None:
+                # 兜底分支同样校验归属，封死「预检查时未提交→撞唯一约束→拿到他人作答」路径
+                _delete_unreferenced_audio(session, audio_path)
+                return _idempotent_receipt(session, existing, current_user)
+        _delete_unreferenced_audio(session, audio_path)
+        raise
+    except Exception:
+        # 数据库异常后连接可能处于 aborted 态：先 rollback 复位，否则
+        # 补偿查询本身也会失败（返修E）。补偿全程受保护——补偿失败宁可
+        # 保留文件交给孤儿扫描，也不掩盖原始异常或误删已入库音频
+        try:
+            session.rollback()
+        except Exception:  # noqa: BLE001 - 复位失败只能保留文件并记录
+            logger.warning(
+                "rollback before audio compensation failed for %s", audio_path
+            )
+        try:
+            _delete_unreferenced_audio(session, audio_path)
+        except Exception:  # noqa: BLE001 - 补偿不得掩盖原始异常
+            logger.warning(
+                "audio compensation failed; keep %s for orphan scan", audio_path
+            )
+        raise
+    return attempt
+
+
 @router.post("/attempts", response_model=AttemptPublic)
 def create_attempt_upload(
     session: SessionDep,
@@ -375,60 +588,22 @@ def create_attempt_upload(
             session, idempotency_key, item_type, item_id, session_id
         )
         if existing is not None:
-            _require_attempt_access(session, existing, current_user)
             session.refresh(existing)
-            return _attempt_public(
-                existing,
-                feedback_masked=_feedback_masked_for_user(
-                    session, existing, current_user
-                ),
-            )
+            return _idempotent_receipt(session, existing, current_user)
 
     _enforce_submit_rate_limit(student, request)
 
-    # 模考门禁：整场限时（服务端强约束）+ 每题一次作答。
-    # 放在幂等检查之后：同一次录音断网重试（同幂等键）不受影响
-    exam_one_attempt = False
-    exam_assignment_id: uuid.UUID | None = None
-    if session_id is not None:
-        exam_session = session.get(PracticeSession, session_id)
-        if exam_session is not None and student is not None:
-            followups.check_session_open(session, exam_session, student)
-        if exam_session is not None and exam_session.assignment_id is not None:
-            bound_exercise = session.get(ClassroomExercise, exam_session.assignment_id)
-            if bound_exercise is not None and bound_exercise.is_exam:
-                # 预检阶段串行化：锁内在锁外各查一次幂等/每题一次，快速
-                # 拦掉大多数重复；事务边界① 即释放。并发封口以边界②后的
-                # 「锁内复查 + 插入」新短事务为准（毫秒级临界区）
-                session.refresh(exam_session, with_for_update=True)
-                if idempotency_key:
-                    existing = _idempotent_existing(
-                        session, idempotency_key, item_type, item_id, session_id
-                    )
-                    if existing is not None:
-                        _require_attempt_access(session, existing, current_user)
-                        return _attempt_public(
-                            existing,
-                            feedback_masked=_feedback_masked_for_user(
-                                session, existing, current_user
-                            ),
-                        )
-                already = session.exec(
-                    select(Attempt.id).where(
-                        Attempt.session_id == session_id,  # type: ignore[arg-type]
-                        Attempt.item_id == item_id,
-                    )
-                ).first()
-                if already is not None:
-                    raise HTTPException(
-                        status_code=422, detail="考试中每题只能作答一次"
-                    )
-                exam_service.require_exam_open(session, exam_session, bound_exercise)
-                exam_service.require_current_item(
-                    session, exam_session, bound_exercise, item_type, item_id
-                )
-                exam_one_attempt = True
-                exam_assignment_id = exam_session.assignment_id
+    exam_one_attempt, exam_assignment_id, receipt = _exam_gate(
+        session,
+        session_id,
+        student,
+        current_user,
+        item_type,
+        item_id,
+        idempotency_key,
+    )
+    if receipt is not None:
+        return receipt
 
     # 事务边界①：门禁与临界区判断全部完成——立即提交，释放考试会话行锁
     # 与连接。后续读 body / ffprobe（可达 15 秒）/落盘不得占用连接：40 人
@@ -438,121 +613,43 @@ def create_attempt_upload(
     student_id = student.id if student is not None else None
     session.commit()
 
-    item_snapshot = _snapshot_attempt_item(
-        session, item_type, item_id, session_id, current_user
+    item_snapshot, audio_path, mime_type, duration_s = _prepare_attempt_payload(
+        session, item_type, item_id, session_id, current_user, audio, duration_s
     )
-    # 事务边界②：快照查询开启的只读事务到此为止——body 读取与 probe
-    # 全程零事务零连接
-    session.commit()
 
-    audio_bytes, mime_type, suffix, duration_s = _read_audio_payload(audio, duration_s)
-
-    _enforce_queue_capacity(session)
-
-    # 事务边界③：队列计数的只读事务结束，落盘在事务外（本地磁盘写也
-    # 不占连接）
-    session.commit()
-    audio_path = save_audio_file(audio_bytes, mime_type)
-    # 模考同题并发兜底：上面的 already 检查是 check-then-insert，双击/断网重试
-    # 并发时两个请求都能通过预检查。对考试会话行加锁后复查——锁只包住
-    # 「复查 + 插入」的毫秒级临界区（音频校验在锁外），第二个请求在锁内
-    # 看到首个作答后 422，不会产生双份作答/双倍评分费
-    # 上传补偿（批次06）：落盘成功但持久化失败（考试门禁/幂等并发撞唯一
-    # 约束/数据库故障）时，本次写入的文件没有任何记录引用——补偿删除，
-    # 不留不受 TTL 管理的孤儿。数据库已提交的录音不在补偿范围（被行引用，
-    # _delete_unreferenced_audio 会放行），评分投递失败由恢复机制接手
-    try:
-        if session_id is not None and student is not None:
-            ps = session.get(PracticeSession, session_id)
-            if ps is not None and ps.mode == followups.FOLLOWUP:
-                task = session.get(ClassroomExercise, ps.assignment_id)
-                if task is not None:
-                    session.refresh(task, with_for_update=True)
-                followups.check_session_open(session, ps, student)
-        if exam_one_attempt and session_id is not None:
-            # 新短事务：先取发布快照（无锁读），再锁会话行做毫秒级
-            # 「复查 + 插入」临界区
-            bound_exercise = session.get(ClassroomExercise, exam_assignment_id)
-            locked_session = session.exec(
-                select(PracticeSession)
-                .where(PracticeSession.id == session_id)
-                .with_for_update()
-            ).first()
-            if locked_session is not None and bound_exercise is not None:
-                # 锁内复查整场截止：音频校验（probe 可达秒级）期间可能跨过
-                # 截止，与预检查同一口径再判一次；纯时间判定不 commit，
-                # 不释放本临界区行锁
-                exam_service.require_deadline_not_passed(locked_session, bound_exercise)
-                already = session.exec(
-                    select(Attempt.id).where(
-                        Attempt.session_id == session_id,  # type: ignore[arg-type]
-                        Attempt.item_id == item_id,
-                    )
-                ).first()
-                if already is not None:
-                    raise HTTPException(
-                        status_code=422, detail="考试中每题只能作答一次"
-                    )
-        attempt = Attempt(
-            item_type=item_type,
-            item_id=item_id,
-            student_id=student_id,
-            session_id=session_id,
-            idempotency_key=idempotency_key,
-            item_snapshot=item_snapshot,
-            audio_path=str(audio_path),
-            audio_mime=mime_type,
-            duration_s=duration_s,
-            engine=settings.SCORING_PROVIDER,
-        )
-        attempt = create_attempt(session=session, attempt_in=attempt)
-    except IntegrityError as exc:
-        session.rollback()
-        if idempotency_key and "idempotency_key" in str(exc.orig):
-            try:
-                existing = _idempotent_existing(
-                    session, idempotency_key, item_type, item_id, session_id
-                )
-            except HTTPException:
-                # 键指向别的题目/会话：新作答存不进（全局唯一键）、旧回执不能
-                # 返回（串题）——补偿删除本次文件后按稳定 422 拒绝
-                _delete_unreferenced_audio(session, audio_path)
-                raise
-            if existing is not None:
-                # 兜底分支同样校验归属，封死「预检查时未提交→撞唯一约束→拿到他人作答」路径
-                _require_attempt_access(session, existing, current_user)
-                _delete_unreferenced_audio(session, audio_path)
-                return _attempt_public(
-                    existing,
-                    feedback_masked=_feedback_masked_for_user(
-                        session, existing, current_user
-                    ),
-                )
-        _delete_unreferenced_audio(session, audio_path)
-        raise
-    except Exception:
-        # 数据库异常后连接可能处于 aborted 态：先 rollback 复位，否则
-        # 补偿查询本身也会失败（返修E）。补偿全程受保护——补偿失败宁可
-        # 保留文件交给孤儿扫描，也不掩盖原始异常或误删已入库音频
-        try:
-            session.rollback()
-        except Exception:  # noqa: BLE001 - 复位失败只能保留文件并记录
-            logger.warning(
-                "rollback before audio compensation failed for %s", audio_path
-            )
-        try:
-            _delete_unreferenced_audio(session, audio_path)
-        except Exception:  # noqa: BLE001 - 补偿不得掩盖原始异常
-            logger.warning(
-                "audio compensation failed; keep %s for orphan scan", audio_path
-            )
-        raise
-
-    submitter(attempt.id)
-    session.refresh(attempt)
-    return _attempt_public(
+    attempt = Attempt(
+        item_type=item_type,
+        item_id=item_id,
+        student_id=student_id,
+        session_id=session_id,
+        idempotency_key=idempotency_key,
+        item_snapshot=item_snapshot,
+        audio_path=str(audio_path),
+        audio_mime=mime_type,
+        duration_s=duration_s,
+        engine=settings.SCORING_PROVIDER,
+    )
+    result = _insert_attempt(
+        session,
         attempt,
-        feedback_masked=_feedback_masked_for_user(session, attempt, current_user),
+        student=student,
+        session_id=session_id,
+        current_user=current_user,
+        exam_one_attempt=exam_one_attempt,
+        exam_assignment_id=exam_assignment_id,
+        idempotency_key=idempotency_key,
+        item_type=item_type,
+        item_id=item_id,
+    )
+    if isinstance(result, AttemptPublic):
+        # 并发撞幂等键：另一个请求已写入，本次文件已补偿删除
+        return result
+
+    submitter(result.id)
+    session.refresh(result)
+    return _attempt_public(
+        result,
+        feedback_masked=_feedback_masked_for_user(session, result, current_user),
     )
 
 
