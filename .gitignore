@@ -42,3 +42,13 @@ backend/scripts/vocab_level_import/output/
 gui-test-screenshots/
 test-results/
 frontend/.tanstack/
+
+# 本地草稿文档与截图（用户决定不入库，2026-11-07）：正式文档放 docs/ 并走 PR
+docs/功能说明-20261104.md
+docs/多租户功能测试报告-20261103.md
+docs/客户测试要点-20261104.md
+frontend/manual-screenshots/
+
+# uv workspace 只有仓库根一份 uv.lock；在 backend/ 下单独 uv lock 会生成
+# 孤立 lock（不参与 Docker 构建与 CI，--frozen 永远读根目录那份）
+backend/uv.lock
