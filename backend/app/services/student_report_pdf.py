@@ -181,12 +181,13 @@ def report_download_name(*, student_name: str, start: datetime, end: datetime) -
     return f"{root[:180]}.pdf"
 
 
-def load_student_report(
-    session: Session,
-    filt: dict[str, object],
-    requester_user_id: uuid.UUID,
-) -> StudentReport:
-    """按冻结的 filter 读取本人数据。身份不符抛 ReportForbidden，不返回任何内容。"""
+def _require_report_owner(
+    session: Session, filt: dict[str, object], requester_user_id: uuid.UUID
+) -> tuple[Classroom, Student]:
+    """身份三连校验：请求人 == filter 冻结的请求人、是学生、属于该课堂。
+
+    任一不符抛 ReportForbidden，不泄露任何数据。
+    """
     if str(filt.get("requester_user_id") or "") != str(requester_user_id):
         raise ReportForbidden
     user = session.get(User, requester_user_id)
@@ -204,6 +205,11 @@ def load_student_report(
     ).first()
     if student is None or student.user_id != user.id:
         raise ReportForbidden
+    return classroom, student
+
+
+def _load_window_from_filter(filt: dict[str, object]) -> tuple[datetime, datetime]:
+    """冻结 filter 里的时间窗：必须完整，且跨度不超过 EXPORT_RECENT_DAYS_MAX。"""
     start = _parse_dt(filt.get("from"))
     end = _parse_dt(filt.get("to"))
     if start is None or end is None:
@@ -213,7 +219,21 @@ def load_student_report(
         days=cap, hours=23, minutes=59, seconds=59
     ):
         raise ValueError("export_range_too_wide")
-    exercise_id = _as_uuid(filt.get("exercise_id"))
+    return start, end
+
+
+def _load_visible_sessions(
+    session: Session,
+    classroom: Classroom,
+    student: Student,
+    start: datetime,
+    end: datetime,
+    exercise_id: uuid.UUID | None,
+) -> tuple[list[PracticeSession], set[uuid.UUID], bool]:
+    """窗口内的练习轮：排除模考锁定的轮。
+
+    返回 (可见轮, 锁定轮 id 集合, 是否有进行中的模考)。
+    """
     start_date = to_shanghai(start).date()
     end_date = to_shanghai(end).date()
     locked = _locked_exam_session_ids(session, classroom.id, start_date, end_date)
@@ -231,6 +251,24 @@ def load_student_report(
         sessions = [row for row in sessions if row.assignment_id == exercise_id]
     has_active_exam = any(row.id in locked for row in sessions)
     visible = [row for row in sessions if row.id not in locked]
+    return visible, locked, has_active_exam
+
+
+def _load_report_attempts(
+    session: Session,
+    visible: list[PracticeSession],
+    start: datetime,
+    end: datetime,
+) -> tuple[
+    list[Attempt],
+    dict[tuple[uuid.UUID | None, uuid.UUID], Attempt],
+    list[Attempt],
+    dict[uuid.UUID, ClassroomExercise],
+]:
+    """可见轮在窗口内的作答（按时间升序），以及聚合所需的派生集合。
+
+    返回 (全部作答, 每题最新一条, 已评分集合, 关联练习映射)。
+    """
     visible_ids = [row.id for row in visible]
     attempts = (
         list(
@@ -265,6 +303,14 @@ def load_student_report(
         if exercise_ids
         else {}
     )
+    return attempts, latest, scored, exercises
+
+
+def _total_plan_items(
+    visible: list[PracticeSession],
+    exercises: dict[uuid.UUID, ClassroomExercise],
+) -> int:
+    """题单分母：按各轮练习快照里的非说明条目数累计。"""
     total = 0
     for practice in visible:
         exercise = (
@@ -276,6 +322,25 @@ def load_student_report(
             not isinstance(item, dict) or item.get("type") != "instruction"
             for item in exercise.snapshot_items
         )
+    return total
+
+
+def load_student_report(
+    session: Session,
+    filt: dict[str, object],
+    requester_user_id: uuid.UUID,
+) -> StudentReport:
+    """按冻结的 filter 读取本人数据。身份不符抛 ReportForbidden，不返回任何内容。"""
+    classroom, student = _require_report_owner(session, filt, requester_user_id)
+    start, end = _load_window_from_filter(filt)
+    exercise_id = _as_uuid(filt.get("exercise_id"))
+    visible, locked, has_active_exam = _load_visible_sessions(
+        session, classroom, student, start, end, exercise_id
+    )
+    attempts, latest, scored, exercises = _load_report_attempts(
+        session, visible, start, end
+    )
+    total = _total_plan_items(visible, exercises)
     reading_avg = _average(scored, (AttemptItemType.PASSAGE, AttemptItemType.REPEAT))
     question_avg, percentile = _overview_question(
         session,
