@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException
@@ -176,79 +176,10 @@ def _visible(session: SessionDep, job_id: uuid.UUID, user: User) -> ExportJob:
     return job
 
 
-def _resolve(session: SessionDep, user: User, body: ExportCreate) -> dict[str, object]:
-    classroom_name: str | None = None
-    classroom_code: str | None = None
-    exercise_title: str | None = None
-    if body.scope == ExportScope.CLASSROOM:
-        if user.role == "student":
-            _reject(session, user, scope=body.scope, result="forbidden")
-            raise HTTPException(
-                status_code=403,
-                detail="没有权限：课堂录音导出仅限该课堂授权教师",
-            )
-        if body.classroom_id is None:
-            raise HTTPException(status_code=422, detail="export_classroom_required")
-        classroom = session.get(Classroom, body.classroom_id)
-        if classroom is None or classroom.tenant_id != user.tenant_id:
-            # 跨校课堂按不存在处理（同 RLS 语义，见 _visible 注释）
-            raise HTTPException(status_code=404, detail="Classroom not found")
-        if not classroom_teacher_allowed(classroom, user):
-            _reject(
-                session,
-                user,
-                scope=body.scope,
-                result="forbidden",
-                detail={"classroom_id": str(classroom.id)},
-            )
-            raise HTTPException(
-                status_code=403,
-                detail="没有权限：您不是该课堂的授权教师，请联系管理员绑定后再查看",
-            )
-        if not body.confirm_contains_student_audio:
-            _reject(
-                session,
-                user,
-                scope=body.scope,
-                result="export_confirm_required",
-                detail={"classroom_id": str(classroom.id)},
-            )
-            raise HTTPException(status_code=422, detail="export_confirm_required")
-        if body.exercise_id is not None:
-            exercise = session.get(ClassroomExercise, body.exercise_id)
-            if exercise is None or exercise.classroom_id != classroom.id:
-                raise HTTPException(status_code=422, detail="export_exercise_mismatch")
-            exercise_title = exercise.title
-        if body.session_id is not None:
-            practice = session.get(PracticeSession, body.session_id)
-            if practice is None or practice.classroom_id != classroom.id:
-                raise HTTPException(status_code=422, detail="export_session_mismatch")
-        classroom_name = classroom.name
-        classroom_code = classroom.code
-    else:
-        if body.session_id is not None:
-            practice = session.get(PracticeSession, body.session_id)
-            if practice is not None and practice.tenant_id != user.tenant_id:
-                # 跨校按不存在处理：与 RLS 语义一致（否则 403 与「id 不存在」
-                # 的 403 不同响应会构成存在性预言——保持两者同为 403）
-                practice = None
-            student = (
-                session.get(Student, practice.student_id)
-                if practice is not None
-                else None
-            )
-            if practice is None or student is None or student.user_id != user.id:
-                raise HTTPException(
-                    status_code=403, detail="没有权限：该练习轮不属于你本人"
-                )
-        if body.exercise_id is not None:
-            exercise = session.get(ClassroomExercise, body.exercise_id)
-            if exercise is not None and exercise.tenant_id != user.tenant_id:
-                exercise = None  # 跨校按不存在处理（同上，静默忽略不取标题）
-            if exercise is not None:
-                exercise_title = exercise.title
+def _export_window(body: ExportCreate) -> tuple[datetime | None, datetime | None]:
+    """录音导出的时间窗：按 scope 取默认长度，跨度上限统一由 window_bounds 把关。"""
     try:
-        start, end = window_bounds(
+        return window_bounds(
             scope=body.scope,
             start=body.from_at,
             end=body.to,
@@ -256,6 +187,96 @@ def _resolve(session: SessionDep, user: User, body: ExportCreate) -> dict[str, o
         )
     except ValueError:
         raise HTTPException(status_code=422, detail="export_range_too_wide") from None
+
+
+def _resolve_classroom_scope(
+    session: SessionDep, user: User, body: ExportCreate
+) -> tuple[str | None, str | None, str | None]:
+    """课堂录音导出：教师权限 + 确认声明 + 题目/会话归属。
+
+    返回 (课堂名, 课堂码, 练习标题)。
+    """
+    if user.role == "student":
+        _reject(session, user, scope=body.scope, result="forbidden")
+        raise HTTPException(
+            status_code=403,
+            detail="没有权限：课堂录音导出仅限该课堂授权教师",
+        )
+    if body.classroom_id is None:
+        raise HTTPException(status_code=422, detail="export_classroom_required")
+    classroom = session.get(Classroom, body.classroom_id)
+    if classroom is None or classroom.tenant_id != user.tenant_id:
+        # 跨校课堂按不存在处理（同 RLS 语义，见 _visible 注释）
+        raise HTTPException(status_code=404, detail="Classroom not found")
+    if not classroom_teacher_allowed(classroom, user):
+        _reject(
+            session,
+            user,
+            scope=body.scope,
+            result="forbidden",
+            detail={"classroom_id": str(classroom.id)},
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="没有权限：您不是该课堂的授权教师，请联系管理员绑定后再查看",
+        )
+    if not body.confirm_contains_student_audio:
+        _reject(
+            session,
+            user,
+            scope=body.scope,
+            result="export_confirm_required",
+            detail={"classroom_id": str(classroom.id)},
+        )
+        raise HTTPException(status_code=422, detail="export_confirm_required")
+    exercise_title = _exercise_title_for_classroom(session, body, classroom)
+    if body.session_id is not None:
+        practice = session.get(PracticeSession, body.session_id)
+        if practice is None or practice.classroom_id != classroom.id:
+            raise HTTPException(status_code=422, detail="export_session_mismatch")
+    return classroom.name, classroom.code, exercise_title
+
+
+def _resolve_self_scope(
+    session: SessionDep, user: User, body: ExportCreate
+) -> str | None:
+    """学生导出自己的练习：会话必须属于本人；题目标题仅在同租户时透出。
+
+    跨校一律按不存在处理：与 RLS 语义一致（否则 403 与「id 不存在」的
+    403 不同响应会构成存在性预言——保持两者同为 403）。
+    """
+    if body.session_id is not None:
+        practice = session.get(PracticeSession, body.session_id)
+        if practice is not None and practice.tenant_id != user.tenant_id:
+            practice = None
+        student = (
+            session.get(Student, practice.student_id) if practice is not None else None
+        )
+        if practice is None or student is None or student.user_id != user.id:
+            raise HTTPException(
+                status_code=403, detail="没有权限：该练习轮不属于你本人"
+            )
+    if body.exercise_id is not None:
+        exercise = session.get(ClassroomExercise, body.exercise_id)
+        if exercise is not None and exercise.tenant_id != user.tenant_id:
+            exercise = None  # 跨校按不存在处理（同上，静默忽略不取标题）
+        if exercise is not None:
+            return exercise.title
+    return None
+
+
+def _resolve(session: SessionDep, user: User, body: ExportCreate) -> dict[str, object]:
+    """按 scope 解析并冻结导出参数；权限与归属校验全在这一步。"""
+    classroom_name: str | None = None
+    classroom_code: str | None = None
+    exercise_title: str | None = None
+    if body.scope == ExportScope.CLASSROOM:
+        classroom_name, classroom_code, exercise_title = _resolve_classroom_scope(
+            session, user, body
+        )
+    else:
+        exercise_title = _resolve_self_scope(session, user, body)
+    start, end = _export_window(body)
     return {
         "scope": body.scope,
         "requester_user_id": str(user.id),
@@ -289,27 +310,32 @@ def _report_code(body: ExportCreate) -> str | None:
     return raw or None
 
 
-def _create_student_report(
-    session: SessionDep,
-    current_user: User,
-    body: ExportCreate,
-    submitter: ExportSubmitter,
-) -> ExportJobPublic:
-    """学生导出自己的学情 PDF。教师代下直接 403，不建任务。"""
-    if body.scope != ExportScope.SELF or current_user.role != "student":
-        _reject(
-            session,
-            current_user,
-            scope=body.scope,
-            result="export_report_student_only",
+def _report_window(body: ExportCreate) -> tuple[datetime, datetime]:
+    """报告类导出的时间窗：未指定默认最近 90 天，上限同 EXPORT_RECENT_DAYS_MAX。"""
+    try:
+        return resolve_report_window(
+            start=body.from_at,
+            end=body.to,
+            days=body.days,
+            recent_days=body.recent_days,
         )
-        raise HTTPException(status_code=403, detail="export_report_student_only")
-    code = _report_code(body)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="export_range_too_wide") from None
+
+
+def _resolve_report_classroom(
+    session: SessionDep, current_user: User, body: ExportCreate
+) -> Classroom:
+    """报告类导出的课堂定位：显式 id 优先，其次课堂码（含大写回退）。
+
+    id 与码指向不同课堂时 422；跨校一律按不存在处理（同 RLS 语义）。
+    """
     classroom: Classroom | None = None
     if body.classroom_id is not None:
         classroom = session.get(Classroom, body.classroom_id)
         if classroom is None:
             raise HTTPException(status_code=404, detail="Classroom not found")
+    code = _report_code(body)
     if code is not None:
         by_code = session.exec(select(Classroom).where(Classroom.code == code)).first()
         if by_code is None and code.upper() != code:
@@ -326,6 +352,74 @@ def _create_student_report(
     if classroom.tenant_id != current_user.tenant_id:
         # 跨校课堂（含按课堂码命中他校）按不存在处理（同 RLS 语义）
         raise HTTPException(status_code=404, detail="Classroom not found")
+    return classroom
+
+
+def _exercise_title_for_classroom(
+    session: SessionDep, body: ExportCreate, classroom: Classroom
+) -> str | None:
+    """题目必须属于该课堂；返回标题供导出筛选与展示。"""
+    if body.exercise_id is None:
+        return None
+    exercise = session.get(ClassroomExercise, body.exercise_id)
+    if exercise is None or exercise.classroom_id != classroom.id:
+        raise HTTPException(status_code=422, detail="export_exercise_mismatch")
+    return exercise.title
+
+
+def _queue_report_job(
+    session: SessionDep,
+    current_user: User,
+    submitter: ExportSubmitter,
+    *,
+    kind: Any,
+    scope: Any,
+    filt: dict[str, object],
+    name: str,
+) -> ExportJobPublic:
+    """建报告任务 + 审计 + 提交：落库后把 job_id 交给后台 worker。"""
+    job = ExportJob(
+        requester_user_id=current_user.id,
+        scope=scope,
+        kind=kind,
+        filter_json=filt,
+        status=ExportJobStatus.QUEUED,
+        download_name=name,
+        confirm_contains_student_audio=False,
+    )
+    session.add(job)
+    session.flush()
+    write_audit(
+        session,
+        job_id=job.id,
+        actor_user_id=current_user.id,
+        action="create",
+        scope=scope,
+        detail={"result": "queued", "filter": filt},
+    )
+    session.commit()
+    session.refresh(job)
+    submitter(job.id)
+    session.refresh(job)
+    return _public(job)
+
+
+def _create_student_report(
+    session: SessionDep,
+    current_user: User,
+    body: ExportCreate,
+    submitter: ExportSubmitter,
+) -> ExportJobPublic:
+    """学生导出自己的学情 PDF。教师代下直接 403，不建任务。"""
+    if body.scope != ExportScope.SELF or current_user.role != "student":
+        _reject(
+            session,
+            current_user,
+            scope=body.scope,
+            result="export_report_student_only",
+        )
+        raise HTTPException(status_code=403, detail="export_report_student_only")
+    classroom = _resolve_report_classroom(session, current_user, body)
     student = session.exec(
         select(Student).where(
             Student.user_id == current_user.id,
@@ -341,21 +435,8 @@ def _create_student_report(
             detail={"classroom_id": str(classroom.id)},
         )
         raise HTTPException(status_code=403, detail="export_report_forbidden")
-    exercise_title: str | None = None
-    if body.exercise_id is not None:
-        exercise = session.get(ClassroomExercise, body.exercise_id)
-        if exercise is None or exercise.classroom_id != classroom.id:
-            raise HTTPException(status_code=422, detail="export_exercise_mismatch")
-        exercise_title = exercise.title
-    try:
-        start, end = resolve_report_window(
-            start=body.from_at,
-            end=body.to,
-            days=body.days,
-            recent_days=body.recent_days,
-        )
-    except ValueError:
-        raise HTTPException(status_code=422, detail="export_range_too_wide") from None
+    exercise_title = _exercise_title_for_classroom(session, body, classroom)
+    start, end = _report_window(body)
     _guard_capacity(session, current_user, body.scope)
     filt: dict[str, object] = {
         "kind": ExportKind.STUDENT_REPORT_PDF,
@@ -375,30 +456,15 @@ def _create_student_report(
         start=start,
         end=end,
     )
-    job = ExportJob(
-        requester_user_id=current_user.id,
-        scope=ExportScope.SELF,
-        kind=ExportKind.STUDENT_REPORT_PDF,
-        filter_json=filt,
-        status=ExportJobStatus.QUEUED,
-        download_name=name,
-        confirm_contains_student_audio=False,
-    )
-    session.add(job)
-    session.flush()
-    write_audit(
+    return _queue_report_job(
         session,
-        job_id=job.id,
-        actor_user_id=current_user.id,
-        action="create",
+        current_user,
+        submitter,
+        kind=ExportKind.STUDENT_REPORT_PDF,
         scope=ExportScope.SELF,
-        detail={"result": "queued", "filter": filt},
+        filt=filt,
+        name=name,
     )
-    session.commit()
-    session.refresh(job)
-    submitter(job.id)
-    session.refresh(job)
-    return _public(job)
 
 
 def _create_class_report(
@@ -418,28 +484,7 @@ def _create_class_report(
         raise HTTPException(status_code=403, detail="export_class_report_teacher_only")
     if body.exercise_id is not None or body.session_id is not None:
         raise HTTPException(status_code=422, detail="export_exercise_not_supported")
-    code = _report_code(body)
-    classroom: Classroom | None = None
-    if body.classroom_id is not None:
-        classroom = session.get(Classroom, body.classroom_id)
-        if classroom is None:
-            raise HTTPException(status_code=404, detail="Classroom not found")
-    if code is not None:
-        by_code = session.exec(select(Classroom).where(Classroom.code == code)).first()
-        if by_code is None and code.upper() != code:
-            by_code = session.exec(
-                select(Classroom).where(Classroom.code == code.upper())
-            ).first()
-        if by_code is None:
-            raise HTTPException(status_code=404, detail="Classroom not found")
-        if classroom is not None and by_code.id != classroom.id:
-            raise HTTPException(status_code=422, detail="export_classroom_mismatch")
-        classroom = by_code
-    if classroom is None:
-        raise HTTPException(status_code=422, detail="export_classroom_required")
-    if classroom.tenant_id != current_user.tenant_id:
-        # 跨校课堂（含按课堂码命中他校）按不存在处理（同 RLS 语义）
-        raise HTTPException(status_code=404, detail="Classroom not found")
+    classroom = _resolve_report_classroom(session, current_user, body)
     if not classroom_teacher_allowed(classroom, current_user):
         _reject(
             session,
@@ -452,15 +497,7 @@ def _create_class_report(
             status_code=403,
             detail="没有权限：您不是该课堂的授权教师，请联系管理员绑定后再查看",
         )
-    try:
-        start, end = resolve_report_window(
-            start=body.from_at,
-            end=body.to,
-            days=body.days,
-            recent_days=body.recent_days,
-        )
-    except ValueError:
-        raise HTTPException(status_code=422, detail="export_range_too_wide") from None
+    start, end = _report_window(body)
     _guard_capacity(session, current_user, body.scope)
     filt: dict[str, object] = {
         "kind": ExportKind.CLASS_REPORT_PDF,
@@ -475,30 +512,15 @@ def _create_class_report(
     name = class_report_download_name(
         classroom_name=classroom.name, start=start, end=end
     )
-    job = ExportJob(
-        requester_user_id=current_user.id,
-        scope=ExportScope.CLASSROOM,
-        kind=ExportKind.CLASS_REPORT_PDF,
-        filter_json=filt,
-        status=ExportJobStatus.QUEUED,
-        download_name=name,
-        confirm_contains_student_audio=False,
-    )
-    session.add(job)
-    session.flush()
-    write_audit(
+    return _queue_report_job(
         session,
-        job_id=job.id,
-        actor_user_id=current_user.id,
-        action="create",
+        current_user,
+        submitter,
+        kind=ExportKind.CLASS_REPORT_PDF,
         scope=ExportScope.CLASSROOM,
-        detail={"result": "queued", "filter": filt},
+        filt=filt,
+        name=name,
     )
-    session.commit()
-    session.refresh(job)
-    submitter(job.id)
-    session.refresh(job)
-    return _public(job)
 
 
 @router.post("", response_model=ExportJobPublic)
