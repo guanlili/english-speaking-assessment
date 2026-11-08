@@ -1,6 +1,5 @@
-"""题库导入预览：查重引用快照 + 计划构建 + 指纹（不落库）。"""
-
 import uuid
+from collections.abc import Callable
 from dataclasses import (
     dataclass,
     field,
@@ -262,6 +261,68 @@ def _issue(qtype: str, line: int, reason: str) -> QuestionBankImportIssue:
     return QuestionBankImportIssue(type=qtype, line=line, reason=reason)
 
 
+def _invalid_row(
+    plan: QuestionBankPlan, counts: _TypeCounts, qtype: str, row: _RawRow, reason: str
+) -> None:
+    """记一条解析/身份解析失败的行：计数 + 问题 + 错误行（供前端逐行改）。"""
+    counts.invalid += 1
+    plan.issues.append(_issue(qtype, row.line, reason))
+    plan.error_rows.append(
+        ErrorRow(qtype=qtype, line=row.line, reason=reason, cells=row.cells)
+    )
+
+
+def _parse_row(
+    plan: QuestionBankPlan,
+    counts: _TypeCounts,
+    qtype: str,
+    row: _RawRow,
+    builder: Callable[[dict[str, str]], dict[str, Any]],
+) -> dict[str, Any] | None:
+    """解析一行：成功则登记解析摘要，失败记错误行并返回 None。"""
+    try:
+        payload = builder(row.cells)
+    except _RowError as exc:
+        _invalid_row(plan, counts, qtype, row, exc.reason)
+        return None
+    plan.parsed_digests.append(_row_digest(qtype, row.line, payload))
+    return payload
+
+
+def _register_suspected(
+    plan: QuestionBankPlan,
+    counts: _TypeCounts,
+    qtype: str,
+    row: _RawRow,
+    reason: str,
+    payload: dict[str, Any],
+    existing: dict[str, str],
+    candidates: list[tuple[str, dict[str, str]]],
+    decisions: set[tuple[str, int]],
+) -> bool:
+    """登记一条疑似重复；返回本行是否应继续（用户勾选导入才继续）。"""
+    counts.suspected += 1
+    plan.suspected_rows.append(
+        _suspected(
+            plan,
+            qtype,
+            row.line,
+            reason,
+            _summarize_payload(qtype, payload),
+            existing,
+            candidates,
+        )
+    )
+    return (qtype, row.line) in decisions
+
+
+def _count_valid(counts: _TypeCounts, payload: dict[str, Any]) -> None:
+    """计入有效行；音频缺失单独计数（不阻断导入，仅前端提示）。"""
+    if not payload["audio_url"]:
+        counts.missing_audio += 1
+    counts.valid += 1
+
+
 def _plan_passages(
     plan: QuestionBankPlan,
     ref: _Ref,
@@ -289,20 +350,8 @@ def _plan_passages(
         return _summarize_payload(TYPE_PASSAGE, payload) if payload else {}
 
     for row in rows:
-        try:
-            payload = _build_passage(row.cells)
-            plan.parsed_digests.append(_row_digest(TYPE_PASSAGE, row.line, payload))
-        except _RowError as exc:
-            counts.invalid += 1
-            plan.issues.append(_issue(TYPE_PASSAGE, row.line, exc.reason))
-            plan.error_rows.append(
-                ErrorRow(
-                    qtype=TYPE_PASSAGE,
-                    line=row.line,
-                    reason=exc.reason,
-                    cells=row.cells,
-                )
-            )
+        payload = _parse_row(plan, counts, TYPE_PASSAGE, row, _build_passage)
+        if payload is None:
             continue
         n_title, n_text = _norm_text(payload["title"]), _norm_text(payload["text"])
         key = (n_title, n_text)
@@ -314,16 +363,12 @@ def _plan_passages(
         if payload["unit_title"] is not None:
             candidates = ref.units_by_norm.get(_norm_text(payload["unit_title"]), [])
             if len(candidates) > 1:
-                reason = "单元匹配到多个同名单元，请改为精确的单元标题"
-                counts.invalid += 1
-                plan.issues.append(_issue(TYPE_PASSAGE, row.line, reason))
-                plan.error_rows.append(
-                    ErrorRow(
-                        qtype=TYPE_PASSAGE,
-                        line=row.line,
-                        reason=reason,
-                        cells=row.cells,
-                    )
+                _invalid_row(
+                    plan,
+                    counts,
+                    TYPE_PASSAGE,
+                    row,
+                    "单元匹配到多个同名单元，请改为精确的单元标题",
                 )
                 continue
             if len(candidates) == 1:
@@ -353,44 +398,48 @@ def _plan_passages(
             # 批内正文集合也要查：同批两篇不同标题、相同正文 → 第二篇疑似
             suspected_reason = "疑似重复：相同正文已存在于其他篇目"
         if suspected_reason is not None:
-            counts.suspected += 1
-            db_candidate_rows = [
-                *ref.passages_by_key.get(key, []),
-                *[
-                    p
-                    for (kt, ktext), plist in ref.passages_by_key.items()
-                    if ktext == n_text
-                    for p in plist
-                ],
-            ]
-            seen_ids: set[str] = set()
-            passage_candidates: list[tuple[str, dict[str, str]]] = []
-            for p in sorted(db_candidate_rows, key=lambda item: str(item.id)):
-                if str(p.id) in seen_ids:
-                    continue
-                seen_ids.add(str(p.id))
-                passage_candidates.append((str(p.id), _summarize_passage_model(p, ref)))
-            plan.suspected_rows.append(
-                _suspected(
-                    plan,
-                    TYPE_PASSAGE,
-                    row.line,
-                    suspected_reason,
-                    _summarize_payload(TYPE_PASSAGE, payload),
-                    _existing_passage_summary(key, n_text),
-                    passage_candidates,
-                )
-            )
-            if (TYPE_PASSAGE, row.line) not in decisions:
+            passage_candidates = _passage_candidates(ref, key, n_text)
+            if not _register_suspected(
+                plan,
+                counts,
+                TYPE_PASSAGE,
+                row,
+                suspected_reason,
+                payload,
+                _existing_passage_summary(key, n_text),
+                passage_candidates,
+                decisions,
+            ):
                 continue
-        if not payload["audio_url"]:
-            counts.missing_audio += 1
-        counts.valid += 1
+        _count_valid(counts, payload)
         plan.creates[TYPE_PASSAGE].append(_CreateItem(line=row.line, payload=payload))
         planned_exact.setdefault(key, []).append(cfg)
         planned_payloads_by_key.setdefault(key, []).append(payload)
         planned_payloads_by_text.setdefault(n_text, payload)
         planned_texts.add(n_text)
+
+
+def _passage_candidates(
+    ref: _Ref, key: tuple[str, str], n_text: str
+) -> list[tuple[str, dict[str, str]]]:
+    """疑似重复时列出库内全部同题候选（按 id 去重并稳定排序）。"""
+    db_candidate_rows = [
+        *ref.passages_by_key.get(key, []),
+        *[
+            p
+            for (kt, ktext), plist in ref.passages_by_key.items()
+            if ktext == n_text
+            for p in plist
+        ],
+    ]
+    seen_ids: set[str] = set()
+    passage_candidates: list[tuple[str, dict[str, str]]] = []
+    for p in sorted(db_candidate_rows, key=lambda item: str(item.id)):
+        if str(p.id) in seen_ids:
+            continue
+        seen_ids.add(str(p.id))
+        passage_candidates.append((str(p.id), _summarize_passage_model(p, ref)))
+    return passage_candidates
 
 
 def _pid_key(passage_id: uuid.UUID | None) -> str:
@@ -494,58 +543,20 @@ def _plan_repeats(
         return _summarize_payload(TYPE_REPEAT, payload) if payload else {}
 
     for row in rows:
-        try:
-            payload = _build_repeat(row.cells)
-            plan.parsed_digests.append(_row_digest(TYPE_REPEAT, row.line, payload))
-        except _RowError as exc:
-            counts.invalid += 1
-            plan.issues.append(_issue(TYPE_REPEAT, row.line, exc.reason))
-            plan.error_rows.append(
-                ErrorRow(
-                    qtype=TYPE_REPEAT, line=row.line, reason=exc.reason, cells=row.cells
-                )
-            )
+        payload = _parse_row(plan, counts, TYPE_REPEAT, row, _build_repeat)
+        if payload is None:
             continue
         n_text = _norm_text(payload["text"])
         # 挂靠解析（歧义报错）必须先于查重，且查重按**解析后的对象身份**
         # （passage_id）比较——同名根篇与旧子篇是不同记录，按标题比较会把
         # 挂在不同篇目下的同句误判为完全重复（评审 P2）；降级独立句的身份
         # 键是空串，与库内独立句一致（Ghost 挂靠重传仍判完全重复）
-        passage_id: uuid.UUID | None = None
-        planned_title: str | None = None
-        linkage = ""
-        if payload["passage_title"] is not None:
-            n_title = _norm_text(payload["passage_title"])
-            existing_hits = len(ref.root_passages_by_norm.get(n_title, []))
-            planned_hits = planned_titles.get(n_title, 0)
-            reason = None
-            if existing_hits + planned_hits > 1:
-                reason = "挂靠篇目匹配到多个同名篇目，请先重命名区分"
-            elif (
-                existing_hits == 1
-                and editor is not None
-                and not content_access.can_edit(
-                    editor, ref.root_passages_by_norm[n_title][0].owner_id
-                )
-            ):
-                reason = "挂靠篇目由其他老师创建，不能往里添加句子；可去掉挂靠篇目作为独立题导入"
-            if reason is not None:
-                counts.invalid += 1
-                plan.issues.append(_issue(TYPE_REPEAT, row.line, reason))
-                plan.error_rows.append(
-                    ErrorRow(
-                        qtype=TYPE_REPEAT, line=row.line, reason=reason, cells=row.cells
-                    )
-                )
-                continue
-            if existing_hits == 1:
-                passage_id = ref.root_passages_by_norm[n_title][0].id
-                linkage = _pid_key(passage_id)
-            elif planned_hits == 1:
-                planned_title = n_title
-                linkage = f"new:{n_title}"
-            else:
-                plan.standalone_sentence_count += 1
+        passage_id, planned_title, linkage, linkage_reason = _resolve_sentence_linkage(
+            plan, payload, ref, planned_titles, editor
+        )
+        if linkage_reason is not None:
+            _invalid_row(plan, counts, TYPE_REPEAT, row, linkage_reason)
+            continue
         cfg = (
             _norm_text(payload["translation"] or ""),
             payload["suggested_seconds"],
@@ -567,29 +578,25 @@ def _plan_repeats(
             # 相同句子挂在其他篇目/独立存在：疑似而非完全重复，可勾选导入
             suspected_reason = "疑似重复：相同句子已存在但挂靠或配置不同"
         if suspected_reason is not None:
-            counts.suspected += 1
             sentence_candidates = [
                 (str(sentence.id), _summarize_sentence_model(sentence, ref))
                 for sentence in sorted(
                     ref.sentences_by_key.get(n_text, []), key=lambda item: str(item.id)
                 )
             ]
-            plan.suspected_rows.append(
-                _suspected(
-                    plan,
-                    TYPE_REPEAT,
-                    row.line,
-                    suspected_reason,
-                    _summarize_payload(TYPE_REPEAT, payload),
-                    _existing_sentence_summary(n_text, linkage),
-                    sentence_candidates,
-                )
-            )
-            if (TYPE_REPEAT, row.line) not in decisions:
+            if not _register_suspected(
+                plan,
+                counts,
+                TYPE_REPEAT,
+                row,
+                suspected_reason,
+                payload,
+                _existing_sentence_summary(n_text, linkage),
+                sentence_candidates,
+                decisions,
+            ):
                 continue
-        if not payload["audio_url"]:
-            counts.missing_audio += 1
-        counts.valid += 1
+        _count_valid(counts, payload)
         plan.creates[TYPE_REPEAT].append(
             _CreateItem(
                 line=row.line,
@@ -601,6 +608,51 @@ def _plan_repeats(
         planned_configs.setdefault((linkage, n_text), []).append(cfg)
         planned_payloads.setdefault((linkage, n_text), []).append(payload)
         planned_links.setdefault(n_text, set()).add(linkage)
+
+
+def _resolve_sentence_linkage(
+    plan: QuestionBankPlan,
+    payload: dict[str, Any],
+    ref: _Ref,
+    planned_titles: dict[str, int],
+    editor: User | None,
+) -> tuple[uuid.UUID | None, str | None, str, str | None]:
+    """解析听句复述的挂靠身份。
+
+    返回 (篇目 id, 本批计划篇目标题, 查重身份键, 错误原因)——错误原因非空
+    时该行按无效处理。降级独立句的身份键是空串，与库内独立句一致。
+    """
+    passage_id: uuid.UUID | None = None
+    planned_title: str | None = None
+    linkage = ""
+    if payload["passage_title"] is not None:
+        n_title = _norm_text(payload["passage_title"])
+        existing_hits = len(ref.root_passages_by_norm.get(n_title, []))
+        planned_hits = planned_titles.get(n_title, 0)
+        reason = None
+        if existing_hits + planned_hits > 1:
+            reason = "挂靠篇目匹配到多个同名篇目，请先重命名区分"
+        elif (
+            existing_hits == 1
+            and editor is not None
+            and not content_access.can_edit(
+                editor, ref.root_passages_by_norm[n_title][0].owner_id
+            )
+        ):
+            reason = (
+                "挂靠篇目由其他老师创建，不能往里添加句子；可去掉挂靠篇目作为独立题导入"
+            )
+        if reason is not None:
+            return passage_id, planned_title, linkage, reason
+        if existing_hits == 1:
+            passage_id = ref.root_passages_by_norm[n_title][0].id
+            linkage = _pid_key(passage_id)
+        elif planned_hits == 1:
+            planned_title = n_title
+            linkage = f"new:{n_title}"
+        else:
+            plan.standalone_sentence_count += 1
+    return passage_id, planned_title, linkage, None
 
 
 def _plan_questions(
@@ -637,46 +689,18 @@ def _plan_questions(
         return _summarize_payload(TYPE_QUESTION, payload) if payload else {}
 
     for row in rows:
-        try:
-            payload = _build_question(row.cells)
-            plan.parsed_digests.append(_row_digest(TYPE_QUESTION, row.line, payload))
-        except _RowError as exc:
-            counts.invalid += 1
-            plan.issues.append(_issue(TYPE_QUESTION, row.line, exc.reason))
-            plan.error_rows.append(
-                ErrorRow(
-                    qtype=TYPE_QUESTION,
-                    line=row.line,
-                    reason=exc.reason,
-                    cells=row.cells,
-                )
-            )
+        payload = _parse_row(plan, counts, TYPE_QUESTION, row, _build_question)
+        if payload is None:
             continue
         n_topic, n_text = _norm_text(payload["topic"]), _norm_text(payload["text"])
         # 主题解析（精确优先，歧义报错）必须先于查重：查重按解析后的
         # scenario 身份（scenario_id）比较，不按主题名——travel/Travel 是两个
         # 主题，各自持有同题是疑似重复（可勾选导入）而非完全重复；歧义行
         # 也不能因内容与库内相同而被查重静默跳过、漏掉歧义提示（评审 P2）
-        scenario = ref.scenarios_by_exact.get(payload["topic"])
-        if scenario is None:
-            candidates = ref.scenarios_by_norm.get(n_topic, [])
-            if len(candidates) > 1:
-                reason = (
-                    "主题匹配到多个大小写不同的同名主题，请使用与题库完全一致的主题名"
-                )
-                counts.invalid += 1
-                plan.issues.append(_issue(TYPE_QUESTION, row.line, reason))
-                plan.error_rows.append(
-                    ErrorRow(
-                        qtype=TYPE_QUESTION,
-                        line=row.line,
-                        reason=reason,
-                        cells=row.cells,
-                    )
-                )
-                continue
-            if len(candidates) == 1:
-                scenario = candidates[0]
+        scenario, scenario_reason = _resolve_question_scenario(payload, n_topic, ref)
+        if scenario_reason is not None:
+            _invalid_row(plan, counts, TYPE_QUESTION, row, scenario_reason)
+            continue
         # 身份键：已解析主题用其 id；新主题用规范化主题名作批内伪键
         owner = str(scenario.id) if scenario is not None else f"new:{n_topic}"
         cfg = (
@@ -704,7 +728,6 @@ def _plan_questions(
         elif other_owners or n_text in planned_texts:
             suspected_reason = "疑似重复：该题目已存在于其他主题"
         if suspected_reason is not None:
-            counts.suspected += 1
             question_candidate_rows = [
                 q
                 for (c_sid, c_text), qlist in ref.questions_by_key.items()
@@ -715,25 +738,22 @@ def _plan_questions(
                 (str(q.id), _summarize_question_model(q, ref))
                 for q in sorted(question_candidate_rows, key=lambda item: str(item.id))
             ]
-            plan.suspected_rows.append(
-                _suspected(
-                    plan,
-                    TYPE_QUESTION,
-                    row.line,
-                    suspected_reason,
-                    _summarize_payload(TYPE_QUESTION, payload),
-                    _existing_question_summary(scenario, owner, n_text),
-                    question_candidates,
-                )
-            )
-            if (TYPE_QUESTION, row.line) not in decisions:
+            if not _register_suspected(
+                plan,
+                counts,
+                TYPE_QUESTION,
+                row,
+                suspected_reason,
+                payload,
+                _existing_question_summary(scenario, owner, n_text),
+                question_candidates,
+                decisions,
+            ):
                 continue
         if scenario is None and n_topic not in new_topic_map:
             new_topic_map[n_topic] = payload["topic"]
             plan.new_topics.append(payload["topic"])
-        if not payload["audio_url"]:
-            counts.missing_audio += 1
-        counts.valid += 1
+        _count_valid(counts, payload)
         plan.creates[TYPE_QUESTION].append(
             _CreateItem(
                 line=row.line,
@@ -745,6 +765,23 @@ def _plan_questions(
         planned_exact.setdefault((owner, n_text), []).append(cfg)
         planned_payloads.setdefault((owner, n_text), []).append(payload)
         planned_texts.add(n_text)
+
+
+def _resolve_question_scenario(
+    payload: dict[str, Any], n_topic: str, ref: _Ref
+) -> tuple[Scenario | None, str | None]:
+    """解析情景问答主题：精确名优先，大小写不同的同名主题歧义报错。"""
+    scenario = ref.scenarios_by_exact.get(payload["topic"])
+    if scenario is None:
+        candidates = ref.scenarios_by_norm.get(n_topic, [])
+        if len(candidates) > 1:
+            return (
+                None,
+                "主题匹配到多个大小写不同的同名主题，请使用与题库完全一致的主题名",
+            )
+        if len(candidates) == 1:
+            scenario = candidates[0]
+    return scenario, None
 
 
 def _plan_instructions(
