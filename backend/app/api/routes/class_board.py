@@ -253,122 +253,146 @@ def _render_board_items(
     for attempt in attempts:
         latest[attempt.item_id] = attempt
 
-    def _status_for(
-        item_id: uuid.UUID, _latest: dict[uuid.UUID, Attempt] = latest
-    ) -> Attempt | None:
-        return _latest.get(item_id)
-
     # 朗读题位
     if include_reading:
-        for board_p in board_passages:
-            attempt = _status_for(board_p.id)
-            if attempt is None:
-                items.append(
-                    BoardItem(
-                        item_id=board_p.id,
-                        type=AttemptItemType.PASSAGE,
-                        status="missing",
-                    )
-                )
-            else:
-                if attempt.status in (AttemptStatus.QUEUED, AttemptStatus.SCORING):
-                    has_pending = True
-                if attempt.status == AttemptStatus.DONE and attempt.overall is not None:
-                    repeat_scores.append(attempt.overall)
-                items.append(
-                    BoardItem(
-                        item_id=board_p.id,
-                        type=AttemptItemType.PASSAGE,
-                        status=attempt.status,
-                        overall=attempt.overall,
-                        attempt_id=attempt.id,
-                        teacher_focus=attempt.teacher_focus,
-                    )
-                )
+        rendered, pending = _render_passage_items(board_passages, latest, repeat_scores)
+        items.extend(rendered)
+        has_pending = has_pending or pending
     # 复述题位
-    for s in board_repeat_sentences:
-        attempt = _status_for(s.id)
-        if attempt is None:
-            items.append(
-                BoardItem(item_id=s.id, type=AttemptItemType.REPEAT, status="missing")
-            )
-            continue
-        if attempt.status in (AttemptStatus.QUEUED, AttemptStatus.SCORING):
-            has_pending = True
-        if attempt.status == AttemptStatus.DONE and attempt.overall is not None:
-            repeat_scores.append(attempt.overall)
-        items.append(
-            BoardItem(
-                item_id=s.id,
-                type=AttemptItemType.REPEAT,
-                status=attempt.status,
-                overall=attempt.overall,
-                attempt_id=attempt.id,
-                teacher_focus=attempt.teacher_focus,
-            )
-        )
+    rendered, pending = _render_repeat_items(
+        board_repeat_sentences, latest, repeat_scores
+    )
+    items.extend(rendered)
+    has_pending = has_pending or pending
     # 问答题位
-    rendered_qids: set[uuid.UUID] = set()
-    for board_q in board_questions:
-        rendered_qids.add(board_q.id)
-        attempt = _status_for(board_q.id)
-        if attempt is None:
-            items.append(
-                BoardItem(
-                    item_id=board_q.id,
-                    type=AttemptItemType.QUESTION,
-                    status="missing",
-                )
-            )
-            continue
-        if attempt.status in (AttemptStatus.QUEUED, AttemptStatus.SCORING):
-            has_pending = True
-        if attempt.status == AttemptStatus.DONE and attempt.overall is not None:
-            question_scores.append(attempt.overall)
-        items.append(
-            BoardItem(
-                item_id=board_q.id,
-                type=AttemptItemType.QUESTION,
-                status=attempt.status,
-                overall=attempt.overall,
-                attempt_id=attempt.id,
-                teacher_focus=attempt.teacher_focus,
-            )
-        )
+    rendered, pending = _render_question_items(board_questions, latest, question_scores)
+    items.extend(rendered)
+    has_pending = has_pending or pending
     # 已做但不在骨架的问答题（换题产生的额外题）
+    rendered, pending = _render_extra_question_items(
+        latest, board_questions, question_scores
+    )
+    items.extend(rendered)
+    has_pending = has_pending or pending
+    # 说明题位：已读=done / 未读=missing；不进评分与提交统计
+    items.extend(_render_instruction_items(board_instructions, student_id, ack_keys))
+    return items, repeat_scores, question_scores, has_pending
+
+
+def _render_item(
+    item_id: uuid.UUID,
+    item_type: str,
+    attempt: Attempt | None,
+    scores: list[float],
+) -> tuple[BoardItem, bool]:
+    """渲染单个题位：无作答记 missing；返回是否待评分；DONE 且有分进对应分桶。"""
+    if attempt is None:
+        return BoardItem(item_id=item_id, type=item_type, status="missing"), False
+    pending = attempt.status in (AttemptStatus.QUEUED, AttemptStatus.SCORING)
+    if attempt.status == AttemptStatus.DONE and attempt.overall is not None:
+        scores.append(attempt.overall)
+    return (
+        BoardItem(
+            item_id=item_id,
+            type=item_type,
+            status=attempt.status,
+            overall=attempt.overall,
+            attempt_id=attempt.id,
+            teacher_focus=attempt.teacher_focus,
+        ),
+        pending,
+    )
+
+
+def _render_passage_items(
+    board_passages: list[Any],
+    latest: dict[uuid.UUID, Attempt],
+    scores: list[float],
+) -> tuple[list[BoardItem], bool]:
+    """朗读题位（是否渲染由调用方按题型勾选决定）。"""
+    items: list[BoardItem] = []
+    has_pending = False
+    for board_p in board_passages:
+        item, pending = _render_item(
+            board_p.id, AttemptItemType.PASSAGE, latest.get(board_p.id), scores
+        )
+        items.append(item)
+        has_pending = has_pending or pending
+    return items, has_pending
+
+
+def _render_repeat_items(
+    board_repeat_sentences: list[Any],
+    latest: dict[uuid.UUID, Attempt],
+    scores: list[float],
+) -> tuple[list[BoardItem], bool]:
+    """复述题位。"""
+    items: list[BoardItem] = []
+    has_pending = False
+    for s in board_repeat_sentences:
+        item, pending = _render_item(
+            s.id, AttemptItemType.REPEAT, latest.get(s.id), scores
+        )
+        items.append(item)
+        has_pending = has_pending or pending
+    return items, has_pending
+
+
+def _render_question_items(
+    board_questions: list[Any],
+    latest: dict[uuid.UUID, Attempt],
+    scores: list[float],
+) -> tuple[list[BoardItem], bool]:
+    """骨架内的问答题位。"""
+    items: list[BoardItem] = []
+    has_pending = False
+    for board_q in board_questions:
+        item, pending = _render_item(
+            board_q.id, AttemptItemType.QUESTION, latest.get(board_q.id), scores
+        )
+        items.append(item)
+        has_pending = has_pending or pending
+    return items, has_pending
+
+
+def _render_extra_question_items(
+    latest: dict[uuid.UUID, Attempt],
+    board_questions: list[Any],
+    scores: list[float],
+) -> tuple[list[BoardItem], bool]:
+    """已做但不在骨架的问答题（换题产生的额外题）。"""
+    skeleton_qids = {q.id for q in board_questions}
+    items: list[BoardItem] = []
+    has_pending = False
     for item_id, attempt in latest.items():
         if attempt.item_type != AttemptItemType.QUESTION:
             continue
-        if item_id in rendered_qids:
+        if item_id in skeleton_qids:
             continue
-        if attempt.status in (AttemptStatus.QUEUED, AttemptStatus.SCORING):
-            has_pending = True
-        if attempt.status == AttemptStatus.DONE and attempt.overall is not None:
-            question_scores.append(attempt.overall)
-        items.append(
-            BoardItem(
-                item_id=item_id,
-                type=AttemptItemType.QUESTION,
-                status=attempt.status,
-                overall=attempt.overall,
-                attempt_id=attempt.id,
-                teacher_focus=attempt.teacher_focus,
-            )
+        item, pending = _render_item(item_id, AttemptItemType.QUESTION, attempt, scores)
+        items.append(item)
+        has_pending = has_pending or pending
+    return items, has_pending
+
+
+def _render_instruction_items(
+    board_instructions: list[Any],
+    student_id: uuid.UUID,
+    ack_keys: set[tuple[uuid.UUID, uuid.UUID]],
+) -> list[BoardItem]:
+    """说明题位：已读=done / 未读=missing；不进评分与提交统计。"""
+    return [
+        BoardItem(
+            item_id=board_i.id,
+            type=AttemptItemType.INSTRUCTION,
+            status=(
+                AttemptStatus.DONE
+                if (student_id, board_i.id) in ack_keys
+                else "missing"
+            ),
         )
-    # 说明题位：已读=done / 未读=missing；不进评分与提交统计
-    for board_i in board_instructions:
-        items.append(
-            BoardItem(
-                item_id=board_i.id,
-                type=AttemptItemType.INSTRUCTION,
-                status=(
-                    AttemptStatus.DONE
-                    if (student_id, board_i.id) in ack_keys
-                    else "missing"
-                ),
-            )
-        )
-    return items, repeat_scores, question_scores, has_pending
+        for board_i in board_instructions
+    ]
 
 
 def _board_round_status(stat_items: list[BoardItem], has_pending: bool) -> str:
@@ -669,11 +693,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
     _require_classroom_teacher(classroom, current_user)
     today = _today_in_practice_tz()
 
-    current_exercise = (
-        session.get(ClassroomExercise, classroom.current_exercise_id)
-        if classroom.current_exercise_id is not None
-        else None
-    )
+    current_exercise = _current_exercise_of(session, classroom)
     assigned_unit_board = _assignment_unit(session, classroom)
     (
         board_passages,
@@ -686,34 +706,12 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
     ) = _resolve_board_skeleton(
         session, classroom, current_exercise, assigned_unit_board
     )
-    students = session.exec(
-        select(Student).where(Student.classroom_id == classroom.id)
-    ).all()
-    today_sessions = session.exec(
-        select(PracticeSession)
-        .where(
-            PracticeSession.classroom_id == classroom.id,
-            PracticeSession.session_date == today,
-            PracticeSession.mode == "daily",
-        )
-        .order_by(col(PracticeSession.created_at))
-    ).all()
-
-    student_sessions: dict[uuid.UUID, list[PracticeSession]] = {}
-    for s in today_sessions:
-        student_sessions.setdefault(s.student_id, []).append(s)
-    assigned_passage_id = board_passage.id if board_passage else None
-    session_by_student = _pick_student_sessions(
-        student_sessions, current_exercise, assigned_passage_id
+    students, session_by_student = _load_board_sessions(
+        session, classroom, today, current_exercise, board_passage
     )
-    _finalize_exam_sessions(session, session_by_student, current_exercise)
 
     # 7 日未练口径：加入超过 7 天且窗口内无任何作答（US-10 简化实现）
-    now = datetime.now(ZoneInfo(settings.PRACTICE_TZ))
-    week_ago = (now - timedelta(days=7)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    week_ago_utc = week_ago.astimezone(ZoneInfo("UTC"))
+    week_ago, week_ago_utc = _recent_active_window()
     student_ids = [s.id for s in students]
     recent_student_ids = _recent_active_student_ids(session, student_ids, week_ago_utc)
 
@@ -745,18 +743,7 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         )
     )
 
-    latest_engine = session.exec(
-        select(Attempt.engine)
-        .where(Attempt.status == AttemptStatus.DONE)
-        .order_by(col(Attempt.created_at).desc())
-        .limit(1)
-    ).first()
-
-    homework = (
-        session.get(ClassroomExercise, classroom.homework_exercise_id)
-        if classroom.homework_exercise_id is not None
-        else None
-    )
+    homework = _homework_exercise_of(session, classroom)
     return BoardData(
         classroom_code=classroom.code,
         classroom_name=classroom.name,
@@ -764,34 +751,9 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         teaching_goal=classroom.teaching_goal,
         class_size=classroom.class_size,
         assigned_items=classroom.assigned_items,
-        current_exercise=(
-            ClassroomExercisePublic(
-                id=current_exercise.id,
-                classroom_id=current_exercise.classroom_id,
-                version_no=current_exercise.version_no,
-                title=current_exercise.title,
-                status=current_exercise.status,
-                item_count=sum(
-                    i.get("type") != "instruction"
-                    for i in current_exercise.snapshot_items
-                ),
-                created_at=current_exercise.created_at,
-                published_at=current_exercise.published_at,
-                archived_at=current_exercise.archived_at,
-                is_exam=current_exercise.is_exam,
-                time_limit_minutes=current_exercise.time_limit_minutes,
-            )
-            if current_exercise is not None
-            else None
-        ),
-        engine=latest_engine or "mock",
-        assignment=(
-            AssignmentInfo(
-                unit_id=assigned_unit_board.id, title=assigned_unit_board.title
-            )
-            if assigned_unit_board
-            else None
-        ),
+        current_exercise=_exercise_public(current_exercise),
+        engine=_latest_scoring_engine(session),
+        assignment=_board_assignment(assigned_unit_board),
         submitted_count=submitted_count,
         completed_count=completed_count,
         pending_count=pending_count,
@@ -800,6 +762,100 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         homework_title=homework.title if homework is not None else None,
         homework_exercise_id=homework.id if homework is not None else None,
     )
+
+
+def _current_exercise_of(session: Any, classroom: Any) -> ClassroomExercise | None:
+    """当前课上发布版（未发布则 None）。"""
+    if classroom.current_exercise_id is None:
+        return None
+    return session.get(ClassroomExercise, classroom.current_exercise_id)
+
+
+def _homework_exercise_of(session: Any, classroom: Any) -> ClassroomExercise | None:
+    """当前课后作业版（未发布则 None）。"""
+    if classroom.homework_exercise_id is None:
+        return None
+    return session.get(ClassroomExercise, classroom.homework_exercise_id)
+
+
+def _load_board_sessions(
+    session: Any,
+    classroom: Any,
+    today: Any,
+    current_exercise: ClassroomExercise | None,
+    board_passage: Any,
+) -> tuple[list[Student], dict[uuid.UUID, PracticeSession]]:
+    """班内学生 + 今日 daily 会话，按学生分组并挑出本轮；顺带收尾过期考试会话。"""
+    students = session.exec(
+        select(Student).where(Student.classroom_id == classroom.id)
+    ).all()
+    today_sessions = session.exec(
+        select(PracticeSession)
+        .where(
+            PracticeSession.classroom_id == classroom.id,
+            PracticeSession.session_date == today,
+            PracticeSession.mode == "daily",
+        )
+        .order_by(col(PracticeSession.created_at))
+    ).all()
+
+    student_sessions: dict[uuid.UUID, list[PracticeSession]] = {}
+    for s in today_sessions:
+        student_sessions.setdefault(s.student_id, []).append(s)
+    assigned_passage_id = board_passage.id if board_passage else None
+    session_by_student = _pick_student_sessions(
+        student_sessions, current_exercise, assigned_passage_id
+    )
+    _finalize_exam_sessions(session, session_by_student, current_exercise)
+    return list(students), session_by_student
+
+
+def _recent_active_window() -> tuple[datetime, datetime]:
+    """7 日未练口径的窗口：本地零点往前 7 天，及其 UTC 对应。"""
+    now = datetime.now(ZoneInfo(settings.PRACTICE_TZ))
+    week_ago = (now - timedelta(days=7)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return week_ago, week_ago.astimezone(ZoneInfo("UTC"))
+
+
+def _exercise_public(
+    exercise: ClassroomExercise | None,
+) -> ClassroomExercisePublic | None:
+    """发布版对外摘要；item_count 不计说明题位。"""
+    if exercise is None:
+        return None
+    return ClassroomExercisePublic(
+        id=exercise.id,
+        classroom_id=exercise.classroom_id,
+        version_no=exercise.version_no,
+        title=exercise.title,
+        status=exercise.status,
+        item_count=sum(i.get("type") != "instruction" for i in exercise.snapshot_items),
+        created_at=exercise.created_at,
+        published_at=exercise.published_at,
+        archived_at=exercise.archived_at,
+        is_exam=exercise.is_exam,
+        time_limit_minutes=exercise.time_limit_minutes,
+    )
+
+
+def _latest_scoring_engine(session: Any) -> str:
+    """最近一次完成作答用的引擎（面板页脚展示），无作答则 mock。"""
+    latest_engine = session.exec(
+        select(Attempt.engine)
+        .where(Attempt.status == AttemptStatus.DONE)
+        .order_by(col(Attempt.created_at).desc())
+        .limit(1)
+    ).first()
+    return latest_engine or "mock"
+
+
+def _board_assignment(unit: Any) -> AssignmentInfo | None:
+    """当前单元指派摘要（无则 None）。"""
+    if unit is None:
+        return None
+    return AssignmentInfo(unit_id=unit.id, title=unit.title)
 
 
 @router.get("/{code}/weak-spots", response_model=ClassWeakSpots)
