@@ -145,129 +145,207 @@ def read_exercise_results(
     """
     classroom = _get_classroom(session, code)
     _require_classroom_teacher(classroom, current_user)
+    exercise = _get_owned_exercise(session, classroom, exercise_id)
+
+    students = _classroom_students(session, classroom.id)
+    sessions_by_student = (
+        _latest_sessions_by_student(session, classroom.id, exercise.id)
+        if students
+        else {}
+    )
+    latest_by_session = _latest_attempts_by_session(session, sessions_by_student)
+    _finalize_exam_sessions(session, exercise, sessions_by_student)
+    return _student_result_rows(
+        students, exercise, sessions_by_student, latest_by_session
+    )
+
+
+def _get_owned_exercise(
+    session: SessionDep, classroom: Any, exercise_id: uuid.UUID
+) -> ClassroomExercise:
+    """取本班这次的发布快照；不存在或跨班一律 404。"""
     exercise = session.get(ClassroomExercise, exercise_id)
     if exercise is None or exercise.classroom_id != classroom.id:
         raise HTTPException(status_code=404, detail="Exercise not found")
+    return exercise
 
-    students = session.exec(
-        select(Student)
-        .where(Student.classroom_id == classroom.id)
-        .order_by(col(Student.display_name))
-    ).all()
-    sessions_by_student: dict[uuid.UUID, PracticeSession] = {}
-    if students:
-        for ps in session.exec(
-            select(PracticeSession)
-            .where(
-                PracticeSession.classroom_id == classroom.id,
-                PracticeSession.assignment_id == exercise.id,
-            )
-            # 无排序时取「最新」靠存储顺序决定——多轮（跨天重发）场景下
-            # 教师端可能把第一轮的缺考/成绩当成最终结果（2026-10-12 评审）
-            .order_by(
-                col(PracticeSession.created_at), col(PracticeSession.session_date)
-            )
-        ).all():
-            # 同学生多轮（跨天重发）取最新
-            sessions_by_student[ps.student_id] = ps
 
-    # 一次批量预取所有会话的作答（替代逐学生查询的 N+1；按 created_at
-    # 顺序遍历让后到的作答覆盖 latest，与原逐生查询语义一致）
+def _classroom_students(session: SessionDep, classroom_id: uuid.UUID) -> list[Student]:
+    """该班全部学生（按显示名升序）。"""
+    return list(
+        session.exec(
+            select(Student)
+            .where(Student.classroom_id == classroom_id)
+            .order_by(col(Student.display_name))
+        ).all()
+    )
+
+
+def _latest_sessions_by_student(
+    session: SessionDep, classroom_id: uuid.UUID, assignment_id: uuid.UUID
+) -> dict[uuid.UUID, PracticeSession]:
+    """该班绑定此发布的学生会话（同学生多轮取最新）。"""
+    by_student: dict[uuid.UUID, PracticeSession] = {}
+    for ps in session.exec(
+        select(PracticeSession)
+        .where(
+            PracticeSession.classroom_id == classroom_id,
+            PracticeSession.assignment_id == assignment_id,
+        )
+        # 无排序时取「最新」靠存储顺序决定——多轮（跨天重发）场景下
+        # 教师端可能把第一轮的缺考/成绩当成最终结果（2026-10-12 评审）
+        .order_by(col(PracticeSession.created_at), col(PracticeSession.session_date))
+    ).all():
+        # 同学生多轮（跨天重发）取最新
+        by_student[ps.student_id] = ps
+    return by_student
+
+
+def _latest_attempts_by_session(
+    session: SessionDep, sessions_by_student: dict[uuid.UUID, PracticeSession]
+) -> dict[uuid.UUID, dict[uuid.UUID, Attempt]]:
+    """批量预取所有会话的作答（替代逐学生查询的 N+1）。
+
+    按 created_at 顺序遍历，让后到的作答覆盖 latest，与原逐生查询语义一致。
+    """
     latest_by_session: dict[uuid.UUID, dict[uuid.UUID, Attempt]] = {}
-    if sessions_by_student:
-        for attempt in session.exec(
-            select(Attempt)
-            .where(
-                col(Attempt.session_id).in_(  # type: ignore[operator]
-                    [ps.id for ps in sessions_by_student.values()]
-                )
-            )
-            .order_by(col(Attempt.created_at))
-        ).all():
-            sid = attempt.session_id
-            if sid is None:  # in_ 过滤后理论不可达，类型收窄用
-                continue
-            latest_by_session.setdefault(sid, {})[attempt.item_id] = attempt
-
-    # 模考批量终结：预取首答后纯计算、单次 commit（替代循环内逐会话
-    # finalize 的 N+1；2026-10-12 评审）
-    if exercise.is_exam:
-        started_sessions = [
-            ps for ps in sessions_by_student.values() if ps.exam_started_at is not None
-        ]
-        if started_sessions:
-            first_by_session = exam_service.first_submitted_by_session(
-                session, [ps.id for ps in started_sessions]
-            )
-            exam_service.finalize_if_expired_batch(
-                session, started_sessions, exercise, first_by_session
-            )
-
-    out: list[ExerciseStudentResult] = []
-    for student in students:
-        ps = sessions_by_student.get(student.id)
-        latest: dict[uuid.UUID, Attempt] = {}
-        has_pending = False
-        if ps is not None:
-            latest = latest_by_session.get(ps.id, {})
-            has_pending = any(
-                a.status in (AttemptStatus.QUEUED, AttemptStatus.SCORING)
-                for a in latest.values()
-            )
-        items: list[BoardItem] = []
-        done = 0
-        for spec in exercise.snapshot_items:
-            if spec.get("type") == "instruction":
-                continue
-            item_id = uuid.UUID(str(spec["id"]))
-            attempt = latest.get(item_id)
-            if attempt is None:
-                items.append(
-                    BoardItem(
-                        item_id=item_id,
-                        type=str(spec["type"]),
-                        status="missing",
-                    )
-                )
-                continue
-            if attempt.status == AttemptStatus.DONE:
-                done += 1
-            items.append(
-                BoardItem(
-                    item_id=item_id,
-                    type=str(spec["type"]),
-                    status=attempt.status,
-                    overall=attempt.overall,
-                    attempt_id=attempt.id,
-                    teacher_focus=attempt.teacher_focus,
-                )
-            )
-        exam_switches: int | None = None
-        exam_switch_seconds: int | None = None
-        exam_used: int | None = None
-        exam_ended_flag: bool | None = None
-        if exercise.is_exam and ps is not None and ps.exam_started_at is not None:
-            # 终结已在上方批量完成；这里只读字段
-            exam_switches = ps.tab_switch_count
-            exam_switch_seconds = ps.tab_switch_seconds
-            exam_used = exam_service.exam_time_used_seconds(ps)
-            exam_ended_flag = ps.exam_ended_at is not None
-        out.append(
-            ExerciseStudentResult(
-                student_id=student.id,
-                display_name=student.display_name,
-                suffix=student.suffix,
-                done_count=done,
-                total_count=len(items),
-                has_pending=has_pending,
-                exam_tab_switches=exam_switches,
-                exam_tab_switch_seconds=exam_switch_seconds,
-                exam_time_used_seconds=exam_used,
-                exam_ended=exam_ended_flag,
-                items=items,
+    if not sessions_by_student:
+        return latest_by_session
+    for attempt in session.exec(
+        select(Attempt)
+        .where(
+            col(Attempt.session_id).in_(  # type: ignore[operator]
+                [ps.id for ps in sessions_by_student.values()]
             )
         )
-    return out
+        .order_by(col(Attempt.created_at))
+    ).all():
+        sid = attempt.session_id
+        if sid is None:  # in_ 过滤后理论不可达，类型收窄用
+            continue
+        latest_by_session.setdefault(sid, {})[attempt.item_id] = attempt
+    return latest_by_session
+
+
+def _finalize_exam_sessions(
+    session: SessionDep,
+    exercise: ClassroomExercise,
+    sessions_by_student: dict[uuid.UUID, PracticeSession],
+) -> None:
+    """模考批量终结：预取首答后纯计算、单次 commit。
+
+    替代循环内逐会话 finalize 的 N+1（2026-10-12 评审）。
+    """
+    if not exercise.is_exam:
+        return
+    started_sessions = [
+        ps for ps in sessions_by_student.values() if ps.exam_started_at is not None
+    ]
+    if not started_sessions:
+        return
+    first_by_session = exam_service.first_submitted_by_session(
+        session, [ps.id for ps in started_sessions]
+    )
+    exam_service.finalize_if_expired_batch(
+        session, started_sessions, exercise, first_by_session
+    )
+
+
+def _student_result_rows(
+    students: list[Student],
+    exercise: ClassroomExercise,
+    sessions_by_student: dict[uuid.UUID, PracticeSession],
+    latest_by_session: dict[uuid.UUID, dict[uuid.UUID, Attempt]],
+) -> list[ExerciseStudentResult]:
+    """逐学生组装结果行（未开始的学生按快照题位全 missing）。"""
+    return [
+        _student_result(
+            student, exercise, sessions_by_student.get(student.id), latest_by_session
+        )
+        for student in students
+    ]
+
+
+def _student_result(
+    student: Student,
+    exercise: ClassroomExercise,
+    ps: PracticeSession | None,
+    latest_by_session: dict[uuid.UUID, dict[uuid.UUID, Attempt]],
+) -> ExerciseStudentResult:
+    """单个学生的结果行。"""
+    latest: dict[uuid.UUID, Attempt] = {}
+    has_pending = False
+    if ps is not None:
+        latest = latest_by_session.get(ps.id, {})
+        has_pending = any(
+            a.status in (AttemptStatus.QUEUED, AttemptStatus.SCORING)
+            for a in latest.values()
+        )
+    items, done = _snapshot_board_items(exercise, latest)
+    exam_switches, exam_switch_seconds, exam_used, exam_ended = _exam_meta(
+        ps, exercise.is_exam
+    )
+    return ExerciseStudentResult(
+        student_id=student.id,
+        display_name=student.display_name,
+        suffix=student.suffix,
+        done_count=done,
+        total_count=len(items),
+        has_pending=has_pending,
+        exam_tab_switches=exam_switches,
+        exam_tab_switch_seconds=exam_switch_seconds,
+        exam_time_used_seconds=exam_used,
+        exam_ended=exam_ended,
+        items=items,
+    )
+
+
+def _snapshot_board_items(
+    exercise: ClassroomExercise, latest: dict[uuid.UUID, Attempt]
+) -> tuple[list[BoardItem], int]:
+    """按发布快照题位生成结果格，返回 (items, 已完成数)。"""
+    items: list[BoardItem] = []
+    done = 0
+    for spec in exercise.snapshot_items:
+        if spec.get("type") == "instruction":
+            continue
+        item_id = uuid.UUID(str(spec["id"]))
+        attempt = latest.get(item_id)
+        if attempt is None:
+            items.append(
+                BoardItem(item_id=item_id, type=str(spec["type"]), status="missing")
+            )
+            continue
+        if attempt.status == AttemptStatus.DONE:
+            done += 1
+        items.append(
+            BoardItem(
+                item_id=item_id,
+                type=str(spec["type"]),
+                status=attempt.status,
+                overall=attempt.overall,
+                attempt_id=attempt.id,
+                teacher_focus=attempt.teacher_focus,
+            )
+        )
+    return items, done
+
+
+def _exam_meta(
+    ps: PracticeSession | None, is_exam: bool
+) -> tuple[int | None, int | None, int | None, bool | None]:
+    """模考监考字段；非考试或学生未开始一律全 None。
+
+    终结已在上方批量完成，这里只读字段。
+    """
+    if not (is_exam and ps is not None and ps.exam_started_at is not None):
+        return None, None, None, None
+    return (
+        ps.tab_switch_count,
+        ps.tab_switch_seconds,
+        exam_service.exam_time_used_seconds(ps),
+        ps.exam_ended_at is not None,
+    )
 
 
 def _consume_assignment_draft(
