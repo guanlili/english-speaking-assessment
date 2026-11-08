@@ -1,6 +1,7 @@
 """题库导入查重引用：库内参照快照（_Ref）与按归一键匹配存量行。"""
 
 import uuid
+from collections.abc import Collection
 from dataclasses import (
     dataclass,
 )
@@ -146,10 +147,46 @@ def _collect_candidates(
     session: Session, payloads: dict[str, list[dict[str, Any]]]
 ) -> _Candidates:
     """按归一键批量捞库内候选（标题/正文/主题/题干各走一次索引查询）。"""
-    passage_payloads = payloads[TYPE_PASSAGE]
-    repeat_payloads = payloads[TYPE_REPEAT]
-    question_payloads = payloads[TYPE_QUESTION]
-    instruction_payloads = payloads[TYPE_INSTRUCTION]
+    passage_ids, root_passages, units = _collect_passage_candidates(
+        session, payloads[TYPE_PASSAGE], payloads[TYPE_REPEAT]
+    )
+    scenario_ids, questions, scenarios = _collect_question_candidates(
+        session, payloads[TYPE_QUESTION]
+    )
+    sentences = _collect_sentences(session, payloads[TYPE_REPEAT])
+    instructions = _collect_instructions(session, payloads[TYPE_INSTRUCTION])
+    linked_ids = passage_ids | {
+        sentence.passage_id for sentence in sentences if sentence.passage_id is not None
+    }
+    return _Candidates(
+        passage_ids=passage_ids,
+        scenario_ids=scenario_ids,
+        units=units,
+        root_passages=root_passages,
+        scenarios=scenarios,
+        questions=questions,
+        sentences=sentences,
+        instructions=instructions,
+        passage_title_rows=_linked_passage_titles(session, linked_ids),
+    )
+
+
+def _load_rows(session: Session, model: Any, ids: Collection[uuid.UUID]) -> list[Any]:
+    """按 id 集合批量取行；空集合直接返回空列表（不发查询）。"""
+    if not ids:
+        return []
+    return list(session.exec(select(model).where(col(model.id).in_(ids))).all())
+
+
+def _collect_passage_candidates(
+    session: Session,
+    passage_payloads: list[dict[str, Any]],
+    repeat_payloads: list[dict[str, Any]],
+) -> tuple[set[uuid.UUID], list[Passage], list[Unit]]:
+    """篇目候选：标题与正文各匹配一次，再把候选挂靠的单元一并补齐。
+
+    单元必须补齐——已有候选挂靠哪个单元影响「完全重复」判定与指纹。
+    """
     titles = {_norm_text(p["title"]) for p in passage_payloads}
     titles.update(
         _norm_text(p["passage_title"]) for p in repeat_payloads if p["passage_title"]
@@ -180,20 +217,15 @@ def _collect_candidates(
     unit_ids = _matching_ids(
         session, Unit, Unit.title, Unit.dedup_title_hash, units_wanted
     )
-    root_passages = (
-        list(
-            session.exec(select(Passage).where(col(Passage.id).in_(passage_ids))).all()
-        )
-        if passage_ids
-        else []
-    )
-    # 已有候选挂靠的单元影响完全重复/指纹，必须把它们也补齐。
+    root_passages = _load_rows(session, Passage, passage_ids)
     unit_ids.extend(p.unit_id for p in root_passages if p.unit_id is not None)
-    units = (
-        list(session.exec(select(Unit).where(col(Unit.id).in_(unit_ids))).all())
-        if unit_ids
-        else []
-    )
+    return passage_ids, root_passages, _load_rows(session, Unit, unit_ids)
+
+
+def _collect_question_candidates(
+    session: Session, question_payloads: list[dict[str, Any]]
+) -> tuple[set[uuid.UUID], list[ScenarioQuestion], list[Scenario]]:
+    """题目候选：主题与题干各匹配一次，再把题目挂靠的主题补进候选。"""
     scenario_ids = set(
         _matching_ids(
             session,
@@ -210,27 +242,15 @@ def _collect_candidates(
         ScenarioQuestion.dedup_text_hash,
         {_norm_text(p["text"]) for p in question_payloads},
     )
-    questions = (
-        list(
-            session.exec(
-                select(ScenarioQuestion).where(
-                    col(ScenarioQuestion.id).in_(question_ids)
-                )
-            ).all()
-        )
-        if question_ids
-        else []
-    )
+    questions = _load_rows(session, ScenarioQuestion, question_ids)
     scenario_ids.update(q.scenario_id for q in questions)
-    scenarios = (
-        list(
-            session.exec(
-                select(Scenario).where(col(Scenario.id).in_(scenario_ids))
-            ).all()
-        )
-        if scenario_ids
-        else []
-    )
+    return scenario_ids, questions, _load_rows(session, Scenario, scenario_ids)
+
+
+def _collect_sentences(
+    session: Session, repeat_payloads: list[dict[str, Any]]
+) -> list[RepeatSentence]:
+    """复述句候选：按规范正文匹配。"""
     sentence_ids = _matching_ids(
         session,
         RepeatSentence,
@@ -238,15 +258,13 @@ def _collect_candidates(
         RepeatSentence.dedup_text_hash,
         {_norm_text(p["text"]) for p in repeat_payloads},
     )
-    sentences = (
-        list(
-            session.exec(
-                select(RepeatSentence).where(col(RepeatSentence.id).in_(sentence_ids))
-            ).all()
-        )
-        if sentence_ids
-        else []
-    )
+    return _load_rows(session, RepeatSentence, sentence_ids)
+
+
+def _collect_instructions(
+    session: Session, instruction_payloads: list[dict[str, Any]]
+) -> list[Instruction]:
+    """说明候选：按规范正文匹配。"""
     instruction_ids = _matching_ids(
         session,
         Instruction,
@@ -254,35 +272,19 @@ def _collect_candidates(
         Instruction.dedup_text_hash,
         {_norm_text(p["text"]) for p in instruction_payloads},
     )
-    instructions = (
-        list(
-            session.exec(
-                select(Instruction).where(col(Instruction.id).in_(instruction_ids))
-            ).all()
-        )
-        if instruction_ids
-        else []
-    )
-    linked_ids = passage_ids | {
-        s.passage_id for s in sentences if s.passage_id is not None
-    }
-    passage_title_rows = (
+    return _load_rows(session, Instruction, instruction_ids)
+
+
+def _linked_passage_titles(
+    session: Session, linked_ids: Collection[uuid.UUID]
+) -> list[tuple[uuid.UUID, str]]:
+    """取候选篇目（含被复述句引用的篇目）的 id + 标题，供疑似对照回指。"""
+    if not linked_ids:
+        return []
+    return list(
         session.exec(
             select(Passage.id, Passage.title).where(col(Passage.id).in_(linked_ids))
         ).all()
-        if linked_ids
-        else []
-    )
-    return _Candidates(
-        passage_ids=passage_ids,
-        scenario_ids=scenario_ids,
-        units=units,
-        root_passages=root_passages,
-        scenarios=scenarios,
-        questions=questions,
-        sentences=sentences,
-        instructions=instructions,
-        passage_title_rows=list(passage_title_rows),
     )
 
 
