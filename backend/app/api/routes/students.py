@@ -256,10 +256,99 @@ def import_students(
     result = StudentImportResult(
         created=0, merged=0, joined=0, already_enrolled=0, skipped=0, rows=[]
     )
-
-    # 批量预取，替代逐行点查（50 人名单原来要 ~100 次查询）；
     # 密码哈希昂贵（argon2 数十毫秒/次），同一默认密码只哈希一次
     hashed_default_password = get_password_hash(DEFAULT_STUDENT_PASSWORD)
+    existing_users, students_by_user, orphans_by_name, remaining_capacity = (
+        _load_import_candidates(session, classroom, body)
+    )
+
+    seen_usernames: set[str] = set()
+
+    for line in body.lines:
+        username = line.username.strip()
+        full_name = line.full_name.strip()
+        row = StudentImportRow(username=username, full_name=full_name)
+        existing_user = existing_users.get(username)
+        error = _validate_import_line(
+            username, full_name, existing_user, seen_usernames
+        )
+        if error is not None:
+            _skip_row(result, row, error)
+            continue
+        seen_usernames.add(username)
+
+        if existing_user is not None:
+            remaining_capacity = _import_existing_student(
+                session,
+                classroom,
+                result,
+                row,
+                existing_user,
+                full_name,
+                students_by_user,
+                orphans_by_name,
+                remaining_capacity,
+            )
+            continue
+
+        remaining_capacity = _create_imported_student(
+            session,
+            classroom,
+            result,
+            row,
+            username,
+            full_name,
+            hashed_default_password,
+            orphans_by_name,
+            remaining_capacity,
+        )
+
+    session.commit()
+    return result
+
+
+def _skip_row(result: StudentImportResult, row: StudentImportRow, error: str) -> None:
+    """记一条被阻断的行（带原因），返回给调用方继续下一行。"""
+    row.error = error
+    result.skipped += 1
+    result.rows.append(row)
+
+
+def _full_capacity_error(classroom: Classroom) -> str:
+    return f"班级人数已满（上限 {classroom.class_size} 人）"
+
+
+def _validate_import_line(
+    username: str,
+    full_name: str,
+    existing_user: User | None,
+    seen_usernames: set[str],
+) -> str | None:
+    """行级校验：返回阻断原因，None 表示可继续。"""
+    if not username:
+        return "学号为空"
+    if any(ch.isspace() for ch in username):
+        return "学号不能包含空格等空白字符"
+    if username in seen_usernames:
+        return "名单内学号重复"
+    if existing_user is not None:
+        # 多班归属：同账号同名即同一学生；异名仍视为冲突阻断
+        if existing_user.role != "student":
+            return "该学号已被非学生账号使用"
+        if existing_user.full_name and _normalized_name(
+            existing_user.full_name
+        ) != _normalized_name(full_name):
+            return "该学号已存在，但姓名与已有账号不一致，请核对名单"
+    return None
+
+
+def _load_import_candidates(
+    session: SessionDep, classroom: Classroom, body: StudentImportRequest
+) -> tuple[dict[str, User], dict[uuid.UUID, Student], dict[str, Student], int]:
+    """批量预取，替代逐行点查（50 人名单原来要 ~100 次查询）。
+
+    返回 (同租户候选账号, 班内已绑定档案, 班内孤儿档案按姓名索引, 容量余量)。
+    """
     wanted_usernames = {line.username.strip() for line in body.lines}
     # 多租户守卫（B1）：候选账号仅限目标课堂同租户——他校同学号账号
     # 不进入「已有账号加入本班」候选（V1.0 FR-03；单租户窗口行为不变）
@@ -282,7 +371,7 @@ def import_students(
         .where(Student.classroom_id == classroom.id)  # type: ignore[arg-type]
         .order_by(col(Student.suffix).is_not(None), col(Student.suffix))
     ).all()
-    students_by_user = {
+    students_by_user: dict[uuid.UUID, Student] = {
         s.user_id: s for s in classroom_students if s.user_id is not None
     }
     orphans_by_name: dict[str, Student] = {}
@@ -291,142 +380,133 @@ def import_students(
             orphans_by_name.setdefault(legacy.display_name, legacy)
     # 容量余量 = class_size - 班内现有档案数；只有新建档案才占位
     remaining_capacity = classroom.class_size - len(classroom_students)
+    return existing_users, students_by_user, orphans_by_name, remaining_capacity
 
-    seen_usernames: set[str] = set()
 
-    for line in body.lines:
-        username = line.username.strip()
-        full_name = line.full_name.strip()
-        row = StudentImportRow(username=username, full_name=full_name)
-        existing_user = existing_users.get(username)
-        if not username:
-            row.error = "学号为空"
-        elif any(ch.isspace() for ch in username):
-            row.error = "学号不能包含空格等空白字符"
-        elif username in seen_usernames:
-            row.error = "名单内学号重复"
-        elif existing_user is not None:
-            # 多班归属：同账号同名即同一学生；异名仍视为冲突阻断
-            if existing_user.role != "student":
-                row.error = "该学号已被非学生账号使用"
-            elif existing_user.full_name and _normalized_name(
-                existing_user.full_name
-            ) != _normalized_name(full_name):
-                row.error = "该学号已存在，但姓名与已有账号不一致，请核对名单"
-        if row.error is not None:
-            result.skipped += 1
-            result.rows.append(row)
-            continue
-        seen_usernames.add(username)
-
-        if existing_user is not None:
-            enrolled = students_by_user.get(existing_user.id)
-            if enrolled is not None:
-                row.status = "already_enrolled"
-                row.student_id = enrolled.id
-                result.already_enrolled += 1
-                result.rows.append(row)
-                continue
-            # 孤儿同名档案优先找回（保住历史）；否则常规入班，容量由 crud 兜底
-            orphan = orphans_by_name.pop(full_name, None) if full_name else None
-            if orphan is None and remaining_capacity <= 0:
-                row.error = f"班级人数已满（上限 {classroom.class_size} 人）"
-                result.skipped += 1
-                result.rows.append(row)
-                continue
-            try:
-                student = (
-                    crud.join_classroom(
-                        session=session,
-                        classroom=classroom,
-                        user=existing_user,
-                        display_name=full_name,
-                    )
-                    if orphan is None
-                    else orphan
-                )
-            except crud.CrossTenantJoinError:
-                # 他校同号账号已不进候选，正常到不了这里；守卫兜底
-                row.error = "该学号属于其他学校账号，无法加入本班"
-                result.skipped += 1
-                result.rows.append(row)
-                continue
-            except ClassroomFullError:
-                row.error = f"班级人数已满（上限 {classroom.class_size} 人）"
-                result.skipped += 1
-                result.rows.append(row)
-                continue
-            if orphan is not None:
-                orphan.user_id = existing_user.id
-                session.add(orphan)
-            else:
-                remaining_capacity -= 1
-            # 账号缺姓名时以名单为准补全（不影响密码/登录）
-            if not existing_user.full_name:
-                existing_user.full_name = full_name
-                session.add(existing_user)
-            row.status = "joined_existing"
-            row.student_id = student.id
-            result.joined += 1
-            result.rows.append(row)
-            continue
-
-        # —— 新账号路径 ——
-        legacy = orphans_by_name.get(full_name) if full_name else None
-        if legacy is None and remaining_capacity <= 0:
-            row.error = f"班级人数已满（上限 {classroom.class_size} 人）"
-            result.skipped += 1
-            result.rows.append(row)
-            continue
-        user = User(
-            email=None,
-            is_active=True,
-            full_name=full_name or None,
-            role="student",
-            username=username,
-            must_change_password=False,
-            hashed_password=hashed_default_password,
+def _enroll_or_skip(
+    session: SessionDep,
+    classroom: Classroom,
+    result: StudentImportResult,
+    row: StudentImportRow,
+    user: User,
+    display_name: str,
+) -> Student | None:
+    """建档案入班；失败则记一行阻断并返回 None。"""
+    try:
+        return crud.join_classroom(
+            session=session,
+            classroom=classroom,
+            user=user,
+            display_name=display_name,
         )
-        session.add(user)
-        session.flush()  # 拿 user.id 供档案绑定/查询
+    except crud.CrossTenantJoinError:
+        # 他校同号账号已不进候选，正常到不了这里；守卫兜底
+        _skip_row(result, row, "该学号属于其他学校账号，无法加入本班")
+        return None
+    except ClassroomFullError:
+        _skip_row(result, row, _full_capacity_error(classroom))
+        return None
 
-        # 历史匿名档案匹配：同课堂同名（优先无后缀）→ 绑定；否则新建档案。
-        # 前一行绑定后从预取表摘除，同名不同学号不会重复绑同一档案
-        if legacy is not None:
-            orphans_by_name.pop(full_name)
-            legacy.user_id = user.id
-            session.add(legacy)
-            student = legacy
-            row.merged_existing = True
-            result.merged += 1
-        else:
-            try:
-                student = crud.join_classroom(
-                    session=session,
-                    classroom=classroom,
-                    user=user,
-                    display_name=full_name or username,
-                )
-            except crud.CrossTenantJoinError:
-                # 他校同号账号已不进候选，正常到不了这里；守卫兜底
-                row.error = "该学号属于其他学校账号，无法加入本班"
-                result.skipped += 1
-                result.rows.append(row)
-                continue
-            except ClassroomFullError:
-                row.error = f"班级人数已满（上限 {classroom.class_size} 人）"
-                result.skipped += 1
-                result.rows.append(row)
-                continue
-            remaining_capacity -= 1
-            result.created += 1
-        row.status = "merged" if legacy is not None else "created"
-        row.initial_password = DEFAULT_STUDENT_PASSWORD
-        row.student_id = student.id
+
+def _import_existing_student(
+    session: SessionDep,
+    classroom: Classroom,
+    result: StudentImportResult,
+    row: StudentImportRow,
+    existing_user: User,
+    full_name: str,
+    students_by_user: dict[uuid.UUID, Student],
+    orphans_by_name: dict[str, Student],
+    remaining_capacity: int,
+) -> int:
+    """已存在账号（他班导入过）入班路径；返回更新后的容量余量。"""
+    enrolled = students_by_user.get(existing_user.id)
+    if enrolled is not None:
+        row.status = "already_enrolled"
+        row.student_id = enrolled.id
+        result.already_enrolled += 1
         result.rows.append(row)
+        return remaining_capacity
+    # 孤儿同名档案优先找回（保住历史）；否则常规入班，容量由 crud 兜底
+    orphan = orphans_by_name.pop(full_name, None) if full_name else None
+    if orphan is None and remaining_capacity <= 0:
+        _skip_row(result, row, _full_capacity_error(classroom))
+        return remaining_capacity
+    if orphan is None:
+        student = _enroll_or_skip(
+            session, classroom, result, row, existing_user, full_name
+        )
+        if student is None:
+            return remaining_capacity
+        new_capacity = remaining_capacity - 1
+    else:
+        student = orphan
+        new_capacity = remaining_capacity
+    if orphan is not None:
+        orphan.user_id = existing_user.id
+        session.add(orphan)
+    # 账号缺姓名时以名单为准补全（不影响密码/登录）
+    if not existing_user.full_name:
+        existing_user.full_name = full_name
+        session.add(existing_user)
+    row.status = "joined_existing"
+    row.student_id = student.id
+    result.joined += 1
+    result.rows.append(row)
+    return new_capacity
 
-    session.commit()
-    return result
+
+def _create_imported_student(
+    session: SessionDep,
+    classroom: Classroom,
+    result: StudentImportResult,
+    row: StudentImportRow,
+    username: str,
+    full_name: str,
+    hashed_default_password: str,
+    orphans_by_name: dict[str, Student],
+    remaining_capacity: int,
+) -> int:
+    """新账号路径：建账号 + 建档案（或绑定同名历史匿名档案）；返回容量余量。"""
+    legacy = orphans_by_name.get(full_name) if full_name else None
+    if legacy is None and remaining_capacity <= 0:
+        _skip_row(result, row, _full_capacity_error(classroom))
+        return remaining_capacity
+    user = User(
+        email=None,
+        is_active=True,
+        full_name=full_name or None,
+        role="student",
+        username=username,
+        must_change_password=False,
+        hashed_password=hashed_default_password,
+    )
+    session.add(user)
+    session.flush()  # 拿 user.id 供档案绑定/查询
+
+    # 历史匿名档案匹配：同课堂同名（优先无后缀）→ 绑定；否则新建档案。
+    # 前一行绑定后从预取表摘除，同名不同学号不会重复绑同一档案
+    if legacy is not None:
+        orphans_by_name.pop(full_name)
+        legacy.user_id = user.id
+        session.add(legacy)
+        student = legacy
+        new_capacity = remaining_capacity
+        row.merged_existing = True
+        result.merged += 1
+    else:
+        student = _enroll_or_skip(
+            session, classroom, result, row, user, full_name or username
+        )
+        if student is None:
+            return remaining_capacity
+        new_capacity = remaining_capacity - 1
+        result.created += 1
+    row.status = "merged" if legacy is not None else "created"
+    row.initial_password = DEFAULT_STUDENT_PASSWORD
+    row.student_id = student.id
+    result.rows.append(row)
+    return new_capacity
 
 
 @router.get("", response_model=list[StudentAccountOut])
