@@ -300,47 +300,7 @@ def set_assignment(
     classroom = _get_classroom(session, code)
     _require_classroom_teacher(classroom, current_user)
     if body.slot == "homework":
-        if body.items is None:
-            raise HTTPException(status_code=422, detail="课后作业只接受题目列表")
-        if body.is_exam or body.automated_exam:
-            raise HTTPException(status_code=422, detail="课后作业不能开启模考")
-        _consume_assignment_draft(session, classroom, current_user.id, body)
-        if not body.items:
-            exercise_service.archive_homework_exercise(session, classroom)
-            session.add(classroom)
-            session.commit()
-            return None
-        exercise_service.validate_assignment_items(
-            session, body.items, current_user.tenant_id
-        )
-        homework_snapshots: list[dict[str, object]] = []
-        for item in body.items:
-            if item.type == AttemptItemType.PASSAGE:
-                passage = session.get(Passage, item.id)
-                if passage is None:
-                    raise HTTPException(
-                        status_code=404, detail="朗读篇目不存在或已停用"
-                    )
-                homework_snapshots.extend(reading.expand_reading_items(passage))
-            else:
-                homework_snapshots.append(
-                    exercise_service.build_snapshot_item(
-                        session, item.type, item.id, current_user.tenant_id
-                    )
-                )
-        exercise_service.publish_exercise(
-            session=session,
-            classroom=classroom,
-            created_by=current_user.id,
-            snapshots=homework_snapshots,
-            title=body.title,
-            assignment_items=[
-                {"type": str(item.type), "id": str(item.id)} for item in body.items
-            ],
-            slot="homework",
-        )
-        session.commit()
-        return None
+        return _apply_homework_assignment(session, classroom, body, current_user)
 
     _consume_assignment_draft(session, classroom, current_user.id, body)
     # 题型勾选：显式传值才更新（None=不动）。课后作业请求不到这里。
@@ -352,52 +312,187 @@ def set_assignment(
         classroom.assign_qa = body.assign_qa
 
     if body.items is not None:
-        if body.items:
-            exercise_service.validate_assignment_items(
-                session, body.items, current_user.tenant_id
+        return _apply_item_assignment(session, classroom, body, current_user)
+    return _apply_unit_assignment(session, classroom, body, current_user)
+
+
+def _snapshots_from_items(
+    session: SessionDep, items: list[AssignmentItemIn], tenant_id: Any
+) -> list[dict[str, object]]:
+    """按题列表展开发布快照。
+
+    拆句篇目展开成逐句快照（validate 已确认行存在且启用）；这里的
+    `passage is None` 是 validate 之后并发删除的兜底。
+    """
+    snapshots: list[dict[str, object]] = []
+    for item in items:
+        if item.type == AttemptItemType.PASSAGE:
+            passage = session.get(Passage, item.id)
+            if passage is None:
+                raise HTTPException(status_code=404, detail="朗读篇目不存在或已停用")
+            snapshots.extend(reading.expand_reading_items(passage))
+        else:
+            snapshots.append(
+                exercise_service.build_snapshot_item(
+                    session, item.type, item.id, tenant_id
+                )
             )
-            snapshots: list[dict[str, object]] = []
-            for item in body.items:
-                if item.type == AttemptItemType.PASSAGE:
-                    # 拆句篇目展开成逐句快照（validate 已确认行存在且启用）
-                    passage = session.get(Passage, item.id)
-                    if passage is None:  # validate 之后并发删除的兜底
-                        raise HTTPException(
-                            status_code=404, detail="朗读篇目不存在或已停用"
-                        )
-                    snapshots.extend(reading.expand_reading_items(passage))
-                else:
-                    snapshots.append(
-                        exercise_service.build_snapshot_item(
-                            session, item.type, item.id, current_user.tenant_id
-                        )
-                    )
-            exercise_service.publish_exercise(
-                session=session,
-                classroom=classroom,
-                created_by=current_user.id,
-                snapshots=snapshots,
-                title=body.title,
-                automated_exam=body.automated_exam,
-                is_exam=body.is_exam,
-                time_limit_minutes=body.time_limit_minutes,
-                # 指派镜像只存真实题目 ID（合成句子 ID 只进快照）
-                assignment_items=[
-                    {"type": str(item.type), "id": str(item.id)} for item in body.items
-                ],
-            )
-            classroom.current_unit_id = None  # 按题模式取代单元指派
-            # assigned_items 保留（_publish_exercise 已写入）：读取优先快照，
-            # 换题用它排除已指派题目、从情景题库取未做过的新题
-            session.commit()
-            return None
+    return snapshots
+
+
+def _apply_homework_assignment(
+    session: SessionDep,
+    classroom: Any,
+    body: AssignmentRequest,
+    current_user: CurrentUser,
+) -> None:
+    """课后作业指派：不替换课上发布；清空则归档作业版。"""
+    if body.items is None:
+        raise HTTPException(status_code=422, detail="课后作业只接受题目列表")
+    if body.is_exam or body.automated_exam:
+        raise HTTPException(status_code=422, detail="课后作业不能开启模考")
+    _consume_assignment_draft(session, classroom, current_user.id, body)
+    if not body.items:
+        exercise_service.archive_homework_exercise(session, classroom)
+        session.add(classroom)
+        session.commit()
+        return None
+    exercise_service.validate_assignment_items(
+        session, body.items, current_user.tenant_id
+    )
+    homework_snapshots = _snapshots_from_items(
+        session, body.items, current_user.tenant_id
+    )
+    exercise_service.publish_exercise(
+        session=session,
+        classroom=classroom,
+        created_by=current_user.id,
+        snapshots=homework_snapshots,
+        title=body.title,
+        assignment_items=[
+            {"type": str(item.type), "id": str(item.id)} for item in body.items
+        ],
+        slot="homework",
+    )
+    session.commit()
+    return None
+
+
+def _apply_item_assignment(
+    session: SessionDep,
+    classroom: Any,
+    body: AssignmentRequest,
+    current_user: CurrentUser,
+) -> None:
+    """按题指派：非空列表取代单元指派；空列表清除回个人路径。"""
+    if not body.items:
         exercise_service.archive_current_exercise(session, classroom)
         classroom.assigned_items = None
         classroom.current_unit_id = None
         session.add(classroom)
         session.commit()
         return None
+    exercise_service.validate_assignment_items(
+        session, body.items, current_user.tenant_id
+    )
+    snapshots = _snapshots_from_items(session, body.items, current_user.tenant_id)
+    exercise_service.publish_exercise(
+        session=session,
+        classroom=classroom,
+        created_by=current_user.id,
+        snapshots=snapshots,
+        title=body.title,
+        automated_exam=body.automated_exam,
+        is_exam=body.is_exam,
+        time_limit_minutes=body.time_limit_minutes,
+        # 指派镜像只存真实题目 ID（合成句子 ID 只进快照）
+        assignment_items=[
+            {"type": str(item.type), "id": str(item.id)} for item in body.items
+        ],
+    )
+    classroom.current_unit_id = None  # 按题模式取代单元指派
+    # assigned_items 保留（_publish_exercise 已写入）：读取优先快照，
+    # 换题用它排除已指派题目、从情景题库取未做过的新题
+    session.commit()
+    return None
 
+
+def _resolve_unit(session: SessionDep, unit_id: Any, tenant_id: Any) -> Unit:
+    """按 id 取本租户的启用单元。"""
+    unit = session.get(Unit, unit_id)
+    if unit is None or not unit.is_active or unit.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Unit not found")
+    return unit
+
+
+def _active_unit_passages(session: SessionDep, unit: Unit) -> list[Passage]:
+    """单元内启用篇目（按创建时间），空则 422 不阻断其它单元发布。"""
+    passages = list(
+        session.exec(
+            select(Passage)
+            .where(Passage.unit_id == unit.id, Passage.is_active)
+            .order_by(col(Passage.created_at))
+        ).all()
+    )
+    if not passages:
+        raise HTTPException(status_code=422, detail="该单元没有启用篇目，不能发布")
+    return passages
+
+
+def _unit_snapshots(
+    session: SessionDep,
+    classroom: Any,
+    passages: list[Passage],
+    tenant_id: Any,
+) -> list[dict[str, object]]:
+    """按单元与题型勾选组装快照：朗读/复述/问答各自独立可关。"""
+    snapshots: list[dict[str, object]] = []
+    if classroom.assign_reading is True:
+        for p in passages:
+            # 拆句篇目逐句展开，未拆分整篇一条（与按题发布同口径）
+            snapshots.extend(reading.expand_reading_items(p))
+    if classroom.assign_repeat is not False:
+        unit_sentences_by_passage = _repeat_sentences_of_passages(session, passages)
+        for passage in passages:
+            snapshots.extend(
+                exercise_service.build_snapshot_item(
+                    session,
+                    AttemptItemType.REPEAT,
+                    sentence.id,
+                    tenant_id,
+                )
+                for sentence in unit_sentences_by_passage.get(passage.id, [])
+            )
+    if classroom.assign_qa is not False:
+        # 主题未配情景时跳过问答快照，朗读/复述照常发布（不阻断发布）
+        scenario = _scenario_for_topic(
+            session, passages[0].topic, passages[0].tenant_id
+        )
+        if scenario is not None:
+            questions = session.exec(
+                select(ScenarioQuestion)
+                .where(ScenarioQuestion.scenario_id == scenario.id)
+                .order_by(col(ScenarioQuestion.order_index))
+            ).all()
+            snapshots.extend(
+                exercise_service.build_snapshot_item(
+                    session,
+                    AttemptItemType.QUESTION,
+                    question.id,
+                    tenant_id,
+                )
+                for question in questions
+            )
+    return snapshots
+
+
+def _apply_unit_assignment(
+    session: SessionDep,
+    classroom: Any,
+    body: AssignmentRequest,
+    current_user: CurrentUser,
+) -> Any:
+    """单元指派（兼容旧流）；未动 unit_id 时只落题型勾选并回显当前单元。"""
     body_update = body.model_dump(exclude_unset=True)
     if "unit_id" in body_update:
         if body_update["unit_id"] is None:
@@ -407,59 +502,11 @@ def set_assignment(
             session.add(classroom)
             session.commit()
             return None
-        unit = session.get(Unit, body_update["unit_id"])
-        if (
-            unit is None
-            or not unit.is_active
-            or unit.tenant_id != current_user.tenant_id
-        ):
-            raise HTTPException(status_code=404, detail="Unit not found")
-        passages = list(
-            session.exec(
-                select(Passage)
-                .where(Passage.unit_id == unit.id, Passage.is_active)
-                .order_by(col(Passage.created_at))
-            ).all()
+        unit = _resolve_unit(session, body_update["unit_id"], current_user.tenant_id)
+        passages = _active_unit_passages(session, unit)
+        snapshots = _unit_snapshots(
+            session, classroom, passages, current_user.tenant_id
         )
-        if not passages:
-            raise HTTPException(status_code=422, detail="该单元没有启用篇目，不能发布")
-        snapshots: list[dict[str, object]] = []
-        if classroom.assign_reading is True:
-            for p in passages:
-                # 拆句篇目逐句展开，未拆分整篇一条（与按题发布同口径）
-                snapshots.extend(reading.expand_reading_items(p))
-        if classroom.assign_repeat is not False:
-            unit_sentences_by_passage = _repeat_sentences_of_passages(session, passages)
-            for passage in passages:
-                snapshots.extend(
-                    exercise_service.build_snapshot_item(
-                        session,
-                        AttemptItemType.REPEAT,
-                        sentence.id,
-                        current_user.tenant_id,
-                    )
-                    for sentence in unit_sentences_by_passage.get(passage.id, [])
-                )
-        if classroom.assign_qa is not False:
-            # 主题未配情景时跳过问答快照，朗读/复述照常发布（不阻断发布）
-            scenario = _scenario_for_topic(
-                session, passages[0].topic, passages[0].tenant_id
-            )
-            if scenario is not None:
-                questions = session.exec(
-                    select(ScenarioQuestion)
-                    .where(ScenarioQuestion.scenario_id == scenario.id)
-                    .order_by(col(ScenarioQuestion.order_index))
-                ).all()
-                snapshots.extend(
-                    exercise_service.build_snapshot_item(
-                        session,
-                        AttemptItemType.QUESTION,
-                        question.id,
-                        current_user.tenant_id,
-                    )
-                    for question in questions
-                )
         exercise_service.publish_exercise(
             session=session,
             classroom=classroom,
