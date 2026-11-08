@@ -25,6 +25,7 @@ from app.api.routes.classes import (
 )
 from app.models import (
     User,
+    VocabularyAnswer,
     VocabularyAssignment,
     VocabularyAssignmentPublic,
     VocabularyBook,
@@ -33,6 +34,7 @@ from app.models import (
     VocabularyQuizState,
     VocabularyRoundSummaryRow,
     VocabularySession,
+    VocabularyStudentAssignment,
     VocabularyTodayItem,
     VocabularyTodayPlan,
     VocabularyWord,
@@ -250,24 +252,11 @@ def _today_plan_payload(
     assignments = vocab_service.student_assignment_rows(
         session, classroom_id, student_id
     )
-    if assignment_id is not None:
-        # 显式指定任务：不存在/非本班/不在名单一律 404，不静默回落
-        assignment = session.get(VocabularyAssignment, assignment_id)
-        if (
-            assignment is None
-            or assignment.classroom_id != classroom_id
-            or not vocab_service.student_targeted(session, assignment, student_id)
-        ):
-            raise HTTPException(status_code=404, detail="词汇任务不存在")
-    else:
-        assignment = vocab_service.focused_assignment(session, classroom_id, student_id)
-        if assignment is None or not vocab_service.student_targeted(
-            session, assignment, student_id
-        ):
-            return VocabularyTodayPlan(
-                assignments=assignments,
-                wrong_word_count=vocab_service.wrong_word_count(session, student_id),
-            )
+    assignment = _resolve_today_assignment(
+        session, classroom_id, student_id, assignment_id, assignments
+    )
+    if isinstance(assignment, VocabularyTodayPlan):
+        return assignment
 
     is_quiz = assignment.mode == "quiz"
     if is_quiz:
@@ -277,89 +266,12 @@ def _today_plan_payload(
     # 轮次清单一次查询复用：展示轮与可练轮都从同一份 rounds 挑选
     # （原实现同参查 3 次：清单 + 展示轮 + 可练轮）
     rounds = _student_rounds(session, assignment.id, student_id)
-    vocab_session = _focused_vocab_session(
-        session, assignment.id, student_id, round_no=round_no, rounds=rounds
+    vocab_session, current_round = _focused_rounds_and_session(
+        session, assignment.id, student_id, round_no, rounds
     )
-    if round_no is not None and vocab_session is None:
-        # 显式回看不存在的轮次（含他学生的轮次）：404，不回落
-        raise HTTPException(status_code=404, detail="轮次不存在")
-    # 当前可练轮独立于展示轮计算：未结束轮优先，否则最新轮
-    practice_session = _focused_vocab_session(
-        session, assignment.id, student_id, rounds=rounds
+    items, answered_count, correct_first = _build_today_items(
+        session, assignment, vocab_session, rounds, is_quiz
     )
-    current_round = practice_session.round_no if practice_session is not None else None
-    # 答案可见规则：测验在答案公布前，已答题也不揭示拼写与对错
-    answers_visible = not (is_quiz and assignment.answers_published_at is None)
-    # 测验未开始（无答卷）只下发规则，不下发题面内容
-    quiz_rounds = (
-        [r for r in rounds if r.quiz_started_at is not None] if is_quiz else rounds
-    )
-    grouped = (
-        vocab_service.answers_by_item(session, vocab_session.id)
-        if vocab_session is not None and (not is_quiz or quiz_rounds)
-        else {}
-    )
-    items: list[VocabularyTodayItem] = []
-    answered_count = 0
-    correct_first = 0
-    for idx, snapshot_item in enumerate(assignment.snapshot_items):
-        attempts = grouped.get(idx, [])
-        first = next((a for a in attempts if a.attempt_no == 1), None)
-        if first is not None:
-            answered_count += 1
-            if first.is_correct:
-                correct_first += 1
-        # 听音口径（设计文档 §5）：任务含 audio 且该词有稳定标准音；
-        # 已作答的词拼写已揭示，可退回设备朗读练耳。其余一律看义拼词，
-        # 避免播音按钮无内容可放。
-        # 测验更严：设备合成语音不作题源——听音仅限有标准音的词
-        # （无论是否已答，避免借设备朗读泄露未公布答案）。
-        if is_quiz:
-            audio_allowed = "audio" in (assignment.prompt_types or []) and (
-                snapshot_item.get("audio_url") is not None
-            )
-        else:
-            audio_allowed = "audio" in (assignment.prompt_types or []) and (
-                snapshot_item.get("audio_url") is not None or first is not None
-            )
-        prompt_type = "audio" if audio_allowed else "meaning"
-        items.append(
-            VocabularyTodayItem(
-                item_index=idx,
-                prompt_type=prompt_type,
-                part_of_speech=(
-                    str(snapshot_item["part_of_speech"])
-                    if snapshot_item.get("part_of_speech") is not None
-                    else None
-                ),
-                meaning_zh=str(snapshot_item["meaning_zh"]),
-                meaning_en=(
-                    str(snapshot_item["meaning_en"])
-                    if snapshot_item.get("meaning_en") is not None
-                    else None
-                ),
-                audio_url=(
-                    str(snapshot_item["audio_url"])
-                    if snapshot_item.get("audio_url") is not None
-                    else None
-                ),
-                # 未作答不透露拼写（防看 API 直接抄）；测验答案未公布时
-                # 已答题同样不揭示拼写与对错
-                headword=(first.headword if first is not None else None)
-                if answers_visible
-                else None,
-                answered=first is not None,
-                is_correct=(first.is_correct if first is not None else None)
-                if answers_visible
-                else None,
-                attempt_count=len(attempts),
-            )
-        )
-    if is_quiz and not quiz_rounds:
-        # 规则页：未开始不下发题面
-        items = []
-        answered_count = 0
-        correct_first = 0
     grades_masked = is_quiz and assignment.grades_published_at is None
     return VocabularyTodayPlan(
         assignment=_assignment_public(assignment),
@@ -378,6 +290,190 @@ def _today_plan_payload(
         rounds=_round_summary_rows(session, rounds, masked=grades_masked),
         assignments=assignments,
         wrong_word_count=vocab_service.wrong_word_count(session, student_id),
+    )
+
+
+def _resolve_today_assignment(
+    session: Session,
+    classroom_id: uuid.UUID,
+    student_id: uuid.UUID,
+    assignment_id: uuid.UUID | None,
+    assignments: list[VocabularyStudentAssignment],
+) -> VocabularyAssignment | VocabularyTodayPlan:
+    """解析本次要展示的任务。
+
+    显式指定任务：不存在 / 非本班 / 不在名单一律 404，不静默回落。
+    自动聚焦：无可聚焦任务时返回只带任务清单与错词数的空计划。
+    """
+    if assignment_id is not None:
+        assignment = session.get(VocabularyAssignment, assignment_id)
+        if (
+            assignment is None
+            or assignment.classroom_id != classroom_id
+            or not vocab_service.student_targeted(session, assignment, student_id)
+        ):
+            raise HTTPException(status_code=404, detail="词汇任务不存在")
+        return assignment
+    assignment = vocab_service.focused_assignment(session, classroom_id, student_id)
+    if assignment is None or not vocab_service.student_targeted(
+        session, assignment, student_id
+    ):
+        return VocabularyTodayPlan(
+            assignments=assignments,
+            wrong_word_count=vocab_service.wrong_word_count(session, student_id),
+        )
+    return assignment
+
+
+def _focused_rounds_and_session(
+    session: Session,
+    assignment_id: uuid.UUID,
+    student_id: uuid.UUID,
+    round_no: int | None,
+    rounds: list[VocabularySession],
+) -> tuple[VocabularySession | None, int | None]:
+    """取展示轮会话与当前可练轮号。
+
+    显式回看不存在的轮次（含他学生的轮次）：404，不回落。
+    当前可练轮独立于展示轮计算：未结束轮优先，否则最新轮。
+    """
+    vocab_session = _focused_vocab_session(
+        session, assignment_id, student_id, round_no=round_no, rounds=rounds
+    )
+    if round_no is not None and vocab_session is None:
+        # 显式回看不存在的轮次（含他学生的轮次）：404，不回落
+        raise HTTPException(status_code=404, detail="轮次不存在")
+    practice_session = _focused_vocab_session(
+        session, assignment_id, student_id, rounds=rounds
+    )
+    current_round = practice_session.round_no if practice_session is not None else None
+    return vocab_session, current_round
+
+
+def _build_today_items(
+    session: Session,
+    assignment: VocabularyAssignment,
+    vocab_session: VocabularySession | None,
+    rounds: list[VocabularySession],
+    is_quiz: bool,
+) -> tuple[list[VocabularyTodayItem], int, int]:
+    """构建题单条目并统计进度，返回 (items, 已答数, 首答正确数)。"""
+    # 答案可见规则：测验在答案公布前，已答题也不揭示拼写与对错
+    answers_visible = not (is_quiz and assignment.answers_published_at is None)
+    # 测验未开始（无答卷）只下发规则，不下发题面内容
+    quiz_rounds = (
+        [r for r in rounds if r.quiz_started_at is not None] if is_quiz else rounds
+    )
+    grouped = (
+        vocab_service.answers_by_item(session, vocab_session.id)
+        if vocab_session is not None and (not is_quiz or quiz_rounds)
+        else {}
+    )
+    items, answered_count, correct_first = _today_items(
+        assignment, grouped, is_quiz, answers_visible
+    )
+    if is_quiz and not quiz_rounds:
+        # 规则页：未开始不下发题面
+        return [], 0, 0
+    return items, answered_count, correct_first
+
+
+def _today_items(
+    assignment: VocabularyAssignment,
+    grouped: dict[int, list[VocabularyAnswer]],
+    is_quiz: bool,
+    answers_visible: bool,
+) -> tuple[list[VocabularyTodayItem], int, int]:
+    """按任务快照逐项构建题单条目，并统计已答数与首答正确数。"""
+    items: list[VocabularyTodayItem] = []
+    answered_count = 0
+    correct_first = 0
+    for idx, snapshot_item in enumerate(assignment.snapshot_items):
+        attempts = grouped.get(idx, [])
+        first = next((a for a in attempts if a.attempt_no == 1), None)
+        if first is not None:
+            answered_count += 1
+            if first.is_correct:
+                correct_first += 1
+        items.append(
+            _plan_item(
+                idx,
+                snapshot_item,
+                first,
+                len(attempts),
+                assignment,
+                is_quiz,
+                answers_visible,
+            )
+        )
+    return items, answered_count, correct_first
+
+
+def _audio_prompt_allowed(
+    snapshot_item: dict[str, object],
+    assignment: VocabularyAssignment,
+    has_answer: bool,
+    is_quiz: bool,
+) -> bool:
+    """该词是否允许走听音作答（设计文档 §5 的听音口径）。"""
+    if "audio" not in (assignment.prompt_types or []):
+        return False
+    if snapshot_item.get("audio_url") is not None:
+        return True
+    # 测验更严：设备合成语音不作题源，听音仅限有标准音的词
+    # （无论是否已答，避免借设备朗读泄露未公布答案）
+    return False if is_quiz else has_answer
+
+
+def _plan_item(
+    idx: int,
+    snapshot_item: dict[str, object],
+    first: VocabularyAnswer | None,
+    attempt_count: int,
+    assignment: VocabularyAssignment,
+    is_quiz: bool,
+    answers_visible: bool,
+) -> VocabularyTodayItem:
+    """构建单个题单条目。
+
+    听音口径（设计文档 §5）：任务含 audio 且该词有稳定标准音；
+    已作答的词拼写已揭示，可退回设备朗读练耳。其余一律看义拼词，
+    避免播音按钮无内容可放。
+    """
+    audio_allowed = _audio_prompt_allowed(
+        snapshot_item, assignment, first is not None, is_quiz
+    )
+    return VocabularyTodayItem(
+        item_index=idx,
+        prompt_type="audio" if audio_allowed else "meaning",
+        part_of_speech=(
+            str(snapshot_item["part_of_speech"])
+            if snapshot_item.get("part_of_speech") is not None
+            else None
+        ),
+        meaning_zh=str(snapshot_item["meaning_zh"]),
+        meaning_en=(
+            str(snapshot_item["meaning_en"])
+            if snapshot_item.get("meaning_en") is not None
+            else None
+        ),
+        audio_url=(
+            str(snapshot_item["audio_url"])
+            if snapshot_item.get("audio_url") is not None
+            else None
+        ),
+        # 未作答不透露拼写（防看 API 直接抄）；测验答案未公布时
+        # 已答题同样不揭示拼写与对错
+        headword=(
+            (first.headword if first is not None else None) if answers_visible else None
+        ),
+        answered=first is not None,
+        is_correct=(
+            (first.is_correct if first is not None else None)
+            if answers_visible
+            else None
+        ),
+        attempt_count=attempt_count,
     )
 
 
