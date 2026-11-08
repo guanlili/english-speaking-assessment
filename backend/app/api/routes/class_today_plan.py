@@ -31,9 +31,7 @@ from app.api.routes.class_shared import (
     _resolve_active_daily_session,
     _resolve_homework_session,
     _scenario_for_topic,
-    _snapshot_int,
     _snapshot_items_of,
-    _snapshot_optional_int,
     _student_profile_of,
     _today_in_practice_tz,
     router,
@@ -716,82 +714,6 @@ def _next_question_from_assigned(
     return NextQuestion(question=None, exhausted=exhausted)
 
 
-def _next_question_from_snapshot(
-    session: Session,
-    practice_session: PracticeSession,
-    exclude_ids: list[uuid.UUID] | None,
-) -> NextQuestion | None:
-    """发布会话的换题列表来自快照（不需要活题）。
-
-    返回 None 表示该分支不适用（绑定练习缺失），交回上层继续。
-    """
-    exercise = (
-        session.get(ClassroomExercise, practice_session.assignment_id)
-        if practice_session.assignment_id is not None
-        else None
-    )
-    if exercise is None:
-        return None
-    question_snapshots = _snapshot_items_of(
-        exercise.snapshot_items, AttemptItemType.QUESTION
-    )
-    done_ids = {
-        attempt.item_id
-        for attempt in session.exec(
-            select(Attempt).where(
-                Attempt.session_id == practice_session.id,
-                Attempt.item_type == AttemptItemType.QUESTION,
-            )
-        ).all()
-    }
-    excluded = set(exclude_ids or []) | done_ids
-    # 换题优先换到「快照内其他未做题」（分级题型训练：老师选的题都
-    # 是有效题，轮内换题不跳过其他未做题）；快照内取完再 exhausted，
-    # 上层 assigned_items 回退分支会继续从情景题库补新题
-    candidate = next(
-        (
-            item
-            for item in question_snapshots
-            if uuid.UUID(str(item["id"])) not in excluded
-        ),
-        None,
-    )
-    if candidate is None:
-        return NextQuestion(question=None, exhausted=True)
-    cue_bullets = candidate.get("cue_card_bullets")
-    return NextQuestion(
-        question=ScenarioQuestionPublic(
-            id=uuid.UUID(str(candidate["id"])),
-            band=str(candidate.get("band") or "B1"),
-            text=str(candidate.get("text") or ""),
-            audio_url=(
-                str(candidate["audio_url"])
-                if candidate.get("audio_url") is not None
-                else None
-            ),
-            suggested_seconds=_snapshot_int(candidate.get("suggested_seconds"), 20),
-            # 分级题型训练：换一题同样透传（话题卡/准备时间不丢）
-            exam_kind=(
-                str(candidate["exam_kind"])
-                if candidate.get("exam_kind") is not None
-                else None
-            ),
-            exam_level=(
-                str(candidate["exam_level"])
-                if candidate.get("exam_level") is not None
-                else None
-            ),
-            cue_card_bullets=(
-                [str(b) for b in cue_bullets]
-                if isinstance(cue_bullets, list) and cue_bullets
-                else None
-            ),
-            prep_seconds=_snapshot_optional_int(candidate.get("prep_seconds")),
-        ),
-        exhausted=False,
-    )
-
-
 def _next_question_from_passage(
     session: Session,
     student: Student,
@@ -860,10 +782,6 @@ def read_next_question(
         return _next_question_from_assigned(
             session, classroom, student, practice_session, exclude_id_set
         )
-    if practice_session.assignment_id is not None:
-        answer = _next_question_from_snapshot(session, practice_session, exclude_ids)
-        if answer is not None:
-            return answer
     # 非发布会话：用锚点篇目确定情景，从题库取未做题
     return _next_question_from_passage(
         session, student, practice_session, exclude_id_set
