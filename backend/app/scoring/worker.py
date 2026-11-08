@@ -448,80 +448,35 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
     外部 ASR/LLM 调用不持有数据库行锁；崩溃窗口（调用中途被回收）由
     checkpoint + 重试覆盖，不承诺付费调用的严格 exactly-once。
     """
-    # 原子领取：FOR UPDATE SKIP LOCKED 防止并发重复评分
-    attempt = session.exec(
-        select(Attempt)
-        .where(Attempt.id == attempt_id, Attempt.status == AttemptStatus.QUEUED)
-        .with_for_update(skip_locked=True)
-    ).first()
+    attempt = _claim_attempt(session, attempt_id)
     if attempt is None:
         return  # 已被其他 worker 领取或已处理
 
-    # 领取即捕获 ASR 前要用的列到局部变量：commit 默认 expire ORM，之后
-    # 任何 attempt.xxx 属性访问都会隐式重载并开启新事务——ASR/转换是
-    # 秒级操作，不能全程占着连接（与 _complete_detail 的短事务模式对齐）
-    cached_transcript = attempt.transcript
-    audio_path_str = attempt.audio_path
-    audio_mime = attempt.audio_mime
-    cached_engine = attempt.engine
-    duration_s = attempt.duration_s
-    # 租约令牌在写入前局部生成（返修R04）：commit 默认 expire ORM，
-    # 之后读 attempt.claimed_at 会触发重新 SELECT——若本线程在提交后停顿
-    # 且已被回收重领，会「认领」别人的新令牌。令牌只存在于局部变量
-    claim_token = datetime.now(UTC)
-    attempt.status = AttemptStatus.SCORING
-    attempt.claimed_at = claim_token
-    session.add(attempt)
-    session.commit()
-    lease_token = claim_token
-
-    def lease_valid() -> bool:
-        """行锁内裸读领取代次：仍处 scoring 且 claimed_at 是本线程领取值。
-
-        不能用 refresh 校验——refresh 会用库里的旧值覆盖 session 中
-        已算出未提交的评分结果；裸列查询（no_autoflush）拿到行锁后，
-        本次事务内的写回与校验原子完成。
-        """
-        with session.no_autoflush:
-            row = session.exec(
-                select(Attempt.claimed_at, Attempt.status)
-                .where(Attempt.id == attempt_id)
-                .with_for_update()
-            ).first()
-        return (
-            row is not None
-            and row[1] == AttemptStatus.SCORING
-            and row[0] == lease_token
-        )
+    (
+        cached_transcript,
+        audio_path_str,
+        audio_mime,
+        cached_engine,
+        duration_s,
+        lease_token,
+    ) = _begin_scoring(session, attempt)
 
     detail_request: tuple[RubricQuestionContext, str] | None = None
     try:
-        # ASR 断点：上一轮已转写成功（transcript 已落库）时直接复用，
-        # 不再重跑 ASR——重试烧掉的是真实 API 费用，转写结果与音频内容无关可安全复用
-        if cached_transcript is not None:
-            transcript = cached_transcript
-            engine = cached_engine or settings.SCORING_PROVIDER
-            logger.info("ASR attempt=%s reused cached transcript", attempt_id)
-        else:
-            transcript, engine = _transcribe_audio(
-                attempt_id, audio_path_str, audio_mime
-            )
-            if not lease_valid():
-                raise _LeaseLostError(attempt_id)
-            # checkpoint：转写成功立即落库（同步保存真实 ASR provider），
-            # 后续环节失败重试时不再重跑 ASR；同时续租 claimed_at——
-            # 阶段推进即心跳，健康慢任务不会被误判成失联僵尸
-            attempt.transcript = transcript
-            attempt.engine = engine
-            renewal = datetime.now(UTC)
-            attempt.claimed_at = renewal
-            session.add(attempt)
-            session.commit()
-            lease_token = renewal
+        transcript, engine, lease_token = _reuse_or_transcribe(
+            session,
+            attempt,
+            attempt_id,
+            cached_transcript,
+            audio_path_str,
+            audio_mime,
+            cached_engine,
+            lease_token,
+        )
 
         detail_request = _apply_scores(session, attempt, transcript, engine, duration_s)
 
-        if not lease_valid():
+        if not _lease_still_valid(session, attempt_id, lease_token):
             raise _LeaseLostError(attempt_id)
         attempt.status = AttemptStatus.DONE
         attempt.engine = engine
@@ -544,7 +499,7 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             exc,
             exc_info=True,
         )
-        if not lease_valid():
+        if not _lease_still_valid(session, attempt_id, lease_token):
             return
         attempt.status = AttemptStatus.FAILED
         # 学生端可见的 error 只放通用文案；上游异常原文（可能含 endpoint/配额等细节）只进日志
@@ -557,7 +512,7 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
             exc,
             exc_info=True,
         )
-        if not lease_valid():
+        if not _lease_still_valid(session, attempt_id, lease_token):
             return
         if attempt.retry_count < MAX_SCORING_RETRIES:
             attempt.retry_count += 1
@@ -571,16 +526,119 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
     session.commit()
 
     if detail_request is not None and attempt.status == AttemptStatus.DONE:
-        # 退出中完成的主评分：优雅放弃详情投递（重启后 startup 兜底），
-        # 不抛错也不重建已关闭的详情池（返修R07）
-        with _executor_lock:
-            if _executor_stopped:
-                logger.info("executor stopped; skip detail submit for %s", attempt_id)
-                return
-            detail_executor = _ensure_detail_executor_locked()
-        detail_executor.submit(
-            copy_context().run, _complete_detail, attempt_id, *detail_request
-        )
+        _submit_detail(attempt_id, detail_request)
+
+
+def _claim_attempt(session: Session, attempt_id: uuid.UUID) -> Attempt | None:
+    """原子领取：FOR UPDATE SKIP LOCKED 防止并发重复评分。"""
+    return session.exec(
+        select(Attempt)
+        .where(Attempt.id == attempt_id, Attempt.status == AttemptStatus.QUEUED)
+        .with_for_update(skip_locked=True)
+    ).first()
+
+
+def _begin_scoring(
+    session: Session, attempt: Attempt
+) -> tuple[str | None, str, str, str, float, datetime]:
+    """把 ASR 要用的列冻结到局部变量并 commit 领取。
+
+    返回 (转写, 音频路径, MIME, 引擎, 时长, 租约令牌)。
+    """
+    # 领取即捕获 ASR 前要用的列到局部变量：commit 默认 expire ORM，之后
+    # 任何 attempt.xxx 属性访问都会隐式重载并开启新事务——ASR/转换是
+    # 秒级操作，不能全程占着连接（与 _complete_detail 的短事务模式对齐）
+    cached_transcript = attempt.transcript
+    audio_path_str = attempt.audio_path
+    audio_mime = attempt.audio_mime
+    cached_engine = attempt.engine
+    duration_s = attempt.duration_s
+    # 租约令牌在写入前局部生成（返修R04）：commit 默认 expire ORM，
+    # 之后读 attempt.claimed_at 会触发重新 SELECT——若本线程在提交后停顿
+    # 且已被回收重领，会「认领」别人的新令牌。令牌只存在于局部变量
+    claim_token = datetime.now(UTC)
+    attempt.status = AttemptStatus.SCORING
+    attempt.claimed_at = claim_token
+    session.add(attempt)
+    session.commit()
+    return (
+        cached_transcript,
+        audio_path_str,
+        audio_mime,
+        cached_engine,
+        duration_s,
+        claim_token,
+    )
+
+
+def _lease_still_valid(
+    session: Session, attempt_id: uuid.UUID, lease_token: datetime
+) -> bool:
+    """行锁内裸读领取代次：仍处 scoring 且 claimed_at 是本线程领取值。
+
+    不能用 refresh 校验——refresh 会用库里的旧值覆盖 session 中
+    已算出未提交的评分结果；裸列查询（no_autoflush）拿到行锁后，
+    本次事务内的写回与校验原子完成。
+    """
+    with session.no_autoflush:
+        row = session.exec(
+            select(Attempt.claimed_at, Attempt.status)
+            .where(Attempt.id == attempt_id)
+            .with_for_update()
+        ).first()
+    return row is not None and row[1] == AttemptStatus.SCORING and row[0] == lease_token
+
+
+def _reuse_or_transcribe(
+    session: Session,
+    attempt: Attempt,
+    attempt_id: uuid.UUID,
+    cached_transcript: str | None,
+    audio_path_str: str,
+    audio_mime: str,
+    cached_engine: str,
+    lease_token: datetime,
+) -> tuple[str, str, datetime]:
+    """转写：已落库的 transcript 直接复用，否则跑 ASR 并落 checkpoint。
+
+    返回 (转写, 引擎名, 最新租约令牌)——checkpoint 会续租 claimed_at。
+    """
+    # ASR 断点：上一轮已转写成功（transcript 已落库）时直接复用，
+    # 不再重跑 ASR——重试烧掉的是真实 API 费用，转写结果与音频内容无关可安全复用
+    if cached_transcript is not None:
+        transcript = cached_transcript
+        engine = cached_engine or settings.SCORING_PROVIDER
+        logger.info("ASR attempt=%s reused cached transcript", attempt_id)
+        return transcript, engine, lease_token
+    transcript, engine = _transcribe_audio(attempt_id, audio_path_str, audio_mime)
+    if not _lease_still_valid(session, attempt_id, lease_token):
+        raise _LeaseLostError(attempt_id)
+    # checkpoint：转写成功立即落库（同步保存真实 ASR provider），
+    # 后续环节失败重试时不再重跑 ASR；同时续租 claimed_at——
+    # 阶段推进即心跳，健康慢任务不会被误判成失联僵尸
+    attempt.transcript = transcript
+    attempt.engine = engine
+    renewal = datetime.now(UTC)
+    attempt.claimed_at = renewal
+    session.add(attempt)
+    session.commit()
+    return transcript, engine, renewal
+
+
+def _submit_detail(
+    attempt_id: uuid.UUID, detail_request: tuple[RubricQuestionContext, str]
+) -> None:
+    """把详情任务投递到详情池；退出中则优雅放弃，由 startup 兜底。"""
+    # 退出中完成的主评分：优雅放弃详情投递（重启后 startup 兜底），
+    # 不抛错也不重建已关闭的详情池（返修R07）
+    with _executor_lock:
+        if _executor_stopped:
+            logger.info("executor stopped; skip detail submit for %s", attempt_id)
+            return
+        detail_executor = _ensure_detail_executor_locked()
+    detail_executor.submit(
+        copy_context().run, _complete_detail, attempt_id, *detail_request
+    )
 
 
 def _complete_detail(
