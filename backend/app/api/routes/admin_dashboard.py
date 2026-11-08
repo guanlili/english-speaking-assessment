@@ -181,6 +181,7 @@ def read_dashboard_overview(
 
 
 @router.get("/usage", response_model=DashboardUsage)
+@router.get("/usage", response_model=DashboardUsage)
 def read_dashboard_usage(
     session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
@@ -192,8 +193,33 @@ def read_dashboard_usage(
     since_ts = datetime.combine(since_date, time.min, tz)
     recent_ts = datetime.combine(today - timedelta(days=SILENT_DAYS), time.min, tz)
 
+    points, item_distribution = _usage_points(
+        _usage_daily_rows(session, since_ts),
+        _active_classrooms_by_day(session, since_ts),
+    )
+    history, student_counts = _classroom_history_maps(session)
+    # 课堂排行拆两查（评审 P2）：区间/近窗指标与全历史分开取，详见 helper 注释
+    trim_ts = min(since_ts, recent_ts)
+    classrooms, silent = _classroom_rows(
+        _classroom_rank_rows(session, since_ts, recent_ts, trim_ts),
+        history,
+        student_counts,
+        today,
+        tz,
+    )
+
+    return DashboardUsage(
+        points=points,
+        item_distribution=item_distribution,
+        classrooms=classrooms,
+        silent_classrooms=silent,
+    )
+
+
+def _usage_daily_rows(session: PlatformSessionDep, since_ts: datetime) -> Any:
+    """按练习日的作答聚合行（活跃学生/作答数/题型分布/均分）。"""
     day = func.date(func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at)))
-    rows = (
+    return (
         session.connection()
         .execute(
             sa_select(
@@ -233,6 +259,12 @@ def read_dashboard_usage(
         .all()
     )
 
+
+def _active_classrooms_by_day(
+    session: PlatformSessionDep, since_ts: datetime
+) -> dict[Any, int]:
+    """按练习日的活跃课堂数（同一批作答 join 练习会话去重）。"""
+    day = func.date(func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at)))
     crows = (
         session.connection()
         .execute(
@@ -249,8 +281,13 @@ def read_dashboard_usage(
         )
         .all()
     )
-    classrooms_by_day = {row.day: row.active_classrooms for row in crows}
+    return {row.day: row.active_classrooms for row in crows}
 
+
+def _usage_points(
+    rows: Any, classrooms_by_day: dict[Any, int]
+) -> tuple[list[DashboardDailyPoint], dict[str, int]]:
+    """把日聚合行摊成趋势点，并按题型汇总窗口内作答量。"""
     points = [
         DashboardDailyPoint(
             date=row.day.isoformat(),
@@ -271,15 +308,24 @@ def read_dashboard_usage(
         AttemptItemType.REPEAT: sum(p.attempts_repeat for p in points),
         AttemptItemType.QUESTION: sum(p.attempts_question for p in points),
     }
+    return points, item_distribution
 
-    # 课堂排行拆两查（评审 P2）：
-    # A 区间/近窗指标——时间裁剪放进外连接条件（WHERE 会把窗口内零作答的
-    #   课堂整行滤掉），裁剪基准取区间与近 14 天窗口的较早者（days<14 时
-    #   近窗更早）；
-    # B 全历史（累计作答/最近活跃，沉默判定要用）——只取三列的轻量查询，
-    #   需扫全表，量级上来后考虑 created_at 索引或日期生成列。
-    trim_ts = min(since_ts, recent_ts)
-    crow = (
+
+def _classroom_rank_rows(
+    session: PlatformSessionDep,
+    since_ts: datetime,
+    recent_ts: datetime,
+    trim_ts: datetime,
+) -> Any:
+    """课堂排行拆两查（评审 P2）：
+
+    A 区间/近窗指标——时间裁剪放进外连接条件（WHERE 会把窗口内零作答的
+    课堂整行滤掉），裁剪基准取区间与近 14 天窗口的较早者（days<14 时
+    近窗更早）；
+    B 全历史（累计作答/最近活跃，沉默判定要用）——只取三列的轻量查询，
+    需扫全表，量级上来后考虑 created_at 索引或日期生成列。
+    """
+    return (
         session.connection()
         .execute(
             sa_select(
@@ -325,7 +371,13 @@ def read_dashboard_usage(
         )
         .all()
     )
-    history: dict[object, tuple[int, datetime | None]] = {}
+
+
+def _classroom_history_maps(
+    session: PlatformSessionDep,
+) -> tuple[dict[Any, tuple[int, datetime | None]], dict[Any, int]]:
+    """全历史累计作答/最近活跃、以及各课堂学生数。"""
+    history: dict[Any, tuple[int, datetime | None]] = {}
     for cid, attempts_all, last_active in session.connection().execute(
         sa_select(
             col(PracticeSession.classroom_id),
@@ -337,14 +389,24 @@ def read_dashboard_usage(
         .group_by(col(PracticeSession.classroom_id))
     ):
         history[cid] = (attempts_all, last_active)
-    student_counts: dict[object, int] = {}
+    student_counts: dict[Any, int] = {}
     for cid, cnt in session.connection().execute(
         sa_select(col(Student.classroom_id), func.count()).group_by(
             col(Student.classroom_id)
         )
     ):
         student_counts[cid] = cnt
+    return history, student_counts
 
+
+def _classroom_rows(
+    crow: Any,
+    history: dict[Any, tuple[int, datetime | None]],
+    student_counts: dict[Any, int],
+    today: date,
+    tz: ZoneInfo,
+) -> tuple[list[DashboardClassroomRow], list[DashboardClassroomRow]]:
+    """组装课堂排行与沉默课堂（有历史但近窗口零提交）。"""
     classrooms: list[DashboardClassroomRow] = []
     silent: list[DashboardClassroomRow] = []
     for row in crow:
@@ -370,13 +432,7 @@ def read_dashboard_usage(
             silent.append(item)
     classrooms.sort(key=lambda r: (-r.attempts, -r.attempts_all))
     silent.sort(key=lambda r: -(r.silent_days or 0))
-
-    return DashboardUsage(
-        points=points,
-        item_distribution=item_distribution,
-        classrooms=classrooms,
-        silent_classrooms=silent,
-    )
+    return classrooms, silent
 
 
 @router.get("/content", response_model=DashboardContent)

@@ -7,9 +7,11 @@
 """
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlmodel import Session, col
@@ -96,6 +98,59 @@ def load_class_report(
     requester_user_id: uuid.UUID,
 ) -> ClassReport:
     """按冻结的 filter 读取班级数据。身份/归属不符抛 ReportForbidden。"""
+    classroom, start, end = _require_class_report_access(
+        session, filt, requester_user_id
+    )
+
+    roster = session.exec(  # ty: ignore[no-matching-overload]
+        select(Student, User)
+        .outerjoin(User, col(Student.user_id) == User.id)
+        .where(
+            Student.classroom_id == classroom.id  # ty: ignore[invalid-argument-type]
+        )
+        .order_by(Student.display_name)
+    ).all()
+    student_ids = [student.id for student, _ in roster]
+    locked = _locked_exam_session_ids(session, classroom.id, start.date(), end.date())
+
+    trend = _load_class_trend(session, student_ids, start, end)
+    active_students, done_count, question_avg, repeat_avg = _load_class_totals(
+        session, student_ids, start, end, locked
+    )
+
+    # 题位最新一次：每生均分（情景问答）与题项对比（所有有分题型）同一份数据
+    per_student, per_item = _load_latest_scores(
+        session, classroom.id, student_ids, start, end, locked
+    )
+    students = _student_score_rows(
+        [(student, user) for student, user in roster], per_student
+    )
+    item_rows = _item_score_rows(session, per_item)
+
+    return ClassReport(
+        classroom_name=classroom.name,
+        classroom_code=classroom.code,
+        window_start=start,
+        window_end=end,
+        student_count=len(roster),
+        active_students=int(active_students or 0),
+        done_count=int(done_count or 0),
+        question_avg=round(float(question_avg), 1)
+        if question_avg is not None
+        else None,
+        repeat_avg=round(float(repeat_avg), 1) if repeat_avg is not None else None,
+        trend=trend,
+        students=students,
+        items=tuple(item_rows[:ITEM_LIMIT]),
+    )
+
+
+def _require_class_report_access(
+    session: Session,
+    filt: dict[str, object],
+    requester_user_id: uuid.UUID,
+) -> tuple[Classroom, datetime, datetime]:
+    """校验报告访问身份与时间窗，返回课堂与左闭右开区间。"""
     if str(filt.get("requester_user_id") or "") != str(requester_user_id):
         raise ReportForbidden
     user = session.get(User, requester_user_id)
@@ -109,20 +164,16 @@ def load_class_report(
     end = _parse_dt(filt.get("to"))
     if start is None or end is None or end < start:
         raise ValueError("export_range_too_wide")
-    start = _aware(start)
-    end = _aware(end)
+    return classroom, _aware(start), _aware(end)
 
-    roster = session.exec(  # ty: ignore[no-matching-overload]
-        select(Student, User)
-        .outerjoin(User, col(Student.user_id) == User.id)
-        .where(
-            Student.classroom_id == classroom.id  # ty: ignore[invalid-argument-type]
-        )
-        .order_by(Student.display_name)
-    ).all()
-    student_ids = [student.id for student, _ in roster]
-    locked = _locked_exam_session_ids(session, classroom.id, start.date(), end.date())
 
+def _load_class_trend(
+    session: Session,
+    student_ids: list[uuid.UUID],
+    start: datetime,
+    end: datetime,
+) -> tuple[TrendRow, ...]:
+    """按日走势：教师端趋势卡同源口径，按 PRACTICE_TZ 切日并按窗口右端裁剪。"""
     trend_days = [
         day
         for day in class_trend.summarize(
@@ -130,7 +181,7 @@ def load_class_report(
         )
         if date.fromisoformat(day.date) <= to_shanghai(end).date()
     ]
-    trend = tuple(
+    return tuple(
         TrendRow(
             date=day.date,
             question_avg=day.question_avg,
@@ -140,7 +191,16 @@ def load_class_report(
         for day in trend_days
     )
 
-    active_students, done_count, question_avg, repeat_avg = (
+
+def _load_class_totals(
+    session: Session,
+    student_ids: list[uuid.UUID],
+    start: datetime,
+    end: datetime,
+    locked: set[uuid.UUID],
+) -> tuple[Any, Any, Any, Any]:
+    """窗口内活跃学生数、完成作答数、情景问答均分、复述完整度均分。"""
+    row = (
         session.connection()
         .execute(
             select(
@@ -162,8 +222,19 @@ def load_class_report(
         )
         .one()
     )
+    active, total, q_avg, r_avg = row
+    return active, total, q_avg, r_avg
 
-    # 题位最新一次：每生均分（情景问答）与题项对比（所有有分题型）同一份数据
+
+def _load_latest_scores(
+    session: Session,
+    classroom_id: uuid.UUID,
+    student_ids: list[uuid.UUID],
+    start: datetime,
+    end: datetime,
+    locked: set[uuid.UUID],
+) -> tuple[dict[uuid.UUID, list[int]], dict[uuid.UUID, list[int]]]:
+    """按题位取窗口内最新一次作答，拆出每生均分（仅情景问答）与题项对比（全题型）。"""
     latest_stmt = (
         select(  # ty: ignore[no-matching-overload]
             Attempt.student_id,
@@ -177,7 +248,7 @@ def load_class_report(
         .join(PracticeSession, col(Attempt.session_id) == PracticeSession.id)
         .where(
             col(Attempt.student_id).in_(student_ids),
-            col(PracticeSession.classroom_id) == classroom.id,
+            col(PracticeSession.classroom_id) == classroom_id,
             col(Attempt.status) == AttemptStatus.DONE,
             col(Attempt.created_at) >= start,
             col(Attempt.created_at) <= end,
@@ -215,7 +286,13 @@ def load_class_report(
         if item_type == AttemptItemType.QUESTION:
             per_student.setdefault(student_id, []).append(overall)
         per_item.setdefault(item_id, []).append(overall)
+    return per_student, per_item
 
+
+def _student_score_rows(
+    roster: Sequence[Any], per_student: dict[uuid.UUID, list[int]]
+) -> tuple[StudentScoreRow, ...]:
+    """每生一行：有情景问答分的按均分降序在前，无分的按花名册顺序在后。"""
     students = tuple(
         StudentScoreRow(
             name=student.display_name,
@@ -235,55 +312,43 @@ def load_class_report(
         for student, user in roster
         if per_student.get(student.id) is None
     )
-    students = tuple(sorted(students, key=lambda r: (r.avg is None, -(r.avg or 0))))
+    return tuple(sorted(students, key=lambda r: (r.avg is None, -(r.avg or 0))))
 
-    item_rows: list[ItemScoreRow] = []
-    if per_item:
-        title_rows = (
-            session.connection()
-            .execute(
-                select(Attempt.item_id, Attempt.item_snapshot)  # ty: ignore[no-matching-overload]
-                .distinct(Attempt.item_id)
-                .where(col(Attempt.item_id).in_(list(per_item.keys())))
-                .order_by(Attempt.item_id, col(Attempt.created_at).desc())
-            )
-            .all()
-        )
-        titles = {
-            item_id: (
-                (snapshot or {}).get("title") or (snapshot or {}).get("text") or ""
-                if isinstance(snapshot, dict)
-                else ""
-            )
-            for item_id, snapshot in title_rows
-        }
-        item_rows = sorted(
-            (
-                ItemScoreRow(
-                    title=str(titles.get(item_id, "")).strip() or "（未命名题目）",
-                    avg=round(sum(scores) / len(scores), 1),
-                    attempts=len(scores),
-                )
-                for item_id, scores in per_item.items()
-            ),
-            key=lambda row: (row.avg is None, row.avg or 0),
-        )
 
-    return ClassReport(
-        classroom_name=classroom.name,
-        classroom_code=classroom.code,
-        window_start=start,
-        window_end=end,
-        student_count=len(roster),
-        active_students=int(active_students or 0),
-        done_count=int(done_count or 0),
-        question_avg=round(float(question_avg), 1)
-        if question_avg is not None
-        else None,
-        repeat_avg=round(float(repeat_avg), 1) if repeat_avg is not None else None,
-        trend=trend,
-        students=students,
-        items=tuple(item_rows[:ITEM_LIMIT]),
+def _item_score_rows(
+    session: Session, per_item: dict[uuid.UUID, list[int]]
+) -> list[ItemScoreRow]:
+    """题项对比：按题位最新快照取标题，均分升序（低分在前）。"""
+    if not per_item:
+        return []
+    title_rows = (
+        session.connection()
+        .execute(
+            select(Attempt.item_id, Attempt.item_snapshot)  # ty: ignore[no-matching-overload]
+            .distinct(Attempt.item_id)
+            .where(col(Attempt.item_id).in_(list(per_item.keys())))
+            .order_by(Attempt.item_id, col(Attempt.created_at).desc())
+        )
+        .all()
+    )
+    titles = {
+        item_id: (
+            (snapshot or {}).get("title") or (snapshot or {}).get("text") or ""
+            if isinstance(snapshot, dict)
+            else ""
+        )
+        for item_id, snapshot in title_rows
+    }
+    return sorted(
+        (
+            ItemScoreRow(
+                title=str(titles.get(item_id, "")).strip() or "（未命名题目）",
+                avg=round(sum(scores) / len(scores), 1),
+                attempts=len(scores),
+            )
+            for item_id, scores in per_item.items()
+        ),
+        key=lambda row: (row.avg is None, row.avg or 0),
     )
 
 

@@ -490,78 +490,16 @@ def _session_history(
     mask_exam_feedback: bool,
     offset: int = 0,
 ) -> list[MySessionSummary]:
-    sessions = session.exec(
-        select(PracticeSession)
-        .where(PracticeSession.student_id == student_id)
-        .order_by(
-            col(PracticeSession.session_date).desc(),
-            col(PracticeSession.created_at).desc(),
-            col(PracticeSession.id).desc(),
-        )
-        .offset(offset)
-        .limit(limit)
-    ).all()
+    sessions = _load_student_sessions(session, student_id, limit, offset)
     if not sessions:
         return []
 
     # 批量预取：作答（最新一次覆盖，与 board/latest 口径一致）+ 绑定练习
-    latest_by_session: dict[uuid.UUID, dict[uuid.UUID, Attempt]] = {}
-    for attempt in session.exec(
-        select(Attempt)
-        .options(
-            # 列表只要小列：transcript/item_snapshot 等 JSON 大列不进内存
-            load_only(
-                Attempt.id,  # ty: ignore[invalid-argument-type]
-                Attempt.session_id,  # ty: ignore[invalid-argument-type]
-                Attempt.item_id,  # ty: ignore[invalid-argument-type]
-                Attempt.status,  # ty: ignore[invalid-argument-type]
-                Attempt.overall,  # ty: ignore[invalid-argument-type]
-            )
-        )
-        .where(
-            col(Attempt.session_id).in_(  # type: ignore[operator]
-                [ps.id for ps in sessions]
-            )
-        )
-        .order_by(col(Attempt.created_at))
-    ).all():
-        sid = attempt.session_id
-        if sid is None:  # in_ 过滤后理论不可达，类型收窄用
-            continue
-        latest_by_session.setdefault(sid, {})[attempt.item_id] = attempt
-
-    assignment_ids = {
-        ps.assignment_id for ps in sessions if ps.assignment_id is not None
-    }
-    exercises_by_id: dict[uuid.UUID, ClassroomExercise] = {}
-    if assignment_ids:
-        for exercise in session.exec(
-            select(ClassroomExercise).where(
-                col(ClassroomExercise.id).in_(  # type: ignore[operator]
-                    assignment_ids
-                )
-            )
-        ).all():
-            exercises_by_id[exercise.id] = exercise
-
+    latest_by_session = _latest_attempts_by_session(session, sessions)
+    exercises_by_id = _exercises_by_assignment(session, sessions)
     # 考试遮罩批量预取首答时间：旧式（无 exam_flow）考试若在循环里
     # 逐会话判定，每行多 2 条查询（同文件 _locked_exam_session_ids 的范式）
-    exam_session_ids = [
-        ps.id
-        for ps in sessions
-        if (
-            exercise := (
-                exercises_by_id.get(ps.assignment_id)
-                if ps.assignment_id is not None
-                else None
-            )
-        )
-        is not None
-        and exercise.is_exam
-    ]
-    first_by_session = exam_service.first_submitted_by_session(
-        session, exam_session_ids
-    )
+    first_by_session = _exam_first_submitted(session, sessions, exercises_by_id)
 
     rows: list[MySessionSummary] = []
     for ps in sessions:
@@ -571,24 +509,7 @@ def _session_history(
             if ps.assignment_id is not None
             else None
         )
-        required: list[uuid.UUID]
-        if exercise is not None:
-            # 发布轮：题单 = 快照题位（题目说明无作答，不进分母）；
-            # 快照 id 非法的历史行跳过该题位（不因脏数据 500）
-            required = []
-            for item in exercise.snapshot_items:
-                if str(item.get("type", "")) == AttemptItemType.INSTRUCTION:
-                    continue
-                raw_id = item.get("id")
-                if raw_id is None:
-                    continue
-                try:
-                    required.append(uuid.UUID(str(raw_id)))
-                except ValueError:
-                    logger.warning("invalid exercise snapshot item id: %s", raw_id)
-        else:
-            # 自主轮：无固定快照分母，按该轮实际作答过的题位计
-            required = list(latest.keys())
+        required = _required_item_ids(exercise, latest)
         done = [
             latest[item_id]
             for item_id in required
@@ -620,3 +541,119 @@ def _session_history(
             )
         )
     return rows
+
+
+def _load_student_sessions(
+    session: SessionDep, student_id: uuid.UUID, limit: int, offset: int
+) -> list[PracticeSession]:
+    """按练习日倒序分页取该生会话（同日内按创建时间、id 稳定排序）。"""
+    return list(
+        session.exec(
+            select(PracticeSession)
+            .where(PracticeSession.student_id == student_id)
+            .order_by(
+                col(PracticeSession.session_date).desc(),
+                col(PracticeSession.created_at).desc(),
+                col(PracticeSession.id).desc(),
+            )
+            .offset(offset)
+            .limit(limit)
+        ).all()
+    )
+
+
+def _latest_attempts_by_session(
+    session: SessionDep, sessions: list[PracticeSession]
+) -> dict[uuid.UUID, dict[uuid.UUID, Attempt]]:
+    """每会话每题位最新一次作答（按 created_at 升序覆盖，与 board/latest 同口径）。"""
+    latest_by_session: dict[uuid.UUID, dict[uuid.UUID, Attempt]] = {}
+    for attempt in session.exec(
+        select(Attempt)
+        .options(
+            # 列表只要小列：transcript/item_snapshot 等 JSON 大列不进内存
+            load_only(
+                Attempt.id,  # ty: ignore[invalid-argument-type]
+                Attempt.session_id,  # ty: ignore[invalid-argument-type]
+                Attempt.item_id,  # ty: ignore[invalid-argument-type]
+                Attempt.status,  # ty: ignore[invalid-argument-type]
+                Attempt.overall,  # ty: ignore[invalid-argument-type]
+            )
+        )
+        .where(
+            col(Attempt.session_id).in_(  # type: ignore[operator]
+                [ps.id for ps in sessions]
+            )
+        )
+        .order_by(col(Attempt.created_at))
+    ).all():
+        sid = attempt.session_id
+        if sid is None:  # in_ 过滤后理论不可达，类型收窄用
+            continue
+        latest_by_session.setdefault(sid, {})[attempt.item_id] = attempt
+    return latest_by_session
+
+
+def _exercises_by_assignment(
+    session: SessionDep, sessions: list[PracticeSession]
+) -> dict[uuid.UUID, ClassroomExercise]:
+    """一次取回本轮涉及的所有发布练习（按 assignment_id 索引）。"""
+    assignment_ids = {
+        ps.assignment_id for ps in sessions if ps.assignment_id is not None
+    }
+    exercises_by_id: dict[uuid.UUID, ClassroomExercise] = {}
+    if assignment_ids:
+        for exercise in session.exec(
+            select(ClassroomExercise).where(
+                col(ClassroomExercise.id).in_(  # type: ignore[operator]
+                    assignment_ids
+                )
+            )
+        ).all():
+            exercises_by_id[exercise.id] = exercise
+    return exercises_by_id
+
+
+def _exam_first_submitted(
+    session: SessionDep,
+    sessions: list[PracticeSession],
+    exercises_by_id: dict[uuid.UUID, ClassroomExercise],
+) -> dict[uuid.UUID, dict[tuple[str, uuid.UUID], datetime]]:
+    """考试会话的首答时间（遮罩判定要用），一次批量取回。"""
+    exam_session_ids = [
+        ps.id
+        for ps in sessions
+        if (
+            exercise := (
+                exercises_by_id.get(ps.assignment_id)
+                if ps.assignment_id is not None
+                else None
+            )
+        )
+        is not None
+        and exercise.is_exam
+    ]
+    return exam_service.first_submitted_by_session(session, exam_session_ids)
+
+
+def _required_item_ids(
+    exercise: ClassroomExercise | None, latest: dict[uuid.UUID, Attempt]
+) -> list[uuid.UUID]:
+    """本轮应作答题位（分母）。
+
+    发布轮取快照题位（题目说明不计分不进分母），快照 id 非法的历史行跳过
+    该题位而不因脏数据 500；自主轮无固定分母，按该轮实际作答过的题位计。
+    """
+    if exercise is None:
+        return list(latest.keys())
+    required: list[uuid.UUID] = []
+    for item in exercise.snapshot_items:
+        if str(item.get("type", "")) == AttemptItemType.INSTRUCTION:
+            continue
+        raw_id = item.get("id")
+        if raw_id is None:
+            continue
+        try:
+            required.append(uuid.UUID(str(raw_id)))
+        except ValueError:
+            logger.warning("invalid exercise snapshot item id: %s", raw_id)
+    return required
