@@ -25,6 +25,7 @@ from app.models import (
     AttemptItemType,
     AttemptStatus,
     PracticeSession,
+    get_datetime_utc,
 )
 
 logger = logging.getLogger(__name__)
@@ -154,12 +155,29 @@ def backfill_history(session: Session, today: date) -> int:
     缺日不影响费用聚合）；LLM 历史无进程计数器，按「问答题 done ≈ 1 次
     rubric 调用」回算，费用区走估算基数。
     """
-    day_expr = func.date(func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at)))
     last = today - timedelta(days=1)
     cap = today - timedelta(days=BACKFILL_MAX_DAYS)
     # 窗口裁剪用 created_at 区间（可走索引）；day_expr 只用于分组标签
     cap_start, _ = _day_bounds_utc(cap)
     _, last_end = _day_bounds_utc(last)
+    agg = _attempt_daily_agg(session, cap_start, last_end)
+    if not agg:
+        return 0
+    _fill_session_counts(session, agg, last)
+    _patch_llm_estimates(session, agg, last)
+    existing = _refresh_existing_rows(session, agg, last)
+    written = _insert_missing_rows(session, agg, existing)
+    if written:
+        session.commit()
+        logger.info("metrics daily backfilled %d rows", written)
+    return written
+
+
+def _attempt_daily_agg(
+    session: Session, cap_start: datetime, last_end: datetime
+) -> dict[date, dict[str, object]]:
+    """一次 GROUP BY 回算窗口内每日作答量；无作答的日不出现在结果里。"""
+    day_expr = func.date(func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at)))
     agg: dict[date, dict[str, object]] = {}
     for row in session.connection().execute(
         select(
@@ -194,8 +212,13 @@ def backfill_history(session: Session, today: date) -> int:
                 {"llm_rubric": row.question_done} if row.question_done else None
             ),
         }
-    if not agg:
-        return 0
+    return agg
+
+
+def _fill_session_counts(
+    session: Session, agg: dict[date, dict[str, object]], last: date
+) -> None:
+    """把每日会话数填进聚合结果（只补已存在的日期，空洞日保持不补）。"""
     for row in session.connection().execute(
         select(
             col(PracticeSession.session_date).label("day"),
@@ -209,9 +232,16 @@ def backfill_history(session: Session, today: date) -> int:
     ):
         if row.day in agg:
             agg[row.day]["sessions"] = row.sessions
-    # 存量行补 LLM 估算：P1 时期回填建的行没有 llm_calls_by_kind（null），
-    # 只插缺行会让历史月 LLM 恒为 ¥0——对 agg 范围内 llm 为 null 的已有行
-    # 补估算；采样器写过的不动（非 null 即真实/采样数据）
+
+
+def _patch_llm_estimates(
+    session: Session, agg: dict[date, dict[str, object]], last: date
+) -> None:
+    """给 agg 范围内 llm 列为 null 的存量行补估算。
+
+    P1 时期回填建的行没有 llm_calls_by_kind（null），只插缺行会让历史月
+    LLM 恒为 ¥0；采样器写过的不动（非 null 即真实/采样数据）。
+    """
     patched = 0
     # sqlalchemy 的 select(Model) 走 session.exec 返回 Row 而非实体
     # （sqlmodel 只解包自家 select），取实体一律走 session.scalars
@@ -238,9 +268,18 @@ def backfill_history(session: Session, today: date) -> int:
     if patched:
         session.commit()
         logger.info("metrics daily backfilled llm estimate for %d rows", patched)
-    existing: set[date] = set()
-    from app.models import get_datetime_utc
 
+
+def _refresh_existing_rows(
+    session: Session, agg: dict[date, dict[str, object]], last: date
+) -> set[date]:
+    """把已有行的业务量列刷新到精确回算值，返回库里已有日期的集合。
+
+    采样线程降频回算后进程中断跨日，会让该日行停留在最后一次整点回算
+    的值，故已存在的行也要刷。LLM 列不在此刷新（由补丁逻辑单独维护
+    真实/估算的语义位）。
+    """
+    existing: set[date] = set()
     refreshed = 0
     for row in session.scalars(
         select(AdminMetricsDaily).where(
@@ -252,9 +291,6 @@ def backfill_history(session: Session, today: date) -> int:
         a = agg.get(row.day)
         if not a:
             continue
-        # 已有行的业务量列刷新到精确回算值：采样线程降频回算后，进程中断
-        # 跨日会让该日行停留在最后一次整点回算的值。LLM 列不在此刷新
-        # （上方补丁逻辑单独维护真实/估算的语义位）
         row.attempts = cast(int, a["attempts"])
         row.attempts_done = cast(int, a["attempts_done"])
         row.attempts_failed = cast(int, a["attempts_failed"])
@@ -266,7 +302,13 @@ def backfill_history(session: Session, today: date) -> int:
     if refreshed:
         session.commit()
         logger.info("metrics daily refreshed business for %d existing rows", refreshed)
+    return existing
 
+
+def _insert_missing_rows(
+    session: Session, agg: dict[date, dict[str, object]], existing: set[date]
+) -> int:
+    """插入 agg 里有、库里没有的日期行，返回写入行数（由调用方 commit）。"""
     written = 0
     for day in sorted(set(agg) - existing):
         a = agg[day]
@@ -287,9 +329,6 @@ def backfill_history(session: Session, today: date) -> int:
             )
         )
         written += 1
-    if written:
-        session.commit()
-        logger.info("metrics daily backfilled %d rows", written)
     return written
 
 
