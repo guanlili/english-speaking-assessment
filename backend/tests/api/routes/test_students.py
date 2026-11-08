@@ -51,6 +51,14 @@ def _cleanup(db: Session, classroom_id: uuid.UUID | None, *users: User) -> None:
     db.commit()
 
 
+def _drop_users_by_username(db: Session, *usernames: str) -> None:
+    """失败行可能已建账号（入班前先 add），按用户名兜底清理，避免污染测试库。"""
+    for name in usernames:
+        for user in db.exec(select(User).where(User.username == name)).all():
+            db.delete(user)
+    db.commit()
+
+
 def _import(
     client: TestClient, headers: dict[str, str], classroom_id: str, lines: list[dict]
 ) -> dict:
@@ -1166,4 +1174,73 @@ def test_list_students_pagination(client: TestClient, db: Session) -> None:
         )
         assert bad.status_code == 422
     finally:
+        _cleanup(db, classroom_id, teacher)
+
+
+def test_import_skips_row_when_join_raises_classroom_full(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """入班并发兜底：预检查通过但真正入班时已满 → 跳过该行（不是 500）。
+
+    正常满员由 remaining_capacity 预检查拦住（见上一条容量测试）——预检查
+    与插入之间没有原子性，班级行在这段窗口被别的请求占满时 join_classroom
+    抛 ClassroomFullError。路由层必须把它降级成「跳过这一行 + 文案」，
+    而不是让整批导入 500。这里直接模拟该异常，锁定这个契约。
+    """
+    teacher, headers = _login_teacher(db, client)
+    classroom_id: uuid.UUID | None = None
+    username = f"cap{uuid.uuid4().hex[:8]}"
+    try:
+        classroom_id = uuid.UUID(_new_classroom(client, headers)["id"])
+
+        def _raise_full(**_kwargs: object) -> Student:
+            raise crud.ClassroomFullError()
+
+        monkeypatch.setattr(crud, "join_classroom", _raise_full)
+        result = _import(
+            client,
+            headers,
+            str(classroom_id),
+            [{"username": username, "full_name": "张三"}],
+        )
+        # 关键：200 而不是 500，且该行被明确标记为跳过
+        assert result["created"] == 0
+        assert result["skipped"] == 1
+        assert result["rows"][0]["error"] == "班级人数已满（上限 10 人）"
+    finally:
+        monkeypatch.undo()
+        _drop_users_by_username(db, username)
+        _cleanup(db, classroom_id, teacher)
+
+
+def test_import_skips_row_when_join_raises_cross_tenant(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """多租户兜底：join_classroom 抛 CrossTenantJoinError → 跳过该行（不是 500）。
+
+    正常路径里他校同号账号已按租户过滤、进不了候选；crud 层的租户守卫是
+    第二道闸。真触发时不能让整批导入炸掉，必须降级成「跳过 + 稳定文案」。
+    """
+    teacher, headers = _login_teacher(db, client)
+    classroom_id: uuid.UUID | None = None
+    username = f"xt{uuid.uuid4().hex[:8]}"
+    try:
+        classroom_id = uuid.UUID(_new_classroom(client, headers)["id"])
+
+        def _raise_cross(**_kwargs: object) -> Student:
+            raise crud.CrossTenantJoinError()
+
+        monkeypatch.setattr(crud, "join_classroom", _raise_cross)
+        result = _import(
+            client,
+            headers,
+            str(classroom_id),
+            [{"username": username, "full_name": "张三"}],
+        )
+        assert result["created"] == 0
+        assert result["skipped"] == 1
+        assert result["rows"][0]["error"] == "该学号属于其他学校账号，无法加入本班"
+    finally:
+        monkeypatch.undo()
+        _drop_users_by_username(db, username)
         _cleanup(db, classroom_id, teacher)
