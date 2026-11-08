@@ -295,24 +295,86 @@ def _build_ref(
     passage_payloads = payloads[TYPE_PASSAGE]
     repeat_payloads = payloads[TYPE_REPEAT]
     question_payloads = payloads[TYPE_QUESTION]
-    passage_ids = candidates.passage_ids
-    scenario_ids = candidates.scenario_ids
     units = candidates.units
     root_passages = candidates.root_passages
     scenarios = candidates.scenarios
     questions = candidates.questions
     sentences = candidates.sentences
     instructions = candidates.instructions
-    passage_title_rows = candidates.passage_title_rows
-    units_by_norm: dict[str, list[Unit]] = {}
-    for unit in units:
-        units_by_norm.setdefault(_norm_text(unit.title), []).append(unit)
-
-    root_passages_by_norm: dict[str, list[Passage]] = {}
-    for passage in root_passages:
-        root_passages_by_norm.setdefault(_norm_text(passage.title), []).append(passage)
 
     unit_titles = {u.id: u.title for u in units}
+    passage_exact, passage_texts = _passage_dedup_index(root_passages, unit_titles)
+    question_exact, question_texts = _question_dedup_index(questions)
+    max_question_order, max_by_passage, global_max = _ref_order_limits(
+        session,
+        question_payloads,
+        repeat_payloads,
+        candidates.scenario_ids,
+        candidates.passage_ids,
+    )
+    existing_slugs = (
+        set(session.exec(select(Passage.slug)).all()) if passage_payloads else set()
+    )
+
+    return _Ref(
+        units_by_norm=_group_units_by_norm(units),
+        root_passages_by_norm=_group_root_passages_by_norm(root_passages),
+        passage_exact=passage_exact,
+        passage_texts=passage_texts,
+        scenarios_by_exact={s.topic: s for s in scenarios},
+        scenarios_by_norm=_group_scenarios_by_norm(scenarios),
+        question_exact=question_exact,
+        question_texts=question_texts,
+        sentence_configs=_sentence_config_index(sentences),
+        instruction_configs=_instruction_config_index(instructions),
+        unit_titles=unit_titles,
+        passage_titles=dict(candidates.passage_title_rows),
+        scenario_topics={s.id: s.topic for s in scenarios},
+        passages_by_key=_passages_by_key(root_passages),
+        sentences_by_key=_sentences_by_key(sentences),
+        questions_by_key=_questions_by_key(questions),
+        instructions_all=list(instructions),
+        existing_slugs=existing_slugs,
+        max_question_order=max_question_order,
+        max_sentence_order_by_passage=max_by_passage,
+        max_sentence_order_global=global_max,
+    )
+
+
+def _group_units_by_norm(units: list[Unit]) -> dict[str, list[Unit]]:
+    """按规范标题分组：同名单元交给调用方报行级错误，绝不静默选一个。"""
+    grouped: dict[str, list[Unit]] = {}
+    for unit in units:
+        grouped.setdefault(_norm_text(unit.title), []).append(unit)
+    return grouped
+
+
+def _group_root_passages_by_norm(
+    root_passages: list[Passage],
+) -> dict[str, list[Passage]]:
+    """根篇目按规范标题分组（同名根篇并存，不互相覆盖）。"""
+    grouped: dict[str, list[Passage]] = {}
+    for passage in root_passages:
+        grouped.setdefault(_norm_text(passage.title), []).append(passage)
+    return grouped
+
+
+def _group_scenarios_by_norm(scenarios: list[Scenario]) -> dict[str, list[Scenario]]:
+    """主题按规范名分组：Travel/travel 允许并存，规范化命中多个由调用方报错。"""
+    grouped: dict[str, list[Scenario]] = {}
+    for scenario in scenarios:
+        grouped.setdefault(_norm_text(scenario.topic), []).append(scenario)
+    return grouped
+
+
+def _passage_dedup_index(
+    root_passages: list[Passage],
+    unit_titles: dict[uuid.UUID, str],
+) -> tuple[dict[tuple[str, str], list[tuple[Any, ...]]], set[str]]:
+    """篇目查重索引：键是 (规范标题, 规范正文)，cfg 携带比较用配置。
+
+    同时返回已出现的规范正文集合（正文重复但标题不同也算疑似重复）。
+    """
     passage_exact: dict[tuple[str, str], list[tuple[Any, ...]]] = {}
     passage_texts: set[str] = set()
     for passage in root_passages:
@@ -328,15 +390,23 @@ def _build_ref(
         )
         passage_exact.setdefault(key, []).append(cfg)
         passage_texts.add(key[1])
+    return passage_exact, passage_texts
 
-    scenarios_by_exact = {s.topic: s for s in scenarios}
-    scenarios_by_norm: dict[str, list[Scenario]] = {}
-    for s in scenarios:
-        scenarios_by_norm.setdefault(_norm_text(s.topic), []).append(s)
+
+def _question_dedup_index(
+    questions: list[ScenarioQuestion],
+) -> tuple[
+    dict[tuple[uuid.UUID, str], list[tuple[Any, ...]]],
+    dict[str, set[uuid.UUID]],
+]:
+    """题目查重索引：键是 (scenario_id, 规范题干)。
+
+    主题身份进键、cfg 不再携带主题名——travel/Travel 是两个主题，
+    各自持有同题不算完全重复（评审 P2）。
+    """
     question_exact: dict[tuple[uuid.UUID, str], list[tuple[Any, ...]]] = {}
     question_texts: dict[str, set[uuid.UUID]] = {}
     for question in questions:
-        # 键是 (scenario_id, 规范化题干)：主题身份进键，cfg 不再携带主题名
         key = (question.scenario_id, _norm_text(question.text))
         cfg = (
             _norm_text(question.translation or ""),
@@ -351,8 +421,16 @@ def _build_ref(
         question_texts.setdefault(_norm_text(question.text), set()).add(
             question.scenario_id
         )
+    return question_exact, question_texts
 
-    # (passage_id 或 None=独立句, cfg)：挂靠身份与配置分开存，比较时按身份过滤
+
+def _sentence_config_index(
+    sentences: list[RepeatSentence],
+) -> dict[str, list[tuple[uuid.UUID | None, tuple[Any, ...]]]]:
+    """复述句配置索引：键是规范正文，值按挂靠 passage_id 区分（None=独立句）。
+
+    挂靠身份与配置分开存，比较时按身份过滤——同名根篇/旧子篇是不同记录。
+    """
     sentence_configs: dict[str, list[tuple[uuid.UUID | None, tuple[Any, ...]]]] = {}
     for sentence in sentences:
         cfg = (
@@ -366,29 +444,65 @@ def _build_ref(
         sentence_configs.setdefault(_norm_text(sentence.text), []).append(
             (sentence.passage_id, cfg)
         )
+    return sentence_configs
 
+
+def _instruction_config_index(
+    instructions: list[Instruction],
+) -> dict[str, list[tuple[Any, ...]]]:
+    """说明配置索引：键是规范正文，值是 (规范标题, 建议秒数)。"""
     instruction_configs: dict[str, list[tuple[Any, ...]]] = {}
     for ins in instructions:
         cfg = (_norm_text(ins.title or ""), ins.suggested_seconds)
         instruction_configs.setdefault(_norm_text(ins.text), []).append(cfg)
+    return instruction_configs
 
-    # 疑似对照行对象索引（与查重索引同键）
-    passage_titles = dict(passage_title_rows)
-    scenario_topics = {s_.id: s_.topic for s_ in scenarios}
+
+def _passages_by_key(
+    root_passages: list[Passage],
+) -> dict[tuple[str, str], list[Passage]]:
+    """疑似对照行对象索引（与 passage_exact 同键），供错误提示回指库内行。"""
     passages_by_key: dict[tuple[str, str], list[Passage]] = {}
     for passage in root_passages:
         passages_by_key.setdefault(
             (_norm_text(passage.title), _norm_text(passage.text)), []
         ).append(passage)
+    return passages_by_key
+
+
+def _sentences_by_key(
+    sentences: list[RepeatSentence],
+) -> dict[str, list[RepeatSentence]]:
+    """疑似对照行对象索引（与 sentence_configs 同键）。"""
     sentences_by_key: dict[str, list[RepeatSentence]] = {}
     for sentence in sentences:
         sentences_by_key.setdefault(_norm_text(sentence.text), []).append(sentence)
+    return sentences_by_key
+
+
+def _questions_by_key(
+    questions: list[ScenarioQuestion],
+) -> dict[tuple[uuid.UUID, str], list[ScenarioQuestion]]:
+    """疑似对照行对象索引（与 question_exact 同键）。"""
     questions_by_key: dict[tuple[uuid.UUID, str], list[ScenarioQuestion]] = {}
     for question in questions:
         questions_by_key.setdefault(
             (question.scenario_id, _norm_text(question.text)), []
         ).append(question)
+    return questions_by_key
 
+
+def _ref_order_limits(
+    session: Session,
+    question_payloads: list[dict[str, Any]],
+    repeat_payloads: list[dict[str, Any]],
+    scenario_ids: set[uuid.UUID],
+    passage_ids: set[uuid.UUID],
+) -> tuple[dict[uuid.UUID, int], dict[uuid.UUID, int], int]:
+    """各类序号上限：题目按主题、复述句按篇目，另有全局兜底。
+
+    无对应用载荷时一律跳过查询（导入单一题型不必扫全表）。
+    """
     max_question_order = (
         dict(
             session.exec(
@@ -418,30 +532,4 @@ def _build_ref(
         if repeat_payloads
         else 0
     )
-    existing_slugs = (
-        set(session.exec(select(Passage.slug)).all()) if passage_payloads else set()
-    )
-
-    return _Ref(
-        units_by_norm=units_by_norm,
-        root_passages_by_norm=root_passages_by_norm,
-        passage_exact=passage_exact,
-        passage_texts=passage_texts,
-        scenarios_by_exact=scenarios_by_exact,
-        scenarios_by_norm=scenarios_by_norm,
-        question_exact=question_exact,
-        question_texts=question_texts,
-        sentence_configs=sentence_configs,
-        instruction_configs=instruction_configs,
-        unit_titles=unit_titles,
-        passage_titles=passage_titles,
-        scenario_topics=scenario_topics,
-        passages_by_key=passages_by_key,
-        sentences_by_key=sentences_by_key,
-        questions_by_key=questions_by_key,
-        instructions_all=list(instructions),
-        existing_slugs=existing_slugs,
-        max_question_order=max_question_order,
-        max_sentence_order_by_passage=max_by_passage,
-        max_sentence_order_global=global_max,
-    )
+    return max_question_order, max_by_passage, global_max
