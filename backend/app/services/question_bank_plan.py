@@ -655,6 +655,81 @@ def _resolve_sentence_linkage(
     return passage_id, planned_title, linkage, None
 
 
+def _existing_question_summary(
+    ref: _Ref,
+    planned_payloads: dict[tuple[str, str], list[dict[str, Any]]],
+    scenario: Scenario | None,
+    owner: str,
+    n_text: str,
+) -> dict[str, str]:
+    """疑似重复时展示的「已有题目」摘要：先按主题身份查库，退化到全库同文本；
+    都没有则从本批已计划的 payload 里找。"""
+    db_row = None
+    if scenario is not None:
+        db_row = (ref.questions_by_key.get((scenario.id, n_text)) or [None])[0]
+    if db_row is None:
+        for (_sid, ptext), qlist in ref.questions_by_key.items():
+            if ptext == n_text and qlist:
+                db_row = qlist[0]
+                break
+    if db_row is not None:
+        return _summarize_question_model(db_row, ref)
+    payload = (planned_payloads.get((owner, n_text)) or [None])[0]
+    if payload is None:
+        for (_powner, ptext), plist in planned_payloads.items():
+            if ptext == n_text and plist:
+                payload = plist[0]
+                break
+    return _summarize_payload(TYPE_QUESTION, payload) if payload else {}
+
+
+def _question_cfg(payload: dict[str, Any]) -> tuple[Any, ...]:
+    """查重用的配置指纹：配置全同才是完全重复，只同文本算疑似。"""
+    return (
+        _norm_text(payload["translation"] or ""),
+        payload["suggested_seconds"],
+        payload["exam_kind"] or "",
+        payload["exam_level"] or "",
+        tuple(payload["cue_card_bullets"] or ()),
+        payload["prep_seconds"] or 0,
+        payload["audio_url"] or "",
+    )
+
+
+def _question_dedup_outcome(
+    cfg: tuple[Any, ...],
+    db_cfgs: list[tuple[Any, ...]],
+    planned_cfgs: list[tuple[Any, ...]],
+    other_owners: set[uuid.UUID],
+    planned_texts: set[str],
+    n_text: str,
+) -> tuple[bool, str | None]:
+    """判定 (是否完全重复, 疑似重复原因)。完全重复直接跳过，疑似交由决策勾选。"""
+    if db_cfgs or planned_cfgs:
+        if cfg in db_cfgs or cfg in planned_cfgs:
+            return True, None
+        return False, "疑似重复：该主题下已有相同题目但配置不同"
+    if other_owners or n_text in planned_texts:
+        return False, "疑似重复：该题目已存在于其他主题"
+    return False, None
+
+
+def _question_suspect_candidates(
+    ref: _Ref, n_text: str
+) -> list[tuple[str, dict[str, Any]]]:
+    """同文本在其他主题下的已有题目，按 id 排序，供疑似重复勾选展示。"""
+    rows = [
+        q
+        for (c_sid, c_text), qlist in ref.questions_by_key.items()
+        if c_text == n_text
+        for q in qlist
+    ]
+    return [
+        (str(q.id), _summarize_question_model(q, ref))
+        for q in sorted(rows, key=lambda item: str(item.id))
+    ]
+
+
 def _plan_questions(
     plan: QuestionBankPlan,
     ref: _Ref,
@@ -666,27 +741,6 @@ def _plan_questions(
     planned_payloads: dict[tuple[str, str], list[dict[str, Any]]] = {}
     planned_texts: set[str] = set()
     new_topic_map: dict[str, str] = {}
-
-    def _existing_question_summary(
-        scenario: Scenario | None, owner: str, n_text: str
-    ) -> dict[str, str]:
-        db_row = None
-        if scenario is not None:
-            db_row = (ref.questions_by_key.get((scenario.id, n_text)) or [None])[0]
-        if db_row is None:
-            for (_sid, ptext), qlist in ref.questions_by_key.items():
-                if ptext == n_text and qlist:
-                    db_row = qlist[0]
-                    break
-        if db_row is not None:
-            return _summarize_question_model(db_row, ref)
-        payload = (planned_payloads.get((owner, n_text)) or [None])[0]
-        if payload is None:
-            for (_powner, ptext), plist in planned_payloads.items():
-                if ptext == n_text and plist:
-                    payload = plist[0]
-                    break
-        return _summarize_payload(TYPE_QUESTION, payload) if payload else {}
 
     for row in rows:
         payload = _parse_row(plan, counts, TYPE_QUESTION, row, _build_question)
@@ -703,15 +757,7 @@ def _plan_questions(
             continue
         # 身份键：已解析主题用其 id；新主题用规范化主题名作批内伪键
         owner = str(scenario.id) if scenario is not None else f"new:{n_topic}"
-        cfg = (
-            _norm_text(payload["translation"] or ""),
-            payload["suggested_seconds"],
-            payload["exam_kind"] or "",
-            payload["exam_level"] or "",
-            tuple(payload["cue_card_bullets"] or ()),
-            payload["prep_seconds"] or 0,
-            payload["audio_url"] or "",
-        )
+        cfg = _question_cfg(payload)
         db_cfgs = (
             ref.question_exact.get((scenario.id, n_text), [])
             if scenario is not None
@@ -719,25 +765,13 @@ def _plan_questions(
         )
         planned_cfgs = planned_exact.get((owner, n_text), [])
         other_owners = ref.question_texts.get(n_text, set())
-        suspected_reason = None
-        if db_cfgs or planned_cfgs:
-            if cfg in db_cfgs or cfg in planned_cfgs:
-                counts.exact_dup += 1
-                continue
-            suspected_reason = "疑似重复：该主题下已有相同题目但配置不同"
-        elif other_owners or n_text in planned_texts:
-            suspected_reason = "疑似重复：该题目已存在于其他主题"
+        is_exact_dup, suspected_reason = _question_dedup_outcome(
+            cfg, db_cfgs, planned_cfgs, other_owners, planned_texts, n_text
+        )
+        if is_exact_dup:
+            counts.exact_dup += 1
+            continue
         if suspected_reason is not None:
-            question_candidate_rows = [
-                q
-                for (c_sid, c_text), qlist in ref.questions_by_key.items()
-                if c_text == n_text
-                for q in qlist
-            ]
-            question_candidates = [
-                (str(q.id), _summarize_question_model(q, ref))
-                for q in sorted(question_candidate_rows, key=lambda item: str(item.id))
-            ]
             if not _register_suspected(
                 plan,
                 counts,
@@ -745,8 +779,10 @@ def _plan_questions(
                 row,
                 suspected_reason,
                 payload,
-                _existing_question_summary(scenario, owner, n_text),
-                question_candidates,
+                _existing_question_summary(
+                    ref, planned_payloads, scenario, owner, n_text
+                ),
+                _question_suspect_candidates(ref, n_text),
                 decisions,
             ):
                 continue
