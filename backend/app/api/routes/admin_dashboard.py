@@ -74,14 +74,59 @@ def read_dashboard_overview(
     _operator: PlatformOperatorDep,
     days: int = Query(default=7, ge=1, le=MAX_DAYS),
 ) -> DashboardOverview:
+    today, since_date, since_dt = _overview_window(days)
+    a = _overview_attempt_counts(session, today, since_date, since_dt)
+    # 活跃课堂要经会话归属课堂（作答本身没有课堂列）
+    c = _overview_classroom_counts(session, today, since_date, since_dt)
+    s = _overview_session_counts(session, today, since_date)
+
+    return DashboardOverview(
+        days=days,
+        range_start=since_date.isoformat(),
+        today=DashboardRangeCards(
+            attempts=a.t_attempts,
+            active_students=a.t_students,
+            active_classrooms=c.t_classrooms,
+            scored_done=a.t_done,
+            scored_failed=a.t_failed,
+            exam_sessions=s.t_exams,
+            runtime_issues=s.t_issues,
+        ),
+        range=DashboardRangeCards(
+            attempts=a.r_attempts,
+            active_students=a.r_students,
+            active_classrooms=c.r_classrooms,
+            scored_done=a.r_done,
+            scored_failed=a.r_failed,
+            exam_sessions=s.r_exams,
+            runtime_issues=s.r_issues,
+        ),
+    )
+
+
+def _overview_window(days: int) -> tuple[date, date, datetime]:
+    """今日 / 区间下界日期 / 区间下界时间戳。
+
+    时间戳形式让聚合查询先裁剪再 FILTER，数据量增长后不放大。
+    """
     tz = ZoneInfo(settings.PRACTICE_TZ)
     today = datetime.now(tz).date()
     since_date = today - timedelta(days=days - 1)
-    # 区间下界的时间戳形式：让聚合查询先裁剪再 FILTER，数据量增长后不放大
     since_dt = datetime.combine(since_date, time.min, tz)
+    return today, since_date, since_dt
 
-    day = func.date(func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at)))
-    a = (
+
+def _overview_practice_day() -> Any:
+    """练习日表达式：作答 createdAt 按 PRACTICE_TZ 取日期。"""
+    return func.date(func.timezone(settings.PRACTICE_TZ, col(Attempt.created_at)))
+
+
+def _overview_attempt_counts(
+    session: PlatformSessionDep, today: date, since_date: date, since_dt: datetime
+) -> Any:
+    """作答口径的今日 / 区间计数：总量、活跃学生、已判分、评分失败。"""
+    day = _overview_practice_day()
+    return (
         session.connection()
         .execute(
             sa_select(
@@ -110,8 +155,13 @@ def read_dashboard_overview(
         .one()
     )
 
-    # 活跃课堂要经会话归属课堂（作答本身没有课堂列）
-    c = (
+
+def _overview_classroom_counts(
+    session: PlatformSessionDep, today: date, since_date: date, since_dt: datetime
+) -> Any:
+    """活跃课堂计数（经会话归属课堂）。"""
+    day = _overview_practice_day()
+    return (
         session.connection()
         .execute(
             sa_select(
@@ -129,8 +179,12 @@ def read_dashboard_overview(
         .one()
     )
 
-    # 模考场次与运行异常按 session_date（业务日）统计
-    s = (
+
+def _overview_session_counts(
+    session: PlatformSessionDep, today: date, since_date: date
+) -> Any:
+    """模考场次与运行异常（按 session_date 业务日统计）。"""
+    return (
         session.connection()
         .execute(
             sa_select(
@@ -161,29 +215,6 @@ def read_dashboard_overview(
             ).where(col(PracticeSession.session_date) >= since_date)
         )
         .one()
-    )
-
-    return DashboardOverview(
-        days=days,
-        range_start=since_date.isoformat(),
-        today=DashboardRangeCards(
-            attempts=a.t_attempts,
-            active_students=a.t_students,
-            active_classrooms=c.t_classrooms,
-            scored_done=a.t_done,
-            scored_failed=a.t_failed,
-            exam_sessions=s.t_exams,
-            runtime_issues=s.t_issues,
-        ),
-        range=DashboardRangeCards(
-            attempts=a.r_attempts,
-            active_students=a.r_students,
-            active_classrooms=c.r_classrooms,
-            scored_done=a.r_done,
-            scored_failed=a.r_failed,
-            exam_sessions=s.r_exams,
-            runtime_issues=s.r_issues,
-        ),
     )
 
 
