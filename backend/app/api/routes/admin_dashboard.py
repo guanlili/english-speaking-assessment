@@ -56,6 +56,13 @@ MAX_DAYS = 3650
 # 沉默课堂判定：最近 N 天零提交（历史有用过）
 SILENT_DAYS = 14
 
+# 费用区响应的固定声明：估算口径 + 以云账单为准
+COST_NOTE = (
+    "ASR 按作答音频秒数×单价（精确）；LLM 优先按真实 token 用量"
+    "（usage 记账覆盖当月全部调用日时），否则按调用量×估算 token"
+    "（历史为问答题 rubric 回算）；服务器为固定月费。实际以云账单为准。"
+)
+
 
 def _round1(value: float | None) -> float | None:
     return round(float(value), 1) if value is not None else None
@@ -551,12 +558,60 @@ def read_dashboard_cost(
     """
     tz = ZoneInfo(settings.PRACTICE_TZ)
     today = datetime.now(tz).date()
-    # 自然月窗口：从「往前第 months-1 个月的一号」起，避免 31*months 带
-    # 出残月（残月会收整月服务器费）
+    first_month = _cost_month_window(today, months)
+    by_month = _cost_month_buckets(session, first_month)
+    reconciles = _cost_reconciles(session)
+
+    est_cny = (
+        settings.COST_LLM_CNY_PER_MTOK_IN * settings.COST_LLM_EST_TOKENS_IN
+        + settings.COST_LLM_CNY_PER_MTOK_OUT * settings.COST_LLM_EST_TOKENS_OUT
+    )
+    llm_cny_per_call = est_cny / 1_000_000
+
+    # 从最早有数据的月份起，逐月输出（无作答的月也输出，服务器成本仍发生）
+    month_keys = sorted(set(by_month) | set(reconciles))
+    month_rows = [
+        _cost_month_row(
+            m, by_month.get(m) or _empty_cost_bucket(), reconciles, llm_cny_per_call
+        )
+        for m in month_keys
+    ]
+    return DashboardCost(
+        months=month_rows,
+        prices=_cost_prices(),
+        note=COST_NOTE,
+    )
+
+
+def _cost_month_window(today: date, months: int) -> date:
+    """窗口起点：往前第 months-1 个月的一号。
+
+    按自然月回退而不是 months*31 天，避免带出残月（残月会收整月服务器费）。
+    """
     first_month = today.replace(day=1)
     for _ in range(months - 1):
         first_month = (first_month.replace(day=1) - timedelta(days=1)).replace(day=1)
+    return first_month
 
+
+def _empty_cost_bucket() -> dict[str, float]:
+    """单月费用聚合桶（全部归零）。"""
+    return {
+        "asr_seconds": 0.0,
+        "llm_calls": 0.0,
+        "attempts": 0.0,
+        "tokens_in": 0.0,
+        "tokens_out": 0.0,
+        "call_days": 0.0,
+        # 有调用但当日没记到 usage 的天数（缺一天都不切真实基数）
+        "call_days_missing_tokens": 0.0,
+    }
+
+
+def _cost_month_buckets(
+    session: PlatformSessionDep, first_month: date
+) -> dict[str, dict[str, float]]:
+    """窗口内按自然月聚合：ASR 秒数、调用量、真实 token、有调用天数。"""
     rows = session.exec(
         select(AdminMetricsDaily)
         .where(col(AdminMetricsDaily.day) >= first_month)
@@ -564,20 +619,7 @@ def read_dashboard_cost(
     ).all()
     by_month: dict[str, dict[str, float]] = {}
     for r in rows:
-        m = _month_of(r.day)
-        bucket = by_month.setdefault(
-            m,
-            {
-                "asr_seconds": 0.0,
-                "llm_calls": 0.0,
-                "attempts": 0.0,
-                "tokens_in": 0.0,
-                "tokens_out": 0.0,
-                "call_days": 0.0,
-                # 有调用但当日没记到 usage 的天数（缺一天都不切真实基数）
-                "call_days_missing_tokens": 0.0,
-            },
-        )
+        bucket = by_month.setdefault(_month_of(r.day), _empty_cost_bucket())
         bucket["asr_seconds"] += r.asr_seconds or 0.0
         bucket["attempts"] += r.attempts
         calls_today = sum((r.llm_calls_by_kind or {}).values())
@@ -591,82 +633,72 @@ def read_dashboard_cost(
         if recorded:
             bucket["tokens_in"] += r.llm_tokens_in or 0
             bucket["tokens_out"] += r.llm_tokens_out or 0
+    return by_month
 
-    reconciles = {
-        row.month: row for row in session.exec(select(AdminCostReconcile)).all()
+
+def _cost_reconciles(session: PlatformSessionDep) -> dict[str, AdminCostReconcile]:
+    """管理员手工录入的实际账单，按月份索引。"""
+    return {row.month: row for row in session.exec(select(AdminCostReconcile)).all()}
+
+
+def _cost_prices() -> dict[str, float]:
+    """响应里回显的单价（前端据此展示估算口径）。"""
+    return {
+        "asr_cny_per_hour": settings.COST_ASR_CNY_PER_HOUR,
+        "llm_cny_per_mtok_in": settings.COST_LLM_CNY_PER_MTOK_IN,
+        "llm_cny_per_mtok_out": settings.COST_LLM_CNY_PER_MTOK_OUT,
+        "server_cny_per_month": settings.COST_SERVER_CNY_PER_MONTH,
     }
 
-    est_cny = settings.COST_LLM_CNY_PER_MTOK_IN * settings.COST_LLM_EST_TOKENS_IN
-    est_cny += settings.COST_LLM_CNY_PER_MTOK_OUT * settings.COST_LLM_EST_TOKENS_OUT
-    llm_cny_per_call = est_cny / 1_000_000
 
-    result: list[DashboardCostMonth] = []
-    # 从最早有数据的月份起，逐月输出（无作答的月也输出，服务器成本仍发生）
-    month_keys = sorted(set(by_month) | set(reconciles))
-    for m in month_keys:
-        b = by_month.get(
-            m,
-            {
-                "asr_seconds": 0.0,
-                "llm_calls": 0.0,
-                "attempts": 0.0,
-                "tokens_in": 0.0,
-                "tokens_out": 0.0,
-                "call_days": 0.0,
-                "call_days_missing_tokens": 0.0,
-            },
+def _llm_cost(bucket: dict[str, float], llm_cny_per_call: float) -> tuple[str, float]:
+    """LLM 费用与计费基数。
+
+    有调用且每个调用日都记到了 usage → 按真实 token；否则回退调用量估算
+    （历史月靠回填的 rubric 估算；切换当月低估、次月起自愈）。
+    """
+    token_basis = bucket["call_days"] > 0 and bucket["call_days_missing_tokens"] == 0
+    if token_basis:
+        return "tokens", round(
+            bucket["tokens_in"] / 1_000_000 * settings.COST_LLM_CNY_PER_MTOK_IN
+            + bucket["tokens_out"] / 1_000_000 * settings.COST_LLM_CNY_PER_MTOK_OUT,
+            2,
         )
-        asr_cny = round(b["asr_seconds"] / 3600 * settings.COST_ASR_CNY_PER_HOUR, 2)
-        # LLM 计费基数：有调用且每个调用日都记到了 usage → 真实 token；
-        # 否则回退调用量估算（历史月靠回填的 rubric 估算；切换当月低估、
-        # 次月起自愈）
-        token_basis = b["call_days"] > 0 and b["call_days_missing_tokens"] == 0
-        if token_basis:
-            llm_basis = "tokens"
-            llm_cny = round(
-                b["tokens_in"] / 1_000_000 * settings.COST_LLM_CNY_PER_MTOK_IN
-                + b["tokens_out"] / 1_000_000 * settings.COST_LLM_CNY_PER_MTOK_OUT,
-                2,
-            )
-        else:
-            llm_basis = "estimated"
-            llm_cny = round(b["llm_calls"] * llm_cny_per_call, 2)
-        server_cny = settings.COST_SERVER_CNY_PER_MONTH
-        total = round(asr_cny + llm_cny + server_cny, 2)
-        actual = reconciles.get(m)
-        deviation = (
-            round((actual.amount_cny - total) / total * 100, 1)
-            if actual and total > 0
-            else None
-        )
-        result.append(
-            DashboardCostMonth(
-                month=m,
-                asr_seconds=round(b["asr_seconds"], 1),
-                llm_calls=int(b["llm_calls"]),
-                llm_basis=llm_basis,
-                llm_tokens_in=int(b["tokens_in"]) if token_basis else None,
-                llm_tokens_out=int(b["tokens_out"]) if token_basis else None,
-                asr_cny=asr_cny,
-                llm_cny=llm_cny,
-                server_cny=server_cny,
-                total_cny=total,
-                attempts=int(b["attempts"]),
-                actual_cny=actual.amount_cny if actual else None,
-                deviation_pct=deviation,
-            )
-        )
-    return DashboardCost(
-        months=result,
-        prices={
-            "asr_cny_per_hour": settings.COST_ASR_CNY_PER_HOUR,
-            "llm_cny_per_mtok_in": settings.COST_LLM_CNY_PER_MTOK_IN,
-            "llm_cny_per_mtok_out": settings.COST_LLM_CNY_PER_MTOK_OUT,
-            "server_cny_per_month": settings.COST_SERVER_CNY_PER_MONTH,
-        },
-        note="ASR 按作答音频秒数×单价（精确）；LLM 优先按真实 token 用量"
-        "（usage 记账覆盖当月全部调用日时），否则按调用量×估算 token"
-        "（历史为问答题 rubric 回算）；服务器为固定月费。实际以云账单为准。",
+    return "estimated", round(bucket["llm_calls"] * llm_cny_per_call, 2)
+
+
+def _cost_month_row(
+    month: str,
+    bucket: dict[str, float],
+    reconciles: dict[str, AdminCostReconcile],
+    llm_cny_per_call: float,
+) -> DashboardCostMonth:
+    """单月费用行：ASR + LLM + 固定服务器费，与手工对账金额算偏差。"""
+    asr_cny = round(bucket["asr_seconds"] / 3600 * settings.COST_ASR_CNY_PER_HOUR, 2)
+    llm_basis, llm_cny = _llm_cost(bucket, llm_cny_per_call)
+    token_basis = llm_basis == "tokens"
+    server_cny = settings.COST_SERVER_CNY_PER_MONTH
+    total = round(asr_cny + llm_cny + server_cny, 2)
+    actual = reconciles.get(month)
+    deviation = (
+        round((actual.amount_cny - total) / total * 100, 1)
+        if actual and total > 0
+        else None
+    )
+    return DashboardCostMonth(
+        month=month,
+        asr_seconds=round(bucket["asr_seconds"], 1),
+        llm_calls=int(bucket["llm_calls"]),
+        llm_basis=llm_basis,
+        llm_tokens_in=int(bucket["tokens_in"]) if token_basis else None,
+        llm_tokens_out=int(bucket["tokens_out"]) if token_basis else None,
+        asr_cny=asr_cny,
+        llm_cny=llm_cny,
+        server_cny=server_cny,
+        total_cny=total,
+        attempts=int(bucket["attempts"]),
+        actual_cny=actual.amount_cny if actual else None,
+        deviation_pct=deviation,
     )
 
 
