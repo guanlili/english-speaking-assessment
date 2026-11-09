@@ -188,7 +188,6 @@ def read_dashboard_overview(
 
 
 @router.get("/usage", response_model=DashboardUsage)
-@router.get("/usage", response_model=DashboardUsage)
 def read_dashboard_usage(
     session: PlatformSessionDep,
     _operator: PlatformOperatorDep,
