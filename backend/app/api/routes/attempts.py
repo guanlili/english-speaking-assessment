@@ -583,13 +583,11 @@ def create_attempt_upload(
 
     # 幂等检查：同键已有作答直接返回（同样校验归属，防越权读取他人作答）；
     # 键指向别的题目/会话时拒绝（防串题回执，见 _idempotent_existing）
-    if idempotency_key:
-        existing = _idempotent_existing(
-            session, idempotency_key, item_type, item_id, session_id
-        )
-        if existing is not None:
-            session.refresh(existing)
-            return _idempotent_receipt(session, existing, current_user)
+    replay = _idempotent_replay(
+        session, idempotency_key, item_type, item_id, session_id, current_user
+    )
+    if replay is not None:
+        return replay
 
     _enforce_submit_rate_limit(student, request)
 
@@ -613,21 +611,59 @@ def create_attempt_upload(
     student_id = student.id if student is not None else None
     session.commit()
 
+    return _commit_attempt_pipeline(
+        session,
+        submitter,
+        item_type=item_type,
+        item_id=item_id,
+        student=student,
+        student_id=student_id,
+        session_id=session_id,
+        idempotency_key=idempotency_key,
+        current_user=current_user,
+        audio=audio,
+        duration_s=duration_s,
+        exam_one_attempt=exam_one_attempt,
+        exam_assignment_id=exam_assignment_id,
+    )
+
+
+def _commit_attempt_pipeline(
+    session: Session,
+    submitter: ScoringSubmitter,
+    *,
+    item_type: str,
+    item_id: uuid.UUID,
+    student: Student | None,
+    student_id: uuid.UUID | None,
+    session_id: uuid.UUID | None,
+    idempotency_key: str | None,
+    current_user: User | None,
+    audio: UploadFile,
+    duration_s: float,
+    exam_one_attempt: bool,
+    exam_assignment_id: uuid.UUID | None,
+) -> AttemptPublic:
+    """事务边界①之后的全流程：校验落盘 → 建行 → 锁内插入 → 提交评分 → 出参。
+
+    student_id 由调用方在 commit 之前算好传入——commit 会让对象过期，
+    之后再取 student.id 可能触发一次多余的重新加载。
+    本函数自身不 commit：三段事务边界分别在 _prepare_attempt_payload
+    与 _insert_attempt 内部，各自的注释留在原处。
+    """
     item_snapshot, audio_path, mime_type, duration_s = _prepare_attempt_payload(
         session, item_type, item_id, session_id, current_user, audio, duration_s
     )
-
-    attempt = Attempt(
+    attempt = _build_attempt(
         item_type=item_type,
         item_id=item_id,
         student_id=student_id,
         session_id=session_id,
         idempotency_key=idempotency_key,
         item_snapshot=item_snapshot,
-        audio_path=str(audio_path),
-        audio_mime=mime_type,
+        audio_path=audio_path,
+        mime_type=mime_type,
         duration_s=duration_s,
-        engine=settings.SCORING_PROVIDER,
     )
     result = _insert_attempt(
         session,
@@ -650,6 +686,56 @@ def create_attempt_upload(
     return _attempt_public(
         result,
         feedback_masked=_feedback_masked_for_user(session, result, current_user),
+    )
+
+
+def _idempotent_replay(
+    session: Session,
+    idempotency_key: str | None,
+    item_type: str,
+    item_id: uuid.UUID,
+    session_id: uuid.UUID | None,
+    current_user: User | None,
+) -> AttemptPublic | None:
+    """同键已有作答则刷新并返回回执；无键或未命中返回 None。
+
+    同样校验归属，防越权读取他人作答；键指向别的题目/会话时拒绝
+    （防串题回执，见 _idempotent_existing）。
+    """
+    if idempotency_key:
+        existing = _idempotent_existing(
+            session, idempotency_key, item_type, item_id, session_id
+        )
+        if existing is not None:
+            session.refresh(existing)
+            return _idempotent_receipt(session, existing, current_user)
+    return None
+
+
+def _build_attempt(
+    *,
+    item_type: str,
+    item_id: uuid.UUID,
+    student_id: uuid.UUID | None,
+    session_id: uuid.UUID | None,
+    idempotency_key: str | None,
+    item_snapshot: Any,
+    audio_path: Path,
+    mime_type: str,
+    duration_s: float,
+) -> Attempt:
+    """组装待插入的作答行；引擎取当前配置的评分提供方。"""
+    return Attempt(
+        item_type=item_type,
+        item_id=item_id,
+        student_id=student_id,
+        session_id=session_id,
+        idempotency_key=idempotency_key,
+        item_snapshot=item_snapshot,
+        audio_path=str(audio_path),
+        audio_mime=mime_type,
+        duration_s=duration_s,
+        engine=settings.SCORING_PROVIDER,
     )
 
 
