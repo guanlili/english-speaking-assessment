@@ -31,12 +31,14 @@ from app.utils import (
     verify_password_reset_token,
 )
 
-_login_limiter = SlidingWindowLimiter(limit=10, window_s=300)
+LOGIN_RATE_LIMIT = 10
+LOGIN_RATE_WINDOW_S = 300
+_login_limiter = SlidingWindowLimiter(
+    limit=LOGIN_RATE_LIMIT, window_s=LOGIN_RATE_WINDOW_S
+)
 # 兼容旧测试钩子：test_login 直接 clear 该 dict / 持锁操作清理用例间状态
 _login_attempts = _login_limiter._attempts  # noqa: SLF001
 _login_lock = _login_limiter._lock  # noqa: SLF001
-LOGIN_RATE_LIMIT = 10
-LOGIN_RATE_WINDOW_S = 300
 
 
 def _check_login_rate_limit(bucket: str) -> None:

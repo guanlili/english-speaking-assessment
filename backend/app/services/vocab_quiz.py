@@ -119,7 +119,9 @@ def retake_granted(
 def attempts_allowed(
     session: Session, assignment_id: uuid.UUID, student_id: uuid.UUID
 ) -> int:
-    return 2 if retake_granted(session, assignment_id, student_id) else 1
+    if retake_granted(session, assignment_id, student_id):
+        return QUIZ_MAX_ATTEMPTS
+    return QUIZ_MAX_ATTEMPTS - 1
 
 
 def settle_due_sessions(session: Session, assignment: VocabularyAssignment) -> int:
@@ -345,19 +347,6 @@ def quiz_round_stats_from_firsts(
         "unanswered": unanswered,
         "score": score,
     }
-
-
-def quiz_attempt_stats(
-    session: Session, vocab_session: VocabularySession, total: int
-) -> dict[str, object]:
-    """单份答卷成绩（查库版）：等价于 quiz_round_stats_from_firsts。"""
-    firsts = session.exec(
-        select(VocabularyAnswer).where(
-            VocabularyAnswer.session_id == vocab_session.id,  # type: ignore[arg-type]
-            VocabularyAnswer.attempt_no == 1,
-        )
-    ).all()
-    return quiz_round_stats_from_firsts({a.item_index: a for a in firsts}, total)
 
 
 def effective_quiz_grade_from_rounds(
