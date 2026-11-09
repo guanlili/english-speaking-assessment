@@ -19,7 +19,14 @@ from app.api.routes.class_shared import (
     _today_in_practice_tz,
     router,
 )
-from app.models import Attempt, ClassroomExercise, PracticeSession, Student
+from app.models import (
+    Attempt,
+    Classroom,
+    ClassroomExercise,
+    PracticeSession,
+    Student,
+    User,
+)
 from app.services import followups, teaching_actions
 
 
@@ -270,6 +277,135 @@ def _has_incomplete_target(
     return incomplete.exists()
 
 
+def _followup_scope(
+    session: SessionDep, code: str, current_user: User
+) -> tuple[Classroom, Student | None]:
+    """解析课堂并判定调用者身份：学生取本人档案，其他角色须是指派教师。"""
+    classroom = _get_classroom(session, code)
+    own_student = (
+        _student_profile_of(session, classroom, current_user)
+        if current_user.role == "student"
+        else None
+    )
+    if own_student is None:
+        _require_classroom_teacher(classroom, current_user)
+    return classroom, own_student
+
+
+def _followup_page(
+    session: SessionDep, statement, offset: int, limit: int
+) -> list[ClassroomExercise]:
+    """按新到旧分页。收件人与完成度过滤都已在 statement 里完成，必须先于 LIMIT/OFFSET。"""
+    return list(
+        session.exec(
+            statement.order_by(
+                col(ClassroomExercise.created_at).desc(),
+                col(ClassroomExercise.id).desc(),
+            )
+            .offset(offset)
+            .limit(limit)
+        ).all()
+    )
+
+
+def _followup_sessions(
+    session: SessionDep, task_ids: list[uuid.UUID], own_student: Student | None
+) -> list[PracticeSession]:
+    """取这批任务下的补练会话；学生视角只取本人。"""
+    if not task_ids:
+        return []
+    return list(
+        session.exec(
+            select(PracticeSession).where(
+                col(PracticeSession.assignment_id).in_(task_ids),
+                PracticeSession.mode == followups.FOLLOWUP,
+                PracticeSession.student_id == own_student.id
+                if own_student is not None
+                else True,
+            )
+        ).all()
+    )
+
+
+def _followup_attempts(
+    session: SessionDep, sessions: list[PracticeSession]
+) -> list[tuple[uuid.UUID, uuid.UUID, str]]:
+    """每个（会话, 题目）取最新一次作答状态。"""
+    if not sessions:
+        return []
+    return list(
+        session.exec(
+            select(Attempt.session_id, Attempt.item_id, Attempt.status)
+            .where(col(Attempt.session_id).in_([ps.id for ps in sessions]))
+            .distinct(col(Attempt.session_id), col(Attempt.item_id))
+            .order_by(
+                col(Attempt.session_id),
+                col(Attempt.item_id),
+                col(Attempt.created_at).desc(),
+                col(Attempt.id).desc(),
+            )
+        ).all()
+    )
+
+
+def _followup_item_ids(task: ClassroomExercise) -> set[uuid.UUID]:
+    """任务题目标识集合（排除讲解类条目）。"""
+    return {
+        uuid.UUID(str(i["id"]))
+        for i in task.snapshot_items
+        if i.get("type") != "instruction"
+    }
+
+
+def _followup_progress_rows(
+    task: ClassroomExercise,
+    own_student: Student | None,
+    by_target: dict[tuple[uuid.UUID | None, str], PracticeSession],
+    latest: dict[tuple[uuid.UUID, uuid.UUID], str],
+    ids: set[uuid.UUID],
+) -> list[FollowupProgress]:
+    """任务下每个收件人的完成度。"""
+    rows = []
+    for target in task.target_students or []:
+        if own_student is not None and target["student_id"] != str(own_student.id):
+            continue
+        ps = by_target.get((task.id, target["student_id"]))
+        statuses = [
+            latest.get((ps.id, iid), "missing") if ps else "missing" for iid in ids
+        ]
+        rows.append(
+            FollowupProgress(
+                student_id=uuid.UUID(target["student_id"]),
+                display_name=target["display_name"],
+                done_count=statuses.count("done"),
+                total_count=len(ids),
+                has_pending=any(s in ("queued", "scoring") for s in statuses),
+                has_failures="failed" in statuses,
+                session_id=ps.id if ps else None,
+            )
+        )
+    return rows
+
+
+def _followup_public(
+    task: ClassroomExercise,
+    own_student: Student | None,
+    by_target: dict[tuple[uuid.UUID | None, str], PracticeSession],
+    latest: dict[tuple[uuid.UUID, uuid.UUID], str],
+) -> FollowupPublic:
+    """单个任务的对外视图。"""
+    ids = _followup_item_ids(task)
+    return FollowupPublic(
+        id=task.id,
+        title=task.title,
+        status=cast(Literal["followup", "followup_closed"], task.status),
+        source_exercise_id=task.source_exercise_id,
+        created_at=task.created_at,
+        item_count=len(ids),
+        targets=_followup_progress_rows(task, own_student, by_target, latest, ids),
+    )
+
+
 @router.get("/{code}/followups", response_model=list[FollowupPublic])
 def list_class_followups(
     session: SessionDep,
@@ -280,14 +416,7 @@ def list_class_followups(
     limit: int = Query(default=50, ge=1, le=100),
 ) -> list[FollowupPublic]:
     """Page tasks by the caller's unfinished work or history, newest first."""
-    classroom = _get_classroom(session, code)
-    own_student = (
-        _student_profile_of(session, classroom, current_user)
-        if current_user.role == "student"
-        else None
-    )
-    if own_student is None:
-        _require_classroom_teacher(classroom, current_user)
+    classroom, own_student = _followup_scope(session, code, current_user)
     statement = select(ClassroomExercise).where(
         ClassroomExercise.classroom_id == classroom.id,
         col(ClassroomExercise.status).in_([followups.FOLLOWUP, followups.CANCELLED]),
@@ -306,82 +435,14 @@ def list_class_followups(
         )
         statement = statement.where(active if status == "active" else ~active)
     # Both recipient and completion filtering must precede LIMIT/OFFSET.
-    tasks = session.exec(
-        statement.order_by(
-            col(ClassroomExercise.created_at).desc(), col(ClassroomExercise.id).desc()
-        )
-        .offset(offset)
-        .limit(limit)
-    ).all()
-    task_ids = [t.id for t in tasks]
-    sessions = (
-        session.exec(
-            select(PracticeSession).where(
-                col(PracticeSession.assignment_id).in_(task_ids),
-                PracticeSession.mode == followups.FOLLOWUP,
-                PracticeSession.student_id == own_student.id
-                if own_student is not None
-                else True,
-            )
-        ).all()
-        if task_ids
-        else []
-    )
+    tasks = _followup_page(session, statement, offset, limit)
+    sessions = _followup_sessions(session, [t.id for t in tasks], own_student)
     by_target = {(ps.assignment_id, str(ps.student_id)): ps for ps in sessions}
-    attempts = (
-        session.exec(
-            select(Attempt.session_id, Attempt.item_id, Attempt.status)
-            .where(col(Attempt.session_id).in_([ps.id for ps in sessions]))
-            .distinct(col(Attempt.session_id), col(Attempt.item_id))
-            .order_by(
-                col(Attempt.session_id),
-                col(Attempt.item_id),
-                col(Attempt.created_at).desc(),
-                col(Attempt.id).desc(),
-            )
-        ).all()
-        if sessions
-        else []
-    )
-    latest = {(sid, iid): attempt_status for sid, iid, attempt_status in attempts}
-    result = []
-    for task in tasks:
-        ids = {
-            uuid.UUID(str(i["id"]))
-            for i in task.snapshot_items
-            if i.get("type") != "instruction"
-        }
-        rows = []
-        for target in task.target_students or []:
-            if own_student is not None and target["student_id"] != str(own_student.id):
-                continue
-            ps = by_target.get((task.id, target["student_id"]))
-            statuses = [
-                latest.get((ps.id, iid), "missing") if ps else "missing" for iid in ids
-            ]
-            rows.append(
-                FollowupProgress(
-                    student_id=uuid.UUID(target["student_id"]),
-                    display_name=target["display_name"],
-                    done_count=statuses.count("done"),
-                    total_count=len(ids),
-                    has_pending=any(s in ("queued", "scoring") for s in statuses),
-                    has_failures="failed" in statuses,
-                    session_id=ps.id if ps else None,
-                )
-            )
-        result.append(
-            FollowupPublic(
-                id=task.id,
-                title=task.title,
-                status=cast(Literal["followup", "followup_closed"], task.status),
-                source_exercise_id=task.source_exercise_id,
-                created_at=task.created_at,
-                item_count=len(ids),
-                targets=rows,
-            )
-        )
-    return result
+    latest = {
+        (sid, iid): attempt_status
+        for sid, iid, attempt_status in _followup_attempts(session, sessions)
+    }
+    return [_followup_public(task, own_student, by_target, latest) for task in tasks]
 
 
 @router.post("/{code}/followups/{task_id}/start", response_model=FollowupStarted)
