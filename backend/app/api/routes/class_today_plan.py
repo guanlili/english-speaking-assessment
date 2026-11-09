@@ -4,7 +4,7 @@ import hashlib
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from fastapi import HTTPException, Query
@@ -69,6 +69,15 @@ from app.services import exercise as exercise_service
 from app.services import reading
 
 logger = logging.getLogger(__name__)
+
+
+def _exercise_by_id(
+    session: Session, exercise_id: uuid.UUID | None
+) -> ClassroomExercise | None:
+    """按 id 取练习；id 为空直接返回 None（session.get 不接受 None）。"""
+    return (
+        session.get(ClassroomExercise, exercise_id) if exercise_id is not None else None
+    )
 
 
 def _attempt_item_text(attempt: Attempt) -> str | None:
@@ -588,49 +597,64 @@ def _assigned_title(
     return None
 
 
-@router.get("/{code}/today", response_model=TodayPlan)
-def read_today_plan(
+def _open_todays_session(
     session: SessionDep,
     code: str,
     current_user: StudentUserDep,
-    session_id: uuid.UUID | None = Query(default=None),
-    slot: str = Query(default="class"),
-) -> Any:
-    """今天的练习计划：3 句听后复述 + 2 道该档情景问答（US-05）。
-
-    传 session_id 时返回该会话的计划（主题探索的自由练习轮）。
-    """
+    session_id: uuid.UUID | None,
+    slot: str,
+) -> tuple[Any, Student, date, PracticeSession]:
+    """定位今天的练习会话：显式 session_id 优先，其次作业槽，最后当日 daily 轮。"""
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
     today = _today_in_practice_tz()
     practice_session = _open_practice_session(
         session, classroom, student, today, session_id, slot=slot
     )
-    snapshot_items, bound_exercise = _load_plan_snapshot(session, practice_session)
-    exam_info = _exam_lifecycle_info(session, practice_session, bound_exercise)
-    # 反馈遮罩判定提前：考试终结前跳过激励结算——settle 会按分数落
-    # stars/XP，GamificationInfo 直出 practice_session.stars 会把分数档
-    # （≥85→3 星）提前泄露给考生本人，XP 同步跳变（2026-10-12 评审）
-    feedback_locked = exam_service.exam_feedback_locked(
-        session, practice_session, bound_exercise
-    )
+    return classroom, student, today, practice_session
 
-    (
-        items,
-        expected_items,
-        exhausted,
-        band,
-        listen_counts,
+
+def _plan_assignment_meta(
+    session: SessionDep,
+    classroom: Any,
+    practice_session: PracticeSession,
+    item_objects: Any,
+    session_id: uuid.UUID | None,
+) -> tuple[str | None, ClassroomExercise | None]:
+    """作业相关元信息：本轮指派标题 + 班级作业练习（未设作业时为 None）。"""
+    exercise = _exercise_by_id(session, practice_session.assignment_id)
+    assigned_title = _assigned_title(
+        exercise,
+        _assignment_unit(session, classroom),
+        practice_session,
         item_objects,
-    ) = _resolve_plan_items(
-        session, classroom, student, practice_session, snapshot_items
+        session_id,
     )
+    homework = _exercise_by_id(session, classroom.homework_exercise_id)
+    return assigned_title, homework
 
-    # 激励结算（幂等）：本轮全部终态时计算星/XP/连胜/徽章。
-    # 考试反馈遮罩期间跳过：结算产物（stars/XP）会绕过 attempts 遮罩
-    # 提前泄露分数档；考试终结后下一次 /today 自然补结算
-    # expected_items 严格按本轮题单，额外换题/问答题不顶替必做题；
-    # 题目说明无作答，不进必做集合
+
+def _resolve_and_settle(
+    session: SessionDep,
+    classroom: Any,
+    student: Student,
+    practice_session: PracticeSession,
+    snapshot_items: list[dict[str, object]] | None,
+    today: date,
+    feedback_locked: bool,
+) -> tuple[list[PlanItem], int, bool, str, dict[uuid.UUID, int], Any]:
+    """解析本轮题单，并在考试反馈可见时结算星/XP/连胜/徽章。
+
+    结算幂等：本轮全部终态才落库。考试反馈遮罩期间跳过——结算产物
+    （stars/XP）会绕过 attempts 遮罩提前泄露分数档；考试终结后下一次
+    /today 自然补结算。expected_items 严格按本轮题单，额外换题/问答题
+    不顶替必做题；题目说明无作答，不进必做集合。
+    """
+    items, expected_items, exhausted, band, listen_counts, item_objects = (
+        _resolve_plan_items(
+            session, classroom, student, practice_session, snapshot_items
+        )
+    )
     required_ids = {it.id for it in items if it.type != AttemptItemType.INSTRUCTION}
     if not feedback_locked:
         settle_session(
@@ -641,11 +665,21 @@ def read_today_plan(
             expected_items,
             required_item_ids=required_ids,
         )
+    return items, expected_items, exhausted, band, listen_counts, item_objects
 
+
+def _plan_progress_view(
+    session: SessionDep,
+    student: Student,
+    practice_session: PracticeSession,
+    items: list[PlanItem],
+    listen_counts: dict[uuid.UUID, int],
+    feedback_locked: bool,
+) -> tuple[list[PlanAttempt], list[BadgePublic]]:
+    """结算后刷新对象，组装本轮作答视图（含换题追加与模考帧）与徽章。"""
     # 结算可能已写入 stars/xp 并 commit；刷新对象确保返回最新
     session.refresh(student)
     session.refresh(practice_session)
-
     attempts, previous_map = _latest_attempts_with_previous(
         session, student.id, practice_session.id
     )
@@ -653,21 +687,25 @@ def read_today_plan(
     _inject_exam_frames(session, student, items)
     plan_attempts = _build_plan_attempts(attempts, previous_map, feedback_locked)
     badges = _badge_publics(student_badges(session, student.id))
+    return plan_attempts, badges
 
-    assigned_unit = _assignment_unit(session, classroom)
-    exercise = (
-        session.get(ClassroomExercise, practice_session.assignment_id)
-        if practice_session.assignment_id is not None
-        else None
-    )
-    assigned_title = _assigned_title(
-        exercise, assigned_unit, practice_session, item_objects, session_id
-    )
-    homework = (
-        session.get(ClassroomExercise, classroom.homework_exercise_id)
-        if classroom.homework_exercise_id is not None
-        else None
-    )
+
+def _today_plan_response(
+    *,
+    practice_session: PracticeSession,
+    classroom: Any,
+    band: str,
+    assigned_title: str | None,
+    items: list[PlanItem],
+    plan_attempts: list[PlanAttempt],
+    exhausted: bool,
+    exam_info: Any,
+    homework: ClassroomExercise | None,
+    feedback_locked: bool,
+    student: Student,
+    badges: list[BadgePublic],
+) -> TodayPlan:
+    """today 响应装配：字段顺序与 TodayPlan 声明一致。"""
     return TodayPlan(
         session_id=practice_session.id,
         classroom_code=classroom.code,
@@ -690,6 +728,70 @@ def read_today_plan(
     )
 
 
+@router.get("/{code}/today", response_model=TodayPlan)
+def read_today_plan(
+    session: SessionDep,
+    code: str,
+    current_user: StudentUserDep,
+    session_id: uuid.UUID | None = Query(default=None),
+    slot: str = Query(default="class"),
+) -> Any:
+    """今天的练习计划：3 句听后复述 + 2 道该档情景问答（US-05）。
+
+    传 session_id 时返回该会话的计划（主题探索的自由练习轮）。
+    """
+    classroom, student, today, practice_session = _open_todays_session(
+        session, code, current_user, session_id, slot
+    )
+    snapshot_items, bound_exercise = _load_plan_snapshot(session, practice_session)
+    exam_info = _exam_lifecycle_info(session, practice_session, bound_exercise)
+    # 反馈遮罩判定提前：考试终结前跳过激励结算——settle 会按分数落
+    # stars/XP，GamificationInfo 直出 practice_session.stars 会把分数档
+    # （≥85→3 星）提前泄露给考生本人，XP 同步跳变（2026-10-12 评审）
+    feedback_locked = exam_service.exam_feedback_locked(
+        session, practice_session, bound_exercise
+    )
+
+    (
+        items,
+        expected_items,
+        exhausted,
+        band,
+        listen_counts,
+        item_objects,
+    ) = _resolve_and_settle(
+        session,
+        classroom,
+        student,
+        practice_session,
+        snapshot_items,
+        today,
+        feedback_locked,
+    )
+
+    plan_attempts, badges = _plan_progress_view(
+        session, student, practice_session, items, listen_counts, feedback_locked
+    )
+
+    assigned_title, homework = _plan_assignment_meta(
+        session, classroom, practice_session, item_objects, session_id
+    )
+    return _today_plan_response(
+        practice_session=practice_session,
+        classroom=classroom,
+        band=band,
+        assigned_title=assigned_title,
+        items=items,
+        plan_attempts=plan_attempts,
+        exhausted=exhausted,
+        exam_info=exam_info,
+        homework=homework,
+        feedback_locked=feedback_locked,
+        student=student,
+        badges=badges,
+    )
+
+
 def _next_question_from_assigned(
     session: Session,
     classroom: Any,
@@ -706,11 +808,7 @@ def _next_question_from_assigned(
     """
     scenario = None
     assigned_question_ids: set[uuid.UUID] = set()
-    bound_exercise = (
-        session.get(ClassroomExercise, practice_session.assignment_id)
-        if practice_session.assignment_id is not None
-        else None
-    )
+    bound_exercise = _exercise_by_id(session, practice_session.assignment_id)
     if bound_exercise is not None:
         for item in _snapshot_items_of(
             bound_exercise.snapshot_items, AttemptItemType.QUESTION
