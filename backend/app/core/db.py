@@ -12,6 +12,7 @@ from app.models import (
     ScenarioQuestion,
     Student,
     Tenant,
+    Unit,
     User,
     UserCreate,
 )
@@ -212,15 +213,18 @@ SCHOOL_LIFE_QUESTIONS = [
 # for more information: https://github.com/fastapi/full-stack-fastapi-template/issues/28
 
 
-def _seed_practice_content(session: Session) -> None:
-    from app.models import Unit
-
+def _seed_demo_unit(session: Session) -> Unit:
+    """取第一个 Unit；库内还没有则建「Unit 1 · Pets」。"""
     unit = session.exec(select(Unit).limit(1)).first()
     if unit is None:
         unit = Unit(order_index=0, title="Unit 1 · Pets", topic="Pets")
         session.add(unit)
         session.commit()
+    return unit
 
+
+def _seed_demo_passage(session: Session, unit: Unit) -> Passage:
+    """建 demo-pets 篇目；已存在但没挂单元则补挂。"""
     passage = session.exec(select(Passage).where(Passage.slug == "demo-pets")).first()
     if not passage:
         passage = crud.create_passage(
@@ -239,7 +243,11 @@ def _seed_practice_content(session: Session) -> None:
         passage.unit_id = unit.id
         session.add(passage)
         session.commit()
+    return passage
 
+
+def _seed_demo_repeat_sentences(session: Session, passage: Passage) -> None:
+    """该篇目还没有听句复述时，按 DEMO_REPEAT_SENTENCES 顺序批量建。"""
     if not session.exec(
         select(RepeatSentence).where(RepeatSentence.passage_id == passage.id)
     ).first():
@@ -254,6 +262,9 @@ def _seed_practice_content(session: Session) -> None:
             )
         session.commit()
 
+
+def _seed_demo_scenario(session: Session) -> None:
+    """Pets 情景问答；情景与题目只在情景首次创建时一起建。"""
     scenario = session.exec(select(Scenario).where(Scenario.topic == "Pets")).first()
     if not scenario:
         scenario = Scenario(topic="Pets")
@@ -271,6 +282,9 @@ def _seed_practice_content(session: Session) -> None:
             )
         session.commit()
 
+
+def _seed_demo_classroom(session: Session) -> Classroom:
+    """演示班级 DEMO01。"""
     demo_classroom = session.exec(
         select(Classroom).where(Classroom.code == DEMO_CLASSROOM_CODE)
     ).first()
@@ -278,9 +292,12 @@ def _seed_practice_content(session: Session) -> None:
         demo_classroom = Classroom(code=DEMO_CLASSROOM_CODE, class_size=60)
         session.add(demo_classroom)
         session.commit()
+    return demo_classroom
 
-    # 本地演示学生账号（学号 student / 密码 demo1234），已加入 DEMO01
-    if settings.ENVIRONMENT == "local" and demo_classroom is not None:
+
+def _seed_demo_student(session: Session, demo_classroom: Classroom) -> None:
+    """本地演示学生账号（学号 student / 密码 demo1234），已加入 DEMO01。"""
+    if settings.ENVIRONMENT == "local":
         from app.core.security import get_password_hash
 
         demo_student = session.exec(
@@ -311,6 +328,14 @@ def _seed_practice_content(session: Session) -> None:
             )
             session.commit()
 
+
+def _seed_practice_content(session: Session) -> None:
+    unit = _seed_demo_unit(session)
+    passage = _seed_demo_passage(session, unit)
+    _seed_demo_repeat_sentences(session, passage)
+    _seed_demo_scenario(session)
+    demo_classroom = _seed_demo_classroom(session)
+    _seed_demo_student(session, demo_classroom)
     _seed_school_life_questions(session)
     _seed_vocabulary_demo(session)
     _seed_sentence_frames(session)
