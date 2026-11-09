@@ -387,6 +387,115 @@ def parse_upload(filename: str, raw: bytes) -> ParsedFile:
     return parsed
 
 
+def _check_sheet_limits(sheet_name: str, max_row: int, max_column: int) -> None:
+    """按工作表声明范围预检行/列上限（遍历之前就拒绝）。"""
+    if max_column > MAX_SHEET_COLUMNS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"工作表「{sheet_name}」有 {max_column} 列，超过 "
+                f"{MAX_SHEET_COLUMNS} 列上限，请使用标准模板的列"
+            ),
+        )
+    if max_row > MAX_SHEET_ROWS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"工作表「{sheet_name}」有效区共 {max_row} 行，超过 "
+                f"{MAX_IMPORT_ROWS} 行数据上限；若因整列设置格式导致，"
+                "请清除多余格式或把数据复制到新模板"
+            ),
+        )
+
+
+def _check_row_limits(sheet_name: str, r_idx: int, width: int) -> None:
+    """逐行实测兜底：声明范围缺失或偏小时的越界拒绝。"""
+    if r_idx > MAX_SHEET_ROWS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"行数超过上限（{MAX_IMPORT_ROWS} 行），请分批导入",
+        )
+    if width > MAX_SHEET_COLUMNS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"工作表「{sheet_name}」有 {width} 列，超过 "
+                f"{MAX_SHEET_COLUMNS} 列上限，请使用标准模板的列"
+            ),
+        )
+
+
+def _read_sheet_header(
+    sheet_name: str,
+    row_cells: tuple[str, ...],
+    seen_types: set[str],
+) -> tuple[str, dict[int, str]]:
+    """处理表头行：识别题型、禁止跨表重复、映射列、校验必需列。"""
+    qtype = _match_sheet_type(sheet_name)
+    if qtype is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(f"工作表「{sheet_name}」无法识别题型，请勿重命名模板工作表"),
+        )
+    if qtype in seen_types:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"题型「{TYPE_LABELS[qtype]}」出现在多个工作表，"
+                "请合并到同一工作表（行号按工作表区分会撞号）"
+            ),
+        )
+    seen_types.add(qtype)
+    col_map = _map_header(row_cells)
+    _require_columns(qtype, col_map, sheet_name)
+    return qtype, col_map
+
+
+def _read_sheet(
+    sheet: Any,
+    sheet_name: str,
+    seen_types: set[str],
+    already: int,
+) -> tuple[list[_RawRow], bool]:
+    """读一个工作表，返回 (数据行, 是否识别到题型)。
+
+    already 是此前已收集的数据行数：MAX_IMPORT_ROWS 是跨表累计上限。
+    """
+    max_row = sheet.max_row or 0
+    max_column = sheet.max_column or 0
+    _check_sheet_limits(sheet_name, max_row, max_column)
+    # max_row=0（无尺寸声明）时不能下传 max_row——会一个单元格都不产出
+    iter_kwargs: dict[str, Any] = {"values_only": True}
+    if max_row:
+        iter_kwargs["max_row"] = max_row
+    out: list[_RawRow] = []
+    header_done = False
+    col_map: dict[int, str] = {}
+    qtype: str | None = None
+    for r_idx, row in enumerate(sheet.iter_rows(**iter_kwargs), start=1):
+        _check_row_limits(sheet_name, r_idx, len(row))
+        row_cells = tuple(_cell_str(c) for c in row)
+        if not any(row_cells):
+            continue
+        if not header_done:
+            header_done = True
+            qtype, col_map = _read_sheet_header(sheet_name, row_cells, seen_types)
+            continue
+        if already + len(out) + 1 > MAX_IMPORT_ROWS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"行数超过上限（{MAX_IMPORT_ROWS} 行），请分批导入",
+            )
+        out.append(
+            _RawRow(
+                qtype=qtype or "",
+                line=r_idx,
+                cells=_row_cells(col_map, row_cells),
+            )
+        )
+    return out, header_done
+
+
 def _parse_xlsx(raw: bytes) -> ParsedFile:
     """流式解析 xlsx，边读边限。
 
@@ -414,88 +523,11 @@ def _parse_xlsx(raw: bytes) -> ParsedFile:
         for sheet_name in workbook.sheetnames:
             if _is_guide_sheet(sheet_name):
                 continue  # 说明页按名字跳过，不读内容
-            sheet = workbook[sheet_name]
-            max_row = sheet.max_row or 0
-            max_column = sheet.max_column or 0
-            if max_column > MAX_SHEET_COLUMNS:
-                raise HTTPException(
-                    status_code=422,
-                    detail=(
-                        f"工作表「{sheet_name}」有 {max_column} 列，超过 "
-                        f"{MAX_SHEET_COLUMNS} 列上限，请使用标准模板的列"
-                    ),
-                )
-            if max_row > MAX_SHEET_ROWS:
-                raise HTTPException(
-                    status_code=422,
-                    detail=(
-                        f"工作表「{sheet_name}」有效区共 {max_row} 行，超过 "
-                        f"{MAX_IMPORT_ROWS} 行数据上限；若因整列设置格式导致，"
-                        "请清除多余格式或把数据复制到新模板"
-                    ),
-                )
-            header_done = False
-            col_map: dict[int, str] = {}
-            qtype: str | None = None
-            # max_row=0（无尺寸声明）时不能下传 max_row——会一个单元格都不产出
-            iter_kwargs: dict[str, Any] = {"values_only": True}
-            if max_row:
-                iter_kwargs["max_row"] = max_row
-            for r_idx, row in enumerate(sheet.iter_rows(**iter_kwargs), start=1):
-                # 防御声明范围偏小/缺失的畸形文件：实际行数超界立即拒绝
-                if r_idx > MAX_SHEET_ROWS:
-                    raise HTTPException(
-                        status_code=422,
-                        detail=f"行数超过上限（{MAX_IMPORT_ROWS} 行），请分批导入",
-                    )
-                # 无尺寸声明（max_column=None）时声明预检失效：逐行实测列数
-                if len(row) > MAX_SHEET_COLUMNS:
-                    raise HTTPException(
-                        status_code=422,
-                        detail=(
-                            f"工作表「{sheet_name}」有 {len(row)} 列，超过 "
-                            f"{MAX_SHEET_COLUMNS} 列上限，请使用标准模板的列"
-                        ),
-                    )
-                row_cells = tuple(_cell_str(c) for c in row)
-                if not any(row_cells):
-                    continue
-                if not header_done:
-                    header_done = True
-                    qtype = _match_sheet_type(sheet_name)
-                    if qtype is None:
-                        raise HTTPException(
-                            status_code=422,
-                            detail=(
-                                f"工作表「{sheet_name}」无法识别题型，"
-                                "请勿重命名模板工作表"
-                            ),
-                        )
-                    if qtype in seen_types:
-                        raise HTTPException(
-                            status_code=422,
-                            detail=(
-                                f"题型「{TYPE_LABELS[qtype]}」出现在多个工作表，"
-                                "请合并到同一工作表（行号按工作表区分会撞号）"
-                            ),
-                        )
-                    seen_types.add(qtype)
-                    matched_any = True
-                    col_map = _map_header(row_cells)
-                    _require_columns(qtype, col_map, sheet_name)
-                    continue
-                if len(rows) + 1 > MAX_IMPORT_ROWS:
-                    raise HTTPException(
-                        status_code=422,
-                        detail=f"行数超过上限（{MAX_IMPORT_ROWS} 行），请分批导入",
-                    )
-                rows.append(
-                    _RawRow(
-                        qtype=qtype or "",
-                        line=r_idx,
-                        cells=_row_cells(col_map, row_cells),
-                    )
-                )
+            sheet_rows, matched = _read_sheet(
+                workbook[sheet_name], sheet_name, seen_types, len(rows)
+            )
+            rows.extend(sheet_rows)
+            matched_any = matched_any or matched
     finally:
         workbook.close()
     if not matched_any:
