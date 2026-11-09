@@ -494,24 +494,6 @@ def join_class(
         ) from None
 
 
-def _latest_done_attempts(
-    session: Any, student_id: uuid.UUID, session_id: uuid.UUID
-) -> list[Attempt]:
-    """本轮内每条题目的最新一次作答（含 queued/failed，供进度恢复）。"""
-    attempts = session.exec(
-        select(Attempt)
-        .where(
-            Attempt.student_id == student_id,
-            Attempt.session_id == session_id,
-        )
-        .order_by(col(Attempt.created_at))
-    ).all()
-    latest: dict[uuid.UUID, Attempt] = {}
-    for attempt in attempts:
-        latest[attempt.item_id] = attempt
-    return list(latest.values())
-
-
 def _latest_attempts_with_previous(
     session: Any, student_id: uuid.UUID, session_id: uuid.UUID
 ) -> tuple[list[Attempt], dict[uuid.UUID, dict[str, object] | None]]:

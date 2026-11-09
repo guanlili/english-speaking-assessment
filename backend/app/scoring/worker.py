@@ -781,14 +781,6 @@ def _ensure_detail_executor_locked() -> ThreadPoolExecutor:
     return _detail_executor
 
 
-def _get_or_create_detail_executor() -> ThreadPoolExecutor:
-    if _detail_executor is None:
-        with _executor_lock:
-            _ensure_detail_executor_locked()
-    assert _detail_executor is not None
-    return _detail_executor
-
-
 def submit_attempt_scoring(attempt_id: uuid.UUID) -> None:
     with _executor_lock:
         if _executor_stopped:

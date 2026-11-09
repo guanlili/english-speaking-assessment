@@ -34,15 +34,6 @@ router = APIRouter()
 
 # ── CSV 导入预览 ────────────────────────────────────────────────────
 
-IMPORT_HEADERS = [
-    "headword",
-    "part_of_speech",
-    "meaning_zh",
-    "meaning_en",
-    "accepted_spellings",
-    "example_en",
-]
-
 
 async def _read_csv_upload(file: UploadFile) -> str:
     max_bytes = settings.MAX_VOCAB_CSV_MB * 1024 * 1024
