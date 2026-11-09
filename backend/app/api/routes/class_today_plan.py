@@ -49,7 +49,9 @@ from app.models import (
     PlanAttempt,
     PlanItem,
     PracticeSession,
+    RepeatSentence,
     Scenario,
+    ScenarioQuestion,
     ScenarioQuestionPublic,
     SentenceFrame,
     SentenceFramePublic,
@@ -300,89 +302,152 @@ def _plan_items_dynamic(
 
     返回 (题单, 结算必做数, 是否无题可练, 档位, 重听计数, 指派题目)。
     """
-    items: list[PlanItem] = []
-    exhausted = False
     # 非快照分支才有指派题目对象
     item_objects = exercise_service.resolve_assigned_items(session, classroom)
     if item_objects is not None and practice_session.mode == "daily":
         # 按题指派但未走快照（兼容旧路径，或尚未发布快照的旧课堂）
-        item_passages, item_sentences, item_questions = item_objects
-        reading_passages = item_passages
-        sentences = item_sentences
-        questions = item_questions
+        reading_passages, sentences, questions = item_objects
         # 按题指派时，题单由 assigned_items 决定，不再按题型勾选裁剪
-        include_reading_build = bool(reading_passages)
-    else:
-        if (
-            practice_session.mode == "explore"
-            and practice_session.passage_id is not None
-        ):
-            passage = session.get(Passage, practice_session.passage_id)
-            if passage is None:
-                raise HTTPException(status_code=404, detail="Passage not found")
-            reading_passages = [passage]
-        elif _assignment_unit(session, classroom) is not None:
-            reading_passages = _assigned_active_passages(session, classroom)
-            if practice_session.passage_id is None or not reading_passages:
-                raise HTTPException(
-                    status_code=404,
-                    detail="指派的单元还没有篇目，请联系老师",
-                )
-        elif practice_session.passage_id is not None:
-            passage = session.get(Passage, practice_session.passage_id)
-            if passage is None:
-                raise HTTPException(status_code=404, detail="Passage not found")
-            reading_passages = [passage]
-        else:
-            passage = _active_passage(session, student)
-            reading_passages = [passage]
-
-        include_reading = _include_type(classroom, "reading")
-        include_repeat = _include_type(classroom, "repeat")
-        include_qa = _include_type(classroom, "qa")
-        sentences = []
-        if include_repeat:
-            sentences_by_passage = _repeat_sentences_of_passages(
-                session, reading_passages
-            )
-            for p in reading_passages:
-                sentences.extend(sentences_by_passage.get(p.id, []))
-        questions = []
+        include_reading = bool(reading_passages)
         exhausted = False
-        if include_qa:
-            # 用锚点篇目确定 topic 取情景题；主题未配情景时降级为无问答，
-            # 不让整轮题单 404（朗读/复述照常）
-            anchor = reading_passages[0]
-            scenario = _scenario_for_topic(session, anchor.topic, anchor.tenant_id)
-            band = _question_band_for_session(session, practice_session, student)
-            if scenario is None:
-                exhausted = True
-            else:
-                questions, exhausted = _pick_questions(
-                    session, scenario, student.id, QUESTIONS_PER_ROUND
-                )
-        include_reading_build = include_reading
-
-    # 重听计数
-    listen_counts: dict[uuid.UUID, int] = {}
-    if sentences:
-        listens = session.exec(
-            select(ItemListen).where(
-                ItemListen.student_id == student.id,  # type: ignore[arg-type]
-                ItemListen.session_id == practice_session.id,  # type: ignore[arg-type]
-                col(ItemListen.item_id).in_([s.id for s in sentences]),
+    else:
+        reading_passages, sentences, questions, band, exhausted = (
+            _rebuild_dynamic_sources(
+                session, classroom, student, practice_session, band
             )
-        ).all()
-        listen_counts = {ln.item_id: ln.count for ln in listens}
+        )
+        include_reading = _include_type(classroom, "reading")
 
-    if include_reading_build:
-        # 拆句的篇目展开成逐句条目（与发布快照同一算法），未拆分保持整篇
-        for p in reading_passages:
-            for snapshot in reading.expand_reading_items(p):
-                item = _plan_item_from_snapshot(snapshot)
-                if item is not None:
-                    items.append(item)
-    items += [
+    listen_counts = _dynamic_listen_counts(
+        session, student, practice_session, sentences
+    )
+
+    items: list[PlanItem] = []
+    if include_reading:
+        items.extend(_reading_plan_items(reading_passages))
+    items.extend(_repeat_plan_items(sentences, listen_counts))
+    items.extend(_question_plan_items(questions))
+    return items, len(items), exhausted, band, listen_counts, item_objects
+
+
+def _get_passage_or_404(session: Session, passage_id: uuid.UUID) -> Passage:
+    passage = session.get(Passage, passage_id)
+    if passage is None:
+        raise HTTPException(status_code=404, detail="Passage not found")
+    return passage
+
+
+def _dynamic_reading_passages(
+    session: Session,
+    classroom: Any,
+    student: Student,
+    practice_session: PracticeSession,
+) -> list[Passage]:
+    """自主练习 / 单元指派路径下本轮要读的篇目。"""
+    if practice_session.mode == "explore" and practice_session.passage_id is not None:
+        return [_get_passage_or_404(session, practice_session.passage_id)]
+    if _assignment_unit(session, classroom) is not None:
+        reading_passages = _assigned_active_passages(session, classroom)
+        if practice_session.passage_id is None or not reading_passages:
+            raise HTTPException(
+                status_code=404,
+                detail="指派的单元还没有篇目，请联系老师",
+            )
+        return reading_passages
+    if practice_session.passage_id is not None:
+        return [_get_passage_or_404(session, practice_session.passage_id)]
+    return [_active_passage(session, student)]
+
+
+def _dynamic_repeat_sentences(
+    session: Session, classroom: Any, reading_passages: list[Passage]
+) -> list[RepeatSentence]:
+    """按「复述」勾选取这些篇目的复述句，按篇目顺序拼接。"""
+    if not _include_type(classroom, "repeat"):
+        return []
+    sentences_by_passage = _repeat_sentences_of_passages(session, reading_passages)
+    sentences: list[RepeatSentence] = []
+    for p in reading_passages:
+        sentences.extend(sentences_by_passage.get(p.id, []))
+    return sentences
+
+
+def _dynamic_questions(
+    session: Session,
+    classroom: Any,
+    student: Student,
+    practice_session: PracticeSession,
+    reading_passages: list[Passage],
+    band: str,
+) -> tuple[list[ScenarioQuestion], str, bool]:
+    """按「问答」勾选取情景题；主题未配情景时降级为无问答并标记无题可练。"""
+    if not _include_type(classroom, "qa"):
+        return [], band, False
+    # 用锚点篇目确定 topic 取情景题；主题未配情景时降级为无问答，
+    # 不让整轮题单 404（朗读/复述照常）
+    anchor = reading_passages[0]
+    scenario = _scenario_for_topic(session, anchor.topic, anchor.tenant_id)
+    band = _question_band_for_session(session, practice_session, student)
+    if scenario is None:
+        return [], band, True
+    questions, exhausted = _pick_questions(
+        session, scenario, student.id, QUESTIONS_PER_ROUND
+    )
+    return questions, band, exhausted
+
+
+def _rebuild_dynamic_sources(
+    session: Session,
+    classroom: Any,
+    student: Student,
+    practice_session: PracticeSession,
+    band: str,
+) -> tuple[list[Passage], list[RepeatSentence], list[ScenarioQuestion], str, bool]:
+    """单元指派 / 自主练习：重建篇目、复述句、情景题，并回传可能升降的档位。"""
+    reading_passages = _dynamic_reading_passages(
+        session, classroom, student, practice_session
+    )
+    sentences = _dynamic_repeat_sentences(session, classroom, reading_passages)
+    questions, band, exhausted = _dynamic_questions(
+        session, classroom, student, practice_session, reading_passages, band
+    )
+    return reading_passages, sentences, questions, band, exhausted
+
+
+def _dynamic_listen_counts(
+    session: Session,
+    student: Student,
+    practice_session: PracticeSession,
+    sentences: list[RepeatSentence],
+) -> dict[uuid.UUID, int]:
+    """本轮这些复述句的重听次数（无复述句时不发查询）。"""
+    if not sentences:
+        return {}
+    listens = session.exec(
+        select(ItemListen).where(
+            ItemListen.student_id == student.id,  # type: ignore[arg-type]
+            ItemListen.session_id == practice_session.id,  # type: ignore[arg-type]
+            col(ItemListen.item_id).in_([s.id for s in sentences]),
+        )
+    ).all()
+    return {ln.item_id: ln.count for ln in listens}
+
+
+def _reading_plan_items(reading_passages: list[Passage]) -> list[PlanItem]:
+    """拆句的篇目展开成逐句条目（与发布快照同一算法），未拆分保持整篇。"""
+    items: list[PlanItem] = []
+    for p in reading_passages:
+        for snapshot in reading.expand_reading_items(p):
+            item = _plan_item_from_snapshot(snapshot)
+            if item is not None:
+                items.append(item)
+    return items
+
+
+def _repeat_plan_items(
+    sentences: list[RepeatSentence], listen_counts: dict[uuid.UUID, int]
+) -> list[PlanItem]:
+    return [
         PlanItem(
             type=AttemptItemType.REPEAT,
             id=s.id,
@@ -397,7 +462,10 @@ def _plan_items_dynamic(
         )
         for s in sentences
     ]
-    items += [
+
+
+def _question_plan_items(questions: list[ScenarioQuestion]) -> list[PlanItem]:
+    return [
         PlanItem(
             type=AttemptItemType.QUESTION,
             id=q.id,
@@ -412,8 +480,6 @@ def _plan_items_dynamic(
         )
         for q in questions
     ]
-    expected_items = len(items)
-    return items, expected_items, exhausted, band, listen_counts, item_objects
 
 
 def _resolve_plan_items(
