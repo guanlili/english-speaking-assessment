@@ -1,6 +1,7 @@
 """Teaching actions: short-lived presence, diagnostic recipient selection and reports."""
 
 import uuid
+from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta
 from typing import Literal, cast
 from zoneinfo import ZoneInfo
@@ -21,6 +22,7 @@ from app.api.routes.class_shared import (
 from app.core.config import settings
 from app.models import (
     Attempt,
+    Classroom,
     ClassroomExercise,
     PracticeSession,
     Student,
@@ -267,44 +269,112 @@ def read_learning_report(
     exercise_id: uuid.UUID | None = None,
 ) -> LearningReport:
     classroom = _get_classroom(session, code)
+    student = _resolve_report_student(session, classroom, current_user, student_id)
+    start, end, window_start, window_end = _report_window(days)
+    sessions = _report_sessions(session, classroom, student, start, end, exercise_id)
+    exercises = _exercises_by_id(session, sessions)
+    visible, total, active = _report_visibility(session, sessions, exercises)
+    rows = _report_attempts(session, visible, window_start, window_end)
+    latest = {(a.session_id, a.item_id): a for a in rows}
+    scored = [a for a in latest.values() if a.status == "done"]
+    return LearningReport(
+        display_name=student.display_name,
+        start_date=start,
+        end_date=end,
+        session_count=len(visible),
+        completed_items=len(scored),
+        total_items=max(total, len(latest)),
+        speaking_minutes=round(sum(a.duration_s for a in rows) / 60, 1),
+        reading_avg=_report_average(scored, ("passage", "repeat")),
+        question_avg=_report_average(scored, ("question",)),
+        answers=_report_answers(scored, window_start),
+        has_active_exam=active,
+    )
+
+
+def _resolve_report_student(
+    session: SessionDep,
+    classroom: Classroom,
+    current_user: CurrentUser,
+    student_id: uuid.UUID | None,
+) -> Student:
+    """报表对象：学生只能看自己（指定别人 403），教师必须指定本班学生（缺 422）。"""
     if current_user.role == "student":
         student = _student_profile_of(session, classroom, current_user)
         if student_id is not None and student_id != student.id:
             raise HTTPException(403, detail="No permission")
-    else:
-        _require_classroom_teacher(classroom, current_user)
-        if student_id is None:
-            raise HTTPException(422, detail="Student required")
-        student = _get_student_of_classroom(session, classroom, student_id)
+        return student
+    _require_classroom_teacher(classroom, current_user)
+    if student_id is None:
+        raise HTTPException(422, detail="Student required")
+    return _get_student_of_classroom(session, classroom, student_id)
+
+
+def _report_window(days: int) -> tuple[date, date, datetime, datetime]:
+    """（统计起始日, 结束日, 查询窗口起点, 查询窗口终点）。
+
+    日期按练习时区的自然日；起点取 start 的本地 0 点，end 含当天所以终点取
+    次日 0 点（右开区间）。
+    """
+    tz = ZoneInfo(settings.PRACTICE_TZ)
     end = _today_in_practice_tz()
     start = end - timedelta(days=days - 1)
-    sessions = session.exec(
-        select(PracticeSession).where(
-            PracticeSession.classroom_id == classroom.id,
-            PracticeSession.student_id == student.id,
-            PracticeSession.session_date >= start,
-            PracticeSession.session_date <= end,
-        )
-    ).all()
+    return (
+        start,
+        end,
+        datetime.combine(start, time.min, tz),
+        datetime.combine(end + timedelta(days=1), time.min, tz),
+    )
+
+
+def _report_sessions(
+    session: SessionDep,
+    classroom: Classroom,
+    student: Student,
+    start: date,
+    end: date,
+    exercise_id: uuid.UUID | None,
+) -> list[PracticeSession]:
+    """窗口内会话；指定 exercise_id 时只留该发布下的会话。"""
+    sessions = list(
+        session.exec(
+            select(PracticeSession).where(
+                PracticeSession.classroom_id == classroom.id,
+                PracticeSession.student_id == student.id,
+                PracticeSession.session_date >= start,
+                PracticeSession.session_date <= end,
+            )
+        ).all()
+    )
     if exercise_id is not None:
         sessions = [ps for ps in sessions if ps.assignment_id == exercise_id]
-    exercises = (
-        {
-            e.id: e
-            for e in session.exec(
-                select(ClassroomExercise).where(
-                    col(ClassroomExercise.id).in_(
-                        {ps.assignment_id for ps in sessions if ps.assignment_id}
-                    )
-                )
-            ).all()
-        }
-        if sessions
-        else {}
-    )
-    visible = []
-    total = 0
-    active = False
+    return sessions
+
+
+def _exercises_by_id(
+    session: SessionDep, sessions: list[PracticeSession]
+) -> dict[uuid.UUID, ClassroomExercise]:
+    """会话涉及的发布快照；无会话时不查库。"""
+    if not sessions:
+        return {}
+    ids = {ps.assignment_id for ps in sessions if ps.assignment_id}
+    return {
+        e.id: e
+        for e in session.exec(
+            select(ClassroomExercise).where(col(ClassroomExercise.id).in_(ids))
+        ).all()
+    }
+
+
+def _report_visibility(
+    session: SessionDep,
+    sessions: list[PracticeSession],
+    exercises: dict[uuid.UUID, ClassroomExercise],
+) -> tuple[list[uuid.UUID], int, bool]:
+    """（可见会话 id, 题目总数, 是否有进行中考试）。
+
+    列表页只给出可见会话；被锁定的考试会话单独标记 has_active_exam。
+    """
     # 旧式（无 exam_flow）考试的遮罩判定需要首答时间：批量预取，避免
     # 循环内逐会话查询（N+1）
     first = exam_service.first_submitted_by_session(
@@ -317,6 +387,9 @@ def read_learning_report(
             and ex.is_exam
         ],
     )
+    visible: list[uuid.UUID] = []
+    total = 0
+    active = False
     for ps in sessions:
         exercise = exercises.get(ps.assignment_id) if ps.assignment_id else None
         locked = (
@@ -335,60 +408,57 @@ def read_learning_report(
             total += sum(
                 item.get("type") != "instruction" for item in exercise.snapshot_items
             )
-    window_start = datetime.combine(start, time.min, ZoneInfo(settings.PRACTICE_TZ))
-    window_end = datetime.combine(
-        end + timedelta(days=1), time.min, ZoneInfo(settings.PRACTICE_TZ)
-    )
-    rows = (
-        session.exec(
-            select(Attempt)
-            .where(
-                col(Attempt.session_id).in_(visible),
-                col(Attempt.created_at) >= window_start,
-                col(Attempt.created_at) < window_end,
-            )
-            .order_by(col(Attempt.created_at), col(Attempt.id))
-        ).all()
-        if visible
-        else []
-    )
-    latest = {(a.session_id, a.item_id): a for a in rows}
-    scored = [a for a in latest.values() if a.status == "done"]
+    return visible, total, active
 
-    def average(types: tuple[str, ...]) -> float | None:
-        scores = [
-            a.overall for a in scored if a.item_type in types and a.overall is not None
-        ]
-        return round(sum(scores) / len(scores), 1) if scores else None
 
-    representatives = sorted(
-        scored,
+def _report_attempts(
+    session: SessionDep,
+    visible: list[uuid.UUID],
+    window_start: datetime,
+    window_end: datetime,
+) -> Sequence[Attempt]:
+    """窗口内作答，按时间与 id 升序（后续同题覆盖依赖这个顺序）。"""
+    if not visible:
+        return []
+    return session.exec(
+        select(Attempt)
+        .where(
+            col(Attempt.session_id).in_(visible),
+            col(Attempt.created_at) >= window_start,
+            col(Attempt.created_at) < window_end,
+        )
+        .order_by(col(Attempt.created_at), col(Attempt.id))
+    ).all()
+
+
+def _report_average(scored: list[Attempt], types: tuple[str, ...]) -> float | None:
+    """指定题型已判分作答的 overall 均值（保留一位小数）；无样本返回 None。"""
+    scores = [
+        a.overall for a in scored if a.item_type in types and a.overall is not None
+    ]
+    return round(sum(scores) / len(scores), 1) if scores else None
+
+
+def _report_answers(
+    candidates: list[Attempt], window_start: datetime
+) -> list[ReportAnswer]:
+    """代表作答：教师已反馈的优先，其次按时间倒序，最多 REPORT_ANSWER_LIMIT 条。"""
+    chosen = sorted(
+        candidates,
         key=lambda a: (
             bool(a.teacher_feedback or a.teacher_review_tags),
             a.created_at or window_start,
         ),
         reverse=True,
     )[:REPORT_ANSWER_LIMIT]
-    return LearningReport(
-        display_name=student.display_name,
-        start_date=start,
-        end_date=end,
-        session_count=len(visible),
-        completed_items=len(scored),
-        total_items=max(total, len(latest)),
-        speaking_minutes=round(sum(a.duration_s for a in rows) / 60, 1),
-        reading_avg=average(("passage", "repeat")),
-        question_avg=average(("question",)),
-        answers=[
-            ReportAnswer(
-                attempt_id=a.id,
-                item_type=a.item_type,
-                item_text=str((a.item_snapshot or {}).get("text", "")) or None,
-                teacher_feedback=a.teacher_feedback,
-                teacher_review_tags=a.teacher_review_tags,
-                created_at=a.created_at,
-            )
-            for a in representatives
-        ],
-        has_active_exam=active,
-    )
+    return [
+        ReportAnswer(
+            attempt_id=a.id,
+            item_type=a.item_type,
+            item_text=str((a.item_snapshot or {}).get("text", "")) or None,
+            teacher_feedback=a.teacher_feedback,
+            teacher_review_tags=a.teacher_review_tags,
+            created_at=a.created_at,
+        )
+        for a in chosen
+    ]
