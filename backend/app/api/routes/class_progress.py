@@ -31,6 +31,7 @@ from app.models import (
     Attempt,
     AttemptItemType,
     AttemptStatus,
+    Classroom,
     ClassroomExercise,
     ClassTrendDay,
     DimensionPoint,
@@ -55,6 +56,9 @@ logger = logging.getLogger(__name__)
 # 个人诊断聚合的作答行数上限：诊断卡只展示 top 漏词/四维均值/最近 14 点
 # 趋势，取最近作答封顶即可，不随 days 窗口无界放大
 DIAGNOSTICS_MAX_ATTEMPTS = 2000
+
+# 四维评分口径：均值、最弱维度与趋势点都按这个固定顺序取
+RUBRIC_DIMENSIONS = ("fluency", "vocabulary", "grammar", "task")
 
 
 def _feedback_locked_exam_session_ids(
@@ -187,27 +191,68 @@ def read_student_diagnostics(
     item_snapshot 回退对齐（历史作答），error/missing 均计入。
     """
     classroom = _get_classroom(session, code)
-    if current_user.role == "student":
-        student = _student_profile_of(session, classroom, current_user)
-    else:
-        if student_id is None:
-            raise HTTPException(status_code=422, detail="教师查看需传 student_id")
-        _require_classroom_teacher(classroom, current_user)
-        student = _get_student_of_classroom(session, classroom, student_id)
-
-    tz = ZoneInfo(settings.PRACTICE_TZ)
-    now_tz = datetime.now(tz)
-    window_start = (now_tz - timedelta(days=days)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    window_start_utc = window_start.astimezone(ZoneInfo("UTC"))
-    as_of = datetime.now(UTC)
+    student = _resolve_diagnostics_student(session, classroom, current_user, student_id)
+    tz, window_start_utc, as_of = _diagnostics_window(days)
     locked_session_ids = (
         _feedback_locked_exam_session_ids(session, student)
         if current_user.role == "student"
         else set()
     )
+    conditions = _diagnostics_conditions(
+        student, window_start_utc, as_of, locked_session_ids
+    )
+    rows = _diagnostics_attempts(session, conditions)
+    missed, rubric_points, dim_sums, dim_count = _aggregate_diagnostics(rows, tz)
+    means, weakest = _dimension_summary(dim_sums, dim_count)
+    top_missed: list[dict[str, object]] = [
+        {"word": word, "count": count} for word, count in missed.most_common(12)
+    ]
+    return StudentDiagnostics(
+        classroom_code=classroom.code,
+        student_id=student.id,
+        top_missed_words=top_missed,
+        dimension_means=means,
+        weakest_dimension=weakest,
+        dimension_count=dim_count,
+        dimension_trend=rubric_points[-14:],
+    )
 
+
+def _resolve_diagnostics_student(
+    session: SessionDep,
+    classroom: Classroom,
+    current_user: CurrentUser,
+    student_id: uuid.UUID | None,
+) -> Student:
+    """诊断对象：学生看自己，教师必须显式指定本班学生。"""
+    if current_user.role == "student":
+        return _student_profile_of(session, classroom, current_user)
+    if student_id is None:
+        raise HTTPException(status_code=422, detail="教师查看需传 student_id")
+    _require_classroom_teacher(classroom, current_user)
+    return _get_student_of_classroom(session, classroom, student_id)
+
+
+def _diagnostics_window(days: int) -> tuple[ZoneInfo, datetime, datetime]:
+    """（练习时区, 窗口起点 UTC, 查询截止时刻）。
+
+    窗口按练习时区的自然日对齐到 0 点，再换算 UTC 后参与比较。
+    """
+    tz = ZoneInfo(settings.PRACTICE_TZ)
+    now_tz = datetime.now(tz)
+    window_start = (now_tz - timedelta(days=days)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return tz, window_start.astimezone(ZoneInfo("UTC")), datetime.now(UTC)
+
+
+def _diagnostics_conditions(
+    student: Student,
+    window_start_utc: datetime,
+    as_of: datetime,
+    locked_session_ids: set[uuid.UUID],
+) -> list[Any]:
+    """单生窗口内已完成作答的过滤条件（含未终结考试的反馈排除）。"""
     conditions = [
         col(Attempt.student_id) == student.id,
         col(Attempt.status) == AttemptStatus.DONE,
@@ -221,6 +266,11 @@ def read_student_diagnostics(
                 col(Attempt.session_id).not_in(locked_session_ids),
             )
         )
+    return conditions
+
+
+def _diagnostics_attempts(session: SessionDep, conditions: list[Any]) -> list[Attempt]:
+    """取窗口内作答（不足窗口的作答按最近封顶），按时间升序返回。"""
     # 诊断聚合只承载 top 漏词/四维均值/最近 14 点趋势：按最近作答封顶，
     # 防止重度学生超长窗口（days 上限 3650）把数千行 4 个 JSON 大列整进内存
     rows = session.exec(
@@ -241,7 +291,13 @@ def read_student_diagnostics(
     ).all()
     rows = list(rows)
     rows.reverse()  # 恢复时间升序，趋势「最近 14 点」口径与原先一致
+    return rows
 
+
+def _aggregate_diagnostics(
+    rows: list[Attempt], tz: ZoneInfo
+) -> tuple[Counter[str], list[DimensionPoint], dict[str, float], int]:
+    """逐作答聚合：漏词计数、四维求和、逐日趋势点、参与均值的天数。"""
     missed: Counter[str] = Counter()
     rubric_points: list[DimensionPoint] = []
     dim_sums: dict[str, float] = {}
@@ -249,62 +305,61 @@ def read_student_diagnostics(
     for attempt in rows:
         if attempt.item_type in (AttemptItemType.PASSAGE, AttemptItemType.REPEAT):
             _accumulate_missed_words(missed, attempt)
-        elif attempt.item_type == AttemptItemType.QUESTION:
-            created_at = attempt.created_at
-            if created_at is None:
-                continue
-            rubric = attempt.rubric if isinstance(attempt.rubric, dict) else None
-            if rubric is None:
-                continue
-            values = {
-                key: rubric.get(key)
-                for key in ("fluency", "vocabulary", "grammar", "task")
-            }
-            if not all(isinstance(v, (int, float)) for v in values.values()):
-                continue
-            # all() 已保证四个维度都是数值，这里收窄为 float 供求和/趋势使用
-            floats: dict[str, float] = {
-                key: float(value)
-                for key, value in values.items()
-                if isinstance(value, (int, float))
-            }
-            for key, value in floats.items():
-                dim_sums[key] = dim_sums.get(key, 0.0) + value
-            dim_count += 1
-            date_key = created_at.astimezone(tz).date().isoformat()
-            rubric_points.append(
-                DimensionPoint(
-                    date=date_key,
-                    fluency=floats["fluency"],
-                    vocabulary=floats["vocabulary"],
-                    grammar=floats["grammar"],
-                    task=floats["task"],
-                )
+            continue
+        if attempt.item_type != AttemptItemType.QUESTION:
+            continue
+        parsed = _rubric_values(attempt, tz)
+        if parsed is None:
+            continue
+        date_key, floats = parsed
+        for key, value in floats.items():
+            dim_sums[key] = dim_sums.get(key, 0.0) + value
+        dim_count += 1
+        rubric_points.append(
+            DimensionPoint(
+                date=date_key,
+                fluency=floats["fluency"],
+                vocabulary=floats["vocabulary"],
+                grammar=floats["grammar"],
+                task=floats["task"],
             )
+        )
+    return missed, rubric_points, dim_sums, dim_count
 
+
+def _rubric_values(
+    attempt: Attempt, tz: ZoneInfo
+) -> tuple[str, dict[str, float]] | None:
+    """题目作答的（练习时区日期键, 四维值）；缺时间/评分/任一维度时返回 None。"""
+    created_at = attempt.created_at
+    if created_at is None:
+        return None
+    rubric = attempt.rubric if isinstance(attempt.rubric, dict) else None
+    if rubric is None:
+        return None
+    values = {key: rubric.get(key) for key in RUBRIC_DIMENSIONS}
+    if not all(isinstance(v, (int, float)) for v in values.values()):
+        return None
+    # all() 已保证四个维度都是数值，这里收窄为 float 供求和/趋势使用
+    floats: dict[str, float] = {
+        key: float(value)
+        for key, value in values.items()
+        if isinstance(value, (int, float))
+    }
+    return created_at.astimezone(tz).date().isoformat(), floats
+
+
+def _dimension_summary(
+    dim_sums: dict[str, float], dim_count: int
+) -> tuple[dict[str, float], str | None]:
+    """四维均值（保留一位小数）与最弱维度；无数据时均值为空、最弱为 None。"""
     means: dict[str, float] = {}
-    for key in ("fluency", "vocabulary", "grammar", "task"):
+    for key in RUBRIC_DIMENSIONS:
         if key in dim_sums and dim_count:
             means[key] = round(dim_sums[key] / dim_count, 1)
-    weakest: str | None = None
-    if means:
-        weakest = min(
-            ("fluency", "vocabulary", "grammar", "task"),
-            key=lambda k: means[k],
-        )
-
-    top_missed: list[dict[str, object]] = [
-        {"word": word, "count": count} for word, count in missed.most_common(12)
-    ]
-    return StudentDiagnostics(
-        classroom_code=classroom.code,
-        student_id=student.id,
-        top_missed_words=top_missed,
-        dimension_means=means,
-        weakest_dimension=weakest,
-        dimension_count=dim_count,
-        dimension_trend=rubric_points[-14:],
-    )
+    if not means:
+        return means, None
+    return means, min(RUBRIC_DIMENSIONS, key=lambda k: means[k])
 
 
 def _accumulate_missed_words(counter: Counter[str], attempt: Attempt) -> None:
