@@ -507,6 +507,90 @@ def _summarize_instruction_model(i: Instruction) -> dict[str, Any]:
     }
 
 
+_REPEAT_SUSPECT_REASON = "疑似重复：相同句子已存在但挂靠或配置不同"
+
+
+def _planned_title_counts(plan: QuestionBankPlan) -> dict[str, int]:
+    """本批计划新建的篇目标题计数（供挂靠；同批多篇同名 → 歧义报错）。"""
+    counts: dict[str, int] = {}
+    for item in plan.creates[TYPE_PASSAGE]:
+        n_title = _norm_text(item.payload["title"])
+        counts[n_title] = counts.get(n_title, 0) + 1
+    return counts
+
+
+def _existing_sentence_summary(
+    ref: _Ref,
+    planned_payloads: dict[tuple[str, str], list[dict[str, Any]]],
+    n_text: str,
+    linkage: str,
+) -> dict[str, str]:
+    """疑似重复时展示的「已有句子」摘要：先按挂靠身份查库，退化到库内任一条；
+    都没有则从本批已计划的 payload 里找。"""
+    candidates = ref.sentences_by_key.get(n_text, [])
+    db_row = next(
+        (s for s in candidates if _pid_key(s.passage_id) == linkage),
+        None,
+    )
+    if db_row is None:
+        db_row = candidates[0] if candidates else None
+    if db_row is not None:
+        return _summarize_sentence_model(db_row, ref)
+    payload = (planned_payloads.get((linkage, n_text)) or [None])[0]
+    if payload is None:
+        for (_plink, ptext), plist in planned_payloads.items():
+            if ptext == n_text and plist:
+                payload = plist[0]
+                break
+    return _summarize_payload(TYPE_REPEAT, payload) if payload else {}
+
+
+def _repeat_cfg(payload: dict[str, Any]) -> tuple[Any, ...]:
+    """查重用的配置指纹：配置全同才是完全重复，只同文本算疑似。"""
+    return (
+        _norm_text(payload["translation"] or ""),
+        payload["suggested_seconds"],
+        payload["replay_limit"],
+        payload["exam_kind"] or "",
+        payload["exam_level"] or "",
+        payload["audio_url"] or "",
+    )
+
+
+def _repeat_dedup_outcome(
+    cfg: tuple[Any, ...],
+    db_cfgs: list[tuple[Any, ...]],
+    planned_cfgs: list[tuple[Any, ...]],
+    db_entries: list[tuple[uuid.UUID | None, tuple[Any, ...]]],
+    planned_links: dict[str, set[str]],
+    n_text: str,
+) -> tuple[bool, str | None]:
+    """判定 (是否完全重复, 疑似重复原因)。
+
+    本挂靠下的配置全同 → 完全重复；本挂靠下有同句但配置不同、或同句挂在
+    其他篇目/独立存在 → 疑似，可勾选导入。
+    """
+    if db_cfgs or planned_cfgs:
+        if cfg in db_cfgs or cfg in planned_cfgs:
+            return True, None
+        return False, _REPEAT_SUSPECT_REASON
+    if db_entries or n_text in planned_links:
+        return False, _REPEAT_SUSPECT_REASON
+    return False, None
+
+
+def _repeat_suspect_candidates(
+    ref: _Ref, n_text: str
+) -> list[tuple[str, dict[str, Any]]]:
+    """同文本的全部库内句子，按 id 排序，供疑似重复勾选展示。"""
+    return [
+        (str(sentence.id), _summarize_sentence_model(sentence, ref))
+        for sentence in sorted(
+            ref.sentences_by_key.get(n_text, []), key=lambda item: str(item.id)
+        )
+    ]
+
+
 def _plan_repeats(
     plan: QuestionBankPlan,
     ref: _Ref,
@@ -518,29 +602,7 @@ def _plan_repeats(
     planned_configs: dict[tuple[str, str], list[tuple[Any, ...]]] = {}
     planned_payloads: dict[tuple[str, str], list[dict[str, Any]]] = {}
     planned_links: dict[str, set[str]] = {}  # n_text → 本批已见的挂靠身份键
-    # 本批计划新建的篇目标题（供挂靠；同批多篇同名 → 歧义报错）
-    planned_titles: dict[str, int] = {}
-    for item in plan.creates[TYPE_PASSAGE]:
-        n_title = _norm_text(item.payload["title"])
-        planned_titles[n_title] = planned_titles.get(n_title, 0) + 1
-
-    def _existing_sentence_summary(n_text: str, linkage: str) -> dict[str, str]:
-        candidates = ref.sentences_by_key.get(n_text, [])
-        db_row = next(
-            (s for s in candidates if _pid_key(s.passage_id) == linkage),
-            None,
-        )
-        if db_row is None:
-            db_row = candidates[0] if candidates else None
-        if db_row is not None:
-            return _summarize_sentence_model(db_row, ref)
-        payload = (planned_payloads.get((linkage, n_text)) or [None])[0]
-        if payload is None:
-            for (_plink, ptext), plist in planned_payloads.items():
-                if ptext == n_text and plist:
-                    payload = plist[0]
-                    break
-        return _summarize_payload(TYPE_REPEAT, payload) if payload else {}
+    planned_titles = _planned_title_counts(plan)
 
     for row in rows:
         payload = _parse_row(plan, counts, TYPE_REPEAT, row, _build_repeat)
@@ -557,33 +619,18 @@ def _plan_repeats(
         if linkage_reason is not None:
             _invalid_row(plan, counts, TYPE_REPEAT, row, linkage_reason)
             continue
-        cfg = (
-            _norm_text(payload["translation"] or ""),
-            payload["suggested_seconds"],
-            payload["replay_limit"],
-            payload["exam_kind"] or "",
-            payload["exam_level"] or "",
-            payload["audio_url"] or "",
-        )
+        cfg = _repeat_cfg(payload)
         db_entries = ref.sentence_configs.get(n_text, [])
         db_cfgs = [c for pid, c in db_entries if _pid_key(pid) == linkage]
         planned_cfgs = planned_configs.get((linkage, n_text), [])
-        suspected_reason = None
-        if db_cfgs or planned_cfgs:
-            if cfg in db_cfgs or cfg in planned_cfgs:
-                counts.exact_dup += 1
-                continue
-            suspected_reason = "疑似重复：相同句子已存在但挂靠或配置不同"
-        elif db_entries or n_text in planned_links:
-            # 相同句子挂在其他篇目/独立存在：疑似而非完全重复，可勾选导入
-            suspected_reason = "疑似重复：相同句子已存在但挂靠或配置不同"
+        is_exact_dup, suspected_reason = _repeat_dedup_outcome(
+            cfg, db_cfgs, planned_cfgs, db_entries, planned_links, n_text
+        )
+        if is_exact_dup:
+            counts.exact_dup += 1
+            continue
         if suspected_reason is not None:
-            sentence_candidates = [
-                (str(sentence.id), _summarize_sentence_model(sentence, ref))
-                for sentence in sorted(
-                    ref.sentences_by_key.get(n_text, []), key=lambda item: str(item.id)
-                )
-            ]
+            # 相同句子挂在其他篇目/独立存在：疑似而非完全重复，可勾选导入
             if not _register_suspected(
                 plan,
                 counts,
@@ -591,8 +638,8 @@ def _plan_repeats(
                 row,
                 suspected_reason,
                 payload,
-                _existing_sentence_summary(n_text, linkage),
-                sentence_candidates,
+                _existing_sentence_summary(ref, planned_payloads, n_text, linkage),
+                _repeat_suspect_candidates(ref, n_text),
                 decisions,
             ):
                 continue
