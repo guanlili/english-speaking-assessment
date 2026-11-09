@@ -323,6 +323,96 @@ def _count_valid(counts: _TypeCounts, payload: dict[str, Any]) -> None:
     counts.valid += 1
 
 
+def _existing_passage_summary(
+    ref: _Ref,
+    planned_payloads_by_key: dict[tuple[str, str], list[dict[str, Any]]],
+    planned_payloads_by_text: dict[str, dict[str, Any]],
+    key: tuple[str, str],
+    n_text: str,
+) -> dict[str, str]:
+    """疑似重复时展示的「已有篇目」摘要：先按 (标题, 正文) 查库，退化到全库同正文；
+    都没有则从本批已计划的 payload 里找。"""
+    db_row = ref.passages_by_key.get(key, [None])[0]
+    if db_row is None:
+        for (_ptitle, p_text), plist in ref.passages_by_key.items():
+            if p_text == n_text and plist:
+                db_row = plist[0]
+                break
+    if db_row is not None:
+        return _summarize_passage_model(db_row, ref)
+    payload = planned_payloads_by_key.get(key, [None])[
+        0
+    ] or planned_payloads_by_text.get(n_text)
+    return _summarize_payload(TYPE_PASSAGE, payload) if payload else {}
+
+
+def _resolve_passage_unit(
+    plan: QuestionBankPlan,
+    counts: _TypeCounts,
+    row: _RawRow,
+    payload: dict[str, Any],
+    ref: _Ref,
+) -> tuple[str, str] | None:
+    """解析挂靠单元，返回 (单元标题, 主题)；同名单元匹配到多个则登记无效行并返回 None。
+
+    无 unit_title 时原样返回 ("", 原始 topic)。
+    """
+    unit_title_resolved = ""
+    topic_resolved = payload["topic"]
+    if payload["unit_title"] is not None:
+        candidates = ref.units_by_norm.get(_norm_text(payload["unit_title"]), [])
+        if len(candidates) > 1:
+            _invalid_row(
+                plan,
+                counts,
+                TYPE_PASSAGE,
+                row,
+                "单元匹配到多个同名单元，请改为精确的单元标题",
+            )
+            return None
+        if len(candidates) == 1:
+            payload["unit_id"] = candidates[0].id
+            unit_title_resolved = candidates[0].title
+            topic_resolved = candidates[0].topic
+        else:
+            plan.unit_fallback_count += 1
+    return unit_title_resolved, topic_resolved
+
+
+def _passage_cfg(
+    payload: dict[str, Any],
+    unit_title_resolved: str,
+    topic_resolved: str,
+) -> tuple[Any, ...]:
+    """查重用的配置指纹：配置全同才是完全重复，只同标题/正文算疑似。"""
+    return (
+        _norm_text(payload["translation"] or ""),
+        payload["cefr_band"],
+        payload["suggested_seconds"],
+        payload["is_active"],
+        _norm_text(unit_title_resolved),
+        _norm_text(topic_resolved),
+        payload["audio_url"] or "",
+    )
+
+
+def _passage_dedup_outcome(
+    cfg: tuple[Any, ...],
+    db_cfgs: list[tuple[Any, ...]],
+    planned_cfgs: list[tuple[Any, ...]],
+    has_other_text: bool,
+) -> tuple[bool, str | None]:
+    """判定 (是否完全重复, 疑似重复原因)。"""
+    if db_cfgs or planned_cfgs:
+        if cfg in db_cfgs or cfg in planned_cfgs:
+            return True, None
+        return False, "疑似重复：同名同正文篇目已存在，但难度/秒数等配置不同"
+    if has_other_text:
+        # 批内正文集合也要查：同批两篇不同标题、相同正文 → 第二篇疑似
+        return False, "疑似重复：相同正文已存在于其他篇目"
+    return False, None
+
+
 def _plan_passages(
     plan: QuestionBankPlan,
     ref: _Ref,
@@ -335,20 +425,6 @@ def _plan_passages(
     planned_payloads_by_text: dict[str, dict[str, Any]] = {}
     planned_texts: set[str] = set()
 
-    def _existing_passage_summary(key: tuple[str, str], n_text: str) -> dict[str, str]:
-        db_row = ref.passages_by_key.get(key, [None])[0]
-        if db_row is None:
-            for (_ptitle, p_text), plist in ref.passages_by_key.items():
-                if p_text == n_text and plist:
-                    db_row = plist[0]
-                    break
-        if db_row is not None:
-            return _summarize_passage_model(db_row, ref)
-        payload = planned_payloads_by_key.get(key, [None])[
-            0
-        ] or planned_payloads_by_text.get(n_text)
-        return _summarize_payload(TYPE_PASSAGE, payload) if payload else {}
-
     for row in rows:
         payload = _parse_row(plan, counts, TYPE_PASSAGE, row, _build_passage)
         if payload is None:
@@ -358,47 +434,21 @@ def _plan_passages(
         # 单元解析必须先于查重：落库时挂单元的篇目 topic 会被派生为单元主题
         # （crud.derive_passage_topic），查重配置若用原始 topic，同一文件重传
         # 会因「落库值≠导入值」被误判疑似重复（评审 P2 实例）
-        unit_title_resolved = ""
-        topic_resolved = payload["topic"]
-        if payload["unit_title"] is not None:
-            candidates = ref.units_by_norm.get(_norm_text(payload["unit_title"]), [])
-            if len(candidates) > 1:
-                _invalid_row(
-                    plan,
-                    counts,
-                    TYPE_PASSAGE,
-                    row,
-                    "单元匹配到多个同名单元，请改为精确的单元标题",
-                )
-                continue
-            if len(candidates) == 1:
-                payload["unit_id"] = candidates[0].id
-                unit_title_resolved = candidates[0].title
-                topic_resolved = candidates[0].topic
-            else:
-                plan.unit_fallback_count += 1
-        cfg = (
-            _norm_text(payload["translation"] or ""),
-            payload["cefr_band"],
-            payload["suggested_seconds"],
-            payload["is_active"],
-            _norm_text(unit_title_resolved),
-            _norm_text(topic_resolved),
-            payload["audio_url"] or "",
-        )
+        resolved = _resolve_passage_unit(plan, counts, row, payload, ref)
+        if resolved is None:
+            continue
+        unit_title_resolved, topic_resolved = resolved
+        cfg = _passage_cfg(payload, unit_title_resolved, topic_resolved)
         db_cfgs = ref.passage_exact.get(key, [])
         planned_cfgs = planned_exact.get(key, [])
-        suspected_reason = None
-        if db_cfgs or planned_cfgs:
-            if cfg in db_cfgs or cfg in planned_cfgs:
-                counts.exact_dup += 1
-                continue
-            suspected_reason = "疑似重复：同名同正文篇目已存在，但难度/秒数等配置不同"
-        elif n_text in ref.passage_texts or n_text in planned_texts:
-            # 批内正文集合也要查：同批两篇不同标题、相同正文 → 第二篇疑似
-            suspected_reason = "疑似重复：相同正文已存在于其他篇目"
+        has_other_text = n_text in ref.passage_texts or n_text in planned_texts
+        is_exact_dup, suspected_reason = _passage_dedup_outcome(
+            cfg, db_cfgs, planned_cfgs, has_other_text
+        )
+        if is_exact_dup:
+            counts.exact_dup += 1
+            continue
         if suspected_reason is not None:
-            passage_candidates = _passage_candidates(ref, key, n_text)
             if not _register_suspected(
                 plan,
                 counts,
@@ -406,8 +456,10 @@ def _plan_passages(
                 row,
                 suspected_reason,
                 payload,
-                _existing_passage_summary(key, n_text),
-                passage_candidates,
+                _existing_passage_summary(
+                    ref, planned_payloads_by_key, planned_payloads_by_text, key, n_text
+                ),
+                _passage_candidates(ref, key, n_text),
                 decisions,
             ):
                 continue
