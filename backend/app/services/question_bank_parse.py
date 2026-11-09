@@ -538,26 +538,72 @@ def _parse_xlsx(raw: bytes) -> ParsedFile:
     return ParsedFile(rows=rows, issues=issues)
 
 
-def _parse_csv(raw: bytes) -> ParsedFile:
-    text: str | None = None
+@dataclass
+class _CsvHeader:
+    """CSV 首行解析出的列映射与题型列位置。"""
+
+    col_map: dict[int, str]
+    type_col: int
+    fields_present: set[str]
+
+
+@dataclass
+class _CsvScan:
+    """CSV 全量扫描结果：有效行与无效行分流。"""
+
+    rows: list[_RawRow] = field(default_factory=list)
+    issues: list[QuestionBankImportIssue] = field(default_factory=list)
+    error_rows: list[ErrorRow] = field(default_factory=list)
+    any_content: bool = False
+
+    def add_problem(
+        self,
+        r_idx: int,
+        reason: str,
+        cells: dict[str, str],
+        type_cell: str = "",
+    ) -> None:
+        """同一条无效行同时进 issues（提示）与 error_rows（可下载修正）。"""
+        self.issues.append(QuestionBankImportIssue(type="-", line=r_idx, reason=reason))
+        self.error_rows.append(
+            ErrorRow(
+                qtype="-",
+                line=r_idx,
+                reason=reason,
+                cells=cells,
+                type_cell=type_cell,
+            )
+        )
+
+
+def _decode_csv_text(raw: bytes) -> str:
+    """按 utf-8-sig → gb18030 顺序试解码，两种都不成才报 422。"""
     for encoding in ("utf-8-sig", "gb18030"):
         try:
-            text = raw.decode(encoding)
-            break
+            return raw.decode(encoding)
         except UnicodeDecodeError:
             continue
-    if text is None:
-        raise HTTPException(status_code=422, detail="文件必须是 UTF-8 编码")
-    reader = csv.reader(io.StringIO(text))
-    header: list[str] | None = None
-    col_map: dict[int, str] = {}
-    type_col: int | None = None
-    fields_present: set[str] = set()
-    rows: list[_RawRow] = []
-    issues: list[QuestionBankImportIssue] = []
-    error_rows: list[ErrorRow] = []
+    raise HTTPException(status_code=422, detail="文件必须是 UTF-8 编码")
+
+
+def _read_csv_header(row_cells: tuple[str, ...]) -> _CsvHeader:
+    """解析 CSV 首行：列映射、题型列位置、表头里出现了哪些字段。"""
+    col_map = _map_header(row_cells)
+    type_col = next((c for c, f in col_map.items() if f == "__type__"), None)
+    if type_col is None:
+        raise HTTPException(status_code=422, detail="CSV 缺少题型列")
+    return _CsvHeader(
+        col_map=col_map,
+        type_col=type_col,
+        fields_present=set(col_map.values()),
+    )
+
+
+def _scan_csv(reader: Any) -> _CsvScan:
+    """扫完整个 CSV：表头 + 数据行，无效行分流到 issues / error_rows。"""
+    scan = _CsvScan()
+    header: _CsvHeader | None = None
     checked_types: set[str] = set()
-    any_content = False
     # 数据行计数包含无效行（题型空/无效）——只数成功识别的行会让
     # 2001 行全无效的文件绕过行数上限（评审 P2）
     data_rows = 0
@@ -567,16 +613,9 @@ def _parse_csv(raw: bytes) -> ParsedFile:
             row_cells = tuple(_csv_unguard(c.strip()) for c in raw_row)
             if not any(row_cells):
                 continue
-            any_content = True
+            scan.any_content = True
             if header is None:
-                header = list(row_cells)
-                col_map = _map_header(header)
-                type_col = next(
-                    (c for c, f in col_map.items() if f == "__type__"), None
-                )
-                if type_col is None:
-                    raise HTTPException(status_code=422, detail="CSV 缺少题型列")
-                fields_present = set(col_map.values())
+                header = _read_csv_header(row_cells)
                 continue
             data_rows += 1
             if data_rows > MAX_IMPORT_ROWS:
@@ -584,46 +623,39 @@ def _parse_csv(raw: bytes) -> ParsedFile:
                     status_code=422,
                     detail=f"行数超过上限（{MAX_IMPORT_ROWS} 行），请分批导入",
                 )
-            assert type_col is not None
-            type_cell = row_cells[type_col] if type_col < len(row_cells) else ""
+            type_cell = (
+                row_cells[header.type_col] if header.type_col < len(row_cells) else ""
+            )
             cells = _row_cells(
-                {c: f for c, f in col_map.items() if f != "__type__"}, row_cells
+                {c: f for c, f in header.col_map.items() if f != "__type__"},
+                row_cells,
             )
             if not type_cell:
-                issues.append(
-                    QuestionBankImportIssue(type="-", line=r_idx, reason="题型不能为空")
-                )
-                error_rows.append(
-                    ErrorRow(qtype="-", line=r_idx, reason="题型不能为空", cells=cells)
-                )
+                scan.add_problem(r_idx, "题型不能为空", cells)
                 continue
             qtype = _match_sheet_type(type_cell)
             if qtype is None:
-                reason = f"题型列的值无效：{type_cell}"
-                issues.append(
-                    QuestionBankImportIssue(type="-", line=r_idx, reason=reason)
-                )
-                error_rows.append(
-                    ErrorRow(
-                        qtype="-",
-                        line=r_idx,
-                        reason=reason,
-                        cells=cells,
-                        type_cell=type_cell,
-                    )
+                scan.add_problem(
+                    r_idx, f"题型列的值无效：{type_cell}", cells, type_cell
                 )
                 continue
             if qtype not in checked_types:
                 checked_types.add(qtype)
-                _require_columns_csv(qtype, fields_present)
-            rows.append(_RawRow(qtype=qtype, line=r_idx, cells=cells))
+                _require_columns_csv(qtype, header.fields_present)
+            scan.rows.append(_RawRow(qtype=qtype, line=r_idx, cells=cells))
     except csv.Error as exc:
         # field_size_limit 已抬高到上传上限之上，此处理论不可达——保留
         # 防御：任何 csv 模块级错误都以 422 呈现，绝不 500
         raise HTTPException(status_code=422, detail="CSV 字段过大，无法解析") from exc
-    if not any_content:
+    return scan
+
+
+def _parse_csv(raw: bytes) -> ParsedFile:
+    """解析 csv：首行表头，其余为数据行；无效行进 error_rows 供下载修正。"""
+    scan = _scan_csv(csv.reader(io.StringIO(_decode_csv_text(raw))))
+    if not scan.any_content:
         raise HTTPException(status_code=422, detail="文件为空")
-    return ParsedFile(rows=rows, issues=issues, error_rows=error_rows)
+    return ParsedFile(rows=scan.rows, issues=scan.issues, error_rows=scan.error_rows)
 
 
 def _map_header(header_cells: tuple[str, ...] | list[str]) -> dict[int, str]:
