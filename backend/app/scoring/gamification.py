@@ -68,6 +68,115 @@ def advance_streak(last: date | None, streak: int, today: date) -> int:
     return 1
 
 
+def _lock_for_settlement(
+    session: Session, practice_session: PracticeSession, student: Student
+) -> tuple[PracticeSession, Student] | None:
+    """锁本轮与学生两行；对象不存在或本轮已结算（stars 已写）时返回 None。"""
+    locked_session = session.exec(
+        select(PracticeSession)
+        .where(PracticeSession.id == practice_session.id)
+        .with_for_update()
+    ).first()
+    if locked_session is None:
+        return None
+    if locked_session.stars is not None:
+        return None
+    locked_student = session.exec(
+        select(Student).where(Student.id == student.id).with_for_update()
+    ).first()
+    if locked_student is None:
+        return None
+    return locked_session, locked_student
+
+
+def _latest_attempts(
+    session: Session, session_id, required_item_ids: set | None
+) -> dict:
+    """每个题位的最新作答（按创建时间正序覆盖，最后一条即最新）。"""
+    attempts = session.exec(
+        select(Attempt)
+        .where(Attempt.session_id == session_id)
+        .order_by(col(Attempt.created_at))
+    ).all()
+    latest: dict = {}
+    for attempt in attempts:
+        if required_item_ids is not None and attempt.item_id not in required_item_ids:
+            continue
+        latest[attempt.item_id] = attempt
+    return latest
+
+
+def _all_items_settled(latest: dict, expected_items: int) -> bool:
+    """题数够，且每个必须题位的最新作答都为终态（done/failed）。"""
+    if len(latest) < expected_items:
+        return False
+    return all(
+        a.status in (AttemptStatus.DONE, AttemptStatus.FAILED) for a in latest.values()
+    )
+
+
+def _apply_streak(student: Student, today: date) -> None:
+    """当日首次结算才推进连胜。"""
+    if student.last_practice_date != today:
+        student.streak_days = advance_streak(
+            student.last_practice_date, student.streak_days, today
+        )
+        student.last_practice_date = today
+
+
+def _xp_gain(done_count: int, stars: int, streak_days: int) -> int:
+    """XP = 每题 10 + 每星 5 + 连胜 ≥3 天奖励 10。"""
+    return (
+        done_count * XP_PER_DONE
+        + stars * XP_PER_STAR
+        + (XP_STREAK_BONUS if streak_days >= STREAK_BONUS_MIN_DAYS else 0)
+    )
+
+
+def _settled_rounds(session: Session, student_id, current: PracticeSession) -> list:
+    """已结算轮次：库里已写 stars 的轮次，再补上本轮。
+
+    本轮刚赋 stars 但还没 commit，直接查库查不到，所以手工追加。
+    """
+    return list(
+        session.exec(
+            select(PracticeSession).where(
+                PracticeSession.student_id == student_id,
+                col(PracticeSession.stars).is_not(None),
+            )
+        ).all()
+    ) + [current]
+
+
+def _owned_badge_keys(session: Session, student_id) -> set:
+    """该学生已拥有的徽章 key。"""
+    return set(
+        session.exec(
+            select(StudentBadge.badge_key).where(StudentBadge.student_id == student_id)
+        ).all()
+    )
+
+
+def _badge_candidates(student: Student, rounds_count: int) -> dict[str, bool]:
+    """五个徽章的命中判定。"""
+    return {
+        "first_round": rounds_count >= 1,
+        "streak_3": student.streak_days >= 3,
+        "streak_7": student.streak_days >= 7,
+        "ten_rounds": rounds_count >= 10,
+        "reached_b2": student.current_band == "B2",
+    }
+
+
+def _award_badges(
+    session: Session, student_id, candidates: dict[str, bool], owned: set
+) -> None:
+    """命中且未拥有的徽章落库。"""
+    for key, hit in candidates.items():
+        if hit and key not in owned:
+            session.add(StudentBadge(student_id=student_id, badge_key=key))
+
+
 def settle_session(
     session: Session,
     practice_session: PracticeSession,
@@ -83,87 +192,30 @@ def settle_session(
     - required_item_ids：若提供，只检查这些 item_id 的作答；额外换题的作答不顶替必做题
     - 每个必须题位的最新作答均为终态（done/failed）
     """
-    locked_session = session.exec(
-        select(PracticeSession)
-        .where(PracticeSession.id == practice_session.id)
-        .with_for_update()
-    ).first()
-    if locked_session is None:
+    locked = _lock_for_settlement(session, practice_session, student)
+    if locked is None:
         return
-    practice_session = locked_session
+    practice_session, student = locked
 
-    if practice_session.stars is not None:
-        return
-
-    locked_student = session.exec(
-        select(Student).where(Student.id == student.id).with_for_update()
-    ).first()
-    if locked_student is None:
-        return
-    student = locked_student
-
-    attempts = session.exec(
-        select(Attempt)
-        .where(Attempt.session_id == practice_session.id)
-        .order_by(col(Attempt.created_at))
-    ).all()
-    latest: dict = {}
-    for attempt in attempts:
-        if required_item_ids is not None and attempt.item_id not in required_item_ids:
-            continue
-        latest[attempt.item_id] = attempt
-    if len(latest) < expected_items or any(
-        a.status not in (AttemptStatus.DONE, AttemptStatus.FAILED)
-        for a in latest.values()
-    ):
+    latest = _latest_attempts(session, practice_session.id, required_item_ids)
+    if not _all_items_settled(latest, expected_items):
         return  # 题数不足或还有题没评完
 
     done = [a for a in latest.values() if a.status == AttemptStatus.DONE]
     overalls = [a.overall for a in done if a.overall is not None]
     stars = compute_stars(overalls)
 
-    # 连胜：当日首次结算才推进
-    if student.last_practice_date != today:
-        student.streak_days = advance_streak(
-            student.last_practice_date, student.streak_days, today
-        )
-        student.last_practice_date = today
-
-    xp_gain = (
-        len(done) * XP_PER_DONE
-        + stars * XP_PER_STAR
-        + (XP_STREAK_BONUS if student.streak_days >= STREAK_BONUS_MIN_DAYS else 0)
-    )
-    student.xp = (student.xp or 0) + xp_gain
+    _apply_streak(student, today)
+    student.xp = (student.xp or 0) + _xp_gain(len(done), stars, student.streak_days)
     practice_session.stars = stars
 
-    # 徽章判定
-    settled_rounds = list(
-        session.exec(
-            select(PracticeSession).where(
-                PracticeSession.student_id == student.id,
-                col(PracticeSession.stars).is_not(None),
-            )
-        ).all()
-    ) + [practice_session]  # 本轮计入
-    owned = set(
-        session.exec(
-            select(StudentBadge.badge_key).where(StudentBadge.student_id == student.id)
-        ).all()
+    rounds_count = len(_settled_rounds(session, student.id, practice_session))
+    _award_badges(
+        session,
+        student.id,
+        _badge_candidates(student, rounds_count),
+        _owned_badge_keys(session, student.id),
     )
-    rounds_count = len(settled_rounds)
-    new_keys: list[str] = []
-    candidates = {
-        "first_round": rounds_count >= 1,
-        "streak_3": student.streak_days >= 3,
-        "streak_7": student.streak_days >= 7,
-        "ten_rounds": rounds_count >= 10,
-        "reached_b2": student.current_band == "B2",
-    }
-    for key, hit in candidates.items():
-        if hit and key not in owned:
-            new_keys.append(key)
-            session.add(StudentBadge(student_id=student.id, badge_key=key))
 
     session.add(student)
     session.add(practice_session)
