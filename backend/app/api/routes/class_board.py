@@ -3,7 +3,7 @@
 import logging
 import uuid
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -858,54 +858,68 @@ def _board_assignment(unit: Any) -> AssignmentInfo | None:
     return AssignmentInfo(unit_id=unit.id, title=unit.title)
 
 
-@router.get("/{code}/weak-spots", response_model=ClassWeakSpots)
-def read_class_weak_spots(
-    session: SessionDep, code: str, current_user: CurrentUser
-) -> ClassWeakSpots:
-    """今日当前发布的共同漏词和偏低题目。只读已出分的转写，不进名单轮询。"""
-    classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
-    exercise = (
-        session.get(ClassroomExercise, classroom.current_exercise_id)
-        if classroom.current_exercise_id is not None
-        else None
-    )
-    if exercise is None:
-        return ClassWeakSpots(word_gaps=[], low_items=[])
-    today = _today_in_practice_tz()
-    session_ids = list(
+def _weak_spot_session_ids(
+    session: SessionDep,
+    classroom_id: uuid.UUID,
+    exercise_id: uuid.UUID,
+    today: date,
+) -> list[uuid.UUID]:
+    """本节课当前作业在今日 daily 模式下已开的练习会话 id。"""
+    return list(
         session.exec(
             select(PracticeSession.id).where(
-                PracticeSession.classroom_id == classroom.id,
+                PracticeSession.classroom_id == classroom_id,
                 PracticeSession.session_date == today,
                 PracticeSession.mode == "daily",
-                PracticeSession.assignment_id == exercise.id,
+                PracticeSession.assignment_id == exercise_id,
             )
         ).all()
     )
-    if not session_ids:
-        return ClassWeakSpots(word_gaps=[], low_items=[])
-    attempts = session.exec(
-        select(Attempt)
-        .options(
-            load_only(
-                Attempt.id,  # ty: ignore[invalid-argument-type]
-                Attempt.student_id,  # ty: ignore[invalid-argument-type]
-                Attempt.item_id,  # ty: ignore[invalid-argument-type]
-                Attempt.item_type,  # ty: ignore[invalid-argument-type]
-                Attempt.overall,  # ty: ignore[invalid-argument-type]
-                Attempt.transcript,  # ty: ignore[invalid-argument-type]
-                Attempt.item_snapshot,  # ty: ignore[invalid-argument-type]
-                Attempt.created_at,  # ty: ignore[invalid-argument-type]
-                Attempt.status,  # ty: ignore[invalid-argument-type]
+
+
+def _load_weak_attempts(
+    session: SessionDep, session_ids: list[uuid.UUID]
+) -> list[Attempt]:
+    """取这些会话里已出分（DONE）的作答。
+
+    只读已出分的转写，不进名单轮询；load_only 窄列避免 rubric 大 JSON 进内存。
+    """
+    return list(
+        session.exec(
+            select(Attempt)
+            .options(
+                load_only(
+                    Attempt.id,  # ty: ignore[invalid-argument-type]
+                    Attempt.student_id,  # ty: ignore[invalid-argument-type]
+                    Attempt.item_id,  # ty: ignore[invalid-argument-type]
+                    Attempt.item_type,  # ty: ignore[invalid-argument-type]
+                    Attempt.overall,  # ty: ignore[invalid-argument-type]
+                    Attempt.transcript,  # ty: ignore[invalid-argument-type]
+                    Attempt.item_snapshot,  # ty: ignore[invalid-argument-type]
+                    Attempt.created_at,  # ty: ignore[invalid-argument-type]
+                    Attempt.status,  # ty: ignore[invalid-argument-type]
+                )
             )
-        )
-        .where(
-            col(Attempt.session_id).in_(session_ids),
-            Attempt.status == AttemptStatus.DONE,
-        )
-        .order_by(col(Attempt.created_at))
-    ).all()
+            .where(
+                col(Attempt.session_id).in_(session_ids),
+                Attempt.status == AttemptStatus.DONE,
+            )
+            .order_by(col(Attempt.created_at))
+        ).all()
+    )
+
+
+def _split_weak_rows(
+    attempts: list[Attempt],
+) -> tuple[
+    list[tuple[uuid.UUID, str, str]],
+    list[tuple[uuid.UUID, uuid.UUID, str, str, int | None]],
+]:
+    """同一学生同一题只留最后一次作答，并分流成「漏词样本」与「题目样本」两组。
+
+    返回 (word_rows, item_rows)：word_rows 只收 passage/repeat（跟读类才有
+    参考文本可做漏词比对），item_rows 收全部题型供偏低题判定。
+    """
     latest: dict[tuple[uuid.UUID, uuid.UUID], Attempt] = {}
     for attempt in attempts:
         if attempt.student_id is None:
@@ -931,6 +945,14 @@ def read_class_weak_spots(
                 attempt.overall,
             )
         )
+    return word_rows, item_rows
+
+
+def _weak_spots_payload(
+    word_rows: list[tuple[uuid.UUID, str, str]],
+    item_rows: list[tuple[uuid.UUID, uuid.UUID, str, str, int | None]],
+) -> ClassWeakSpots:
+    """把两类样本交给聚合器，产出前端要的漏词榜与偏低题榜。"""
     return ClassWeakSpots(
         word_gaps=[
             WeakWord(word=word, student_count=count)
@@ -940,3 +962,25 @@ def read_class_weak_spots(
             WeakItem.model_validate(item) for item in aggregate_low_items(item_rows)
         ],
     )
+
+
+@router.get("/{code}/weak-spots", response_model=ClassWeakSpots)
+def read_class_weak_spots(
+    session: SessionDep, code: str, current_user: CurrentUser
+) -> ClassWeakSpots:
+    """今日当前发布的共同漏词和偏低题目。只读已出分的转写，不进名单轮询。"""
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user)
+    exercise = (
+        session.get(ClassroomExercise, classroom.current_exercise_id)
+        if classroom.current_exercise_id is not None
+        else None
+    )
+    if exercise is None:
+        return ClassWeakSpots(word_gaps=[], low_items=[])
+    today = _today_in_practice_tz()
+    session_ids = _weak_spot_session_ids(session, classroom.id, exercise.id, today)
+    if not session_ids:
+        return ClassWeakSpots(word_gaps=[], low_items=[])
+    word_rows, item_rows = _split_weak_rows(_load_weak_attempts(session, session_ids))
+    return _weak_spots_payload(word_rows, item_rows)
