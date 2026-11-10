@@ -938,24 +938,15 @@ def _detail_stale(attempt: Attempt, now: datetime) -> bool:
     return _detail_stale_values(rubric, attempt.created_at, now)
 
 
-def sweep_orphans(session: Session) -> int:
-    """运行期兜底清理（进程不重启也能自愈）：
+def _resubmit_stale_queued(session: Session) -> int:
+    """把超过 QUEUED_STALE_TIMEOUT_S 仍无人领取的 QUEUED 重投一遍。
 
-    - 僵尸 SCORING 恢复（线程在 LLM 调用中被杀/会话提交中断等）；
-    - 孤儿 QUEUED 重投： QUEUED 超过 QUEUED_STALE_TIMEOUT_S 仍无 worker 领取
-      （线程池 future 丢失等），避免僵尸永久占坑——队列容量按 QUEUED 计数，
-      占满 200 条后全站上传 503。重投幂等：领取走 SKIP LOCKED + 状态门，
-      对已在执行中的作答二次投递是无害空转；
-    - 恢复候选补投：恢复后投递失败/未确认领取的作答，每轮重试直到
-      离开 queued（不依赖录音创建年龄）；
-    - 悬置 rubric 关闭： detail 线程丢失导致 DONE 但 rubric 停在 pending
-      （按详情阶段开始时刻判定挂起，详见 _detail_stale）。
-
-    返回重投的 QUEUED 作答数。
+    队列容量按 QUEUED 计数，僵尸占满 200 条后全站上传会 503。
+    重投幂等：领取走 SKIP LOCKED + 状态门，对已在执行中的作答二次
+    投递是无害空转。返回本轮重投条数。
     """
-    recover_stale_attempts(session)
-    resubmitted = _drain_pending_resubmits(session)
     now = datetime.now(UTC)
+    resubmitted = 0
     for attempt_id, created_at in session.exec(
         select(Attempt.id, Attempt.created_at).where(
             Attempt.status == AttemptStatus.QUEUED
@@ -965,6 +956,14 @@ def sweep_orphans(session: Session) -> int:
         if now.timestamp() - created >= QUEUED_STALE_TIMEOUT_S:
             submit_attempt_scoring(attempt_id)
             resubmitted += 1
+    return resubmitted
+
+
+def _close_stale_rubrics(session: Session) -> int:
+    """关闭 detail 线程丢失导致「DONE 但 rubric 停在 pending」的挂起 rubric。
+
+    候选先按 status+created_at 粗筛，再逐条行锁复判，返回本轮关闭条数。
+    """
     stale_cutoff = datetime.now(UTC) - timedelta(seconds=SCORING_STALE_TIMEOUT_S)
     # load_only 只取 rubric/created_at；SQL 层直接筛「rubric 处于 pending」
     # （rubric->>'status'）：DONE 量随学期累积，绝大多数历史行 rubric 为
@@ -1012,6 +1011,28 @@ def sweep_orphans(session: Session) -> int:
             .values(rubric={"status": "unavailable"})
         )
         closed += 1
+    return closed
+
+
+def sweep_orphans(session: Session) -> int:
+    """运行期兜底清理（进程不重启也能自愈）：
+
+    - 僵尸 SCORING 恢复（线程在 LLM 调用中被杀/会话提交中断等）；
+    - 孤儿 QUEUED 重投： QUEUED 超过 QUEUED_STALE_TIMEOUT_S 仍无 worker 领取
+      （线程池 future 丢失等），避免僵尸永久占坑——队列容量按 QUEUED 计数，
+      占满 200 条后全站上传 503。重投幂等：领取走 SKIP LOCKED + 状态门，
+      对已在执行中的作答二次投递是无害空转；
+    - 恢复候选补投：恢复后投递失败/未确认领取的作答，每轮重试直到
+      离开 queued（不依赖录音创建年龄）；
+    - 悬置 rubric 关闭： detail 线程丢失导致 DONE 但 rubric 停在 pending
+      （按详情阶段开始时刻判定挂起，详见 _detail_stale）。
+
+    返回重投的 QUEUED 作答数。
+    """
+    recover_stale_attempts(session)
+    resubmitted = _drain_pending_resubmits(session)
+    resubmitted += _resubmit_stale_queued(session)
+    closed = _close_stale_rubrics(session)
     if closed:
         logger.info("detail sweep closed %d stale rubrics", closed)
     session.commit()
