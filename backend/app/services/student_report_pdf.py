@@ -13,6 +13,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from fpdf import FPDF
@@ -404,7 +405,8 @@ def render_student_report(report: StudentReport, dest: Path) -> PdfBuild:
     )
 
 
-def _draw(pdf: _ReportPDF, report: StudentReport) -> None:
+def _draw_header(pdf: _ReportPDF, report: StudentReport) -> None:
+    """页头：标题 / 免责声明 / 四个 meta / 口径说明，以及无分时的空态提示。"""
     pdf.heading("学情报告", 22)
     pdf.small("Personal learning report")
     pdf.body("参考分不是官方成绩。")
@@ -434,6 +436,9 @@ def _draw(pdf: _ReportPDF, report: StudentReport) -> None:
         pdf.body("本阶段暂无已出分作答。报告已生成，之后有练习记录时可以重新导出。")
         pdf.small("No scored answers in this period.")
 
+
+def _draw_overview(pdf: _ReportPDF, report: StudentReport) -> None:
+    """一、学习概览：轮次 / 完成题数 / 开口分钟 / 两个参考分均值 / 班级位置。"""
     pdf.section("一、学习概览", "Overview")
     pdf.body(
         f"练习 {report.session_count} 轮，完成 {report.completed_items}/{report.total_items} 题"
@@ -447,6 +452,9 @@ def _draw(pdf: _ReportPDF, report: StudentReport) -> None:
     if report.has_active_exam:
         pdf.body("部分考试尚未结束，结束后可以重新导出。")
 
+
+def _draw_trend(pdf: _ReportPDF, report: StudentReport) -> None:
+    """二、进步趋势：有数据画表，无数据给空态。"""
     pdf.section("二、进步趋势", "Trend")
     pdf.small("每日情景问答参考分与听句复述完整度，按已出分作答统计。")
     if not report.trend:
@@ -454,6 +462,9 @@ def _draw(pdf: _ReportPDF, report: StudentReport) -> None:
     else:
         pdf.trend_table(report.trend)
 
+
+def _draw_weaknesses(pdf: _ReportPDF, report: StudentReport) -> None:
+    """三、弱项：高频漏词，以及情景问答四维均值与最弱维度。"""
     pdf.section("三、弱项", "Weaknesses")
     if report.missed_words:
         words = "、".join(f"{word}（{count}）" for word, count in report.missed_words)
@@ -476,6 +487,9 @@ def _draw(pdf: _ReportPDF, report: StudentReport) -> None:
     else:
         pdf.body("本阶段暂无情景问答维度样本。")
 
+
+def _draw_evidence(pdf: _ReportPDF, report: StudentReport) -> None:
+    """四、作答证据：只列作答编号，不落外链。"""
     pdf.section("四、作答证据", "Evidence")
     pdf.small("只有作答编号。请在 App 中打开，报告里没有外链。")
     if not report.evidence:
@@ -485,12 +499,26 @@ def _draw(pdf: _ReportPDF, report: StudentReport) -> None:
     if report.evidence_truncated:
         pdf.body(f"仅列出最近 {EVIDENCE_LIMIT} 条。更早的记录请在 App 中查看。")
 
-    if report.feedback:
-        pdf.section("五、教师建议", "Teacher feedback")
-        for item in report.feedback:
-            pdf.feedback(item)
-        if report.feedback_truncated:
-            pdf.body(f"仅列出最近 {FEEDBACK_LIMIT} 条教师建议。")
+
+def _draw_feedback(pdf: _ReportPDF, report: StudentReport) -> None:
+    """五、教师建议：整节只在有建议时出现。"""
+    if not report.feedback:
+        return
+    pdf.section("五、教师建议", "Teacher feedback")
+    for item in report.feedback:
+        pdf.feedback(item)
+    if report.feedback_truncated:
+        pdf.body(f"仅列出最近 {FEEDBACK_LIMIT} 条教师建议。")
+
+
+def _draw(pdf: _ReportPDF, report: StudentReport) -> None:
+    """学情报告正文：五个章节各交给一个 helper，页头含免责与空态提示。"""
+    _draw_header(pdf, report)
+    _draw_overview(pdf, report)
+    _draw_trend(pdf, report)
+    _draw_weaknesses(pdf, report)
+    _draw_evidence(pdf, report)
+    _draw_feedback(pdf, report)
 
 
 def _draw_percentile(pdf: _ReportPDF, view: PercentileView) -> None:
@@ -689,8 +717,7 @@ def _overview_question(
     )
 
 
-def _question_averages(
-    session: Session,
+def _averages_stmt(
     *,
     classroom_id: uuid.UUID,
     start: datetime,
@@ -698,12 +725,12 @@ def _question_averages(
     exercise_id: uuid.UUID | None,
     locked: set[uuid.UUID],
     only_student_id: uuid.UUID | None,
-) -> dict[uuid.UUID, float]:
-    """每个学生：窗口内情景问答、已出分、每个题位最新一次 overall 的均值。
+) -> Any:
+    """构造只取分数列的选择语句，并按可选条件（学生 / 练习 / 锁定会话）收窄。
 
-    只选出分数列。开关关闭时调用方不会走到全班这条路径。
+    只选出分数相关列，避免整行 JSON；sqlmodel.select 的重载覆盖列数较少，
+    故此处对类型检查器打忽略。
     """
-    # sqlmodel.select 的重载只覆盖到较少列；这里只要分数相关列，避免整行 JSON。
     stmt = (
         select(  # ty: ignore[no-matching-overload]
             Attempt.student_id,
@@ -731,6 +758,17 @@ def _question_averages(
         stmt = stmt.where(PracticeSession.assignment_id == exercise_id)
     if locked:
         stmt = stmt.where(col(Attempt.session_id).not_in(locked))
+    return stmt
+
+
+def _latest_overall_by_slot(
+    session: Session, stmt: Any
+) -> dict[tuple[uuid.UUID, uuid.UUID, uuid.UUID], tuple[datetime, uuid.UUID, int]]:
+    """同一 (学生, 会话, 题位) 只留最新一次 overall；缺关键列的行直接跳过。
+
+    比较用 (created_at, attempt_id) 而不是单看时间——同一秒内两次作答时
+    仍能按 id 稳定取到较晚的那条。
+    """
     latest: dict[
         tuple[uuid.UUID, uuid.UUID, uuid.UUID], tuple[datetime, uuid.UUID, int]
     ] = {}
@@ -754,6 +792,15 @@ def _question_averages(
         previous = latest.get(key)
         if previous is None or (created_at, attempt_id) >= (previous[0], previous[1]):
             latest[key] = (created_at, attempt_id, overall)
+    return latest
+
+
+def _averages_from_latest(
+    latest: dict[
+        tuple[uuid.UUID, uuid.UUID, uuid.UUID], tuple[datetime, uuid.UUID, int]
+    ],
+) -> dict[uuid.UUID, float]:
+    """按学生把各题位最新 overall 求均分，保留一位小数。"""
     buckets: dict[uuid.UUID, list[int]] = defaultdict(list)
     for (student_id, _session_id, _item_id), (
         _created,
@@ -766,6 +813,31 @@ def _question_averages(
         for student_id, values in buckets.items()
         if values
     }
+
+
+def _question_averages(
+    session: Session,
+    *,
+    classroom_id: uuid.UUID,
+    start: datetime,
+    end: datetime,
+    exercise_id: uuid.UUID | None,
+    locked: set[uuid.UUID],
+    only_student_id: uuid.UUID | None,
+) -> dict[uuid.UUID, float]:
+    """每个学生：窗口内情景问答、已出分、每个题位最新一次 overall 的均值。
+
+    只选出分数列。开关关闭时调用方不会走到全班这条路径。
+    """
+    stmt = _averages_stmt(
+        classroom_id=classroom_id,
+        start=start,
+        end=end,
+        exercise_id=exercise_id,
+        locked=locked,
+        only_student_id=only_student_id,
+    )
+    return _averages_from_latest(_latest_overall_by_slot(session, stmt))
 
 
 def _locked_exam_session_ids(
