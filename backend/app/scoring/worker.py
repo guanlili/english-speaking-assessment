@@ -855,6 +855,54 @@ def submit_attempt_scoring(attempt_id: uuid.UUID) -> None:
     executor.submit(copy_context().run, _run_in_worker, attempt_id)
 
 
+def _load_stale_scoring(session: Session, cutoff: datetime) -> list[Attempt]:
+    """锁并取回过期的 scoring 行。
+
+    超时条件下推 SQL：只锁定/取回真正过期的行——原实现锁全部 scoring 行
+    （含正在正常评分中的），清扫一跑，评分线程的写回都要吃 skip_locked。
+    """
+    return list(
+        session.exec(
+            select(Attempt)
+            .where(
+                Attempt.status == AttemptStatus.SCORING,
+                col(Attempt.claimed_at).is_not(None),
+                col(Attempt.claimed_at) <= cutoff,
+            )
+            .with_for_update(skip_locked=True)
+        ).all()
+    )
+
+
+def _reset_stale_for_retry(session: Session, attempt: Attempt) -> None:
+    """配额未烧完：退回 queued 并清掉占位，交给下一轮重新提交。"""
+    attempt.status = AttemptStatus.QUEUED
+    attempt.claimed_at = None
+    attempt.error = "worker 崩溃后自动重试"
+    session.add(attempt)
+
+
+def _fail_stale_exhausted(session: Session, attempt: Attempt) -> None:
+    """重试配额已烧完：直接标 FAILED，不再回队列。"""
+    attempt.status = AttemptStatus.FAILED
+    attempt.error = "评分多次失败（重试上限）"
+    session.add(attempt)
+
+
+def _resubmit_recovered(recovered_ids: list[uuid.UUID]) -> None:
+    """恢复提交成功即投递。
+
+    不等待「录音创建超过 30 分钟」的孤儿规则——恢复延迟从半小时量级降到
+    毫秒级；投递被拒时进 pending 集合由下一轮清扫继续重试（不依赖原录音年龄）。
+    """
+    for attempt_id in recovered_ids:
+        _remember_resubmit(attempt_id)
+        try:
+            submit_attempt_scoring(attempt_id)
+        except Exception:  # noqa: BLE001 - 投递失败留在集合，下轮重试
+            logger.exception("resubmit after recovery failed for %s", attempt_id)
+
+
 def recover_stale_attempts(session: Session) -> int:
     """恢复僵尸 scoring 作答：进程崩溃后遗留的 scoring 状态作答。
 
@@ -869,47 +917,24 @@ def recover_stale_attempts(session: Session) -> int:
     返回恢复的作答数。
     """
     cutoff = datetime.now(UTC) - timedelta(seconds=SCORING_STALE_TIMEOUT_S)
-    # 超时条件下推 SQL：只锁定/取回真正过期的行——原实现锁全部 scoring 行
-    # （含正在正常评分中的），清扫一跑，评分线程的写回都要吃 skip_locked
-    stale = session.exec(
-        select(Attempt)
-        .where(
-            Attempt.status == AttemptStatus.SCORING,
-            col(Attempt.claimed_at).is_not(None),
-            col(Attempt.claimed_at) <= cutoff,
-        )
-        .with_for_update(skip_locked=True)
-    ).all()
+    stale = _load_stale_scoring(session, cutoff)
     recovered_ids: list[uuid.UUID] = []
     recovered = 0
     changed = False
     for attempt in stale:
         if attempt.retry_count < MAX_SCORING_RETRIES:
-            attempt.status = AttemptStatus.QUEUED
-            attempt.claimed_at = None
-            attempt.error = "worker 崩溃后自动重试"
-            session.add(attempt)
+            _reset_stale_for_retry(session, attempt)
             recovered += 1
             changed = True
             recovered_ids.append(attempt.id)
         else:
-            attempt.status = AttemptStatus.FAILED
-            attempt.error = "评分多次失败（重试上限）"
-            session.add(attempt)
+            _fail_stale_exhausted(session, attempt)
             changed = True
     if changed:
         # 只要有状态变更（含超限标 failed）就必须落库，否则僵尸永远卡在 scoring
         session.commit()
         logger.info("recovered %d stale scoring attempts", recovered)
-        # 恢复提交成功即投递：不等待「录音创建超过 30 分钟」的孤儿规则——
-        # 恢复延迟从半小时量级降到毫秒级；投递被拒时进 pending 集合由
-        # 下一轮清扫继续重试（不依赖原录音年龄）
-        for attempt_id in recovered_ids:
-            _remember_resubmit(attempt_id)
-            try:
-                submit_attempt_scoring(attempt_id)
-            except Exception:  # noqa: BLE001 - 投递失败留在集合，下轮重试
-                logger.exception("resubmit after recovery failed for %s", attempt_id)
+        _resubmit_recovered(recovered_ids)
     return recovered
 
 
