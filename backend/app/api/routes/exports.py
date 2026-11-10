@@ -523,24 +523,15 @@ def _create_class_report(
     )
 
 
-@router.post("", response_model=ExportJobPublic)
-def create_export(
+def _audio_candidates_or_reject(
     session: SessionDep,
     current_user: CurrentUser,
     body: ExportCreate,
-    submitter: ExportSubmitter,
-) -> ExportJobPublic:
-    """创建导出任务并立即返回。打包在独立线程池里进行。"""
-    if body.kind == ExportKind.STUDENT_REPORT_PDF:
-        return _create_student_report(session, current_user, body, submitter)
-    if body.kind == ExportKind.CLASS_REPORT_PDF:
-        return _create_class_report(session, current_user, body, submitter)
-    resolved = _resolve(session, current_user, body)
-    _guard_capacity(session, current_user, body.scope)
-    filt = {key: value for key, value in resolved.items() if not key.startswith("_")}
-    filt["kind"] = ExportKind.AUDIO_ZIP
+    filt: dict[str, Any],
+) -> list[Any]:
+    """跑候选查询；行数护栏超限则留档并 422，不入队。"""
     try:
-        candidates = query_candidates(session, filt)
+        return query_candidates(session, filt)
     except ValueError as exc:
         # 行数护栏超限（export_too_many_attempts）：拒绝并留档，不入队
         _reject(
@@ -551,8 +542,15 @@ def create_export(
             detail={"max_rows": settings.EXPORT_MAX_ROWS},
         )
         raise HTTPException(status_code=422, detail=str(exc)) from None
-    # 体积预检不持有行锁；超限直接拒绝，不排队、不分卷。
-    session.commit()
+
+
+def _reject_if_too_large(
+    session: SessionDep,
+    current_user: CurrentUser,
+    body: ExportCreate,
+    candidates: list[Any],
+) -> None:
+    """体积预检：超限留档并 422，不排队、不分卷。调用前须已 commit 释放行锁。"""
     if present_nbytes(candidates) > settings.EXPORT_MAX_BYTES:
         _reject(
             session,
@@ -562,7 +560,12 @@ def create_export(
             detail={"bytes": present_nbytes(candidates)},
         )
         raise HTTPException(status_code=422, detail="export_too_large")
-    now = get_datetime_utc()
+
+
+def _download_meta(
+    resolved: dict[str, Any],
+) -> tuple[str | None, str | None, datetime | None, datetime | None]:
+    """从 _resolve 的结果里取出下载名需要的四项，逐个做类型收窄。"""
     raw_classroom = resolved.get("_classroom_name")
     raw_exercise = resolved.get("_exercise_title")
     raw_start = resolved.get("_start")
@@ -571,13 +574,25 @@ def create_export(
     exercise_title = raw_exercise if isinstance(raw_exercise, str) else None
     start = raw_start if isinstance(raw_start, datetime) else None
     end = raw_end if isinstance(raw_end, datetime) else None
+    return classroom_name, exercise_title, start, end
+
+
+def _queue_audio_job(
+    session: SessionDep,
+    current_user: CurrentUser,
+    body: ExportCreate,
+    filt: dict[str, Any],
+    resolved: dict[str, Any],
+) -> ExportJob:
+    """建任务、写审计、commit 并 refresh，返回待提交给线程池的 job。"""
+    classroom_name, exercise_title, start, end = _download_meta(resolved)
     name = download_name_for(
         scope=body.scope,
         classroom_name=classroom_name,
         exercise_title=exercise_title,
         start=start,
         end=end,
-        now=now,
+        now=get_datetime_utc(),
     )
     job = ExportJob(
         requester_user_id=current_user.id,
@@ -600,6 +615,30 @@ def create_export(
     )
     session.commit()
     session.refresh(job)
+    return job
+
+
+@router.post("", response_model=ExportJobPublic)
+def create_export(
+    session: SessionDep,
+    current_user: CurrentUser,
+    body: ExportCreate,
+    submitter: ExportSubmitter,
+) -> ExportJobPublic:
+    """创建导出任务并立即返回。打包在独立线程池里进行。"""
+    if body.kind == ExportKind.STUDENT_REPORT_PDF:
+        return _create_student_report(session, current_user, body, submitter)
+    if body.kind == ExportKind.CLASS_REPORT_PDF:
+        return _create_class_report(session, current_user, body, submitter)
+    resolved = _resolve(session, current_user, body)
+    _guard_capacity(session, current_user, body.scope)
+    filt = {key: value for key, value in resolved.items() if not key.startswith("_")}
+    filt["kind"] = ExportKind.AUDIO_ZIP
+    candidates = _audio_candidates_or_reject(session, current_user, body, filt)
+    # 体积预检不持有行锁；超限直接拒绝，不排队、不分卷。
+    session.commit()
+    _reject_if_too_large(session, current_user, body, candidates)
+    job = _queue_audio_job(session, current_user, body, filt, resolved)
     submitter(job.id)
     session.refresh(job)
     return _public(job)
