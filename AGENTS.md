@@ -10,6 +10,7 @@
 
 ## 最小必读约定（详细版见上述两文件）
 
+0. **提交前跑 `cd backend && bash scripts/verify.sh --openapi`**：一条命令过完格式 / Lint / 全量测试 + 覆盖率门禁 / openapi 契约。退出码 0 才算可交付；只改单个模块时用 `-k <用例名>` 先定向跑（几秒）。
 1. 后端改动模型/接口后：生成 Alembic 迁移，并 `cd frontend && npm run generate-client` 同步客户端（CI 会校验漂移）。
 2. 前端不手写 API URL，统一用 `src/client/` 生成代码。
 3. 401 只用于 token 无效/过期（前端自动登出并清缓存）；403 用于权限不足，不触发登出。

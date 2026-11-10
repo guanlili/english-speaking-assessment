@@ -124,6 +124,17 @@ cd backend
 POSTGRES_SERVER=localhost POSTGRES_PORT=5433 uv run bash scripts/tests-start.sh
 ```
 
+提交前的统一入口（格式 → Lint → 全量测试 + 覆盖率门禁 → openapi 契约，四道闸门一次跑完）：
+
+```bash
+cd backend
+uv run bash scripts/verify.sh --openapi     # 全量，约 2.5 分钟，退出码 0 才算过
+uv run bash scripts/verify.sh -k 某个用例名  # 只改了单模块时先定向跑，几秒出结果
+```
+
+`scripts/verify.sh` 会自动探测本地数据库（5433 通了就自己 export，不通会直接告诉你先 `docker compose up -d db`）。
+openapi 契约变更属有意改动时，用 `--openapi-update` 更新 `backend/openapi-baseline.json` 并随 PR 提交。
+
 测试库指向应用库时（`POSTGRES_DB_TEST` 与 `POSTGRES_DB` 相同）会在任何建表/删数据操作之前直接拒绝运行。
 
 E2E：新测试文件默认进入真实后端的 `chromium` 项目；确认所有 API 都被模拟且无共享状态后，才加入 `frontend/playwright.config.ts` 的 `mockedFiles`（分层与本地分片命令见 module-notes「Actions E2E 分层与并行」）。
