@@ -729,6 +729,54 @@ def _build_board_rows(
     return rows, submitted_count, completed_count, pending_count
 
 
+def _sort_board_students(rows: list[BoardStudent]) -> None:
+    """名单排序：交了的在前，其次按完成数降序，最后按名字。"""
+    rows.sort(
+        key=lambda s: (
+            -min(s.done_count, 1),
+            -s.done_count,
+            s.display_name,
+        )
+    )
+
+
+def _board_payload(
+    session: SessionDep,
+    classroom: Any,
+    skeleton: Any,
+    rows: list[BoardStudent],
+    counts: tuple[int, int, int],
+    *,
+    current_exercise: ClassroomExercise | None,
+    assigned_unit_board: Any,
+) -> BoardData:
+    """组装名单表响应（纯构造，无额外查询）。
+
+    counts 是 (submitted, completed, pending) 三元组，与 `_build_board_rows`
+    的返回后三值同序。
+    """
+    submitted_count, completed_count, pending_count = counts
+    homework = _homework_exercise_of(session, classroom)
+    return BoardData(
+        classroom_code=classroom.code,
+        classroom_name=classroom.name,
+        classroom_grade=classroom.grade,
+        teaching_goal=classroom.teaching_goal,
+        class_size=classroom.class_size,
+        assigned_items=classroom.assigned_items,
+        current_exercise=_exercise_public(current_exercise),
+        engine=_latest_scoring_engine(session),
+        assignment=_board_assignment(assigned_unit_board),
+        submitted_count=submitted_count,
+        completed_count=completed_count,
+        pending_count=pending_count,
+        students=rows,
+        items=skeleton,
+        homework_title=homework.title if homework is not None else None,
+        homework_exercise_id=homework.id if homework is not None else None,
+    )
+
+
 @router.get("/{code}/board", response_model=BoardData)
 def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) -> Any:
     """老师名单表（PRD §8.5 2 周）：谁交了、每题分数、音频；允许先显示评分中。
@@ -779,34 +827,15 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         week_ago=week_ago,
         exam=current_exercise,
     )
-
-    # 交了的在前，其次按完成数降序，再按名字
-    board_students.sort(
-        key=lambda s: (
-            -min(s.done_count, 1),
-            -s.done_count,
-            s.display_name,
-        )
-    )
-
-    homework = _homework_exercise_of(session, classroom)
-    return BoardData(
-        classroom_code=classroom.code,
-        classroom_name=classroom.name,
-        classroom_grade=classroom.grade,
-        teaching_goal=classroom.teaching_goal,
-        class_size=classroom.class_size,
-        assigned_items=classroom.assigned_items,
-        current_exercise=_exercise_public(current_exercise),
-        engine=_latest_scoring_engine(session),
-        assignment=_board_assignment(assigned_unit_board),
-        submitted_count=submitted_count,
-        completed_count=completed_count,
-        pending_count=pending_count,
-        students=board_students,
-        items=skeleton,
-        homework_title=homework.title if homework is not None else None,
-        homework_exercise_id=homework.id if homework is not None else None,
+    _sort_board_students(board_students)
+    return _board_payload(
+        session,
+        classroom,
+        skeleton,
+        board_students,
+        (submitted_count, completed_count, pending_count),
+        current_exercise=current_exercise,
+        assigned_unit_board=assigned_unit_board,
     )
 
 
