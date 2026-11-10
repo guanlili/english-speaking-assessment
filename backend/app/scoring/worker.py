@@ -1002,17 +1002,24 @@ def _resubmit_stale_queued(session: Session) -> int:
     return resubmitted
 
 
-def _close_stale_rubrics(session: Session) -> int:
+def _close_stale_rubrics(
+    session: Session, created_before: datetime | None = None
+) -> int:
     """关闭 detail 线程丢失导致「DONE 但 rubric 停在 pending」的挂起 rubric。
 
-    候选先按 status+created_at 粗筛，再逐条行锁复判，返回本轮关闭条数。
+    候选在 SQL 层按 status + rubric 状态粗筛，再逐条行锁复判，返回本轮关闭条数。
+    created_before 非空时额外按 created_at 前缀过滤（运行期清扫用；
+    启动期不传，全量扫一遍）。
     """
-    stale_cutoff = datetime.now(UTC) - timedelta(seconds=SCORING_STALE_TIMEOUT_S)
     # load_only 只取 rubric/created_at；SQL 层直接筛「rubric 处于 pending」
     # （rubric->>'status'）：DONE 量随学期累积，绝大多数历史行 rubric 为
     # null/已关闭，不该每 60s 拉回 Python 再丢掉。索引不盲加——候选集经
     # status+created_at 前缀过滤后已足够小，是否需要 JSON 表达式索引由
     # perf_baseline 实测 EXPLAIN 决定
+    conditions = [Attempt.status == AttemptStatus.DONE]
+    if created_before is not None:
+        conditions.append(col(Attempt.created_at) < created_before)  # type: ignore[operator]
+    conditions.append(col(Attempt.rubric)["status"].as_string() == "pending")  # type: ignore[index]
     pending = session.exec(
         select(Attempt)
         .options(
@@ -1022,11 +1029,7 @@ def _close_stale_rubrics(session: Session) -> int:
                 Attempt.created_at,  # ty: ignore[invalid-argument-type]
             )
         )
-        .where(
-            Attempt.status == AttemptStatus.DONE,
-            col(Attempt.created_at) < stale_cutoff,  # type: ignore[operator]
-            col(Attempt.rubric)["status"].as_string() == "pending",  # type: ignore[index]
-        )
+        .where(*conditions)
     ).all()
     check_now = datetime.now(UTC)
     closed = 0
@@ -1075,11 +1078,28 @@ def sweep_orphans(session: Session) -> int:
     recover_stale_attempts(session)
     resubmitted = _drain_pending_resubmits(session)
     resubmitted += _resubmit_stale_queued(session)
-    closed = _close_stale_rubrics(session)
+    closed = _close_stale_rubrics(
+        session,
+        datetime.now(UTC) - timedelta(seconds=SCORING_STALE_TIMEOUT_S),
+    )
     if closed:
         logger.info("detail sweep closed %d stale rubrics", closed)
     session.commit()
     return resubmitted
+
+
+def _resubmit_all_queued(session: Session) -> None:
+    """无条件重投所有 QUEUED（启动期专用，不做年龄过滤）。
+
+    旧逻辑只在存在僵尸 SCORING 时才重投，会漏掉「作答落库后、线程领取前
+    进程崩溃」的情况——这些作答重启后无人再投，永久卡在 queued 占坑，
+    攒满队列上限后全站上传 503。重投幂等（领取走 SKIP LOCKED + 状态门），
+    多投无害。
+    """
+    for attempt_id in session.exec(
+        select(Attempt.id).where(Attempt.status == AttemptStatus.QUEUED)
+    ).all():
+        submit_attempt_scoring(attempt_id)
 
 
 def startup_recovery() -> None:
@@ -1087,54 +1107,12 @@ def startup_recovery() -> None:
     from app.core.db import platform_engine
 
     with Session(platform_engine) as session:
-        # 同 sweep_orphans：SQL 层筛「rubric 处于 pending」+ load_only 窄列，
-        # 启动不把整个学期的 DONE 行拉回 Python；挂起按详情阶段开始时刻
-        # 判定（详见 _detail_stale）
-        check_now = datetime.now(UTC)
-        for attempt in session.exec(
-            select(Attempt)
-            .options(
-                load_only(
-                    Attempt.id,  # ty: ignore[invalid-argument-type]
-                    Attempt.rubric,  # ty: ignore[invalid-argument-type]
-                    Attempt.created_at,  # ty: ignore[invalid-argument-type]
-                )
-            )
-            .where(
-                Attempt.status == AttemptStatus.DONE,
-                col(Attempt.rubric)["status"].as_string() == "pending",  # type: ignore[index]
-            )
-        ).all():
-            if not _detail_stale(attempt, check_now):
-                continue
-            # 行锁重读复判（返修R05）：陈旧快照不得覆盖执行中/已完成的详情
-            locked = session.exec(
-                select(Attempt.id, Attempt.rubric, Attempt.created_at)
-                .where(Attempt.id == attempt.id)
-                .with_for_update()
-            ).first()
-            if locked is None:
-                continue
-            fresh_rubric = locked[1] if isinstance(locked[1], dict) else None
-            if fresh_rubric is None or fresh_rubric.get("status") != "pending":
-                continue
-            if not _detail_stale_values(fresh_rubric, locked[2], datetime.now(UTC)):
-                continue
-            session.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
-                update(Attempt)
-                .where(col(Attempt.id) == attempt.id)
-                .values(rubric={"status": "unavailable"})
-            )
+        # 同 sweep_orphans 的判定口径，但启动期不按 created_at 过滤：
+        # 全量扫一遍，避免漏掉早期遗留的挂起 rubric
+        _close_stale_rubrics(session)
         session.commit()
         recover_stale_attempts(session)
-        # 无条件重投所有 QUEUED：旧逻辑只在存在僵尸 SCORING 时才重投，会漏掉
-        # 「作答落库后、线程领取前进程崩溃」的情况——这些作答重启后无人再投，
-        # 永久卡在 queued 占坑，攒满队列上限后全站上传 503。
-        # 重投幂等（领取走 SKIP LOCKED + 状态门），多投无害
-        for attempt_id in session.exec(
-            select(Attempt.id).where(Attempt.status == AttemptStatus.QUEUED)
-        ).all():
-            submit_attempt_scoring(attempt_id)
+        _resubmit_all_queued(session)
         # 启动即全量重投，进程内的恢复候选簿记一并清空
         with _resubmit_lock:
             _resubmit_pending.clear()
