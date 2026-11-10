@@ -146,6 +146,102 @@ class DiagnosticTargets(SQLModel):
     targets: list[DiagnosticStudentItems] = []
 
 
+def _load_diagnostic_rows(
+    session: SessionDep, classroom_id: uuid.UUID, source_id: uuid.UUID
+) -> list[Attempt]:
+    """取本节课当前作业在今天 daily 模式下的全部作答。
+
+    课上高频刷新：只取判定用的小列，rubric/word_alignment 大 JSON 不进内存。
+    """
+    return list(
+        session.exec(
+            select(Attempt)
+            .join(PracticeSession, col(Attempt.session_id) == col(PracticeSession.id))
+            .join(Student, col(Attempt.student_id) == col(Student.id))
+            .where(
+                PracticeSession.classroom_id == classroom_id,
+                PracticeSession.assignment_id == source_id,
+                PracticeSession.session_date == _today_in_practice_tz(),
+                PracticeSession.mode == "daily",
+                Student.classroom_id == classroom_id,
+            )
+            .options(
+                load_only(
+                    Attempt.id,  # ty: ignore[invalid-argument-type]
+                    Attempt.student_id,  # ty: ignore[invalid-argument-type]
+                    Attempt.item_id,  # ty: ignore[invalid-argument-type]
+                    Attempt.item_type,  # ty: ignore[invalid-argument-type]
+                    Attempt.status,  # ty: ignore[invalid-argument-type]
+                    Attempt.overall,  # ty: ignore[invalid-argument-type]
+                    Attempt.transcript,  # ty: ignore[invalid-argument-type]
+                    Attempt.item_snapshot,  # ty: ignore[invalid-argument-type]
+                    Attempt.teacher_focus,  # ty: ignore[invalid-argument-type]
+                    Attempt.created_at,  # ty: ignore[invalid-argument-type]
+                )
+            )
+            .order_by(col(Attempt.created_at), col(Attempt.id))
+        ).all()
+    )
+
+
+def _diagnostic_match(
+    a: Attempt,
+    rule: Literal["low_score", "short_answer", "missed_word", "teacher_focus"],
+    word: str,
+    item_id: uuid.UUID | None,
+) -> bool:
+    """单条作答是否命中诊断规则。
+
+    四条规则的判定按 or 链顺序求值——missed_word 会调 missed_content_words
+    做内容词比对，短路顺序保持与原实现一致，避免无谓计算。
+    """
+    if a.status != "done" or (item_id is not None and a.item_id != item_id):
+        return False
+    reference = str((a.item_snapshot or {}).get("text", ""))
+    matched = (
+        (rule == "low_score" and a.overall is not None and a.overall < LOW_OVERALL)
+        or (
+            rule == "short_answer"
+            and a.item_type == "question"
+            and bool(a.transcript)
+            and len(tokenize(a.transcript or "")) < SHORT_ANSWER_WORDS
+        )
+        or (rule == "teacher_focus" and a.teacher_focus)
+        or (
+            rule == "missed_word"
+            and a.item_type in ("passage", "repeat")
+            and bool(word.strip())
+            and word.strip().lower()
+            in missed_content_words(reference, a.transcript or "")
+        )
+    )
+    return bool(matched)
+
+
+def _diagnostic_payload(
+    source_exercise_id: uuid.UUID, matches: list[Attempt]
+) -> DiagnosticTargets:
+    """把命中的作答按学生聚合成前端要的诊断目标列表。"""
+    # 学生集合在响应里要用两次（外层 student_ids 与 targets 遍历），
+    # 提成局部变量避免重复求值同一推导式
+    student_ids = sorted({a.student_id for a in matches if a.student_id}, key=str)
+    return DiagnosticTargets(
+        source_exercise_id=source_exercise_id,
+        student_ids=student_ids,
+        item_ids=sorted({a.item_id for a in matches}, key=str),
+        matched_answers=len(matches),
+        targets=[
+            DiagnosticStudentItems(
+                student_id=sid,
+                item_ids=sorted(
+                    {a.item_id for a in matches if a.student_id == sid}, key=str
+                ),
+            )
+            for sid in student_ids
+        ],
+    )
+
+
 @router.get("/{code}/diagnostic-targets", response_model=DiagnosticTargets)
 def read_diagnostic_targets(
     session: SessionDep,
@@ -166,74 +262,13 @@ def read_diagnostic_targets(
         raise HTTPException(404, detail="Exercise not found")
     if source.is_exam:
         raise HTTPException(409, detail="Active exam cannot be assigned as followup")
-    rows = session.exec(
-        select(Attempt)
-        .join(PracticeSession, col(Attempt.session_id) == col(PracticeSession.id))
-        .join(Student, col(Attempt.student_id) == col(Student.id))
-        .where(
-            PracticeSession.classroom_id == classroom.id,
-            PracticeSession.assignment_id == source.id,
-            PracticeSession.session_date == _today_in_practice_tz(),
-            PracticeSession.mode == "daily",
-            Student.classroom_id == classroom.id,
-        )
-        .options(
-            # 课上高频刷新：只取判定用的小列，rubric/word_alignment 大 JSON 不进内存
-            load_only(
-                Attempt.id,  # ty: ignore[invalid-argument-type]
-                Attempt.student_id,  # ty: ignore[invalid-argument-type]
-                Attempt.item_id,  # ty: ignore[invalid-argument-type]
-                Attempt.item_type,  # ty: ignore[invalid-argument-type]
-                Attempt.status,  # ty: ignore[invalid-argument-type]
-                Attempt.overall,  # ty: ignore[invalid-argument-type]
-                Attempt.transcript,  # ty: ignore[invalid-argument-type]
-                Attempt.item_snapshot,  # ty: ignore[invalid-argument-type]
-                Attempt.teacher_focus,  # ty: ignore[invalid-argument-type]
-                Attempt.created_at,  # ty: ignore[invalid-argument-type]
-            )
-        )
-        .order_by(col(Attempt.created_at), col(Attempt.id))
-    ).all()
-    latest = {(a.student_id, a.item_id): a for a in rows}
-    matches = []
-    for a in latest.values():
-        if a.status != "done" or (item_id is not None and a.item_id != item_id):
-            continue
-        reference = str((a.item_snapshot or {}).get("text", ""))
-        matched = (
-            (rule == "low_score" and a.overall is not None and a.overall < LOW_OVERALL)
-            or (
-                rule == "short_answer"
-                and a.item_type == "question"
-                and bool(a.transcript)
-                and len(tokenize(a.transcript or "")) < SHORT_ANSWER_WORDS
-            )
-            or (rule == "teacher_focus" and a.teacher_focus)
-            or (
-                rule == "missed_word"
-                and a.item_type in ("passage", "repeat")
-                and bool(word.strip())
-                and word.strip().lower()
-                in missed_content_words(reference, a.transcript or "")
-            )
-        )
-        if matched:
-            matches.append(a)
-    return DiagnosticTargets(
-        source_exercise_id=source.id,
-        student_ids=sorted({a.student_id for a in matches if a.student_id}, key=str),
-        item_ids=sorted({a.item_id for a in matches}, key=str),
-        matched_answers=len(matches),
-        targets=[
-            DiagnosticStudentItems(
-                student_id=sid,
-                item_ids=sorted(
-                    {a.item_id for a in matches if a.student_id == sid}, key=str
-                ),
-            )
-            for sid in sorted({a.student_id for a in matches if a.student_id}, key=str)
-        ],
-    )
+    # 同一学生同一题多次作答只留最后一条（rows 已按 created_at, id 升序）
+    latest = {
+        (a.student_id, a.item_id): a
+        for a in _load_diagnostic_rows(session, classroom.id, source.id)
+    }
+    matches = [a for a in latest.values() if _diagnostic_match(a, rule, word, item_id)]
+    return _diagnostic_payload(source.id, matches)
 
 
 class ReportAnswer(SQLModel):
