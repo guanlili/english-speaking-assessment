@@ -424,36 +424,30 @@ def _manifest_csv(
     return buffer.getvalue().encode("utf-8")
 
 
-def build_zip(
-    candidates: list[ExportCandidate],
-    *,
-    scope: str,
-    group_by_item: bool,
-    root_name: str,
-    dest: Path,
-    on_progress: Callable[[int, int], None] | None = None,
-) -> BuildResult:
-    """写入 ZIP。没有可打包的原始音频时删除半成品并返回错误码，不留空包。"""
-    total = len(candidates)
-    if on_progress is not None:
-        on_progress(0, total)
+def _reject_empty(total: int) -> BuildResult | None:
+    """没有候选就返回空包错误码——不产空 ZIP；有候选返回 None。"""
     if total == 0:
         return BuildResult(
             error="export_empty", included=0, missing=0, byte_size=0, artifact_name=None
         )
-    paths = archive_paths(candidates, scope=scope, group_by_item=group_by_item)
-    included = len(paths)
-    missing = total - included
-    if included == 0:
-        if on_progress is not None:
-            on_progress(total, total)
-        return BuildResult(
-            error="export_all_missing",
-            included=0,
-            missing=missing,
-            byte_size=0,
-            artifact_name=None,
-        )
+    return None
+
+
+def _reject_all_missing(missing: int) -> BuildResult:
+    """一条原始音频都没找到时报 export_all_missing（附上缺失条数）。"""
+    return BuildResult(
+        error="export_all_missing",
+        included=0,
+        missing=missing,
+        byte_size=0,
+        artifact_name=None,
+    )
+
+
+def _tree_bytes(
+    candidates: list[ExportCandidate], missing: int
+) -> tuple[int, BuildResult | None]:
+    """累加可打包文件的字节数；stat 失败时返回错误结果，由调用方原样返回。"""
     nbytes = 0
     for candidate in candidates:
         source = present_source(candidate)
@@ -463,21 +457,30 @@ def build_zip(
             nbytes += source.stat().st_size
         except OSError:
             logger.exception("export could not stat %s", source)
-            return BuildResult(
+            return 0, BuildResult(
                 error="export_failed",
                 included=0,
-                missing=total,
+                missing=missing,
                 byte_size=0,
                 artifact_name=None,
             )
-    if nbytes > settings.EXPORT_MAX_BYTES:
-        return BuildResult(
-            error="export_too_large",
-            included=0,
-            missing=missing,
-            byte_size=nbytes,
-            artifact_name=None,
-        )
+    return nbytes, None
+
+
+def _write_archive(
+    candidates: list[ExportCandidate],
+    paths: dict[uuid.UUID, str],
+    *,
+    root_name: str,
+    dest: Path,
+    total: int,
+    on_progress: Callable[[int, int], None] | None,
+) -> None:
+    """原子写 ZIP：先写 .partial 再 replace；任何异常都清掉半成品与目标后抛出。
+
+    清单用 ZIP_STORED + 0x800 标记（UTF-8 文件名），逐条流式拷贝，
+    每 25 条与最后一条回调一次进度。
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     partial = dest.with_name(f".{dest.name}.partial")
     try:
@@ -508,6 +511,50 @@ def build_zip(
         partial.unlink(missing_ok=True)
         dest.unlink(missing_ok=True)
         raise
+
+
+def build_zip(
+    candidates: list[ExportCandidate],
+    *,
+    scope: str,
+    group_by_item: bool,
+    root_name: str,
+    dest: Path,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> BuildResult:
+    """写入 ZIP。没有可打包的原始音频时删除半成品并返回错误码，不留空包。"""
+    total = len(candidates)
+    if on_progress is not None:
+        on_progress(0, total)
+    empty = _reject_empty(total)
+    if empty is not None:
+        return empty
+    paths = archive_paths(candidates, scope=scope, group_by_item=group_by_item)
+    included = len(paths)
+    missing = total - included
+    if included == 0:
+        if on_progress is not None:
+            on_progress(total, total)
+        return _reject_all_missing(missing)
+    nbytes, failed = _tree_bytes(candidates, missing)
+    if failed is not None:
+        return failed
+    if nbytes > settings.EXPORT_MAX_BYTES:
+        return BuildResult(
+            error="export_too_large",
+            included=0,
+            missing=missing,
+            byte_size=nbytes,
+            artifact_name=None,
+        )
+    _write_archive(
+        candidates,
+        paths,
+        root_name=root_name,
+        dest=dest,
+        total=total,
+        on_progress=on_progress,
+    )
     return BuildResult(
         error=None,
         included=included,
