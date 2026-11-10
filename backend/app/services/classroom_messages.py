@@ -203,6 +203,12 @@ def repeat_reminder(
             or previous.created_by != creator
         ):
             raise HTTPException(409, detail="Class message request conflict")
+        # 幂等命中：调用方（路由）不会再 commit，而 classroom 与 row 的
+        # FOR UPDATE 已经拿到，必须在这里结束事务。commit 会 expire ORM
+        # 对象（调用方还要读它做响应），按 send_reminders 的写法补一次
+        # refresh。
+        session.commit()
+        session.refresh(previous)
         return previous
     chain = list(
         session.exec(
