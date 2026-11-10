@@ -43,6 +43,11 @@ def create_individual_followups(
             or existing.payload_hash != signature
         ):
             raise HTTPException(409, detail="Followup batch request conflict")
+        # 幂等命中：调用方不会再 commit，课堂行的 FOR UPDATE 还在手上，
+        # 必须在这里结束事务（此前没有任何 pending 写）。commit 会 expire
+        # 对象，调用方还要读 task_ids，补一次 refresh。
+        session.commit()
+        session.refresh(existing)
         return existing
     if (
         not title.strip()
