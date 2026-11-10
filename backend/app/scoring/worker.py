@@ -376,6 +376,66 @@ def _transcribe_audio(
     return transcript, engine
 
 
+def _apply_read_aloud_scores(
+    attempt: Attempt,
+    transcript: str,
+    duration_s: float,
+    read_aloud: tuple[str, int],
+) -> None:
+    """跟读/复述题：按参考文本对齐打 completeness/fluency/accuracy。"""
+    reference_text, suggested_seconds = read_aloud
+    scores = score_read_aloud(
+        transcript=transcript,
+        reference_text=reference_text,
+        duration_s=duration_s,
+        suggested_seconds=suggested_seconds,
+    )
+    attempt.transcript = scores.transcript
+    attempt.completeness = scores.completeness
+    attempt.fluency = scores.fluency
+    attempt.accuracy = scores.accuracy
+    attempt.overall = scores.overall
+    attempt.advice = scores.advice
+    # 词级对齐（逐词标注与个人漏词聚合共用）：只在有参考文本的跟读/
+    # 复述题生成；空转写全部 missing，前端据此展示「未识别到语音」
+    if transcript.strip():
+        from app.scoring.heuristic import align_words
+
+        attempt.word_alignment = dict(align_words(reference_text, scores.transcript))
+
+
+def _apply_open_response_scores(
+    session: Session,
+    attempt: Attempt,
+    transcript: str,
+    engine: str,
+    duration_s: float,
+) -> tuple[RubricQuestionContext, str] | None:
+    """开放问答：总评 + 词汇 + rubric；引擎支持且非空转写时返回详情任务参数。"""
+    # 开放问答：无参考文本（PRD §4：2 周只出总评和一句建议）
+    question_context = _resolve_question_context(session, attempt)
+    open_scores = score_open_response(transcript, duration_s)
+    attempt.transcript = open_scores.transcript
+    attempt.fluency = open_scores.fluency
+    attempt.overall = open_scores.overall
+    attempt.advice = open_scores.advice
+    # 词汇分析（PRD US-07）：只统计问答转写；词表为空时留 null
+    attempt.vocab = _analyze_vocab(session, transcript)
+    # rubric 四维与模拟分（PRD US-08）：仅 ark 引擎；失败降级不出假分
+    # 空转写（没说话/识别不到）不出 0 分模拟——界面显示暂缺
+    if engine in {"ark", "volc_flash"} and transcript.strip():
+        # 详情任务入队（返修R06）：queued_at 是排队时刻；真正开始
+        # 执行时 _complete_detail 会改写为 executing + pending_since。
+        # 挂起超时按阶段判定——合法的线程池排队不该被当线程丢失
+        attempt.rubric = {
+            "status": "pending",
+            "phase": "queued",
+            "queued_at": datetime.now(UTC).isoformat(),
+        }
+        return question_context, transcript
+    return None
+
+
 def _apply_scores(
     session: Session,
     attempt: Attempt,
@@ -387,53 +447,11 @@ def _apply_scores(
 
     返回详情任务参数（开放问答且引擎支持时），否则 None。
     """
-    detail_request: tuple[RubricQuestionContext, str] | None = None
     read_aloud = _resolve_read_aloud_item(session, attempt)
     if read_aloud is not None:
-        reference_text, suggested_seconds = read_aloud
-        scores = score_read_aloud(
-            transcript=transcript,
-            reference_text=reference_text,
-            duration_s=duration_s,
-            suggested_seconds=suggested_seconds,
-        )
-        attempt.transcript = scores.transcript
-        attempt.completeness = scores.completeness
-        attempt.fluency = scores.fluency
-        attempt.accuracy = scores.accuracy
-        attempt.overall = scores.overall
-        attempt.advice = scores.advice
-        # 词级对齐（逐词标注与个人漏词聚合共用）：只在有参考文本的跟读/
-        # 复述题生成；空转写全部 missing，前端据此展示「未识别到语音」
-        if transcript.strip():
-            from app.scoring.heuristic import align_words
-
-            attempt.word_alignment = dict(
-                align_words(reference_text, scores.transcript)
-            )
-    else:
-        # 开放问答：无参考文本（PRD §4：2 周只出总评和一句建议）
-        question_context = _resolve_question_context(session, attempt)
-        open_scores = score_open_response(transcript, duration_s)
-        attempt.transcript = open_scores.transcript
-        attempt.fluency = open_scores.fluency
-        attempt.overall = open_scores.overall
-        attempt.advice = open_scores.advice
-        # 词汇分析（PRD US-07）：只统计问答转写；词表为空时留 null
-        attempt.vocab = _analyze_vocab(session, transcript)
-        # rubric 四维与模拟分（PRD US-08）：仅 ark 引擎；失败降级不出假分
-        # 空转写（没说话/识别不到）不出 0 分模拟——界面显示暂缺
-        if engine in {"ark", "volc_flash"} and transcript.strip():
-            # 详情任务入队（返修R06）：queued_at 是排队时刻；真正开始
-            # 执行时 _complete_detail 会改写为 executing + pending_since。
-            # 挂起超时按阶段判定——合法的线程池排队不该被当线程丢失
-            attempt.rubric = {
-                "status": "pending",
-                "phase": "queued",
-                "queued_at": datetime.now(UTC).isoformat(),
-            }
-            detail_request = (question_context, transcript)
-    return detail_request
+        _apply_read_aloud_scores(attempt, transcript, duration_s, read_aloud)
+        return None
+    return _apply_open_response_scores(session, attempt, transcript, engine, duration_s)
 
 
 def _discard_lost_lease(session: Session, attempt_id: uuid.UUID) -> None:
