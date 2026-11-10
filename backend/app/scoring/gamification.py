@@ -194,11 +194,17 @@ def settle_session(
     """
     locked = _lock_for_settlement(session, practice_session, student)
     if locked is None:
+        # 已拿到的行锁必须在这里结束掉：/today 是高频轮询，早退若不收尾，
+        # practice_session / student 的 FOR UPDATE 会一直挂到请求结束，
+        # 与 worker 的 UPDATE attempt 交叉时形成环形等待。
+        session.commit()
         return
     practice_session, student = locked
 
     latest = _latest_attempts(session, practice_session.id, required_item_ids)
     if not _all_items_settled(latest, expected_items):
+        # 同上：本轮还没做完是常态，不能带着行锁走完整个 /today 请求。
+        session.commit()
         return  # 题数不足或还有题没评完
 
     done = [a for a in latest.values() if a.status == AttemptStatus.DONE]

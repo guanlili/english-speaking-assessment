@@ -28,6 +28,7 @@ from app.models import (
     AttemptItemType,
     AttemptStatus,
     Passage,
+    PracticeSession,
     RepeatSentence,
     ScenarioQuestion,
 )
@@ -548,6 +549,7 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
     外部 ASR/LLM 调用不持有数据库行锁；崩溃窗口（调用中途被回收）由
     checkpoint + 重试覆盖，不承诺付费调用的严格 exactly-once。
     """
+    _share_lock_owning_session(session, attempt_id)
     attempt = _claim_attempt(session, attempt_id)
     if attempt is None:
         return  # 已被其他 worker 领取或已处理
@@ -592,6 +594,29 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
 
     if detail_request is not None and attempt.status == AttemptStatus.DONE:
         _submit_detail(attempt_id, detail_request)
+
+
+def _share_lock_owning_session(session: Session, attempt_id: uuid.UUID) -> None:
+    """领取 attempt 行锁之前，先对它所引用的 practice_session 加共享锁。
+
+    锁顺序统一为 practice_session → attempt，与 /today 结算的
+    practice_session → student 同向，避免两侧首锁不同时形成环形等待
+    （观测到的死锁：一侧持 practice_session 等 student，另一侧
+    UPDATE attempt 时要做 FK 检查、等 practice_session）。
+
+    共享锁（FOR SHARE）不与同向的共享读冲突，只与结算的 FOR UPDATE 互斥；
+    后者是毫秒级临界区，等待代价可接受，且不会反向成环。
+    """
+    session_id = session.exec(
+        select(Attempt.session_id).where(Attempt.id == attempt_id)
+    ).first()
+    if session_id is None:
+        return
+    session.exec(
+        select(PracticeSession.id)
+        .where(PracticeSession.id == session_id)
+        .with_for_update(read=True)
+    ).first()
 
 
 def _claim_attempt(session: Session, attempt_id: uuid.UUID) -> Attempt | None:
