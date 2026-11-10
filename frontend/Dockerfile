@@ -9,7 +9,14 @@ COPY frontend/package.json frontend/package-lock.json ./
 # 国内构建加速：npm 走 npmmirror
 RUN npm config set registry https://registry.npmmirror.com
 
-RUN --mount=type=cache,target=/root/.npm npm ci
+# 镜像源单包抽风时会连续卡在不同 tgz 上（实测 unplugin / shebang-regex 分别挂过一次，
+# 整站不可达时连 registry.npmmirror.com 首页都超时），只 rerun 靠运气不划算。
+# 两个层次兜：先把单包下载超时放宽并加满重试，仍未成就整条换官方源重来一遍。
+# 不改依赖版本、不改 lockfile；构建成功路径上多出的只有这些 fetch 参数。
+ARG NPM_FETCH="--fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=180000 --fetch-timeout=180000"
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci $NPM_FETCH \
+ || (npm config set registry https://registry.npmjs.org && npm ci $NPM_FETCH)
 
 COPY ./frontend ./
 
