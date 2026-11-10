@@ -334,33 +334,43 @@ def build_error_file(
     if not error_rows:
         raise HTTPException(status_code=422, detail="没有需要修正的行")
     if parsed.fmt == "csv":
-        rows = [
-            [
-                CSV_TYPE_COLUMN.zh,
-                *[c.zh for c in CSV_UNION_COLUMNS],
-                "原行号",
-                "错误原因",
-            ]
-        ]
-        for error in error_rows:
-            type_label = error.type_cell or TYPE_LABELS.get(error.qtype, "")
-            rows.append(
-                [
-                    type_label,
-                    *[error.cells.get(c.field, "") for c in CSV_UNION_COLUMNS],
-                    str(error.line),
-                    error.reason,
-                ]
-            )
         return (
-            _csv_bytes(rows),
+            _csv_bytes(_error_file_csv_rows(error_rows)),
             "question-bank-fix.csv",
             CSV_MEDIA_TYPE,
         )
-    from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font
-    from openpyxl.utils import get_column_letter
+    return (
+        _build_error_workbook(error_rows),
+        "question-bank-fix.xlsx",
+        XLSX_MEDIA_TYPE,
+    )
 
+
+def _error_file_csv_rows(error_rows: list[ErrorRow]) -> list[list[str]]:
+    """CSV 修正文件的全部行：标准模板表头 + 原行号/错误原因两列。"""
+    rows = [
+        [
+            CSV_TYPE_COLUMN.zh,
+            *[c.zh for c in CSV_UNION_COLUMNS],
+            "原行号",
+            "错误原因",
+        ]
+    ]
+    for error in error_rows:
+        type_label = error.type_cell or TYPE_LABELS.get(error.qtype, "")
+        rows.append(
+            [
+                type_label,
+                *[error.cells.get(c.field, "") for c in CSV_UNION_COLUMNS],
+                str(error.line),
+                error.reason,
+            ]
+        )
+    return rows
+
+
+def _partition_errors_by_type(error_rows: list[ErrorRow]) -> dict[str, list[ErrorRow]]:
+    """按题型分组，保持 error_rows 的原有顺序。"""
     by_type: dict[str, list[ErrorRow]] = {}
     for error in error_rows:
         if error.qtype == "-":
@@ -368,42 +378,66 @@ def build_error_file(
             by_type.setdefault(TYPE_INSTRUCTION, []).append(error)
         else:
             by_type.setdefault(error.qtype, []).append(error)
+    return by_type
+
+
+def _build_error_workbook(error_rows: list[ErrorRow]) -> bytes:
+    """按题型一个 sheet 组装修正工作簿，返回 xlsx 字节。"""
+    from openpyxl import Workbook
+
+    by_type = _partition_errors_by_type(error_rows)
     workbook = Workbook()
     workbook.remove(workbook.active)
     for qtype in QUESTION_BANK_TYPE_ORDER:
         errors = by_type.get(qtype)
         if not errors:
             continue
-        columns = COLUMNS_BY_TYPE[qtype]
-        sheet = workbook.create_sheet(TYPE_LABELS[qtype])
-        headers = [c.header for c in columns] + [
-            ERROR_FILE_LINE_HEADER,
-            ERROR_FILE_REASON_HEADER,
-        ]
-        for col_idx, header in enumerate(headers, start=1):
-            cell = sheet.cell(row=1, column=col_idx, value=header)
-            cell.font = Font(bold=True)
-            cell.alignment = Alignment(wrap_text=True, vertical="center")
-            width = TEMPLATE_WIDTHS[qtype].get(
-                columns[col_idx - 1].field if col_idx <= len(columns) else "", 12
-            )
-            sheet.column_dimensions[get_column_letter(col_idx)].width = (
-                14 if col_idx > len(columns) else width
-            )
-        sheet.freeze_panes = "A2"
-        for row_idx, error in enumerate(errors, start=2):
-            values = [error.cells.get(c.field, "") for c in columns] + [
-                str(error.line),
-                error.reason,
-            ]
-            for col_idx, value in enumerate(values, start=1):
-                cell = sheet.cell(row=row_idx, column=col_idx, value=value)
-                if value.startswith("="):
-                    cell.data_type = "s"
-                cell.alignment = Alignment(wrap_text=True, vertical="top")
+        _write_error_sheet(workbook, qtype, errors)
     buffer = io.BytesIO()
     workbook.save(buffer)
-    return buffer.getvalue(), "question-bank-fix.xlsx", XLSX_MEDIA_TYPE
+    return buffer.getvalue()
+
+
+def _write_error_sheet(workbook: Any, qtype: str, errors: list[ErrorRow]) -> None:
+    """写一个题型的 sheet：冻结表头 + 逐行数据。"""
+    from openpyxl.styles import Alignment
+
+    columns = COLUMNS_BY_TYPE[qtype]
+    sheet = workbook.create_sheet(TYPE_LABELS[qtype])
+    _write_error_headers(sheet, qtype, columns)
+    sheet.freeze_panes = "A2"
+    for row_idx, error in enumerate(errors, start=2):
+        values = [
+            *(error.cells.get(c.field, "") for c in columns),
+            str(error.line),
+            error.reason,
+        ]
+        for col_idx, value in enumerate(values, start=1):
+            cell = sheet.cell(row=row_idx, column=col_idx, value=value)
+            if value.startswith("="):
+                cell.data_type = "s"
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+
+def _write_error_headers(sheet: Any, qtype: str, columns: Any) -> None:
+    """表头一行：加粗换行居中，并按模板列宽设置宽度（辅助列固定 14）。"""
+    from openpyxl.styles import Alignment, Font
+    from openpyxl.utils import get_column_letter
+
+    headers = [c.header for c in columns] + [
+        ERROR_FILE_LINE_HEADER,
+        ERROR_FILE_REASON_HEADER,
+    ]
+    for col_idx, header in enumerate(headers, start=1):
+        cell = sheet.cell(row=1, column=col_idx, value=header)
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+        width = TEMPLATE_WIDTHS[qtype].get(
+            columns[col_idx - 1].field if col_idx <= len(columns) else "", 12
+        )
+        sheet.column_dimensions[get_column_letter(col_idx)].width = (
+            14 if col_idx > len(columns) else width
+        )
 
 
 # ── 批量导出（筛选条件镜像现有列表接口；格式与导入模板兼容） ────────
