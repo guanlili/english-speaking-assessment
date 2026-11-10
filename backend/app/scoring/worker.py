@@ -436,6 +436,88 @@ def _apply_scores(
     return detail_request
 
 
+def _discard_lost_lease(session: Session, attempt_id: uuid.UUID) -> None:
+    """租约已丢：回滚整笔事务并记日志，不写任何状态（新 worker 已接管）。"""
+    session.rollback()
+    logger.warning(
+        "attempt %s lease lost before write-back; discarding stale result",
+        attempt_id,
+    )
+
+
+def _write_success(
+    session: Session,
+    attempt: Attempt,
+    attempt_id: uuid.UUID,
+    lease_token: datetime,
+    engine: str,
+) -> None:
+    """成功写回：租约仍有效才置 DONE，否则抛 _LeaseLostError 交由外层丢弃。"""
+    if not _lease_still_valid(session, attempt_id, lease_token):
+        raise _LeaseLostError(attempt_id)
+    attempt.status = AttemptStatus.DONE
+    attempt.engine = engine
+    # 重试成功的作答要抹掉重试期的占位文案，否则 done 回执一直带着
+    # 「正在自动重试」误导学生/教师（2026-10-12 评审）
+    attempt.error = None
+
+
+def _mark_content_missing(
+    session: Session,
+    attempt: Attempt,
+    attempt_id: uuid.UUID,
+    lease_token: datetime,
+    exc: ContentMissingError,
+) -> bool:
+    """题目内容已删除：重试无意义，直接标失败不消耗重试配额。
+
+    返回 False 表示租约已丢，调用方应直接返回不再写回。
+    """
+    logger.error(
+        "attempt %s scoring aborted (content missing): %s",
+        attempt_id,
+        exc,
+        exc_info=True,
+    )
+    if not _lease_still_valid(session, attempt_id, lease_token):
+        return False
+    attempt.status = AttemptStatus.FAILED
+    # 学生端可见的 error 只放通用文案；上游异常原文（可能含 endpoint/配额等细节）只进日志
+    attempt.error = "题目内容已不可用，请联系老师重新发布"
+    return True
+
+
+def _mark_transient_failure(
+    session: Session,
+    attempt: Attempt,
+    attempt_id: uuid.UUID,
+    lease_token: datetime,
+    exc: Exception,
+) -> bool:
+    """其他引擎异常：未超重试上限就回队列，超了标失败。
+
+    返回 False 表示租约已丢，调用方应直接返回不再写回。
+    """
+    logger.error(
+        "attempt %s scoring failed (retry %d): %s",
+        attempt_id,
+        attempt.retry_count,
+        exc,
+        exc_info=True,
+    )
+    if not _lease_still_valid(session, attempt_id, lease_token):
+        return False
+    if attempt.retry_count < MAX_SCORING_RETRIES:
+        attempt.retry_count += 1
+        attempt.status = AttemptStatus.QUEUED
+        attempt.claimed_at = None
+        attempt.error = "评分服务暂时不可用，正在自动重试"
+    else:
+        attempt.status = AttemptStatus.FAILED
+        attempt.error = "评分服务暂时不可用，请稍后重试或联系老师"
+    return True
+
+
 def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
     """同步评分一条作答。可在线程池中调用，也可在测试中直接调用。
 
@@ -476,52 +558,17 @@ def process_attempt(session: Session, attempt_id: uuid.UUID) -> None:
 
         detail_request = _apply_scores(session, attempt, transcript, engine, duration_s)
 
-        if not _lease_still_valid(session, attempt_id, lease_token):
-            raise _LeaseLostError(attempt_id)
-        attempt.status = AttemptStatus.DONE
-        attempt.engine = engine
-        # 重试成功的作答要抹掉重试期的占位文案，否则 done 回执一直带着
-        # 「正在自动重试」误导学生/教师（2026-10-12 评审）
-        attempt.error = None
+        _write_success(session, attempt, attempt_id, lease_token, engine)
     except _LeaseLostError:
         # 领取已被回收/重领：本线程结果作废，不写任何状态（新 worker 接管）
-        session.rollback()
-        logger.warning(
-            "attempt %s lease lost before write-back; discarding stale result",
-            attempt_id,
-        )
+        _discard_lost_lease(session, attempt_id)
         return
     except ContentMissingError as exc:
-        # 题目内容已被删除：重试无意义，直接标失败不消耗重试配额
-        logger.error(
-            "attempt %s scoring aborted (content missing): %s",
-            attempt_id,
-            exc,
-            exc_info=True,
-        )
-        if not _lease_still_valid(session, attempt_id, lease_token):
+        if not _mark_content_missing(session, attempt, attempt_id, lease_token, exc):
             return
-        attempt.status = AttemptStatus.FAILED
-        # 学生端可见的 error 只放通用文案；上游异常原文（可能含 endpoint/配额等细节）只进日志
-        attempt.error = "题目内容已不可用，请联系老师重新发布"
     except Exception as exc:  # noqa: BLE001 - 其他引擎异常都按重试/失败处理
-        logger.error(
-            "attempt %s scoring failed (retry %d): %s",
-            attempt_id,
-            attempt.retry_count,
-            exc,
-            exc_info=True,
-        )
-        if not _lease_still_valid(session, attempt_id, lease_token):
+        if not _mark_transient_failure(session, attempt, attempt_id, lease_token, exc):
             return
-        if attempt.retry_count < MAX_SCORING_RETRIES:
-            attempt.retry_count += 1
-            attempt.status = AttemptStatus.QUEUED
-            attempt.claimed_at = None
-            attempt.error = "评分服务暂时不可用，正在自动重试"
-        else:
-            attempt.status = AttemptStatus.FAILED
-            attempt.error = "评分服务暂时不可用，请稍后重试或联系老师"
     session.add(attempt)
     session.commit()
 
