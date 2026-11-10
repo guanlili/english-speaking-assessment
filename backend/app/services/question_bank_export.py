@@ -455,14 +455,65 @@ def export_bank(
     active: bool | None,
     fmt: str,
 ) -> tuple[bytes, str, str]:
+    selected = _resolve_selected_types(types)
+    band_upper = _normalize_export_band(band)
+    rows_by_type = _collect_export_rows(
+        session,
+        selected,
+        topic=topic,
+        q=q,
+        band_upper=band_upper,
+        exam_kind=exam_kind,
+        exam_level=exam_level,
+        active=active,
+    )
+    _guard_export_row_limit(rows_by_type)
+    date_tag = get_datetime_utc().date().isoformat()
+    if fmt == "csv":
+        data, filename, media_type = (
+            _build_export_csv(rows_by_type),
+            f"question-bank-export-{date_tag}.csv",
+            CSV_MEDIA_TYPE,
+        )
+    else:
+        data, filename, media_type = (
+            _export_xlsx(rows_by_type),
+            f"question-bank-export-{date_tag}.xlsx",
+            XLSX_MEDIA_TYPE,
+        )
+    _guard_export_size(data)
+    return data, filename, media_type
+
+
+def _resolve_selected_types(types: list[str] | None) -> list[str]:
+    """要导出的题型集合；未指定即全量，出现未知题型直接 422。"""
     selected = list(types) if types else list(QUESTION_BANK_TYPE_ORDER)
     unknown = [t for t in selected if t not in TYPE_LABELS]
     if unknown:
         raise HTTPException(status_code=422, detail=f"未知题型：{'/'.join(unknown)}")
+    return selected
+
+
+def _normalize_export_band(band: str | None) -> str | None:
+    """难度筛选归一到大写；非法值 422（不吞掉、不静默忽略）。"""
     band_upper = band.strip().upper() if band else None
     if band_upper is not None and band_upper not in VALID_BANDS:
         raise HTTPException(status_code=422, detail="难度无效，可选：A2/B1/B2")
+    return band_upper
 
+
+def _collect_export_rows(
+    session: Session,
+    selected: list[str],
+    *,
+    topic: str | None,
+    q: str | None,
+    band_upper: str | None,
+    exam_kind: str | None,
+    exam_level: str | None,
+    active: bool | None,
+) -> dict[str, list[dict[str, str]]]:
+    """按选中的题型分别取行；筛选条件镜像各自的列表接口。"""
     rows_by_type: dict[str, list[dict[str, str]]] = {}
     if TYPE_PASSAGE in selected:
         rows_by_type[TYPE_PASSAGE] = _export_passages(
@@ -476,55 +527,55 @@ def export_bank(
         )
     if TYPE_INSTRUCTION in selected:
         rows_by_type[TYPE_INSTRUCTION] = _export_instructions(session)
+    return rows_by_type
 
+
+def _guard_export_row_limit(rows_by_type: dict[str, list[dict[str, str]]]) -> None:
+    """行数上限：超了让调用方缩小范围分批导，而不是截断。"""
     total = sum(len(v) for v in rows_by_type.values())
-    if total > MAX_EXPORT_ROWS:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"导出行数超过上限（{MAX_EXPORT_ROWS} 行），请按题型/主题等筛选分批导出"
-                "（导出文件保持可直接回导）"
-            ),
-        )
+    if total <= MAX_EXPORT_ROWS:
+        return
+    raise HTTPException(
+        status_code=422,
+        detail=(
+            f"导出行数超过上限（{MAX_EXPORT_ROWS} 行），请按题型/主题等筛选分批导出"
+            "（导出文件保持可直接回导）"
+        ),
+    )
 
-    date_tag = get_datetime_utc().date().isoformat()
-    if fmt == "csv":
-        # CSV 行必须按 CSV_UNION_COLUMNS 的字段名取值对齐——各题型自己的
-        # 列顺序与并集列顺序不同，直接拼接会整体错位（评审 P1：回导损坏题目）
-        header = [CSV_TYPE_COLUMN.zh] + [c.zh for c in CSV_UNION_COLUMNS]
-        rows = [header]
-        for qtype in QUESTION_BANK_TYPE_ORDER:
-            for row in rows_by_type.get(qtype, []):
-                rows.append(
-                    [
-                        TYPE_LABELS[qtype],
-                        *[row.get(c.field, "") for c in CSV_UNION_COLUMNS],
-                    ]
-                )
-        data, filename, media_type = (
-            _csv_bytes(rows),
-            f"question-bank-export-{date_tag}.csv",
-            CSV_MEDIA_TYPE,
-        )
-    else:
-        data, filename, media_type = (
-            _export_xlsx(rows_by_type),
-            f"question-bank-export-{date_tag}.xlsx",
-            XLSX_MEDIA_TYPE,
-        )
+
+def _build_export_csv(rows_by_type: dict[str, list[dict[str, str]]]) -> bytes:
+    """CSV 导出字节：并集列顺序 + 题型标签列。"""
+    # CSV 行必须按 CSV_UNION_COLUMNS 的字段名取值对齐——各题型自己的
+    # 列顺序与并集列顺序不同，直接拼接会整体错位（评审 P1：回导损坏题目）
+    header = [CSV_TYPE_COLUMN.zh] + [c.zh for c in CSV_UNION_COLUMNS]
+    rows = [header]
+    for qtype in QUESTION_BANK_TYPE_ORDER:
+        for row in rows_by_type.get(qtype, []):
+            rows.append(
+                [
+                    TYPE_LABELS[qtype],
+                    *[row.get(c.field, "") for c in CSV_UNION_COLUMNS],
+                ]
+            )
+    return _csv_bytes(rows)
+
+
+def _guard_export_size(data: bytes) -> None:
+    """体积上限：超 5MB 回导会被 413 挡下，所以导出侧先拦。"""
     # 行数对齐之外还要对齐体积：导入有 5MB 上限，超体积的导出文件回导会
     # 被 413 挡下（评审 P2：1800 篇 ×3KB 导出 5.9MB）。超限直接 422 提示
     # 分批，「导出文件可直接回导」的承诺才成立
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"导出文件约 {len(data) // 1024 // 1024}MB，超过 "
-                f"{MAX_UPLOAD_BYTES // 1024 // 1024}MB 上传上限，"
-                "请按题型/主题缩小范围分批导出（导出文件保持可直接回导）"
-            ),
-        )
-    return data, filename, media_type
+    if len(data) <= MAX_UPLOAD_BYTES:
+        return
+    raise HTTPException(
+        status_code=422,
+        detail=(
+            f"导出文件约 {len(data) // 1024 // 1024}MB，超过 "
+            f"{MAX_UPLOAD_BYTES // 1024 // 1024}MB 上传上限，"
+            "请按题型/主题缩小范围分批导出（导出文件保持可直接回导）"
+        ),
+    )
 
 
 def _export_passages(
