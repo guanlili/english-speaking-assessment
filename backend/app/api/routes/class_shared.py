@@ -930,9 +930,16 @@ def _question_band_for_session(
         select(Student).where(Student.id == student.id).with_for_update()
     ).first()
     if locked_session is None or locked_student is None:
-        return practice_session.band
+        # 先取回退值再释放锁：/class 系列接口会被前端高频刷新，
+        # 早退若带着行锁走到请求结束，会拖长 practice_session / student 的
+        # 排他窗口。取值在前、commit 在后，返回值语义完全不变。
+        fallback_band = practice_session.band
+        session.commit()
+        return fallback_band
     if locked_session.question_band is not None:
-        return locked_session.question_band
+        settled_band = locked_session.question_band
+        session.commit()
+        return settled_band
 
     avg_c = sum(a.completeness or 0 for a in done) / len(done)
     avg_f = sum(a.fluency or 0 for a in done) / len(done)

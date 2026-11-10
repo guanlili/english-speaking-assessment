@@ -294,6 +294,9 @@ def ensure_exam_started(
         .execution_options(populate_existing=True)
     ).one()
     if practice_session.exam_started_at is not None:
+        # 幂等命中：开考时刻已落过，但课堂行与会话行的 FOR UPDATE 还在手上，
+        # 必须在这里结束事务——学生反复点「开始考试」是常见操作
+        db.commit()
         return
     if practice_session.assignment_id is not None:
         prior = db.exec(
