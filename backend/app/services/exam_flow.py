@@ -237,6 +237,9 @@ def apply_event(
     if (event == "next" and entry.get("next_at")) or (
         event == "audio-ended" and entry.get("audio_ended_at")
     ):
+        # 重复事件（多标签页/重试）：不写库也要结束事务，practice_session
+        # 的 FOR UPDATE 已经拿到，不能挂到请求结束
+        db.commit()
         return
     if ended(ps, exercise, now) or ps.exam_started_at is None:
         raise HTTPException(status_code=422, detail="考试时间已到，已自动交卷")

@@ -601,6 +601,10 @@ def create_attempt_upload(
         idempotency_key,
     )
     if receipt is not None:
+        # 幂等命中同样要结束门禁事务：_exam_gate 可能已对考试会话行加了
+        # FOR UPDATE，这里直接 return 会把锁带到请求结束，与边界①
+        # 「立即提交释放行锁」的意图不符。
+        session.commit()
         return receipt
 
     # 事务边界①：门禁与临界区判断全部完成——立即提交，释放考试会话行锁

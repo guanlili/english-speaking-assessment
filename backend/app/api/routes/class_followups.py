@@ -457,7 +457,11 @@ def start_class_followup(
     from app.crud import get_or_create_followup_session
 
     ps = get_or_create_followup_session(session, task, student, _today_in_practice_tz())
-    return FollowupStarted(session_id=ps.id)
+    # 「会话已存在」分支不写库，但上面已经拿到了作业行的 FOR UPDATE；
+    # 重复点开始是常见操作，必须在这里结束事务把锁还回去
+    session_id = ps.id
+    session.commit()
+    return FollowupStarted(session_id=session_id)
 
 
 @router.post("/{code}/followups/{task_id}/cancel", response_model=None)

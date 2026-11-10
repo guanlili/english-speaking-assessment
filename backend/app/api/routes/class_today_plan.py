@@ -870,7 +870,9 @@ def _next_question_from_assigned(
         if not any(item.get("id") == snapshot["id"] for item in exchanged):
             locked_session.exchanged_items = exchanged + [snapshot]
             session.add(locked_session)
-            session.commit()
+        # 无条件收尾：连点同一个「换一题」时不会写库，但行锁已经拿到，
+        # 也必须在这里结束事务，否则一直挂到请求结束
+        session.commit()
         return NextQuestion(
             question=ScenarioQuestionPublic.model_validate(chosen),
             exhausted=False,
