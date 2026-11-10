@@ -9,6 +9,7 @@
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select
 
 from app.models import (
@@ -71,19 +72,34 @@ def advance_streak(last: date | None, streak: int, today: date) -> int:
 def _lock_for_settlement(
     session: Session, practice_session: PracticeSession, student: Student
 ) -> tuple[PracticeSession, Student] | None:
-    """锁本轮与学生两行；对象不存在或本轮已结算（stars 已写）时返回 None。"""
-    locked_session = session.exec(
-        select(PracticeSession)
-        .where(PracticeSession.id == practice_session.id)
-        .with_for_update()
-    ).first()
+    """锁本轮与学生两行；对象不存在、本轮已结算或暂时拿不到锁时返回 None。
+
+    用 NOWAIT 而不是无限等待：/today 是秒级轮询，拿不到锁就跳过本轮，
+    下一次轮询再来（结算幂等，stars 只写一次）。死锁的本质是「互相等」，
+    取消这一侧的等待就从根上消除了环——worker 侧同样不等待
+    （FOR UPDATE SKIP LOCKED），两侧都不阻塞，就不可能成环。
+    """
+    try:
+        locked_session = session.exec(
+            select(PracticeSession)
+            .where(PracticeSession.id == practice_session.id)
+            .with_for_update(nowait=True)
+        ).first()
+    except OperationalError:
+        # 行锁被占（评分写回/别的结算）：放弃本轮，下轮再算
+        session.rollback()
+        return None
     if locked_session is None:
         return None
     if locked_session.stars is not None:
         return None
-    locked_student = session.exec(
-        select(Student).where(Student.id == student.id).with_for_update()
-    ).first()
+    try:
+        locked_student = session.exec(
+            select(Student).where(Student.id == student.id).with_for_update(nowait=True)
+        ).first()
+    except OperationalError:
+        session.rollback()
+        return None
     if locked_student is None:
         return None
     return locked_session, locked_student
