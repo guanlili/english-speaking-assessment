@@ -429,6 +429,85 @@ def _exam_monitor_fields(
     )
 
 
+def _avg_rounded(scores: list[int | float]) -> float | None:
+    """一组分数取一位小数的均值；空集合返回 None。
+
+    跟读均分与问答均分共用同一口径，原实现把这段写了两遍。
+    """
+    if not scores:
+        return None
+    return round(sum(scores) / len(scores), 1)
+
+
+def _student_row_stats(
+    items: list[BoardItem], has_pending: bool
+) -> tuple[str, int, int, bool, bool]:
+    """按题单渲染结果算整轮统计。
+
+    返回 (round_status, done_count, total_count, submitted, completed)：
+    - instruction 说明题无作答、不参与统计（只展示已读状态）；
+    - total_count 与 done_count 同口径，都排除 instruction；
+    - submitted 判据是「至少一题不是 missing」；
+    - completed 与 round_status 的两档终态一致。
+    """
+    stat_items = [i for i in items if i.type != AttemptItemType.INSTRUCTION]
+    round_status = _board_round_status(stat_items, has_pending)
+    done_count = sum(1 for i in stat_items if i.status == AttemptStatus.DONE)
+    submitted = any(i.status != "missing" for i in stat_items)
+    completed = round_status in ("all_done", "has_failures")
+    return round_status, done_count, len(stat_items), submitted, completed
+
+
+def _student_is_inactive(
+    student: Student,
+    recent_student_ids: set[uuid.UUID],
+    week_ago: datetime,
+) -> bool:
+    """入班早于统计窗口、且窗口内没有作答，才算 7 日不活跃。"""
+    joined_before_window = (
+        student.created_at is not None
+        and student.created_at.astimezone(ZoneInfo(settings.PRACTICE_TZ)).date()
+        < week_ago.date()
+    )
+    return joined_before_window and student.id not in recent_student_ids
+
+
+def _student_row_payload(
+    student: Student,
+    items: list[BoardItem],
+    *,
+    round_status: str,
+    done_count: int,
+    total_count: int,
+    repeat_scores: list[int | float],
+    question_scores: list[int | float],
+    has_pending: bool,
+    exam_fields: tuple[int | None, int | None, int | None, bool | None],
+    inactive: bool,
+) -> BoardStudent:
+    """把已算好的各字段拼成一行 BoardStudent（纯构造，无计算）。"""
+    exam_switches, exam_switch_seconds, exam_used, exam_ended_flag = exam_fields
+    return BoardStudent(
+        student_id=student.id,
+        display_name=student.display_name,
+        suffix=student.suffix,
+        done_count=done_count,
+        total_count=total_count,
+        repeat_avg=_avg_rounded(repeat_scores),
+        question_avg=_avg_rounded(question_scores),
+        has_pending=has_pending,
+        exam_tab_switches=exam_switches,
+        exam_tab_switch_seconds=exam_switch_seconds,
+        exam_time_used_seconds=exam_used,
+        exam_ended=exam_ended_flag,
+        round_status=round_status,
+        inactive_days7=inactive,
+        xp=student.xp,
+        streak_days=student.streak_days,
+        items=items,
+    )
+
+
 def _build_student_row(
     student: Student,
     practice_session: PracticeSession | None,
@@ -459,57 +538,24 @@ def _build_student_row(
         include_reading=include_reading,
         ack_keys=ack_keys,
     )
-
-    # 说明无作答，不参与统计（只展示已读状态）
-    stat_items = [i for i in items if i.type != AttemptItemType.INSTRUCTION]
-    round_status = _board_round_status(stat_items, has_pending)
-    done_count = sum(1 for i in stat_items if i.status == AttemptStatus.DONE)
-    submitted = any(i.status != "missing" for i in stat_items)
-    completed = round_status in ("all_done", "has_failures")
-    joined_before_window = (
-        student.created_at is not None
-        and student.created_at.astimezone(ZoneInfo(settings.PRACTICE_TZ)).date()
-        < week_ago.date()
+    round_status, done_count, total_count, submitted, completed = _student_row_stats(
+        items, has_pending
     )
-    inactive = joined_before_window and student.id not in recent_student_ids
-    (
-        exam_switches,
-        exam_switch_seconds,
-        exam_used,
-        exam_ended_flag,
-    ) = _exam_monitor_fields(practice_session, exam)
-    return (
-        BoardStudent(
-            student_id=student.id,
-            display_name=student.display_name,
-            suffix=student.suffix,
-            done_count=done_count,
-            total_count=len(stat_items),
-            repeat_avg=(
-                round(sum(repeat_scores) / len(repeat_scores), 1)
-                if repeat_scores
-                else None
-            ),
-            question_avg=(
-                round(sum(question_scores) / len(question_scores), 1)
-                if question_scores
-                else None
-            ),
-            has_pending=has_pending,
-            exam_tab_switches=exam_switches,
-            exam_tab_switch_seconds=exam_switch_seconds,
-            exam_time_used_seconds=exam_used,
-            exam_ended=exam_ended_flag,
-            round_status=round_status,
-            inactive_days7=inactive,
-            xp=student.xp,
-            streak_days=student.streak_days,
-            items=items,
-        ),
-        submitted,
-        completed,
-        has_pending,
+    inactive = _student_is_inactive(student, recent_student_ids, week_ago)
+    exam_fields = _exam_monitor_fields(practice_session, exam)
+    row = _student_row_payload(
+        student,
+        items,
+        round_status=round_status,
+        done_count=done_count,
+        total_count=total_count,
+        repeat_scores=repeat_scores,
+        question_scores=question_scores,
+        has_pending=has_pending,
+        exam_fields=exam_fields,
+        inactive=inactive,
     )
+    return row, submitted, completed, has_pending
 
 
 def _pick_student_sessions(
