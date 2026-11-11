@@ -57,7 +57,9 @@ def main() -> int:
         return 0
 
     if not BASELINE.exists():
-        print(f"⚠️  没有基线（{BASELINE.name}）。当前 {paths} 路径 / {schemas} schemas。")
+        print(
+            f"⚠️  没有基线（{BASELINE.name}）。当前 {paths} 路径 / {schemas} schemas。"
+        )
         print("    确认无误后执行：python scripts/openapi_diff.py --update")
         return 1
 
@@ -69,7 +71,9 @@ def main() -> int:
         print(f"✅ openapi 零漂移（{paths} 路径 / {schemas} schemas）")
         return 0
 
-    print(f"❌ openapi 与基线有 {len(diffs)} 处差异（{paths} 路径 / {schemas} schemas）：")
+    print(
+        f"❌ openapi 与基线有 {len(diffs)} 处差异（{paths} 路径 / {schemas} schemas）："
+    )
     for line in diffs[:40]:
         print(f"   {line}")
     if len(diffs) > 40:
