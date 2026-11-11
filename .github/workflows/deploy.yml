@@ -152,10 +152,13 @@ jobs:
       - name: Biome 检查
         working-directory: frontend
         run: npx biome ci .
-      - name: 单元测试（node --test）
+      - name: 单元测试（纯函数 + 组件渲染）
         working-directory: frontend
         run: npm test
-      - name: 类型检查 + 构建
+      - name: 类型检查（源码 + 测试）
+        working-directory: frontend
+        run: npm run typecheck
+      - name: 构建
         working-directory: frontend
         run: npm run build
       # 校验 src/client/ 与后端 OpenAPI 一致：后端接口改了但忘记 generate-client 时在这里拦下
