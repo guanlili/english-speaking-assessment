@@ -349,6 +349,21 @@ def _add_assignment_targets(
         )
 
 
+def _require_classroom_students(
+    session: Session, classroom_id: uuid.UUID
+) -> list[Student]:
+    """发布前置：课堂必须已有学生（否则发布了也无人可作答）。"""
+    students = session.exec(
+        select(Student).where(Student.classroom_id == classroom_id)  # type: ignore[arg-type]
+    ).all()
+    if not students:
+        raise HTTPException(
+            status_code=422,
+            detail="课堂还没有学生，发布后无人可作答；请先让学生进入课堂",
+        )
+    return list(students)
+
+
 def publish_assignment(
     session: Session,
     classroom_id: uuid.UUID,
@@ -377,14 +392,7 @@ def publish_assignment(
         duration_minutes=duration_minutes,
         pass_line=pass_line,
     )
-    students = session.exec(
-        select(Student).where(Student.classroom_id == classroom_id)  # type: ignore[arg-type]
-    ).all()
-    if not students:
-        raise HTTPException(
-            status_code=422,
-            detail="课堂还没有学生，发布后无人可作答；请先让学生进入课堂",
-        )
+    students = _require_classroom_students(session, classroom_id)
 
     assignment_title = (title or "词汇练习").strip() or "词汇练习"
     snapshots = [build_word_snapshot(w, prompt_types) for w in words]
