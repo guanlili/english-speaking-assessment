@@ -1090,6 +1090,64 @@ def assignment_public(assignment: VocabularyAssignment) -> VocabularyAssignmentP
     )
 
 
+def _load_classroom_rounds(
+    session: Session, classroom_id: uuid.UUID, assignment_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[VocabularySession]]:
+    """按任务分组的轮次（含全部学生）。"""
+    rounds_by_assignment: dict[uuid.UUID, list[VocabularySession]] = {}
+    for vs in session.exec(
+        select(VocabularySession).where(
+            VocabularySession.classroom_id == classroom_id,  # type: ignore[arg-type]
+            col(VocabularySession.assignment_id).in_(assignment_ids),  # type: ignore[operator]
+        )
+    ).all():
+        if vs.assignment_id is not None:
+            rounds_by_assignment.setdefault(vs.assignment_id, []).append(vs)
+    return rounds_by_assignment
+
+
+def _load_targets_by_assignment(
+    session: Session, assignment_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, set[uuid.UUID]]:
+    targets_by_assignment: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for target in session.exec(
+        select(VocabularyAssignmentTarget).where(
+            col(VocabularyAssignmentTarget.assignment_id).in_(  # type: ignore[operator]
+                assignment_ids
+            )
+        )
+    ).all():
+        targets_by_assignment.setdefault(target.assignment_id, set()).add(
+            target.student_id
+        )
+    return targets_by_assignment
+
+
+def _assignment_counters(
+    assignment: VocabularyAssignment,
+    target_ids: set[uuid.UUID],
+    rounds: list[VocabularySession],
+    firsts: dict,
+) -> tuple[dict[str, int], int]:
+    """单个任务的名单进度汇总：（计数, 逾期数）。"""
+    total = len(assignment.snapshot_items)
+    rounds_by_student: dict[uuid.UUID, list[VocabularySession]] = {}
+    for vs in rounds:
+        rounds_by_student.setdefault(vs.student_id, []).append(vs)
+    counters = {"completed": 0, "in_progress": 0, "not_started": 0}
+    overdue_count = 0
+    for student_id in target_ids:
+        student_rounds = sorted(
+            rounds_by_student.get(student_id, []), key=lambda r: r.round_no
+        )
+        item_firsts = firsts.get(student_rounds[0].id, {}) if student_rounds else {}
+        progress = progress_of_round1(total, item_firsts)
+        counters[progress] += 1
+        if is_overdue(assignment, progress):
+            overdue_count += 1
+    return counters, overdue_count
+
+
 def teacher_assignment_rows(
     session: Session, classroom_id: uuid.UUID
 ) -> list[VocabularyTeacherAssignmentRow]:
@@ -1101,16 +1159,8 @@ def teacher_assignment_rows(
     ).all()
     if not assignments:
         return []
-    # 按任务分组的轮次（含全部学生），首轮首答决定进度
-    rounds_by_assignment: dict[uuid.UUID, list[VocabularySession]] = {}
-    for vs in session.exec(
-        select(VocabularySession).where(
-            VocabularySession.classroom_id == classroom_id,  # type: ignore[arg-type]
-            col(VocabularySession.assignment_id).in_([a.id for a in assignments]),  # type: ignore[operator]
-        )
-    ).all():
-        if vs.assignment_id is not None:
-            rounds_by_assignment.setdefault(vs.assignment_id, []).append(vs)
+    assignment_ids = [a.id for a in assignments]
+    rounds_by_assignment = _load_classroom_rounds(session, classroom_id, assignment_ids)
     # 进度只消费每生首轮（round_no 最小）的首答：预取按（任务,学生）取首轮，
     # 不再拉全部轮次的首答
     first_round_ids = [
@@ -1119,39 +1169,21 @@ def teacher_assignment_rows(
         for vs in _min_round_by_student(rounds).values()
     ]
     firsts = first_answers_by_session(session, first_round_ids)
-    targets_by_assignment: dict[uuid.UUID, set[uuid.UUID]] = {}
-    for target in session.exec(
-        select(VocabularyAssignmentTarget).where(
-            col(VocabularyAssignmentTarget.assignment_id).in_(  # type: ignore[operator]
-                [a.id for a in assignments]
-            )
-        )
-    ).all():
-        targets_by_assignment.setdefault(target.assignment_id, set()).add(
-            target.student_id
-        )
+    targets_by_assignment = _load_targets_by_assignment(session, assignment_ids)
 
     rows: list[VocabularyTeacherAssignmentRow] = []
     for assignment in assignments:
-        total = len(assignment.snapshot_items)
-        rounds_by_student: dict[uuid.UUID, list[VocabularySession]] = {}
-        for vs in rounds_by_assignment.get(assignment.id, []):
-            rounds_by_student.setdefault(vs.student_id, []).append(vs)
-        counters = {"completed": 0, "in_progress": 0, "not_started": 0}
-        overdue_count = 0
-        for student_id in targets_by_assignment.get(assignment.id, set()):
-            student_rounds = sorted(
-                rounds_by_student.get(student_id, []), key=lambda r: r.round_no
-            )
-            item_firsts = firsts.get(student_rounds[0].id, {}) if student_rounds else {}
-            progress = progress_of_round1(total, item_firsts)
-            counters[progress] += 1
-            if is_overdue(assignment, progress):
-                overdue_count += 1
+        target_ids = targets_by_assignment.get(assignment.id, set())
+        counters, overdue_count = _assignment_counters(
+            assignment,
+            target_ids,
+            rounds_by_assignment.get(assignment.id, []),
+            firsts,
+        )
         rows.append(
             VocabularyTeacherAssignmentRow(
                 assignment=assignment_public(assignment),
-                target_count=len(targets_by_assignment.get(assignment.id, set())),
+                target_count=len(target_ids),
                 completed_count=counters["completed"],
                 in_progress_count=counters["in_progress"],
                 not_started_count=counters["not_started"],
@@ -1667,6 +1699,43 @@ def student_book_words(
     return words
 
 
+def _resume_session_conditions(
+    student_id: uuid.UUID, kind: str, book_id: uuid.UUID | None
+) -> list:
+    """续做幂等的查询条件：同学生同类型（self 另要求同词库）的进行中轮。"""
+    conditions: list = [
+        VocabularySession.student_id == student_id,  # type: ignore[arg-type]
+        VocabularySession.kind == kind,  # type: ignore[arg-type]
+        VocabularySession.status == "in_progress",  # type: ignore[arg-type]
+    ]
+    if kind == "self":
+        conditions.append(VocabularySession.source_book_id == book_id)  # type: ignore[arg-type]
+    return conditions
+
+
+def _commit_or_find_winner(
+    session: Session,
+    vocab_session: VocabularySession,
+    resume_conditions: list,
+) -> VocabularySession:
+    """提交新轮次；撞部分唯一索引时回滚并返回并发赢家轮次。
+
+    uq_vocab_session_self_active / uq_vocab_session_review_active 保证并发
+    开轮也只产生一个进行中轮次。
+    """
+    try:
+        session.commit()
+        return vocab_session
+    except Exception:
+        session.rollback()
+        winner = session.exec(
+            select(VocabularySession).where(*resume_conditions)
+        ).first()
+        if winner is None:
+            raise
+        return winner
+
+
 def create_student_session(
     session: Session,
     *,
@@ -1691,17 +1760,14 @@ def create_student_session(
 
     # 续做幂等：同学生同类型（self 另要求同词库）的未结束轮直接返回，
     # 忽略本次请求的词数/混词差异——刷新与重复点击不产生重复轮次
-    resume_conditions = [
-        VocabularySession.student_id == student_id,  # type: ignore[arg-type]
-        VocabularySession.kind == kind,  # type: ignore[arg-type]
-        VocabularySession.status == "in_progress",  # type: ignore[arg-type]
-    ]
-    if kind == "self":
-        resume_conditions.append(VocabularySession.source_book_id == book_id)  # type: ignore[arg-type]
+    resume_conditions = _resume_session_conditions(student_id, kind, book_id)
     resume = session.exec(select(VocabularySession).where(*resume_conditions)).first()
     if resume is not None:
-        title = _student_session_title(session, resume)
-        return resume, title, _snapshot_wrong_count(resume)
+        return (
+            resume,
+            _student_session_title(session, resume),
+            _snapshot_wrong_count(resume),
+        )
 
     if kind == "review":
         vocab_session, title, wrong_used = _build_review_session(
@@ -1720,22 +1786,13 @@ def create_student_session(
             mix_wrong=mix_wrong,
         )
     session.add(vocab_session)
-    try:
-        session.commit()
-    except Exception:
-        # 并发开轮撞部分唯一索引（uq_vocab_session_self_active /
-        # uq_vocab_session_review_active）：回滚后重查，返回赢家轮次，
-        # 保证并发请求也只产生一个进行中轮次
-        session.rollback()
-        winner = session.exec(
-            select(VocabularySession).where(*resume_conditions)
-        ).first()
-        if winner is None:
-            raise
+    committed = _commit_or_find_winner(session, vocab_session, resume_conditions)
+    if committed is not vocab_session:
+        # 并发输家：返回赢家轮次
         return (
-            winner,
-            _student_session_title(session, winner),
-            _snapshot_wrong_count(winner),
+            committed,
+            _student_session_title(session, committed),
+            _snapshot_wrong_count(committed),
         )
     session.refresh(vocab_session)
     return vocab_session, title, wrong_used
@@ -1774,6 +1831,70 @@ def _self_snapshot_item(word: VocabularyWord, from_wrong: bool) -> dict[str, obj
     return item
 
 
+def _self_book_words(
+    session: Session, classroom_id: uuid.UUID, book_id: uuid.UUID | None
+) -> tuple[VocabularyBook, list[VocabularyWord]]:
+    """校验词库可用性与归属，返回（词库, 可用词）。"""
+    if book_id is None:
+        raise HTTPException(status_code=422, detail="自主练习需要选择一个词库")
+    book = session.get(VocabularyBook, book_id)
+    if book is None or book.status != "active":
+        raise HTTPException(status_code=404, detail="词库不存在或已归档")
+    if book.id not in student_book_ids(session, classroom_id):
+        raise HTTPException(status_code=403, detail="没有权限使用这个词库")
+    words = student_book_words(session, book_id)
+    if not words:
+        raise HTTPException(status_code=422, detail="词库里没有可用词条")
+    return book, words
+
+
+def _pick_wrong_words(
+    session: Session,
+    student_id: uuid.UUID,
+    words: list[VocabularyWord],
+    total: int,
+    mix_wrong: bool,
+) -> tuple[list[VocabularyWord], set[uuid.UUID]]:
+    """混错词：只取所选词库内的历史错词，最近错误优先，按词条 ID 去重。"""
+    if not mix_wrong:
+        return [], set()
+    book_word_ids = {w.id for w in words}
+    wrong_pool = [
+        item
+        for item in wrong_word_items(session, student_id)
+        if item.word_id in book_word_ids and item.last_wrong_at is not None
+    ]
+    wrong_pool.sort(
+        key=lambda i: i.last_wrong_at or datetime.min.replace(tzinfo=UTC),
+        reverse=True,
+    )  # type: ignore[arg-type,operator]
+    wrong_pool_ids = {item.word_id for item in wrong_pool}
+    wrong_target = int(total * SELF_PRACTICE_MIX_WRONG_RATIO + 0.5)
+    wanted = {item.word_id for item in wrong_pool[:wrong_target]}
+    return [w for w in words if w.id in wanted], wrong_pool_ids
+
+
+def _fill_remaining_words(
+    words: list[VocabularyWord],
+    picked_ids: set[uuid.UUID],
+    wrong_pool_ids: set[uuid.UUID],
+    remaining: int,
+) -> tuple[list[VocabularyWord], list[VocabularyWord]]:
+    """补位：优先非错词；非错词不足时才用其余错词补足（同样计入错词标记）。
+
+    优先非错词保证普通词充足时混入占比恒 ≤ 目标。
+    """
+    plain_fill = [
+        w for w in words if w.id not in picked_ids and w.id not in wrong_pool_ids
+    ][:remaining]
+    extra_wrong: list[VocabularyWord] = []
+    if len(plain_fill) < remaining:
+        extra_wrong = [
+            w for w in words if w.id not in picked_ids and w.id in wrong_pool_ids
+        ][: remaining - len(plain_fill)]
+    return plain_fill, extra_wrong
+
+
 def _build_self_session(
     session: Session,
     *,
@@ -1789,49 +1910,16 @@ def _build_self_session(
     补足到目标词数（保证混入占比不超过目标）；非错词不足时才用其余错词
     补足，且这些词同样标记 from_wrong——题单标记与报告口径永远一致。
     """
-    if book_id is None:
-        raise HTTPException(status_code=422, detail="自主练习需要选择一个词库")
-    book = session.get(VocabularyBook, book_id)
-    if book is None or book.status != "active":
-        raise HTTPException(status_code=404, detail="词库不存在或已归档")
-    if book.id not in student_book_ids(session, classroom_id):
-        raise HTTPException(status_code=403, detail="没有权限使用这个词库")
-    words = student_book_words(session, book_id)
-    if not words:
-        raise HTTPException(status_code=422, detail="词库里没有可用词条")
+    book, words = _self_book_words(session, classroom_id, book_id)
     total = min(word_count, len(words))
-
-    picked_wrong: list[VocabularyWord] = []
-    wrong_pool_ids: set[uuid.UUID] = set()
-    if mix_wrong:
-        # 只取所选词库内的历史错词，最近错误优先；按词条 ID 去重
-        book_word_ids = {w.id for w in words}
-        wrong_pool = [
-            item
-            for item in wrong_word_items(session, student_id)
-            if item.word_id in book_word_ids and item.last_wrong_at is not None
-        ]
-        wrong_pool.sort(
-            key=lambda i: i.last_wrong_at or datetime.min.replace(tzinfo=UTC),
-            reverse=True,
-        )  # type: ignore[arg-type,operator]
-        wrong_pool_ids = {item.word_id for item in wrong_pool}
-        wrong_target = int(total * SELF_PRACTICE_MIX_WRONG_RATIO + 0.5)
-        wanted = {item.word_id for item in wrong_pool[:wrong_target]}
-        picked_wrong = [w for w in words if w.id in wanted]
+    picked_wrong, wrong_pool_ids = _pick_wrong_words(
+        session, student_id, words, total, mix_wrong
+    )
 
     picked_ids = {w.id for w in picked_wrong}
-    remaining = total - len(picked_wrong)
-    # 优先非错词补位（普通词充足时混入占比恒 ≤ 目标）
-    plain_fill = [
-        w for w in words if w.id not in picked_ids and w.id not in wrong_pool_ids
-    ][:remaining]
-    extra_wrong: list[VocabularyWord] = []
-    if len(plain_fill) < remaining:
-        # 非错词不足：用其余错词补足，并同样计入错词标记
-        extra_wrong = [
-            w for w in words if w.id not in picked_ids and w.id in wrong_pool_ids
-        ][: remaining - len(plain_fill)]
+    plain_fill, extra_wrong = _fill_remaining_words(
+        words, picked_ids, wrong_pool_ids, total - len(picked_wrong)
+    )
     items = picked_wrong + plain_fill + extra_wrong
     wrong_marked_ids = picked_ids | {w.id for w in extra_wrong}
     random.shuffle(items)  # 题序创建时一次性定死，本轮内不再变化
@@ -2059,6 +2147,86 @@ def student_plan(
     )
 
 
+def _load_history_rounds(
+    session: Session, student_id: uuid.UUID, limit: int
+) -> list[VocabularySession]:
+    """最近若干轮次（按开始时间倒序，limit 已夹取）。"""
+    return list(
+        session.exec(
+            select(VocabularySession)
+            .where(VocabularySession.student_id == student_id)  # type: ignore[arg-type]
+            .order_by(col(VocabularySession.started_at).desc())
+            .limit(limit)
+        ).all()
+    )
+
+
+def _load_assignments_by_id(
+    session: Session, assignment_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, VocabularyAssignment]:
+    if not assignment_ids:
+        return {}
+    return {
+        a.id: a
+        for a in session.exec(
+            select(VocabularyAssignment).where(
+                col(VocabularyAssignment.id).in_(assignment_ids)  # type: ignore[operator]
+            )
+        ).all()
+    }
+
+
+def _history_row(
+    session: Session,
+    vocab_session: VocabularySession,
+    item_firsts: dict[int, VocabularyAnswer],
+    assignments: dict[uuid.UUID, VocabularyAssignment],
+) -> VocabularyStudentHistoryRow:
+    """单轮历史行：标题/题量按任务或自主轮取值，测验遵守公布规则。"""
+    assignment = (
+        assignments.get(vocab_session.assignment_id)
+        if vocab_session.assignment_id
+        else None
+    )
+    if vocab_session.assignment_id is not None:
+        title = assignment.title if assignment else "词汇任务"
+        total = len(assignment.snapshot_items) if assignment else 0
+    else:
+        title = _student_session_title(session, vocab_session)
+        total = len(vocab_session.snapshot_items or [])
+    is_quiz = assignment is not None and assignment.mode == "quiz"
+    # 测验结算不依赖学生在线：触碰历史时把到时答卷收口
+    if is_quiz and vocab_session.status == "in_progress" and assignment is not None:
+        vocab_quiz.settle_due_sessions(session, assignment)
+        session.refresh(vocab_session)
+    # 答案可见规则：测验成绩未公布 → 只下发提交状态（correct 置 0 +
+    # masked 标记，前端隐藏成绩维度，不显示"首答 0"）
+    masked = (
+        is_quiz and assignment is not None and (assignment.grades_published_at is None)
+    )
+    return VocabularyStudentHistoryRow(
+        session_id=vocab_session.id,
+        kind=vocab_session.kind,
+        title=title,
+        status=vocab_session.status,
+        round_no=(
+            vocab_session.round_no if vocab_session.assignment_id is not None else None
+        ),
+        total_count=total,
+        answered_count=len(item_firsts),
+        correct_first_count=0
+        if masked
+        else sum(1 for a in item_firsts.values() if a.is_correct),
+        started_at=vocab_session.started_at,
+        submitted_at=vocab_session.submitted_at,
+        book_id=vocab_session.source_book_id,
+        assignment_id=vocab_session.assignment_id,
+        masked=masked,
+        is_quiz=is_quiz,
+        end_reason=vocab_session.end_reason,
+    )
+
+
 def history_rows(
     session: Session, student_id: uuid.UUID, limit: int = 50
 ) -> list[VocabularyStudentHistoryRow]:
@@ -2067,73 +2235,11 @@ def history_rows(
     正确率不在行内预计算：口径是 correct_first_count / answered_count
     （首答正确率分母为已答题数），零作答显示未作答，不画成 0%。
     """
-    from app.models import VocabularyStudentHistoryRow as Row
-
-    limit = max(1, min(limit, 200))
-    rounds = list(
-        session.exec(
-            select(VocabularySession)
-            .where(VocabularySession.student_id == student_id)  # type: ignore[arg-type]
-            .order_by(col(VocabularySession.started_at).desc())
-            .limit(limit)
-        ).all()
-    )
+    rounds = _load_history_rounds(session, student_id, max(1, min(limit, 200)))
     assignment_ids = [r.assignment_id for r in rounds if r.assignment_id is not None]
-    assignments: dict[uuid.UUID, VocabularyAssignment] = {}
-    if assignment_ids:
-        assignments = {
-            a.id: a
-            for a in session.exec(
-                select(VocabularyAssignment).where(
-                    col(VocabularyAssignment.id).in_(assignment_ids)  # type: ignore[operator]
-                )
-            ).all()
-        }
+    assignments = _load_assignments_by_id(session, assignment_ids)
     firsts = first_answers_by_session(session, [r.id for r in rounds])
-    rows: list[Row] = []
-    for r in rounds:
-        item_firsts = firsts.get(r.id, {})
-        assignment = assignments.get(r.assignment_id) if r.assignment_id else None
-        if r.assignment_id is not None:
-            title = assignment.title if assignment else "词汇任务"
-            total = len(assignment.snapshot_items) if assignment else 0
-        else:
-            title = _student_session_title(session, r)
-            total = len(r.snapshot_items or [])
-        is_quiz = assignment is not None and assignment.mode == "quiz"
-        # 测验结算不依赖学生在线：触碰历史时把到时答卷收口
-        if is_quiz and r.status == "in_progress" and assignment is not None:
-            vocab_quiz.settle_due_sessions(session, assignment)
-            session.refresh(r)
-        # 答案可见规则：测验成绩未公布 → 只下发提交状态（correct 置 0 +
-        # masked 标记，前端隐藏成绩维度，不显示"首答 0"）
-        masked = (
-            is_quiz
-            and assignment is not None
-            and (assignment.grades_published_at is None)
-        )
-        rows.append(
-            Row(
-                session_id=r.id,
-                kind=r.kind,
-                title=title,
-                status=r.status,
-                round_no=r.round_no if r.assignment_id is not None else None,
-                total_count=total,
-                answered_count=len(item_firsts),
-                correct_first_count=0
-                if masked
-                else sum(1 for a in item_firsts.values() if a.is_correct),
-                started_at=r.started_at,
-                submitted_at=r.submitted_at,
-                book_id=r.source_book_id,
-                assignment_id=r.assignment_id,
-                masked=masked,
-                is_quiz=is_quiz,
-                end_reason=r.end_reason,
-            )
-        )
-    return rows
+    return [_history_row(session, r, firsts.get(r.id, {}), assignments) for r in rounds]
 
 
 # ── 词库加词域（routes/vocabulary 与 services/vocab_ai 共用）──────────
