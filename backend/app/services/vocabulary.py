@@ -607,6 +607,22 @@ def focused_assignment(
     return pool[0]
 
 
+def _student_session_rounds(
+    session: Session, assignment_id: uuid.UUID, student_id: uuid.UUID
+) -> list[VocabularySession]:
+    """该学生在该任务下的全部轮次（按 round_no 倒序）。"""
+    return list(
+        session.exec(
+            select(VocabularySession)
+            .where(
+                VocabularySession.assignment_id == assignment_id,  # type: ignore[arg-type]
+                VocabularySession.student_id == student_id,  # type: ignore[arg-type]
+            )
+            .order_by(col(VocabularySession.round_no).desc())
+        ).all()
+    )
+
+
 def get_or_create_session(
     session: Session,
     classroom_id: uuid.UUID,
@@ -625,14 +641,7 @@ def get_or_create_session(
     并发由唯一索引 (assignment_id, student_id, round_no) 兜底。
     首轮成绩锁定 round_no=1。
     """
-    existing_rounds = session.exec(
-        select(VocabularySession)
-        .where(
-            VocabularySession.assignment_id == assignment.id,  # type: ignore[arg-type]
-            VocabularySession.student_id == student_id,  # type: ignore[arg-type]
-        )
-        .order_by(col(VocabularySession.round_no).desc())
-    ).all()
+    existing_rounds = _student_session_rounds(session, assignment.id, student_id)
     unfinished = next((r for r in existing_rounds if r.status == "in_progress"), None)
     if unfinished is not None:
         return unfinished
@@ -655,14 +664,7 @@ def get_or_create_session(
     except Exception:
         # 并发开练撞唯一索引：回滚后重查，返回赢家轮次
         session.rollback()
-        again = session.exec(
-            select(VocabularySession)
-            .where(
-                VocabularySession.assignment_id == assignment.id,  # type: ignore[arg-type]
-                VocabularySession.student_id == student_id,  # type: ignore[arg-type]
-            )
-            .order_by(col(VocabularySession.round_no).desc())
-        ).all()
+        again = _student_session_rounds(session, assignment.id, student_id)
         unfinished = next((r for r in again if r.status == "in_progress"), None)
         if unfinished is not None:
             return unfinished
@@ -2316,6 +2318,65 @@ def _next_position(session: Session, book_id: uuid.UUID) -> int:
     return (latest or 0) + 1
 
 
+def _known_book_word_keys(
+    session: Session, book: VocabularyBook
+) -> tuple[set[tuple[str, str]], int]:
+    """已有（headword casefold, 释义）键集合 + 下一个可用 position。"""
+    existing_items = session.exec(
+        select(VocabularyBookItem.word_id).where(
+            VocabularyBookItem.book_id == book.id  # type: ignore[arg-type]
+        )
+    ).all()
+    existing_words = {
+        w.id: w
+        for w in session.exec(
+            select(VocabularyWord).where(
+                col(VocabularyWord.id).in_(existing_items or [uuid.uuid4()])
+            )  # type: ignore[operator]
+        ).all()
+    }
+    known = {(w.headword.casefold(), w.meaning_zh) for w in existing_words.values()}
+    return known, _next_position(session, book.id)
+
+
+def _collect_new_words(
+    session: Session, words_in: list[VocabularyWordIn], known: set[tuple[str, str]]
+) -> list[VocabularyWord]:
+    """同库已收的词跳过（键为 headword+释义）；返回需要落库的新词。"""
+    new_words: list[VocabularyWord] = []
+    for word_in in words_in:
+        key = (word_in.headword.strip().casefold(), word_in.meaning_zh.strip())
+        if key in known:
+            continue
+        known.add(key)
+        new_words.append(_create_word(session, word_in))
+    return new_words
+
+
+def _attach_words_to_book(
+    session: Session,
+    book: VocabularyBook,
+    new_words: list[VocabularyWord],
+    position: int,
+) -> None:
+    """先 flush 词条再挂词库条目，并在锁内自增 version。
+
+    词与词库条目之间没有 relationship，unit-of-work 不保证跨 mapper 的
+    INSERT 顺序——必须先 flush 完全部词条再挂条目。
+    """
+    session.flush()
+    for word in new_words:
+        session.add(
+            VocabularyBookItem(book_id=book.id, word_id=word.id, position=position)
+        )
+        position += 1
+    session.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
+        update(VocabularyBook)
+        .where(col(VocabularyBook.id) == book.id)
+        .values(version=VocabularyBook.version + 1)
+    )
+
+
 def add_words_to_book(
     session: Session, book: VocabularyBook, words_in: list[VocabularyWordIn]
 ) -> int:
@@ -2336,41 +2397,9 @@ def add_words_to_book(
     ).first()
     if locked_book is None:
         raise HTTPException(status_code=404, detail="词库不存在")
-    existing_items = session.exec(
-        select(VocabularyBookItem.word_id).where(
-            VocabularyBookItem.book_id == book.id  # type: ignore[arg-type]
-        )
-    ).all()
-    existing_words = {
-        w.id: w
-        for w in session.exec(
-            select(VocabularyWord).where(
-                col(VocabularyWord.id).in_(existing_items or [uuid.uuid4()])
-            )  # type: ignore[operator]
-        ).all()
-    }
-    known = {(w.headword.casefold(), w.meaning_zh) for w in existing_words.values()}
-    position = _next_position(session, book.id)
-    new_words: list[VocabularyWord] = []
-    for word_in in words_in:
-        key = (word_in.headword.strip().casefold(), word_in.meaning_zh.strip())
-        if key in known:
-            continue
-        known.add(key)
-        new_words.append(_create_word(session, word_in))
+    known, position = _known_book_word_keys(session, book)
+    new_words = _collect_new_words(session, words_in, known)
     if new_words:
-        # 两批各一次往返。词与词库条目之间没有 relationship，unit-of-work
-        # 不保证跨 mapper 的 INSERT 顺序——先 flush 完全部词条再挂条目
-        session.flush()
-        for word in new_words:
-            session.add(
-                VocabularyBookItem(book_id=book.id, word_id=word.id, position=position)
-            )
-            position += 1
-        session.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
-            update(VocabularyBook)
-            .where(col(VocabularyBook.id) == book.id)
-            .values(version=VocabularyBook.version + 1)
-        )
+        _attach_words_to_book(session, book, new_words, position)
     session.commit()
     return len(new_words)
