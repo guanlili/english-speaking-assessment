@@ -469,13 +469,13 @@ def is_overdue(assignment: VocabularyAssignment, progress: str) -> bool:
     )
 
 
-def student_assignment_rows(
+def _load_student_assignments(
     session: Session, classroom_id: uuid.UUID, student_id: uuid.UUID
-) -> list[VocabularyStudentAssignment]:
-    """学生名单内全部任务（含已结束）的摘要行，按 due 升序、无 due 发布倒序。
-
-    进度锁定首轮首答；round_count 含复习轮。
-    """
+) -> tuple[
+    list[VocabularyAssignment],
+    dict[uuid.UUID, list[VocabularySession]],
+]:
+    """名单内全部任务（含已结束）+ 每任务的轮次集合。"""
     assignments = [
         a
         for a, _t in session.exec(
@@ -503,6 +503,58 @@ def student_assignment_rows(
             if vs.assignment_id is None:
                 continue
             rounds_by_assignment.setdefault(vs.assignment_id, []).append(vs)
+    return assignments, rounds_by_assignment
+
+
+def _quiz_progress(rounds: list[VocabularySession]) -> str:
+    """测验进度按答卷终结状态（不按答题完成度）：未参加/进行中/已终结。"""
+    quiz_rounds = [r for r in rounds if r.quiz_started_at is not None]
+    if not quiz_rounds:
+        return "not_started"
+    if any(r.status == "in_progress" for r in quiz_rounds):
+        return "in_progress"
+    return "completed"
+
+
+def _student_assignment_row(
+    assignment: VocabularyAssignment,
+    rounds: list[VocabularySession],
+    item_firsts: dict[int, VocabularyAnswer],
+) -> VocabularyStudentAssignment:
+    """单个任务的摘要行：进度、逾期、首答正确数、公布掩码。"""
+    progress = _quiz_progress(rounds) if assignment.mode == "quiz" else None
+    if progress is None:
+        progress = progress_of_round1(len(assignment.snapshot_items), item_firsts)
+    is_quiz = assignment.mode == "quiz"
+    # 答案可见规则：测验成绩未公布时不下发正确数（前端隐藏成绩维度）
+    masked = is_quiz and assignment.grades_published_at is None
+    return VocabularyStudentAssignment(
+        assignment_id=assignment.id,
+        title=assignment.title,
+        word_count=len(assignment.snapshot_items),
+        due_at=assignment.due_at,
+        progress=progress,
+        overdue=is_overdue(assignment, progress),
+        answered_count=len(item_firsts),
+        correct_first_count=0
+        if masked
+        else sum(1 for a in item_firsts.values() if a.is_correct),
+        round_count=len(rounds),
+        masked=masked,
+        is_quiz=is_quiz,
+    )
+
+
+def student_assignment_rows(
+    session: Session, classroom_id: uuid.UUID, student_id: uuid.UUID
+) -> list[VocabularyStudentAssignment]:
+    """学生名单内全部任务（含已结束）的摘要行，按 due 升序、无 due 发布倒序。
+
+    进度锁定首轮首答；round_count 含复习轮。
+    """
+    assignments, rounds_by_assignment = _load_student_assignments(
+        session, classroom_id, student_id
+    )
     # 进度只消费每任务首轮（round_no 最小）的首答，预取同样只取首轮
     first_round_ids = [
         min(rounds, key=lambda r: r.round_no).id
@@ -519,36 +571,7 @@ def student_assignment_rows(
         )
         first_round = rounds[0] if rounds else None
         item_firsts = firsts.get(first_round.id, {}) if first_round else {}
-        progress = progress_of_round1(len(assignment.snapshot_items), item_firsts)
-        is_quiz = assignment.mode == "quiz"
-        if is_quiz:
-            # 测验进度按答卷终结状态（不按答题完成度）：未参加/进行中/已终结
-            quiz_rounds = [r for r in rounds if r.quiz_started_at is not None]
-            if not quiz_rounds:
-                progress = "not_started"
-            elif any(r.status == "in_progress" for r in quiz_rounds):
-                progress = "in_progress"
-            else:
-                progress = "completed"
-        # 答案可见规则：测验成绩未公布时不下发正确数（前端隐藏成绩维度）
-        masked = is_quiz and assignment.grades_published_at is None
-        rows.append(
-            VocabularyStudentAssignment(
-                assignment_id=assignment.id,
-                title=assignment.title,
-                word_count=len(assignment.snapshot_items),
-                due_at=assignment.due_at,
-                progress=progress,
-                overdue=is_overdue(assignment, progress),
-                answered_count=len(item_firsts),
-                correct_first_count=0
-                if masked
-                else sum(1 for a in item_firsts.values() if a.is_correct),
-                round_count=len(rounds),
-                masked=masked,
-                is_quiz=is_quiz,
-            )
-        )
+        rows.append(_student_assignment_row(assignment, rounds, item_firsts))
     return rows
 
 
@@ -1397,46 +1420,46 @@ def class_results(
     return student_rows, _word_stat_rows(assignment, word_firsts)
 
 
-def wrong_word_items(
-    session: Session,
-    student_id: uuid.UUID,
-    practiceable_ids: set[uuid.UUID] | None = None,
-) -> list[VocabularyWrongWordItem]:
-    """错词本聚合：该学生全部词汇轮次里首答判错的词（跨任务/自主聚合）。
+def _wrong_word_answers(
+    session: Session, student_id: uuid.UUID
+) -> list[VocabularyAnswer]:
+    """该学生全部可按错词本的作答证据（按作答时间 + 尝试序升序）。
 
-    测验答卷在教师公布答案之前不进错词本（答案可见规则：提前收录等于
-    泄露对错）；公布后照常收录。练习与自主/复习轮不受影响。
-
-    先聚合完整作答证据，再筛出进入错词本的词（评审口径：一个词在首次
-    判错之前的答对记录同样算「最近练对」证据，不能只看进本之后的）：
-    - wrong_count 只统计独立首答（attempt_no=1）判错次数，一次答对不删除
-      错词、不冲抵历史错误次数；
-    - last_first_* 是最近一次独立首答的时间与对错（复盘过的词显示已纠正
-      的首答，历史错误次数保持不变）；
-    - last_correct_at 是最近一次答对时间（任意尝试，含首次判错之前），
-      仅作复习证据。
-    practiceable_ids 传入时标注词条是否仍在可练范围（active 公共/本班库
-    内的 active 词条）——归档只影响能否再练，不删历史错词。
+    答案可见规则：测验答卷在答案公布前不进错词本（提前收录等于泄露对错）。
     """
-    answers = session.exec(
-        select(VocabularyAnswer)
-        .join(
-            VocabularySession,
-            VocabularySession.id == VocabularyAnswer.session_id,  # ty: ignore[invalid-argument-type]
-        )
-        .outerjoin(
-            VocabularyAssignment,
-            VocabularyAssignment.id == VocabularySession.assignment_id,  # ty: ignore[invalid-argument-type]
-        )
-        .where(
-            VocabularySession.student_id == student_id,  # type: ignore[arg-type]
-            # 答案可见规则：测验答卷在答案公布前不进错词本
-            (col(VocabularySession.assignment_id).is_(None))  # type: ignore[union-attr]
-            | (col(VocabularyAssignment.mode) != "quiz")  # type: ignore[operator]
-            | col(VocabularyAssignment.answers_published_at).is_not(None),  # type: ignore[union-attr]
-        )
-        .order_by(col(VocabularyAnswer.answered_at), col(VocabularyAnswer.attempt_no))
-    ).all()
+    return list(
+        session.exec(
+            select(VocabularyAnswer)
+            .join(
+                VocabularySession,
+                VocabularySession.id == VocabularyAnswer.session_id,  # ty: ignore[invalid-argument-type]
+            )
+            .outerjoin(
+                VocabularyAssignment,
+                VocabularyAssignment.id == VocabularySession.assignment_id,  # ty: ignore[invalid-argument-type]
+            )
+            .where(
+                VocabularySession.student_id == student_id,  # type: ignore[arg-type]
+                (col(VocabularySession.assignment_id).is_(None))  # type: ignore[union-attr]
+                | (col(VocabularyAssignment.mode) != "quiz")  # type: ignore[operator]
+                | col(VocabularyAssignment.answers_published_at).is_not(None),  # type: ignore[union-attr]
+            )
+            .order_by(
+                col(VocabularyAnswer.answered_at), col(VocabularyAnswer.attempt_no)
+            )
+        ).all()
+    )
+
+
+def _aggregate_wrong_words(
+    answers: list[VocabularyAnswer],
+) -> tuple[dict[uuid.UUID, VocabularyWrongWordItem], dict[uuid.UUID, datetime]]:
+    """聚合出进本词条 + 每个词的最近答对时间。
+
+    - wrong_count 只统计独立首答（attempt_no=1）判错次数，只增不减
+    - last_first_* 是最近一次独立首答的时间与对错
+    - last_correct_at 是最近一次答对时间（任意尝试，含首次判错之前）
+    """
     # 全量作答证据：每个词条最近一次答对时间（时间序遍历，后写覆盖先写）
     last_correct_at: dict[uuid.UUID, datetime] = {}
     for answer in answers:
@@ -1467,6 +1490,32 @@ def wrong_word_items(
             item.last_wrong_at = answer.answered_at
             item.last_first_at = answer.answered_at
             item.last_first_is_correct = False
+    return by_word, last_correct_at
+
+
+def wrong_word_items(
+    session: Session,
+    student_id: uuid.UUID,
+    practiceable_ids: set[uuid.UUID] | None = None,
+) -> list[VocabularyWrongWordItem]:
+    """错词本聚合：该学生全部词汇轮次里首答判错的词（跨任务/自主聚合）。
+
+    测验答卷在教师公布答案之前不进错词本（答案可见规则：提前收录等于
+    泄露对错）；公布后照常收录。练习与自主/复习轮不受影响。
+
+    先聚合完整作答证据，再筛出进入错词本的词（评审口径：一个词在首次
+    判错之前的答对记录同样算「最近练对」证据，不能只看进本之后的）：
+    - wrong_count 只统计独立首答（attempt_no=1）判错次数，一次答对不删除
+      错词、不冲抵历史错误次数；
+    - last_first_* 是最近一次独立首答的时间与对错（复盘过的词显示已纠正
+      的首答，历史错误次数保持不变）；
+    - last_correct_at 是最近一次答对时间（任意尝试，含首次判错之前），
+      仅作复习证据。
+    practiceable_ids 传入时标注词条是否仍在可练范围（active 公共/本班库
+    内的 active 词条）——归档只影响能否再练，不删历史错词。
+    """
+    answers = _wrong_word_answers(session, student_id)
+    by_word, last_correct_at = _aggregate_wrong_words(answers)
     items = sorted(by_word.values(), key=lambda i: (-i.wrong_count, i.headword))
     for item in items:
         item.last_correct_at = last_correct_at.get(item.word_id)
