@@ -1,0 +1,32 @@
+# 提交前本地闸门：与 CI 同口径，只跑秒级的静态检查。
+#
+# 设计取舍：
+#   - 用 repo: local + language: system，不指向外部仓库。项目对镜像源抽风
+#     敏感（见 frontend/Dockerfile 的 NPM_FETCH 兜底），拉外部 hook 仓库会
+#     在弱网时把提交卡住；本地脚本已经把 ruff / ty / biome 都用起来了。
+#   - 不跑测试与覆盖率：backend/scripts/test.sh 约 2 分钟，提交时太慢。
+#     需要完整闸门时手动跑 backend/scripts/verify.sh（AGENTS.md 第 0 条）。
+#   - pass_filenames: false：ruff / ty / biome 都按目录全量扫，比逐个文件
+#     传参更快也更一致（增量扫会漏掉「本次没改但已被影响」的文件）。
+#
+# 安装：brew install pre-commit && pre-commit install
+# 手动全量跑一遍：pre-commit run --all-files
+
+default_install_hook_types: [pre-commit]
+
+repos:
+  - repo: local
+    hooks:
+      - id: backend-lint
+        name: 后端 ruff + ty（与 CI 同口径）
+        entry: bash scripts/precommit.sh backend
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+      - id: frontend-biome
+        name: 前端 biome check
+        entry: bash scripts/precommit.sh frontend
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx|json|jsonc|css)$
+        pass_filenames: false

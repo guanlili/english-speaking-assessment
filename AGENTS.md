@@ -19,6 +19,7 @@
 6. 全站用户可见文案必须中英双语（外教使用）：前端用 `useI18n().t({ zh, en })`，参考实现见登录页；后端 `detail` 文案是稳定标识不得随意改措辞。详见 CLAUDE.md「双语准则」。
 7. 三端自适应（桌面/手机/iPad）：表单控件字号 ≥16px 防 iOS 聚焦放大、触控目标 ≥44px、新页面过 390/820/1180 三档宽度。详见 CLAUDE.md「三端自适应准则」。
 8. 多租户：新业务表用 `_tenant_id_field()` 工厂加租户列；跨校/平台口径用 `PlatformSessionDep`（学校端点禁用）；角色值 school_admin/teacher/student。RLS 已在生产强制，详见 CLAUDE.md「跨模块不变量」多租户条。
+9. **先装 pre-commit**：`brew install pre-commit && pre-commit install`。之后每次 `git commit` 自动跑后端的 ruff + ty 和前端的 biome（秒级，与 CI 同口径）。想手动全量跑一遍用 `pre-commit run --all-files`。它不跑测试与覆盖率——那部分仍走第 0 条的 `verify.sh`。
 
 ## 项目管理试点
 

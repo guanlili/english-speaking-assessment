@@ -135,6 +135,8 @@ uv run bash scripts/verify.sh -k 某个用例名  # 只改了单模块时先定�
 `scripts/verify.sh` 会自动探测本地数据库（5433 通了就自己 export，不通会直接告诉你先 `docker compose up -d db`）。
 openapi 契约变更属有意改动时，用 `--openapi-update` 更新 `backend/openapi-baseline.json` 并随 PR 提交。
 
+更快的本地闸门：装一次 pre-commit（`brew install pre-commit && pre-commit install`），之后每次 `git commit` 自动跑后端的 `ruff` + `ty` 和前端的 `biome check`，秒级、与 CI 同口径。它**不跑测试与覆盖率**，这两项仍走上面的 `verify.sh`；想手动全量跑改用 `pre-commit run --all-files`。hook 定义在仓库根的 `.pre-commit-config.yaml`，入口脚本是 `scripts/precommit.sh`（后端会自己探 `.venv/bin`，前端缺 `node_modules` 会直接报错提示先 `npm ci`）。
+
 测试库指向应用库时（`POSTGRES_DB_TEST` 与 `POSTGRES_DB` 相同）会在任何建表/删数据操作之前直接拒绝运行。
 
 E2E：新测试文件默认进入真实后端的 `chromium` 项目；确认所有 API 都被模拟且无共享状态后，才加入 `frontend/playwright.config.ts` 的 `mockedFiles`（分层与本地分片命令见 module-notes「Actions E2E 分层与并行」）。
