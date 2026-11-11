@@ -709,6 +709,186 @@ def recognize_answer_replay(
     return existing
 
 
+def _replay_or_none(
+    session: Session,
+    vocab_session: VocabularySession,
+    item_index: int,
+    prompt_type: str,
+    answer_raw: str,
+    idempotency_key: str | None,
+) -> VocabularyAnswer | None:
+    """幂等键重放：命中则返回原作答，否则 None。
+
+    3 处调用（锁前预检 / 锁内重查 / 约束冲突兜底）必须是同一份参数绑定，
+    所以收成一个入口，避免哪一处写漏了参数。
+    """
+    return recognize_answer_replay(
+        session,
+        vocab_session,
+        item_index=item_index,
+        prompt_type=prompt_type,
+        answer_raw=answer_raw,
+        idempotency_key=idempotency_key,
+    )
+
+
+def _validate_answer_input(
+    snapshot_items: list[dict[str, object]], item_index: int, prompt_type: str
+) -> dict[str, object]:
+    """校验题号与出题方式，返回该题快照项；不合法一律 422。"""
+    if not 0 <= item_index < len(snapshot_items):
+        raise HTTPException(status_code=422, detail="题目序号不在本任务范围内")
+    if prompt_type not in VOCAB_PROMPT_TYPES:
+        raise HTTPException(status_code=422, detail=f"未知出题方式：{prompt_type}")
+    snapshot_item = snapshot_items[item_index]
+    item_prompt_types = snapshot_item.get("prompt_types")
+    if isinstance(item_prompt_types, list) and prompt_type not in item_prompt_types:
+        raise HTTPException(status_code=422, detail="该题不支持这种出题方式")
+    return snapshot_item
+
+
+def _guard_quiz_timing(
+    session: Session,
+    vocab_session: VocabularySession,
+    assignment: VocabularyAssignment | None,
+    *,
+    one_attempt_per_item: bool,
+) -> None:
+    """测验的锁内终态与到时门禁。
+
+    统一锁内终态规则（返修R08）：先看终态——已 manual/submitted 的事实不得
+    被改写成 timeout；仍 in_progress 才按锁内时间判超时。到时立即终结本答卷
+    （与惰性结算同口径）后拒绝，成绩按截止时的作答计算。
+    """
+    if not (one_attempt_per_item and assignment is not None):
+        return
+    if vocab_session.status != "in_progress":
+        raise HTTPException(status_code=422, detail="测验已交卷，不能继续作答")
+    deadline = vocab_quiz.quiz_deadline(vocab_session, assignment)
+    if deadline is not None and datetime.now(UTC) > deadline:
+        vocab_session.status = "submitted"
+        vocab_session.end_reason = "timeout"
+        vocab_session.submitted_at = deadline
+        session.add(vocab_session)
+        session.commit()
+        raise HTTPException(status_code=422, detail="测验时间已到，已自动交卷")
+
+
+def _next_attempt_no(
+    session: Session,
+    vocab_session: VocabularySession,
+    item_index: int,
+    *,
+    one_attempt_per_item: bool,
+) -> int:
+    """第几次作答；测验口径下同题第二次直接 422。"""
+    existing_attempts = session.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == vocab_session.id,  # type: ignore[arg-type]
+            VocabularyAnswer.item_index == item_index,
+        )
+    ).all()
+    if one_attempt_per_item and existing_attempts:
+        # 测验每题一次；能走到这里说明不是幂等键重放（前面已返回原作答）
+        raise HTTPException(
+            status_code=422, detail="测验每题只能作答一次，不能修改答案"
+        )
+    return len(existing_attempts) + 1
+
+
+def _build_answer(
+    vocab_session: VocabularySession,
+    snapshot_item: dict[str, object],
+    *,
+    item_index: int,
+    attempt_no: int,
+    prompt_type: str,
+    answer_raw: str,
+    normalized: str,
+    is_correct: bool,
+    idempotency_key: str | None,
+) -> VocabularyAnswer:
+    return VocabularyAnswer(
+        session_id=vocab_session.id,
+        item_index=item_index,
+        attempt_no=attempt_no,
+        prompt_type=prompt_type,
+        answer_raw=answer_raw[:255],
+        answer_normalized=normalized[:255],
+        is_correct=is_correct,
+        word_id=uuid.UUID(str(snapshot_item["word_id"])),
+        headword=str(snapshot_item["headword"])[:64],
+        meaning_zh=str(snapshot_item["meaning_zh"])[:255],
+        idempotency_key=idempotency_key,
+    )
+
+
+def _advance_practice_session(
+    session: Session,
+    vocab_session: VocabularySession,
+    snapshot_items: list[dict[str, object]],
+    item_index: int,
+) -> None:
+    """练习：全部题至少答过一次 → 会话完成（练习重试不回退状态）。
+
+    测验不自动交卷：只有主动交卷或到时结算两种终结方式
+    （end_reason 由 submit_quiz_session / settle_due_sessions 落）。
+    """
+    answered_slots = {
+        a.item_index
+        for a in session.exec(
+            select(VocabularyAnswer).where(
+                VocabularyAnswer.session_id == vocab_session.id  # type: ignore[arg-type]
+            )
+        ).all()
+    } | {item_index}
+    if vocab_session.status == "in_progress" and answered_slots == set(
+        range(len(snapshot_items))
+    ):
+        vocab_session.status = "submitted"
+    vocab_session.submitted_at = get_datetime_utc()
+    session.add(vocab_session)
+
+
+def _commit_or_resolve_conflict(
+    session: Session,
+    vocab_session: VocabularySession,
+    *,
+    one_attempt_per_item: bool,
+    item_index: int,
+    prompt_type: str,
+    answer_raw: str,
+    idempotency_key: str | None,
+) -> VocabularyAnswer | None:
+    """提交并兜底并发冲突；若判定为幂等重放则返回原作答。
+
+    行锁下正常不会撞约束；兜底绕过锁的直连/旧客户端并发：同幂等键 → 重放
+    返回；同槽位 → 按测验口径稳定 422；其余数据库故障照常抛出，不得
+    except Exception 假装成功。
+    """
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        if idempotency_key and "idempotency_key" in str(exc.orig):
+            replay = _replay_or_none(
+                session,
+                vocab_session,
+                item_index,
+                prompt_type,
+                answer_raw,
+                idempotency_key,
+            )
+            if replay is not None:
+                return replay
+        if "uq_vocab_answer_slot" in str(exc.orig) and one_attempt_per_item:
+            raise HTTPException(
+                status_code=422, detail="测验每题只能作答一次，不能修改答案"
+            ) from exc
+        raise
+    return None
+
+
 def submit_answer(
     session: Session,
     vocab_session: VocabularySession,
@@ -732,26 +912,13 @@ def submit_answer(
     重新校验状态与服务端时间后再写入——服务端以锁内接纳时刻为顺序判定点，
     交卷生效后不再接收新答案；校验与插入之间没有 helper commit 释放锁。
     """
-    replay = recognize_answer_replay(
-        session,
-        vocab_session,
-        item_index=item_index,
-        prompt_type=prompt_type,
-        answer_raw=answer_raw,
-        idempotency_key=idempotency_key,
+    replay = _replay_or_none(
+        session, vocab_session, item_index, prompt_type, answer_raw, idempotency_key
     )
     if replay is not None:
         return replay
 
-    if not 0 <= item_index < len(snapshot_items):
-        raise HTTPException(status_code=422, detail="题目序号不在本任务范围内")
-    if prompt_type not in VOCAB_PROMPT_TYPES:
-        raise HTTPException(status_code=422, detail=f"未知出题方式：{prompt_type}")
-    snapshot_item = snapshot_items[item_index]
-    item_prompt_types = snapshot_item.get("prompt_types")
-    if isinstance(item_prompt_types, list) and prompt_type not in item_prompt_types:
-        raise HTTPException(status_code=422, detail="该题不支持这种出题方式")
-
+    snapshot_item = _validate_answer_input(snapshot_items, item_index, prompt_type)
     normalized = _normalized_answer_or_422(answer_raw)
     is_correct = check_spelling(answer_raw, snapshot_item)
 
@@ -760,101 +927,44 @@ def submit_answer(
 
     # 锁内重查幂等键：并发同键请求在对方提交后进锁，必须按重放返回而非
     # 被一次性限制/终态门禁拒绝——断网重传的语义以锁内状态为准
-    replay = recognize_answer_replay(
+    replay = _replay_or_none(
+        session, vocab_session, item_index, prompt_type, answer_raw, idempotency_key
+    )
+    if replay is not None:
+        return replay
+
+    _guard_quiz_timing(
+        session, vocab_session, assignment, one_attempt_per_item=one_attempt_per_item
+    )
+    attempt_no = _next_attempt_no(
+        session, vocab_session, item_index, one_attempt_per_item=one_attempt_per_item
+    )
+
+    answer = _build_answer(
+        vocab_session,
+        snapshot_item,
+        item_index=item_index,
+        attempt_no=attempt_no,
+        prompt_type=prompt_type,
+        answer_raw=answer_raw,
+        normalized=normalized,
+        is_correct=is_correct,
+        idempotency_key=idempotency_key,
+    )
+    session.add(answer)
+    if not one_attempt_per_item:
+        _advance_practice_session(session, vocab_session, snapshot_items, item_index)
+    replayed = _commit_or_resolve_conflict(
         session,
         vocab_session,
+        one_attempt_per_item=one_attempt_per_item,
         item_index=item_index,
         prompt_type=prompt_type,
         answer_raw=answer_raw,
         idempotency_key=idempotency_key,
     )
-    if replay is not None:
-        return replay
-
-    if one_attempt_per_item and assignment is not None:
-        # 统一锁内终态规则（返修R08）：先看终态——已 manual/submitted 的
-        # 事实不得被改写成 timeout；仍 in_progress 才按锁内时间判超时
-        if vocab_session.status != "in_progress":
-            raise HTTPException(status_code=422, detail="测验已交卷，不能继续作答")
-        deadline = vocab_quiz.quiz_deadline(vocab_session, assignment)
-        if deadline is not None and datetime.now(UTC) > deadline:
-            # 锁内到时终结本答卷（与惰性结算同口径）后拒绝，
-            # 与惰性结算一致：成绩按截止时的作答计算
-            vocab_session.status = "submitted"
-            vocab_session.end_reason = "timeout"
-            vocab_session.submitted_at = deadline
-            session.add(vocab_session)
-            session.commit()
-            raise HTTPException(status_code=422, detail="测验时间已到，已自动交卷")
-
-    existing_attempts = session.exec(
-        select(VocabularyAnswer).where(
-            VocabularyAnswer.session_id == vocab_session.id,  # type: ignore[arg-type]
-            VocabularyAnswer.item_index == item_index,
-        )
-    ).all()
-    if one_attempt_per_item and existing_attempts:
-        # 测验每题一次；能走到这里说明不是幂等键重放（前面已返回原作答）
-        raise HTTPException(
-            status_code=422, detail="测验每题只能作答一次，不能修改答案"
-        )
-    attempt_no = len(existing_attempts) + 1
-
-    answer = VocabularyAnswer(
-        session_id=vocab_session.id,
-        item_index=item_index,
-        attempt_no=attempt_no,
-        prompt_type=prompt_type,
-        answer_raw=answer_raw[:255],
-        answer_normalized=normalized[:255],
-        is_correct=is_correct,
-        word_id=uuid.UUID(str(snapshot_item["word_id"])),
-        headword=str(snapshot_item["headword"])[:64],
-        meaning_zh=str(snapshot_item["meaning_zh"])[:255],
-        idempotency_key=idempotency_key,
-    )
-    session.add(answer)
-    if not one_attempt_per_item:
-        # 全部题至少答过一次 → 会话完成（练习重试不回退状态）。
-        # 测验不自动交卷：只有主动交卷或到时结算两种终结方式
-        # （end_reason 由 submit_quiz_session / settle_due_sessions 落）。
-        answered_slots = {
-            a.item_index
-            for a in session.exec(
-                select(VocabularyAnswer).where(
-                    VocabularyAnswer.session_id == vocab_session.id  # type: ignore[arg-type]
-                )
-            ).all()
-        } | {item_index}
-        if vocab_session.status == "in_progress" and answered_slots == set(
-            range(len(snapshot_items))
-        ):
-            vocab_session.status = "submitted"
-        vocab_session.submitted_at = get_datetime_utc()
-        session.add(vocab_session)
-    try:
-        session.commit()
-    except IntegrityError as exc:
-        # 行锁下正常不会撞约束；兜底绕过锁的直连/旧客户端并发：
-        # 同幂等键 → 重放返回；同槽位 → 按测验口径稳定 422；
-        # 其余数据库故障照常抛出，不得 except Exception 假装成功
-        session.rollback()
-        if idempotency_key and "idempotency_key" in str(exc.orig):
-            replay = recognize_answer_replay(
-                session,
-                vocab_session,
-                item_index=item_index,
-                prompt_type=prompt_type,
-                answer_raw=answer_raw,
-                idempotency_key=idempotency_key,
-            )
-            if replay is not None:
-                return replay
-        if "uq_vocab_answer_slot" in str(exc.orig) and one_attempt_per_item:
-            raise HTTPException(
-                status_code=422, detail="测验每题只能作答一次，不能修改答案"
-            ) from exc
-        raise
+    if replayed is not None:
+        return replayed
     session.refresh(answer)
     return answer
 
