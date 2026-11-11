@@ -65,94 +65,114 @@ def parse_upload(text: str) -> list[ParsedRow]:
 
     解析只做结构与格式校验；语义问题（重复/跨级冲突）在预览阶段报告。
     """
-    rows: list[ParsedRow] = []
-    reader = csv.reader(io.StringIO(text))
-    raw_rows = [row for row in reader if any(cell.strip() for cell in row)]
-    if not raw_rows:
-        raise HTTPException(status_code=422, detail="文件为空")
+    raw_rows = _read_csv_rows(text)
     header = [cell.strip().casefold() for cell in raw_rows[0]]
     has_header = "headword" in header or "单词" in header
-    col_map: dict[str, int] = {}
     if has_header:
-        for idx, name in enumerate(header):
-            if name in ("headword", "单词", "word"):
-                col_map.setdefault("headword", idx)
-            elif name in ("part_of_speech", "词性", "pos"):
-                col_map.setdefault("part_of_speech", idx)
-            elif name in ("meaning_zh", "释义", "中文释义", "meaning"):
-                col_map.setdefault("meaning_zh", idx)
-            elif name in ("needs_review", "待核对", "待人工核对"):
-                col_map.setdefault("needs_review", idx)
-            elif name in ("sources", "来源"):
-                col_map.setdefault("sources", idx)
-            elif name == "note":
-                col_map.setdefault("note", idx)
-        if "headword" not in col_map:
-            raise HTTPException(
-                status_code=422,
-                detail="CSV 需要表头：headword[,part_of_speech][,meaning_zh][,needs_review][,sources]",
-            )
+        col_map = _header_columns(header)
         data_rows = raw_rows[1:]
+        first_line = 2
     else:
         col_map = {"headword": 0, "part_of_speech": 1, "meaning_zh": 2}
         data_rows = raw_rows
-
+        first_line = 1
     if len(data_rows) > VOCAB_LEVEL_IMPORT_MAX_ROWS:
         raise HTTPException(
             status_code=422,
             detail=f"单次导入最多 {VOCAB_LEVEL_IMPORT_MAX_ROWS} 行",
         )
-    for line_no, cells in enumerate(data_rows, start=2 if has_header else 1):
-        headword_raw = (
-            cells[col_map["headword"]].strip()
-            if col_map["headword"] < len(cells)
-            else ""
-        )
-        if not headword_raw:
-            continue
-        pos = (
-            cells[col_map["part_of_speech"]].strip()
-            if "part_of_speech" in col_map and col_map["part_of_speech"] < len(cells)
-            else ""
-        )
-        meaning = (
-            cells[col_map["meaning_zh"]].strip()
-            if "meaning_zh" in col_map and col_map["meaning_zh"] < len(cells)
-            else ""
-        )
-        needs_review = (
-            cells[col_map["needs_review"]].strip().casefold()
-            in ("true", "1", "yes", "是")
-            if "needs_review" in col_map and col_map["needs_review"] < len(cells)
-            else False
-        )
-        row_sources = (
-            [
-                part.strip()
-                for part in re.split(r"[;；]", cells[col_map["sources"]])
-                if part.strip()
-            ]
-            if "sources" in col_map and col_map["sources"] < len(cells)
-            else []
-        )
-        note = (
-            cells[col_map["note"]].strip()
-            if "note" in col_map and col_map["note"] < len(cells)
-            else ""
-        )
-        # 安全默认：缺释义的行强制待核对（不参与两模块统计，人工核对后才生效）
-        rows.append(
-            ParsedRow(
-                headword=normalize_spelling(headword_raw),
-                part_of_speech=pos or None,
-                meaning_zh=meaning or None,
-                needs_review=needs_review or not meaning,
-                sources=row_sources,
-                note=note or None,
-                line=line_no,
-            )
-        )
+    rows: list[ParsedRow] = []
+    for offset, cells in enumerate(data_rows):
+        row = _parse_row(cells, col_map, first_line + offset)
+        if row is not None:
+            rows.append(row)
     return rows
+
+
+def _read_csv_rows(text: str) -> list[list[str]]:
+    """读 CSV 并丢掉全空行；文件为空或只剩空行时按 422 拒绝。"""
+    reader = csv.reader(io.StringIO(text))
+    raw_rows = [row for row in reader if any(cell.strip() for cell in row)]
+    if not raw_rows:
+        raise HTTPException(status_code=422, detail="文件为空")
+    return raw_rows
+
+
+def _header_columns(header: list[str]) -> dict[str, int]:
+    """把表头名映射到列下标；同义列名取首次出现（setdefault 语义）。
+
+    headword 列缺失时无法定行，按 422 拒绝。
+    """
+    col_map: dict[str, int] = {}
+    for idx, name in enumerate(header):
+        if name in ("headword", "单词", "word"):
+            col_map.setdefault("headword", idx)
+        elif name in ("part_of_speech", "词性", "pos"):
+            col_map.setdefault("part_of_speech", idx)
+        elif name in ("meaning_zh", "释义", "中文释义", "meaning"):
+            col_map.setdefault("meaning_zh", idx)
+        elif name in ("needs_review", "待核对", "待人工核对"):
+            col_map.setdefault("needs_review", idx)
+        elif name in ("sources", "来源"):
+            col_map.setdefault("sources", idx)
+        elif name == "note":
+            col_map.setdefault("note", idx)
+    if "headword" not in col_map:
+        raise HTTPException(
+            status_code=422,
+            detail="CSV 需要表头：headword[,part_of_speech][,meaning_zh][,needs_review][,sources]",
+        )
+    return col_map
+
+
+def _parse_row(
+    cells: list[str], col_map: dict[str, int], line_no: int
+) -> ParsedRow | None:
+    """解析一行；headword 为空返回 None（调用方跳过）。"""
+    headword_raw = (
+        cells[col_map["headword"]].strip() if col_map["headword"] < len(cells) else ""
+    )
+    if not headword_raw:
+        return None
+    pos = (
+        cells[col_map["part_of_speech"]].strip()
+        if "part_of_speech" in col_map and col_map["part_of_speech"] < len(cells)
+        else ""
+    )
+    meaning = (
+        cells[col_map["meaning_zh"]].strip()
+        if "meaning_zh" in col_map and col_map["meaning_zh"] < len(cells)
+        else ""
+    )
+    needs_review = (
+        cells[col_map["needs_review"]].strip().casefold() in ("true", "1", "yes", "是")
+        if "needs_review" in col_map and col_map["needs_review"] < len(cells)
+        else False
+    )
+    row_sources = (
+        [
+            part.strip()
+            for part in re.split(r"[;；]", cells[col_map["sources"]])
+            if part.strip()
+        ]
+        if "sources" in col_map and col_map["sources"] < len(cells)
+        else []
+    )
+    note = (
+        cells[col_map["note"]].strip()
+        if "note" in col_map and col_map["note"] < len(cells)
+        else ""
+    )
+    # 安全默认：缺释义的行强制待核对（不参与两模块统计，人工核对后才生效）
+    return ParsedRow(
+        headword=normalize_spelling(headword_raw),
+        part_of_speech=pos or None,
+        meaning_zh=meaning or None,
+        needs_review=needs_review or not meaning,
+        sources=row_sources,
+        note=note or None,
+        line=line_no,
+    )
 
 
 def _validate_rows(
