@@ -1,6 +1,13 @@
-# 依赖安全审计：每周一上午 + 手动触发。
-# 与 CI&Deploy 解耦（失败只发邮件通知，不阻塞部署）——README 的
-# "季度升级依赖" 是流程承诺，这里是发现渠道的机制化兜底。
+# 依赖安全审计：PR 阶段把关 + 每周一兜底。
+#
+# 历史上这里只跑 schedule，等于留了两道口子：
+#   1) 两次扫描之间最长 7 天，任何高危依赖都能被合进 master；
+#   2) 而且它连续 6 周全部 failure，兜底根本没生效——
+#      后端那侧 `uv export` 把项目自身导成了 `-e ./backend`，pip-audit 在临时 venv
+#      里装不上这个相对路径；前端那侧是真在报 4 个 js-yaml high，但失败只发邮件，
+#      没人看见。
+#
+# 现在 PR 阶段也跑，并作为分支保护的 required check。
 name: 依赖审计
 
 # 审计只需读仓库内容；显式声明最小权限
@@ -8,13 +15,15 @@ permissions:
   contents: read
 
 on:
+  pull_request:
   schedule:
     - cron: "0 2 * * 1" # 每周一 10:00（北京时间）
   workflow_dispatch:
 
-# 定时与手动触发撞车时只跑一份，避免重复审计占用 runner
+# 原来固定 group + cancel-in-progress 会让 PR 触发的运行与定时任务互相取消；
+# 按 ref 区分后，只在同一个 ref 内取消重复运行
 concurrency:
-  group: dependency-audit
+  group: dependency-audit-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -30,7 +39,10 @@ jobs:
       - name: 导出锁定依赖并审计
         working-directory: backend
         run: |
-          uv export --format requirements-txt --no-hashes --no-dev -o /tmp/req.txt
+          # --no-emit-project 排除项目自身。少了它会导出 `-e ./backend`，
+          # pip-audit 在临时 venv 里无法安装这个相对路径，审计直接失败。
+          uv export --format requirements-txt --no-hashes --no-dev \
+            --no-emit-project -o /tmp/req.txt
           uvx pip-audit --requirement /tmp/req.txt
   frontend:
     name: 前端 npm audit
@@ -41,6 +53,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - name: 审计生产依赖（high 及以上）
+      - name: 审计依赖（high 及以上）
         working-directory: frontend
-        run: npm audit --package-lock-only --audit-level=high
+        run: |
+          # 显式指官方源：镜像源（如 npmmirror）不实现 /-/npm/v1/security/* 端点，
+          # 本地用镜像时会直接 404，看起来像审计本身坏了
+          npm audit --package-lock-only --audit-level=high \
+            --registry=https://registry.npmjs.org
