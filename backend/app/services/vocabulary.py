@@ -35,6 +35,8 @@ from app.models import (
     VocabularySession,
     VocabularyStudentAssignment,
     VocabularyStudentHistoryRow,
+    VocabularyStudentItem,
+    VocabularyStudentPlan,
     VocabularyStudentResultRow,
     VocabularyStudentRoundRow,
     VocabularyTeacherAssignmentRow,
@@ -1786,6 +1788,105 @@ def _build_review_session(
     return vocab_session, "错词复习", len(items)
 
 
+def _plan_context(
+    session: Session, vocab_session: VocabularySession
+) -> tuple[VocabularyAssignment | None, bool, list[dict[str, object]]]:
+    """取任务、是否测验、题单；测验先到时结算（不依赖学生页面在线）。"""
+    assignment = (
+        session.get(VocabularyAssignment, vocab_session.assignment_id)
+        if vocab_session.assignment_id is not None
+        else None
+    )
+    is_quiz = assignment is not None and assignment.mode == "quiz"
+    if is_quiz and assignment is not None:
+        vocab_quiz.settle_due_sessions(session, assignment)
+        session.refresh(vocab_session)
+    snapshot_items = session_snapshot(session, vocab_session)
+    return assignment, is_quiz, snapshot_items
+
+
+def _visibility_flags(
+    reveal: bool, is_quiz: bool, assignment: VocabularyAssignment | None
+) -> tuple[bool, bool]:
+    """（答案可见, 成绩可见）。reveal=True（教师查看）不受公布规则约束。"""
+    answers_visible = reveal or not (
+        is_quiz and assignment is not None and assignment.answers_published_at is None
+    )
+    score_visible = reveal or not (
+        is_quiz and assignment is not None and assignment.grades_published_at is None
+    )
+    return answers_visible, score_visible
+
+
+def _plan_item(
+    idx: int,
+    snapshot_item: dict[str, object],
+    attempts: list[VocabularyAnswer],
+    *,
+    answers_visible: bool,
+) -> tuple[VocabularyStudentItem, bool, bool]:
+    """单题视图 +（是否已答, 首答是否正确）计数增量。
+
+    未作答不透露拼写；测验答案未公布时已答也不揭示正确拼写与对错。
+    """
+    first = next((a for a in attempts if a.attempt_no == 1), None)
+    item_prompt_types = snapshot_item.get("prompt_types")
+    audio_allowed = (
+        isinstance(item_prompt_types, list)
+        and "audio" in item_prompt_types
+        and (snapshot_item.get("audio_url") is not None or first is not None)
+    )
+    item = VocabularyStudentItem(
+        item_index=idx,
+        prompt_type="audio" if audio_allowed else "meaning",
+        part_of_speech=(
+            str(snapshot_item["part_of_speech"])
+            if snapshot_item.get("part_of_speech") is not None
+            else None
+        ),
+        meaning_zh=str(snapshot_item["meaning_zh"]),
+        meaning_en=(
+            str(snapshot_item["meaning_en"])
+            if snapshot_item.get("meaning_en") is not None
+            else None
+        ),
+        audio_url=(
+            str(snapshot_item["audio_url"])
+            if snapshot_item.get("audio_url") is not None
+            else None
+        ),
+        headword=(first.headword if first is not None else None)
+        if answers_visible
+        else None,
+        answered=first is not None,
+        is_correct=(first.is_correct if first is not None else None)
+        if answers_visible
+        else None,
+        attempt_count=len(attempts),
+        from_wrong=snapshot_item.get("from_wrong") is True,
+        first_answer=first.answer_raw if first is not None else None,
+    )
+    answered = first is not None
+    correct = answered and first.is_correct
+    return item, answered, correct
+
+
+def _plan_countdown(
+    vocab_session: VocabularySession,
+    assignment: VocabularyAssignment | None,
+    *,
+    is_quiz: bool,
+) -> tuple[datetime | None, int | None]:
+    """测验截止时刻与剩余秒数；进行中才给剩余时间。"""
+    if not (is_quiz and assignment is not None):
+        return None, None
+    deadline = vocab_quiz.quiz_deadline(vocab_session, assignment)
+    remaining = None
+    if vocab_session.status == "in_progress" and deadline is not None:
+        remaining = max(0, int((deadline - datetime.now(UTC)).total_seconds()))
+    return deadline, remaining
+
+
 def student_plan(
     session: Session, vocab_session: VocabularySession, reveal: bool = False
 ) -> object:
@@ -1797,84 +1898,30 @@ def student_plan(
     置 0 并打 masked 标记（前端隐藏成绩维度，不显示"首答 0"）。
     reveal=True（教师查看答卷）不受公布规则约束，全量揭示。
     """
-    from app.models import VocabularyStudentItem, VocabularyStudentPlan
-
-    assignment = (
-        session.get(VocabularyAssignment, vocab_session.assignment_id)
-        if vocab_session.assignment_id is not None
-        else None
-    )
-    is_quiz = assignment is not None and assignment.mode == "quiz"
-    if is_quiz and assignment is not None:
-        # 触碰答卷即结算到时答卷（不依赖学生页面在线）
-        vocab_quiz.settle_due_sessions(session, assignment)
-        session.refresh(vocab_session)
-    snapshot_items = session_snapshot(session, vocab_session)
-    answers_visible = reveal or not (
-        is_quiz and assignment is not None and assignment.answers_published_at is None
-    )
-    score_visible = reveal or not (
-        is_quiz and assignment is not None and assignment.grades_published_at is None
-    )
+    assignment, is_quiz, snapshot_items = _plan_context(session, vocab_session)
+    answers_visible, score_visible = _visibility_flags(reveal, is_quiz, assignment)
     grouped = answers_by_item(session, vocab_session.id)
+
     items: list[VocabularyStudentItem] = []
     answered_count = 0
     correct_first = 0
     for idx, snapshot_item in enumerate(snapshot_items):
-        attempts = grouped.get(idx, [])
-        first = next((a for a in attempts if a.attempt_no == 1), None)
-        if first is not None:
+        item, answered, correct = _plan_item(
+            idx,
+            snapshot_item,
+            grouped.get(idx, []),
+            answers_visible=answers_visible,
+        )
+        items.append(item)
+        if answered:
             answered_count += 1
-            if first.is_correct:
+            if correct:
                 correct_first += 1
-        item_prompt_types = snapshot_item.get("prompt_types")
-        audio_allowed = (
-            isinstance(item_prompt_types, list)
-            and "audio" in item_prompt_types
-            and (snapshot_item.get("audio_url") is not None or first is not None)
-        )
-        items.append(
-            VocabularyStudentItem(
-                item_index=idx,
-                prompt_type="audio" if audio_allowed else "meaning",
-                part_of_speech=(
-                    str(snapshot_item["part_of_speech"])
-                    if snapshot_item.get("part_of_speech") is not None
-                    else None
-                ),
-                meaning_zh=str(snapshot_item["meaning_zh"]),
-                meaning_en=(
-                    str(snapshot_item["meaning_en"])
-                    if snapshot_item.get("meaning_en") is not None
-                    else None
-                ),
-                audio_url=(
-                    str(snapshot_item["audio_url"])
-                    if snapshot_item.get("audio_url") is not None
-                    else None
-                ),
-                # 未作答不透露拼写；测验答案未公布时已答也不揭示
-                headword=(first.headword if first is not None else None)
-                if answers_visible
-                else None,
-                answered=first is not None,
-                is_correct=(first.is_correct if first is not None else None)
-                if answers_visible
-                else None,
-                attempt_count=len(attempts),
-                from_wrong=snapshot_item.get("from_wrong") is True,
-                first_answer=first.answer_raw if first is not None else None,
-            )
-        )
+
     title = _student_session_title(session, vocab_session)
-    deadline = None
-    remaining = None
-    if is_quiz and assignment is not None:
-        deadline = vocab_quiz.quiz_deadline(vocab_session, assignment)
-        if vocab_session.status == "in_progress" and deadline is not None:
-            remaining = max(0, int((deadline - datetime.now(UTC)).total_seconds()))
+    deadline, remaining = _plan_countdown(vocab_session, assignment, is_quiz=is_quiz)
     masked = is_quiz and not score_visible
-    plan = VocabularyStudentPlan(
+    return VocabularyStudentPlan(
         session_id=vocab_session.id,
         kind=vocab_session.kind,
         status=vocab_session.status,
@@ -1898,7 +1945,6 @@ def student_plan(
         score_visible=score_visible,
         masked=masked,
     )
-    return plan
 
 
 def history_rows(
