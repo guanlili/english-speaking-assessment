@@ -40,6 +40,8 @@ from app.models import (
     VocabularyTeacherAssignmentRow,
     VocabularyWord,
     VocabularyWordIn,
+    VocabularyWordMisspelling,
+    VocabularyWordStatRow,
     VocabularyWrongWordItem,
     get_datetime_utc,
 )
@@ -961,36 +963,22 @@ def teacher_assignment_rows(
     return rows
 
 
-def class_results(
-    session: Session, assignment: VocabularyAssignment
-) -> tuple[list, list]:
-    """按目标名单聚合：学生行（含未开始）+ 逐词错误分布。
-
-    练习：任务成绩锁定 round_no=1 的首答；复习轮只进 rounds 汇总。
-    测验：先到时结算（不依赖学生在线）；有效成绩 = 最好整份已终结答卷
-    （同分取较早轮，effective_round_no 标注来源），答对/答错/未答与逐词
-    错误分布与成绩同源（不跨轮逐题择优）；进行中补考只作进度。
-    全部数据复用批量读取的 rounds/firsts（纯聚合），查询数不随学生数增长。
-    """
-    from app.models import (
-        VocabularyWordMisspelling,
-        VocabularyWordStatRow,
-    )
-
-    is_quiz = assignment.mode == "quiz"
-    if is_quiz:
-        # 教师侧触碰即完成到时结算（结果不依赖学生页面在线）
-        vocab_quiz.settle_due_sessions(session, assignment)
-
-    targets = session.exec(
+def _result_targets(session: Session, assignment: VocabularyAssignment):
+    """按指派名册取（目标，学生），按学生名排序。"""
+    return session.exec(
         select(VocabularyAssignmentTarget, Student)
         .join(Student, Student.id == VocabularyAssignmentTarget.student_id)  # ty: ignore[invalid-argument-type]
         .where(VocabularyAssignmentTarget.assignment_id == assignment.id)  # type: ignore[arg-type]
         .order_by(col(Student.display_name))
     ).all()
 
+
+def _result_rounds(
+    session: Session, assignment: VocabularyAssignment, has_targets: bool
+) -> tuple[dict[uuid.UUID, list[VocabularySession]], list[VocabularySession]]:
+    """按学生聚合会话轮次，并给出扁平列表；无指派时不查库。"""
     rounds_by_student: dict[uuid.UUID, list[VocabularySession]] = {}
-    if targets:
+    if has_targets:
         for vs in session.exec(
             select(VocabularySession)
             .where(VocabularySession.assignment_id == assignment.id)  # type: ignore[arg-type]
@@ -998,129 +986,160 @@ def class_results(
         ).all():
             rounds_by_student.setdefault(vs.student_id, []).append(vs)
     all_rounds = [vs for rounds in rounds_by_student.values() for vs in rounds]
-    firsts = first_answers_by_session(session, [vs.id for vs in all_rounds])
+    return rounds_by_student, all_rounds
 
-    def first_round(rounds: list[VocabularySession]) -> VocabularySession | None:
-        # 存量数据迁移后恒有 round_no=1；防御性回落到最早轮
-        return rounds[0] if rounds else None
 
-    retake_by_student: dict[uuid.UUID, bool] = {
+def _retake_flags(targets: list) -> dict[uuid.UUID, bool]:
+    return {
         target.student_id: target.retake_granted_at is not None
         for target, _student in targets
     }
 
-    student_rows: list[VocabularyStudentResultRow] = []
-    word_firsts: dict[int, list[VocabularyAnswer]] = {}
-    for _target, student in targets:
-        rounds = rounds_by_student.get(student.id, [])
-        first_round_session = first_round(rounds)
-        total = len(assignment.snapshot_items)
-        quiz_rounds = (
-            [r for r in rounds if r.quiz_started_at is not None] if is_quiz else []
-        )
-        finalized_rounds = (
-            [r for r in quiz_rounds if r.status == "submitted"] if is_quiz else []
-        )
-        best_score = None
-        passed = None
-        effective: VocabularySession | None = None
-        if is_quiz and finalized_rounds:
-            # 纯聚合复用已批量读取的 rounds/firsts（不再逐学生查库）；
-            # 同分取较早轮，进行中补考只作进度不参与有效成绩
-            (
-                best_score,
-                passed,
-                _attempts,
-                effective,
-            ) = vocab_quiz.effective_quiz_grade_from_rounds(
-                finalized_rounds, firsts, total, assignment.pass_line
-            )
 
-        if is_quiz:
-            # 口径统一（批次05）：有效成绩存在时，答对/答错/未答与逐词分布
-            # 来自同一份有效答卷，不跨轮逐题择优。
-            # 尚无终结答卷（首考/补考进行中，返修R10）：主行展示最新答卷
-            # 的实际进度（成绩保持 None），教师不至于看到「已答 0」——
-            # 进度与有效成绩分属不同字段，不混充卷面成绩
-            progress_round = (
-                effective
-                if effective is not None
-                else quiz_rounds[-1]
-                if quiz_rounds
-                else None
-            )
-            item_firsts: dict[int, VocabularyAnswer] = (
-                dict(firsts.get(progress_round.id, {}) or {})
-                if progress_round is not None
-                else {}
-            )
-        else:
-            # 练习：统计锁定首轮首答；复习轮只进 rounds 汇总
-            item_firsts = (
-                dict(firsts.get(first_round_session.id, {}) or {})
-                if first_round_session is not None
-                else {}
-            )
-        for idx, answer in item_firsts.items():
-            word_firsts.setdefault(idx, []).append(answer)
-        answered = len(item_firsts)
-        correct = sum(1 for a in item_firsts.values() if a.is_correct)
-        status = (
-            "not_started"
-            if answered == 0 and not rounds
-            else "completed"
-            if answered >= total
-            else "in_progress"
-        )
-        if is_quiz:
-            # 测验状态以答卷终结方式判定：全部答卷已终结 = completed
-            latest = rounds[-1] if rounds else None
-            if not rounds or all(r.quiz_started_at is None for r in rounds):
-                status = "not_started"
-            elif latest is not None and latest.status == "in_progress":
-                status = "in_progress"
-            else:
-                status = "completed"
-        round_rows = [
-            VocabularyStudentRoundRow(
-                round_no=vs.round_no,
-                status=vs.status,
-                answered_count=len(firsts.get(vs.id, {})),
-                correct_first_count=sum(
-                    1 for a in firsts.get(vs.id, {}).values() if a.is_correct
-                ),
-                submitted_at=vs.submitted_at,
-                end_reason=vs.end_reason,
-            )
-            for vs in rounds
-        ]
-        student_rows.append(
-            VocabularyStudentResultRow(
-                student_id=student.id,
-                display_name=student.display_name,
-                suffix=student.suffix,
-                status=status,
-                answered_count=answered,
-                correct_first_count=correct,
-                total_count=total,
-                submitted_at=(
-                    first_round_session.submitted_at if first_round_session else None
-                ),
-                round_count=len(rounds),
-                rounds=round_rows,
-                quiz_end_reason=(quiz_rounds[-1].end_reason if quiz_rounds else None),
-                score=best_score if is_quiz else None,
-                passed=passed if is_quiz else None,
-                effective_round_no=(effective.round_no if effective else None),
-                tab_switch_count=sum(vs.tab_switch_count for vs in quiz_rounds)
-                if is_quiz
-                else 0,
-                retake_granted=retake_by_student.get(student.id, False),
-                attempt_count=len(quiz_rounds),
-            )
-        )
+def _first_round(rounds: list[VocabularySession]) -> VocabularySession | None:
+    # 存量数据迁移后恒有 round_no=1；防御性回落到最早轮
+    return rounds[0] if rounds else None
 
-    word_rows: list[VocabularyWordStatRow] = []
+
+def _student_item_firsts(
+    *,
+    is_quiz: bool,
+    effective: VocabularySession | None,
+    quiz_rounds: list[VocabularySession],
+    first_round_session: VocabularySession | None,
+    firsts: dict,
+) -> dict[int, VocabularyAnswer]:
+    """取该学生用于统计的首答集合。
+
+    测验：有效成绩存在时用有效答卷，否则用最新进行中答卷（口径统一：答对/
+    答错/未答与逐词分布同源，不跨轮逐题择优；尚无终结答卷时只作进度）；
+    练习：锁定首轮首答，复习轮只进 rounds 汇总。
+    """
+    if is_quiz:
+        progress_round = (
+            effective
+            if effective is not None
+            else quiz_rounds[-1]
+            if quiz_rounds
+            else None
+        )
+        if progress_round is None:
+            return {}
+        return dict(firsts.get(progress_round.id, {}) or {})
+    if first_round_session is None:
+        return {}
+    return dict(firsts.get(first_round_session.id, {}) or {})
+
+
+def _student_status(
+    *, is_quiz: bool, answered: int, total: int, rounds: list[VocabularySession]
+) -> str:
+    if is_quiz:
+        # 测验状态以答卷终结方式判定：全部答卷已终结 = completed
+        latest = rounds[-1] if rounds else None
+        if not rounds or all(r.quiz_started_at is None for r in rounds):
+            return "not_started"
+        if latest is not None and latest.status == "in_progress":
+            return "in_progress"
+        return "completed"
+    if answered == 0 and not rounds:
+        return "not_started"
+    if answered >= total:
+        return "completed"
+    return "in_progress"
+
+
+def _student_round_rows(
+    rounds: list[VocabularySession], firsts: dict
+) -> list[VocabularyStudentRoundRow]:
+    return [
+        VocabularyStudentRoundRow(
+            round_no=vs.round_no,
+            status=vs.status,
+            answered_count=len(firsts.get(vs.id, {})),
+            correct_first_count=sum(
+                1 for a in firsts.get(vs.id, {}).values() if a.is_correct
+            ),
+            submitted_at=vs.submitted_at,
+            end_reason=vs.end_reason,
+        )
+        for vs in rounds
+    ]
+
+
+def _quiz_rounds(rounds: list[VocabularySession]) -> list[VocabularySession]:
+    """只保留真正开过考的轮次（练习轮没有 quiz_started_at）。"""
+    return [r for r in rounds if r.quiz_started_at is not None]
+
+
+def _effective_grade(
+    assignment: VocabularyAssignment,
+    quiz_rounds: list[VocabularySession],
+    firsts: dict,
+    total: int,
+) -> tuple[int | None, bool | None, VocabularySession | None]:
+    """有效成绩 = 最好整份已终结答卷（同分取较早轮）；没有终结答卷则全为 None。
+
+    纯聚合复用已批量读取的 rounds/firsts，不逐学生查库。
+    """
+    finalized = [r for r in quiz_rounds if r.status == "submitted"]
+    if not finalized:
+        return None, None, None
+    best_score, passed, _attempts, effective = (
+        vocab_quiz.effective_quiz_grade_from_rounds(
+            finalized, firsts, total, assignment.pass_line
+        )
+    )
+    return best_score, passed, effective
+
+
+def _student_result_row(
+    student: Student,
+    *,
+    rounds: list[VocabularySession],
+    total: int,
+    firsts: dict,
+    item_firsts: dict[int, VocabularyAnswer],
+    is_quiz: bool,
+    quiz_rounds: list[VocabularySession],
+    best_score: int | None,
+    passed: bool | None,
+    effective: VocabularySession | None,
+    retake_granted: bool,
+) -> VocabularyStudentResultRow:
+    answered = len(item_firsts)
+    first_round_session = _first_round(rounds)
+    return VocabularyStudentResultRow(
+        student_id=student.id,
+        display_name=student.display_name,
+        suffix=student.suffix,
+        status=_student_status(
+            is_quiz=is_quiz, answered=answered, total=total, rounds=rounds
+        ),
+        answered_count=answered,
+        correct_first_count=sum(1 for a in item_firsts.values() if a.is_correct),
+        total_count=total,
+        submitted_at=(
+            first_round_session.submitted_at if first_round_session else None
+        ),
+        round_count=len(rounds),
+        rounds=_student_round_rows(rounds, firsts),
+        quiz_end_reason=(quiz_rounds[-1].end_reason if quiz_rounds else None),
+        score=best_score if is_quiz else None,
+        passed=passed if is_quiz else None,
+        effective_round_no=(effective.round_no if effective else None),
+        tab_switch_count=(
+            sum(vs.tab_switch_count for vs in quiz_rounds) if is_quiz else 0
+        ),
+        retake_granted=retake_granted,
+        attempt_count=len(quiz_rounds),
+    )
+
+
+def _word_stat_rows(
+    assignment: VocabularyAssignment, word_firsts: dict[int, list[VocabularyAnswer]]
+) -> list[VocabularyWordStatRow]:
+    rows: list[VocabularyWordStatRow] = []
     for idx, snapshot_item in enumerate(assignment.snapshot_items):
         answers = word_firsts.get(idx, [])
         correct = sum(1 for a in answers if a.is_correct)
@@ -1130,7 +1149,7 @@ def class_results(
             VocabularyWordMisspelling(answer=answer, count=count)
             for answer, count in misspelling_counter.most_common(5)
         ]
-        word_rows.append(
+        rows.append(
             VocabularyWordStatRow(
                 item_index=idx,
                 word_id=uuid.UUID(str(snapshot_item["word_id"])),
@@ -1142,7 +1161,65 @@ def class_results(
                 misspellings=misspellings,
             )
         )
-    return student_rows, word_rows
+    return rows
+
+
+def class_results(
+    session: Session, assignment: VocabularyAssignment
+) -> tuple[list, list]:
+    """按目标名单聚合：学生行（含未开始）+ 逐词错误分布。
+
+    练习：任务成绩锁定 round_no=1 的首答；复习轮只进 rounds 汇总。
+    测验：先到时结算（不依赖学生在线）；有效成绩 = 最好整份已终结答卷
+    （同分取较早轮，effective_round_no 标注来源），答对/答错/未答与逐词
+    错误分布与成绩同源（不跨轮逐题择优）；进行中补考只作进度。
+    全部数据复用批量读取的 rounds/firsts（纯聚合），查询数不随学生数增长。
+    """
+    is_quiz = assignment.mode == "quiz"
+    if is_quiz:
+        # 教师侧触碰即完成到时结算（结果不依赖学生页面在线）
+        vocab_quiz.settle_due_sessions(session, assignment)
+
+    targets = _result_targets(session, assignment)
+    rounds_by_student, all_rounds = _result_rounds(session, assignment, bool(targets))
+    firsts = first_answers_by_session(session, [vs.id for vs in all_rounds])
+    retake_by_student = _retake_flags(targets)
+
+    student_rows: list[VocabularyStudentResultRow] = []
+    word_firsts: dict[int, list[VocabularyAnswer]] = {}
+    for _target, student in targets:
+        rounds = rounds_by_student.get(student.id, [])
+        total = len(assignment.snapshot_items)
+        quiz_rounds = _quiz_rounds(rounds) if is_quiz else []
+        best_score, passed, effective = _effective_grade(
+            assignment, quiz_rounds, firsts, total
+        )
+        item_firsts = _student_item_firsts(
+            is_quiz=is_quiz,
+            effective=effective,
+            quiz_rounds=quiz_rounds,
+            first_round_session=_first_round(rounds),
+            firsts=firsts,
+        )
+        for idx, answer in item_firsts.items():
+            word_firsts.setdefault(idx, []).append(answer)
+        student_rows.append(
+            _student_result_row(
+                student,
+                rounds=rounds,
+                total=total,
+                firsts=firsts,
+                item_firsts=item_firsts,
+                is_quiz=is_quiz,
+                quiz_rounds=quiz_rounds,
+                best_score=best_score,
+                passed=passed,
+                effective=effective,
+                retake_granted=retake_by_student.get(student.id, False),
+            )
+        )
+
+    return student_rows, _word_stat_rows(assignment, word_firsts)
 
 
 def wrong_word_items(
