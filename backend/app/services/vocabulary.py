@@ -13,6 +13,7 @@ import random
 import unicodedata
 import uuid
 from collections import Counter
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
@@ -24,6 +25,7 @@ from app.models import (
     SELF_PRACTICE_MAX_WORDS,
     SELF_PRACTICE_MIX_WRONG_RATIO,
     VOCAB_PROMPT_TYPES,
+    Classroom,
     Student,
     User,
     VocabularyAnswer,
@@ -123,62 +125,53 @@ def visible_book_ids_for(session: Session, user: User) -> set[uuid.UUID]:
     return set(rows)
 
 
-def resolve_publish_words(
-    session: Session,
-    book_id: uuid.UUID | None,
-    word_ids: list[uuid.UUID] | None,
-    viewer: User,
-) -> list[VocabularyWord]:
-    """发布词单解析：整本词库（active 词、按 position）或显式词清单。
+def _publish_allowed_book_ids(session: Session, viewer: User) -> set[uuid.UUID]:
+    """发布可用的词库 id 全集。
 
-    权限：来源词库必须对发布教师可见（本校公共库或本人班级库；管理员=
-    本校全部），显式 word_ids 的每个词也必须归属至少一本可见词库——否则可借
-    发布/结果接口读到其他教师私有词条的拼写与释义。
-
-    发布校验三口径：所选词数、可出题数、最终题数一致（题量不允许
-    超过实际可出题量——清单里多余/归档词直接 422，避免静默缩水）。
+    管理员=本校全部词库（跨校他校词库不放行，与 RLS 激活环境对齐）；
+    其余角色=本校公共库 + 本人班级库。
     """
-    allowed_book_ids: set[uuid.UUID]
     if viewer.role == "school_admin":
-        # 管理员=本校全部词库（跨校他校词库不放行，与 RLS 激活环境对齐）
-        allowed_book_ids = set(
+        return set(
             session.exec(
                 select(VocabularyBook.id).where(
                     VocabularyBook.tenant_id == viewer.tenant_id
                 )
             ).all()
         )
-    else:
-        allowed_book_ids = visible_book_ids_for(session, viewer)
+    return visible_book_ids_for(session, viewer)
 
-    def _book_allowed(book: VocabularyBook) -> bool:
-        return allowed_book_ids is None or book.id in allowed_book_ids
 
-    words: list[VocabularyWord]
-    if book_id is not None:
-        book = session.get(VocabularyBook, book_id)
-        if book is None or book.status != "active":
-            raise HTTPException(status_code=404, detail="词库不存在或已归档")
-        if not _book_allowed(book):
-            raise HTTPException(status_code=403, detail="没有权限使用这个词库")
-        words = list(
-            session.exec(
-                select(VocabularyWord)
-                .join(
-                    VocabularyBookItem,
-                    VocabularyBookItem.word_id == VocabularyWord.id,  # ty: ignore[invalid-argument-type]
-                )
-                .where(
-                    VocabularyBookItem.book_id == book_id,  # type: ignore[arg-type]
-                    VocabularyWord.status == "active",
-                )
-                .order_by(col(VocabularyBookItem.position))
-            ).all()
-        )
-        if not words:
-            raise HTTPException(status_code=422, detail="词库里没有可用词条")
-        return words
+def _publish_words_of_book(
+    session: Session, book_id: uuid.UUID, allowed_book_ids: set[uuid.UUID]
+) -> list[VocabularyWord]:
+    """整本词库的发布词单：active 词、按 position 排序。"""
+    book = session.get(VocabularyBook, book_id)
+    if book is None or book.status != "active":
+        raise HTTPException(status_code=404, detail="词库不存在或已归档")
+    if book.id not in allowed_book_ids:
+        raise HTTPException(status_code=403, detail="没有权限使用这个词库")
+    words = list(
+        session.exec(
+            select(VocabularyWord)
+            .join(
+                VocabularyBookItem,
+                VocabularyBookItem.word_id == VocabularyWord.id,  # ty: ignore[invalid-argument-type]
+            )
+            .where(
+                VocabularyBookItem.book_id == book_id,  # type: ignore[arg-type]
+                VocabularyWord.status == "active",
+            )
+            .order_by(col(VocabularyBookItem.position))
+        ).all()
+    )
+    if not words:
+        raise HTTPException(status_code=422, detail="词库里没有可用词条")
+    return words
 
+
+def _validate_word_id_list(word_ids: list[uuid.UUID]) -> None:
+    """显式词清单的形态校验：非空、不超上限、无重复。"""
     if not word_ids:
         raise HTTPException(status_code=422, detail="需要指定词库或词清单")
     if len(word_ids) > MAX_TASK_WORDS:
@@ -187,6 +180,12 @@ def resolve_publish_words(
         )
     if len(set(word_ids)) != len(word_ids):
         raise HTTPException(status_code=422, detail="词清单内有重复词条")
+
+
+def _load_publishable_words(
+    session: Session, word_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, VocabularyWord]:
+    """按 id 载入词条；有不存在或已归档的整单 422，不静默缩水。"""
     found = {
         w.id: w
         for w in session.exec(
@@ -203,24 +202,57 @@ def resolve_publish_words(
             status_code=422,
             detail=f"词清单包含不存在或已归档的词条（{len(missing_or_inactive)} 个），请重新选择",
         )
-    if allowed_book_ids is not None:
-        # 显式清单同样要核验归属：每个词必须出现在至少一本可见词库里
-        owning_book_rows = session.exec(
-            select(VocabularyBookItem.word_id, VocabularyBookItem.book_id).where(
-                col(VocabularyBookItem.word_id).in_(word_ids)  # type: ignore[operator]
-            )
-        ).all()
-        visible_word_ids = {
-            word_id
-            for word_id, book_id_of_item in owning_book_rows
-            if book_id_of_item in allowed_book_ids
-        }
-        not_allowed = [str(wid) for wid in word_ids if wid not in visible_word_ids]
-        if not_allowed:
-            raise HTTPException(
-                status_code=403,
-                detail=f"词清单包含你没有权限使用的词条（{len(not_allowed)} 个），请从自己的词库重新选择",
-            )
+    return found
+
+
+def _ensure_word_ownership(
+    session: Session, word_ids: list[uuid.UUID], allowed_book_ids: set[uuid.UUID]
+) -> None:
+    """显式清单的归属核验：每个词必须出现在至少一本可见词库里。
+
+    否则可借发布/结果接口读到其他教师私有词条的拼写与释义。
+    """
+    owning_book_rows = session.exec(
+        select(VocabularyBookItem.word_id, VocabularyBookItem.book_id).where(
+            col(VocabularyBookItem.word_id).in_(word_ids)  # type: ignore[operator]
+        )
+    ).all()
+    visible_word_ids = {
+        word_id
+        for word_id, book_id_of_item in owning_book_rows
+        if book_id_of_item in allowed_book_ids
+    }
+    not_allowed = [str(wid) for wid in word_ids if wid not in visible_word_ids]
+    if not_allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=f"词清单包含你没有权限使用的词条（{len(not_allowed)} 个），请从自己的词库重新选择",
+        )
+
+
+def resolve_publish_words(
+    session: Session,
+    book_id: uuid.UUID | None,
+    word_ids: list[uuid.UUID] | None,
+    viewer: User,
+) -> list[VocabularyWord]:
+    """发布词单解析：整本词库（active 词、按 position）或显式词清单。
+
+    权限：来源词库必须对发布教师可见（本校公共库或本人班级库；管理员=
+    本校全部），显式 word_ids 的每个词也必须归属至少一本可见词库——否则可借
+    发布/结果接口读到其他教师私有词条的拼写与释义。
+
+    发布校验三口径：所选词数、可出题数、最终题数一致（题量不允许
+    超过实际可出题量——清单里多余/归档词直接 422，避免静默缩水）。
+    """
+    allowed_book_ids = _publish_allowed_book_ids(session, viewer)
+    if book_id is not None:
+        return _publish_words_of_book(session, book_id, allowed_book_ids)
+
+    word_ids = word_ids or []
+    _validate_word_id_list(word_ids)
+    found = _load_publishable_words(session, word_ids)
+    _ensure_word_ownership(session, word_ids, allowed_book_ids)
     # 保持请求顺序（教师预览里看到的顺序即学生作答顺序）
     return [found[wid] for wid in word_ids]
 
@@ -247,25 +279,17 @@ def current_published_assignment(
     ).first()
 
 
-def publish_assignment(
-    session: Session,
-    classroom_id: uuid.UUID,
-    created_by: uuid.UUID | None,
-    title: str | None,
+def _validate_publish_params(
     words: list[VocabularyWord],
     prompt_types: list[str],
-    mode: str = "practice",
-    due_at: datetime | None = None,
-    opens_at: datetime | None = None,
-    duration_minutes: int | None = None,
-    pass_line: int = DEFAULT_PASS_LINE,
-) -> VocabularyAssignment:
-    """发布：快照写入、目标名单固化，同一事务内完成。
-
-    多任务并存：新发布不归档其他任务（教师可手动结束单个任务）。
-    quiz = 限时测验：时长/开放/截止/及格线与听音题源校验收口在
-    vocab_quiz.validate_quiz_publish；练习模式不接受考试时长。
-    """
+    mode: str,
+    *,
+    due_at: datetime | None,
+    opens_at: datetime | None,
+    duration_minutes: int | None,
+    pass_line: int,
+) -> None:
+    """发布前全部参数校验：词量、模式、时间、测验规则、纯听音可出题性。"""
     if not words:
         raise HTTPException(status_code=422, detail="词汇任务至少需要一个词")
     if len(words) > MAX_TASK_WORDS:
@@ -289,14 +313,6 @@ def publish_assignment(
         raise HTTPException(
             status_code=422, detail="考试时长只用于测验模式（练习任务不需要）"
         )
-    students = session.exec(
-        select(Student).where(Student.classroom_id == classroom_id)  # type: ignore[arg-type]
-    ).all()
-    if not students:
-        raise HTTPException(
-            status_code=422,
-            detail="课堂还没有学生，发布后无人可作答；请先让学生进入课堂",
-        )
     # 纯听音任务：无标准音的词既不能听也不能走看义（快照题型只有 audio），
     # 发布前拦下；混合题型不受限（无音词回落看义）
     if prompt_types == ["audio"]:
@@ -310,16 +326,70 @@ def publish_assignment(
                 ),
             )
 
-    assignment_title = (title or "词汇练习").strip() or "词汇练习"
-    snapshots = [build_word_snapshot(w, prompt_types) for w in words]
 
-    # 同一课堂并发发布时锁住课堂行，避免版本号互撞
-    # （与练习模块 publish_exercise 同口径）
-    from app.models import Classroom
+def _lock_classroom(session: Session, classroom_id: uuid.UUID) -> None:
+    """同一课堂并发发布时锁住课堂行，避免版本号互撞。
 
+    与练习模块 publish_exercise 同口径。
+    """
     session.exec(
         select(Classroom).where(Classroom.id == classroom_id).with_for_update()
     ).first()
+
+
+def _add_assignment_targets(
+    session: Session, assignment: VocabularyAssignment, students: Sequence[Student]
+) -> None:
+    """目标名单 = 发布时的全班学生（完成率分母固定）。"""
+    for student in students:
+        session.add(
+            VocabularyAssignmentTarget(
+                assignment_id=assignment.id, student_id=student.id
+            )
+        )
+
+
+def publish_assignment(
+    session: Session,
+    classroom_id: uuid.UUID,
+    created_by: uuid.UUID | None,
+    title: str | None,
+    words: list[VocabularyWord],
+    prompt_types: list[str],
+    mode: str = "practice",
+    due_at: datetime | None = None,
+    opens_at: datetime | None = None,
+    duration_minutes: int | None = None,
+    pass_line: int = DEFAULT_PASS_LINE,
+) -> VocabularyAssignment:
+    """发布：快照写入、目标名单固化，同一事务内完成。
+
+    多任务并存：新发布不归档其他任务（教师可手动结束单个任务）。
+    quiz = 限时测验：时长/开放/截止/及格线与听音题源校验收口在
+    vocab_quiz.validate_quiz_publish；练习模式不接受考试时长。
+    """
+    _validate_publish_params(
+        words,
+        prompt_types,
+        mode,
+        due_at=due_at,
+        opens_at=opens_at,
+        duration_minutes=duration_minutes,
+        pass_line=pass_line,
+    )
+    students = session.exec(
+        select(Student).where(Student.classroom_id == classroom_id)  # type: ignore[arg-type]
+    ).all()
+    if not students:
+        raise HTTPException(
+            status_code=422,
+            detail="课堂还没有学生，发布后无人可作答；请先让学生进入课堂",
+        )
+
+    assignment_title = (title or "词汇练习").strip() or "词汇练习"
+    snapshots = [build_word_snapshot(w, prompt_types) for w in words]
+
+    _lock_classroom(session, classroom_id)
 
     assignment = VocabularyAssignment(
         classroom_id=classroom_id,
@@ -337,14 +407,7 @@ def publish_assignment(
     )
     session.add(assignment)
     session.flush()
-
-    # 目标名单 = 发布时的全班学生（完成率分母固定）
-    for student in students:
-        session.add(
-            VocabularyAssignmentTarget(
-                assignment_id=assignment.id, student_id=student.id
-            )
-        )
+    _add_assignment_targets(session, assignment, students)
     session.commit()
     session.refresh(assignment)
     return assignment
