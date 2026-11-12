@@ -215,3 +215,14 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **git fetch 单次限时**：gh-proxy 偶发挂死时无超时的 TCP 连接会静默吃预算，`timeout 90 git fetch origin` + 原有三次退避重试。
 - **验收**：清空构建缓存后冷构建部署演练通过（见 Notion 需求池条目）。方案选型：CI 构建镜像推 GHCR/TCR 的拉取式部署经评审否决（引入新服务，2026-10-29 李梨拍板不做）。
 - **惰性 bundle 传输（2026-10-29 提速批）**：实测部署 28 分钟中 bundle 跨境 scp 占 13 分钟——增量探测自上线起持续返回 none（从未生效），每次都在传全量 3.1MB 过 ~4KB/s 跨境线。改为「拉取预检」：探测步骤让服务器先经 gh-proxy 自行 `git fetch`（国内下行秒级），成功则 scp 步骤整体跳过；失败才传全量 bundle 兜底。探测原文输出进日志（`probe raw output`）待定位根因。健康日部署整体 28→约 15 分钟（剩余大头是 master CI 复跑）。极端窗口（预检成功、部署时拉取又失败）会因缺 bundle 显式失败，重跑即恢复。
+
+## 公开站点：落地页 / 关于 / 帮助 / 隐私（2026-11-12）
+
+改造前 `/` 是登录后才可进的首页（挂在 `_layout` 这个需要登录的 pathless 布局下），未登录访问直接跳 `/login`，第一次拿到域名的学校和搜索引擎看到的只有登录框。
+
+- **路由调整**：新增 `frontend/src/routes/index.tsx` 作为公开落地页，并删除原来的 `routes/_layout/index.tsx`（两者都解析到 `/`，共存会生成冲突）。`_layout` 继续只负责登录守卫，未登录访问 `/classrooms` 等内页仍跳 `/login`。
+- **登录态分流原样保留**（侧栏 Logo、404「返回首页」都指向 `/`）：operator → `/admin/dashboard`，student → `/join`，其余 → `/classrooms`。落地页 `beforeLoad` 里做这件事，匿名访问才渲染营销内容。
+- **站点外壳** `components/Site/SiteShell.tsx`：页头（Logo、关于/帮助、语言切换、外观切换、登录），页脚（平台/入口/支持三列 + 版权 + 参考分声明 + 隐私链接）。手机宽度隐藏外观切换，否则 390px 下 Logo + 语言切换 + 登录会溢出（已由 e2e 守住）。
+- **静态页**：`/about`（定位、一节课流程、能力、分数口径、数据边界）、`/help`（四种登录方式、学生进门三步、`#school-entry` 学校专属入口、8 条 FAQ、`#contact`）、`/privacy`（保存哪些数据、谁能看到、麦克风、本地存储、安全措施、导出与删除）。文案口径对齐 `docs/功能说明-20261104.md`，不虚构未实现的能力。
+- **联系入口**：`config.ts` 的 `SUPPORT_EMAIL` 留空时页面只提示「联系学校的平台管理员」，填上正式支持邮箱后页脚/帮助页/隐私页自动出现邮件链接（不硬编码邮箱，避免写进仓库一个可能不存在的地址）。
+- **守卫**：`tests/e2e/responsive.spec.ts` 新增 `PUBLIC_PAGES` 用例，`/`、`/about`、`/help`、`/privacy` 在 390/820/1180 三档断言无横向溢出、`h1` 命中、语言切换与登录入口可见。本地跑真实站点用 `E2E_BASE_URL=http://localhost:5173 npx playwright test tests/e2e/responsive.spec.ts -g 公开页`（`playwright.config.ts` 默认 baseURL 是 `localhost:80`；fixture 5176 只是组件宿主，没有真实路由）。

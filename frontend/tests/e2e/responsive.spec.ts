@@ -49,6 +49,44 @@ test("iPad 竖屏下进入课堂页布局正常", async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(1)
 })
 
+/** 公开站点（落地页与三个静态页）是拿到域名后第一眼看到的东西，三档宽度都不能溢出。 */
+const PUBLIC_PAGES = [
+  { path: "/", heading: /让每个学生|Every student/ },
+  { path: "/about", heading: /课堂工具|classroom tool/ },
+  { path: "/help", heading: /从登录到第一堂课|From sign-in/ },
+  { path: "/privacy", heading: /学生的声音|Student voices/ },
+]
+
+for (const vp of VIEWPORTS) {
+  test(`公开页在${vp.name}无横向溢出且入口可用`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height })
+
+    for (const item of PUBLIC_PAGES) {
+      await page.goto(item.path)
+      const overflow = await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      )
+      expect(
+        overflow,
+        `${item.path} 在 ${vp.width}px 溢出`,
+      ).toBeLessThanOrEqual(1)
+      await expect(page.getByRole("heading", { level: 1 })).toContainText(
+        item.heading,
+      )
+    }
+
+    // 站点头部的登录入口与语言切换在任何尺寸都可达
+    await expect(
+      page.getByRole("group", { name: "语言 / Language" }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole("link", { name: /登录|Sign in/ }).first(),
+    ).toBeVisible()
+  })
+}
+
 /** 教师演示登录（本地超管 token），供词汇任务页复用 */
 async function loginTeacherDemo(page: import("@playwright/test").Page) {
   await page.goto("/login")
