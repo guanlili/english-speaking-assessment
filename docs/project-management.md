@@ -19,6 +19,16 @@ PR 使用 Refs #N；只有该 Issue 的全部研发验收标准均完成时才�
 
 **处理与约定**：11 个 PR 已改为中性描述并注明原因。这批工作确实没有对应的需求 Issue，因此正确做法是写「工程维护（<具体类别>）」这类可验证的描述，**不虚构关联，也不留一个指向错误意图的裸 `Refs`**。
 
+### 加一条 required check 要同步三处
+
+分支保护（`PUT .../branches/master/protection` 的 `checks` 数组）、`deploy.yml` 里的 job 名、`required-checks-fallback.yml` 里的兜底 job 名，三者必须**逐字一致**。
+
+原因是 `deploy.yml` 对 `**.md` / `docs/**` / `reviews/**` / `prototypes/**` / `gui-test-screenshots/**` 走 `paths-ignore`，纯这些路径的 PR 上整轮 CI 根本不运行。GitHub 对**从未上报过**的 required check 按 pending 处理，不是通过——合并会被一直 blocked，而且没有任何报错，`mergeable_state` 只是显示 `blocked`。所以 fallback 必须替每一条 required check 准备同名 job 直接报成功。
+
+例外的两条：`后端 pip-audit` / `前端 npm audit` 来自 `audit.yml`，它没有 `paths-ignore`，纯文档 PR 上照常运行，不需要兜底。
+
+**2026-11-12 的实测代价**：分支保护升到 6 条时漏了 fallback 的 perf-guard，此后任何纯文档 PR 都无法合并。这个错误和上一节是同一类——改动在闸门侧，生效点却在另一个文件里，没有任何检查会把两者对起来。
+
 ## 信息权威与旧试验衔接
 
 - 本仓库：研发 Issue、PR、技术决策、测试与版本记录。
