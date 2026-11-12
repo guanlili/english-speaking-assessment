@@ -4,19 +4,17 @@ import { ArrowRight, BookOpenText, ShieldCheck, UsersRound } from "lucide-react"
 import { SiteShell } from "@/components/Site/SiteShell"
 import { APP_NAME } from "@/config"
 import { useI18n } from "@/lib/i18n"
+import { publicPageHead } from "@/lib/site-meta"
 
 export const Route = createFileRoute("/about")({
   component: AboutPage,
-  head: () => ({
-    meta: [
-      { title: `关于平台 / About - ${APP_NAME}` },
-      {
-        name: "description",
-        content:
-          "英语口语课堂工具：老师发布练习、全班同步开口，作答留录音、参考分与教师点评；每所学校数据独立。",
-      },
-    ],
-  }),
+  head: () =>
+    publicPageHead({
+      path: "/about",
+      title: `关于平台 / About - ${APP_NAME}`,
+      description:
+        "英语口语课堂工具：老师发布练习、全班同步开口，作答留录音、参考分与教师点评；每所学校数据独立。",
+    }),
 })
 
 const CARD =

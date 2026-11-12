@@ -14,9 +14,10 @@ import {
 
 import { SiteShell } from "@/components/Site/SiteShell"
 import { Button } from "@/components/ui/button"
-import { APP_NAME, SUPPORT_EMAIL } from "@/config"
+import { APP_NAME, APP_NAME_SHORT, SITE_URL, SUPPORT_EMAIL } from "@/config"
 import { cachedRole, isLoggedIn } from "@/hooks/useAuth"
 import { useI18n } from "@/lib/i18n"
+import { publicPageHead } from "@/lib/site-meta"
 
 export const Route = createFileRoute("/")({
   component: LandingPage,
@@ -29,18 +30,13 @@ export const Route = createFileRoute("/")({
     if (role === "student") throw redirect({ to: "/join" })
     throw redirect({ to: "/classrooms" })
   },
-  head: () => ({
-    meta: [
-      {
-        title: `${APP_NAME} · 学校英语口语课堂 / Spoken English for Schools`,
-      },
-      {
-        name: "description",
-        content:
-          "面向学校的英语口语课堂工具：文章朗读、听句复述、情景问答，老师发布即全班同步，作答保留录音、参考分与教师点评。",
-      },
-    ],
-  }),
+  head: () =>
+    publicPageHead({
+      path: "/",
+      title: `${APP_NAME} · 学校英语口语课堂 / Spoken English for Schools`,
+      description:
+        "面向学校的英语口语课堂工具：文章朗读、听句复述、情景问答，老师发布即全班同步，作答保留录音、参考分与教师点评。",
+    }),
 })
 
 const EYEBROW =
@@ -48,6 +44,19 @@ const EYEBROW =
 const HAIRLINE = "h-px w-7 bg-tan-umber dark:bg-tan"
 const CARD =
   "rounded-2xl border border-brand-ink/12 bg-paper-card p-5 shadow-[var(--shadow-brand-card)] dark:border-border dark:bg-card dark:shadow-none"
+
+/** 组织信息（schema.org）：搜索结果里能带品牌名与站点地址，内容全部是公开事实 */
+const ORGANIZATION_JSON_LD = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: APP_NAME,
+  alternateName: APP_NAME_SHORT,
+  url: SITE_URL,
+  email: SUPPORT_EMAIL,
+  description:
+    "面向学校的英语口语课堂工具：老师发布练习、全班同步开口，作答保留录音、参考分与教师点评。",
+  inLanguage: ["zh-CN", "en"],
+})
 
 function LandingPage() {
   const { t } = useI18n()
@@ -177,6 +186,11 @@ function LandingPage() {
 
   return (
     <SiteShell>
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: 内容是编译期固定的公开组织信息，无任何用户输入
+        dangerouslySetInnerHTML={{ __html: ORGANIZATION_JSON_LD }}
+      />
       <section className="mx-auto grid max-w-[1440px] items-center gap-8 px-5 pb-12 pt-8 sm:px-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-16 lg:px-16 lg:pb-20 lg:pt-14">
         <div className="page-enter mx-auto w-full max-w-[560px] lg:mx-0">
           <p className={EYEBROW}>

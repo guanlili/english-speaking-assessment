@@ -3,19 +3,17 @@ import { createFileRoute, Link } from "@tanstack/react-router"
 import { SiteShell } from "@/components/Site/SiteShell"
 import { APP_NAME, SUPPORT_EMAIL } from "@/config"
 import { useI18n } from "@/lib/i18n"
+import { publicPageHead } from "@/lib/site-meta"
 
 export const Route = createFileRoute("/privacy")({
   component: PrivacyPage,
-  head: () => ({
-    meta: [
-      { title: `隐私与数据说明 / Privacy - ${APP_NAME}` },
-      {
-        name: "description",
-        content:
-          "平台保存哪些数据、谁能看到、用来做什么、如何导出与删除。账号与数据归属学校。",
-      },
-    ],
-  }),
+  head: () =>
+    publicPageHead({
+      path: "/privacy",
+      title: `隐私与数据说明 / Privacy - ${APP_NAME}`,
+      description:
+        "平台保存哪些数据、谁能看到、用来做什么、如何导出与删除。账号与数据归属学校。",
+    }),
 })
 
 const SECTION = "mt-9 scroll-mt-24 lg:mt-12"
