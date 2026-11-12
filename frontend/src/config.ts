@@ -4,7 +4,11 @@
 export const APP_NAME = "BRS English Learning Platform"
 export const APP_NAME_SHORT = "BELP"
 
-// 对外支持邮箱（落地页/帮助页的「联系我们」入口）。
+// 生产站点地址：canonical / og:url / sitemap 用同一个域名，改域名只动这里
+// （public/sitemap.xml 与 public/robots.txt 是静态文件，改域名时要一并手改）
+export const SITE_URL = "https://outman.website"
+
+// 对外支持邮箱（落地页/帮助页/隐私页的「联系我们」入口）。
 // 留空时页面不展示邮件入口，只提示「联系你所在学校的平台管理员」——
 // 学校数据归属学校，开通与删除请求默认走校方渠道。
-export const SUPPORT_EMAIL: string = ""
+export const SUPPORT_EMAIL: string = "lovelose1921@vip.qq.com"

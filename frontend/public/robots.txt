@@ -1,0 +1,30 @@
+# 公开站点：落地页与关于/帮助/隐私可索引；带账号、带课堂码的页面一律不进索引
+# 改域名时同步 config.ts 的 SITE_URL 与 public/sitemap.xml
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /login
+Disallow: /signup
+Disallow: /join
+Disallow: /platform/
+Disallow: /s/
+Disallow: /change-password
+Disallow: /recover-password
+Disallow: /reset-password
+Disallow: /admin
+Disallow: /classrooms
+Disallow: /create
+Disallow: /exports
+Disallow: /my-exports
+Disallow: /settings
+Disallow: /changelog
+Disallow: /school/
+Disallow: /t/
+Disallow: /p/
+Disallow: /exam/
+Disallow: /vocab/
+Disallow: /j/
+Disallow: /me/
+Disallow: /home/
+
+Sitemap: https://outman.website/sitemap.xml

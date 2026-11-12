@@ -4,19 +4,17 @@ import { ArrowRight, KeyRound, Mic, ShieldCheck } from "lucide-react"
 import { SiteShell } from "@/components/Site/SiteShell"
 import { APP_NAME, SUPPORT_EMAIL } from "@/config"
 import { useI18n } from "@/lib/i18n"
+import { publicPageHead } from "@/lib/site-meta"
 
 export const Route = createFileRoute("/help")({
   component: HelpPage,
-  head: () => ({
-    meta: [
-      { title: `使用帮助 / Help - ${APP_NAME}` },
-      {
-        name: "description",
-        content:
-          "登录入口、学生进入课堂、麦克风与录音、忘记密码、参考分说明与常见问题。",
-      },
-    ],
-  }),
+  head: () =>
+    publicPageHead({
+      path: "/help",
+      title: `使用帮助 / Help - ${APP_NAME}`,
+      description:
+        "登录入口、学生进入课堂、麦克风与录音、忘记密码、参考分说明与常见问题。",
+    }),
 })
 
 const CARD =
@@ -201,6 +199,12 @@ function HelpPage() {
           </h2>
           <div className="mt-4 max-w-[60rem] overflow-x-auto">
             <table className="w-full min-w-[34rem] border-collapse text-sm">
+              <caption className="sr-only">
+                {t({
+                  zh: "四种登录入口及适用人群",
+                  en: "Four sign-in entries and who uses each",
+                })}
+              </caption>
               <thead>
                 <tr className="border-b border-brand-ink/12 text-left dark:border-border">
                   <th className="py-2.5 pr-4 font-semibold">

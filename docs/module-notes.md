@@ -226,3 +226,12 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **静态页**：`/about`（定位、一节课流程、能力、分数口径、数据边界）、`/help`（四种登录方式、学生进门三步、`#school-entry` 学校专属入口、8 条 FAQ、`#contact`）、`/privacy`（保存哪些数据、谁能看到、麦克风、本地存储、安全措施、导出与删除）。文案口径对齐 `docs/功能说明-20261104.md`，不虚构未实现的能力。
 - **联系入口**：`config.ts` 的 `SUPPORT_EMAIL` 留空时页面只提示「联系学校的平台管理员」，填上正式支持邮箱后页脚/帮助页/隐私页自动出现邮件链接（不硬编码邮箱，避免写进仓库一个可能不存在的地址）。
 - **守卫**：`tests/e2e/responsive.spec.ts` 新增 `PUBLIC_PAGES` 用例，`/`、`/about`、`/help`、`/privacy` 在 390/820/1180 三档断言无横向溢出、`h1` 命中、语言切换与登录入口可见。本地跑真实站点用 `E2E_BASE_URL=http://localhost:5173 npx playwright test tests/e2e/responsive.spec.ts -g 公开页`（`playwright.config.ts` 默认 baseURL 是 `localhost:80`；fixture 5176 只是组件宿主，没有真实路由）。
+
+### 公开站点补充（2026-11-12，同批优化）
+
+- **SEO / 分享卡片**：`frontend/src/lib/site-meta.ts` 统一生成四个公开页的 head（title、description、canonical、`og:type/site_name/title/description/url/locale`、`twitter:card`）；域名来自 `config.ts` 的 `SITE_URL`。落地页另在 body 内渲染一段 `Organization` JSON-LD（`script:ld+json` 走 head 会与 Route 的 meta 类型冲突，改为组件内 `<script type="application/ld+json">`）。
+- **索引边界**：`public/robots.txt` 只放行四个公开页，`/login`、`/join`、`/s/`、`/t/`、`/p/`、`/exam/`、`/vocab/`、`/j/` 等带账号/课堂码的路径全部 Disallow；`public/sitemap.xml` 列四个公开页。两者都是静态文件，**改域名时要同步 `SITE_URL`、robots 的 Sitemap 行与 sitemap 的 loc**。
+- **Logo 双语**：`components/Common/Logo.tsx` 的副标题从硬编码「开口说 · 英语口语课堂」改为 `t({zh,en})`（英文 `Speak up · Spoken English Class`），`aria-label` 同步双语——外教把界面切到英文后，侧栏/页面头部不再露出中文副标题。
+- **联系邮箱**：`SUPPORT_EMAIL` 已填运营方邮箱，落地页「联系我们」、页脚支持列、帮助页与隐私页都会出现 `mailto:` 入口；仍保留「联系学校平台管理员」作为学校数据事务的首选渠道。
+- **细节**：`/help` 的登录方式表补 `sr-only` caption；`index.html` 默认 `lang="zh-CN"`（运行时仍由 i18n 按用户选择覆盖）。
+- **验证**：dev server 实测 head（title/canonical/og ×6/JSON-LD）、robots 与 sitemap 均 200；390/820/1180 三档 overflow 为 0；英文界面 Logo 显示 `Speak up · Spoken English Class`。
