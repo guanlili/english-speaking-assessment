@@ -134,6 +134,46 @@ jobs:
             echo "无漂移（自动生成的空迁移已清理）"
           fi
 
+  perf-guard:
+    name: 性能回归守卫（查询数）
+    runs-on: ubuntu-24.04
+    # 与 backend/frontend 并行起跑。缓存命中时 e2e 关键路径约 6 分钟，本 job
+    # 建库 + seed + 测量约 2 分钟，藏在那 6 分钟里，不拉长整轮时长。
+    timeout-minutes: 15
+    services:
+      db:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: changethis
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_SERVER: localhost
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: 准备环境变量
+        run: cp .env.example .env
+      - name: 安装依赖
+        timeout-minutes: 10
+        run: uv sync
+      # 脚本在独立的 app_perf 库上建表、灌合成数据、跑完即删；安全闸要求
+      # ENVIRONMENT=local 且目标必须是本机实例，误指生产在第一个 DDL 前就被拒。
+      #
+      # 断言的是 SELECT 次数（同一份数据、同一版代码必然相同），不是耗时：
+      # runner 快慢和邻居负载会让耗时抖动几十倍，卡时间只会训练人忽略红灯。
+      # 行加载只设宽松上限，容忍合成数据分布随模型演进的小幅漂移。
+      - name: 查询数基线比对
+        working-directory: backend
+        run: uv run python scripts/perf_baseline.py --assert-baseline
+
   frontend:
     name: 前端 Lint + 构建 + 客户端一致性
     runs-on: ubuntu-24.04

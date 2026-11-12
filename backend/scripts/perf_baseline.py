@@ -117,11 +117,11 @@ class QueryCounter:
     def __enter__(self):
         from sqlalchemy import event
 
-        def _before(conn, cursor, statement, parameters, context, executemany):
+        def _before(_conn, _cursor, statement, _params, _ctx, _many):
             if statement.lstrip().upper().startswith("SELECT"):
                 self.selects += 1
 
-        def _after(conn, cursor, statement, parameters, context, executemany):
+        def _after(_conn, cursor, statement, _params, _ctx, _many):
             if statement.lstrip().upper().startswith("SELECT"):
                 self.rows += cursor.rowcount if cursor.rowcount > 0 else 0
 
@@ -146,6 +146,7 @@ def _seed(engine, students: int, old_done: int, pending: int, books: int):
         AttemptStatus,
         Classroom,
         Student,
+        Tenant,
         User,
         VocabularyAnswer,
         VocabularyAssignment,
@@ -154,10 +155,22 @@ def _seed(engine, students: int, old_done: int, pending: int, books: int):
         VocabularySession,
         VocabularyWord,
     )
+    from app.models.base import DEFAULT_TENANT_ID
 
     SQLModel.metadata.create_all(engine)
     now = datetime.now(UTC)
     with Session(engine) as session:
+        # 多租户地基（B1）之后 user.tenant_id 有 FK 指向 tenant 表。模型侧的
+        # ORM 默认值是 DEFAULT_TENANT_ID，所以先把这条默认租户落库，否则
+        # 第一条 insert 就撞 user_tenant_id_fkey。
+        session.add(
+            Tenant(
+                id=DEFAULT_TENANT_ID,
+                slug="perf",
+                name_zh="性能基线压测租户",
+            )
+        )
+        session.flush()
         teacher = User(
             email="perf-teacher@test.com",
             hashed_password="x",
@@ -290,11 +303,61 @@ def _seed(engine, students: int, old_done: int, pending: int, books: int):
         return classroom.id
 
 
+# ── 查询数基线（回归守卫）──────────────────────────────────────────────
+# SELECT 次数是确定性指标：同一份合成数据、同一版代码必然相同，不受 runner
+# 快慢影响，所以适合做硬门禁。2026-11-12 在默认规模（40 学生 / 10000 旧
+# done / 5 pending / 200 词库）实测得到下表。任何改动让热路径的 SELECT 跳升
+# （典型是新增 N+1 循环：40 学生变 40 次查询）都会在这里立刻变红。
+# 行加载只设宽松上限：合成数据的分布会随模型演进小幅浮动，卡太死是噪音。
+QUERY_BASELINE: dict[str, tuple[int, int]] = {
+    "sweep_orphans 候选": (3, 5),
+    "list_books(管理员)": (2, 1),
+    "list_books(普通教师)": (2, 21),
+    "teacher_assignment_rows": (4, 481),
+    "wrong_word_items (today count)": (1, 10),
+}
+ROW_SLACK = 1.2
+
+_RESULTS: list[tuple[str, int, int]] = []
+
+
 def _report(name: str, counter: QueryCounter, seconds: float, note: str = "") -> None:
+    _RESULTS.append((name, counter.selects, counter.rows))
     print(
         f"| {name} | {counter.selects} 次 SELECT | 约 {counter.rows} 行加载 "
         f"| {seconds * 1000:.1f} ms | {note} |"
     )
+
+
+def _check_baseline() -> int:
+    """比对实测与基线。SELECT 超基线即失败；行加载超宽松上限才失败。
+
+    耗时不做断言：runner 快慢、邻居负载都会影响它，卡时间只会训练人忽略红灯。
+    """
+    failures: list[str] = []
+    measured = {name for name, _s, _r in _RESULTS}
+    for name, selects, rows in _RESULTS:
+        expect = QUERY_BASELINE.get(name)
+        if expect is None:
+            failures.append(f"{name}：基线未登记该项（新增测量项需同步补基线）")
+            continue
+        base_selects, base_rows = expect
+        if selects > base_selects:
+            failures.append(
+                f"{name}：SELECT {selects} > 基线 {base_selects}（疑似 N+1）"
+            )
+        if rows > int(base_rows * ROW_SLACK) + 1:
+            failures.append(f"{name}：行加载 {rows} > 基线 {base_rows} 的宽松上限")
+    for name in QUERY_BASELINE:
+        if name not in measured:
+            failures.append(f"{name}：基线登记了但本次没测到（测量项被删或改名）")
+    if failures:
+        print("\n❌ 性能回归：", file=sys.stderr)
+        for item in failures:
+            print(f"  - {item}", file=sys.stderr)
+        return 1
+    print("\n✅ 查询数与基线一致，行加载在上限内")
+    return 0
 
 
 def main() -> int:
@@ -305,6 +368,11 @@ def main() -> int:
     parser.add_argument("--books", type=int, default=200)
     parser.add_argument(
         "--keep-db", action="store_true", help="保留本次创建的 app_perf 便于排查"
+    )
+    parser.add_argument(
+        "--assert-baseline",
+        action="store_true",
+        help="跑完后比对查询数基线，超出则以退出码 1 失败（CI 用）",
     )
     args = parser.parse_args()
 
@@ -351,7 +419,7 @@ def main() -> int:
         with Session(engine) as session:
             from sqlmodel import select as _select
 
-            from app.api.routes.vocabulary import list_books
+            from app.api.routes.vocabulary_books import list_books
             from app.models import User
 
             teacher = session.exec(
@@ -389,7 +457,7 @@ def main() -> int:
                     "teacher_assignment_rows",
                     c,
                     time.perf_counter() - start,
-                    f"{args.students} 学生全历史（当前 1 任务）",
+                    f"{args.students} 学生全历史（当前 1 任务，{len(rows)} 行）",
                 )
 
         with Session(engine) as session:
@@ -423,7 +491,7 @@ def main() -> int:
             with admin.connect() as conn:
                 conn.execute(text(f'DROP DATABASE "{PERF_DB_NAME}" WITH (FORCE)'))
             admin.dispose()
-    return 0
+    return _check_baseline() if args.assert_baseline else 0
 
 
 if __name__ == "__main__":
