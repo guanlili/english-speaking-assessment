@@ -9,15 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as LayoutRouteImport } from './routes/_layout'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as ChangePasswordRouteImport } from './routes/change-password'
+import { Route as HelpRouteImport } from './routes/help'
 import { Route as JoinRouteImport } from './routes/join'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MyExportsRouteImport } from './routes/my-exports'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignupRouteImport } from './routes/signup'
-import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as LayoutChangelogRouteImport } from './routes/_layout/changelog'
 import { Route as LayoutClassroomsRouteImport } from './routes/_layout/classrooms'
@@ -61,13 +64,28 @@ import { Route as VocabCodeRecordsRouteImport } from './routes/vocab.$code.recor
 import { Route as VocabCodeSelfRouteImport } from './routes/vocab.$code.self'
 import { Route as TCodeSStudentIdRouteImport } from './routes/t.$code.s.$studentId'
 
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChangePasswordRoute = ChangePasswordRouteImport.update({
   id: '/change-password',
   path: '/change-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HelpRoute = HelpRouteImport.update({
+  id: '/help',
+  path: '/help',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JoinRoute = JoinRouteImport.update({
@@ -85,6 +103,11 @@ const MyExportsRoute = MyExportsRouteImport.update({
   path: '/my-exports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RecoverPasswordRoute = RecoverPasswordRouteImport.update({
   id: '/recover-password',
   path: '/recover-password',
@@ -99,11 +122,6 @@ const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
   getParentRoute: () => rootRouteImport,
-} as any)
-const LayoutIndexRoute = LayoutIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutAdminRoute = LayoutAdminRouteImport.update({
   id: '/admin',
@@ -151,9 +169,9 @@ const ExploreCodeRoute = ExploreCodeRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const HelpCodeRoute = HelpCodeRouteImport.update({
-  id: '/help/$code',
-  path: '/help/$code',
-  getParentRoute: () => rootRouteImport,
+  id: '/$code',
+  path: '/$code',
+  getParentRoute: () => HelpRoute,
 } as any)
 const HomeCodeRoute = HomeCodeRouteImport.update({
   id: '/home/$code',
@@ -318,11 +336,14 @@ const TCodeSStudentIdRoute = TCodeSStudentIdRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof LayoutIndexRoute
+  '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/change-password': typeof ChangePasswordRoute
+  '/help': typeof HelpRouteWithChildren
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/my-exports': typeof MyExportsRoute
+  '/privacy': typeof PrivacyRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -370,10 +391,14 @@ export interface FileRoutesByFullPath {
   '/t/$code/s/$studentId': typeof TCodeSStudentIdRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/change-password': typeof ChangePasswordRoute
+  '/help': typeof HelpRouteWithChildren
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/my-exports': typeof MyExportsRoute
+  '/privacy': typeof PrivacyRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -389,7 +414,6 @@ export interface FileRoutesByTo {
   '/j/$code': typeof JCodeRoute
   '/me/$code': typeof MeCodeRoute
   '/platform/login': typeof PlatformLoginRoute
-  '/': typeof LayoutIndexRoute
   '/admin/classrooms': typeof LayoutAdminClassroomsRoute
   '/admin/dashboard': typeof LayoutAdminDashboardRoute
   '/admin/passages': typeof LayoutAdminPassagesRoute
@@ -418,11 +442,15 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
   '/_layout': typeof LayoutRouteWithChildren
+  '/about': typeof AboutRoute
   '/change-password': typeof ChangePasswordRoute
+  '/help': typeof HelpRouteWithChildren
   '/join': typeof JoinRoute
   '/login': typeof LoginRoute
   '/my-exports': typeof MyExportsRoute
+  '/privacy': typeof PrivacyRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -443,7 +471,6 @@ export interface FileRoutesById {
   '/platform/login': typeof PlatformLoginRoute
   '/t/$code': typeof TCodeRouteWithChildren
   '/vocab/$code': typeof VocabCodeRouteWithChildren
-  '/_layout/': typeof LayoutIndexRoute
   '/_layout/admin/classrooms': typeof LayoutAdminClassroomsRoute
   '/_layout/admin/dashboard': typeof LayoutAdminDashboardRoute
   '/_layout/admin/passages': typeof LayoutAdminPassagesRoute
@@ -474,10 +501,13 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/about'
     | '/change-password'
+    | '/help'
     | '/join'
     | '/login'
     | '/my-exports'
+    | '/privacy'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
@@ -525,10 +555,14 @@ export interface FileRouteTypes {
     | '/t/$code/s/$studentId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
+    | '/about'
     | '/change-password'
+    | '/help'
     | '/join'
     | '/login'
     | '/my-exports'
+    | '/privacy'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
@@ -544,7 +578,6 @@ export interface FileRouteTypes {
     | '/j/$code'
     | '/me/$code'
     | '/platform/login'
-    | '/'
     | '/admin/classrooms'
     | '/admin/dashboard'
     | '/admin/passages'
@@ -572,11 +605,15 @@ export interface FileRouteTypes {
     | '/t/$code/s/$studentId'
   id:
     | '__root__'
+    | '/'
     | '/_layout'
+    | '/about'
     | '/change-password'
+    | '/help'
     | '/join'
     | '/login'
     | '/my-exports'
+    | '/privacy'
     | '/recover-password'
     | '/reset-password'
     | '/signup'
@@ -597,7 +634,6 @@ export interface FileRouteTypes {
     | '/platform/login'
     | '/t/$code'
     | '/vocab/$code'
-    | '/_layout/'
     | '/_layout/admin/classrooms'
     | '/_layout/admin/dashboard'
     | '/_layout/admin/passages'
@@ -626,18 +662,21 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
   LayoutRoute: typeof LayoutRouteWithChildren
+  AboutRoute: typeof AboutRoute
   ChangePasswordRoute: typeof ChangePasswordRoute
+  HelpRoute: typeof HelpRouteWithChildren
   JoinRoute: typeof JoinRoute
   LoginRoute: typeof LoginRoute
   MyExportsRoute: typeof MyExportsRoute
+  PrivacyRoute: typeof PrivacyRoute
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
   ClassroomCodeRoute: typeof ClassroomCodeRoute
   ExamCodeRoute: typeof ExamCodeRouteWithChildren
   ExploreCodeRoute: typeof ExploreCodeRoute
-  HelpCodeRoute: typeof HelpCodeRoute
   HomeCodeRoute: typeof HomeCodeRoute
   JCodeRoute: typeof JCodeRoute
   MeCodeRoute: typeof MeCodeRoute
@@ -650,6 +689,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_layout': {
       id: '/_layout'
       path: ''
@@ -657,11 +703,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/change-password': {
       id: '/change-password'
       path: '/change-password'
       fullPath: '/change-password'
       preLoaderRoute: typeof ChangePasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/help': {
+      id: '/help'
+      path: '/help'
+      fullPath: '/help'
+      preLoaderRoute: typeof HelpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/join': {
@@ -685,6 +745,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MyExportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/recover-password': {
       id: '/recover-password'
       path: '/recover-password'
@@ -705,13 +772,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/_layout/': {
-      id: '/_layout/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof LayoutIndexRouteImport
-      parentRoute: typeof LayoutRoute
     }
     '/_layout/admin': {
       id: '/_layout/admin'
@@ -778,10 +838,10 @@ declare module '@tanstack/react-router' {
     }
     '/help/$code': {
       id: '/help/$code'
-      path: '/help/$code'
+      path: '/$code'
       fullPath: '/help/$code'
       preLoaderRoute: typeof HelpCodeRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof HelpRoute
     }
     '/home/$code': {
       id: '/home/$code'
@@ -1049,7 +1109,6 @@ interface LayoutRouteChildren {
   LayoutCreateRoute: typeof LayoutCreateRoute
   LayoutExportsRoute: typeof LayoutExportsRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
-  LayoutIndexRoute: typeof LayoutIndexRoute
   LayoutSchoolMembersRoute: typeof LayoutSchoolMembersRoute
 }
 
@@ -1060,12 +1119,21 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutCreateRoute: LayoutCreateRoute,
   LayoutExportsRoute: LayoutExportsRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
-  LayoutIndexRoute: LayoutIndexRoute,
   LayoutSchoolMembersRoute: LayoutSchoolMembersRoute,
 }
 
 const LayoutRouteWithChildren =
   LayoutRoute._addFileChildren(LayoutRouteChildren)
+
+interface HelpRouteChildren {
+  HelpCodeRoute: typeof HelpCodeRoute
+}
+
+const HelpRouteChildren: HelpRouteChildren = {
+  HelpCodeRoute: HelpCodeRoute,
+}
+
+const HelpRouteWithChildren = HelpRoute._addFileChildren(HelpRouteChildren)
 
 interface ExamCodeRouteChildren {
   ExamCodeResultRoute: typeof ExamCodeResultRoute
@@ -1128,18 +1196,21 @@ const VocabCodeRouteWithChildren = VocabCodeRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
   LayoutRoute: LayoutRouteWithChildren,
+  AboutRoute: AboutRoute,
   ChangePasswordRoute: ChangePasswordRoute,
+  HelpRoute: HelpRouteWithChildren,
   JoinRoute: JoinRoute,
   LoginRoute: LoginRoute,
   MyExportsRoute: MyExportsRoute,
+  PrivacyRoute: PrivacyRoute,
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
   ClassroomCodeRoute: ClassroomCodeRoute,
   ExamCodeRoute: ExamCodeRouteWithChildren,
   ExploreCodeRoute: ExploreCodeRoute,
-  HelpCodeRoute: HelpCodeRoute,
   HomeCodeRoute: HomeCodeRoute,
   JCodeRoute: JCodeRoute,
   MeCodeRoute: MeCodeRoute,

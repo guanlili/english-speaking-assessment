@@ -12,6 +12,8 @@
 
 | 入口 | 地址 | 说明 |
 |------|------|------|
+| 落地页（未登录可见） | http://localhost:5173/ | 定位、三个入口、开通三步；已登录打开会跳各自工作台 |
+| 关于 / 帮助 / 隐私 | http://localhost:5173/about · `/help` · `/privacy` | 公开静态页，帮助页含学校专属入口与常见问题 |
 | 学生进入课堂 | http://localhost:5173/j/DEMO01 | 学号账号登录后进入（本地演示账号 `student` / `demo1234`）|
 | 学生首页 | http://localhost:5173/home/DEMO01 | 今日练习与词汇任务入口 |
 | 学生结果页 | http://localhost:5173/p/DEMO01/result | 每题转写与参考反馈 |
