@@ -235,3 +235,4 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **联系邮箱**：`SUPPORT_EMAIL` 已填运营方邮箱，落地页「联系我们」、页脚支持列、帮助页与隐私页都会出现 `mailto:` 入口；仍保留「联系学校平台管理员」作为学校数据事务的首选渠道。
 - **细节**：`/help` 的登录方式表补 `sr-only` caption；`index.html` 默认 `lang="zh-CN"`（运行时仍由 i18n 按用户选择覆盖）。
 - **验证**：dev server 实测 head（title/canonical/og ×6/JSON-LD）、robots 与 sitemap 均 200；390/820/1180 三档 overflow 为 0；英文界面 Logo 显示 `Speak up · Spoken English Class`。
+- **部署坑（2026-11-12 实测）**：服务器侧 checkout 的 umask 是 077，`frontend/public/` 里的静态文件（`robots.txt`、`sitemap.xml`）会以 `600` 被复制进镜像，nginx worker 非 root 读不到，线上直接 403（vite 自己生成的 `index.html`、`assets/` 是 644 所以没暴露）。已在 `frontend/Dockerfile` 的 final stage 加 `chmod -R a+rX /usr/share/nginx/html` 兜住；新增任何 `public/` 静态文件都不必再单独改权限。

@@ -40,6 +40,10 @@ RUN npm run build
 FROM nginx:1
 
 COPY --from=build-stage /app/frontend/dist/ /usr/share/nginx/html
+# 服务器侧 checkout 的 umask 是 077，public/ 下的静态文件会以 600 保留进 dist，
+# nginx worker（非 root）读不到就是 403 —— 实测 robots.txt / sitemap.xml 上线即 403。
+# vite 自己生成的 index.html、assets 是 644 所以没暴露；这里统一放宽读权限兜住。
+RUN chmod -R a+rX /usr/share/nginx/html
 
 COPY ./frontend/nginx.conf /etc/nginx/conf.d/default.conf
 # TLS 变体放 conf.d 之外（主配置 include conf.d/*.conf 全量加载，放里面会被
