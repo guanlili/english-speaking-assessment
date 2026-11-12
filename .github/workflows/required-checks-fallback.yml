@@ -6,6 +6,15 @@
 #   后端 Lint + 测试               ← deploy.yml job backend
 #   前端 Lint + 构建 + 客户端一致性 ← deploy.yml job frontend
 #   E2E 冒烟（主干道）             ← deploy.yml job e2e
+#   性能回归守卫（查询数）         ← deploy.yml job perf-guard
+#
+# 后端 pip-audit / 前端 npm audit 来自 audit.yml，它没有 paths-ignore，
+# 纯文档 PR 上照常运行，不需要在这里兜底。
+#
+# 分支保护每加一条 required check，这里必须同步补一条同名 job，否则纯文档
+# PR 会永久 pending 卡死合并——2026-11-12 加 perf-guard 进保护时漏了这一步，
+# 导致所有纯文档 PR 无法合并。
+#
 # 同样须两处同步：下方 paths 列表与 deploy.yml 的 paths-ignore 五组——
 # 单边改动（如 deploy.yml 新增忽略路径而本文件未跟）会让纯该路径 PR 无任何
 # workflow 运行、必需检查永远 pending 卡死合并；反向则混合 PR 语义错位。
@@ -48,3 +57,10 @@ jobs:
     timeout-minutes: 2
     steps:
       - run: echo "docs-only change, e2e checks skipped"
+
+  perf-guard:
+    name: 性能回归守卫（查询数）
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - run: echo "docs-only change, perf guard skipped"
