@@ -21,7 +21,17 @@ Online database/filesystem backups are not atomic. For strict consistency, pause
 
 ## 隔离恢复演练 / Isolated recovery drill
 
-只恢复到**全新的隔离主机或 Compose 项目**，不用现有生产/开发/测试库。先检验备份，不要将校验失败的数据用于恢复。下列命令在隔离项目目录执行，`/safe/backup` 为已通过校验的完整包。
+**一条命令版**（脚本化上面四步，自动建包、建独立项目、比对全库行数、登录核对、清理）：
+
+```bash
+bash scripts/recovery-drill.sh              # 现场生成备份包并演练，结束后清理独立项目
+bash scripts/recovery-drill.sh --bundle backups/bundle-...   # 用已校验的包
+bash scripts/recovery-drill.sh --keep       # 失败或需保留现场时不清理
+```
+
+脚本固定使用独立 Compose 项目 `esa-drill` 与库名 `recovery_drill_<YYYYMMDD>`，只启动 `db/prestart/backend`，不发布端口、不启前端与 acme，因此不会与运行中的栈抢端口或串库。任一项不过（行数差异、登录失败）会保留现场并以非零退出。
+
+下面是等价的手工步骤，供没有脚本或需要逐步排查时使用。只恢复到**全新的隔离主机或 Compose 项目**，不用现有生产/开发/测试库。先检验备份，不要将校验失败的数据用于恢复。下列命令在隔离项目目录执行，`/safe/backup` 为已通过校验的完整包。
 
 Restore only into a new isolated host or Compose project, never an existing production/development/test database. Verify before restoring. Run the following in the isolated project directory; `/safe/backup` is the verified bundle:
 
@@ -72,3 +82,21 @@ Restore only into a new isolated host or Compose project, never an existing prod
 | 未覆盖 | 未做整栈拉起、登录与录音回放——下一档演练按上文「隔离恢复演练」在独立 Compose 项目执行 |
 
 Drill against `bundle-20261028T193117Z-VJ0QnxZE`: checksums OK; the dump restored into an isolated database inside the production DB container in ~1s with `ON_ERROR_STOP=on`; per-table counts match snapshot semantics (all deltas are post-backup activity, including the same-day five-level vocab import); one audio member extracted intact; the drill database was dropped afterwards. Full isolated-host bring-up with login/playback remains the next-level drill.
+
+### 2026-11-14 整栈演练（Mac Mini 开发栈，脚本化）
+
+| 项 | 结果 |
+|---|---|
+| 执行方式 | `bash scripts/recovery-drill.sh`（一条命令：建包→校验→独立项目→导入→音频→拉起→核对→清理） |
+| 备份包 | `bundle-drill-20261114T140340Z-afb4ec`（现场从本机栈生成，`verify-backup.sh` 四件套 OK） |
+| 独立环境 | Compose 项目 `esa-drill` + 库 `recovery_drill_20261114`，未发布端口、未启前端/acme |
+| 数据库恢复 | dump 导入约 2s，`ON_ERROR_STOP=on` 无错；`prestart`（alembic + 角色 + 种子）退出 0 |
+| 行数比对 | **39 张 public 表逐表精确计数，0 处差异**（user 15、student 1、classroom 10、scenario_question 27、sentence_frame 12 等） |
+| 就绪与登录 | `ready-check` 返回 200；`FIRST_SUPERUSER` 走 `/api/v1/login/access-token` 登录成功 |
+| 音频 | 源栈音频卷为空（0 个文件），恢复链路执行成功但**未验证回放** |
+| 清理 | 独立项目与三个卷已 `down -v` 清理，未触碰运行中栈 |
+| 未覆盖 | 生产数据规模、真实录音回放、成绩历史核对、单校恢复路径 |
+
+本轮验证的是**机制**（脚本与恢复链路能在独立环境跑通并自动判据），不是业务恢复结论：本机栈只有 15 个用户、1 名学生、0 次作答，音频卷为空，数据量与生产不可比。生产主机上的一次真实演练仍待执行，届时用同一命令并保留 `--bundle` 指向生产已校验包。
+
+**已知限制**：本机（macOS）没有 `flock`，`scripts/backup-local.sh` 无法直接运行（它是给 Linux 生产主机和 cron 用的）；演练脚本因此自带建包步骤，不复用该脚本。镜像仓库不可达时脚本会复用本机已有 `esa-backend` 镜像，不再拉取构建依赖。
