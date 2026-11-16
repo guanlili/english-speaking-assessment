@@ -14,7 +14,7 @@
 | 合同范围、金额、结算方式 | 待用户确认；本档案不构成报价或新交付承诺 |
 | 人工负责人、客户验收人、交期 | 待用户确认，不从 GitHub 作者或学校名称推定 |
 | 维护/质保期限、权属及复用边界 | 待用户确认 |
-| 当前关注 | 多租户 #223 的阶段实施与后续验收；已有 Notion 双轨试运行 #222 |
+| 当前关注 | 多租户 #223 的阶段实施与后续验收 |
 
 客户 charcoal 与使用学校/产品品牌分别记录，不把学校名称推定为签约客户。
 项目编号不要求重命名代码仓库或改变产品展示名。
@@ -25,7 +25,7 @@
 - [需求与改动](https://github.com/guanlili/english-speaking-assessment/issues)
 - [代码评审与实现](https://github.com/guanlili/english-speaking-assessment/pulls)
 - [多租户需求](https://github.com/guanlili/english-speaking-assessment/issues/223)
-- [历史双轨试运行](https://github.com/guanlili/english-speaking-assessment/issues/222)
+- [历史双轨试运行（已结项 2026-11-16）](https://github.com/guanlili/english-speaking-assessment/issues/222)
 - [试点配置草稿 PR](https://github.com/guanlili/english-speaking-assessment/pull/240)
 
 ## 2026-11-01 试点基线快照
