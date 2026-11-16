@@ -767,3 +767,22 @@ jobs:
               docker rmi "${proj}-backend:latest" "${proj}-frontend:latest" \
                          "${proj}-prestart:latest" >/dev/null 2>&1 || true
             fi
+
+      # 生产 RLS 自检：把「受限角色是否真在限」变成每次部署都自动产生的证据，
+      # 不依赖谁去登录主机手工查。判据见 scripts/prod-rls-selfcheck.sh 头部注释；
+      # 失败会让 job 红灯（此时容器已起来，红灯只表示隔离状态不符预期，不是部署失败）。
+      - name: 生产 RLS 自检（受限角色真实生效）
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          PATH_B64: ${{ steps.envfile.outputs.path_b64 }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 10m
+          envs: PATH_B64
+          script: |
+            set -e
+            deploy_path=$(printf '%s' "$PATH_B64" | base64 -d)
+            cd "$deploy_path"
+            bash scripts/prod-rls-selfcheck.sh
