@@ -116,6 +116,8 @@ docker compose down         # 停止
 | API 文档 | http://localhost:8000/docs |
 | 邮件测试 | http://localhost:1080 |
 
+**Docker Hub 不可达时**（本机实测 2026-11 直连 `registry-1.docker.io` 超时）：基础镜像走加速源拉取后本地打 tag，再正常构建——`docker pull docker.m.daocloud.io/library/node:24-slim && docker tag docker.m.daocloud.io/library/node:24-slim node:24-slim`，然后 `docker compose build frontend`。前端容器若跑的是生产镜像（nginx 监听 80）而 compose 映射 5173，页面会打不开；`docker compose up -d --force-recreate frontend` 用 dev target 重建即恢复（vite 起在 5173）。
+
 查看数据库：`docker compose exec db psql -U postgres -d app`
 
 运行后端测试（需要数据库在运行；测试自动创建并使用**独立测试库** `app_test`，不碰开发库 `app`）：
