@@ -24,7 +24,7 @@
 
 ## 项目管理规范
 
-执行前及收尾时阅读 [docs/project-management.md](docs/project-management.md)，按其中约定关联 Issue、PR、验证与交付证据。实际人工工时未经本人确认保持未记录；客户归属与工时可按用户确认范围公开记录，凭据与学生个人信息不得入库。既有 #222 双轨试运行约定仍有效，需求版本冲突先记录并澄清。
+执行前及收尾时阅读 [docs/project-management.md](docs/project-management.md)，按其中约定关联 Issue、PR、验证与交付证据。实际人工工时未经本人确认保持未记录；客户归属与工时可按用户确认范围公开记录，凭据与学生个人信息不得入库。账本已于 2026-11-16 转为单一入口（GitHub Issue + Project #3，Notion 仅作历史存档）；需求版本冲突先记录并澄清，以 GitHub 为准。
 
 项目身份、客户归属与基线见 [docs/project-profile.md](docs/project-profile.md)。
 
