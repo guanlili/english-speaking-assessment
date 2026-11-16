@@ -1,4 +1,4 @@
-# GitHub 项目管理试点
+# GitHub 项目管理（devledger）
 
 试点起点：2026-11-01。研发记录沿用本仓库；项目视图：https://github.com/users/guanlili/projects/3 。
 
@@ -99,3 +99,12 @@ GitHub 原生 Auto-add 规则已针对本仓库 Issue 启用，覆盖新增或�
 | 工程与运维文档 | #431 | 留空 |
 
 逐条 PR 清单、切分口径与已知局限见 [git-workstreams-2026-11-13.md](git-workstreams-2026-11-13.md)。历史工程投入未记录实际工时，按口径留空，不按提交数或代码行数推算；开始/结束取工作流首末 PR 合并日期，不代表实际排期。
+
+## 导出验收表
+
+```bash
+python3 -m venv ~/.venvs/esa-export && ~/.venvs/esa-export/bin/pip install openpyxl
+~/.venvs/esa-export/bin/python ~/.agents/skills/devledger/scripts/export-timesheet.py --project 3 -o 验收汇总-YYYYMMDD.xlsx
+```
+
+导出件落在仓库外（如 `~/Projects/english-speaking-assessment-exports/`），不入 git。工作簿含「缺失工时」页，列出无工时条目，便于逐条补录或说明原因。
