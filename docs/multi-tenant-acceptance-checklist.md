@@ -85,4 +85,4 @@
 **两点发现（写进验收说明，避免误解）**：
 
 1. **身份层表不启 RLS**：`user`、`tenant` 不在 `RLS_TABLES` 里。以第二校上下文读 `"user"` 仍返回 15 行 / 4 个租户——这是设计如此（身份层靠应用层过滤，平台口径需要跨校身份），**不是漏洞**，但对外解释 AC-05 时必须说清「RLS 覆盖 32 张业务表，不含身份表」，否则会被误读成隔离失效。
-2. **本地开发库没有按生产角色跑**：`.env` 里 `APP_POSTGRES_USER/PASSWORD`、`PLATFORM_POSTGRES_USER/PASSWORD` 都是空值，本地后端实际以 `postgres`（BYPASSRLS）连接，所以本地跑应用**绕过 RLS**。生产已按受限角色部署，但这意味着"本地测出来的隔离效果"不能代表线上——探针必须显式建同构角色才有效。
+2. **本地曾长期以超管连库（2026-11-16 已修正）**：`.env` 的 `APP_POSTGRES_USER/PASSWORD`、`PLATFORM_POSTGRES_USER/PASSWORD` 原为空，后端以 `postgres`（BYPASSRLS）连接，本地跑应用**绕过 RLS**——跨校越权在本地测不出来。2026-11-16 已按生产同构补齐并 `docker compose up -d prestart` 建角色（`ensure_db_roles.py`），复验：`GET /api/v1/classes` 返回 9 条（默认校），而 `classroom` 全表 10 条（另一校 1 条被 RLS 过滤），确认本地已在真实隔离下运行。留空 .env 仍会回落超管，重建环境后需重跑 prestart。
