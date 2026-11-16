@@ -19,7 +19,7 @@
 | AC-02 权限 | A 校管理员不能读写 B 校任何教学对象 | 部分 | `test_tenant_school_admin_scope.py`、`test_tenant_c5_acceptance.py::test_ac08_teacher_sees_own_school_classrooms_only`；报告 §2.5 | 只有单库内两租户的构造数据；真实两校并行时管理员越权试探未做 |
 | AC-03 入口 | 篡改学校/课堂码/对象 ID/批量参数/JSON 引用/文件名不能跨校；404/403/401 语义+双语 | 有证据 | 应用层租户过滤收口（PR #308）修复了跨校复制与预览读越权；`test_tenant_content_copy.py`；报告 §三 P1 与 §6.1/6.2 | 双语错误文案未逐条核对；文件名篡改路径未见独立用例 |
 | AC-04 题库 | 搜索/查重/导入导出/复制/AI/组卷/标准音/发布全覆盖学校校验；未授权教材不出现在新校 | 部分 | `test_tenant_c5_acceptance.py::test_ac04_cross_classroom_isolated`、`test_ac05_cross_content_invisible`、`test_tenant_taxonomy_scope.py`；`docs/question-bank-ownership-design.md`；报告 §2.4 | 八条子路径未逐项验证；「未授权教材不出现在新校」缺显式用例 |
-| AC-05 数据库 | 真实普通角色验证 RLS；缺上下文拒绝、事务切换正确、连接复用不串校、复合外键拦截跨校写入 | 有证据 | `tests/test_tenant_c4a_rls.py`（32 表 FORCE+策略、受限角色、缺上下文拒绝、跨校写拦截、平台角色旁路）+ 2026-11-16 真库受限角色探针（见第四节） | 生产库尚未用真实普通角色跑过；本地开发库角色为空、实际以超管运行，探针是临时同构角色。复合外键拦截未单独用例 |
+| AC-05 数据库 | 真实普通角色验证 RLS；缺上下文拒绝、事务切换正确、连接复用不串校、复合外键拦截跨校写入 | 有证据 | `tests/test_tenant_c4a_rls.py`（32 表 FORCE+策略、受限角色、缺上下文拒绝、跨校写拦截、平台角色旁路）+ 2026-11-16 真库受限角色探针（见第四节）+ 每次部署自动自检 `scripts/prod-rls-selfcheck.sh`（角色属性 / FORCE RLS / 缺上下文拒读 / 连接身份，结果进 CI 日志） | 生产库的真角色证据以部署自检输出为准（首次生效见 PR #452 之后的部署记录）。复合外键拦截未单独用例 |
 | AC-06 文件与任务 | 录音回放/ZIP/PDF/评分重试/启动恢复/定时清理归属正确并留审计；旧链接按权限可用 | 部分 | `test_tenant_ac06_exports.py`、`test_export_worker.py`；报告 §2.4 | 录音回放、启动恢复、定时清理、审计留痕未逐项覆盖 |
 | AC-07 用量 | 额度预占一致、重试不重复扣额、供应商额外消耗可追溯 | 部分（额度部分属暂缓范围） | **可追溯部分已有测试**：`test_metrics_daily.py`（`llm_basis` = `tokens`/`estimated` 两态、`/cost/reconcile` 录入与月份校验、`deviation_pct` 计算）；`admin_cost_reconcile` 表与 `metrics.record_llm_tokens` 实现 | **额度预占与「重试不重复扣额」无任何实现**：`backend/app` 内不存在额度/扣减逻辑（`ratelimit.py` 只是请求限流）；额度管理属 **D 期「开通/授权额度/用量」**，而 D 期已确认暂缓 |
 | AC-08 公平与容量 | 两校混合负载无丢失/串校/饥饿；记录响应时间与排队；限流分桶后一校爆破不影响他校 | 暂缓（未执行） | `docs/runtime-observability.md` 有观测手段；`scripts/perf_baseline.py` 可复用做基线 | 混合负载压测、排队指标、限流分桶均未做；公平调度属 **D 期**（暂缓），混合负载属 **E 期**（试点）。2026-11-16 决定暂不压测，待试点排期确定后执行 |
@@ -86,3 +86,17 @@
 
 1. **身份层表不启 RLS**：`user`、`tenant` 不在 `RLS_TABLES` 里。以第二校上下文读 `"user"` 仍返回 15 行 / 4 个租户——这是设计如此（身份层靠应用层过滤，平台口径需要跨校身份），**不是漏洞**，但对外解释 AC-05 时必须说清「RLS 覆盖 32 张业务表，不含身份表」，否则会被误读成隔离失效。
 2. **本地曾长期以超管连库（2026-11-16 已修正）**：`.env` 的 `APP_POSTGRES_USER/PASSWORD`、`PLATFORM_POSTGRES_USER/PASSWORD` 原为空，后端以 `postgres`（BYPASSRLS）连接，本地跑应用**绕过 RLS**——跨校越权在本地测不出来。2026-11-16 已按生产同构补齐并 `docker compose up -d prestart` 建角色（`ensure_db_roles.py`），复验：`GET /api/v1/classes` 返回 9 条（默认校），而 `classroom` 全表 10 条（另一校 1 条被 RLS 过滤），确认本地已在真实隔离下运行。留空 .env 仍会回落超管，重建环境后需重跑 prestart。
+
+### 4.1 部署自检（2026-11-17 起）
+
+`scripts/prod-rls-selfcheck.sh` 由 `deploy.yml` 在「服务器拉代码并重启服务」之后自动执行，把生产隔离状态写成 CI 日志：
+
+| 判据 | 失败含义 |
+| --- | --- |
+| APP 角色 `rolsuper=0` / `rolbypassrls=0` | 受限角色被改成超管，RLS 形同虚设 |
+| PLATFORM 角色 `rolbypassrls=1` | 平台通道失去跨校能力 |
+| 业务表 `relforcerowsecurity` > 0 | 策略对表 owner 不生效，迁移可能被回退 |
+| 受限角色缺上下文读 `classroom` = 0 行 | 策略没挂上或 `app.tenant_id` 语义变了 |
+| 无 owner 身份的业务连接 | 应用没切到受限角色（回落 owner） |
+
+本地实跑（2026-11-17，开发栈）：5 条全过；把 `APP_POSTGRES_USER` 改成 `postgres` 后 2 条转红、退出码 1，证明判据不是空转。
