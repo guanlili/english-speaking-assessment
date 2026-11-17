@@ -21,9 +21,11 @@
 from __future__ import annotations
 
 import argparse
+import io
 import random
 import uuid
 import wave
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -37,7 +39,9 @@ from app.models import (
     Attempt,
     Classroom,
     Passage,
+    RepeatSentence,
     Scenario,
+    ScenarioQuestion,
     Student,
     Tenant,
     User,
@@ -106,6 +110,20 @@ TRANSCRIPTS = [
     "I grow tomatoes on my balcony it is only two metres wide",
 ]
 
+SCENARIO_QUESTIONS = [
+    "What do you usually do on weekends?",
+    "Describe a place in your city that you like.",
+    "How do you prepare for an exam?",
+    "Why do people enjoy travelling?",
+]
+
+
+@dataclass
+class SeedContent:
+    passages: list[Passage]
+    repeats: list[RepeatSentence]
+    questions: list[ScenarioQuestion]
+
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Seed a pilot-sized local dataset")
@@ -122,7 +140,6 @@ def parse_args() -> argparse.Namespace:
 
 def silent_wav_bytes(seconds: float = 0.5, rate: int = 8000) -> bytes:
     """生成一段静音 wav，用作占位录音（体积小，但确实是可解码的音频文件）。"""
-    import io
 
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
@@ -134,7 +151,7 @@ def silent_wav_bytes(seconds: float = 0.5, rate: int = 8000) -> bytes:
 
 
 def reset_seed(session: Session) -> None:
-    """只删自己造的数据：租户 → 其下 user/classroom/student/attempt，以及 seed 篇目。"""
+    """只删自己造的数据：租户 → 其下 user/classroom/student/attempt + 本校内容。"""
     tenants = session.exec(
         select(Tenant).where(Tenant.slug.like(f"{SEED_PREFIX}%"))
     ).all()
@@ -142,55 +159,113 @@ def reset_seed(session: Session) -> None:
         print("没有可清理的 seed 租户")
         return
     for t in tenants:
-        session.execute(
-            text("delete from attempt where tenant_id = :t"), {"t": str(t.id)}
-        )
-        session.execute(
-            text("delete from student where tenant_id = :t"), {"t": str(t.id)}
-        )
-        session.execute(
-            text("delete from classroom where tenant_id = :t"), {"t": str(t.id)}
-        )
-        session.execute(
-            text('delete from "user" where tenant_id = :t'), {"t": str(t.id)}
-        )
+        for stmt in (
+            "delete from attempt where tenant_id = :t",
+            "delete from student where tenant_id = :t",
+            "delete from classroom where tenant_id = :t",
+            "delete from scenario_question where tenant_id = :t",
+            "delete from scenario where tenant_id = :t",
+            "delete from repeat_sentence where tenant_id = :t",
+            "delete from passage where tenant_id = :t",
+            'delete from "user" where tenant_id = :t',
+        ):
+            session.execute(text(stmt), {"t": str(t.id)})
         session.execute(text("delete from tenant where id = :t"), {"t": str(t.id)})
         print(f"已清理租户 {t.slug}")
+    # 兜底：修好租户归属之前，篇目曾建在默认校
     session.execute(
         text("delete from passage where title like :p"), {"p": f"{SEED_TITLE_PREFIX}%"}
     )
     session.commit()
 
 
-def ensure_passages(session: Session, count: int) -> list[Passage]:
-    existing = session.exec(
-        select(Passage).where(Passage.title.like(f"{SEED_TITLE_PREFIX}%"))
+def ensure_content(
+    session: Session, tenant: Tenant, owner_id: uuid.UUID | None, count: int
+) -> SeedContent:
+    """按校建内容：篇目 + 每篇一句复述 + 一个情景主题下的问法。
+
+    内容必须归属本校：`content_access.require_same_tenant` 与 RLS 都会拦
+    跨校取题（把篇目建在默认校时，种子校学生提交作答直接 404）。
+    """
+    passages = session.exec(
+        select(Passage).where(
+            Passage.tenant_id == tenant.id,
+            Passage.title.like(f"{SEED_TITLE_PREFIX}%"),
+        )
     ).all()
-    made: list[Passage] = []
     for i in range(count):
         title, body = PASSAGE_TEXTS[i % len(PASSAGE_TEXTS)]
         name = f"{SEED_TITLE_PREFIX}{title} {i + 1}"
-        found = next((p for p in existing if p.title == name), None)
-        if found:
-            made.append(found)
+        if any(p.title == name for p in passages):
             continue
         base_slug = "-".join(
             "".join(ch if ch.isalnum() else " " for ch in name).lower().split()
         )[:90]
         p = Passage(
             title=name,
-            slug=crud.unique_passage_slug(session, base_slug),
+            slug=crud.unique_passage_slug(session, base_slug, tenant_id=tenant.id),
             topic="pilot",
             cefr_band="B1",
             text=body,
             suggested_seconds=45,
+            tenant_id=tenant.id,
+            owner_id=owner_id,
         )
         session.add(p)
-        made.append(p)
+        passages.append(p)
     session.commit()
-    for p in made:
-        session.refresh(p)
-    return made
+
+    repeats = session.exec(
+        select(RepeatSentence).where(RepeatSentence.tenant_id == tenant.id)
+    ).all()
+    for p in passages:
+        if any(r.passage_id == p.id for r in repeats):
+            continue
+        first = p.text.split(". ")[0].rstrip(".") + "."
+        r = RepeatSentence(
+            tenant_id=tenant.id,
+            passage_id=p.id,
+            order_index=0,
+            text=first,
+            suggested_seconds=10,
+            owner_id=owner_id,
+        )
+        session.add(r)
+        repeats.append(r)
+
+    topic = f"{SEED_PREFIX}-topic-{tenant.slug}"
+    scenario = session.exec(
+        select(Scenario).where(Scenario.tenant_id == tenant.id, Scenario.topic == topic)
+    ).first()
+    if scenario is None:
+        scenario = Scenario(topic=topic, tenant_id=tenant.id, owner_id=owner_id)
+        session.add(scenario)
+    session.commit()
+    session.refresh(scenario)
+
+    questions = session.exec(
+        select(ScenarioQuestion).where(ScenarioQuestion.scenario_id == scenario.id)
+    ).all()
+    if not questions:
+        for i, text in enumerate(SCENARIO_QUESTIONS):
+            q = ScenarioQuestion(
+                tenant_id=tenant.id,
+                scenario_id=scenario.id,
+                order_index=i,
+                text=text,
+                suggested_seconds=20,
+                owner_id=owner_id,
+            )
+            session.add(q)
+            questions.append(q)
+    session.commit()
+    for group in (passages, repeats, questions):
+        for x in group:
+            session.refresh(x)
+    print(
+        f"学校 {tenant.slug} 内容：{len(passages)} 篇目 / {len(repeats)} 复述句 / {len(questions)} 问法"
+    )
+    return SeedContent(passages=passages, repeats=repeats, questions=questions)
 
 
 def ensure_tenant(
@@ -292,21 +367,26 @@ def ensure_attempts(
     session: Session,
     tenant: Tenant,
     students: list[Student],
-    passages: list[Passage],
-    scenarios: list[Scenario],
+    content: SeedContent,
     per_student: int,
     audio_dir: Path,
 ) -> int:
     audio_dir.mkdir(parents=True, exist_ok=True)
     made = 0
     now = datetime.now(UTC)
-    for stu in students:
+    for idx, stu in enumerate(students):
         for k in range(per_student):
             kind = "passage" if k == 0 else ("repeat" if k == 1 else "question")
-            if kind == "question" and scenarios:
-                item_id = scenarios[(k + len(students)) % len(scenarios)].id
+            if kind == "question":
+                if not content.questions:
+                    continue
+                item_id = content.questions[(k + idx) % len(content.questions)].id
+            elif kind == "repeat":
+                if not content.repeats:
+                    continue
+                item_id = content.repeats[(k + idx) % len(content.repeats)].id
             else:
-                item_id = passages[(k + students.index(stu)) % len(passages)].id
+                item_id = content.passages[(k + idx) % len(content.passages)].id
             created = now - timedelta(
                 days=random.randint(0, 20),
                 hours=random.randint(0, 23),
@@ -351,17 +431,19 @@ def main() -> None:
         if args.reset:
             reset_seed(session)
         pw_hash = get_password_hash(args.password)
-        passages = ensure_passages(session, 12)
-        scenarios = session.exec(select(Scenario).limit(7)).all()
 
         total = {"schools": 0, "classes": 0, "students": 0, "attempts": 0}
         for i in range(1, args.schools + 1):
-            tenant, cls, stu, _ = ensure_tenant(
+            tenant, cls, stu, users = ensure_tenant(
                 session, i, args.classes, args.students, pw_hash
             )
             total["schools"] += 1
             total["classes"] += len(cls)
             total["students"] += len(stu)
+            teachers = [u for u in users if u.role == "teacher"]
+            content = ensure_content(
+                session, tenant, teachers[0].id if teachers else None, 12
+            )
             if (
                 args.attempts
                 and not session.exec(
@@ -369,7 +451,7 @@ def main() -> None:
                 ).first()
             ):
                 n = ensure_attempts(
-                    session, tenant, stu, passages, scenarios, args.attempts, audio_dir
+                    session, tenant, stu, content, args.attempts, audio_dir
                 )
                 total["attempts"] += n
             else:
