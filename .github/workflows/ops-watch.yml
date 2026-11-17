@@ -25,6 +25,8 @@ env:
   # 磁盘两档阈值（%）——只在这里改
   DISK_WARN_PCT: "70"
   DISK_CRIT_PCT: "85"
+  # 最近一次完整备份包的最大年龄（小时）：每日 3:30 备份，留一天余量
+  BACKUP_MAX_AGE_HOURS: "30"
 
 jobs:
   uptime:
@@ -93,4 +95,53 @@ jobs:
               echo "::warning::磁盘预警：${worst_mount} 已用 ${worst}%（预警阈值 ${WARN_PCT}%）"
             else
               echo "磁盘水位正常（最高 ${worst}%，${worst_mount}）"
+            fi
+
+  backup:
+    name: 备份新鲜度
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # 备份 cron 写失败只落到 backups/backup-failure.log，没有外部信号：
+      # 数据不可恢复这件事，必须在撑不住之前有人知道，所以巡检直接验备份包本身。
+      - name: 校验最近备份包（年龄 + 清单 + 失败日志）
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          MAX_AGE_HOURS: ${{ env.BACKUP_MAX_AGE_HOURS }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 2m
+          envs: DEPLOY_PATH,MAX_AGE_HOURS
+          script: |
+            set -eu
+            if [ -z "${DEPLOY_PATH:-}" ]; then
+              echo "::error::DEPLOY_PATH 未配置，无法定位备份目录"
+              exit 1
+            fi
+            cd "$DEPLOY_PATH"
+
+            latest=$(ls -1dt backups/bundle-* 2>/dev/null | head -n1 || true)
+            if [ -z "$latest" ]; then
+              echo "::error::backups/ 下没有任何完整备份包（bundle-*）"
+              exit 1
+            fi
+
+            age_s=$(( $(date +%s) - $(stat -c %Y "$latest") ))
+            echo "最近备份：$latest（$(( age_s / 3600 )) 小时前）"
+            if [ "$age_s" -gt $(( MAX_AGE_HOURS * 3600 )) ]; then
+              echo "::error::最近备份已超过 ${MAX_AGE_HOURS} 小时，每日备份 cron 可能没有生效"
+              exit 1
+            fi
+
+            ( cd "$latest" && sha256sum -c manifest.sha256 --quiet ) \
+              || { echo "::error::备份清单校验失败，最新包不可用：$latest"; exit 1; }
+            echo "备份清单校验通过（database / audio / config / metadata 四项）"
+
+            if [ -f backups/backup-failure.log ]; then
+              echo "--- backups/backup-failure.log 最近 5 行 ---"
+              tail -n 5 backups/backup-failure.log || true
+              echo "::warning::存在 backup-failure.log，说明至少有一次备份失败记录"
             fi
