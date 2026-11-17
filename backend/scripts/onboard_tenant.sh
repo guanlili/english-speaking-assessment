@@ -10,7 +10,9 @@
 # 需要重置密码走后台改密或 SQL）。密码只打印一次。
 # 之后的教师/学生账号由该校管理员走后台建号，全部自动落该校（写入侧
 # 租户继承 + RLS 强制隔离，无需额外配置）。
-# 设计依据 docs/multi-tenant-design.md §3/§4。
+# 设计依据 docs/multi-tenant-design.md §3/§4；完整操作流程见
+# docs/school-onboarding-runbook.md（开校 → 建教师 → 建课堂 → 导学生 → 备内容 →
+# 发布 → 冒烟自检）。
 
 set -euo pipefail
 
