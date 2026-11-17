@@ -153,15 +153,33 @@ def silent_wav_bytes(seconds: float = 0.5, rate: int = 8000) -> bytes:
     return buf.getvalue()
 
 
-def reset_seed(session: Session) -> None:
-    """只删自己造的数据：租户 → 其下 user/classroom/student/attempt + 本校内容。"""
+def reset_seed(session: Session, audio_dir: Path) -> None:
+    """只删自己造的数据：租户 → 其下 user/classroom/student/attempt + 本校内容。
+
+    作答行删除前先按 `audio_path` 清音频文件：`attempt` 是唯一的引用方，
+    行没了就是孤儿；只删行会每次重跑留一批孤儿 wav（实测四轮留下 7800+ 文件）。
+    """
     tenants = session.exec(
         select(Tenant).where(Tenant.slug.like(f"{SEED_PREFIX}%"))
     ).all()
     if not tenants:
         print("没有可清理的 seed 租户")
         return
+    removed_audio = 0
     for t in tenants:
+        audio_paths = session.exec(
+            select(Attempt.audio_path).where(
+                Attempt.tenant_id == t.id,
+                Attempt.audio_path.is_not(None),  # type: ignore[union-attr]
+            )
+        ).all()
+        for path in audio_paths:
+            if not path:
+                continue
+            f = Path(path)
+            if f.parent == audio_dir and f.is_file():
+                f.unlink()
+                removed_audio += 1
         for stmt in (
             "delete from attempt where tenant_id = :t",
             "delete from practice_session where tenant_id = :t",
@@ -182,6 +200,7 @@ def reset_seed(session: Session) -> None:
         text("delete from passage where title like :p"), {"p": f"{SEED_TITLE_PREFIX}%"}
     )
     session.commit()
+    print(f"已清理音频 {removed_audio} 个")
 
 
 def ensure_content(
@@ -547,7 +566,7 @@ def main() -> None:
     audio_dir = Path(settings.AUDIO_STORAGE_DIR)
     with Session(engine) as session:
         if args.reset:
-            reset_seed(session)
+            reset_seed(session, audio_dir)
         pw_hash = get_password_hash(args.password)
 
         total = {

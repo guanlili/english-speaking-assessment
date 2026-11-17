@@ -55,7 +55,8 @@ docker compose run --rm -T -v "$PWD/backend:/app/backend" backend \
 - 只写 `seedpilot%` 前缀的租户与 `[seed]` 前缀篇目，**不碰默认演示校**；`--reset` 只清自己造的数据。
 - 走 admin 连接写库（与 `initial_data.py` 同口径），归属租户由脚本显式指定。
 - 幂等：学校已存在则跳过造校，内容按「本校缺失才补」处理；该校已有作答则跳过造作答。重复执行只会补齐缺失的部分。
-- `--reset` 按租户清理，顺序为 `attempt` → `practice_session` → `classroom_exercise`（会话与发布快照都引用作答/课堂，倒序删才不撞外键）。
+- `--reset` 按租户清理，顺序为 `attempt` → `practice_session` → `classroom_exercise`（会话与发布快照都引用作答/课堂，倒序删才不撞外键）。删 `attempt` 行前先按 `audio_path` 删音频文件——`attempt` 是音频的唯一引用方，只删行会让每次重跑都留一批孤儿 wav（实测连跑几轮后卷里 7800+ 文件、63 MB，而库里只有 4000 条作答）。
+- 库里已有但当天才产生的孤儿音频，由 `app/core/audio_retention.py` 的保留清理器在 24 小时竞态窗口后自动回收，脚本不越权删。
 
 ## 2026-11-17 首次建库实测
 
@@ -73,3 +74,31 @@ docker compose run --rm -T -v "$PWD/backend:/app/backend" backend \
 - 六个班抽查（`SD100X`/`SD101X`/`SD200X`/`SD202X`）全部 `submitted 20 / completed 20`，`current_exercise` 均为「seed 今日练习」。
 - 前端实测（教师 `t01@seedpilot-01.seed` → `/classrooms` → `/t/SD100X`）：页头显示「**已提交 20/20**」，学生结果 Tab「已完成 20 人」，名单行「4/4 + 分数 + 已提交」。截图：`/tmp/ui-teacher-board.png`。
 - 学生端未受影响：`s10001` 的今日练习接口 `GET /classes/SD100X/today` 返回 200 且读出发布快照题位（1 passage + 1 repeat + 2 question）。
+
+## 2026-11-17 千级体量实测
+
+用来回答「这套栈在 1000+ 作答时会不会掉链子」。两组规模，都是 2 校 × 5 班，`--reset` 重建：
+
+| 规模 | 学生 | 会话 | 作答 | 单班面板耗时 | 面板体积 |
+|---|---|---|---|---|---|
+| 60 人/班 | 600 | 600 | 2400 | 11–16 ms | 64 KB |
+| 100 人/班 | 1000 | 1000 | 4000 | 13–16 ms | 107 KB |
+
+单班 100 人时：接口 `submitted 100 / completed 100 / pending 0`；前端 `/t/SD100X` 整页加载 **1.1 s**，学生结果表 100 行全部渲染、无一截断（截图 `/tmp/ui-teacher-board-100.png`）。
+
+同体量下其它读写端点（教师/学生 token，各 3 次）：
+
+| 端点 | 耗时 | 返回 |
+|---|---|---|
+| `GET /classes/{code}/board` | 13–16 ms | 107 KB |
+| `GET /classes/{code}/weak-spots` | 8 ms | 456 B |
+| `GET /classes/{code}/trail?student_id=…` | 7 ms | 317 B |
+| `GET /classes/{code}/learning-report?student_id=…` | 6 ms | 951 B |
+| `GET /classes/{code}/today`（学生） | 9 ms | 4.2 KB |
+| `GET /students/me/classrooms`（学生） | 6 ms | 275 B |
+
+库与卷：`attempt=4000`、`practice_session=1001`、`student=1001`，`pg_database_size('app')` **19 MB**；音频卷 4000 份作答音频约 **16 MB**（不含内容音）。
+
+**结论**：教师面板是「一次列表 + 按学生内存组装」（`_load_board_sessions` 一次拉今日会话、`_load_attempts_map` 一次拉全部作答），单班 100 人仍毫秒级，没有 N+1；前端 100 行一次渲染 1.1 s 可接受。局限：这是单机本地栈 + `engine=mock`，**不代表并发压测结果**——AC-08（公平调度/并发）仍暂缓，本次不覆盖。
+
+**顺带修掉的问题**：`--reset` 只删库不删音频，连跑几轮后音频卷涨到 7800+ 文件 / 63 MB（库内只有 4000 条作答），已改为删 `attempt` 行前按 `audio_path` 删文件。
