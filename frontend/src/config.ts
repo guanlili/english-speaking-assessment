@@ -9,6 +9,10 @@ export const APP_NAME_SHORT = "BELP"
 export const SITE_URL = "https://outman.website"
 
 // 对外支持邮箱（落地页/帮助页/隐私页的「联系我们」入口）。
+// 构建期从 VITE_SUPPORT_EMAIL 注入，不在源码里硬编码：换联系方式只改部署配置，
+// 不必重新发版；个人邮箱也不会随公开页被搜索引擎永久抓走。
 // 留空时页面不展示邮件入口，只提示「联系你所在学校的平台管理员」——
 // 学校数据归属学校，开通与删除请求默认走校方渠道。
-export const SUPPORT_EMAIL: string = "lovelose1921@vip.qq.com"
+export const SUPPORT_EMAIL: string = (
+  import.meta.env.VITE_SUPPORT_EMAIL ?? ""
+).trim()
