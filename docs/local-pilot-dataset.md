@@ -40,7 +40,7 @@ docker compose run --rm -T -v "$PWD/backend:/app/backend" backend \
 
 - 校级管理员：`admin@seedpilot-01.seed`、`admin@seedpilot-02.seed`
 - 教师：`t01@seedpilot-01.seed` … `t03@seedpilot-02.seed`
-- 学生：学号 `s0101`…`s0203xx`（`s` + 学校号 + 班号 + 序号）
+- 学生：学号 `s10001`…（`s` + 学校号 + 班号两位 + 序号两位，如 `s10001` = 1 校 1 班 1 号）；登录需带学校码 `?school=seedpilot-01`
 
 ## 纪律
 
