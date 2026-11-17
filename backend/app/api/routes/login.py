@@ -33,6 +33,23 @@ from app.utils import (
 
 LOGIN_RATE_LIMIT = 10
 LOGIN_RATE_WINDOW_S = 300
+
+# 分桶额度（2026-11-18，第二校实测后调整）
+#
+# 原来只有两个桶：`ip:<出口IP>` 与 `user:<账号>`，都是 10 次/5 分钟。两个问题：
+#
+# 1. **同号不同校共享失败预算**：A 校 s10001 输错 10 次，B 校 s10001 也被挡——
+#    两校是同名学号的常态（学号本来就是校内编号），等于把两所学校的安全边界串起来。
+# 2. **一个班会被另一个班的错误连坐**：学校机房/教室普遍走 NAT 单出口，全楼共享
+#    一个公网 IP。10 次额度是「一个人能被试几次」的口径，拿来卡「一整个出口能被
+#    试几次」必然误伤——一堂课 30 个学生里 10 个人手滑，全班一起等 5 分钟。
+#
+# 改成三个桶：账号桶按学校隔离（额度不变），IP 桶拆成「同校出口」与「全局兜底」。
+# 同校出口放宽到一个班绰绰有余（30），全局兜底保留防跨校喷洒（60）。
+LOGIN_ACCOUNT_LIMIT = LOGIN_RATE_LIMIT  # 单账号：10 次/5 分钟
+LOGIN_SCHOOL_IP_LIMIT = 30  # 同校同出口：30 次/5 分钟（够一个班各自试几次）
+LOGIN_IP_GLOBAL_LIMIT = 60  # 单出口全局：60 次/5 分钟（跨校喷洒的兜底）
+
 _login_limiter = SlidingWindowLimiter(
     limit=LOGIN_RATE_LIMIT, window_s=LOGIN_RATE_WINDOW_S
 )
@@ -41,12 +58,27 @@ _login_attempts = _login_limiter._attempts  # noqa: SLF001
 _login_lock = _login_limiter._lock  # noqa: SLF001
 
 
-def _check_login_rate_limit(bucket: str) -> None:
-    _login_limiter.check(bucket, detail="登录尝试过于频繁，请 5 分钟后再试")
+def _check_login_rate_limit(bucket: str, limit: int | None = None) -> None:
+    _login_limiter.check(
+        bucket, detail="登录尝试过于频繁，请 5 分钟后再试", limit=limit
+    )
 
 
 def _record_login_success(bucket: str) -> None:
     _login_limiter.record_success(bucket)
+
+
+def _account_bucket(school_slug: str | None, account: str) -> str:
+    """账号桶：学校维度在前——两校同名学号各有各的失败预算。"""
+    return f"acct:{school_slug or '-'}:{account}"
+
+
+def _school_ip_bucket(school_slug: str | None, client_ip: str) -> str:
+    return f"ip:{school_slug or '-'}:{client_ip}"
+
+
+def _global_ip_bucket(client_ip: str) -> str:
+    return f"ipall:{client_ip}"
 
 
 router = APIRouter(tags=["login"])
@@ -129,14 +161,19 @@ def login_access_token(
     （带 school）不回退，保持学校入口纯净。
     """
     client_ip = request.client.host if request.client else "unknown"
-    # 双维度限流：IP 桶（NAT 出口共享，防横向刷）+ 账号桶（防针对单账号爆破）。
+    school_slug = school.strip().lower() if school else None
+    # 三维度限流：账号桶（防针对单账号爆破，按学校隔离）+ 同校出口桶
+    # （NAT 出口共享，额度按「一个班」给）+ 全局出口桶（跨校喷洒兜底）。
     # IP 取自 uvicorn 解析的 X-Forwarded-For（compose 已设 FORWARDED_ALLOW_IPS，
     # nginx 是唯一上游；多 worker 部署时内存字典各进程独立，限额按 worker 数放大）
     account = form_data.username.strip().lower()
-    _check_login_rate_limit(f"ip:{client_ip}")
-    _check_login_rate_limit(f"user:{account}")
-
-    school_slug = school.strip().lower() if school else None
+    _check_login_rate_limit(
+        _account_bucket(school_slug, account), limit=LOGIN_ACCOUNT_LIMIT
+    )
+    _check_login_rate_limit(
+        _school_ip_bucket(school_slug, client_ip), limit=LOGIN_SCHOOL_IP_LIMIT
+    )
+    _check_login_rate_limit(_global_ip_bucket(client_ip), limit=LOGIN_IP_GLOBAL_LIMIT)
 
     user = crud.authenticate(
         session=session,
@@ -158,8 +195,13 @@ def login_access_token(
         if operator is not None:
             if not operator.is_active:
                 raise HTTPException(status_code=400, detail="Inactive operator")
-            _login_limiter.record_success(f"ip:{client_ip}", refund_only=True)
-            _record_login_success(f"user:{account}")
+            _login_limiter.record_success(
+                _school_ip_bucket(school_slug, client_ip), refund_only=True
+            )
+            _login_limiter.record_success(
+                _global_ip_bucket(client_ip), refund_only=True
+            )
+            _record_login_success(_account_bucket(school_slug, account))
             return Token(
                 access_token=security.create_access_token(
                     operator.id,
@@ -177,10 +219,13 @@ def login_access_token(
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     access_token_expires = _session_expiry(remember)
-    # 账号桶整桶清空（成功即本人）；IP 桶只退还本次占用的额度、保留
+    # 账号桶整桶清空（成功即本人）；出口桶只退还本次占用的额度、保留
     # 失败计数——NAT 出口共享，成功清桶会让「喷洒+成功」交替绕过限流
-    _login_limiter.record_success(f"ip:{client_ip}", refund_only=True)
-    _record_login_success(f"user:{account}")
+    _login_limiter.record_success(
+        _school_ip_bucket(school_slug, client_ip), refund_only=True
+    )
+    _login_limiter.record_success(_global_ip_bucket(client_ip), refund_only=True)
+    _record_login_success(_account_bucket(school_slug, account))
     return Token(
         access_token=security.create_access_token(
             user.id,
@@ -209,8 +254,11 @@ def login_platform_token(
     """
     client_ip = request.client.host if request.client else "unknown"
     account = form_data.username.strip().lower()
-    _check_login_rate_limit(f"ip:{client_ip}")
-    _check_login_rate_limit(f"op:{account}")
+    # 平台运营没有学校上下文：账号桶走无校前缀，出口桶走全局兜底
+    _check_login_rate_limit(
+        _account_bucket(None, f"op:{account}"), limit=LOGIN_ACCOUNT_LIMIT
+    )
+    _check_login_rate_limit(_global_ip_bucket(client_ip), limit=LOGIN_IP_GLOBAL_LIMIT)
     operator = crud.authenticate_platform_operator(
         session=session, email=form_data.username.strip(), password=form_data.password
     )
@@ -218,8 +266,8 @@ def login_platform_token(
         raise HTTPException(status_code=400, detail="账号或密码不正确")
     if not operator.is_active:
         raise HTTPException(status_code=400, detail="Inactive operator")
-    _login_limiter.record_success(f"ip:{client_ip}", refund_only=True)
-    _record_login_success(f"op:{account}")
+    _login_limiter.record_success(_global_ip_bucket(client_ip), refund_only=True)
+    _record_login_success(_account_bucket(None, f"op:{account}"))
     access_token_expires = _session_expiry(remember)
     return Token(
         access_token=security.create_access_token(

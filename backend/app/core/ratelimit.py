@@ -20,8 +20,19 @@ class SlidingWindowLimiter:
         self._attempts: dict[str, list[float]] = {}
         self._lock = Lock()
 
-    def check(self, bucket: str, *, detail: str = "请求过于频繁，请稍后再试") -> None:
-        """超限抛 429；未超限计入窗口。detail 是稳定标识（调用方自定义文案）。"""
+    def check(
+        self,
+        bucket: str,
+        *,
+        detail: str = "请求过于频繁，请稍后再试",
+        limit: int | None = None,
+    ) -> None:
+        """超限抛 429；未超限计入窗口。detail 是稳定标识（调用方自定义文案）。
+
+        limit 可按桶覆盖实例默认值：同一张限流表里，共享桶（NAT 出口 IP）
+        需要比单账号桶宽得多的额度，否则会拿「一个人能被试几次」的阈值去
+        卡「一个班能被试几次」。
+        """
         now = time.monotonic()
         with self._lock:
             if len(self._attempts) > _KEYS_PRUNE_THRESHOLD:
@@ -36,7 +47,7 @@ class SlidingWindowLimiter:
             cutoff = now - self.window_s
             while window and window[0] < cutoff:
                 window.pop(0)
-            if len(window) >= self.limit:
+            if len(window) >= (self.limit if limit is None else limit):
                 raise HTTPException(
                     status_code=429,
                     detail=detail,
