@@ -453,6 +453,13 @@ def ensure_exercise(
     session.add(exercise)
     session.flush()
     room.current_exercise_id = exercise.id
+    # 与真实发布同口径：发布时除快照外还写 assigned_items 镜像
+    # （app/services/exercise.py:publish_exercise）。只写快照的话，教师端
+    # 「学生当前练习」会读不到指派、显示成「自主练习 · 尚未安排统一内容」，
+    # 与同一页头的「已提交 20/20」自相矛盾。
+    room.assigned_items = [
+        {"type": str(item["type"]), "id": str(item["id"])} for item in items
+    ]
     session.add(room)
     session.commit()
     session.refresh(exercise)
