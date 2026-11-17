@@ -56,7 +56,8 @@ jobs:
       - name: 审计依赖（high 及以上）
         working-directory: frontend
         run: |
-          # 显式指官方源：镜像源（如 npmmirror）不实现 /-/npm/v1/security/* 端点，
-          # 本地用镜像时会直接 404，看起来像审计本身坏了
-          npm audit --package-lock-only --audit-level=high \
-            --registry=https://registry.npmjs.org
+          # 用本仓库闸门脚本而非裸 npm audit：npm audit 没有豁免机制，遇到上游
+          # 「已收录但无修复版本」的 advisory（如 picomatch CVE-2026-112366）会把
+          # 所有 PR 永久卡红。闸门脚本支持带到期日的按 advisory 豁免，其它高危照旧失败。
+          # 脚本内显式指官方源：镜像源（如 npmmirror）不实现 /-/npm/v1/security/* 端点。
+          node scripts/audit-gate.mjs
