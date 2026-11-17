@@ -28,6 +28,7 @@ import wave
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import create_engine, text
 from sqlmodel import Session, select
@@ -38,7 +39,9 @@ from app.core.security import get_password_hash
 from app.models import (
     Attempt,
     Classroom,
+    ClassroomExercise,
     Passage,
+    PracticeSession,
     RepeatSentence,
     Scenario,
     ScenarioQuestion,
@@ -161,6 +164,8 @@ def reset_seed(session: Session) -> None:
     for t in tenants:
         for stmt in (
             "delete from attempt where tenant_id = :t",
+            "delete from practice_session where tenant_id = :t",
+            "delete from classroom_exercise where tenant_id = :t",
             "delete from student where tenant_id = :t",
             "delete from classroom where tenant_id = :t",
             "delete from scenario_question where tenant_id = :t",
@@ -363,34 +368,146 @@ def ensure_tenant(
     return tenant, classrooms, students, teachers + [admin]
 
 
+def ensure_exercise(
+    session: Session, tenant: Tenant, room: Classroom, content: SeedContent
+) -> ClassroomExercise:
+    """每班一次「已发布练习」：教师面板的骨架与统计都以它为准。
+
+    没有发布会话时，即使库里有作答，教师端也只显示「已提交 0/20」——
+    作答必须挂在 session 上、session 必须挂当前发布快照，才会被面板统计。
+    """
+    if room.current_exercise_id:
+        existing = session.get(ClassroomExercise, room.current_exercise_id)
+        if existing is not None:
+            return existing
+
+    passage = content.passages[0]
+    repeat = next(
+        (r for r in content.repeats if r.passage_id == passage.id), content.repeats[0]
+    )
+    questions = content.questions[:2]
+    items: list[dict[str, object]] = [
+        {
+            "type": "passage",
+            "id": str(passage.id),
+            "text": passage.text,
+            "translation": passage.translation,
+            "audio_url": passage.audio_url,
+            "suggested_seconds": passage.suggested_seconds,
+            "replay_limit": 0,
+            "band": passage.cefr_band,
+        },
+        {
+            "type": "repeat",
+            "id": str(repeat.id),
+            "text": repeat.text,
+            "translation": repeat.translation,
+            "audio_url": repeat.audio_url,
+            "suggested_seconds": repeat.suggested_seconds,
+            "replay_limit": repeat.replay_limit,
+            "band": passage.cefr_band,
+        },
+    ]
+    for q in questions:
+        items.append(
+            {
+                "type": "question",
+                "id": str(q.id),
+                "text": q.text,
+                "translation": q.translation,
+                "audio_url": q.audio_url,
+                "suggested_seconds": q.suggested_seconds,
+                "replay_limit": 0,
+                "band": q.band,
+            }
+        )
+
+    exercise = ClassroomExercise(
+        tenant_id=tenant.id,
+        classroom_id=room.id,
+        version_no=1,
+        title="seed 今日练习",
+        status="published",
+        snapshot_items=items,
+        created_by=room.owner_id,
+    )
+    session.add(exercise)
+    session.flush()
+    room.current_exercise_id = exercise.id
+    session.add(room)
+    session.commit()
+    session.refresh(exercise)
+    return exercise
+
+
+def ensure_sessions(
+    session: Session,
+    tenant: Tenant,
+    students: list[Student],
+    rooms: dict[uuid.UUID, Classroom],
+    exercises: dict[uuid.UUID, ClassroomExercise],
+    passage_id: uuid.UUID | None,
+) -> dict[uuid.UUID, PracticeSession]:
+    """每名学生一条「今日 daily 会话」，绑定本班当前发布快照。
+
+    面板只读 `session_date == 今天` 的 daily 会话，所以种子作答必须落在今天。
+    """
+    today = datetime.now(ZoneInfo(settings.PRACTICE_TZ)).date()
+    existing = session.exec(
+        select(PracticeSession).where(
+            PracticeSession.tenant_id == tenant.id,
+            PracticeSession.session_date == today,
+            PracticeSession.mode == "daily",
+        )
+    ).all()
+    by_student = {ps.student_id: ps for ps in existing}
+    for stu in students:
+        if stu.id in by_student:
+            continue
+        room = rooms[stu.classroom_id]
+        ps = PracticeSession(
+            tenant_id=tenant.id,
+            classroom_id=room.id,
+            student_id=stu.id,
+            band="B1",
+            question_band="B1",
+            stars=3,
+            mode="daily",
+            passage_id=passage_id,
+            assignment_id=exercises[room.id].id,
+            session_date=today,
+        )
+        session.add(ps)
+        by_student[stu.id] = ps
+    session.commit()
+    for ps in by_student.values():
+        session.refresh(ps)
+    return by_student
+
+
 def ensure_attempts(
     session: Session,
     tenant: Tenant,
     students: list[Student],
-    content: SeedContent,
+    exercises: dict[uuid.UUID, ClassroomExercise],
+    sessions: dict[uuid.UUID, PracticeSession],
     per_student: int,
     audio_dir: Path,
 ) -> int:
     audio_dir.mkdir(parents=True, exist_ok=True)
     made = 0
-    now = datetime.now(UTC)
-    for idx, stu in enumerate(students):
-        for k in range(per_student):
-            kind = "passage" if k == 0 else ("repeat" if k == 1 else "question")
-            if kind == "question":
-                if not content.questions:
-                    continue
-                item_id = content.questions[(k + idx) % len(content.questions)].id
-            elif kind == "repeat":
-                if not content.repeats:
-                    continue
-                item_id = content.repeats[(k + idx) % len(content.repeats)].id
-            else:
-                item_id = content.passages[(k + idx) % len(content.passages)].id
-            created = now - timedelta(
-                days=random.randint(0, 20),
-                hours=random.randint(0, 23),
-                minutes=random.randint(0, 59),
+    day_start = datetime.now(ZoneInfo(settings.PRACTICE_TZ)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    for stu in students:
+        exercise = exercises[stu.classroom_id]
+        items = [i for i in exercise.snapshot_items if i.get("type") != "instruction"]
+        for k, item in enumerate(items[:per_student]):
+            item_type = str(item["type"])
+            item_id = uuid.UUID(str(item["id"]))
+            # 作答时间落在“今天”之内：面板按今日会话统计，跨日会让提交数变 0
+            created = day_start + timedelta(
+                hours=random.randint(7, 21), minutes=random.randint(0, 59)
             )
             name = f"{uuid.uuid4().hex}.wav"
             audio_file = audio_dir / name
@@ -398,11 +515,12 @@ def ensure_attempts(
             base = random.randint(68, 95)
             att = Attempt(
                 tenant_id=tenant.id,
-                item_type=kind,
+                item_type=item_type,
                 item_id=item_id,
                 student_id=stu.id,
+                session_id=sessions[stu.id].id,
                 idempotency_key=f"seed-{uuid.uuid4().hex}",
-                item_snapshot={"seed": True, "title": f"seed item {k + 1}"},
+                item_snapshot={"seed": True, "index": k + 1, "type": item_type},
                 audio_path=str(audio_file),
                 audio_mime="audio/wav",
                 duration_s=round(random.uniform(8.0, 42.0), 1),
@@ -432,7 +550,13 @@ def main() -> None:
             reset_seed(session)
         pw_hash = get_password_hash(args.password)
 
-        total = {"schools": 0, "classes": 0, "students": 0, "attempts": 0}
+        total = {
+            "schools": 0,
+            "classes": 0,
+            "students": 0,
+            "attempts": 0,
+            "sessions": 0,
+        }
         for i in range(1, args.schools + 1):
             tenant, cls, stu, users = ensure_tenant(
                 session, i, args.classes, args.students, pw_hash
@@ -444,6 +568,20 @@ def main() -> None:
             content = ensure_content(
                 session, tenant, teachers[0].id if teachers else None, 12
             )
+            rooms = {room.id: room for room in cls}
+            exercises = {
+                rid: ensure_exercise(session, tenant, room, content)
+                for rid, room in rooms.items()
+            }
+            sessions = ensure_sessions(
+                session,
+                tenant,
+                stu,
+                rooms,
+                exercises,
+                content.passages[0].id if content.passages else None,
+            )
+            total["sessions"] += len(sessions)
             if (
                 args.attempts
                 and not session.exec(
@@ -451,7 +589,13 @@ def main() -> None:
                 ).first()
             ):
                 n = ensure_attempts(
-                    session, tenant, stu, content, args.attempts, audio_dir
+                    session,
+                    tenant,
+                    stu,
+                    exercises,
+                    sessions,
+                    args.attempts,
+                    audio_dir,
                 )
                 total["attempts"] += n
             else:
@@ -459,7 +603,8 @@ def main() -> None:
 
     print("\n=== 种子完成 ===")
     print(
-        f"学校 {total['schools']} / 班级 {total['classes']} / 学生 {total['students']} / 作答 {total['attempts']}"
+        f"学校 {total['schools']} / 班级 {total['classes']} / 学生 {total['students']} / "
+        f"会话 {total['sessions']} / 作答 {total['attempts']}"
     )
     print(
         f"账号：学校管理员 admin@seedpilot-01.seed、教师 t01@seedpilot-01.seed、学生 s10001..（登录带 school=seedpilot-01），统一密码 {args.password}"

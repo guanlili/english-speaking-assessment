@@ -10,15 +10,19 @@
 | 班级 | 每校 3 班，共 6 |
 | 教师 | 每班 1 名 + 每校 1 名校级管理员 |
 | 学生 | 每班 20 人，共 120 |
-| 作答 | 每生 4 条（跟读 / 复述 / 情景问答），共 480 |
+| 已发布练习 | 每班 1 次（`version_no=1`、`status=published`），共 6 |
+| 今日会话 | 每生 1 条今天（`PRACTICE_TZ`）的 daily `PracticeSession`，共 120 |
+| 作答 | 每生 4 条（跟读 / 复述 / 情景问答），共 480，全部挂到当日会话上 |
 | 篇目 | 每校 12 篇 `[seed]` B1 篇目（共 24） |
 | 复述句 | 每校 12 句（每篇一句，共 24） |
 | 情景问法 | 每校 1 个主题 4 条问法（共 8） |
 | 音频 | 每条作答一份真实 wav（0.5s 静音，落 `AUDIO_STORAGE_DIR` 根目录），共 480 份 ≈ 4 MB |
 
-作答带 `status=done`、四维分数（68–95）、转写文本与建议，分布在最近 20 天，可直接用于趋势/仪表盘/导出类验证。
+作答带 `status=done`、四维分数（68–95）、转写文本与建议，`created_at` 落在**今天 7:00–21:59**（跨日会让教师面板的今日提交数变 0）。
 
 **内容必须按校建**：篇目/复述句/情景题都归属各自学校。建在默认校时，种子校学生提交作答会被 `content_access.require_same_tenant` 与 RLS 双重拦成 404（首次版本踩过这个坑，已修）。
+
+**作答必须挂会话**：教师面板 `GET /api/v1/classes/{code}/board` 只取 `session_date == 今天` 的 daily 会话，按 `(student_id, practice_session.id)` 匹配作答，题位骨架来自 `classroom.current_exercise_id` 指向的发布快照。早期版本直接写 `attempt` 不建会话，结果是「库里有 480 条作答，教师面板显示已提交 0/20」。现在每班先造一次已发布 `ClassroomExercise`（1 篇目 + 1 复述 + 2 问答）并写回 `classroom.current_exercise_id`，再为每名学生造今日会话、把作答挂上去。
 
 ## 用法
 
@@ -51,6 +55,7 @@ docker compose run --rm -T -v "$PWD/backend:/app/backend" backend \
 - 只写 `seedpilot%` 前缀的租户与 `[seed]` 前缀篇目，**不碰默认演示校**；`--reset` 只清自己造的数据。
 - 走 admin 连接写库（与 `initial_data.py` 同口径），归属租户由脚本显式指定。
 - 幂等：学校已存在则跳过造校，内容按「本校缺失才补」处理；该校已有作答则跳过造作答。重复执行只会补齐缺失的部分。
+- `--reset` 按租户清理，顺序为 `attempt` → `practice_session` → `classroom_exercise`（会话与发布快照都引用作答/课堂，倒序删才不撞外键）。
 
 ## 2026-11-17 首次建库实测
 
@@ -59,3 +64,12 @@ docker compose run --rm -T -v "$PWD/backend:/app/backend" backend \
 - 分租户计数：`seedpilot-01` 3 班 / 60 学生 / 240 作答，`seedpilot-02` 同量。
 - **学生端链路实测**（`s10001` 登录 → 提交 → 轮询 → 结果）：跟读 / 复述 / 情景问答三类题均 `queued → done`，拿到分数与转写，`/attempts/{id}/comparison` 返回 1 条历史；作答音频 `GET /attempts/{id}/audio` 返回 200、`audio/wav`、8044 bytes。验证用的 3 条作答已删除，数据集回到 480 条。
 - 注：`engine=mock` 的转写是固定样例句，分数不代表真实评分质量；本数据集用来验「链路与体量」，不是评分标定集。
+
+## 2026-11-17 教师端按班看结果实测
+
+发布 + 会话造完后的口径：2 校 / 6 班 / 120 学生 / **120 会话** / 480 作答。
+
+- 接口 `GET /api/v1/classes/SD100X/board`（教师 token）：`submitted 20 / completed 20 / pending 0`，名单 20 人；样例学生「学生1-1」`done 4/4`、`round_status=all_done`，题位 `[passage:done, repeat:done, question:done, question:done]`。
+- 六个班抽查（`SD100X`/`SD101X`/`SD200X`/`SD202X`）全部 `submitted 20 / completed 20`，`current_exercise` 均为「seed 今日练习」。
+- 前端实测（教师 `t01@seedpilot-01.seed` → `/classrooms` → `/t/SD100X`）：页头显示「**已提交 20/20**」，学生结果 Tab「已完成 20 人」，名单行「4/4 + 分数 + 已提交」。截图：`/tmp/ui-teacher-board.png`。
+- 学生端未受影响：`s10001` 的今日练习接口 `GET /classes/SD100X/today` 返回 200 且读出发布快照题位（1 passage + 1 repeat + 2 question）。
