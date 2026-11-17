@@ -24,37 +24,39 @@ ADMIN_EMAIL="${3:-admin@${SLUG}.edu.cn}"
 [[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]{1,30}$ ]] || {
     echo "❌ slug 只能是小写字母/数字/连字符（2-31 位）"; exit 1; }
 
-DB="docker compose -f compose.yml exec -T db"
-BACKEND="docker compose -f compose.yml exec -T backend"
+# 用数组而不是字符串：`DB="docker compose ..."` 后用 "$DB" 调用会被 bash 当成
+# 一个整体命令名（command not found），脚本从第一句就挂。macOS 自带 bash 3.2 也支持数组。
+DB=(docker compose -f compose.yml exec -T db)
+BACKEND=(docker compose -f compose.yml exec -T backend)
 
 # 1) 租户（幂等 upsert：存在则改校名）
-"$DB" psql -U postgres -d app -v slug="$SLUG" -v name="$NAME_ZH" <<'SQL'
+"${DB[@]}" psql -U postgres -d app -v slug="$SLUG" -v name="$NAME_ZH" <<'SQL'
 INSERT INTO tenant (id, slug, name_zh, status, timezone, created_at)
 VALUES (gen_random_uuid(), :'slug', :'name', 'active', 'Asia/Shanghai', now())
 ON CONFLICT (slug) DO UPDATE SET name_zh = EXCLUDED.name_zh;
 SQL
 
 # 2) 管理员账号：不存在才建。哈希用后端容器内的同款实现（argon2）
-EXISTS=$("$DB" psql -U postgres -d app -t -A -v slug="$SLUG" -v email="$ADMIN_EMAIL" <<'SQL'
+EXISTS=$("${DB[@]}" psql -U postgres -d app -t -A -v slug="$SLUG" -v email="$ADMIN_EMAIL" <<'SQL'
 SELECT 1 FROM "user" u, tenant t
 WHERE u.tenant_id = t.id AND t.slug = :'slug' AND u.email = :'email';
 SQL
 )
 if [[ "$EXISTS" == "1" ]]; then
-    echo "ℹ️  管理员 $ADMIN_EMAIL 已存在，跳过建号（不重置密码）"
+    echo "ℹ️  管理员 ${ADMIN_EMAIL} 已存在，跳过建号（不重置密码）"
 else
     PASSWORD=$(openssl rand -base64 18 | tr -d '/+=\n')
-    HASH=$("$BACKEND" python -c \
+    HASH=$("${BACKEND[@]}" python -c \
         "import sys; from app.core.security import get_password_hash; print(get_password_hash(sys.argv[1]))" \
         "$PASSWORD")
-    "$DB" psql -U postgres -d app -v slug="$SLUG" -v email="$ADMIN_EMAIL" -v hash="$HASH" <<'SQL'
+    "${DB[@]}" psql -U postgres -d app -v slug="$SLUG" -v email="$ADMIN_EMAIL" -v hash="$HASH" <<'SQL'
 WITH t AS (SELECT id FROM tenant WHERE slug = :'slug')
 INSERT INTO "user" (id, email, hashed_password, role, is_active, tenant_id, created_at)
 SELECT gen_random_uuid(), :'email', :'hash', 'school_admin', true, t.id, now() FROM t;
 SQL
-    echo "🔔 管理员初始密码: $PASSWORD   （仅本次打印，立即转交并提醒首登修改）"
+    echo "🔔 管理员初始密码: ${PASSWORD}   （仅本次打印，立即转交并提醒首登修改）"
 fi
 
-echo "✅ 学校就绪：$NAME_ZH（$SLUG）"
-echo "   登录入口: https://outman.website/s/$SLUG/login"
-echo "   管理员:   $ADMIN_EMAIL"
+echo "✅ 学校就绪：${NAME_ZH}（${SLUG}）"
+echo "   登录入口: https://outman.website/s/${SLUG}/login"
+echo "   管理员:   ${ADMIN_EMAIL}"
