@@ -29,7 +29,14 @@ bash scripts/recovery-drill.sh --bundle backups/bundle-...   # 用已校验的�
 bash scripts/recovery-drill.sh --keep       # 失败或需保留现场时不清理
 ```
 
-脚本固定使用独立 Compose 项目 `esa-drill` 与库名 `recovery_drill_<YYYYMMDD>`，只启动 `db/prestart/backend`，不发布端口、不启前端与 acme，因此不会与运行中的栈抢端口或串库。任一项不过（行数差异、登录失败）会保留现场并以非零退出。
+脚本固定使用独立 Compose 项目 `esa-drill` 与库名 `recovery_drill_<YYYYMMDD>`，只启动 `db/prestart/backend`，不发布端口、不启前端与 acme，因此不会与运行中的栈抢端口或串库。任一项不过（行数差异、音频指纹、登录或业务探针失败）会保留现场并以非零退出。
+
+脚本内置的判据（2026-11-17 起）：
+
+1. **导入前建角色**：dump 里的对象属主是 `esa_app`/`esa_platform`（生产同构的受限角色），`pg_dump` 不含角色定义；空集群直接导入会在第一条 `OWNER TO` 上失败。脚本先按演练 env 建角色再导入。
+2. **启动前逐表计数**：在 `prestart` 拉起**之前**比对 39 张表。启动会回填派生快照（`admin_metrics_daily` 的历史行），混在一起会把「启动行为」误判成「备份差异」。
+3. **音频逐字节指纹**：对 `/app/audio` 全部文件做「相对路径 + 内容」的合并 sha256，源与演练两侧必须一致——文件数相同不代表内容相同。
+4. **业务探针**：用种子学生 `s10001` 登录（`?school=seedpilot-01`），再回放一条作答音频并断言字节数 > 0。只证明「行在」不够，这条证明「行 + 受限角色 + RLS + 音频卷」串起来还能用。
 
 下面是等价的手工步骤，供没有脚本或需要逐步排查时使用。只恢复到**全新的隔离主机或 Compose 项目**，不用现有生产/开发/测试库。先检验备份，不要将校验失败的数据用于恢复。下列命令在隔离项目目录执行，`/safe/backup` 为已通过校验的完整包。
 
@@ -82,6 +89,20 @@ Restore only into a new isolated host or Compose project, never an existing prod
 | 未覆盖 | 未做整栈拉起、登录与录音回放——下一档演练按上文「隔离恢复演练」在独立 Compose 项目执行 |
 
 Drill against `bundle-20261028T193117Z-VJ0QnxZE`: checksums OK; the dump restored into an isolated database inside the production DB container in ~1s with `ON_ERROR_STOP=on`; per-table counts match snapshot semantics (all deltas are post-backup activity, including the same-day five-level vocab import); one audio member extracted intact; the drill database was dropped afterwards. Full isolated-host bring-up with login/playback remains the next-level drill.
+
+### 2026-11-17 整栈演练（含 480 条作答与 967 份音频）
+
+| 项 | 结果 |
+|---|---|
+| 执行方式 | `bash scripts/recovery-drill.sh`（本次修订了角色预建、启动前比对、音频指纹、业务探针四项） |
+| 备份包 | `bundle-drill-20261117T012443Z-0fe26a`（现场生成，`verify-backup.sh` 四件套 OK） |
+| 独立环境 | Compose 项目 `esa-drill` + 库 `recovery_drill_20261116`，未发布端口 |
+| 数据库恢复 | 先建 `esa_app`/`esa_platform` 再导入，`ON_ERROR_STOP=on` 无错 |
+| 行数比对 | 启动前 39 张表逐表计数，**0 处差异**（attempt 480、student 121、passage 25、repeat_sentence 27、user 143 等） |
+| 音频 | 967 个文件，**逐字节指纹一致**（不只是数量相同） |
+| 就绪与登录 | `ready-check` 200；`admin@example.com` 登录 OK；种子学生 `s10001` 登录 OK 并能回放一条作答音频 |
+| 清理 | 独立项目与卷已 `down -v`，未触碰运行中栈 |
+| 首次失败与修复 | 上一版脚本在导入阶段报 `role "esa_app" does not exist` 而中断——这正是「备份能校验、恢复起不来」的典型坑，已修进脚本 |
 
 ### 2026-11-14 整栈演练（Mac Mini 开发栈，脚本化）
 

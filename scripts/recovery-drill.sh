@@ -26,6 +26,21 @@ stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 log() { printf '%s\n' "$*"; }
 now_ms() { python3 -c 'import time;print(int(time.time()*1000))'; }
 
+# 源栈 compose 项目名：后面要 export 演练项目名，源侧核对必须显式指回它，
+# 否则 `docker compose exec` 会读到演练栈，表计数比对退化成「自己比自己」。
+src_project="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$(docker compose ps -q backend)" 2>/dev/null || true)"
+src_project="${src_project:-$(printf '%s' "$(basename "$project_dir")" | tr '[:upper:]' '[:lower:]')}"
+src_compose() { env -u COMPOSE_ENV_FILE COMPOSE_PROJECT_NAME="$src_project" docker compose "$@"; }
+
+# 音频卷指纹：文件名 + 内容全量 sha256，用于证明逐字节还原（数量相同不代表内容相同）
+audio_digest_py='import hashlib,pathlib
+files=sorted(p for p in pathlib.Path("/app/audio").rglob("*") if p.is_file())
+h=hashlib.sha256()
+for p in files:
+    h.update(str(p.relative_to("/app/audio")).encode())
+    h.update(p.read_bytes())
+print(len(files), h.hexdigest())'
+
 # ---------- 0. 前置检查 ----------
 docker compose version >/dev/null 2>&1 || { echo "需要 docker compose v2" >&2; exit 1; }
 if docker ps --format '{{.Names}}' | grep -q "${drill_project}-"; then
@@ -100,8 +115,44 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 set -o pipefail
+# 备份包里的对象属主是受限角色 esa_app/esa_platform（生产同构），空集群里没有这些角色，
+# 直接 psql 导入会在第一条 OWNER TO 上失败。先用 admin 连接按演练 env 建角色再导入。
+# 不用 ensure_db_roles.py：那需要 backend 镜像，而镜像在下一步才准备。
+app_user="$(sed -n 's/^APP_POSTGRES_USER=//p' "$drill_env" | tr -d '\r')"
+app_pw="$(sed -n 's/^APP_POSTGRES_PASSWORD=//p' "$drill_env" | tr -d '\r')"
+plat_user="$(sed -n 's/^PLATFORM_POSTGRES_USER=//p' "$drill_env" | tr -d '\r')"
+plat_pw="$(sed -n 's/^PLATFORM_POSTGRES_PASSWORD=//p' "$drill_env" | tr -d '\r')"
+role_sql=""
+if [[ -n "$app_user" && -n "$app_pw" ]]; then
+  role_sql+="CREATE ROLE ${app_user} LOGIN PASSWORD '${app_pw}' NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB;"$'\n'
+fi
+if [[ -n "$plat_user" && -n "$plat_pw" ]]; then
+  role_sql+="CREATE ROLE ${plat_user} LOGIN PASSWORD '${plat_pw}' NOSUPERUSER BYPASSRLS NOCREATEROLE NOCREATEDB;"$'\n'
+fi
+if [[ -n "$role_sql" ]]; then
+  printf '%s' "$role_sql" | "${compose[@]}" exec -T db sh -c 'psql --quiet --set ON_ERROR_STOP=on -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null
+  log "  已按演练 env 建角色: ${app_user:-} ${plat_user:-}"
+fi
 gzip -dc "$bundle/database.sql.gz" | "${compose[@]}" exec -T db sh -c 'psql --quiet --set ON_ERROR_STOP=on -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null
 log "  数据库导入完成: $(( ($(now_ms)-t0)/1000 ))s"
+
+# ---------- 3b. 纯还原保真：启动前逐表计数 ----------
+# 必须在 prestart/backend 启动之前比：启动会回填派生快照（如 admin_metrics_daily
+# 的历史行），那是"启动行为"不是"还原结果"，混在一起会误判成备份差异。
+count_sql="select table_name, (xpath('/row/c/text()', query_to_xml('select count(*) as c from public.'||quote_ident(table_name), false, true, '')))[1]::text::int as cnt from information_schema.tables where table_schema='public' and table_type='BASE TABLE' order by table_name"
+src_counts="$(src_compose exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"${count_sql}\"")"
+dst_counts="$("${compose[@]}" exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"${count_sql}\"")"
+printf '%-34s %10s %10s %s\n' 表 源 演练 一致
+mismatch=0
+tables=0
+while IFS='|' read -r name src; do
+  [[ -z "$name" ]] && continue
+  tables=$((tables+1))
+  dst="$(printf '%s\n' "$dst_counts" | awk -F'|' -v n="$name" '$1==n{print $2}')"
+  flag="OK"; [[ "$src" = "$dst" ]] || { flag="DIFF"; mismatch=$((mismatch+1)); }
+  printf '%-34s %10s %10s %s\n' "$name" "$src" "$dst" "$flag"
+done <<< "$src_counts"
+log "  还原后比对表数: ${tables}；差异: ${mismatch}（启动前口径）"
 
 # ---------- 4. 恢复音频到空卷并拉起 ----------
 t0=$(now_ms)
@@ -124,24 +175,21 @@ done
 
 # ---------- 5. 业务核对 ----------
 log "== 4/5 数据与登录核对 =="
-# 动态枚举 public schema 所有基表并精确计数（表名进维护会变，硬编码列表迟早失效）
-count_sql="select table_name, (xpath('/row/c/text()', query_to_xml('select count(*) as c from public.'||quote_ident(table_name), false, true, '')))[1]::text::int as cnt from information_schema.tables where table_schema='public' and table_type='BASE TABLE' order by table_name"
-src_counts="$(docker compose exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"${count_sql}\"")"
-dst_counts="$("${compose[@]}" exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"${count_sql}\"")"
-printf '%-34s %10s %10s %s\n' 表 源 演练 一致
-mismatch=0
-tables=0
-while IFS='|' read -r name src; do
-  [[ -z "$name" ]] && continue
-  tables=$((tables+1))
-  dst="$(printf '%s\n' "$dst_counts" | awk -F'|' -v n="$name" '$1==n{print $2}')"
-  flag="OK"; [[ "$src" = "$dst" ]] || { flag="DIFF"; mismatch=$((mismatch+1)); }
-  printf '%-34s %10s %10s %s\n' "$name" "$src" "$dst" "$flag"
-done <<< "$src_counts"
-log "  比对表数: ${tables}；差异: ${mismatch}"
+# 逐表计数已在 3b 完成（启动前口径）；这里只做启动后的可用性验证。
 
 drill_audio="$("${compose[@]}" exec -T backend sh -c 'ls -A /app/audio | wc -l' | tr -d ' ')"
 log "  演练库音频文件数: ${drill_audio}"
+
+# 音频逐字节校验：数量相同不代表内容相同（0.5s 占位 wav 也可能同名不同内容）
+src_audio_digest="$(src_compose exec -T backend python -c "$audio_digest_py" | tr -d '\r')"
+dst_audio_digest="$("${compose[@]}" exec -T backend python -c "$audio_digest_py" | tr -d '\r')"
+audio_flag="OK"
+if [[ "$src_audio_digest" = "$dst_audio_digest" ]]; then
+  log "  音频指纹: OK（${src_audio_digest%% *} 个文件逐字节一致）"
+else
+  audio_flag="DIFF"; mismatch=$((mismatch+1))
+  log "  音频指纹: DIFF（源 ${src_audio_digest} / 演练 ${dst_audio_digest}）"
+fi
 
 login_user="$(grep -E '^FIRST_SUPERUSER=' "$drill_env" | cut -d= -f2-)"
 login_pass="$(grep -E '^FIRST_SUPERUSER_PASSWORD=' "$drill_env" | cut -d= -f2-)"
@@ -160,12 +208,40 @@ else
   login_ok=0
 fi
 
+# 业务可用性探针：种子学生登录 → 拉一条作答音频 → 断言字节数 >0
+# （表计数只证明行在，这条证明「行 + 角色 + RLS + 音频卷」连起来还能用）
+probe_aid="$(src_compose exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"select a.id from attempt a join student s on s.id=a.student_id join public.\\\"user\\\" u on u.id=s.user_id where u.username='s10001' limit 1\"" | tr -d ' \r')"
+if [[ -n "$probe_aid" ]]; then
+  if "${compose[@]}" exec -T -e DRILL_AID="$probe_aid" backend python - <<'PY' >/dev/null 2>&1
+import json, os, urllib.parse, urllib.request
+base = "http://localhost:8000/api/v1"
+data = urllib.parse.urlencode({"username": "s10001", "password": "SeedPilot2026"}).encode()
+req = urllib.request.Request(base + "/login/access-token?school=seedpilot-01", data=data,
+                             headers={"Content-Type": "application/x-www-form-urlencoded"})
+token = json.load(urllib.request.urlopen(req))["access_token"]
+req = urllib.request.Request(f"{base}/attempts/{os.environ['DRILL_AID']}/audio",
+                             headers={"Authorization": f"Bearer {token}"})
+body = urllib.request.urlopen(req).read()
+assert len(body) > 1000, f"audio too small: {len(body)}"
+PY
+  then
+    log "  业务探针: OK（种子学生登录 + 作答音频可回放，attempt=${probe_aid:0:8}）"
+    probe_ok=1
+  else
+    log "  业务探针: FAIL（种子学生登录或音频回放失败）"
+    probe_ok=0
+  fi
+else
+  log "  业务探针: 跳过（源库无 s10001 作答）"
+  probe_ok=1
+fi
+
 # ---------- 6. 结果 ----------
 log "== 5/5 汇总 =="
 log "  备份包: $bundle"
 log "  独立库: ${drill_project} / ${drill_db}（与运行中库完全分离）"
-log "  表计数差异: ${mismatch} 处；登录: $([[ ${login_ok} = 1 ]] && echo OK || echo FAIL)"
-if [[ ${mismatch} -ne 0 || ${login_ok} -ne 1 ]]; then
+log "  表计数差异: ${mismatch} 处；音频指纹: ${audio_flag}；登录: $([[ ${login_ok} = 1 ]] && echo OK || echo FAIL)；业务探针: $([[ ${probe_ok} = 1 ]] && echo OK || echo FAIL)"
+if [[ ${mismatch} -ne 0 || ${login_ok} -ne 1 || ${probe_ok} -ne 1 ]]; then
   log "  演练未通过，保留现场以便排查（--keep 生效）"
   keep=1
 fi
