@@ -33,7 +33,7 @@ dev = [
     "coverage<8.0.0,>=7.4.3",
     "pytest-rerunfailures>=15",
     # 学情 PDF 冒烟：抽出中文，确认字体真的写进了页面
-    "pypdf>=6.0.0,<7.0.0",
+    "pypdf>=6.21.4,<7.0.0",
 ]
 
 [build-system]
