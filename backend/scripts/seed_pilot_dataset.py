@@ -380,7 +380,7 @@ def main() -> None:
         f"学校 {total['schools']} / 班级 {total['classes']} / 学生 {total['students']} / 作答 {total['attempts']}"
     )
     print(
-        f"账号：学校管理员 admin@seedpilot-01.seed、教师 t01@seedpilot-01.seed、学生 s0101..，统一密码 {args.password}"
+        f"账号：学校管理员 admin@seedpilot-01.seed、教师 t01@seedpilot-01.seed、学生 s10001..（登录带 school=seedpilot-01），统一密码 {args.password}"
     )
     engine.dispose()
 
