@@ -33,6 +33,8 @@ FROM base AS build-stage
 ARG VITE_API_URL
 # 前端 Sentry DSN（可选；为空时 Sentry.init 不执行，产物不含上报逻辑的配置）
 ARG VITE_SENTRY_DSN
+# 对外支持邮箱（可选）：构建期注入，为空时公开页不展示邮件入口
+ARG VITE_SUPPORT_EMAIL
 
 RUN npm run build
 
