@@ -107,6 +107,11 @@ services:
         # 对外支持邮箱（可选）：不配则公开页只提示联系学校平台管理员
         - VITE_SUPPORT_EMAIL=${VITE_SUPPORT_EMAIL:-}
     restart: always
+    environment:
+      # 域名迁移期专用：两个变量都非空且 ssl/legacy/ 有旧域名证书时，
+      # entrypoint 才启用 301；为空则完全不影响现有行为。
+      LEGACY_DOMAIN: ${LEGACY_DOMAIN:-}
+      PRIMARY_DOMAIN: ${PRIMARY_DOMAIN:-}
     ports:
       - "${APP_PORT:-80}:80"
       - "443:443"
