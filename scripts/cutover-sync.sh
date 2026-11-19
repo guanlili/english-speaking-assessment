@@ -67,11 +67,25 @@ ssh "$PROD_SSH" "docker exec $PROD_DB sh -c 'pg_dump -U \"\$POSTGRES_USER\" --cl
 echo "恢复完成（日志 /tmp/cutover-restore.log）"
 
 say "2/4 音频：增量同步（tar 流式）"
-ssh "$NEW_SSH" "cd $NEW_PROJECT && docker compose -f compose.yml start backend >/dev/null" || die "新机 backend 启动失败"
-for i in $(seq 1 30); do
-  ssh "$NEW_SSH" "docker exec $NEW_APP true" 2>/dev/null && break
+ssh "$NEW_SSH" "cd $NEW_PROJECT && docker compose -f compose.yml up -d backend >/dev/null" || die "新机 backend 启动失败"
+# start 之后容器会经历 prestart 迁移 + 重启空档，此时 exec 会报 "is not running"。
+# 必须等到 healthy 再动音频，否则整个同步会在第 2 步中断。
+backend_state() {
+  ssh "$NEW_SSH" "docker inspect -f '{{.State.Status}}/{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' $NEW_APP 2>/dev/null" || true
+}
+for i in $(seq 1 60); do
+  state=$(backend_state)
+  case "$state" in
+    running/healthy|running/none) break ;;
+  esac
   sleep 2
 done
+state=$(backend_state)
+case "$state" in
+  running/healthy|running/none) echo "新机 backend 已就绪（$state）" ;;
+  *) ssh "$NEW_SSH" "cd $NEW_PROJECT && docker compose -f compose.yml logs backend --tail 20" >&2 || true
+     die "新机 backend 未就绪（当前 $state）" ;;
+esac
 ssh "$PROD_SSH" "docker exec $PROD_APP tar -C /app/audio -cf - ." \
   | ssh "$NEW_SSH" "docker exec -i $NEW_APP tar -C /app/audio -xf -"
 echo "音频同步完成"

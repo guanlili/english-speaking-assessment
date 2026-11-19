@@ -60,6 +60,12 @@ except BlockingIOError:
             **os.environ,
             "PATH": f"{binary}:{os.environ['PATH']}",
             "MOCK_AUDIO_DIR": str(audio),
+            # The mock database is a few bytes, so production size/structure
+            # floors must be disabled here; they are covered separately by
+            # test_size_floor_rejects_shrunken_dump.
+            "BACKUP_MIN_DB_BYTES": "0",
+            "BACKUP_MIN_AUDIO_BYTES": "0",
+            "BACKUP_MIN_TABLES": "0",
         }
 
     def backup(self, **overrides):
@@ -107,6 +113,21 @@ except BlockingIOError:
         with (bundle / "manifest.sha256").open("a") as stream:
             stream.write("0" * 64 + "  ../../.env\n")
         self.assertNotEqual(self.verify(bundle).returncode, 0)
+
+    def test_size_floor_rejects_shrunken_dump(self):
+        # A structurally valid but nearly empty dump (17K in the 2026-11-19 incident)
+        # passes gzip/tar checks, so the size floor must abort before publishing.
+        result = self.backup(**{"BACKUP_MIN_DB_BYTES": "500000"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("below floor", result.stderr)
+        self.assertEqual(list((self.project / "backups").glob("bundle-*")), [])
+        self.assertEqual(list((self.project / "backups").glob(".bundle-*")), [])
+
+    def test_table_floor_rejects_schema_only_dump(self):
+        result = self.backup(**{"BACKUP_MIN_TABLES": "25"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("tables", result.stderr)
+        self.assertEqual(list((self.project / "backups").glob("bundle-*")), [])
 
 
 if __name__ == "__main__":
