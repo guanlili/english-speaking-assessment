@@ -24,15 +24,17 @@ _shared_client = httpx.Client(
 )
 
 
-# Seed Lite 家族前缀：API 调用名带日期后缀（-260428 等），按前缀匹配才能
-# 覆盖未来升级的快照名——精确匹配旧模型串时，换模型即静默失去
-# max_tokens/thinking 抑制这两道费用护栏
-_SEED_LITE_PREFIX = "doubao-seed-2-0-lite-"
+# 快速档模型前缀：API 调用名带日期后缀（-260428 等），按前缀匹配才能覆盖
+# 未来升级的快照名——精确匹配旧模型串时，换模型即静默失去
+# max_tokens/thinking 抑制这两道费用护栏。
+# doubao-seed-evolving 是推理模型：实测同一评分提示词开思考 48s/1459 token，
+# 关思考 2.7s/54 token，必须一并纳入。
+_FAST_CHAT_PREFIXES = ("doubao-seed-2-0-lite-", "doubao-seed-evolving")
 
 
 def fast_chat_options(model: str | None) -> dict[str, object]:
-    """已验证的 Seed Lite 快速模式；其他模型不发送专有参数。"""
-    if model and model.startswith(_SEED_LITE_PREFIX):
+    """已验证的快速档模型；其他模型不发送专有参数。"""
+    if model and model.startswith(_FAST_CHAT_PREFIXES):
         return {"thinking": {"type": "disabled"}, "max_tokens": 2048}
     return {}
 

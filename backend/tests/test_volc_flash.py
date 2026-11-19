@@ -28,6 +28,24 @@ def test_flash_transcript_and_request() -> None:
         )
 
 
+def test_flash_custom_resource_id() -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.headers["X-Api-Resource-Id"] == "volc.seedasr.auc"
+        return httpx.Response(
+            200,
+            headers={"X-Api-Status-Code": "20000000"},
+            json={"result": {"text": "hello"}},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        assert (
+            VolcFlashAsr("test-key", client, resource_id="volc.seedasr.auc").transcribe(
+                b"audio", "audio/wav"
+            )
+            == "hello"
+        )
+
+
 @pytest.mark.parametrize("code", ["45000001", "55000031", ""])
 def test_flash_service_errors(code: str) -> None:
     with httpx.Client(

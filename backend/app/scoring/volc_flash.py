@@ -1,4 +1,9 @@
-"""豆包语音录音文件极速版；与方舟 Responses 使用独立凭证。"""
+"""豆包语音录音文件识别（极速版 / 2.0）；与方舟 Responses 使用独立凭证。
+
+两种服务的接口与鉴权相同，只有 X-Api-Resource-Id 不同：
+- 极速版：volc.bigasr.auc_turbo
+- 2.0：volc.seedasr.auc
+"""
 
 import base64
 import uuid
@@ -19,13 +24,19 @@ _client = httpx.Client(
 class VolcFlashAsr:
     name = "volc_flash"
 
-    def __init__(self, api_key: str, client: httpx.Client | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        client: httpx.Client | None = None,
+        resource_id: str = "volc.bigasr.auc_turbo",
+    ) -> None:
         self.api_key = api_key
+        self.resource_id = resource_id
         self.client = client if client is not None else _client
 
     def transcribe(self, audio: bytes, mime_type: str) -> str:
         if not self.api_key:
-            raise ScoringError("未配置 VOLC_ASR_API_KEY，请开通录音文件识别极速版")
+            raise ScoringError("未配置 VOLC_ASR_API_KEY，请开通录音文件识别服务")
         if mime_type not in {"audio/wav", "audio/mpeg", "audio/mp3", "audio/ogg"}:
             raise ScoringError("极速转写音频格式不支持，请先转换为 WAV")
         if not audio or len(audio) > 100 * 1024 * 1024:
@@ -35,7 +46,7 @@ class VolcFlashAsr:
                 FLASH_URL,
                 headers={
                     "X-Api-Key": self.api_key,
-                    "X-Api-Resource-Id": "volc.bigasr.auc_turbo",
+                    "X-Api-Resource-Id": self.resource_id,
                     "X-Api-Request-Id": str(uuid.uuid4()),
                     "X-Api-Sequence": "-1",
                 },

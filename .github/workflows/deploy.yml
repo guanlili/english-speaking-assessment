@@ -479,6 +479,7 @@ jobs:
           SCORING_PROVIDER: ${{ secrets.SCORING_PROVIDER }}
           ASR_PROVIDER: ${{ secrets.ASR_PROVIDER }}
           VOLC_ASR_API_KEY: ${{ secrets.VOLC_ASR_API_KEY }}
+          VOLC_ASR_RESOURCE_ID: ${{ secrets.VOLC_ASR_RESOURCE_ID }}
           ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
           ARK_ASR_MODEL: ${{ secrets.ARK_ASR_MODEL }}
           ARK_RUBRIC_MODEL: ${{ secrets.ARK_RUBRIC_MODEL }}

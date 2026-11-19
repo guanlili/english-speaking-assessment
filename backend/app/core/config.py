@@ -176,6 +176,9 @@ class Settings(BaseSettings):
     SCORING_PROVIDER: Literal["mock", "ark"] = "mock"
     ASR_PROVIDER: Literal["ark", "volc_flash"] = "ark"
     VOLC_ASR_API_KEY: str | None = None
+    # 录音文件识别资源 ID：老「极速版」= volc.bigasr.auc_turbo；
+    # 新「豆包录音文件识别 2.0」= volc.seedasr.auc。按账号实际开通的服务填。
+    VOLC_ASR_RESOURCE_ID: str = "volc.bigasr.auc_turbo"
     ARK_API_KEY: str | None = None
     ARK_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3"
     # 方舟 API 调用名必须用带日期后缀的快照名，广场短名（doubao-seed-2-0-lite）会 404
@@ -233,8 +236,9 @@ class Settings(BaseSettings):
     # ── 大盘费用区（估算口径，实际以云账单为准）─────────────────────
     # 单价为公开按量价（docs/pricing-assessment-2026-10.md），env 可覆盖
     COST_ASR_CNY_PER_HOUR: float = 4.5
-    COST_LLM_CNY_PER_MTOK_IN: float = 0.6
-    COST_LLM_CNY_PER_MTOK_OUT: float = 3.6
+    # 2026-11 起生产模型为 doubao-seed-evolving：输入 6 元/百万、输出 30 元/百万
+    COST_LLM_CNY_PER_MTOK_IN: float = 6.0
+    COST_LLM_CNY_PER_MTOK_OUT: float = 30.0
     # LLM 单次调用估算 token（问答题 rubric 实测量级 ~600 进 + ~600 出）
     COST_LLM_EST_TOKENS_IN: int = 600
     COST_LLM_EST_TOKENS_OUT: int = 600

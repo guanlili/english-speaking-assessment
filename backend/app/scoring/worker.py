@@ -224,7 +224,10 @@ def _analyze_vocab(session: Session, transcript: str) -> dict[str, object] | Non
 def build_asr_provider() -> AsrProvider:
     if settings.SCORING_PROVIDER == "ark":
         if settings.ASR_PROVIDER == "volc_flash":
-            return VolcFlashAsr(api_key=settings.VOLC_ASR_API_KEY or "")
+            return VolcFlashAsr(
+                api_key=settings.VOLC_ASR_API_KEY or "",
+                resource_id=settings.VOLC_ASR_RESOURCE_ID,
+            )
         if not settings.ARK_API_KEY:
             raise ScoringError("SCORING_PROVIDER=ark 但未配置 ARK_API_KEY")
         return ArkResponsesAsr(
