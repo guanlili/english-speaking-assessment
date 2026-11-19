@@ -1,3 +1,20 @@
+# uv 版本；镜像内实际是静态二进制，版本必须与 pyproject/团队约定一致
+ARG UV_VERSION=0.9.26
+
+# ---- uv 二进制来源：走 PyPI，不依赖 ghcr.io ----
+# 上游文档推荐 COPY --from=ghcr.io/astral-sh/uv，但本项目两台服务器实测该镜像
+# 600s 拉不下来（跨境 ghcr），曾靠手工 `docker build FROM scratch` 合成同名本地镜像
+# 才跑通——那等于把构建绑在某台机器的本地缓存上，换机/清缓存必挂。这里改为从
+# PyPI 安装同一版本的静态二进制：镜像源优先（火山内网），失败回落官方源。
+FROM python:3.14-slim AS uvbin
+ARG UV_VERSION
+RUN set -eu; \
+    pip install --no-cache-dir --disable-pip-version-check --timeout 15 --retries 1 \
+        -i https://mirrors.ivolces.com/pypi/simple "uv==${UV_VERSION}" \
+    || pip install --no-cache-dir --disable-pip-version-check --timeout 60 --retries 3 \
+        "uv==${UV_VERSION}"; \
+    uv --version
+
 FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1
@@ -19,9 +36,8 @@ RUN set -eu; \
     rm -f /tmp/debian.sources.original; \
     rm -rf /var/lib/apt/lists/*
 
-# Install uv
-# Ref: https://docs.astral.sh/uv/guides/integration/docker/#installing-uv
-COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /uvx /bin/
+# Install uv（二进制由上方 uvbin 阶段从 PyPI 安装，见该段注释）
+COPY --from=uvbin /usr/local/bin/uv /usr/local/bin/uvx /bin/
 
 # Compile bytecode
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#compiling-bytecode
