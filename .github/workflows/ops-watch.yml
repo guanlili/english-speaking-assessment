@@ -20,8 +20,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # 公网存活性探测目标（与部署流水线末尾的健康检查同一路径）
-  HEALTH_URL: https://outman.website/api/v1/utils/health-check/
+  # 公网存活性探测目标（与部署流水线末尾的健康检查同一路径）。
+  # 域名切换 / 换机器时只改仓库变量 HEALTH_URL（未设置则用下面这个默认值）。
+  HEALTH_URL: ${{ vars.HEALTH_URL || 'https://outman.website/api/v1/utils/health-check/' }}
   # 磁盘两档阈值（%）——只在这里改
   DISK_WARN_PCT: "70"
   DISK_CRIT_PCT: "85"
@@ -55,6 +56,7 @@ jobs:
     name: 磁盘水位
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: production
     steps:
       - name: 检查根分区与 /opt 使用率
         uses: appleboy/ssh-action@v1.2.5
@@ -101,6 +103,7 @@ jobs:
     name: 备份新鲜度
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: production
     steps:
       # 备份 cron 写失败只落到 backups/backup-failure.log，没有外部信号：
       # 数据不可恢复这件事，必须在撑不住之前有人知道，所以巡检直接验备份包本身。

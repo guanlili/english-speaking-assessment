@@ -415,6 +415,12 @@ jobs:
     concurrency:
       group: production-deploy
       cancel-in-progress: false
+    # 「哪台机器是生产」只由 Environment `production` 的 8 个键决定
+    # （SERVER_HOST/SERVER_USER/SERVER_SSH_KEY/DEPLOY_PATH/FRONTEND_HOST/
+    #  APP_PORT/TLS_DOMAIN/COMPOSE_PROJECT_NAME）。切换环境 = 改这 8 个键，
+    # 回滚 = 改回去，不需要动代码。环境级密钥缺失时会回落到仓库级同名密钥。
+    environment:
+      name: production
     runs-on: ubuntu-24.04
     # 覆盖 SSH 步骤本身（command_timeout 50m）之外的编排开销；
     # 服务器冷构建（腾讯镜像直连）15–20 分钟量级，60 分钟留足余量
