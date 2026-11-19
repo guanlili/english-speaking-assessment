@@ -493,6 +493,8 @@ jobs:
           DP_Id: ${{ secrets.DP_Id }}
           DP_Key: ${{ secrets.DP_Key }}
           TLS_DOMAIN: ${{ secrets.TLS_DOMAIN }}
+          LEGACY_DOMAIN: ${{ secrets.LEGACY_DOMAIN }}
+          PRIMARY_DOMAIN: ${{ secrets.PRIMARY_DOMAIN }}
         run: |
           bash scripts/generate-deploy-env.sh "$RUNNER_TEMP/deploy.env"
           env_b64=$(base64 < "$RUNNER_TEMP/deploy.env" | tr -d '\n')

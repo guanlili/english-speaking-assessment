@@ -52,6 +52,7 @@ COPY ./frontend/nginx.conf /etc/nginx/conf.d/default.conf
 # 无条件生效，无证书时 nginx 起不来）；entrypoint 检测到证书时才替换进 conf.d
 COPY ./frontend/nginx-tls.conf /etc/nginx/nginx-tls.conf
 COPY ./nginx-extra/outman.press.conf /etc/nginx/outman.press.conf
+COPY ./nginx-extra/legacy-redirect.conf /etc/nginx/legacy-redirect.conf
 COPY ./frontend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

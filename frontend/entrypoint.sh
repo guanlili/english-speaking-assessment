@@ -15,4 +15,22 @@ if [ -f /etc/nginx/ssl/outman.press/fullchain.pem ] \
 else
   rm -f /etc/nginx/conf.d/outman.press.conf 2>/dev/null || true
 fi
+# 域名迁移期：旧域名 301 → 主域名。两个环境变量与旧域名证书齐备才启用，
+# 默认（变量为空）不生成任何配置，行为与迁移前完全一致。
+if [ -n "${LEGACY_DOMAIN:-}" ] && [ -n "${PRIMARY_DOMAIN:-}" ] \
+  && [ -f /etc/nginx/ssl/legacy/fullchain.pem ] \
+  && [ -f /etc/nginx/ssl/legacy/privkey.pem ] \
+  && [ -f /etc/nginx/legacy-redirect.conf ]; then
+  sed -e "s|__LEGACY_DOMAIN__|${LEGACY_DOMAIN}|g" \
+      -e "s|__PRIMARY_DOMAIN__|${PRIMARY_DOMAIN}|g" \
+      /etc/nginx/legacy-redirect.conf > /etc/nginx/conf.d/legacy-redirect.conf
+  if nginx -t >/dev/null 2>&1; then
+    echo "entrypoint: 旧域名 ${LEGACY_DOMAIN} 301 → ${PRIMARY_DOMAIN}"
+  else
+    rm -f /etc/nginx/conf.d/legacy-redirect.conf
+    echo "entrypoint: 旧域名跳转配置校验失败，已回退（不影响主域名）" >&2
+  fi
+else
+  rm -f /etc/nginx/conf.d/legacy-redirect.conf 2>/dev/null || true
+fi
 exec /docker-entrypoint.sh "$@"
