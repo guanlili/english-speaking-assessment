@@ -486,6 +486,10 @@ jobs:
           ARK_TTS_API_KEY: ${{ secrets.ARK_TTS_API_KEY }}
           ARK_TTS_MODEL: ${{ secrets.ARK_TTS_MODEL }}
           ARK_TTS_VOICE: ${{ secrets.ARK_TTS_VOICE }}
+          TTS_PROVIDER: ${{ secrets.TTS_PROVIDER }}
+          VOLC_TTS_API_KEY: ${{ secrets.VOLC_TTS_API_KEY }}
+          VOLC_TTS_RESOURCE_ID: ${{ secrets.VOLC_TTS_RESOURCE_ID }}
+          VOLC_TTS_VOICE: ${{ secrets.VOLC_TTS_VOICE }}
           DP_Id: ${{ secrets.DP_Id }}
           DP_Key: ${{ secrets.DP_Key }}
           TLS_DOMAIN: ${{ secrets.TLS_DOMAIN }}
