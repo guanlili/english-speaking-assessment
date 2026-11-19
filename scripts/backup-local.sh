@@ -23,6 +23,7 @@ tar -tzf "$staging/audio.tar.gz" > /dev/null
 # to nothing. A real production dump is ~2.3MB and the audio volume is ~1.6GB.
 min_db_bytes="${BACKUP_MIN_DB_BYTES:-500000}"
 min_audio_bytes="${BACKUP_MIN_AUDIO_BYTES:-102400}"
+min_tables="${BACKUP_MIN_TABLES:-25}"
 db_bytes=$(wc -c < "$staging/database.sql.gz")
 audio_bytes=$(wc -c < "$staging/audio.tar.gz")
 [ "$db_bytes" -ge "$min_db_bytes" ] || {
@@ -34,8 +35,8 @@ audio_bytes=$(wc -c < "$staging/audio.tar.gz")
   exit 1
 }
 tables=$(zcat "$staging/database.sql.gz" | grep -c '^CREATE TABLE' || true)
-[ "$tables" -ge 25 ] || {
-  echo "Backup aborted: dump only carries ${tables} tables, expected >= 25" >&2
+[ "$tables" -ge "$min_tables" ] || {
+  echo "Backup aborted: dump only carries ${tables} tables, expected >= ${min_tables}" >&2
   exit 1
 }
 attempt_rows=$("${compose[@]}" exec -T db sh -c \
