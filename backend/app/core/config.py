@@ -185,15 +185,25 @@ class Settings(BaseSettings):
     ARK_ASR_MODEL: str = "doubao-seed-2-0-lite-260428"
     # 开放题 rubric 评分模型（同一模型走 chat 接口；豆包或 DeepSeek 系列均可）
     ARK_RUBRIC_MODEL: str = "doubao-seed-2-0-lite-260428"
-    # 标准音合成：方舟域名没有 /audio/speech，走 vei AI 网关的 OpenAI 兼容接口；
-    # 网关密钥与方舟 Key 是两套（console.volcengine.com/vei/aigateway 创建），
+    # 标准音合成：两种通道
+    # - vei：VEI AI 网关 OpenAI 兼容 /audio/speech（与方舟/语音 Key 都不通用）
+    # - volc_direct：豆包语音 V3 单向流式直连，复用语音 Key，少一把网关 Key
     # 未配置时 TTS 返回 503，上传现成音频的通道不受影响
+    TTS_PROVIDER: Literal["vei", "volc_direct"] = "vei"
     ARK_TTS_BASE_URL: str = "https://ai-gateway.vei.volces.com/v1"
     ARK_TTS_API_KEY: str | None = None
     ARK_TTS_MODEL: str = "doubao-tts"
     # 音色：mars 系标准音色账号直接可用，uranus 系精品音色需购买
     # （不存在的音色会返回 200 + 0 字节音频，不报错，按字节数判断）
     ARK_TTS_VOICE: str = "en_female_anna_mars_bigtts"
+    # 豆包语音直连（语音合成 2.0）：资源 ID 与音色必须同代匹配，
+    # 2.0 音色以 _uranus_bigtts 结尾；Key 缺省回落 VOLC_ASR_API_KEY。
+    VOLC_TTS_BASE_URL: str = (
+        "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+    )
+    VOLC_TTS_API_KEY: str | None = None
+    VOLC_TTS_RESOURCE_ID: str = "seed-tts-2.0"
+    VOLC_TTS_VOICE: str = "en_female_dacey_uranus_bigtts"
     # 后台评分线程数（PRD：8 个 worker 可在 2 分钟内打完 40 人；生产经 .env 可调）
     SCORING_WORKERS: int = 8
     # 评分失败重投退避基数（秒），指数退避上限 60s：0 = 立即重投（测试用）

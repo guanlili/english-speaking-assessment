@@ -134,6 +134,9 @@ def collect_metrics(session: Session) -> dict[str, Any]:
     /admin/metrics 与大盘性能区共用一份口径；进程内计数器重启归零。
     """
     stats = call_stats()
+    tts_direct = settings.TTS_PROVIDER == "volc_direct"
+    tts_model = settings.VOLC_TTS_RESOURCE_ID if tts_direct else settings.ARK_TTS_MODEL
+    tts_voice = settings.VOLC_TTS_VOICE if tts_direct else settings.ARK_TTS_VOICE
     return {
         "process": PROCESS_INFO,
         "db_pool": _db_pool_stats(),
@@ -159,8 +162,9 @@ def collect_metrics(session: Session) -> dict[str, Any]:
                 "by_kind": {k: v for k, v in stats.items() if k.startswith("llm")},
             },
             "tts": {
-                "model": settings.ARK_TTS_MODEL,
-                "voice": settings.ARK_TTS_VOICE,
+                "provider": settings.TTS_PROVIDER,
+                "model": tts_model,
+                "voice": tts_voice,
                 **stats.get(
                     "tts",
                     {

@@ -6,7 +6,83 @@ import httpx
 import pytest
 
 from app.core.config import settings
-from app.scoring.tts import ArkTtsProvider, TtsError
+from app.scoring.tts import (
+    ArkTtsProvider,
+    TtsError,
+    VolcDirectTtsProvider,
+    build_tts_provider,
+)
+
+
+def test_direct_tts_requires_api_key() -> None:
+    provider = VolcDirectTtsProvider(api_key=None, voice="en_voice")
+    with pytest.raises(TtsError, match="VOLC_TTS_API_KEY"):
+        provider.synthesize("hello")
+
+
+def test_direct_tts_success() -> None:
+    import base64
+    import json
+
+    part1 = b"ID3-part1"
+    part2 = b"-part2"
+    lines = (
+        b"\n".join(
+            [
+                json.dumps(
+                    {"code": 0, "data": base64.b64encode(part1).decode()}
+                ).encode(),
+                json.dumps(
+                    {"code": 0, "data": base64.b64encode(part2).decode()}
+                ).encode(),
+                json.dumps({"code": 0, "data": None}).encode(),
+                json.dumps({"code": 20000000, "message": "OK"}).encode(),
+            ]
+        )
+        + b"\n"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = __import__("json").loads(request.content)
+        assert request.url.path == "/api/v3/tts/unidirectional"
+        assert request.headers["X-Api-Resource-Id"] == "seed-tts-2.0"
+        assert body["req_params"]["speaker"] == "en_female_dacey_uranus_bigtts"
+        return httpx.Response(200, content=lines)
+
+    provider = VolcDirectTtsProvider(
+        api_key="key",
+        resource_id="seed-tts-2.0",
+        voice="en_female_dacey_uranus_bigtts",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    assert provider.synthesize("hello") == part1 + part2
+
+
+def test_direct_tts_error_code() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b'{"code":55000000,"message":"resource ID is mismatched"}\n',
+        )
+
+    provider = VolcDirectTtsProvider(
+        api_key="key",
+        resource_id="seed-tts-2.0",
+        voice="en_female_dacey_uranus_bigtts",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    with pytest.raises(TtsError, match="55000000"):
+        provider.synthesize("hello")
+
+
+def test_build_tts_provider_direct(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TTS_PROVIDER", "volc_direct")
+    monkeypatch.setattr(settings, "VOLC_ASR_API_KEY", "speech-key")
+    monkeypatch.setattr(settings, "VOLC_TTS_API_KEY", None)
+    provider = build_tts_provider()
+    assert isinstance(provider, VolcDirectTtsProvider)
+    assert provider.api_key == "speech-key"
+    assert provider.resource_id == "seed-tts-2.0"
 
 
 def test_tts_requires_api_key() -> None:
