@@ -1,0 +1,265 @@
+name: Deploy Test
+
+# 测试环境专用流水线：与 deploy.yml 的部署 job 同构（同一套 7 步脚本、
+# 同一份 generate-deploy-env.sh、同样的就绪检查与 RLS 自检），区别只有三点：
+#   1. 手动触发（workflow_dispatch），不跟 push 走——测试环境不需要每次提交都重建
+#   2. 走 GitHub Environment `test`，密钥从环境作用域取，与生产 Secrets 互不干扰
+#   3. 不传 git bundle：测试机直连 GitHub（SSH 部署密钥）实测 4s，无需跨境兜底
+#
+# 生产部署仍由 deploy.yml 负责，这条 workflow 的存在不影响它。
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "要部署的 commit / 分支（默认 master 最新）"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-test:
+    name: 部署到测试环境
+    runs-on: ubuntu-24.04
+    environment: test
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: 从环境 Secrets 生成 .env（base64 中转，值不进入 shell 源码）
+        id: envfile
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          FRONTEND_HOST: ${{ secrets.FRONTEND_HOST }}
+          PROJECT_NAME: ${{ secrets.PROJECT_NAME }}
+          COMPOSE_PROJECT_NAME: ${{ secrets.COMPOSE_PROJECT_NAME }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          FIRST_SUPERUSER: ${{ secrets.FIRST_SUPERUSER }}
+          FIRST_SUPERUSER_PASSWORD: ${{ secrets.FIRST_SUPERUSER_PASSWORD }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          APP_POSTGRES_USER: ${{ secrets.APP_POSTGRES_USER }}
+          APP_POSTGRES_PASSWORD: ${{ secrets.APP_POSTGRES_PASSWORD }}
+          PLATFORM_POSTGRES_USER: ${{ secrets.PLATFORM_POSTGRES_USER }}
+          PLATFORM_POSTGRES_PASSWORD: ${{ secrets.PLATFORM_POSTGRES_PASSWORD }}
+          APP_PORT: ${{ secrets.APP_PORT }}
+          WORKERS: ${{ secrets.WORKERS || '1' }}
+          SCORING_WORKERS: ${{ secrets.SCORING_WORKERS }}
+          AUDIO_TTL_DAYS: ${{ secrets.AUDIO_TTL_DAYS }}
+          EXPORT_STORAGE_DIR: ${{ secrets.EXPORT_STORAGE_DIR }}
+          EXPORT_TTL_DAYS: ${{ secrets.EXPORT_TTL_DAYS }}
+          COST_ALERT_EMAIL: ${{ secrets.COST_ALERT_EMAIL }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_SUPPORT_EMAIL: ${{ secrets.VITE_SUPPORT_EMAIL }}
+          USERS_OPEN_REGISTRATION: ${{ secrets.USERS_OPEN_REGISTRATION || 'false' }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAILS_FROM_EMAIL: ${{ secrets.EMAILS_FROM_EMAIL || 'info@example.com' }}
+          SMTP_TLS: ${{ secrets.SMTP_TLS || 'True' }}
+          SMTP_SSL: ${{ secrets.SMTP_SSL || 'False' }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SCORING_PROVIDER: ${{ secrets.SCORING_PROVIDER }}
+          ASR_PROVIDER: ${{ secrets.ASR_PROVIDER }}
+          VOLC_ASR_API_KEY: ${{ secrets.VOLC_ASR_API_KEY }}
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+          ARK_ASR_MODEL: ${{ secrets.ARK_ASR_MODEL }}
+          ARK_RUBRIC_MODEL: ${{ secrets.ARK_RUBRIC_MODEL }}
+          ARK_TTS_API_KEY: ${{ secrets.ARK_TTS_API_KEY }}
+          ARK_TTS_MODEL: ${{ secrets.ARK_TTS_MODEL }}
+          ARK_TTS_VOICE: ${{ secrets.ARK_TTS_VOICE }}
+          DP_Id: ${{ secrets.DP_Id }}
+          DP_Key: ${{ secrets.DP_Key }}
+          TLS_DOMAIN: ${{ secrets.TLS_DOMAIN }}
+        run: |
+          bash scripts/generate-deploy-env.sh "$RUNNER_TEMP/deploy.env"
+          env_b64=$(base64 < "$RUNNER_TEMP/deploy.env" | tr -d '\n')
+          echo "::add-mask::$env_b64"
+          echo "env_b64=$env_b64" >> "$GITHUB_OUTPUT"
+          echo "path_b64=$(printf '%s' "$DEPLOY_PATH" | base64 | tr -d '\n')" >> "$GITHUB_OUTPUT"
+          rm -f "$RUNNER_TEMP/deploy.env"
+
+      - name: 探测服务器当前提交与拉取能力
+        id: serverhead
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          umask 077
+          printf '%s' "$SERVER_SSH_KEY" > "$RUNNER_TEMP/deploy_id"
+          if [ -n "$(tail -c 1 "$RUNNER_TEMP/deploy_id")" ]; then printf '\n' >> "$RUNNER_TEMP/deploy_id"; fi
+          chmod 600 "$RUNNER_TEMP/deploy_id"
+          ssh_opts=(-i "$RUNNER_TEMP/deploy_id" -o IdentitiesOnly=yes -o BatchMode=yes \
+              -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30)
+          if ! sha=$(ssh "${ssh_opts[@]}" "$SERVER_USER@$SERVER_HOST" \
+              "cd '$DEPLOY_PATH' 2>/dev/null && git rev-parse HEAD 2>/dev/null || echo none" 2>"$RUNNER_TEMP/probe_err"); then
+            sha=none
+            echo "::warning::ssh 探测失败，stderr 如下"
+            sed -E 's/(AAAA[A-Za-z0-9+\/=]{16,})/***/g' "$RUNNER_TEMP/probe_err" | tail -12
+          fi
+          case "$sha" in ''|*[^0-9a-f]*|*[A-F]*|*' '*) sha=none;; esac
+          fetch=fail
+          for attempt in 1 2 3; do
+            if ssh "${ssh_opts[@]}" "$SERVER_USER@$SERVER_HOST" \
+                "cd '$DEPLOY_PATH' 2>/dev/null && timeout 90 git fetch origin" 2>"$RUNNER_TEMP/fetch_err"; then
+              fetch=ok; break
+            fi
+            echo "拉取预检失败（第 ${attempt} 次），stderr:"
+            sed -E 's/(AAAA[A-Za-z0-9+\/=]{16,})/***/g' "$RUNNER_TEMP/fetch_err" | tail -6
+            sleep 10
+          done
+          rm -f "$RUNNER_TEMP/deploy_id"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "fetch=$fetch" >> "$GITHUB_OUTPUT"
+          echo "服务器当前提交: $sha；拉取预检: $fetch"
+
+      - name: 服务器拉代码并重启服务（与生产同构的 7 步）
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          ENV_B64: ${{ steps.envfile.outputs.env_b64 }}
+          PATH_B64: ${{ steps.envfile.outputs.path_b64 }}
+          DEPLOY_SHA: ${{ github.sha }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 50m
+          envs: ENV_B64,PATH_B64,DEPLOY_SHA
+          script: |
+            set -e
+            umask 077
+            deploy_path=$(printf '%s' "$PATH_B64" | base64 -d)
+            cd "$deploy_path"
+            trap 'rm -f .env.new' EXIT
+
+            echo "=== 1/7 checkout 到本次 CI 验证过的提交 ==="
+            if ! timeout 90 git fetch origin; then
+              echo "❌ 服务器无法从 origin 拉取（测试机走 SSH 部署密钥，正常应为秒级）"
+              exit 1
+            fi
+            git reset --hard "$DEPLOY_SHA"
+
+            echo "=== 2/7 解码 .env 并校验 ==="
+            printf '%s' "$ENV_B64" | base64 -d > .env.new
+            chmod 600 .env.new
+            for k in FRONTEND_HOST SECRET_KEY FIRST_SUPERUSER FIRST_SUPERUSER_PASSWORD POSTGRES_PASSWORD APP_PORT; do
+              if ! grep -Eq "^${k}=\".+\"" .env.new; then
+                echo "❌ .env 校验失败：$k 缺失或为空白"
+                exit 1
+              fi
+            done
+            if ! COMPOSE_ENV_FILE=.env.new docker compose -f compose.yml --env-file .env.new config --quiet; then
+              echo "❌ .env.new 无法通过 docker compose 校验，保留现有 .env 不变"
+              exit 1
+            fi
+
+            echo "=== 3/7 原子替换 .env ==="
+            mv .env.new .env
+
+            echo "=== 4/7 HTTPS 证书（配置了 DP_Id/DP_Key/TLS_DOMAIN 时幂等签发）==="
+            if grep -Eq '^DP_Id=".+"' .env && grep -Eq '^DP_Key=".+"' .env && grep -Eq '^TLS_DOMAIN=".+"' .env; then
+              tls_domain=$(sed -n 's/^TLS_DOMAIN="\([^"]*\)"$/\1/p' .env)
+              mkdir -p ssl
+              chmod 700 ssl 2>/dev/null || true
+              if [ ! -f ssl/fullchain.pem ]; then
+                echo "首次签发 $tls_domain 证书（Let's Encrypt DNS-01）"
+                docker compose -f compose.yml run --rm acme --issue --dns dns_dp -d "$tls_domain" --server letsencrypt --keylength ec-256
+                docker compose -f compose.yml run --rm acme --install-cert -d "$tls_domain" --ecc --fullchain-file /ssl/fullchain.pem --key-file /ssl/privkey.pem
+                tls_first_issue=1
+              else
+                echo "证书已存在，跳过签发（acme daemon 自动续期）"
+              fi
+              reload_cmd="cd '$PWD' && docker compose -f compose.yml exec -T frontend nginx -s reload"
+              { crontab -l 2>/dev/null || true; } | grep -v 'nginx -s reload' > /tmp/cron-register.new || true
+              echo "0 4 * * * $reload_cmd" >> /tmp/cron-register.new
+              crontab /tmp/cron-register.new && rm -f /tmp/cron-register.new
+            else
+              echo "未配置 DNSPod 密钥/域名，保持纯 HTTP"
+            fi
+
+            echo "=== 5/7 每日数据库备份（幂等注册）+ 部署前快照 ==="
+            mkdir -p backups
+            chmod 700 backups
+            backup_cmd="cd '$PWD' && bash scripts/backup-local.sh || date >> '$PWD/backups/backup-failure.log'"
+            { crontab -l 2>/dev/null || true; } | grep -v -e 'app-.*sql.gz' -e 'scripts/backup-local.sh' > /tmp/cron-register.new || true
+            echo "30 3 * * * $backup_cmd" >> /tmp/cron-register.new
+            crontab /tmp/cron-register.new && rm -f /tmp/cron-register.new
+            dump_tmp="backups/app-$(date +%Y%m%d-%H%M)-predeploy.sql"
+            if docker compose -f compose.yml exec -T db sh -c 'pg_dump -U ${POSTGRES_USER} ${POSTGRES_DB}' > "$dump_tmp"; then
+              gzip -f "$dump_tmp"
+              echo "predeploy 快照完成：${dump_tmp}.gz"
+            else
+              rm -f "$dump_tmp"
+              echo "❌ predeploy 备份失败，中止部署"
+              exit 1
+            fi
+
+            echo "=== 6/7 构建并重启容器 ==="
+            for img in esa-backend esa-frontend; do
+              if docker image inspect "$img:latest" >/dev/null 2>&1; then
+                docker tag "$img:latest" "$img:rollback"
+                echo "$img:rollback 已指向上一版"
+              fi
+            done
+            docker compose -f compose.yml up -d --build --remove-orphans || {
+              echo "--- prestart logs ---"
+              docker compose -f compose.yml logs prestart --tail 50
+              echo "--- backend logs ---"
+              docker compose -f compose.yml logs backend --tail 50
+              exit 1
+            }
+            if [ "${tls_first_issue:-0}" = "1" ]; then
+              docker compose -f compose.yml up -d --force-recreate --no-deps frontend
+            fi
+
+            echo "=== 7/7 验证（就绪检查 = 含数据库可用性）==="
+            app_port=$(sed -n 's/^APP_PORT="\([0-9]*\)"$/\1/p' .env)
+            healthy=""
+            for i in $(seq 1 30); do
+              if curl --connect-timeout 2 --max-time 5 -fsS "http://localhost:$app_port/api/v1/utils/ready-check/" > /dev/null 2>&1; then
+                healthy=1; break
+              fi
+              sleep 2
+            done
+            if [ -z "$healthy" ]; then
+              echo "❌ 就绪检查重试 30 次后仍未通过"
+              docker compose -f compose.yml ps
+              docker compose -f compose.yml logs backend --tail 50
+              exit 1
+            fi
+            echo "✅ 部署成功"
+            docker compose -f compose.yml ps
+
+            echo "=== 清理旧镜像与超额构建缓存 ==="
+            docker image prune -f
+            docker builder prune -f --keep-storage 20g || true
+
+      - name: 生产级 RLS 自检（受限角色真实生效）
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          PATH_B64: ${{ steps.envfile.outputs.path_b64 }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 10m
+          envs: PATH_B64
+          script: |
+            set -e
+            deploy_path=$(printf '%s' "$PATH_B64" | base64 -d)
+            cd "$deploy_path"
+            bash scripts/prod-rls-selfcheck.sh
