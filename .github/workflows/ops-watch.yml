@@ -34,8 +34,17 @@ jobs:
     name: 外部存活性
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: production
     steps:
-      - name: 三次探测 health-check（任一次 200 即视为存活）
+      # GitHub 托管 runner 在海外，访问国内云主机可能整体不通（2026-11-19 切火山后
+      # 连续报 HTTP 000，同期国内多点访问均 200）。因此外部探测失败时回落到
+      # 服务器本机自检：既能区分「服务真挂了」和「只是这条国际线路不通」，
+      # 也避免每小时的假红把告警淹没。
+      - name: 探测 health-check（外部优先，失败回落服务器自检）
+        env:
+          SSH_HOST: ${{ secrets.SERVER_HOST }}
+          SSH_USER: ${{ secrets.SERVER_USER }}
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
         run: |
           set -u
           ok=0
@@ -46,11 +55,26 @@ jobs:
             if [ "$code" = "200" ]; then ok=1; break; fi
             [ "$attempt" -lt 3 ] && sleep 10
           done
-          if [ "$ok" != "1" ]; then
-            echo "::error::外部存活性巡检失败：连续 3 次未拿到 200（最后 HTTP ${code}）"
+
+          if [ "$ok" = "1" ]; then
+            echo "外部存活性正常（HTTP 200）"
+            exit 0
+          fi
+
+          echo "::warning::外部探测连续 3 次失败（最后 HTTP ${code}），回落到服务器本机自检（可能是海外线路不通）"
+          key="$RUNNER_TEMP/deploy_key"
+          printf '%s\n' "$SSH_KEY" > "$key"
+          chmod 600 "$key"
+          internal=$(ssh -i "$key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=15 "$SSH_USER@$SSH_HOST" \
+            "curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1/api/v1/utils/health-check/" \
+            2>/dev/null || echo 000)
+          echo "服务器本机自检 → HTTP ${internal}"
+          if [ "$internal" != "200" ]; then
+            echo "::error::存活性巡检失败：外部 HTTP ${code}，服务器本机 HTTP ${internal}"
             exit 1
           fi
-          echo "外部存活性正常（HTTP 200）"
+          echo "::warning::服务本身正常（本机 200），外部不可达属线路问题，请人工核查安全组/国际链路"
 
   disk:
     name: 磁盘水位
