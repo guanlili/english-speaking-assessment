@@ -379,6 +379,9 @@ def test_my_sessions_rows_and_stats(
         assert row_a["mode"] == "daily"
         assert row_a["done_count"] == 2
         assert row_a["total_count"] == 3
+        # 跨日未完成的历史轮次不再提供继续入口
+        assert row_a["in_progress"] is False
+        assert row_a["can_resume"] is False
         expected_avg = round(
             (passage_resp.json()["overall"] + q1_resp.json()["overall"]) / 2,
             1,
@@ -390,12 +393,17 @@ def test_my_sessions_rows_and_stats(
         assert row_b["done_count"] == 0
         assert row_b["total_count"] == 3
         assert row_b["overall_avg"] is None
+        # 今日未做完 → 进行中，可继续
+        assert row_b["in_progress"] is True
+        assert row_b["can_resume"] is True
         # 自主轮：无发布标题、按实际作答题位计 1/1、有均分
         row_c = by_id[plan_c["session_id"]]
         assert row_c["title"] is None
         assert row_c["done_count"] == 1
         assert row_c["total_count"] == 1
         assert row_c["overall_avg"] == repeat_resp.json()["overall"]
+        assert row_c["in_progress"] is False
+        assert row_c["can_resume"] is False
     finally:
         _unassign(db, code)
         _cleanup_student(db, made)
@@ -458,6 +466,8 @@ def test_my_sessions_exam_scores_masked_until_ended(
         assert rows[0]["overall_avg"] is None
         assert rows[0]["attempt_ids"] == []
         assert rows[0]["is_exam"] is True
+        assert rows[0]["in_progress"] is True
+        assert rows[0]["can_resume"] is True
 
         # 离开考试页后所有题窗过期：反馈和按钮使用同一只读结束判据。
         session_row = db.get_one(PracticeSession, uuid.UUID(plan["session_id"]))
@@ -469,6 +479,8 @@ def test_my_sessions_exam_scores_masked_until_ended(
         ).json()
         assert expired_rows[0]["exam_ended"] is True
         assert expired_rows[0]["overall_avg"] == attempt_row.overall
+        assert expired_rows[0]["in_progress"] is False
+        assert expired_rows[0]["can_resume"] is False
         db.refresh(session_row)
         assert session_row.exam_ended_at is None
 

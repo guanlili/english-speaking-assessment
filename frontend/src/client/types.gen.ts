@@ -3068,6 +3068,14 @@ export type MySessionSummary = {
      */
     exam_ended?: boolean;
     /**
+     * In Progress
+     */
+    in_progress?: boolean;
+    /**
+     * Can Resume
+     */
+    can_resume?: boolean;
+    /**
      * Session Id
      */
     session_id: string;

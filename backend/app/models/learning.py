@@ -356,6 +356,10 @@ class MySessionSummary(SQLModel):
     attempt_ids: list[uuid.UUID] = []
     is_exam: bool = False
     exam_ended: bool = False
+    # 本轮是否仍可继续（考试未终结，或今日练习未做完）；前端据此把
+    # 「进行中」与「历史」分开展示，历史入口不得把人带回答题态。
+    in_progress: bool = False
+    can_resume: bool = False
     session_id: uuid.UUID
     session_date: date
     # daily = 课堂/发布练习轮；explore = 主题探索自由练习
