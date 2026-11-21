@@ -3,7 +3,7 @@
 import logging
 import uuid
 from collections import Counter
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -23,6 +23,7 @@ from app.api.routes.class_shared import (
     _question_band_for_session,
     _require_classroom_teacher,
     _student_profile_of,
+    _today_in_practice_tz,
     router,
 )
 from app.core.config import settings
@@ -537,6 +538,28 @@ def read_class_trend(
     return class_trend.summarize(session, student_ids, since_utc, settings.PRACTICE_TZ)
 
 
+def _session_progress_flags(
+    *,
+    is_exam: bool,
+    exam_locked: bool,
+    session_date: date,
+    today: date,
+    done_count: int,
+    total_count: int,
+) -> tuple[bool, bool]:
+    """历史列表的「进行中 / 可继续」口径。
+
+    考试以服务端终结判定为准；普通练习只把**今日**未做完的轮次算进行中，
+    跨日未完成的历史轮次不再提供继续入口（避免从历史直接进入答题态）。
+    """
+    if is_exam:
+        # exam_locked = 反馈仍遮罩 = 考试尚未终结，正是「进行中」。
+        in_progress = exam_locked
+        return in_progress, in_progress
+    in_progress = session_date == today and total_count > 0 and done_count < total_count
+    return in_progress, in_progress
+
+
 def _session_history(
     session: SessionDep,
     student_id: uuid.UUID,
@@ -548,6 +571,8 @@ def _session_history(
     sessions = _load_student_sessions(session, student_id, limit, offset)
     if not sessions:
         return []
+
+    today = _today_in_practice_tz()
 
     # 批量预取：作答（最新一次覆盖，与 board/latest 口径一致）+ 绑定练习
     latest_by_session = _latest_attempts_by_session(session, sessions)
@@ -575,13 +600,25 @@ def _session_history(
         )
         feedback_locked = mask_exam_feedback and exam_locked
         overalls = [a.overall for a in done if a.overall is not None]
+        is_exam = bool(exercise and exercise.is_exam)
+        exam_ended = bool(is_exam and not exam_locked)
+        in_progress, can_resume = _session_progress_flags(
+            is_exam=is_exam,
+            exam_locked=exam_locked,
+            session_date=ps.session_date,
+            today=today,
+            done_count=len(done),
+            total_count=len(required),
+        )
         rows.append(
             MySessionSummary(
                 attempt_ids=[]
                 if feedback_locked
                 else [attempt.id for attempt in latest.values()],
-                is_exam=bool(exercise and exercise.is_exam),
-                exam_ended=bool(exercise and exercise.is_exam and not exam_locked),
+                is_exam=is_exam,
+                exam_ended=exam_ended,
+                in_progress=in_progress,
+                can_resume=can_resume,
                 session_id=ps.id,
                 session_date=ps.session_date,
                 mode=ps.mode,

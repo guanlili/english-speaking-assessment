@@ -17,11 +17,13 @@ import { ITEM_TYPE_LABELS } from "@/lib/terms"
 export function RoundReplayDialog({
   replay,
   isExam,
+  readOnly = false,
   onClose,
   onPracticeAgain,
 }: {
   replay: { item: PlanItem; attempt: PlanAttempt } | null
   isExam: boolean
+  readOnly?: boolean
   onClose: () => void
   onPracticeAgain: (itemId: string) => void
 }) {
@@ -89,7 +91,7 @@ export function RoundReplayDialog({
           <Button variant="outline" onClick={onClose}>
             {t({ zh: "关闭", en: "Close" })}
           </Button>
-          {!isExam && (
+          {!isExam && !readOnly && (
             <Button onClick={() => replay && onPracticeAgain(replay.item.id)}>
               <Repeat />
               {t({ zh: "再练这一题", en: "Practice this item again" })}

@@ -5480,6 +5480,11 @@
             "title": "Attempt Ids",
             "type": "array"
           },
+          "can_resume": {
+            "default": false,
+            "title": "Can Resume",
+            "type": "boolean"
+          },
           "done_count": {
             "title": "Done Count",
             "type": "integer"
@@ -5487,6 +5492,11 @@
           "exam_ended": {
             "default": false,
             "title": "Exam Ended",
+            "type": "boolean"
+          },
+          "in_progress": {
+            "default": false,
+            "title": "In Progress",
             "type": "boolean"
           },
           "is_exam": {

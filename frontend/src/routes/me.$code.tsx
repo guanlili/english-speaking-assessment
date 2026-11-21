@@ -13,6 +13,7 @@ import { useMemo, useState } from "react"
 import { ClassesService } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
 import DimensionTrendChart from "@/components/Practice/DimensionTrendChart"
+import { HistorySessionRow } from "@/components/Practice/HistorySessionRow"
 import { LearningReportCard } from "@/components/Practice/LearningReportCard"
 import StudentShell from "@/components/Practice/StudentShell"
 import TrailView from "@/components/Practice/TrailView"
@@ -133,6 +134,14 @@ function MyTrailPage() {
   const visibleSessions = useMemo(
     () => filterSessions(mySessionsQuery.data ?? [], sessionFilter, t),
     [mySessionsQuery.data, sessionFilter, t],
+  )
+  const inProgressSessions = useMemo(
+    () => visibleSessions.filter((row) => row.in_progress),
+    [visibleSessions],
+  )
+  const historySessions = useMemo(
+    () => visibleSessions.filter((row) => !row.in_progress),
+    [visibleSessions],
   )
 
   useStudentGuard(code, student, trailQuery)
@@ -539,8 +548,8 @@ function MyTrailPage() {
             </CardTitle>
             <CardDescription>
               {t({
-                zh: "最近 100 轮练习与考试；点「查看反馈」回看当轮每题的转写、参考分与建议。",
-                en: "Your last 100 rounds. View feedback to revisit transcripts, reference scores and tips for each item.",
+                zh: "最近 100 轮练习与考试。进行中的轮次单独列出；已完成轮次点「查看反馈」只读回看，不会重新进入答题。",
+                en: "Your last 100 rounds. In-progress rounds are listed separately; completed rounds open read-only feedback and never restart answering.",
               })}
             </CardDescription>
           </CardHeader>
@@ -606,75 +615,55 @@ function MyTrailPage() {
                     })}
                   </p>
                 ) : (
-                  <ul className="space-y-2">
-                    {visibleSessions.map((row) => (
-                      <li
-                        key={row.session_id}
-                        className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border px-3 py-2.5"
-                      >
-                        <span className="w-24 shrink-0 text-xs text-muted-foreground">
-                          {/* 练习日按服务端时区落库（YYYY-MM-DD）：直接展示原串，
-                          不经本地时区解析（与轨迹表同口径，避免西半球差一天） */}
-                          {row.session_date}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-2">
-                            <span className="truncate text-sm font-medium">
-                              {row.title ??
-                                t(
-                                  row.mode === "explore"
-                                    ? { zh: "主题探索", en: "Topic explore" }
-                                    : { zh: "自主练习", en: "Self practice" },
-                                )}
-                            </span>
-                            <Badge variant="outline">
-                              {t(
-                                row.is_exam
-                                  ? { zh: "考试", en: "Exam" }
-                                  : { zh: "练习", en: "Practice" },
-                              )}
-                            </Badge>
-                            {row.mode === "explore" && (
-                              <Badge
-                                variant="outline"
-                                className="shrink-0 text-muted-foreground"
-                              >
-                                {t({ zh: "探索", en: "Explore" })}
-                              </Badge>
-                            )}
-                          </span>
-                          <span className="mt-0.5 block text-xs text-muted-foreground">
-                            {t({
-                              zh: `完成 ${row.done_count}/${row.total_count} 题 · 参考分 ${row.overall_avg ?? "–"}`,
-                              en: `${row.done_count}/${row.total_count} done · ref score ${row.overall_avg ?? "–"}`,
-                            })}
-                          </span>
-                        </span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="min-h-11 shrink-0"
-                          asChild
-                        >
-                          <Link
-                            to={
-                              row.is_exam
-                                ? "/exam/$code/result"
-                                : "/p/$code/result"
-                            }
-                            params={{ code }}
-                            search={{ session: row.session_id }}
-                          >
-                            {t(
-                              row.is_exam && !row.exam_ended
-                                ? { zh: "进入考试", en: "Open exam" }
-                                : { zh: "查看反馈", en: "View Feedback" },
-                            )}
-                          </Link>
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="space-y-4">
+                    {inProgressSessions.length > 0 && (
+                      <section className="space-y-2">
+                        <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+                          <Mic className="size-3.5 text-primary" />
+                          {t({ zh: "进行中", en: "In progress" })}
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          {t({
+                            zh: "还有没做完的题；只有这里的入口会进入答题。",
+                            en: "Unfinished items remain; only these entries resume answering.",
+                          })}
+                        </p>
+                        <ul className="space-y-2">
+                          {inProgressSessions.map((row) => (
+                            <HistorySessionRow
+                              key={row.session_id}
+                              row={row}
+                              code={code}
+                            />
+                          ))}
+                        </ul>
+                      </section>
+                    )}
+                    <section className="space-y-2">
+                      <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+                        <History className="size-3.5 text-muted-foreground" />
+                        {t({ zh: "已完成", en: "Completed" })}
+                      </h3>
+                      {historySessions.length === 0 ? (
+                        <p className="py-2 text-sm text-muted-foreground">
+                          {t({
+                            zh: "还没有已完成的历史练习。",
+                            en: "No completed practice rounds yet.",
+                          })}
+                        </p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {historySessions.map((row) => (
+                            <HistorySessionRow
+                              key={row.session_id}
+                              row={row}
+                              code={code}
+                            />
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  </div>
                 )}
               </>
             )}

@@ -35,9 +35,14 @@ import { extractErrorMessage } from "@/utils"
 export function RoundResultPage() {
   const { t } = useI18n()
   const { code } = useParams({ strict: false }) as { code: string }
-  const { explore: exploreSessionId, session: sessionParam } = useSearch({
+  const {
+    explore: exploreSessionId,
+    session: sessionParam,
+    review,
+  } = useSearch({
     strict: false,
-  })
+  }) as { explore?: string; session?: string; review?: string }
+  const isReview = review === "1"
   const navigate = useNavigate()
   const student = loadStudent(code)
   const expressions = useExpressionFavorites(code, student)
@@ -94,6 +99,7 @@ export function RoundResultPage() {
     plan?.attempts.some((attempt) => attempt.item_id === item.id),
   ).length
   useEffect(() => {
+    if (isReview) return
     if (plan?.exam && !plan.exam.ended) {
       void navigate({
         to: "/exam/$code",
@@ -101,7 +107,7 @@ export function RoundResultPage() {
         search: { session: plan.session_id },
       })
     }
-  }, [plan, navigate, code])
+  }, [plan, navigate, code, isReview])
   const gamification = plan?.gamification ?? null
   const newBadges = useMemo(() => {
     if (!gamification?.badges) return []
@@ -114,7 +120,7 @@ export function RoundResultPage() {
   // 3 星或新徽章 → 庆祝彩带（每次挂载只放一次；轮询刷新 gamification 对象不重放）
   const confettiFiredRef = useRef(false)
   useEffect(() => {
-    if (confettiFiredRef.current) return
+    if (isReview || confettiFiredRef.current) return
     if (
       gamification &&
       (gamification.session_stars === 3 || newBadges.length > 0)
@@ -122,7 +128,7 @@ export function RoundResultPage() {
       confettiFiredRef.current = true
       confetti({ particleCount: 90, spread: 75, origin: { y: 0.6 } })
     }
-  }, [gamification?.session_stars, newBadges.length, gamification])
+  }, [gamification?.session_stars, newBadges.length, gamification, isReview])
 
   const { doneItems, weakest } = useMemo(() => {
     const empty: { item: PlanItem; attempt: PlanAttempt }[] = []
@@ -279,7 +285,7 @@ export function RoundResultPage() {
       </div>
     )
   }
-  if (plan.exam && !plan.exam.ended) {
+  if (plan.exam && !plan.exam.ended && !isReview) {
     return (
       <div role="status">
         {t({
@@ -308,6 +314,29 @@ export function RoundResultPage() {
             })}
           </p>
         </div>
+
+        {isReview && plan.exam && !plan.exam.ended && (
+          <div
+            role="status"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-secondary/60 p-4 text-sm"
+          >
+            <p>
+              {t({
+                zh: "考试尚未结束，当前为只读回看；分数与逐题反馈将在考试结束后展示。",
+                en: "The exam is still in progress. This is a read-only review; scores and feedback appear after the exam ends.",
+              })}
+            </p>
+            <Button variant="outline" size="sm" className="min-h-11" asChild>
+              <Link
+                to="/exam/$code"
+                params={{ code }}
+                search={{ session: plan.session_id }}
+              >
+                {t({ zh: "继续考试", en: "Resume exam" })}
+              </Link>
+            </Button>
+          </div>
+        )}
 
         {isExam && (
           <p role="status" className="rounded-xl bg-secondary/60 p-4 text-sm">
@@ -530,6 +559,7 @@ export function RoundResultPage() {
         <RoundReplayDialog
           replay={replay}
           isExam={isExam}
+          readOnly={isReview}
           onClose={() => setReplay(null)}
           onPracticeAgain={(itemId) =>
             void navigate({
@@ -544,7 +574,7 @@ export function RoundResultPage() {
         />
 
         <div className="flex flex-wrap gap-3">
-          {!isExam && weakest && (
+          {!isExam && !isReview && weakest && (
             <Button
               variant="outline"
               onClick={() =>
@@ -562,7 +592,7 @@ export function RoundResultPage() {
               {t({ zh: "重练最弱的一题", en: "Redo your weakest item" })}
             </Button>
           )}
-          {!isExam && (
+          {!isExam && !isReview && (
             <Button
               onClick={() => nextQuestionMutation.mutate()}
               disabled={
@@ -586,7 +616,9 @@ export function RoundResultPage() {
             <Link
               to={isExam ? "/home/$code" : "/p/$code"}
               params={{ code }}
-              search={!isExam && sessionId ? { session: sessionId } : {}}
+              search={
+                !isExam && sessionId && !isReview ? { session: sessionId } : {}
+              }
             >
               {t({
                 zh: isExam ? "返回首页" : "回练习页",
