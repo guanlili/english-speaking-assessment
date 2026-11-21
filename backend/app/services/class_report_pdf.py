@@ -158,7 +158,7 @@ def _require_class_report_access(
         raise ReportForbidden
     classroom_id = _as_uuid(filt.get("classroom_id"))
     classroom = session.get(Classroom, classroom_id) if classroom_id else None
-    if classroom is None or not classroom_teacher_allowed(classroom, user):
+    if classroom is None or not classroom_teacher_allowed(classroom, user, session):
         raise ReportForbidden
     start = _parse_dt(filt.get("from"))
     end = _parse_dt(filt.get("to"))

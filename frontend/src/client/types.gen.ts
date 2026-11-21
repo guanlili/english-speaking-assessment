@@ -1282,6 +1282,18 @@ export type ClassroomPublic = {
      */
     owner_id?: string | null;
     /**
+     * Viewer Role
+     */
+    viewer_role?: string | null;
+    /**
+     * Owner Name
+     */
+    owner_name?: string | null;
+    /**
+     * Co Teacher Count
+     */
+    co_teacher_count?: number;
+    /**
      * Assign Reading
      */
     assign_reading?: boolean | null;
@@ -1315,6 +1327,42 @@ export type ClassroomRevision = {
      * Revision
      */
     revision: string;
+};
+
+/**
+ * ClassroomTeacherCreate
+ */
+export type ClassroomTeacherCreate = {
+    /**
+     * User Id
+     */
+    user_id: string;
+};
+
+/**
+ * ClassroomTeacherPublic
+ */
+export type ClassroomTeacherPublic = {
+    /**
+     * User Id
+     */
+    user_id: string;
+    /**
+     * Full Name
+     */
+    full_name?: string | null;
+    /**
+     * Email
+     */
+    email?: string | null;
+    /**
+     * Role
+     */
+    role: string;
+    /**
+     * Is Me
+     */
+    is_me?: boolean;
 };
 
 /**
@@ -5060,6 +5108,28 @@ export type StudentUpdate = {
 };
 
 /**
+ * TeacherCandidatePublic
+ */
+export type TeacherCandidatePublic = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Username
+     */
+    username?: string | null;
+    /**
+     * Full Name
+     */
+    full_name?: string | null;
+    /**
+     * Email
+     */
+    email?: string | null;
+};
+
+/**
  * TeacherFeedbackWrite
  */
 export type TeacherFeedbackWrite = {
@@ -8400,6 +8470,143 @@ export type ClassesUpdateReportSettingsResponses = {
 };
 
 export type ClassesUpdateReportSettingsResponse = ClassesUpdateReportSettingsResponses[200 & keyof ClassesUpdateReportSettingsResponses];
+
+export type ClassesListClassTeachersData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/teachers';
+};
+
+export type ClassesListClassTeachersErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ClassesListClassTeachersError = ClassesListClassTeachersErrors[keyof ClassesListClassTeachersErrors];
+
+export type ClassesListClassTeachersResponses = {
+    /**
+     * Response Classes-List Class Teachers
+     *
+     * Successful Response
+     */
+    200: Array<ClassroomTeacherPublic>;
+};
+
+export type ClassesListClassTeachersResponse = ClassesListClassTeachersResponses[200 & keyof ClassesListClassTeachersResponses];
+
+export type ClassesAddClassTeacherData = {
+    body: ClassroomTeacherCreate;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/teachers';
+};
+
+export type ClassesAddClassTeacherErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ClassesAddClassTeacherError = ClassesAddClassTeacherErrors[keyof ClassesAddClassTeacherErrors];
+
+export type ClassesAddClassTeacherResponses = {
+    /**
+     * Successful Response
+     */
+    200: ClassroomTeacherPublic;
+};
+
+export type ClassesAddClassTeacherResponse = ClassesAddClassTeacherResponses[200 & keyof ClassesAddClassTeacherResponses];
+
+export type ClassesTeacherCandidatesData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: {
+        /**
+         * Q
+         */
+        q?: string | null;
+    };
+    url: '/api/v1/classes/{code}/teacher-candidates';
+};
+
+export type ClassesTeacherCandidatesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ClassesTeacherCandidatesError = ClassesTeacherCandidatesErrors[keyof ClassesTeacherCandidatesErrors];
+
+export type ClassesTeacherCandidatesResponses = {
+    /**
+     * Response Classes-Teacher Candidates
+     *
+     * Successful Response
+     */
+    200: Array<TeacherCandidatePublic>;
+};
+
+export type ClassesTeacherCandidatesResponse = ClassesTeacherCandidatesResponses[200 & keyof ClassesTeacherCandidatesResponses];
+
+export type ClassesRemoveClassTeacherData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * User Id
+         */
+        user_id: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/teachers/{user_id}';
+};
+
+export type ClassesRemoveClassTeacherErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ClassesRemoveClassTeacherError = ClassesRemoveClassTeacherErrors[keyof ClassesRemoveClassTeacherErrors];
+
+export type ClassesRemoveClassTeacherResponses = {
+    /**
+     * Response Classes-Remove Class Teacher
+     *
+     * Successful Response
+     */
+    200: {
+        [key: string]: string;
+    };
+};
+
+export type ClassesRemoveClassTeacherResponse = ClassesRemoveClassTeacherResponses[200 & keyof ClassesRemoveClassTeacherResponses];
 
 export type ClassesJoinClassData = {
     body: StudentJoin;

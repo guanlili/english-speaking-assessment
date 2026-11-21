@@ -7,10 +7,11 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import load_only
-from sqlmodel import Field, SQLModel, col, delete, select
+from sqlmodel import Field, SQLModel, col, delete, func, select
 
 from app.api.deps import (
     CurrentUser,
@@ -23,6 +24,7 @@ from app.crud import (
     ClassroomFullError,
     CrossTenantJoinError,
     classroom_teacher_allowed,
+    classroom_teacher_role,
     create_classroom,
     ensure_class_size_feasible,
     get_classroom_by_code,
@@ -38,6 +40,9 @@ from app.models import (
     ClassroomCreate,
     ClassroomExercise,
     ClassroomPublic,
+    ClassroomTeacher,
+    ClassroomTeacherCreate,
+    ClassroomTeacherPublic,
     Passage,
     PlanItem,
     PracticeSession,
@@ -47,6 +52,7 @@ from app.models import (
     Student,
     StudentJoin,
     StudentPublic,
+    TeacherCandidatePublic,
     Unit,
     User,
     VocabularyAnswer,
@@ -264,7 +270,7 @@ def _include_type(classroom: Classroom, kind: str) -> bool:
 
 
 def _require_classroom_teacher(classroom: Classroom, current_user: User) -> None:
-    """教师端点：本人是指派教师或管理员才能访问（课堂码不能当教师凭据）。
+    """教师端点：主教师/共管教师/本校管理员才能访问（课堂码不是教师凭据）。
 
     判定核心在 crud.classroom_teacher_allowed（与 students 侧同一事实源）；
     本侧对停用课堂放行（owner 收尾操作：删除课堂/调班容等）。"""
@@ -275,19 +281,74 @@ def _require_classroom_teacher(classroom: Classroom, current_user: User) -> None
         )
 
 
+def _require_classroom_owner(classroom: Classroom, current_user: User) -> None:
+    """仅主教师/本校管理员：删课堂、清历史、改班容与班级设置、管教师团队。"""
+    role = classroom_teacher_role(session_for(classroom), classroom, current_user)
+    if role not in {"owner", "school_admin"}:
+        raise HTTPException(
+            status_code=403,
+            detail="没有权限：仅主教师或校管理员可执行该操作",
+        )
+
+
+def session_for(classroom: Classroom):
+    """从 ORM 对象取会话；导入放在函数内避免循环依赖。"""
+    from sqlalchemy.orm import object_session
+
+    session = object_session(classroom)
+    if session is None:
+        raise HTTPException(status_code=500, detail="课堂会话不可用")
+    return session
+
+
+def _classroom_public(
+    session: Any, classroom: Classroom, current_user: User
+) -> ClassroomPublic:
+    """课堂卡片投影：保留 ORM 字段，补当前登录者角色/负责人/共管人数。"""
+    public = ClassroomPublic.model_validate(classroom)
+    public.viewer_role = classroom_teacher_role(session, classroom, current_user)
+    if classroom.owner_id is not None:
+        owner = session.get(User, classroom.owner_id)
+        public.owner_name = owner.full_name if owner is not None else None
+    public.co_teacher_count = int(
+        session.exec(
+            select(func.count())
+            .select_from(ClassroomTeacher)
+            .where(
+                ClassroomTeacher.classroom_id == classroom.id,
+                ClassroomTeacher.role == "co_teacher",
+            )
+        ).one()
+    )
+    return public
+
+
 @router.get("", response_model=list[ClassroomPublic])
 def list_my_classrooms(session: SessionDep, current_user: CurrentUser) -> Any:
-    """课堂列表：管理员看本校全部，教师看自己名下的（工作台「我的课堂」）。
+    """课堂列表：管理员看本校全部，教师看自己任主教师或共管教师的课堂。
 
-    多租户：管理员的「看全部」限定本校（RLS 激活环境由数据库强制，这里
-    是无 RLS 环境的应用层等价防线）。
+    授权来源是 classroom_teacher membership；owner_id 仍保留用于存量课堂
+    与迁移前兜底。多租户：管理员的「看全部」限定本校（RLS 激活环境由
+    数据库强制，这里是无 RLS 环境的应用层等价防线）。
     """
     stmt = select(Classroom).order_by(col(Classroom.created_at).desc())  # type: ignore[union-attr]
     if current_user.role != "school_admin":
-        stmt = stmt.where(Classroom.owner_id == current_user.id)  # type: ignore[arg-type]
+        stmt = stmt.where(
+            or_(
+                col(Classroom.owner_id) == current_user.id,
+                col(Classroom.id).in_(
+                    select(ClassroomTeacher.classroom_id).where(
+                        ClassroomTeacher.user_id == current_user.id
+                    )
+                ),
+            )
+        )
     else:
         stmt = stmt.where(Classroom.tenant_id == current_user.tenant_id)  # type: ignore[arg-type]
-    return session.exec(stmt).all()
+    return [
+        _classroom_public(session, classroom, current_user)
+        for classroom in session.exec(stmt).all()
+    ]
 
 
 @router.delete("/{code}")
@@ -305,7 +366,7 @@ def delete_class(
     classroom = get_classroom_by_code(session=session, code=code.upper())
     if classroom is None:
         raise HTTPException(status_code=404, detail="Classroom not found")
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_owner(classroom, current_user)
     student_ids = session.exec(
         select(Student.id).where(Student.classroom_id == classroom.id)  # type: ignore[arg-type]
     ).all()
@@ -358,6 +419,13 @@ def delete_class(
             col(VocabularySession.classroom_id) == classroom.id
         )
     )  # type: ignore[call-overload]
+    # 显式清理教师团队：表级 ON DELETE CASCADE 在 SQLite/受限环境不一定生效，
+    # 且删除课堂前不应留下可被误用的 membership。
+    session.exec(
+        delete(ClassroomTeacher).where(
+            col(ClassroomTeacher.classroom_id) == classroom.id
+        )
+    )  # type: ignore[call-overload]
     classroom.current_exercise_id = None
     session.add(classroom)
     session.flush()
@@ -393,7 +461,7 @@ def update_class_size(
     classroom = get_classroom_by_code(session=session, code=code.upper())
     if classroom is None:
         raise HTTPException(status_code=404, detail="Classroom not found")
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_owner(classroom, current_user)
     ensure_class_size_feasible(
         session=session, classroom=classroom, new_size=body.class_size
     )
@@ -417,12 +485,201 @@ def update_report_settings(
         classroom = get_classroom_by_code(session=session, code=code)
     if classroom is None:
         raise HTTPException(status_code=404, detail="Classroom not found")
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_owner(classroom, current_user)
     classroom.show_report_percentile = body.show_report_percentile
     session.add(classroom)
     session.commit()
     session.refresh(classroom)
     return classroom
+
+
+def _teacher_public(
+    session: Any,
+    user_id: uuid.UUID,
+    role: str,
+    current_user: User,
+) -> ClassroomTeacherPublic | None:
+    user = session.get(User, user_id)
+    if user is None:
+        return None
+    return ClassroomTeacherPublic(
+        user_id=user.id,
+        full_name=user.full_name,
+        email=user.email,
+        role=role,
+        is_me=user.id == current_user.id,
+    )
+
+
+@router.get("/{code}/teachers", response_model=list[ClassroomTeacherPublic])
+def list_class_teachers(
+    session: SessionDep, code: str, current_user: CurrentUser
+) -> Any:
+    """教师团队列表：主教师/共管教师/本校管理员可读。"""
+    classroom = get_classroom_by_code(session=session, code=code.upper())
+    if classroom is None:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+    _require_classroom_teacher(classroom, current_user)
+    memberships = session.exec(
+        select(ClassroomTeacher).where(ClassroomTeacher.classroom_id == classroom.id)
+    ).all()
+    roles: dict[uuid.UUID, str] = {m.user_id: m.role for m in memberships}
+    # 存量/异常漏回填兜底：owner_id 仍要出现在团队列表里，角色以 owner 为准。
+    if classroom.owner_id is not None:
+        roles[classroom.owner_id] = "owner"
+    rows = [
+        public
+        for user_id, role in roles.items()
+        if (public := _teacher_public(session, user_id, role, current_user))
+    ]
+    rows.sort(
+        key=lambda row: (
+            0 if row.role == "owner" else 1,
+            (row.full_name or "").casefold(),
+        )
+    )
+    return rows
+
+
+@router.get("/{code}/teacher-candidates", response_model=list[TeacherCandidatePublic])
+def teacher_candidates(
+    session: SessionDep,
+    code: str,
+    current_user: CurrentUser,
+    q: str | None = Query(default=None, max_length=80),
+) -> Any:
+    """本校可添加教师候选：仅主教师/校管理员，排除已在本班的成员。"""
+    classroom = get_classroom_by_code(session=session, code=code.upper())
+    if classroom is None:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+    _require_classroom_owner(classroom, current_user)
+    member_ids = set(
+        session.exec(
+            select(ClassroomTeacher.user_id).where(
+                ClassroomTeacher.classroom_id == classroom.id
+            )
+        ).all()
+    )
+    if classroom.owner_id is not None:
+        member_ids.add(classroom.owner_id)
+    stmt = select(User).where(
+        User.tenant_id == classroom.tenant_id,
+        User.role == "teacher",
+        col(User.is_active).is_(True),  # type: ignore[union-attr]
+    )
+    if member_ids:
+        stmt = stmt.where(col(User.id).not_in(member_ids))
+    keyword = (q or "").strip()
+    if keyword:
+        like = f"%{keyword}%"
+        stmt = stmt.where(
+            or_(
+                col(User.full_name).ilike(like),
+                col(User.username).ilike(like),
+                col(User.email).ilike(like),
+            )
+        )
+    users = session.exec(stmt.order_by(col(User.full_name)).limit(20)).all()
+    return [
+        TeacherCandidatePublic(
+            id=user.id,
+            username=user.username,
+            full_name=user.full_name,
+            email=user.email,
+        )
+        for user in users
+    ]
+
+
+@router.post("/{code}/teachers", response_model=ClassroomTeacherPublic)
+def add_class_teacher(
+    session: SessionDep,
+    code: str,
+    current_user: CurrentUser,
+    body: ClassroomTeacherCreate,
+) -> Any:
+    """添加共管教师：仅主教师/校管理员；同校、教师角色、未停用，重复添加幂等。"""
+    classroom = get_classroom_by_code(session=session, code=code.upper())
+    if classroom is None:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+    _require_classroom_owner(classroom, current_user)
+    target = session.get(User, body.user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="教师账号不存在")
+    if target.tenant_id != classroom.tenant_id:
+        raise HTTPException(status_code=403, detail="不能添加他校教师")
+    if target.role != "teacher":
+        raise HTTPException(status_code=422, detail="被添加账号不是教师角色")
+    if not target.is_active:
+        raise HTTPException(status_code=422, detail="被添加账号已停用")
+    if classroom.owner_id == target.id:
+        return _teacher_public(session, target.id, "owner", current_user)
+    existing = session.exec(
+        select(ClassroomTeacher).where(
+            ClassroomTeacher.classroom_id == classroom.id,
+            ClassroomTeacher.user_id == target.id,
+        )
+    ).first()
+    if existing is not None:
+        return _teacher_public(session, existing.user_id, existing.role, current_user)
+    membership = ClassroomTeacher(
+        classroom_id=classroom.id,
+        user_id=target.id,
+        role="co_teacher",
+        tenant_id=classroom.tenant_id,
+        created_by=current_user.id,
+    )
+    session.add(membership)
+    try:
+        session.commit()
+    except IntegrityError:
+        # 并发重复添加：唯一索引兜底，回读已有成员，保持幂等。
+        session.rollback()
+        existing = session.exec(
+            select(ClassroomTeacher).where(
+                ClassroomTeacher.classroom_id == classroom.id,
+                ClassroomTeacher.user_id == target.id,
+            )
+        ).first()
+        if existing is None:
+            raise
+        return _teacher_public(session, existing.user_id, existing.role, current_user)
+    return _teacher_public(session, target.id, "co_teacher", current_user)
+
+
+@router.delete("/{code}/teachers/{user_id}")
+def remove_class_teacher(
+    session: SessionDep,
+    code: str,
+    user_id: uuid.UUID,
+    current_user: CurrentUser,
+) -> dict[str, str]:
+    """移除共管教师：主教师/校管理员可移除他人；共管教师可退出自己。"""
+    classroom = get_classroom_by_code(session=session, code=code.upper())
+    if classroom is None:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+    actor_role = classroom_teacher_role(session, classroom, current_user)
+    if actor_role is None:
+        raise HTTPException(status_code=403, detail="没有权限：您不是该课堂的授权教师")
+    if user_id == classroom.owner_id:
+        raise HTTPException(status_code=403, detail="不能移除主教师；请先转让主教师")
+    if actor_role not in {"owner", "school_admin"} and user_id != current_user.id:
+        raise HTTPException(
+            status_code=403, detail="没有权限：仅主教师或校管理员可移除教师"
+        )
+    membership = session.exec(
+        select(ClassroomTeacher).where(
+            ClassroomTeacher.classroom_id == classroom.id,
+            ClassroomTeacher.user_id == user_id,
+        )
+    ).first()
+    if membership is None:
+        raise HTTPException(status_code=404, detail="该教师不在本班团队中")
+    if membership.role == "owner":
+        raise HTTPException(status_code=403, detail="不能移除主教师；请先转让主教师")
+    session.delete(membership)
+    session.commit()
+    return {"message": "已移除共管教师"}
 
 
 @router.post("", response_model=ClassroomPublic)

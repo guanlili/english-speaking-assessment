@@ -69,15 +69,18 @@ def _ensure_account_reset_allowed(
     if current_user.role == "school_admin":
         return
     # join 走 Student.classroom_id 外键推断，不写 onclause（ty 会把列 == 判成 bool）
-    other_owners = session.exec(
-        select(Classroom.owner_id)
+    other_classrooms = session.exec(
+        select(Classroom)
         .join(Student)
         .where(
             Student.user_id == user.id,
             Student.classroom_id != classroom_id,
         )
     ).all()
-    if any(owner_id != current_user.id for owner_id in other_owners):
+    if any(
+        not crud.classroom_teacher_allowed(other, current_user, session)
+        for other in other_classrooms
+    ):
         raise HTTPException(
             status_code=403,
             detail="没有权限：该学生账号同时属于其他教师的班级，请联系管理员重置",
@@ -721,15 +724,18 @@ def bulk_reset_passwords(
     if user_ids and current_user.role != "school_admin":
         cross_owner_user_ids = {
             user_id
-            for user_id, owner_id in session.exec(
-                select(Student.user_id, Classroom.owner_id)
+            for user_id, other_classroom in session.exec(
+                select(Student.user_id, Classroom)
                 .join(Classroom)
                 .where(
                     col(Student.user_id).in_(user_ids),  # type: ignore[operator]
                     Student.classroom_id != classroom.id,  # type: ignore[arg-type]
                 )
             ).all()
-            if user_id is not None and owner_id != current_user.id
+            if user_id is not None
+            and not crud.classroom_teacher_allowed(
+                other_classroom, current_user, session
+            )
         }
     for s in students:
         user = users_by_id.get(s.user_id) if s.user_id else None

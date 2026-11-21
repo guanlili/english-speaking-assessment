@@ -208,7 +208,7 @@ def _resolve_classroom_scope(
     if classroom is None or classroom.tenant_id != user.tenant_id:
         # 跨校课堂按不存在处理（同 RLS 语义，见 _visible 注释）
         raise HTTPException(status_code=404, detail="Classroom not found")
-    if not classroom_teacher_allowed(classroom, user):
+    if not classroom_teacher_allowed(classroom, user, session):
         _reject(
             session,
             user,
@@ -485,7 +485,7 @@ def _create_class_report(
     if body.exercise_id is not None or body.session_id is not None:
         raise HTTPException(status_code=422, detail="export_exercise_not_supported")
     classroom = _resolve_report_classroom(session, current_user, body)
-    if not classroom_teacher_allowed(classroom, current_user):
+    if not classroom_teacher_allowed(classroom, current_user, session):
         _reject(
             session,
             current_user,

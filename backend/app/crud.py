@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import object_session
 from sqlmodel import Session, col, func, select
 
 from app.core.security import get_password_hash, verify_password
@@ -15,6 +16,7 @@ from app.models import (
     Classroom,
     ClassroomExercise,
     ClassroomReview,
+    ClassroomTeacher,
     ComposerDraft,
     Passage,
     PassageCreate,
@@ -238,6 +240,19 @@ def get_attempt(*, session: Session, attempt_id: uuid.UUID) -> Attempt | None:
 
 def create_classroom(*, session: Session, classroom: Classroom) -> Classroom:
     session.add(classroom)
+    # 创建即写入 owner membership：授权判定只认 classroom_teacher，
+    # owner_id 仅用于主教师展示；flush 后拿 id，和课堂同事务提交。
+    session.flush()
+    if classroom.owner_id is not None:
+        session.add(
+            ClassroomTeacher(
+                classroom_id=classroom.id,
+                user_id=classroom.owner_id,
+                role="owner",
+                tenant_id=classroom.tenant_id,
+                created_by=classroom.owner_id,
+            )
+        )
     session.commit()
     session.refresh(classroom)
     return classroom
@@ -247,22 +262,57 @@ def get_classroom_by_code(*, session: Session, code: str) -> Classroom | None:
     return session.exec(select(Classroom).where(Classroom.code == code)).first()
 
 
-def classroom_teacher_allowed(classroom: Classroom, user: User) -> bool:
-    """教师越权判定唯一事实源（纯函数，不抛错）：
+def classroom_teacher_role(
+    session: Any, classroom: Classroom, user: User
+) -> str | None:
+    """返回用户在本班的角色：owner / co_teacher / school_admin；无权限 None。
 
-    本班 owner（绑定教师）或校级管理员可过；owner 未绑定的课堂任何教师
+    唯一授权事实源是 `classroom_teacher` membership；`Classroom.owner_id`
+    只作迁移前兜底与主教师展示。校级管理员仅在本校课堂放行。
+    """
+    if classroom.tenant_id != user.tenant_id:
+        return None
+    if user.role == "school_admin":
+        return "school_admin"
+    membership = session.exec(
+        select(ClassroomTeacher).where(
+            ClassroomTeacher.classroom_id == classroom.id,
+            ClassroomTeacher.user_id == user.id,
+        )
+    ).first()
+    if membership is not None:
+        return membership.role
+    # 迁移前/异常漏回填兜底：owner_id 仍视为 owner，避免升级瞬间全班掉权限
+    if classroom.owner_id is not None and classroom.owner_id == user.id:
+        return "owner"
+    return None
+
+
+def classroom_teacher_allowed(
+    classroom: Classroom,
+    user: User,
+    session: Any | None = None,
+) -> bool:
+    """教师越权判定唯一事实源（不抛错）：
+
+    本班 owner/共管教师或校级管理员可过；owner 未绑定的课堂任何教师
     都不可过（课堂码不是教师凭据）。students / class_shared 两套适配层
     停用课堂与 403 文案语义不同，但判定核心必须是同一个。
     B3 起管理员判定认 role=="school_admin"（is_superuser 已随身份拆分移除）。
 
     多租户：管理员放行只在本校成立（CLAUDE.md 不变量④）——跨校课堂一律
     不过，与 RLS 激活环境的行为对齐（他校课堂行在受限连接下本就查不到）。
+    session 未显式传入时从 classroom 的 ORM 会话取；脱离会话的旧调用方
+    退化为 owner-only，保持向后兼容。
     """
     if classroom.tenant_id != user.tenant_id:
         return False
     if user.role == "school_admin":
         return True
-    return classroom.owner_id is not None and classroom.owner_id == user.id
+    sess = session or object_session(classroom)
+    if sess is None:
+        return classroom.owner_id is not None and classroom.owner_id == user.id
+    return classroom_teacher_role(sess, classroom, user) is not None
 
 
 def ensure_class_size_feasible(

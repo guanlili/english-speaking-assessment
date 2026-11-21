@@ -47,6 +47,7 @@ from app.core.storage import (
 from app.models import (
     Classroom,
     ClassroomPublic,
+    ClassroomTeacher,
     Instruction,
     InstructionPublic,
     Passage,
@@ -221,6 +222,47 @@ def deactivate_classroom(
     return {"message": "deactivated"}
 
 
+def _sync_classroom_owner_membership(
+    session: Any,
+    classroom: Classroom,
+    *,
+    old_owner_id: uuid.UUID | None,
+    new_owner_id: uuid.UUID | None,
+) -> None:
+    """平台绑定/修改 owner 时同步 membership：新 owner 升 owner，旧 owner 降共管。"""
+    if old_owner_id is not None and old_owner_id != new_owner_id:
+        old_membership = session.exec(
+            select(ClassroomTeacher).where(
+                ClassroomTeacher.classroom_id == classroom.id,
+                ClassroomTeacher.user_id == old_owner_id,
+            )
+        ).first()
+        if old_membership is not None and old_membership.role == "owner":
+            old_membership.role = "co_teacher"
+            session.add(old_membership)
+    if new_owner_id is None:
+        return
+    membership = session.exec(
+        select(ClassroomTeacher).where(
+            ClassroomTeacher.classroom_id == classroom.id,
+            ClassroomTeacher.user_id == new_owner_id,
+        )
+    ).first()
+    if membership is None:
+        session.add(
+            ClassroomTeacher(
+                classroom_id=classroom.id,
+                user_id=new_owner_id,
+                role="owner",
+                tenant_id=classroom.tenant_id,
+                created_by=new_owner_id,
+            )
+        )
+    elif membership.role != "owner":
+        membership.role = "owner"
+        session.add(membership)
+
+
 @router.put("/classrooms/{classroom_id}", response_model=ClassroomPublic)
 def update_classroom(
     session: PlatformSessionDep,
@@ -233,6 +275,7 @@ def update_classroom(
     if classroom is None:
         raise HTTPException(status_code=404, detail="Classroom not found")
     update = classroom_in.model_dump(exclude_unset=True)
+    old_owner_id = classroom.owner_id
     if "owner_id" in update and update["owner_id"] is not None:
         # 校验被绑定教师真实存在且确为教师角色（绑成学生等于授予全班教师权限）
         from app.models import User as _User
@@ -242,11 +285,21 @@ def update_classroom(
             raise HTTPException(status_code=422, detail="教师账号不存在")
         if owner.role not in ("school_admin", "teacher"):
             raise HTTPException(status_code=422, detail="被绑定账号不是教师角色")
+        if owner.tenant_id != classroom.tenant_id:
+            raise HTTPException(status_code=422, detail="不能绑定他校教师")
+        if not owner.is_active:
+            raise HTTPException(status_code=422, detail="被绑定账号已停用")
     if update.get("class_size") is not None:
         crud.ensure_class_size_feasible(
             session=session, classroom=classroom, new_size=update["class_size"]
         )
     classroom.sqlmodel_update(update)
+    _sync_classroom_owner_membership(
+        session,
+        classroom,
+        old_owner_id=old_owner_id,
+        new_owner_id=classroom.owner_id,
+    )
     session.add(classroom)
     session.commit()
     session.refresh(classroom)

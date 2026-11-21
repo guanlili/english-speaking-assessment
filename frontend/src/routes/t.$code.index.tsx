@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Sparkles,
   Users,
+  UsersRound,
 } from "lucide-react"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
@@ -33,6 +34,7 @@ import {
   FollowupManager,
 } from "@/components/Teaching/FollowupManager"
 import { LessonReview } from "@/components/Teaching/LessonReview"
+import { TeacherTeamCard } from "@/components/Teaching/TeacherTeamCard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -87,9 +89,9 @@ function TeacherBoardPage() {
     itemId: string
   } | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<"prepare" | "results" | "history">(
-    "prepare",
-  )
+  const [activeTab, setActiveTab] = useState<
+    "prepare" | "results" | "history" | "team"
+  >("prepare")
   const [historyExerciseId, setHistoryExerciseId] = useState<string | null>(
     null,
   )
@@ -149,7 +151,7 @@ function TeacherBoardPage() {
         <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
           {t({
             zh: "你还不是这个课堂的授权教师，请让管理员在后台把你绑到这间课堂。",
-            en: "You are not an owner teacher of this classroom yet. Ask an admin to link you to it in the admin console.",
+            en: "You are not an authorized teacher of this classroom yet. Ask the lead teacher or a school admin to add you to the teaching team.",
           })}
           <Button variant="outline" asChild>
             <Link to="/">{t({ zh: "回首页", en: "Back to Home" })}</Link>
@@ -407,7 +409,8 @@ function TeacherBoardPage() {
             if (
               value === "prepare" ||
               value === "results" ||
-              value === "history"
+              value === "history" ||
+              value === "team"
             ) {
               if (value !== activeTab && !allowReviewLeave()) return
               setActiveTab(value)
@@ -415,7 +418,7 @@ function TeacherBoardPage() {
           }}
           className="gap-6"
         >
-          <TabsList className="grid h-auto min-h-12 w-full grid-cols-3 gap-1 rounded-2xl border border-border/80 bg-card p-1.5 sm:w-fit">
+          <TabsList className="grid h-auto min-h-12 w-full grid-cols-2 gap-1 rounded-2xl border border-border/80 bg-card p-1.5 sm:w-fit sm:grid-cols-4">
             <TabsTrigger
               value="prepare"
               className="min-h-11 whitespace-normal px-2 py-2 text-center text-xs leading-5 data-[state=active]:bg-secondary data-[state=active]:shadow-none sm:px-6 sm:text-sm"
@@ -440,6 +443,16 @@ function TeacherBoardPage() {
             >
               <History aria-hidden="true" className="hidden size-4 sm:block" />
               {t({ zh: "发布历史", en: "Publish History" })}
+            </TabsTrigger>
+            <TabsTrigger
+              value="team"
+              className="min-h-11 whitespace-normal px-2 py-2 text-center text-xs leading-5 data-[state=active]:bg-secondary data-[state=active]:shadow-none sm:px-6 sm:text-sm"
+            >
+              <UsersRound
+                aria-hidden="true"
+                className="hidden size-4 sm:block"
+              />
+              {t({ zh: "教师团队", en: "Teaching Team" })}
             </TabsTrigger>
           </TabsList>
           <TabsContent value="prepare">
@@ -627,6 +640,9 @@ function TeacherBoardPage() {
                 </p>
               </CardContent>
             </Card>
+          </TabsContent>
+          <TabsContent value="team">
+            <TeacherTeamCard code={code} />
           </TabsContent>
           <TabsContent value="history">
             <ExerciseHistory

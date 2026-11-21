@@ -12,7 +12,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import field_validator
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field, Session, SQLModel, col, select
 
@@ -28,7 +28,7 @@ from app.core.ratelimit import SlidingWindowLimiter
 from app.core.storage import AUDIO_SUFFIX_TO_MIME as _AUDIO_MIME_BY_SUFFIX
 from app.core.storage import mime_to_suffix as storage_mime_to_suffix
 from app.core.storage import save_audio_file
-from app.crud import create_attempt, get_attempt
+from app.crud import classroom_teacher_allowed, create_attempt, get_attempt
 from app.models import (
     Attempt,
     AttemptItemType,
@@ -36,6 +36,7 @@ from app.models import (
     AttemptStatus,
     Classroom,
     ClassroomExercise,
+    ClassroomTeacher,
     Passage,
     PracticeSession,
     RepeatSentence,
@@ -247,7 +248,9 @@ def _require_attempt_access(
         return
     if student is not None:
         classroom = session.get(Classroom, student.classroom_id)
-        if classroom is not None and classroom.owner_id == current_user.id:
+        if classroom is not None and classroom_teacher_allowed(
+            classroom, current_user, session
+        ):
             return
     raise HTTPException(
         status_code=403, detail="没有权限：您不是该作答所属课堂的授权教师"
@@ -791,7 +794,14 @@ def read_attempts_batch(
                     .join(Classroom, col(Student.classroom_id) == Classroom.id)
                     .where(
                         col(Student.id).in_(student_ids),
-                        Classroom.owner_id == current_user.id,
+                        or_(
+                            col(Classroom.owner_id) == current_user.id,
+                            col(Classroom.id).in_(
+                                select(ClassroomTeacher.classroom_id).where(
+                                    ClassroomTeacher.user_id == current_user.id
+                                )
+                            ),
+                        ),
                     )
                 ).all()
             )
