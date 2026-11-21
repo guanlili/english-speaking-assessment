@@ -1350,7 +1350,7 @@ export type ClassroomTeacherPublic = {
     /**
      * Full Name
      */
-    full_name: string;
+    full_name?: string | null;
     /**
      * Email
      */
@@ -5118,11 +5118,11 @@ export type TeacherCandidatePublic = {
     /**
      * Username
      */
-    username: string;
+    username?: string | null;
     /**
      * Full Name
      */
-    full_name: string;
+    full_name?: string | null;
     /**
      * Email
      */

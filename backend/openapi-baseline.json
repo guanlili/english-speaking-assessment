@@ -2530,8 +2530,15 @@
             "title": "Email"
           },
           "full_name": {
-            "title": "Full Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
           },
           "is_me": {
             "default": false,
@@ -2550,7 +2557,6 @@
         },
         "required": [
           "user_id",
-          "full_name",
           "role"
         ],
         "title": "ClassroomTeacherPublic",
@@ -9399,8 +9405,15 @@
             "title": "Email"
           },
           "full_name": {
-            "title": "Full Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
           },
           "id": {
             "format": "uuid",
@@ -9408,14 +9421,19 @@
             "type": "string"
           },
           "username": {
-            "title": "Username",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
           }
         },
         "required": [
-          "id",
-          "username",
-          "full_name"
+          "id"
         ],
         "title": "TeacherCandidatePublic",
         "type": "object"

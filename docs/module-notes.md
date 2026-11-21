@@ -238,3 +238,11 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **细节**：`/help` 的登录方式表补 `sr-only` caption；`index.html` 默认 `lang="zh-CN"`（运行时仍由 i18n 按用户选择覆盖）。
 - **验证**：dev server 实测 head（title/canonical/og ×6/JSON-LD）、robots 与 sitemap 均 200；390/820/1180 三档 overflow 为 0；英文界面 Logo 显示 `Speak up · Spoken English Class`。
 - **部署坑（2026-11-12 实测）**：服务器侧 checkout 的 umask 是 077，`frontend/public/` 里的静态文件（`robots.txt`、`sitemap.xml`）会以 `600` 被复制进镜像，nginx worker 非 root 读不到，线上直接 403（vite 自己生成的 `index.html`、`assets/` 是 644 所以没暴露）。已在 `frontend/Dockerfile` 的 final stage 加 `chmod -R a+rX /usr/share/nginx/html` 兜住；新增任何 `public/` 静态文件都不必再单独改权限。
+
+## 多老师共管同一班级（2026-11-21）
+
+- **数据模型**：新增 `classroom_teacher`（`ClassroomTeacher`），一行 = 一名教师在本班的成员关系；`role` 仅 `owner / co_teacher`，唯一约束 `(classroom_id,user_id)`，带 `tenant_id` 与 RLS；主教师仍保留在 `Classroom.owner_id`，成员表是权限事实源。迁移 `c7d8e9f0a1b2` 建表并把存量 `classroom.owner_id` 回填为 owner 成员（本机实测 17 个班回填 17 行，`relrowsecurity/relforcerowsecurity` 均为 true）。
+- **授权**：`crud.classroom_teacher_role` 统一解析 `school_admin / owner / co_teacher / None`；`classroom_teacher_allowed` 继续表示“可看可教”，新增 `_require_classroom_owner` 只放行主教师与校管理员。删课堂、班容与报告设置、教师团队管理走 owner 校验；发布练习、看名单/结果、点评、导出走 teacher 校验。跨班批量授权、密码重置、结果批量读取都改为查 membership，不再只看 `owner_id`。
+- **接口**：`GET /classes/{code}/teachers`（团队可读）、`GET /classes/{code}/teacher-candidates?q=`（仅 owner/admin，同校 active teacher，排除已在本班）、`POST /classes/{code}/teachers`（仅 owner/admin，幂等）、`DELETE /classes/{code}/teachers/{user_id}`（owner/admin 移除他人，co_teacher 可退出自己，不能移除 owner）。列表 `ClassroomPublic` 增 `viewer_role/owner_name/co_teacher_count`；管理员改绑 owner 时同步 membership：旧 owner 降 co_teacher、新 owner 升 owner。
+- **前端**：课堂面板新增「教师团队」tab（`TeacherTeamCard`），主教师/管理员可搜索添加和移除，共管教师只能退出；课堂卡片显示「主教师：X · 共管 N 人」与共管 badge，co_teacher 隐藏班容、报告位置、删课堂等 owner-only 控件，服务端仍 403 兜底。403 文案改为提示联系主教师或校管理员加入团队。
+- **口径边界**：共管教师拥有教学权限，但**不能**改班级设置、不能管团队、不能删课堂；校管理员仅作管理兜底，不作为团队成员出现在 `classroom_teacher`。删除课堂前显式清 membership；`owner_id` 与 membership 不一致时授权回退到 `owner_id`，避免迁移漏回填锁死老班。
