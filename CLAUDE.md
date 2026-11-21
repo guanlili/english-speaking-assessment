@@ -14,7 +14,7 @@
 - 界面文案铁律（PRD §3.2）：分数一律标「参考/模拟」，写明不是官方成绩；三种分（跟读引擎/模型/词表）来源要在界面上分开标注。
 - EIP 教材原文因版权**不进仓库**，只建内容槽（Passage/RepeatSentence/Scenario/ScenarioQuestion 表）；演示种子用自写 Pets 内容（slug: demo-pets，课堂码 DEMO01）。五级词库原始教材同样不入仓库。
 - 学生账号默认密码统一 `brs123456`，**不强制改密**（2026-09-29 产品决策）。
-- 待办：EIP 教材文本录入；词级发音评分二期（选型结论：火山打底、腾讯 SOE-N 候选）；题库个人/校内共享分层 P2 复制 / P3 共享（P1 编辑保护已实现：教师只能改自己创建的题，管理员与存量内容公共可改；见 `docs/question-bank-ownership-design.md`）。
+- 待办：EIP 教材文本录入；词级发音评分二期（选型结论：统一走火山引擎口语评测，不接腾讯 SOE / 讯飞 ISE）；题库个人/校内共享分层 P2 复制 / P3 共享（P1 编辑保护已实现：教师只能改自己创建的题，管理员与存量内容公共可改；见 `docs/question-bank-ownership-design.md`）。
 - 生产部署已启用：push `master` → CI（lint + 测试 + 客户端一致性 + E2E 汇总）→ 自动部署（`ENABLE_PRODUCTION_DEPLOY` 仓库变量控制）。回滚常规走 revert；紧急秒级用 `scripts/rollback.sh`（部署链自动保留上一版镜像为 `:rollback` 标签；见 README「回滚」）。
 
 ## 跨模块不变量（改代码时必须守住）
