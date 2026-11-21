@@ -316,7 +316,7 @@ def test_batch_preserves_teacher_exam_feedback_and_student_mask(
             f"/api/v1/attempts/{attempt.id}", headers=_headers(batch_data.student_user)
         )
         assert masked.status_code == 200
-        for key in ("overall", "transcript", "rubric", "teacher_feedback"):
+        for key in ("overall", "transcript", "rubric", "review", "teacher_feedback"):
             assert masked.json()[key] is None
         assert masked.json()["teacher_focus"] is False
         assert masked.json()["teacher_feedback_revision"] == 0

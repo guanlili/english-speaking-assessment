@@ -1,6 +1,7 @@
 import { Play } from "lucide-react"
 import type { PlanAttempt, PlanItem } from "@/client"
 import { RubricBlock } from "@/components/Practice/FeedbackCard"
+import { SentenceReview } from "@/components/Practice/SentenceReview"
 import { SkippedSpans } from "@/components/Practice/SkippedSpans"
 import { TeacherFeedbackBlock } from "@/components/Practice/TeacherFeedbackBlock"
 import VocabBlock from "@/components/Practice/VocabBlock"
@@ -60,6 +61,9 @@ export function RoundItemCard({
           </span>
           {attempt.transcript || t({ zh: "（无）", en: "(none)" })}
         </p>
+        {item.type === "question" && attempt.review && (
+          <SentenceReview review={attempt.review} />
+        )}
         {attempt.word_alignment ? (
           <WordAlignment
             reference={attempt.item_text ?? item.text}

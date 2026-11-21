@@ -725,6 +725,48 @@ def test_detail_pending_timeout_uses_detail_start(
     assert legacy.rubric == {"status": "unavailable"}
 
 
+def test_detail_pending_timeout_closes_review_too(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """review 与 rubric 共用详情清扫：review 挂起也必须关闭，不能永久转圈。"""
+    now = datetime.now(UTC)
+
+    def _done_attempt(review: dict[str, object]) -> Attempt:
+        row = Attempt(
+            item_type="question",
+            item_id=uuid.uuid4(),
+            audio_path="/tmp/x.wav",
+            audio_mime="audio/wav",
+            duration_s=5.0,
+            status=AttemptStatus.DONE,
+            review=review,
+            created_at=now - timedelta(minutes=10),
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return row
+
+    fresh = _done_attempt(
+        {"status": "pending", "phase": "executing", "pending_since": now.isoformat()}
+    )
+    stale = _done_attempt(
+        {
+            "status": "pending",
+            "phase": "executing",
+            "pending_since": (now - timedelta(seconds=121)).isoformat(),
+        }
+    )
+    monkeypatch.setattr(worker, "submit_attempt_scoring", lambda aid: None)
+    with Session(db.get_bind()) as session:
+        worker.sweep_orphans(session)
+
+    db.refresh(fresh)
+    db.refresh(stale)
+    assert fresh.review is not None and fresh.review.get("status") == "pending"
+    assert stale.review == {"status": "unavailable"}
+
+
 def test_complete_detail_first_writer_wins(
     db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:

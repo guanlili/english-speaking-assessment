@@ -462,6 +462,18 @@
             "title": "Retry Count",
             "type": "integer"
           },
+          "review": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review"
+          },
           "rubric": {
             "anyOf": [
               {
@@ -6423,6 +6435,18 @@
               }
             ],
             "title": "Previous"
+          },
+          "review": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review"
           },
           "rubric": {
             "anyOf": [

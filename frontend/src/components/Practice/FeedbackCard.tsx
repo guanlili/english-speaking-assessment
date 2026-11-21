@@ -2,6 +2,7 @@ import { Bookmark, Loader2, RefreshCw, TriangleAlert } from "lucide-react"
 import { type ReactNode, useState } from "react"
 import type { AttemptPublic } from "@/client"
 import InfoHint from "@/components/Common/InfoHint"
+import { SentenceReview } from "@/components/Practice/SentenceReview"
 import { TeacherFeedbackBlock } from "@/components/Practice/TeacherFeedbackBlock"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -305,6 +306,9 @@ function FeedbackCard({
               t({ zh: "（无转写内容）", en: "(no transcript)" })}
           </p>
         </div>
+        {isQuestion && attempt.review && (
+          <SentenceReview review={attempt.review} />
+        )}
         <Separator />
         <ScoreItem
           label={t({ zh: "本次参考分 / 100", en: "Reference score / 100" })}

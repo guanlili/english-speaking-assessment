@@ -512,6 +512,9 @@ class Attempt(SQLModel, table=True):
     # rubric 四维与模拟分（仅问答 + ark 引擎；PRD US-08）：四维 0-4、mock_score 0-9、
     # upgrades 升级表达。mock 引擎或模型失败时为 null（界面显示「建议暂缺」）
     rubric: dict[str, object] | None = Field(default=None, sa_column=Column(JSON))
+    # 问答逐句批改（P0，LLM 语法/表达；发音只由评测引擎提供）：
+    # status + sentences[] + summary；与 rubric 分开，任一失败不影响另一个。
+    review: dict[str, object] | None = Field(default=None, sa_column=Column(JSON))
     teacher_review_tags: list[str] | None = Field(default=None, sa_type=JSON)
     teacher_feedback: str | None = Field(default=None, max_length=4000)
     teacher_focus: bool = Field(
@@ -556,6 +559,7 @@ class AttemptPublic(SQLModel):
     vocab: dict[str, object] | None = None
     word_alignment: dict[str, object] | None = None
     rubric: dict[str, object] | None = None
+    review: dict[str, object] | None = None
     teacher_feedback: str | None = None
     teacher_focus: bool = False
     teacher_feedback_author: str | None = None

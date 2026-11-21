@@ -87,6 +87,8 @@ class PlanAttempt(SQLModel):
     word_alignment: dict[str, object] | None = None
     # rubric 四维与升级表达（问答 + ark）——结果页四维条形用
     rubric: dict[str, object] | None = None
+    # 问答逐句语法/表达批改（P0，ark 详情任务）——结果页逐句卡片用
+    review: dict[str, object] | None = None
     # 提交时的参考文本。回看不能改用后来编辑过的题库正文。
     item_text: str | None = None
     error: str | None = None

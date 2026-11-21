@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
 
-from sqlalchemy import update
+from sqlalchemy import or_, update
 from sqlalchemy.orm import load_only
 from sqlmodel import Session, col, func, select
 
@@ -310,6 +310,23 @@ def _resolve_question_context(
     )
 
 
+def _score_review(
+    context: RubricQuestionContext, transcript: str
+) -> dict[str, object] | None:
+    """ark 引擎下逐句批改语法/表达；失败返回 None（显示暂缺）。"""
+    from app.scoring.review import ArkSentenceReviewer
+
+    try:
+        reviewer = ArkSentenceReviewer(
+            api_key=settings.ARK_API_KEY or "",
+            model=settings.ARK_RUBRIC_MODEL,
+        )
+        return reviewer.review(context.text, transcript)
+    except Exception as exc:  # noqa: BLE001 - 逐句批改失败不影响作答本体
+        logger.error("sentence review failed: %s", exc, exc_info=True)
+        return None
+
+
 def _score_rubric(
     context: RubricQuestionContext, transcript: str
 ) -> dict[str, object] | None:
@@ -431,10 +448,16 @@ def _apply_open_response_scores(
         # 详情任务入队（返修R06）：queued_at 是排队时刻；真正开始
         # 执行时 _complete_detail 会改写为 executing + pending_since。
         # 挂起超时按阶段判定——合法的线程池排队不该被当线程丢失
+        queued_at = datetime.now(UTC).isoformat()
         attempt.rubric = {
             "status": "pending",
             "phase": "queued",
-            "queued_at": datetime.now(UTC).isoformat(),
+            "queued_at": queued_at,
+        }
+        attempt.review = {
+            "status": "pending",
+            "phase": "queued",
+            "queued_at": queued_at,
         }
         return question_context, transcript
     return None
@@ -741,46 +764,54 @@ def _complete_detail(
 
     # 执行开始即续期（返修R06）：排队时刻换成执行时刻，清扫的 120 秒
     # 超时从此计——线程池排队再久也不会被误判；已被清扫关闭（非
-    # pending）则放弃本次调用，不烧费用
+    # pending）则放弃本次调用，不烧费用。rubric 与 review 各自独立，
+    # 一个已关闭不影响另一个继续。
     with Session(platform_engine) as session:
         attempt = session.get(Attempt, attempt_id)
-        if attempt is not None and attempt.status == AttemptStatus.DONE:
-            session.refresh(attempt, with_for_update=True)
-            rubric = attempt.rubric if isinstance(attempt.rubric, dict) else None
-            if (
-                attempt.status == AttemptStatus.DONE
-                and rubric is not None
-                and rubric.get("status") == "pending"
-            ):
-                attempt.rubric = {
-                    "status": "pending",
-                    "phase": "executing",
-                    "pending_since": datetime.now(UTC).isoformat(),
-                }
-                session.add(attempt)
-                session.commit()
-            else:
-                return
+        if attempt is None or attempt.status != AttemptStatus.DONE:
+            return
+        session.refresh(attempt, with_for_update=True)
+        rubric = attempt.rubric if isinstance(attempt.rubric, dict) else None
+        review = attempt.review if isinstance(attempt.review, dict) else None
+        rubric_pending = rubric is not None and rubric.get("status") == "pending"
+        review_pending = review is not None and review.get("status") == "pending"
+        if not rubric_pending and not review_pending:
+            return
+        started_at = datetime.now(UTC).isoformat()
+        if rubric_pending:
+            attempt.rubric = {
+                "status": "pending",
+                "phase": "executing",
+                "pending_since": started_at,
+            }
+        if review_pending:
+            attempt.review = {
+                "status": "pending",
+                "phase": "executing",
+                "pending_since": started_at,
+            }
+        session.add(attempt)
+        session.commit()
 
-    result = _score_rubric(context, transcript)
+    result = _score_rubric(context, transcript) if rubric_pending else None
+    review_result = _score_review(context, transcript) if review_pending else None
     with Session(platform_engine) as session:
         attempt = session.get(Attempt, attempt_id)
         if attempt is not None and attempt.status == AttemptStatus.DONE:
-            # 行锁内确认 rubric 仍处于 pending：先到先得，迟到的旧 detail
-            # 线程（重试/回收后重跑产生的重复投递）不得覆盖新结果
+            # 行锁内确认仍处于 pending：先到先得，迟到的旧 detail 线程
+            # （重试/回收后重跑产生的重复投递）不得覆盖新结果。
             session.refresh(attempt, with_for_update=True)
             rubric = attempt.rubric if isinstance(attempt.rubric, dict) else None
-            if (
-                attempt.status == AttemptStatus.DONE
-                and rubric is not None
-                and rubric.get("status") == "pending"
-            ):
+            review = attempt.review if isinstance(attempt.review, dict) else None
+            if rubric is not None and rubric.get("status") == "pending":
                 if result is not None:
                     # asr 来源取作答行已落库的真实引擎（批次04 起可信）
                     result = {**result, "asr": attempt.engine}
                 attempt.rubric = result or {"status": "unavailable"}
-                session.add(attempt)
-                session.commit()
+            if review is not None and review.get("status") == "pending":
+                attempt.review = review_result or {"status": "unavailable"}
+            session.add(attempt)
+            session.commit()
 
 
 def _run_in_worker(attempt_id: uuid.UUID) -> None:
@@ -1004,9 +1035,12 @@ def _detail_stale_values(
 
 
 def _detail_stale(attempt: Attempt, now: datetime) -> bool:
-    """详情阶段挂起超时判定（ORM 便捷封装）。"""
+    """详情阶段挂起超时判定（ORM 便捷封装）：rubric 或 review 任一挂起。"""
     rubric = attempt.rubric if isinstance(attempt.rubric, dict) else None
-    return _detail_stale_values(rubric, attempt.created_at, now)
+    review = attempt.review if isinstance(attempt.review, dict) else None
+    return _detail_stale_values(
+        rubric, attempt.created_at, now
+    ) or _detail_stale_values(review, attempt.created_at, now)
 
 
 def _resubmit_stale_queued(session: Session) -> int:
@@ -1033,27 +1067,33 @@ def _resubmit_stale_queued(session: Session) -> int:
 def _close_stale_rubrics(
     session: Session, created_before: datetime | None = None
 ) -> int:
-    """关闭 detail 线程丢失导致「DONE 但 rubric 停在 pending」的挂起 rubric。
+    """关闭 detail 线程丢失导致「DONE 但 rubric/review 停在 pending」的挂起详情。
 
-    候选在 SQL 层按 status + rubric 状态粗筛，再逐条行锁复判，返回本轮关闭条数。
-    created_before 非空时额外按 created_at 前缀过滤（运行期清扫用；
-    启动期不传，全量扫一遍）。
+    候选在 SQL 层按 status + 两个详情字段状态粗筛，再逐条行锁复判，
+    返回本轮关闭的作答条数。created_before 非空时额外按 created_at 前缀
+    过滤（运行期清扫用；启动期不传，全量扫一遍）。
     """
-    # load_only 只取 rubric/created_at；SQL 层直接筛「rubric 处于 pending」
-    # （rubric->>'status'）：DONE 量随学期累积，绝大多数历史行 rubric 为
+    # load_only 只取 rubric/review/created_at；SQL 层直接筛任一详情字段
+    # 处于 pending：DONE 量随学期累积，绝大多数历史行两个字段都为
     # null/已关闭，不该每 60s 拉回 Python 再丢掉。索引不盲加——候选集经
     # status+created_at 前缀过滤后已足够小，是否需要 JSON 表达式索引由
     # perf_baseline 实测 EXPLAIN 决定
     conditions = [Attempt.status == AttemptStatus.DONE]
     if created_before is not None:
         conditions.append(col(Attempt.created_at) < created_before)  # type: ignore[operator]
-    conditions.append(col(Attempt.rubric)["status"].as_string() == "pending")  # type: ignore[index]
+    conditions.append(
+        or_(
+            col(Attempt.rubric)["status"].as_string() == "pending",  # type: ignore[index]
+            col(Attempt.review)["status"].as_string() == "pending",  # type: ignore[index]
+        )
+    )
     pending = session.exec(
         select(Attempt)
         .options(
             load_only(
                 Attempt.id,  # ty: ignore[invalid-argument-type]
                 Attempt.rubric,  # ty: ignore[invalid-argument-type]
+                Attempt.review,  # ty: ignore[invalid-argument-type]
                 Attempt.created_at,  # ty: ignore[invalid-argument-type]
             )
         )
@@ -1068,21 +1108,26 @@ def _close_stale_rubrics(
         # 已把 pending 续期为 executing 或写回成功结果——陈旧快照不得
         # 覆盖，条件 UPDATE 只关「此刻仍为本轮判定的 pending」
         locked = session.exec(
-            select(Attempt.id, Attempt.rubric, Attempt.created_at)
+            select(Attempt.id, Attempt.rubric, Attempt.review, Attempt.created_at)
             .where(Attempt.id == attempt.id)
             .with_for_update()
         ).first()
         if locked is None:
             continue
         fresh_rubric = locked[1] if isinstance(locked[1], dict) else None
-        if fresh_rubric is None or fresh_rubric.get("status") != "pending":
+        fresh_review = locked[2] if isinstance(locked[2], dict) else None
+        now = datetime.now(UTC)
+        stale_rubric = _detail_stale_values(fresh_rubric, locked[3], now)
+        stale_review = _detail_stale_values(fresh_review, locked[3], now)
+        if not stale_rubric and not stale_review:
             continue
-        if not _detail_stale_values(fresh_rubric, locked[2], datetime.now(UTC)):
-            continue
+        values: dict[str, object] = {}
+        if stale_rubric:
+            values["rubric"] = {"status": "unavailable"}
+        if stale_review:
+            values["review"] = {"status": "unavailable"}
         session.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
-            update(Attempt)
-            .where(col(Attempt.id) == attempt.id)
-            .values(rubric={"status": "unavailable"})
+            update(Attempt).where(col(Attempt.id) == attempt.id).values(**values)
         )
         closed += 1
     return closed
