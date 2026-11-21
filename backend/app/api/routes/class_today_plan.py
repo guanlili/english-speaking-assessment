@@ -209,6 +209,7 @@ def _build_plan_attempts(
                 a.word_alignment if isinstance(a.word_alignment, dict) else None
             ),
             rubric=a.rubric if isinstance(a.rubric, dict) else None,
+            review=a.review if isinstance(a.review, dict) else None,
             error=a.error,
             item_text=_attempt_item_text(a),
             teacher_review_tags=a.teacher_review_tags,

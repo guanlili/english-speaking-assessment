@@ -590,6 +590,7 @@ MASKED_ATTEMPT_FIELDS = (
     "advice",
     "vocab",
     "rubric",
+    "review",
     "word_alignment",
     "error",
 )

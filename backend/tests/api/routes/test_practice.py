@@ -233,18 +233,23 @@ def test_quick_feedback_committed_before_detail(
     assert data["transcript"] == provider.transcribe.return_value
     assert data["rubric"] is not None
     assert data["rubric"]["status"] == "pending"
+    assert data["review"] is not None
+    assert data["review"]["status"] == "pending"
     # 入队即 queued 阶段（返修R06）：执行开始才换成 executing + pending_since
     assert data["rubric"]["phase"] == "queued"
+    assert data["review"]["phase"] == "queued"
     assert "queued_at" in data["rubric"]["status"] or "queued_at" in data["rubric"]
     detail_executor.submit.assert_called_once()
 
     monkeypatch.setattr(worker, "_score_rubric", lambda *_: None)
+    monkeypatch.setattr(worker, "_score_review", lambda *_: None)
     callback, *args = detail_executor.submit.call_args.args
     callback(*args)
     polled = client.get(f"/api/v1/attempts/{data['id']}").json()
     assert polled["status"] == "done"
     assert polled["overall"] == data["overall"]
     assert polled["rubric"] == {"status": "unavailable"}
+    assert polled["review"] == {"status": "unavailable"}
 
 
 def test_anonymous_submit_blocked_outside_local(

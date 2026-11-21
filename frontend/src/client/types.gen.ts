@@ -277,6 +277,12 @@ export type AttemptPublic = {
         [key: string]: unknown;
     } | null;
     /**
+     * Review
+     */
+    review?: {
+        [key: string]: unknown;
+    } | null;
+    /**
      * Teacher Feedback
      */
     teacher_feedback?: string | null;
@@ -3526,6 +3532,12 @@ export type PlanAttempt = {
      * Rubric
      */
     rubric?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Review
+     */
+    review?: {
         [key: string]: unknown;
     } | null;
     /**
