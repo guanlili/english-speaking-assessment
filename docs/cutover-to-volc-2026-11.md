@@ -13,7 +13,7 @@
 | 域名归属 | `outman.website` 继续用，还是换 `zhiguan.online` | 决策 |
 | ICP 备案 | 工信部能查到该域名；若备案在腾讯云，需在火山做**接入备案变更**（1–3 工作日） | 外部 |
 | 演练 | 在低峰期完整跑一遍第 1–3 步（不切 DNS） | 运维 |
-| 备份 | `scripts/backup-offsite.sh` 至少成功一次，OSS 上有可用包 | 运维 |
+| 备份 | `scripts/backup-offsite.sh` 至少成功一次，TOS 上有可用包；新机已装 `tosutil` 并配好 `~/.tosutilconfig`（或 `TOS_AK/TOS_SK/TOS_BUCKET` 环境变量） | 运维 |
 | 监控 | 仓库变量 `HEALTH_URL` 指向待切换域名 | 运维 |
 
 ## 1. 割接前 24 小时
@@ -154,8 +154,8 @@ ssh esa-prod 'cd /opt/speakup && docker compose -f compose.yml start backend fro
 2. 仓库变量 `HEALTH_URL` 改到正式域名
 3. 新建 `test` 环境（原测试域名保留），使用**独立 SECRET_KEY 与独立 ARK key**，
    避免测试环境继续借用生产令牌和真实计费额度
-4. 备份上 OSS 确认连续 3 天成功
-5. 两周后释放旧机：`pg_dump` 最后一次存档到 OSS → 关机 → 退订
+4. 备份上 TOS 确认连续 3 天成功
+5. 两周后释放旧机：`pg_dump` 最后一次存档到 TOS → 关机 → 退订
 
 ## 5. 已知风险
 
@@ -164,4 +164,4 @@ ssh esa-prod 'cd /opt/speakup && docker compose -f compose.yml start backend fro
 | ICP 备案未迁 | 火山可能拦截 80/443，或合规风险 | 割接前完成接入备案变更 |
 | DNS 缓存 | 部分地区仍指向旧机 10–30 分钟 | TTL 600；旧机保持可服务 |
 | 录音文件丢失 | 割接窗口内的上传 | 停写期间不接受新上传；增量同步含 audio 全量校验 |
-| 新机单点 | 无冗余 | 旧机 2 周冷备 + 每日 OSS 备份 |
+| 新机单点 | 无冗余 | 旧机 2 周冷备 + 每日 TOS 备份 |
