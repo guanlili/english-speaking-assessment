@@ -2366,6 +2366,11 @@
             "title": "Class Size",
             "type": "integer"
           },
+          "co_teacher_count": {
+            "default": 0,
+            "title": "Co Teacher Count",
+            "type": "integer"
+          },
           "code": {
             "title": "Code",
             "type": "string"
@@ -2430,6 +2435,17 @@
             ],
             "title": "Owner Id"
           },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
           "show_report_percentile": {
             "default": true,
             "title": "Show Report Percentile",
@@ -2450,6 +2466,17 @@
             "default": false,
             "title": "Unlock All",
             "type": "boolean"
+          },
+          "viewer_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer Role"
           }
         },
         "required": [
@@ -2473,6 +2500,60 @@
           "revision"
         ],
         "title": "ClassroomRevision",
+        "type": "object"
+      },
+      "ClassroomTeacherCreate": {
+        "properties": {
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "ClassroomTeacherCreate",
+        "type": "object"
+      },
+      "ClassroomTeacherPublic": {
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "is_me": {
+            "default": false,
+            "title": "Is Me",
+            "type": "boolean"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "full_name",
+          "role"
+        ],
+        "title": "ClassroomTeacherPublic",
         "type": "object"
       },
       "ClassroomUpdate": {
@@ -9302,6 +9383,41 @@
           "display_name"
         ],
         "title": "StudentUpdate",
+        "type": "object"
+      },
+      "TeacherCandidatePublic": {
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "full_name"
+        ],
+        "title": "TeacherCandidatePublic",
         "type": "object"
       },
       "TeacherFeedbackWrite": {
@@ -18916,7 +19032,7 @@
     },
     "/api/v1/classes": {
       "get": {
-        "description": "课堂列表：管理员看本校全部，教师看自己名下的（工作台「我的课堂」）。\n\n多租户：管理员的「看全部」限定本校（RLS 激活环境由数据库强制，这里\n是无 RLS 环境的应用层等价防线）。",
+        "description": "课堂列表：管理员看本校全部，教师看自己任主教师或共管教师的课堂。\n\n授权来源是 classroom_teacher membership；owner_id 仍保留用于存量课堂\n与迁移前兜底。多租户：管理员的「看全部」限定本校（RLS 激活环境由\n数据库强制，这里是无 RLS 环境的应用层等价防线）。",
         "operationId": "classes-list_my_classrooms",
         "responses": {
           "200": {
@@ -22511,6 +22627,245 @@
           }
         ],
         "summary": "Read Student Sessions",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/teacher-candidates": {
+      "get": {
+        "description": "本校可添加教师候选：仅主教师/校管理员，排除已在本班的成员。",
+        "operationId": "classes-teacher_candidates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TeacherCandidatePublic"
+                  },
+                  "title": "Response Classes-Teacher Candidates",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Teacher Candidates",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/teachers": {
+      "get": {
+        "description": "教师团队列表：主教师/共管教师/本校管理员可读。",
+        "operationId": "classes-list_class_teachers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClassroomTeacherPublic"
+                  },
+                  "title": "Response Classes-List Class Teachers",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Class Teachers",
+        "tags": [
+          "classes"
+        ]
+      },
+      "post": {
+        "description": "添加共管教师：仅主教师/校管理员；同校、教师角色、未停用，重复添加幂等。",
+        "operationId": "classes-add_class_teacher",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassroomTeacherCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomTeacherPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Add Class Teacher",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/teachers/{user_id}": {
+      "delete": {
+        "description": "移除共管教师：主教师/校管理员可移除他人；共管教师可退出自己。",
+        "operationId": "classes-remove_class_teacher",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Classes-Remove Class Teacher",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Remove Class Teacher",
         "tags": [
           "classes"
         ]

@@ -371,6 +371,9 @@ function ClassroomCard({
     is_active: boolean
     class_size: number
     show_report_percentile?: boolean
+    viewer_role?: string | null
+    owner_name?: string | null
+    co_teacher_count?: number
   }
   onInvalidated: () => void
 }) {
@@ -382,6 +385,8 @@ function ClassroomCard({
   const [sizeValue, setSizeValue] = useState(classroom.class_size)
 
   const percentileOn = classroom.show_report_percentile !== false
+  // 共管教师没有班容/报告开关/删课堂权限；入口收敛，服务端仍会 403 兜底。
+  const canManageClass = classroom.viewer_role !== "co_teacher"
   const percentileMutation = useMutation({
     mutationFn: (next: boolean) =>
       ClassesService.updateReportSettings({
@@ -479,13 +484,38 @@ function ClassroomCard({
             })}
             {classroom.is_active === false &&
               t({ zh: " · 已停用", en: " · Deactivated" })}
+            {(classroom.owner_name ||
+              (classroom.co_teacher_count ?? 0) > 0) && (
+              <span className="block">
+                {classroom.owner_name &&
+                  t({
+                    zh: `主教师：${classroom.owner_name}`,
+                    en: `Lead teacher: ${classroom.owner_name}`,
+                  })}
+                {classroom.owner_name &&
+                  (classroom.co_teacher_count ?? 0) > 0 &&
+                  " · "}
+                {(classroom.co_teacher_count ?? 0) > 0 &&
+                  t({
+                    zh: `共管 ${classroom.co_teacher_count} 人`,
+                    en: `${classroom.co_teacher_count} co-teacher(s)`,
+                  })}
+              </span>
+            )}
           </CardDescription>
         </div>
-        <Badge variant={classroom.is_active ? "outline" : "secondary"}>
-          {classroom.is_active
-            ? t({ zh: "可使用", en: "Active" })
-            : t({ zh: "已停用", en: "Deactivated" })}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          {classroom.viewer_role === "co_teacher" && (
+            <Badge variant="secondary">
+              {t({ zh: "共管教师", en: "Co-teacher" })}
+            </Badge>
+          )}
+          <Badge variant={classroom.is_active ? "outline" : "secondary"}>
+            {classroom.is_active
+              ? t({ zh: "可使用", en: "Active" })
+              : t({ zh: "已停用", en: "Deactivated" })}
+          </Badge>
+        </div>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-4">
         <p className="flex-1 break-words text-sm leading-6 text-muted-foreground">
@@ -536,46 +566,52 @@ function ClassroomCard({
             >
               {t({ zh: "学生名单", en: "Roster" })}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSizeValue(classroom.class_size)
-                setSizeOpen(true)
-              }}
-            >
-              {t({
-                zh: `人数上限 ${classroom.class_size}`,
-                en: `Size Limit ${classroom.class_size}`,
-              })}
-            </Button>
-            <label
-              htmlFor={`report-percentile-${classroom.code}`}
-              className="flex min-h-11 w-full items-center gap-3 text-sm"
-            >
-              <Checkbox
-                id={`report-percentile-${classroom.code}`}
-                checked={percentileOn}
-                disabled={percentileMutation.isPending}
-                onCheckedChange={(checked) =>
-                  percentileMutation.mutate(checked === true)
-                }
-              />
-              <span>
+            {canManageClass && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSizeValue(classroom.class_size)
+                  setSizeOpen(true)
+                }}
+              >
                 {t({
-                  zh: "学情报告显示班级位置",
-                  en: "Show class position on learning reports",
+                  zh: `人数上限 ${classroom.class_size}`,
+                  en: `Size Limit ${classroom.class_size}`,
                 })}
-              </span>
-            </label>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              onClick={() => setDeleteOpen(true)}
-            >
-              {t({ zh: "删除课堂", en: "Delete Classroom" })}
-            </Button>
+              </Button>
+            )}
+            {canManageClass && (
+              <label
+                htmlFor={`report-percentile-${classroom.code}`}
+                className="flex min-h-11 w-full items-center gap-3 text-sm"
+              >
+                <Checkbox
+                  id={`report-percentile-${classroom.code}`}
+                  checked={percentileOn}
+                  disabled={percentileMutation.isPending}
+                  onCheckedChange={(checked) =>
+                    percentileMutation.mutate(checked === true)
+                  }
+                />
+                <span>
+                  {t({
+                    zh: "学情报告显示班级位置",
+                    en: "Show class position on learning reports",
+                  })}
+                </span>
+              </label>
+            )}
+            {canManageClass && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setDeleteOpen(true)}
+              >
+                {t({ zh: "删除课堂", en: "Delete Classroom" })}
+              </Button>
+            )}
           </div>
         </details>
       </CardContent>

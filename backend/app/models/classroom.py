@@ -94,12 +94,63 @@ class ClassroomPublic(SQLModel):
     is_active: bool
     unlock_all: bool = False
     owner_id: uuid.UUID | None = None
+    # 课堂列表/卡片用：当前登录者在本班的角色（owner/co_teacher/school_admin）
+    viewer_role: str | None = None
+    owner_name: str | None = None
+    co_teacher_count: int = 0
     assign_reading: bool | None = None
     assign_repeat: bool | None = None
     assign_qa: bool | None = None
     current_exercise_id: uuid.UUID | None = None
     show_report_percentile: bool = True
     created_at: datetime | None = None
+
+
+class ClassroomTeacher(SQLModel, table=True):
+    """课堂教师团队：主教师 + 共管教师。
+
+    `Classroom.owner_id` 保留为主教师/负责人展示与转让依据，但授权判定
+    统一走本表 membership；`(classroom_id, user_id)` 唯一，重复添加幂等。
+    """
+
+    __tablename__ = "classroom_teacher"
+    __table_args__ = (
+        UniqueConstraint("classroom_id", "user_id", name="uq_classroom_teacher_member"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    classroom_id: uuid.UUID = Field(
+        foreign_key="classroom.id", ondelete="CASCADE", index=True
+    )
+    user_id: uuid.UUID = Field(foreign_key="user.id", ondelete="CASCADE", index=True)
+    role: str = Field(default="co_teacher", max_length=16)
+    tenant_id: uuid.UUID = _tenant_id_field()
+    created_by: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL"
+    )
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class ClassroomTeacherPublic(SQLModel):
+    user_id: uuid.UUID
+    full_name: str | None = None
+    email: str | None = None
+    role: str
+    is_me: bool = False
+
+
+class ClassroomTeacherCreate(SQLModel):
+    user_id: uuid.UUID
+
+
+class TeacherCandidatePublic(SQLModel):
+    id: uuid.UUID
+    username: str | None = None
+    full_name: str | None = None
+    email: str | None = None
 
 
 class ClassroomExercise(SQLModel, table=True):

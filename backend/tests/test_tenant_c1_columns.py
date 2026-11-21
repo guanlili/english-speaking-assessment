@@ -25,6 +25,7 @@ from app.models import (
 EXPECTED_TENANT_TABLES = {
     "attempt",
     "classroom_exercise",
+    "classroom_teacher",
     "classroom_message",
     "classroom_review",
     "composer_draft",
@@ -66,7 +67,7 @@ EXPECTED_NO_TENANT_TABLES = {
 
 
 def test_c1_column_inventory() -> None:
-    """30 业务表全带 tenant_id；身份层与平台口径表不带。"""
+    """31 业务表全带 tenant_id；身份层与平台口径表不带。"""
     with_tenant = set()
     without_tenant = set()
     for table in SQLModel.metadata.sorted_tables:

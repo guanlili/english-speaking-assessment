@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, col, select
 
 from app.core.db import SCHOOL_LIFE_TOPIC, _seed_school_life_questions
-from app.models import Scenario, ScenarioQuestion
+from app.core.security import get_password_hash
+from app.models import ClassroomTeacher, Scenario, ScenarioQuestion, User
 from tests.utils.credential import create_student_user, login_headers
 from tests.utils.user import authentication_token_from_email
 
@@ -339,6 +340,60 @@ def test_classroom_admin(
         headers=headers,
     )
     assert join.status_code == 404
+
+
+def test_admin_owner_binding_syncs_membership(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    operator_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """平台绑定/改绑 owner：新 owner 升 owner，旧 owner 降 co_teacher。"""
+    owner_a = User(
+        username=f"ta{_uuid.uuid4().hex[:8]}",
+        full_name="教师 A",
+        role="teacher",
+        hashed_password=get_password_hash("teacherpass123"),
+    )
+    owner_b = User(
+        username=f"tb{_uuid.uuid4().hex[:8]}",
+        full_name="教师 B",
+        role="teacher",
+        hashed_password=get_password_hash("teacherpass123"),
+    )
+    db.add(owner_a)
+    db.add(owner_b)
+    db.commit()
+    created = client.post(
+        "/api/v1/classes", json={"class_size": 30}, headers=superuser_token_headers
+    ).json()
+    classroom_id = _uuid.UUID(created["id"])
+
+    first = client.put(
+        f"/api/v1/admin/classrooms/{classroom_id}",
+        json={"owner_id": str(owner_a.id)},
+        headers=operator_token_headers,
+    )
+    assert first.status_code == 200, first.text
+    rows = db.exec(
+        select(ClassroomTeacher).where(ClassroomTeacher.classroom_id == classroom_id)
+    ).all()
+    by_user = {row.user_id: row.role for row in rows}
+    assert by_user[owner_a.id] == "owner"
+
+    second = client.put(
+        f"/api/v1/admin/classrooms/{classroom_id}",
+        json={"owner_id": str(owner_b.id)},
+        headers=operator_token_headers,
+    )
+    assert second.status_code == 200, second.text
+    db.expire_all()
+    rows = db.exec(
+        select(ClassroomTeacher).where(ClassroomTeacher.classroom_id == classroom_id)
+    ).all()
+    by_user = {row.user_id: row.role for row in rows}
+    assert by_user[owner_b.id] == "owner"
+    assert by_user[owner_a.id] == "co_teacher"
 
 
 # ── Task 5：自动 slug / CEFR 档位 / 主题列表 / 单元完整性 ─────────────
