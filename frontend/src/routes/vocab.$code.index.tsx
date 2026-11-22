@@ -160,27 +160,6 @@ function VocabHomePage() {
     },
   })
 
-  const wrongQuery = useQuery({
-    retry: 1,
-    retryDelay: 500,
-    queryKey: ["vocab", code, "wrong-words", student?.id],
-    queryFn: () =>
-      VocabularyService.readWrongWords({ code: code.toUpperCase() }),
-    enabled: student !== null,
-    staleTime: 30_000,
-  })
-
-  const recommendationQuery = useQuery({
-    retry: 1,
-    retryDelay: 500,
-    queryKey: ["vocab", code, "recommendation", student?.id],
-    queryFn: () =>
-      VocabularyService.readStudentRecommendation({
-        code: code.toUpperCase(),
-      }),
-    enabled: student !== null,
-  })
-
   // FSRS 记忆复习：到期队列 + 每日负担摘要（独立于首答统计与错词本）
   const reviewQueueQuery = useQuery({
     retry: 1,
@@ -215,6 +194,27 @@ function VocabHomePage() {
         }),
       )
     },
+  })
+
+  const wrongQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
+    queryKey: ["vocab", code, "wrong-words", student?.id],
+    queryFn: () =>
+      VocabularyService.readWrongWords({ code: code.toUpperCase() }),
+    enabled: student !== null,
+    staleTime: 30_000,
+  })
+
+  const recommendationQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
+    queryKey: ["vocab", code, "recommendation", student?.id],
+    queryFn: () =>
+      VocabularyService.readStudentRecommendation({
+        code: code.toUpperCase(),
+      }),
+    enabled: student !== null,
   })
 
   // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
@@ -280,8 +280,8 @@ function VocabHomePage() {
     assignment !== null && answered >= total && total > 0 && !isQuiz
   const accuracy =
     answered > 0 ? Math.round((correctFirst / answered) * 100) : null
-  const wrongWords = wrongQuery.data?.items ?? []
   const recommendation = recommendationQuery.data ?? null
+  const wrongWords = wrongQuery.data?.items ?? []
   const reviewQueue = reviewQueueQuery.data ?? null
   const reviewSummary = reviewQueue
     ? {
@@ -587,7 +587,7 @@ function VocabHomePage() {
                     })}
                   </Badge>
                 </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
+                <p className="mt-1 text-xs text-muted-foreground">
                   {t({
                     zh: "只按你的真实首答记录给下一步练法；不预测、不排名。",
                     en: "Built only from your real first answers — no prediction, no ranking.",
