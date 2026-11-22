@@ -77,6 +77,16 @@ export const TERMS = {
   promptMeaning: { zh: "看义拼词", en: "Spell from Meaning" },
   /** 听音拼词（出题方式） */
   promptAudio: { zh: "听音拼词", en: "Spell from Audio" },
+  /** 英译中（四选一）：给英文单词，选中文释义 */
+  promptEnZh: { zh: "英译中（四选一）", en: "English → Chinese" },
+  /** 中译英（四选一）：给中文释义，选英文单词 */
+  promptZhEn: { zh: "中译英（四选一）", en: "Chinese → English" },
+  /** 语境填空：读例句，填出被挖空的词 */
+  promptCloze: { zh: "语境填空", en: "Fill the Gap" },
+  /** 词根拼装：用前缀/词根/后缀片段拼出单词 */
+  promptRoots: { zh: "词根拼装", en: "Word Parts" },
+  /** 学习建议（规则生成，不等于能力评定） */
+  vocabRecommendation: { zh: "今日练习建议", en: "Today's Practice Plan" },
   /** 五级词库（口语与背单词共用的统一分级数据源） */
   vocabLevels: { zh: "五级词库", en: "Leveled Word Source" },
   /** 用词来源级别（口语命中统计标题；明确不是能力等级） */
@@ -96,6 +106,71 @@ export const TERMS = {
   /** 教师端查看学生历史曲线的页面 */
   trailPage: { zh: "进步轨迹", en: "Progress Trail" },
 } as const satisfies Record<string, BiString>
+
+/** 词汇出题方式：正式名称 + 一句话玩法（教师端勾选、学生端题面共用同一份文案）。 */
+export const VOCAB_PROMPT_META: Record<
+  string,
+  { label: BiString; hint: BiString }
+> = {
+  meaning: {
+    label: TERMS.promptMeaning,
+    hint: {
+      zh: "看中文释义，拼出英文单词。",
+      en: "Read the Chinese meaning and spell the word.",
+    },
+  },
+  audio: {
+    label: TERMS.promptAudio,
+    hint: {
+      zh: "听单词发音，拼出英文单词。",
+      en: "Listen to the word and spell it.",
+    },
+  },
+  en_zh: {
+    label: TERMS.promptEnZh,
+    hint: {
+      zh: "看英文单词，从四个中文释义里选一个。",
+      en: "Read the English word and pick its Chinese meaning.",
+    },
+  },
+  zh_en: {
+    label: TERMS.promptZhEn,
+    hint: {
+      zh: "看中文释义，从四个英文单词里选一个。",
+      en: "Read the Chinese meaning and pick the English word.",
+    },
+  },
+  cloze: {
+    label: TERMS.promptCloze,
+    hint: {
+      zh: "读例句，填出被挖空的那个单词。",
+      en: "Read the sentence and fill in the missing word.",
+    },
+  },
+  roots: {
+    label: TERMS.promptRoots,
+    hint: {
+      zh: "用给出的词根词缀片段，拼出完整单词。",
+      en: "Put the word parts together and spell the whole word.",
+    },
+  },
+}
+
+/** 未知题型回落为原始代码，避免界面出现空白标题 */
+export function vocabPromptMeta(promptType: string): {
+  label: BiString
+  hint: BiString
+} {
+  return (
+    VOCAB_PROMPT_META[promptType] ?? {
+      label: { zh: promptType, en: promptType },
+      hint: { zh: "", en: "" },
+    }
+  )
+}
+
+/** 四类新玩法（选择题 / 拼写题分组，学生端据此决定作答控件） */
+export const VOCAB_CHOICE_PROMPTS = ["en_zh", "zh_en"] as const
 
 /** 激励规则解释（触点小字 / Tooltip / 帮助页共用，防止口径漂移）。 */
 export const EXPLAIN = {

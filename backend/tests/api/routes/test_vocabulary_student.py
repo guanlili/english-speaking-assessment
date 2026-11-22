@@ -1184,3 +1184,45 @@ def test_last_correct_at_includes_history_before_first_wrong(
     assert entry["last_first_is_correct"] is False
     # 第一轮的答对时间不能丢
     assert entry["last_correct_at"] is not None
+
+
+def test_student_book_exposes_morphology_for_prompt_availability(
+    client: TestClient,
+    db: Session,
+) -> None:
+    """学生词库浏览必须下发例句与词法拆解。
+
+    自主练习入口按「例句是否含原词 / 词法能否拼回原词」预判可出题型；
+    接口若裁剪 morphology，词根拼装会被前端误判为 0 词可出而永久禁用。
+    """
+    teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    book = _make_class_book(
+        client,
+        headers,
+        classroom["id"],
+        [
+            {
+                "headword": "teacher",
+                "part_of_speech": "n.",
+                "meaning_zh": "老师",
+                "example_en": "Our teacher explained the rule again.",
+                "morphology": [
+                    {"text": "teach", "gloss": "教", "kind": "root"},
+                    {"text": "er", "gloss": "表人", "kind": "suffix"},
+                ],
+            }
+        ],
+    )
+    student = make_student(db, client, classroom["code"])
+    resp = client.get(
+        f"{STUDENT.format(code=classroom['code'])}/books/{book['id']}",
+        headers=student["headers"],
+    )
+    assert resp.status_code == 200, resp.text
+    word = resp.json()["words"][0]
+    assert word["example_en"] == "Our teacher explained the rule again."
+    assert word["morphology"] == [
+        {"text": "teach", "gloss": "教", "kind": "root"},
+        {"text": "er", "gloss": "表人", "kind": "suffix"},
+    ]

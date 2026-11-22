@@ -28,6 +28,8 @@ class VocabularyStudentSessionCreate(SQLModel):
     word_count: int = Field(default=SELF_PRACTICE_DEFAULT_WORDS, ge=1)
     # 仅 kind=self：按 30% 目标混入所选词库内的历史错词（最近错误优先）
     mix_wrong: bool = False
+    # 仅 kind=self：自主练习的出题方式（缺省沿用看义+听音的既有口径）
+    prompt_types: list[str] | None = None
 
 
 class VocabularyStudentSessionCreated(SQLModel):

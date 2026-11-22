@@ -29,6 +29,9 @@ import AnswerForm from "@/components/Vocabulary/Practice/AnswerForm"
 import type { AnswerState } from "@/components/Vocabulary/Practice/answer-state"
 import FinishBanner from "@/components/Vocabulary/Practice/FinishBanner"
 import ProgressDots from "@/components/Vocabulary/Practice/ProgressDots"
+import PromptBody, {
+  ChoiceOptions,
+} from "@/components/Vocabulary/Practice/PromptBody"
 import QuizRulesCard from "@/components/Vocabulary/Practice/QuizRulesCard"
 import RoundSwitcher from "@/components/Vocabulary/Practice/RoundSwitcher"
 import { SubmitQuizButton } from "@/components/Vocabulary/Practice/SubmitQuizButton"
@@ -44,7 +47,12 @@ import {
 } from "@/lib/audio"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
-import { EXPLAIN_QUIZ_PUBLISH, TERMS } from "@/lib/terms"
+import {
+  EXPLAIN_QUIZ_PUBLISH,
+  TERMS,
+  VOCAB_CHOICE_PROMPTS,
+  vocabPromptMeta,
+} from "@/lib/terms"
 import { speakEnglish } from "@/lib/tts"
 
 export const Route = createFileRoute("/vocab/$code/practice")({
@@ -389,6 +397,14 @@ function VocabPracticePage() {
   const audioInTask = taskPromptTypes.includes("audio")
   const item: VocabularyTodayItem | undefined = items[current]
   const answer = item ? answers[item.item_index] : undefined
+  // 新玩法（英译中/中译英/语境填空/词根拼装）：题面与控件由题型决定，
+  // 不再走「看义/听音」切换；旧任务仍是 meaning/audio 的原有逻辑
+  const promptType = item?.prompt_type ?? "meaning"
+  const isNewPrompt = !["meaning", "audio"].includes(promptType)
+  const isChoicePrompt = (VOCAB_CHOICE_PROMPTS as readonly string[]).includes(
+    promptType,
+  )
+  const promptMeta = vocabPromptMeta(promptType)
   const audioUsableHere =
     audioInTask &&
     (isQuiz
@@ -398,6 +414,8 @@ function VocabPracticePage() {
   useEffect(() => {
     setUseAudio(audioInTask && !meaningInTask && audioUsableHere)
   }, [audioInTask, meaningInTask, audioUsableHere])
+  // 新题型不用听音题面，避免任务同时勾了听音时误走语音分支
+  const showAudio = useAudio && !isNewPrompt
 
   const answeredCount = Object.keys(answers).length
   const correctFirst = items.filter(
@@ -458,7 +476,7 @@ function VocabPracticePage() {
       return
     submitAnswer.mutate({
       itemIndex: item.item_index,
-      promptType: useAudio ? "audio" : "meaning",
+      promptType: isNewPrompt ? promptType : showAudio ? "audio" : "meaning",
       answer: input.trim(),
       binding: bindingKey,
     })
@@ -668,23 +686,20 @@ function VocabPracticePage() {
         <Card>
           <CardHeader className="space-y-1.5">
             <CardTitle className="text-base">
-              {useAudio ? t(TERMS.promptAudio) : t(TERMS.promptMeaning)}
+              {showAudio ? t(TERMS.promptAudio) : t(promptMeta.label)}
             </CardTitle>
             <CardDescription>
-              {useAudio
+              {showAudio
                 ? t({
                     zh: "听单词发音，拼出英文。听不清可以再点一次。",
                     en: "Listen and spell the word. Tap again to replay.",
                   })
-                : t({
-                    zh: "看中文释义，拼出对应的英文单词。",
-                    en: "Read the Chinese meaning and spell the English word.",
-                  })}
+                : t(promptMeta.hint)}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             {/* 题面 */}
-            {useAudio ? (
+            {showAudio ? (
               <div className="flex flex-col items-center gap-3 rounded-2xl bg-secondary/50 py-8">
                 <Button
                   type="button"
@@ -704,6 +719,8 @@ function VocabPracticePage() {
                       })}
                 </p>
               </div>
+            ) : isNewPrompt ? (
+              <PromptBody item={item} />
             ) : (
               <div className="rounded-2xl bg-secondary/50 p-5 sm:p-6">
                 {item.part_of_speech && (
@@ -724,7 +741,7 @@ function VocabPracticePage() {
 
             {/* 题型切换：任务同时允许看义/听音时学生可自选；
                 无标准音且未作答的词禁用听音（设计文档：不进入听音题并说明原因） */}
-            {audioInTask && (
+            {audioInTask && !isNewPrompt && (
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
@@ -761,21 +778,45 @@ function VocabPracticePage() {
 
             {/* 作答区：练习=即时反馈；测验=只确认接收（不提前泄露答案） */}
             {!answer && !quizItemSubmitted ? (
-              <AnswerForm
-                input={input}
-                onInputChange={setInput}
-                onSubmit={handleSubmit}
-                inputRef={inputRef}
-                submitPending={submitAnswer.isPending}
-                isQuiz={isQuiz}
-                inputDisabled={!sessionId || startSession.isPending || readOnly}
-                submitDisabled={
-                  input.trim() === "" ||
-                  submitAnswer.isPending ||
-                  !sessionId ||
-                  readOnly
-                }
-              />
+              isChoicePrompt ? (
+                <ChoiceOptions
+                  item={item}
+                  answered={false}
+                  disabled={
+                    submitAnswer.isPending ||
+                    !sessionId ||
+                    startSession.isPending ||
+                    readOnly
+                  }
+                  onPick={(wordId) => {
+                    if (!sessionId || submitAnswer.isPending || readOnly) return
+                    submitAnswer.mutate({
+                      itemIndex: item.item_index,
+                      promptType,
+                      answer: wordId,
+                      binding: bindingKey,
+                    })
+                  }}
+                />
+              ) : (
+                <AnswerForm
+                  input={input}
+                  onInputChange={setInput}
+                  onSubmit={handleSubmit}
+                  inputRef={inputRef}
+                  submitPending={submitAnswer.isPending}
+                  isQuiz={isQuiz}
+                  inputDisabled={
+                    !sessionId || startSession.isPending || readOnly
+                  }
+                  submitDisabled={
+                    input.trim() === "" ||
+                    submitAnswer.isPending ||
+                    !sessionId ||
+                    readOnly
+                  }
+                />
+              )
             ) : isQuiz && quizItemSubmitted ? (
               <QuizSubmittedCard
                 hasNext={current < items.length - 1}

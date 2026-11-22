@@ -11077,6 +11077,21 @@
             "title": "Prompt Types",
             "type": "array"
           },
+          "student_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Student Ids"
+          },
           "title": {
             "anyOf": [
               {
@@ -11525,6 +11540,47 @@
         "title": "VocabularyBookUpdate",
         "type": "object"
       },
+      "VocabularyChoice": {
+        "description": "选择题选项（选项冻结在发布快照里，同一任务不随词库改动漂移）。",
+        "properties": {
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "is_answer": {
+            "default": false,
+            "title": "Is Answer",
+            "type": "boolean"
+          },
+          "meaning_zh": {
+            "title": "Meaning Zh",
+            "type": "string"
+          },
+          "part_of_speech": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Of Speech"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word_id",
+          "headword",
+          "meaning_zh"
+        ],
+        "title": "VocabularyChoice",
+        "type": "object"
+      },
       "VocabularyClassResults": {
         "description": "GET /classes/{code}/vocabulary/results。",
         "properties": {
@@ -11589,6 +11645,14 @@
             "default": 0,
             "title": "Passed Count",
             "type": "integer"
+          },
+          "prompt_type_stats": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyPromptTypeStat"
+            },
+            "title": "Prompt Type Stats",
+            "type": "array"
           },
           "students": {
             "default": [],
@@ -12188,6 +12252,54 @@
         "title": "VocabularyLevelStats",
         "type": "object"
       },
+      "VocabularyMorphSegment": {
+        "description": "词根拼装的语素块：text 用于拼接，gloss 是中文提示。",
+        "properties": {
+          "gloss": {
+            "title": "Gloss",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "gloss",
+          "kind"
+        ],
+        "title": "VocabularyMorphSegment",
+        "type": "object"
+      },
+      "VocabularyPromptTypeStat": {
+        "description": "按出题方式的首答正确率（教师看清哪类题型在掉分，不合成总分）。",
+        "properties": {
+          "answered_count": {
+            "default": 0,
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "correct_first_count": {
+            "default": 0,
+            "title": "Correct First Count",
+            "type": "integer"
+          },
+          "prompt_type": {
+            "title": "Prompt Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt_type"
+        ],
+        "title": "VocabularyPromptTypeStat",
+        "type": "object"
+      },
       "VocabularyQuizAnswerReceipt": {
         "description": "测验作答回执：只确认已接收，不返回答案与正误（防提前泄露）。",
         "properties": {
@@ -12390,6 +12502,116 @@
           "status"
         ],
         "title": "VocabularyQuizState",
+        "type": "object"
+      },
+      "VocabularyRecommendation": {
+        "description": "基础学习推荐：规则算出，可解释，不是能力认证。\n\nbasis 是稳定代码（no_history / low_accuracy / mid_accuracy /\nhigh_accuracy / wrong_focus / no_practiceable_book），前端做双语映射，\n后端不拼中文句子（与项目双语口径一致）。",
+        "properties": {
+          "accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy"
+          },
+          "answered_total": {
+            "default": 0,
+            "title": "Answered Total",
+            "type": "integer"
+          },
+          "basis": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Basis",
+            "type": "array"
+          },
+          "classroom_code": {
+            "title": "Classroom Code",
+            "type": "string"
+          },
+          "correct_first_total": {
+            "default": 0,
+            "title": "Correct First Total",
+            "type": "integer"
+          },
+          "focus_words": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyRecommendationFocus"
+            },
+            "title": "Focus Words",
+            "type": "array"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "note_code": {
+            "default": "rule_based_not_certification",
+            "title": "Note Code",
+            "type": "string"
+          },
+          "suggested_prompt_types": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggested Prompt Types",
+            "type": "array"
+          },
+          "suggested_word_count": {
+            "default": 10,
+            "title": "Suggested Word Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "classroom_code",
+          "generated_at"
+        ],
+        "title": "VocabularyRecommendation",
+        "type": "object"
+      },
+      "VocabularyRecommendationFocus": {
+        "description": "推荐复习的错词（只列最近真实错过的词，不含预测）。",
+        "properties": {
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "meaning_zh": {
+            "title": "Meaning Zh",
+            "type": "string"
+          },
+          "practiceable": {
+            "default": true,
+            "title": "Practiceable",
+            "type": "boolean"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          },
+          "wrong_count": {
+            "title": "Wrong Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "word_id",
+          "headword",
+          "meaning_zh",
+          "wrong_count"
+        ],
+        "title": "VocabularyRecommendationFocus",
         "type": "object"
       },
       "VocabularyRoundSummaryRow": {
@@ -12715,6 +12937,25 @@
             ],
             "title": "Audio Url"
           },
+          "choices": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyChoice"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "cloze_sentence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cloze Sentence"
+          },
           "first_answer": {
             "anyOf": [
               {
@@ -12725,6 +12966,18 @@
               }
             ],
             "title": "First Answer"
+          },
+          "first_choice_word_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Choice Word Id"
           },
           "from_wrong": {
             "default": false,
@@ -12771,6 +13024,14 @@
           "meaning_zh": {
             "title": "Meaning Zh",
             "type": "string"
+          },
+          "morph_segments": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyMorphSegment"
+            },
+            "title": "Morph Segments",
+            "type": "array"
           },
           "part_of_speech": {
             "anyOf": [
@@ -13172,6 +13433,20 @@
             "title": "Mix Wrong",
             "type": "boolean"
           },
+          "prompt_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Types"
+          },
           "word_count": {
             "default": 20,
             "minimum": 1.0,
@@ -13302,6 +13577,37 @@
             ],
             "title": "Audio Url"
           },
+          "choices": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyChoice"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "cloze_sentence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cloze Sentence"
+          },
+          "first_choice_word_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Choice Word Id"
+          },
           "headword": {
             "anyOf": [
               {
@@ -13342,6 +13648,14 @@
           "meaning_zh": {
             "title": "Meaning Zh",
             "type": "string"
+          },
+          "morph_segments": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyMorphSegment"
+            },
+            "title": "Morph Segments",
+            "type": "array"
           },
           "part_of_speech": {
             "anyOf": [
@@ -13554,6 +13868,23 @@
             "title": "Meaning Zh",
             "type": "string"
           },
+          "morphology": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Morphology"
+          },
           "part_of_speech": {
             "anyOf": [
               {
@@ -13672,6 +14003,23 @@
           "meaning_zh": {
             "title": "Meaning Zh",
             "type": "string"
+          },
+          "morphology": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Morphology"
           },
           "part_of_speech": {
             "anyOf": [
@@ -13813,6 +14161,23 @@
               }
             ],
             "title": "Meaning Zh"
+          },
+          "morphology": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Morphology"
           },
           "part_of_speech": {
             "anyOf": [
@@ -23951,6 +24316,54 @@
           }
         ],
         "summary": "Read Student History",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/student/recommendation": {
+      "get": {
+        "description": "基础学习推荐：规则算出的下一轮词数/题型/复习错词。\n\n只读本人真实首答与错词本，可解释、可复算；不是能力等级，也不预测\n遗忘曲线——结构化推荐留给第二批的复习引擎。",
+        "operationId": "vocabulary-read_student_recommendation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyRecommendation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Student Recommendation",
         "tags": [
           "vocabulary"
         ]

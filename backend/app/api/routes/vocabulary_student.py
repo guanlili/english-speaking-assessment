@@ -33,6 +33,7 @@ from app.models import (
     VocabularyBook,
     VocabularyBookDetail,
     VocabularyBookPublic,
+    VocabularyRecommendation,
     VocabularySession,
     VocabularyStudentHistory,
     VocabularyStudentPlan,
@@ -40,6 +41,7 @@ from app.models import (
     VocabularyStudentSessionCreated,
     VocabularyWrongWords,
 )
+from app.services import vocab_recommendation
 from app.services import vocabulary as vocab_service
 from app.services.vocabulary import (
     get_book_or_404 as _get_book,
@@ -172,6 +174,11 @@ def start_student_session(
         )
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user)
+    prompt_types = (
+        vocab_service.validate_prompt_types(body.prompt_types)
+        if body.prompt_types
+        else None
+    )
     vocab_session, title, wrong_used = vocab_service.create_student_session(
         session,
         classroom_id=classroom.id,
@@ -180,6 +187,7 @@ def start_student_session(
         book_id=body.book_id,
         word_count=body.word_count,
         mix_wrong=body.mix_wrong,
+        prompt_types=prompt_types,
     )
     return VocabularyStudentSessionCreated(
         session_id=vocab_session.id,
@@ -232,4 +240,28 @@ def read_student_history(
     student = _student_profile_of(session, classroom, current_user)
     return VocabularyStudentHistory(
         items=vocab_service.history_rows(session, student.id, limit=limit)
+    )
+
+
+@router.get(
+    "/classes/{code}/vocabulary/student/recommendation",
+    response_model=VocabularyRecommendation,
+)
+def read_student_recommendation(
+    session: SessionDep,
+    code: str,
+    current_user: StudentUserDep,
+) -> Any:
+    """基础学习推荐：规则算出的下一轮词数/题型/复习错词。
+
+    只读本人真实首答与错词本，可解释、可复算；不是能力等级，也不预测
+    遗忘曲线——结构化推荐留给第二批的复习引擎。
+    """
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(session, classroom, current_user)
+    return vocab_recommendation.build_recommendation(
+        session,
+        classroom_id=classroom.id,
+        student_id=student.id,
+        code=classroom.code,
     )

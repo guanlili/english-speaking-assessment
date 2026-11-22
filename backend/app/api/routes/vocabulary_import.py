@@ -15,6 +15,7 @@
 
 import csv
 import io
+import json
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, UploadFile
@@ -28,6 +29,7 @@ from app.models import (
     VocabularyImportRow,
     VocabularyWordIn,
 )
+from app.services.vocabulary_prompt_types import normalize_morphology
 
 router = APIRouter()
 
@@ -54,6 +56,25 @@ async def _read_csv_upload(file: UploadFile) -> str:
         raise HTTPException(status_code=422, detail="CSV 必须是 UTF-8 编码") from exc
 
 
+def _parse_morphology_cell(
+    raw: str | None,
+) -> tuple[list[dict[str, str]] | None, str | None]:
+    """可选 morphology 列：JSON 数组字符串，如 [{"text":"un","gloss":"不","kind":"prefix"}]。
+
+    不合法就整行拒绝而不是静默丢弃：词法拆解错了会让「词根拼装」教错词。
+    """
+    if not raw or not raw.strip():
+        return None, None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, "morphology 不是合法 JSON"
+    cleaned = normalize_morphology(parsed)
+    if not cleaned:
+        return None, "morphology 需要 [{text, gloss, kind}] 结构"
+    return cleaned, None
+
+
 def _parse_vocab_csv(text: str) -> VocabularyImportPreview:
     reader = csv.DictReader(io.StringIO(text))
     if (
@@ -64,7 +85,7 @@ def _parse_vocab_csv(text: str) -> VocabularyImportPreview:
         raise HTTPException(
             status_code=422,
             detail="CSV 需要表头：headword,meaning_zh（第一行，可选 part_of_speech/"
-            "meaning_en/accepted_spellings/example_en）",
+            "meaning_en/accepted_spellings/example_en/morphology）",
         )
     rows: list[VocabularyImportRow] = []
     invalid: list[VocabularyImportIssue] = []
@@ -102,6 +123,12 @@ def _parse_vocab_csv(text: str) -> VocabularyImportPreview:
             for spelling in (row.get("accepted_spellings") or "").split("|")
             if spelling.strip()
         ]
+        morphology, morph_issue = _parse_morphology_cell(row.get("morphology"))
+        if morph_issue:
+            invalid.append(
+                VocabularyImportIssue(line=lineno, reason=f"{headword} {morph_issue}")
+            )
+            continue
         rows.append(
             VocabularyImportRow(
                 line=lineno,
@@ -112,6 +139,7 @@ def _parse_vocab_csv(text: str) -> VocabularyImportPreview:
                     meaning_en=(row.get("meaning_en") or "").strip() or None,
                     accepted_spellings=accepted or None,
                     example_en=(row.get("example_en") or "").strip() or None,
+                    morphology=morphology,
                 ),
             )
         )

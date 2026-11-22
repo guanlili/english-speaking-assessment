@@ -68,6 +68,12 @@ from app.models.vocabulary.assignments import (
     VocabularyAssignmentPublic as VocabularyAssignmentPublic,
 )
 from app.models.vocabulary.assignments import (
+    VocabularyChoice as VocabularyChoice,
+)
+from app.models.vocabulary.assignments import (
+    VocabularyMorphSegment as VocabularyMorphSegment,
+)
+from app.models.vocabulary.assignments import (
     VocabularyQuizState as VocabularyQuizState,
 )
 from app.models.vocabulary.assignments import (
@@ -117,6 +123,15 @@ from app.models.vocabulary.levels import (
 )
 from app.models.vocabulary.reports import (
     VocabularyClassResults as VocabularyClassResults,
+)
+from app.models.vocabulary.reports import (
+    VocabularyPromptTypeStat as VocabularyPromptTypeStat,
+)
+from app.models.vocabulary.reports import (
+    VocabularyRecommendation as VocabularyRecommendation,
+)
+from app.models.vocabulary.reports import (
+    VocabularyRecommendationFocus as VocabularyRecommendationFocus,
 )
 from app.models.vocabulary.reports import (
     VocabularyStudentResultRow as VocabularyStudentResultRow,
@@ -268,9 +283,14 @@ __all__ = [
     "VocabularyWordMisspelling",
     "VocabularyWordStatRow",
     "VocabularyClassResults",
+    "VocabularyPromptTypeStat",
+    "VocabularyRecommendation",
+    "VocabularyRecommendationFocus",
     "VocabularyTeacherAssignmentRow",
     "VocabularyWrongWordItem",
     "VocabularyWrongWords",
+    "VocabularyChoice",
+    "VocabularyMorphSegment",
     "VOCAB_AI_DRAFT_MAX",
     "VOCAB_AI_THEME_MAX",
     "VOCAB_AI_HINT_MAX",

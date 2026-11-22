@@ -12,6 +12,9 @@ class VocabularyAssignmentCreate(SQLModel):
     book_id: uuid.UUID | None = None
     word_ids: list[uuid.UUID] | None = None
     prompt_types: list[str] = ["meaning"]
+    # 手动分组派发：只发给名单内的这些学生；缺省 = 全班。
+    # 必须全部属于本课堂，否则 422（不允许跨班派发）。
+    student_ids: list[uuid.UUID] | None = None
     # practice = 可重试、首答计成绩；quiz = 限时测验（见发布校验）
     mode: str = "practice"
     # 测验参数：开放时间 / 截止时间（服务器时间口径）、个人时长（分钟）、
@@ -73,6 +76,25 @@ class VocabularyQuizState(SQLModel):
     tab_switch_count: int = 0
 
 
+class VocabularyChoice(SQLModel):
+    """选择题选项（选项冻结在发布快照里，同一任务不随词库改动漂移）。"""
+
+    word_id: uuid.UUID
+    headword: str
+    meaning_zh: str
+    part_of_speech: str | None = None
+    # 已答且答案可见时，正确项标记（未答一律 false）
+    is_answer: bool = False
+
+
+class VocabularyMorphSegment(SQLModel):
+    """词根拼装的语素块：text 用于拼接，gloss 是中文提示。"""
+
+    text: str
+    gloss: str
+    kind: str  # prefix / root / suffix
+
+
 class VocabularyTodayItem(SQLModel):
     """学生题单条目：未作答的词不透露拼写（headword=None）。"""
 
@@ -82,11 +104,19 @@ class VocabularyTodayItem(SQLModel):
     meaning_zh: str
     meaning_en: str | None = None
     audio_url: str | None = None
+    # 英译中/中译英：四选一选项（含正确项），已答后才标记正确项
+    choices: list[VocabularyChoice] = []
+    # 语境填空：挖掉目标词的例句（含 ____ 占位），未答不给原句以外的答案
+    cloze_sentence: str | None = None
+    # 词根拼装：打乱的语素块 + 少量干扰块，拼出的字符串必须等于 headword
+    morph_segments: list[VocabularyMorphSegment] = []
     # 已答（首答存在）才回填拼写与对错
     headword: str | None = None
     answered: bool = False
     is_correct: bool | None = None
     attempt_count: int = 0
+    # 选择题首答选了哪个词条（选择题专用；非选择题为 None）
+    first_choice_word_id: uuid.UUID | None = None
 
 
 class VocabularyStudentAssignment(SQLModel):

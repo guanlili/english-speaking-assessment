@@ -58,6 +58,7 @@ def _word_public(word: VocabularyWord) -> VocabularyWordPublic:
         accepted_spellings=word.accepted_spellings,
         example_en=word.example_en,
         audio_url=word.audio_url,
+        morphology=word.morphology,
         status=word.status,
     )
 
@@ -434,47 +435,24 @@ def _plan_item(
     is_quiz: bool,
     answers_visible: bool,
 ) -> VocabularyTodayItem:
-    """构建单个题单条目。
+    """构建单个题单条目（与单次会话视图同源，避免两套读题逻辑漂移）。
 
     听音口径（设计文档 §5）：任务含 audio 且该词有稳定标准音；
-    已作答的词拼写已揭示，可退回设备朗读练耳。其余一律看义拼词，
-    避免播音按钮无内容可放。
+    已作答的词拼写已揭示，可退回设备朗读练耳。其余一律按快照里的
+    题型出题（新题型任务每题只带一个题型）。
     """
     audio_allowed = _audio_prompt_allowed(
         snapshot_item, assignment, first is not None, is_quiz
     )
-    return VocabularyTodayItem(
-        item_index=idx,
-        prompt_type="audio" if audio_allowed else "meaning",
-        part_of_speech=(
-            str(snapshot_item["part_of_speech"])
-            if snapshot_item.get("part_of_speech") is not None
-            else None
-        ),
-        meaning_zh=str(snapshot_item["meaning_zh"]),
-        meaning_en=(
-            str(snapshot_item["meaning_en"])
-            if snapshot_item.get("meaning_en") is not None
-            else None
-        ),
-        audio_url=(
-            str(snapshot_item["audio_url"])
-            if snapshot_item.get("audio_url") is not None
-            else None
-        ),
-        # 未作答不透露拼写（防看 API 直接抄）；测验答案未公布时
-        # 已答题同样不揭示拼写与对错
-        headword=(
-            (first.headword if first is not None else None) if answers_visible else None
-        ),
-        answered=first is not None,
-        is_correct=(
-            (first.is_correct if first is not None else None)
-            if answers_visible
-            else None
-        ),
+    item, _answered, _correct = vocab_service._plan_item(
+        idx,
+        snapshot_item,
+        [first] if first is not None else [],
+        answers_visible=answers_visible,
+        audio_allowed=audio_allowed,
         attempt_count=attempt_count,
     )
+    return item
 
 
 def _get_quiz_assignment(
@@ -502,7 +480,9 @@ def read_vocab_results_payload(
     classroom = _get_classroom(session, code)
     _require_classroom_teacher(classroom, current_user)
     assignment = _get_assignment(session, classroom.id, assignment_id)
-    student_rows, word_rows = vocab_service.class_results(session, assignment)
+    student_rows, word_rows, prompt_stats = vocab_service.class_results(
+        session, assignment
+    )
     quiz_rounds_states = [r.status for r in student_rows]
     finished = (
         [r for r in student_rows if r.quiz_end_reason is not None]
@@ -523,6 +503,7 @@ def read_vocab_results_payload(
         ),
         students=student_rows,
         words=word_rows,
+        prompt_type_stats=prompt_stats,
         pass_line=assignment.pass_line if assignment.mode == "quiz" else None,
         passed_count=(
             sum(1 for s in scores if assignment.pass_line <= s)
