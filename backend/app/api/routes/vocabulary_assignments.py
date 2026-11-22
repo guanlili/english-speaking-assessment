@@ -47,7 +47,7 @@ from app.models import (
     VocabularyTeacherAssignmentRow,
     VocabularyTodayPlan,
 )
-from app.services import vocab_quiz, vocabulary_review
+from app.services import vocab_quiz, vocabulary_farm, vocabulary_review
 from app.services import vocabulary as vocab_service
 
 router = APIRouter()
@@ -271,6 +271,8 @@ def submit_vocab_answer(
             prompt_type=answer.prompt_type,
             is_correct=answer.is_correct,
         )
+        # 专注农场成长：同一有效首答事件 +1 点（quiz/重试不计；切屏/空闲不产生）
+        vocabulary_farm.record_valid_first_answer(session, user_id=current_user.id)
     session.refresh(vocab_session)
     answered_count, correct_first = vocab_service.session_progress(
         session, vocab_session

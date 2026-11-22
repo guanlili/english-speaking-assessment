@@ -18,6 +18,7 @@ import {
   RefreshCw,
   RotateCcw,
   SpellCheck,
+  Sprout,
   Swords,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -380,6 +381,37 @@ function VocabHomePage() {
               <Link to="/vocab/$code/pk" params={{ code }}>
                 <Swords />
                 {t({ zh: "进入 PK", en: "Open PK" })}
+              </Link>
+            </Button>
+          </div>
+        </section>
+
+        {/* 专注农场入口：自愿参与的成长地块，XP/徽章复用既有课堂账本 */}
+        <section
+          aria-label={t({ zh: "专注农场", en: "Focus Farm" })}
+          className="rounded-3xl border bg-card p-5 sm:p-6"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                <Sprout className="size-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-base font-semibold">
+                  {t({ zh: "专注农场", en: "Focus Farm" })}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {t({
+                    zh: "完成有效练习让地块成长，成熟后收获 XP；独立于教师任务成绩，不做公开排行。",
+                    en: "Grow your plot with valid practice and harvest XP when mature. Separate from teacher tasks, no public leaderboard.",
+                  })}
+                </p>
+              </div>
+            </div>
+            <Button asChild variant="outline">
+              <Link to="/vocab/$code/farm" params={{ code }}>
+                <Sprout />
+                {t({ zh: "进入农场", en: "Open Farm" })}
               </Link>
             </Button>
           </div>

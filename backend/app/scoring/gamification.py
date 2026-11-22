@@ -44,6 +44,9 @@ BADGES: list[BadgeDef] = [
     BadgeDef("streak_7", "一周坚持", "连续 7 天完成练习"),
     BadgeDef("ten_rounds", "十轮达人", "累计完成 10 轮练习"),
     BadgeDef("reached_b2", "登上高档", "练习档位升到 B2"),
+    # 专注农场（设计稿 §4）：落既有 student_badge 账本，不建第二套徽章表
+    BadgeDef("farm_first_harvest", "首次收获", "第一次收获成熟的作物"),
+    BadgeDef("farm_harvest_7", "七次收获", "累计收获 7 次"),
 ]
 BADGE_BY_KEY = {b.key: b for b in BADGES}
 
@@ -242,6 +245,25 @@ def settle_session(
     session.add(student)
     session.add(practice_session)
     session.commit()
+
+
+def award_xp(
+    session: Session,
+    student: Student,
+    amount: int,
+    *,
+    source: str,  # noqa: ARG001 - 入账归因标签；§4 不另立账本表，来源随回执展示
+) -> int:
+    """统一 XP 入账入口：写入既有 ``student.xp`` 余额，``source`` 标记入账来源。
+
+    设计稿 §4：不新造并行积分/账本表；``source`` 仅用于归因与回执展示。
+    既有口语每日计划结算保留其原有内联口径，本入口供农场等新场景复用。
+    """
+    if amount <= 0:
+        return 0
+    student.xp = (student.xp or 0) + amount
+    session.add(student)
+    return amount
 
 
 def student_badges(session: Session, student_id) -> list[StudentBadge]:

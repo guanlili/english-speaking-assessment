@@ -2481,6 +2481,142 @@ export type ExpressionFavoritePublic = {
 };
 
 /**
+ * FarmBadgePublic
+ *
+ * 徽章展示项：带来源标注（只读，不参与任何结算口径）。
+ */
+export type FarmBadgePublic = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Awarded At
+     */
+    awarded_at?: string | null;
+    /**
+     * Source
+     */
+    source?: string;
+};
+
+/**
+ * FarmHarvestResult
+ *
+ * POST .../farm/harvest 回执：收获入账后的地块与账本快照。
+ */
+export type FarmHarvestResult = {
+    /**
+     * Harvested
+     */
+    harvested: boolean;
+    /**
+     * Xp Gained
+     */
+    xp_gained?: number;
+    /**
+     * Xp
+     */
+    xp?: number;
+    /**
+     * Growth Points
+     */
+    growth_points?: number;
+    /**
+     * Stage
+     */
+    stage?: number;
+    /**
+     * Harvest Count
+     */
+    harvest_count?: number;
+    /**
+     * Newly Awarded
+     */
+    newly_awarded?: Array<string>;
+    /**
+     * Badges
+     */
+    badges?: Array<FarmBadgePublic>;
+};
+
+/**
+ * FarmView
+ *
+ * GET /classes/{code}/vocabulary/student/farm。
+ */
+export type FarmView = {
+    /**
+     * Stage
+     */
+    stage: number;
+    /**
+     * Stage Thresholds
+     */
+    stage_thresholds: Array<number>;
+    /**
+     * Growth Points
+     */
+    growth_points: number;
+    /**
+     * Points To Mature
+     */
+    points_to_mature: number;
+    /**
+     * Ready To Harvest
+     */
+    ready_to_harvest: boolean;
+    /**
+     * Today Points
+     */
+    today_points: number;
+    /**
+     * Daily Growth Cap
+     */
+    daily_growth_cap: number;
+    /**
+     * Xp
+     */
+    xp?: number;
+    /**
+     * Streak Days
+     */
+    streak_days?: number;
+    /**
+     * Harvest Count
+     */
+    harvest_count?: number;
+    /**
+     * Today Farm Xp
+     */
+    today_farm_xp?: number;
+    /**
+     * Farm Xp Daily Cap
+     */
+    farm_xp_daily_cap?: number;
+    /**
+     * Can Harvest
+     */
+    can_harvest?: boolean;
+    /**
+     * Badges
+     */
+    badges?: Array<FarmBadgePublic>;
+    /**
+     * Last Harvested At
+     */
+    last_harvested_at?: string | null;
+};
+
+/**
  * FollowupCreate
  */
 export type FollowupCreate = {
@@ -14681,6 +14817,66 @@ export type VocabularyReportQuizTabSwitchResponses = {
      */
     200: unknown;
 };
+
+export type VocabularyReadFarmData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/student/farm';
+};
+
+export type VocabularyReadFarmErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadFarmError = VocabularyReadFarmErrors[keyof VocabularyReadFarmErrors];
+
+export type VocabularyReadFarmResponses = {
+    /**
+     * Successful Response
+     */
+    200: FarmView;
+};
+
+export type VocabularyReadFarmResponse = VocabularyReadFarmResponses[200 & keyof VocabularyReadFarmResponses];
+
+export type VocabularyHarvestFarmData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/student/farm/harvest';
+};
+
+export type VocabularyHarvestFarmErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyHarvestFarmError = VocabularyHarvestFarmErrors[keyof VocabularyHarvestFarmErrors];
+
+export type VocabularyHarvestFarmResponses = {
+    /**
+     * Successful Response
+     */
+    200: FarmHarvestResult;
+};
+
+export type VocabularyHarvestFarmResponse = VocabularyHarvestFarmResponses[200 & keyof VocabularyHarvestFarmResponses];
 
 export type VocabularyPublishQuizGradesData = {
     body?: never;
