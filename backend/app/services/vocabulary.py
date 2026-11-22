@@ -1823,13 +1823,15 @@ def create_student_session(
     *,
     classroom_id: uuid.UUID,
     student_id: uuid.UUID,
+    user_id: uuid.UUID,
     kind: str,
     book_id: uuid.UUID | None,
     word_count: int,
     mix_wrong: bool,
     prompt_types: list[str] | None = None,
 ) -> tuple[VocabularySession, str, int]:
-    """学生自主开轮：self = 词库选题（可混错词），review = 错词专项。
+    """学生自主开轮：self = 词库选题（可混错词），review = 错词专项，
+    review_fsrs = FSRS 到期复习队列。
 
     - 选题后题单与题序一次性固化在会话上，刷新/换端重进同一轮；
     - 未结束的同款轮次直接续做（重复点击/刷新不产生重复轮次）；
@@ -1837,7 +1839,7 @@ def create_student_session(
       （同形异义本就是独立词条，天然保留）。
     返回 (会话, 展示标题, 混入错词数)。
     """
-    if kind not in ("self", "review"):
+    if kind not in ("self", "review", "review_fsrs"):
         raise HTTPException(status_code=422, detail="未知的自主练习类型")
     word_count = max(1, min(word_count, SELF_PRACTICE_MAX_WORDS))
 
@@ -1859,6 +1861,17 @@ def create_student_session(
             student_id=student_id,
             word_count=word_count,
             prompt_types=prompt_types,
+        )
+    elif kind == "review_fsrs":
+        # 函数级引入避免 services 间循环依赖；复习队列状态按 user_id 跨班汇总
+        from app.services import vocabulary_review
+
+        vocab_session, title, wrong_used = vocabulary_review.build_review_fsrs_session(
+            session,
+            classroom_id=classroom_id,
+            student_id=student_id,
+            user_id=user_id,
+            word_count=word_count,
         )
     else:
         vocab_session, title, wrong_used = _build_self_session(
@@ -1893,6 +1906,8 @@ def _student_session_title(session: Session, vocab_session: VocabularySession) -
         book = session.get(VocabularyBook, vocab_session.source_book_id)
         if book is not None:
             return book.title
+    if vocab_session.kind == "review_fsrs":
+        return "复习队列"
     return "错词复习" if vocab_session.kind == "review" else "自主练习"
 
 

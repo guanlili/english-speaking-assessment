@@ -8,6 +8,7 @@ import {
 import {
   ArrowLeft,
   ArrowRight,
+  BrainCircuit,
   ChartLine,
   LibraryBig,
   RotateCcw,
@@ -38,6 +39,7 @@ import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
 import { EXPLAIN_FIRST_TRY_ACCURACY, TERMS } from "@/lib/terms"
 import { formatDate, formatDateTime } from "@/lib/time"
+import { practiceRoundTitle } from "@/lib/vocab-review"
 
 export const Route = createFileRoute("/vocab/$code/records")({
   component: VocabRecordsPage,
@@ -50,6 +52,7 @@ const KIND_LABELS: Record<string, { zh: string; en: string }> = {
   task: { zh: "教师任务", en: "Teacher task" },
   self: { zh: "自主练习", en: "Self practice" },
   review: { zh: "错词复习", en: "Wrong-word review" },
+  review_fsrs: { zh: "记忆复习", en: "Scheduled review" },
 }
 
 /** 趋势图展示的最多轮数（取最近已完成且已作答的轮次） */
@@ -77,7 +80,17 @@ function VocabRecordsPage() {
 
   useStudentGuard(code, student, historyQuery)
 
+  const reviewStatsQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
+    queryKey: ["vocab", code, "review-stats", student?.id],
+    queryFn: () =>
+      VocabularyService.readReviewStats({ code: code.toUpperCase() }),
+    enabled: student !== null,
+  })
+
   const rows = historyQuery.data?.items ?? []
+  const reviewStats = reviewStatsQuery.data ?? null
 
   // 基础正确率趋势：最近已作答轮次（时间正序），零作答轮不进趋势
   const trend = useMemo(() => {
@@ -149,6 +162,76 @@ function VocabRecordsPage() {
           </p>
         </section>
 
+        {/* 复习档案真实计数（不估算留存率 / 掌握等级） */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <BrainCircuit className="size-4 text-primary" />
+              {t({ zh: "复习档案", en: "Review Archive" })}
+              <InfoHint
+                label={t({
+                  zh: "只统计真实复习次数与状态分布，不预测记忆留存率或掌握等级。",
+                  en: "Real review counts and state distribution only — no retention forecast or mastery level.",
+                })}
+              />
+            </CardTitle>
+            <CardDescription>
+              {t({
+                zh: "认读（选择）与拼写（输入）分别记录；状态跟随账号跨班保留。",
+                en: "Recognition and spelling are tracked separately; state follows your account across classes.",
+              })}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {(
+                [
+                  {
+                    label: { zh: "档案条目", en: "Tracked" },
+                    value: reviewStats?.tracked_count ?? 0,
+                  },
+                  {
+                    label: { zh: "已到期", en: "Due" },
+                    value: reviewStats?.due_count ?? 0,
+                  },
+                  {
+                    label: { zh: "今日已复习", en: "Reviewed today" },
+                    value: reviewStats?.reviewed_today_count ?? 0,
+                  },
+                  {
+                    label: { zh: "学习中", en: "Learning" },
+                    value: reviewStats?.learning_count ?? 0,
+                  },
+                  {
+                    label: { zh: "长期记忆", en: "Established" },
+                    value: reviewStats?.review_count ?? 0,
+                  },
+                  {
+                    label: { zh: "认读", en: "Recognition" },
+                    value: reviewStats?.recognition_count ?? 0,
+                  },
+                  {
+                    label: { zh: "拼写", en: "Spelling" },
+                    value: reviewStats?.spelling_count ?? 0,
+                  },
+                ] as const
+              ).map((stat) => (
+                <div
+                  key={stat.label.en}
+                  className="rounded-2xl bg-secondary/50 px-4 py-3"
+                >
+                  <dt className="text-xs text-muted-foreground">
+                    {t(stat.label)}
+                  </dt>
+                  <dd className="mt-1 text-lg font-semibold tabular-nums">
+                    {stat.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </CardContent>
+        </Card>
+
         {/* 基础正确率趋势（最近已作答轮次） */}
         {trend.length > 0 && (
           <Card>
@@ -186,7 +269,9 @@ function VocabRecordsPage() {
                             ? "bg-primary"
                             : bar.kind === "review"
                               ? "bg-amber-500"
-                              : "bg-sky-500"
+                              : bar.kind === "review_fsrs"
+                                ? "bg-emerald-500"
+                                : "bg-sky-500"
                         }`}
                         style={{
                           width: `${Math.max(Math.round(bar.ratio * 100), 4)}%`,
@@ -250,7 +335,7 @@ function VocabRecordsPage() {
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <span className="truncate text-sm font-medium">
-                        {row.title}
+                        {t(practiceRoundTitle(row.kind, row.title))}
                       </span>
                       {row.kind === "review" && (
                         <RotateCcw className="size-3.5 shrink-0 text-muted-foreground" />

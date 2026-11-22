@@ -6948,6 +6948,168 @@ export type VocabularyRecommendationFocus = {
 };
 
 /**
+ * VocabularyReviewQueue
+ *
+ * GET /classes/{code}/vocabulary/student/review-queue。
+ */
+export type VocabularyReviewQueue = {
+    /**
+     * Classroom Code
+     */
+    classroom_code: string;
+    /**
+     * Generated At
+     */
+    generated_at: string;
+    /**
+     * Daily Limit
+     */
+    daily_limit: number;
+    /**
+     * Reviewed Today Count
+     */
+    reviewed_today_count: number;
+    /**
+     * Due Today Count
+     */
+    due_today_count: number;
+    /**
+     * Remaining Today Count
+     */
+    remaining_today_count: number;
+    /**
+     * Items
+     */
+    items?: Array<VocabularyReviewQueueItem>;
+};
+
+/**
+ * VocabularyReviewQueueItem
+ *
+ * 队列条目：到期词条 + 可解释调度信息 + 词条当前内容。
+ */
+export type VocabularyReviewQueueItem = {
+    /**
+     * Word Id
+     */
+    word_id: string;
+    /**
+     * Headword
+     */
+    headword: string;
+    /**
+     * Part Of Speech
+     */
+    part_of_speech?: string | null;
+    /**
+     * Meaning Zh
+     */
+    meaning_zh: string;
+    /**
+     * Meaning En
+     */
+    meaning_en?: string | null;
+    /**
+     * Accepted Spellings
+     */
+    accepted_spellings?: Array<string> | null;
+    /**
+     * Example En
+     */
+    example_en?: string | null;
+    /**
+     * Audio Url
+     */
+    audio_url?: string | null;
+    /**
+     * Morphology
+     */
+    morphology?: Array<{
+        [key: string]: string;
+    }> | null;
+    /**
+     * Capability
+     */
+    capability: string;
+    /**
+     * State
+     */
+    state: string;
+    /**
+     * Due At
+     */
+    due_at: string;
+    /**
+     * Overdue Days
+     */
+    overdue_days?: number;
+    /**
+     * Last Review At
+     */
+    last_review_at?: string | null;
+    /**
+     * Last Rating
+     */
+    last_rating?: string | null;
+    /**
+     * Last Is Correct
+     */
+    last_is_correct?: boolean | null;
+    /**
+     * Interval Days
+     */
+    interval_days?: number | null;
+    /**
+     * Reps
+     */
+    reps?: number;
+    /**
+     * Lapses
+     */
+    lapses?: number;
+    /**
+     * Suggested Prompt Types
+     */
+    suggested_prompt_types?: Array<string>;
+};
+
+/**
+ * VocabularyReviewStats
+ *
+ * 个人成长页的真实复习统计（不宣称记忆留存率）。
+ */
+export type VocabularyReviewStats = {
+    /**
+     * Tracked Count
+     */
+    tracked_count?: number;
+    /**
+     * Due Count
+     */
+    due_count?: number;
+    /**
+     * Reviewed Today Count
+     */
+    reviewed_today_count?: number;
+    /**
+     * Learning Count
+     */
+    learning_count?: number;
+    /**
+     * Review Count
+     */
+    review_count?: number;
+    /**
+     * Recognition Count
+     */
+    recognition_count?: number;
+    /**
+     * Spelling Count
+     */
+    spelling_count?: number;
+};
+
+/**
  * VocabularyRoundSummaryRow
  *
  * 学生侧轮次摘要：轮次回看入口（只读查看指定轮）。
@@ -14616,6 +14778,66 @@ export type VocabularyReadStudentRecommendationResponses = {
 };
 
 export type VocabularyReadStudentRecommendationResponse = VocabularyReadStudentRecommendationResponses[200 & keyof VocabularyReadStudentRecommendationResponses];
+
+export type VocabularyReadReviewQueueData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/student/review-queue';
+};
+
+export type VocabularyReadReviewQueueErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadReviewQueueError = VocabularyReadReviewQueueErrors[keyof VocabularyReadReviewQueueErrors];
+
+export type VocabularyReadReviewQueueResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyReviewQueue;
+};
+
+export type VocabularyReadReviewQueueResponse = VocabularyReadReviewQueueResponses[200 & keyof VocabularyReadReviewQueueResponses];
+
+export type VocabularyReadReviewStatsData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/student/review-stats';
+};
+
+export type VocabularyReadReviewStatsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadReviewStatsError = VocabularyReadReviewStatsErrors[keyof VocabularyReadReviewStatsErrors];
+
+export type VocabularyReadReviewStatsResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyReviewStats;
+};
+
+export type VocabularyReadReviewStatsResponse = VocabularyReadReviewStatsResponses[200 & keyof VocabularyReadReviewStatsResponses];
 
 export type VocabLevelsVocabLevelStatsData = {
     body?: never;

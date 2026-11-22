@@ -34,6 +34,8 @@ from app.models import (
     VocabularyBookDetail,
     VocabularyBookPublic,
     VocabularyRecommendation,
+    VocabularyReviewQueue,
+    VocabularyReviewStats,
     VocabularySession,
     VocabularyStudentHistory,
     VocabularyStudentPlan,
@@ -41,7 +43,7 @@ from app.models import (
     VocabularyStudentSessionCreated,
     VocabularyWrongWords,
 )
-from app.services import vocab_recommendation
+from app.services import vocab_recommendation, vocabulary_review
 from app.services import vocabulary as vocab_service
 from app.services.vocabulary import (
     get_book_or_404 as _get_book,
@@ -183,6 +185,7 @@ def start_student_session(
         session,
         classroom_id=classroom.id,
         student_id=student.id,
+        user_id=current_user.id,
         kind=body.kind,
         book_id=body.book_id,
         word_count=body.word_count,
@@ -264,4 +267,43 @@ def read_student_recommendation(
         classroom_id=classroom.id,
         student_id=student.id,
         code=classroom.code,
+    )
+
+
+@router.get(
+    "/classes/{code}/vocabulary/student/review-queue",
+    response_model=VocabularyReviewQueue,
+)
+def read_review_queue(
+    session: SessionDep, code: str, current_user: StudentUserDep
+) -> Any:
+    """FSRS 到期复习队列：到期词条 + 可解释调度信息 + 每日负担摘要。
+
+    状态按登录账号跨班汇总；可见性限定当前课堂可练词库内的 active 词条。
+    队列只读学生状态与词条当前内容，不改动历史 session 快照与首答统计。
+    """
+    classroom = _get_classroom(session, code)
+    _student_profile_of(session, classroom, current_user)
+    queue = vocabulary_review.review_queue(
+        session, user_id=current_user.id, classroom_id=classroom.id
+    )
+    queue.classroom_code = classroom.code
+    return queue
+
+
+@router.get(
+    "/classes/{code}/vocabulary/student/review-stats",
+    response_model=VocabularyReviewStats,
+)
+def read_review_stats(
+    session: SessionDep, code: str, current_user: StudentUserDep
+) -> Any:
+    """个人成长页复习统计：档案/到期/今日已复习/认读与拼写分布（真实计数）。
+
+    只做计数展示，不估算记忆留存率或掌握度等级。
+    """
+    classroom = _get_classroom(session, code)
+    _student_profile_of(session, classroom, current_user)
+    return vocabulary_review.review_stats(
+        session, user_id=current_user.id, classroom_id=classroom.id
     )
