@@ -3525,6 +3525,335 @@ export type PathUnit = {
 };
 
 /**
+ * PkAnswerRequest
+ */
+export type PkAnswerRequest = {
+    /**
+     * Item Index
+     */
+    item_index: number;
+    /**
+     * Prompt Type
+     */
+    prompt_type?: string;
+    /**
+     * Answer
+     */
+    answer: string;
+    /**
+     * Idempotency Key
+     */
+    idempotency_key?: string | null;
+};
+
+/**
+ * PkChoice
+ */
+export type PkChoice = {
+    /**
+     * Word Id
+     */
+    word_id: string;
+    /**
+     * Headword
+     */
+    headword: string;
+    /**
+     * Meaning Zh
+     */
+    meaning_zh: string;
+    /**
+     * Part Of Speech
+     */
+    part_of_speech?: string | null;
+    /**
+     * Is Answer
+     */
+    is_answer?: boolean;
+};
+
+/**
+ * PkLobbyCreate
+ *
+ * 教师开大厅：选词库；题量/限时/题型可演示默认值。
+ */
+export type PkLobbyCreate = {
+    /**
+     * Book Id
+     */
+    book_id: string;
+    /**
+     * Question Count
+     */
+    question_count?: number | null;
+    /**
+     * Per Question Seconds
+     */
+    per_question_seconds?: number | null;
+    /**
+     * Prompt Types
+     */
+    prompt_types?: Array<string> | null;
+};
+
+/**
+ * PkLobbyView
+ */
+export type PkLobbyView = {
+    /**
+     * Lobby Id
+     */
+    lobby_id?: string | null;
+    /**
+     * Status
+     */
+    status?: string | null;
+    /**
+     * Book Id
+     */
+    book_id?: string | null;
+    /**
+     * Question Count
+     */
+    question_count?: number;
+    /**
+     * Per Question Seconds
+     */
+    per_question_seconds?: number;
+    /**
+     * Prompt Types
+     */
+    prompt_types?: Array<string>;
+    /**
+     * Queue Count
+     */
+    queue_count?: number;
+    /**
+     * Active Match Count
+     */
+    active_match_count?: number;
+    /**
+     * My Status
+     */
+    my_status?: string | null;
+    /**
+     * My Match Id
+     */
+    my_match_id?: string | null;
+    /**
+     * Players
+     */
+    players?: Array<PkPlayerSummary>;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+    /**
+     * Closed At
+     */
+    closed_at?: string | null;
+};
+
+/**
+ * PkMatchItem
+ *
+ * 对局题面条目：字段对齐前端 PromptBody 既有口径。
+ */
+export type PkMatchItem = {
+    /**
+     * Item Index
+     */
+    item_index: number;
+    /**
+     * Prompt Type
+     */
+    prompt_type: string;
+    /**
+     * Part Of Speech
+     */
+    part_of_speech?: string | null;
+    /**
+     * Meaning Zh
+     */
+    meaning_zh: string;
+    /**
+     * Meaning En
+     */
+    meaning_en?: string | null;
+    /**
+     * Audio Url
+     */
+    audio_url?: string | null;
+    /**
+     * Choices
+     */
+    choices?: Array<PkChoice>;
+    /**
+     * Cloze Sentence
+     */
+    cloze_sentence?: string | null;
+    /**
+     * Morph Segments
+     */
+    morph_segments?: Array<PkMorphSegment>;
+    /**
+     * Headword
+     */
+    headword?: string | null;
+    /**
+     * Answered
+     */
+    answered?: boolean;
+    /**
+     * Is Correct
+     */
+    is_correct?: boolean | null;
+    /**
+     * First Choice Word Id
+     */
+    first_choice_word_id?: string | null;
+    /**
+     * Score
+     */
+    score?: number | null;
+};
+
+/**
+ * PkMatchResult
+ */
+export type PkMatchResult = {
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * End Reason
+     */
+    end_reason?: string | null;
+    /**
+     * Winner Student Id
+     */
+    winner_student_id?: string | null;
+    /**
+     * Drew
+     */
+    drew?: boolean;
+};
+
+/**
+ * PkMatchView
+ */
+export type PkMatchView = {
+    /**
+     * Match Id
+     */
+    match_id: string;
+    /**
+     * Lobby Id
+     */
+    lobby_id: string;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * State Version
+     */
+    state_version: number;
+    /**
+     * Question Count
+     */
+    question_count: number;
+    /**
+     * Current Item Index
+     */
+    current_item_index: number;
+    /**
+     * Remaining Seconds
+     */
+    remaining_seconds?: number | null;
+    /**
+     * Per Question Seconds
+     */
+    per_question_seconds?: number;
+    me: PkPlayerSummary;
+    opponent?: PkPlayerSummary | null;
+    /**
+     * Items
+     */
+    items?: Array<PkMatchItem>;
+    result?: PkMatchResult | null;
+    /**
+     * Started At
+     */
+    started_at?: string | null;
+    /**
+     * Finished At
+     */
+    finished_at?: string | null;
+};
+
+/**
+ * PkMorphSegment
+ */
+export type PkMorphSegment = {
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Gloss
+     */
+    gloss: string;
+    /**
+     * Kind
+     */
+    kind: string;
+};
+
+/**
+ * PkPlayerSummary
+ */
+export type PkPlayerSummary = {
+    /**
+     * Student Id
+     */
+    student_id: string;
+    /**
+     * Display Name
+     */
+    display_name?: string | null;
+    /**
+     * Side
+     */
+    side?: string | null;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Score
+     */
+    score?: number;
+    /**
+     * Answered Count
+     */
+    answered_count?: number;
+    /**
+     * Correct Count
+     */
+    correct_count?: number;
+    /**
+     * Total Seconds
+     */
+    total_seconds?: number;
+    /**
+     * Match Id
+     */
+    match_id?: string | null;
+};
+
+/**
  * PlanAttempt
  */
 export type PlanAttempt = {
@@ -14838,6 +15167,288 @@ export type VocabularyReadReviewStatsResponses = {
 };
 
 export type VocabularyReadReviewStatsResponse = VocabularyReadReviewStatsResponses[200 & keyof VocabularyReadReviewStatsResponses];
+
+export type VocabularyReadPkLobbyData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/pk/lobby';
+};
+
+export type VocabularyReadPkLobbyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadPkLobbyError = VocabularyReadPkLobbyErrors[keyof VocabularyReadPkLobbyErrors];
+
+export type VocabularyReadPkLobbyResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkLobbyView;
+};
+
+export type VocabularyReadPkLobbyResponse = VocabularyReadPkLobbyResponses[200 & keyof VocabularyReadPkLobbyResponses];
+
+export type VocabularyOpenPkLobbyData = {
+    body: PkLobbyCreate;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/pk/lobby';
+};
+
+export type VocabularyOpenPkLobbyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyOpenPkLobbyError = VocabularyOpenPkLobbyErrors[keyof VocabularyOpenPkLobbyErrors];
+
+export type VocabularyOpenPkLobbyResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkLobbyView;
+};
+
+export type VocabularyOpenPkLobbyResponse = VocabularyOpenPkLobbyResponses[200 & keyof VocabularyOpenPkLobbyResponses];
+
+export type VocabularyClosePkLobbyData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/pk/lobby/close';
+};
+
+export type VocabularyClosePkLobbyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyClosePkLobbyError = VocabularyClosePkLobbyErrors[keyof VocabularyClosePkLobbyErrors];
+
+export type VocabularyClosePkLobbyResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkLobbyView;
+};
+
+export type VocabularyClosePkLobbyResponse = VocabularyClosePkLobbyResponses[200 & keyof VocabularyClosePkLobbyResponses];
+
+export type VocabularyLeavePkLobbyData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/pk/lobby/join';
+};
+
+export type VocabularyLeavePkLobbyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyLeavePkLobbyError = VocabularyLeavePkLobbyErrors[keyof VocabularyLeavePkLobbyErrors];
+
+export type VocabularyLeavePkLobbyResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkLobbyView;
+};
+
+export type VocabularyLeavePkLobbyResponse = VocabularyLeavePkLobbyResponses[200 & keyof VocabularyLeavePkLobbyResponses];
+
+export type VocabularyJoinPkLobbyData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/pk/lobby/join';
+};
+
+export type VocabularyJoinPkLobbyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyJoinPkLobbyError = VocabularyJoinPkLobbyErrors[keyof VocabularyJoinPkLobbyErrors];
+
+export type VocabularyJoinPkLobbyResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkLobbyView;
+};
+
+export type VocabularyJoinPkLobbyResponse = VocabularyJoinPkLobbyResponses[200 & keyof VocabularyJoinPkLobbyResponses];
+
+export type VocabularyReadPkMatchData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Match Id
+         */
+        match_id: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/pk/matches/{match_id}';
+};
+
+export type VocabularyReadPkMatchErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadPkMatchError = VocabularyReadPkMatchErrors[keyof VocabularyReadPkMatchErrors];
+
+export type VocabularyReadPkMatchResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkMatchView;
+};
+
+export type VocabularyReadPkMatchResponse = VocabularyReadPkMatchResponses[200 & keyof VocabularyReadPkMatchResponses];
+
+export type VocabularyReadPkMatchStateData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Match Id
+         */
+        match_id: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/pk/matches/{match_id}/state';
+};
+
+export type VocabularyReadPkMatchStateErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadPkMatchStateError = VocabularyReadPkMatchStateErrors[keyof VocabularyReadPkMatchStateErrors];
+
+export type VocabularyReadPkMatchStateResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkMatchView;
+};
+
+export type VocabularyReadPkMatchStateResponse = VocabularyReadPkMatchStateResponses[200 & keyof VocabularyReadPkMatchStateResponses];
+
+export type VocabularySubmitPkAnswerData = {
+    body: PkAnswerRequest;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Match Id
+         */
+        match_id: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/pk/matches/{match_id}/answers';
+};
+
+export type VocabularySubmitPkAnswerErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularySubmitPkAnswerError = VocabularySubmitPkAnswerErrors[keyof VocabularySubmitPkAnswerErrors];
+
+export type VocabularySubmitPkAnswerResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type VocabularyPkMatchEventsData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Match Id
+         */
+        match_id: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/pk/matches/{match_id}/events';
+};
+
+export type VocabularyPkMatchEventsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyPkMatchEventsError = VocabularyPkMatchEventsErrors[keyof VocabularyPkMatchEventsErrors];
+
+export type VocabularyPkMatchEventsResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
 
 export type VocabLevelsVocabLevelStatsData = {
     body?: never;

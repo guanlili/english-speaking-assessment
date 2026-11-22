@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link, useParams } from "@tanstack/react-router"
-import { BookA, ListChecks, Mic, SpellCheck } from "lucide-react"
+import { BookA, ListChecks, Mic, SpellCheck, Swords } from "lucide-react"
 import { useState } from "react"
 import { ApiError, ClassesService, VocabularyService } from "@/client"
 import { AssignPanel } from "@/components/Teaching/VocabTasks/AssignPanel"
+import { PkTeacherPanel } from "@/components/Teaching/VocabTasks/PkTeacherPanel"
 import { ResultsPanel } from "@/components/Teaching/VocabTasks/ResultsPanel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -23,7 +24,7 @@ export const Route = createFileRoute("/t/$code/vocab")({
 function TeacherVocabPage() {
   const { t, lang } = useI18n()
   const { code } = useParams({ from: "/t/$code/vocab" })
-  const [tab, setTab] = useState<"assign" | "results">("assign")
+  const [tab, setTab] = useState<"assign" | "results" | "pk">("assign")
   // 查看哪一期：null = 当前进行中（后端默认最新发布）；任务列表点击后切换
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<
     string | null
@@ -248,10 +249,21 @@ function TeacherVocabPage() {
           <SpellCheck />
           {t({ zh: "完成情况", en: "Results" })}
         </Button>
+        <Button
+          variant={tab === "pk" ? "default" : "outline"}
+          size="sm"
+          aria-pressed={tab === "pk"}
+          onClick={() => setTab("pk")}
+        >
+          <Swords />
+          {t({ zh: "PK 对战", en: "PK Battle" })}
+        </Button>
       </div>
 
       {tab === "assign" ? (
         <AssignPanel code={code} classroomId={classroomId} />
+      ) : tab === "pk" ? (
+        <PkTeacherPanel code={code} />
       ) : (
         <ResultsPanel
           code={code}

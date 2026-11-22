@@ -6430,6 +6430,647 @@
         "title": "PathUnit",
         "type": "object"
       },
+      "PkAnswerRequest": {
+        "properties": {
+          "answer": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "item_index": {
+            "minimum": 0.0,
+            "title": "Item Index",
+            "type": "integer"
+          },
+          "prompt_type": {
+            "default": "meaning",
+            "maxLength": 16,
+            "title": "Prompt Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_index",
+          "answer"
+        ],
+        "title": "PkAnswerRequest",
+        "type": "object"
+      },
+      "PkChoice": {
+        "properties": {
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "is_answer": {
+            "default": false,
+            "title": "Is Answer",
+            "type": "boolean"
+          },
+          "meaning_zh": {
+            "title": "Meaning Zh",
+            "type": "string"
+          },
+          "part_of_speech": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Of Speech"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word_id",
+          "headword",
+          "meaning_zh"
+        ],
+        "title": "PkChoice",
+        "type": "object"
+      },
+      "PkLobbyCreate": {
+        "description": "教师开大厅：选词库；题量/限时/题型可演示默认值。",
+        "properties": {
+          "book_id": {
+            "format": "uuid",
+            "title": "Book Id",
+            "type": "string"
+          },
+          "per_question_seconds": {
+            "anyOf": [
+              {
+                "maximum": 60.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Question Seconds"
+          },
+          "prompt_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Types"
+          },
+          "question_count": {
+            "anyOf": [
+              {
+                "maximum": 20.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Count"
+          }
+        },
+        "required": [
+          "book_id"
+        ],
+        "title": "PkLobbyCreate",
+        "type": "object"
+      },
+      "PkLobbyView": {
+        "properties": {
+          "active_match_count": {
+            "default": 0,
+            "title": "Active Match Count",
+            "type": "integer"
+          },
+          "book_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Id"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "lobby_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lobby Id"
+          },
+          "my_match_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Match Id"
+          },
+          "my_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Status"
+          },
+          "per_question_seconds": {
+            "default": 20,
+            "title": "Per Question Seconds",
+            "type": "integer"
+          },
+          "players": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkPlayerSummary"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "prompt_types": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Prompt Types",
+            "type": "array"
+          },
+          "question_count": {
+            "default": 8,
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "queue_count": {
+            "default": 0,
+            "title": "Queue Count",
+            "type": "integer"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "PkLobbyView",
+        "type": "object"
+      },
+      "PkMatchItem": {
+        "description": "对局题面条目：字段对齐前端 PromptBody 既有口径。",
+        "properties": {
+          "answered": {
+            "default": false,
+            "title": "Answered",
+            "type": "boolean"
+          },
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url"
+          },
+          "choices": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkChoice"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "cloze_sentence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cloze Sentence"
+          },
+          "first_choice_word_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Choice Word Id"
+          },
+          "headword": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headword"
+          },
+          "is_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Correct"
+          },
+          "item_index": {
+            "title": "Item Index",
+            "type": "integer"
+          },
+          "meaning_en": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meaning En"
+          },
+          "meaning_zh": {
+            "title": "Meaning Zh",
+            "type": "string"
+          },
+          "morph_segments": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkMorphSegment"
+            },
+            "title": "Morph Segments",
+            "type": "array"
+          },
+          "part_of_speech": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Of Speech"
+          },
+          "prompt_type": {
+            "title": "Prompt Type",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "required": [
+          "item_index",
+          "prompt_type",
+          "meaning_zh"
+        ],
+        "title": "PkMatchItem",
+        "type": "object"
+      },
+      "PkMatchResult": {
+        "properties": {
+          "drew": {
+            "default": false,
+            "title": "Drew",
+            "type": "boolean"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "winner_student_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Student Id"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "PkMatchResult",
+        "type": "object"
+      },
+      "PkMatchView": {
+        "properties": {
+          "current_item_index": {
+            "title": "Current Item Index",
+            "type": "integer"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkMatchItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "lobby_id": {
+            "format": "uuid",
+            "title": "Lobby Id",
+            "type": "string"
+          },
+          "match_id": {
+            "format": "uuid",
+            "title": "Match Id",
+            "type": "string"
+          },
+          "me": {
+            "$ref": "#/components/schemas/PkPlayerSummary"
+          },
+          "opponent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PkPlayerSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "per_question_seconds": {
+            "default": 20,
+            "title": "Per Question Seconds",
+            "type": "integer"
+          },
+          "question_count": {
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "remaining_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Seconds"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PkMatchResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state_version": {
+            "title": "State Version",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "match_id",
+          "lobby_id",
+          "status",
+          "state_version",
+          "question_count",
+          "current_item_index",
+          "me"
+        ],
+        "title": "PkMatchView",
+        "type": "object"
+      },
+      "PkMorphSegment": {
+        "properties": {
+          "gloss": {
+            "title": "Gloss",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "gloss",
+          "kind"
+        ],
+        "title": "PkMorphSegment",
+        "type": "object"
+      },
+      "PkPlayerSummary": {
+        "properties": {
+          "answered_count": {
+            "default": 0,
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "correct_count": {
+            "default": 0,
+            "title": "Correct Count",
+            "type": "integer"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "match_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Id"
+          },
+          "score": {
+            "default": 0,
+            "title": "Score",
+            "type": "integer"
+          },
+          "side": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Side"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "total_seconds": {
+            "default": 0.0,
+            "title": "Total Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "student_id",
+          "status"
+        ],
+        "title": "PkPlayerSummary",
+        "type": "object"
+      },
       "PlanAttempt": {
         "properties": {
           "advice": {
@@ -24234,6 +24875,483 @@
           }
         ],
         "summary": "Grant Quiz Retake",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/pk/lobby": {
+      "get": {
+        "operationId": "vocabulary-read_pk_lobby",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkLobbyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Pk Lobby",
+        "tags": [
+          "vocabulary"
+        ]
+      },
+      "post": {
+        "operationId": "vocabulary-open_pk_lobby",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PkLobbyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkLobbyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Open Pk Lobby",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/pk/lobby/close": {
+      "patch": {
+        "operationId": "vocabulary-close_pk_lobby",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkLobbyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Close Pk Lobby",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/pk/lobby/join": {
+      "delete": {
+        "operationId": "vocabulary-leave_pk_lobby",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkLobbyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Leave Pk Lobby",
+        "tags": [
+          "vocabulary"
+        ]
+      },
+      "post": {
+        "operationId": "vocabulary-join_pk_lobby",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkLobbyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Join Pk Lobby",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/pk/matches/{match_id}": {
+      "get": {
+        "operationId": "vocabulary-read_pk_match",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "match_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Match Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkMatchView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Pk Match",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/pk/matches/{match_id}/answers": {
+      "post": {
+        "operationId": "vocabulary-submit_pk_answer",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "match_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Match Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PkAnswerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Submit Pk Answer",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/pk/matches/{match_id}/events": {
+      "get": {
+        "description": "SSE 推送：状态版本变化时下发最新快照；心跳保活；5 分钟到期重连。",
+        "operationId": "vocabulary-pk_match_events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "match_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Match Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Pk Match Events",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/pk/matches/{match_id}/state": {
+      "get": {
+        "description": "轮询快照：与 SSE 读同一套 match_view（降级路径行为一致）。",
+        "operationId": "vocabulary-read_pk_match_state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "match_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Match Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkMatchView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Pk Match State",
         "tags": [
           "vocabulary"
         ]
