@@ -9,6 +9,7 @@ import {
   ArrowRight,
   BookA,
   BookOpenCheck,
+  BrainCircuit,
   CheckCircle2,
   Circle,
   Clock,
@@ -54,6 +55,11 @@ import {
   vocabPromptMeta,
 } from "@/lib/terms"
 import { formatDate, formatDateTime } from "@/lib/time"
+import {
+  canStartReview,
+  overdueLabel,
+  REVIEW_CAPABILITY_LABELS,
+} from "@/lib/vocab-review"
 
 /** 学习建议依据 → 双语解释（规则可解释，不输出等级/预测） */
 const RECOMMENDATION_BASIS: Record<string, { zh: string; en: string }> = {
@@ -173,6 +179,42 @@ function VocabHomePage() {
     enabled: student !== null,
   })
 
+  // FSRS 记忆复习：到期队列 + 每日负担摘要（独立于首答统计与错词本）
+  const reviewQueueQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
+    queryKey: ["vocab", code, "review-queue", student?.id],
+    queryFn: () =>
+      VocabularyService.readReviewQueue({ code: code.toUpperCase() }),
+    enabled: student !== null,
+    staleTime: 30_000,
+  })
+
+  // 记忆复习轮：从到期队列固化题单开一轮；不占教师任务进度
+  const startFsrsReview = useMutation({
+    mutationFn: () =>
+      VocabularyService.startStudentSession({
+        code: code.toUpperCase(),
+        vocabularyStudentSessionCreate: { kind: "review_fsrs" },
+      }),
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: ["vocab", code] })
+      void navigate({
+        to: "/vocab/$code/self",
+        params: { code },
+        search: { session: (data as { session_id: string }).session_id },
+      })
+    },
+    onError: () => {
+      toast.error(
+        t({
+          zh: "暂时没有到期需要复习的词。",
+          en: "No words are due for review yet.",
+        }),
+      )
+    },
+  })
+
   // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
   useStudentGuard(code, student, todayQuery)
 
@@ -238,6 +280,18 @@ function VocabHomePage() {
     answered > 0 ? Math.round((correctFirst / answered) * 100) : null
   const wrongWords = wrongQuery.data?.items ?? []
   const recommendation = recommendationQuery.data ?? null
+  const reviewQueue = reviewQueueQuery.data ?? null
+  const reviewSummary = reviewQueue
+    ? {
+        dailyLimit: reviewQueue.daily_limit,
+        reviewedTodayCount: reviewQueue.reviewed_today_count,
+        dueTodayCount: reviewQueue.due_today_count,
+        remainingTodayCount: reviewQueue.remaining_today_count,
+      }
+    : null
+  const canStartFsrsReview =
+    reviewSummary !== null && canStartReview(reviewSummary)
+  const reviewItems = reviewQueue?.items ?? []
   const taskRows = plan.assignments ?? []
   // 聚焦轮因截止/归档被关闭：不能再作答（历史仍可回看）
   const closedReason = plan.session_closed_reason ?? null
@@ -297,6 +351,159 @@ function VocabHomePage() {
               </Button>
             </div>
           </div>
+        </section>
+
+        {/* 今日复习：FSRS 到期队列 + 每日负担控制（独立于首答统计与错词本） */}
+        <section
+          aria-label={t({ zh: "今日复习", en: "Today's Review" })}
+          className="rounded-3xl border bg-card p-5 sm:p-6"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                <BrainCircuit className="size-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
+                  {t({ zh: "今日复习", en: "Today's Review" })}
+                  <Badge variant="outline" className="text-[10px] font-normal">
+                    {t({ zh: "记忆调度", en: "Spaced Repetition" })}
+                  </Badge>
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {t({
+                    zh: "按记忆间隔排出今天该复习的词；认读与拼写分别记录。",
+                    en: "Words due today by spaced repetition; recognition and spelling are tracked separately.",
+                  })}
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={() => startFsrsReview.mutate()}
+              disabled={!canStartFsrsReview || startFsrsReview.isPending}
+            >
+              <RotateCcw />
+              {startFsrsReview.isPending
+                ? t({ zh: "开一轮复习…", en: "Starting…" })
+                : t({ zh: "开始复习", en: "Start Review" })}
+            </Button>
+          </div>
+
+          {/* 每日负担摘要：到期数 / 今日已复习 / 剩余额度 / 上限 */}
+          <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {(
+              [
+                {
+                  label: { zh: "今日到期", en: "Due today" },
+                  value: reviewQueue?.due_today_count ?? 0,
+                },
+                {
+                  label: { zh: "今日已复习", en: "Reviewed today" },
+                  value: reviewQueue?.reviewed_today_count ?? 0,
+                },
+                {
+                  label: { zh: "今日剩余额度", en: "Left today" },
+                  value: reviewQueue?.remaining_today_count ?? 0,
+                },
+                {
+                  label: { zh: "每日上限", en: "Daily limit" },
+                  value: reviewQueue?.daily_limit ?? 0,
+                },
+              ] as const
+            ).map((stat) => (
+              <div
+                key={stat.label.en}
+                className="rounded-2xl bg-secondary/50 px-4 py-3"
+              >
+                <dt className="text-xs text-muted-foreground">
+                  {t(stat.label)}
+                </dt>
+                <dd className="mt-1 text-lg font-semibold tabular-nums">
+                  {stat.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          {reviewItems.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">
+              {reviewQueueQuery.isPending
+                ? t({ zh: "正在加载复习队列…", en: "Loading review queue…" })
+                : t({
+                    zh: "今天没有到期需要复习的词，继续保持！",
+                    en: "Nothing due for review today. Keep it up!",
+                  })}
+            </p>
+          ) : (
+            <ul className="mt-4 grid gap-2">
+              {reviewItems.slice(0, 6).map((item) => (
+                <li
+                  key={`${item.word_id}-${item.capability}`}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border px-4 py-3"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="font-mono font-semibold">
+                      {item.headword}
+                    </span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {item.meaning_zh}
+                    </span>
+                  </span>
+                  <Badge variant="outline" className="shrink-0">
+                    {t(
+                      REVIEW_CAPABILITY_LABELS[
+                        item.capability as keyof typeof REVIEW_CAPABILITY_LABELS
+                      ] ?? { zh: item.capability, en: item.capability },
+                    )}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {t(overdueLabel(item.overdue_days ?? 0))}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {item.last_is_correct === null ||
+                    item.last_is_correct === undefined
+                      ? "–"
+                      : item.last_is_correct
+                        ? t({ zh: "上次答对", en: "Last correct" })
+                        : t({ zh: "上次答错", en: "Last missed" })}
+                  </span>
+                  {item.interval_days != null && (
+                    <span className="text-xs text-muted-foreground">
+                      {t({
+                        zh: `间隔 ${item.interval_days} 天`,
+                        en: `${item.interval_days}-day interval`,
+                      })}
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {t({
+                      zh: `复习 ${item.reps ?? 0} · 遗忘 ${item.lapses ?? 0}`,
+                      en: `${item.reps ?? 0} reviews · ${item.lapses ?? 0} lapses`,
+                    })}
+                  </span>
+                  {(item.suggested_prompt_types ?? []).length > 0 && (
+                    <span className="flex flex-wrap gap-1">
+                      {(item.suggested_prompt_types ?? []).map((type) => (
+                        <span
+                          key={type}
+                          className="rounded-lg border border-primary/25 bg-secondary/60 px-2 py-0.5 text-xs"
+                        >
+                          {t(vocabPromptMeta(type).label)}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+            {t({
+              zh: "复习状态跟随你的账号，换班后继续保留；历史练习记录与快照不会被改写。这里只展示真实计数，不预测记忆留存率。",
+              en: "Review state follows your account across classes; past records and snapshots are never rewritten. Counts are real only — no retention forecast.",
+            })}
+          </p>
         </section>
 
         {/* 今日练习建议：按真实首答记录生成，规则可解释，不是能力评定 */}

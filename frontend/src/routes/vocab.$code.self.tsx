@@ -43,6 +43,7 @@ import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
 import { TERMS, VOCAB_CHOICE_PROMPTS, vocabPromptMeta } from "@/lib/terms"
 import { speakEnglish } from "@/lib/tts"
+import { practiceRoundTitle } from "@/lib/vocab-review"
 
 export const Route = createFileRoute("/vocab/$code/self")({
   component: VocabSelfPracticePage,
@@ -60,6 +61,7 @@ export const Route = createFileRoute("/vocab/$code/self")({
 const KIND_LABELS: Record<string, { zh: string; en: string }> = {
   self: { zh: "自主练习", en: "Self Practice" },
   review: { zh: "错词复习", en: "Wrong-word Review" },
+  review_fsrs: { zh: "记忆复习", en: "Scheduled Review" },
   task: { zh: "词汇任务", en: "Vocabulary Task" },
 }
 
@@ -425,7 +427,7 @@ function VocabSelfPracticePage() {
             {kindLabel}
           </Badge>
           <h1 className="min-w-0 truncate text-base font-semibold">
-            {plan.title}
+            {t(practiceRoundTitle(plan.kind, plan.title))}
           </h1>
           {plan.mix_wrong && mixedWrong > 0 && (
             <Badge variant="secondary" className="text-primary">

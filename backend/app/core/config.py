@@ -240,6 +240,8 @@ class Settings(BaseSettings):
     MAX_VOCAB_CSV_MB: int = 5
     # 练习日切分时区（教室在国内；UTC 会在早八点切日）
     PRACTICE_TZ: str = "Asia/Shanghai"
+    # FSRS 复习队列：每日建议复习条目上限（可经 env 覆盖；1..100 护栏）
+    VOCAB_REVIEW_DAILY_LIMIT: int = 20
     # 是否开放自助注册。代码默认关（安全兜底）；本地 .env.example 开着便于开发演示，
     # 生产由 GitHub Secrets 控制（deploy.yml 默认写 false）
     USERS_OPEN_REGISTRATION: bool = False

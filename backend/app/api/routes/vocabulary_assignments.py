@@ -47,7 +47,7 @@ from app.models import (
     VocabularyTeacherAssignmentRow,
     VocabularyTodayPlan,
 )
-from app.services import vocab_quiz
+from app.services import vocab_quiz, vocabulary_review
 from app.services import vocabulary as vocab_service
 
 router = APIRouter()
@@ -258,6 +258,19 @@ def submit_vocab_answer(
         one_attempt_per_item=is_quiz,
         assignment=assignment if is_quiz else None,
     )
+    # FSRS 学习状态（独立于首答统计的第二套口径）：
+    # - 仅练习轮（任务 practice / 自主 / 错词专项 / 复习队列）的独立首答进入调度；
+    #   重试 attempt_no>1 不升级、不降级状态；
+    # - 测验不接入：考试语义、一次性作答与公布规则与学习反馈分离，避免判分
+    #   口径混用；FSRS 状态也不回填 VocabularyAnswer 与教师结果统计。
+    if not is_quiz and answer.attempt_no == 1:
+        vocabulary_review.record_first_answer(
+            session,
+            user_id=current_user.id,
+            word_id=answer.word_id,
+            prompt_type=answer.prompt_type,
+            is_correct=answer.is_correct,
+        )
     session.refresh(vocab_session)
     answered_count, correct_first = vocab_service.session_progress(
         session, vocab_session

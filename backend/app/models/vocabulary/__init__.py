@@ -154,6 +154,27 @@ from app.models.vocabulary.reports import (
 from app.models.vocabulary.reports import (
     VocabularyWrongWords as VocabularyWrongWords,
 )
+from app.models.vocabulary.review import (
+    CAPABILITY_RECOGNITION as CAPABILITY_RECOGNITION,
+)
+from app.models.vocabulary.review import (
+    CAPABILITY_SPELLING as CAPABILITY_SPELLING,
+)
+from app.models.vocabulary.review import (
+    REVIEW_CAPABILITIES as REVIEW_CAPABILITIES,
+)
+from app.models.vocabulary.review import (
+    VocabularyReviewQueue as VocabularyReviewQueue,
+)
+from app.models.vocabulary.review import (
+    VocabularyReviewQueueItem as VocabularyReviewQueueItem,
+)
+from app.models.vocabulary.review import (
+    VocabularyReviewState as VocabularyReviewState,
+)
+from app.models.vocabulary.review import (
+    VocabularyReviewStats as VocabularyReviewStats,
+)
 from app.models.vocabulary.self_practice import (
     SELF_PRACTICE_DEFAULT_WORDS as SELF_PRACTICE_DEFAULT_WORDS,
 )
@@ -286,6 +307,13 @@ __all__ = [
     "VocabularyPromptTypeStat",
     "VocabularyRecommendation",
     "VocabularyRecommendationFocus",
+    "VocabularyReviewQueue",
+    "VocabularyReviewQueueItem",
+    "VocabularyReviewState",
+    "VocabularyReviewStats",
+    "CAPABILITY_RECOGNITION",
+    "CAPABILITY_SPELLING",
+    "REVIEW_CAPABILITIES",
     "VocabularyTeacherAssignmentRow",
     "VocabularyWrongWordItem",
     "VocabularyWrongWords",

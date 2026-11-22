@@ -12614,6 +12614,280 @@
         "title": "VocabularyRecommendationFocus",
         "type": "object"
       },
+      "VocabularyReviewQueue": {
+        "description": "GET /classes/{code}/vocabulary/student/review-queue。",
+        "properties": {
+          "classroom_code": {
+            "title": "Classroom Code",
+            "type": "string"
+          },
+          "daily_limit": {
+            "title": "Daily Limit",
+            "type": "integer"
+          },
+          "due_today_count": {
+            "title": "Due Today Count",
+            "type": "integer"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyReviewQueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "remaining_today_count": {
+            "title": "Remaining Today Count",
+            "type": "integer"
+          },
+          "reviewed_today_count": {
+            "title": "Reviewed Today Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "classroom_code",
+          "generated_at",
+          "daily_limit",
+          "reviewed_today_count",
+          "due_today_count",
+          "remaining_today_count"
+        ],
+        "title": "VocabularyReviewQueue",
+        "type": "object"
+      },
+      "VocabularyReviewQueueItem": {
+        "description": "队列条目：到期词条 + 可解释调度信息 + 词条当前内容。",
+        "properties": {
+          "accepted_spellings": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted Spellings"
+          },
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url"
+          },
+          "capability": {
+            "title": "Capability",
+            "type": "string"
+          },
+          "due_at": {
+            "format": "date-time",
+            "title": "Due At",
+            "type": "string"
+          },
+          "example_en": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Example En"
+          },
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "interval_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Days"
+          },
+          "lapses": {
+            "default": 0,
+            "title": "Lapses",
+            "type": "integer"
+          },
+          "last_is_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Is Correct"
+          },
+          "last_rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Rating"
+          },
+          "last_review_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Review At"
+          },
+          "meaning_en": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meaning En"
+          },
+          "meaning_zh": {
+            "title": "Meaning Zh",
+            "type": "string"
+          },
+          "morphology": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Morphology"
+          },
+          "overdue_days": {
+            "default": 0,
+            "title": "Overdue Days",
+            "type": "integer"
+          },
+          "part_of_speech": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Of Speech"
+          },
+          "reps": {
+            "default": 0,
+            "title": "Reps",
+            "type": "integer"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "suggested_prompt_types": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggested Prompt Types",
+            "type": "array"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word_id",
+          "headword",
+          "meaning_zh",
+          "capability",
+          "state",
+          "due_at"
+        ],
+        "title": "VocabularyReviewQueueItem",
+        "type": "object"
+      },
+      "VocabularyReviewStats": {
+        "description": "个人成长页的真实复习统计（不宣称记忆留存率）。",
+        "properties": {
+          "due_count": {
+            "default": 0,
+            "title": "Due Count",
+            "type": "integer"
+          },
+          "learning_count": {
+            "default": 0,
+            "title": "Learning Count",
+            "type": "integer"
+          },
+          "recognition_count": {
+            "default": 0,
+            "title": "Recognition Count",
+            "type": "integer"
+          },
+          "review_count": {
+            "default": 0,
+            "title": "Review Count",
+            "type": "integer"
+          },
+          "reviewed_today_count": {
+            "default": 0,
+            "title": "Reviewed Today Count",
+            "type": "integer"
+          },
+          "spelling_count": {
+            "default": 0,
+            "title": "Spelling Count",
+            "type": "integer"
+          },
+          "tracked_count": {
+            "default": 0,
+            "title": "Tracked Count",
+            "type": "integer"
+          }
+        },
+        "title": "VocabularyReviewStats",
+        "type": "object"
+      },
       "VocabularyRoundSummaryRow": {
         "description": "学生侧轮次摘要：轮次回看入口（只读查看指定轮）。\n\n测验成绩未公布时 masked=True：correct_first_count 置 0 不下发。",
         "properties": {
@@ -24364,6 +24638,102 @@
           }
         ],
         "summary": "Read Student Recommendation",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/student/review-queue": {
+      "get": {
+        "description": "FSRS 到期复习队列：到期词条 + 可解释调度信息 + 每日负担摘要。\n\n状态按登录账号跨班汇总；可见性限定当前课堂可练词库内的 active 词条。\n队列只读学生状态与词条当前内容，不改动历史 session 快照与首答统计。",
+        "operationId": "vocabulary-read_review_queue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyReviewQueue"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Review Queue",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/student/review-stats": {
+      "get": {
+        "description": "个人成长页复习统计：档案/到期/今日已复习/认读与拼写分布（真实计数）。\n\n只做计数展示，不估算记忆留存率或掌握度等级。",
+        "operationId": "vocabulary-read_review_stats",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyReviewStats"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Review Stats",
         "tags": [
           "vocabulary"
         ]

@@ -23,6 +23,7 @@ Create Date: 2026-11-01 03:40:00
 downgrade 可整体摘除策略（多校数据混入后回滚会失去隔离——见设计稿 §9-5）。
 """
 from alembic import op
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision = 'b5d9e4f1a8c7'
@@ -64,6 +65,7 @@ RLS_TABLES = [
     "vocabulary_answer",
     "vocabulary_ai_cache",
     "vocab_level_entry",
+    "vocabulary_review_state",
     # 作答与导出
     "attempt",
     "export_job",
@@ -75,8 +77,26 @@ POLICY = (
 )
 
 
+def _table_exists(table: str) -> bool:
+    """清单可能包含晚于本迁移建表的表（如 vocabulary_review_state，由后续迁移建）；
+    旧迁移重放 / 回滚到本修订时跳过尚不存在的表，避免 ALTER 报错。"""
+    return (
+        op.get_bind()
+        .execute(
+            text(
+                "SELECT 1 FROM information_schema.tables WHERE table_name = :t"
+            ),
+            {"t": table},
+        )
+        .scalar()
+        is not None
+    )
+
+
 def upgrade():
     for table in RLS_TABLES:
+        if not _table_exists(table):
+            continue
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
         op.execute(
@@ -87,6 +107,8 @@ def upgrade():
 
 def downgrade():
     for table in reversed(RLS_TABLES):
+        if not _table_exists(table):
+            continue
         op.execute(f"DROP POLICY IF EXISTS tenant_isolation ON {table}")
         op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")

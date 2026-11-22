@@ -52,6 +52,7 @@ EXPECTED_TENANT_TABLES = {
     "vocabulary_assignment_target",
     "vocabulary_book",
     "vocabulary_book_item",
+    "vocabulary_review_state",
     "vocabulary_session",
     "vocabulary_word",
 }
