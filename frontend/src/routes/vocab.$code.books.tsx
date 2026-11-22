@@ -40,9 +40,17 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
+import type { BiString } from "@/lib/bi"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
-import { EXPLAIN_MIX_WRONG, TERMS } from "@/lib/terms"
+import { EXPLAIN_MIX_WRONG, TERMS, VOCAB_PROMPT_META } from "@/lib/terms"
+import {
+  choicePoolSufficient,
+  countEligibleByPromptType,
+  describeSelfSession422,
+  SELF_PROMPT_TYPES,
+  type SelfPromptType,
+} from "@/lib/vocab-prompt-availability"
 
 export const Route = createFileRoute("/vocab/$code/books")({
   component: VocabBooksPage,
@@ -70,6 +78,10 @@ function VocabBooksPage() {
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
   const [wordCount, setWordCount] = useState<number>(20)
   const [mixWrong, setMixWrong] = useState(false)
+  // 出题方式（题型）：默认英译中 + 中译英；素材不足的题型禁用并说明原因
+  const [selectedPromptTypes, setSelectedPromptTypes] = useState<
+    SelfPromptType[]
+  >(["en_zh", "zh_en"])
 
   useEffect(() => {
     const timer = window.setTimeout(
@@ -131,6 +143,58 @@ function VocabBooksPage() {
   })
   const bookWords = wordsQuery.data?.words ?? []
 
+  // 按当前已加载词条预判每类题型可出题数（口径与后端校验一致）
+  const eligibleCounts = useMemo(
+    () => countEligibleByPromptType(bookWords),
+    [bookWords],
+  )
+  const choicePoolOk = choicePoolSufficient(bookWords)
+  const choiceTypes = new Set<SelfPromptType>(["en_zh", "zh_en"])
+
+  /** 某题型当前词库是否出不了题；返回 null 表示可用，否则为双语原因 */
+  function promptTypeBlocked(type: SelfPromptType): BiString | null {
+    if (choiceTypes.has(type)) {
+      if (!choicePoolOk) {
+        return {
+          zh: "词库不足 4 个词，无法生成选择题干扰项。",
+          en: "Fewer than 4 words — choice distractors can't be built.",
+        }
+      }
+      return null
+    }
+    if (eligibleCounts[type] === 0) {
+      return type === "cloze"
+        ? {
+            zh: "没有词条带包含本词的例句。",
+            en: "No word has an example sentence containing it.",
+          }
+        : {
+            zh: "没有词条的词法拆解能拼回原词。",
+            en: "No word's parts assemble back to the whole word.",
+          }
+    }
+    return null
+  }
+
+  const blockedSelected = SELF_PROMPT_TYPES.filter(
+    (type) =>
+      selectedPromptTypes.includes(type) && promptTypeBlocked(type) !== null,
+  )
+
+  const togglePromptType = (type: SelfPromptType, checked: boolean) => {
+    if (promptTypeBlocked(type)) return
+    setSelectedPromptTypes((prev) =>
+      checked
+        ? prev.includes(type)
+          ? prev
+          : [...prev, type]
+        : prev.filter((item) => item !== type),
+    )
+  }
+
+  const startBlocked =
+    selectedPromptTypes.length === 0 || blockedSelected.length > 0
+
   useStudentGuard(code, student, booksQuery)
   // 选中词库被过滤掉（如归档）时清空选择
   useEffect(() => {
@@ -149,6 +213,7 @@ function VocabBooksPage() {
           book_id: selectedBookId,
           word_count: wordCount,
           mix_wrong: mixWrong,
+          prompt_types: selectedPromptTypes,
         },
       }),
     onSuccess: (data) => {
@@ -167,6 +232,14 @@ function VocabBooksPage() {
             en: "You don't have access to this word book.",
           }),
         )
+      } else if (error instanceof ApiError && error.status === 422) {
+        const detail =
+          typeof error.body === "object" && error.body !== null
+            ? String(
+                (error.body as { detail?: unknown }).detail ?? error.message,
+              )
+            : error.message
+        toast.error(t(describeSelfSession422(detail)))
       } else {
         toast.error(
           t({
@@ -415,6 +488,92 @@ function VocabBooksPage() {
               {/* 开练配置 */}
               {availableCount > 0 && (
                 <div className="space-y-4 rounded-2xl bg-secondary/40 p-4">
+                  {/* 出题方式（题型）多选：素材不足的题型禁用并给出原因 */}
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">
+                      {t({
+                        zh: "出题方式（题型）",
+                        en: "Question types",
+                      })}
+                    </p>
+                    <ul className="grid gap-2 sm:grid-cols-2">
+                      {SELF_PROMPT_TYPES.map((type) => {
+                        const blocked = promptTypeBlocked(type)
+                        const checked = selectedPromptTypes.includes(type)
+                        const meta = VOCAB_PROMPT_META[type]
+                        return (
+                          <li key={type}>
+                            <label
+                              htmlFor={`self-prompt-${type}`}
+                              className={`flex min-h-11 items-start gap-3 rounded-2xl border px-4 py-3 ${
+                                blocked
+                                  ? "cursor-not-allowed border-border/60 bg-secondary/30"
+                                  : "cursor-pointer border-input bg-card"
+                              }`}
+                            >
+                              <Checkbox
+                                id={`self-prompt-${type}`}
+                                checked={checked}
+                                disabled={blocked !== null}
+                                onCheckedChange={(value) =>
+                                  togglePromptType(type, value === true)
+                                }
+                                className="mt-0.5"
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-medium">
+                                    {t(meta.label)}
+                                  </span>
+                                  <Badge
+                                    variant="outline"
+                                    className="text-muted-foreground"
+                                  >
+                                    {t({
+                                      zh: `${eligibleCounts[type]} 词可出`,
+                                      en: `${eligibleCounts[type]} words`,
+                                    })}
+                                  </Badge>
+                                </span>
+                                <span className="mt-0.5 block text-xs text-muted-foreground">
+                                  {blocked ? t(blocked) : t(meta.hint)}
+                                </span>
+                              </span>
+                            </label>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                    {selectedPromptTypes.length === 0 && (
+                      <p role="alert" className="text-sm text-destructive">
+                        {t({
+                          zh: "请至少选择一种出题方式。",
+                          en: "Pick at least one question type.",
+                        })}
+                      </p>
+                    )}
+                    {blockedSelected.length > 0 && (
+                      <div
+                        role="alert"
+                        className="space-y-1 text-sm text-destructive"
+                      >
+                        <p>
+                          {t({
+                            zh: "以下题型当前词库无法出题，请先去掉：",
+                            en: "These types can't be offered from this book — turn them off first:",
+                          })}
+                        </p>
+                        <ul className="list-inside list-disc space-y-0.5">
+                          {blockedSelected.map((type) => (
+                            <li key={type}>
+                              {t(VOCAB_PROMPT_META[type].label)}：
+                              {t(promptTypeBlocked(type)!)}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
                   <div className="flex flex-wrap items-center gap-3">
                     <label
                       htmlFor="self-word-count"
@@ -479,7 +638,7 @@ function VocabBooksPage() {
                   </div>
                   <Button
                     onClick={() => startPractice.mutate()}
-                    disabled={startPractice.isPending}
+                    disabled={startPractice.isPending || startBlocked}
                     className="h-12 w-full sm:w-auto"
                   >
                     {startPractice.isPending

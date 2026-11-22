@@ -27,6 +27,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyCard } from "@/components/Vocabulary/EmptyCard"
+import PromptBody, {
+  ChoiceOptions,
+} from "@/components/Vocabulary/Practice/PromptBody"
 import { RoundReport } from "@/components/Vocabulary/RoundReport"
 import { WordExplanationDialog } from "@/components/Vocabulary/VocabAi"
 import { APP_NAME } from "@/config"
@@ -38,7 +41,7 @@ import {
 } from "@/lib/audio"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
-import { TERMS } from "@/lib/terms"
+import { TERMS, VOCAB_CHOICE_PROMPTS, vocabPromptMeta } from "@/lib/terms"
 import { speakEnglish } from "@/lib/tts"
 
 export const Route = createFileRoute("/vocab/$code/self")({
@@ -234,6 +237,14 @@ function VocabSelfPracticePage() {
   const item = items[current]
   const answer = item ? answers[item.item_index] : undefined
   const planItemAnswered = item?.answered ?? false
+  // 新玩法（英译中/中译英/语境填空/词根拼装）：题面与控件由题型决定；
+  // 旧的看义/听音保持原有逻辑
+  const promptType = item?.prompt_type ?? "meaning"
+  const isNewPrompt = !["meaning", "audio"].includes(promptType)
+  const isChoicePrompt = (VOCAB_CHOICE_PROMPTS as readonly string[]).includes(
+    promptType,
+  )
+  const promptMeta = vocabPromptMeta(promptType)
   // 本题正在重练（覆盖首答的已答展示，放行输入框）
   const isRetrying = item ? retryOverrides[item.item_index] === true : false
   // 听音在当前题可用 = 有标准音，或该词已作答（拼写已揭示，可设备朗读）
@@ -300,8 +311,18 @@ function VocabSelfPracticePage() {
       return
     submitAnswer.mutate({
       itemIndex: item.item_index,
-      promptType: useAudio ? "audio" : "meaning",
+      promptType: isNewPrompt ? promptType : useAudio ? "audio" : "meaning",
       answer: input.trim(),
+    })
+  }
+
+  // 选择题：点选回传所选词条 ID（不在前端判分）
+  const handlePickChoice = (wordId: string) => {
+    if (!item || submitAnswer.isPending || readOnly) return
+    submitAnswer.mutate({
+      itemIndex: item.item_index,
+      promptType,
+      answer: wordId,
     })
   }
 
@@ -462,23 +483,27 @@ function VocabSelfPracticePage() {
 
         <Card>
           <CardHeader className="space-y-1.5">
-            <CardTitle className="text-base">
-              {useAudio ? t(TERMS.promptAudio) : t(TERMS.promptMeaning)}
-            </CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="text-muted-foreground">
+                {t(promptMeta.label)}
+              </Badge>
+              <CardTitle className="text-base">
+                {useAudio && !isNewPrompt
+                  ? t(TERMS.promptAudio)
+                  : t(promptMeta.label)}
+              </CardTitle>
+            </div>
             <CardDescription>
-              {useAudio
+              {useAudio && !isNewPrompt
                 ? t({
                     zh: "听单词发音，拼出英文。听不清可以再点一次。",
                     en: "Listen and spell the word. Tap again to replay.",
                   })
-                : t({
-                    zh: "看中文释义，拼出对应的英文单词。",
-                    en: "Read the Chinese meaning and spell the English word.",
-                  })}
+                : t(promptMeta.hint)}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
-            {useAudio ? (
+            {useAudio && !isNewPrompt ? (
               <div className="flex flex-col items-center gap-3 rounded-2xl bg-secondary/50 py-8">
                 <Button
                   type="button"
@@ -498,6 +523,8 @@ function VocabSelfPracticePage() {
                       })}
                 </p>
               </div>
+            ) : isNewPrompt ? (
+              <PromptBody item={item} />
             ) : (
               <div className="rounded-2xl bg-secondary/50 p-5 sm:p-6">
                 {item.part_of_speech && (
@@ -516,8 +543,9 @@ function VocabSelfPracticePage() {
               </div>
             )}
 
-            {/* 题型切换：听音在无标准音且未作答时禁用（不提前泄露拼写） */}
-            {planHasAudio && (
+            {/* 题型切换：听音在无标准音且未作答时禁用（不提前泄露拼写）；
+                新玩法题型不走听音/看义切换。 */}
+            {planHasAudio && !isNewPrompt && (
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
@@ -550,44 +578,60 @@ function VocabSelfPracticePage() {
               </div>
             )}
 
-            {/* 作答区 */}
-            {/* 作答区：首答未答或正在重练时放行输入框；已答展示首答反馈 */}
+            {/* 作答区：首答未答或正在重练时放行作答控件；已答展示首答反馈 */}
             {!answer && (!planItemAnswered || isRetrying) ? (
-              <form
-                onSubmit={handleSubmit}
-                className="flex flex-col gap-3 sm:flex-row"
-              >
-                <label className="sr-only" htmlFor="self-vocab-answer">
-                  {t({ zh: "输入英文单词", en: "Type the English word" })}
-                </label>
-                <Input
-                  id="self-vocab-answer"
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  placeholder={t({
-                    zh: "在这里输入英文单词…",
-                    en: "Type the English word here…",
-                  })}
-                  autoComplete="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  className="h-12 flex-1 text-base"
+              isChoicePrompt ? (
+                <ChoiceOptions
+                  item={item}
+                  answered={false}
                   disabled={submitAnswer.isPending || readOnly}
+                  onPick={handlePickChoice}
                 />
-                <Button
-                  type="submit"
-                  className="h-12 px-6"
-                  disabled={
-                    input.trim() === "" || submitAnswer.isPending || readOnly
-                  }
+              ) : (
+                <form
+                  onSubmit={handleSubmit}
+                  className="flex flex-col gap-3 sm:flex-row"
                 >
-                  {submitAnswer.isPending
-                    ? t({ zh: "判分中…", en: "Checking…" })
-                    : t({ zh: "提交", en: "Submit" })}
-                </Button>
-              </form>
+                  <label className="sr-only" htmlFor="self-vocab-answer">
+                    {t({ zh: "输入英文单词", en: "Type the English word" })}
+                  </label>
+                  <Input
+                    id="self-vocab-answer"
+                    value={input}
+                    onChange={(event) => setInput(event.target.value)}
+                    placeholder={t({
+                      zh: "在这里输入英文单词…",
+                      en: "Type the English word here…",
+                    })}
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    className="h-12 flex-1 text-base"
+                    disabled={submitAnswer.isPending || readOnly}
+                  />
+                  <Button
+                    type="submit"
+                    className="h-12 px-6"
+                    disabled={
+                      input.trim() === "" || submitAnswer.isPending || readOnly
+                    }
+                  >
+                    {submitAnswer.isPending
+                      ? t({ zh: "判分中…", en: "Checking…" })
+                      : t({ zh: "提交", en: "Submit" })}
+                  </Button>
+                </form>
+              )
             ) : (
               <div className="space-y-4">
+                {isChoicePrompt && (
+                  <ChoiceOptions
+                    item={item}
+                    answered
+                    disabled
+                    onPick={() => undefined}
+                  />
+                )}
                 <div
                   role="status"
                   className={`flex items-start gap-3 rounded-2xl border p-4 ${
@@ -605,10 +649,15 @@ function VocabSelfPracticePage() {
                     <p className="font-semibold">
                       {(answer ? answer.isCorrect : item.is_correct)
                         ? t({ zh: "拼对了！", en: "Correct!" })
-                        : t({
-                            zh: "差一点点，再看看正确拼写。",
-                            en: "So close — check the correct spelling.",
-                          })}
+                        : isChoicePrompt
+                          ? t({
+                              zh: "差一点点，再看看正确选项。",
+                              en: "So close — check the correct option.",
+                            })
+                          : t({
+                              zh: "差一点点，再看看正确拼写。",
+                              en: "So close — check the correct spelling.",
+                            })}
                     </p>
                     <p className="text-sm">
                       <span className="font-semibold">
@@ -618,7 +667,8 @@ function VocabSelfPracticePage() {
                         {item.meaning_zh}
                       </span>
                     </p>
-                    {!(answer ? answer.isCorrect : item.is_correct) &&
+                    {!isChoicePrompt &&
+                      !(answer ? answer.isCorrect : item.is_correct) &&
                       (answer && input.trim() !== ""
                         ? input.trim()
                         : (item.first_answer ?? "")) !== "" && (

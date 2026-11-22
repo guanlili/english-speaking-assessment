@@ -6053,6 +6053,10 @@ export type VocabularyAssignmentCreate = {
      */
     prompt_types?: Array<string>;
     /**
+     * Student Ids
+     */
+    student_ids?: Array<string> | null;
+    /**
      * Mode
      */
     mode?: string;
@@ -6281,6 +6285,34 @@ export type VocabularyBookUpdate = {
 };
 
 /**
+ * VocabularyChoice
+ *
+ * 选择题选项（选项冻结在发布快照里，同一任务不随词库改动漂移）。
+ */
+export type VocabularyChoice = {
+    /**
+     * Word Id
+     */
+    word_id: string;
+    /**
+     * Headword
+     */
+    headword: string;
+    /**
+     * Meaning Zh
+     */
+    meaning_zh: string;
+    /**
+     * Part Of Speech
+     */
+    part_of_speech?: string | null;
+    /**
+     * Is Answer
+     */
+    is_answer?: boolean;
+};
+
+/**
  * VocabularyClassResults
  *
  * GET /classes/{code}/vocabulary/results。
@@ -6311,6 +6343,10 @@ export type VocabularyClassResults = {
      * Words
      */
     words?: Array<VocabularyWordStatRow>;
+    /**
+     * Prompt Type Stats
+     */
+    prompt_type_stats?: Array<VocabularyPromptTypeStat>;
     /**
      * Timed Out Count
      */
@@ -6681,6 +6717,46 @@ export type VocabularyLevelStats = {
 };
 
 /**
+ * VocabularyMorphSegment
+ *
+ * 词根拼装的语素块：text 用于拼接，gloss 是中文提示。
+ */
+export type VocabularyMorphSegment = {
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Gloss
+     */
+    gloss: string;
+    /**
+     * Kind
+     */
+    kind: string;
+};
+
+/**
+ * VocabularyPromptTypeStat
+ *
+ * 按出题方式的首答正确率（教师看清哪类题型在掉分，不合成总分）。
+ */
+export type VocabularyPromptTypeStat = {
+    /**
+     * Prompt Type
+     */
+    prompt_type: string;
+    /**
+     * Answered Count
+     */
+    answered_count?: number;
+    /**
+     * Correct First Count
+     */
+    correct_first_count?: number;
+};
+
+/**
  * VocabularyQuizAnswerReceipt
  *
  * 测验作答回执：只确认已接收，不返回答案与正误（防提前泄露）。
@@ -6789,6 +6865,86 @@ export type VocabularyQuizState = {
      * Tab Switch Count
      */
     tab_switch_count?: number;
+};
+
+/**
+ * VocabularyRecommendation
+ *
+ * 基础学习推荐：规则算出，可解释，不是能力认证。
+ *
+ * basis 是稳定代码（no_history / low_accuracy / mid_accuracy /
+ * high_accuracy / wrong_focus / no_practiceable_book），前端做双语映射，
+ * 后端不拼中文句子（与项目双语口径一致）。
+ */
+export type VocabularyRecommendation = {
+    /**
+     * Classroom Code
+     */
+    classroom_code: string;
+    /**
+     * Generated At
+     */
+    generated_at: string;
+    /**
+     * Answered Total
+     */
+    answered_total?: number;
+    /**
+     * Correct First Total
+     */
+    correct_first_total?: number;
+    /**
+     * Accuracy
+     */
+    accuracy?: number | null;
+    /**
+     * Basis
+     */
+    basis?: Array<string>;
+    /**
+     * Suggested Word Count
+     */
+    suggested_word_count?: number;
+    /**
+     * Suggested Prompt Types
+     */
+    suggested_prompt_types?: Array<string>;
+    /**
+     * Focus Words
+     */
+    focus_words?: Array<VocabularyRecommendationFocus>;
+    /**
+     * Note Code
+     */
+    note_code?: string;
+};
+
+/**
+ * VocabularyRecommendationFocus
+ *
+ * 推荐复习的错词（只列最近真实错过的词，不含预测）。
+ */
+export type VocabularyRecommendationFocus = {
+    /**
+     * Word Id
+     */
+    word_id: string;
+    /**
+     * Headword
+     */
+    headword: string;
+    /**
+     * Meaning Zh
+     */
+    meaning_zh: string;
+    /**
+     * Wrong Count
+     */
+    wrong_count: number;
+    /**
+     * Practiceable
+     */
+    practiceable?: boolean;
 };
 
 /**
@@ -7011,6 +7167,18 @@ export type VocabularyStudentItem = {
      */
     audio_url?: string | null;
     /**
+     * Choices
+     */
+    choices?: Array<VocabularyChoice>;
+    /**
+     * Cloze Sentence
+     */
+    cloze_sentence?: string | null;
+    /**
+     * Morph Segments
+     */
+    morph_segments?: Array<VocabularyMorphSegment>;
+    /**
      * Headword
      */
     headword?: string | null;
@@ -7026,6 +7194,10 @@ export type VocabularyStudentItem = {
      * Attempt Count
      */
     attempt_count?: number;
+    /**
+     * First Choice Word Id
+     */
+    first_choice_word_id?: string | null;
     /**
      * From Wrong
      */
@@ -7269,6 +7441,10 @@ export type VocabularyStudentSessionCreate = {
      * Mix Wrong
      */
     mix_wrong?: boolean;
+    /**
+     * Prompt Types
+     */
+    prompt_types?: Array<string> | null;
 };
 
 /**
@@ -7365,6 +7541,18 @@ export type VocabularyTodayItem = {
      */
     audio_url?: string | null;
     /**
+     * Choices
+     */
+    choices?: Array<VocabularyChoice>;
+    /**
+     * Cloze Sentence
+     */
+    cloze_sentence?: string | null;
+    /**
+     * Morph Segments
+     */
+    morph_segments?: Array<VocabularyMorphSegment>;
+    /**
      * Headword
      */
     headword?: string | null;
@@ -7380,6 +7568,10 @@ export type VocabularyTodayItem = {
      * Attempt Count
      */
     attempt_count?: number;
+    /**
+     * First Choice Word Id
+     */
+    first_choice_word_id?: string | null;
 };
 
 /**
@@ -7470,6 +7662,12 @@ export type VocabularyWordIn = {
      * Audio Url
      */
     audio_url?: string | null;
+    /**
+     * Morphology
+     */
+    morphology?: Array<{
+        [key: string]: string;
+    }> | null;
 };
 
 /**
@@ -7522,6 +7720,12 @@ export type VocabularyWordPublic = {
      * Audio Url
      */
     audio_url?: string | null;
+    /**
+     * Morphology
+     */
+    morphology?: Array<{
+        [key: string]: string;
+    }> | null;
     /**
      * Status
      */
@@ -7606,6 +7810,12 @@ export type VocabularyWordUpdate = {
      * Audio Url
      */
     audio_url?: string | null;
+    /**
+     * Morphology
+     */
+    morphology?: Array<{
+        [key: string]: string;
+    }> | null;
     /**
      * Status
      */
@@ -14376,6 +14586,36 @@ export type VocabularyReadStudentHistoryResponses = {
 };
 
 export type VocabularyReadStudentHistoryResponse = VocabularyReadStudentHistoryResponses[200 & keyof VocabularyReadStudentHistoryResponses];
+
+export type VocabularyReadStudentRecommendationData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/student/recommendation';
+};
+
+export type VocabularyReadStudentRecommendationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadStudentRecommendationError = VocabularyReadStudentRecommendationErrors[keyof VocabularyReadStudentRecommendationErrors];
+
+export type VocabularyReadStudentRecommendationResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyRecommendation;
+};
+
+export type VocabularyReadStudentRecommendationResponse = VocabularyReadStudentRecommendationResponses[200 & keyof VocabularyReadStudentRecommendationResponses];
 
 export type VocabLevelsVocabLevelStatsData = {
     body?: never;

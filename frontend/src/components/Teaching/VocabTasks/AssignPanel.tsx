@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCircle2, Loader2, Plus } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
-import { ApiError, VocabularyService } from "@/client"
+import { ApiError, StudentsService, VocabularyService } from "@/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,6 +20,7 @@ import {
   TERMS,
   VOCAB_LEVEL_LABELS,
   VOCAB_LEVEL_ORDER,
+  VOCAB_PROMPT_META,
   type VocabLevel,
 } from "@/lib/terms"
 import { AddWordsToBook } from "./AddWordsToBook"
@@ -63,6 +64,25 @@ export function AssignPanel({
   const [title, setTitle] = useState("")
   const [meaningPrompt, setMeaningPrompt] = useState(true)
   const [audioPrompt, setAudioPrompt] = useState(false)
+  // 第一批四类玩法：勾上就真实出题；素材不足时后端 422，不静默出空题
+  const [enZhPrompt, setEnZhPrompt] = useState(false)
+  const [zhEnPrompt, setZhEnPrompt] = useState(false)
+  const [clozePrompt, setClozePrompt] = useState(false)
+  const [rootsPrompt, setRootsPrompt] = useState(false)
+  // 派发范围：全班 或 手动分组（只发给勾中的学生）
+  const [scope, setScope] = useState<"all" | "selected">("all")
+  const [selectedStudents, setSelectedStudents] = useState<Set<string>>(
+    new Set(),
+  )
+  const rosterQuery = useQuery({
+    queryKey: ["students", classroomId],
+    queryFn: () =>
+      StudentsService.listStudents({
+        classroom_id: classroomId as string,
+      }),
+    enabled: classroomId !== null,
+  })
+  const roster = rosterQuery.data ?? []
   const [dueLocal, setDueLocal] = useState("")
   const [showCreateBook, setShowCreateBook] = useState(false)
   // 测验模式：限时 + 及格线 + 可选开放时间（服务端强约束）
@@ -100,10 +120,9 @@ export function AssignPanel({
         vocabularyAssignmentCreate: {
           title: title.trim() || null,
           word_ids: Array.from(selected),
-          prompt_types: [
-            ...(meaningPrompt ? ["meaning"] : []),
-            ...(audioPrompt ? ["audio"] : []),
-          ],
+          prompt_types: promptTypes,
+          student_ids:
+            scope === "selected" ? Array.from(selectedStudents) : undefined,
           due_at: dueLocal ? new Date(dueLocal).toISOString() : null,
           mode: isQuiz ? "quiz" : "practice",
           duration_minutes: isQuiz ? durationMinutes : null,
@@ -126,8 +145,8 @@ export function AssignPanel({
         toast.error(
           error.status === 422
             ? t({
-                zh: "发布内容有误：请检查所选词数与出题方式（纯听音要求全部词有标准音）。",
-                en: "Cannot publish: check the words and prompt types (audio-only requires standard audio for every word).",
+                zh: "发布内容有误：请检查所选词数、出题方式与派发名单（语境填空需例句、词根拼装需词法、四选一至少 4 词、纯听音需全部有标准音）。",
+                en: "Cannot publish: check words, prompt types and roster (cloze needs examples, Word Parts needs morphology, choice needs 4+ words, audio-only needs standard audio).",
               })
             : error.status === 403
               ? t({
@@ -146,10 +165,20 @@ export function AssignPanel({
   const selectedCount = selected.size
   const activeCount = words.filter((w) => w.status === "active").length
 
+  const promptTypes = [
+    ...(meaningPrompt ? ["meaning"] : []),
+    ...(audioPrompt ? ["audio"] : []),
+    ...(enZhPrompt ? ["en_zh"] : []),
+    ...(zhEnPrompt ? ["zh_en"] : []),
+    ...(clozePrompt ? ["cloze"] : []),
+    ...(rootsPrompt ? ["roots"] : []),
+  ]
+  const scopeReady = scope === "all" || selectedStudents.size > 0
   const canPublish =
     selectedCount > 0 &&
     selectedCount <= MAX_PUBLISH_WORDS &&
-    (meaningPrompt || audioPrompt) &&
+    promptTypes.length > 0 &&
+    scopeReady &&
     !(isQuiz && !(durationMinutes >= 5 && durationMinutes <= 240)) &&
     !publish.isPending
 
@@ -530,6 +559,149 @@ export function AssignPanel({
                 </span>
               </label>
             </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {(
+                [
+                  ["en_zh", enZhPrompt, setEnZhPrompt],
+                  ["zh_en", zhEnPrompt, setZhEnPrompt],
+                  ["cloze", clozePrompt, setClozePrompt],
+                  ["roots", rootsPrompt, setRootsPrompt],
+                ] as const
+              ).map(([type, checked, setChecked]) => (
+                <label
+                  key={type}
+                  className="flex min-h-14 cursor-pointer items-start gap-2 rounded-xl border bg-card px-3 py-2.5 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) => setChecked(event.target.checked)}
+                    className="mt-1 size-4 accent-[var(--primary)]"
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-medium">
+                      {t(VOCAB_PROMPT_META[type].label)}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {t(VOCAB_PROMPT_META[type].hint)}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {t({
+                zh: "四类玩法可选一种或多种；语境填空需要词条带例句，词根拼装需要词条带词法拆解，四选一至少需要 4 个词。素材不足时发布会明确拒绝，不会出空题。",
+                en: "Pick one or more of the four modes. Cloze needs example sentences, Word Parts needs morphology, and multiple-choice needs at least 4 words. Publishing is rejected when material is missing — no empty items.",
+              })}
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-sm font-medium">
+              5. {t({ zh: "派发范围", en: "Who gets it" })}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={scope === "all" ? "default" : "outline"}
+                onClick={() => setScope("all")}
+              >
+                {t({ zh: "全班", en: "Whole class" })}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={scope === "selected" ? "default" : "outline"}
+                onClick={() => setScope("selected")}
+              >
+                {t({ zh: "指定学生（手动分组）", en: "Selected students" })}
+              </Button>
+            </div>
+            {scope === "selected" && (
+              <div className="rounded-2xl border bg-card p-3">
+                {classroomId === null ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t({
+                      zh: "先在班级页进入本班后再发布。",
+                      en: "Open this class first, then publish.",
+                    })}
+                  </p>
+                ) : roster.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t({
+                      zh: "本班还没有学生；先让学生入班，或改为全班派发。",
+                      en: "No students in this class yet — add students first, or dispatch to the whole class.",
+                    })}
+                  </p>
+                ) : (
+                  <>
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <button
+                        type="button"
+                        className="rounded-lg border px-2 py-1"
+                        onClick={() =>
+                          setSelectedStudents(
+                            new Set(roster.map((row) => row.student.id)),
+                          )
+                        }
+                      >
+                        {t({ zh: "全选", en: "Select all" })}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg border px-2 py-1"
+                        onClick={() => setSelectedStudents(new Set())}
+                      >
+                        {t({ zh: "清空", en: "Clear" })}
+                      </button>
+                      <span>
+                        {t({
+                          zh: `已选 ${selectedStudents.size}/${roster.length} 人`,
+                          en: `${selectedStudents.size}/${roster.length} selected`,
+                        })}
+                      </span>
+                    </div>
+                    <ul className="grid max-h-56 gap-1 overflow-y-auto sm:grid-cols-2">
+                      {roster.map((row) => {
+                        const studentId = row.student.id
+                        const checked = selectedStudents.has(studentId)
+                        return (
+                          <li key={studentId}>
+                            <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2 text-sm hover:bg-secondary/60">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(event) => {
+                                  setSelectedStudents((prev) => {
+                                    const next = new Set(prev)
+                                    if (event.target.checked)
+                                      next.add(studentId)
+                                    else next.delete(studentId)
+                                    return next
+                                  })
+                                }}
+                                className="size-4 accent-[var(--primary)]"
+                              />
+                              {row.student.display_name}
+                            </label>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                    {selectedStudents.size === 0 && (
+                      <p className="mt-2 text-xs text-destructive">
+                        {t({
+                          zh: "至少选一名学生，否则无法发布。",
+                          en: "Select at least one student to publish.",
+                        })}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t pt-4">

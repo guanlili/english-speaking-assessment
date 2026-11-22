@@ -74,6 +74,14 @@ class VocabularyWordStatRow(SQLModel):
     misspellings: list[VocabularyWordMisspelling] = []
 
 
+class VocabularyPromptTypeStat(SQLModel):
+    """按出题方式的首答正确率（教师看清哪类题型在掉分，不合成总分）。"""
+
+    prompt_type: str
+    answered_count: int = 0
+    correct_first_count: int = 0
+
+
 class VocabularyClassResults(SQLModel):
     """GET /classes/{code}/vocabulary/results。"""
 
@@ -84,6 +92,8 @@ class VocabularyClassResults(SQLModel):
     not_started_count: int = 0
     students: list[VocabularyStudentResultRow] = []
     words: list[VocabularyWordStatRow] = []
+    # 按出题方式拆分（首答口径）；旧任务只有 meaning/audio 时也照此输出
+    prompt_type_stats: list[VocabularyPromptTypeStat] = []
     # ── 测验扩展 ──
     # timed_out（超时结束）单列统计；及格/公布进度与平均分（已交卷口径）
     timed_out_count: int = 0
@@ -132,3 +142,34 @@ class VocabularyWrongWordItem(SQLModel):
 class VocabularyWrongWords(SQLModel):
     classroom_code: str
     items: list[VocabularyWrongWordItem] = []
+
+
+class VocabularyRecommendationFocus(SQLModel):
+    """推荐复习的错词（只列最近真实错过的词，不含预测）。"""
+
+    word_id: uuid.UUID
+    headword: str
+    meaning_zh: str
+    wrong_count: int
+    practiceable: bool = True
+
+
+class VocabularyRecommendation(SQLModel):
+    """基础学习推荐：规则算出，可解释，不是能力认证。
+
+    basis 是稳定代码（no_history / low_accuracy / mid_accuracy /
+    high_accuracy / wrong_focus / no_practiceable_book），前端做双语映射，
+    后端不拼中文句子（与项目双语口径一致）。
+    """
+
+    classroom_code: str
+    generated_at: datetime
+    answered_total: int = 0
+    correct_first_total: int = 0
+    accuracy: float | None = None
+    basis: list[str] = []
+    suggested_word_count: int = 10
+    suggested_prompt_types: list[str] = []
+    focus_words: list[VocabularyRecommendationFocus] = []
+    # 固定文案：规则推荐，不作为能力等级或考试结论
+    note_code: str = "rule_based_not_certification"

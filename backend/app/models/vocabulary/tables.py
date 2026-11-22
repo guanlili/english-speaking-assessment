@@ -41,6 +41,11 @@ class VocabularyWord(SQLModel, table=True):
         default=None, sa_column=Column("accepted_spellings", JSON, nullable=True)
     )
     example_en: str | None = Field(default=None, max_length=512)
+    # 词根词缀拆解（[{text, gloss, kind}]，kind ∈ prefix/root/suffix）：
+    # 只用于「词根拼装」题；拼接结果必须等于 headword 才会被出题
+    morphology: list[dict[str, str]] | None = Field(
+        default=None, sa_column=Column("morphology", JSON, nullable=True)
+    )
     # 教师上传或已授权的标准音；为空时练习端用浏览器朗读兜底（需标注）
     audio_url: str | None = Field(default=None, max_length=1024)
     status: str = Field(default="active", max_length=16, index=True)

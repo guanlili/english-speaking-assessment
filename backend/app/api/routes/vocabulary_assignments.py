@@ -98,6 +98,7 @@ def publish_vocab_assignment(
         opens_at=body.opens_at,
         duration_minutes=body.duration_minutes,
         pass_line=body.pass_line,
+        student_ids=body.student_ids,
     )
     return _assignment_public(assignment)
 

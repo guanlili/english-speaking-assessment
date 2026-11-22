@@ -15,6 +15,7 @@ import uuid
 from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import func, update
@@ -34,6 +35,7 @@ from app.models import (
     VocabularyAssignmentTarget,
     VocabularyBook,
     VocabularyBookItem,
+    VocabularyPromptTypeStat,
     VocabularySession,
     VocabularyStudentAssignment,
     VocabularyStudentHistoryRow,
@@ -50,6 +52,7 @@ from app.models import (
     get_datetime_utc,
 )
 from app.services import vocab_quiz
+from app.services import vocabulary_prompt_types as prompt_types_mod
 from app.services.vocab_quiz import DEFAULT_PASS_LINE
 
 MAX_TASK_WORDS = 100
@@ -90,6 +93,7 @@ def build_word_snapshot(
         "accepted_spellings": list(word.accepted_spellings or []),
         "example_en": word.example_en,
         "audio_url": word.audio_url,
+        "morphology": prompt_types_mod.normalize_morphology(word.morphology),
         "prompt_types": list(prompt_types),
     }
 
@@ -100,7 +104,10 @@ def validate_prompt_types(prompt_types: list[str]) -> list[str]:
         if prompt_type not in VOCAB_PROMPT_TYPES:
             raise HTTPException(
                 status_code=422,
-                detail=f"未知出题方式：{prompt_type}（可选：看义/听音）",
+                detail=(
+                    f"未知出题方式：{prompt_type}"
+                    f"（可选：{'/'.join(VOCAB_PROMPT_TYPES)}）"
+                ),
             )
         if prompt_type not in cleaned:
             cleaned.append(prompt_type)
@@ -364,6 +371,28 @@ def _require_classroom_students(
     return list(students)
 
 
+def _select_target_students(
+    students: Sequence[Student], student_ids: list[uuid.UUID] | None
+) -> Sequence[Student]:
+    """手动分组派发：只取指定学生，但必须都在本班名单内。
+
+    不静默丢弃外来 ID：跨班派发既越权也会让统计口径出错，直接 422。
+    """
+    if student_ids is None:
+        return students
+    wanted = set(student_ids)
+    if not wanted:
+        raise HTTPException(status_code=422, detail="手动分组至少要选一个学生")
+    known = {student.id for student in students}
+    unknown = wanted - known
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"有 {len(unknown)} 名学生不在本课堂名单内，不能派发",
+        )
+    return [student for student in students if student.id in wanted]
+
+
 def publish_assignment(
     session: Session,
     classroom_id: uuid.UUID,
@@ -376,12 +405,14 @@ def publish_assignment(
     opens_at: datetime | None = None,
     duration_minutes: int | None = None,
     pass_line: int = DEFAULT_PASS_LINE,
+    student_ids: list[uuid.UUID] | None = None,
 ) -> VocabularyAssignment:
     """发布：快照写入、目标名单固化，同一事务内完成。
 
     多任务并存：新发布不归档其他任务（教师可手动结束单个任务）。
     quiz = 限时测验：时长/开放/截止/及格线与听音题源校验收口在
     vocab_quiz.validate_quiz_publish；练习模式不接受考试时长。
+    student_ids 为手动分组派发：只发给名单内这些学生，缺省 = 全班。
     """
     _validate_publish_params(
         words,
@@ -392,10 +423,18 @@ def publish_assignment(
         duration_minutes=duration_minutes,
         pass_line=pass_line,
     )
-    students = _require_classroom_students(session, classroom_id)
+    prompt_types_mod.validate_content_availability(words, prompt_types)
+    students_all = _require_classroom_students(session, classroom_id)
+    students = _select_target_students(students_all, student_ids)
 
     assignment_title = (title or "词汇练习").strip() or "词汇练习"
-    snapshots = [build_word_snapshot(w, prompt_types) for w in words]
+    per_item: list[list[str]] = prompt_types_mod.plan_item_prompt_types(
+        words, prompt_types
+    )
+    snapshots = [
+        build_word_snapshot(w, types) for w, types in zip(words, per_item, strict=True)
+    ]
+    prompt_types_mod.attach_prompt_payloads(snapshots, words)
 
     _lock_classroom(session, classroom_id)
 
@@ -1018,7 +1057,11 @@ def submit_answer(
 
     snapshot_item = _validate_answer_input(snapshot_items, item_index, prompt_type)
     normalized = _normalized_answer_or_422(answer_raw)
-    is_correct = check_spelling(answer_raw, snapshot_item)
+    # 判分按题型分派：选择题比所选词条 ID，其余题型比快照里的可接受拼写
+    if prompt_type in prompt_types_mod.CHOICE_PROMPT_TYPES:
+        is_correct = prompt_types_mod.choice_answer_matches(answer_raw, snapshot_item)
+    else:
+        is_correct = check_spelling(answer_raw, snapshot_item)
 
     # 会话行锁（提交/交卷/结算共用）：锁内重校验，封死 check-then-insert 竞态
     session.refresh(vocab_session, with_for_update=True)
@@ -1406,7 +1449,7 @@ def _word_stat_rows(
 
 def class_results(
     session: Session, assignment: VocabularyAssignment
-) -> tuple[list, list]:
+) -> tuple[list, list, list]:
     """按目标名单聚合：学生行（含未开始）+ 逐词错误分布。
 
     练习：任务成绩锁定 round_no=1 的首答；复习轮只进 rounds 汇总。
@@ -1427,6 +1470,7 @@ def class_results(
 
     student_rows: list[VocabularyStudentResultRow] = []
     word_firsts: dict[int, list[VocabularyAnswer]] = {}
+    type_firsts: dict[str, list[bool]] = {}
     for _target, student in targets:
         rounds = rounds_by_student.get(student.id, [])
         total = len(assignment.snapshot_items)
@@ -1443,6 +1487,9 @@ def class_results(
         )
         for idx, answer in item_firsts.items():
             word_firsts.setdefault(idx, []).append(answer)
+            type_firsts.setdefault(answer.prompt_type, []).append(
+                bool(answer.is_correct)
+            )
         student_rows.append(
             _student_result_row(
                 student,
@@ -1459,7 +1506,32 @@ def class_results(
             )
         )
 
-    return student_rows, _word_stat_rows(assignment, word_firsts)
+    return (
+        student_rows,
+        _word_stat_rows(assignment, word_firsts),
+        _prompt_type_stats(assignment, type_firsts),
+    )
+
+
+def _prompt_type_stats(
+    assignment: VocabularyAssignment, type_firsts: dict[str, list[bool]]
+) -> list[VocabularyPromptTypeStat]:
+    """按题型汇总首答正确率；任务勾过但零作答的题型也列出来（0 题不是 0%）。"""
+    ordered = list(assignment.prompt_types or [])
+    for prompt_type in type_firsts:
+        if prompt_type not in ordered:
+            ordered.append(prompt_type)
+    stats: list[VocabularyPromptTypeStat] = []
+    for prompt_type in ordered:
+        results = type_firsts.get(prompt_type, [])
+        stats.append(
+            VocabularyPromptTypeStat(
+                prompt_type=prompt_type,
+                answered_count=len(results),
+                correct_first_count=sum(1 for correct in results if correct),
+            )
+        )
+    return stats
 
 
 def _wrong_word_answers(
@@ -1755,6 +1827,7 @@ def create_student_session(
     book_id: uuid.UUID | None,
     word_count: int,
     mix_wrong: bool,
+    prompt_types: list[str] | None = None,
 ) -> tuple[VocabularySession, str, int]:
     """学生自主开轮：self = 词库选题（可混错词），review = 错词专项。
 
@@ -1785,6 +1858,7 @@ def create_student_session(
             classroom_id=classroom_id,
             student_id=student_id,
             word_count=word_count,
+            prompt_types=prompt_types,
         )
     else:
         vocab_session, title, wrong_used = _build_self_session(
@@ -1794,6 +1868,7 @@ def create_student_session(
             book_id=book_id,
             word_count=word_count,
             mix_wrong=mix_wrong,
+            prompt_types=prompt_types,
         )
     session.add(vocab_session)
     committed = _commit_or_find_winner(session, vocab_session, resume_conditions)
@@ -1830,15 +1905,27 @@ def _snapshot_wrong_count(vocab_session: VocabularySession) -> int:
     )
 
 
-def _self_snapshot_item(word: VocabularyWord, from_wrong: bool) -> dict[str, object]:
+def _self_snapshot_items(
+    words: list[VocabularyWord],
+    from_wrong_ids: set[uuid.UUID],
+    prompt_types: list[str] | None = None,
+) -> list[dict[str, object]]:
     """自主/复习轮的题单条目：任务快照结构 + from_wrong 标记。
 
-    出题方式给看义+听音：无标准音的词沿用既有回落（听音仅在已答后开放，
-    不为播放提前泄露未答拼写）。
+    缺省出题方式沿用看义+听音（无标准音的词回落看义，不为播放提前泄露
+    未答拼写）；学生显式选了四类新玩法时，每题只带一个题型，并固化选项/
+    挖空例句/语素块，与教师任务同一套快照载荷。
     """
-    item = build_word_snapshot(word, ["meaning", "audio"])
-    item["from_wrong"] = from_wrong
-    return item
+    types = prompt_types or ["meaning", "audio"]
+    per_item = prompt_types_mod.plan_item_prompt_types(words, types)
+    snapshots = [
+        build_word_snapshot(word, item_types)
+        for word, item_types in zip(words, per_item, strict=True)
+    ]
+    prompt_types_mod.attach_prompt_payloads(snapshots, words)
+    for snapshot, word in zip(snapshots, words, strict=True):
+        snapshot["from_wrong"] = word.id in from_wrong_ids
+    return snapshots
 
 
 def _self_book_words(
@@ -1905,6 +1992,20 @@ def _fill_remaining_words(
     return plain_fill, extra_wrong
 
 
+def _validate_self_prompt_types(
+    words: list[VocabularyWord], prompt_types: list[str] | None
+) -> None:
+    """自主练习勾了新题型时，同样按素材校验：出不了题就明确拒绝。
+
+    缺省（None）= 看义+听音，不校验——老口径对无例句/无词法的词本来就能出。
+    """
+    if not prompt_types:
+        return
+    if set(prompt_types) <= set(prompt_types_mod.LEGACY_PROMPT_TYPES):
+        return
+    prompt_types_mod.validate_content_availability(words, prompt_types)
+
+
 def _build_self_session(
     session: Session,
     *,
@@ -1913,6 +2014,7 @@ def _build_self_session(
     book_id: uuid.UUID | None,
     word_count: int,
     mix_wrong: bool,
+    prompt_types: list[str] | None = None,
 ) -> tuple[VocabularySession, str, int]:
     """构建自主轮（不落库；提交与并发兜底在 create_student_session）。
 
@@ -1933,6 +2035,7 @@ def _build_self_session(
     items = picked_wrong + plain_fill + extra_wrong
     wrong_marked_ids = picked_ids | {w.id for w in extra_wrong}
     random.shuffle(items)  # 题序创建时一次性定死，本轮内不再变化
+    _validate_self_prompt_types(items, prompt_types)
 
     vocab_session = VocabularySession(
         classroom_id=classroom_id,
@@ -1940,9 +2043,7 @@ def _build_self_session(
         assignment_id=None,
         kind="self",
         source_book_id=book_id,
-        snapshot_items=[
-            _self_snapshot_item(w, w.id in wrong_marked_ids) for w in items
-        ],
+        snapshot_items=_self_snapshot_items(items, wrong_marked_ids, prompt_types),
         mix_wrong=mix_wrong,
         mode="practice",
         round_no=1,
@@ -1956,6 +2057,7 @@ def _build_review_session(
     classroom_id: uuid.UUID,
     student_id: uuid.UUID,
     word_count: int,
+    prompt_types: list[str] | None = None,
 ) -> tuple[VocabularySession, str, int]:
     """错词专项复习：限定当前可练词库内的历史错词，最近错误优先。
 
@@ -1986,12 +2088,13 @@ def _build_review_session(
     items = [words[i.word_id] for i in pool if i.word_id in words]
     if not items:
         raise HTTPException(status_code=422, detail="还没有可复习的错词")
+    _validate_self_prompt_types(items, prompt_types)
     vocab_session = VocabularySession(
         classroom_id=classroom_id,
         student_id=student_id,
         assignment_id=None,
         kind="review",
-        snapshot_items=[_self_snapshot_item(w, True) for w in items],
+        snapshot_items=_self_snapshot_items(items, {w.id for w in items}, prompt_types),
         mode="practice",
         round_no=1,
     )
@@ -2034,27 +2137,43 @@ def _plan_item(
     attempts: list[VocabularyAnswer],
     *,
     answers_visible: bool,
+    audio_allowed: bool | None = None,
+    attempt_count: int | None = None,
 ) -> tuple[VocabularyStudentItem, bool, bool]:
     """单题视图 +（是否已答, 首答是否正确）计数增量。
 
     未作答不透露拼写；测验答案未公布时已答也不揭示正确拼写与对错。
+    四类新题型按题面需要决定提前展示什么（见 prompt_types_mod.prompt_visibility）：
+    英译中给英文题干、中译英给中文题干，语境填空与词根拼装只给题面线索。
     """
     first = next((a for a in attempts if a.attempt_no == 1), None)
-    item_prompt_types = snapshot_item.get("prompt_types")
-    audio_allowed = (
-        isinstance(item_prompt_types, list)
-        and "audio" in item_prompt_types
-        and (snapshot_item.get("audio_url") is not None or first is not None)
+    if audio_allowed is None:
+        item_prompt_types = snapshot_item.get("prompt_types")
+        audio_allowed = (
+            isinstance(item_prompt_types, list)
+            and "audio" in item_prompt_types
+            and (snapshot_item.get("audio_url") is not None or first is not None)
+        )
+    prompt_type = prompt_types_mod.item_prompt_type(
+        snapshot_item, audio_allowed=audio_allowed
     )
+    show_headword, show_meaning = prompt_types_mod.prompt_visibility(prompt_type)
+    # 已答且答案可见时，题面的一切都揭示（含选择题正确项标记）
+    revealed = first is not None and answers_visible
+    payload = prompt_types_mod.snapshot_payload(snapshot_item, prompt_type)
+    if revealed and prompt_type in prompt_types_mod.CHOICE_PROMPT_TYPES:
+        payload = _mark_choice_answer(payload, snapshot_item)
     item = VocabularyStudentItem(
         item_index=idx,
-        prompt_type="audio" if audio_allowed else "meaning",
+        prompt_type=prompt_type,
         part_of_speech=(
             str(snapshot_item["part_of_speech"])
             if snapshot_item.get("part_of_speech") is not None
             else None
         ),
-        meaning_zh=str(snapshot_item["meaning_zh"]),
+        meaning_zh=(
+            str(snapshot_item["meaning_zh"]) if (show_meaning or revealed) else ""
+        ),
         meaning_en=(
             str(snapshot_item["meaning_en"])
             if snapshot_item.get("meaning_en") is not None
@@ -2065,20 +2184,48 @@ def _plan_item(
             if snapshot_item.get("audio_url") is not None
             else None
         ),
-        headword=(first.headword if first is not None else None)
-        if answers_visible
-        else None,
+        choices=payload.get("choices", []),
+        cloze_sentence=payload.get("cloze_sentence"),
+        morph_segments=payload.get("morph_segments", []),
+        headword=(
+            str(snapshot_item["headword"]) if (show_headword or revealed) else None
+        ),
         answered=first is not None,
         is_correct=(first.is_correct if first is not None else None)
         if answers_visible
         else None,
-        attempt_count=len(attempts),
+        attempt_count=(len(attempts) if attempt_count is None else attempt_count),
         from_wrong=snapshot_item.get("from_wrong") is True,
         first_answer=first.answer_raw if first is not None else None,
+        first_choice_word_id=(
+            prompt_types_mod.chosen_word_id(first.answer_raw or "")
+            if (
+                first is not None
+                and prompt_type in prompt_types_mod.CHOICE_PROMPT_TYPES
+            )
+            else None
+        ),
     )
     answered = first is not None
     correct = answered and first.is_correct
     return item, answered, correct
+
+
+def _mark_choice_answer(
+    payload: dict[str, Any], snapshot_item: dict[str, object]
+) -> dict[str, Any]:
+    """已答揭示：给正确项打标记，前端据此高亮，不必自己比对 ID。"""
+    choices = payload.get("choices")
+    if not isinstance(choices, list):
+        return payload
+    target = str(snapshot_item["word_id"])
+    payload["choices"] = [
+        {**choice, "is_answer": str(choice.get("word_id")) == target}
+        if isinstance(choice, dict)
+        else choice
+        for choice in choices
+    ]
+    return payload
 
 
 def _plan_countdown(
@@ -2312,6 +2459,7 @@ def _create_word(session: Session, word_in: VocabularyWordIn) -> VocabularyWord:
         or None,
         example_en=(word_in.example_en or "").strip() or None,
         audio_url=(word_in.audio_url or "").strip() or None,
+        morphology=prompt_types_mod.normalize_morphology(word_in.morphology) or None,
     )
     session.add(word)
     return word

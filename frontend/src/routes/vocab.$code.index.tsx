@@ -51,8 +51,22 @@ import {
   EXPLAIN_QUIZ_RULES,
   EXPLAIN_WRONG_WORDS_POLICY,
   TERMS,
+  vocabPromptMeta,
 } from "@/lib/terms"
 import { formatDate, formatDateTime } from "@/lib/time"
+
+/** 学习建议依据 → 双语解释（规则可解释，不输出等级/预测） */
+const RECOMMENDATION_BASIS: Record<string, { zh: string; en: string }> = {
+  no_history: { zh: "还没有练习记录", en: "No practice history yet" },
+  low_accuracy: { zh: "首答正确率偏低", en: "First-try accuracy is low" },
+  mid_accuracy: { zh: "首答正确率中等", en: "First-try accuracy is moderate" },
+  high_accuracy: { zh: "首答正确率较高", en: "First-try accuracy is high" },
+  wrong_focus: { zh: "优先复习错词", en: "Review missed words first" },
+  no_practiceable_book: {
+    zh: "本班还没有可练词库",
+    en: "No practiceable word book in this class yet",
+  },
+}
 
 /** 任务进度 → 双语徽标（进度与逾期两维独立展示） */
 const PROGRESS_LABEL: Record<string, { zh: string; en: string }> = {
@@ -148,6 +162,17 @@ function VocabHomePage() {
     staleTime: 30_000,
   })
 
+  const recommendationQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
+    queryKey: ["vocab", code, "recommendation", student?.id],
+    queryFn: () =>
+      VocabularyService.readStudentRecommendation({
+        code: code.toUpperCase(),
+      }),
+    enabled: student !== null,
+  })
+
   // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
   useStudentGuard(code, student, todayQuery)
 
@@ -212,6 +237,7 @@ function VocabHomePage() {
   const accuracy =
     answered > 0 ? Math.round((correctFirst / answered) * 100) : null
   const wrongWords = wrongQuery.data?.items ?? []
+  const recommendation = recommendationQuery.data ?? null
   const taskRows = plan.assignments ?? []
   // 聚焦轮因截止/归档被关闭：不能再作答（历史仍可回看）
   const closedReason = plan.session_closed_reason ?? null
@@ -272,6 +298,129 @@ function VocabHomePage() {
             </div>
           </div>
         </section>
+
+        {/* 今日练习建议：按真实首答记录生成，规则可解释，不是能力评定 */}
+        {recommendation && (
+          <section
+            aria-label={t(TERMS.vocabRecommendation)}
+            className="rounded-3xl border bg-card p-5 sm:p-6"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
+                  {t(TERMS.vocabRecommendation)}
+                  <Badge variant="outline" className="text-[10px] font-normal">
+                    {t({
+                      zh: "规则生成 · 非能力评定",
+                      en: "Rule-based · not a level",
+                    })}
+                  </Badge>
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {t({
+                    zh: "只按你的真实首答记录给下一步练法；不预测、不排名。",
+                    en: "Built only from your real first answers — no prediction, no ranking.",
+                  })}
+                </p>
+              </div>
+              {recommendation.accuracy != null && (
+                <p className="text-sm text-muted-foreground">
+                  {t({
+                    zh: `首答正确率 ${Math.round((recommendation.accuracy ?? 0) * 100)}%（${recommendation.answered_total ?? 0} 题）`,
+                    en: `${Math.round((recommendation.accuracy ?? 0) * 100)}% first-try over ${recommendation.answered_total ?? 0} items`,
+                  })}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {(recommendation.basis ?? []).map((code) => (
+                <Badge key={code} variant="secondary" className="font-normal">
+                  {t(
+                    RECOMMENDATION_BASIS[code] ?? {
+                      zh: code,
+                      en: code,
+                    },
+                  )}
+                </Badge>
+              ))}
+            </div>
+
+            {(recommendation.suggested_prompt_types ?? []).length > 0 && (
+              <div className="mt-4 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t({ zh: "建议这样练", en: "Suggested practice" })}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {(recommendation.suggested_prompt_types ?? []).map((type) => (
+                    <span
+                      key={type}
+                      className="rounded-xl border border-primary/25 bg-secondary/60 px-3 py-1.5 text-sm"
+                    >
+                      {t(vocabPromptMeta(type).label)}
+                    </span>
+                  ))}
+                  {(recommendation.suggested_word_count ?? 0) > 0 && (
+                    <span className="rounded-xl border px-3 py-1.5 text-sm text-muted-foreground">
+                      {t({
+                        zh: `约 ${recommendation.suggested_word_count} 词`,
+                        en: `about ${recommendation.suggested_word_count} words`,
+                      })}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {(recommendation.focus_words ?? []).length > 0 && (
+              <div className="mt-4 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t({ zh: "优先复习的错词", en: "Words to revisit first" })}
+                </p>
+                <ul className="flex flex-wrap gap-2">
+                  {(recommendation.focus_words ?? []).map((focus) => (
+                    <li
+                      key={focus.word_id}
+                      className="rounded-xl border px-3 py-1.5 text-sm"
+                    >
+                      <span className="font-mono font-semibold">
+                        {focus.headword}
+                      </span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {focus.meaning_zh}
+                      </span>
+                      <span className="ml-2 text-xs text-destructive">
+                        {t({
+                          zh: `错 ${focus.wrong_count} 次`,
+                          en: `missed ×${focus.wrong_count}`,
+                        })}
+                      </span>
+                      {focus.practiceable === false && (
+                        <span className="ml-2 text-xs text-amber-600">
+                          {t({
+                            zh: "暂不在可练词库",
+                            en: "not in a practiceable book",
+                          })}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {(recommendation.suggested_prompt_types ?? []).length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button asChild size="sm">
+                  <Link to="/vocab/$code/books" params={{ code }}>
+                    {t({ zh: "去词库开一轮", en: "Start a round" })}
+                    <ArrowRight />
+                  </Link>
+                </Button>
+              </div>
+            )}
+          </section>
+        )}
 
         {/* 我的任务列表（多任务并存：进行中与已结束都在，可切换练习） */}
         {taskRows.length > 0 && (

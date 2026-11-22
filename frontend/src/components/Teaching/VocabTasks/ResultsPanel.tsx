@@ -32,7 +32,7 @@ import { downloadCsv } from "@/lib/csv"
 import { localDateStamp } from "@/lib/dates"
 import { type BiString, useI18n } from "@/lib/i18n"
 import { pollWhileVisible } from "@/lib/poll"
-import { EXPLAIN_QUIZ_TAB_SWITCH, TERMS } from "@/lib/terms"
+import { EXPLAIN_QUIZ_TAB_SWITCH, TERMS, vocabPromptMeta } from "@/lib/terms"
 import { formatTime } from "@/lib/time"
 import { QuizAnswerSheetDialog } from "./QuizAnswerSheetDialog"
 import { RoundSelector } from "./RoundSelector"
@@ -442,6 +442,69 @@ export function ResultsPanel({
           )}
         </CardContent>
       </Card>
+
+      {(results?.prompt_type_stats ?? []).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              {t({ zh: "按出题方式看表现", en: "Performance by prompt type" })}
+            </CardTitle>
+            <CardDescription>
+              {t({
+                zh: "首答口径；勾了但全班零作答的题型显示「未出题」，不折算成 0% 正确率。",
+                en: 'First answers only. Types with zero answers show as "not attempted" instead of a 0% accuracy.',
+              })}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pb-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>
+                    {t({ zh: "出题方式", en: "Prompt type" })}
+                  </TableHead>
+                  <TableHead>
+                    {t({ zh: "已答题数", en: "Answered items" })}
+                  </TableHead>
+                  <TableHead>
+                    {t({ zh: "首答正确", en: "First-try correct" })}
+                  </TableHead>
+                  <TableHead>
+                    {t({ zh: "首答正确率", en: "First-try accuracy" })}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(results?.prompt_type_stats ?? []).map((row) => {
+                  const answered = row.answered_count ?? 0
+                  const correct = row.correct_first_count ?? 0
+                  const pct =
+                    answered > 0 ? Math.round((correct / answered) * 100) : null
+                  return (
+                    <TableRow key={row.prompt_type}>
+                      <TableCell className="font-medium">
+                        {t(vocabPromptMeta(row.prompt_type).label)}
+                        <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                          {row.prompt_type}
+                        </span>
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {answered === 0
+                          ? t({ zh: "未出题", en: "Not attempted" })
+                          : answered}
+                      </TableCell>
+                      <TableCell className="tabular-nums">{correct}</TableCell>
+                      <TableCell className="tabular-nums">
+                        {pct === null ? "–" : `${pct}%`}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

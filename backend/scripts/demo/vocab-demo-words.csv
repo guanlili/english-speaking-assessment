@@ -1,0 +1,19 @@
+headword,meaning_zh,part_of_speech,meaning_en,accepted_spellings,example_en,morphology
+apple,苹果,n.,an apple,,I ate an apple after lunch.,
+banana,香蕉,n.,a banana,,The banana is still green.,
+careless,粗心的,adj.,not careful,,His careless mistake cost the team a point.,
+teacher,老师,n.,a person who teaches,,Our teacher explained the rule again.,"[{""text"": ""teach"", ""gloss"": ""教"", ""kind"": ""root""}, {""text"": ""er"", ""gloss"": ""表人"", ""kind"": ""suffix""}]"
+preheat,预热,v.,heat beforehand,,Preheat the oven before baking.,"[{""text"": ""pre"", ""gloss"": ""预先"", ""kind"": ""prefix""}, {""text"": ""heat"", ""gloss"": ""加热"", ""kind"": ""root""}]"
+unhappy,不开心的,adj.,not happy,,She looked unhappy about the result.,"[{""text"": ""un"", ""gloss"": ""不"", ""kind"": ""prefix""}, {""text"": ""happy"", ""gloss"": ""开心"", ""kind"": ""root""}]"
+rethink,重新思考,v.,think again,,Let us rethink the plan together.,"[{""text"": ""re"", ""gloss"": ""再"", ""kind"": ""prefix""}, {""text"": ""think"", ""gloss"": ""思考"", ""kind"": ""root""}]"
+helpful,有帮助的,adj.,giving help,,Your advice was very helpful.,"[{""text"": ""help"", ""gloss"": ""帮助"", ""kind"": ""root""}, {""text"": ""ful"", ""gloss"": ""充满…的"", ""kind"": ""suffix""}]"
+kindness,善意,n.,being kind,,She showed great kindness to the new student.,"[{""text"": ""kind"", ""gloss"": ""善良的"", ""kind"": ""root""}, {""text"": ""ness"", ""gloss"": ""名词后缀"", ""kind"": ""suffix""}]"
+bookmark,书签,n.,a mark in a book,,He put a bookmark in the page.,"[{""text"": ""book"", ""gloss"": ""书"", ""kind"": ""root""}, {""text"": ""mark"", ""gloss"": ""标记"", ""kind"": ""root""}]"
+notebook,笔记本,n.,a book for notes,,Write it down in your notebook.,"[{""text"": ""note"", ""gloss"": ""笔记"", ""kind"": ""root""}, {""text"": ""book"", ""gloss"": ""书"", ""kind"": ""root""}]"
+sunlight,阳光,n.,light from the sun,,Sunlight filled the classroom.,"[{""text"": ""sun"", ""gloss"": ""太阳"", ""kind"": ""root""}, {""text"": ""light"", ""gloss"": ""光"", ""kind"": ""root""}]"
+rainbow,彩虹,n.,arc of colours,,A rainbow appeared after the rain.,"[{""text"": ""rain"", ""gloss"": ""雨"", ""kind"": ""root""}, {""text"": ""bow"", ""gloss"": ""弓形"", ""kind"": ""root""}]"
+popcorn,爆米花,n.,puffed corn,,We shared a bag of popcorn.,"[{""text"": ""pop"", ""gloss"": ""爆开"", ""kind"": ""root""}, {""text"": ""corn"", ""gloss"": ""玉米"", ""kind"": ""root""}]"
+teapot,茶壶,n.,a pot for tea,,The teapot is on the table.,"[{""text"": ""tea"", ""gloss"": ""茶"", ""kind"": ""root""}, {""text"": ""pot"", ""gloss"": ""壶"", ""kind"": ""root""}]"
+sunflower,向日葵,n.,a large yellow flower,,The sunflower turns toward the sun.,"[{""text"": ""sun"", ""gloss"": ""太阳"", ""kind"": ""root""}, {""text"": ""flower"", ""gloss"": ""花"", ""kind"": ""root""}]"
+writer,作家,n.,a person who writes,,The writer signed her new book.,"[{""text"": ""write"", ""gloss"": ""写"", ""kind"": ""root""}, {""text"": ""er"", ""gloss"": ""表人"", ""kind"": ""suffix""}]"
+disable,使失效,v.,turn off,,You can disable the alarm in settings.,"[{""text"": ""dis"", ""gloss"": ""否定"", ""kind"": ""prefix""}, {""text"": ""able"", ""gloss"": ""能够的"", ""kind"": ""root""}]"

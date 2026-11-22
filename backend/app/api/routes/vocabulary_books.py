@@ -60,6 +60,7 @@ from app.services.vocabulary import (
 from app.services.vocabulary import (
     word_count_by_book as _book_word_count,
 )
+from app.services.vocabulary_prompt_types import normalize_morphology
 
 router = APIRouter()
 
@@ -331,6 +332,9 @@ def update_word(
         if update["status"] not in {"active", "archived"}:
             raise HTTPException(status_code=422, detail="状态只能是 active/archived")
         word.status = update["status"]
+    if "morphology" in update:
+        cleaned = normalize_morphology(update["morphology"])
+        word.morphology = cleaned or None
     session.add(word)
     session.commit()
     session.refresh(word)
