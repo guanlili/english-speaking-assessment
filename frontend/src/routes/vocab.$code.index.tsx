@@ -18,6 +18,7 @@ import {
   RefreshCw,
   RotateCcw,
   SpellCheck,
+  Swords,
 } from "lucide-react"
 import { toast } from "sonner"
 import { VocabularyService } from "@/client"
@@ -350,6 +351,37 @@ function VocabHomePage() {
                 </Link>
               </Button>
             </div>
+          </div>
+        </section>
+
+        {/* 课堂 PK 入口：自愿参与的 1v1 对战，独立于教师任务成绩 */}
+        <section
+          aria-label={t({ zh: "课堂对战 PK", en: "Classroom PK" })}
+          className="rounded-3xl border bg-card p-5 sm:p-6"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                <Swords className="size-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-base font-semibold">
+                  {t({ zh: "课堂对战 PK", en: "Classroom PK" })}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {t({
+                    zh: "本班自愿加入，两人配对 1v1；对战反馈不影响老师任务成绩，结果仅本局可见。",
+                    en: "Optional in-class 1v1 pairing. Battle feedback never counts toward teacher tasks, and results are visible to this match only.",
+                  })}
+                </p>
+              </div>
+            </div>
+            <Button asChild variant="outline">
+              <Link to="/vocab/$code/pk" params={{ code }}>
+                <Swords />
+                {t({ zh: "进入 PK", en: "Open PK" })}
+              </Link>
+            </Button>
           </div>
         </section>
 

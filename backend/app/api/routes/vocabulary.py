@@ -31,6 +31,9 @@ from app.api.routes import (
     vocabulary_import as _import,
 )
 from app.api.routes import (
+    vocabulary_pk as _pk,
+)
+from app.api.routes import (
     vocabulary_quiz as _quiz,
 )
 from app.api.routes import (
@@ -44,5 +47,6 @@ router.include_router(_books.router, tags=["vocabulary"])
 router.include_router(_assignments.router, tags=["vocabulary"])
 router.include_router(_quiz.router, tags=["vocabulary"])
 router.include_router(_student.router, tags=["vocabulary"])
+router.include_router(_pk.router, tags=["vocabulary"])
 
 __all__ = ["router"]
