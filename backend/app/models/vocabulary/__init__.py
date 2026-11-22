@@ -88,6 +88,47 @@ from app.models.vocabulary.assignments import (
 from app.models.vocabulary.assignments import (
     VocabularyTodayPlan as VocabularyTodayPlan,
 )
+from app.models.vocabulary.farm import (
+    BADGE_FARM_FIRST_HARVEST as BADGE_FARM_FIRST_HARVEST,
+)
+from app.models.vocabulary.farm import (
+    BADGE_FARM_HARVEST_7 as BADGE_FARM_HARVEST_7,
+)
+from app.models.vocabulary.farm import (
+    BADGE_SOURCE_CLASSROOM as BADGE_SOURCE_CLASSROOM,
+)
+from app.models.vocabulary.farm import (
+    BADGE_SOURCE_FARM as BADGE_SOURCE_FARM,
+)
+from app.models.vocabulary.farm import (
+    FARM_XP_DAILY_CAP as FARM_XP_DAILY_CAP,
+)
+from app.models.vocabulary.farm import (
+    GROWTH_DAILY_CAP as GROWTH_DAILY_CAP,
+)
+from app.models.vocabulary.farm import (
+    GROWTH_PER_EVENT as GROWTH_PER_EVENT,
+)
+from app.models.vocabulary.farm import (
+    HARVEST_COUNT_BADGE as HARVEST_COUNT_BADGE,
+)
+from app.models.vocabulary.farm import HARVEST_XP as HARVEST_XP
+from app.models.vocabulary.farm import (
+    MATURE_POINTS as MATURE_POINTS,
+)
+from app.models.vocabulary.farm import (
+    STAGE_THRESHOLDS as STAGE_THRESHOLDS,
+)
+from app.models.vocabulary.farm import (
+    FarmBadgePublic as FarmBadgePublic,
+)
+from app.models.vocabulary.farm import (
+    FarmHarvestResult as FarmHarvestResult,
+)
+from app.models.vocabulary.farm import FarmView as FarmView
+from app.models.vocabulary.farm import (
+    VocabFarmPlot as VocabFarmPlot,
+)
 from app.models.vocabulary.levels import (
     VOCAB_LEVEL_IMPORT_MAX_ROWS as VOCAB_LEVEL_IMPORT_MAX_ROWS,
 )
@@ -406,4 +447,19 @@ __all__ = [
     "MAX_PER_QUESTION_SECONDS",
     "PK_ANSWER_BASE",
     "PK_SPEED_BONUS_MAX",
+    "VocabFarmPlot",
+    "FarmView",
+    "FarmHarvestResult",
+    "FarmBadgePublic",
+    "STAGE_THRESHOLDS",
+    "MATURE_POINTS",
+    "GROWTH_PER_EVENT",
+    "GROWTH_DAILY_CAP",
+    "HARVEST_XP",
+    "FARM_XP_DAILY_CAP",
+    "HARVEST_COUNT_BADGE",
+    "BADGE_FARM_FIRST_HARVEST",
+    "BADGE_FARM_HARVEST_7",
+    "BADGE_SOURCE_FARM",
+    "BADGE_SOURCE_CLASSROOM",
 ]

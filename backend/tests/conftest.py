@@ -33,6 +33,7 @@ from app.models import (
     StudentFrameFavorite,
     Unit,
     User,
+    VocabFarmPlot,
     VocabularyAnswer,
     VocabularyAssignment,
     VocabularyAssignmentTarget,
@@ -194,6 +195,7 @@ def db() -> Generator[Session]:
         session.exec(delete(VocabularyAnswer))  # type: ignore[call-overload]
         session.exec(delete(VocabularySession))  # type: ignore[call-overload]
         session.exec(delete(VocabularyReviewState))  # type: ignore[call-overload]
+        session.exec(delete(VocabFarmPlot))  # type: ignore[call-overload]
         session.exec(delete(VocabularyAssignmentTarget))  # type: ignore[call-overload]
         session.exec(delete(VocabularyAssignment))  # type: ignore[call-overload]
         session.exec(delete(VocabularyBookItem))  # type: ignore[call-overload]

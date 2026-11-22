@@ -59,6 +59,7 @@ import { Route as TCodeIndexRouteImport } from './routes/t.$code.index'
 import { Route as TCodeVocabRouteImport } from './routes/t.$code.vocab'
 import { Route as VocabCodeIndexRouteImport } from './routes/vocab.$code.index'
 import { Route as VocabCodeBooksRouteImport } from './routes/vocab.$code.books'
+import { Route as VocabCodeFarmRouteImport } from './routes/vocab.$code.farm'
 import { Route as VocabCodePkRouteImport } from './routes/vocab.$code.pk'
 import { Route as VocabCodePracticeRouteImport } from './routes/vocab.$code.practice'
 import { Route as VocabCodeRecordsRouteImport } from './routes/vocab.$code.records'
@@ -315,6 +316,11 @@ const VocabCodeBooksRoute = VocabCodeBooksRouteImport.update({
   path: '/books',
   getParentRoute: () => VocabCodeRoute,
 } as any)
+const VocabCodeFarmRoute = VocabCodeFarmRouteImport.update({
+  id: '/farm',
+  path: '/farm',
+  getParentRoute: () => VocabCodeRoute,
+} as any)
 const VocabCodePkRoute = VocabCodePkRouteImport.update({
   id: '/pk',
   path: '/pk',
@@ -386,6 +392,7 @@ export interface FileRoutesByFullPath {
   '/s/$schoolSlug/login': typeof SSchoolSlugLoginRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
+  '/vocab/$code/farm': typeof VocabCodeFarmRoute
   '/vocab/$code/pk': typeof VocabCodePkRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
@@ -437,6 +444,7 @@ export interface FileRoutesByTo {
   '/s/$schoolSlug/login': typeof SSchoolSlugLoginRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
+  '/vocab/$code/farm': typeof VocabCodeFarmRoute
   '/vocab/$code/pk': typeof VocabCodePkRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
@@ -495,6 +503,7 @@ export interface FileRoutesById {
   '/s/$schoolSlug/login': typeof SSchoolSlugLoginRoute
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
+  '/vocab/$code/farm': typeof VocabCodeFarmRoute
   '/vocab/$code/pk': typeof VocabCodePkRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
@@ -553,6 +562,7 @@ export interface FileRouteTypes {
     | '/s/$schoolSlug/login'
     | '/t/$code/vocab'
     | '/vocab/$code/books'
+    | '/vocab/$code/farm'
     | '/vocab/$code/pk'
     | '/vocab/$code/practice'
     | '/vocab/$code/records'
@@ -604,6 +614,7 @@ export interface FileRouteTypes {
     | '/s/$schoolSlug/login'
     | '/t/$code/vocab'
     | '/vocab/$code/books'
+    | '/vocab/$code/farm'
     | '/vocab/$code/pk'
     | '/vocab/$code/practice'
     | '/vocab/$code/records'
@@ -661,6 +672,7 @@ export interface FileRouteTypes {
     | '/s/$schoolSlug/login'
     | '/t/$code/vocab'
     | '/vocab/$code/books'
+    | '/vocab/$code/farm'
     | '/vocab/$code/pk'
     | '/vocab/$code/practice'
     | '/vocab/$code/records'
@@ -1051,6 +1063,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VocabCodeBooksRouteImport
       parentRoute: typeof VocabCodeRoute
     }
+    '/vocab/$code/farm': {
+      id: '/vocab/$code/farm'
+      path: '/farm'
+      fullPath: '/vocab/$code/farm'
+      preLoaderRoute: typeof VocabCodeFarmRouteImport
+      parentRoute: typeof VocabCodeRoute
+    }
     '/vocab/$code/pk': {
       id: '/vocab/$code/pk'
       path: '/pk'
@@ -1196,6 +1215,7 @@ const TCodeRouteWithChildren = TCodeRoute._addFileChildren(TCodeRouteChildren)
 
 interface VocabCodeRouteChildren {
   VocabCodeBooksRoute: typeof VocabCodeBooksRoute
+  VocabCodeFarmRoute: typeof VocabCodeFarmRoute
   VocabCodePkRoute: typeof VocabCodePkRoute
   VocabCodePracticeRoute: typeof VocabCodePracticeRoute
   VocabCodeRecordsRoute: typeof VocabCodeRecordsRoute
@@ -1205,6 +1225,7 @@ interface VocabCodeRouteChildren {
 
 const VocabCodeRouteChildren: VocabCodeRouteChildren = {
   VocabCodeBooksRoute: VocabCodeBooksRoute,
+  VocabCodeFarmRoute: VocabCodeFarmRoute,
   VocabCodePkRoute: VocabCodePkRoute,
   VocabCodePracticeRoute: VocabCodePracticeRoute,
   VocabCodeRecordsRoute: VocabCodeRecordsRoute,

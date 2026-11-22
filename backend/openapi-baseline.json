@@ -4492,6 +4492,199 @@
         "title": "ExpressionFavoritePublic",
         "type": "object"
       },
+      "FarmBadgePublic": {
+        "description": "徽章展示项：带来源标注（只读，不参与任何结算口径）。",
+        "properties": {
+          "awarded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Awarded At"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "source": {
+            "default": "课堂档案/每日计划",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "description"
+        ],
+        "title": "FarmBadgePublic",
+        "type": "object"
+      },
+      "FarmHarvestResult": {
+        "description": "POST .../farm/harvest 回执：收获入账后的地块与账本快照。",
+        "properties": {
+          "badges": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FarmBadgePublic"
+            },
+            "title": "Badges",
+            "type": "array"
+          },
+          "growth_points": {
+            "default": 0,
+            "title": "Growth Points",
+            "type": "integer"
+          },
+          "harvest_count": {
+            "default": 0,
+            "title": "Harvest Count",
+            "type": "integer"
+          },
+          "harvested": {
+            "title": "Harvested",
+            "type": "boolean"
+          },
+          "newly_awarded": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Newly Awarded",
+            "type": "array"
+          },
+          "stage": {
+            "default": 0,
+            "title": "Stage",
+            "type": "integer"
+          },
+          "xp": {
+            "default": 0,
+            "title": "Xp",
+            "type": "integer"
+          },
+          "xp_gained": {
+            "default": 0,
+            "title": "Xp Gained",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "harvested"
+        ],
+        "title": "FarmHarvestResult",
+        "type": "object"
+      },
+      "FarmView": {
+        "description": "GET /classes/{code}/vocabulary/student/farm。",
+        "properties": {
+          "badges": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FarmBadgePublic"
+            },
+            "title": "Badges",
+            "type": "array"
+          },
+          "can_harvest": {
+            "default": false,
+            "title": "Can Harvest",
+            "type": "boolean"
+          },
+          "daily_growth_cap": {
+            "title": "Daily Growth Cap",
+            "type": "integer"
+          },
+          "farm_xp_daily_cap": {
+            "default": 10,
+            "title": "Farm Xp Daily Cap",
+            "type": "integer"
+          },
+          "growth_points": {
+            "title": "Growth Points",
+            "type": "integer"
+          },
+          "harvest_count": {
+            "default": 0,
+            "title": "Harvest Count",
+            "type": "integer"
+          },
+          "last_harvested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Harvested At"
+          },
+          "points_to_mature": {
+            "title": "Points To Mature",
+            "type": "integer"
+          },
+          "ready_to_harvest": {
+            "title": "Ready To Harvest",
+            "type": "boolean"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "integer"
+          },
+          "stage_thresholds": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Stage Thresholds",
+            "type": "array"
+          },
+          "streak_days": {
+            "default": 0,
+            "title": "Streak Days",
+            "type": "integer"
+          },
+          "today_farm_xp": {
+            "default": 0,
+            "title": "Today Farm Xp",
+            "type": "integer"
+          },
+          "today_points": {
+            "title": "Today Points",
+            "type": "integer"
+          },
+          "xp": {
+            "default": 0,
+            "title": "Xp",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stage",
+          "stage_thresholds",
+          "growth_points",
+          "points_to_mature",
+          "ready_to_harvest",
+          "today_points",
+          "daily_growth_cap"
+        ],
+        "title": "FarmView",
+        "type": "object"
+      },
       "FollowupCreate": {
         "properties": {
           "item_ids": {
@@ -25648,6 +25841,102 @@
           }
         ],
         "summary": "Read Student Book",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/student/farm": {
+      "get": {
+        "description": "农场视图：四阶段成长、今日有效练习、XP 余额、streak 与徽章来源。",
+        "operationId": "vocabulary-read_farm",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FarmView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Farm",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/student/farm/harvest": {
+      "post": {
+        "description": "成熟地块收获：+10 XP 入既有账本；未成熟/今日 XP 达上限 → 422。",
+        "operationId": "vocabulary-harvest_farm",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FarmHarvestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Harvest Farm",
         "tags": [
           "vocabulary"
         ]
