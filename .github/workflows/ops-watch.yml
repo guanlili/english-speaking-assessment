@@ -1,8 +1,12 @@
-name: 运维巡检（存活性 + 磁盘水位）
+name: 运维巡检（存活性 + 证书续期 + 磁盘/备份）
 
 # 每小时一次的轻量巡检，只读探测，不改任何生产状态：
-#   1) 从公网探 /api/v1/utils/health-check/ —— 部署成功但服务实际挂掉时，CI 是绿的，只有外部探测能发现。
-#   2) 看服务器磁盘水位 —— 音频、导出文件、备份都在涨，撑满前要有人知道。
+#   1) 从公网探 /api/v1/utils/health-check/ —— 默认走 HTTPS 并校验证书链。
+#      TLS/证书类失败直接红灯，不再回落服务器本机自检；只有纯网络不可达才回落，
+#      且回落只证明服务进程活着，不代表证书正常（证书另有 tls-cert 任务）。
+#   2) 校验域名证书 SAN/链/到期（剩余 <21 天红灯）、nginx 现役证书与发布目录一致、
+#      续期 timer 处于 active/enabled、旧 IP timer 未复活、部署日志新鲜。
+#   3) 看服务器磁盘水位 —— 音频、导出文件、备份都在涨，撑满前要有人知道。
 #
 # 失败即 GitHub Actions 红灯（仓库 owner 会收到邮件）。这里刻意不自动建 issue：
 # 逐小时建 issue 会淹没真正需要处理的事项，红灯 + 邮件足够。
@@ -37,31 +41,51 @@ jobs:
     environment: production
     steps:
       # GitHub 托管 runner 在海外，访问国内云主机可能整体不通（2026-11-19 切火山后
-      # 连续报 HTTP 000，同期国内多点访问均 200）。因此外部探测失败时回落到
-      # 服务器本机自检：既能区分「服务真挂了」和「只是这条国际线路不通」，
-      # 也避免每小时的假红把告警淹没。
-      - name: 探测 health-check（外部优先，失败回落服务器自检）
+      # 连续报 HTTP 000，同期国内多点访问均 200）。因此纯网络不可达时回落到服务器
+      # 本机自检；但 TLS/证书类错误（curl 51/58/59/60/64/66/77/80/82/83/90/91 或
+      # stderr 明确报证书问题）绝不回落——那正是过去「TLS 失败却本机 200 假绿」的根因。
+      - name: 探测 health-check（HTTPS 强制校验，TLS 失败不回退）
         env:
           SSH_HOST: ${{ secrets.SERVER_HOST }}
           SSH_USER: ${{ secrets.SERVER_USER }}
           SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
         run: |
           set -u
-          ok=0
           code=000
+          rc=0
           for attempt in 1 2 3; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$HEALTH_URL" || echo 000)
-            echo "第 ${attempt} 次探测 ${HEALTH_URL} → HTTP ${code}"
-            if [ "$code" = "200" ]; then ok=1; break; fi
-            [ "$attempt" -lt 3 ] && sleep 10
+            rc=0
+            : > "$RUNNER_TEMP/curl.err"
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$HEALTH_URL" 2>"$RUNNER_TEMP/curl.err") || rc=$?
+            err=$(cat "$RUNNER_TEMP/curl.err")
+            echo "第 ${attempt} 次探测 ${HEALTH_URL} → HTTP ${code}（curl rc=${rc}）"
+            if [ "$rc" -eq 0 ] && [ "$code" = "200" ]; then
+              echo "外部存活性正常（HTTP 200，TLS 校验通过）"
+              exit 0
+            fi
+
+            # 证书/TLS 失败：直接红灯，禁止用本机 200 洗成绿
+            if printf '%s' "$err" | grep -qiE 'SSL certificate|certificate verify|certificate has expired|self-signed|unable to get local issuer|hostname mismatch|no alternative certificate|tlsv1|ssl'; then
+              echo "::error::TLS/证书校验失败，已禁止回落到本机自检：${err}"
+              exit 1
+            fi
+            case "$rc" in
+              51|58|59|60|64|66|77|80|82|83|90|91)
+                echo "::error::curl TLS/证书错误 rc=${rc}：${err}"
+                exit 1
+                ;;
+            esac
+
+            if [ "$attempt" -lt 3 ]; then sleep 10; fi
           done
 
-          if [ "$ok" = "1" ]; then
-            echo "外部存活性正常（HTTP 200）"
-            exit 0
+          # 非 000 的 HTTP 状态（如 5xx / 301）说明服务或入口真的有问题，同样不回落
+          if [ "$code" != "000" ]; then
+            echo "::error::外部 HTTPS 返回 HTTP ${code}（非网络不可达），不回落本机自检"
+            exit 1
           fi
 
-          echo "::warning::外部探测连续 3 次失败（最后 HTTP ${code}），回落到服务器本机自检（可能是海外线路不通）"
+          echo "::warning::外部探测连续 3 次失败（最后 HTTP ${code}，curl rc=${rc}），按纯线路不可达处理，回落服务器本机自检"
           key="$RUNNER_TEMP/deploy_key"
           printf '%s\n' "$SSH_KEY" > "$key"
           chmod 600 "$key"
@@ -74,7 +98,128 @@ jobs:
             echo "::error::存活性巡检失败：外部 HTTP ${code}，服务器本机 HTTP ${internal}"
             exit 1
           fi
-          echo "::warning::服务本身正常（本机 200），外部不可达属线路问题，请人工核查安全组/国际链路"
+          echo "::warning::服务进程本机 200，但外部 HTTPS 不可达；这只说明线路/入口问题，不证明证书正常（证书由 tls-cert 任务独立校验）"
+
+  tls-cert:
+    name: 域名证书与续期
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      # 证书问题不能依赖海外 runner 能否连到国内 443：这里直接 SSH 到服务器，
+      # 读已发布的 fullchain，并用 127.0.0.1:443 + SNI 验证 nginx 实际在用的证书。
+      - name: 校验 SAN / 链 / 剩余天数 / 现役证书 / 续期 timer
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 3m
+          envs: DEPLOY_PATH
+          script: |
+            set -eu
+            if [ -z "${DEPLOY_PATH:-}" ]; then
+              echo "::error::DEPLOY_PATH 未配置，无法定位证书目录"
+              exit 1
+            fi
+            cd "$DEPLOY_PATH"
+            fail=0
+            cert=ssl/domain/current/fullchain.pem
+            domain=outman.website
+
+            if [ ! -f "$cert" ]; then
+              echo "::error::域名证书不存在：$cert"
+              exit 1
+            fi
+            echo "current -> $(readlink -f ssl/domain/current || true)"
+            openssl x509 -in "$cert" -noout -subject -issuer -dates
+
+            san=$(openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null | tr '\n' ' ')
+            echo "SAN: ${san}"
+            if ! printf '%s' "$san" | grep -q "DNS:${domain}"; then
+              echo "::error::证书 SAN 不含 DNS:${domain}"
+              fail=1
+            fi
+
+            end=$(openssl x509 -in "$cert" -noout -enddate | cut -d= -f2)
+            end_s=$(date -d "$end" +%s)
+            now=$(date +%s)
+            days=$(( (end_s - now) / 86400 ))
+            echo "证书到期：${end}（剩余 ${days} 天，阈值 21 天）"
+            if [ "$days" -lt 21 ]; then
+              echo "::error::域名证书剩余 ${days} 天，低于 21 天告警线"
+              fail=1
+            fi
+
+            if ! openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt -untrusted "$cert" "$cert" >/tmp/tls-verify.txt 2>&1; then
+              echo "::error::证书链校验失败：$(cat /tmp/tls-verify.txt)"
+              fail=1
+            else
+              echo "证书链校验通过：$(cat /tmp/tls-verify.txt)"
+            fi
+
+            # nginx 实际提供的证书必须就是 current 这一份（防顶层链接被旧 IP 脚本改回）
+            set +e
+            echo | openssl s_client -connect 127.0.0.1:443 -servername "$domain" -verify_return_error >/tmp/tls-sclient.txt 2>&1
+            sclient_rc=$?
+            set -e
+            if [ "$sclient_rc" -ne 0 ]; then
+              echo "::error::nginx 现役证书 TLS 握手/链校验失败（openssl rc=${sclient_rc}）"
+              fail=1
+            fi
+            awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' /tmp/tls-sclient.txt >/tmp/tls-served.pem
+            served_fp=$(openssl x509 -in /tmp/tls-served.pem -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2 || true)
+            file_fp=$(openssl x509 -in "$cert" -noout -fingerprint -sha256 | cut -d= -f2)
+            echo "现役指纹：${served_fp:-<empty>}"
+            echo "发布指纹：${file_fp}"
+            if [ -z "$served_fp" ] || [ "$served_fp" != "$file_fp" ]; then
+              echo "::error::nginx 现役证书与 ssl/domain/current 不一致"
+              fail=1
+            fi
+
+            top=$(readlink -f ssl/fullchain.pem || true)
+            cur=$(readlink -f ssl/domain/current/fullchain.pem || true)
+            echo "顶层 fullchain -> ${top}"
+            if [ "$top" != "$cur" ]; then
+              echo "::error::顶层 ssl/fullchain.pem 未指向域名证书（可能被旧 IP 脚本覆盖）"
+              fail=1
+            fi
+
+            if ! systemctl is-active --quiet belp-domain-tls-deploy.timer; then
+              echo "::error::域名续期部署 timer 不是 active"
+              fail=1
+            fi
+            if ! systemctl is-enabled --quiet belp-domain-tls-deploy.timer; then
+              echo "::error::域名续期部署 timer 不是 enabled"
+              fail=1
+            fi
+            if systemctl is-active --quiet belp-ip-tls-renew.timer; then
+              echo "::error::旧 IP 续期 timer 又处于 active，可能覆盖顶层证书"
+              fail=1
+            fi
+            if systemctl is-failed --quiet belp-domain-tls-deploy.service; then
+              echo "::error::最近一次域名证书部署 service 处于 failed"
+              fail=1
+            fi
+
+            log=/var/log/belp-domain-tls/deploy.log
+            if [ ! -f "$log" ]; then
+              echo "::error::部署日志不存在：$log"
+              fail=1
+            else
+              log_age=$(( now - $(stat -c %Y "$log") ))
+              echo "部署日志最后写入：$(( log_age / 3600 )) 小时前"
+              if [ "$log_age" -gt 108000 ]; then
+                echo "::error::部署日志超过 30 小时未更新，timer 可能未实际运行"
+                fail=1
+              fi
+              tail -n 3 "$log" || true
+            fi
+
+            rm -f /tmp/tls-verify.txt /tmp/tls-sclient.txt /tmp/tls-served.pem
+            exit "$fail"
 
   disk:
     name: 磁盘水位
