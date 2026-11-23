@@ -4,7 +4,7 @@
 - 代码基线：master `fe4a6b4dbfde2804a57cebbbe010ddafe9390bb3`；证据分支 `docs/526-postlaunch-evidence`，PR base `master`，**不合并**。
 - 环境：仅本机本地 docker compose（db 5433 / backend 8000 / 前端 5173、5174）；浏览器取证统一走 `http://localhost:5174`。**未连接/写入生产库与生产服务器，未触发部署，未改产品代码。**
 - 复用 A 校 `e2e-526-a`（仅 speaking，课堂码 `D5V8CH`）、B 校 `e2e-526-b`（仅 vocabulary，课堂码 `VJS6CD`）与既有 `.seed` 匿名账号；本轮新建的临时班级/词库/作答状态验完已清理（见 §3 清理记录）。截图与机读证据仅含匿名代号、课堂码与合成邮箱后缀，无真实姓名/手机号/token。
-- 本目录是 `../README.md`（G1–G4 桌面阶段）的上线后补充：① G4 子路由面板补三档视口 × 中英；② 教师面板「导出 CSV」完整真实浏览器下载链路；③ 跨班 FSRS 复习连续性（浏览器级 + API 级）。
+- 本目录是 `../README.md`（G1–G4 桌面阶段）的上线后补充：① G4 子路由面板补三档视口 × 中英；② 教师面板「导出 CSV」完整真实浏览器下载链路；③ 跨班 FSRS 复习连续性（浏览器级 + API 级）；④ G3b 验证 PR #537（清单 staleTime 45s + 聚焦重取）到点后零整页 reload 自动放行。
 
 ## 1. G4 补验 · 子路由面板三档视口 × 中英
 
@@ -94,7 +94,43 @@ A 校教师（speaking on）在浏览器打开 `/t/D5V8CH`，切到学生结果/
 - 初始尝试复用种子公开词书 `f96c19b6-…`（Pets & School）：该词书归属 seed 默认租户，本地 RLS 下 B 校会话不可见，自主轮 `book_id` 报 404「词库不存在或已归档」；改为 B 校同租户自建 public 临时词库后通过。
 - 农场 XP / 徽章跨班连续性本轮未单独截图验证（任务口径二选一或都做，FSRS 为主口径）；农场账本复用既有账号口径，不在本次回归范围。
 
-## 4. 未覆盖项与限制
+## 4. G3b · PR #537 清单 staleTime 45s 聚焦重取（零整页 reload）
+
+### 被测对象
+
+- PR #537（分支 `fix/modules-refetch-45s`，head `8b1ece3`）：`useModules` 清单查询 `staleTime = 45s`、`refetchOnWindowFocus: true`，由 react-query 内置 focusManager 监听窗口聚焦/可见性变化，仅当缓存超过 45s 才重取；不另写全局 visibilitychange 轮询。
+- 前端不从主 worktree 起：从 PR #537 代码所在 worktree `agents/s_000Vum426Xa/worktree-modules`（HEAD `8b1ece31bb82a4ffd0505a6cb158b644edb5e6e2`）独立起 Vite dev server `http://127.0.0.1:5176`，`/api` 代理本地 8000；已核对该服务源码含 `MODULES_STALE_TIME_MS = 45 * 1000` 与 `refetchOnWindowFocus: true`。
+
+### 验证设计
+
+A 校教师（`teacher-a@e2e526.seed`，课堂 `D5V8CH`）经本地平台接口把 speaking 置为 `enabled=true, effective_at = now + 90s`；到点前 `/modules/me = []`，侧边栏口语门禁入口（「题目库」`/create`、「录音导出」`/exports`）隐藏。不刷新页面，等到点后缓存超过 45s，经聚焦/可见性路径触发一次重取，核对清单回到 `["speaking"]`、入口自动出现，且期间无整页 reload、无轮询风暴。
+
+### 机读证据：`module-refetch-45s.json`
+
+- 文档生命周期内 `/modules/me` 共 **2** 次请求：#1 挂载（10:30:46.392Z，到点前，body `[]`）；#2 聚焦/可见性重取（10:32:49.424Z，到点后 52.9s，body `["speaking"]`，直连 API 快照佐证）。
+- 两次间隔 **123.032s**，缓存年龄 123.032s > 45s staleTime；无 45s 内重复切 tab 触发的重复请求，无定时轮询。
+- 零 reload：挂载后注入的 `g3b-marker` 重取后仍存活；`history.length` 前后均为 50；PerformanceResourceTiming 缓冲仍同时保留两条记录（reload 会清空缓冲）。
+- 侧边栏：到点前 `[我的课堂, 平台更新]`；到点后 `[我的课堂, 录音导出, 题目库, 平台更新]`。
+
+### 浏览器截图
+
+| 文件 | 页面 | 观察 |
+|---|---|---|
+| `G3b-未到点-课堂列表-zh.png` | `/classrooms`（到点前） | 侧边栏仅「我的课堂」「平台更新」，无「题目库」「录音导出」；课堂 D5V8CH 卡片可见 |
+| `G3b-到点后-入口自动出现.png` | `/classrooms`（到点后重取） | 侧边栏出现「录音导出」「题目库」；同一标签页、未整页刷新 |
+
+### 环境限制与失败尝试（如实记录）
+
+- 嵌入式自动化浏览器在真实切标签时不派发原生 `visibilitychange`/`focus`：页面探针监听两个事件，切走再切回日志为空，`document.hasFocus()=false`。本轮 #2 重取是在 `window` 上派发 `visibilitychange` 触发的，走的是 focusManager 注册在 window 的同一监听；真实浏览器原生 OS 聚焦/标签可见性路径未在本轮自动化中直接观察到。
+- 页面内 fetch 包装器未截获 SDK 请求（生成客户端初始化时持有 `globalThis.fetch` 引用）；请求次数与时间取自 `PerformanceResourceTiming`，响应体由直连 API 快照佐证。
+- 教师父路由 `t.$code.index.tsx` 在 `denied` 的 effect 内立即 SPA 跳转 `/classrooms`，拦截面板只渲染一帧；本轮未在该分支抓到稳定面板帧。双语面板首屏已由本目录 G1/G4 既有 committed 证据覆盖，本块不重复抓拍、不补造面板截图。
+
+### 清理记录
+
+- A 校 speaking 恢复 `enabled=true, effective_at=null`；复核 `/modules/me = ["speaking"]`，本地库 `tenant_module` 行 `e2e-526-a / speaking / t / effective_at=null`。
+- B 校未触碰，终态 `["vocabulary"]`；两校模块终态与测试前一致。
+
+## 5. 未覆盖项与限制
 
 1. 三档视口仍为 CDP 设备模拟；未在真实手机/平板上实测触摸与安全区适配。
 2. G6 仅验证 FSRS 复习状态与历史 session 归属；农场 XP 跨班连续性、徽章/连胜跨班口径未回归。
@@ -102,7 +138,7 @@ A 校教师（speaking on）在浏览器打开 `/t/D5V8CH`，切到学生结果/
 4. 浏览器取证基于本地 5174 挂载前端；生产构建首屏表现未单独复测。
 5. 本轮截图以 zh 为主；G6 两班队列未切 en 复核文案。
 
-## 5. 隐私与数据边界
+## 6. 隐私与数据边界
 
 - 截图与机读证据仅含匿名测试代号（`e2e-526-a/b`、`D5V8CH`、`VJS6CD`、`P56P78`、`stu-a01/b01`、`probecat/probecow`、`*.e2e526.seed`）；无真实校名、真实师生姓名、手机号、访问 token。
 - 既有真实学校数据全程只读；本轮造数/改写仅限两所匿名测试校与临时班/词库，验完已清理并还原模块状态。
