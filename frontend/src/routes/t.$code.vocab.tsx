@@ -1,7 +1,12 @@
 import { useQuery } from "@tanstack/react-query"
-import { createFileRoute, Link, useParams } from "@tanstack/react-router"
+import {
+  createFileRoute,
+  Link,
+  useNavigate,
+  useParams,
+} from "@tanstack/react-router"
 import { BookA, ListChecks, Mic, SpellCheck, Swords } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ApiError, ClassesService, VocabularyService } from "@/client"
 import { AssignPanel } from "@/components/Teaching/VocabTasks/AssignPanel"
 import { PkTeacherPanel } from "@/components/Teaching/VocabTasks/PkTeacherPanel"
@@ -10,6 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
+import { useModules } from "@/hooks/useModules"
 import { useI18n } from "@/lib/i18n"
 import { TERMS } from "@/lib/terms"
 import { formatDateTime } from "@/lib/time"
@@ -24,6 +30,14 @@ export const Route = createFileRoute("/t/$code/vocab")({
 function TeacherVocabPage() {
   const { t, lang } = useI18n()
   const { code } = useParams({ from: "/t/$code/vocab" })
+  const navigate = useNavigate()
+  const { hasModule, isPending: modulesPending } = useModules()
+  // 未购词汇模块：教师直连拦截，回课堂列表；服务端闸门为最终裁决。
+  useEffect(() => {
+    if (!modulesPending && !hasModule("vocabulary")) {
+      void navigate({ to: "/classrooms" })
+    }
+  }, [modulesPending, hasModule, navigate])
   const [tab, setTab] = useState<"assign" | "results" | "pk">("assign")
   // 查看哪一期：null = 当前进行中（后端默认最新发布）；任务列表点击后切换
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<
@@ -44,6 +58,34 @@ function TeacherVocabPage() {
     queryKey: ["teacher", "classrooms"],
     queryFn: () => ClassesService.listMyClassrooms(),
   })
+
+  if (modulesPending) {
+    return (
+      <div role="status" className="space-y-6">
+        <span className="sr-only">
+          {t({ zh: "正在加载…", en: "Loading…" })}
+        </span>
+        <Skeleton className="h-24 rounded-2xl" />
+        <Skeleton className="h-80 rounded-2xl" />
+      </div>
+    )
+  }
+
+  if (!hasModule("vocabulary")) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+        {t({
+          zh: "本校暂未开通词汇模块。",
+          en: "The vocabulary module is not enabled for this school.",
+        })}
+        <Button variant="outline" asChild>
+          <Link to="/classrooms">
+            {t({ zh: "回课堂列表", en: "Back to Classes" })}
+          </Link>
+        </Button>
+      </div>
+    )
+  }
 
   if (assignmentsQuery.isPending || resultsQuery.isPending) {
     return (

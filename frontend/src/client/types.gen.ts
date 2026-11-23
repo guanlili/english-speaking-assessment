@@ -3242,6 +3242,16 @@ export type Message = {
 };
 
 /**
+ * ModulesMe
+ */
+export type ModulesMe = {
+    /**
+     * Modules
+     */
+    modules: Array<string>;
+};
+
+/**
  * MySessionSummary
  */
 export type MySessionSummary = {
@@ -5619,7 +5629,7 @@ export type TeacherFeedbackWrite = {
 /**
  * TenantAdminPublic
  *
- * 运营视角的学校行：基础字段 + 账号数（排空校/核对开通）。
+ * 运营视角的学校行：基础字段 + 账号数 + 已配置模块清单。
  */
 export type TenantAdminPublic = {
     /**
@@ -5654,6 +5664,10 @@ export type TenantAdminPublic = {
      * User Count
      */
     user_count?: number;
+    /**
+     * Modules
+     */
+    modules?: Array<TenantModulePublic>;
 };
 
 /**
@@ -5672,6 +5686,100 @@ export type TenantCreate = {
      * Name En
      */
     name_en?: string | null;
+};
+
+/**
+ * TenantModuleAuditPublic
+ */
+export type TenantModuleAuditPublic = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
+    /**
+     * Module Key
+     */
+    module_key: string;
+    /**
+     * Action
+     */
+    action: string;
+    /**
+     * Enabled Before
+     */
+    enabled_before?: boolean | null;
+    /**
+     * Enabled After
+     */
+    enabled_after?: boolean | null;
+    /**
+     * Effective At Before
+     */
+    effective_at_before?: string | null;
+    /**
+     * Effective At After
+     */
+    effective_at_after?: string | null;
+    /**
+     * Actor Operator Id
+     */
+    actor_operator_id?: string | null;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+};
+
+/**
+ * TenantModulePublic
+ *
+ * 运营/前端视角的单行授权。
+ */
+export type TenantModulePublic = {
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
+    /**
+     * Module Key
+     */
+    module_key: string;
+    /**
+     * Enabled
+     */
+    enabled: boolean;
+    /**
+     * Effective At
+     */
+    effective_at?: string | null;
+    /**
+     * Updated At
+     */
+    updated_at?: string | null;
+    /**
+     * Updated By
+     */
+    updated_by?: string | null;
+};
+
+/**
+ * TenantModuleUpdate
+ *
+ * 运营改写单行授权的请求体。
+ */
+export type TenantModuleUpdate = {
+    /**
+     * Enabled
+     */
+    enabled: boolean;
+    /**
+     * Effective At
+     */
+    effective_at?: string | null;
 };
 
 /**
@@ -9101,6 +9209,22 @@ export type UsersUpdateUserResponses = {
 };
 
 export type UsersUpdateUserResponse = UsersUpdateUserResponses[200 & keyof UsersUpdateUserResponses];
+
+export type ModulesReadModulesMeData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/modules/me';
+};
+
+export type ModulesReadModulesMeResponses = {
+    /**
+     * Successful Response
+     */
+    200: ModulesMe;
+};
+
+export type ModulesReadModulesMeResponse = ModulesReadModulesMeResponses[200 & keyof ModulesReadModulesMeResponses];
 
 export type UtilsTestEmailData = {
     body?: never;
@@ -13539,6 +13663,77 @@ export type AdminCreateTenantResponses = {
 };
 
 export type AdminCreateTenantResponse = AdminCreateTenantResponses[200 & keyof AdminCreateTenantResponses];
+
+export type AdminUpdateTenantModuleData = {
+    body: TenantModuleUpdate;
+    path: {
+        /**
+         * Tenant Id
+         */
+        tenant_id: string;
+        /**
+         * Module Key
+         */
+        module_key: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/tenants/{tenant_id}/modules/{module_key}';
+};
+
+export type AdminUpdateTenantModuleErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminUpdateTenantModuleError = AdminUpdateTenantModuleErrors[keyof AdminUpdateTenantModuleErrors];
+
+export type AdminUpdateTenantModuleResponses = {
+    /**
+     * Successful Response
+     */
+    200: TenantModulePublic;
+};
+
+export type AdminUpdateTenantModuleResponse = AdminUpdateTenantModuleResponses[200 & keyof AdminUpdateTenantModuleResponses];
+
+export type AdminListTenantModuleAuditData = {
+    body?: never;
+    path: {
+        /**
+         * Tenant Id
+         */
+        tenant_id: string;
+    };
+    query?: {
+        /**
+         * Module Key
+         */
+        module_key?: string | null;
+    };
+    url: '/api/v1/admin/tenants/{tenant_id}/modules/audit';
+};
+
+export type AdminListTenantModuleAuditErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminListTenantModuleAuditError = AdminListTenantModuleAuditErrors[keyof AdminListTenantModuleAuditErrors];
+
+export type AdminListTenantModuleAuditResponses = {
+    /**
+     * Response Admin-List Tenant Module Audit
+     *
+     * Successful Response
+     */
+    200: Array<TenantModuleAuditPublic>;
+};
+
+export type AdminListTenantModuleAuditResponse = AdminListTenantModuleAuditResponses[200 & keyof AdminListTenantModuleAuditResponses];
 
 export type AdminUpdateTenantData = {
     body: TenantUpdate;
