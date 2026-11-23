@@ -135,7 +135,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(keys(ROOT / ".env.example"), keys(self.directory / ".env.new"))
 
     def test_workflow_maps_every_secret_key(self):
-        """keys 里非派生键必须在 deploy.yml 的 env: 映射出现。
+        """keys 里非派生键必须在生产部署 workflow（deploy-prod.yml）的 env: 映射出现。
 
         ARK_TTS_API_KEY 曾只在脚本/键清单里补了、工作流没映射，
         Secret 设了也永远到不了 .env（静默空值）。
@@ -153,13 +153,26 @@ class DeploymentTests(unittest.TestCase):
             "POSTGRES_USER",
             "BACKEND_CORS_ORIGINS",
         }
-        workflow = (ROOT / ".github/workflows/deploy.yml").read_text()
+        workflow = (ROOT / ".github/workflows/deploy-prod.yml").read_text()
         mapped = set(
             re.findall(
                 r"^ +([A-Za-z_]+): \$\{\{ secrets\.[A-Za-z_]+", workflow, re.MULTILINE
             )
         )
         self.assertEqual(keys - derived - mapped, set())
+
+    def test_ci_workflow_has_no_production_deploy(self):
+        """deploy.yml 只保留 CI：不得再持有生产 Secrets / SSH 部署步骤 / 生产环境绑定。
+
+        拆分后生产部署只由 deploy-prod.yml（workflow_dispatch）承担；CI workflow
+        若残留 secrets 引用或部署动作，等于「合并即上线」闸门失效。
+        """
+        ci = (ROOT / ".github/workflows/deploy.yml").read_text()
+        self.assertNotIn("secrets.", ci)
+        self.assertNotIn("appleboy/ssh-action", ci)
+        self.assertNotIn("appleboy/scp-action", ci)
+        self.assertNotIn("environment:", ci)
+        self.assertNotIn("ENABLE_PRODUCTION_DEPLOY", ci)
 
 
 if __name__ == "__main__":

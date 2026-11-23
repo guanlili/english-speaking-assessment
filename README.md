@@ -28,7 +28,7 @@
 
 - 本地配置：`.env`（已忽略，不提交）；首次克隆可运行 `bash scripts/init-project.sh "英语口语评测平台"`，然后将 `COMPOSE_PROJECT_NAME` 设为 `english-speaking-assessment`。
 - 开发规范：[AGENTS.md](AGENTS.md)、[CLAUDE.md](CLAUDE.md)、[AI_RULES.md](AI_RULES.md)。
-- 生产部署已启用：push 到 `master` → CI（lint + 测试 + 客户端一致性）→ 自动部署，回滚常规走 revert、紧急用 `scripts/rollback.sh`（秒级），细节见下文「生产部署」。
+- 生产部署为**手动触发**：push 到 `master` 只跑 CI（lint + 测试 + 客户端一致性 + E2E），不自动上线；生产变更由 `Deploy Production` 流水线（`deploy-prod.yml`，workflow_dispatch）显式触发。回滚常规走 revert 后手动部署，紧急用 `scripts/rollback.sh`（秒级），细节见下文「生产部署」。
 
 ---
 
@@ -153,12 +153,16 @@ Claude Code 会按标准流程自动创建订单模块的全部后端和前端�
 git clone git@github.com:guanlili/<项目名>.git $DEPLOY_PATH
 ```
 
-只需做一次。之后 push 到 `master` 即自动触发：**CI（后端 lint + 测试、前端 lint + 构建、前后端客户端一致性）→ 全部通过才部署** → checkout 到该次 CI 验证过的 commit → 从 Secrets 生成 `.env`（base64 中转 + 校验通过后原子替换，特殊字符安全、日志不落值）→ 构建镜像 → 跑 Alembic 迁移 → 重启容器 → 就绪检查（含数据库）验证 → 清理旧镜像。
+只需做一次。之后的流程分两条流水线：
+
+- **CI（`deploy.yml`）**：push `master` 或开 PR 自动触发，跑后端 lint + 测试、前端 lint + 构建、前后端客户端一致性、性能守卫与 E2E 汇总；**不触碰生产**。
+- **生产部署（`deploy-prod.yml`，手动）**：在 Actions 页面运行 `Deploy Production`，输入 ref（默认 `master`，建议填完整 40 位 SHA）。流水线先把 ref 解析成确定 SHA，校验它在 `master` 历史内且已有成功的 CI 记录，再 checkout 到该提交 → 从 Secrets 生成 `.env`（base64 中转 + 校验通过后原子替换，特殊字符安全、日志不落值）→ 构建镜像 → 跑 Alembic 迁移 → 重启容器 → 就绪检查（含数据库）验证 → 清理旧镜像。
 
 **部署入口与并发**：
 
-- 自动部署只来自 `master` 的 push；手动触发（workflow_dispatch）也仅限 `master` 分支，PR 只跑检查不部署。
-- 所有指向生产的部署共用一把并发锁，不自动取消正在进行的部署。不要依赖任务排队顺序：每次部署在服务器 fetch 后比较本次通过 CI 的提交与 `origin/master`，过期任务（包括旧任务重跑）直接跳过。最新提交必须通过自己的 CI 才能部署；若检查失败，保留当前线上版本。回滚使用 revert 生成新的 master 提交。
+- 生产部署**只能**由 `deploy-prod.yml` 的 `workflow_dispatch` 手动触发；push `master` / PR 只跑 CI，不部署。输入 ref 仅接受 `master`、40 位 commit SHA 或 tag；分叉或领先 `master` 的提交、没有成功 CI 记录的提交会被 pre-flight 步骤拒绝。
+- 所有指向生产的部署共用一把并发锁 `production-deploy`，不自动取消正在进行的部署。不要依赖任务排队顺序：每次部署在服务器 fetch 后比较本次通过 CI 的提交与 `origin/master`，过期任务（包括旧任务重跑）直接跳过。最新提交必须通过自己的 CI 才能部署；若检查失败，保留当前线上版本。
+- **审批（可选第二道闸）**：部署 job 绑定 Environment `production`。可在 Settings → Environments → `production` 配置 Required reviewers，配了之后手动触发还需审批通过才执行；不配则手动触发人本人即唯一闸门。环境审批不影响「dispatch 才部署」这条主链路生效。
 
 部署配置生成脚本：`scripts/generate-deploy-env.sh`。候选文件 `.env.new` 同时用于 Compose 插值与容器环境校验，首次部署不依赖旧 `.env`；校验通过后才原子替换。配置文件权限为 600，失败时清理候选文件。
 
@@ -189,7 +193,7 @@ HTTP 明文意味着 JWT token 和登录密码裸奔公网、浏览器标"不安
    }
    ```
    `systemctl reload caddy` 生效，证书自动申请续期。安全组需放行 80/443。
-3. **改 Secret**：`FRONTEND_HOST` 改为 `https://项目名.你的域名.com`，push 触发重新部署即可（CORS 自动跟随，代码零改动）。
+3. **改 Secret**：`FRONTEND_HOST` 改为 `https://项目名.你的域名.com`，手动运行 `Deploy Production` 重新部署即可（CORS 自动跟随，代码零改动）。
 
 ### 同机附加域名 · outman.press（遇己）
 
@@ -215,11 +219,11 @@ See [runtime diagnostics](docs/runtime-observability.md) for class synchronizati
 
 CI 挡得住挂掉的构建，挡不住"测试全绿但业务逻辑错了"的版本。上线后发现坏版本：
 
-**常规回滚（推荐）**——revert 后走正常流水线，有 CI 门槛兜底：
+**常规回滚（推荐）**——revert 出新提交，等 CI 全绿后手动部署该 SHA，有 CI 门槛兜底：
 
 ```bash
 git revert <坏提交>   # 或 git revert <坏起点>..<坏终点> 批量撤销
-git push              # 自动触发 CI → 部署 → 健康检查
+git push              # 只触发 CI；CI 绿后在 Actions 页运行 Deploy Production 部署该 SHA
 ```
 
 **紧急回滚（生产事故，等不了 CI 的几分钟）**——部署链每次部署都会把上一版镜像打成 `:rollback` 标签，在服务器部署目录执行（秒级，不重新构建）：
@@ -230,8 +234,8 @@ ssh 服务器 "cd 部署路径 && bash scripts/rollback.sh"
 
 > 只保留最近一版镜像。要退更早的版本，或 `:rollback` 标签尚不存在（该机制上线前的部署），退回旧办法：`git reset --hard <上一个好提交> && docker compose -f compose.yml up -d --build`（服务器上重新构建，约几分钟）。
 >
-> 紧急回滚只是止血：master 上坏提交还在，下次 push 会把它重新部署上去。
-> 止血后必须回到常规流程 revert + push，让远端历史与线上一致。
+> 紧急回滚只是止血：master 上坏提交还在，下次手动部署会把它重新部署上去。
+> 止血后必须回到常规流程 revert + push，再手动部署，让远端历史与线上一致。
 
 **数据库迁移注意**：回滚代码或镜像都不会回滚 Alembic 迁移。坏版本若只是**加**了表/列，旧代码通常兼容，直接回滚代码即可；若做了破坏性变更（删列、改类型），优先前向修复（fix + push）而不是 `alembic downgrade`——降级操作有数据丢失风险，动手前先做一次备份。
 

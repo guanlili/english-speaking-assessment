@@ -6,7 +6,7 @@ name: Deploy Test
 #   2. 走 GitHub Environment `test`，密钥从环境作用域取，与生产 Secrets 互不干扰
 #   3. 不传 git bundle：测试机直连 GitHub（SSH 部署密钥）实测 4s，无需跨境兜底
 #
-# 生产部署仍由 deploy.yml 负责，这条 workflow 的存在不影响它。
+# 生产部署由 deploy-prod.yml（手动触发）负责，这条 workflow 的存在不影响它。
 
 on:
   workflow_dispatch:

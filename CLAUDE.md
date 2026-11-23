@@ -15,7 +15,7 @@
 - EIP 教材原文因版权**不进仓库**，只建内容槽（Passage/RepeatSentence/Scenario/ScenarioQuestion 表）；演示种子用自写 Pets 内容（slug: demo-pets，课堂码 DEMO01）。五级词库原始教材同样不入仓库。
 - 学生账号默认密码统一 `brs123456`，**不强制改密**（2026-09-29 产品决策）。
 - 待办：EIP 教材文本录入；词级发音评分二期（选型结论：统一走火山引擎口语评测，不接腾讯 SOE / 讯飞 ISE）；题库个人/校内共享分层 P2 复制 / P3 共享（P1 编辑保护已实现：教师只能改自己创建的题，管理员与存量内容公共可改；见 `docs/question-bank-ownership-design.md`）。
-- 生产部署已启用：push `master` → CI（lint + 测试 + 客户端一致性 + E2E 汇总）→ 自动部署（`ENABLE_PRODUCTION_DEPLOY` 仓库变量控制）。回滚常规走 revert；紧急秒级用 `scripts/rollback.sh`（部署链自动保留上一版镜像为 `:rollback` 标签；见 README「回滚」）。
+- 生产部署为手动触发：push `master` / PR 只跑 CI（lint + 测试 + 客户端一致性 + E2E 汇总），不自动上线；生产变更由 `deploy-prod.yml` 的 `workflow_dispatch`（`Deploy Production`）显式触发，部署前校验目标 SHA 在 master 历史内且已有成功 CI。回滚常规走 revert + 手动部署；紧急秒级用 `scripts/rollback.sh`（部署链自动保留上一版镜像为 `:rollback` 标签；见 README「回滚」）。
 
 ## 跨模块不变量（改代码时必须守住）
 
@@ -73,7 +73,7 @@
 | 运行时与可观测 | `X-Request-ID`、metrics | `docs/runtime-observability.md` |
 | 备份与恢复 | `scripts/backup-local.sh` | `docs/backup-restore.md` |
 | 紧急回滚（秒级切上一版镜像） | `scripts/rollback.sh` | README「回滚」 |
-| 部署链稳定性（lock 镜像改写/cron 注册/超时） | `backend/Dockerfile`、`.github/workflows/deploy.yml` | module-notes「部署链稳定化」 |
+| 部署链稳定性（lock 镜像改写/cron 注册/超时） | `backend/Dockerfile`、`.github/workflows/deploy-prod.yml`（CI 见 `deploy.yml`） | module-notes「部署链稳定化」 |
 | 公开站点（落地页 / 关于 / 帮助 / 隐私） | `frontend/src/routes/index.tsx`、`routes/{about,help,privacy}.tsx`、`components/Site/SiteShell.tsx` | module-notes「公开站点」 |
 
 ## 项目结构
