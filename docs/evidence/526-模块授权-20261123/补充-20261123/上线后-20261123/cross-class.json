@@ -1,0 +1,164 @@
+{
+  "captured_at": "2026-11-23T10:04:11Z",
+  "environment": "local docker compose; frontend http://localhost:5174, backend http://localhost:8000, 本地测试库 app；未连生产，未触发部署",
+  "purpose": "#526 上线后 Block3：同一匿名学生账号加入 B 校两个本地班级，验证 FSRS 复习状态按账号（user_id）跨班延续，历史 session/首答记录仍归属原班级，不迁移、不改写快照。",
+  "account": {
+    "username": "stu-b01",
+    "user_id": "7644eced-45b3-447d-8fa1-bdd66dffa90e",
+    "school_slug": "e2e-526-b",
+    "school_note": "B 校：speaking off / vocabulary on；账号为 .seed 合成匿名账号，无真实姓名/手机号"
+  },
+  "classes": {
+    "class1": {
+      "code": "VJS6CD",
+      "role": "B 校既有原始班级（测试前已存在）"
+    },
+    "class2": {
+      "code": "P56P78",
+      "id": "8b8c7808-1e90-49cd-833f-5c35d26cda79",
+      "role": "本轮临时新建班级，学生凭课堂码加入；验完已删除"
+    }
+  },
+  "probe_book": {
+    "id": "ac9ebc0d-d73c-4692-b0a6-7e2c7066ee4c",
+    "title": "[e2e-cross-class] 临时共享词库",
+    "scope": "public",
+    "words": ["probecat", "probecow"],
+    "note": "B 校管理员在本地 API 建的同租户 public 临时词库，两班可见；验完已连词条/词条项/词库一并删除"
+  },
+  "target_word": {
+    "word_id": "b3c14b2a-2d71-4ec9-b968-dd7c08bfd5e0",
+    "headword": "probecat",
+    "meaning_zh": "探测猫（测试词）",
+    "capability": "spelling",
+    "prompt_type": "meaning"
+  },
+  "timeline": {
+    "baseline_class1": {
+      "stats": {
+        "tracked_count": 0, "due_count": 0, "reviewed_today_count": 0,
+        "learning_count": 0, "review_count": 0, "recognition_count": 0, "spelling_count": 0
+      },
+      "queue_items": []
+    },
+    "action": {
+      "session_id": "79c5e95c-af13-4f3e-bc5e-9606bbcba922",
+      "session_kind": "self",
+      "class_code": "VJS6CD",
+      "endpoint": "POST /classes/VJS6CD/vocabulary/student/sessions → POST /vocabulary/sessions/{id}/answers",
+      "attempt_no": 1,
+      "is_correct": false,
+      "answer_raw": "zzz-wrong-probe（故意答错，again 评分）",
+      "fsrs_effect": "首答（attempt_no=1、非测验）写入 FSRS 状态；重试与测验不进入调度"
+    },
+    "after_answer_class1": {
+      "stats": {
+        "tracked_count": 1, "due_count": 0, "reviewed_today_count": 1,
+        "learning_count": 1, "review_count": 0, "recognition_count": 0, "spelling_count": 1
+      },
+      "note": "新卡 again 评分稳定性 0.4072 天，首次到期时间在未来，故此刻到期队列为空；tracked/learning/spelling 计数已落"
+    },
+    "after_join_class2": {
+      "stats": {
+        "tracked_count": 1, "due_count": 0, "reviewed_today_count": 1,
+        "learning_count": 1, "review_count": 0, "recognition_count": 0, "spelling_count": 1
+      },
+      "note": "未在班2 做任何作答；同一账号在班2 读到与班1 一致的复习统计"
+    },
+    "backdate_adjustment": {
+      "applied": true,
+      "detail": "本地测试库把该卡 due_at 回拨到当前时间前 1 小时，使新卡立即进入到期队列，便于同时观察队列级连续性；未改动 state/reps/lapses/stability/difficulty 等调度字段，未改调度算法。",
+      "scope": "仅本地 app 测试库；生产库无此操作"
+    }
+  },
+  "post_backdate_queues": {
+    "class1_VJS6CD": [
+      {
+        "word_id": "b3c14b2a-2d71-4ec9-b968-dd7c08bfd5e0",
+        "headword": "probecat",
+        "capability": "spelling",
+        "state": "learning",
+        "due_at": "2026-11-23T09:04:11.188499Z",
+        "reps": 1,
+        "lapses": 1,
+        "last_is_correct": false
+      }
+    ],
+    "class2_P56P78": [
+      {
+        "word_id": "b3c14b2a-2d71-4ec9-b968-dd7c08bfd5e0",
+        "headword": "probecat",
+        "capability": "spelling",
+        "state": "learning",
+        "due_at": "2026-11-23T09:04:11.188499Z",
+        "reps": 1,
+        "lapses": 1,
+        "last_is_correct": false
+      }
+    ],
+    "match": true,
+    "match_detail": "两班队列命中同一 word_id，且 state/reps/lapses/last_is_correct/due_at 完全一致"
+  },
+  "api_corroboration": {
+    "review_state_row": {
+      "key": "unique (user_id, word_id, capability)",
+      "user_id": "7644eced-45b3-447d-8fa1-bdd66dffa90e",
+      "word_id": "b3c14b2a-2d71-4ec9-b968-dd7c08bfd5e0",
+      "headword": "probecat",
+      "capability": "spelling",
+      "state": "learning",
+      "reps": 1,
+      "lapses": 1,
+      "last_is_correct": false
+    },
+    "session_binding": {
+      "session_id": "79c5e95c-af13-4f3e-bc5e-9606bbcba922",
+      "classroom_code": "VJS6CD",
+      "kind": "self",
+      "status": "submitted",
+      "answer_attempt_no": 1,
+      "answer_is_correct": false,
+      "note": "历史 session 与首答仍绑定原班级 VJS6CD；班2 P56P78 下无该账号任何 session 行"
+    },
+    "class2_history_not_migrated": {
+      "browser_observation": "班2 词汇页错词本为空（“还没有拼错的词”），学习建议为“还没有练习记录”；首答统计与错词本未跨班带出",
+      "api_observation": "班2 名下 vocabulary_session / vocabulary_answer 行数为 0"
+    }
+  },
+  "browser_evidence": [
+    {
+      "file": "G6-跨班-班1-复习队列-zh.png",
+      "view": "/vocab/VJS6CD（班1 · 今日复习队列）",
+      "visible": "今日到期 1 · 今日已复习 1 · 剩余额度 19 · 上限 20；队列行 probecat / 拼写 / 今日到期 / 上次答错 / 间隔 1 天 / 复习 1 · 遗忘 1 / 看义拼词；错词本含 probecat 错 1 次"
+    },
+    {
+      "file": "G6-跨班-班2-复习队列-zh.png",
+      "view": "/vocab/P56P78（班2 · 今日复习队列）",
+      "visible": "今日到期 1 · 今日已复习 1 · 剩余额度 19 · 上限 20；同一队列行 probecat / 拼写 / 今日到期 / 上次答错 / 间隔 1 天 / 复习 1 · 遗忘 1；错词本为空、无练习记录（历史未迁移）"
+    }
+  ],
+  "invariant_checks": {
+    "fsrs_state_aggregated_by_user_across_classes": "PASS — 两班 tracked_count=1、learning_count=1、spelling_count=1，队列命中同一词且调度字段一致",
+    "history_session_bound_to_original_class": "PASS — session/answer 留在 VJS6CD，班2 无 session 与错词记录",
+    "recognition_spelling_separate": "PASS — spelling_count=1、recognition_count=0，能力维度分列",
+    "queue_visibility_filter": "PASS — 队列只展示当前班可练词库（active public/本班库）内的 active 词条；状态按账号汇总，可见性按课堂词库过滤"
+  },
+  "cleanup": {
+    "class2_deleted": {"code": "P56P78", "api": "DELETE /classes/P56P78?delete_history=true", "status": 200, "message": "课堂已删除"},
+    "local_db_removed": ["vocabulary_answer(本轮 session)", "vocabulary_session(79c5e95c…)", "vocabulary_review_state(该 user+word)", "vocabulary_book_item(临时词库)", "vocabulary_word(probecat/probecow)", "vocabulary_book(临时共享词库)"],
+    "post_cleanup_verify": {
+      "b01_review_states": 0,
+      "probe_books": 0,
+      "probe_words": 0,
+      "probe_book_items": 0,
+      "temp_classrooms": 0,
+      "b01_sessions": 0
+    },
+    "terminal_modules": {"a_D5V8CH": ["speaking"], "b_VJS6CD": ["vocabulary"]}
+  },
+  "notes": [
+    "全部取证在本地 e2e 环境完成；账号、词、班级名均为合成匿名标记，无真实姓名/手机号/token 入档。",
+    "农场 XP/徽章跨班连续性本轮未单独截图验证（任务为二选一或都做，FSRS 为主口径）；农场账本复用既有账号口径，未在本次范围内回归。",
+    "本轮未改任何产品代码；临时词库/班级/作答状态验完已清理，两校模块终态保持 A 仅口语、B 仅词汇。"
+  ]
+}
