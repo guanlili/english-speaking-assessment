@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
 import type { ComposerState, DraftPublic } from "../../src/client"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 const article = {
   id: "article",
@@ -54,6 +55,7 @@ async function setup(page: Page, lang = "zh") {
     localStorage.setItem("esa:lang", lang)
   }, lang)
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     const code = path.includes("/TARGET/") ? "TARGET" : "SOURCE"
     let json: unknown = []

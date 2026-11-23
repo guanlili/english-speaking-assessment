@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 const article = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -24,6 +25,7 @@ async function mockBank(page: Page) {
     localStorage.setItem("esa:role", "teacher")
   })
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     let body: unknown = []
     if (path.endsWith("/users/me"))

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 const published = ["old", "new"].map((id, index) => ({
   id,
@@ -88,6 +89,7 @@ async function mockTeacher(page: Page, nativeAudio = false) {
     }
   }, nativeAudio)
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     let body: unknown = []
     const row = (version: string) => ({

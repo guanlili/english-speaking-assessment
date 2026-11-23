@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
 import type { ClassMessagePublic } from "../../src/client"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 async function setup(page: Page, lang = "zh") {
   const messages: ClassMessagePublic[] = [
@@ -30,6 +31,7 @@ async function setup(page: Page, lang = "zh") {
     localStorage.setItem("esa:lang", lang)
   }, lang)
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const req = route.request(),
       url = new URL(req.url()),
       path = url.pathname

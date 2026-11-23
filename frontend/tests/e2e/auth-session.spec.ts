@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 // All requests are mocked; no backend or shared database state.
 test("incorrect password keeps the form and error visible without reloading", async ({
@@ -50,6 +51,7 @@ test("sign out clears identity and imported batch before another teacher signs i
     }
   })
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     const token = route.request().headers().authorization
     if (path.endsWith("/login/access-token"))

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
 import { wav } from "./utils/audio"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 async function login(page: Page, role = "teacher") {
   await page.addInitScript((role) => {
@@ -50,6 +51,7 @@ async function mockBoard(page: Page, isExam = true) {
   const submissions: Record<string, unknown>[] = []
   const audioRequests: string[] = []
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     let body: unknown = []
     if (path.endsWith("/users/me"))
@@ -237,6 +239,7 @@ async function mockListening(
   let listens = 0
   let release: (() => void) | undefined
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     let body: unknown = []
     if (path.endsWith("/users/me"))

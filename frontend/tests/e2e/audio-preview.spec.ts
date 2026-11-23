@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
-
 import { wav } from "./utils/audio"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 async function mockBank(page: Page, lang = "zh") {
   await page.addInitScript((lang) => {
@@ -32,6 +32,7 @@ async function mockBank(page: Page, lang = "zh") {
   let failAudio = false
   const requests: string[] = []
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     let body: unknown = []
     if (path.includes("/audio/content/")) {

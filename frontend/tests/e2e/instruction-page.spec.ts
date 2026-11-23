@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
 import type { PlanAttempt } from "../../src/client/types.gen"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 /** 题目说明（第四题型）：练习模式点「继续」推进；模考中计时窗口/提前继续/到时自动翻页。 */
 
@@ -63,6 +64,7 @@ async function mockPlan(page: Page, isExam: boolean) {
     navigator.mediaDevices.getUserMedia = async () => new MediaStream()
   })
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     let body: unknown = []
     if (path.endsWith("/users/me"))

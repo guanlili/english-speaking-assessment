@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
 import type { AttemptPublic, FollowupPublic } from "../../src/client"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 const item = {
   id: "item",
@@ -61,6 +62,7 @@ async function setup(page: Page, role: "teacher" | "student", lang = "zh") {
     { role, lang },
   )
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const url = new URL(route.request().url())
     const path = url.pathname
     let json: unknown = []
