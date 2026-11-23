@@ -103,6 +103,12 @@ def upgrade():
         ["actor_operator_id"],
         unique=False,
     )
+    op.create_index(
+        "ix_tenant_module_audit_action",
+        AUDIT_TABLE,
+        ["action"],
+        unique=False,
+    )
 
     # RLS（与既有业务表同口径；平台通道 BYPASSRLS）
     for table in (MODULE_TABLE, AUDIT_TABLE):
@@ -148,6 +154,7 @@ def downgrade():
     op.drop_index(
         "ix_tenant_module_audit_actor_operator_id", table_name=AUDIT_TABLE
     )
+    op.drop_index("ix_tenant_module_audit_action", table_name=AUDIT_TABLE)
     op.drop_index("ix_tenant_module_audit_module_key", table_name=AUDIT_TABLE)
     op.drop_index("ix_tenant_module_audit_tenant_id", table_name=AUDIT_TABLE)
     op.drop_table(AUDIT_TABLE)

@@ -88,11 +88,11 @@ class TenantModule(SQLModel, table=True):
     )
     updated_at: datetime | None = Field(
         default_factory=get_datetime_utc,
-        sa_column=DateTime(timezone=True),  # type: ignore
+        sa_type=DateTime(timezone=True),  # type: ignore
     )
     effective_at: datetime | None = Field(
         default=None,
-        sa_column=DateTime(timezone=True),  # type: ignore
+        sa_type=DateTime(timezone=True),  # type: ignore
     )
 
     __table_args__ = (
@@ -119,11 +119,11 @@ class TenantModuleAudit(SQLModel, table=True):
     enabled_after: bool | None = Field(default=None)
     effective_at_before: datetime | None = Field(
         default=None,
-        sa_column=DateTime(timezone=True),  # type: ignore
+        sa_type=DateTime(timezone=True),  # type: ignore
     )
     effective_at_after: datetime | None = Field(
         default=None,
-        sa_column=DateTime(timezone=True),  # type: ignore
+        sa_type=DateTime(timezone=True),  # type: ignore
     )
     actor_operator_id: uuid.UUID | None = Field(
         default=None,
@@ -133,7 +133,7 @@ class TenantModuleAudit(SQLModel, table=True):
     )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
-        sa_column=DateTime(timezone=True),  # type: ignore
+        sa_type=DateTime(timezone=True),  # type: ignore
     )
 
 
