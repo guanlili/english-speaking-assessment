@@ -655,10 +655,29 @@ def init_db(session: Session) -> None:
         )
         session.commit()
 
-    # 种子锚点校：演示内容（公共词库 / 示范课堂）双模块开通，保证本地与 CI
-    # 演示数据、既有词汇 E2E 可见。业务校默认口径由迁移回填负责
-    # （speaking=on、vocabulary=off），本 upsert 不扩散到其他租户。
-    for _module_key in (MODULE_SPEAKING, MODULE_VOCABULARY):
+    _seed_default_tenant_modules(session)
+
+
+def _anchor_module_defaults(environment: str) -> dict[str, bool]:
+    """锚点校种子口径。
+
+    本地 / 测试 / CI 双开，保证演示内容与既有词汇 E2E 可见；生产环境锚点校
+    也是真实业务校，只保口语、词汇按业务校默认关（迁移已回填，种子不得把它
+    重新打开，否则每次重启都会覆盖运营的关闭操作）。
+    """
+    return {
+        MODULE_SPEAKING: True,
+        MODULE_VOCABULARY: environment != "production",
+    }
+
+
+def _seed_default_tenant_modules(
+    session: Session, environment: str | None = None
+) -> None:
+    """幂等补齐锚点校模块行；生产不覆盖已有行，避免重启复活词汇授权。"""
+    env = environment or settings.ENVIRONMENT
+    defaults = _anchor_module_defaults(env)
+    for _module_key, _enabled in defaults.items():
         _anchor_row = session.exec(
             select(TenantModule).where(
                 TenantModule.tenant_id == DEFAULT_TENANT_ID,
@@ -670,10 +689,11 @@ def init_db(session: Session) -> None:
                 TenantModule(
                     tenant_id=DEFAULT_TENANT_ID,
                     module_key=_module_key,
-                    enabled=True,
+                    enabled=_enabled,
                 )
             )
-        else:
+        elif env != "production":
+            # 本地/CI 保持双开演示；生产尊重运营后台的显式授权状态。
             _anchor_row.enabled = True
     session.commit()
 
