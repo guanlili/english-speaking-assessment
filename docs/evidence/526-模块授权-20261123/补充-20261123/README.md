@@ -1,10 +1,10 @@
 # #526 模块授权 — B 阶段补充验证证据（2026-11-23）
 
 - 验证日期：2026-11-23（Asia/Shanghai）
-- 代码基线：master `ff4a1ea4927212d143c85c83c129320a83ad1500`（三支 PR 已合并）；补充分支 `docs/526-evidence-supplement`，PR base `master`，**不合并**。
+- 代码基线：初始 B 阶段基于 master `ff4a1ea4927212d143c85c83c129320a83ad1500`；G4 补验 rebase 到 master `d1fb6685d5510a078df6538226541dce8acf539a`（含 PR #532 教师进步轨迹子路由 speaking 守卫）。补充分支 `docs/526-evidence-supplement`，PR base `master`，**不合并**。
 - 环境：仅本机本地 docker compose（db 5433 / backend 8000 / 前端 5173、5174）；浏览器取证统一走 `http://localhost:5174`。**未连接/写入生产库与生产服务器，未触发部署，未改产品代码。**
 - 复用 A 校 `e2e-526-a`（仅 speaking，课堂码 `D5V8CH`）、B 校 `e2e-526-b`（仅 vocabulary，课堂码 `VJS6CD`）与既有 `.seed` 测试账号；未新建真实信息。截图仅含匿名代号、课堂码与合成邮箱后缀。
-- 本目录是 A 阶段证据（`../README.md`）的补充：G1 补齐 A 阶段未抓到的拦截面板首屏；G2 补三档视口 × 中英文；G3 验证未来 `effective_at` 到点自动放行。
+- 本目录是 A 阶段证据（`../README.md`）的补充：G1 补齐 A 阶段未抓到的拦截面板首屏；G2 补三档视口 × 中英文；G3 验证未来 `effective_at` 到点自动放行；G4 补验 PR #532 合入后的教师轨迹子路由守卫。
 
 ## 1. G1 · ModuleDeniedPanel 双语首屏（补齐 A 阶段缺口）
 
@@ -71,15 +71,49 @@
 - 后端按请求时刻评估 `effective_at`：未到点按未购 403，到点后自动纳入已购清单，无需后端人工干预。
 - **前端不保证无刷新放行**：模块清单查询缓存 5 分钟，到点后同一会话内需整页 reload（或等缓存失效后重新拉取）才刷新导航显隐；本次如实记录为「同一会话内 reload 后生效」，未写成无刷新自动出现。
 
-## 4. 未覆盖项与限制
+## 4. G4 · 教师进步轨迹子路由守卫（PR #532 合并后补验）
+
+### 被测范围
+
+- 路由 `/t/$code/s/$studentId`（`frontend/src/routes/t.$code.s.$studentId.tsx`，PR #532 `cfd2783` 合入 master `d1fb668`）：按 `moduleGuardState(..., "speaking")` 判定；`denied` 分支返回 `ModuleDeniedPanel`，**不发 navigate**——与父级 `/t/$code` 守卫不同（父级在 effect 内跳 `/classrooms`，子路由按设计停留面板，便于核对/截图）。
+- 学生 ID 来源：本地测试库只读查询 `student` 表按课堂关联取得。`/classes/{code}/board` 名册接口在 A 校因无在练篇目 404（`No active passage`）、B 校被 speaking 闸门 403，不能作为名册来源。**路由参数是学生档案 ID（`student.id`），不是登录用户 ID**：
+  - A 校：`1df80d3a-d571-4314-8da7-73752e906a32`（`stu-a01`，档案名「A校学生」）
+  - B 校：`bea9fe6d-a905-4a79-8f13-14466c3aad65`（`stu-b01`，档案名「B校学生」）
+
+### 浏览器结果
+
+| 文件 | 场景 | 观察 |
+|---|---|---|
+| `G4-子路由面板-zh.png` | B 校教师直连 `/t/VJS6CD/s/bea9fe6d-a905-4a79-8f13-14466c3aad65` | 面板「本校暂未开通口语模块。/ 回课堂列表」；停留 2.5s 后 URL 仍在子路由，**无自动跳转** |
+| `G4-子路由面板-en.png` | 同上，en 模式 | 「The speaking module is not enabled for this school. / Back to Classes」；停留不跳 |
+| `G4-A校对照-轨迹页-zh.png` | A 校教师直连 `/t/D5V8CH/s/1df80d3a-d571-4314-8da7-73752e906a32` | 正常进入轨迹页：学生学习档案「A校学生」、课堂 `D5V8CH`、阶段报告与历史记录空态（无已完成作答） |
+| `G4-B校词汇工作台-zh.png` | B 校教师 `/t/VJS6CD/vocab`（回归） | 词汇任务工作台正常渲染（发布任务 / 完成情况 / PK 对战），无回归 |
+
+### 服务端探针佐证
+
+- B 校教师 `GET /classes/VJS6CD/trail?student_id=bea9fe6d-…` → `403` `module_not_enabled:speaking`（闸门先于名册/轨迹数据返回）。
+- A 校教师 `GET /classes/D5V8CH/trail?student_id=1df80d3a-…` → `200`，`sessions` 为空（测试班无已出分作答）。
+
+### 既有行为回归
+
+- 父级 `/t/VJS6CD`（B 校教师，speaking off）：直连后仍按父守卫 effect 跳回 `/classrooms`（本次实测落地 URL 为 `/classrooms`，课堂列表正常），行为未变；面板可视文案复用 G1 `G1-面板-zh.png`（G4 回归时点复核，未重新断点抓拍）。
+- `/t/VJS6CD/vocab`：vocabulary on，工作台可进，截图见上表。
+
+### 失败尝试与备注
+
+- 子路由面板原生停留，本次**未使用** G1 的 CDP 条件断点 / history 冻结手段。
+- 排查中曾误把登录用户 ID 当作路由参数：A 侧 trail 返回 404 `Student not found`；核对测试库后确认路由参数应为档案 ID，已更正后复测通过。
+
+## 5. 未覆盖项与限制
 
 1. G3 未验证「到点瞬间轮询/后台自动刷新」链路：本次以 reload 后生效为准；前端是否需要在清单过期后主动 invalidate，属后续优化项。
 2. G2 视口以 CDP 设备模拟覆盖验证；未在真实手机/平板设备上实测触摸与安全区（刘海/home 指示条）适配。
 3. 面板抓拍依赖调试器断点持有，属测试侧手段；生产构建下的首屏表现未单独复测。
 4. 双语核对以本次 zh/en 两模式截图为准；其余空态、审计文案未逐条切 EN 比对。
 5. 测试班未 seeded 已发布篇目/词库，部分主页空态（「学习计划暂时没有加载成功」等）属业务数据为空，非模块拦截。
+6. G4 仅在桌面 1280×960 视口取证；子路由面板未在 390/820/1180 三档视口下复测（G2 矩阵覆盖的是父级面板）；A 校轨迹对照页仅验 zh，未切 en。
 
-## 5. 隐私与数据边界
+## 6. 隐私与数据边界
 
 - 截图与机读证据仅含匿名测试代号（`e2e-526-a/b`、`D5V8CH`、`VJS6CD`、`stu-a01/b01`、`*.e2e526.seed`）；无真实校名、真实师生姓名、手机号、访问 token。
 - 既有真实学校数据全程只读；本次造数/改写仅限两所匿名测试校，验完已还原模块状态。
