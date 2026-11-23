@@ -79,6 +79,7 @@ jobs:
           set -euo pipefail
           sha="${{ steps.resolve.outputs.sha }}"
           run_id=$(gh run list \
+            --repo "${{ github.repository }}" \
             --workflow=deploy.yml \
             --commit="$sha" \
             --status=success \
