@@ -3,6 +3,7 @@ import {
   createFileRoute,
   Link,
   useBlocker,
+  useNavigate,
   useParams,
 } from "@tanstack/react-router"
 import {
@@ -16,7 +17,7 @@ import {
   Users,
   UsersRound,
 } from "lucide-react"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { ApiError, ClassesService } from "@/client"
 import { AssignmentComposer } from "@/components/Teaching/AssignmentComposer"
@@ -34,6 +35,7 @@ import {
   FollowupManager,
 } from "@/components/Teaching/FollowupManager"
 import { LessonReview } from "@/components/Teaching/LessonReview"
+import { ModuleDeniedPanel } from "@/components/Teaching/ModuleDeniedPanel"
 import { TeacherTeamCard } from "@/components/Teaching/TeacherTeamCard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -51,6 +53,7 @@ import {
 import { copyText } from "@/lib/clipboard"
 import { downloadCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
+import { moduleGuardState } from "@/lib/module-filter"
 import { pollWhileVisible } from "@/lib/poll"
 import { TERMS } from "@/lib/terms"
 
@@ -68,7 +71,21 @@ const IDLE_REFRESH_MS = 20000
 
 function TeacherBoardPage() {
   const { t } = useI18n()
-  const { hasModule } = useModules()
+  const navigate = useNavigate()
+  const {
+    hasModule,
+    isPending: modulesPending,
+    isError: modulesError,
+  } = useModules()
+  const guard = moduleGuardState(
+    { isPending: modulesPending, isError: modulesError },
+    hasModule,
+    "speaking",
+  )
+  // 未购口语模块：直连拦截，回课堂列表；服务端闸门为最终裁决。
+  useEffect(() => {
+    if (guard === "denied") void navigate({ to: "/classrooms" })
+  }, [guard, navigate])
   const { code } = useParams({ from: "/t/$code/" })
   const queryClient = useQueryClient()
   const rosterRef = useRef<HTMLDivElement>(null)
@@ -131,6 +148,23 @@ function TeacherBoardPage() {
       })
     },
   })
+
+  if (guard === "loading") {
+    return (
+      <div role="status" className="space-y-6">
+        <span className="sr-only">
+          {t({ zh: "正在加载…", en: "Loading…" })}
+        </span>
+        <Skeleton className="h-40 rounded-2xl" />
+        <Skeleton className="h-11 w-64 rounded-xl" />
+        <Skeleton className="h-80 rounded-2xl" />
+      </div>
+    )
+  }
+
+  if (guard === "denied") {
+    return <ModuleDeniedPanel module="speaking" />
+  }
 
   if (boardQuery.isPending) {
     return (
