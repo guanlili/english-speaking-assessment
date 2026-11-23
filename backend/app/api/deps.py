@@ -194,17 +194,42 @@ def _normalize_class_path(path: str) -> str:
 def require_speaking_classroom(
     request: Request, session: SessionDep, current_user: CurrentUser
 ) -> User:
-    """课堂路由的 speaking 模块闸门：底座路径放行，其余判 speaking 授权。
+    """课堂路由的 speaking 模块闸门：底座路径放行；业务端点先解析成员再判模块。
 
-    挂载在共享 class router 上；底座（建校/名单/教师团队/通讯/在场）不随
-    speaking 开关关闭。课堂成员 404 由各 handler 在成员解析阶段先行抛出，
-    本依赖只做整校模块口径判断。
+    优先级固定为 **404 先于 403**（与 vocabulary 侧同一口径）：
+    1. 底座路径（建校/名册/教师团队/通讯/在场，见 ``_SPEAKING_BASELINE_TEMPLATES``）
+       不随 speaking 开关关闭，直接放行；
+    2. 其余课堂业务端点先按路径码解析课堂与成员——课堂不存在/未入班先 404，
+       非本班教师先按成员门 403；
+    3. 成员确定之后才判整校 speaking 授权，未购 → 403。
+
+    成员判定复用 ``class_shared`` 的共享助手（学生档案 / 教师授权同一事实源），
+    不在此依赖内另写一套越权判定。
     """
+    from app.api.routes.class_shared import (
+        _require_classroom_teacher,
+        _student_profile_of,
+    )
+    from app.crud import get_classroom_by_code
     from app.services import entitlement
 
     normalized = _normalize_class_path(request.url.path)
     if normalized in _SPEAKING_BASELINE_TEMPLATES:
         return current_user
+
+    code = request.path_params.get("code")
+    classroom = (
+        get_classroom_by_code(session=session, code=code.upper()) if code else None
+    )
+    if classroom is None:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+
+    # 学生链路按本人档案解析（未入班 404）；教职工/管理员走课堂教师授权门。
+    if current_user.role == "student":
+        _student_profile_of(session, classroom, current_user, "speaking")
+    else:
+        _require_classroom_teacher(classroom, current_user, "speaking")
+
     entitlement.ensure_module_enabled(session, current_user.tenant_id, "speaking")
     return current_user
 

@@ -91,8 +91,7 @@ def _resolve_tenants(session: Session, slugs: list[str]) -> list[Tenant]:
         return list(session.exec(select(Tenant).order_by(Tenant.slug)).all())
     tenants: list[Tenant] = []
     available = [
-        t.slug
-        for t in session.exec(select(Tenant).order_by(Tenant.slug)).all()
+        t.slug for t in session.exec(select(Tenant).order_by(Tenant.slug)).all()
     ]
     for slug in slugs:
         normalized = slug.strip().lower()
@@ -135,7 +134,9 @@ def main() -> None:
             print("库内没有匹配的学校，退出。")
             return
 
-        print(f"目标学校 {len(tenants)} 所；dry-run={args.dry_run}；revert={args.revert}")
+        print(
+            f"目标学校 {len(tenants)} 所；dry-run={args.dry_run}；revert={args.revert}"
+        )
         header = f"{'slug':<28} {'status':<10} 计划"
         print(header)
         print("-" * len(header))

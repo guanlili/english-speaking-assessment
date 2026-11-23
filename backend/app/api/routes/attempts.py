@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import field_validator
 from sqlalchemy import func, or_
@@ -22,7 +22,6 @@ from app.api.deps import (
     ScoringSubmitter,
     SessionDep,
     TeacherUserDep,
-    require_module,
 )
 from app.core.config import settings
 from app.core.ratelimit import SlidingWindowLimiter
@@ -770,7 +769,6 @@ class AttemptBatchRead(SQLModel):
 @router.post(
     "/attempts/batch-read",
     response_model=list[AttemptPublic],
-    dependencies=[Depends(require_module("speaking"))],
 )
 def read_attempts_batch(
     session: SessionDep,
@@ -819,6 +817,9 @@ def read_attempts_batch(
                     detail="没有权限：您不是该作答所属课堂的授权教师",
                 )
 
+    # 成员/归属 404、教师授权 403 均确定后，再判整校 speaking 模块 403。
+    entitlement.ensure_module_enabled(session, current_user.tenant_id, "speaking")
+
     # No projection or partial result is exposed until all access checks pass.
     return [
         _attempt_public(
@@ -854,7 +855,6 @@ def read_attempt(
 @router.get(
     "/attempts/{attempt_id}/comparison",
     response_model=list[AttemptPublic],
-    dependencies=[Depends(require_module("speaking"))],
 )
 def read_attempt_comparison(
     session: SessionDep,
@@ -865,6 +865,7 @@ def read_attempt_comparison(
     if attempt is None or attempt.session_id is None:
         raise HTTPException(404, detail="Attempt not found")
     _require_attempt_access(session, attempt, current_user)
+    entitlement.ensure_module_enabled(session, current_user.tenant_id, "speaking")
     ps = session.get(PracticeSession, attempt.session_id)
     exercise = (
         session.get(ClassroomExercise, ps.assignment_id)
@@ -903,7 +904,6 @@ class TeacherFeedbackWrite(SQLModel):
 @router.put(
     "/attempts/{attempt_id}/teacher-feedback",
     response_model=AttemptPublic,
-    dependencies=[Depends(require_module("speaking"))],
 )
 def write_teacher_feedback(
     session: SessionDep,
@@ -919,6 +919,7 @@ def write_teacher_feedback(
     if current_user.role == "student":
         raise HTTPException(403, detail="Teacher access required")
     _require_attempt_access(session, attempt, current_user)
+    entitlement.ensure_module_enabled(session, current_user.tenant_id, "speaking")
     update_teacher_feedback(
         session,
         attempt,

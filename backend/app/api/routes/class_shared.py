@@ -308,13 +308,25 @@ def _require_classroom_teacher(
         )
 
 
-def _require_classroom_owner(classroom: Classroom, current_user: User) -> None:
-    """仅主教师/本校管理员：删课堂、清历史、改班容与班级设置、管教师团队。"""
+def _require_classroom_owner(
+    classroom: Classroom, current_user: User, module_key: str | None = None
+) -> None:
+    """仅主教师/本校管理员：删课堂、清历史、改班容与班级设置、管教师团队。
+
+    ``module_key`` 给定后在 owner 身份判定通过之后再判模块授权（成员/身份
+    403 优先于模块 403）；未给定（底座管理链路）不做模块闸门。
+    """
     role = classroom_teacher_role(session_for(classroom), classroom, current_user)
     if role not in {"owner", "school_admin"}:
         raise HTTPException(
             status_code=403,
             detail="没有权限：仅主教师或校管理员可执行该操作",
+        )
+    if module_key is not None:
+        from app.services import entitlement
+
+        entitlement.ensure_module_enabled(
+            session_for(classroom), current_user.tenant_id, module_key
         )
 
 
@@ -393,7 +405,7 @@ def delete_class(
     classroom = get_classroom_by_code(session=session, code=code.upper())
     if classroom is None:
         raise HTTPException(status_code=404, detail="Classroom not found")
-    _require_classroom_owner(classroom, current_user)
+    _require_classroom_owner(classroom, current_user, "speaking")
     student_ids = session.exec(
         select(Student.id).where(Student.classroom_id == classroom.id)  # type: ignore[arg-type]
     ).all()
@@ -488,7 +500,7 @@ def update_class_size(
     classroom = get_classroom_by_code(session=session, code=code.upper())
     if classroom is None:
         raise HTTPException(status_code=404, detail="Classroom not found")
-    _require_classroom_owner(classroom, current_user)
+    _require_classroom_owner(classroom, current_user, "speaking")
     ensure_class_size_feasible(
         session=session, classroom=classroom, new_size=body.class_size
     )

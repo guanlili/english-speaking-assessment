@@ -153,6 +153,54 @@ def test_speaking_default_off_403(client: TestClient, db: Session) -> None:
     assert resp.json()["detail"] == "module_not_enabled:speaking"
 
 
+# ── speaking 侧 404 / 403 优先级（与 vocabulary 同一顺序）───────────────
+
+
+def test_speaking_404_before_403_for_non_member(
+    client: TestClient, db: Session
+) -> None:
+    """非本班学生 + 未购 speaking：先 404（不泄露课堂存在性），不先抛模块 403。"""
+    tenant = _mk_tenant(db, "sp-404-out")
+    classroom = _mk_classroom(db, tenant.id)
+    outsider = _mk_user(db, tenant.id, "student", "out")
+    resp = client.get(
+        f"{API}/classes/{classroom.code}/revision",
+        headers=_headers(outsider, tenant.id),
+    )
+    assert resp.status_code == 404, resp.text
+    assert resp.json()["detail"] == "Student not found"
+
+
+def test_speaking_403_after_member_resolution_when_off(
+    client: TestClient, db: Session
+) -> None:
+    """本班学生 + 未购 speaking：成员解析通过后再 403。"""
+    tenant = _mk_tenant(db, "sp-403-member")
+    classroom = _mk_classroom(db, tenant.id)
+    student_user = _mk_user(db, tenant.id, "student", "s")
+    _mk_student(db, classroom, student_user)
+    resp = client.get(
+        f"{API}/classes/{classroom.code}/revision",
+        headers=_headers(student_user, tenant.id),
+    )
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["detail"] == "module_not_enabled:speaking"
+
+
+def test_speaking_member_enabled_returns_200(client: TestClient, db: Session) -> None:
+    """本班学生 + 已购 speaking：200（空课堂修订号也算放行）。"""
+    tenant = _mk_tenant(db, "sp-member-on")
+    _grant(db, tenant.id, "speaking")
+    classroom = _mk_classroom(db, tenant.id)
+    student_user = _mk_user(db, tenant.id, "student", "s")
+    _mk_student(db, classroom, student_user)
+    resp = client.get(
+        f"{API}/classes/{classroom.code}/revision",
+        headers=_headers(student_user, tenant.id),
+    )
+    assert resp.status_code == 200, resp.text
+
+
 # ── 单买口径：只买单词 / 只买口语 ─────────────────────────────────────
 
 
