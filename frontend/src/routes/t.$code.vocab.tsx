@@ -5,9 +5,10 @@ import {
   useNavigate,
   useParams,
 } from "@tanstack/react-router"
-import { BookA, ListChecks, Mic, SpellCheck, Swords } from "lucide-react"
+import { ListChecks, SpellCheck, Swords } from "lucide-react"
 import { useEffect, useState } from "react"
 import { ApiError, ClassesService, VocabularyService } from "@/client"
+import { VocabModuleSwitcher } from "@/components/Teaching/VocabModuleSwitcher"
 import { AssignPanel } from "@/components/Teaching/VocabTasks/AssignPanel"
 import { PkTeacherPanel } from "@/components/Teaching/VocabTasks/PkTeacherPanel"
 import { ResultsPanel } from "@/components/Teaching/VocabTasks/ResultsPanel"
@@ -17,7 +18,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
 import { useModules } from "@/hooks/useModules"
 import { useI18n } from "@/lib/i18n"
-import { TERMS } from "@/lib/terms"
 import { formatDateTime } from "@/lib/time"
 
 export const Route = createFileRoute("/t/$code/vocab")({
@@ -141,19 +141,8 @@ function TeacherVocabPage() {
         <Link to="/classrooms" className="text-sm font-medium text-primary">
           ← {t({ zh: "我的课堂", en: "My Classrooms" })}
         </Link>
-        {/* 课堂内「口语 / 词汇」切换 */}
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <Link to="/t/$code" params={{ code }}>
-              <Mic />
-              {t({ zh: "口语练习", en: "Speaking" })}
-            </Link>
-          </Button>
-          <Button size="sm" aria-current="page">
-            <BookA />
-            {t(TERMS.vocabLearning)}
-          </Button>
-        </div>
+        {/* 课堂内「口语 / 词汇」切换；口语入口按模块清单显隐 */}
+        <VocabModuleSwitcher code={code} />
       </div>
 
       {/* 当前任务概览 */}
