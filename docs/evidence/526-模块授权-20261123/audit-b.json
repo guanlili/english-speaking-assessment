@@ -1,0 +1,26 @@
+[
+  {
+    "id": "7628e226-3374-4eb7-afbc-8cddad2c4b96",
+    "tenant_id": "223cdd8e-3403-4bd7-a708-48243be4c0de",
+    "module_key": "vocabulary",
+    "action": "grant",
+    "enabled_before": null,
+    "enabled_after": true,
+    "effective_at_before": null,
+    "effective_at_after": null,
+    "actor_operator_id": "47f1d40e-336b-40b3-ae5e-058ea7788918",
+    "created_at": "2026-11-23T05:08:14.470985Z"
+  },
+  {
+    "id": "333f8ce8-561d-409e-9563-52f901d9ac41",
+    "tenant_id": "223cdd8e-3403-4bd7-a708-48243be4c0de",
+    "module_key": "speaking",
+    "action": "revoke",
+    "enabled_before": null,
+    "enabled_after": false,
+    "effective_at_before": null,
+    "effective_at_after": null,
+    "actor_operator_id": "47f1d40e-336b-40b3-ae5e-058ea7788918",
+    "created_at": "2026-11-23T05:08:14.463199Z"
+  }
+]

@@ -1,0 +1,250 @@
+{
+  "schools": {
+    "a": {
+      "slug": "e2e-526-a",
+      "code": "D5V8CH",
+      "roles": {
+        "school_admin": {
+          "modules": {
+            "modules": [
+              "speaking"
+            ]
+          },
+          "probes": [
+            {
+              "method": "GET",
+              "path": "/classes/{code}",
+              "status": 405,
+              "detail": "Method Not Allowed"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/teachers",
+              "status": 200,
+              "detail": null
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/today",
+              "status": 404,
+              "detail": "Student not found"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/vocabulary/student/farm",
+              "status": 404,
+              "detail": "Student not found"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/vocabulary/pk/lobby",
+              "status": 403,
+              "detail": "module_not_enabled:vocabulary"
+            }
+          ]
+        },
+        "teacher": {
+          "modules": {
+            "modules": [
+              "speaking"
+            ]
+          },
+          "probes": [
+            {
+              "method": "GET",
+              "path": "/classes/{code}",
+              "status": 405,
+              "detail": "Method Not Allowed"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/teachers",
+              "status": 200,
+              "detail": null
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/today",
+              "status": 403,
+              "detail": "该操作仅限学生账号"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/vocabulary/student/farm",
+              "status": 403,
+              "detail": "该操作仅限学生账号"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/vocabulary/pk/lobby",
+              "status": 403,
+              "detail": "module_not_enabled:vocabulary"
+            }
+          ]
+        },
+        "student": {
+          "modules": {
+            "modules": [
+              "speaking"
+            ]
+          },
+          "probes": [
+            {
+              "method": "GET",
+              "path": "/classes/{code}",
+              "status": 405,
+              "detail": "Method Not Allowed"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/teachers",
+              "status": 403,
+              "detail": "没有权限：您不是该课堂的授权教师，请联系管理员绑定后再查看"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/today",
+              "status": 404,
+              "detail": "No active passage"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/vocabulary/student/farm",
+              "status": 403,
+              "detail": "module_not_enabled:vocabulary"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/vocabulary/pk/lobby",
+              "status": 403,
+              "detail": "module_not_enabled:vocabulary"
+            }
+          ]
+        }
+      }
+    },
+    "b": {
+      "slug": "e2e-526-b",
+      "code": "VJS6CD",
+      "roles": {
+        "school_admin": {
+          "modules": {
+            "modules": [
+              "vocabulary"
+            ]
+          },
+          "probes": [
+            {
+              "method": "GET",
+              "path": "/classes/{code}",
+              "status": 405,
+              "detail": "Method Not Allowed"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/teachers",
+              "status": 200,
+              "detail": null
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/today",
+              "status": 403,
+              "detail": "module_not_enabled:speaking"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/vocabulary/student/farm",
+              "status": 404,
+              "detail": "Student not found"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/vocabulary/pk/lobby",
+              "status": 200,
+              "detail": null
+            }
+          ]
+        },
+        "teacher": {
+          "modules": {
+            "modules": [
+              "vocabulary"
+            ]
+          },
+          "probes": [
+            {
+              "method": "GET",
+              "path": "/classes/{code}",
+              "status": 405,
+              "detail": "Method Not Allowed"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/teachers",
+              "status": 200,
+              "detail": null
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/today",
+              "status": 403,
+              "detail": "module_not_enabled:speaking"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/vocabulary/student/farm",
+              "status": 403,
+              "detail": "该操作仅限学生账号"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/vocabulary/pk/lobby",
+              "status": 200,
+              "detail": null
+            }
+          ]
+        },
+        "student": {
+          "modules": {
+            "modules": [
+              "vocabulary"
+            ]
+          },
+          "probes": [
+            {
+              "method": "GET",
+              "path": "/classes/{code}",
+              "status": 405,
+              "detail": "Method Not Allowed"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/teachers",
+              "status": 403,
+              "detail": "没有权限：您不是该课堂的授权教师，请联系管理员绑定后再查看"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/today",
+              "status": 403,
+              "detail": "module_not_enabled:speaking"
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/vocabulary/student/farm",
+              "status": 200,
+              "detail": null
+            },
+            {
+              "method": "GET",
+              "path": "/classes/{code}/vocabulary/pk/lobby",
+              "status": 200,
+              "detail": null
+            }
+          ]
+        }
+      }
+    }
+  }
+}
