@@ -10,13 +10,19 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import type { ModuleKey } from "@/hooks/useModules"
 import type { BiString } from "@/lib/bi"
 import { useI18n } from "@/lib/i18n"
+import { filterItemsByModule } from "@/lib/module-filter"
+
+export { filterItemsByModule }
 
 export type Item = {
   icon: LucideIcon
   title: BiString
   path: string
+  /** 所属模块；缺省 = 共享底座入口（班级/名单/通讯等），不随模块开关隐藏 */
+  module?: ModuleKey
   /** 角标红点（如平台更新有未读）；仅装饰性提示，不承载信息 */
   dot?: boolean
   /** 未下载的导出包数量 */

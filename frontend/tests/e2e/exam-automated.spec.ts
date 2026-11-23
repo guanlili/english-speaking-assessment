@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
 import { EXAM_AUDIO_UNLOCK_URL } from "../../src/lib/exam-audio"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 async function setup(page: Page, mockAudio = true, lang = "zh") {
   const state = {
@@ -135,6 +136,7 @@ async function setup(page: Page, mockAudio = true, lang = "zh") {
     }
   }
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     state.requests.push(route.request().url())
     let json: unknown = []

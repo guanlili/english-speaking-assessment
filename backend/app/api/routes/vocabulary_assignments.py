@@ -47,7 +47,7 @@ from app.models import (
     VocabularyTeacherAssignmentRow,
     VocabularyTodayPlan,
 )
-from app.services import vocab_quiz, vocabulary_farm, vocabulary_review
+from app.services import entitlement, vocab_quiz, vocabulary_farm, vocabulary_review
 from app.services import vocabulary as vocab_service
 
 router = APIRouter()
@@ -62,7 +62,7 @@ def list_assignments(
 ) -> Any:
     """教师任务列表：全部任务（含已结束）+ 名单进度汇总，按发布倒序。"""
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_teacher(classroom, current_user, "vocabulary")
     return vocab_service.teacher_assignment_rows(session, classroom.id)
 
 
@@ -81,7 +81,7 @@ def publish_vocab_assignment(
     显式 word_ids 的词也必须归属可见词库。
     """
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_teacher(classroom, current_user, "vocabulary")
     prompt_types = vocab_service.validate_prompt_types(body.prompt_types)
     words = vocab_service.resolve_publish_words(
         session, body.book_id, body.word_ids, viewer=current_user
@@ -111,7 +111,7 @@ def archive_vocab_assignment(
     current_user: TeacherUserDep,
 ) -> Any:
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_teacher(classroom, current_user, "vocabulary")
     assignment = _get_assignment(session, classroom.id, assignment_id)
     if assignment.status != "published":
         raise HTTPException(status_code=422, detail="该任务已结束")
@@ -134,7 +134,7 @@ def read_vocab_results(
     if assignment_id is not None:
         return read_vocab_results_payload(session, code, assignment_id, current_user)
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_teacher(classroom, current_user, "vocabulary")
     assignment = vocab_service.current_published_assignment(session, classroom.id)
     if assignment is None:
         return VocabularyClassResults(assignment=None)
@@ -156,7 +156,7 @@ def read_vocab_today(
     （只读，归属校验：只允许本人轮次，不存在 404）。
     """
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
+    student = _student_profile_of(session, classroom, current_user, "vocabulary")
     return _today_plan_payload(
         session, classroom.id, student.id, assignment_id, round_no
     )
@@ -177,7 +177,7 @@ def start_vocab_session(
     if body.round not in (None, "continue", "new"):
         raise HTTPException(status_code=422, detail="未知的轮次请求参数")
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
+    student = _student_profile_of(session, classroom, current_user, "vocabulary")
     if body.assignment_id is None:
         # 缺省 = 聚焦任务（最早截止的未完成进行中任务）
         assignment = vocab_service.focused_assignment(session, classroom.id, student.id)
@@ -308,6 +308,8 @@ def _get_owned_vocab_session(
     ).first()
     if student is None:
         raise HTTPException(status_code=404, detail="作答会话不存在")
+    # 归属 404 先于模块 403：确认是本人会话后再判 vocabulary 授权
+    entitlement.ensure_module_enabled(session, current_user.tenant_id, "vocabulary")
     return vocab_session
 
 
@@ -446,6 +448,7 @@ def submit_quiz_session(
     ).first()
     if student is None:
         raise HTTPException(status_code=404, detail="作答会话不存在")
+    entitlement.ensure_module_enabled(session, current_user.tenant_id, "vocabulary")
     assignment = (
         session.get(VocabularyAssignment, vocab_session.assignment_id)
         if vocab_session.assignment_id is not None
@@ -480,6 +483,7 @@ def report_quiz_tab_switch(
     ).first()
     if student is None:
         raise HTTPException(status_code=404, detail="作答会话不存在")
+    entitlement.ensure_module_enabled(session, current_user.tenant_id, "vocabulary")
     assignment = (
         session.get(VocabularyAssignment, vocab_session.assignment_id)
         if vocab_session.assignment_id is not None

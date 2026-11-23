@@ -113,7 +113,7 @@ def create_book(
         classroom = session.get(Classroom, book_in.classroom_id)
         if classroom is None:
             raise HTTPException(status_code=404, detail="课堂不存在")
-        _require_classroom_teacher(classroom, current_user)
+        _require_classroom_teacher(classroom, current_user, "vocabulary")
 
     title = book_in.title.strip()
     if not title:

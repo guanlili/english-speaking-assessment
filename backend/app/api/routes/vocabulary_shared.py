@@ -478,7 +478,7 @@ def read_vocab_results_payload(
 ) -> VocabularyClassResults:
     """教师结果载荷（results 路由与 CSV 导出共用）。"""
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_teacher(classroom, current_user, "vocabulary")
     assignment = _get_assignment(session, classroom.id, assignment_id)
     student_rows, word_rows, prompt_stats = vocab_service.class_results(
         session, assignment

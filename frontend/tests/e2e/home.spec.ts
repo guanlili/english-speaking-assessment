@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 /** Task-focused student home; all APIs are mocked. */
 
@@ -29,6 +30,7 @@ async function mockHome(page: Page) {
     )
   })
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     if (
       (state.failSummaries && path.endsWith("/review-summaries")) ||

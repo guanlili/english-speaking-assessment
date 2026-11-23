@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 /**
  * 管理页服务端分页的破坏性操作安全（返修R01/R13回归）：
@@ -56,6 +57,7 @@ async function mockAdmin(page: Page): Promise<AdminMock> {
     localStorage.setItem("esa:role", "operator")
   })
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const url = new URL(route.request().url())
     const path = url.pathname
     if (path.endsWith("/login/platform/me")) {

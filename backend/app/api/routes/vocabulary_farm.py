@@ -34,7 +34,7 @@ def read_farm(
 ) -> Any:
     """农场视图：四阶段成长、今日有效练习、XP 余额、streak 与徽章来源。"""
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
+    student = _student_profile_of(session, classroom, current_user, "vocabulary")
     return farm_service.plot_view(session, student=student, user_id=current_user.id)
 
 
@@ -49,5 +49,5 @@ def harvest_farm(
 ) -> Any:
     """成熟地块收获：+10 XP 入既有账本；未成熟/今日 XP 达上限 → 422。"""
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
+    student = _student_profile_of(session, classroom, current_user, "vocabulary")
     return farm_service.harvest(session, student=student, user_id=current_user.id)

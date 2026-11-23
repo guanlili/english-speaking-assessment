@@ -43,9 +43,16 @@ SSE_HEARTBEAT_SECONDS = 15
 
 
 def _viewer(session: SessionDep, code: str, current_user: CurrentUser):
-    """解析课堂与访问者身份；返回 (classroom, role, student)。"""
+    """解析课堂与访问者身份；返回 (classroom, role, student)。
+
+    成员/身份 404 先于模块 403：resolve_viewer 确认本班成员后再判
+    vocabulary 授权（PK 是 vocabulary 子能力，不单独开关）。
+    """
+    from app.services import entitlement
+
     classroom = _get_classroom(session, code)
     role, student = pk_service.resolve_viewer(session, classroom, current_user)
+    entitlement.ensure_module_enabled(session, current_user.tenant_id, "vocabulary")
     return classroom, role, student
 
 

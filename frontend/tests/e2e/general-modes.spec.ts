@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 for (const width of [390, 820, 1180]) {
   for (const exam of [false, true]) {
@@ -20,6 +21,7 @@ for (const width of [390, 820, 1180]) {
           )
         })
         await page.route("**/api/v1/**", async (route) => {
+          if (isModulesMeRoute(route)) return fulfillModulesMe(route)
           const path = new URL(route.request().url()).pathname
           await route.fulfill({
             json: path.endsWith("/users/me")

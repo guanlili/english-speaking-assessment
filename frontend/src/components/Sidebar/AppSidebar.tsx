@@ -27,8 +27,9 @@ import {
 import useAuth, { cachedRole } from "@/hooks/useAuth"
 import { useChangelogHasNew } from "@/hooks/useChangelog"
 import { useExports } from "@/hooks/useExports"
+import { useModules } from "@/hooks/useModules"
 import { useI18n } from "@/lib/i18n"
-import { type Item, isItemActive, Main } from "./Main"
+import { filterItemsByModule, type Item, isItemActive, Main } from "./Main"
 import { User } from "./User"
 
 const baseItems: Item[] = [
@@ -44,6 +45,7 @@ const createHubItem: Item[] = [
     icon: Library,
     title: { zh: "题目库", en: "Question Bank" },
     path: "/create",
+    module: "speaking",
   },
 ]
 
@@ -87,16 +89,19 @@ const schoolAdminExtraItems: Item[] = [
     icon: Layers,
     title: { zh: "单元管理", en: "Units" },
     path: "/admin/units",
+    module: "speaking",
   },
   {
     icon: MessageSquareQuote,
     title: { zh: "句型库", en: "Sentence Frames" },
     path: "/admin/sentenceframes",
+    module: "speaking",
   },
   {
     icon: BookA,
     title: { zh: "词库管理", en: "Word Books" },
     path: "/admin/vocabbooks",
+    module: "vocabulary",
   },
 ]
 
@@ -111,6 +116,9 @@ export function AppSidebar() {
   const isSchoolStaff = role === "teacher" || isSchoolAdmin
   const exportJobs = useExports(isSchoolStaff)
   const unseenExports = exportJobs.data?.unseen_ready ?? 0
+  const { hasModule } = useModules(isSchoolStaff)
+  const filterByModule = (entries: Item[]) =>
+    filterItemsByModule(entries, hasModule)
   const currentPath = useRouterState({
     select: (state) => state.location.pathname,
   })
@@ -127,18 +135,19 @@ export function AppSidebar() {
     dot: hasChangelogNew,
   }
   const items = isSchoolStaff
-    ? [
+    ? filterByModule([
         ...baseItems,
         {
           icon: FolderArchive,
           title: { zh: "录音导出", en: "Audio Export" },
           path: "/exports",
+          module: "speaking",
           badge: unseenExports > 0 ? unseenExports : undefined,
         },
         ...createHubItem,
         ...(isSchoolAdmin ? schoolAdminExtraItems : []),
         changelogItem,
-      ]
+      ])
     : isOperator
       ? [changelogItem]
       : baseItems
@@ -189,12 +198,20 @@ export function AppSidebar() {
                 />
               </summary>
               <Main
-                items={isOperator ? adminOnlyItems : schoolAdminExtraItems}
+                items={
+                  isOperator
+                    ? adminOnlyItems
+                    : filterByModule(schoolAdminExtraItems)
+                }
               />
             </details>
             <div className="hidden group-data-[collapsible=icon]:block">
               <Main
-                items={isOperator ? adminOnlyItems : schoolAdminExtraItems}
+                items={
+                  isOperator
+                    ? adminOnlyItems
+                    : filterByModule(schoolAdminExtraItems)
+                }
               />
             </div>
           </div>

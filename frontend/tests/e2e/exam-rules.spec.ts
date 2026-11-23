@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
 import type { PlanAttempt } from "../../src/client/types.gen"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 const items = [0, 1].map((index) => ({
   id: `00000000-0000-4000-8000-00000000000${index + 1}`,
@@ -63,6 +64,7 @@ async function mockExam(page: Page, isExam = true) {
     })
   })
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     let body: unknown = []
     if (path.endsWith("/users/me"))

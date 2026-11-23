@@ -45,7 +45,7 @@ from app.models import (
     User,
 )
 from app.scoring.audio_convert import probe_audio
-from app.services import content_access, followups, reading
+from app.services import content_access, entitlement, followups, reading
 from app.services import exam as exam_service
 from app.services.audio_playback import playback_path
 
@@ -584,6 +584,9 @@ def create_attempt_upload(
     """
     # 归属解析：课堂作答（有 session）必须登录学生本人，演示作答无归属
     student = _resolve_submit_student(session, session_id, current_user)
+    # 登录身份的作答走 speaking 模块闸门；演示匿名作答无校归属，不在此判
+    if current_user is not None:
+        entitlement.ensure_module_enabled(session, current_user.tenant_id, "speaking")
 
     # 幂等检查：同键已有作答直接返回（同样校验归属，防越权读取他人作答）；
     # 键指向别的题目/会话时拒绝（防串题回执，见 _idempotent_existing）
@@ -763,7 +766,10 @@ class AttemptBatchRead(SQLModel):
 
 
 # Keep static paths ahead of /attempts/{attempt_id}.
-@router.post("/attempts/batch-read", response_model=list[AttemptPublic])
+@router.post(
+    "/attempts/batch-read",
+    response_model=list[AttemptPublic],
+)
 def read_attempts_batch(
     session: SessionDep,
     body: AttemptBatchRead,
@@ -811,6 +817,9 @@ def read_attempts_batch(
                     detail="没有权限：您不是该作答所属课堂的授权教师",
                 )
 
+    # 成员/归属 404、教师授权 403 均确定后，再判整校 speaking 模块 403。
+    entitlement.ensure_module_enabled(session, current_user.tenant_id, "speaking")
+
     # No projection or partial result is exposed until all access checks pass.
     return [
         _attempt_public(
@@ -843,7 +852,10 @@ def read_attempt(
     )
 
 
-@router.get("/attempts/{attempt_id}/comparison", response_model=list[AttemptPublic])
+@router.get(
+    "/attempts/{attempt_id}/comparison",
+    response_model=list[AttemptPublic],
+)
 def read_attempt_comparison(
     session: SessionDep,
     attempt_id: uuid.UUID,
@@ -853,6 +865,7 @@ def read_attempt_comparison(
     if attempt is None or attempt.session_id is None:
         raise HTTPException(404, detail="Attempt not found")
     _require_attempt_access(session, attempt, current_user)
+    entitlement.ensure_module_enabled(session, current_user.tenant_id, "speaking")
     ps = session.get(PracticeSession, attempt.session_id)
     exercise = (
         session.get(ClassroomExercise, ps.assignment_id)
@@ -888,7 +901,10 @@ class TeacherFeedbackWrite(SQLModel):
     expected_revision: int = Field(ge=0)
 
 
-@router.put("/attempts/{attempt_id}/teacher-feedback", response_model=AttemptPublic)
+@router.put(
+    "/attempts/{attempt_id}/teacher-feedback",
+    response_model=AttemptPublic,
+)
 def write_teacher_feedback(
     session: SessionDep,
     attempt_id: uuid.UUID,
@@ -903,6 +919,7 @@ def write_teacher_feedback(
     if current_user.role == "student":
         raise HTTPException(403, detail="Teacher access required")
     _require_attempt_access(session, attempt, current_user)
+    entitlement.ensure_module_enabled(session, current_user.tenant_id, "speaking")
     update_teacher_feedback(
         session,
         attempt,

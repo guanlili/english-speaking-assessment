@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 type Message = {
   id: string
@@ -29,6 +30,7 @@ async function setup(page: Page, lang = "zh") {
     localStorage.setItem("esa:lang", lang)
   }, lang)
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const request = route.request(),
       path = new URL(request.url()).pathname
     const body = request.method() === "GET" ? null : request.postDataJSON()

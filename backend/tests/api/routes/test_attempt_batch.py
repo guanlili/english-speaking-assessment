@@ -359,8 +359,9 @@ def test_batch_queries_do_not_grow_per_attempt(
             result = read_attempts_batch(session, body, teacher)
             assert len(result) == 2
             assert (
-                len(statements) == 2
-            )  # Attempt IN + Student/Classroom ownership join.
+                len(statements) == 3
+            )  # Attempt IN + 归属 JOIN + 整校 speaking 授权查询（固定一次，不随题量增长）
             assert "JOIN classroom" in statements[1]
+            assert "tenant_module" in statements[2]
         finally:
             event.remove(connection, "before_cursor_execute", capture)

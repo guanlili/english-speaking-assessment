@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import {
   Archive,
   BookA,
@@ -10,7 +10,7 @@ import {
   RefreshCw,
   Upload,
 } from "lucide-react"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { ApiError, VocabularyService } from "@/client"
 import { Badge } from "@/components/ui/badge"
@@ -33,6 +33,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { APP_NAME } from "@/config"
+import { isOperatorLoggedIn } from "@/hooks/useAuth"
+import { useModules } from "@/hooks/useModules"
 import { downloadCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
 import { localizeImportIssue } from "@/lib/vocabImport"
@@ -64,6 +66,15 @@ function VocabBooksAdmin() {
   const { t } = useI18n()
   const queryClient = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
+  const navigate = useNavigate()
+  const isOperator = isOperatorLoggedIn()
+  const { hasModule, isPending: modulesPending } = useModules(!isOperator)
+  // 未购词汇模块的校级账号直连拦截；平台运营豁免。
+  useEffect(() => {
+    if (!isOperator && !modulesPending && !hasModule("vocabulary")) {
+      void navigate({ to: "/classrooms" })
+    }
+  }, [isOperator, modulesPending, hasModule, navigate])
 
   const booksQuery = useQuery({
     queryKey: ["admin", "vocab-books"],

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
 import type { PlanAttempt, PlanItem } from "../../src/client/types.gen"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 /**
  * 学生端录音主流程（练习模式，非模考）：
@@ -84,6 +85,7 @@ async function mockPractice(page: Page): Promise<MockState> {
     })
   })
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     let body: unknown = []
     if (path.endsWith("/users/me")) {
@@ -311,6 +313,7 @@ async function mockDraftPractice(page: Page): Promise<DraftMockState> {
     })
   }, DRAFT_TOKEN)
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     let body: unknown = []
     if (path.endsWith("/users/me")) {

@@ -19,8 +19,9 @@
 401 只表示登录失效；权限不足一律 403。
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.api.deps import require_module
 from app.api.routes import (
     vocabulary_assignments as _assignments,
 )
@@ -45,8 +46,12 @@ from app.api.routes import (
 
 router = APIRouter()
 
-router.include_router(_import.router, tags=["vocabulary"])
-router.include_router(_books.router, tags=["vocabulary"])
+# 无课堂成员解析的教师侧词库/导入端点：模块闸门挂在路由级依赖。
+# 带课堂码的端点在成员解析（404）之后由共享助手判模块 403，优先级固定。
+_vocab_gate = [Depends(require_module("vocabulary"))]
+
+router.include_router(_import.router, tags=["vocabulary"], dependencies=_vocab_gate)
+router.include_router(_books.router, tags=["vocabulary"], dependencies=_vocab_gate)
 router.include_router(_assignments.router, tags=["vocabulary"])
 router.include_router(_farm.router, tags=["vocabulary"])
 router.include_router(_quiz.router, tags=["vocabulary"])

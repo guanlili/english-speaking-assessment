@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 for (const width of [390, 820, 1180]) {
   test(`confirm classroom history deletion and recover from scoring conflict at ${width}px`, async ({
@@ -12,6 +13,7 @@ for (const width of [390, 820, 1180]) {
     let deleted = false
     let deleteCalls = 0
     await page.route("**/api/v1/**", async (route) => {
+      if (isModulesMeRoute(route)) return fulfillModulesMe(route)
       const url = new URL(route.request().url())
       let body: unknown = []
       if (url.pathname.endsWith("/users/me"))

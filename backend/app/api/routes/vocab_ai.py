@@ -15,10 +15,15 @@ import logging
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import col, select
 
-from app.api.deps import SessionDep, StudentUserDep, TeacherUserDep
+from app.api.deps import (
+    SessionDep,
+    StudentUserDep,
+    TeacherUserDep,
+    require_module,
+)
 from app.api.routes.classes import _get_classroom, _student_profile_of
 from app.models import (
     VocabularyAiExplanationRequest,
@@ -56,7 +61,9 @@ def _ai_error_response(exc: Exception) -> HTTPException:
 
 
 @router.post(
-    "/vocabulary/ai/word-drafts", response_model=VocabularyAiWordDraftsResponse
+    "/vocabulary/ai/word-drafts",
+    response_model=VocabularyAiWordDraftsResponse,
+    dependencies=[Depends(require_module("vocabulary"))],
 )
 def generate_word_drafts(
     current_user: TeacherUserDep,
@@ -94,6 +101,7 @@ def generate_word_drafts(
 @router.post(
     "/vocabulary/ai/word-drafts/import",
     response_model=VocabularyAiWordDraftImportResult,
+    dependencies=[Depends(require_module("vocabulary"))],
 )
 def import_word_drafts(
     session: SessionDep,
@@ -164,7 +172,7 @@ def word_explanation(
     （讲解含例句与常见误拼，可能变相揭示未公布拼写）。
     """
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
+    student = _student_profile_of(session, classroom, current_user, "vocabulary")
     vocab_ai.require_ai_configured()
 
     headword = body.headword.strip()
@@ -222,7 +230,7 @@ def session_insight(
     """单次练习学情：只使用本轮真实作答；测验答案未公布时不提供
     （不得绕过答案可见规则）。缓存按作答指纹判定新旧。"""
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
+    student = _student_profile_of(session, classroom, current_user, "vocabulary")
     vocab_ai.require_ai_configured()
 
     vocab_session = session.get(VocabularySession, body.session_id)
@@ -290,7 +298,7 @@ def overall_insight(
     """整体学习建议：最近 limit 轮、days 天内的历史记录（未公布测验
     作答不计入）；缓存按窗口内作答指纹判定新旧。"""
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
+    student = _student_profile_of(session, classroom, current_user, "vocabulary")
     vocab_ai.require_ai_configured()
 
     cache_key = f"overall-insight:{student.id}:{body.limit}:{body.days}"

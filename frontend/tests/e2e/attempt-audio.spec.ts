@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises"
 import { expect, type Page, test } from "@playwright/test"
 import { wav } from "./utils/audio"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 // Real playback tests share the runner's audio device. Keep them together and
 // sequential while the rest of the mocked suite runs fully parallel.
@@ -19,6 +20,7 @@ async function mockTeacher(
   })
   const state = { fail: failInitially, requests: 0 }
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     if (path.endsWith("/audio")) {
       state.requests++

@@ -41,6 +41,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { APP_NAME } from "@/config"
+import { useModules } from "@/hooks/useModules"
 import {
   boardReminderMessage,
   boardRosterCsv,
@@ -67,6 +68,7 @@ const IDLE_REFRESH_MS = 20000
 
 function TeacherBoardPage() {
   const { t } = useI18n()
+  const { hasModule } = useModules()
   const { code } = useParams({ from: "/t/$code/" })
   const queryClient = useQueryClient()
   const rosterRef = useRef<HTMLDivElement>(null)
@@ -377,17 +379,19 @@ function TeacherBoardPage() {
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-11 border-white/20 bg-white/10 text-paper-hero hover:bg-white/20 hover:text-paper-hero"
-              asChild
-            >
-              <Link to="/t/$code/vocab" params={{ code }}>
-                <BookA />
-                {t(TERMS.vocabLearning)}
-              </Link>
-            </Button>
+            {hasModule("vocabulary") && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-11 border-white/20 bg-white/10 text-paper-hero hover:bg-white/20 hover:text-paper-hero"
+                asChild
+              >
+                <Link to="/t/$code/vocab" params={{ code }}>
+                  <BookA />
+                  {t(TERMS.vocabLearning)}
+                </Link>
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"

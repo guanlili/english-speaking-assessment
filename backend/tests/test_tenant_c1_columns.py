@@ -71,6 +71,10 @@ EXPECTED_NO_TENANT_TABLES = {
     "changelog_entry",
 }
 
+# 平台授权口径表：带 tenant_id 做本校只读隔离，但不是 C1 业务表——
+# 由平台运营通道显式写租户，不走业务写入的 server_default 兜底。
+ENTITLEMENT_TABLES = {"tenant_module", "tenant_module_audit"}
+
 
 def test_c1_column_inventory() -> None:
     """31 业务表全带 tenant_id；身份层与平台口径表不带。"""
@@ -83,7 +87,7 @@ def test_c1_column_inventory() -> None:
             without_tenant.add(table.name)
     # 锚点三表（B1）+ user 也带
     assert {"user", "classroom", "student"} <= with_tenant
-    got_business = with_tenant - {"user", "classroom", "student"}
+    got_business = with_tenant - {"user", "classroom", "student"} - ENTITLEMENT_TABLES
     assert got_business == EXPECTED_TENANT_TABLES, (
         f"missing={EXPECTED_TENANT_TABLES - got_business} "
         f"extra={got_business - EXPECTED_TENANT_TABLES}"

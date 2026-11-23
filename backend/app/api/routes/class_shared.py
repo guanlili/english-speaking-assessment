@@ -7,7 +7,7 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import load_only
@@ -18,6 +18,7 @@ from app.api.deps import (
     SessionDep,
     StudentUserDep,
     TeacherUserDep,
+    require_speaking_classroom,
 )
 from app.core.config import settings
 from app.crud import (
@@ -62,7 +63,13 @@ from app.scoring.bands import adjust_band
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/classes", tags=["classes"])
+# speaking 模块闸门挂在共享课堂路由上：底座路径（建校/名单/教师团队/通讯/
+# 在场）在依赖内放行，其余课堂业务端点按整校 speaking 授权 403。
+router = APIRouter(
+    prefix="/classes",
+    tags=["classes"],
+    dependencies=[Depends(require_speaking_classroom)],
+)
 
 # 课堂码字母表去掉易混字符（0/O/1/I）
 CLASSROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -243,11 +250,16 @@ def _get_student_of_classroom(
 
 
 def _student_profile_of(
-    session: SessionDep, classroom: Classroom, current_user: User
+    session: SessionDep,
+    classroom: Classroom,
+    current_user: User,
+    module_key: str | None = None,
 ) -> Student:
     """学生登录档案解析：JWT → user → 该课堂的学生档案（未入班 404）。
 
     404 统一口径：学生档案不存在 = 未加入该课堂，前端引导去加入页。
+    ``module_key`` 给定后在成员解析成功之后再判模块授权（404 优先于
+    模块 403）；未给定（口语底座链路）不做模块闸门。
     """
     student = session.exec(
         select(Student).where(
@@ -257,6 +269,10 @@ def _student_profile_of(
     ).first()
     if student is None:
         raise HTTPException(status_code=404, detail="Student not found")
+    if module_key is not None:
+        from app.services import entitlement
+
+        entitlement.ensure_module_enabled(session, current_user.tenant_id, module_key)
     return student
 
 
@@ -269,25 +285,48 @@ def _include_type(classroom: Classroom, kind: str) -> bool:
     return classroom.assign_qa is not False
 
 
-def _require_classroom_teacher(classroom: Classroom, current_user: User) -> None:
+def _require_classroom_teacher(
+    classroom: Classroom, current_user: User, module_key: str | None = None
+) -> None:
     """教师端点：主教师/共管教师/本校管理员才能访问（课堂码不是教师凭据）。
 
     判定核心在 crud.classroom_teacher_allowed（与 students 侧同一事实源）；
-    本侧对停用课堂放行（owner 收尾操作：删除课堂/调班容等）。"""
+    本侧对停用课堂放行（owner 收尾操作：删除课堂/调班容等）。
+    ``module_key`` 给定后在教师身份判定通过之后再判模块授权（成员/身份
+    403 优先于模块 403）；未给定（口语底座链路）不做模块闸门。
+    """
     if not classroom_teacher_allowed(classroom, current_user):
         raise HTTPException(
             status_code=403,
             detail="没有权限：您不是该课堂的授权教师，请联系管理员绑定后再查看",
         )
+    if module_key is not None:
+        from app.services import entitlement
+
+        entitlement.ensure_module_enabled(
+            session_for(classroom), current_user.tenant_id, module_key
+        )
 
 
-def _require_classroom_owner(classroom: Classroom, current_user: User) -> None:
-    """仅主教师/本校管理员：删课堂、清历史、改班容与班级设置、管教师团队。"""
+def _require_classroom_owner(
+    classroom: Classroom, current_user: User, module_key: str | None = None
+) -> None:
+    """仅主教师/本校管理员：删课堂、清历史、改班容与班级设置、管教师团队。
+
+    ``module_key`` 给定后在 owner 身份判定通过之后再判模块授权（成员/身份
+    403 优先于模块 403）；未给定（底座管理链路）不做模块闸门。
+    """
     role = classroom_teacher_role(session_for(classroom), classroom, current_user)
     if role not in {"owner", "school_admin"}:
         raise HTTPException(
             status_code=403,
             detail="没有权限：仅主教师或校管理员可执行该操作",
+        )
+    if module_key is not None:
+        from app.services import entitlement
+
+        entitlement.ensure_module_enabled(
+            session_for(classroom), current_user.tenant_id, module_key
         )
 
 
@@ -366,7 +405,7 @@ def delete_class(
     classroom = get_classroom_by_code(session=session, code=code.upper())
     if classroom is None:
         raise HTTPException(status_code=404, detail="Classroom not found")
-    _require_classroom_owner(classroom, current_user)
+    _require_classroom_owner(classroom, current_user, "speaking")
     student_ids = session.exec(
         select(Student.id).where(Student.classroom_id == classroom.id)  # type: ignore[arg-type]
     ).all()
@@ -461,7 +500,7 @@ def update_class_size(
     classroom = get_classroom_by_code(session=session, code=code.upper())
     if classroom is None:
         raise HTTPException(status_code=404, detail="Classroom not found")
-    _require_classroom_owner(classroom, current_user)
+    _require_classroom_owner(classroom, current_user, "speaking")
     ensure_class_size_feasible(
         session=session, classroom=classroom, new_size=body.class_size
     )

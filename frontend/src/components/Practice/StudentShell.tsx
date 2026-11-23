@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { Link, useParams } from "@tanstack/react-router"
+import { Link, useNavigate, useParams } from "@tanstack/react-router"
 import {
   ArrowRight,
   ArrowRightLeft,
@@ -17,11 +17,13 @@ import {
   UsersRound,
 } from "lucide-react"
 import type { ReactNode } from "react"
+import { useEffect } from "react"
 import { ClassesService } from "@/client"
 import { Appearance } from "@/components/Common/Appearance"
 import { LanguageToggle } from "@/components/Common/LanguageToggle"
 import { Logo } from "@/components/Common/Logo"
 import { StudentClassroomInbox } from "@/components/Practice/StudentClassroomInbox"
+import { filterItemsByModule } from "@/components/Sidebar/Main"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -43,6 +45,7 @@ import {
 import useAuth from "@/hooks/useAuth"
 import { useClassroomMessages } from "@/hooks/useClassroomMessages"
 import { useExports } from "@/hooks/useExports"
+import { type ModuleKey, useModules } from "@/hooks/useModules"
 import { displayName, loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
 import { buildAttemptByItem } from "@/lib/practice-derive"
@@ -54,50 +57,63 @@ import { cn } from "@/lib/utils"
  * 前 3 项 = 手机底部导航（今日任务/词汇/成长）；主题探索、课堂与帮助
  * 收进次级菜单（侧栏下半区与账户菜单）——2026-10 词汇模块设计。
  */
-const items = [
+const items: Array<{
+  key: string
+  to: string
+  label: { zh: string; en: string }
+  icon: typeof Home
+  module: ModuleKey | null
+}> = [
   {
     key: "home",
     to: "/home/$code",
     label: { zh: "今日任务", en: "Today’s Tasks" },
     icon: Home,
+    module: "speaking",
   },
   {
     key: "vocab",
     to: "/vocab/$code",
     label: TERMS.vocabLearning,
     icon: BookA,
+    module: "vocabulary",
   },
   {
     key: "me",
     to: "/me/$code",
     label: TERMS.growthPage,
     icon: ChartLine,
+    module: "speaking",
   },
   {
     key: "exam",
     to: "/exam/$code",
     label: { zh: "考试", en: "Exams" },
     icon: ClipboardCheck,
+    module: "speaking",
   },
   {
     key: "explore",
     to: "/explore/$code",
     label: { zh: "主题探索", en: "Explore Topics" },
     icon: Sparkles,
+    module: "speaking",
   },
   {
     key: "classroom",
     to: "/classroom/$code",
     label: { zh: "我的课堂", en: "My Classroom" },
     icon: UsersRound,
+    module: null,
   },
   {
     key: "help",
     to: "/help/$code",
     label: { zh: "帮助与设备", en: "Help & Devices" },
     icon: CircleHelp,
+    module: null,
   },
-] as const
+]
 
 function StudentShell({
   active,
@@ -118,7 +134,23 @@ function StudentShell({
     ? displayName(student)
     : t({ zh: "学习空间", en: "Learning Space" })
   const activeKey = active === "practice" || active === "exam" ? "home" : active
-  const current = items.find((item) => item.key === activeKey)
+
+  // 模块授权：按本校已购模块过滤导航；直连未购模块页时回「我的班级」。
+  // 服务端闸门是最终裁决，前端过滤只减少无效直达。
+  const navigate = useNavigate()
+  const { hasModule, isPending: modulesPending } = useModules()
+  const visibleItems = filterItemsByModule(items, hasModule)
+  const speakingNav = visibleItems.filter((item) => item.module === "speaking")
+  const vocabNav = visibleItems.filter((item) => item.module === "vocabulary")
+  const activeItem = items.find((item) => item.key === activeKey)
+  useEffect(() => {
+    if (modulesPending) return
+    if (activeItem?.module && !hasModule(activeItem.module)) {
+      void navigate({ to: "/join" })
+    }
+  }, [modulesPending, activeItem, hasModule, navigate])
+
+  const current = visibleItems.find((item) => item.key === activeKey)
 
   return (
     <div className="flex min-h-svh bg-background">
@@ -136,7 +168,7 @@ function StudentShell({
           aria-label={t({ zh: "学习导航", en: "Learning navigation" })}
           className="grid gap-1.5"
         >
-          {items
+          {speakingNav
             .filter((item) => item.key !== "exam")
             .map((item, index) => (
               <Link
@@ -159,6 +191,33 @@ function StudentShell({
                 )}
               </Link>
             ))}
+          {vocabNav.length > 0 && (
+            <>
+              <p className="mt-6 px-3 text-[10px] font-semibold tracking-[0.18em] text-muted-foreground">
+                {t(TERMS.vocabLearning)}
+              </p>
+              {vocabNav.map((item) => (
+                <Link
+                  key={item.key}
+                  aria-current={activeKey === item.key ? "page" : undefined}
+                  to={item.to}
+                  params={{ code }}
+                  className={cn(
+                    "group flex min-h-12 items-center gap-3 rounded-xl px-3.5 text-sm transition-colors",
+                    activeKey === item.key
+                      ? "bg-primary font-semibold text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
+                  )}
+                >
+                  <item.icon className="size-[18px]" />
+                  {t(item.label)}
+                  {activeKey === item.key && (
+                    <span className="ml-auto size-1.5 rounded-full bg-current" />
+                  )}
+                </Link>
+              ))}
+            </>
+          )}
           {/* 多班归属：跨班切换入口（/join = 我的班级 hub，无 $code 参数） */}
           <Link
             to="/join"
@@ -244,8 +303,7 @@ function StudentShell({
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {items
-                  .slice(3)
-                  .filter((item) => item.key !== "exam")
+                  .filter((item) => !item.module)
                   .map((item) => (
                     <DropdownMenuItem key={item.key} asChild>
                       <Link to={item.to} params={{ code }}>
@@ -308,7 +366,7 @@ function StudentShell({
         aria-label={t({ zh: "手机学习导航", en: "Mobile learning navigation" })}
         className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-border/80 bg-card/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md md:hidden"
       >
-        {items.slice(0, 3).map((item) => (
+        {visibleItems.slice(0, 3).map((item) => (
           <Link
             key={item.key}
             to={item.to}

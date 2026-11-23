@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 async function mockWorkspace(page: Page, lang: string) {
   await page.addInitScript((lang) => {
@@ -7,6 +8,7 @@ async function mockWorkspace(page: Page, lang: string) {
     localStorage.setItem("esa:lang", lang)
   }, lang)
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const path = new URL(route.request().url()).pathname
     let body: unknown = []
     if (path.endsWith("/users/me"))

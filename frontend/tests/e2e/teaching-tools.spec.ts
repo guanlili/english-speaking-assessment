@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 async function setup(page: Page, lang = "zh") {
   let review = { revision: 0, notes: {} as Record<string, string>, summary: "" }
@@ -19,6 +20,7 @@ async function setup(page: Page, lang = "zh") {
     )
   }, lang)
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const url = new URL(route.request().url())
     const path = url.pathname
     const body =
