@@ -3,12 +3,16 @@ import { createFileRoute, Link, useParams } from "@tanstack/react-router"
 import { ApiError, ClassesService } from "@/client"
 import { LearningReportCard } from "@/components/Practice/LearningReportCard"
 import TrailView from "@/components/Practice/TrailView"
+import { ModuleDeniedPanel } from "@/components/Teaching/ModuleDeniedPanel"
 import { StudentSessionHistory } from "@/components/Teaching/StudentSessionHistory"
 import { TeachingPageHeader } from "@/components/Teaching/TeachingPageHeader"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/config"
+import { useModules } from "@/hooks/useModules"
 import { useI18n } from "@/lib/i18n"
+import { moduleGuardState } from "@/lib/module-filter"
 
 export const Route = createFileRoute("/t/$code/s/$studentId")({
   component: StudentDetailPage,
@@ -20,7 +24,18 @@ export const Route = createFileRoute("/t/$code/s/$studentId")({
 function StudentDetailPage() {
   const { t } = useI18n()
   const { code, studentId } = useParams({ from: "/t/$code/s/$studentId" })
+  const {
+    hasModule,
+    isPending: modulesPending,
+    isError: modulesError,
+  } = useModules()
+  const guard = moduleGuardState(
+    { isPending: modulesPending, isError: modulesError },
+    hasModule,
+    "speaking",
+  )
 
+  // 模块清单未放行前不发轨迹 / 面板请求，避免未购学校产生 403 噪音。
   const trailQuery = useQuery({
     queryKey: ["teacher", "trail", code, studentId],
     queryFn: () =>
@@ -28,12 +43,33 @@ function StudentDetailPage() {
         code: code.toUpperCase(),
         student_id: studentId,
       }),
+    enabled: guard === "allowed",
   })
 
   const boardQuery = useQuery({
     queryKey: ["teacher", "board", code],
     queryFn: () => ClassesService.readClassBoard({ code: code.toUpperCase() }),
+    enabled: guard === "allowed",
   })
+
+  if (guard === "loading") {
+    return (
+      <div role="status" className="space-y-6">
+        <span className="sr-only">
+          {t({ zh: "正在加载…", en: "Loading…" })}
+        </span>
+        <Skeleton className="h-40 rounded-2xl" />
+        <Skeleton className="h-11 w-64 rounded-xl" />
+        <Skeleton className="h-80 rounded-2xl" />
+      </div>
+    )
+  }
+
+  if (guard === "denied") {
+    // 未购口语模块：停留拦截页（附回课堂列表入口），不瞬间跳走，便于核对/截图；
+    // 服务端闸门仍是最终裁决，前端拦截只减少无效直达。
+    return <ModuleDeniedPanel module="speaking" />
+  }
 
   const boardRow = boardQuery.data?.students.find(
     (s) => s.student_id === studentId,
