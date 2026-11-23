@@ -1,0 +1,248 @@
+{
+  "school": "e2e-526-a",
+  "tenant_id": "0b8be946-280a-45ad-9872-9dd8d1704467",
+  "module": "vocabulary",
+  "steps": [
+    {
+      "label": "t0_before_grant",
+      "timestamp": "2026-11-23T06:44:12.327043+00:00",
+      "modules_me": {
+        "modules": [
+          "speaking"
+        ]
+      },
+      "probes": [
+        {
+          "method": "GET",
+          "path": "/classes/D5V8CH/vocabulary/student/farm",
+          "status": 403,
+          "detail": "module_not_enabled:vocabulary"
+        },
+        {
+          "method": "GET",
+          "path": "/classes/D5V8CH/vocabulary/pk/lobby",
+          "status": 403,
+          "detail": "module_not_enabled:vocabulary"
+        }
+      ]
+    },
+    {
+      "label": "t0_after_grant_future_not_due",
+      "timestamp": "2026-11-23T06:44:12.355606+00:00",
+      "modules_me": {
+        "modules": [
+          "speaking"
+        ]
+      },
+      "probes": [
+        {
+          "method": "GET",
+          "path": "/classes/D5V8CH/vocabulary/student/farm",
+          "status": 403,
+          "detail": "module_not_enabled:vocabulary"
+        },
+        {
+          "method": "GET",
+          "path": "/classes/D5V8CH/vocabulary/pk/lobby",
+          "status": 403,
+          "detail": "module_not_enabled:vocabulary"
+        }
+      ]
+    },
+    {
+      "label": "t_due_after_effective_at",
+      "timestamp": "2026-11-23T06:46:57.113381+00:00",
+      "modules_me": {
+        "modules": [
+          "speaking",
+          "vocabulary"
+        ]
+      },
+      "probes": [
+        {
+          "method": "GET",
+          "path": "/classes/D5V8CH/vocabulary/student/farm",
+          "status": 200,
+          "detail": null
+        },
+        {
+          "method": "GET",
+          "path": "/classes/D5V8CH/vocabulary/pk/lobby",
+          "status": 200,
+          "detail": null
+        }
+      ]
+    },
+    {
+      "label": "after_restore_off",
+      "timestamp": "2026-11-23T06:47:27.708039+00:00",
+      "modules_me": {
+        "modules": [
+          "speaking"
+        ]
+      },
+      "probes": [
+        {
+          "method": "GET",
+          "path": "/classes/D5V8CH/vocabulary/student/farm",
+          "status": 403,
+          "detail": "module_not_enabled:vocabulary"
+        },
+        {
+          "method": "GET",
+          "path": "/classes/D5V8CH/vocabulary/pk/lobby",
+          "status": 403,
+          "detail": "module_not_enabled:vocabulary"
+        }
+      ]
+    }
+  ],
+  "planned_effective_at": "2026-11-23T06:46:12.286235+00:00",
+  "grant_response": {
+    "status": 200,
+    "body": {
+      "tenant_id": "0b8be946-280a-45ad-9872-9dd8d1704467",
+      "module_key": "vocabulary",
+      "enabled": true,
+      "effective_at": "2026-11-23T06:46:12.286235Z",
+      "updated_at": "2026-11-23T06:44:12.332697Z",
+      "updated_by": "47f1d40e-336b-40b3-ae5e-058ea7788918"
+    }
+  },
+  "restore_response": {
+    "status": 200,
+    "body": {
+      "tenant_id": "0b8be946-280a-45ad-9872-9dd8d1704467",
+      "module_key": "vocabulary",
+      "enabled": false,
+      "effective_at": null,
+      "updated_at": "2026-11-23T06:47:27.682556Z",
+      "updated_by": "47f1d40e-336b-40b3-ae5e-058ea7788918"
+    }
+  },
+  "audit_after_restore": {
+    "status": 200,
+    "rows": [
+      {
+        "id": "e4b1bf6d-359c-40dc-9c92-98b584262bb5",
+        "tenant_id": "0b8be946-280a-45ad-9872-9dd8d1704467",
+        "module_key": "vocabulary",
+        "action": "revoke",
+        "enabled_before": true,
+        "enabled_after": false,
+        "effective_at_before": "2026-11-23T06:46:12.286235Z",
+        "effective_at_after": null,
+        "actor_operator_id": "47f1d40e-336b-40b3-ae5e-058ea7788918",
+        "created_at": "2026-11-23T06:47:27.682999Z"
+      },
+      {
+        "id": "565d7916-aa2c-4d73-ac40-d446fd2c1511",
+        "tenant_id": "0b8be946-280a-45ad-9872-9dd8d1704467",
+        "module_key": "vocabulary",
+        "action": "grant",
+        "enabled_before": false,
+        "enabled_after": true,
+        "effective_at_before": null,
+        "effective_at_after": "2026-11-23T06:46:12.286235Z",
+        "actor_operator_id": "47f1d40e-336b-40b3-ae5e-058ea7788918",
+        "created_at": "2026-11-23T06:44:12.333023Z"
+      },
+      {
+        "id": "65763d91-0adb-482c-9ec1-dd7fb991833d",
+        "tenant_id": "0b8be946-280a-45ad-9872-9dd8d1704467",
+        "module_key": "vocabulary",
+        "action": "revoke",
+        "enabled_before": true,
+        "enabled_after": false,
+        "effective_at_before": null,
+        "effective_at_after": null,
+        "actor_operator_id": "47f1d40e-336b-40b3-ae5e-058ea7788918",
+        "created_at": "2026-11-23T05:26:41.990720Z"
+      },
+      {
+        "id": "c7b50928-c540-46cf-ad2a-71e51a340f36",
+        "tenant_id": "0b8be946-280a-45ad-9872-9dd8d1704467",
+        "module_key": "vocabulary",
+        "action": "grant",
+        "enabled_before": true,
+        "enabled_after": true,
+        "effective_at_before": "2026-11-23T06:23:49Z",
+        "effective_at_after": null,
+        "actor_operator_id": "47f1d40e-336b-40b3-ae5e-058ea7788918",
+        "created_at": "2026-11-23T05:26:03.281688Z"
+      },
+      {
+        "id": "e0649fda-7c28-4abf-94f7-d36eafbf6158",
+        "tenant_id": "0b8be946-280a-45ad-9872-9dd8d1704467",
+        "module_key": "vocabulary",
+        "action": "grant",
+        "enabled_before": true,
+        "enabled_after": true,
+        "effective_at_before": null,
+        "effective_at_after": "2026-11-23T06:23:49Z",
+        "actor_operator_id": "47f1d40e-336b-40b3-ae5e-058ea7788918",
+        "created_at": "2026-11-23T05:23:49.564839Z"
+      },
+      {
+        "id": "ee02d153-3a19-467b-bf1d-8333165ad82c",
+        "tenant_id": "0b8be946-280a-45ad-9872-9dd8d1704467",
+        "module_key": "vocabulary",
+        "action": "grant",
+        "enabled_before": false,
+        "enabled_after": true,
+        "effective_at_before": null,
+        "effective_at_after": null,
+        "actor_operator_id": "47f1d40e-336b-40b3-ae5e-058ea7788918",
+        "created_at": "2026-11-23T05:19:14.072817Z"
+      },
+      {
+        "id": "c1f10955-d8b7-4d0d-88b1-2777511ce650",
+        "tenant_id": "0b8be946-280a-45ad-9872-9dd8d1704467",
+        "module_key": "vocabulary",
+        "action": "revoke",
+        "enabled_before": false,
+        "enabled_after": false,
+        "effective_at_before": null,
+        "effective_at_after": null,
+        "actor_operator_id": "47f1d40e-336b-40b3-ae5e-058ea7788918",
+        "created_at": "2026-11-23T05:08:14.065868Z"
+      },
+      {
+        "id": "72d6d15f-35c0-4ae0-93d9-0ba932cd865a",
+        "tenant_id": "0b8be946-280a-45ad-9872-9dd8d1704467",
+        "module_key": "speaking",
+        "action": "grant",
+        "enabled_before": true,
+        "enabled_after": true,
+        "effective_at_before": null,
+        "effective_at_after": null,
+        "actor_operator_id": "47f1d40e-336b-40b3-ae5e-058ea7788918",
+        "created_at": "2026-11-23T05:08:14.055996Z"
+      },
+      {
+        "id": "6581da02-62d8-4cb2-8361-c7c24a7e3e8b",
+        "tenant_id": "0b8be946-280a-45ad-9872-9dd8d1704467",
+        "module_key": "vocabulary",
+        "action": "revoke",
+        "enabled_before": null,
+        "enabled_after": false,
+        "effective_at_before": null,
+        "effective_at_after": null,
+        "actor_operator_id": "47f1d40e-336b-40b3-ae5e-058ea7788918",
+        "created_at": "2026-11-23T05:07:51.139616Z"
+      },
+      {
+        "id": "3fd88dec-4477-49fc-ab7d-e21b6af23dfc",
+        "tenant_id": "0b8be946-280a-45ad-9872-9dd8d1704467",
+        "module_key": "speaking",
+        "action": "grant",
+        "enabled_before": null,
+        "enabled_after": true,
+        "effective_at_before": null,
+        "effective_at_after": null,
+        "actor_operator_id": "47f1d40e-336b-40b3-ae5e-058ea7788918",
+        "created_at": "2026-11-23T05:07:51.132572Z"
+      }
+    ]
+  }
+}

@@ -26,7 +26,7 @@
 | 1 | 学生端导航隔离（A 仅口语、B 仅词汇、双开分组、PK/农场随词汇显隐） | **通过** | `01` `02` `03` `12` `13` `18`；API `api-probe.json` |
 | 2 | 教师端导航隔离（A 口语+底座、B 词汇+底座、双开分组不混） | **通过**（取证时含 1 处瑕疵 B1，已在 `5f5c1a6` 修复，见 §5） | `04` `05` `06` `14` |
 | 3 | 未购模块直连拦截（学生/教师，不白屏） | **通过** | `07` `08` `09` `10`；API 403 探针 |
-| 4 | 教师侧 speaking 直连拦截 + 底座页面仍可进 | **通过**（拦截面板首屏未抓拍，见 §6 限制） | `10` `11` |
+| 4 | 教师侧 speaking 直连拦截 + 底座页面仍可进 | **通过**（面板首屏 B 阶段已补齐，见补充目录 G1） | `10` `11` |
 | 5 | PK / 农场：词汇开可见可用，词汇关不可见且 API 403 | **通过** | `12` `13` `01` `18`；API `module_not_enabled:vocabulary` |
 | 6 | 超管后台：即时开关、未来 1 小时生效、审计留痕、paused 403 文案可区分 | **通过** | `15` `15b` `16` `17` `18` `19` `19b` `20` `21` `22`；`audit-a.json` |
 
@@ -216,8 +216,8 @@
 
 ## 6. 未覆盖项与限制
 
-1. **拦截面板首屏未抓拍**：`ModuleDeniedPanel`（双语「本校暂未开通口语/词汇模块」+「回课堂列表」按钮）在守卫判定 denied 后随即将页面跳转至 `/classrooms`，浏览器在跳转窗口期内未采集到面板首屏。组件源码：`frontend/src/components/Teaching/ModuleDeniedPanel.tsx`；判定逻辑：`frontend/src/lib/module-filter.ts`（`moduleGuardState`）；前端测试：`frontend/tests/components/TeacherModuleGuard.test.tsx`、`frontend/tests/module-guard.test.ts`。重定向落地页与服务端 403 已在浏览器/探针中证实。
-2. **未来生效未等待真实到点**：未驻留 1 小时验证到点后自动放行；「未到点按未购处理」由代码口径 + 本次探针证实。到点后的自动可见性属于定时/轮询刷新链路，本次未等待。
+1. **拦截面板首屏（A 阶段未抓拍，B 阶段已补齐）**：A 阶段守卫 denied 后随即跳转 `/classrooms`，跳转窗口期内未采集到面板首屏；B 阶段补验已用 CDP 条件断点在守卫跳转前持有页面，抓到 zh / en 双语面板首屏，见 `补充-20261123/README.md` §1（G1）。组件源码：`frontend/src/components/Teaching/ModuleDeniedPanel.tsx`；判定逻辑：`frontend/src/lib/module-filter.ts`（`moduleGuardState`）；前端测试：`frontend/tests/components/TeacherModuleGuard.test.tsx`、`frontend/tests/module-guard.test.ts`。重定向落地页与服务端 403 已在浏览器/探针中证实。
+2. **未来生效到点放行（A 阶段未等待到点，B 阶段已验证）**：A 阶段仅验证「未到点按未购处理」；B 阶段补验以 now+2 分钟授权验证到点后端自动放行，前端同一会话内需整页 reload 后刷新导航（模块清单查询缓存 5 分钟，非无刷新自动出现），见 `补充-20261123/README.md` §3（G3）。
 3. **视口覆盖**：本次以桌面 1280×960 视口验证；手机（390）/ iPad（820）宽度下的侧栏折叠、底部导航未逐项过三档宽度。
 4. **双语文案**：未逐条切换 EN 核对拦截页、空态、审计文案；截图以中文界面为准。
 5. **测试套件**：本次未改业务代码，未在本地重跑后端 pytest / 前端全量单测；fix 分支测试结果以其 CI 记录（PR #529，9/9 绿）为准。
