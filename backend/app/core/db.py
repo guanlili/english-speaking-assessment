@@ -4,6 +4,8 @@ from app import crud
 from app.core.config import settings
 from app.models import (
     DEFAULT_TENANT_ID,
+    MODULE_SPEAKING,
+    MODULE_VOCABULARY,
     Classroom,
     Passage,
     PassageCreate,
@@ -12,6 +14,7 @@ from app.models import (
     ScenarioQuestion,
     Student,
     Tenant,
+    TenantModule,
     Unit,
     User,
     UserCreate,
@@ -651,6 +654,28 @@ def init_db(session: Session) -> None:
             )
         )
         session.commit()
+
+    # 种子锚点校：演示内容（公共词库 / 示范课堂）双模块开通，保证本地与 CI
+    # 演示数据、既有词汇 E2E 可见。业务校默认口径由迁移回填负责
+    # （speaking=on、vocabulary=off），本 upsert 不扩散到其他租户。
+    for _module_key in (MODULE_SPEAKING, MODULE_VOCABULARY):
+        _anchor_row = session.exec(
+            select(TenantModule).where(
+                TenantModule.tenant_id == DEFAULT_TENANT_ID,
+                TenantModule.module_key == _module_key,
+            )
+        ).first()
+        if _anchor_row is None:
+            session.add(
+                TenantModule(
+                    tenant_id=DEFAULT_TENANT_ID,
+                    module_key=_module_key,
+                    enabled=True,
+                )
+            )
+        else:
+            _anchor_row.enabled = True
+    session.commit()
 
     # C5b 改名自愈：create_all 建库路径不走迁移，共享测试库里的存量
     # 种子账号可能仍是旧值 admin——幂等对齐（迁移 e6f2c8a3d5b1 同款）
