@@ -16,9 +16,13 @@
 
 用法：
 
+  export PK_PROBE_PASSWORD="<本机合成库临时口令>"
   POSTGRES_SERVER=localhost POSTGRES_PORT=5433 \\
     .venv/bin/python scripts/pk_capacity_probe.py
   # 可选：--players 20 --hold-seconds 60 --keep-db --port 8003
+
+探针教师/学生账号口令取自环境变量 ``PK_PROBE_PASSWORD``，脚本不内置默认弱口令；
+未设置或为空时打印用法并以非 0 退出。口令仅用于本机合成库，跑完随库清理，不写日志。
 """
 
 import argparse
@@ -40,7 +44,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 PROBE_DB_NAME = "app_pk_probe"
 PROBE_CODE = "PKPROBE"
-PROBE_PASSWORD = "probe-pass-12345"
+PROBE_PASSWORD_ENV = "PK_PROBE_PASSWORD"
+# 运行前由 _require_probe_password() 从环境变量填入；不提供默认弱口令。
+PROBE_PASSWORD = ""
 ANSWER_TARGET_MS = 300.0
 PROPAGATION_TARGET_S = 1.5
 PROPAGATION_TIMEOUT_S = 3.0
@@ -60,6 +66,18 @@ def _refuse_unsafe_target() -> None:
     parsed = urlparse(str(settings.SQLALCHEMY_DATABASE_TEST_URI))
     if parsed.hostname not in _LOCAL_HOSTS:
         raise SystemExit(f"目标实例不是本机（{parsed.hostname}），拒绝运行")
+
+
+def _require_probe_password() -> None:
+    """从环境变量读取探针临时账号口令；未设置/为空时拒绝运行（不提供默认弱口令）。"""
+    global PROBE_PASSWORD
+    password = os.environ.get(PROBE_PASSWORD_ENV, "").strip()
+    if not password:
+        raise SystemExit(
+            f"未设置环境变量 {PROBE_PASSWORD_ENV}：请先导出探针临时账号口令再运行"
+            "（口令仅用于本机合成库，跑完随库清理；脚本不提供默认弱口令）。"
+        )
+    PROBE_PASSWORD = password
 
 
 def _probe_uri() -> tuple[str, str]:
@@ -557,6 +575,7 @@ def main() -> int:
     parser.add_argument("--keep-db", action="store_true", help="保留探针库便于排查")
     args = parser.parse_args()
     _refuse_unsafe_target()
+    _require_probe_password()
     return asyncio.run(run_probe(args))
 
 
