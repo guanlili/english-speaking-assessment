@@ -16,7 +16,16 @@ from sqlmodel import SQLModel, col, func, select
 
 from app.api.deps import PlatformOperatorDep, PlatformSessionDep
 from app.api.pagination import paged
-from app.models import DEFAULT_TENANT_ID, Tenant, User
+from app.models import (
+    DEFAULT_TENANT_ID,
+    MODULE_KEYS,
+    Tenant,
+    TenantModuleAuditPublic,
+    TenantModulePublic,
+    TenantModuleUpdate,
+    User,
+)
+from app.services import entitlement
 
 router = APIRouter(prefix="/admin/tenants", tags=["admin"])
 
@@ -36,7 +45,7 @@ class TenantUpdate(SQLModel):
 
 
 class TenantAdminPublic(SQLModel):
-    """运营视角的学校行：基础字段 + 账号数（排空校/核对开通）。"""
+    """运营视角的学校行：基础字段 + 账号数 + 已配置模块清单。"""
 
     id: uuid.UUID
     slug: str
@@ -46,6 +55,36 @@ class TenantAdminPublic(SQLModel):
     timezone: str
     created_at: Any | None = None
     user_count: int = 0
+    modules: list[TenantModulePublic] = []
+
+
+def _module_rows(
+    session: SASession, tenant_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[TenantModulePublic]]:
+    if not tenant_ids:
+        return {}
+    from app.models import TenantModule
+
+    db_rows = session.exec(
+        select(TenantModule).where(
+            col(TenantModule.tenant_id).in_(tenant_ids)  # type: ignore[union-attr]
+        )
+    ).all()
+    by_tenant: dict[uuid.UUID, list[TenantModulePublic]] = {
+        tid: [] for tid in tenant_ids
+    }
+    for row in db_rows:
+        by_tenant.setdefault(row.tenant_id, []).append(
+            TenantModulePublic(
+                tenant_id=row.tenant_id,
+                module_key=row.module_key,
+                enabled=row.enabled,
+                effective_at=row.effective_at,
+                updated_at=row.updated_at,
+                updated_by=row.updated_by,
+            )
+        )
+    return by_tenant
 
 
 def _with_counts(session: SASession, rows: list[Tenant]) -> list[TenantAdminPublic]:
@@ -58,10 +97,12 @@ def _with_counts(session: SASession, rows: list[Tenant]) -> list[TenantAdminPubl
             .group_by(col(User.tenant_id))
         ).all()
     )
+    modules_by_tenant = _module_rows(session, [r.id for r in rows])
     return [
         TenantAdminPublic(
             **r.model_dump(),
             user_count=counts.get(r.id, 0),
+            modules=modules_by_tenant.get(r.id, []),
         )
         for r in rows
     ]
@@ -92,6 +133,65 @@ def create_tenant(
     session.commit()
     session.refresh(row)
     return _with_counts(session, [row])[0]
+
+
+def _get_tenant_or_404(session: SASession, tenant_id: uuid.UUID) -> Tenant:
+    row = session.get(Tenant, tenant_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="学校不存在")
+    return row
+
+
+@router.put("/{tenant_id}/modules/{module_key}", response_model=TenantModulePublic)
+def update_tenant_module(
+    session: PlatformSessionDep,
+    operator: PlatformOperatorDep,
+    tenant_id: uuid.UUID,
+    module_key: str,
+    body: TenantModuleUpdate,
+) -> Any:
+    """整校模块开关（平台运营）：开启/关闭 speaking 或 vocabulary，可选生效时间。
+
+    变更落 ``tenant_module_audit``：操作人、前后值、生效时间、时间戳一并留痕；
+    学校管理员不可见、不可改本接口。
+    """
+    _get_tenant_or_404(session, tenant_id)
+    if module_key not in MODULE_KEYS:
+        raise HTTPException(status_code=422, detail=f"模块无效：{module_key}")
+    row, _audit = entitlement.upsert_module(
+        session,
+        tenant_id=tenant_id,
+        module_key=module_key,
+        enabled=body.enabled,
+        operator=operator,
+        effective_at=body.effective_at,
+    )
+    return TenantModulePublic(
+        tenant_id=row.tenant_id,
+        module_key=row.module_key,
+        enabled=row.enabled,
+        effective_at=row.effective_at,
+        updated_at=row.updated_at,
+        updated_by=row.updated_by,
+    )
+
+
+@router.get(
+    "/{tenant_id}/modules/audit",
+    response_model=list[TenantModuleAuditPublic],
+)
+def list_tenant_module_audit(
+    session: PlatformSessionDep,
+    _operator: PlatformOperatorDep,
+    tenant_id: uuid.UUID,
+    module_key: str | None = Query(default=None),
+) -> Any:
+    """按学校查模块授权变更历史（可再按模块过滤），最新在前。"""
+    _get_tenant_or_404(session, tenant_id)
+    if module_key is not None and module_key not in MODULE_KEYS:
+        raise HTTPException(status_code=422, detail=f"模块无效：{module_key}")
+    rows = entitlement.list_audit(session, tenant_id, module_key)
+    return [TenantModuleAuditPublic.model_validate(row) for row in rows]
 
 
 @router.patch("/{tenant_id}", response_model=TenantAdminPublic)

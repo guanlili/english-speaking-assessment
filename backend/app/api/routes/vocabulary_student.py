@@ -64,7 +64,7 @@ def read_wrong_words(
     practiceable 标注词条是否仍在当前可练词库内，可直接进错词专项复习。
     """
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
+    student = _student_profile_of(session, classroom, current_user, "vocabulary")
     items = vocab_service.wrong_word_items(
         session,
         student.id,
@@ -93,7 +93,7 @@ def list_student_books(
 ) -> Any:
     """学生可浏览的词库：active 公共词库 + 本班词库，支持按词库名称搜索。"""
     classroom = _get_classroom(session, code)
-    _student_profile_of(session, classroom, current_user)
+    _student_profile_of(session, classroom, current_user, "vocabulary")
     books = session.exec(
         select(VocabularyBook)
         .where(
@@ -132,7 +132,7 @@ def read_student_book(
     搜索在拼写、中文释义、英文释义上不区分大小写匹配。
     """
     classroom = _get_classroom(session, code)
-    _student_profile_of(session, classroom, current_user)
+    _student_profile_of(session, classroom, current_user, "vocabulary")
     book = _get_book(session, book_id)
     if book.status != "active" or book.id not in vocab_service.student_book_ids(
         session, classroom.id
@@ -175,7 +175,7 @@ def start_student_session(
             detail=f"一次练习最多 {SELF_PRACTICE_MAX_WORDS} 个词",
         )
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
+    student = _student_profile_of(session, classroom, current_user, "vocabulary")
     prompt_types = (
         vocab_service.validate_prompt_types(body.prompt_types)
         if body.prompt_types
@@ -220,7 +220,7 @@ def read_student_session(
     分母为 total_count，由前端分别展示。
     """
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
+    student = _student_profile_of(session, classroom, current_user, "vocabulary")
     vocab_session = session.get(VocabularySession, session_id)
     if vocab_session is None or vocab_session.student_id != student.id:
         # 他人的/不存在的一律 404，不区分报错
@@ -240,7 +240,7 @@ def read_student_history(
 ) -> Any:
     """练习历史列表：任务轮/自主轮/复习轮统一（kind 区分），按开始倒序。"""
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
+    student = _student_profile_of(session, classroom, current_user, "vocabulary")
     return VocabularyStudentHistory(
         items=vocab_service.history_rows(session, student.id, limit=limit)
     )
@@ -261,7 +261,7 @@ def read_student_recommendation(
     遗忘曲线——结构化推荐留给第二批的复习引擎。
     """
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user)
+    student = _student_profile_of(session, classroom, current_user, "vocabulary")
     return vocab_recommendation.build_recommendation(
         session,
         classroom_id=classroom.id,
@@ -283,7 +283,7 @@ def read_review_queue(
     队列只读学生状态与词条当前内容，不改动历史 session 快照与首答统计。
     """
     classroom = _get_classroom(session, code)
-    _student_profile_of(session, classroom, current_user)
+    _student_profile_of(session, classroom, current_user, "vocabulary")
     queue = vocabulary_review.review_queue(
         session, user_id=current_user.id, classroom_id=classroom.id
     )
@@ -303,7 +303,7 @@ def read_review_stats(
     只做计数展示，不估算记忆留存率或掌握度等级。
     """
     classroom = _get_classroom(session, code)
-    _student_profile_of(session, classroom, current_user)
+    _student_profile_of(session, classroom, current_user, "vocabulary")
     return vocabulary_review.review_stats(
         session, user_id=current_user.id, classroom_id=classroom.id
     )

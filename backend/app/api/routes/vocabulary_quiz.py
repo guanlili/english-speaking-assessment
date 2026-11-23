@@ -49,7 +49,7 @@ def publish_quiz_grades(
 ) -> Any:
     """公布测验成绩：未公布前学生只能看到提交状态（幂等，可重复调用）。"""
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_teacher(classroom, current_user, "vocabulary")
     assignment = _get_quiz_assignment(session, classroom.id, assignment_id)
     if assignment.grades_published_at is None:
         assignment.grades_published_at = get_datetime_utc()
@@ -70,7 +70,7 @@ def publish_quiz_answers(
 ) -> Any:
     """公布测验答案：答卷揭示拼写与对错，错词进入错词本（独立于成绩公布）。"""
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_teacher(classroom, current_user, "vocabulary")
     assignment = _get_quiz_assignment(session, classroom.id, assignment_id)
     if assignment.answers_published_at is None:
         assignment.answers_published_at = get_datetime_utc()
@@ -94,7 +94,7 @@ def grant_quiz_retake(
 ) -> Any:
     """单独授权一次补考：该学生可再开一份答卷（原答卷保留）。"""
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_teacher(classroom, current_user, "vocabulary")
     assignment = _get_quiz_assignment(session, classroom.id, assignment_id)
     target = session.exec(
         select(VocabularyAssignmentTarget).where(
@@ -125,7 +125,7 @@ def read_quiz_answer_sheet(
 ) -> Any:
     """教师查看学生答卷（不受公布规则约束，全量揭示；默认最新一份答卷）。"""
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_teacher(classroom, current_user, "vocabulary")
     assignment = _get_quiz_assignment(session, classroom.id, assignment_id)
     rounds = session.exec(
         select(VocabularySession)
@@ -160,7 +160,7 @@ def export_quiz_results(
     import io
 
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_teacher(classroom, current_user, "vocabulary")
     assignment = _get_quiz_assignment(session, classroom.id, assignment_id)
     results = read_vocab_results_payload(session, code, assignment_id, current_user)
     buffer = io.StringIO()

@@ -15,7 +15,7 @@ vocab_level_entry，已发布任务快照与历史 A2/B1/B2 结果不受影响�
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlmodel import Field, Session, SQLModel, col, select
 
@@ -24,6 +24,7 @@ from app.api.deps import (
     PlatformSessionDep,
     SessionDep,
     TeacherUserDep,
+    require_module,
 )
 from app.api.routes.classes import _require_classroom_teacher
 from app.api.routes.vocabulary_shared import _book_public
@@ -211,7 +212,11 @@ def _visible_book_ids(session: Session, current_user: User) -> list[uuid.UUID] |
     return list(rows)
 
 
-@router.get("/vocabulary/words", response_model=list[VocabularyWordPublic])
+@router.get(
+    "/vocabulary/words",
+    response_model=list[VocabularyWordPublic],
+    dependencies=[Depends(require_module("vocabulary"))],
+)
 def list_teaching_words_by_level(
     session: SessionDep,
     current_user: TeacherUserDep,
@@ -308,7 +313,7 @@ def _resolve_import_target(
     classroom = session.get(Classroom, body.classroom_id)
     if classroom is None:
         raise HTTPException(status_code=404, detail="课堂不存在")
-    _require_classroom_teacher(classroom, current_user)
+    _require_classroom_teacher(classroom, current_user, "vocabulary")
     book = VocabularyBook(
         title=(body.new_book_title or "").strip() or f"五级词库 · {body.level}",
         scope="classroom",
@@ -427,7 +432,11 @@ def _book_word_rows(session: Session, book_id: uuid.UUID) -> list[VocabularyWord
     )
 
 
-@router.post("/vocabulary/words/from-levels", response_model=VocabularyFromLevelsResult)
+@router.post(
+    "/vocabulary/words/from-levels",
+    response_model=VocabularyFromLevelsResult,
+    dependencies=[Depends(require_module("vocabulary"))],
+)
 def import_words_from_levels(
     session: SessionDep,
     current_user: TeacherUserDep,

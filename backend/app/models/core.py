@@ -55,6 +55,119 @@ class PlatformOperator(SQLModel, table=True):
     )
 
 
+# ── 模块授权（#516 / #517：整校 × 模块开关，逻辑隔离）─────────────────
+# 可售模块只有两个；PK / 农场 / FSRS 是 vocabulary 的子能力，不单独开关。
+# 授权粒度 = 整校一行；无班级 override、无白名单、无按班灰度。
+MODULE_SPEAKING = "speaking"
+MODULE_VOCABULARY = "vocabulary"
+MODULE_KEYS = (MODULE_SPEAKING, MODULE_VOCABULARY)
+
+
+class TenantModule(SQLModel, table=True):
+    """整校模块授权行：tenant × module_key 唯一一行。
+
+    缺行 = 未购买（默认关闭）；存量租户由迁移回填 speaking=on、
+    vocabulary=off。effective_at 为空 = 立即生效；未来时间点尚未生效，
+    按未购买处理。本表是平台运营通道写入的授权表，学校侧只读本校行。
+    """
+
+    __tablename__ = "tenant_module"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    tenant_id: uuid.UUID = Field(
+        foreign_key="tenant.id", nullable=False, index=True, ondelete="CASCADE"
+    )
+    module_key: str = Field(max_length=16, nullable=False, index=True)
+    enabled: bool = Field(default=False, nullable=False)
+    # 最近一次变更的平台运营 id；脚本回填/历史行可为空
+    updated_by: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="platformoperator.id",
+        ondelete="SET NULL",
+        index=True,
+    )
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_column=DateTime(timezone=True),  # type: ignore
+    )
+    effective_at: datetime | None = Field(
+        default=None,
+        sa_column=DateTime(timezone=True),  # type: ignore
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "module_key", name="uq_tenant_module_tenant_key"),
+    )
+
+
+class TenantModuleAudit(SQLModel, table=True):
+    """模块授权变更审计：谁、何时、对哪所学校、哪个模块、前后值。
+
+    只在平台运营通过后台改写授权时落行；脚本回填不写业务审计（回填
+    口径由迁移与脚本清单留痕）。
+    """
+
+    __tablename__ = "tenant_module_audit"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    tenant_id: uuid.UUID = Field(
+        foreign_key="tenant.id", nullable=False, index=True, ondelete="CASCADE"
+    )
+    module_key: str = Field(max_length=16, nullable=False, index=True)
+    action: str = Field(max_length=16, nullable=False, index=True)
+    enabled_before: bool | None = Field(default=None)
+    enabled_after: bool | None = Field(default=None)
+    effective_at_before: datetime | None = Field(
+        default=None,
+        sa_column=DateTime(timezone=True),  # type: ignore
+    )
+    effective_at_after: datetime | None = Field(
+        default=None,
+        sa_column=DateTime(timezone=True),  # type: ignore
+    )
+    actor_operator_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="platformoperator.id",
+        ondelete="SET NULL",
+        index=True,
+    )
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_column=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class TenantModulePublic(SQLModel):
+    """运营/前端视角的单行授权。"""
+
+    tenant_id: uuid.UUID
+    module_key: str
+    enabled: bool
+    effective_at: datetime | None = None
+    updated_at: datetime | None = None
+    updated_by: uuid.UUID | None = None
+
+
+class TenantModuleAuditPublic(SQLModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    module_key: str
+    action: str
+    enabled_before: bool | None = None
+    enabled_after: bool | None = None
+    effective_at_before: datetime | None = None
+    effective_at_after: datetime | None = None
+    actor_operator_id: uuid.UUID | None = None
+    created_at: datetime | None = None
+
+
+class TenantModuleUpdate(SQLModel):
+    """运营改写单行授权的请求体。"""
+
+    enabled: bool
+    effective_at: datetime | None = None
+
+
 # Shared properties
 class UserBase(SQLModel):
     # 学生无邮箱：email 可空（学号登录），教师/管理员必填（API 层校验）。

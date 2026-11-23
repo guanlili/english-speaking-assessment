@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import NullPool
-from sqlmodel import Session, SQLModel, delete
+from sqlmodel import Session, SQLModel, delete, select
 
 from app.api.deps import get_db
 from app.api.routes.utils import get_readiness_dsn
@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.core.db import init_db
 from app.main import app
 from app.models import (
+    MODULE_KEYS,
     AdminMetricsDaily,
     Attempt,
     ChangelogEntry,
@@ -31,6 +32,9 @@ from app.models import (
     Student,
     StudentBadge,
     StudentFrameFavorite,
+    Tenant,
+    TenantModule,
+    TenantModuleAudit,
     Unit,
     User,
     VocabFarmPlot,
@@ -186,6 +190,8 @@ def db() -> Generator[Session]:
         # 清理测试库数据（独立库内，无开发数据风险；按外键依赖倒序）
         from app.models import ExportAudit, ExportJob
 
+        session.exec(delete(TenantModuleAudit))  # type: ignore[call-overload]
+        session.exec(delete(TenantModule))  # type: ignore[call-overload]
         session.exec(delete(ExportAudit))  # type: ignore[call-overload]
         session.exec(delete(ExportJob))  # type: ignore[call-overload]
         session.exec(delete(ChangelogEntry))  # type: ignore[call-overload]
@@ -241,6 +247,34 @@ def db() -> Generator[Session]:
 
 
 # 登录限流器为应用全局态（10 次/300s，IP 桶只按失败累积）：负向登录
+@pytest.fixture(scope="function", autouse=True)
+def _grant_modules_for_existing_tenants(db: Session) -> Generator[None]:
+    """每个用例开始前，给当前库内已有租户显式开通双模块。
+
+    存量回归用例走改造前口径（两模块均可用），模块闸门不会把全量打成 403；
+    验证「默认关闭」的新用例在用例体内自建无配置租户，本夹具只在 setup 阶段
+    授予 setup 时已存在的租户，不会回补用例体内新建的租户。
+    """
+    for tenant in db.exec(select(Tenant)).all():
+        for module_key in MODULE_KEYS:
+            existing = db.exec(
+                select(TenantModule).where(
+                    TenantModule.tenant_id == tenant.id,
+                    TenantModule.module_key == module_key,
+                )
+            ).first()
+            if existing is None:
+                db.add(
+                    TenantModule(
+                        tenant_id=tenant.id,
+                        module_key=module_key,
+                        enabled=True,
+                    )
+                )
+    db.commit()
+    yield
+
+
 # 测试的失败计数会跨模块累积，把后续模块 fixture 的正常登录顶到 429
 # （B3 全量曾因 +1 个故意失败登录触发）。每个用例前后清零，测试间不共享。
 @pytest.fixture(autouse=True)

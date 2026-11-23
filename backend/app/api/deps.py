@@ -3,7 +3,7 @@ from collections.abc import Callable, Generator
 from typing import Annotated, Any
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
@@ -137,6 +137,94 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+# 课堂底座路径模板（与模块无关：建校/删班/名单/教师团队/课堂通讯/在线状态）。
+# 这些入口在 vocabulary-only 学校也必须可用——账号、班级、名册是共享底座。
+# 段级占位：{code}=课堂码，{user_id}/{student_id}/{message_id} 等路径参数。
+_SPEAKING_BASELINE_TEMPLATES = {
+    "",
+    "{code}",
+    "{code}/report-settings",
+    "{code}/teachers",
+    "{code}/teacher-candidates",
+    "{code}/teachers/{param}",
+    "{code}/join",
+    "{code}/my-messages",
+    "{code}/class-messages",
+    "{code}/help-requests",
+    "{code}/reminders",
+    "{code}/reminders/{param}/repeat",
+    "{code}/presence",
+    "{code}/activity",
+}
+
+
+_BASELINE_STATIC_SEGMENTS = {
+    "report-settings",
+    "teachers",
+    "teacher-candidates",
+    "join",
+    "my-messages",
+    "class-messages",
+    "help-requests",
+    "reminders",
+    "repeat",
+    "presence",
+    "activity",
+}
+
+
+def _normalize_class_path(path: str) -> str:
+    """把 /api/v1/classes/DEMO01/teachers/<uid> 归一成模板段（参数段占位）。"""
+    prefix = f"{settings.API_V1_STR}/classes/"
+    if not path.startswith(prefix):
+        return ""
+    rest = path[len(prefix) :].strip("/")
+    if not rest:
+        return ""
+    parts = rest.split("/")
+    parts[0] = "{code}"
+    for idx in range(1, len(parts)):
+        if parts[idx] not in _BASELINE_STATIC_SEGMENTS:
+            parts[idx] = "{param}"
+    return "/".join(parts)
+
+
+def require_speaking_classroom(
+    request: Request, session: SessionDep, current_user: CurrentUser
+) -> User:
+    """课堂路由的 speaking 模块闸门：底座路径放行，其余判 speaking 授权。
+
+    挂载在共享 class router 上；底座（建校/名单/教师团队/通讯/在场）不随
+    speaking 开关关闭。课堂成员 404 由各 handler 在成员解析阶段先行抛出，
+    本依赖只做整校模块口径判断。
+    """
+    from app.services import entitlement
+
+    normalized = _normalize_class_path(request.url.path)
+    if normalized in _SPEAKING_BASELINE_TEMPLATES:
+        return current_user
+    entitlement.ensure_module_enabled(session, current_user.tenant_id, "speaking")
+    return current_user
+
+
+def require_module(module_key: str) -> Callable[[SessionDep, CurrentUser], User]:
+    """模块授权闸门依赖工厂（#516）：未购/未生效 → 403。
+
+    用于无课堂成员解析的校内端点（教师词库、AI 备课、五级选词等）；
+    带课堂码的端点须在成员解析（404）之后再判模块 403，优先级固定为
+    404 先于 403——这类端点走 services.entitlement.ensure_module_enabled
+    在 handler 内成员解析后调用，不用本依赖。
+    """
+
+    def _dep(session: SessionDep, current_user: CurrentUser) -> User:
+        from app.services import entitlement
+
+        entitlement.ensure_module_enabled(session, current_user.tenant_id, module_key)
+        return current_user
+
+    return _dep
 
 
 def get_current_platform_operator(

@@ -19,6 +19,7 @@ from app.api.routes import (
     exports,
     login,
     metrics,
+    modules,
     school_members,
     students,
     users,
@@ -31,6 +32,7 @@ from app.api.routes import (
 api_router = APIRouter()
 api_router.include_router(login.router)
 api_router.include_router(users.router)
+api_router.include_router(modules.router)
 api_router.include_router(utils.router)
 api_router.include_router(classes.router)
 api_router.include_router(attempts.router)

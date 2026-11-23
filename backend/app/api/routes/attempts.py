@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import field_validator
 from sqlalchemy import func, or_
@@ -22,6 +22,7 @@ from app.api.deps import (
     ScoringSubmitter,
     SessionDep,
     TeacherUserDep,
+    require_module,
 )
 from app.core.config import settings
 from app.core.ratelimit import SlidingWindowLimiter
@@ -45,7 +46,7 @@ from app.models import (
     User,
 )
 from app.scoring.audio_convert import probe_audio
-from app.services import content_access, followups, reading
+from app.services import content_access, entitlement, followups, reading
 from app.services import exam as exam_service
 from app.services.audio_playback import playback_path
 
@@ -584,6 +585,9 @@ def create_attempt_upload(
     """
     # 归属解析：课堂作答（有 session）必须登录学生本人，演示作答无归属
     student = _resolve_submit_student(session, session_id, current_user)
+    # 登录身份的作答走 speaking 模块闸门；演示匿名作答无校归属，不在此判
+    if current_user is not None:
+        entitlement.ensure_module_enabled(session, current_user.tenant_id, "speaking")
 
     # 幂等检查：同键已有作答直接返回（同样校验归属，防越权读取他人作答）；
     # 键指向别的题目/会话时拒绝（防串题回执，见 _idempotent_existing）
@@ -763,7 +767,11 @@ class AttemptBatchRead(SQLModel):
 
 
 # Keep static paths ahead of /attempts/{attempt_id}.
-@router.post("/attempts/batch-read", response_model=list[AttemptPublic])
+@router.post(
+    "/attempts/batch-read",
+    response_model=list[AttemptPublic],
+    dependencies=[Depends(require_module("speaking"))],
+)
 def read_attempts_batch(
     session: SessionDep,
     body: AttemptBatchRead,
@@ -843,7 +851,11 @@ def read_attempt(
     )
 
 
-@router.get("/attempts/{attempt_id}/comparison", response_model=list[AttemptPublic])
+@router.get(
+    "/attempts/{attempt_id}/comparison",
+    response_model=list[AttemptPublic],
+    dependencies=[Depends(require_module("speaking"))],
+)
 def read_attempt_comparison(
     session: SessionDep,
     attempt_id: uuid.UUID,
@@ -888,7 +900,11 @@ class TeacherFeedbackWrite(SQLModel):
     expected_revision: int = Field(ge=0)
 
 
-@router.put("/attempts/{attempt_id}/teacher-feedback", response_model=AttemptPublic)
+@router.put(
+    "/attempts/{attempt_id}/teacher-feedback",
+    response_model=AttemptPublic,
+    dependencies=[Depends(require_module("speaking"))],
+)
 def write_teacher_feedback(
     session: SessionDep,
     attempt_id: uuid.UUID,
