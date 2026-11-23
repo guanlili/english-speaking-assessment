@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
 import type { ComposerState } from "../../src/client"
+import { fulfillModulesMe, isModulesMeRoute } from "./utils/modules"
 
 const passage = {
   id: "passage-original",
@@ -113,6 +114,7 @@ async function setup(page: Page, lang: "zh" | "en") {
   let showCopiedInstruction = false
   let copyGate: Promise<void> | undefined
   await page.route("**/api/v1/**", async (route) => {
+    if (isModulesMeRoute(route)) return fulfillModulesMe(route)
     const request = route.request()
     const url = new URL(request.url())
     const path = url.pathname
