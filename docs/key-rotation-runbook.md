@@ -22,7 +22,7 @@
 
 1. 生成新值：`openssl rand -base64 48`。
 2. GitHub 仓库 Settings → Secrets and variables → Actions → 更新 `SECRET_KEY`。
-3. 推送一次 master（或重跑最近一次 deploy workflow）触发重新部署，流水线重写 `.env` 并重启后端。
+3. 在 Actions 页手动运行 `Deploy Production`（`deploy-prod.yml`，或 `gh workflow run deploy-prod.yml`）触发重新部署，流水线重写 `.env` 并重启后端。
 4. 验证：旧 token 调任意接口返回 401；超管重新登录成功。
 5. 生效即全员登出，**选择教学低峰执行**，提前一天通知教师。
 

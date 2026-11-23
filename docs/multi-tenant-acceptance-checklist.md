@@ -100,7 +100,7 @@
 
 ### 4.1 部署自检（2026-11-17 起）
 
-`scripts/prod-rls-selfcheck.sh` 由 `deploy.yml` 在「服务器拉代码并重启服务」之后自动执行，把生产隔离状态写成 CI 日志：
+`scripts/prod-rls-selfcheck.sh` 由 `deploy-prod.yml` 在「服务器拉代码并重启服务」之后自动执行，把生产隔离状态写成 CI 日志：
 
 | 判据 | 失败含义 |
 | --- | --- |

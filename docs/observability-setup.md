@@ -1,7 +1,7 @@
 # 可观测性开通手册（Sentry 错误上报 / SMTP 告警邮件）
 
 > 两条链路的**代码与部署管线均已就绪**，只差在 GitHub Secrets 填值。
-> 本手册是唯一操作步骤——不需要改任何代码，填完跑一次部署（或等下次自动部署）即生效。
+> 本手册是唯一操作步骤——不需要改任何代码，填完手动运行一次 `Deploy Production` 部署即生效（push master 只跑 CI，不自动部署）。
 
 ## 一、Sentry 前端错误上报
 
@@ -17,7 +17,7 @@
    # 本地终端执行（或仓库 Settings → Secrets → Actions 页面添加）
    printf 'https://你的DSN' | gh secret set VITE_SENTRY_DSN --repo guanlili/english-speaking-assessment
    ```
-4. 触发一次部署（push 任意 commit 或手动 rerun 最新 deploy run）
+4. 手动运行 `Deploy Production` workflow（`deploy-prod.yml`）触发部署
 
 **验证**：部署完成后打开网站 → 浏览器控制台执行 `setTimeout(() => { throw new Error('sentry-test') }, 100)`
 → Sentry 后台几秒内出现该事件。
