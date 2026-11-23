@@ -50,6 +50,7 @@ belp-domain-tls-deploy.timer（每日 00/12 点 + 0–2h 随机延迟，Persiste
 - acme：容器 `esa-acme-1`，`/acmebin/acme.sh` v3.1.7；证书目录 `/acme.sh/outman.website_ecc/`，`Le_Webroot='dns_dp'`，`Le_API` 为 Let’s Encrypt **production**。
 - DNSPod 凭据：`/acme.sh/account.conf` 的 `SAVED_DP_Id` / `SAVED_DP_Key`，来源是当初签发归档域名证书的既有账户；值不写入仓库、不回显。
 - 部署器：`/opt/belp-domain-tls/deploy.sh`；锁 `/var/lock/belp-domain-tls.lock`；日志 `/var/log/belp-domain-tls/deploy.log`；日志轮转 `/etc/logrotate.d/belp-domain-tls`。
+- 权限：`ssl/domain` 与 `releases/*` 为 `755`（GitHub 巡检用非 root 的 `deploy` 用户，需要可遍历）；`privkey.pem` 保持 `600 root`，巡检不读私钥。`/var/log/belp-domain-tls` 为 `755`，`deploy.log` 为 `644`，logrotate 固定 `create 0644 root root`。
 - systemd：`/etc/systemd/system/belp-domain-tls-deploy.service`（`Type=simple`，`Restart=on-failure`，`RestartSec=300`，`StartLimitBurst=3`）；`belp-domain-tls-deploy.timer`（`OnCalendar=*-*-* 00,12:00:00`，`RandomizedDelaySec=2h`，`Persistent=true`）。
 - 常用检查：
 
