@@ -2344,7 +2344,10 @@ def _load_history_rounds(
     return list(
         session.exec(
             select(VocabularySession)
-            .where(VocabularySession.student_id == student_id)  # type: ignore[arg-type]
+            .where(
+                VocabularySession.student_id == student_id,  # type: ignore[arg-type]
+                VocabularySession.kind != "placement",  # type: ignore[operator]
+            )
             .order_by(col(VocabularySession.started_at).desc())
             .limit(limit)
         ).all()
