@@ -5,7 +5,7 @@ import {
   useNavigate,
   useParams,
 } from "@tanstack/react-router"
-import { ListChecks, SpellCheck, Swords } from "lucide-react"
+import { ListChecks, ShieldCheck, SpellCheck, Swords } from "lucide-react"
 import { useEffect, useState } from "react"
 import { ApiError, ClassesService, VocabularyService } from "@/client"
 import { VocabModuleSwitcher } from "@/components/Teaching/VocabModuleSwitcher"
@@ -15,6 +15,7 @@ import { ResultsPanel } from "@/components/Teaching/VocabTasks/ResultsPanel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ContentReviewPanel } from "@/components/Vocabulary/ContentReviewPanel"
 import { APP_NAME } from "@/config"
 import { useModules } from "@/hooks/useModules"
 import { useI18n } from "@/lib/i18n"
@@ -38,7 +39,11 @@ function TeacherVocabPage() {
       void navigate({ to: "/classrooms" })
     }
   }, [modulesPending, hasModule, navigate])
-  const [tab, setTab] = useState<"assign" | "results" | "pk">("assign")
+  const [tab, setTab] = useState<"assign" | "results" | "pk" | "review">(
+    "assign",
+  )
+  // 待审数量由审核面板数据回报（不另写 API URL）；>0 时在 tab 徽章提示
+  const [pendingCount, setPendingCount] = useState(0)
   // 查看哪一期：null = 当前进行中（后端默认最新发布）；任务列表点击后切换
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<
     string | null
@@ -289,12 +294,35 @@ function TeacherVocabPage() {
           <Swords />
           {t({ zh: "PK 对战", en: "PK Battle" })}
         </Button>
+        <Button
+          variant={tab === "review" ? "default" : "outline"}
+          size="sm"
+          aria-pressed={tab === "review"}
+          onClick={() => setTab("review")}
+        >
+          <ShieldCheck />
+          {t({ zh: "词库审核", en: "Review" })}
+          {pendingCount > 0 && (
+            <Badge variant="destructive" className="ml-1">
+              {pendingCount}
+            </Badge>
+          )}
+        </Button>
       </div>
 
       {tab === "assign" ? (
-        <AssignPanel code={code} classroomId={classroomId} />
+        <AssignPanel
+          code={code}
+          classroomId={classroomId}
+          onGoReview={() => setTab("review")}
+        />
       ) : tab === "pk" ? (
         <PkTeacherPanel code={code} />
+      ) : tab === "review" ? (
+        <ContentReviewPanel
+          classroomId={classroomId}
+          onPendingCountChange={setPendingCount}
+        />
       ) : (
         <ResultsPanel
           code={code}

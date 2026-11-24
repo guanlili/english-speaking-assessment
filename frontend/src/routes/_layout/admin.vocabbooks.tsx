@@ -12,7 +12,11 @@ import {
 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
-import { ApiError, VocabularyService } from "@/client"
+import {
+  ApiError,
+  VocabularyService,
+  type VocabularyWordPublic,
+} from "@/client"
 import {
   type BookWordInput,
   toBookWordInput,
@@ -36,11 +40,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { ContentReviewPanel } from "@/components/Vocabulary/ContentReviewPanel"
+import { WordEditDialog } from "@/components/Vocabulary/WordEditDialog"
 import { APP_NAME } from "@/config"
 import { isOperatorLoggedIn } from "@/hooks/useAuth"
 import { useModules } from "@/hooks/useModules"
 import { downloadCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
+import {
+  deriveImportStats,
+  reviewStatusLabel,
+  sourceLabel,
+} from "@/lib/vocabContentReview"
 import { localizeImportIssue } from "@/lib/vocabImport"
 
 export const Route = createFileRoute("/_layout/admin/vocabbooks")({
@@ -92,6 +103,13 @@ function VocabBooksAdmin() {
   const [newTitle, setNewTitle] = useState("")
   const [preview, setPreview] = useState<PreviewState | null>(null)
   const previewFileRef = useRef<HTMLInputElement>(null)
+  // “我已核对”：勾选直接通过审核（自评留痕）；默认待审
+  const [reviewedOk, setReviewedOk] = useState(false)
+  // 词库详情表的审核状态筛选
+  const [wordStatusFilter, setWordStatusFilter] = useState("all")
+  const [editingWord, setEditingWord] = useState<VocabularyWordPublic | null>(
+    null,
+  )
 
   const importPreview = useMutation({
     mutationFn: (file: File) =>
@@ -129,14 +147,27 @@ function VocabBooksAdmin() {
           title: payload.title,
           scope: "public",
           description: null,
+          source: "import",
+          confirm_reviewed: reviewedOk,
           words: payload.words,
         },
       }),
-    onSuccess: () => {
-      toast.success(t({ zh: "词库已创建。", en: "Word book created." }))
+    onSuccess: (book, payload) => {
+      const stats = deriveImportStats(
+        payload.words.length,
+        0,
+        book.word_count ?? 0,
+      )
+      toast.success(
+        t({
+          zh: `词库已创建：新增 ${stats.added} 词，重复跳过 ${stats.skipped} 个。`,
+          en: `Book created: ${stats.added} new, ${stats.skipped} duplicates skipped.`,
+        }),
+      )
       setCreating(false)
       setPreview(null)
       setNewTitle("")
+      setReviewedOk(false)
       queryClient.invalidateQueries({ queryKey: ["admin", "vocab-books"] })
     },
     onError: (error) => {
@@ -172,16 +203,24 @@ function VocabBooksAdmin() {
     mutationFn: (payload: { bookId: string; words: PreviewState["rows"] }) =>
       VocabularyService.addBookWords({
         book_id: payload.bookId,
+        source: "import",
+        confirm_reviewed: reviewedOk,
         body: payload.words,
       }),
-    onSuccess: (data) => {
+    onSuccess: (data, payload) => {
+      const stats = deriveImportStats(
+        payload.words.length,
+        detailQuery.data?.word_count ?? null,
+        data.word_count ?? null,
+      )
       toast.success(
         t({
-          zh: `已加入 ${data.words?.length ?? 0} 个词条。`,
-          en: `Added ${data.words?.length ?? 0} words.`,
+          zh: `已加入 ${stats.added} 个词条，重复跳过 ${stats.skipped} 个。`,
+          en: `Added ${stats.added} words, ${stats.skipped} duplicates skipped.`,
         }),
       )
       setPreview(null)
+      setReviewedOk(false)
       queryClient.invalidateQueries({ queryKey: ["admin", "vocab-books"] })
       queryClient.invalidateQueries({ queryKey: ["admin", "vocab-book"] })
     },
@@ -236,6 +275,12 @@ function VocabBooksAdmin() {
 
   const openBook = books.find((book) => book.id === openBookId)
   const validRows = preview?.rows ?? []
+  const allDetailWords = detailQuery.data?.words ?? []
+  const visibleDetailWords = allDetailWords.filter(
+    (word) =>
+      wordStatusFilter === "all" ||
+      (word.review_status ?? "pending") === wordStatusFilter,
+  )
 
   return (
     <div className="flex flex-col gap-6">
@@ -250,6 +295,9 @@ function VocabBooksAdmin() {
           })}
         </p>
       </div>
+
+      {/* 内容审核队列（全校；平台运营只读，不展示审核动作） */}
+      <ContentReviewPanel readonly={isOperator} />
 
       {/* 词库列表 */}
       <Card>
@@ -440,12 +488,38 @@ function VocabBooksAdmin() {
               </div>
             ) : (
               <>
-                <p className="pb-3 text-xs text-muted-foreground sm:hidden">
-                  {t({
-                    zh: "横向滑动表格，可以查看完整词条。",
-                    en: "Swipe the table sideways to see all fields.",
-                  })}
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3">
+                  <p className="text-xs text-muted-foreground sm:hidden">
+                    {t({
+                      zh: "横向滑动表格，可以查看完整词条。",
+                      en: "Swipe the table sideways to see all fields.",
+                    })}
+                  </p>
+                  <select
+                    aria-label={t({
+                      zh: "按审核状态筛选",
+                      en: "Filter by review status",
+                    })}
+                    value={wordStatusFilter}
+                    onChange={(event) =>
+                      setWordStatusFilter(event.target.value)
+                    }
+                    className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+                  >
+                    <option value="all">
+                      {t({ zh: "全部状态", en: "All statuses" })}
+                    </option>
+                    <option value="pending">
+                      {t({ zh: "待审", en: "Pending" })}
+                    </option>
+                    <option value="approved">
+                      {t({ zh: "已通过", en: "Approved" })}
+                    </option>
+                    <option value="rejected">
+                      {t({ zh: "已拒绝", en: "Rejected" })}
+                    </option>
+                  </select>
+                </div>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -454,14 +528,21 @@ function VocabBooksAdmin() {
                       <TableHead>
                         {t({ zh: "中文释义", en: "Chinese meaning" })}
                       </TableHead>
+                      <TableHead>{t({ zh: "来源", en: "Source" })}</TableHead>
                       <TableHead>
-                        {t({ zh: "可接受拼写", en: "Accepted spellings" })}
+                        {t({ zh: "审核状态", en: "Review status" })}
+                      </TableHead>
+                      <TableHead>
+                        {t({
+                          zh: "可接受拼写",
+                          en: "Accepted spellings",
+                        })}
                       </TableHead>
                       <TableHead>{t({ zh: "操作", en: "Actions" })}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(detailQuery.data?.words ?? []).map((word) => (
+                    {visibleDetailWords.map((word) => (
                       <TableRow key={word.id}>
                         <TableCell className="font-semibold">
                           {word.headword}
@@ -470,26 +551,70 @@ function VocabBooksAdmin() {
                           {word.part_of_speech ?? "–"}
                         </TableCell>
                         <TableCell>{word.meaning_zh}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              word.source === "ai" ? "default" : "outline"
+                            }
+                          >
+                            {t(sourceLabel(word.source))}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              word.review_status === "approved"
+                                ? "secondary"
+                                : word.review_status === "rejected"
+                                  ? "destructive"
+                                  : "outline"
+                            }
+                          >
+                            {t(reviewStatusLabel(word.review_status))}
+                          </Badge>
+                        </TableCell>
                         <TableCell className="text-muted-foreground">
                           {(word.accepted_spellings ?? []).join(" / ") || "–"}
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={removeWord.isPending}
-                            onClick={() =>
-                              removeWord.mutate({
-                                bookId: openBook.id,
-                                wordId: word.id,
-                              })
-                            }
-                          >
-                            {t({ zh: "移除", en: "Remove" })}
-                          </Button>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingWord(word)}
+                            >
+                              {t({ zh: "编辑", en: "Edit" })}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={removeWord.isPending}
+                              onClick={() =>
+                                removeWord.mutate({
+                                  bookId: openBook.id,
+                                  wordId: word.id,
+                                })
+                              }
+                            >
+                              {t({ zh: "移除", en: "Remove" })}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
+                    {visibleDetailWords.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={7}
+                          className="text-center text-muted-foreground"
+                        >
+                          {t({
+                            zh: "该状态下没有词条。",
+                            en: "No words in this status.",
+                          })}
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </>
@@ -645,6 +770,18 @@ function VocabBooksAdmin() {
               </div>
             )}
 
+            <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={reviewedOk}
+                onChange={(event) => setReviewedOk(event.target.checked)}
+                className="size-4 accent-[var(--primary)]"
+              />
+              {t({
+                zh: "我已核对这些词条（勾选后直接通过审核，不再进入待审）",
+                en: "I have checked these entries (skip review and approve directly)",
+              })}
+            </label>
             <div className="flex flex-wrap items-center gap-3 border-t pt-4">
               <Button
                 disabled={createBook.isPending || newTitle.trim() === ""}
@@ -692,7 +829,19 @@ function VocabBooksAdmin() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={reviewedOk}
+                  onChange={(event) => setReviewedOk(event.target.checked)}
+                  className="size-4 accent-[var(--primary)]"
+                />
+                {t({
+                  zh: "我已核对这些词条（勾选后直接通过审核）",
+                  en: "I have checked these entries (approve directly)",
+                })}
+              </label>
               <Button
                 size="sm"
                 disabled={addWords.isPending || validRows.length === 0}
@@ -719,6 +868,16 @@ function VocabBooksAdmin() {
           </CardContent>
         </Card>
       )}
+
+      <WordEditDialog
+        word={editingWord}
+        onClose={() => setEditingWord(null)}
+        onSaved={() => {
+          setEditingWord(null)
+          queryClient.invalidateQueries({ queryKey: ["admin", "vocab-books"] })
+          queryClient.invalidateQueries({ queryKey: ["admin", "vocab-book"] })
+        }}
+      />
 
       <p className="pb-6 text-center text-xs text-muted-foreground">
         {t({
