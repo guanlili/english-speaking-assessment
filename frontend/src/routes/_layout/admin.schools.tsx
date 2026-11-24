@@ -810,8 +810,11 @@ function SchoolsAdminPage() {
                   {t({ zh: "暂无变更记录", en: "No change records" })}
                 </p>
               ) : (
-                <div className="max-h-64 overflow-y-auto rounded-2xl border">
-                  <Table>
+                <div className="max-h-64 overflow-auto rounded-2xl border">
+                  <Table
+                    data-testid="admin-module-audit-table"
+                    className="min-w-[880px]"
+                  >
                     <TableHeader>
                       <TableRow>
                         <TableHead>{t({ zh: "模块", en: "Module" })}</TableHead>
