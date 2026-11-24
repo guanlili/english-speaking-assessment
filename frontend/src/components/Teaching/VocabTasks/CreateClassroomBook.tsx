@@ -17,7 +17,7 @@ import {
   type VocabLevel,
 } from "@/lib/terms"
 import { localizeImportIssue } from "@/lib/vocabImport"
-import type { VocabCsvPreview } from "./types"
+import { toBookWordInput, type VocabCsvPreview } from "./types"
 
 /** 新建班级词库：标题 + 可选 CSV 预览导入，绑定当前课堂（scope=classroom）。 */
 export function CreateClassroomBook({
@@ -95,14 +95,7 @@ export function CreateClassroomBook({
       }),
     onSuccess: (data) => {
       setPreview({
-        words: (data.rows ?? []).map((row) => ({
-          headword: row.word.headword,
-          part_of_speech: row.word.part_of_speech ?? null,
-          meaning_zh: row.word.meaning_zh,
-          meaning_en: row.word.meaning_en ?? null,
-          accepted_spellings: row.word.accepted_spellings ?? null,
-          example_en: row.word.example_en ?? null,
-        })),
+        words: (data.rows ?? []).map((row) => toBookWordInput(row.word)),
         invalid: data.invalid ?? [],
         duplicates: data.duplicates ?? [],
       })
@@ -275,8 +268,8 @@ export function CreateClassroomBook({
         </Button>
         <span className="text-xs text-muted-foreground">
           {t({
-            zh: "CSV 表头：headword,meaning_zh（可选 part_of_speech/meaning_en/accepted_spellings/example_en）",
-            en: "CSV header: headword,meaning_zh (optional part_of_speech/meaning_en/accepted_spellings/example_en)",
+            zh: "CSV 表头：headword,meaning_zh（可选 part_of_speech/meaning_en/accepted_spellings/example_en/morphology）",
+            en: "CSV header: headword,meaning_zh (optional part_of_speech/meaning_en/accepted_spellings/example_en/morphology)",
           })}
         </span>
       </div>

@@ -24,7 +24,7 @@ from app.alembic.versions.b5d9e4f1a8c7_multi_tenant_c4a_rls_policies import (
 )
 from app.core.config import settings
 from app.core.tenant_context import install_tenant_bind, tenant_scope
-from app.models import DEFAULT_TENANT_ID, Passage, Tenant
+from app.models import DEFAULT_TENANT_ID, Passage, Tenant, VocabularyLevelEntry
 
 APP_ROLE = "esa_app_test"
 APP_PASSWORD = "esa_app_test_pw"
@@ -181,3 +181,60 @@ def test_platform_role_bypasses_rls(platform_engine_restricted, admin_engine) ->
             text(f"SELECT count(*) FROM passage WHERE slug LIKE 'c4-{_tag}-%'")
         ).scalar_one()
         assert count >= 2  # 两校行都可见（上测试造的 a/b）
+
+
+def test_vocab_level_catalog_readable_across_tenants_but_writes_stay_scoped(
+    app_engine_restricted, admin_engine, other_tenant
+) -> None:
+    """五级词库是平台授权目录：他校可读 default 词条，但不能跨租户写。
+
+    回归背景：学校会话读不到 default 租户的 10k+ 词条，导致按级别选词、
+    从五级词库转入、词条级别标注全部为空。
+    """
+    headword = f"catalog-{_tag}"
+    try:
+        with Session(admin_engine) as s:
+            s.add(
+                VocabularyLevelEntry(
+                    headword=headword,
+                    level="KET",
+                    meaning_zh="目录词",
+                    sources=["RLS 回归"],
+                )
+            )
+            s.commit()
+
+        with SASession(app_engine_restricted) as s:
+            with tenant_scope(other_tenant):
+                seen = (
+                    s.execute(
+                        text(
+                            "SELECT headword FROM vocab_level_entry WHERE headword = :h"
+                        ),
+                        {"h": headword},
+                    )
+                    .scalars()
+                    .all()
+                )
+                assert seen == [headword]
+            s.commit()
+            with tenant_scope(other_tenant):
+                with pytest.raises(Exception, match="row-level security"):
+                    s.add(
+                        VocabularyLevelEntry(
+                            headword=f"{headword}-write",
+                            level="KET",
+                            meaning_zh="跨校写",
+                            sources=["RLS 回归"],
+                            tenant_id=DEFAULT_TENANT_ID,
+                        )
+                    )
+                    s.commit()
+                s.rollback()
+    finally:
+        with Session(admin_engine) as s:
+            s.connection().execute(
+                text("DELETE FROM vocab_level_entry WHERE headword LIKE :p"),
+                {"p": f"{headword}%"},
+            )
+            s.commit()
