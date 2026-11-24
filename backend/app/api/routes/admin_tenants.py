@@ -75,14 +75,7 @@ def _module_rows(
     }
     for row in db_rows:
         by_tenant.setdefault(row.tenant_id, []).append(
-            TenantModulePublic(
-                tenant_id=row.tenant_id,
-                module_key=row.module_key,
-                enabled=row.enabled,
-                effective_at=row.effective_at,
-                updated_at=row.updated_at,
-                updated_by=row.updated_by,
-            )
+            entitlement.public_module(row, row.tenant_id)
         )
     return by_tenant
 
@@ -114,11 +107,17 @@ def list_tenants(
     _operator: PlatformOperatorDep,
     offset: int = Query(default=0, ge=0),
     limit: int | None = Query(default=None, ge=1, le=200),
+    expiring_within_days: int | None = Query(default=None, ge=1, le=365),
 ) -> Any:
-    rows = session.exec(
-        paged(select(Tenant).order_by(col(Tenant.created_at)), offset, limit)
-    ).all()
-    return _with_counts(session, list(rows))
+    rows = list(
+        session.exec(
+            paged(select(Tenant).order_by(col(Tenant.created_at)), offset, limit)
+        ).all()
+    )
+    if expiring_within_days is not None:
+        expiring = entitlement.tenants_expiring_within(session, expiring_within_days)
+        rows = [r for r in rows if r.id in expiring]
+    return _with_counts(session, rows)
 
 
 @router.post("", response_model=TenantAdminPublic)
@@ -150,14 +149,17 @@ def update_tenant_module(
     module_key: str,
     body: TenantModuleUpdate,
 ) -> Any:
-    """整校模块开关（平台运营）：开启/关闭 speaking 或 vocabulary，可选生效时间。
+    """整校模块开关（平台运营）：开启/关闭 speaking 或 vocabulary，可选租期。
 
-    变更落 ``tenant_module_audit``：操作人、前后值、生效时间、时间戳一并留痕；
-    学校管理员不可见、不可改本接口。
+    请求体为 PUT 整行语义：省略的元数据字段保留旧值；``expires_at`` 显式传
+    ``null`` 表示清除到期日（转长期）。``effective_at`` 即开始时间。
+    变更落 ``tenant_module_audit``：操作人、前后值（含到期日/类型/授权人）、
+    时间戳一并留痕；学校管理员不可见、不可改本接口。
     """
     _get_tenant_or_404(session, tenant_id)
     if module_key not in MODULE_KEYS:
         raise HTTPException(status_code=422, detail=f"模块无效：{module_key}")
+    fields_set = body.model_fields_set
     row, _audit = entitlement.upsert_module(
         session,
         tenant_id=tenant_id,
@@ -165,15 +167,13 @@ def update_tenant_module(
         enabled=body.enabled,
         operator=operator,
         effective_at=body.effective_at,
+        effective_at_set="effective_at" in fields_set,
+        expires_at=body.expires_at,
+        expires_at_set="expires_at" in fields_set,
+        grant_type=body.grant_type,
+        grant_type_set="grant_type" in fields_set,
     )
-    return TenantModulePublic(
-        tenant_id=row.tenant_id,
-        module_key=row.module_key,
-        enabled=row.enabled,
-        effective_at=row.effective_at,
-        updated_at=row.updated_at,
-        updated_by=row.updated_by,
-    )
+    return entitlement.public_module(row, row.tenant_id)
 
 
 @router.get(
