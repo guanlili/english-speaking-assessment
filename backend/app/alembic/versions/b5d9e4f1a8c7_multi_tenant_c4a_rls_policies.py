@@ -66,6 +66,7 @@ RLS_TABLES = [
     "vocabulary_ai_cache",
     "vocab_level_entry",
     "vocabulary_review_state",
+    "vocabulary_content_review_audit",
     # 作答与导出
     "attempt",
     "export_job",

@@ -49,6 +49,30 @@ class VocabularyWord(SQLModel, table=True):
     # 教师上传或已授权的标准音；为空时练习端用浏览器朗读兜底（需标注）
     audio_url: str | None = Field(default=None, max_length=1024)
     status: str = Field(default="active", max_length=16, index=True)
+    # 内容治理（AC4）：来源 / 审核状态 / 审核人与留痕 / 词条乐观锁版本
+    # source: teacher | ai | textbook | demo | import
+    # review_status: draft | pending | approved | rejected（当前写路径只产生 pending/approved）
+    source: str = Field(
+        default="teacher",
+        max_length=16,
+        index=True,
+        sa_column_kwargs={"server_default": "teacher"},
+    )
+    review_status: str = Field(
+        default="pending",
+        max_length=16,
+        index=True,
+        sa_column_kwargs={"server_default": "pending"},
+    )
+    reviewer_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL", index=True
+    )
+    reviewed_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    review_note: str | None = Field(default=None, max_length=512)
+    version: int = Field(default=1, ge=1, sa_column_kwargs={"server_default": "1"})
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -364,3 +388,33 @@ class VocabularyAnswer(SQLModel, table=True):
         sa_type=DateTime(timezone=True),  # type: ignore
     )
     idempotency_key: str | None = Field(default=None, max_length=64)
+
+
+class VocabularyContentReviewAudit(SQLModel, table=True):
+    """词条内容审核审计（AC4）：逐条留痕通过 / 拒绝 / 审核后编辑回退。
+
+    word_id 不做级联删除：词条归档或移出词库不抹掉历史审核记录；
+    headword / actor_name 为事件发生时快照，后续改名不回溯审计行。
+    """
+
+    __tablename__ = "vocabulary_content_review_audit"
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    word_id: uuid.UUID = Field(index=True)
+    headword: str = Field(max_length=64)
+    actor_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL", index=True
+    )
+    actor_name: str | None = Field(default=None, max_length=120)
+    actor_role: str | None = Field(default=None, max_length=16)
+    # approve | reject | reset
+    action: str = Field(max_length=16, index=True)
+    from_status: str | None = Field(default=None, max_length=16)
+    to_status: str | None = Field(default=None, max_length=16)
+    note: str | None = Field(default=None, max_length=512)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )

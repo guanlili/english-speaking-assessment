@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
 from app.models import (
+    REVIEW_NOTE_SELF_CONFIRMED,
     SELF_PRACTICE_MAX_WORDS,
     SELF_PRACTICE_MIX_WRONG_RATIO,
     VOCAB_PROMPT_TYPES,
@@ -35,6 +36,7 @@ from app.models import (
     VocabularyAssignmentTarget,
     VocabularyBook,
     VocabularyBookItem,
+    VocabularyContentReviewAudit,
     VocabularyPromptTypeStat,
     VocabularySession,
     VocabularyStudentAssignment,
@@ -254,14 +256,23 @@ def resolve_publish_words(
     """
     allowed_book_ids = _publish_allowed_book_ids(session, viewer)
     if book_id is not None:
-        return _publish_words_of_book(session, book_id, allowed_book_ids)
+        words = _publish_words_of_book(session, book_id, allowed_book_ids)
+    else:
+        word_ids = word_ids or []
+        _validate_word_id_list(word_ids)
+        found = _load_publishable_words(session, word_ids)
+        _ensure_word_ownership(session, word_ids, allowed_book_ids)
+        # 保持请求顺序（教师预览里看到的顺序即学生作答顺序）
+        words = [found[wid] for wid in word_ids]
 
-    word_ids = word_ids or []
-    _validate_word_id_list(word_ids)
-    found = _load_publishable_words(session, word_ids)
-    _ensure_word_ownership(session, word_ids, allowed_book_ids)
-    # 保持请求顺序（教师预览里看到的顺序即学生作答顺序）
-    return [found[wid] for wid in word_ids]
+    # 发布门禁（AC4）：未 approved 的词条禁止进任务；整本与显式清单两条路径同口径。
+    not_approved = [w for w in words if w.review_status != "approved"]
+    if not_approved:
+        raise HTTPException(
+            status_code=422,
+            detail=f"vocabulary_words_not_approved:{len(not_approved)}",
+        )
+    return words
 
 
 def next_assignment_version(session: Session, classroom_id: uuid.UUID) -> int:
@@ -1687,7 +1698,11 @@ def pos_by_word_ids(
 
 
 def student_book_ids(session: Session, classroom_id: uuid.UUID) -> set[uuid.UUID]:
-    """学生可浏览/可练的词库 id：active 公共库 + active 本班库。"""
+    """学生可浏览/可练的词库 id：active 公共库 + active 本班库。
+
+    可见性按词库判断（空词库仍归属本班，落到词级再判空 422）；approved
+    过滤在词级函数（student_book_words / student_practiceable_word_ids）完成。
+    """
     rows = session.exec(
         select(VocabularyBook.id).where(
             VocabularyBook.status == "active",
@@ -1701,10 +1716,10 @@ def student_book_ids(session: Session, classroom_id: uuid.UUID) -> set[uuid.UUID
 def student_practiceable_word_ids(
     session: Session, classroom_id: uuid.UUID
 ) -> set[uuid.UUID]:
-    """当前可练词库（active 公共/本班库）内的 active 词条 id 集合。
+    """当前可练词库（active 公共/本班库）内 approved 的 active 词条 id 集合。
 
-    错词「能否再练」的口径：词条仍在至少一本可练词库里，且词条本身是
-    active（已归档词条不进新复习轮）；词库/词条归档只影响能否再练，
+    错词「能否再练」的口径：词条仍在至少一本可练词库里，词条本身 active 且
+    已审核 approved（待审/驳回词不进新复习轮）；词库/词条归档只影响能否再练，
     不删历史错词。
     """
     rows = session.exec(
@@ -1720,6 +1735,7 @@ def student_practiceable_word_ids(
         .where(
             VocabularyBook.status == "active",
             VocabularyWord.status == "active",
+            VocabularyWord.review_status == "approved",
             (VocabularyBook.scope == "public")  # type: ignore[operator]
             | (VocabularyBook.classroom_id == classroom_id),  # type: ignore[operator,arg-type]
         )
@@ -1730,7 +1746,7 @@ def student_practiceable_word_ids(
 def student_book_word_counts(
     session: Session, book_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, int]:
-    """词库 active 词条计数（学生浏览口径：归档词不计入可练数）。"""
+    """词库 approved active 词条计数（学生浏览口径：归档/未审词不计入可练数）。"""
     if not book_ids:
         return {}
     from sqlmodel import func
@@ -1744,6 +1760,7 @@ def student_book_word_counts(
         .where(
             col(VocabularyBookItem.book_id).in_(book_ids),  # type: ignore[operator]
             VocabularyWord.status == "active",
+            VocabularyWord.review_status == "approved",
         )
         .group_by(col(VocabularyBookItem.book_id))
     ).all()
@@ -1753,7 +1770,7 @@ def student_book_word_counts(
 def student_book_words(
     session: Session, book_id: uuid.UUID, search: str | None = None
 ) -> list[VocabularyWord]:
-    """词库内 active 词条（按词库排序）；search 过滤拼写/中英释义（不区分大小写）。"""
+    """词库内 approved active 词条（按词库排序）；search 过滤拼写/中英释义（不区分大小写）。"""
     words = list(
         session.exec(
             select(VocabularyWord)
@@ -1764,6 +1781,7 @@ def student_book_words(
             .where(
                 VocabularyBookItem.book_id == book_id,  # type: ignore[arg-type]
                 VocabularyWord.status == "active",
+                VocabularyWord.review_status == "approved",
             )
             .order_by(col(VocabularyBookItem.position))
         ).all()
@@ -2460,7 +2478,16 @@ def word_count_by_book(
     return dict(rows)
 
 
-def _create_word(session: Session, word_in: VocabularyWordIn) -> VocabularyWord:
+def _create_word(
+    session: Session,
+    word_in: VocabularyWordIn,
+    *,
+    source: str = "teacher",
+    review_status: str = "pending",
+    reviewer_id: uuid.UUID | None = None,
+    reviewed_at: datetime | None = None,
+    review_note: str | None = None,
+) -> VocabularyWord:
     word = VocabularyWord(
         headword=word_in.headword.strip(),
         part_of_speech=(word_in.part_of_speech or "").strip() or None,
@@ -2475,6 +2502,11 @@ def _create_word(session: Session, word_in: VocabularyWordIn) -> VocabularyWord:
         example_en=(word_in.example_en or "").strip() or None,
         audio_url=(word_in.audio_url or "").strip() or None,
         morphology=prompt_types_mod.normalize_morphology(word_in.morphology) or None,
+        source=source,
+        review_status=review_status,
+        reviewer_id=reviewer_id,
+        reviewed_at=reviewed_at,
+        review_note=review_note,
     )
     session.add(word)
     return word
@@ -2510,8 +2542,33 @@ def _known_book_word_keys(
     return known, _next_position(session, book.id)
 
 
+def _review_meta_for_import(
+    *, confirm_reviewed: bool, reviewer: User | None
+) -> tuple[str, uuid.UUID | None, datetime | None, str | None]:
+    """导入/建库词条的审核元数据：勾选已核对 → 直接 approved（自评留痕）。
+
+    返回 (review_status, reviewer_id, reviewed_at, review_note)。
+    """
+    if confirm_reviewed:
+        return (
+            "approved",
+            reviewer.id if reviewer else None,
+            get_datetime_utc() if reviewer else None,
+            REVIEW_NOTE_SELF_CONFIRMED,
+        )
+    return ("pending", None, None, None)
+
+
 def _collect_new_words(
-    session: Session, words_in: list[VocabularyWordIn], known: set[tuple[str, str]]
+    session: Session,
+    words_in: list[VocabularyWordIn],
+    known: set[tuple[str, str]],
+    *,
+    source: str,
+    review_status: str,
+    reviewer_id: uuid.UUID | None,
+    reviewed_at: datetime | None,
+    review_note: str | None,
 ) -> list[VocabularyWord]:
     """同库已收的词跳过（键为 headword+释义）；返回需要落库的新词。"""
     new_words: list[VocabularyWord] = []
@@ -2520,7 +2577,17 @@ def _collect_new_words(
         if key in known:
             continue
         known.add(key)
-        new_words.append(_create_word(session, word_in))
+        new_words.append(
+            _create_word(
+                session,
+                word_in,
+                source=source,
+                review_status=review_status,
+                reviewer_id=reviewer_id,
+                reviewed_at=reviewed_at,
+                review_note=review_note,
+            )
+        )
     return new_words
 
 
@@ -2549,7 +2616,13 @@ def _attach_words_to_book(
 
 
 def add_words_to_book(
-    session: Session, book: VocabularyBook, words_in: list[VocabularyWordIn]
+    session: Session,
+    book: VocabularyBook,
+    words_in: list[VocabularyWordIn],
+    *,
+    source: str = "teacher",
+    confirm_reviewed: bool = False,
+    reviewer: User | None = None,
 ) -> int:
     """词库内加词；同库已收的词（headword+释义一致）跳过。返回新增数。
 
@@ -2569,8 +2642,326 @@ def add_words_to_book(
     if locked_book is None:
         raise HTTPException(status_code=404, detail="词库不存在")
     known, position = _known_book_word_keys(session, book)
-    new_words = _collect_new_words(session, words_in, known)
+    review_status, reviewer_id, reviewed_at, review_note = _review_meta_for_import(
+        confirm_reviewed=confirm_reviewed, reviewer=reviewer
+    )
+    new_words = _collect_new_words(
+        session,
+        words_in,
+        known,
+        source=source,
+        review_status=review_status,
+        reviewer_id=reviewer_id,
+        reviewed_at=reviewed_at,
+        review_note=review_note,
+    )
     if new_words:
         _attach_words_to_book(session, book, new_words, position)
     session.commit()
     return len(new_words)
+
+
+# ── 内容治理审核队列（AC4）─────────────────────────────────────────
+
+REVIEW_ACTIONS = ("approve", "reject")
+# 词条内容字段（status-only 改动不触发审核回退）
+REVIEW_CONTENT_FIELDS = (
+    "part_of_speech",
+    "meaning_zh",
+    "meaning_en",
+    "accepted_spellings",
+    "example_en",
+    "audio_url",
+    "morphology",
+)
+
+
+def _actor_snapshot_name(actor: User | None) -> str | None:
+    if actor is None:
+        return None
+    return actor.full_name or actor.username or actor.email or None
+
+
+def _write_review_audit(
+    session: Session,
+    *,
+    word: VocabularyWord,
+    actor: User | None,
+    action: str,
+    from_status: str | None,
+    to_status: str | None,
+    note: str | None,
+) -> None:
+    """逐条留痕：通过 / 拒绝 / 审核后编辑回退；快照 actor 与 headword。"""
+    session.add(
+        VocabularyContentReviewAudit(
+            tenant_id=word.tenant_id,
+            word_id=word.id,
+            headword=word.headword,
+            actor_id=actor.id if actor else None,
+            actor_name=_actor_snapshot_name(actor),
+            actor_role=actor.role if actor else None,
+            action=action,
+            from_status=from_status,
+            to_status=to_status,
+            note=note,
+        )
+    )
+
+
+def _review_filtered_word_ids(
+    session: Session,
+    *,
+    viewer: User | None,
+    platform: bool,
+    status: str | None,
+    source: str | None,
+    book_id: uuid.UUID | None,
+    classroom_id: uuid.UUID | None,
+    q: str | None,
+) -> set[uuid.UUID]:
+    """审核可见词条集合：教师=本人班级库；school_admin=本校；platform=全平台。"""
+    stmt = (
+        select(VocabularyBookItem.word_id)
+        .join(VocabularyBook, VocabularyBook.id == VocabularyBookItem.book_id)  # ty: ignore[invalid-argument-type]
+        .join(VocabularyWord, VocabularyWord.id == VocabularyBookItem.word_id)  # ty: ignore[invalid-argument-type]
+    )
+    if not platform and viewer is not None and viewer.role != "school_admin":
+        stmt = stmt.where(
+            VocabularyBook.scope == "classroom",  # type: ignore[union-attr]
+            VocabularyBook.owner_id == viewer.id,  # type: ignore[union-attr]
+        )
+    if book_id is not None:
+        stmt = stmt.where(VocabularyBookItem.book_id == book_id)  # type: ignore[arg-type]
+    if classroom_id is not None:
+        stmt = stmt.where(VocabularyBook.classroom_id == classroom_id)  # type: ignore[arg-type]
+    if status:
+        stmt = stmt.where(VocabularyWord.review_status == status)
+    if source:
+        stmt = stmt.where(VocabularyWord.source == source)
+    if q and q.strip():
+        needle = f"%{q.strip()}%"
+        stmt = stmt.where(
+            col(VocabularyWord.headword).ilike(needle)  # type: ignore[union-attr]
+            | col(VocabularyWord.meaning_zh).ilike(needle)  # type: ignore[union-attr]
+        )
+    return set(session.exec(stmt).all())
+
+
+def _review_counts(session: Session, word_ids: set[uuid.UUID]) -> dict[str, int]:
+    counts = {"pending": 0, "rejected": 0, "approved": 0}
+    if not word_ids:
+        return counts
+    rows = session.exec(
+        select(VocabularyWord.review_status, func.count())
+        .where(col(VocabularyWord.id).in_(word_ids))  # type: ignore[operator]
+        .group_by(VocabularyWord.review_status)
+    ).all()
+    for status, count in rows:
+        counts[status] = count
+    return counts
+
+
+def _first_book_of_words(
+    session: Session, word_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[uuid.UUID, str]]:
+    """每个词条归属的第一本可见词库（审核队列单行展示用）。"""
+    if not word_ids:
+        return {}
+    items = session.exec(
+        select(VocabularyBookItem).where(
+            col(VocabularyBookItem.word_id).in_(word_ids)  # type: ignore[operator]
+        )
+    ).all()
+    book_ids = {item.book_id for item in items}
+    books = {
+        b.id: b
+        for b in session.exec(
+            select(VocabularyBook).where(col(VocabularyBook.id).in_(book_ids))  # type: ignore[operator]
+        ).all()
+    }
+    mapping: dict[uuid.UUID, tuple[uuid.UUID, str]] = {}
+    for item in sorted(items, key=lambda i: (i.word_id, i.position or 0)):
+        book = books.get(item.book_id)
+        if book is not None and item.word_id not in mapping:
+            mapping[item.word_id] = (book.id, book.title)
+    return mapping
+
+
+def list_review_queue(
+    session: Session,
+    *,
+    viewer: User | None,
+    status: str | None,
+    source: str | None,
+    book_id: uuid.UUID | None,
+    classroom_id: uuid.UUID | None,
+    q: str | None,
+    offset: int,
+    limit: int,
+    platform: bool = False,
+) -> tuple[list[VocabularyWord], dict[str, int], int]:
+    """审核队列：按可见范围过滤；计数口径不含 status 过滤。"""
+    visible = _review_filtered_word_ids(
+        session,
+        viewer=viewer,
+        platform=platform,
+        status=None,
+        source=source,
+        book_id=book_id,
+        classroom_id=classroom_id,
+        q=q,
+    )
+    counts = _review_counts(session, visible)
+    filtered = _review_filtered_word_ids(
+        session,
+        viewer=viewer,
+        platform=platform,
+        status=status,
+        source=source,
+        book_id=book_id,
+        classroom_id=classroom_id,
+        q=q,
+    )
+    if not filtered:
+        return [], counts, 0
+    total = len(filtered)
+    ordered = sorted(filtered)
+    page_ids = ordered[offset : offset + limit]
+    words = list(
+        session.exec(
+            select(VocabularyWord)
+            .where(col(VocabularyWord.id).in_(page_ids))  # type: ignore[operator]
+            .order_by(col(VocabularyWord.created_at))
+        ).all()
+    )
+    return words, counts, total
+
+
+def review_words(
+    session: Session,
+    *,
+    viewer: User,
+    word_ids: list[uuid.UUID],
+    action: str,
+    note: str | None,
+) -> tuple[int, str]:
+    """批量审核：全有或全无；非 pending 冲突 409；拒绝必须有意见；逐词写审计。"""
+    if action not in REVIEW_ACTIONS:
+        raise HTTPException(status_code=422, detail="审核动作必须是 approve 或 reject")
+    note_text = (note or "").strip() or None
+    if action == "reject" and not note_text:
+        raise HTTPException(status_code=422, detail="拒绝词条必须填写审核意见")
+    if note_text and len(note_text) > 512:
+        raise HTTPException(status_code=422, detail="审核意见最长 512 字")
+
+    words = list(
+        session.exec(
+            select(VocabularyWord).where(col(VocabularyWord.id).in_(word_ids))  # type: ignore[operator]
+        ).all()
+    )
+    found = {w.id: w for w in words}
+    missing = [wid for wid in word_ids if wid not in found]
+    if missing:
+        raise HTTPException(status_code=404, detail="词条不存在")
+
+    for word in words:
+        if word.tenant_id != viewer.tenant_id:  # type: ignore[union-attr]
+            raise HTTPException(status_code=404, detail="词条不存在")
+        if viewer.role != "school_admin":
+            own_book = session.exec(
+                select(VocabularyBook.id)
+                .join(
+                    VocabularyBookItem,
+                    VocabularyBookItem.book_id == VocabularyBook.id,  # ty: ignore[invalid-argument-type]
+                )
+                .where(
+                    VocabularyBookItem.word_id == word.id,  # type: ignore[arg-type]
+                    VocabularyBook.scope == "classroom",
+                    VocabularyBook.owner_id == viewer.id,  # type: ignore[arg-type]
+                )
+                .limit(1)
+            ).first()
+            if own_book is None:
+                raise HTTPException(status_code=403, detail="没有权限审核这个词条")
+
+    conflict = [w for w in words if w.review_status != "pending"]
+    if conflict:
+        raise HTTPException(
+            status_code=409, detail=f"review_state_conflict:{len(conflict)}"
+        )
+
+    target = "approved" if action == "approve" else "rejected"
+    now = get_datetime_utc()
+    for word in words:
+        from_status = word.review_status
+        word.review_status = target
+        word.reviewer_id = viewer.id
+        word.reviewed_at = now
+        word.review_note = note_text
+        _write_review_audit(
+            session,
+            word=word,
+            actor=viewer,
+            action=action,
+            from_status=from_status,
+            to_status=target,
+            note=note_text,
+        )
+    session.commit()
+    return len(words), target
+
+
+def list_review_audit(
+    session: Session,
+    *,
+    viewer: User | None,
+    word_id: uuid.UUID | None,
+    limit: int,
+    platform: bool = False,
+) -> list[VocabularyContentReviewAudit]:
+    stmt = select(VocabularyContentReviewAudit)
+    if word_id is not None:
+        stmt = stmt.where(VocabularyContentReviewAudit.word_id == word_id)  # type: ignore[arg-type]
+    if not platform and viewer is not None:
+        stmt = stmt.where(VocabularyContentReviewAudit.tenant_id == viewer.tenant_id)  # type: ignore[union-attr,arg-type]
+    stmt = stmt.order_by(col(VocabularyContentReviewAudit.created_at).desc())
+    return list(session.exec(stmt.limit(limit)).all())
+
+
+def word_book_ids(session: Session, word_id: uuid.UUID) -> list[uuid.UUID]:
+    return list(
+        session.exec(
+            select(VocabularyBookItem.book_id).where(
+                VocabularyBookItem.word_id == word_id  # type: ignore[arg-type]
+            )
+        ).all()
+    )
+
+
+def find_duplicate_word(
+    session: Session,
+    *,
+    headword: str,
+    meaning_zh: str,
+    exclude_word_id: uuid.UUID,
+    book_ids: list[uuid.UUID],
+) -> VocabularyWord | None:
+    """同库重复键（headword.casefold() + meaning_zh）排查；返回冲突词条。"""
+    if not book_ids:
+        return None
+    candidates = session.exec(
+        select(VocabularyWord)
+        .join(
+            VocabularyBookItem,
+            VocabularyBookItem.word_id == VocabularyWord.id,  # ty: ignore[invalid-argument-type]
+        )
+        .where(col(VocabularyBookItem.book_id).in_(book_ids))  # type: ignore[operator]
+    ).all()
+    key = (headword.strip().casefold(), meaning_zh.strip())
+    for candidate in candidates:
+        if candidate.id == exclude_word_id:
+            continue
+        if (candidate.headword.casefold(), (candidate.meaning_zh or "").strip()) == key:
+            return candidate
+    return None

@@ -52,6 +52,7 @@ EXPECTED_TENANT_TABLES = {
     "vocabulary_assignment_target",
     "vocabulary_book",
     "vocabulary_book_item",
+    "vocabulary_content_review_audit",
     "vocab_farm_plot",
     "vocab_pk_answer",
     "vocab_pk_lobby",

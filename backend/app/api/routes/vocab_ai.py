@@ -116,6 +116,7 @@ def import_word_drafts(
             book_id=body.book_id,
             drafts=[d.model_dump() for d in body.drafts],
             current_user=current_user,
+            confirm_reviewed=body.confirm_reviewed,
         )
     except HTTPException:
         raise

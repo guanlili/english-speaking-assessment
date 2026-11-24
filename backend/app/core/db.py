@@ -517,6 +517,7 @@ DEMO_VOCAB_WORDS: list[
 def _seed_vocabulary_demo(session: Session) -> None:
     """公共演示词库（20 个自写词条）：已存在任何词库时不重复种入。"""
     from app.models import (
+        REVIEW_NOTE_LEGACY,
         VocabularyBook,
         VocabularyBookItem,
         VocabularyWord,
@@ -546,6 +547,9 @@ def _seed_vocabulary_demo(session: Session) -> None:
             meaning_en=meaning_en,
             accepted_spellings=list(accepted) or None,
             example_en=example,
+            source="demo",
+            review_status="approved",
+            review_note=REVIEW_NOTE_LEGACY,
         )
         session.add(word)
         session.flush()

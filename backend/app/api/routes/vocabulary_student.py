@@ -113,6 +113,8 @@ def list_student_books(
     if limit is not None:
         books = books[:limit]
     counts = vocab_service.student_book_word_counts(session, [b.id for b in books])
+    # AC4：学生浏览只展示至少含 1 个 approved 词的词库；待审/驳回/空库不露出
+    books = [b for b in books if counts.get(b.id, 0) > 0]
     return [_book_public(b, counts.get(b.id, 0)) for b in books]
 
 
@@ -141,6 +143,9 @@ def read_student_book(
     # word_count 始终为全库 active 词条数（开练前的词数预告不受搜索影响）；
     # words 为搜索过滤后的列表（search 缺省 = 全部）
     all_words = vocab_service.student_book_words(session, book.id)
+    if not all_words:
+        # AC4：库内无 approved 词条 → 学生侧不可浏览（待审/驳回/空库不露出）
+        raise HTTPException(status_code=403, detail="没有权限查看这个词库")
     words = (
         vocab_service.student_book_words(session, book.id, search)
         if search

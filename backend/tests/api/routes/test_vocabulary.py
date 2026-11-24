@@ -57,7 +57,12 @@ def _make_public_book(
 ) -> dict:
     resp = client.post(
         f"{VOCAB}/books",
-        json={"title": title, "scope": "public", "words": words},
+        json={
+            "title": title,
+            "scope": "public",
+            "words": words,
+            "confirm_reviewed": True,
+        },
         headers=admin_headers,
     )
     assert resp.status_code == 200, resp.text
@@ -282,6 +287,13 @@ def test_publish_validation_and_snapshot_immutability(
         headers=superuser_token_headers,
     )
     assert resp.status_code == 200, resp.text
+    # 内容编辑使 approved 词条回 pending；重发前需重新审核通过（AC4 门禁）
+    reviewed = client.post(
+        f"{VOCAB}/reviews",
+        json={"word_ids": [apple_id], "action": "approve"},
+        headers=superuser_token_headers,
+    )
+    assert reviewed.status_code == 200, reviewed.text
 
     # 学生视图仍显示发布时的快照释义
     plan = _today(client, student["headers"], code)
@@ -577,6 +589,7 @@ def test_publish_cannot_use_other_teachers_words(
             "scope": "classroom",
             "classroom_id": classroom_a["id"],
             "words": WORDS_3[:2],
+            "confirm_reviewed": True,
         },
         headers=headers_a,
     )

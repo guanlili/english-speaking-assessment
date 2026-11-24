@@ -6437,6 +6437,10 @@ export type VocabularyAiWordDraftImportRequest = {
      * Drafts
      */
     drafts: Array<VocabularyAiWordDraft>;
+    /**
+     * Confirm Reviewed
+     */
+    confirm_reviewed?: boolean;
 };
 
 /**
@@ -6746,6 +6750,14 @@ export type VocabularyBookCreate = {
      */
     classroom_id?: string | null;
     /**
+     * Source
+     */
+    source?: string;
+    /**
+     * Confirm Reviewed
+     */
+    confirm_reviewed?: boolean;
+    /**
      * Words
      */
     words?: Array<VocabularyWordIn>;
@@ -6944,6 +6956,32 @@ export type VocabularyClassResults = {
      * Answers Published
      */
     answers_published?: boolean;
+};
+
+/**
+ * VocabularyContentReviewList
+ */
+export type VocabularyContentReviewList = {
+    /**
+     * Items
+     */
+    items?: Array<VocabularyReviewItem>;
+    /**
+     * Total
+     */
+    total?: number;
+    /**
+     * Pending Count
+     */
+    pending_count?: number;
+    /**
+     * Rejected Count
+     */
+    rejected_count?: number;
+    /**
+     * Approved Count
+     */
+    approved_count?: number;
 };
 
 /**
@@ -7518,6 +7556,160 @@ export type VocabularyRecommendationFocus = {
      * Practiceable
      */
     practiceable?: boolean;
+};
+
+/**
+ * VocabularyReviewActionRequest
+ */
+export type VocabularyReviewActionRequest = {
+    /**
+     * Word Ids
+     */
+    word_ids: Array<string>;
+    /**
+     * Action
+     */
+    action: string;
+    /**
+     * Note
+     */
+    note?: string | null;
+};
+
+/**
+ * VocabularyReviewActionResult
+ */
+export type VocabularyReviewActionResult = {
+    /**
+     * Updated
+     */
+    updated: number;
+    /**
+     * Status
+     */
+    status: string;
+};
+
+/**
+ * VocabularyReviewAuditItem
+ */
+export type VocabularyReviewAuditItem = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Word Id
+     */
+    word_id: string;
+    /**
+     * Headword
+     */
+    headword: string;
+    /**
+     * Actor Id
+     */
+    actor_id?: string | null;
+    /**
+     * Actor Name
+     */
+    actor_name?: string | null;
+    /**
+     * Actor Role
+     */
+    actor_role?: string | null;
+    /**
+     * Action
+     */
+    action: string;
+    /**
+     * From Status
+     */
+    from_status?: string | null;
+    /**
+     * To Status
+     */
+    to_status?: string | null;
+    /**
+     * Note
+     */
+    note?: string | null;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+    /**
+     * Tenant Slug
+     */
+    tenant_slug?: string | null;
+    /**
+     * Tenant Name
+     */
+    tenant_name?: string | null;
+};
+
+/**
+ * VocabularyReviewItem
+ *
+ * 审核队列单行：词条当前内容 + 归属词库与审核留痕。
+ */
+export type VocabularyReviewItem = {
+    /**
+     * Word Id
+     */
+    word_id: string;
+    /**
+     * Headword
+     */
+    headword: string;
+    /**
+     * Part Of Speech
+     */
+    part_of_speech?: string | null;
+    /**
+     * Meaning Zh
+     */
+    meaning_zh: string;
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Review Status
+     */
+    review_status: string;
+    /**
+     * Review Note
+     */
+    review_note?: string | null;
+    /**
+     * Version
+     */
+    version: number;
+    /**
+     * Book Id
+     */
+    book_id?: string | null;
+    /**
+     * Book Title
+     */
+    book_title?: string | null;
+    /**
+     * Reviewer Id
+     */
+    reviewer_id?: string | null;
+    /**
+     * Reviewed At
+     */
+    reviewed_at?: string | null;
+    /**
+     * Tenant Slug
+     */
+    tenant_slug?: string | null;
+    /**
+     * Tenant Name
+     */
+    tenant_name?: string | null;
 };
 
 /**
@@ -8466,6 +8658,30 @@ export type VocabularyWordPublic = {
      */
     status?: string;
     /**
+     * Source
+     */
+    source?: string;
+    /**
+     * Review Status
+     */
+    review_status?: string;
+    /**
+     * Reviewer Id
+     */
+    reviewer_id?: string | null;
+    /**
+     * Reviewed At
+     */
+    reviewed_at?: string | null;
+    /**
+     * Review Note
+     */
+    review_note?: string | null;
+    /**
+     * Version
+     */
+    version?: number;
+    /**
      * Level
      */
     level?: string | null;
@@ -8555,6 +8771,10 @@ export type VocabularyWordUpdate = {
      * Status
      */
     status?: string | null;
+    /**
+     * Expected Version
+     */
+    expected_version?: number | null;
 };
 
 /**
@@ -14635,7 +14855,16 @@ export type VocabularyAddBookWordsData = {
          */
         book_id: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * Source
+         */
+        source?: string;
+        /**
+         * Confirm Reviewed
+         */
+        confirm_reviewed?: boolean;
+    };
     url: '/api/v1/vocabulary/books/{book_id}/words';
 };
 
@@ -16189,6 +16418,211 @@ export type VocabularyAiOverallInsightResponses = {
 };
 
 export type VocabularyAiOverallInsightResponse = VocabularyAiOverallInsightResponses[200 & keyof VocabularyAiOverallInsightResponses];
+
+export type VocabularyListVocabularyReviewsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Status
+         */
+        status?: string | null;
+        /**
+         * Source
+         */
+        source?: string | null;
+        /**
+         * Book Id
+         */
+        book_id?: string | null;
+        /**
+         * Classroom Id
+         */
+        classroom_id?: string | null;
+        /**
+         * Q
+         */
+        q?: string | null;
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/vocabulary/reviews';
+};
+
+export type VocabularyListVocabularyReviewsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyListVocabularyReviewsError = VocabularyListVocabularyReviewsErrors[keyof VocabularyListVocabularyReviewsErrors];
+
+export type VocabularyListVocabularyReviewsResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyContentReviewList;
+};
+
+export type VocabularyListVocabularyReviewsResponse = VocabularyListVocabularyReviewsResponses[200 & keyof VocabularyListVocabularyReviewsResponses];
+
+export type VocabularyReviewVocabularyWordsData = {
+    body: VocabularyReviewActionRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/vocabulary/reviews';
+};
+
+export type VocabularyReviewVocabularyWordsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReviewVocabularyWordsError = VocabularyReviewVocabularyWordsErrors[keyof VocabularyReviewVocabularyWordsErrors];
+
+export type VocabularyReviewVocabularyWordsResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyReviewActionResult;
+};
+
+export type VocabularyReviewVocabularyWordsResponse = VocabularyReviewVocabularyWordsResponses[200 & keyof VocabularyReviewVocabularyWordsResponses];
+
+export type VocabularyVocabularyReviewAuditData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Word Id
+         */
+        word_id?: string | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/vocabulary/reviews/audit';
+};
+
+export type VocabularyVocabularyReviewAuditErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyVocabularyReviewAuditError = VocabularyVocabularyReviewAuditErrors[keyof VocabularyVocabularyReviewAuditErrors];
+
+export type VocabularyVocabularyReviewAuditResponses = {
+    /**
+     * Response Vocabulary-Vocabulary Review Audit
+     *
+     * Successful Response
+     */
+    200: Array<VocabularyReviewAuditItem>;
+};
+
+export type VocabularyVocabularyReviewAuditResponse = VocabularyVocabularyReviewAuditResponses[200 & keyof VocabularyVocabularyReviewAuditResponses];
+
+export type AdminAdminListVocabularyReviewsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Status
+         */
+        status?: string | null;
+        /**
+         * Source
+         */
+        source?: string | null;
+        /**
+         * Book Id
+         */
+        book_id?: string | null;
+        /**
+         * Classroom Id
+         */
+        classroom_id?: string | null;
+        /**
+         * Q
+         */
+        q?: string | null;
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/admin/vocabulary/reviews';
+};
+
+export type AdminAdminListVocabularyReviewsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminAdminListVocabularyReviewsError = AdminAdminListVocabularyReviewsErrors[keyof AdminAdminListVocabularyReviewsErrors];
+
+export type AdminAdminListVocabularyReviewsResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyContentReviewList;
+};
+
+export type AdminAdminListVocabularyReviewsResponse = AdminAdminListVocabularyReviewsResponses[200 & keyof AdminAdminListVocabularyReviewsResponses];
+
+export type AdminAdminVocabularyReviewAuditData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Word Id
+         */
+        word_id?: string | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/admin/vocabulary/reviews/audit';
+};
+
+export type AdminAdminVocabularyReviewAuditErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminAdminVocabularyReviewAuditError = AdminAdminVocabularyReviewAuditErrors[keyof AdminAdminVocabularyReviewAuditErrors];
+
+export type AdminAdminVocabularyReviewAuditResponses = {
+    /**
+     * Response Admin-Admin Vocabulary Review Audit
+     *
+     * Successful Response
+     */
+    200: Array<VocabularyReviewAuditItem>;
+};
+
+export type AdminAdminVocabularyReviewAuditResponse = AdminAdminVocabularyReviewAuditResponses[200 & keyof AdminAdminVocabularyReviewAuditResponses];
 
 export type ChangelogReadChangelogData = {
     body?: never;
