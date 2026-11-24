@@ -622,6 +622,7 @@ def attach_word_levels(
                 meaning_en=word.meaning_en,
                 accepted_spellings=word.accepted_spellings,
                 example_en=word.example_en,
+                morphology=word.morphology,
                 audio_url=word.audio_url,
                 status=word.status,
                 level=info[0] if info else None,

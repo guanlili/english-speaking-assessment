@@ -186,6 +186,24 @@ def _setup(
 # ── 内容门槛 ───────────────────────────────────────────────────────
 
 
+def test_book_words_expose_morphology_to_teacher_panel(
+    client: TestClient, db: Session
+) -> None:
+    """教师读词库必须返回 morphology，否则前端恒判 roots「0 词可出」并禁用。
+
+    回归背景：attach_word_levels 在构造 VocabularyWordPublic 时漏传该字段，
+    只影响教师 readBook 读路径；DB、发布快照、学生 today 接口均正常。
+    """
+    _headers, _code, _book_row, words = _setup(client, db, DEMO_WORDS)
+    by_headword = {word["headword"]: word for word in words}
+    teacher = by_headword["teacher"]
+    assert teacher["morphology"] == [
+        {"text": "teach", "gloss": "教", "kind": "root"},
+        {"text": "er", "gloss": "表人", "kind": "suffix"},
+    ]
+    assert by_headword["apple"]["morphology"] is None
+
+
 def test_publish_rejects_types_without_content(client: TestClient, db: Session) -> None:
     """没有例句不能出语境填空；没有词法不能出词根拼装；不足四词不能四选一。"""
     headers, code, _book_row, _words = _setup(client, db, DEMO_WORDS)
