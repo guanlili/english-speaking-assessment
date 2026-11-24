@@ -87,6 +87,8 @@ function VocabBooksAdmin() {
   const booksQuery = useQuery({
     queryKey: ["admin", "vocab-books"],
     queryFn: () => VocabularyService.listBooks(),
+    // 平台运营只读：不调学校端词库列表（平台 token 无校内口径权限）
+    enabled: !isOperator,
   })
   const books = booksQuery.data ?? []
 
@@ -95,7 +97,7 @@ function VocabBooksAdmin() {
     queryKey: ["admin", "vocab-book", openBookId],
     queryFn: () =>
       VocabularyService.readBook({ book_id: openBookId as string }),
-    enabled: openBookId !== null,
+    enabled: !!openBookId && !isOperator,
   })
 
   // 新建词库（含导入确认）
@@ -299,136 +301,138 @@ function VocabBooksAdmin() {
       {/* 内容审核队列（全校；平台运营只读，不展示审核动作） */}
       <ContentReviewPanel readonly={isOperator} />
 
-      {/* 词库列表 */}
-      <Card>
-        <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
-          <div>
-            <CardTitle className="text-base">
-              {t({ zh: "全部词库", en: "All word books" })}{" "}
-              <span className="text-sm font-normal text-muted-foreground">
-                · {books.length}
-              </span>
-            </CardTitle>
-            <CardDescription>
-              {t({
-                zh: "公共词库由管理员维护；班级词库由本班教师维护。",
-                en: "Public books are maintained by admins; classroom books by their teachers.",
-              })}
-            </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void booksQuery.refetch()}
-              disabled={booksQuery.isFetching}
-            >
-              <RefreshCw
-                className={booksQuery.isFetching ? "animate-spin" : ""}
-              />
-              {t({ zh: "刷新", en: "Refresh" })}
-            </Button>
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus />
-              {t({ zh: "新建公共词库", en: "New Public Book" })}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="pb-0">
-          {booksQuery.isPending ? (
-            <div role="status" className="pb-6">
-              <Skeleton className="h-32 rounded-xl" />
+      {/* 词库列表（平台运营只读：隐藏校内词库维护区，仅保留上方审核队列） */}
+      {!isOperator && (
+        <Card>
+          <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
+            <div>
+              <CardTitle className="text-base">
+                {t({ zh: "全部词库", en: "All word books" })}{" "}
+                <span className="text-sm font-normal text-muted-foreground">
+                  · {books.length}
+                </span>
+              </CardTitle>
+              <CardDescription>
+                {t({
+                  zh: "公共词库由管理员维护；班级词库由本班教师维护。",
+                  en: "Public books are maintained by admins; classroom books by their teachers.",
+                })}
+              </CardDescription>
             </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t({ zh: "词库", en: "Book" })}</TableHead>
-                  <TableHead>{t({ zh: "作用域", en: "Scope" })}</TableHead>
-                  <TableHead>{t({ zh: "词数", en: "Words" })}</TableHead>
-                  <TableHead>{t({ zh: "状态", en: "Status" })}</TableHead>
-                  <TableHead>{t({ zh: "操作", en: "Actions" })}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {books.map((book) => (
-                  <TableRow key={book.id}>
-                    <TableCell>
-                      <span className="font-medium">{book.title}</span>
-                      {book.description && (
-                        <span className="ml-2 hidden text-xs text-muted-foreground md:inline">
-                          {book.description}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {book.scope === "public" ? (
-                        <Badge variant="secondary">
-                          {t({ zh: "公共", en: "Public" })}
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">
-                          {t({ zh: "班级", en: "Classroom" })}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="tabular-nums">
-                      {book.word_count ?? 0}
-                    </TableCell>
-                    <TableCell>
-                      {book.status === "active" ? (
-                        <span className="text-primary">
-                          {t({ zh: "启用", en: "Active" })}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">
-                          {t({ zh: "已归档", en: "Archived" })}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            setOpenBookId(
-                              openBookId === book.id ? null : book.id,
-                            )
-                          }
-                        >
-                          <ChevronRight
-                            className={
-                              openBookId === book.id
-                                ? "rotate-90 transition-transform"
-                                : "transition-transform"
-                            }
-                          />
-                          {t({ zh: "词条", en: "Words" })}
-                        </Button>
-                        {book.status === "active" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={archiveBook.isPending}
-                            onClick={() => {
-                              setOpenBookId(null)
-                              archiveBook.mutate(book.id)
-                            }}
-                          >
-                            <Archive />
-                            {t({ zh: "归档", en: "Archive" })}
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void booksQuery.refetch()}
+                disabled={booksQuery.isFetching}
+              >
+                <RefreshCw
+                  className={booksQuery.isFetching ? "animate-spin" : ""}
+                />
+                {t({ zh: "刷新", en: "Refresh" })}
+              </Button>
+              <Button size="sm" onClick={() => setCreating(true)}>
+                <Plus />
+                {t({ zh: "新建公共词库", en: "New Public Book" })}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pb-0">
+            {booksQuery.isPending ? (
+              <div role="status" className="pb-6">
+                <Skeleton className="h-32 rounded-xl" />
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t({ zh: "词库", en: "Book" })}</TableHead>
+                    <TableHead>{t({ zh: "作用域", en: "Scope" })}</TableHead>
+                    <TableHead>{t({ zh: "词数", en: "Words" })}</TableHead>
+                    <TableHead>{t({ zh: "状态", en: "Status" })}</TableHead>
+                    <TableHead>{t({ zh: "操作", en: "Actions" })}</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {books.map((book) => (
+                    <TableRow key={book.id}>
+                      <TableCell>
+                        <span className="font-medium">{book.title}</span>
+                        {book.description && (
+                          <span className="ml-2 hidden text-xs text-muted-foreground md:inline">
+                            {book.description}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {book.scope === "public" ? (
+                          <Badge variant="secondary">
+                            {t({ zh: "公共", en: "Public" })}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">
+                            {t({ zh: "班级", en: "Classroom" })}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {book.word_count ?? 0}
+                      </TableCell>
+                      <TableCell>
+                        {book.status === "active" ? (
+                          <span className="text-primary">
+                            {t({ zh: "启用", en: "Active" })}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            {t({ zh: "已归档", en: "Archived" })}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setOpenBookId(
+                                openBookId === book.id ? null : book.id,
+                              )
+                            }
+                          >
+                            <ChevronRight
+                              className={
+                                openBookId === book.id
+                                  ? "rotate-90 transition-transform"
+                                  : "transition-transform"
+                              }
+                            />
+                            {t({ zh: "词条", en: "Words" })}
+                          </Button>
+                          {book.status === "active" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={archiveBook.isPending}
+                              onClick={() => {
+                                setOpenBookId(null)
+                                archiveBook.mutate(book.id)
+                              }}
+                            >
+                              <Archive />
+                              {t({ zh: "归档", en: "Archive" })}
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* 词库词条展开区（查看 / 加词 / 移除） */}
       {openBook && (
