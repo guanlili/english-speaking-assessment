@@ -281,6 +281,15 @@ class VocabularySession(SQLModel, table=True):
                 "assignment_id IS NULL AND kind = 'review_fsrs' AND status = 'in_progress'"
             ),
         ),
+        # 粗分档小测轮：每学生至多一个进行中（独立于任务/自主/复习统计）
+        Index(
+            "uq_vocab_session_placement_active",
+            "student_id",
+            unique=True,
+            postgresql_where=text(
+                "assignment_id IS NULL AND kind = 'placement' AND status = 'in_progress'"
+            ),
+        ),
     )
     # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
     tenant_id: uuid.UUID = _tenant_id_field()

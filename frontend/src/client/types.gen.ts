@@ -4000,6 +4000,210 @@ export type PkPlayerSummary = {
 };
 
 /**
+ * PlacementAnswerRequest
+ */
+export type PlacementAnswerRequest = {
+    /**
+     * Item Index
+     */
+    item_index: number;
+    /**
+     * Answer
+     */
+    answer: string;
+    /**
+     * Idempotency Key
+     */
+    idempotency_key?: string | null;
+};
+
+/**
+ * PlacementAnswerResponse
+ */
+export type PlacementAnswerResponse = {
+    /**
+     * Item Index
+     */
+    item_index: number;
+    /**
+     * Is Correct
+     */
+    is_correct: boolean;
+    /**
+     * Correct Headword
+     */
+    correct_headword: string;
+    /**
+     * Meaning Zh
+     */
+    meaning_zh: string;
+    /**
+     * Answered Count
+     */
+    answered_count: number;
+    /**
+     * Planned Total
+     */
+    planned_total: number;
+    /**
+     * Status
+     */
+    status: string;
+    question?: PlacementQuestion | null;
+    result?: PlacementResultPublic | null;
+};
+
+/**
+ * PlacementChoice
+ *
+ * 四选一选项（真实 approved 词条，不硬造释义）。
+ */
+export type PlacementChoice = {
+    /**
+     * Word Id
+     */
+    word_id: string;
+    /**
+     * Headword
+     */
+    headword: string;
+    /**
+     * Part Of Speech
+     */
+    part_of_speech?: string | null;
+    /**
+     * Meaning Zh
+     */
+    meaning_zh: string;
+};
+
+/**
+ * PlacementHistoryResponse
+ */
+export type PlacementHistoryResponse = {
+    /**
+     * Items
+     */
+    items: Array<PlacementResultPublic>;
+};
+
+/**
+ * PlacementQuestion
+ */
+export type PlacementQuestion = {
+    /**
+     * Item Index
+     */
+    item_index: number;
+    /**
+     * Band
+     */
+    band: string;
+    /**
+     * Headword
+     */
+    headword: string;
+    /**
+     * Part Of Speech
+     */
+    part_of_speech?: string | null;
+    /**
+     * Choices
+     */
+    choices: Array<PlacementChoice>;
+};
+
+/**
+ * PlacementResultPublic
+ */
+export type PlacementResultPublic = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Student Id
+     */
+    student_id: string;
+    /**
+     * Display Name
+     */
+    display_name: string;
+    /**
+     * Suffix
+     */
+    suffix?: string | null;
+    /**
+     * Recommended Band
+     */
+    recommended_band: string;
+    /**
+     * Recommended Level
+     */
+    recommended_level?: string | null;
+    /**
+     * Recommended Book Id
+     */
+    recommended_book_id?: string | null;
+    /**
+     * Recommended Book Title
+     */
+    recommended_book_title?: string | null;
+    /**
+     * Question Count
+     */
+    question_count: number;
+    /**
+     * Answered Count
+     */
+    answered_count: number;
+    /**
+     * Correct Count
+     */
+    correct_count: number;
+    /**
+     * Limitation
+     */
+    limitation?: string;
+    /**
+     * Submitted At
+     */
+    submitted_at?: string | null;
+};
+
+/**
+ * PlacementStartResponse
+ */
+export type PlacementStartResponse = {
+    /**
+     * Session Id
+     */
+    session_id: string;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Planned Total
+     */
+    planned_total: number;
+    /**
+     * Answered Count
+     */
+    answered_count: number;
+    /**
+     * Degraded
+     */
+    degraded: boolean;
+    /**
+     * Limitation
+     */
+    limitation?: string | null;
+    question?: PlacementQuestion | null;
+    result?: PlacementResultPublic | null;
+};
+
+/**
  * PlanAttempt
  */
 export type PlanAttempt = {
@@ -16069,6 +16273,132 @@ export type VocabularyPkMatchEventsResponses = {
      */
     200: unknown;
 };
+
+export type VocabularyStartPlacementData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/placement/start';
+};
+
+export type VocabularyStartPlacementErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyStartPlacementError = VocabularyStartPlacementErrors[keyof VocabularyStartPlacementErrors];
+
+export type VocabularyStartPlacementResponses = {
+    /**
+     * Successful Response
+     */
+    200: PlacementStartResponse;
+};
+
+export type VocabularyStartPlacementResponse = VocabularyStartPlacementResponses[200 & keyof VocabularyStartPlacementResponses];
+
+export type VocabularyAnswerPlacementData = {
+    body: PlacementAnswerRequest;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Session Id
+         */
+        session_id: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/placement/sessions/{session_id}/answer';
+};
+
+export type VocabularyAnswerPlacementErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyAnswerPlacementError = VocabularyAnswerPlacementErrors[keyof VocabularyAnswerPlacementErrors];
+
+export type VocabularyAnswerPlacementResponses = {
+    /**
+     * Successful Response
+     */
+    200: PlacementAnswerResponse;
+};
+
+export type VocabularyAnswerPlacementResponse = VocabularyAnswerPlacementResponses[200 & keyof VocabularyAnswerPlacementResponses];
+
+export type VocabularyPlacementHistoryData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/placement/history';
+};
+
+export type VocabularyPlacementHistoryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyPlacementHistoryError = VocabularyPlacementHistoryErrors[keyof VocabularyPlacementHistoryErrors];
+
+export type VocabularyPlacementHistoryResponses = {
+    /**
+     * Successful Response
+     */
+    200: PlacementHistoryResponse;
+};
+
+export type VocabularyPlacementHistoryResponse = VocabularyPlacementHistoryResponses[200 & keyof VocabularyPlacementHistoryResponses];
+
+export type VocabularyPlacementResultsData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/placement/results';
+};
+
+export type VocabularyPlacementResultsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyPlacementResultsError = VocabularyPlacementResultsErrors[keyof VocabularyPlacementResultsErrors];
+
+export type VocabularyPlacementResultsResponses = {
+    /**
+     * Response Vocabulary-Placement Results
+     *
+     * Successful Response
+     */
+    200: Array<PlacementResultPublic>;
+};
+
+export type VocabularyPlacementResultsResponse = VocabularyPlacementResultsResponses[200 & keyof VocabularyPlacementResultsResponses];
 
 export type VocabLevelsVocabLevelStatsData = {
     body?: never;
