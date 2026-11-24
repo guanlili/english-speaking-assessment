@@ -2664,6 +2664,25 @@ def add_words_to_book(
 # ── 内容治理审核队列（AC4）─────────────────────────────────────────
 
 REVIEW_ACTIONS = ("approve", "reject")
+# 审核队列可按状态筛选的取值；all 表示不过滤状态
+REVIEW_QUEUE_STATUSES = ("pending", "approved", "rejected")
+
+
+def _normalize_review_filter_status(status: str | None) -> str | None:
+    """队列状态入参规范化：None / ``all`` → 不过滤；其余必须是合法状态，否则 422。
+
+    不在服务层把 ``"all"`` 当状态值查库；大小写不敏感。
+    """
+    if status is None:
+        return None
+    value = status.strip().lower()
+    if value == "all":
+        return None
+    if value not in REVIEW_QUEUE_STATUSES:
+        raise HTTPException(status_code=422, detail="review_status_invalid")
+    return value
+
+
 # 词条内容字段（status-only 改动不触发审核回退）
 REVIEW_CONTENT_FIELDS = (
     "part_of_speech",
@@ -2802,6 +2821,7 @@ def list_review_queue(
     platform: bool = False,
 ) -> tuple[list[VocabularyWord], dict[str, int], int]:
     """审核队列：按可见范围过滤；计数口径不含 status 过滤。"""
+    status_filter = _normalize_review_filter_status(status)
     visible = _review_filtered_word_ids(
         session,
         viewer=viewer,
@@ -2817,7 +2837,7 @@ def list_review_queue(
         session,
         viewer=viewer,
         platform=platform,
-        status=status,
+        status=status_filter,
         source=source,
         book_id=book_id,
         classroom_id=classroom_id,

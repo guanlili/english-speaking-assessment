@@ -378,6 +378,80 @@ def test_review_queue_filters_and_counts(client: TestClient, db: Session) -> Non
     assert [i["headword"] for i in resp.json()["items"]] == ["q03"]
 
 
+def test_review_queue_status_all_returns_mixed(client: TestClient, db: Session) -> None:
+    """status=all 不过滤：pending/approved/rejected 同列；pending 筛选只回待审。"""
+    _teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    book = _make_book(client, headers, classroom["id"], _words(3, "al"))
+    word_ids = [w["id"] for w in book["words"]]
+    _review(client, headers, word_ids[:1], "approve")
+    _review(client, headers, word_ids[1:2], "reject", "需补充例句")
+    # word_ids[2] 保持 pending
+
+    resp = client.get(REVIEWS, params={"status": "all"}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["total"] == 3
+    by_headword = {i["headword"]: i["review_status"] for i in body["items"]}
+    assert by_headword == {"al01": "approved", "al02": "rejected", "al03": "pending"}
+
+    # 大小写不敏感：ALL 同样表示不过滤
+    resp = client.get(REVIEWS, params={"status": "ALL"}, headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 3
+
+    resp = client.get(REVIEWS, params={"status": "pending"}, headers=headers)
+    assert resp.status_code == 200
+    assert [i["headword"] for i in resp.json()["items"]] == ["al03"]
+
+
+def test_review_queue_invalid_status_422(client: TestClient, db: Session) -> None:
+    """非法状态筛选值 → 422 `review_status_invalid`，不静默回退 pending。"""
+    _teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    _make_book(client, headers, classroom["id"], _words(1, "bad"))
+
+    resp = client.get(REVIEWS, params={"status": "draft"}, headers=headers)
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"] == "review_status_invalid"
+
+
+def test_platform_reviews_status_all_and_invalid(
+    client: TestClient, db: Session, operator_token_headers: dict[str, str]
+) -> None:
+    """平台只读队列：status=all 跨状态返回；pending 筛选收口；非法值同样 422。"""
+    _teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    book = _make_book(client, headers, classroom["id"], _words(2, "zk"))
+    word_ids = [w["id"] for w in book["words"]]
+    _review(client, headers, word_ids[:1], "approve")
+    # 另一条保持 pending
+
+    resp = client.get(
+        ADMIN_REVIEWS,
+        params={"status": "all", "q": "zk", "limit": 200},
+        headers=operator_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    by_headword = {i["headword"]: i["review_status"] for i in resp.json()["items"]}
+    assert by_headword == {"zk01": "approved", "zk02": "pending"}
+
+    resp = client.get(
+        ADMIN_REVIEWS,
+        params={"status": "pending", "q": "zk", "limit": 200},
+        headers=operator_token_headers,
+    )
+    assert resp.status_code == 200
+    pending = {i["headword"] for i in resp.json()["items"]}
+    assert pending == {"zk02"}
+
+    resp = client.get(
+        ADMIN_REVIEWS, params={"status": "bogus"}, headers=operator_token_headers
+    )
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"] == "review_status_invalid"
+
+
 def test_audit_records_each_word_with_snapshot(client: TestClient, db: Session) -> None:
     """通过 / 拒绝 / 回退逐词一条审计；actor 与 headword 快照落库。"""
     teacher, headers = _login_teacher(db, client)
