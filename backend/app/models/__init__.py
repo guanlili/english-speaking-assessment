@@ -98,6 +98,10 @@ from app.models.content import (
     validate_question_suggested_seconds,
 )
 from app.models.core import (
+    GRANT_MANUAL,
+    GRANT_PAID,
+    GRANT_TRIAL,
+    GRANT_TYPES,
     MODULE_KEYS,
     MODULE_SPEAKING,
     MODULE_VOCABULARY,
@@ -307,6 +311,10 @@ __all__ = [
     "DEFAULT_TENANT_ID",
     "VOCAB_LEVEL_ORDER",
     "get_datetime_utc",
+    "GRANT_MANUAL",
+    "GRANT_PAID",
+    "GRANT_TRIAL",
+    "GRANT_TYPES",
     "MODULE_KEYS",
     "MODULE_SPEAKING",
     "MODULE_VOCABULARY",

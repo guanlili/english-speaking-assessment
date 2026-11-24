@@ -62,6 +62,15 @@ MODULE_SPEAKING = "speaking"
 MODULE_VOCABULARY = "vocabulary"
 MODULE_KEYS = (MODULE_SPEAKING, MODULE_VOCABULARY)
 
+# 授权类型（#517 A 部分：租期/试用状态机）：
+# - trial  试用：必须带 expires_at，到期即过期
+# - paid    正式付费：可带 expires_at（合同到期日），也可长期（null）
+# - manual  手工开通：默认值，长期或按运营填写的到期日
+GRANT_TRIAL = "trial"
+GRANT_PAID = "paid"
+GRANT_MANUAL = "manual"
+GRANT_TYPES = (GRANT_TRIAL, GRANT_PAID, GRANT_MANUAL)
+
 
 class TenantModule(SQLModel, table=True):
     """整校模块授权行：tenant × module_key 唯一一行。
@@ -90,9 +99,32 @@ class TenantModule(SQLModel, table=True):
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
     )
+    # 开始时间：空 = 立即生效；未来时间点尚未生效（scheduled）。
+    # 本字段即授权事实的「开始时间」，不另设重复的 starts_at 列；API 响应里的
+    # starts_at 是它的只读镜像。
     effective_at: datetime | None = Field(
         default=None,
         sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    # 到期时间：空 = 长期有效；now >= expires_at 即过期（expired），到期只关门禁、
+    # 不删任何业务数据。过去时间允许写入，但状态直接判 expired。
+    expires_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+        index=True,
+    )
+    # 授权类型：trial/paid/manual，默认 manual；trial 必须带 expires_at。
+    grant_type: str = Field(
+        default=GRANT_MANUAL,
+        max_length=16,
+        nullable=False,
+    )
+    # 本次授权/续期/改类型是由哪位平台运营给出；单纯关闭时保留旧值。
+    granted_by: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="platformoperator.id",
+        ondelete="SET NULL",
+        index=True,
     )
 
     __table_args__ = (
@@ -125,6 +157,18 @@ class TenantModuleAudit(SQLModel, table=True):
         default=None,
         sa_type=DateTime(timezone=True),  # type: ignore
     )
+    expires_at_before: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    expires_at_after: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    grant_type_before: str | None = Field(default=None, max_length=16)
+    grant_type_after: str | None = Field(default=None, max_length=16)
+    granted_by_before: uuid.UUID | None = Field(default=None)
+    granted_by_after: uuid.UUID | None = Field(default=None)
     actor_operator_id: uuid.UUID | None = Field(
         default=None,
         foreign_key="platformoperator.id",
@@ -138,12 +182,22 @@ class TenantModuleAudit(SQLModel, table=True):
 
 
 class TenantModulePublic(SQLModel):
-    """运营/前端视角的单行授权。"""
+    """运营/前端视角的单行授权。
+
+    ``starts_at`` 是 ``effective_at`` 的只读镜像（同一事实，不另存列）；
+    ``state`` / ``days_left`` 由服务端状态机派生。
+    """
 
     tenant_id: uuid.UUID
     module_key: str
     enabled: bool
     effective_at: datetime | None = None
+    starts_at: datetime | None = None
+    expires_at: datetime | None = None
+    grant_type: str = GRANT_MANUAL
+    granted_by: uuid.UUID | None = None
+    state: str = "not_granted"
+    days_left: int | None = None
     updated_at: datetime | None = None
     updated_by: uuid.UUID | None = None
 
@@ -157,15 +211,27 @@ class TenantModuleAuditPublic(SQLModel):
     enabled_after: bool | None = None
     effective_at_before: datetime | None = None
     effective_at_after: datetime | None = None
+    expires_at_before: datetime | None = None
+    expires_at_after: datetime | None = None
+    grant_type_before: str | None = None
+    grant_type_after: str | None = None
+    granted_by_before: uuid.UUID | None = None
+    granted_by_after: uuid.UUID | None = None
     actor_operator_id: uuid.UUID | None = None
     created_at: datetime | None = None
 
 
 class TenantModuleUpdate(SQLModel):
-    """运营改写单行授权的请求体。"""
+    """运营改写单行授权的请求体（PUT 整行语义）。
+
+    省略的元数据字段保留旧值；``expires_at`` 显式传 ``null`` 表示清除到期日
+    （转长期）。``effective_at`` 即开始时间，请求体不设重复的 starts_at。
+    """
 
     enabled: bool
     effective_at: datetime | None = None
+    expires_at: datetime | None = None
+    grant_type: str | None = None
 
 
 # Shared properties
