@@ -11,7 +11,7 @@
 """
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session, delete, select
@@ -813,3 +813,80 @@ def test_self_practice_and_browse_only_approved(
         headers=student["headers"],
     )
     assert resp.status_code == 200, resp.text
+
+
+# ── 词库详情回传审核字段（attach_word_levels 回归）───────────────────────
+
+
+def test_book_detail_echoes_review_fields_after_level_attach(
+    client: TestClient, db: Session
+) -> None:
+    """详情出口（attach_word_levels）回传真实审核字段，不被 Public 默认值覆盖。
+
+    回归：attach_word_levels 手工拼 Public 漏 AC4 字段，已通过/驳回词在详情里
+    被回退成 pending/teacher/version 1——发布门禁误判不可发、状态徽章全错、
+    编辑弹窗拿到旧 version 导致 expected_version 永久 409。
+    """
+    teacher, headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, headers)
+    book = _make_book(client, headers, classroom["id"], _words(3, "dv"))
+    word_ids = [w["id"] for w in book["words"]]
+    _review(client, headers, word_ids[:1], "approve")
+    _review(client, headers, word_ids[1:2], "reject", "需补充例句")
+    # word_ids[2] 保持 pending
+
+    resp = client.get(f"{VOCAB}/books/{book['id']}", headers=headers)
+    assert resp.status_code == 200, resp.text
+    by_headword = {w["headword"]: w for w in resp.json()["words"]}
+
+    db_rows = {w.headword: w for w in _book_words(db, book["id"])}
+    for headword, item in by_headword.items():
+        row = db_rows[headword]
+        assert item["review_status"] == row.review_status
+        assert item["source"] == row.source
+        assert item["version"] == row.version
+        assert item["reviewer_id"] == (
+            str(row.reviewer_id) if row.reviewer_id else None
+        )
+        if row.reviewed_at is None:
+            assert item["reviewed_at"] is None
+        else:
+            assert datetime.fromisoformat(item["reviewed_at"]) == row.reviewed_at
+        assert item["review_note"] == row.review_note
+
+    assert by_headword["dv01"]["review_status"] == "approved"
+    assert by_headword["dv01"]["reviewer_id"] == str(teacher.id)
+    assert by_headword["dv01"]["reviewed_at"] is not None
+    assert by_headword["dv01"]["review_note"] is None
+    assert by_headword["dv01"]["source"] == "teacher"
+    assert by_headword["dv01"]["version"] == 1
+    assert by_headword["dv02"]["review_status"] == "rejected"
+    assert by_headword["dv02"]["review_note"] == "需补充例句"
+    assert by_headword["dv03"]["review_status"] == "pending"
+    assert by_headword["dv03"]["reviewer_id"] is None
+    assert by_headword["dv03"]["reviewed_at"] is None
+
+    # 编辑 approved 词 → 回 pending、version+1；详情回显新 version 与回退状态
+    resp = client.patch(
+        f"{VOCAB}/words/{word_ids[0]}",
+        json={"meaning_zh": "修订后的释义", "expected_version": 1},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = client.get(f"{VOCAB}/books/{book['id']}", headers=headers)
+    assert resp.status_code == 200, resp.text
+    after = {w["headword"]: w for w in resp.json()["words"]}
+    assert after["dv01"]["version"] == 2
+    assert after["dv01"]["review_status"] == "pending"
+    assert after["dv01"]["reviewer_id"] is None
+    assert after["dv01"]["review_note"] == "edited_after_approval"
+
+    # 旧 expected_version=1 再改 → 409 乐观锁冲突
+    resp = client.patch(
+        f"{VOCAB}/words/{word_ids[0]}",
+        json={"meaning_zh": "再次修订", "expected_version": 1},
+        headers=headers,
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["detail"] == "vocabulary_word_version_conflict"
