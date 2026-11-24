@@ -111,6 +111,15 @@ function grantLabel(
   return t(GRANT_TYPE_LABELS[normalizeGrantType(value)])
 }
 
+/** 操作人不展示内部 UUID：有值统一归为平台运营，无值显示 –。 */
+function operatorLabel(
+  id: string | null | undefined,
+  t: (s: BiString) => string,
+): string {
+  if (!id) return "–"
+  return t({ zh: "平台运营", en: "Platform operator" })
+}
+
 function enabledLabel(
   audit: TenantModuleAuditPublic,
   t: (s: BiString) => string,
@@ -790,7 +799,9 @@ function SchoolsAdminPage() {
                           zh: "当前无授权记录（视为未开通）",
                           en: "No record yet (treated as not granted)",
                         })}
-                    {metaRow?.updated_by ? ` · ${metaRow.updated_by}` : ""}
+                    {metaRow?.updated_by
+                      ? ` · ${operatorLabel(metaRow.updated_by, t)}`
+                      : ""}
                   </p>
                 </div>
               )
@@ -853,8 +864,8 @@ function SchoolsAdminPage() {
                             <TableCell className="text-xs">
                               {expiryLabel(audit, t, lang)}
                             </TableCell>
-                            <TableCell className="font-mono text-xs">
-                              {audit.actor_operator_id ?? "–"}
+                            <TableCell className="text-xs">
+                              {operatorLabel(audit.actor_operator_id, t)}
                             </TableCell>
                             <TableCell className="text-xs">
                               {audit.created_at
