@@ -100,6 +100,7 @@ def _first_answers(session: Session, student_id: uuid.UUID) -> list[VocabularyAn
             .where(
                 VocabularySession.student_id == student_id,  # type: ignore[arg-type]
                 VocabularyAnswer.attempt_no == 1,  # type: ignore[arg-type]
+                VocabularySession.kind != "placement",  # type: ignore[operator]
                 (col(VocabularySession.assignment_id).is_(None))  # type: ignore[union-attr]
                 | (col(VocabularyAssignment.mode) != "quiz")  # type: ignore[operator]
                 | col(VocabularyAssignment.answers_published_at).is_not(None),  # type: ignore[union-attr]

@@ -38,6 +38,9 @@ from app.api.routes import (
     vocabulary_pk as _pk,
 )
 from app.api.routes import (
+    vocabulary_placement as _placement,
+)
+from app.api.routes import (
     vocabulary_quiz as _quiz,
 )
 from app.api.routes import (
@@ -57,5 +60,6 @@ router.include_router(_farm.router, tags=["vocabulary"])
 router.include_router(_quiz.router, tags=["vocabulary"])
 router.include_router(_student.router, tags=["vocabulary"])
 router.include_router(_pk.router, tags=["vocabulary"])
+router.include_router(_placement.router, tags=["vocabulary"])
 
 __all__ = ["router"]

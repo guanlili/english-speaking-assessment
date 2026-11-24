@@ -61,6 +61,7 @@ import { Route as VocabCodeIndexRouteImport } from './routes/vocab.$code.index'
 import { Route as VocabCodeBooksRouteImport } from './routes/vocab.$code.books'
 import { Route as VocabCodeFarmRouteImport } from './routes/vocab.$code.farm'
 import { Route as VocabCodePkRouteImport } from './routes/vocab.$code.pk'
+import { Route as VocabCodePlacementRouteImport } from './routes/vocab.$code.placement'
 import { Route as VocabCodePracticeRouteImport } from './routes/vocab.$code.practice'
 import { Route as VocabCodeRecordsRouteImport } from './routes/vocab.$code.records'
 import { Route as VocabCodeSelfRouteImport } from './routes/vocab.$code.self'
@@ -326,6 +327,11 @@ const VocabCodePkRoute = VocabCodePkRouteImport.update({
   path: '/pk',
   getParentRoute: () => VocabCodeRoute,
 } as any)
+const VocabCodePlacementRoute = VocabCodePlacementRouteImport.update({
+  id: '/placement',
+  path: '/placement',
+  getParentRoute: () => VocabCodeRoute,
+} as any)
 const VocabCodePracticeRoute = VocabCodePracticeRouteImport.update({
   id: '/practice',
   path: '/practice',
@@ -394,6 +400,7 @@ export interface FileRoutesByFullPath {
   '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/farm': typeof VocabCodeFarmRoute
   '/vocab/$code/pk': typeof VocabCodePkRoute
+  '/vocab/$code/placement': typeof VocabCodePlacementRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
   '/vocab/$code/self': typeof VocabCodeSelfRoute
@@ -446,6 +453,7 @@ export interface FileRoutesByTo {
   '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/farm': typeof VocabCodeFarmRoute
   '/vocab/$code/pk': typeof VocabCodePkRoute
+  '/vocab/$code/placement': typeof VocabCodePlacementRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
   '/vocab/$code/self': typeof VocabCodeSelfRoute
@@ -505,6 +513,7 @@ export interface FileRoutesById {
   '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/farm': typeof VocabCodeFarmRoute
   '/vocab/$code/pk': typeof VocabCodePkRoute
+  '/vocab/$code/placement': typeof VocabCodePlacementRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
   '/vocab/$code/self': typeof VocabCodeSelfRoute
@@ -564,6 +573,7 @@ export interface FileRouteTypes {
     | '/vocab/$code/books'
     | '/vocab/$code/farm'
     | '/vocab/$code/pk'
+    | '/vocab/$code/placement'
     | '/vocab/$code/practice'
     | '/vocab/$code/records'
     | '/vocab/$code/self'
@@ -616,6 +626,7 @@ export interface FileRouteTypes {
     | '/vocab/$code/books'
     | '/vocab/$code/farm'
     | '/vocab/$code/pk'
+    | '/vocab/$code/placement'
     | '/vocab/$code/practice'
     | '/vocab/$code/records'
     | '/vocab/$code/self'
@@ -674,6 +685,7 @@ export interface FileRouteTypes {
     | '/vocab/$code/books'
     | '/vocab/$code/farm'
     | '/vocab/$code/pk'
+    | '/vocab/$code/placement'
     | '/vocab/$code/practice'
     | '/vocab/$code/records'
     | '/vocab/$code/self'
@@ -1077,6 +1089,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VocabCodePkRouteImport
       parentRoute: typeof VocabCodeRoute
     }
+    '/vocab/$code/placement': {
+      id: '/vocab/$code/placement'
+      path: '/placement'
+      fullPath: '/vocab/$code/placement'
+      preLoaderRoute: typeof VocabCodePlacementRouteImport
+      parentRoute: typeof VocabCodeRoute
+    }
     '/vocab/$code/practice': {
       id: '/vocab/$code/practice'
       path: '/practice'
@@ -1217,6 +1236,7 @@ interface VocabCodeRouteChildren {
   VocabCodeBooksRoute: typeof VocabCodeBooksRoute
   VocabCodeFarmRoute: typeof VocabCodeFarmRoute
   VocabCodePkRoute: typeof VocabCodePkRoute
+  VocabCodePlacementRoute: typeof VocabCodePlacementRoute
   VocabCodePracticeRoute: typeof VocabCodePracticeRoute
   VocabCodeRecordsRoute: typeof VocabCodeRecordsRoute
   VocabCodeSelfRoute: typeof VocabCodeSelfRoute
@@ -1227,6 +1247,7 @@ const VocabCodeRouteChildren: VocabCodeRouteChildren = {
   VocabCodeBooksRoute: VocabCodeBooksRoute,
   VocabCodeFarmRoute: VocabCodeFarmRoute,
   VocabCodePkRoute: VocabCodePkRoute,
+  VocabCodePlacementRoute: VocabCodePlacementRoute,
   VocabCodePracticeRoute: VocabCodePracticeRoute,
   VocabCodeRecordsRoute: VocabCodeRecordsRoute,
   VocabCodeSelfRoute: VocabCodeSelfRoute,

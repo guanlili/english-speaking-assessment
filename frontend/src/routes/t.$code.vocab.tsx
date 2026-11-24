@@ -5,12 +5,19 @@ import {
   useNavigate,
   useParams,
 } from "@tanstack/react-router"
-import { ListChecks, ShieldCheck, SpellCheck, Swords } from "lucide-react"
+import {
+  Compass,
+  ListChecks,
+  ShieldCheck,
+  SpellCheck,
+  Swords,
+} from "lucide-react"
 import { useEffect, useState } from "react"
 import { ApiError, ClassesService, VocabularyService } from "@/client"
 import { VocabModuleSwitcher } from "@/components/Teaching/VocabModuleSwitcher"
 import { AssignPanel } from "@/components/Teaching/VocabTasks/AssignPanel"
 import { PkTeacherPanel } from "@/components/Teaching/VocabTasks/PkTeacherPanel"
+import { PlacementTeacherPanel } from "@/components/Teaching/VocabTasks/PlacementTeacherPanel"
 import { ResultsPanel } from "@/components/Teaching/VocabTasks/ResultsPanel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -39,9 +46,9 @@ function TeacherVocabPage() {
       void navigate({ to: "/classrooms" })
     }
   }, [modulesPending, hasModule, navigate])
-  const [tab, setTab] = useState<"assign" | "results" | "pk" | "review">(
-    "assign",
-  )
+  const [tab, setTab] = useState<
+    "assign" | "results" | "placement" | "pk" | "review"
+  >("assign")
   // 待审数量由审核面板数据回报（不另写 API URL）；>0 时在 tab 徽章提示
   const [pendingCount, setPendingCount] = useState(0)
   // 查看哪一期：null = 当前进行中（后端默认最新发布）；任务列表点击后切换
@@ -286,6 +293,15 @@ function TeacherVocabPage() {
           {t({ zh: "完成情况", en: "Results" })}
         </Button>
         <Button
+          variant={tab === "placement" ? "default" : "outline"}
+          size="sm"
+          aria-pressed={tab === "placement"}
+          onClick={() => setTab("placement")}
+        >
+          <Compass />
+          {t({ zh: "测分结果", en: "Placement" })}
+        </Button>
+        <Button
           variant={tab === "pk" ? "default" : "outline"}
           size="sm"
           aria-pressed={tab === "pk"}
@@ -318,6 +334,8 @@ function TeacherVocabPage() {
         />
       ) : tab === "pk" ? (
         <PkTeacherPanel code={code} />
+      ) : tab === "placement" ? (
+        <PlacementTeacherPanel code={code} />
       ) : tab === "review" ? (
         <ContentReviewPanel
           classroomId={classroomId}

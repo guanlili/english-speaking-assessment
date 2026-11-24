@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Circle,
   Clock,
+  Compass,
   LibraryBig,
   ListChecks,
   RefreshCw,
@@ -352,6 +353,37 @@ function VocabHomePage() {
                 </Link>
               </Button>
             </div>
+          </div>
+        </section>
+
+        {/* 粗分档小测入口：探针式建议起点，独立于任务/自主练习统计 */}
+        <section
+          aria-label={t({ zh: "测一测从哪开始", en: "Placement quiz" })}
+          className="rounded-3xl border bg-card p-5 sm:p-6"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                <Compass className="size-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-base font-semibold">
+                  {t({ zh: "测一测从哪开始", en: "Find your starting level" })}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {t({
+                    zh: "一组自适应四选一，给出建议起点级别和推荐词库；粗分档建议，不是定级或考试分数。",
+                    en: "A short adaptive quiz suggests a starting level and word book. Rough guide, not a level or exam score.",
+                  })}
+                </p>
+              </div>
+            </div>
+            <Button asChild variant="outline">
+              <Link to="/vocab/$code/placement" params={{ code }}>
+                <Compass />
+                {t({ zh: "去测一测", en: "Start" })}
+              </Link>
+            </Button>
           </div>
         </section>
 
