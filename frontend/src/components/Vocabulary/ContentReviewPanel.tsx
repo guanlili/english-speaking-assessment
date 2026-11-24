@@ -3,6 +3,7 @@ import { CheckCircle2, Loader2, Pencil, Search, XCircle } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import {
+  AdminService,
   ApiError,
   type VocabularyReviewItem,
   VocabularyService,
@@ -88,25 +89,48 @@ export function ContentReviewPanel({
   const reviewsQuery = useQuery({
     queryKey: [
       "vocab-review",
-      { classroomId, bookId, statusFilter, sourceFilter, keyword },
+      { classroomId, bookId, statusFilter, sourceFilter, keyword, readonly },
     ],
-    queryFn: () =>
-      VocabularyService.listVocabularyReviews({
+    queryFn: () => {
+      const params = {
         status: statusFilter === "all" ? null : statusFilter,
         source: sourceFilter || null,
         book_id: bookId ?? null,
         classroom_id: classroomId ?? null,
         q: keyword.trim() || null,
         limit: 200,
-      }),
+      }
+      // 平台运营只读走 admin 跨校端点；学校教师/admin 走学校端点。
+      return readonly
+        ? AdminService.adminListVocabularyReviews(params)
+        : VocabularyService.listVocabularyReviews(params)
+    },
   })
 
   const items = reviewsQuery.data?.items ?? []
   const pendingCount = reviewsQuery.data?.pending_count ?? 0
+  // 只有待审词条可被勾选 / 送审核；approved、rejected、draft 仅展示与编辑
+  const pendingItems = items.filter((item) => item.review_status === "pending")
+  const pendingIds = new Set(pendingItems.map((item) => item.word_id))
 
   useEffect(() => {
     onPendingCountChange?.(pendingCount)
   }, [pendingCount, onPendingCountChange])
+
+  // 筛选条件变化时清空勾选：避免把已隐藏、不在当前结果里的词条误提交批量审核。
+  const clearSelection = () => setSelected(new Set())
+  const applyStatusFilter = (value: StatusFilter) => {
+    setStatusFilter(value)
+    clearSelection()
+  }
+  const applySourceFilter = (value: "" | WordSource) => {
+    setSourceFilter(value)
+    clearSelection()
+  }
+  const applyKeyword = (value: string) => {
+    setKeyword(value)
+    clearSelection()
+  }
 
   const refreshQueue = () => {
     void queryClient.invalidateQueries({ queryKey: ["vocab-review"] })
@@ -222,12 +246,11 @@ export function ContentReviewPanel({
   }
 
   const toggleAll = (checked: boolean) => {
-    setSelected(
-      checked ? new Set(items.map((item) => item.word_id)) : new Set(),
-    )
+    setSelected(checked ? new Set(pendingIds) : new Set())
   }
 
   const toggleOne = (id: string, checked: boolean) => {
+    if (!pendingIds.has(id)) return
     setSelected((prev) => {
       const next = new Set(prev)
       if (checked) next.add(id)
@@ -289,6 +312,85 @@ export function ContentReviewPanel({
     { value: "all", label: t({ zh: "全部", en: "All" }) },
   ]
 
+  const renderSourceBadge = (item: VocabularyReviewItem) => (
+    <Badge variant={item.source === "ai" ? "default" : "outline"}>
+      {t(sourceLabel(item.source))}
+    </Badge>
+  )
+
+  const renderStatusBadge = (item: VocabularyReviewItem) => (
+    <Badge
+      variant={
+        item.review_status === "approved"
+          ? "secondary"
+          : item.review_status === "rejected"
+            ? "destructive"
+            : "outline"
+      }
+    >
+      {t(reviewStatusLabel(item.review_status))}
+    </Badge>
+  )
+
+  const renderRowCheckbox = (item: VocabularyReviewItem) =>
+    !readonly && item.review_status === "pending" ? (
+      <input
+        type="checkbox"
+        checked={selected.has(item.word_id)}
+        onChange={(event) => toggleOne(item.word_id, event.target.checked)}
+        className="size-4 accent-[var(--primary)]"
+        aria-label={t({
+          zh: `选择 ${item.headword}`,
+          en: `Select ${item.headword}`,
+        })}
+      />
+    ) : null
+
+  const renderActions = (
+    item: VocabularyReviewItem,
+    opts: { dense?: boolean } = {},
+  ) => {
+    const isPending = item.review_status === "pending"
+    const buttonSize = opts.dense ? "sm" : "default"
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {!readonly && isPending && (
+          <>
+            <Button
+              variant="outline"
+              size={buttonSize}
+              disabled={reviewMutation.isPending}
+              onClick={() => openActionDialog("approve", [item.word_id])}
+            >
+              <CheckCircle2 />
+              {t({ zh: "通过", en: "Approve" })}
+            </Button>
+            <Button
+              variant="outline"
+              size={buttonSize}
+              disabled={reviewMutation.isPending}
+              onClick={() => openActionDialog("reject", [item.word_id])}
+            >
+              <XCircle />
+              {t({ zh: "拒绝", en: "Reject" })}
+            </Button>
+          </>
+        )}
+        {!readonly && (
+          <Button
+            variant="ghost"
+            size={buttonSize}
+            disabled={editLoading}
+            onClick={() => void openEdit(item)}
+          >
+            <Pencil />
+            {t({ zh: "编辑", en: "Edit" })}
+          </Button>
+        )}
+      </div>
+    )
+  }
+
   return (
     <Card>
       <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
@@ -317,7 +419,7 @@ export function ContentReviewPanel({
             aria-label={t({ zh: "状态筛选", en: "Filter by status" })}
             value={statusFilter}
             onChange={(event) =>
-              setStatusFilter(event.target.value as StatusFilter)
+              applyStatusFilter(event.target.value as StatusFilter)
             }
             className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
           >
@@ -331,7 +433,7 @@ export function ContentReviewPanel({
             aria-label={t({ zh: "来源筛选", en: "Filter by source" })}
             value={sourceFilter}
             onChange={(event) =>
-              setSourceFilter(event.target.value as "" | WordSource)
+              applySourceFilter(event.target.value as "" | WordSource)
             }
             className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
           >
@@ -346,7 +448,7 @@ export function ContentReviewPanel({
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
+              onChange={(event) => applyKeyword(event.target.value)}
               placeholder={t({
                 zh: "按单词 / 释义搜索…",
                 en: "Search word or meaning…",
@@ -357,20 +459,23 @@ export function ContentReviewPanel({
           </div>
         </div>
 
-        {/* 批量操作条 */}
-        {!readonly && items.length > 0 && (
+        {/* 批量操作条：仅对待审词条生效 */}
+        {!readonly && pendingItems.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex min-h-11 items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={items.length > 0 && selected.size === items.length}
+                checked={
+                  pendingItems.length > 0 &&
+                  selected.size === pendingItems.length
+                }
                 onChange={(event) => toggleAll(event.target.checked)}
                 className="size-4 accent-[var(--primary)]"
-                aria-label={t({ zh: "全选", en: "Select all" })}
+                aria-label={t({ zh: "全选待审", en: "Select all pending" })}
               />
               {t({
-                zh: `已选 ${selected.size} 条`,
-                en: `${selected.size} selected`,
+                zh: `已选 ${selected.size} 条待审`,
+                en: `${selected.size} pending selected`,
               })}
             </label>
             <Button
@@ -394,7 +499,7 @@ export function ContentReviewPanel({
           </div>
         )}
 
-        {/* 队列表格 */}
+        {/* 队列：lg 表格 / <lg 卡片列表，避免窄屏横向裁切 */}
         {reviewsQuery.isPending ? (
           <div
             role="status"
@@ -414,140 +519,120 @@ export function ContentReviewPanel({
             })}
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead>
-                <tr className="border-b bg-secondary/50 text-xs text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">
-                    {t({ zh: "单词", en: "Word" })}
-                  </th>
-                  <th className="px-3 py-2 font-medium">
-                    {t({ zh: "词性", en: "POS" })}
-                  </th>
-                  <th className="px-3 py-2 font-medium">
-                    {t({ zh: "释义", en: "Meaning" })}
-                  </th>
-                  <th className="px-3 py-2 font-medium">
-                    {t({ zh: "来源", en: "Source" })}
-                  </th>
-                  <th className="px-3 py-2 font-medium">
-                    {t({ zh: "状态", en: "Status" })}
-                  </th>
-                  <th className="px-3 py-2 font-medium">
-                    {t({ zh: "词库 / 意见", en: "Book / Note" })}
-                  </th>
-                  {!readonly && (
+          <>
+            <div className="hidden overflow-x-auto rounded-xl border lg:block">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead>
+                  <tr className="border-b bg-secondary/50 text-xs text-muted-foreground">
                     <th className="px-3 py-2 font-medium">
-                      {t({ zh: "操作", en: "Actions" })}
+                      {t({ zh: "单词", en: "Word" })}
                     </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.word_id} className="border-b last:border-b-0">
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-2">
-                        {!readonly && (
-                          <input
-                            type="checkbox"
-                            checked={selected.has(item.word_id)}
-                            onChange={(event) =>
-                              toggleOne(item.word_id, event.target.checked)
-                            }
-                            className="size-4 accent-[var(--primary)]"
-                            aria-label={t({
-                              zh: `选择 ${item.headword}`,
-                              en: `Select ${item.headword}`,
-                            })}
-                          />
-                        )}
-                        <span className="font-semibold">{item.headword}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">
-                      {item.part_of_speech ?? "–"}
-                    </td>
-                    <td className="max-w-56 px-3 py-2.5">
-                      <span className="line-clamp-2">{item.meaning_zh}</span>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <Badge
-                        variant={item.source === "ai" ? "default" : "outline"}
-                      >
-                        {t(sourceLabel(item.source))}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <Badge
-                        variant={
-                          item.review_status === "approved"
-                            ? "secondary"
-                            : item.review_status === "rejected"
-                              ? "destructive"
-                              : "outline"
-                        }
-                      >
-                        {t(reviewStatusLabel(item.review_status))}
-                      </Badge>
-                    </td>
-                    <td className="max-w-56 px-3 py-2.5">
-                      <div className="text-xs text-muted-foreground">
-                        {item.book_title ?? "–"}
-                      </div>
-                      {item.review_note && (
-                        <div className="mt-0.5 line-clamp-2 text-xs">
-                          {item.review_note}
-                        </div>
-                      )}
-                      {item.reviewed_at && (
-                        <div className="mt-0.5 text-xs text-muted-foreground">
-                          {formatDateTime(item.reviewed_at, lang)}
-                        </div>
-                      )}
-                    </td>
+                    <th className="px-3 py-2 font-medium">
+                      {t({ zh: "词性", en: "POS" })}
+                    </th>
+                    <th className="px-3 py-2 font-medium">
+                      {t({ zh: "释义", en: "Meaning" })}
+                    </th>
+                    <th className="px-3 py-2 font-medium">
+                      {t({ zh: "来源", en: "Source" })}
+                    </th>
+                    <th className="px-3 py-2 font-medium">
+                      {t({ zh: "状态", en: "Status" })}
+                    </th>
+                    <th className="px-3 py-2 font-medium">
+                      {t({ zh: "词库 / 意见", en: "Book / Note" })}
+                    </th>
                     {!readonly && (
-                      <td className="px-3 py-2.5">
-                        <div className="flex flex-wrap gap-1.5">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={reviewMutation.isPending}
-                            onClick={() =>
-                              openActionDialog("approve", [item.word_id])
-                            }
-                          >
-                            <CheckCircle2 />
-                            {t({ zh: "通过", en: "Approve" })}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={reviewMutation.isPending}
-                            onClick={() =>
-                              openActionDialog("reject", [item.word_id])
-                            }
-                          >
-                            <XCircle />
-                            {t({ zh: "拒绝", en: "Reject" })}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={editLoading}
-                            onClick={() => void openEdit(item)}
-                          >
-                            <Pencil />
-                            {t({ zh: "编辑", en: "Edit" })}
-                          </Button>
-                        </div>
-                      </td>
+                      <th className="px-3 py-2 font-medium">
+                        {t({ zh: "操作", en: "Actions" })}
+                      </th>
                     )}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.word_id} className="border-b last:border-b-0">
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          {renderRowCheckbox(item)}
+                          <span className="font-semibold">{item.headword}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground">
+                        {item.part_of_speech ?? "–"}
+                      </td>
+                      <td className="max-w-56 px-3 py-2.5">
+                        <span className="line-clamp-2">{item.meaning_zh}</span>
+                      </td>
+                      <td className="px-3 py-2.5">{renderSourceBadge(item)}</td>
+                      <td className="px-3 py-2.5">{renderStatusBadge(item)}</td>
+                      <td className="max-w-56 px-3 py-2.5">
+                        <div className="text-xs text-muted-foreground">
+                          {item.book_title ?? "–"}
+                        </div>
+                        {item.review_note && (
+                          <div className="mt-0.5 line-clamp-2 text-xs">
+                            {item.review_note}
+                          </div>
+                        )}
+                        {item.reviewed_at && (
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            {formatDateTime(item.reviewed_at, lang)}
+                          </div>
+                        )}
+                      </td>
+                      {!readonly && (
+                        <td className="px-3 py-2.5">
+                          {renderActions(item, { dense: true })}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="space-y-3 lg:hidden">
+              {items.map((item) => (
+                <article key={item.word_id} className="rounded-xl border p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {renderRowCheckbox(item)}
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-semibold">{item.headword}</span>
+                          {item.part_of_speech && (
+                            <span className="text-xs text-muted-foreground">
+                              {item.part_of_speech}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                      {renderSourceBadge(item)}
+                      {renderStatusBadge(item)}
+                    </div>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-sm">{item.meaning_zh}</p>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {item.book_title ?? "–"}
+                  </div>
+                  {item.review_note && (
+                    <div className="mt-0.5 line-clamp-2 text-xs">
+                      {item.review_note}
+                    </div>
+                  )}
+                  {item.reviewed_at && (
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {formatDateTime(item.reviewed_at, lang)}
+                    </div>
+                  )}
+                  <div className="mt-2">{renderActions(item)}</div>
+                </article>
+              ))}
+            </div>
+          </>
         )}
       </CardContent>
 

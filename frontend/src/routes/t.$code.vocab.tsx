@@ -263,7 +263,7 @@ function TeacherVocabPage() {
       )}
 
       <div
-        className="flex gap-2"
+        className="flex flex-wrap gap-2"
         role="tablist"
         aria-label={t({ zh: "词汇任务视图", en: "Vocabulary task views" })}
       >
