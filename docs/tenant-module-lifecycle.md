@@ -200,5 +200,8 @@
 - 新迁移 `b2c3d4e5f6a7`（父版本 `a1b2c3d4e5f6`）：加 `expires_at` /
   `grant_type` / `granted_by` 三列与 `expires_at` 索引；审计表加三组前后值列；
   存量行 `grant_type` 回填 `manual`。先加可空列 → 回填 → 再收紧 NOT NULL。
+- 与按校用量迁移 `c3d4e5f6a7b8` 合并为 `d6372fd6a828`；其后
+  `e5f6a7b8c9d0` 仅把 master 上既有 `vocab_placement_result` /
+  `vocabulary_content_review_audit` 的 5 个索引名对齐模型自动名，不改列与数据。
 - downgrade 可逆：摘除新列、索引与外键；**不删除任何业务表或业务数据**。
 - 回滚运营口径只需改开关 / 续期 / 重新开通，不需要 downgrade 迁移。

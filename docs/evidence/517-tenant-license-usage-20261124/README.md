@@ -13,7 +13,7 @@
 | 工作区状态 | 除本证据目录外无改动，未修改任何业务代码 |
 | 后端 | `127.0.0.1:8006`（uvicorn，代码即本 worktree） |
 | 前端 | `127.0.0.1:5176`（Vite，`API_PROXY_TARGET=http://127.0.0.1:8006`） |
-| 数据库 | Docker `english-speaking-assessment-db-1`，`localhost:5433` / 库 `app`，迁移 head `d6372fd6a828` |
+| 数据库 | Docker `english-speaking-assessment-db-1`，`localhost:5433` / 库 `app`，迁移 head `e5f6a7b8c9d0`（`d6372fd6a828` 之后仅重命名既有索引，不改数据） |
 | 浏览器 | 附加 Chrome，经 `browser_use`（plane=`bu`）+ CDP `Emulation.setDeviceMetricsOverride`；常规视口 `deviceScaleFactor=1`、`mobile=false`；二轮另试 `mobile=true / deviceScaleFactor=2 / TouchEmulation`（见 §7） |
 | 视口三档 | 390×844 / 820×1000 / 1180×1000 |
 | 主仓 8000/5173 | 未触碰（仍由 Docker 容器占用） |

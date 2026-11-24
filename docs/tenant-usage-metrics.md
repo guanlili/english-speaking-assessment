@@ -72,7 +72,7 @@
 | `classroom_exercise` | `ix_classroom_exercise_tenant_published_at` | `tenant_id, published_at` |
 | `vocab_farm_plot` | `ix_vocab_farm_plot_tenant_last_harvested_at` | `tenant_id, last_harvested_at` |
 
-索引同时声明在对应模型 `__table_args__`，避免模型 / 迁移漂移。downgrade 按名可逆删除。
+索引同时声明在对应模型 `__table_args__`，避免模型 / 迁移漂移。downgrade 按名可逆删除。合并 head 为 `d6372fd6a828`；后续 `e5f6a7b8c9d0` 仅把 master 上既有 `vocab_placement_result` / `vocabulary_content_review_audit` 的 5 个索引名对齐模型自动名，不改列与数据。
 
 ## 7. 物化升级条件
 
