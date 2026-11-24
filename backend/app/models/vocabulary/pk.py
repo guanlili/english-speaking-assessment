@@ -101,6 +101,13 @@ class VocabPkMatch(SQLModel, table=True):
     """
 
     __tablename__ = "vocab_pk_match"
+    __table_args__ = (
+        Index(
+            "ix_vocab_pk_match_tenant_started_at",
+            "tenant_id",
+            "started_at",
+        ),
+    )
     tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

@@ -140,6 +140,11 @@ class VocabularyAssignment(SQLModel, table=True):
         UniqueConstraint(
             "classroom_id", "version_no", name="uq_vocab_assignment_version"
         ),
+        Index(
+            "ix_vocabulary_assignment_tenant_published_at",
+            "tenant_id",
+            "published_at",
+        ),
     )
     # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
     tenant_id: uuid.UUID = _tenant_id_field()
@@ -290,6 +295,11 @@ class VocabularySession(SQLModel, table=True):
                 "assignment_id IS NULL AND kind = 'placement' AND status = 'in_progress'"
             ),
         ),
+        Index(
+            "ix_vocabulary_session_tenant_submitted_at",
+            "tenant_id",
+            "submitted_at",
+        ),
     )
     # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
     tenant_id: uuid.UUID = _tenant_id_field()
@@ -368,6 +378,11 @@ class VocabularyAnswer(SQLModel, table=True):
         ),
         UniqueConstraint("idempotency_key", name="uq_vocab_answer_idempotency_key"),
         Index("ix_vocab_answer_session_item", "session_id", "item_index"),
+        Index(
+            "ix_vocabulary_answer_tenant_answered_at",
+            "tenant_id",
+            "answered_at",
+        ),
     )
     # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
     tenant_id: uuid.UUID = _tenant_id_field()
@@ -407,6 +422,13 @@ class VocabularyContentReviewAudit(SQLModel, table=True):
     """
 
     __tablename__ = "vocabulary_content_review_audit"
+    __table_args__ = (
+        Index(
+            "ix_vocab_review_audit_tenant_created_at",
+            "tenant_id",
+            "created_at",
+        ),
+    )
     # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
     tenant_id: uuid.UUID = _tenant_id_field()
 
