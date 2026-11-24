@@ -191,6 +191,12 @@ from app.models.vocabulary.reports import (
     VocabularyClassResults as VocabularyClassResults,
 )
 from app.models.vocabulary.reports import (
+    VocabularyMasteryReport as VocabularyMasteryReport,
+)
+from app.models.vocabulary.reports import (
+    VocabularyMasteryWordRow as VocabularyMasteryWordRow,
+)
+from app.models.vocabulary.reports import (
     VocabularyPromptTypeStat as VocabularyPromptTypeStat,
 )
 from app.models.vocabulary.reports import (
@@ -418,6 +424,8 @@ __all__ = [
     "VocabularyWordMisspelling",
     "VocabularyWordStatRow",
     "VocabularyClassResults",
+    "VocabularyMasteryReport",
+    "VocabularyMasteryWordRow",
     "VocabularyPromptTypeStat",
     "VocabularyRecommendation",
     "VocabularyRecommendationFocus",

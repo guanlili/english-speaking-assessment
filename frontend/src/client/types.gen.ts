@@ -7328,6 +7328,134 @@ export type VocabularyLevelStats = {
 };
 
 /**
+ * VocabularyMasteryReport
+ *
+ * GET /classes/{code}/vocabulary/mastery 的班级掌握度载荷。
+ */
+export type VocabularyMasteryReport = {
+    /**
+     * Classroom Code
+     */
+    classroom_code: string;
+    /**
+     * Generated At
+     */
+    generated_at: string;
+    /**
+     * Window Days
+     */
+    window_days: number;
+    /**
+     * Scope
+     */
+    scope: string;
+    /**
+     * Assignment Id
+     */
+    assignment_id?: string | null;
+    /**
+     * Answered Count
+     */
+    answered_count?: number;
+    /**
+     * Correct First Count
+     */
+    correct_first_count?: number;
+    /**
+     * Accuracy Rate
+     */
+    accuracy_rate?: number | null;
+    /**
+     * Low Count
+     */
+    low_count?: number;
+    /**
+     * Mid Count
+     */
+    mid_count?: number;
+    /**
+     * High Count
+     */
+    high_count?: number;
+    /**
+     * No Data Count
+     */
+    no_data_count?: number;
+    /**
+     * Fsrs New
+     */
+    fsrs_new?: number;
+    /**
+     * Fsrs Learning
+     */
+    fsrs_learning?: number;
+    /**
+     * Fsrs Review
+     */
+    fsrs_review?: number;
+    /**
+     * Due Count
+     */
+    due_count?: number;
+    /**
+     * Words
+     */
+    words?: Array<VocabularyMasteryWordRow>;
+};
+
+/**
+ * VocabularyMasteryWordRow
+ *
+ * 逐词掌握度行：首答分段 + 该词在本班的 FSRS 状态条目分布。
+ */
+export type VocabularyMasteryWordRow = {
+    /**
+     * Word Id
+     */
+    word_id: string;
+    /**
+     * Headword
+     */
+    headword: string;
+    /**
+     * Meaning Zh
+     */
+    meaning_zh: string;
+    /**
+     * Answered Count
+     */
+    answered_count: number;
+    /**
+     * Correct First Count
+     */
+    correct_first_count: number;
+    /**
+     * Accuracy Rate
+     */
+    accuracy_rate?: number | null;
+    /**
+     * Band
+     */
+    band: string;
+    /**
+     * Fsrs New
+     */
+    fsrs_new?: number;
+    /**
+     * Fsrs Learning
+     */
+    fsrs_learning?: number;
+    /**
+     * Fsrs Review
+     */
+    fsrs_review?: number;
+    /**
+     * Due Count
+     */
+    due_count?: number;
+};
+
+/**
  * VocabularyMorphSegment
  *
  * 词根拼装的语素块：text 用于拼接，gloss 是中文提示。
@@ -15080,6 +15208,45 @@ export type VocabularyReadVocabResultsResponses = {
 };
 
 export type VocabularyReadVocabResultsResponse = VocabularyReadVocabResultsResponses[200 & keyof VocabularyReadVocabResultsResponses];
+
+export type VocabularyReadVocabMasteryData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: {
+        /**
+         * Assignment Id
+         */
+        assignment_id?: string | null;
+        /**
+         * Window Days
+         */
+        window_days?: number;
+    };
+    url: '/api/v1/classes/{code}/vocabulary/mastery';
+};
+
+export type VocabularyReadVocabMasteryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadVocabMasteryError = VocabularyReadVocabMasteryErrors[keyof VocabularyReadVocabMasteryErrors];
+
+export type VocabularyReadVocabMasteryResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyMasteryReport;
+};
+
+export type VocabularyReadVocabMasteryResponse = VocabularyReadVocabMasteryResponses[200 & keyof VocabularyReadVocabMasteryResponses];
 
 export type VocabularyReadVocabTodayData = {
     body?: never;

@@ -36,6 +36,7 @@ import { pollWhileVisible } from "@/lib/poll"
 import { EXPLAIN_QUIZ_TAB_SWITCH, TERMS, vocabPromptMeta } from "@/lib/terms"
 import { formatTime } from "@/lib/time"
 import { summarizeClassFirstTry, wrongWordCsvTable } from "@/lib/vocabResults"
+import { MasteryCard } from "./MasteryCard"
 import { QuizAnswerSheetDialog } from "./QuizAnswerSheetDialog"
 import { RoundSelector } from "./RoundSelector"
 
@@ -279,6 +280,7 @@ export function ResultsPanel({
                 })}
           </CardContent>
         </Card>
+        <MasteryCard code={code} assignmentId={selectedAssignmentId} />
       </div>
     )
   }
@@ -504,6 +506,8 @@ export function ResultsPanel({
           )}
         </CardContent>
       </Card>
+
+      <MasteryCard code={code} assignmentId={selectedAssignmentId} />
 
       {(results?.prompt_type_stats ?? []).length > 0 && (
         <Card>
