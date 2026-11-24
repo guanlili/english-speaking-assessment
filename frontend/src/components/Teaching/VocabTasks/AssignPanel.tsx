@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCircle2, Loader2, Plus } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { ApiError, StudentsService, VocabularyService } from "@/client"
 import { Badge } from "@/components/ui/badge"
@@ -23,6 +23,10 @@ import {
   VOCAB_PROMPT_META,
   type VocabLevel,
 } from "@/lib/terms"
+import {
+  countEligibleByPromptType,
+  MIN_CHOICE_WORDS,
+} from "@/lib/vocab-prompt-availability"
 import { AddWordsToBook } from "./AddWordsToBook"
 import { CreateClassroomBook } from "./CreateClassroomBook"
 
@@ -164,6 +168,26 @@ export function AssignPanel({
 
   const selectedCount = selected.size
   const activeCount = words.filter((w) => w.status === "active").length
+  const selectedWords = words.filter((word) => selected.has(word.id))
+  const eligibleByType = countEligibleByPromptType(selectedWords)
+  const promptAvailability = {
+    en_zh: selectedCount >= MIN_CHOICE_WORDS,
+    zh_en: selectedCount >= MIN_CHOICE_WORDS,
+    cloze: eligibleByType.cloze > 0,
+    roots: eligibleByType.roots > 0,
+  }
+  // 素材不足的题型直接禁用并取消勾选，避免提交后才收到笼统的 422
+  useEffect(() => {
+    if (!promptAvailability.en_zh) setEnZhPrompt(false)
+    if (!promptAvailability.zh_en) setZhEnPrompt(false)
+    if (!promptAvailability.cloze) setClozePrompt(false)
+    if (!promptAvailability.roots) setRootsPrompt(false)
+  }, [
+    promptAvailability.en_zh,
+    promptAvailability.zh_en,
+    promptAvailability.cloze,
+    promptAvailability.roots,
+  ])
 
   const promptTypes = [
     ...(meaningPrompt ? ["meaning"] : []),
@@ -567,27 +591,50 @@ export function AssignPanel({
                   ["cloze", clozePrompt, setClozePrompt],
                   ["roots", rootsPrompt, setRootsPrompt],
                 ] as const
-              ).map(([type, checked, setChecked]) => (
-                <label
-                  key={type}
-                  className="flex min-h-14 cursor-pointer items-start gap-2 rounded-xl border bg-card px-3 py-2.5 text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(event) => setChecked(event.target.checked)}
-                    className="mt-1 size-4 accent-[var(--primary)]"
-                  />
-                  <span className="min-w-0">
-                    <span className="block font-medium">
-                      {t(VOCAB_PROMPT_META[type].label)}
+              ).map(([type, checked, setChecked]) => {
+                const available = promptAvailability[type]
+                return (
+                  <label
+                    key={type}
+                    className={`flex min-h-14 items-start gap-2 rounded-xl border bg-card px-3 py-2.5 text-sm ${
+                      available
+                        ? "cursor-pointer"
+                        : "cursor-not-allowed opacity-60"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={!available}
+                      onChange={(event) => setChecked(event.target.checked)}
+                      className="mt-1 size-4 accent-[var(--primary)]"
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-medium">
+                        {t(VOCAB_PROMPT_META[type].label)}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        {available
+                          ? t(VOCAB_PROMPT_META[type].hint)
+                          : type === "roots"
+                            ? t({
+                                zh: "所选词没有可用的词法拆解，补词法后再选。",
+                                en: "The selected words have no usable morphology yet — add it first.",
+                              })
+                            : type === "cloze"
+                              ? t({
+                                  zh: "所选词没有含原词的例句，补例句后再选。",
+                                  en: "The selected words have no example containing the word — add examples first.",
+                                })
+                              : t({
+                                  zh: `四选一至少需要 ${MIN_CHOICE_WORDS} 个词。`,
+                                  en: `Choice questions need at least ${MIN_CHOICE_WORDS} words.`,
+                                })}
+                      </span>
                     </span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">
-                      {t(VOCAB_PROMPT_META[type].hint)}
-                    </span>
-                  </span>
-                </label>
-              ))}
+                  </label>
+                )
+              })}
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               {t({

@@ -373,8 +373,13 @@ function MatchPanel({
                   en: `Question ${nextIndex + 1} / ${match.question_count}`,
                 })}
               </p>
-              <p className="mt-1 text-lg leading-relaxed sm:text-xl">
-                {currentItem.meaning_zh}
+              <p
+                data-testid="pk-prompt"
+                className="mt-1 text-lg leading-relaxed sm:text-xl"
+              >
+                {currentItem.prompt_type === "en_zh" && currentItem.headword
+                  ? currentItem.headword
+                  : currentItem.meaning_zh}
               </p>
               {currentItem.cloze_sentence && (
                 <p className="mt-1 text-sm text-muted-foreground">

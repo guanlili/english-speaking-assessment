@@ -836,7 +836,13 @@ def _item_view(
         choices=choices,
         cloze_sentence=snapshot_typed.get("cloze_sentence"),
         morph_segments=segments,
-        headword=str(snapshot_typed["headword"]) if answer is not None else None,
+        # en_zh 的题面就是英文单词；作答前必须透出。zh_en/cloze/roots 的
+        # headword 是答案，作答前保持 null，避免泄题。
+        headword=(
+            str(snapshot_typed["headword"])
+            if answer is not None or prompt_type == "en_zh"
+            else None
+        ),
         answered=answer is not None,
         is_correct=answer.is_correct if answer is not None else None,
         first_choice_word_id=first_choice_id,

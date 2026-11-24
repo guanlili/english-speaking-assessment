@@ -102,6 +102,36 @@ describe("PkArena", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled()
   })
 
+  it("en_zh 题面显示英文单词，而不是中文释义", async () => {
+    const matchWithPrompt: PkMatchView = {
+      ...ACTIVE_MATCH,
+      items: [
+        {
+          item_index: 0,
+          prompt_type: "en_zh",
+          headword: "apple",
+          meaning_zh: "苹果",
+          choices: [
+            { word_id: "w1", headword: "apple", meaning_zh: "苹果" },
+            { word_id: "w2", headword: "banana", meaning_zh: "香蕉" },
+          ],
+        },
+      ],
+    }
+    vi.spyOn(VocabularyService, "readPkLobby").mockResolvedValue(ACTIVE_LOBBY)
+    vi.spyOn(VocabularyService, "readPkMatchState").mockResolvedValue(
+      matchWithPrompt,
+    )
+
+    renderArena()
+
+    await waitFor(() =>
+      expect(screen.getByTestId("pk-prompt")).toBeInTheDocument(),
+    )
+    expect(screen.getByTestId("pk-prompt")).toHaveTextContent("apple")
+    expect(screen.getByTestId("pk-prompt")).not.toHaveTextContent("苹果")
+  })
+
   it("SSE 不可用：对局快照仍由轮询兜底展示，挂载不崩溃", async () => {
     vi.spyOn(VocabularyService, "readPkLobby").mockResolvedValue(ACTIVE_LOBBY)
     vi.spyOn(VocabularyService, "readPkMatchState").mockResolvedValue(

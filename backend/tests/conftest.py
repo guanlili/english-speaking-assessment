@@ -115,6 +115,20 @@ def _setup_rls_and_roles(engine) -> None:
                     f"USING ({POLICY}) WITH CHECK ({POLICY})"
                 )
             )
+        # 五级词库是平台授权目录：所有租户可读，写入仍受 tenant_isolation 约束
+        from app.alembic.versions.e9a7c3f1d5b2_vocab_level_catalog_read_policy import (
+            POLICY_NAME as VOCAB_CATALOG_POLICY,
+        )
+
+        c.execute(
+            text(f"DROP POLICY IF EXISTS {VOCAB_CATALOG_POLICY} ON vocab_level_entry")
+        )
+        c.execute(
+            text(
+                f"CREATE POLICY {VOCAB_CATALOG_POLICY} ON vocab_level_entry "
+                "FOR SELECT USING (true)"
+            )
+        )
         for role, pw in [
             ("esa_app_test", "esa_app_test_pw"),
             ("esa_platform_test", "esa_platform_test_pw"),

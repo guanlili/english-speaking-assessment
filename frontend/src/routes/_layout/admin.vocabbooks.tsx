@@ -13,6 +13,10 @@ import {
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { ApiError, VocabularyService } from "@/client"
+import {
+  type BookWordInput,
+  toBookWordInput,
+} from "@/components/Teaching/VocabTasks/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -46,15 +50,8 @@ export const Route = createFileRoute("/_layout/admin/vocabbooks")({
   }),
 })
 
-/** CSV 预览行（导入确认用；保留全部支持字段，避免 meaning_en/example_en 静默丢失） */
-type PreviewWord = {
-  headword: string
-  part_of_speech?: string | null
-  meaning_zh: string
-  meaning_en?: string | null
-  accepted_spellings?: Array<string> | null
-  example_en?: string | null
-}
+/** CSV 预览行（导入确认用；保留全部支持字段，避免字段静默丢失） */
+type PreviewWord = BookWordInput
 
 type PreviewState = {
   rows: PreviewWord[]
@@ -103,14 +100,7 @@ function VocabBooksAdmin() {
       }),
     onSuccess: (data) => {
       setPreview({
-        rows: (data.rows ?? []).map((row) => ({
-          headword: row.word.headword,
-          meaning_zh: row.word.meaning_zh,
-          part_of_speech: row.word.part_of_speech,
-          meaning_en: row.word.meaning_en,
-          accepted_spellings: row.word.accepted_spellings,
-          example_en: row.word.example_en,
-        })),
+        rows: (data.rows ?? []).map((row) => toBookWordInput(row.word)),
         invalid: data.invalid ?? [],
         duplicates: data.duplicates ?? [],
       })
@@ -220,6 +210,7 @@ function VocabBooksAdmin() {
           "meaning_en",
           "accepted_spellings",
           "example_en",
+          "morphology",
         ],
         [
           "dog",
@@ -236,6 +227,7 @@ function VocabBooksAdmin() {
           "liked more than all others",
           "favorite",
           "Blue is my favourite color.",
+          '[{"text":"favour","gloss":"喜爱","kind":"root"},{"text":"ite","gloss":"形容词后缀","kind":"suffix"}]',
         ],
       ],
       "vocab-book-template.csv",

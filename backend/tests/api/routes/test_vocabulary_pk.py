@@ -343,6 +343,38 @@ def test_reconnect_restores_question_clock_and_score(
     assert view["remaining_seconds"] <= 30
 
 
+def test_en_zh_prompt_exposes_headword_before_answer(
+    client: TestClient, db: Session
+) -> None:
+    """PK 的 en_zh 题面必须给英文 headword；zh_en 作答前不能泄题。
+
+    回归背景：前端已按题型读 headword，但后端 _item_view 只在已作答时透出，
+    导致真机 en_zh 题面回退成中文释义。
+    """
+    teacher, teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, teacher_headers)
+    book = _make_book(client, teacher_headers, classroom["id"], _words(8, "p"), "p1")
+    _open_lobby(
+        client,
+        teacher_headers,
+        classroom["code"],
+        book["id"],
+        question_count=4,
+        prompt_types=["en_zh", "zh_en"],
+    )
+    a = make_student(db, client, classroom["code"], "甲")
+    b = make_student(db, client, classroom["code"], "乙")
+    _join(client, a["headers"], classroom["code"])
+    lobby_b = _join(client, b["headers"], classroom["code"])
+    match_id = lobby_b["my_match_id"]
+
+    items = _match(client, a["headers"], classroom["code"], match_id)["items"]
+    by_type = {item["prompt_type"]: item for item in items}
+    assert by_type["en_zh"]["headword"]
+    assert by_type["en_zh"]["answered"] is False
+    assert by_type["zh_en"]["headword"] is None
+
+
 def test_timeout_settles_unanswered_as_zero(client: TestClient, db: Session) -> None:
     teacher, teacher_headers = _login_teacher(db, client)
     classroom = _create_classroom(client, teacher_headers)

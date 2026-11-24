@@ -6,7 +6,7 @@ import { ApiError, VocabularyService } from "@/client"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
 import { localizeImportIssue } from "@/lib/vocabImport"
-import type { VocabCsvPreview } from "./types"
+import { toBookWordInput, type VocabCsvPreview } from "./types"
 
 /** 向已有班级词库补词：CSV 预览确认后调用 addBookWords（库里已有的自动跳过）。 */
 export function AddWordsToBook({
@@ -29,14 +29,7 @@ export function AddWordsToBook({
       }),
     onSuccess: (data) => {
       setPreview({
-        words: (data.rows ?? []).map((row) => ({
-          headword: row.word.headword,
-          part_of_speech: row.word.part_of_speech ?? null,
-          meaning_zh: row.word.meaning_zh,
-          meaning_en: row.word.meaning_en ?? null,
-          accepted_spellings: row.word.accepted_spellings ?? null,
-          example_en: row.word.example_en ?? null,
-        })),
+        words: (data.rows ?? []).map((row) => toBookWordInput(row.word)),
         invalid: data.invalid ?? [],
         duplicates: data.duplicates ?? [],
       })
