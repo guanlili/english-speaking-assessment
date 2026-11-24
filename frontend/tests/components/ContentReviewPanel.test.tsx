@@ -13,6 +13,7 @@ import { I18nProvider } from "@/lib/i18n"
  * - 平台运营只读走 admin 跨校端点，不调学校端点，且无审核/编辑动作；
  * - 非待审行不可勾选、无通过/拒绝按钮，仅保留编辑；
  * - 筛选变化清空勾选，避免误提交已隐藏词条；
+ * - 「全部」状态筛选显式传 status=all（后端显式约定），pending/rejected 原样透传；
  * - 服务调用走既有 SDK，测试不手写 API URL。
  *
  * 注：桌面表格与窄屏卡片两套标记同时在 DOM 中（CSS 切换显隐），
@@ -155,6 +156,41 @@ describe("ContentReviewPanel", () => {
     expect(screen.queryAllByLabelText("选择 bank")).toHaveLength(0)
     expect(screen.queryAllByLabelText("选择 desk")).toHaveLength(0)
     expect(screen.getAllByRole("button", { name: "编辑" })).toHaveLength(6)
+  })
+
+  it("「全部」筛选显式传 status=all，pending/rejected 原样透传", async () => {
+    const spy = vi
+      .spyOn(VocabularyService, "listVocabularyReviews")
+      .mockResolvedValue(REVIEW_LIST)
+    renderPanel()
+
+    await screen.findAllByText("apple")
+    // 默认待审视图
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "pending" }),
+      )
+    })
+
+    // 切到「全部」：SDK 真的发出 status=all（后端显式约定，不过滤状态）
+    fireEvent.change(screen.getByLabelText("状态筛选"), {
+      target: { value: "all" },
+    })
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "all" }),
+      )
+    })
+
+    // 已拒绝筛选原样透传
+    fireEvent.change(screen.getByLabelText("状态筛选"), {
+      target: { value: "rejected" },
+    })
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "rejected" }),
+      )
+    })
   })
 
   it("筛选条件变化时清空已选，不会把隐藏词条提交批量审核", async () => {

@@ -93,7 +93,8 @@ export function ContentReviewPanel({
     ],
     queryFn: () => {
       const params = {
-        status: statusFilter === "all" ? null : statusFilter,
+        // 后端约定显式 status=all（大小写不敏感）表示不过滤；不传 null。
+        status: statusFilter === "all" ? "all" : statusFilter,
         source: sourceFilter || null,
         book_id: bookId ?? null,
         classroom_id: classroomId ?? null,
