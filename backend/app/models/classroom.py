@@ -165,6 +165,11 @@ class ClassroomExercise(SQLModel, table=True):
         UniqueConstraint(
             "classroom_id", "version_no", name="uq_classroom_exercise_version"
         ),
+        Index(
+            "ix_classroom_exercise_tenant_published_at",
+            "tenant_id",
+            "published_at",
+        ),
     )
     # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
     tenant_id: uuid.UUID = _tenant_id_field()
