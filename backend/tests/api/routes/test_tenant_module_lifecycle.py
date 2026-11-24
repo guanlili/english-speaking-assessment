@@ -563,3 +563,65 @@ def test_validation_expires_before_start(
     )
     assert resp.status_code == 422, resp.text
     assert resp.json()["detail"] == "expires_at_must_be_after_effective_at"
+
+
+# ── 附加：空开始时间 + 过去到期日不被 422 挡住 ──────────────────────────────
+
+
+def test_past_expires_without_start_is_expired(
+    client: TestClient,
+    db: Session,
+    operator_token_headers: dict[str, str],
+) -> None:
+    """无开始时间（立即生效）但到期日已过：允许写入，状态直接 expired。"""
+    tenant = _mk_tenant(db, "past-expiry")
+    resp = client.put(
+        f"{API}/admin/tenants/{tenant.id}/modules/vocabulary",
+        json={
+            "enabled": True,
+            "grant_type": "paid",
+            "expires_at": (datetime.now(UTC) - timedelta(days=2)).isoformat(),
+        },
+        headers=operator_token_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["state"] == "expired"
+    assert body["enabled"] is True
+    assert body["effective_at"] is None
+    assert body["starts_at"] is None
+    assert body["expires_at"] is not None
+
+    teacher = _mk_user(db, tenant.id, "teacher", "t")
+    blocked = client.get(VOCAB_BOOKS, headers=_headers(teacher, tenant.id))
+    assert blocked.status_code == 403, blocked.text
+    assert blocked.json()["detail"] == "module_expired:vocabulary"
+
+
+def test_close_expired_module_not_blocked_by_expiry_check(
+    client: TestClient,
+    db: Session,
+    operator_token_headers: dict[str, str],
+) -> None:
+    """关闭已过期模块（enabled=false）不被到期日先后校验挡住。"""
+    tenant = _mk_tenant(db, "close-exp")
+    _grant(db, tenant.id, expires_at=datetime.now(UTC) - timedelta(days=2))
+    teacher = _mk_user(db, tenant.id, "teacher", "t")
+
+    blocked = client.get(VOCAB_BOOKS, headers=_headers(teacher, tenant.id))
+    assert blocked.status_code == 403, blocked.text
+    assert blocked.json()["detail"] == "module_expired:vocabulary"
+
+    close = client.put(
+        f"{API}/admin/tenants/{tenant.id}/modules/vocabulary",
+        json={"enabled": False},
+        headers=operator_token_headers,
+    )
+    assert close.status_code == 200, close.text
+    body = close.json()
+    assert body["state"] == "disabled"
+    assert body["enabled"] is False
+
+    blocked_after = client.get(VOCAB_BOOKS, headers=_headers(teacher, tenant.id))
+    assert blocked_after.status_code == 403, blocked_after.text
+    assert blocked_after.json()["detail"] == "module_not_enabled:vocabulary"

@@ -197,16 +197,19 @@ def _validate_grant(
     grant_type: str | None,
     expires_at: datetime | None,
     effective_at: datetime | None,
-    now: datetime,
 ) -> None:
-    """请求级校验：类型枚举、trial 必带到期日、到期日晚于开始时间。"""
+    """请求级校验：类型枚举、trial 必带到期日、到期日晚于开始时间。
+
+    ``effective_at`` 为空（立即生效）时不做先后校验：过去的 ``expires_at``
+    允许写入，状态直接判 ``expired``；只有显式给出开始时间时，才要求
+    ``expires_at > effective_at``。
+    """
     if grant_type not in GRANT_TYPES:
         raise HTTPException(status_code=422, detail="grant_type_invalid")
     if grant_type == GRANT_TRIAL and expires_at is None:
         raise HTTPException(status_code=422, detail="trial_requires_expires_at")
-    if expires_at is not None:
-        start = _as_utc(effective_at) if effective_at is not None else now
-        if _as_utc(expires_at) <= start:
+    if expires_at is not None and effective_at is not None:
+        if _as_utc(expires_at) <= _as_utc(effective_at):
             raise HTTPException(
                 status_code=422,
                 detail="expires_at_must_be_after_effective_at",
@@ -254,7 +257,6 @@ def upsert_module(
         grant_type=resolved_grant_type,
         expires_at=new_expires,
         effective_at=new_effective,
-        now=now,
     )
     # 校验通过后 None 不可能落到这里（None 不在枚举内会被 422 拒绝）
     new_grant_type = resolved_grant_type or GRANT_MANUAL

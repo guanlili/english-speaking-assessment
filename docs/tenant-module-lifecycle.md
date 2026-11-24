@@ -87,9 +87,11 @@
 - 校验（失败均 422）：
   - `grant_type` 不在 `trial|paid|manual` → `grant_type_invalid`；
   - `grant_type=trial` 未给 `expires_at` → `trial_requires_expires_at`；
-  - `expires_at` 必须晚于开始时间：开始时间取 `effective_at`，为空则取 `now`
-    → `expires_at_must_be_after_effective_at`；
-  - 过去时间的 `expires_at` 允许写入，但状态直接判 `expired`。
+  - `expires_at` 仅在开始时间非空时校验必须晚于开始时间（开始时间取
+    `effective_at`；省略时沿用既有值）→ `expires_at_must_be_after_effective_at`；
+    开始时间为空（立即生效）不做先后校验，也不拿 `now` 兜底；
+  - 过去时间的 `expires_at` 允许写入（尤其开始时间为空时），状态直接判
+    `expired`；关闭（`enabled=false`）不受该先后校验阻挡。
 - **`granted_by` 归属规则**：
   - 首次开通、从关闭变开启、续期（改到期日）或改类型 → 记当前操作人；
   - 单纯关闭、或未变更授权归属 → 保留旧值。
