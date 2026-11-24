@@ -21,6 +21,7 @@ from sqlmodel import Session, delete, select
 from app import crud
 from app.models import (
     PLACEMENT_DEFAULT_TOTAL,
+    PLACEMENT_KIND,
     Student,
     User,
     UserCreate,
@@ -33,7 +34,7 @@ from app.models import (
 )
 from app.services import vocab_placement
 from app.services import vocabulary as vocab_service
-from tests.utils.credential import make_student
+from tests.utils.credential import join_as, make_student
 from tests.utils.utils import random_email, random_lower_string
 
 PLACEMENT = "/api/v1/classes/{code}/vocabulary/placement"
@@ -166,11 +167,16 @@ def _answer(
     session_id: str,
     item_index: int,
     answer: str,
+    *,
+    idempotency_key: str | None = None,
     expect: int = 200,
 ) -> dict:
+    body: dict[str, Any] = {"item_index": item_index, "answer": answer}
+    if idempotency_key is not None:
+        body["idempotency_key"] = idempotency_key
     resp = client.post(
         PLACEMENT.format(code=code) + f"/sessions/{session_id}/answer",
-        json={"item_index": item_index, "answer": answer},
+        json=body,
         headers=headers,
     )
     assert resp.status_code == expect, resp.text
@@ -423,3 +429,89 @@ def test_placement_permission_and_cross_class(
     )
     assert resp.status_code == 422, resp.text
     assert body["is_correct"] is True
+
+
+def test_placement_replay_after_finish_returns_result(
+    db: Session, client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    # 收尾后同键幂等重放：必须带回已落库结果，前端重试不能卡住；且不新增作答记录。
+    ctx = _setup_class(db, client, superuser_token_headers, WORDS)
+    code, headers = ctx["code"], ctx["student"]["headers"]
+
+    start = _start(client, headers, code)
+    session_id = start["session_id"]
+    question = start["question"]
+    last_key: str | None = None
+    last_item: int | None = None
+    last_answer: str | None = None
+    answered = 0
+
+    while question is not None:
+        correct_id = _choice_for(question, question["headword"])
+        key = f"placement-{session_id}-{question['item_index']}"
+        body = _answer(
+            client,
+            headers,
+            code,
+            session_id,
+            question["item_index"],
+            correct_id,
+            idempotency_key=key,
+        )
+        if body.get("question") is None:
+            last_key, last_item, last_answer = key, question["item_index"], correct_id
+        question = body.get("question")
+        answered += 1
+
+    assert last_key is not None and last_item is not None and last_answer is not None
+
+    replay = client.post(
+        PLACEMENT.format(code=code) + f"/sessions/{session_id}/answer",
+        json={
+            "item_index": last_item,
+            "answer": last_answer,
+            "idempotency_key": last_key,
+        },
+        headers=headers,
+    )
+    assert replay.status_code == 200, replay.text
+    replay_body = replay.json()
+    assert replay_body["result"] is not None
+    assert replay_body["result"]["student_id"] == str(ctx["student"]["student"]["id"])
+    assert replay_body["result"]["question_count"] == answered
+    assert replay_body["is_correct"] is True
+
+    answers = db.exec(
+        select(VocabularyAnswer).where(
+            VocabularyAnswer.session_id == uuid.UUID(session_id)  # type: ignore[arg-type]
+        )
+    ).all()
+    assert len(answers) == answered
+
+
+def test_placement_resume_is_scoped_to_classroom(
+    db: Session, client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    # 同一账号加入另一课堂：start 只在本班续做进行中轮次，不跨班捞回 A 轮次。
+    ctx = _setup_class(db, client, superuser_token_headers, WORDS)
+    code_a, headers = ctx["code"], ctx["student"]["headers"]
+    user = ctx["student"]["user"]
+
+    start_a = _start(client, headers, code_a)
+    session_a = start_a["session_id"]
+
+    other_teacher, other_headers = _login_teacher(db, client)
+    class_b = _create_classroom(client, other_headers)
+    join_as(client, class_b["code"], user, display_name="跨班学生")
+
+    start_b = _start(client, headers, class_b["code"])
+    assert start_b["session_id"] != session_a
+
+    row_a = db.get(VocabularySession, uuid.UUID(session_a))
+    assert row_a is not None
+    assert row_a.status == "in_progress"
+
+    row_b = db.get(VocabularySession, uuid.UUID(start_b["session_id"]))
+    assert row_b is not None
+    assert row_b.classroom_id == uuid.UUID(class_b["id"])  # type: ignore[arg-type]
+    assert row_b.kind == PLACEMENT_KIND

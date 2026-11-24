@@ -68,9 +68,9 @@
 
 ## 相关校验（代码侧）
 
-- placement 分支：后端全量 `1091 passed / 2 skipped`、placement 专项 18 例；前端 typecheck、107 components、180 unit；OpenAPI 210 paths / 297 schemas。
-- mastery 分支：后端全量 `1090 passed / 2 skipped`、mastery 专项 17 例；前端 179 unit / 110 components；OpenAPI 207 paths / 292 schemas。
-- 集成分支：后端全量 `verify.sh --openapi` 结果见任务回填；前端 typecheck / biome / 179 unit / 110 components 已通过；合并后 OpenAPI 基线 211 paths / 299 schemas，生成客户端含 `readVocabMastery`、`startPlacement`、`answerPlacement`、`placementHistory`。
+- placement 分支：后端全量 `1093 passed / 2 skipped`（含边界修复回归）、placement 专项 20 例；前端 typecheck、107 components、182 unit；OpenAPI 210 paths / 297 schemas。
+- mastery 分支：后端全量 `1090 passed / 2 skipped`、mastery 专项 17 例；前端 182 unit / 110 components；OpenAPI 207 paths / 292 schemas。
+- 集成分支：后端全量 `verify.sh --openapi` **1110 passed / 2 skipped**（242.75s，退出码 0），覆盖率全局 93% / services 93% / scoring 93% / api 92% / core 92%；placement + mastery 定向 37 passed；前端 typecheck / biome（仅既有 schema 版本 info）/ 182 unit / 110 components 全过；OpenAPI 基线 211 paths / 299 schemas 零漂移，生成客户端含 `readVocabMastery`、`startPlacement`、`answerPlacement`、`placementHistory`。
 
 ## 边界与待确认口径
 

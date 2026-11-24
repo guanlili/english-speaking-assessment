@@ -259,6 +259,17 @@ def _answered_count(session: Session, vocab_session: VocabularySession) -> int:
     )
 
 
+def _result_for_session(
+    session: Session, session_id: uuid.UUID
+) -> VocabPlacementResult | None:
+    """按会话取回已落库的结果（幂等重放 / 收尾后回执用）；无记录返回 None。"""
+    return session.exec(
+        select(VocabPlacementResult).where(
+            VocabPlacementResult.session_id == session_id  # type: ignore[arg-type]
+        )
+    ).first()
+
+
 def _view_payload(
     session: Session,
     vocab_session: VocabularySession,
@@ -290,6 +301,7 @@ def start_or_resume(
     """开始一次粗分档小测；已有进行中轮次直接续做（刷新/重复点击不重复开轮）。"""
     resume = session.exec(
         select(VocabularySession).where(
+            VocabularySession.classroom_id == classroom_id,  # type: ignore[arg-type]
             VocabularySession.student_id == student.id,  # type: ignore[arg-type]
             VocabularySession.kind == PLACEMENT_KIND,  # type: ignore[arg-type]
             VocabularySession.status == "in_progress",  # type: ignore[arg-type]
@@ -368,8 +380,12 @@ def submit_answer(
     questions = _questions(vocab_session)
 
     if replay is not None:
+        # 幂等重放：会话已收尾时带回已落库结果，避免前端重试拿不到建议而卡住。
+        result = None
+        if vocab_session.status == "submitted":
+            result = _result_for_session(session, vocab_session.id)
         return _answer_payload(
-            session, vocab_session, replay, questions[replay.item_index]
+            session, vocab_session, replay, questions[replay.item_index], result
         )
 
     if vocab_session.status != "in_progress":
