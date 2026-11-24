@@ -79,6 +79,23 @@ function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` }
 }
 
+/** AC4 发布门禁：新造词默认 pending，发布前需审核通过；存量词已由迁移回填。 */
+async function approvePendingWords(
+  request: Page["request"],
+  headers: Record<string, string>,
+  words: Array<{ id: string; review_status?: string }>,
+) {
+  const pending = words
+    .filter((w) => w.review_status === "pending")
+    .map((w) => w.id)
+  if (pending.length === 0) return
+  const reviewed = await request.post(`${API}/vocabulary/reviews`, {
+    headers,
+    data: { word_ids: pending, action: "approve" },
+  })
+  if (!reviewed.ok()) throw new Error(`审核词条失败: ${await reviewed.text()}`)
+}
+
 /** 幂等造两个任务（各 2 词），返回任务标题 → id 映射 */
 async function ensureTwoAssignments(
   request: Page["request"],
@@ -124,18 +141,7 @@ async function ensureTwoAssignments(
       words: Array<{ id: string; headword: string; review_status?: string }>
     }
   ).words
-  // AC4 发布门禁：新造词默认 pending，未审核不可发布。存量词已由迁移回填 approved。
-  const pending = words
-    .filter((w) => w.review_status === "pending")
-    .map((w) => w.id)
-  if (pending.length > 0) {
-    const reviewed = await request.post(`${API}/vocabulary/reviews`, {
-      headers,
-      data: { word_ids: pending, action: "approve" },
-    })
-    if (!reviewed.ok())
-      throw new Error(`审核词条失败: ${await reviewed.text()}`)
-  }
+  await approvePendingWords(request, headers, words)
   const ids = Object.fromEntries(words.map((w) => [w.headword, w.id]))
 
   const plan = [
@@ -342,11 +348,13 @@ async function ensureReviewTask(
   const detail = await (
     await request.get(`${API}/vocabulary/books/${bookId}`, { headers })
   ).json()
-  const ids = Object.fromEntries(
-    (detail as { words: Array<{ id: string; headword: string }> }).words.map(
-      (w) => [w.headword, w.id],
-    ),
-  )
+  const words = (
+    detail as {
+      words: Array<{ id: string; headword: string; review_status?: string }>
+    }
+  ).words
+  await approvePendingWords(request, headers, words)
+  const ids = Object.fromEntries(words.map((w) => [w.headword, w.id]))
   const existing = (await (
     await request.get(`${API}/classes/DEMO01/vocabulary/assignments`, {
       headers,
