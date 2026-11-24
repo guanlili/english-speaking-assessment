@@ -5761,6 +5761,94 @@
         "title": "Message",
         "type": "object"
       },
+      "ModuleStatus": {
+        "description": "单行模块授权的状态快照（与服务端闸门同一状态机口径）。",
+        "properties": {
+          "days_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Left"
+          },
+          "effective_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective At"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "grant_type": {
+            "title": "Grant Type",
+            "type": "string"
+          },
+          "granted_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Granted By"
+          },
+          "module_key": {
+            "title": "Module Key",
+            "type": "string"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "module_key",
+          "state",
+          "enabled",
+          "grant_type"
+        ],
+        "title": "ModuleStatus",
+        "type": "object"
+      },
       "ModulesMe": {
         "properties": {
           "modules": {
@@ -5769,10 +5857,18 @@
             },
             "title": "Modules",
             "type": "array"
+          },
+          "statuses": {
+            "items": {
+              "$ref": "#/components/schemas/ModuleStatus"
+            },
+            "title": "Statuses",
+            "type": "array"
           }
         },
         "required": [
-          "modules"
+          "modules",
+          "statuses"
         ],
         "title": "ModulesMe",
         "type": "object"
@@ -10874,6 +10970,76 @@
             ],
             "title": "Enabled Before"
           },
+          "expires_at_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At After"
+          },
+          "expires_at_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At Before"
+          },
+          "grant_type_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grant Type After"
+          },
+          "grant_type_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grant Type Before"
+          },
+          "granted_by_after": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Granted By After"
+          },
+          "granted_by_before": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Granted By Before"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -10899,8 +11065,19 @@
         "type": "object"
       },
       "TenantModulePublic": {
-        "description": "运营/前端视角的单行授权。",
+        "description": "运营/前端视角的单行授权。\n\n``starts_at`` 是 ``effective_at`` 的只读镜像（同一事实，不另存列）；\n``state`` / ``days_left`` 由服务端状态机派生。",
         "properties": {
+          "days_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Left"
+          },
           "effective_at": {
             "anyOf": [
               {
@@ -10917,8 +11094,54 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "grant_type": {
+            "default": "manual",
+            "title": "Grant Type",
+            "type": "string"
+          },
+          "granted_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Granted By"
+          },
           "module_key": {
             "title": "Module Key",
+            "type": "string"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "state": {
+            "default": "not_granted",
+            "title": "State",
             "type": "string"
           },
           "tenant_id": {
@@ -10960,7 +11183,7 @@
         "type": "object"
       },
       "TenantModuleUpdate": {
-        "description": "运营改写单行授权的请求体。",
+        "description": "运营改写单行授权的请求体（PUT 整行语义）。\n\n省略的元数据字段保留旧值；``expires_at`` 显式传 ``null`` 表示清除到期日\n（转长期）。``effective_at`` 即开始时间，请求体不设重复的 starts_at。",
         "properties": {
           "effective_at": {
             "anyOf": [
@@ -10977,6 +11200,29 @@
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "grant_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grant Type"
           }
         },
         "required": [
@@ -11026,6 +11272,208 @@
           }
         },
         "title": "TenantUpdate",
+        "type": "object"
+      },
+      "TenantUsageDay": {
+        "properties": {
+          "active_students": {
+            "default": 0,
+            "title": "Active Students",
+            "type": "integer"
+          },
+          "active_teachers": {
+            "default": 0,
+            "title": "Active Teachers",
+            "type": "integer"
+          },
+          "completed_students": {
+            "default": 0,
+            "title": "Completed Students",
+            "type": "integer"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "exports": {
+            "default": 0,
+            "title": "Exports",
+            "type": "integer"
+          },
+          "farm_harvests": {
+            "default": 0,
+            "title": "Farm Harvests",
+            "type": "integer"
+          },
+          "pk_matches": {
+            "default": 0,
+            "title": "Pk Matches",
+            "type": "integer"
+          },
+          "placement_tests": {
+            "default": 0,
+            "title": "Placement Tests",
+            "type": "integer"
+          },
+          "published_tasks": {
+            "default": 0,
+            "title": "Published Tasks",
+            "type": "integer"
+          },
+          "vocab_answers": {
+            "default": 0,
+            "title": "Vocab Answers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "title": "TenantUsageDay",
+        "type": "object"
+      },
+      "TenantUsageMetrics": {
+        "description": "九项聚合指标（日行与区间总量共用结构）。",
+        "properties": {
+          "active_students": {
+            "default": 0,
+            "title": "Active Students",
+            "type": "integer"
+          },
+          "active_teachers": {
+            "default": 0,
+            "title": "Active Teachers",
+            "type": "integer"
+          },
+          "completed_students": {
+            "default": 0,
+            "title": "Completed Students",
+            "type": "integer"
+          },
+          "exports": {
+            "default": 0,
+            "title": "Exports",
+            "type": "integer"
+          },
+          "farm_harvests": {
+            "default": 0,
+            "title": "Farm Harvests",
+            "type": "integer"
+          },
+          "pk_matches": {
+            "default": 0,
+            "title": "Pk Matches",
+            "type": "integer"
+          },
+          "placement_tests": {
+            "default": 0,
+            "title": "Placement Tests",
+            "type": "integer"
+          },
+          "published_tasks": {
+            "default": 0,
+            "title": "Published Tasks",
+            "type": "integer"
+          },
+          "vocab_answers": {
+            "default": 0,
+            "title": "Vocab Answers",
+            "type": "integer"
+          }
+        },
+        "title": "TenantUsageMetrics",
+        "type": "object"
+      },
+      "TenantUsageResponse": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/TenantUsageDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "from": {
+            "title": "From",
+            "type": "string"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "to": {
+            "title": "To",
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/TenantUsageMetrics"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "from",
+          "to",
+          "timezone",
+          "days",
+          "totals",
+          "limitations"
+        ],
+        "title": "TenantUsageResponse",
+        "type": "object"
+      },
+      "TenantUsageSummaryItem": {
+        "properties": {
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "summary_30d": {
+            "$ref": "#/components/schemas/TenantUsageMetrics"
+          },
+          "summary_7d": {
+            "$ref": "#/components/schemas/TenantUsageMetrics"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "slug",
+          "summary_7d",
+          "summary_30d"
+        ],
+        "title": "TenantUsageSummaryItem",
+        "type": "object"
+      },
+      "TenantUsageSummaryResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TenantUsageSummaryItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TenantUsageSummaryResponse",
         "type": "object"
       },
       "TodayPlan": {
@@ -20483,6 +20931,24 @@
               ],
               "title": "Limit"
             }
+          },
+          {
+            "in": "query",
+            "name": "expiring_within_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 365,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expiring Within Days"
+            }
           }
         ],
         "responses": {
@@ -20561,6 +21027,33 @@
           }
         ],
         "summary": "Create Tenant",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/tenants/usage-summary": {
+      "get": {
+        "description": "运营列表：每校近 7 / 30 天核心聚合数（一次请求返回两组）。\n\n只返回租户 id、slug 与聚合数，不含任何学生 / 教师标识。静态路径\n``usage-summary`` 与 ``/{tenant_id}`` 不冲突。",
+        "operationId": "admin-usage_summary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantUsageSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Usage Summary",
         "tags": [
           "admin"
         ]
@@ -20695,7 +21188,7 @@
     },
     "/api/v1/admin/tenants/{tenant_id}/modules/{module_key}": {
       "put": {
-        "description": "整校模块开关（平台运营）：开启/关闭 speaking 或 vocabulary，可选生效时间。\n\n变更落 ``tenant_module_audit``：操作人、前后值、生效时间、时间戳一并留痕；\n学校管理员不可见、不可改本接口。",
+        "description": "整校模块开关（平台运营）：开启/关闭 speaking 或 vocabulary，可选租期。\n\n请求体为 PUT 整行语义：省略的元数据字段保留旧值；``expires_at`` 显式传\n``null`` 表示清除到期日（转长期）。``effective_at`` 即开始时间。\n变更落 ``tenant_module_audit``：操作人、前后值（含到期日/类型/授权人）、\n时间戳一并留痕；学校管理员不可见、不可改本接口。",
         "operationId": "admin-update_tenant_module",
         "parameters": [
           {
@@ -20756,6 +21249,170 @@
           }
         ],
         "summary": "Update Tenant Module",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/tenants/{tenant_id}/usage": {
+      "get": {
+        "description": "单校按天用量：范围内每天一行（无数据补零），附区间总量与限制说明。",
+        "operationId": "admin-tenant_usage_detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantUsageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Tenant Usage Detail",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/tenants/{tenant_id}/usage.csv": {
+      "get": {
+        "description": "单校按天用量 CSV（UTF-8 BOM，Excel 直开）；仅聚合数，无学生明细。",
+        "operationId": "admin-tenant_usage_csv",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Tenant Usage Csv",
         "tags": [
           "admin"
         ]

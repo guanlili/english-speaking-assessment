@@ -3242,6 +3242,50 @@ export type Message = {
 };
 
 /**
+ * ModuleStatus
+ *
+ * 单行模块授权的状态快照（与服务端闸门同一状态机口径）。
+ */
+export type ModuleStatus = {
+    /**
+     * Module Key
+     */
+    module_key: string;
+    /**
+     * State
+     */
+    state: string;
+    /**
+     * Enabled
+     */
+    enabled: boolean;
+    /**
+     * Effective At
+     */
+    effective_at?: string | null;
+    /**
+     * Starts At
+     */
+    starts_at?: string | null;
+    /**
+     * Expires At
+     */
+    expires_at?: string | null;
+    /**
+     * Grant Type
+     */
+    grant_type: string;
+    /**
+     * Days Left
+     */
+    days_left?: number | null;
+    /**
+     * Granted By
+     */
+    granted_by?: string | null;
+};
+
+/**
  * ModulesMe
  */
 export type ModulesMe = {
@@ -3249,6 +3293,10 @@ export type ModulesMe = {
      * Modules
      */
     modules: Array<string>;
+    /**
+     * Statuses
+     */
+    statuses: Array<ModuleStatus>;
 };
 
 /**
@@ -5929,6 +5977,30 @@ export type TenantModuleAuditPublic = {
      */
     effective_at_after?: string | null;
     /**
+     * Expires At Before
+     */
+    expires_at_before?: string | null;
+    /**
+     * Expires At After
+     */
+    expires_at_after?: string | null;
+    /**
+     * Grant Type Before
+     */
+    grant_type_before?: string | null;
+    /**
+     * Grant Type After
+     */
+    grant_type_after?: string | null;
+    /**
+     * Granted By Before
+     */
+    granted_by_before?: string | null;
+    /**
+     * Granted By After
+     */
+    granted_by_after?: string | null;
+    /**
      * Actor Operator Id
      */
     actor_operator_id?: string | null;
@@ -5942,6 +6014,9 @@ export type TenantModuleAuditPublic = {
  * TenantModulePublic
  *
  * 运营/前端视角的单行授权。
+ *
+ * ``starts_at`` 是 ``effective_at`` 的只读镜像（同一事实，不另存列）；
+ * ``state`` / ``days_left`` 由服务端状态机派生。
  */
 export type TenantModulePublic = {
     /**
@@ -5961,6 +6036,30 @@ export type TenantModulePublic = {
      */
     effective_at?: string | null;
     /**
+     * Starts At
+     */
+    starts_at?: string | null;
+    /**
+     * Expires At
+     */
+    expires_at?: string | null;
+    /**
+     * Grant Type
+     */
+    grant_type?: string;
+    /**
+     * Granted By
+     */
+    granted_by?: string | null;
+    /**
+     * State
+     */
+    state?: string;
+    /**
+     * Days Left
+     */
+    days_left?: number | null;
+    /**
      * Updated At
      */
     updated_at?: string | null;
@@ -5973,7 +6072,10 @@ export type TenantModulePublic = {
 /**
  * TenantModuleUpdate
  *
- * 运营改写单行授权的请求体。
+ * 运营改写单行授权的请求体（PUT 整行语义）。
+ *
+ * 省略的元数据字段保留旧值；``expires_at`` 显式传 ``null`` 表示清除到期日
+ * （转长期）。``effective_at`` 即开始时间，请求体不设重复的 starts_at。
  */
 export type TenantModuleUpdate = {
     /**
@@ -5984,6 +6086,14 @@ export type TenantModuleUpdate = {
      * Effective At
      */
     effective_at?: string | null;
+    /**
+     * Expires At
+     */
+    expires_at?: string | null;
+    /**
+     * Grant Type
+     */
+    grant_type?: string | null;
 };
 
 /**
@@ -6002,6 +6112,153 @@ export type TenantUpdate = {
      * Status
      */
     status?: string | null;
+};
+
+/**
+ * TenantUsageDay
+ */
+export type TenantUsageDay = {
+    /**
+     * Active Teachers
+     */
+    active_teachers?: number;
+    /**
+     * Active Students
+     */
+    active_students?: number;
+    /**
+     * Vocab Answers
+     */
+    vocab_answers?: number;
+    /**
+     * Published Tasks
+     */
+    published_tasks?: number;
+    /**
+     * Completed Students
+     */
+    completed_students?: number;
+    /**
+     * Pk Matches
+     */
+    pk_matches?: number;
+    /**
+     * Farm Harvests
+     */
+    farm_harvests?: number;
+    /**
+     * Placement Tests
+     */
+    placement_tests?: number;
+    /**
+     * Exports
+     */
+    exports?: number;
+    /**
+     * Date
+     */
+    date: string;
+};
+
+/**
+ * TenantUsageMetrics
+ *
+ * 九项聚合指标（日行与区间总量共用结构）。
+ */
+export type TenantUsageMetrics = {
+    /**
+     * Active Teachers
+     */
+    active_teachers?: number;
+    /**
+     * Active Students
+     */
+    active_students?: number;
+    /**
+     * Vocab Answers
+     */
+    vocab_answers?: number;
+    /**
+     * Published Tasks
+     */
+    published_tasks?: number;
+    /**
+     * Completed Students
+     */
+    completed_students?: number;
+    /**
+     * Pk Matches
+     */
+    pk_matches?: number;
+    /**
+     * Farm Harvests
+     */
+    farm_harvests?: number;
+    /**
+     * Placement Tests
+     */
+    placement_tests?: number;
+    /**
+     * Exports
+     */
+    exports?: number;
+};
+
+/**
+ * TenantUsageResponse
+ */
+export type TenantUsageResponse = {
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
+    /**
+     * From
+     */
+    from: string;
+    /**
+     * To
+     */
+    to: string;
+    /**
+     * Timezone
+     */
+    timezone: string;
+    /**
+     * Days
+     */
+    days: Array<TenantUsageDay>;
+    totals: TenantUsageMetrics;
+    /**
+     * Limitations
+     */
+    limitations: Array<string>;
+};
+
+/**
+ * TenantUsageSummaryItem
+ */
+export type TenantUsageSummaryItem = {
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
+    /**
+     * Slug
+     */
+    slug: string;
+    summary_7d: TenantUsageMetrics;
+    summary_30d: TenantUsageMetrics;
+};
+
+/**
+ * TenantUsageSummaryResponse
+ */
+export type TenantUsageSummaryResponse = {
+    /**
+     * Items
+     */
+    items: Array<TenantUsageSummaryItem>;
 };
 
 /**
@@ -14167,6 +14424,10 @@ export type AdminListTenantsData = {
          * Limit
          */
         limit?: number | null;
+        /**
+         * Expiring Within Days
+         */
+        expiring_within_days?: number | null;
     };
     url: '/api/v1/admin/tenants';
 };
@@ -14316,6 +14577,98 @@ export type AdminUpdateTenantResponses = {
 };
 
 export type AdminUpdateTenantResponse = AdminUpdateTenantResponses[200 & keyof AdminUpdateTenantResponses];
+
+export type AdminUsageSummaryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/tenants/usage-summary';
+};
+
+export type AdminUsageSummaryResponses = {
+    /**
+     * Successful Response
+     */
+    200: TenantUsageSummaryResponse;
+};
+
+export type AdminUsageSummaryResponse = AdminUsageSummaryResponses[200 & keyof AdminUsageSummaryResponses];
+
+export type AdminTenantUsageDetailData = {
+    body?: never;
+    path: {
+        /**
+         * Tenant Id
+         */
+        tenant_id: string;
+    };
+    query?: {
+        /**
+         * From
+         */
+        from?: string | null;
+        /**
+         * To
+         */
+        to?: string | null;
+    };
+    url: '/api/v1/admin/tenants/{tenant_id}/usage';
+};
+
+export type AdminTenantUsageDetailErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminTenantUsageDetailError = AdminTenantUsageDetailErrors[keyof AdminTenantUsageDetailErrors];
+
+export type AdminTenantUsageDetailResponses = {
+    /**
+     * Successful Response
+     */
+    200: TenantUsageResponse;
+};
+
+export type AdminTenantUsageDetailResponse = AdminTenantUsageDetailResponses[200 & keyof AdminTenantUsageDetailResponses];
+
+export type AdminTenantUsageCsvData = {
+    body?: never;
+    path: {
+        /**
+         * Tenant Id
+         */
+        tenant_id: string;
+    };
+    query?: {
+        /**
+         * From
+         */
+        from?: string | null;
+        /**
+         * To
+         */
+        to?: string | null;
+    };
+    url: '/api/v1/admin/tenants/{tenant_id}/usage.csv';
+};
+
+export type AdminTenantUsageCsvErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminTenantUsageCsvError = AdminTenantUsageCsvErrors[keyof AdminTenantUsageCsvErrors];
+
+export type AdminTenantUsageCsvResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
 
 export type SchoolListMembersData = {
     body?: never;
