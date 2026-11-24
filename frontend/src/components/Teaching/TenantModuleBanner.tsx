@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n"
 import {
   type BannerEntry,
   type BannerLevel,
+  daysLeftEn,
   describeBanner,
 } from "@/lib/tenantModules"
 
@@ -86,7 +87,7 @@ export function TenantModuleBanner({
               }
             : {
                 zh: `${name}模块试用还剩 ${entry.daysLeft ?? 0} 天`,
-                en: `${name} trial: ${entry.daysLeft ?? 0} days left`,
+                en: `${name} trial: ${daysLeftEn(entry.daysLeft)}`,
               }
         return (
           <div

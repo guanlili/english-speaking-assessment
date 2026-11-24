@@ -3,6 +3,7 @@ import test from "node:test"
 
 import { resolveBi } from "../src/lib/bi.ts"
 import {
+  daysLeftEn,
   describeBanner,
   describeModuleBadge,
   mapLimitation,
@@ -63,6 +64,22 @@ test("六态徽标：试用中显示剩余天数（中英）", () => {
   })
   assert.equal(resolveBi(badge.label, "zh"), "试用中 · 剩 12 天")
   assert.equal(resolveBi(badge.label, "en"), "Trial · 12 days left")
+})
+
+test("英文复数：1 天用单数 day，其余 days；中文不变", () => {
+  assert.equal(daysLeftEn(1), "1 day left")
+  assert.equal(daysLeftEn(2), "2 days left")
+  assert.equal(daysLeftEn(30), "30 days left")
+  assert.equal(daysLeftEn(null), "")
+
+  const oneDay = describeModuleBadge({
+    state: "active",
+    enabled: true,
+    grant_type: "trial",
+    days_left: 1,
+  })
+  assert.equal(resolveBi(oneDay.label, "zh"), "试用中 · 剩 1 天")
+  assert.equal(resolveBi(oneDay.label, "en"), "Trial · 1 day left")
 })
 
 test("六态徽标：付费 / 人工都显示使用中，类型进 hint", () => {

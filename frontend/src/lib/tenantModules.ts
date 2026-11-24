@@ -89,6 +89,12 @@ function daysLeftOf(m: ModuleLike): number | null {
     : null
 }
 
+/** 英文剩余天数：1 → "1 day left"，其余 "N days left"；null 返回空串。 */
+export function daysLeftEn(daysLeft: number | null): string {
+  if (daysLeft === null) return ""
+  return daysLeft === 1 ? "1 day left" : `${daysLeft} days left`
+}
+
 /** 六态徽标描述：未开通 / 已关闭 / 待生效 / 已到期 / 试用中·剩 N 天 / 使用中。 */
 export function describeModuleBadge(
   m: ModuleLike | TenantModulePublic | ModuleStatus | undefined | null,
@@ -142,7 +148,7 @@ export function describeModuleBadge(
             ? { zh: "试用中", en: "Trial" }
             : {
                 zh: `试用中 · 剩 ${daysLeft} 天`,
-                en: `Trial · ${daysLeft} days left`,
+                en: `Trial · ${daysLeftEn(daysLeft)}`,
               }
         return {
           state,

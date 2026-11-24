@@ -137,6 +137,23 @@ describe("TenantModuleBanner 试用档位", () => {
     )
   })
 
+  it("英文 1 天用单数 day left", () => {
+    localStorage.setItem("esa:lang", "en")
+    renderBanner(
+      [
+        fixture({
+          module_key: "speaking",
+          state: "active",
+          enabled: true,
+          grant_type: "trial",
+          days_left: 1,
+        }),
+      ],
+      "school_admin",
+    )
+    expect(screen.getByText("Speaking trial: 1 day left")).toBeInTheDocument()
+  })
+
   it("已关闭 / 未开通 / 待生效 / 付费均不提示", () => {
     renderBanner(
       [
