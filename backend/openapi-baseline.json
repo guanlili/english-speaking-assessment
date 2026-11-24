@@ -13709,6 +13709,188 @@
         "title": "VocabularyLevelStats",
         "type": "object"
       },
+      "VocabularyMasteryReport": {
+        "description": "GET /classes/{code}/vocabulary/mastery 的班级掌握度载荷。",
+        "properties": {
+          "accuracy_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy Rate"
+          },
+          "answered_count": {
+            "default": 0,
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "assignment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignment Id"
+          },
+          "classroom_code": {
+            "title": "Classroom Code",
+            "type": "string"
+          },
+          "correct_first_count": {
+            "default": 0,
+            "title": "Correct First Count",
+            "type": "integer"
+          },
+          "due_count": {
+            "default": 0,
+            "title": "Due Count",
+            "type": "integer"
+          },
+          "fsrs_learning": {
+            "default": 0,
+            "title": "Fsrs Learning",
+            "type": "integer"
+          },
+          "fsrs_new": {
+            "default": 0,
+            "title": "Fsrs New",
+            "type": "integer"
+          },
+          "fsrs_review": {
+            "default": 0,
+            "title": "Fsrs Review",
+            "type": "integer"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "high_count": {
+            "default": 0,
+            "title": "High Count",
+            "type": "integer"
+          },
+          "low_count": {
+            "default": 0,
+            "title": "Low Count",
+            "type": "integer"
+          },
+          "mid_count": {
+            "default": 0,
+            "title": "Mid Count",
+            "type": "integer"
+          },
+          "no_data_count": {
+            "default": 0,
+            "title": "No Data Count",
+            "type": "integer"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "window_days": {
+            "title": "Window Days",
+            "type": "integer"
+          },
+          "words": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyMasteryWordRow"
+            },
+            "title": "Words",
+            "type": "array"
+          }
+        },
+        "required": [
+          "classroom_code",
+          "generated_at",
+          "window_days",
+          "scope"
+        ],
+        "title": "VocabularyMasteryReport",
+        "type": "object"
+      },
+      "VocabularyMasteryWordRow": {
+        "description": "逐词掌握度行：首答分段 + 该词在本班的 FSRS 状态条目分布。",
+        "properties": {
+          "accuracy_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy Rate"
+          },
+          "answered_count": {
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "band": {
+            "title": "Band",
+            "type": "string"
+          },
+          "correct_first_count": {
+            "title": "Correct First Count",
+            "type": "integer"
+          },
+          "due_count": {
+            "default": 0,
+            "title": "Due Count",
+            "type": "integer"
+          },
+          "fsrs_learning": {
+            "default": 0,
+            "title": "Fsrs Learning",
+            "type": "integer"
+          },
+          "fsrs_new": {
+            "default": 0,
+            "title": "Fsrs New",
+            "type": "integer"
+          },
+          "fsrs_review": {
+            "default": 0,
+            "title": "Fsrs Review",
+            "type": "integer"
+          },
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "meaning_zh": {
+            "title": "Meaning Zh",
+            "type": "string"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word_id",
+          "headword",
+          "meaning_zh",
+          "answered_count",
+          "correct_first_count",
+          "band"
+        ],
+        "title": "VocabularyMasteryWordRow",
+        "type": "object"
+      },
       "VocabularyMorphSegment": {
         "description": "词根拼装的语素块：text 用于拼接，gloss 是中文提示。",
         "properties": {
@@ -26421,6 +26603,81 @@
           }
         ],
         "summary": "Grant Quiz Retake",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/mastery": {
+      "get": {
+        "description": "班级掌握度：首答正确率分段 + FSRS 状态分布 + 到期未复习条目数。\n\n口径提醒：掌握度不是考试分数、不是能力等级；只统计本班教师任务轮\n（kind=task）的首答，自主练习/错词复习/分班测不混入。``assignment_id``\n缺省 = 本班全部任务（all_tasks）；给定 = 单任务口径。时间窗 7/30/90 天，\n默认 30 天。",
+        "operationId": "vocabulary-read_vocab_mastery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assignment_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assignment Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyMasteryReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Vocab Mastery",
         "tags": [
           "vocabulary"
         ]
