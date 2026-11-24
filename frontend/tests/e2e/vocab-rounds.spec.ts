@@ -119,8 +119,23 @@ async function ensureTwoAssignments(
   const detail = await (
     await request.get(`${API}/vocabulary/books/${bookId}`, { headers })
   ).json()
-  const words = (detail as { words: Array<{ id: string; headword: string }> })
-    .words
+  const words = (
+    detail as {
+      words: Array<{ id: string; headword: string; review_status?: string }>
+    }
+  ).words
+  // AC4 发布门禁：新造词默认 pending，未审核不可发布。存量词已由迁移回填 approved。
+  const pending = words
+    .filter((w) => w.review_status === "pending")
+    .map((w) => w.id)
+  if (pending.length > 0) {
+    const reviewed = await request.post(`${API}/vocabulary/reviews`, {
+      headers,
+      data: { word_ids: pending, action: "approve" },
+    })
+    if (!reviewed.ok())
+      throw new Error(`审核词条失败: ${await reviewed.text()}`)
+  }
   const ids = Object.fromEntries(words.map((w) => [w.headword, w.id]))
 
   const plan = [
