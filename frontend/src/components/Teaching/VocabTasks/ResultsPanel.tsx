@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   CircleDashed,
   Download,
+  FileDown,
   RefreshCw,
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
@@ -34,6 +35,7 @@ import { type BiString, useI18n } from "@/lib/i18n"
 import { pollWhileVisible } from "@/lib/poll"
 import { EXPLAIN_QUIZ_TAB_SWITCH, TERMS, vocabPromptMeta } from "@/lib/terms"
 import { formatTime } from "@/lib/time"
+import { summarizeClassFirstTry, wrongWordCsvTable } from "@/lib/vocabResults"
 import { QuizAnswerSheetDialog } from "./QuizAnswerSheetDialog"
 import { RoundSelector } from "./RoundSelector"
 
@@ -160,6 +162,11 @@ export function ResultsPanel({
     [results],
   )
   const words = results?.words ?? []
+  // 班级首答聚合：分子=各学生首答正确之和，分母=各学生已答之和；零作答显示 –
+  const classSummary = useMemo(
+    () => summarizeClassFirstTry(students),
+    [students],
+  )
 
   const exportCsv = async () => {
     if (!results || !assignment) return
@@ -218,6 +225,30 @@ export function ResultsPanel({
     )
   }
 
+  // 当前任务错词导出：前端从结果载荷生成 CSV，仅含首答错误过的词；不走后端导出接口
+  const exportWrongWordsCsv = () => {
+    if (!results || !assignment) return
+    downloadCsv(
+      wrongWordCsvTable(words, results.target_count ?? 0, {
+        headword: t({ zh: "单词", en: "Word" }),
+        partOfSpeech: t({ zh: "词性", en: "POS" }),
+        meaningZh: t({ zh: "释义", en: "Meaning" }),
+        answeredOfRoster: t({ zh: "已答/名单", en: "Answered/Roster" }),
+        correctFirst: t({ zh: "首答正确", en: "First-try correct" }),
+        errorCount: t({ zh: "错误次数", en: "Misses" }),
+        errorRate: t({ zh: "错误率", en: "Miss rate" }),
+        misspellings: t({
+          zh: "常见误拼",
+          en: "Common misspellings",
+        }),
+      }),
+      t({
+        zh: `课堂${code}-错词-v${assignment.version_no}-${localDateStamp()}.csv`,
+        en: `classroom-${code}-missed-words-v${assignment.version_no}-${localDateStamp()}.csv`,
+      }),
+    )
+  }
+
   if (resultsQuery.isPending) {
     return (
       <div role="status" className="space-y-4">
@@ -261,7 +292,7 @@ export function ResultsPanel({
   return (
     <div className="space-y-6">
       <div
-        className={`grid grid-cols-2 gap-3 ${isQuiz ? "md:grid-cols-3 lg:grid-cols-6" : "md:grid-cols-4"}`}
+        className={`grid grid-cols-2 gap-3 ${isQuiz ? "md:grid-cols-3 lg:grid-cols-6" : "md:grid-cols-3 lg:grid-cols-5"}`}
       >
         <Card>
           <CardContent className="py-4">
@@ -310,6 +341,27 @@ export function ResultsPanel({
             </p>
             <p className="mt-1 text-2xl font-bold text-muted-foreground">
               {notStarted}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-4">
+            <p className="text-xs text-muted-foreground">
+              {t({
+                zh: "班级首答正确率",
+                en: "Class first-try accuracy",
+              })}
+            </p>
+            <p className="mt-1 text-2xl font-bold">
+              {classSummary.accuracy === null
+                ? "–"
+                : `${classSummary.accuracy}%`}
+            </p>
+            <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+              {t({
+                zh: `首答 ${classSummary.correct}/${classSummary.answered} · 重试不冲高`,
+                en: `First-try ${classSummary.correct}/${classSummary.answered} · retries don't inflate`,
+              })}
             </p>
           </CardContent>
         </Card>
@@ -400,6 +452,16 @@ export function ResultsPanel({
           >
             <Download />
             {t({ zh: "导出", en: "Export" })}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11"
+            disabled={errorWords.length === 0}
+            onClick={exportWrongWordsCsv}
+          >
+            <FileDown />
+            {t({ zh: "导出错词", en: "Export missed" })}
           </Button>
           {isQuiz && (
             <Button
