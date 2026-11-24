@@ -64,6 +64,7 @@ describe("词汇页模块切换器", () => {
     loginTeacher()
     vi.spyOn(ModulesService, "readModulesMe").mockResolvedValue({
       modules: ["vocabulary"],
+      statuses: [],
     })
 
     renderSwitcher()
@@ -80,6 +81,7 @@ describe("词汇页模块切换器", () => {
     loginTeacher()
     vi.spyOn(ModulesService, "readModulesMe").mockResolvedValue({
       modules: ["speaking", "vocabulary"],
+      statuses: [],
     })
 
     renderSwitcher()

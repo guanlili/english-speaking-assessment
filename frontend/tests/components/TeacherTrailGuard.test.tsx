@@ -68,6 +68,7 @@ describe("教师进步轨迹子路由守卫", () => {
     loginTeacher()
     vi.spyOn(ModulesService, "readModulesMe").mockResolvedValue({
       modules: [],
+      statuses: [],
     })
     const { trailSpy, boardSpy } = spyDataRequests()
 
@@ -100,6 +101,7 @@ describe("教师进步轨迹子路由守卫", () => {
     loginTeacher()
     vi.spyOn(ModulesService, "readModulesMe").mockResolvedValue({
       modules: ["speaking"],
+      statuses: [],
     })
     const { trailSpy, boardSpy } = spyDataRequests()
     // 保持轨迹 / 面板请求挂起，只验证放行后请求已发出，不渲染后续子面板。

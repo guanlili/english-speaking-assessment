@@ -246,3 +246,9 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **接口**：`GET /classes/{code}/teachers`（团队可读）、`GET /classes/{code}/teacher-candidates?q=`（仅 owner/admin，同校 active teacher，排除已在本班）、`POST /classes/{code}/teachers`（仅 owner/admin，幂等）、`DELETE /classes/{code}/teachers/{user_id}`（owner/admin 移除他人，co_teacher 可退出自己，不能移除 owner）。列表 `ClassroomPublic` 增 `viewer_role/owner_name/co_teacher_count`；管理员改绑 owner 时同步 membership：旧 owner 降 co_teacher、新 owner 升 owner。
 - **前端**：课堂面板新增「教师团队」tab（`TeacherTeamCard`），主教师/管理员可搜索添加和移除，共管教师只能退出；课堂卡片显示「主教师：X · 共管 N 人」与共管 badge，co_teacher 隐藏班容、报告位置、删课堂等 owner-only 控件，服务端仍 403 兜底。403 文案改为提示联系主教师或校管理员加入团队。
 - **口径边界**：共管教师拥有教学权限，但**不能**改班级设置、不能管团队、不能删课堂；校管理员仅作管理兜底，不作为团队成员出现在 `classroom_teacher`。删除课堂前显式清 membership；`owner_id` 与 membership 不一致时授权回退到 `owner_id`，避免迁移漏回填锁死老班。
+
+## 学校模块授权生命周期与按校用量（2026-11-24，#517）
+
+- 租期 / 试用状态机（`not_granted / disabled / scheduled / expired / active`）、授权类型 `trial / paid / manual`、`days_left` 口径、审计前后值字段：[`tenant-module-lifecycle.md`](tenant-module-lifecycle.md)。
+- 按校按天用量九项指标、日界时区、两个口径缺口（仅登录不计活跃、农场收获为地块下限）与隐私边界：[`tenant-usage-metrics.md`](tenant-usage-metrics.md)。
+- 前端落点：运营端 `/admin/schools` 六态徽标、「7 天内到期」筛选、近 7/30 天紧凑用量列、模块授权弹窗（开关 / 类型 / 开始 / 到期 + 客户端校验）、单校用量弹窗（区间总量 + 每日明细 + CSV Blob 下载）；校管后台 `TenantModuleBanner` 试用到期 / 已到期提醒。状态、阈值、格式化与校验纯函数集中在 `frontend/src/lib/tenantModules.ts`。
