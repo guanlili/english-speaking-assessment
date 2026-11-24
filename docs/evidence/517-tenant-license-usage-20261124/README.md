@@ -8,8 +8,8 @@
 |---|---|
 | Worktree | `…/agents/o_000VxxkxFsS/tenant-ops` |
 | 分支 | `feat/tenant-license-usage-20261124` |
-| 取证时 HEAD | `2020e7305ba3965531b2cd5c3f1f8a797d1a049f`（英文剩余天数单复数修复：1 天显示 `1 day left`） |
-| 任务基线 HEAD | `e39e4e7`；其上依次为 `4b0b9cd`（后端到期日校验）、`48afbe6`（首轮证据提交）、`2020e73`（单复数修复） |
+| 取证时 HEAD | `eef628dd1b656317ab6d542dd7ee82ae0a40b591`（操作人不再展示内部 UUID，统一归为“平台运营 / Platform operator”） |
+| 任务基线 HEAD | `e39e4e7`；其上依次为 `4b0b9cd`（后端到期日校验）、`48afbe6`（首轮证据提交）、`2020e73`（单复数修复）、`826aa5b`（二轮证据提交）、`eef628d`（操作人去 UUID） |
 | 工作区状态 | 除本证据目录外无改动，未修改任何业务代码 |
 | 后端 | `127.0.0.1:8006`（uvicorn，代码即本 worktree） |
 | 前端 | `127.0.0.1:5176`（Vite，`API_PROXY_TARGET=http://127.0.0.1:8006`） |
@@ -49,9 +49,9 @@
 | `04-list-1180-en.png` | 1180 / 英文 | Vocabulary: Trial · 5 days left / Expired / Closed / Not granted / Scheduled / Active | 英文徽标齐全；Closed ≠ Expired；界面文案无中文残留（校名除外） |
 | `05-list-390-en.png` | 390 / 英文 | Schools / New school / All schools / CODE / NAME 全英文 | 390 无整页横溢；无中文 UI 残留 |
 | `06-filter-expiring7-1180-zh.png` | 1180 / 中文 | 筛选下拉选中“7 天内到期”；结果仅 `default`（剩 5 天）与 `demo-lic-trial`（剩 5 天） | 7 天到期筛选不出现 expired / closed / not_granted / scheduled / active |
-| `07-module-dialog-1180-zh.png` | 1180 / 中文 | 默认校单词试用卡：状态“试用中·剩 5 天”、授权类型“试用”、到期 `2026/11/29 05:30`、剩余 5 天；变更历史行可见 | 字段完整；审计前后值可见（非只显示当前值） |
-| `08-module-dialog-820-en.png` | 820 / 英文（390 兜底，见 §7） | Module access · default；Speaking Active Manual；Vocabulary Trial · 5 days left，Grant Trial，Expiry `2026/11/29 05:30`；Change history `Manual → Trial` | 字段完整、弹窗内可读；390 布局经 JS 实测见 §5 |
-| `09-audit-table-1180-zh.png` | 1180 / 中文 | 变更历史行：开关 `开 → 开`、类型 `人工 → 试用`、开始 `立即 → 立即`、到期 `长期 → 2026/11/29 05:30:53` | `grant_type_before → after`、`expires_at_before → after` 清楚可读；审计表容器可横滑 |
+| `07-module-dialog-1180-zh.png` | 1180 / 中文 | 默认校单词试用卡：状态“试用中·剩 5 天”、授权类型“试用”、到期 `2026/11/29 06:30`、剩余 5 天；“上次更新：…· **平台运营**”；变更历史行可见 | 字段完整；审计前后值可见（非只显示当前值）；操作人显示“平台运营”，画面无 UUID |
+| `08-module-dialog-820-en.png` | 820 / 英文（390 兜底，见 §7） | Module access · default；Speaking Active Manual；Vocabulary Trial · 5 days left，Grant Trial，Expiry `2026/11/29 06:30`；`Last updated: … · **Platform operator**`；Change history `Manual → Trial` | 字段完整、弹窗内可读；操作人显示 `Platform operator`，画面无 UUID；390 布局经 JS 实测见 §5 |
+| `09-audit-table-1180-zh.png` | 1180 / 中文 | 变更历史行：开关 `开 → 开`、类型 `人工 → 试用`、开始 `立即 → 立即`、到期 `长期 → 2026/11/29 06:30:50`；操作人列 DOM 显示 `平台运营`（画面因表内横滑未整列露出） | `grant_type_before → after`、`expires_at_before → after` 清楚可读；操作人无 UUID；审计表容器可横滑 |
 | `10-usage-dialog-1180-zh.png` | 1180 / 中文 | 学校用量 · default，区间 `2026/10/26 – 2026/11/24`；9 项总量卡；口径说明 2 条；每日明细表头与前若干行 | 9 项 totals、每日表、两条 limitations 均在；无学生标识 |
 | `11-usage-dialog-820-en.png` | 820 / 英文（390 兜底，见 §7） | School usage · default；From/To 同区间；Download CSV；Notes 2 条；9 张英文指标卡；每日表 DATE/TEACHERS/… | totals 与弹窗一致；390 布局经 JS 实测见 §5；无中文 UI 残留 |
 
@@ -120,7 +120,7 @@
 - **trial 必填到期**：
   - 前端 `validateModuleForm`：trial 未填到期 → 双语错误“试用必须设置到期时间 / A trial requires an expiry date”。
   - 后端实测探针：`PUT …/modules/vocabulary` 带 `grant_type=trial, expires_at=null` → **HTTP 422**，`detail=trial_requires_expires_at`，数据未被改写；填到期后保存成功（模块弹窗 07/08 即为填到期后的成功态）。
-- **审计前后值**：默认校单词模块共 **8 条** grant 记录（两轮取证写入；自下而上）：
+- **审计前后值**：默认校单词模块共 **10 条** grant 记录（三轮取证写入；自下而上）：
   1. `manual → trial`，到期 `长期 → 2026-11-29 13:30:53Z`
   2. `trial → trial`，到期 `2026-11-29 → 2026-12-24`（+30d 档）
   3. `trial → trial`，到期 `2026-12-24 → 2026-12-01`（+7d 档）
@@ -129,7 +129,10 @@
   6. `manual → trial`，到期 `长期 → 2026-11-25 14:09:19Z`（二轮 +1d 档）
   7. `trial → trial`，到期 `2026-11-25 → 2026-11-29 14:10:14Z`（二轮 +5d 档）
   8. `trial → manual`，到期 `2026-11-29 → 长期`（二轮恢复长期）
-  - 审计表同时保存 before / after，截图 09 可见 `人工 → 试用`、`长期 → 2026/11/29 05:30:53`。
+  9. `manual → trial`，到期 `长期 → 2026-11-29 14:30:50Z`（三轮 +5d 档）
+  10. `trial → manual`，到期 `2026-11-29 14:30:50Z → 长期`（三轮恢复长期）
+  - 审计表同时保存 before / after，截图 09 可见 `人工 → 试用`、`长期 → 2026/11/29 06:30:50`。
+  - **操作人**：界面“上次更新”与审计“操作人”列统一显示 `平台运营 / Platform operator`，不再直出内部 `actor_operator_id` UUID（eef628d 修复）；本轮 DOM 与截图正则扫描 0 个 UUID。
 - **用量口径**：9 项指标按本地自然日聚合，区间总量为每日行求和、去重项单日去重；界面只出聚合数，无学生/教师标识。两条 limitations：
   1. 活跃口径不含仅登录用户：当前没有登录日志或 `last_login_at`；活跃教师=当天有教学操作的去重教师，活跃学生=当天有词汇作答的去重学生。
   2. `farm_harvests` 为下限口径：农场只保存累计 `harvest_count` 与最近一次 `last_harvested_at`，无逐日收获事件；本数是“最近一次收获落在当日”的地块数，非当日真实收获次数。
