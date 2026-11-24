@@ -14,7 +14,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, Index
 from sqlmodel import Field, SQLModel
 
 from app.models.base import _tenant_id_field, get_datetime_utc
@@ -55,6 +55,13 @@ class VocabPlacementResult(SQLModel, table=True):
     """
 
     __tablename__ = "vocab_placement_result"
+    __table_args__ = (
+        Index(
+            "ix_vocab_placement_result_tenant_submitted_at",
+            "tenant_id",
+            "submitted_at",
+        ),
+    )
     # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
     tenant_id: uuid.UUID = _tenant_id_field()
 

@@ -347,6 +347,9 @@ class ExportAudit(SQLModel, table=True):
     """导出审计：谁、何时、范围、任务、结果。教师课堂导出必须留痕。"""
 
     __tablename__ = "export_audit"
+    __table_args__ = (
+        Index("ix_export_audit_tenant_created_at", "tenant_id", "created_at"),
+    )
     # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
     tenant_id: uuid.UUID = _tenant_id_field()
 
