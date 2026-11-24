@@ -1,7 +1,11 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query"
 import { act, renderHook } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ModulesService } from "@/client"
 import { useModules } from "@/hooks/useModules"
@@ -99,5 +103,71 @@ describe("useModules", () => {
     renderHook(() => useModules(false), { wrapper })
 
     expect(ModulesService.readModulesMe).not.toHaveBeenCalled()
+  })
+})
+
+describe("窗口聚焦重取（staleTime 45s）", () => {
+  let now: number
+
+  beforeEach(() => {
+    now = 0
+    // 用可控时钟驱动陈旧判定（dataUpdatedAt + staleTime - Date.now()），不跑真实 45s 等待。
+    vi.spyOn(Date, "now").mockImplementation(() => now)
+  })
+
+  afterEach(() => {
+    focusManager.setFocused(undefined)
+  })
+
+  function refocusWindow() {
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+  }
+
+  it("初始只请求 1 次；45s 内聚焦不重复请求", async () => {
+    login("teacher")
+    vi.spyOn(ModulesService, "readModulesMe").mockResolvedValue({
+      modules: ["vocabulary"],
+    })
+
+    const { result } = renderHook(() => useModules(), { wrapper })
+    await act(async () => {
+      await vi.waitFor(() => expect(result.current.isSuccess).toBe(true))
+    })
+    expect(ModulesService.readModulesMe).toHaveBeenCalledTimes(1)
+
+    now = 30_000 // 仍在 45s 新鲜窗口内
+    refocusWindow()
+
+    expect(ModulesService.readModulesMe).toHaveBeenCalledTimes(1)
+  })
+
+  it("超过 45s 后聚焦触发第二次请求，并按新清单更新模块", async () => {
+    login("teacher")
+    const spy = vi
+      .spyOn(ModulesService, "readModulesMe")
+      .mockResolvedValueOnce({ modules: [] })
+      .mockResolvedValueOnce({ modules: ["speaking", "vocabulary"] })
+
+    const { result } = renderHook(() => useModules(), { wrapper })
+    await act(async () => {
+      await vi.waitFor(() => expect(result.current.isSuccess).toBe(true))
+    })
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(result.current.hasModule("speaking")).toBe(false)
+
+    now = 46_000 // 已超过 45s 新鲜窗口
+    refocusWindow()
+
+    await act(async () => {
+      await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(2))
+    })
+    await act(async () => {
+      await vi.waitFor(() =>
+        expect(result.current.hasModule("speaking")).toBe(true),
+      )
+    })
   })
 })
