@@ -30,6 +30,9 @@ const OPERATOR_ALLOWED = [
   "/admin/schools",
   "/admin/vocablevels",
   "/admin/classrooms",
+  // 词库管理页对运营只读开放：仅展示内容审核队列（面板走 AdminService），
+  // 校内词库列表与导入编辑入口在页面内按身份隐藏。
+  "/admin/vocabbooks",
 ]
 
 let cachedUser: UserPublic | null = null

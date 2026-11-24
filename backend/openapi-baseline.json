@@ -11779,6 +11779,11 @@
             "title": "Book Id",
             "type": "string"
           },
+          "confirm_reviewed": {
+            "default": false,
+            "title": "Confirm Reviewed",
+            "type": "boolean"
+          },
           "drafts": {
             "items": {
               "$ref": "#/components/schemas/VocabularyAiWordDraft"
@@ -12335,6 +12340,11 @@
             ],
             "title": "Classroom Id"
           },
+          "confirm_reviewed": {
+            "default": false,
+            "title": "Confirm Reviewed",
+            "type": "boolean"
+          },
           "description": {
             "anyOf": [
               {
@@ -12351,6 +12361,12 @@
             "default": "classroom",
             "maxLength": 16,
             "title": "Scope",
+            "type": "string"
+          },
+          "source": {
+            "default": "teacher",
+            "maxLength": 16,
+            "title": "Source",
             "type": "string"
           },
           "title": {
@@ -12727,6 +12743,40 @@
           }
         },
         "title": "VocabularyClassResults",
+        "type": "object"
+      },
+      "VocabularyContentReviewList": {
+        "properties": {
+          "approved_count": {
+            "default": 0,
+            "title": "Approved Count",
+            "type": "integer"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyReviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "pending_count": {
+            "default": 0,
+            "title": "Pending Count",
+            "type": "integer"
+          },
+          "rejected_count": {
+            "default": 0,
+            "title": "Rejected Count",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "VocabularyContentReviewList",
         "type": "object"
       },
       "VocabularyFromLevelsRequest": {
@@ -13657,6 +13707,320 @@
           "wrong_count"
         ],
         "title": "VocabularyRecommendationFocus",
+        "type": "object"
+      },
+      "VocabularyReviewActionRequest": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "word_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Word Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "word_ids",
+          "action"
+        ],
+        "title": "VocabularyReviewActionRequest",
+        "type": "object"
+      },
+      "VocabularyReviewActionResult": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "updated",
+          "status"
+        ],
+        "title": "VocabularyReviewActionResult",
+        "type": "object"
+      },
+      "VocabularyReviewAuditItem": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name"
+          },
+          "actor_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Role"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "from_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Status"
+          },
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "tenant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Name"
+          },
+          "tenant_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Slug"
+          },
+          "to_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Status"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "word_id",
+          "headword",
+          "action"
+        ],
+        "title": "VocabularyReviewAuditItem",
+        "type": "object"
+      },
+      "VocabularyReviewItem": {
+        "description": "审核队列单行：词条当前内容 + 归属词库与审核留痕。",
+        "properties": {
+          "book_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Id"
+          },
+          "book_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Title"
+          },
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "meaning_zh": {
+            "title": "Meaning Zh",
+            "type": "string"
+          },
+          "part_of_speech": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Of Speech"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "review_status": {
+            "title": "Review Status",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "tenant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Name"
+          },
+          "tenant_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Slug"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word_id",
+          "headword",
+          "meaning_zh",
+          "source",
+          "review_status",
+          "version"
+        ],
+        "title": "VocabularyReviewItem",
         "type": "object"
       },
       "VocabularyReviewQueue": {
@@ -15351,10 +15715,60 @@
             ],
             "title": "Part Of Speech"
           },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "review_status": {
+            "default": "pending",
+            "title": "Review Status",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "source": {
+            "default": "teacher",
+            "title": "Source",
+            "type": "string"
+          },
           "status": {
             "default": "active",
             "title": "Status",
             "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -15456,6 +15870,18 @@
               }
             ],
             "title": "Example En"
+          },
+          "expected_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
           },
           "meaning_en": {
             "anyOf": [
@@ -20336,6 +20762,223 @@
         "summary": "Vocab Level Stats",
         "tags": [
           "vocab-levels"
+        ]
+      }
+    },
+    "/api/v1/admin/vocabulary/reviews": {
+      "get": {
+        "description": "平台跨校审核队列（只读）；附学校码与校名。",
+        "operationId": "admin-admin_list_vocabulary_reviews",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "pending",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "book_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Book Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "classroom_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Classroom Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyContentReviewList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin List Vocabulary Reviews",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/vocabulary/reviews/audit": {
+      "get": {
+        "description": "平台跨校审核留痕（只读）；附学校码与校名。",
+        "operationId": "admin-admin_vocabulary_review_audit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "word_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Word Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VocabularyReviewAuditItem"
+                  },
+                  "title": "Response Admin-Admin Vocabulary Review Audit",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin Vocabulary Review Audit",
+        "tags": [
+          "admin"
         ]
       }
     },
@@ -29239,7 +29882,7 @@
     },
     "/api/v1/vocabulary/books/{book_id}/words": {
       "post": {
-        "description": "词库加词（手动录入或导入确认）；重复词跳过并按新增数递增版本。",
+        "description": "词库加词（手动录入或导入确认）；重复词跳过并按新增数递增版本。\n\n未勾选已核对 → pending 待审；勾选 → 直接 approved（自评留痕）。",
         "operationId": "vocabulary-add_book_words",
         "parameters": [
           {
@@ -29250,6 +29893,26 @@
               "format": "uuid",
               "title": "Book Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "default": "teacher",
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "confirm_reviewed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Confirm Reviewed",
+              "type": "boolean"
             }
           }
         ],
@@ -29354,6 +30017,268 @@
           }
         ],
         "summary": "Remove Book Word",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/reviews": {
+      "get": {
+        "description": "审核队列：教师只见本人班级库；school_admin 见全校。",
+        "operationId": "vocabulary-list_vocabulary_reviews",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "pending",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "book_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Book Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "classroom_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Classroom Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyContentReviewList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Vocabulary Reviews",
+        "tags": [
+          "vocabulary"
+        ]
+      },
+      "post": {
+        "description": "批量审核：非 pending 冲突 409；拒绝必须填意见；整批全有或全无，逐词审计。",
+        "operationId": "vocabulary-review_vocabulary_words",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabularyReviewActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyReviewActionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Review Vocabulary Words",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/reviews/audit": {
+      "get": {
+        "description": "本校审核留痕（通过 / 拒绝 / 审核后编辑回退），按时间倒序。",
+        "operationId": "vocabulary-vocabulary_review_audit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "word_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Word Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VocabularyReviewAuditItem"
+                  },
+                  "title": "Response Vocabulary-Vocabulary Review Audit",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Vocabulary Review Audit",
         "tags": [
           "vocabulary"
         ]

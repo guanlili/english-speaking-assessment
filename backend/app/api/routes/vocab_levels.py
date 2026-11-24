@@ -29,6 +29,7 @@ from app.api.deps import (
 from app.api.routes.classes import _require_classroom_teacher
 from app.api.routes.vocabulary_shared import _book_public
 from app.models import (
+    REVIEW_NOTE_LEVEL_CATALOG_VERIFIED,
     Classroom,
     User,
     VocabularyBook,
@@ -43,6 +44,7 @@ from app.models import (
     VocabularyWord,
     VocabularyWordIn,
     VocabularyWordPublic,
+    get_datetime_utc,
 )
 from app.services import vocab_levels as levels_service
 from app.services.vocabulary import (
@@ -396,7 +398,11 @@ def _create_level_words(
     entries: dict[str, VocabularyLevelEntry],
     position: int,
 ) -> int:
-    """逐词建教学词条并挂到书上，返回新建数量。"""
+    """逐词建教学词条并挂到书上，返回新建数量。
+
+    五级目录是平台已人工核对的授权来源：source=textbook、直接 approved，
+    留痕 note=level_catalog_verified（AC4）。
+    """
     created = 0
     for headword in headwords:
         entry = entries[headword]
@@ -407,6 +413,10 @@ def _create_level_words(
                 part_of_speech=entry.part_of_speech,
                 meaning_zh=entry.meaning_zh or "",
             ),
+            source="textbook",
+            review_status="approved",
+            reviewed_at=get_datetime_utc(),
+            review_note=REVIEW_NOTE_LEVEL_CATALOG_VERIFIED,
         )
         session.flush()
         session.add(

@@ -95,6 +95,8 @@ class VocabularyAiWordDraftImportRequest(SQLModel):
     book_id: uuid.UUID
     # 教师可编辑后的草稿；服务端剥离 accepted_spellings 等不可信字段
     drafts: list[VocabularyAiWordDraft] = Field(min_length=1)
+    # 内容治理（AC4）：教师已核对 → 直接 approved；缺省 false，进待审队列
+    confirm_reviewed: bool = False
 
 
 class VocabularyAiWordDraftImportResult(SQLModel):

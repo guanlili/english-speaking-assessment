@@ -27,6 +27,13 @@ import {
   countEligibleByPromptType,
   MIN_CHOICE_WORDS,
 } from "@/lib/vocab-prompt-availability"
+import {
+  CODE_NOT_APPROVED,
+  countNotApproved,
+  isPublishableWord,
+  parseDetailCount,
+  reviewStatusLabel,
+} from "@/lib/vocabContentReview"
 import { AddWordsToBook } from "./AddWordsToBook"
 import { CreateClassroomBook } from "./CreateClassroomBook"
 
@@ -36,9 +43,11 @@ const MAX_PUBLISH_WORDS = 100
 export function AssignPanel({
   code,
   classroomId,
+  onGoReview,
 }: {
   code: string
   classroomId: string | null
+  onGoReview?: () => void
 }) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
@@ -63,6 +72,9 @@ export function AssignPanel({
     enabled: bookId !== null,
   })
   const words = detailQuery.data?.words ?? []
+  // 发布门禁：只有 approved 且未归档的词条可勾选发布；其余灰色展示并标状态
+  const publishableWords = words.filter(isPublishableWord)
+  const notApprovedCount = countNotApproved(words)
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [title, setTitle] = useState("")
@@ -103,9 +115,7 @@ export function AssignPanel({
   }
   const toggleAll = (checked: boolean) => {
     setSelected(
-      checked
-        ? new Set(words.filter((w) => w.status === "active").map((w) => w.id))
-        : new Set(),
+      checked ? new Set(publishableWords.map((w) => w.id)) : new Set(),
     )
   }
   const toggleWord = (id: string, checked: boolean) => {
@@ -146,28 +156,57 @@ export function AssignPanel({
     },
     onError: (error) => {
       if (error instanceof ApiError) {
+        const detail =
+          typeof error.body === "object" && error.body !== null
+            ? ((error.body as { detail?: unknown }).detail ?? error.message)
+            : error.message
+        if (error.status === 422) {
+          const notApproved = parseDetailCount(detail, CODE_NOT_APPROVED)
+          if (notApproved !== null) {
+            toast.error(
+              t({
+                zh: `有 ${notApproved} 个词条尚未通过审核，不能发布；请先在「词库审核」中通过。`,
+                en: `${notApproved} selected words are not approved yet — approve them in Review before publishing.`,
+              }),
+            )
+            return
+          }
+          toast.error(
+            t({
+              zh: "发布内容有误：请检查所选词数、出题方式与派发名单（语境填空需例句、词根拼装需词法、四选一至少 4 词、纯听音需全部有标准音）。",
+              en: "Cannot publish: check words, prompt types and roster (cloze needs examples, Word Parts needs morphology, choice needs 4+ words, audio-only needs standard audio).",
+            }),
+          )
+          return
+        }
+        if (error.status === 403) {
+          toast.error(
+            t({
+              zh: "没有权限使用这些词条，请从自己的词库重新选择。",
+              en: "No permission to use some of these words — pick from your own books.",
+            }),
+          )
+          return
+        }
         toast.error(
-          error.status === 422
-            ? t({
-                zh: "发布内容有误：请检查所选词数、出题方式与派发名单（语境填空需例句、词根拼装需词法、四选一至少 4 词、纯听音需全部有标准音）。",
-                en: "Cannot publish: check words, prompt types and roster (cloze needs examples, Word Parts needs morphology, choice needs 4+ words, audio-only needs standard audio).",
-              })
-            : error.status === 403
-              ? t({
-                  zh: "没有权限使用这些词条，请从自己的词库重新选择。",
-                  en: "No permission to use some of these words — pick from your own books.",
-                })
-              : t({
-                  zh: "发布失败，请重试。",
-                  en: "Publish failed — please retry.",
-                }),
+          t({
+            zh: "发布失败，请重试。",
+            en: "Publish failed — please retry.",
+          }),
+        )
+      } else {
+        toast.error(
+          t({
+            zh: "网络异常，发布未完成，请检查连接后重试。",
+            en: "Network error — publish didn't go through. Check your connection and retry.",
+          }),
         )
       }
     },
   })
 
   const selectedCount = selected.size
-  const activeCount = words.filter((w) => w.status === "active").length
+  const publishableCount = publishableWords.length
   const selectedWords = words.filter((word) => selected.has(word.id))
   const eligibleByType = countEligibleByPromptType(selectedWords)
   const promptAvailability = {
@@ -294,8 +333,8 @@ export function AssignPanel({
                 <p className="text-sm font-medium">
                   2.{" "}
                   {t({
-                    zh: `勾选要考的词（已选 ${selectedCount}/${activeCount}）`,
-                    en: `Pick words to test (${selectedCount}/${activeCount} selected)`,
+                    zh: `勾选要考的词（已选 ${selectedCount}/${publishableCount}）`,
+                    en: `Pick words to test (${selectedCount}/${publishableCount} selected)`,
                   })}
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -324,6 +363,7 @@ export function AssignPanel({
                     <AddWordsToBook
                       key={bookId}
                       bookId={bookId}
+                      beforeWordCount={detailQuery.data?.word_count ?? null}
                       onAdded={() => {
                         queryClient.invalidateQueries({
                           queryKey: ["vocab-teacher", "book", bookId],
@@ -354,13 +394,33 @@ export function AssignPanel({
                   </Button>
                 </div>
               </div>
-              {activeCount === 0 && (
+              {publishableCount === 0 && words.length === 0 && (
                 <p role="status" className="text-sm text-muted-foreground">
                   {t({
                     zh: "这个词库还没有词：点上面的「CSV 加词」导入，或回到第一步新建词库。",
                     en: "This book is empty — import via “Add words via CSV” above, or go back and create a book.",
                   })}
                 </p>
+              )}
+              {notApprovedCount > 0 && (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-300/50 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-200">
+                  <span>
+                    {t({
+                      zh: `还有 ${notApprovedCount} 个词条未通过审核，不能发布。`,
+                      en: `${notApprovedCount} words are not approved yet and can't be published.`,
+                    })}
+                  </span>
+                  {onGoReview && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-amber-900 dark:text-amber-200"
+                      onClick={onGoReview}
+                    >
+                      {t({ zh: "去审核", en: "Go to Review" })}
+                    </Button>
+                  )}
+                </div>
               )}
               {selectedCount > MAX_PUBLISH_WORDS && (
                 <p role="alert" className="text-sm text-destructive">
@@ -371,14 +431,14 @@ export function AssignPanel({
                 </p>
               )}
               <div className="grid max-h-80 gap-1.5 overflow-y-auto rounded-xl border p-3 sm:grid-cols-2">
-                {words.map((word) => (
+                {publishableWords.map((word) => (
                   <label
                     key={word.id}
                     className={`flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition-colors ${
                       selected.has(word.id)
                         ? "bg-secondary text-foreground"
                         : "text-muted-foreground hover:bg-secondary/50"
-                    } ${word.status === "archived" ? "pointer-events-none opacity-50" : ""}`}
+                    }`}
                   >
                     <input
                       type="checkbox"
@@ -412,13 +472,34 @@ export function AssignPanel({
                         </Badge>
                       )}
                     </span>
-                    {word.status === "archived" && (
-                      <Badge variant="outline">
-                        {t({ zh: "已归档", en: "Archived" })}
-                      </Badge>
-                    )}
                   </label>
                 ))}
+                {words
+                  .filter((word) => !isPublishableWord(word))
+                  .map((word) => (
+                    <div
+                      key={word.id}
+                      className="flex min-h-11 items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm opacity-60"
+                      aria-disabled="true"
+                    >
+                      <input
+                        type="checkbox"
+                        disabled
+                        checked={false}
+                        className="size-4 accent-[var(--primary)]"
+                        readOnly
+                      />
+                      <span className="min-w-0 flex-1 truncate">
+                        <span className="font-semibold">{word.headword}</span>
+                        <span className="ml-2 text-muted-foreground">
+                          {word.meaning_zh}
+                        </span>
+                      </span>
+                      <Badge variant="outline">
+                        {t(reviewStatusLabel(word.review_status))}
+                      </Badge>
+                    </div>
+                  ))}
               </div>
             </div>
           )}

@@ -60,6 +60,12 @@ def _word_public(word: VocabularyWord) -> VocabularyWordPublic:
         audio_url=word.audio_url,
         morphology=word.morphology,
         status=word.status,
+        source=word.source,
+        review_status=word.review_status,
+        reviewer_id=word.reviewer_id,
+        reviewed_at=word.reviewed_at,
+        review_note=word.review_note,
+        version=word.version,
     )
 
 

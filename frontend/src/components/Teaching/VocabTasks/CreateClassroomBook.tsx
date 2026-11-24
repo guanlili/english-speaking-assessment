@@ -16,6 +16,7 @@ import {
   VOCAB_LEVEL_ORDER,
   type VocabLevel,
 } from "@/lib/terms"
+import { deriveImportStats } from "@/lib/vocabContentReview"
 import { localizeImportIssue } from "@/lib/vocabImport"
 import { toBookWordInput, type VocabCsvPreview } from "./types"
 
@@ -87,6 +88,8 @@ export function CreateClassroomBook({
     },
   })
   const [preview, setPreview] = useState<VocabCsvPreview | null>(null)
+  // “我已核对”：勾选直接通过审核；默认待审
+  const [reviewedOk, setReviewedOk] = useState(false)
 
   const importPreview = useMutation({
     mutationFn: (file: File) =>
@@ -125,16 +128,24 @@ export function CreateClassroomBook({
           scope: "classroom",
           classroom_id: classroomId,
           description: null,
+          source: "import",
+          confirm_reviewed: reviewedOk,
           words: preview?.words ?? [],
         },
       }),
     onSuccess: (book) => {
+      const stats = deriveImportStats(
+        preview?.words.length ?? 0,
+        0,
+        book.word_count ?? 0,
+      )
       toast.success(
         t({
-          zh: `班级词库已创建（${book.word_count ?? 0} 词）。`,
-          en: `Classroom book created (${book.word_count ?? 0} words).`,
+          zh: `班级词库已创建：新增 ${stats.added} 词，重复跳过 ${stats.skipped} 个。`,
+          en: `Classroom book created: ${stats.added} new, ${stats.skipped} duplicates skipped.`,
         }),
       )
+      setReviewedOk(false)
       onCreated(book.id)
     },
     onError: (error) => {
@@ -321,6 +332,18 @@ export function CreateClassroomBook({
                 ))}
             </ul>
           )}
+          <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={reviewedOk}
+              onChange={(event) => setReviewedOk(event.target.checked)}
+              className="size-4 accent-[var(--primary)]"
+            />
+            {t({
+              zh: "我已核对这些词条（勾选后直接通过审核）",
+              en: "I have checked these entries (approve directly)",
+            })}
+          </label>
         </div>
       )}
     </div>

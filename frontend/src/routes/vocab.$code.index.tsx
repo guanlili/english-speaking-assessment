@@ -660,7 +660,13 @@ function VocabHomePage() {
                       <span className="ml-2 text-xs text-muted-foreground">
                         {focus.meaning_zh}
                       </span>
-                      <span className="ml-2 text-xs text-destructive">
+                      <span
+                        className="ml-2 text-xs text-destructive"
+                        title={t({
+                          zh: "历史累计错误次数，只增不减；不是掌握度评估，只用于安排复习。",
+                          en: "Historical cumulative misses, never decreasing; not a mastery score — for review planning only.",
+                        })}
+                      >
                         {t({
                           zh: `错 ${focus.wrong_count} 次`,
                           en: `missed ×${focus.wrong_count}`,
@@ -1138,8 +1144,8 @@ function VocabHomePage() {
                           {t({ zh: "历史错误", en: "Misses" })}
                           <InfoHint
                             label={t({
-                              zh: "按每轮第一次作答拼错累计；一次答对不删除、不冲抵。",
-                              en: "Counts first-try misses across rounds. Getting it right once removes nothing.",
+                              zh: "历史累计错误次数：按每轮第一次作答拼错累计，只增不减；一次答对不删除、不冲抵。这不是掌握度评估，只用于安排复习。",
+                              en: "Historical cumulative misses: first-try misses counted across rounds, never decreasing; one correct answer removes nothing. This is not a mastery score — for review planning only.",
                             })}
                           />
                         </span>

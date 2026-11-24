@@ -296,13 +296,34 @@ from app.models.vocabulary.tables import (
     VocabularyBookItem as VocabularyBookItem,
 )
 from app.models.vocabulary.tables import (
+    VocabularyContentReviewAudit as VocabularyContentReviewAudit,
+)
+from app.models.vocabulary.tables import (
     VocabularySession as VocabularySession,
 )
 from app.models.vocabulary.tables import (
     VocabularyWord as VocabularyWord,
 )
 from app.models.vocabulary.words import (
+    REVIEW_NOTE_EDITED_AFTER_APPROVAL as REVIEW_NOTE_EDITED_AFTER_APPROVAL,
+)
+from app.models.vocabulary.words import (
+    REVIEW_NOTE_LEGACY as REVIEW_NOTE_LEGACY,
+)
+from app.models.vocabulary.words import (
+    REVIEW_NOTE_LEVEL_CATALOG_VERIFIED as REVIEW_NOTE_LEVEL_CATALOG_VERIFIED,
+)
+from app.models.vocabulary.words import (
+    REVIEW_NOTE_SELF_CONFIRMED as REVIEW_NOTE_SELF_CONFIRMED,
+)
+from app.models.vocabulary.words import (
     VOCAB_PROMPT_TYPES as VOCAB_PROMPT_TYPES,
+)
+from app.models.vocabulary.words import (
+    VOCAB_REVIEW_STATUSES as VOCAB_REVIEW_STATUSES,
+)
+from app.models.vocabulary.words import (
+    VOCAB_WORD_SOURCES as VOCAB_WORD_SOURCES,
 )
 from app.models.vocabulary.words import (
     VocabularyBookCreate as VocabularyBookCreate,
@@ -317,6 +338,9 @@ from app.models.vocabulary.words import (
     VocabularyBookUpdate as VocabularyBookUpdate,
 )
 from app.models.vocabulary.words import (
+    VocabularyContentReviewList as VocabularyContentReviewList,
+)
+from app.models.vocabulary.words import (
     VocabularyImportIssue as VocabularyImportIssue,
 )
 from app.models.vocabulary.words import (
@@ -324,6 +348,18 @@ from app.models.vocabulary.words import (
 )
 from app.models.vocabulary.words import (
     VocabularyImportRow as VocabularyImportRow,
+)
+from app.models.vocabulary.words import (
+    VocabularyReviewActionRequest as VocabularyReviewActionRequest,
+)
+from app.models.vocabulary.words import (
+    VocabularyReviewActionResult as VocabularyReviewActionResult,
+)
+from app.models.vocabulary.words import (
+    VocabularyReviewAuditItem as VocabularyReviewAuditItem,
+)
+from app.models.vocabulary.words import (
+    VocabularyReviewItem as VocabularyReviewItem,
 )
 from app.models.vocabulary.words import (
     VocabularyWordIn as VocabularyWordIn,
@@ -339,6 +375,7 @@ __all__ = [
     "VocabularyWord",
     "VocabularyBook",
     "VocabularyBookItem",
+    "VocabularyContentReviewAudit",
     "VocabularyAssignment",
     "VocabularyAssignmentTarget",
     "VocabularySession",
@@ -347,6 +384,17 @@ __all__ = [
     "VocabularyWordIn",
     "VocabularyWordUpdate",
     "VocabularyWordPublic",
+    "VocabularyReviewItem",
+    "VocabularyContentReviewList",
+    "VocabularyReviewActionRequest",
+    "VocabularyReviewActionResult",
+    "VocabularyReviewAuditItem",
+    "VOCAB_WORD_SOURCES",
+    "VOCAB_REVIEW_STATUSES",
+    "REVIEW_NOTE_LEGACY",
+    "REVIEW_NOTE_SELF_CONFIRMED",
+    "REVIEW_NOTE_LEVEL_CATALOG_VERIFIED",
+    "REVIEW_NOTE_EDITED_AFTER_APPROVAL",
     "VocabularyBookCreate",
     "VocabularyBookUpdate",
     "VocabularyBookPublic",

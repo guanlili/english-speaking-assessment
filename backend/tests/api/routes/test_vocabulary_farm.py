@@ -79,6 +79,7 @@ def _make_book(
             "scope": "classroom",
             "classroom_id": classroom_id,
             "words": words,
+            "confirm_reviewed": True,
         },
         headers=headers,
     )

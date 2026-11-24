@@ -12,7 +12,11 @@ import {
 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
-import { ApiError, VocabularyService } from "@/client"
+import {
+  ApiError,
+  VocabularyService,
+  type VocabularyWordPublic,
+} from "@/client"
 import {
   type BookWordInput,
   toBookWordInput,
@@ -36,11 +40,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { ContentReviewPanel } from "@/components/Vocabulary/ContentReviewPanel"
+import { WordEditDialog } from "@/components/Vocabulary/WordEditDialog"
 import { APP_NAME } from "@/config"
 import { isOperatorLoggedIn } from "@/hooks/useAuth"
 import { useModules } from "@/hooks/useModules"
 import { downloadCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
+import {
+  deriveImportStats,
+  reviewStatusLabel,
+  sourceLabel,
+} from "@/lib/vocabContentReview"
 import { localizeImportIssue } from "@/lib/vocabImport"
 
 export const Route = createFileRoute("/_layout/admin/vocabbooks")({
@@ -76,6 +87,8 @@ function VocabBooksAdmin() {
   const booksQuery = useQuery({
     queryKey: ["admin", "vocab-books"],
     queryFn: () => VocabularyService.listBooks(),
+    // 平台运营只读：不调学校端词库列表（平台 token 无校内口径权限）
+    enabled: !isOperator,
   })
   const books = booksQuery.data ?? []
 
@@ -84,7 +97,7 @@ function VocabBooksAdmin() {
     queryKey: ["admin", "vocab-book", openBookId],
     queryFn: () =>
       VocabularyService.readBook({ book_id: openBookId as string }),
-    enabled: openBookId !== null,
+    enabled: !!openBookId && !isOperator,
   })
 
   // 新建词库（含导入确认）
@@ -92,6 +105,13 @@ function VocabBooksAdmin() {
   const [newTitle, setNewTitle] = useState("")
   const [preview, setPreview] = useState<PreviewState | null>(null)
   const previewFileRef = useRef<HTMLInputElement>(null)
+  // “我已核对”：勾选直接通过审核（自评留痕）；默认待审
+  const [reviewedOk, setReviewedOk] = useState(false)
+  // 词库详情表的审核状态筛选
+  const [wordStatusFilter, setWordStatusFilter] = useState("all")
+  const [editingWord, setEditingWord] = useState<VocabularyWordPublic | null>(
+    null,
+  )
 
   const importPreview = useMutation({
     mutationFn: (file: File) =>
@@ -129,14 +149,27 @@ function VocabBooksAdmin() {
           title: payload.title,
           scope: "public",
           description: null,
+          source: "import",
+          confirm_reviewed: reviewedOk,
           words: payload.words,
         },
       }),
-    onSuccess: () => {
-      toast.success(t({ zh: "词库已创建。", en: "Word book created." }))
+    onSuccess: (book, payload) => {
+      const stats = deriveImportStats(
+        payload.words.length,
+        0,
+        book.word_count ?? 0,
+      )
+      toast.success(
+        t({
+          zh: `词库已创建：新增 ${stats.added} 词，重复跳过 ${stats.skipped} 个。`,
+          en: `Book created: ${stats.added} new, ${stats.skipped} duplicates skipped.`,
+        }),
+      )
       setCreating(false)
       setPreview(null)
       setNewTitle("")
+      setReviewedOk(false)
       queryClient.invalidateQueries({ queryKey: ["admin", "vocab-books"] })
     },
     onError: (error) => {
@@ -172,16 +205,24 @@ function VocabBooksAdmin() {
     mutationFn: (payload: { bookId: string; words: PreviewState["rows"] }) =>
       VocabularyService.addBookWords({
         book_id: payload.bookId,
+        source: "import",
+        confirm_reviewed: reviewedOk,
         body: payload.words,
       }),
-    onSuccess: (data) => {
+    onSuccess: (data, payload) => {
+      const stats = deriveImportStats(
+        payload.words.length,
+        detailQuery.data?.word_count ?? null,
+        data.word_count ?? null,
+      )
       toast.success(
         t({
-          zh: `已加入 ${data.words?.length ?? 0} 个词条。`,
-          en: `Added ${data.words?.length ?? 0} words.`,
+          zh: `已加入 ${stats.added} 个词条，重复跳过 ${stats.skipped} 个。`,
+          en: `Added ${stats.added} words, ${stats.skipped} duplicates skipped.`,
         }),
       )
       setPreview(null)
+      setReviewedOk(false)
       queryClient.invalidateQueries({ queryKey: ["admin", "vocab-books"] })
       queryClient.invalidateQueries({ queryKey: ["admin", "vocab-book"] })
     },
@@ -236,6 +277,12 @@ function VocabBooksAdmin() {
 
   const openBook = books.find((book) => book.id === openBookId)
   const validRows = preview?.rows ?? []
+  const allDetailWords = detailQuery.data?.words ?? []
+  const visibleDetailWords = allDetailWords.filter(
+    (word) =>
+      wordStatusFilter === "all" ||
+      (word.review_status ?? "pending") === wordStatusFilter,
+  )
 
   return (
     <div className="flex flex-col gap-6">
@@ -251,136 +298,141 @@ function VocabBooksAdmin() {
         </p>
       </div>
 
-      {/* 词库列表 */}
-      <Card>
-        <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
-          <div>
-            <CardTitle className="text-base">
-              {t({ zh: "全部词库", en: "All word books" })}{" "}
-              <span className="text-sm font-normal text-muted-foreground">
-                · {books.length}
-              </span>
-            </CardTitle>
-            <CardDescription>
-              {t({
-                zh: "公共词库由管理员维护；班级词库由本班教师维护。",
-                en: "Public books are maintained by admins; classroom books by their teachers.",
-              })}
-            </CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void booksQuery.refetch()}
-              disabled={booksQuery.isFetching}
-            >
-              <RefreshCw
-                className={booksQuery.isFetching ? "animate-spin" : ""}
-              />
-              {t({ zh: "刷新", en: "Refresh" })}
-            </Button>
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus />
-              {t({ zh: "新建公共词库", en: "New Public Book" })}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="pb-0">
-          {booksQuery.isPending ? (
-            <div role="status" className="pb-6">
-              <Skeleton className="h-32 rounded-xl" />
+      {/* 内容审核队列（全校；平台运营只读，不展示审核动作） */}
+      <ContentReviewPanel readonly={isOperator} />
+
+      {/* 词库列表（平台运营只读：隐藏校内词库维护区，仅保留上方审核队列） */}
+      {!isOperator && (
+        <Card>
+          <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
+            <div>
+              <CardTitle className="text-base">
+                {t({ zh: "全部词库", en: "All word books" })}{" "}
+                <span className="text-sm font-normal text-muted-foreground">
+                  · {books.length}
+                </span>
+              </CardTitle>
+              <CardDescription>
+                {t({
+                  zh: "公共词库由管理员维护；班级词库由本班教师维护。",
+                  en: "Public books are maintained by admins; classroom books by their teachers.",
+                })}
+              </CardDescription>
             </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t({ zh: "词库", en: "Book" })}</TableHead>
-                  <TableHead>{t({ zh: "作用域", en: "Scope" })}</TableHead>
-                  <TableHead>{t({ zh: "词数", en: "Words" })}</TableHead>
-                  <TableHead>{t({ zh: "状态", en: "Status" })}</TableHead>
-                  <TableHead>{t({ zh: "操作", en: "Actions" })}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {books.map((book) => (
-                  <TableRow key={book.id}>
-                    <TableCell>
-                      <span className="font-medium">{book.title}</span>
-                      {book.description && (
-                        <span className="ml-2 hidden text-xs text-muted-foreground md:inline">
-                          {book.description}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {book.scope === "public" ? (
-                        <Badge variant="secondary">
-                          {t({ zh: "公共", en: "Public" })}
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">
-                          {t({ zh: "班级", en: "Classroom" })}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="tabular-nums">
-                      {book.word_count ?? 0}
-                    </TableCell>
-                    <TableCell>
-                      {book.status === "active" ? (
-                        <span className="text-primary">
-                          {t({ zh: "启用", en: "Active" })}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">
-                          {t({ zh: "已归档", en: "Archived" })}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            setOpenBookId(
-                              openBookId === book.id ? null : book.id,
-                            )
-                          }
-                        >
-                          <ChevronRight
-                            className={
-                              openBookId === book.id
-                                ? "rotate-90 transition-transform"
-                                : "transition-transform"
-                            }
-                          />
-                          {t({ zh: "词条", en: "Words" })}
-                        </Button>
-                        {book.status === "active" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={archiveBook.isPending}
-                            onClick={() => {
-                              setOpenBookId(null)
-                              archiveBook.mutate(book.id)
-                            }}
-                          >
-                            <Archive />
-                            {t({ zh: "归档", en: "Archive" })}
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void booksQuery.refetch()}
+                disabled={booksQuery.isFetching}
+              >
+                <RefreshCw
+                  className={booksQuery.isFetching ? "animate-spin" : ""}
+                />
+                {t({ zh: "刷新", en: "Refresh" })}
+              </Button>
+              <Button size="sm" onClick={() => setCreating(true)}>
+                <Plus />
+                {t({ zh: "新建公共词库", en: "New Public Book" })}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pb-0">
+            {booksQuery.isPending ? (
+              <div role="status" className="pb-6">
+                <Skeleton className="h-32 rounded-xl" />
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t({ zh: "词库", en: "Book" })}</TableHead>
+                    <TableHead>{t({ zh: "作用域", en: "Scope" })}</TableHead>
+                    <TableHead>{t({ zh: "词数", en: "Words" })}</TableHead>
+                    <TableHead>{t({ zh: "状态", en: "Status" })}</TableHead>
+                    <TableHead>{t({ zh: "操作", en: "Actions" })}</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {books.map((book) => (
+                    <TableRow key={book.id}>
+                      <TableCell>
+                        <span className="font-medium">{book.title}</span>
+                        {book.description && (
+                          <span className="ml-2 hidden text-xs text-muted-foreground md:inline">
+                            {book.description}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {book.scope === "public" ? (
+                          <Badge variant="secondary">
+                            {t({ zh: "公共", en: "Public" })}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">
+                            {t({ zh: "班级", en: "Classroom" })}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {book.word_count ?? 0}
+                      </TableCell>
+                      <TableCell>
+                        {book.status === "active" ? (
+                          <span className="text-primary">
+                            {t({ zh: "启用", en: "Active" })}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            {t({ zh: "已归档", en: "Archived" })}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setOpenBookId(
+                                openBookId === book.id ? null : book.id,
+                              )
+                            }
+                          >
+                            <ChevronRight
+                              className={
+                                openBookId === book.id
+                                  ? "rotate-90 transition-transform"
+                                  : "transition-transform"
+                              }
+                            />
+                            {t({ zh: "词条", en: "Words" })}
+                          </Button>
+                          {book.status === "active" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={archiveBook.isPending}
+                              onClick={() => {
+                                setOpenBookId(null)
+                                archiveBook.mutate(book.id)
+                              }}
+                            >
+                              <Archive />
+                              {t({ zh: "归档", en: "Archive" })}
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* 词库词条展开区（查看 / 加词 / 移除） */}
       {openBook && (
@@ -440,12 +492,38 @@ function VocabBooksAdmin() {
               </div>
             ) : (
               <>
-                <p className="pb-3 text-xs text-muted-foreground sm:hidden">
-                  {t({
-                    zh: "横向滑动表格，可以查看完整词条。",
-                    en: "Swipe the table sideways to see all fields.",
-                  })}
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3">
+                  <p className="text-xs text-muted-foreground sm:hidden">
+                    {t({
+                      zh: "横向滑动表格，可以查看完整词条。",
+                      en: "Swipe the table sideways to see all fields.",
+                    })}
+                  </p>
+                  <select
+                    aria-label={t({
+                      zh: "按审核状态筛选",
+                      en: "Filter by review status",
+                    })}
+                    value={wordStatusFilter}
+                    onChange={(event) =>
+                      setWordStatusFilter(event.target.value)
+                    }
+                    className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+                  >
+                    <option value="all">
+                      {t({ zh: "全部状态", en: "All statuses" })}
+                    </option>
+                    <option value="pending">
+                      {t({ zh: "待审", en: "Pending" })}
+                    </option>
+                    <option value="approved">
+                      {t({ zh: "已通过", en: "Approved" })}
+                    </option>
+                    <option value="rejected">
+                      {t({ zh: "已拒绝", en: "Rejected" })}
+                    </option>
+                  </select>
+                </div>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -454,14 +532,21 @@ function VocabBooksAdmin() {
                       <TableHead>
                         {t({ zh: "中文释义", en: "Chinese meaning" })}
                       </TableHead>
+                      <TableHead>{t({ zh: "来源", en: "Source" })}</TableHead>
                       <TableHead>
-                        {t({ zh: "可接受拼写", en: "Accepted spellings" })}
+                        {t({ zh: "审核状态", en: "Review status" })}
+                      </TableHead>
+                      <TableHead>
+                        {t({
+                          zh: "可接受拼写",
+                          en: "Accepted spellings",
+                        })}
                       </TableHead>
                       <TableHead>{t({ zh: "操作", en: "Actions" })}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(detailQuery.data?.words ?? []).map((word) => (
+                    {visibleDetailWords.map((word) => (
                       <TableRow key={word.id}>
                         <TableCell className="font-semibold">
                           {word.headword}
@@ -470,26 +555,70 @@ function VocabBooksAdmin() {
                           {word.part_of_speech ?? "–"}
                         </TableCell>
                         <TableCell>{word.meaning_zh}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              word.source === "ai" ? "default" : "outline"
+                            }
+                          >
+                            {t(sourceLabel(word.source))}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              word.review_status === "approved"
+                                ? "secondary"
+                                : word.review_status === "rejected"
+                                  ? "destructive"
+                                  : "outline"
+                            }
+                          >
+                            {t(reviewStatusLabel(word.review_status))}
+                          </Badge>
+                        </TableCell>
                         <TableCell className="text-muted-foreground">
                           {(word.accepted_spellings ?? []).join(" / ") || "–"}
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={removeWord.isPending}
-                            onClick={() =>
-                              removeWord.mutate({
-                                bookId: openBook.id,
-                                wordId: word.id,
-                              })
-                            }
-                          >
-                            {t({ zh: "移除", en: "Remove" })}
-                          </Button>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingWord(word)}
+                            >
+                              {t({ zh: "编辑", en: "Edit" })}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={removeWord.isPending}
+                              onClick={() =>
+                                removeWord.mutate({
+                                  bookId: openBook.id,
+                                  wordId: word.id,
+                                })
+                              }
+                            >
+                              {t({ zh: "移除", en: "Remove" })}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
+                    {visibleDetailWords.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={7}
+                          className="text-center text-muted-foreground"
+                        >
+                          {t({
+                            zh: "该状态下没有词条。",
+                            en: "No words in this status.",
+                          })}
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </>
@@ -645,6 +774,18 @@ function VocabBooksAdmin() {
               </div>
             )}
 
+            <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={reviewedOk}
+                onChange={(event) => setReviewedOk(event.target.checked)}
+                className="size-4 accent-[var(--primary)]"
+              />
+              {t({
+                zh: "我已核对这些词条（勾选后直接通过审核，不再进入待审）",
+                en: "I have checked these entries (skip review and approve directly)",
+              })}
+            </label>
             <div className="flex flex-wrap items-center gap-3 border-t pt-4">
               <Button
                 disabled={createBook.isPending || newTitle.trim() === ""}
@@ -692,7 +833,19 @@ function VocabBooksAdmin() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={reviewedOk}
+                  onChange={(event) => setReviewedOk(event.target.checked)}
+                  className="size-4 accent-[var(--primary)]"
+                />
+                {t({
+                  zh: "我已核对这些词条（勾选后直接通过审核）",
+                  en: "I have checked these entries (approve directly)",
+                })}
+              </label>
               <Button
                 size="sm"
                 disabled={addWords.isPending || validRows.length === 0}
@@ -719,6 +872,16 @@ function VocabBooksAdmin() {
           </CardContent>
         </Card>
       )}
+
+      <WordEditDialog
+        word={editingWord}
+        onClose={() => setEditingWord(null)}
+        onSaved={() => {
+          setEditingWord(null)
+          queryClient.invalidateQueries({ queryKey: ["admin", "vocab-books"] })
+          queryClient.invalidateQueries({ queryKey: ["admin", "vocab-book"] })
+        }}
+      />
 
       <p className="pb-6 text-center text-xs text-muted-foreground">
         {t({
