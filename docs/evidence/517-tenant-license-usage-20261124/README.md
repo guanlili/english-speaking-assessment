@@ -8,13 +8,13 @@
 |---|---|
 | Worktree | `…/agents/o_000VxxkxFsS/tenant-ops` |
 | 分支 | `feat/tenant-license-usage-20261124` |
-| 取证时 HEAD | `4b0b9cd4c4df1c9249b8bebdf603714aa748ab74` |
-| 任务基线 HEAD | `e39e4e7`（为 `4b0b9cd` 的祖先；其间仅一个后端既有提交 `4b0b9cd fix(tenant): 空开始时间不再拿 now 校验到期日先后`，非本次取证改动） |
-| 工作区状态 | 除本证据目录（untracked）外无改动，未修改任何业务代码 |
+| 取证时 HEAD | `2020e7305ba3965531b2cd5c3f1f8a797d1a049f`（英文剩余天数单复数修复：1 天显示 `1 day left`） |
+| 任务基线 HEAD | `e39e4e7`；其上依次为 `4b0b9cd`（后端到期日校验）、`48afbe6`（首轮证据提交）、`2020e73`（单复数修复） |
+| 工作区状态 | 除本证据目录外无改动，未修改任何业务代码 |
 | 后端 | `127.0.0.1:8006`（uvicorn，代码即本 worktree） |
 | 前端 | `127.0.0.1:5176`（Vite，`API_PROXY_TARGET=http://127.0.0.1:8006`） |
 | 数据库 | Docker `english-speaking-assessment-db-1`，`localhost:5433` / 库 `app`，迁移 head `d6372fd6a828` |
-| 浏览器 | 附加 Chrome，经 `browser_use`（plane=`bu`）+ CDP `Emulation.setDeviceMetricsOverride`；`deviceScaleFactor=1`、`mobile=false` |
+| 浏览器 | 附加 Chrome，经 `browser_use`（plane=`bu`）+ CDP `Emulation.setDeviceMetricsOverride`；常规视口 `deviceScaleFactor=1`、`mobile=false`；二轮另试 `mobile=true / deviceScaleFactor=2 / TouchEmulation`（见 §7） |
 | 视口三档 | 390×844 / 820×1000 / 1180×1000 |
 | 主仓 8000/5173 | 未触碰（仍由 Docker 容器占用） |
 
@@ -61,8 +61,8 @@
 |---|---|---|---|
 | `12-banner-trial-30d-1180-zh.png` | 1180 / 中文 | 横幅 level `trial`（中性 primary 色，Clock 图标）：“单词模块试用还剩 30 天”；副文案“到期后师生入口关闭，数据保留，请联系平台续期。” | 30 天档 trial 色；校管可见横幅；副文案含入口关闭/数据保留/联系平台 |
 | `13-banner-warning-7d-390-zh.png` | 390 / 中文 | level `warning`（amber 琥珀色，TriangleAlert 图标）：“单词模块试用还剩 7 天” + 同一副文案 | 7 天档 warning 色；390 无整页横溢 |
-| `14-banner-critical-1d-390-en.png` | 390 / 英文 | level `critical`（destructive 红色，ShieldAlert 图标）：“Vocabulary trial: 1 days left”；“After expiry, teacher and student entry closes; data is retained. Contact the platform to renew.” | 1 天档 critical/destructive 色；英文无中文残留；副文案含 entry closes / data retained / contact platform |
-| `15-banner-critical-1d-1180-en.png` | 1180 / 英文 | 同上 critical 横幅，宽屏侧边栏全英文 | 宽屏 critical 档复核；无中文 UI 残留 |
+| `14-banner-critical-1d-390-en.png` | 390 / 英文 | level `critical`（destructive 红色，ShieldAlert 图标）：“Vocabulary trial: **1 day left**”；“After expiry, teacher and student entry closes; data is retained. Contact the platform to renew.” | 1 天档 critical/destructive 色；英文单复数正确（`1 day left`）；无中文残留；副文案含 entry closes / data retained / contact platform |
+| `15-banner-critical-1d-1180-en.png` | 1180 / 英文 | 同上 critical 横幅（`1 day left`），宽屏侧边栏全英文 | 宽屏 critical 档复核；无中文 UI 残留 |
 
 ## 4. CSV 产物核对
 
@@ -120,12 +120,15 @@
 - **trial 必填到期**：
   - 前端 `validateModuleForm`：trial 未填到期 → 双语错误“试用必须设置到期时间 / A trial requires an expiry date”。
   - 后端实测探针：`PUT …/modules/vocabulary` 带 `grant_type=trial, expires_at=null` → **HTTP 422**，`detail=trial_requires_expires_at`，数据未被改写；填到期后保存成功（模块弹窗 07/08 即为填到期后的成功态）。
-- **审计前后值**：默认校单词模块共 5 条 grant 记录（自下而上）：
+- **审计前后值**：默认校单词模块共 **8 条** grant 记录（两轮取证写入；自下而上）：
   1. `manual → trial`，到期 `长期 → 2026-11-29 13:30:53Z`
   2. `trial → trial`，到期 `2026-11-29 → 2026-12-24`（+30d 档）
   3. `trial → trial`，到期 `2026-12-24 → 2026-12-01`（+7d 档）
   4. `trial → trial`，到期 `2026-12-01 → 2026-11-25`（+1d 档）
-  5. `trial → manual`，到期 `2026-11-25 → 长期`（恢复长期）
+  5. `trial → manual`，到期 `2026-11-25 → 长期`（首轮恢复长期）
+  6. `manual → trial`，到期 `长期 → 2026-11-25 14:09:19Z`（二轮 +1d 档）
+  7. `trial → trial`，到期 `2026-11-25 → 2026-11-29 14:10:14Z`（二轮 +5d 档）
+  8. `trial → manual`，到期 `2026-11-29 → 长期`（二轮恢复长期）
   - 审计表同时保存 before / after，截图 09 可见 `人工 → 试用`、`长期 → 2026/11/29 05:30:53`。
 - **用量口径**：9 项指标按本地自然日聚合，区间总量为每日行求和、去重项单日去重；界面只出聚合数，无学生/教师标识。两条 limitations：
   1. 活跃口径不含仅登录用户：当前没有登录日志或 `last_login_at`；活跃教师=当天有教学操作的去重教师，活跃学生=当天有词汇作答的去重学生。
@@ -135,11 +138,11 @@
 ## 7. 已知限制与环境缺陷
 
 - **390 弹窗栅格缺陷（环境问题，非产品 UI bug）**：本次附加无头 Chrome 在 390 视口下，Radix Dialog 的 body 直挂 fixed portal 层未被栅格化（弹窗标题条可见，卡片正文与遮罩透出底层列表；注入的裸 fixed 测试元素同样被裁剪成窄边）。820 / 1180 同一弹窗绘制完全正常。已排除：禁用动画/过渡、重置 transform/translate、`overflow:visible`、`captureBeyondViewport` 全页截图、元素裁剪截图、portal 改 absolute 定位；DOM 堆叠、`opacity/visibility` 计算样式均正确。
+  - 二轮重试：按 `mobile=true, deviceScaleFactor=2, width=390, height=844` 并启用 `TouchEmulation` 重开模块弹窗与用量弹窗；另对照 `dpr=2/非移动`、`移动/dpr=1` 两组变体，正文层**仍未栅格化**（仅标题条绘制，卡片透出列表），DOM 内 9 张指标卡/表单字段均在。结论：该缺陷与 DPR、移动模拟、触摸模拟无关，属本地无头浏览器窄视口合成层问题。
   - 因此 08（模块弹窗）与 11（用量弹窗）的英文画面在 **820** 兜底拍摄；390 的布局无溢出与表格内部横滑结论以 §5 的 JS 实测宽度为准。建议后续在真机或常规浏览器窗口复拍 390 弹窗。
 - **登录活跃缺失**：见 §6 limitations 第 1 条，活跃教师/学生并非全量在线口径。
 - **农场逐日收获为下限**：见 §6 limitations 第 2 条，不作为当日精确收获数。
 - 次要文案观察（未改代码，待产品确认）：
-  - 英文横幅 `1 days left` 未做单复数本地化（应为 `1 day left`）。
   - 英文界面下日期输入框占位仍为中文原生本地化文案“年/月/日 --:--”（浏览器原生日期控件 locale，非应用 i18n 词条）。
   - 列表名称列固定渲染 `name_zh`，不随界面语言切换 `name_en`，属数据专有名词口径，未当作 bug 改动。
 
