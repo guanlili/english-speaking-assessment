@@ -1,0 +1,644 @@
+{
+  "baseline_settings": {
+    "status": 200,
+    "data": {
+      "enabled": true,
+      "audience": "students",
+      "anonymous": true,
+      "top_n": 10
+    }
+  },
+  "baseline_teacher_board": {
+    "status": 200,
+    "data": {
+      "week_start": "2026-11-23",
+      "settings": {
+        "enabled": true,
+        "audience": "students",
+        "anonymous": true,
+        "top_n": 10
+      },
+      "entries": [
+        {
+          "rank": 1,
+          "score": 4,
+          "alias_no": 2,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 1,
+          "score": 4,
+          "alias_no": 1,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 3,
+          "score": 3,
+          "alias_no": 4,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 3,
+          "score": 3,
+          "alias_no": 3,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 10,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 9,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 7,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 11,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 8,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 5,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 6,
+          "display_name": null,
+          "suffix": null
+        }
+      ],
+      "my_entry": null,
+      "my_rank": null,
+      "my_score": 0,
+      "joined": false,
+      "participant_count": 13
+    }
+  },
+  "baseline_student_board": {
+    "status": 200,
+    "data": {
+      "week_start": "2026-11-23",
+      "settings": {
+        "enabled": true,
+        "audience": "students",
+        "anonymous": true,
+        "top_n": 10
+      },
+      "entries": [
+        {
+          "rank": 1,
+          "score": 4,
+          "alias_no": 2,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 1,
+          "score": 4,
+          "alias_no": 1,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 3,
+          "score": 3,
+          "alias_no": 4,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 3,
+          "score": 3,
+          "alias_no": 3,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 10,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 9,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 7,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 11,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 8,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 5,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 6,
+          "display_name": null,
+          "suffix": null
+        }
+      ],
+      "my_entry": {
+        "rank": 12,
+        "score": 1,
+        "alias_no": 13,
+        "display_name": null,
+        "suffix": null
+      },
+      "my_rank": 12,
+      "my_score": 1,
+      "joined": true,
+      "participant_count": null
+    }
+  },
+  "T1_student_teachers_only": {
+    "status": 403,
+    "data": {
+      "detail": "leaderboard_unavailable"
+    }
+  },
+  "T1_teacher_settings_default": {
+    "status": 200,
+    "data": {
+      "enabled": true,
+      "audience": "teachers",
+      "anonymous": true,
+      "top_n": 10
+    }
+  },
+  "T2_student_unjoined": {
+    "status": 200,
+    "data": {
+      "week_start": "2026-11-23",
+      "settings": {
+        "enabled": true,
+        "audience": "students",
+        "anonymous": true,
+        "top_n": 10
+      },
+      "entries": [],
+      "my_entry": null,
+      "my_rank": null,
+      "my_score": 0,
+      "joined": false,
+      "participant_count": null
+    }
+  },
+  "T2_teacher_count": {
+    "status": 200,
+    "data": {
+      "week_start": "2026-11-23",
+      "settings": {
+        "enabled": true,
+        "audience": "students",
+        "anonymous": true,
+        "top_n": 10
+      },
+      "entries": [
+        {
+          "rank": 1,
+          "score": 4,
+          "alias_no": 2,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 1,
+          "score": 4,
+          "alias_no": 1,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 3,
+          "score": 3,
+          "alias_no": 4,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 3,
+          "score": 3,
+          "alias_no": 3,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 10,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 9,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 7,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 11,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 8,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 5,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 6,
+          "display_name": null,
+          "suffix": null
+        }
+      ],
+      "my_entry": null,
+      "my_rank": null,
+      "my_score": 0,
+      "joined": false,
+      "participant_count": 12
+    }
+  },
+  "T3_student_joined": {
+    "status": 200,
+    "data": {
+      "week_start": "2026-11-23",
+      "settings": {
+        "enabled": true,
+        "audience": "students",
+        "anonymous": true,
+        "top_n": 10
+      },
+      "entries": [
+        {
+          "rank": 1,
+          "score": 4,
+          "alias_no": 2,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 1,
+          "score": 4,
+          "alias_no": 1,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 3,
+          "score": 3,
+          "alias_no": 4,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 3,
+          "score": 3,
+          "alias_no": 3,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 10,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 9,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 7,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 11,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 8,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 5,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 6,
+          "display_name": null,
+          "suffix": null
+        }
+      ],
+      "my_entry": {
+        "rank": 12,
+        "score": 1,
+        "alias_no": 13,
+        "display_name": null,
+        "suffix": null
+      },
+      "my_rank": 12,
+      "my_score": 1,
+      "joined": true,
+      "participant_count": null
+    }
+  },
+  "T6_student_disabled": {
+    "status": 403,
+    "data": {
+      "detail": "leaderboard_unavailable"
+    }
+  },
+  "T6_teacher_preview_after_disable": {
+    "status": 200,
+    "data": {
+      "week_start": "2026-11-23",
+      "settings": {
+        "enabled": false,
+        "audience": "students",
+        "anonymous": true,
+        "top_n": 10
+      },
+      "entries": [
+        {
+          "rank": 1,
+          "score": 4,
+          "alias_no": 2,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 1,
+          "score": 4,
+          "alias_no": 1,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 3,
+          "score": 3,
+          "alias_no": 4,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 3,
+          "score": 3,
+          "alias_no": 3,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 10,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 9,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 7,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 11,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 8,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 5,
+          "display_name": null,
+          "suffix": null
+        },
+        {
+          "rank": 5,
+          "score": 2,
+          "alias_no": 6,
+          "display_name": null,
+          "suffix": null
+        }
+      ],
+      "my_entry": null,
+      "my_rank": null,
+      "my_score": 0,
+      "joined": false,
+      "participant_count": 13
+    }
+  },
+  "T5_anon_entries": [
+    {
+      "rank": 1,
+      "score": 4,
+      "alias_no": 2,
+      "display_name": null,
+      "suffix": null
+    },
+    {
+      "rank": 1,
+      "score": 4,
+      "alias_no": 1,
+      "display_name": null,
+      "suffix": null
+    },
+    {
+      "rank": 3,
+      "score": 3,
+      "alias_no": 4,
+      "display_name": null,
+      "suffix": null
+    }
+  ],
+  "T5_named_entries": [
+    {
+      "rank": 1,
+      "score": 4,
+      "alias_no": 2,
+      "display_name": "测试学生二",
+      "suffix": null
+    },
+    {
+      "rank": 1,
+      "score": 4,
+      "alias_no": 1,
+      "display_name": "测试学生一",
+      "suffix": null
+    },
+    {
+      "rank": 3,
+      "score": 3,
+      "alias_no": 4,
+      "display_name": "测试学生四",
+      "suffix": null
+    }
+  ],
+  "T8_not_found_class": {
+    "status": 404,
+    "data": {
+      "detail": "Classroom not found"
+    }
+  },
+  "T8_student_other_class": {
+    "status": 404,
+    "data": {
+      "detail": "Student not found"
+    }
+  },
+  "T8_cross_school": {
+    "status": 404,
+    "data": {
+      "detail": "Classroom not found"
+    }
+  },
+  "T7_last_week": {
+    "status": 200,
+    "data": {
+      "week_start": "2026-11-16",
+      "settings": {
+        "enabled": true,
+        "audience": "students",
+        "anonymous": true,
+        "top_n": 10
+      },
+      "entries": [
+        {
+          "rank": 1,
+          "score": 1,
+          "alias_no": 12,
+          "display_name": null,
+          "suffix": null
+        }
+      ],
+      "my_entry": null,
+      "my_rank": null,
+      "my_score": 0,
+      "joined": false,
+      "participant_count": 13
+    }
+  },
+  "T7_non_monday": {
+    "status": 422,
+    "data": {
+      "detail": "week_start 必须是周一"
+    }
+  },
+  "T7_future_monday": {
+    "status": 422,
+    "data": {
+      "detail": "week_start 不得晚于本周一"
+    }
+  }
+}
