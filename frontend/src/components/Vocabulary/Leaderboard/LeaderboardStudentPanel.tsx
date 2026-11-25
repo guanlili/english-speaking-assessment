@@ -23,8 +23,6 @@ import {
 } from "@/lib/leaderboard"
 import { formatDate } from "@/lib/time"
 
-const STUDENT_TOP_N = 10
-
 /**
  * 学生班内学习榜详情页（`/vocab/$code/leaderboard`）。
  *
@@ -111,7 +109,7 @@ export function LeaderboardStudentPanel({ code }: { code: string }) {
 
   const joined = view.joined === true
   const anonymous = view.settings.anonymous
-  const entries = (view.entries ?? []).slice(0, STUDENT_TOP_N)
+  const entries = view.entries ?? []
   const myEntry = view.my_entry ?? null
   const myRank = view.my_rank ?? null
   const myScore = view.my_score ?? 0
