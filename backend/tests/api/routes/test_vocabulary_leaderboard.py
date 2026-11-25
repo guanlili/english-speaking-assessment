@@ -341,6 +341,7 @@ def test_unjoined_student_sees_empty_board_without_count(
     assert body["my_entry"] is None
     assert body["my_rank"] is None
     assert body["my_score"] == 0
+    assert body["joined"] is False
     assert body["participant_count"] is None
 
 
@@ -360,13 +361,15 @@ def test_join_assigns_stable_alias_and_anonymous_entry(
 
     status, body = _board(client, student["headers"], classroom["code"])
     assert status == 200, body
+    assert body["joined"] is True
     assert body["participant_count"] is None  # 学生视角看不到人数
     assert body["my_entry"] is None  # 零分不进 my_entry
     assert body["my_score"] == 0
 
-    # 教师视角可见人数，匿名条目无姓名
+    # 教师视角可见人数，匿名条目无姓名；教师不是参与者，joined 固定 false
     status, body = _board(client, headers, classroom["code"])
     assert status == 200
+    assert body["joined"] is False
     assert body["participant_count"] == 1
 
 
@@ -379,12 +382,18 @@ def test_alias_reused_on_rejoin(client: TestClient, db: Session) -> None:
 
     status, body = _join(client, student["headers"], classroom["code"], joined=True)
     assert status == 200 and body["alias_no"] == 1
+    status, body = _board(client, student["headers"], classroom["code"])
+    assert status == 200 and body["joined"] is True
 
     status, body = _join(client, student["headers"], classroom["code"], joined=False)
     assert status == 200 and body == {"joined": False, "alias_no": None}
+    status, body = _board(client, student["headers"], classroom["code"])
+    assert status == 200 and body["joined"] is False
 
     status, body = _join(client, student["headers"], classroom["code"], joined=True)
     assert status == 200 and body["alias_no"] == 1
+    status, body = _board(client, student["headers"], classroom["code"])
+    assert status == 200 and body["joined"] is True
 
 
 # ── 计分口径 ──────────────────────────────────────────────────────────
@@ -537,6 +546,8 @@ def test_zero_score_participant_not_listed(client: TestClient, db: Session) -> N
     assert body["my_entry"] is None
     assert body["my_rank"] is None
     assert body["my_score"] == 0
+    # 已参加但本周零分：joined 仍为 true，前端据此与「未参加」区分
+    assert body["joined"] is True
 
 
 # ── 周界（PRACTICE_TZ）────────────────────────────────────────────────

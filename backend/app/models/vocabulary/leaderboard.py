@@ -166,5 +166,7 @@ class VocabularyLeaderboardView(SQLModel):
     my_entry: VocabularyLeaderboardEntry | None = None
     my_rank: int | None = None
     my_score: int = 0
+    # 当前学生 viewer 是否有 active 参与档案；教师 viewer 固定 false
+    joined: bool = False
     # 教师可见参与人数；学生视角一律 null（未参加学生看不到人数）
     participant_count: int | None = None

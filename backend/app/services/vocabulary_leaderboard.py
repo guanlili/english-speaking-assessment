@@ -345,6 +345,7 @@ def build_leaderboard(
                 my_entry=None,
                 my_rank=None,
                 my_score=0,
+                joined=False,
                 participant_count=None,
             )
         # 历史周：不得早于本人首次加入周，避免加入前窥看历史榜
@@ -402,6 +403,7 @@ def build_leaderboard(
                 my_entry = _entry(me, my_score, my_rank)
 
     participant_count = len(active_by_student) if viewer == "teacher" else None
+    joined = viewer == "student" and me is not None
     return VocabularyLeaderboardView(
         week_start=week_start,
         settings=setting,
@@ -409,5 +411,6 @@ def build_leaderboard(
         my_entry=my_entry,
         my_rank=my_rank,
         my_score=my_score,
+        joined=joined,
         participant_count=participant_count,
     )

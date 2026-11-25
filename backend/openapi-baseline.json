@@ -13933,6 +13933,11 @@
             "title": "Entries",
             "type": "array"
           },
+          "joined": {
+            "default": false,
+            "title": "Joined",
+            "type": "boolean"
+          },
           "my_entry": {
             "anyOf": [
               {
