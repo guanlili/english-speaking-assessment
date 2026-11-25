@@ -7271,6 +7271,27 @@ export type VocabularyBookDetail = {
 };
 
 /**
+ * VocabularyBookLicenseDetail
+ *
+ * 按词库读取授权：词库级信息 + 词条级授权清单。
+ */
+export type VocabularyBookLicenseDetail = {
+    /**
+     * Book Id
+     */
+    book_id: string;
+    /**
+     * Title
+     */
+    title: string;
+    license: VocabularyLicenseInfo;
+    /**
+     * Words
+     */
+    words?: Array<VocabularyWordLicenseItem>;
+};
+
+/**
  * VocabularyBookPublic
  */
 export type VocabularyBookPublic = {
@@ -7328,6 +7349,64 @@ export type VocabularyBookUpdate = {
      * Status
      */
     status?: string | null;
+};
+
+/**
+ * VocabularyBookVersionEntry
+ *
+ * 版本列表单行（不含完整快照内容）。
+ */
+export type VocabularyBookVersionEntry = {
+    /**
+     * Version No
+     */
+    version_no: number;
+    /**
+     * Action
+     */
+    action: string;
+    /**
+     * Summary
+     */
+    summary?: string | null;
+    /**
+     * Content Hash
+     */
+    content_hash: string;
+    /**
+     * Actor Id
+     */
+    actor_id?: string | null;
+    /**
+     * Actor Name
+     */
+    actor_name?: string | null;
+    /**
+     * Actor Role
+     */
+    actor_role?: string | null;
+    /**
+     * Word Count
+     */
+    word_count?: number;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+};
+
+/**
+ * VocabularyBookVersionList
+ */
+export type VocabularyBookVersionList = {
+    /**
+     * Items
+     */
+    items?: Array<VocabularyBookVersionEntry>;
+    /**
+     * Total
+     */
+    total?: number;
 };
 
 /**
@@ -7892,6 +7971,186 @@ export type VocabularyLevelStats = {
      * Total Sources
      */
     total_sources?: number;
+};
+
+/**
+ * VocabularyLicenseAlertItem
+ *
+ * 到期提醒单行：临期 / 已过期的词库或词条。
+ */
+export type VocabularyLicenseAlertItem = {
+    /**
+     * Target Type
+     */
+    target_type: string;
+    /**
+     * Book Id
+     */
+    book_id: string;
+    /**
+     * Book Title
+     */
+    book_title: string;
+    /**
+     * Word Id
+     */
+    word_id?: string | null;
+    /**
+     * Headword
+     */
+    headword?: string | null;
+    /**
+     * Source Type
+     */
+    source_type: string;
+    /**
+     * License Owner
+     */
+    license_owner?: string | null;
+    /**
+     * License Ref
+     */
+    license_ref?: string | null;
+    /**
+     * License Expires At
+     */
+    license_expires_at?: string | null;
+    /**
+     * Authorization Doc Url
+     */
+    authorization_doc_url?: string | null;
+    /**
+     * License Status
+     */
+    license_status: string;
+};
+
+/**
+ * VocabularyLicenseAuditItem
+ *
+ * 授权变更审计单行。
+ */
+export type VocabularyLicenseAuditItem = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Target Type
+     */
+    target_type: string;
+    /**
+     * Book Id
+     */
+    book_id?: string | null;
+    /**
+     * Word Id
+     */
+    word_id?: string | null;
+    /**
+     * Actor Id
+     */
+    actor_id?: string | null;
+    /**
+     * Actor Name
+     */
+    actor_name?: string | null;
+    /**
+     * Actor Role
+     */
+    actor_role?: string | null;
+    /**
+     * Changes
+     */
+    changes?: {
+        [key: string]: {
+            [key: string]: string | null;
+        };
+    };
+    /**
+     * Note
+     */
+    note?: string | null;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+    /**
+     * Tenant Slug
+     */
+    tenant_slug?: string | null;
+    /**
+     * Tenant Name
+     */
+    tenant_name?: string | null;
+};
+
+/**
+ * VocabularyLicenseInfo
+ *
+ * 授权信息（词库级或词条级通用视图）。
+ */
+export type VocabularyLicenseInfo = {
+    /**
+     * Source Type
+     */
+    source_type: string;
+    /**
+     * License Owner
+     */
+    license_owner?: string | null;
+    /**
+     * License Ref
+     */
+    license_ref?: string | null;
+    /**
+     * License Expires At
+     */
+    license_expires_at?: string | null;
+    /**
+     * Authorization Doc Url
+     */
+    authorization_doc_url?: string | null;
+    /**
+     * License Note
+     */
+    license_note?: string | null;
+    /**
+     * License Status
+     */
+    license_status: string;
+};
+
+/**
+ * VocabularyLicenseUpdate
+ *
+ * 授权信息更新请求；缺省字段不修改，可空字段传 null 清空。
+ */
+export type VocabularyLicenseUpdate = {
+    /**
+     * Source Type
+     */
+    source_type?: string | null;
+    /**
+     * License Owner
+     */
+    license_owner?: string | null;
+    /**
+     * License Ref
+     */
+    license_ref?: string | null;
+    /**
+     * License Expires At
+     */
+    license_expires_at?: string | null;
+    /**
+     * Authorization Doc Url
+     */
+    authorization_doc_url?: string | null;
+    /**
+     * License Note
+     */
+    license_note?: string | null;
 };
 
 /**
@@ -9279,6 +9538,76 @@ export type VocabularyTodayPlan = {
 };
 
 /**
+ * VocabularyVersionCompare
+ */
+export type VocabularyVersionCompare = {
+    /**
+     * Book Id
+     */
+    book_id: string;
+    /**
+     * From Version No
+     */
+    from_version_no: number;
+    /**
+     * To Version No
+     */
+    to_version_no: number;
+    /**
+     * Added
+     */
+    added?: Array<VocabularyVersionDiffEntry>;
+    /**
+     * Removed
+     */
+    removed?: Array<VocabularyVersionDiffEntry>;
+    /**
+     * Changed
+     */
+    changed?: Array<VocabularyVersionDiffEntry>;
+    /**
+     * Total Changed
+     */
+    total_changed?: number;
+};
+
+/**
+ * VocabularyVersionDiffEntry
+ *
+ * 词条级对比单行：新增 / 删除 / 变更（含变更维度与前后条目）。
+ */
+export type VocabularyVersionDiffEntry = {
+    /**
+     * Word Id
+     */
+    word_id: string;
+    /**
+     * Headword
+     */
+    headword: string;
+    /**
+     * Change Kind
+     */
+    change_kind: string;
+    /**
+     * Fields
+     */
+    fields?: Array<string>;
+    /**
+     * From Entry
+     */
+    from_entry?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * To Entry
+     */
+    to_entry?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
  * VocabularyWordIn
  *
  * 创建/导入词条的请求体（词库内新增词）。
@@ -9318,6 +9647,50 @@ export type VocabularyWordIn = {
     morphology?: Array<{
         [key: string]: string;
     }> | null;
+};
+
+/**
+ * VocabularyWordLicenseItem
+ *
+ * 词库授权详情中的词条级授权行。
+ */
+export type VocabularyWordLicenseItem = {
+    /**
+     * Word Id
+     */
+    word_id: string;
+    /**
+     * Headword
+     */
+    headword: string;
+    /**
+     * Source Type
+     */
+    source_type: string;
+    /**
+     * License Owner
+     */
+    license_owner?: string | null;
+    /**
+     * License Ref
+     */
+    license_ref?: string | null;
+    /**
+     * License Expires At
+     */
+    license_expires_at?: string | null;
+    /**
+     * Authorization Doc Url
+     */
+    authorization_doc_url?: string | null;
+    /**
+     * License Note
+     */
+    license_note?: string | null;
+    /**
+     * License Status
+     */
+    license_status: string;
 };
 
 /**
@@ -15769,6 +16142,285 @@ export type VocabularyUpdateWordResponses = {
 
 export type VocabularyUpdateWordResponse = VocabularyUpdateWordResponses[200 & keyof VocabularyUpdateWordResponses];
 
+export type VocabularyReadBookLicenseData = {
+    body?: never;
+    path: {
+        /**
+         * Book Id
+         */
+        book_id: string;
+    };
+    query?: never;
+    url: '/api/v1/vocabulary/books/{book_id}/license';
+};
+
+export type VocabularyReadBookLicenseErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadBookLicenseError = VocabularyReadBookLicenseErrors[keyof VocabularyReadBookLicenseErrors];
+
+export type VocabularyReadBookLicenseResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyBookLicenseDetail;
+};
+
+export type VocabularyReadBookLicenseResponse = VocabularyReadBookLicenseResponses[200 & keyof VocabularyReadBookLicenseResponses];
+
+export type VocabularyUpdateBookLicenseData = {
+    body: VocabularyLicenseUpdate;
+    path: {
+        /**
+         * Book Id
+         */
+        book_id: string;
+    };
+    query?: never;
+    url: '/api/v1/vocabulary/books/{book_id}/license';
+};
+
+export type VocabularyUpdateBookLicenseErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyUpdateBookLicenseError = VocabularyUpdateBookLicenseErrors[keyof VocabularyUpdateBookLicenseErrors];
+
+export type VocabularyUpdateBookLicenseResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyBookLicenseDetail;
+};
+
+export type VocabularyUpdateBookLicenseResponse = VocabularyUpdateBookLicenseResponses[200 & keyof VocabularyUpdateBookLicenseResponses];
+
+export type VocabularyUpdateWordLicenseData = {
+    body: VocabularyLicenseUpdate;
+    path: {
+        /**
+         * Word Id
+         */
+        word_id: string;
+    };
+    query?: never;
+    url: '/api/v1/vocabulary/words/{word_id}/license';
+};
+
+export type VocabularyUpdateWordLicenseErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyUpdateWordLicenseError = VocabularyUpdateWordLicenseErrors[keyof VocabularyUpdateWordLicenseErrors];
+
+export type VocabularyUpdateWordLicenseResponses = {
+    /**
+     * Response Vocabulary-Update Word License
+     *
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type VocabularyListLicenseAlertsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Days
+         */
+        days?: number;
+    };
+    url: '/api/v1/vocabulary/license/alerts';
+};
+
+export type VocabularyListLicenseAlertsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyListLicenseAlertsError = VocabularyListLicenseAlertsErrors[keyof VocabularyListLicenseAlertsErrors];
+
+export type VocabularyListLicenseAlertsResponses = {
+    /**
+     * Response Vocabulary-List License Alerts
+     *
+     * Successful Response
+     */
+    200: Array<VocabularyLicenseAlertItem>;
+};
+
+export type VocabularyListLicenseAlertsResponse = VocabularyListLicenseAlertsResponses[200 & keyof VocabularyListLicenseAlertsResponses];
+
+export type VocabularyListLicenseAuditData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Book Id
+         */
+        book_id?: string | null;
+        /**
+         * Word Id
+         */
+        word_id?: string | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/vocabulary/license/audit';
+};
+
+export type VocabularyListLicenseAuditErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyListLicenseAuditError = VocabularyListLicenseAuditErrors[keyof VocabularyListLicenseAuditErrors];
+
+export type VocabularyListLicenseAuditResponses = {
+    /**
+     * Response Vocabulary-List License Audit
+     *
+     * Successful Response
+     */
+    200: Array<VocabularyLicenseAuditItem>;
+};
+
+export type VocabularyListLicenseAuditResponse = VocabularyListLicenseAuditResponses[200 & keyof VocabularyListLicenseAuditResponses];
+
+export type VocabularyExportLicenseCsvData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/vocabulary/license/export.csv';
+};
+
+export type VocabularyExportLicenseCsvResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type VocabularyListBookVersionsData = {
+    body?: never;
+    path: {
+        /**
+         * Book Id
+         */
+        book_id: string;
+    };
+    query?: never;
+    url: '/api/v1/vocabulary/books/{book_id}/versions';
+};
+
+export type VocabularyListBookVersionsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyListBookVersionsError = VocabularyListBookVersionsErrors[keyof VocabularyListBookVersionsErrors];
+
+export type VocabularyListBookVersionsResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyBookVersionList;
+};
+
+export type VocabularyListBookVersionsResponse = VocabularyListBookVersionsResponses[200 & keyof VocabularyListBookVersionsResponses];
+
+export type VocabularyCompareBookVersionsData = {
+    body?: never;
+    path: {
+        /**
+         * Book Id
+         */
+        book_id: string;
+    };
+    query: {
+        /**
+         * From Version
+         */
+        from_version: number;
+        /**
+         * To Version
+         */
+        to_version: number;
+    };
+    url: '/api/v1/vocabulary/books/{book_id}/versions/compare';
+};
+
+export type VocabularyCompareBookVersionsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyCompareBookVersionsError = VocabularyCompareBookVersionsErrors[keyof VocabularyCompareBookVersionsErrors];
+
+export type VocabularyCompareBookVersionsResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyVersionCompare;
+};
+
+export type VocabularyCompareBookVersionsResponse = VocabularyCompareBookVersionsResponses[200 & keyof VocabularyCompareBookVersionsResponses];
+
+export type VocabularyRollbackBookVersionData = {
+    body?: never;
+    path: {
+        /**
+         * Book Id
+         */
+        book_id: string;
+        /**
+         * Version No
+         */
+        version_no: number;
+    };
+    query?: never;
+    url: '/api/v1/vocabulary/books/{book_id}/versions/{version_no}/rollback';
+};
+
+export type VocabularyRollbackBookVersionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyRollbackBookVersionError = VocabularyRollbackBookVersionErrors[keyof VocabularyRollbackBookVersionErrors];
+
+export type VocabularyRollbackBookVersionResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyBookVersionEntry;
+};
+
+export type VocabularyRollbackBookVersionResponse = VocabularyRollbackBookVersionResponses[200 & keyof VocabularyRollbackBookVersionResponses];
+
 export type VocabularyListAssignmentsData = {
     body?: never;
     path: {
@@ -17732,6 +18384,56 @@ export type AdminAdminVocabularyReviewAuditResponses = {
 };
 
 export type AdminAdminVocabularyReviewAuditResponse = AdminAdminVocabularyReviewAuditResponses[200 & keyof AdminAdminVocabularyReviewAuditResponses];
+
+export type AdminAdminListLicenseAuditData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Book Id
+         */
+        book_id?: string | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/admin/vocabulary/license/audit';
+};
+
+export type AdminAdminListLicenseAuditErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminAdminListLicenseAuditError = AdminAdminListLicenseAuditErrors[keyof AdminAdminListLicenseAuditErrors];
+
+export type AdminAdminListLicenseAuditResponses = {
+    /**
+     * Response Admin-Admin List License Audit
+     *
+     * Successful Response
+     */
+    200: Array<VocabularyLicenseAuditItem>;
+};
+
+export type AdminAdminListLicenseAuditResponse = AdminAdminListLicenseAuditResponses[200 & keyof AdminAdminListLicenseAuditResponses];
+
+export type AdminAdminExportLicenseCsvData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/vocabulary/license/export.csv';
+};
+
+export type AdminAdminExportLicenseCsvResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
 
 export type ChangelogReadChangelogData = {
     body?: never;
