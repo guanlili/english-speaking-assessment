@@ -93,6 +93,9 @@ describe("PkTeacherPanel", () => {
   it("开放大厅：展示等待玩家与进行中对局比分，表单锁定并出现关厅按钮", async () => {
     vi.spyOn(VocabularyService, "readPkLobby").mockResolvedValue(OPEN_LOBBY)
     vi.spyOn(VocabularyService, "listBooks").mockResolvedValue(BOOKS)
+    vi.spyOn(VocabularyService, "readPkHistory").mockResolvedValue({
+      matches: [],
+    })
 
     renderPanel()
 
@@ -106,13 +109,16 @@ describe("PkTeacherPanel", () => {
     expect(screen.getByText("开放中")).toBeInTheDocument()
     expect(screen.getByText("关闭大厅")).toBeInTheDocument()
     expect(screen.queryByText("开启大厅")).not.toBeInTheDocument()
-    // 开启期间配置表单锁定
-    expect(screen.getByRole("combobox")).toBeDisabled()
+    // 开启期间配置表单锁定（首个下拉为词库选择；历史条数下拉在历史区块）
+    expect(screen.getAllByRole("combobox")[0]).toBeDisabled()
   })
 
   it("关闭大厅：展示开厅按钮，未选词库时不可开启", async () => {
     vi.spyOn(VocabularyService, "readPkLobby").mockResolvedValue(CLOSED_LOBBY)
     vi.spyOn(VocabularyService, "listBooks").mockResolvedValue(BOOKS)
+    vi.spyOn(VocabularyService, "readPkHistory").mockResolvedValue({
+      matches: [],
+    })
 
     renderPanel()
 

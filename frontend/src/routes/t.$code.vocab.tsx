@@ -10,17 +10,21 @@ import {
   ListChecks,
   ShieldCheck,
   SpellCheck,
+  Sprout,
   Swords,
+  TrendingUp,
   Trophy,
 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { ApiError, ClassesService, VocabularyService } from "@/client"
 import { VocabModuleSwitcher } from "@/components/Teaching/VocabModuleSwitcher"
 import { AssignPanel } from "@/components/Teaching/VocabTasks/AssignPanel"
+import { FarmTeacherPanel } from "@/components/Teaching/VocabTasks/FarmTeacherPanel"
 import { LeaderboardTeacherPanel } from "@/components/Teaching/VocabTasks/LeaderboardTeacherPanel"
 import { PkTeacherPanel } from "@/components/Teaching/VocabTasks/PkTeacherPanel"
 import { PlacementTeacherPanel } from "@/components/Teaching/VocabTasks/PlacementTeacherPanel"
 import { ResultsPanel } from "@/components/Teaching/VocabTasks/ResultsPanel"
+import { TrendTeacherPanel } from "@/components/Teaching/VocabTasks/TrendTeacherPanel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -32,15 +36,33 @@ import { formatDateTime } from "@/lib/time"
 
 export const Route = createFileRoute("/t/$code/vocab")({
   component: TeacherVocabPage,
+  validateSearch: (search: Record<string, unknown>): { tab?: string } => {
+    const tab = search.tab
+    return typeof tab === "string" && tab !== "" ? { tab } : {}
+  },
   head: () => ({
     meta: [{ title: `词汇任务 / Vocabulary Tasks - ${APP_NAME}` }],
   }),
 })
 
+const VOCAB_TABS = [
+  "assign",
+  "results",
+  "trend",
+  "placement",
+  "pk",
+  "farm",
+  "review",
+  "leaderboard",
+] as const
+
+type VocabTab = (typeof VOCAB_TABS)[number]
+
 function TeacherVocabPage() {
   const { t, lang } = useI18n()
   const { code } = useParams({ from: "/t/$code/vocab" })
   const navigate = useNavigate()
+  const search = Route.useSearch()
   const { hasModule, isPending: modulesPending } = useModules()
   // 未购词汇模块：教师直连拦截，回课堂列表；服务端闸门为最终裁决。
   useEffect(() => {
@@ -48,9 +70,11 @@ function TeacherVocabPage() {
       void navigate({ to: "/classrooms" })
     }
   }, [modulesPending, hasModule, navigate])
-  const [tab, setTab] = useState<
-    "assign" | "results" | "placement" | "pk" | "review" | "leaderboard"
-  >("assign")
+  const [tab, setTab] = useState<VocabTab>(() =>
+    VOCAB_TABS.includes(search.tab as VocabTab)
+      ? (search.tab as VocabTab)
+      : "assign",
+  )
   // 待审数量由审核面板数据回报（不另写 API URL）；>0 时在 tab 徽章提示
   const [pendingCount, setPendingCount] = useState(0)
   // 查看哪一期：null = 当前进行中（后端默认最新发布）；任务列表点击后切换
@@ -295,6 +319,15 @@ function TeacherVocabPage() {
           {t({ zh: "完成情况", en: "Results" })}
         </Button>
         <Button
+          variant={tab === "trend" ? "default" : "outline"}
+          size="sm"
+          aria-pressed={tab === "trend"}
+          onClick={() => setTab("trend")}
+        >
+          <TrendingUp />
+          {t({ zh: "趋势", en: "Trends" })}
+        </Button>
+        <Button
           variant={tab === "placement" ? "default" : "outline"}
           size="sm"
           aria-pressed={tab === "placement"}
@@ -311,6 +344,15 @@ function TeacherVocabPage() {
         >
           <Swords />
           {t({ zh: "PK 对战", en: "PK Battle" })}
+        </Button>
+        <Button
+          variant={tab === "farm" ? "default" : "outline"}
+          size="sm"
+          aria-pressed={tab === "farm"}
+          onClick={() => setTab("farm")}
+        >
+          <Sprout />
+          {t({ zh: "农场", en: "Farm" })}
         </Button>
         <Button
           variant={tab === "leaderboard" ? "default" : "outline"}
@@ -343,8 +385,12 @@ function TeacherVocabPage() {
           classroomId={classroomId}
           onGoReview={() => setTab("review")}
         />
+      ) : tab === "trend" ? (
+        <TrendTeacherPanel code={code} />
       ) : tab === "pk" ? (
         <PkTeacherPanel code={code} />
+      ) : tab === "farm" ? (
+        <FarmTeacherPanel code={code} />
       ) : tab === "leaderboard" ? (
         <LeaderboardTeacherPanel code={code} />
       ) : tab === "placement" ? (

@@ -1,0 +1,115 @@
+{
+  "evidenceBatch": "517-vocab-governance-trends-20261125",
+  "proxiedThrough": "http://127.0.0.1:5175/api/v1",
+  "generatedAt": "2026-11-25T07:14:57.338Z",
+  "note": "Probes executed read-only through the vite dev proxy. No rollback, no license save, no DB write. Token not persisted.",
+  "login": {
+    "status": 200,
+    "role": "school_admin",
+    "schoolParam": "vocabdemo",
+    "tenantIdSuffix": "bcb34731",
+    "tenantMatch": "matched: login under school=vocabdemo succeeded and /users/me resolves to the demo tenant",
+    "tokenStoredInEvidence": false
+  },
+  "probes": {
+    "alerts": {
+      "endpoint": "/vocabulary/license/alerts?days=30",
+      "status": 200,
+      "days": 30,
+      "count": 11,
+      "statuses": [
+        "expired"
+      ],
+      "hasExpired": true,
+      "expiredCount": 11,
+      "expiringCount": 0
+    },
+    "books": {
+      "endpoint": "/vocabulary/books",
+      "status": 200,
+      "total": 7,
+      "demoPrefixedCount": 7,
+      "sourceTypes": [
+        "demo",
+        "textbook",
+        "licensed"
+      ]
+    },
+    "expiredBookLicense": {
+      "endpoint": "/vocabulary/books/{id}/license (resolved by title: [DEMO] 过期授权词库)",
+      "status": 200,
+      "title": "[DEMO] 过期授权词库",
+      "idSuffix": "81fe64a4",
+      "sourceType": "licensed",
+      "licenseOwner": "演示授权方（DEMO）",
+      "licenseRef": "DEMO-LICENSED-EXPIRED",
+      "licenseExpiresAt": "2026-10-26T00:00:00Z",
+      "fieldsComplete": true
+    },
+    "versions": {
+      "endpoint": "/vocabulary/books/{id}/versions ([DEMO] KET 演示词库)",
+      "status": 200,
+      "title": "[DEMO] KET 演示词库",
+      "idSuffix": "60e2709d",
+      "total": 3,
+      "versionNos": [
+        1,
+        2,
+        3
+      ]
+    },
+    "compare": {
+      "endpoint": "/vocabulary/books/{id}/versions/compare?from_version=1&to_version=2",
+      "status": 200,
+      "fromVersion": 1,
+      "toVersion": 2,
+      "added": 4,
+      "removed": 0,
+      "changed": 1,
+      "changedDimensions": [
+        "meaning",
+        "example"
+      ]
+    },
+    "audit": {
+      "endpoint": "/vocabulary/license/audit",
+      "status": 200,
+      "count": 3,
+      "fields": [
+        "id",
+        "target_type",
+        "book_id",
+        "word_id",
+        "actor_id",
+        "actor_name",
+        "actor_role",
+        "changes",
+        "note",
+        "created_at",
+        "tenant_slug",
+        "tenant_name"
+      ]
+    },
+    "csv": {
+      "endpoint": "/vocabulary/license/export.csv",
+      "status": 200,
+      "contentType": "text/csv; charset=utf-8",
+      "contentDisposition": "attachment; filename=\"vocabulary-license.csv\"",
+      "hasUtf8Bom": true,
+      "headerRow": "词库/词条,source_type,授权方,凭证,到期日,状态\r",
+      "headerFields": [
+        "词库/词条",
+        "source_type",
+        "授权方",
+        "凭证",
+        "到期日",
+        "状态"
+      ]
+    }
+  },
+  "writeOperations": {
+    "rollbackExecuted": false,
+    "licenseSaveExecuted": false,
+    "note": "This batch opened the rollback confirm dialog and cancelled it; no version rollback or license save was issued. Rollback creates a new version, preserves history, and does not alter published task snapshots; permission and non-destructiveness are covered by backend tests, not exercised against demo data here."
+  }
+}

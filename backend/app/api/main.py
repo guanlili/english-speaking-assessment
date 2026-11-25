@@ -28,6 +28,7 @@ from app.api.routes import (
     vocab_ai,
     vocab_levels,
     vocabulary,
+    vocabulary_governance,
     vocabulary_reviews,
 )
 
@@ -60,4 +61,5 @@ api_router.include_router(vocab_levels.router)
 api_router.include_router(vocab_ai.router)
 api_router.include_router(vocabulary_reviews.router)
 api_router.include_router(vocabulary_reviews.admin_router)
+api_router.include_router(vocabulary_governance.admin_router)
 api_router.include_router(changelog.router)

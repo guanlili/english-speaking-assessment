@@ -10,11 +10,12 @@
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.core.config import settings
 from app.models import (
@@ -29,8 +30,11 @@ from app.models import (
     HARVEST_XP,
     MATURE_POINTS,
     STAGE_THRESHOLDS,
+    FarmBadgeCount,
     FarmBadgePublic,
+    FarmBoardSummary,
     FarmHarvestResult,
+    FarmTopHarvester,
     FarmView,
     Student,
     StudentBadge,
@@ -210,4 +214,75 @@ def harvest(
         harvest_count=plot.harvest_count,
         newly_awarded=newly_awarded,
         badges=_badge_publics(session, student.id),
+    )
+
+
+# ── 教师端班级聚合摘要（只读；不改 XP/徽章/streak/plot）───────────────
+
+
+def teacher_summary(session: Session, students: Sequence[Student]) -> FarmBoardSummary:
+    """本班在册学生的农场聚合：地块参与/成熟/累计收获、徽章分布与收获榜。
+
+    地块按登录账号 ``user_id`` 跨班连续；这里只归集当前在册学生名下地块，
+    跨班地块不重复计入。徽章读既有 ``student_badge`` 账本，不重建第二套。
+    """
+    user_to_student = {s.user_id: s for s in students if s.user_id is not None}
+    if not user_to_student:
+        return FarmBoardSummary()
+
+    plots = list(
+        session.exec(
+            select(VocabFarmPlot).where(
+                col(VocabFarmPlot.user_id).in_(list(user_to_student))  # type: ignore[arg-type]
+            )
+        ).all()
+    )
+    participants = len(plots)
+    mature_plots = sum(1 for p in plots if p.growth_points >= MATURE_POINTS)
+    harvested_total = sum(p.harvest_count for p in plots)
+
+    student_ids = [s.id for s in students]
+    badge_counts: dict[str, int] = {}
+    if student_ids:
+        badge_rows = session.exec(
+            select(StudentBadge).where(
+                col(StudentBadge.student_id).in_(student_ids)  # type: ignore[arg-type]
+            )
+        ).all()
+        for row in badge_rows:
+            badge_counts[row.badge_key] = badge_counts.get(row.badge_key, 0) + 1
+
+    badge_items: list[FarmBadgeCount] = []
+    for key, count in sorted(badge_counts.items(), key=lambda kv: (-kv[1], kv[0])):
+        defn = BADGE_BY_KEY.get(key)
+        badge_items.append(
+            FarmBadgeCount(
+                key=key,
+                label=defn.label if defn is not None else key,
+                count=count,
+            )
+        )
+
+    ranked = sorted(
+        plots,
+        key=lambda p: (
+            -p.harvest_count,
+            p.last_harvested_at or p.created_at or datetime.now(UTC),
+        ),
+    )
+    top_harvesters = [
+        FarmTopHarvester(
+            display_name=user_to_student[p.user_id].display_name,
+            harvest_count=p.harvest_count,
+        )
+        for p in ranked[:5]
+        if p.harvest_count > 0 and p.user_id in user_to_student
+    ]
+
+    return FarmBoardSummary(
+        participants=participants,
+        mature_plots=mature_plots,
+        harvested_total=harvested_total,
+        badge_counts=badge_items,
+        top_harvesters=top_harvesters,
     )

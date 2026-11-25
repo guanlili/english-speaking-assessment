@@ -481,6 +481,8 @@ export type BoardData = {
      * Homework Exercise Id
      */
     homework_exercise_id?: string | null;
+    vocabulary_pk?: PkBoardSummary | null;
+    vocabulary_farm?: FarmBoardSummary | null;
 };
 
 /**
@@ -2481,6 +2483,26 @@ export type ExpressionFavoritePublic = {
 };
 
 /**
+ * FarmBadgeCount
+ *
+ * 班级徽章分布项：既有 ``student_badge`` 账本按 key 聚合的在册人数。
+ */
+export type FarmBadgeCount = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Count
+     */
+    count?: number;
+};
+
+/**
  * FarmBadgePublic
  *
  * 徽章展示项：带来源标注（只读，不参与任何结算口径）。
@@ -2506,6 +2528,37 @@ export type FarmBadgePublic = {
      * Source
      */
     source?: string;
+};
+
+/**
+ * FarmBoardSummary
+ *
+ * 课堂看板专注农场摘要（教师端只读聚合；不改 XP/徽章/streak/plot）。
+ *
+ * 地块按登录账号跨班连续；这里只统计当前在册学生名下地块，跨班地块
+ * 不重复计入。vocabulary 模块未开通时整段为 ``None``。
+ */
+export type FarmBoardSummary = {
+    /**
+     * Participants
+     */
+    participants?: number;
+    /**
+     * Mature Plots
+     */
+    mature_plots?: number;
+    /**
+     * Harvested Total
+     */
+    harvested_total?: number;
+    /**
+     * Badge Counts
+     */
+    badge_counts?: Array<FarmBadgeCount>;
+    /**
+     * Top Harvesters
+     */
+    top_harvesters?: Array<FarmTopHarvester>;
 };
 
 /**
@@ -2546,6 +2599,22 @@ export type FarmHarvestResult = {
      * Badges
      */
     badges?: Array<FarmBadgePublic>;
+};
+
+/**
+ * FarmTopHarvester
+ *
+ * 收获榜条目（教师看板，展示本班在册学生显示名；最多 5 人）。
+ */
+export type FarmTopHarvester = {
+    /**
+     * Display Name
+     */
+    display_name: string;
+    /**
+     * Harvest Count
+     */
+    harvest_count?: number;
 };
 
 /**
@@ -3741,6 +3810,85 @@ export type PkAnswerRequest = {
 };
 
 /**
+ * PkBoardLastMatch
+ *
+ * 看板 PK 最近一场精简摘要：时间、玩家显示名、比分/胜者。
+ */
+export type PkBoardLastMatch = {
+    /**
+     * At
+     */
+    at?: string | null;
+    /**
+     * Winner Display Name
+     */
+    winner_display_name?: string | null;
+    /**
+     * Winner Student Id
+     */
+    winner_student_id?: string | null;
+    /**
+     * Players
+     */
+    players?: Array<PkBoardLastMatchPlayer>;
+};
+
+/**
+ * PkBoardLastMatchPlayer
+ *
+ * 看板 PK 最近一场的单侧摘要：显示名、比分与胜负结果。
+ */
+export type PkBoardLastMatchPlayer = {
+    /**
+     * Student Id
+     */
+    student_id: string;
+    /**
+     * Display Name
+     */
+    display_name?: string | null;
+    /**
+     * Score
+     */
+    score?: number;
+    /**
+     * Result
+     */
+    result?: string;
+};
+
+/**
+ * PkBoardSummary
+ *
+ * 课堂看板 PK 摘要（教师端只读；开厅仍走既有教师 PK 面板，这里不提供写操作）。
+ *
+ * vocabulary 模块未开通时整段为 ``None``；不混入任务首答/掌握度/趋势口径。
+ */
+export type PkBoardSummary = {
+    /**
+     * Open
+     */
+    open?: boolean;
+    /**
+     * Queue Count
+     */
+    queue_count?: number;
+    /**
+     * Active Match Count
+     */
+    active_match_count?: number;
+    /**
+     * Matches This Week
+     */
+    matches_this_week?: number;
+    /**
+     * Last Match At
+     */
+    last_match_at?: string | null;
+    last_match?: PkBoardLastMatch | null;
+};
+
+/**
  * PkChoice
  */
 export type PkChoice = {
@@ -3764,6 +3912,114 @@ export type PkChoice = {
      * Is Answer
      */
     is_answer?: boolean;
+};
+
+/**
+ * PkHistoryList
+ *
+ * GET /classes/{code}/vocabulary/pk/history 响应。
+ */
+export type PkHistoryList = {
+    /**
+     * Matches
+     */
+    matches?: Array<PkHistoryMatch>;
+};
+
+/**
+ * PkHistoryMatch
+ *
+ * 教师端历史对局一行：仅已结束/已放弃对局，只读回看。
+ */
+export type PkHistoryMatch = {
+    /**
+     * Match Id
+     */
+    match_id: string;
+    /**
+     * Lobby Id
+     */
+    lobby_id: string;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Question Count
+     */
+    question_count: number;
+    /**
+     * Per Question Seconds
+     */
+    per_question_seconds: number;
+    /**
+     * Book Id
+     */
+    book_id?: string | null;
+    /**
+     * Book Title
+     */
+    book_title?: string | null;
+    /**
+     * Started At
+     */
+    started_at?: string | null;
+    /**
+     * Finished At
+     */
+    finished_at?: string | null;
+    /**
+     * End Reason
+     */
+    end_reason?: string | null;
+    /**
+     * Winner Display Name
+     */
+    winner_display_name?: string | null;
+    /**
+     * Winner Student Id
+     */
+    winner_student_id?: string | null;
+    /**
+     * Players
+     */
+    players?: Array<PkHistoryPlayer>;
+};
+
+/**
+ * PkHistoryPlayer
+ *
+ * 教师端历史对局单侧记录：比分、作答统计与胜负结果。
+ */
+export type PkHistoryPlayer = {
+    /**
+     * Student Id
+     */
+    student_id: string;
+    /**
+     * Display Name
+     */
+    display_name?: string | null;
+    /**
+     * Score
+     */
+    score?: number;
+    /**
+     * Correct Count
+     */
+    correct_count?: number;
+    /**
+     * Answered Count
+     */
+    answered_count?: number;
+    /**
+     * Total Seconds
+     */
+    total_seconds?: number;
+    /**
+     * Result
+     */
+    result?: string;
 };
 
 /**
@@ -7271,6 +7527,27 @@ export type VocabularyBookDetail = {
 };
 
 /**
+ * VocabularyBookLicenseDetail
+ *
+ * 按词库读取授权：词库级信息 + 词条级授权清单。
+ */
+export type VocabularyBookLicenseDetail = {
+    /**
+     * Book Id
+     */
+    book_id: string;
+    /**
+     * Title
+     */
+    title: string;
+    license: VocabularyLicenseInfo;
+    /**
+     * Words
+     */
+    words?: Array<VocabularyWordLicenseItem>;
+};
+
+/**
  * VocabularyBookPublic
  */
 export type VocabularyBookPublic = {
@@ -7328,6 +7605,64 @@ export type VocabularyBookUpdate = {
      * Status
      */
     status?: string | null;
+};
+
+/**
+ * VocabularyBookVersionEntry
+ *
+ * 版本列表单行（不含完整快照内容）。
+ */
+export type VocabularyBookVersionEntry = {
+    /**
+     * Version No
+     */
+    version_no: number;
+    /**
+     * Action
+     */
+    action: string;
+    /**
+     * Summary
+     */
+    summary?: string | null;
+    /**
+     * Content Hash
+     */
+    content_hash: string;
+    /**
+     * Actor Id
+     */
+    actor_id?: string | null;
+    /**
+     * Actor Name
+     */
+    actor_name?: string | null;
+    /**
+     * Actor Role
+     */
+    actor_role?: string | null;
+    /**
+     * Word Count
+     */
+    word_count?: number;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+};
+
+/**
+ * VocabularyBookVersionList
+ */
+export type VocabularyBookVersionList = {
+    /**
+     * Items
+     */
+    items?: Array<VocabularyBookVersionEntry>;
+    /**
+     * Total
+     */
+    total?: number;
 };
 
 /**
@@ -7892,6 +8227,186 @@ export type VocabularyLevelStats = {
      * Total Sources
      */
     total_sources?: number;
+};
+
+/**
+ * VocabularyLicenseAlertItem
+ *
+ * 到期提醒单行：临期 / 已过期的词库或词条。
+ */
+export type VocabularyLicenseAlertItem = {
+    /**
+     * Target Type
+     */
+    target_type: string;
+    /**
+     * Book Id
+     */
+    book_id: string;
+    /**
+     * Book Title
+     */
+    book_title: string;
+    /**
+     * Word Id
+     */
+    word_id?: string | null;
+    /**
+     * Headword
+     */
+    headword?: string | null;
+    /**
+     * Source Type
+     */
+    source_type: string;
+    /**
+     * License Owner
+     */
+    license_owner?: string | null;
+    /**
+     * License Ref
+     */
+    license_ref?: string | null;
+    /**
+     * License Expires At
+     */
+    license_expires_at?: string | null;
+    /**
+     * Authorization Doc Url
+     */
+    authorization_doc_url?: string | null;
+    /**
+     * License Status
+     */
+    license_status: string;
+};
+
+/**
+ * VocabularyLicenseAuditItem
+ *
+ * 授权变更审计单行。
+ */
+export type VocabularyLicenseAuditItem = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Target Type
+     */
+    target_type: string;
+    /**
+     * Book Id
+     */
+    book_id?: string | null;
+    /**
+     * Word Id
+     */
+    word_id?: string | null;
+    /**
+     * Actor Id
+     */
+    actor_id?: string | null;
+    /**
+     * Actor Name
+     */
+    actor_name?: string | null;
+    /**
+     * Actor Role
+     */
+    actor_role?: string | null;
+    /**
+     * Changes
+     */
+    changes?: {
+        [key: string]: {
+            [key: string]: string | null;
+        };
+    };
+    /**
+     * Note
+     */
+    note?: string | null;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+    /**
+     * Tenant Slug
+     */
+    tenant_slug?: string | null;
+    /**
+     * Tenant Name
+     */
+    tenant_name?: string | null;
+};
+
+/**
+ * VocabularyLicenseInfo
+ *
+ * 授权信息（词库级或词条级通用视图）。
+ */
+export type VocabularyLicenseInfo = {
+    /**
+     * Source Type
+     */
+    source_type: string;
+    /**
+     * License Owner
+     */
+    license_owner?: string | null;
+    /**
+     * License Ref
+     */
+    license_ref?: string | null;
+    /**
+     * License Expires At
+     */
+    license_expires_at?: string | null;
+    /**
+     * Authorization Doc Url
+     */
+    authorization_doc_url?: string | null;
+    /**
+     * License Note
+     */
+    license_note?: string | null;
+    /**
+     * License Status
+     */
+    license_status: string;
+};
+
+/**
+ * VocabularyLicenseUpdate
+ *
+ * 授权信息更新请求；缺省字段不修改，可空字段传 null 清空。
+ */
+export type VocabularyLicenseUpdate = {
+    /**
+     * Source Type
+     */
+    source_type?: string | null;
+    /**
+     * License Owner
+     */
+    license_owner?: string | null;
+    /**
+     * License Ref
+     */
+    license_ref?: string | null;
+    /**
+     * License Expires At
+     */
+    license_expires_at?: string | null;
+    /**
+     * Authorization Doc Url
+     */
+    authorization_doc_url?: string | null;
+    /**
+     * License Note
+     */
+    license_note?: string | null;
 };
 
 /**
@@ -9279,6 +9794,190 @@ export type VocabularyTodayPlan = {
 };
 
 /**
+ * VocabularyTrendPeriod
+ *
+ * 单个统计周期（周/月）的聚合结果。
+ *
+ * 区间为**闭区间**：``period_start`` 00:00:00 至 ``period_end`` 23:59:59
+ * （Asia/Shanghai）。``completion_rate`` / ``first_accuracy`` 在无目标 /
+ * 无首答时返回 ``null``，不折算 0%。
+ *
+ * ``due_unreviewed`` 按**当前** ``VocabularyReviewState`` 回算（词 × 能力
+ * 条目数，非去重词数）；历史周期的到期状态不做历史还原，仅作教学参考。
+ */
+export type VocabularyTrendPeriod = {
+    /**
+     * Period Start
+     */
+    period_start: string;
+    /**
+     * Period End
+     */
+    period_end: string;
+    /**
+     * Assigned Targets
+     */
+    assigned_targets?: number;
+    /**
+     * Completed Targets
+     */
+    completed_targets?: number;
+    /**
+     * Completion Rate
+     */
+    completion_rate?: number | null;
+    /**
+     * First Answered
+     */
+    first_answered?: number;
+    /**
+     * First Correct
+     */
+    first_correct?: number;
+    /**
+     * First Accuracy
+     */
+    first_accuracy?: number | null;
+    /**
+     * Low Count
+     */
+    low_count?: number;
+    /**
+     * Mid Count
+     */
+    mid_count?: number;
+    /**
+     * High Count
+     */
+    high_count?: number;
+    /**
+     * No Data Count
+     */
+    no_data_count?: number;
+    /**
+     * Due Unreviewed
+     */
+    due_unreviewed?: number;
+};
+
+/**
+ * VocabularyTrendReport
+ *
+ * GET /classes/{code}/vocabulary/trend。
+ *
+ * ``teaching_reference`` 固定为 ``true``：趋势为教学参考，不是考试分数或
+ * 能力认证。
+ */
+export type VocabularyTrendReport = {
+    /**
+     * Classroom Code
+     */
+    classroom_code: string;
+    /**
+     * Granularity
+     */
+    granularity: string;
+    /**
+     * Periods
+     */
+    periods: number;
+    /**
+     * Anchor
+     */
+    anchor?: string | null;
+    /**
+     * Generated At
+     */
+    generated_at: string;
+    /**
+     * Book Id
+     */
+    book_id?: string | null;
+    /**
+     * Prompt Type
+     */
+    prompt_type?: string | null;
+    /**
+     * Teaching Reference
+     */
+    teaching_reference?: boolean;
+    /**
+     * Items
+     */
+    items?: Array<VocabularyTrendPeriod>;
+};
+
+/**
+ * VocabularyVersionCompare
+ */
+export type VocabularyVersionCompare = {
+    /**
+     * Book Id
+     */
+    book_id: string;
+    /**
+     * From Version No
+     */
+    from_version_no: number;
+    /**
+     * To Version No
+     */
+    to_version_no: number;
+    /**
+     * Added
+     */
+    added?: Array<VocabularyVersionDiffEntry>;
+    /**
+     * Removed
+     */
+    removed?: Array<VocabularyVersionDiffEntry>;
+    /**
+     * Changed
+     */
+    changed?: Array<VocabularyVersionDiffEntry>;
+    /**
+     * Total Changed
+     */
+    total_changed?: number;
+};
+
+/**
+ * VocabularyVersionDiffEntry
+ *
+ * 词条级对比单行：新增 / 删除 / 变更（含变更维度与前后条目）。
+ */
+export type VocabularyVersionDiffEntry = {
+    /**
+     * Word Id
+     */
+    word_id: string;
+    /**
+     * Headword
+     */
+    headword: string;
+    /**
+     * Change Kind
+     */
+    change_kind: string;
+    /**
+     * Fields
+     */
+    fields?: Array<string>;
+    /**
+     * From Entry
+     */
+    from_entry?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * To Entry
+     */
+    to_entry?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
  * VocabularyWordIn
  *
  * 创建/导入词条的请求体（词库内新增词）。
@@ -9318,6 +10017,50 @@ export type VocabularyWordIn = {
     morphology?: Array<{
         [key: string]: string;
     }> | null;
+};
+
+/**
+ * VocabularyWordLicenseItem
+ *
+ * 词库授权详情中的词条级授权行。
+ */
+export type VocabularyWordLicenseItem = {
+    /**
+     * Word Id
+     */
+    word_id: string;
+    /**
+     * Headword
+     */
+    headword: string;
+    /**
+     * Source Type
+     */
+    source_type: string;
+    /**
+     * License Owner
+     */
+    license_owner?: string | null;
+    /**
+     * License Ref
+     */
+    license_ref?: string | null;
+    /**
+     * License Expires At
+     */
+    license_expires_at?: string | null;
+    /**
+     * Authorization Doc Url
+     */
+    authorization_doc_url?: string | null;
+    /**
+     * License Note
+     */
+    license_note?: string | null;
+    /**
+     * License Status
+     */
+    license_status: string;
 };
 
 /**
@@ -15769,6 +16512,285 @@ export type VocabularyUpdateWordResponses = {
 
 export type VocabularyUpdateWordResponse = VocabularyUpdateWordResponses[200 & keyof VocabularyUpdateWordResponses];
 
+export type VocabularyReadBookLicenseData = {
+    body?: never;
+    path: {
+        /**
+         * Book Id
+         */
+        book_id: string;
+    };
+    query?: never;
+    url: '/api/v1/vocabulary/books/{book_id}/license';
+};
+
+export type VocabularyReadBookLicenseErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadBookLicenseError = VocabularyReadBookLicenseErrors[keyof VocabularyReadBookLicenseErrors];
+
+export type VocabularyReadBookLicenseResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyBookLicenseDetail;
+};
+
+export type VocabularyReadBookLicenseResponse = VocabularyReadBookLicenseResponses[200 & keyof VocabularyReadBookLicenseResponses];
+
+export type VocabularyUpdateBookLicenseData = {
+    body: VocabularyLicenseUpdate;
+    path: {
+        /**
+         * Book Id
+         */
+        book_id: string;
+    };
+    query?: never;
+    url: '/api/v1/vocabulary/books/{book_id}/license';
+};
+
+export type VocabularyUpdateBookLicenseErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyUpdateBookLicenseError = VocabularyUpdateBookLicenseErrors[keyof VocabularyUpdateBookLicenseErrors];
+
+export type VocabularyUpdateBookLicenseResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyBookLicenseDetail;
+};
+
+export type VocabularyUpdateBookLicenseResponse = VocabularyUpdateBookLicenseResponses[200 & keyof VocabularyUpdateBookLicenseResponses];
+
+export type VocabularyUpdateWordLicenseData = {
+    body: VocabularyLicenseUpdate;
+    path: {
+        /**
+         * Word Id
+         */
+        word_id: string;
+    };
+    query?: never;
+    url: '/api/v1/vocabulary/words/{word_id}/license';
+};
+
+export type VocabularyUpdateWordLicenseErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyUpdateWordLicenseError = VocabularyUpdateWordLicenseErrors[keyof VocabularyUpdateWordLicenseErrors];
+
+export type VocabularyUpdateWordLicenseResponses = {
+    /**
+     * Response Vocabulary-Update Word License
+     *
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type VocabularyListLicenseAlertsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Days
+         */
+        days?: number;
+    };
+    url: '/api/v1/vocabulary/license/alerts';
+};
+
+export type VocabularyListLicenseAlertsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyListLicenseAlertsError = VocabularyListLicenseAlertsErrors[keyof VocabularyListLicenseAlertsErrors];
+
+export type VocabularyListLicenseAlertsResponses = {
+    /**
+     * Response Vocabulary-List License Alerts
+     *
+     * Successful Response
+     */
+    200: Array<VocabularyLicenseAlertItem>;
+};
+
+export type VocabularyListLicenseAlertsResponse = VocabularyListLicenseAlertsResponses[200 & keyof VocabularyListLicenseAlertsResponses];
+
+export type VocabularyListLicenseAuditData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Book Id
+         */
+        book_id?: string | null;
+        /**
+         * Word Id
+         */
+        word_id?: string | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/vocabulary/license/audit';
+};
+
+export type VocabularyListLicenseAuditErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyListLicenseAuditError = VocabularyListLicenseAuditErrors[keyof VocabularyListLicenseAuditErrors];
+
+export type VocabularyListLicenseAuditResponses = {
+    /**
+     * Response Vocabulary-List License Audit
+     *
+     * Successful Response
+     */
+    200: Array<VocabularyLicenseAuditItem>;
+};
+
+export type VocabularyListLicenseAuditResponse = VocabularyListLicenseAuditResponses[200 & keyof VocabularyListLicenseAuditResponses];
+
+export type VocabularyExportLicenseCsvData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/vocabulary/license/export.csv';
+};
+
+export type VocabularyExportLicenseCsvResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type VocabularyListBookVersionsData = {
+    body?: never;
+    path: {
+        /**
+         * Book Id
+         */
+        book_id: string;
+    };
+    query?: never;
+    url: '/api/v1/vocabulary/books/{book_id}/versions';
+};
+
+export type VocabularyListBookVersionsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyListBookVersionsError = VocabularyListBookVersionsErrors[keyof VocabularyListBookVersionsErrors];
+
+export type VocabularyListBookVersionsResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyBookVersionList;
+};
+
+export type VocabularyListBookVersionsResponse = VocabularyListBookVersionsResponses[200 & keyof VocabularyListBookVersionsResponses];
+
+export type VocabularyCompareBookVersionsData = {
+    body?: never;
+    path: {
+        /**
+         * Book Id
+         */
+        book_id: string;
+    };
+    query: {
+        /**
+         * From Version
+         */
+        from_version: number;
+        /**
+         * To Version
+         */
+        to_version: number;
+    };
+    url: '/api/v1/vocabulary/books/{book_id}/versions/compare';
+};
+
+export type VocabularyCompareBookVersionsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyCompareBookVersionsError = VocabularyCompareBookVersionsErrors[keyof VocabularyCompareBookVersionsErrors];
+
+export type VocabularyCompareBookVersionsResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyVersionCompare;
+};
+
+export type VocabularyCompareBookVersionsResponse = VocabularyCompareBookVersionsResponses[200 & keyof VocabularyCompareBookVersionsResponses];
+
+export type VocabularyRollbackBookVersionData = {
+    body?: never;
+    path: {
+        /**
+         * Book Id
+         */
+        book_id: string;
+        /**
+         * Version No
+         */
+        version_no: number;
+    };
+    query?: never;
+    url: '/api/v1/vocabulary/books/{book_id}/versions/{version_no}/rollback';
+};
+
+export type VocabularyRollbackBookVersionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyRollbackBookVersionError = VocabularyRollbackBookVersionErrors[keyof VocabularyRollbackBookVersionErrors];
+
+export type VocabularyRollbackBookVersionResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyBookVersionEntry;
+};
+
+export type VocabularyRollbackBookVersionResponse = VocabularyRollbackBookVersionResponses[200 & keyof VocabularyRollbackBookVersionResponses];
+
 export type VocabularyListAssignmentsData = {
     body?: never;
     path: {
@@ -16100,6 +17122,114 @@ export type VocabularyReportQuizTabSwitchResponses = {
     200: unknown;
 };
 
+export type VocabularyGetVocabularyTrendData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query: {
+        /**
+         * Granularity
+         *
+         * week=按周；month=按月
+         */
+        granularity: string;
+        /**
+         * Periods
+         */
+        periods?: number;
+        /**
+         * Anchor
+         *
+         * 锚定日期 YYYY-MM-DD，缺省=今天
+         */
+        anchor?: string | null;
+        /**
+         * Book Id
+         *
+         * 按来源词库筛选
+         */
+        book_id?: string | null;
+        /**
+         * Prompt Type
+         *
+         * 按出题方式筛选
+         */
+        prompt_type?: string | null;
+    };
+    url: '/api/v1/classes/{code}/vocabulary/trend';
+};
+
+export type VocabularyGetVocabularyTrendErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyGetVocabularyTrendError = VocabularyGetVocabularyTrendErrors[keyof VocabularyGetVocabularyTrendErrors];
+
+export type VocabularyGetVocabularyTrendResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyTrendReport;
+};
+
+export type VocabularyGetVocabularyTrendResponse = VocabularyGetVocabularyTrendResponses[200 & keyof VocabularyGetVocabularyTrendResponses];
+
+export type VocabularyGetVocabularyTrendCsvData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query: {
+        /**
+         * Granularity
+         */
+        granularity: string;
+        /**
+         * Periods
+         */
+        periods?: number;
+        /**
+         * Anchor
+         */
+        anchor?: string | null;
+        /**
+         * Book Id
+         */
+        book_id?: string | null;
+        /**
+         * Prompt Type
+         */
+        prompt_type?: string | null;
+    };
+    url: '/api/v1/classes/{code}/vocabulary/trend.csv';
+};
+
+export type VocabularyGetVocabularyTrendCsvErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyGetVocabularyTrendCsvError = VocabularyGetVocabularyTrendCsvErrors[keyof VocabularyGetVocabularyTrendCsvErrors];
+
+export type VocabularyGetVocabularyTrendCsvResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
 export type VocabularyReadFarmData = {
     body?: never;
     path: {
@@ -16129,6 +17259,36 @@ export type VocabularyReadFarmResponses = {
 };
 
 export type VocabularyReadFarmResponse = VocabularyReadFarmResponses[200 & keyof VocabularyReadFarmResponses];
+
+export type VocabularyReadTeacherFarmSummaryData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/teacher/farm-summary';
+};
+
+export type VocabularyReadTeacherFarmSummaryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadTeacherFarmSummaryError = VocabularyReadTeacherFarmSummaryErrors[keyof VocabularyReadTeacherFarmSummaryErrors];
+
+export type VocabularyReadTeacherFarmSummaryResponses = {
+    /**
+     * Successful Response
+     */
+    200: FarmBoardSummary;
+};
+
+export type VocabularyReadTeacherFarmSummaryResponse = VocabularyReadTeacherFarmSummaryResponses[200 & keyof VocabularyReadTeacherFarmSummaryResponses];
 
 export type VocabularyHarvestFarmData = {
     body?: never;
@@ -16705,6 +17865,41 @@ export type VocabularyOpenPkLobbyResponses = {
 };
 
 export type VocabularyOpenPkLobbyResponse = VocabularyOpenPkLobbyResponses[200 & keyof VocabularyOpenPkLobbyResponses];
+
+export type VocabularyReadPkHistoryData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: {
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/classes/{code}/vocabulary/pk/history';
+};
+
+export type VocabularyReadPkHistoryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadPkHistoryError = VocabularyReadPkHistoryErrors[keyof VocabularyReadPkHistoryErrors];
+
+export type VocabularyReadPkHistoryResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkHistoryList;
+};
+
+export type VocabularyReadPkHistoryResponse = VocabularyReadPkHistoryResponses[200 & keyof VocabularyReadPkHistoryResponses];
 
 export type VocabularyClosePkLobbyData = {
     body?: never;
@@ -17732,6 +18927,56 @@ export type AdminAdminVocabularyReviewAuditResponses = {
 };
 
 export type AdminAdminVocabularyReviewAuditResponse = AdminAdminVocabularyReviewAuditResponses[200 & keyof AdminAdminVocabularyReviewAuditResponses];
+
+export type AdminAdminListLicenseAuditData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Book Id
+         */
+        book_id?: string | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/admin/vocabulary/license/audit';
+};
+
+export type AdminAdminListLicenseAuditErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminAdminListLicenseAuditError = AdminAdminListLicenseAuditErrors[keyof AdminAdminListLicenseAuditErrors];
+
+export type AdminAdminListLicenseAuditResponses = {
+    /**
+     * Response Admin-Admin List License Audit
+     *
+     * Successful Response
+     */
+    200: Array<VocabularyLicenseAuditItem>;
+};
+
+export type AdminAdminListLicenseAuditResponse = AdminAdminListLicenseAuditResponses[200 & keyof AdminAdminListLicenseAuditResponses];
+
+export type AdminAdminExportLicenseCsvData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/vocabulary/license/export.csv';
+};
+
+export type AdminAdminExportLicenseCsvResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
 
 export type ChangelogReadChangelogData = {
     body?: never;

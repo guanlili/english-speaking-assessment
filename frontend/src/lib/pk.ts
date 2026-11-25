@@ -110,6 +110,40 @@ export function pkWaitingPlayers(
   return (players ?? []).filter((player) => player.status === "waiting")
 }
 
+/** 历史对局状态归类：finished 已结束 / abandoned 已放弃 / 其他未知状态。 */
+export type PkHistoryStatusKey = "finished" | "abandoned" | "other"
+
+export function pkHistoryStatusKey(status?: string | null): PkHistoryStatusKey {
+  if (status === "finished") return "finished"
+  if (status === "abandoned") return "abandoned"
+  return "other"
+}
+
+/** 历史玩家结果归类：win 胜 / lose 负 / draw 平（空值按平局兜底）。 */
+export type PkHistoryResultKey = "win" | "lose" | "draw"
+
+export function pkHistoryResultKey(result?: string | null): PkHistoryResultKey {
+  if (result === "win") return "win"
+  if (result === "lose") return "lose"
+  return "draw"
+}
+
+/** 胜者展示名：空串/无胜者（平局、放弃）返回 null，不折算成占位文案。 */
+export function pkHistoryWinnerName(match: {
+  winner_display_name?: string | null
+}): string | null {
+  const name = match.winner_display_name?.trim()
+  return name ? name : null
+}
+
+/** 历史对局展示时间：优先结束时间，其次开始时间；都为空返回 null。 */
+export function pkHistoryTime(match: {
+  finished_at?: string | null
+  started_at?: string | null
+}): string | null {
+  return match.finished_at ?? match.started_at ?? null
+}
+
 /** 进行中对局：active 且带 match_id 的玩家按对局分组；无对局返回空数组。 */
 export function pkActiveMatches(
   players: PkPlayerSummary[] | undefined,

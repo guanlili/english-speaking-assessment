@@ -46,6 +46,7 @@ from app.models import (
     VocabularyWordPublic,
     VocabularyWordUpdate,
 )
+from app.services import vocab_governance
 from app.services import vocab_levels as vocab_levels_service
 from app.services.vocabulary import (
     MAX_BOOK_WORDS,
@@ -161,6 +162,10 @@ def create_book(
         session.add(
             VocabularyBookItem(book_id=book.id, word_id=word.id, position=position)
         )
+    # 版本快照（#517）：建库即首版
+    vocab_governance.capture_version(
+        session, book, actor=current_user, action="create", summary="创建词库"
+    )
     session.commit()
     session.refresh(book)
     items = session.exec(
@@ -312,6 +317,15 @@ def remove_book_word(
         .where(col(VocabularyBook.id) == book.id)
         .values(version=VocabularyBook.version + 1)
     )
+    removed_word = session.get(VocabularyWord, word_id)
+    # 版本快照（#517）：移除词条留一版
+    vocab_governance.capture_version(
+        session,
+        book,
+        actor=current_user,
+        action="remove_word",
+        summary=f"移除词条 {removed_word.headword}" if removed_word else "移除词条",
+    )
     session.commit()
     return {"message": "词条已从词库移除"}
 
@@ -423,12 +437,25 @@ def update_word(
 
     # 词条与所属词库版本各自 +1（并发读-改-写由调用方锁/乐观锁兜底）
     word.version += 1
-    for book_id in word_book_ids(session, word.id):
+    affected_book_ids = word_book_ids(session, word.id)
+    for book_id in affected_book_ids:
         session.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
             update(VocabularyBook)
             .where(col(VocabularyBook.id) == book_id)
             .values(version=VocabularyBook.version + 1)
         )
+    # 版本快照（#517）：内容有变更才留编辑版；纯状态改动不落无意义版本
+    if content_changed:
+        for book_id in affected_book_ids:
+            book = session.get(VocabularyBook, book_id)
+            if book is not None:
+                vocab_governance.capture_version(
+                    session,
+                    book,
+                    actor=current_user,
+                    action="edit_word",
+                    summary=f"编辑词条 {word.headword}",
+                )
     session.add(word)
     session.commit()
     session.refresh(word)

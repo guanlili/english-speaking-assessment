@@ -34,6 +34,7 @@ import {
   parseDetailCount,
   reviewStatusLabel,
 } from "@/lib/vocabContentReview"
+import { describeLicensePublishError } from "@/lib/vocabGovernance"
 import { AddWordsToBook } from "./AddWordsToBook"
 import { CreateClassroomBook } from "./CreateClassroomBook"
 
@@ -161,6 +162,11 @@ export function AssignPanel({
             ? ((error.body as { detail?: unknown }).detail ?? error.message)
             : error.message
         if (error.status === 422) {
+          const licenseError = describeLicensePublishError(detail)
+          if (licenseError) {
+            toast.error(t(licenseError))
+            return
+          }
           const notApproved = parseDetailCount(detail, CODE_NOT_APPROVED)
           if (notApproved !== null) {
             toast.error(
