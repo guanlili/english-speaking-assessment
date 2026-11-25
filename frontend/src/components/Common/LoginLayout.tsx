@@ -29,7 +29,7 @@ export function LoginLayout({ children }: { children: ReactNode }) {
     <div className="min-h-svh bg-paper font-['Avenir_Next','PingFang_SC','Hiragino_Sans_GB','Microsoft_YaHei',sans-serif] text-brand-ink dark:bg-background dark:text-foreground">
       <header className="mx-auto flex max-w-[1440px] items-center justify-between px-5 py-5 sm:px-10 lg:px-16 lg:py-6">
         <Logo asLink={false} />
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3 sm:gap-6">
           <span className="hidden border-r border-brand-ink/15 pr-6 text-xs tracking-wider text-muted-foreground sm:block dark:border-border">
             {t({ zh: "每一次开口，都是进步", en: "Every voice counts" })}
           </span>

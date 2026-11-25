@@ -189,7 +189,7 @@ export function AdvancedWordPanel({
               setExamTag(event.target.value)
               setSelected(new Set())
             }}
-            className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+            className="h-11 w-full rounded-xl border border-input bg-card px-3 text-base text-foreground sm:w-auto"
           >
             <option value="all">
               {t({ zh: "全部考试", en: "All exams" })}
@@ -210,7 +210,7 @@ export function AdvancedWordPanel({
               setCefrBand(event.target.value)
               setSelected(new Set())
             }}
-            className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+            className="h-11 w-full rounded-xl border border-input bg-card px-3 text-base text-foreground sm:w-auto"
           >
             <option value="all">
               {t({ zh: "全部档位", en: "All bands" })}
@@ -226,7 +226,7 @@ export function AdvancedWordPanel({
             onChange={(event) => setHeadword(event.target.value)}
             placeholder={t({ zh: "按词头搜索…", en: "Search headword…" })}
             aria-label={t({ zh: "按词头搜索", en: "Search by headword" })}
-            className="h-11 max-w-48 text-base"
+            className="h-11 w-full text-base sm:max-w-48 sm:w-auto"
           />
         </div>
 
@@ -238,7 +238,7 @@ export function AdvancedWordPanel({
             aria-label={t({ zh: "选择目标词库", en: "Choose target book" })}
             value={targetBookId}
             onChange={(event) => setTargetBookId(event.target.value)}
-            className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+            className="h-11 w-full max-w-full rounded-xl border border-input bg-card px-3 text-base text-foreground sm:w-auto"
           >
             <option value="">
               {t({ zh: "新建班级词库", en: "New classroom book" })}
@@ -259,7 +259,7 @@ export function AdvancedWordPanel({
                 en: "New book title (optional)",
               })}
               aria-label={t({ zh: "新词库名称", en: "New book title" })}
-              className="h-11 max-w-56 text-base"
+              className="h-11 w-full text-base sm:max-w-56 sm:w-auto"
             />
           )}
         </div>
@@ -340,7 +340,11 @@ export function AdvancedWordPanel({
         )}
 
         <div className="flex flex-wrap items-center gap-3 border-t pt-4">
-          <Button disabled={!canTransfer} onClick={() => transfer.mutate()}>
+          <Button
+            disabled={!canTransfer}
+            onClick={() => transfer.mutate()}
+            className="w-full sm:w-auto"
+          >
             {transfer.isPending ? (
               <Loader2 className="animate-spin" />
             ) : (

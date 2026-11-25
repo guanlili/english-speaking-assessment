@@ -207,7 +207,7 @@ export function CreateClassroomBook({
             onChange={(event) =>
               setFromLevel((event.target.value || null) as VocabLevel | null)
             }
-            className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+            className="h-11 w-full max-w-full rounded-xl border border-input bg-card px-3 text-base text-foreground sm:w-auto"
           >
             <option value="">{t({ zh: "不导入", en: "Don't import" })}</option>
             {VOCAB_LEVEL_ORDER.map((level) => (
@@ -229,7 +229,7 @@ export function CreateClassroomBook({
               {t({ zh: "建库并导入", en: "Create & import" })}
             </Button>
           )}
-          <span className="text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1 text-xs text-muted-foreground">
             {t({
               zh: "只转入已人工核对且有释义的词条；词库管理页可继续核对其余词条。",
               en: "Only reviewed entries with meanings are imported; review the rest in Word Books admin.",
@@ -277,7 +277,7 @@ export function CreateClassroomBook({
               })
             : t({ zh: "创建空词库", en: "Create empty book" })}
         </Button>
-        <span className="text-xs text-muted-foreground">
+        <span className="min-w-0 flex-1 break-words text-xs text-muted-foreground">
           {t({
             zh: "CSV 表头：headword,meaning_zh（可选 part_of_speech/meaning_en/accepted_spellings/example_en/morphology）",
             en: "CSV header: headword,meaning_zh (optional part_of_speech/meaning_en/accepted_spellings/example_en/morphology)",

@@ -196,7 +196,7 @@ export function PkTeacherPanel({ code }: { code: string }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-3">
-          <label className="flex flex-col gap-1.5 text-sm">
+          <label className="flex min-w-0 flex-col gap-1.5 text-sm">
             <span className="text-xs text-muted-foreground">
               {t({ zh: "词库", en: "Word book" })}
             </span>
@@ -204,7 +204,7 @@ export function PkTeacherPanel({ code }: { code: string }) {
               value={bookId}
               disabled={open}
               onChange={(event) => setBookId(event.target.value)}
-              className="min-h-11 rounded-xl border bg-card px-3 text-base disabled:opacity-50"
+              className="min-h-11 w-full rounded-xl border bg-card px-3 text-base disabled:opacity-50"
             >
               <option value="">
                 {t({ zh: "请选择词库", en: "Select a book" })}
@@ -218,7 +218,7 @@ export function PkTeacherPanel({ code }: { code: string }) {
           </label>
           <label
             htmlFor="pk-question-count"
-            className="flex flex-col gap-1.5 text-sm"
+            className="flex min-w-0 flex-col gap-1.5 text-sm"
           >
             <span className="text-xs text-muted-foreground">
               {t({
@@ -237,7 +237,7 @@ export function PkTeacherPanel({ code }: { code: string }) {
           </label>
           <label
             htmlFor="pk-per-question-seconds"
-            className="flex flex-col gap-1.5 text-sm"
+            className="flex min-w-0 flex-col gap-1.5 text-sm"
           >
             <span className="text-xs text-muted-foreground">
               {t({
@@ -387,7 +387,7 @@ export function PkTeacherPanel({ code }: { code: string }) {
                 onChange={(event) =>
                   setHistoryLimit(Number(event.target.value))
                 }
-                className="min-h-11 rounded-xl border bg-card px-3 text-base"
+                className="min-h-11 w-full rounded-xl border bg-card px-3 text-base"
                 aria-label={t({ zh: "历史对局条数", en: "History entries" })}
               >
                 {HISTORY_LIMIT_OPTIONS.map((option) => (

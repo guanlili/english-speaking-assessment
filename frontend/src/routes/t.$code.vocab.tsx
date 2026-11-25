@@ -303,6 +303,7 @@ function TeacherVocabPage() {
         <Button
           variant={tab === "assign" ? "default" : "outline"}
           size="sm"
+          className="h-11 sm:h-9"
           aria-pressed={tab === "assign"}
           onClick={() => setTab("assign")}
         >
@@ -312,6 +313,7 @@ function TeacherVocabPage() {
         <Button
           variant={tab === "results" ? "default" : "outline"}
           size="sm"
+          className="h-11 sm:h-9"
           aria-pressed={tab === "results"}
           onClick={() => setTab("results")}
         >
@@ -321,6 +323,7 @@ function TeacherVocabPage() {
         <Button
           variant={tab === "trend" ? "default" : "outline"}
           size="sm"
+          className="h-11 sm:h-9"
           aria-pressed={tab === "trend"}
           onClick={() => setTab("trend")}
         >
@@ -330,6 +333,7 @@ function TeacherVocabPage() {
         <Button
           variant={tab === "placement" ? "default" : "outline"}
           size="sm"
+          className="h-11 sm:h-9"
           aria-pressed={tab === "placement"}
           onClick={() => setTab("placement")}
         >
@@ -339,6 +343,7 @@ function TeacherVocabPage() {
         <Button
           variant={tab === "pk" ? "default" : "outline"}
           size="sm"
+          className="h-11 sm:h-9"
           aria-pressed={tab === "pk"}
           onClick={() => setTab("pk")}
         >
@@ -348,6 +353,7 @@ function TeacherVocabPage() {
         <Button
           variant={tab === "farm" ? "default" : "outline"}
           size="sm"
+          className="h-11 sm:h-9"
           aria-pressed={tab === "farm"}
           onClick={() => setTab("farm")}
         >
@@ -357,6 +363,7 @@ function TeacherVocabPage() {
         <Button
           variant={tab === "leaderboard" ? "default" : "outline"}
           size="sm"
+          className="h-11 sm:h-9"
           aria-pressed={tab === "leaderboard"}
           onClick={() => setTab("leaderboard")}
         >
@@ -366,6 +373,7 @@ function TeacherVocabPage() {
         <Button
           variant={tab === "review" ? "default" : "outline"}
           size="sm"
+          className="h-11 sm:h-9"
           aria-pressed={tab === "review"}
           onClick={() => setTab("review")}
         >

@@ -1,0 +1,876 @@
+{
+  "generatedAt": "2026-11-25T15:15:23.940Z",
+  "baseUrl": "http://127.0.0.1:5181",
+  "environment": "local dev, Chrome CDP emulation (simulated, NOT a real device)",
+  "mode": "interactive",
+  "results": [
+    {
+      "route": "dialog-add-user",
+      "path": "/admin",
+      "role": "operator",
+      "lang": "zh",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 390,
+        "scrollWidth": 390,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "select",
+            "label": "教师\n管理员",
+            "w": 1,
+            "h": 1
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "safeArea": "0px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "dialog-add-user-zh-390.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "dialog-add-user",
+      "path": "/admin",
+      "role": "operator",
+      "lang": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 390,
+        "scrollWidth": 390,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "select",
+            "label": "Teacher\nAdmin",
+            "w": 1,
+            "h": 1
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "safeArea": "0px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "dialog-add-user-en-390.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "dialog-add-user",
+      "path": "/admin",
+      "role": "operator",
+      "lang": "zh",
+      "viewport": {
+        "width": 320,
+        "height": 568,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 320,
+        "scrollWidth": 320,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "select",
+            "label": "教师\n管理员",
+            "w": 1,
+            "h": 1
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "safeArea": "0px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "dialog-add-user-zh-320.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "dialog-add-user",
+      "path": "/admin",
+      "role": "operator",
+      "lang": "en",
+      "viewport": {
+        "width": 320,
+        "height": 568,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 320,
+        "scrollWidth": 320,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "select",
+            "label": "Teacher\nAdmin",
+            "w": 1,
+            "h": 1
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "safeArea": "0px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "dialog-add-user-en-320.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "inline-new-book",
+      "path": "/t/DEMO01/vocab",
+      "role": "teacher",
+      "lang": "zh",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 390,
+        "scrollWidth": 390,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "← 我的课堂",
+            "w": 73,
+            "h": 20
+          },
+          {
+            "tag": "button",
+            "label": "新建班级词库",
+            "w": 120,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "选择 CSV 预览",
+            "w": 139,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "创建空词库",
+            "w": 95,
+            "h": 36
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 13,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "inline-new-book-zh-390.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "inline-new-book",
+      "path": "/t/DEMO01/vocab",
+      "role": "teacher",
+      "lang": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 390,
+        "scrollWidth": 390,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "← My Classrooms",
+            "w": 114,
+            "h": 20
+          },
+          {
+            "tag": "button",
+            "label": "New classroom book",
+            "w": 162,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Choose CSV to preview",
+            "w": 200,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Create empty book",
+            "w": 149,
+            "h": 36
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 13,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 13,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 13,
+            "h": 16
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "inline-new-book-en-390.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "inline-new-book",
+      "path": "/t/DEMO01/vocab",
+      "role": "teacher",
+      "lang": "zh",
+      "viewport": {
+        "width": 320,
+        "height": 568,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 320,
+        "scrollWidth": 320,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "← 我的课堂",
+            "w": 73,
+            "h": 20
+          },
+          {
+            "tag": "button",
+            "label": "新建班级词库",
+            "w": 120,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "选择 CSV 预览",
+            "w": 139,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "创建空词库",
+            "w": 95,
+            "h": 36
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 13,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 13,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 13,
+            "h": 16
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "inline-new-book-zh-320.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "inline-new-book",
+      "path": "/t/DEMO01/vocab",
+      "role": "teacher",
+      "lang": "en",
+      "viewport": {
+        "width": 320,
+        "height": 568,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 320,
+        "scrollWidth": 320,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "← My Classrooms",
+            "w": 114,
+            "h": 20
+          },
+          {
+            "tag": "button",
+            "label": "New classroom book",
+            "w": 162,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Choose CSV to preview",
+            "w": 200,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Create empty book",
+            "w": 149,
+            "h": 36
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 13,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 14,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 14,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 13,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 13,
+            "h": 16
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "inline-new-book-en-320.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "book-detail",
+      "path": "/vocab/DEMO01/books",
+      "role": "student",
+      "lang": "zh",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 390,
+        "scrollWidth": 390,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "今日任务",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "a",
+            "label": "返回词汇学习",
+            "w": 132,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "开启后，本轮约 30% 的词来自你在本词库拼错过的词（最",
+            "w": 40,
+            "h": 40
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t bord",
+            "safeArea": "8px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "book-detail-zh-390.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "book-detail",
+      "path": "/vocab/DEMO01/books",
+      "role": "student",
+      "lang": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 390,
+        "scrollWidth": 390,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "Today’s Tasks",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "a",
+            "label": "Back to Vocabulary",
+            "w": 170,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "When on, about 30% of this r",
+            "w": 40,
+            "h": 40
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t bord",
+            "safeArea": "8px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "book-detail-en-390.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "book-detail",
+      "path": "/vocab/DEMO01/books",
+      "role": "student",
+      "lang": "zh",
+      "viewport": {
+        "width": 320,
+        "height": 568,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 320,
+        "scrollWidth": 320,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "今日任务",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "a",
+            "label": "返回词汇学习",
+            "w": 132,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "开启后，本轮约 30% 的词来自你在本词库拼错过的词（最",
+            "w": 40,
+            "h": 40
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t bord",
+            "safeArea": "8px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "book-detail-zh-320.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "book-detail",
+      "path": "/vocab/DEMO01/books",
+      "role": "student",
+      "lang": "en",
+      "viewport": {
+        "width": 320,
+        "height": 568,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 320,
+        "scrollWidth": 320,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "Today’s Tasks",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "a",
+            "label": "Back to Vocabulary",
+            "w": 170,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "When on, about 30% of this r",
+            "w": 40,
+            "h": 40
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t bord",
+            "safeArea": "8px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "book-detail-en-320.png",
+      "note": "",
+      "errors": []
+    }
+  ]
+}

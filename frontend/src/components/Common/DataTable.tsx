@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useI18n } from "@/lib/i18n"
+import { cn } from "@/lib/utils"
 
 /** 服务端分页（受控）：总数来自服务器，翻页由调用方发新请求 */
 export interface ManualPagination {
@@ -117,17 +118,18 @@ export function DataTable<TData, TValue>({
   const lastRow = Math.min((pageIndex + 1) * pageSize, total)
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
       <div
         aria-busy={manualPagination?.loading || undefined}
         // inert 同时挡鼠标与键盘（pointer-events 挡不住 Enter/Tab 路径）：
         // 占位旧页上的行操作（含弹窗）在数据到达前完全不可达（返修R01）
         inert={manualPagination?.loading ? true : undefined}
-        className={
+        className={cn(
+          "min-w-0",
           manualPagination?.loading
             ? "opacity-60 transition-opacity"
-            : undefined
-        }
+            : undefined,
+        )}
       >
         <Table>
           <TableHeader>

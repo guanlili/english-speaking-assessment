@@ -169,7 +169,7 @@ export function TrendTeacherPanel({ code }: { code: string }) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="flex flex-col gap-1.5 text-sm">
+            <label className="flex min-w-0 flex-col gap-1.5 text-sm">
               <span className="text-xs text-muted-foreground">
                 {t({ zh: "统计粒度", en: "Granularity" })}
               </span>
@@ -181,7 +181,7 @@ export function TrendTeacherPanel({ code }: { code: string }) {
                     granularity: event.target.value as TrendGranularity,
                   }))
                 }
-                className="min-h-11 rounded-xl border bg-card px-3 text-base"
+                className="min-h-11 w-full rounded-xl border bg-card px-3 text-base"
               >
                 <option value="week">{t({ zh: "按周", en: "Weekly" })}</option>
                 <option value="month">
@@ -190,7 +190,7 @@ export function TrendTeacherPanel({ code }: { code: string }) {
               </select>
             </label>
 
-            <label className="flex flex-col gap-1.5 text-sm">
+            <label className="flex min-w-0 flex-col gap-1.5 text-sm">
               <span className="text-xs text-muted-foreground">
                 {t({ zh: "周期数", en: "Periods" })}
               </span>
@@ -202,7 +202,7 @@ export function TrendTeacherPanel({ code }: { code: string }) {
                     periods: Number(event.target.value),
                   }))
                 }
-                className="min-h-11 rounded-xl border bg-card px-3 text-base"
+                className="min-h-11 w-full rounded-xl border bg-card px-3 text-base"
               >
                 {PERIOD_OPTIONS.map((periods) => (
                   <option key={periods} value={periods}>
@@ -215,7 +215,7 @@ export function TrendTeacherPanel({ code }: { code: string }) {
               </select>
             </label>
 
-            <label className="flex flex-col gap-1.5 text-sm">
+            <label className="flex min-w-0 flex-col gap-1.5 text-sm">
               <span className="text-xs text-muted-foreground">
                 {t({ zh: "词库", en: "Word book" })}
               </span>
@@ -227,7 +227,7 @@ export function TrendTeacherPanel({ code }: { code: string }) {
                     bookId: event.target.value,
                   }))
                 }
-                className="min-h-11 rounded-xl border bg-card px-3 text-base"
+                className="min-h-11 w-full rounded-xl border bg-card px-3 text-base"
               >
                 <option value="">
                   {t({ zh: "全部词库", en: "All books" })}
@@ -240,7 +240,7 @@ export function TrendTeacherPanel({ code }: { code: string }) {
               </select>
             </label>
 
-            <label className="flex flex-col gap-1.5 text-sm">
+            <label className="flex min-w-0 flex-col gap-1.5 text-sm">
               <span className="text-xs text-muted-foreground">
                 {t({ zh: "题型", en: "Question type" })}
               </span>
@@ -252,7 +252,7 @@ export function TrendTeacherPanel({ code }: { code: string }) {
                     promptType: event.target.value,
                   }))
                 }
-                className="min-h-11 rounded-xl border bg-card px-3 text-base"
+                className="min-h-11 w-full rounded-xl border bg-card px-3 text-base"
               >
                 <option value="">
                   {t({ zh: "全部题型", en: "All types" })}
@@ -289,7 +289,10 @@ export function TrendTeacherPanel({ code }: { code: string }) {
                 ? t({ zh: "导出中…", en: "Exporting…" })
                 : t({ zh: "导出 CSV", en: "Export CSV" })}
             </Button>
-            <Badge variant="secondary">
+            <Badge
+              variant="secondary"
+              className="w-full max-w-full justify-center break-words sm:w-auto"
+            >
               {t({
                 zh: "教学参考，不是考试分数 / 能力认证",
                 en: "Teaching reference only — not a test score or ability certification",

@@ -31,7 +31,7 @@ export function Logo({
             BELP<span className="text-primary">.</span>
           </span>
           {/* 副标题走双语：外教把界面切到英文后，Logo 下仍出现中文会很突兀 */}
-          <span className="block whitespace-nowrap text-[10px] font-medium tracking-[0.1em] text-muted-foreground">
+          <span className="block whitespace-nowrap text-[10px] font-medium tracking-[0.1em] text-muted-foreground max-sm:hidden">
             {t({
               zh: "开口说 · 英语口语课堂",
               en: "Speak up · Spoken English Class",
