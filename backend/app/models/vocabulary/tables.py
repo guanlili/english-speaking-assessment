@@ -203,6 +203,12 @@ class VocabularyAssignment(SQLModel, table=True):
     snapshot_items: list[dict[str, object]] = Field(
         sa_column=Column("snapshot_items", JSON, nullable=False)
     )
+    # 发布词单归属的词库 id 集合（按请求 book_id 或显式 word_ids 的归属词库
+    # 推导，JSON 列存字符串）；供趋势/统计按词库筛选。不回溯改写既有
+    # snapshot_items。
+    source_book_ids: list[str] = Field(
+        default_factory=list, sa_column=Column("source_book_ids", JSON, nullable=False)
+    )
     version_no: int = Field(default=1, ge=1)
     status: str = Field(default="published", max_length=16, index=True)
     # 测验（quiz）专用：个人时长（分钟）；开放/截止以服务器时间为准

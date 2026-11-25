@@ -17219,6 +17219,172 @@
         "title": "VocabularyTodayPlan",
         "type": "object"
       },
+      "VocabularyTrendPeriod": {
+        "description": "单个统计周期（周/月）的聚合结果。\n\n区间为**闭区间**：``period_start`` 00:00:00 至 ``period_end`` 23:59:59\n（Asia/Shanghai）。``completion_rate`` / ``first_accuracy`` 在无目标 /\n无首答时返回 ``null``，不折算 0%。\n\n``due_unreviewed`` 按**当前** ``VocabularyReviewState`` 回算（词 × 能力\n条目数，非去重词数）；历史周期的到期状态不做历史还原，仅作教学参考。",
+        "properties": {
+          "assigned_targets": {
+            "default": 0,
+            "title": "Assigned Targets",
+            "type": "integer"
+          },
+          "completed_targets": {
+            "default": 0,
+            "title": "Completed Targets",
+            "type": "integer"
+          },
+          "completion_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Rate"
+          },
+          "due_unreviewed": {
+            "default": 0,
+            "title": "Due Unreviewed",
+            "type": "integer"
+          },
+          "first_accuracy": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Accuracy"
+          },
+          "first_answered": {
+            "default": 0,
+            "title": "First Answered",
+            "type": "integer"
+          },
+          "first_correct": {
+            "default": 0,
+            "title": "First Correct",
+            "type": "integer"
+          },
+          "high_count": {
+            "default": 0,
+            "title": "High Count",
+            "type": "integer"
+          },
+          "low_count": {
+            "default": 0,
+            "title": "Low Count",
+            "type": "integer"
+          },
+          "mid_count": {
+            "default": 0,
+            "title": "Mid Count",
+            "type": "integer"
+          },
+          "no_data_count": {
+            "default": 0,
+            "title": "No Data Count",
+            "type": "integer"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period_start",
+          "period_end"
+        ],
+        "title": "VocabularyTrendPeriod",
+        "type": "object"
+      },
+      "VocabularyTrendReport": {
+        "description": "GET /classes/{code}/vocabulary/trend。\n\n``teaching_reference`` 固定为 ``true``：趋势为教学参考，不是考试分数或\n能力认证。",
+        "properties": {
+          "anchor": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor"
+          },
+          "book_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Id"
+          },
+          "classroom_code": {
+            "title": "Classroom Code",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "granularity": {
+            "title": "Granularity",
+            "type": "string"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyTrendPeriod"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "periods": {
+            "title": "Periods",
+            "type": "integer"
+          },
+          "prompt_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Type"
+          },
+          "teaching_reference": {
+            "default": true,
+            "title": "Teaching Reference",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "classroom_code",
+          "granularity",
+          "periods",
+          "generated_at"
+        ],
+        "title": "VocabularyTrendReport",
+        "type": "object"
+      },
       "VocabularyVersionCompare": {
         "properties": {
           "added": {
@@ -30082,6 +30248,250 @@
           }
         ],
         "summary": "Read Vocab Today",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/trend": {
+      "get": {
+        "description": "班级词汇趋势：完成率 / 首答正确率 / 掌握度分段 / 到期未复习。",
+        "operationId": "vocabulary-get_vocabulary_trend",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "description": "week=按周；month=按月",
+            "in": "query",
+            "name": "granularity",
+            "required": true,
+            "schema": {
+              "description": "week=按周；month=按月",
+              "title": "Granularity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "periods",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "maximum": 24,
+              "minimum": 1,
+              "title": "Periods",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "锚定日期 YYYY-MM-DD，缺省=今天",
+            "in": "query",
+            "name": "anchor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "锚定日期 YYYY-MM-DD，缺省=今天",
+              "title": "Anchor"
+            }
+          },
+          {
+            "description": "按来源词库筛选",
+            "in": "query",
+            "name": "book_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按来源词库筛选",
+              "title": "Book Id"
+            }
+          },
+          {
+            "description": "按出题方式筛选",
+            "in": "query",
+            "name": "prompt_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按出题方式筛选",
+              "title": "Prompt Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyTrendReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Vocabulary Trend",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/trend.csv": {
+      "get": {
+        "description": "趋势 CSV（UTF-8 BOM）：一行一周期；空值留空，不写 0。",
+        "operationId": "vocabulary-get_vocabulary_trend_csv",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": true,
+            "schema": {
+              "title": "Granularity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "periods",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "maximum": 24,
+              "minimum": 1,
+              "title": "Periods",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "anchor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Anchor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "book_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Book Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "prompt_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prompt Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Vocabulary Trend Csv",
         "tags": [
           "vocabulary"
         ]

@@ -64,6 +64,14 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **版本快照**：`vocabulary_book_version` 存词条集合快照（必要字段）+ 确定性内容哈希（归一化后同内容同值、与顺序无关）+ 操作人/动作/摘要/租户。建库、加词、移除、编辑、审核通过/拒绝各留一版；内容无重复变化不落无意义版本。`GET …/versions`、`GET …/versions/compare?from_version=&to_version=`（新增/删除/改释义/改例句/改词法词条级 diff）、`POST …/versions/{no}/rollback`（仅管理员；回滚生成新 rollback 版本，不删历史；词库内容还原为目标版本；不改写任何 `vocabulary_assignment.snapshot_items`）。
 - **域逻辑**：`app/services/vocab_governance.py`；路由 `app/api/routes/vocabulary_governance.py`；模型 `app/models/vocabulary/governance.py`；迁移 `b6c7d8e9f0a1`。测试 `tests/api/routes/test_vocab_governance.py`、`tests/test_vocab_governance_migration.py`。
 
+### 教师跨任务 / 时间趋势（2026-11-25，#517，后端先行）
+
+- **来源词库归属**：`vocabulary_assignment` 加 `source_book_ids`（JSON 字符串列表，默认 `[]`）。发布时由 `book_id` 整本归属或显式 `word_ids` 经 `vocabulary_book_item` 反查词条归属词库，去重排序后写入；整本与显式名单两条路径同口径。存量回填空列表，不回溯改写既有 `snapshot_items`。迁移 `c7d8e9f0a2b3`（`down_revision=b6c7d8e9f0a1`，单 head）。
+- **周期口径**：`granularity=week|month`（必填），`periods` 默认 12、范围 1–24，`anchor=YYYY-MM-DD` 缺省为今天；按 `PRACTICE_TZ=Asia/Shanghai`，周一起、月 1 日起；返回含 anchor 周期在内的最近 N 个周期、时间升序；区间为闭区间（start 00:00:00 ～ end 23:59:59.999999）。
+- **聚合口径**（只读，不改写任务快照）：`assigned_targets` = 周期内发布任务目标名单中的当前在册学生（手动分组按实际名单）；`completed_targets` = 首轮首答覆盖全部题位（沿用 `progress_of_round1` 的 done 口径，不要求全对）；`completion_rate` 0–100 取整，无目标 → `null`。首答统计只取 `kind=task`、`round_no=1`、`attempt_no=1`，按 `answered_at` 落周期；无首答 `first_accuracy=null`。掌握度分段复用现有 mastery 阈值（<60 low / 60–85 mid / >85 high / 无首答 no_data），按周期任务快照词条全集逐词聚合全班首答；`book_id`/`prompt_type` 筛选同步缩小词条全集与首答范围。
+- **到期未复习**：`due_unreviewed` 按**当前** `VocabularyReviewState` 回算（词 × 能力条目数，非去重词数）；历史周期不做状态还原，仅作教学参考（schema 注释已注明）。顶层固定 `teaching_reference=true`：趋势是教学参考，不是考试分数或能力认证。
+- **API**：`GET /api/v1/classes/{code}/vocabulary/trend`（JSON）与 `GET /api/v1/classes/{code}/vocabulary/trend.csv`（UTF-8 BOM，一行一周期，空值留空不写 0）。Query：`granularity`、`periods`、`anchor`、`book_id`、`prompt_type`。权限：仅本班教师；课堂不存在/跨校 404，非本班教师 403，vocabulary 模块未开通 403。域逻辑 `app/services/vocabulary_trend.py`；路由 `app/api/routes/vocabulary_trend.py`；模型 `app/models/vocabulary/reports.py`（`VocabularyTrendReport`/`VocabularyTrendPeriod`）。测试 `tests/api/routes/test_vocabulary_trend.py`。
+
 ## 通用功能 G01–G05（2026-10-11）
 
 - 学生练习 `/p/{code}`、考试 `/exam/{code}` 各有独立入口与结果路由；共享录音/反馈组件，旧练习链接遇考试自动转考试模块。当前课堂发布仍沿用单一活动快照。

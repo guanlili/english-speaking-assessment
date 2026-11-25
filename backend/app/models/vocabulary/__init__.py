@@ -365,6 +365,12 @@ from app.models.vocabulary.reports import (
     VocabularyTeacherAssignmentRow as VocabularyTeacherAssignmentRow,
 )
 from app.models.vocabulary.reports import (
+    VocabularyTrendPeriod as VocabularyTrendPeriod,
+)
+from app.models.vocabulary.reports import (
+    VocabularyTrendReport as VocabularyTrendReport,
+)
+from app.models.vocabulary.reports import (
     VocabularyWordMisspelling as VocabularyWordMisspelling,
 )
 from app.models.vocabulary.reports import (
@@ -610,6 +616,8 @@ __all__ = [
     "VocabularyAnswerResult",
     "VocabularyQuizAnswerReceipt",
     "VocabularyStudentRoundRow",
+    "VocabularyTrendPeriod",
+    "VocabularyTrendReport",
     "VocabularyStudentResultRow",
     "VocabularyWordMisspelling",
     "VocabularyWordStatRow",

@@ -348,6 +348,23 @@ def _validate_publish_params(
             )
 
 
+def _source_book_ids(session: Session, words: Sequence[VocabularyWord]) -> list[str]:
+    """发布词单归属词库集合：显式 word_ids 按词条在 ``vocabulary_book_item``
+    上的归属反查；整本发布的词库归属在调用路径已固定。去重后排序，保证
+    快照字段确定性（趋势按词库筛选用，不改写 snapshot_items）。JSON 列存
+    字符串，避免 UUID 不可序列化。
+    """
+    if not words:
+        return []
+    word_ids = [w.id for w in words]
+    rows = session.exec(
+        select(VocabularyBookItem.book_id).where(
+            col(VocabularyBookItem.word_id).in_(word_ids)  # type: ignore[operator]
+        )
+    ).all()
+    return sorted({str(book_id) for book_id in rows if book_id is not None})
+
+
 def _lock_classroom(session: Session, classroom_id: uuid.UUID) -> None:
     """同一课堂并发发布时锁住课堂行，避免版本号互撞。
 
@@ -459,6 +476,7 @@ def publish_assignment(
         mode=mode,
         prompt_types=prompt_types,
         snapshot_items=snapshots,
+        source_book_ids=_source_book_ids(session, words),
         version_no=next_assignment_version(session, classroom_id),
         status="published",
         due_at=due_at,

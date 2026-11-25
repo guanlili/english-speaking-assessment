@@ -52,6 +52,9 @@ from app.api.routes import (
 from app.api.routes import (
     vocabulary_student as _student,
 )
+from app.api.routes import (
+    vocabulary_trend as _trend,
+)
 
 router = APIRouter()
 
@@ -63,6 +66,7 @@ router.include_router(_import.router, tags=["vocabulary"], dependencies=_vocab_g
 router.include_router(_books.router, tags=["vocabulary"], dependencies=_vocab_gate)
 router.include_router(_governance.router, tags=["vocabulary"], dependencies=_vocab_gate)
 router.include_router(_assignments.router, tags=["vocabulary"])
+router.include_router(_trend.router, tags=["vocabulary"])
 router.include_router(_farm.router, tags=["vocabulary"])
 router.include_router(_quiz.router, tags=["vocabulary"])
 router.include_router(_student.router, tags=["vocabulary"])
