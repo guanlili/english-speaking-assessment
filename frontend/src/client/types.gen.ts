@@ -9538,6 +9538,120 @@ export type VocabularyTodayPlan = {
 };
 
 /**
+ * VocabularyTrendPeriod
+ *
+ * 单个统计周期（周/月）的聚合结果。
+ *
+ * 区间为**闭区间**：``period_start`` 00:00:00 至 ``period_end`` 23:59:59
+ * （Asia/Shanghai）。``completion_rate`` / ``first_accuracy`` 在无目标 /
+ * 无首答时返回 ``null``，不折算 0%。
+ *
+ * ``due_unreviewed`` 按**当前** ``VocabularyReviewState`` 回算（词 × 能力
+ * 条目数，非去重词数）；历史周期的到期状态不做历史还原，仅作教学参考。
+ */
+export type VocabularyTrendPeriod = {
+    /**
+     * Period Start
+     */
+    period_start: string;
+    /**
+     * Period End
+     */
+    period_end: string;
+    /**
+     * Assigned Targets
+     */
+    assigned_targets?: number;
+    /**
+     * Completed Targets
+     */
+    completed_targets?: number;
+    /**
+     * Completion Rate
+     */
+    completion_rate?: number | null;
+    /**
+     * First Answered
+     */
+    first_answered?: number;
+    /**
+     * First Correct
+     */
+    first_correct?: number;
+    /**
+     * First Accuracy
+     */
+    first_accuracy?: number | null;
+    /**
+     * Low Count
+     */
+    low_count?: number;
+    /**
+     * Mid Count
+     */
+    mid_count?: number;
+    /**
+     * High Count
+     */
+    high_count?: number;
+    /**
+     * No Data Count
+     */
+    no_data_count?: number;
+    /**
+     * Due Unreviewed
+     */
+    due_unreviewed?: number;
+};
+
+/**
+ * VocabularyTrendReport
+ *
+ * GET /classes/{code}/vocabulary/trend。
+ *
+ * ``teaching_reference`` 固定为 ``true``：趋势为教学参考，不是考试分数或
+ * 能力认证。
+ */
+export type VocabularyTrendReport = {
+    /**
+     * Classroom Code
+     */
+    classroom_code: string;
+    /**
+     * Granularity
+     */
+    granularity: string;
+    /**
+     * Periods
+     */
+    periods: number;
+    /**
+     * Anchor
+     */
+    anchor?: string | null;
+    /**
+     * Generated At
+     */
+    generated_at: string;
+    /**
+     * Book Id
+     */
+    book_id?: string | null;
+    /**
+     * Prompt Type
+     */
+    prompt_type?: string | null;
+    /**
+     * Teaching Reference
+     */
+    teaching_reference?: boolean;
+    /**
+     * Items
+     */
+    items?: Array<VocabularyTrendPeriod>;
+};
+
+/**
  * VocabularyVersionCompare
  */
 export type VocabularyVersionCompare = {
@@ -16747,6 +16861,114 @@ export type VocabularyReportQuizTabSwitchResponses = {
     /**
      * Response Vocabulary-Report Quiz Tab Switch
      *
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type VocabularyGetVocabularyTrendData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query: {
+        /**
+         * Granularity
+         *
+         * week=按周；month=按月
+         */
+        granularity: string;
+        /**
+         * Periods
+         */
+        periods?: number;
+        /**
+         * Anchor
+         *
+         * 锚定日期 YYYY-MM-DD，缺省=今天
+         */
+        anchor?: string | null;
+        /**
+         * Book Id
+         *
+         * 按来源词库筛选
+         */
+        book_id?: string | null;
+        /**
+         * Prompt Type
+         *
+         * 按出题方式筛选
+         */
+        prompt_type?: string | null;
+    };
+    url: '/api/v1/classes/{code}/vocabulary/trend';
+};
+
+export type VocabularyGetVocabularyTrendErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyGetVocabularyTrendError = VocabularyGetVocabularyTrendErrors[keyof VocabularyGetVocabularyTrendErrors];
+
+export type VocabularyGetVocabularyTrendResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyTrendReport;
+};
+
+export type VocabularyGetVocabularyTrendResponse = VocabularyGetVocabularyTrendResponses[200 & keyof VocabularyGetVocabularyTrendResponses];
+
+export type VocabularyGetVocabularyTrendCsvData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query: {
+        /**
+         * Granularity
+         */
+        granularity: string;
+        /**
+         * Periods
+         */
+        periods?: number;
+        /**
+         * Anchor
+         */
+        anchor?: string | null;
+        /**
+         * Book Id
+         */
+        book_id?: string | null;
+        /**
+         * Prompt Type
+         */
+        prompt_type?: string | null;
+    };
+    url: '/api/v1/classes/{code}/vocabulary/trend.csv';
+};
+
+export type VocabularyGetVocabularyTrendCsvErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyGetVocabularyTrendCsvError = VocabularyGetVocabularyTrendCsvErrors[keyof VocabularyGetVocabularyTrendCsvErrors];
+
+export type VocabularyGetVocabularyTrendCsvResponses = {
+    /**
      * Successful Response
      */
     200: unknown;
