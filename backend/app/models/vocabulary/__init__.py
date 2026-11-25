@@ -476,6 +476,9 @@ from app.models.vocabulary.tables import (
     VocabularyWord as VocabularyWord,
 )
 from app.models.vocabulary.words import (
+    ADVANCED_EXAM_TAGS as ADVANCED_EXAM_TAGS,
+)
+from app.models.vocabulary.words import (
     REVIEW_NOTE_EDITED_AFTER_APPROVAL as REVIEW_NOTE_EDITED_AFTER_APPROVAL,
 )
 from app.models.vocabulary.words import (
@@ -486,6 +489,12 @@ from app.models.vocabulary.words import (
 )
 from app.models.vocabulary.words import (
     REVIEW_NOTE_SELF_CONFIRMED as REVIEW_NOTE_SELF_CONFIRMED,
+)
+from app.models.vocabulary.words import (
+    VOCAB_CEFR_BANDS as VOCAB_CEFR_BANDS,
+)
+from app.models.vocabulary.words import (
+    VOCAB_EXAM_TAGS as VOCAB_EXAM_TAGS,
 )
 from app.models.vocabulary.words import (
     VOCAB_PROMPT_TYPES as VOCAB_PROMPT_TYPES,
@@ -541,6 +550,12 @@ from app.models.vocabulary.words import (
 from app.models.vocabulary.words import (
     VocabularyWordUpdate as VocabularyWordUpdate,
 )
+from app.models.vocabulary.words import (
+    normalize_cefr_band as normalize_cefr_band,
+)
+from app.models.vocabulary.words import (
+    normalize_exam_tags as normalize_exam_tags,
+)
 
 __all__ = [
     "VocabularyWord",
@@ -586,6 +601,11 @@ __all__ = [
     "VocabularySession",
     "VocabularyAnswer",
     "VOCAB_PROMPT_TYPES",
+    "ADVANCED_EXAM_TAGS",
+    "VOCAB_CEFR_BANDS",
+    "VOCAB_EXAM_TAGS",
+    "normalize_cefr_band",
+    "normalize_exam_tags",
     "VocabularyWordIn",
     "VocabularyWordUpdate",
     "VocabularyWordPublic",

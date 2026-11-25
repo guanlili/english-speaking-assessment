@@ -160,6 +160,7 @@ from app.models.learning import (
     WeakWord,
 )
 from app.models.vocabulary import (
+    ADVANCED_EXAM_TAGS,
     BADGE_FARM_FIRST_HARVEST,
     BADGE_FARM_HARVEST_7,
     BADGE_SOURCE_CLASSROOM,
@@ -207,6 +208,8 @@ from app.models.vocabulary import (
     VOCAB_AI_RATE_LIMIT,
     VOCAB_AI_RATE_WINDOW_S,
     VOCAB_AI_THEME_MAX,
+    VOCAB_CEFR_BANDS,
+    VOCAB_EXAM_TAGS,
     VOCAB_LEVEL_IMPORT_MAX_ROWS,
     VOCAB_PROMPT_TYPES,
     VOCAB_REVIEW_STATUSES,
@@ -346,6 +349,8 @@ from app.models.vocabulary import (
     VocabularyWrongWordItem,
     VocabularyWrongWords,
     effective_vocab_level,
+    normalize_cefr_band,
+    normalize_exam_tags,
 )
 
 __all__ = [
@@ -524,6 +529,11 @@ __all__ = [
     "VOCAB_REVIEW_STATUSES",
     "VOCAB_SOURCE_TYPES",
     "VOCAB_WORD_SOURCES",
+    "ADVANCED_EXAM_TAGS",
+    "VOCAB_CEFR_BANDS",
+    "VOCAB_EXAM_TAGS",
+    "normalize_cefr_band",
+    "normalize_exam_tags",
     "LICENSE_ERROR_EXPIRED",
     "LICENSE_ERROR_OWNER_MISSING",
     "LICENSE_ERROR_REF_MISSING",

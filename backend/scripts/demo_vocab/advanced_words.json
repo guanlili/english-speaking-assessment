@@ -1,0 +1,3121 @@
+{
+  "demo": true,
+  "license_owner": "Demo Content Team",
+  "license_ref": "DEMO-ONLY",
+  "note": "Local demo data only; not for production. Advanced exam-prep words for the extension area; tags and CEFR are content labels, not proficiency assessment.",
+  "words": [
+    {
+      "headword": "affluent",
+      "part_of_speech": "adj.",
+      "meaning_zh": "富裕的",
+      "meaning_en": "having plenty of resources",
+      "example_en": "The affluent suburb funded its own library.",
+      "exam_tags": [
+        "SAT",
+        "IELTS"
+      ],
+      "cefr_band": "B2",
+      "morphology": [
+        {
+          "text": "affluent",
+          "gloss": "富裕的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "acclimate",
+      "part_of_speech": "v.",
+      "meaning_zh": "适应",
+      "meaning_en": "to adjust to a new climate or place",
+      "example_en": "New students acclimate quickly in small classes.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "acclimate",
+          "gloss": "适应",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "ample",
+      "part_of_speech": "adj.",
+      "meaning_zh": "充足的",
+      "meaning_en": "enough and more than needed",
+      "example_en": "We have ample time for a second draft.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "B2",
+      "morphology": [
+        {
+          "text": "ample",
+          "gloss": "充足的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "vague",
+      "part_of_speech": "adj.",
+      "meaning_zh": "模糊的",
+      "meaning_en": "not clear or definite",
+      "example_en": "His vague answer avoided the question.",
+      "exam_tags": [
+        "SAT",
+        "IELTS"
+      ],
+      "cefr_band": "B2",
+      "morphology": [
+        {
+          "text": "vague",
+          "gloss": "模糊的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "foresee",
+      "part_of_speech": "v.",
+      "meaning_zh": "预见",
+      "meaning_en": "to predict in advance",
+      "example_en": "Readers foresee the conflict from the first chapter.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "B2",
+      "morphology": [
+        {
+          "text": "foresee",
+          "gloss": "预见",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "subjective",
+      "part_of_speech": "adj.",
+      "meaning_zh": "主观的",
+      "meaning_en": "based on personal view",
+      "example_en": "Grading taste can feel subjective.",
+      "exam_tags": [
+        "ACT"
+      ],
+      "cefr_band": "B2",
+      "morphology": [
+        {
+          "text": "subjective",
+          "gloss": "主观的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "gauge",
+      "part_of_speech": "v.",
+      "meaning_zh": "衡量",
+      "meaning_en": "to measure roughly",
+      "example_en": "The quiz will gauge basic recall.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "gauge",
+          "gloss": "衡量",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "presume",
+      "part_of_speech": "v.",
+      "meaning_zh": "假定",
+      "meaning_en": "to take for granted without proof",
+      "example_en": "Do not presume the rule applies here.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "presume",
+          "gloss": "假定",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "ascribe",
+      "part_of_speech": "v.",
+      "meaning_zh": "归因",
+      "meaning_en": "to credit to a particular cause",
+      "example_en": "Critics ascribe the shift to new policy.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "ascribe",
+          "gloss": "归因",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "thorough",
+      "part_of_speech": "adj.",
+      "meaning_zh": "彻底的",
+      "meaning_en": "complete in every detail",
+      "example_en": "The manual gives a thorough review.",
+      "exam_tags": [
+        "SAT",
+        "IELTS"
+      ],
+      "cefr_band": "B2",
+      "morphology": [
+        {
+          "text": "thorough",
+          "gloss": "彻底的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "relent",
+      "part_of_speech": "v.",
+      "meaning_zh": "让步",
+      "meaning_en": "to soften one's stance",
+      "example_en": "The negotiator refused to relent.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "relent",
+          "gloss": "让步",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "substantial",
+      "part_of_speech": "adj.",
+      "meaning_zh": "大量的",
+      "meaning_en": "large in amount",
+      "example_en": "The draft needs substantial revision.",
+      "exam_tags": [
+        "SAT",
+        "TOEFL"
+      ],
+      "cefr_band": "B2",
+      "morphology": [
+        {
+          "text": "substantial",
+          "gloss": "大量的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "benchmark",
+      "part_of_speech": "n.",
+      "meaning_zh": "基准",
+      "meaning_en": "a reference standard for comparison",
+      "example_en": "Fluency is one benchmark for the task.",
+      "exam_tags": [
+        "GRE",
+        "IELTS"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "benchmark",
+          "gloss": "基准",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "dwindle",
+      "part_of_speech": "v.",
+      "meaning_zh": "减少",
+      "meaning_en": "to shrink gradually",
+      "example_en": "Interest in the topic began to dwindle.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "dwindle",
+          "gloss": "减少",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "refine",
+      "part_of_speech": "v.",
+      "meaning_zh": "改进",
+      "meaning_en": "to improve gradually",
+      "example_en": "Daily drills refine pronunciation.",
+      "exam_tags": [
+        "ACT",
+        "TOEFL"
+      ],
+      "cefr_band": "B2",
+      "morphology": [
+        {
+          "text": "refine",
+          "gloss": "改进",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "appraise",
+      "part_of_speech": "v.",
+      "meaning_zh": "评定",
+      "meaning_en": "to assess the value of",
+      "example_en": "Teachers appraise each essay fairly.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "appraise",
+          "gloss": "评定",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "decipher",
+      "part_of_speech": "v.",
+      "meaning_zh": "解读",
+      "meaning_en": "to decode something hard to read",
+      "example_en": "Readers decipher the note from context.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "decipher",
+          "gloss": "解读",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "eloquent",
+      "part_of_speech": "adj.",
+      "meaning_zh": "雄辩的",
+      "meaning_en": "fluent and persuasive",
+      "example_en": "An eloquent speaker holds the room.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "eloquent",
+          "gloss": "雄辩的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "supplement",
+      "part_of_speech": "v.",
+      "meaning_zh": "补充",
+      "meaning_en": "to add to something to complete it",
+      "example_en": "Flashcards supplement the textbook.",
+      "exam_tags": [
+        "GRE",
+        "IELTS",
+        "CET4"
+      ],
+      "cefr_band": "B2",
+      "morphology": [
+        {
+          "text": "supplement",
+          "gloss": "补充",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "span",
+      "part_of_speech": "v.",
+      "meaning_zh": "涵盖",
+      "meaning_en": "to extend across a range",
+      "example_en": "The course will span four skill areas.",
+      "exam_tags": [
+        "GRE",
+        "TOEFL"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "span",
+          "gloss": "涵盖",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "moderate",
+      "part_of_speech": "adj.",
+      "meaning_zh": "温和的",
+      "meaning_en": "not extreme in degree",
+      "example_en": "A moderate pace suits beginners.",
+      "exam_tags": [
+        "ACT",
+        "CET4"
+      ],
+      "cefr_band": "B2",
+      "morphology": [
+        {
+          "text": "moderate",
+          "gloss": "温和的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "infer",
+      "part_of_speech": "v.",
+      "meaning_zh": "推断",
+      "meaning_en": "to reach a conclusion from evidence",
+      "example_en": "Listeners infer mood from tone.",
+      "exam_tags": [
+        "SAT",
+        "CET4"
+      ],
+      "cefr_band": "B2",
+      "morphology": [
+        {
+          "text": "infer",
+          "gloss": "推断",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "perennial",
+      "part_of_speech": "adj.",
+      "meaning_zh": "持久的",
+      "meaning_en": "recurring year after year",
+      "example_en": "The perennial topic returns each term.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "perennial",
+          "gloss": "持久的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "profound",
+      "part_of_speech": "adj.",
+      "meaning_zh": "深刻的",
+      "meaning_en": "deep and far-reaching",
+      "example_en": "The essay makes a profound point.",
+      "exam_tags": [
+        "SAT",
+        "IELTS"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "profound",
+          "gloss": "深刻的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "prominence",
+      "part_of_speech": "n.",
+      "meaning_zh": "突出",
+      "meaning_en": "the state of standing out",
+      "example_en": "Vocabulary gained prominence in the plan.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "prominence",
+          "gloss": "突出",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "expedite",
+      "part_of_speech": "v.",
+      "meaning_zh": "加速",
+      "meaning_en": "to speed up a process",
+      "example_en": "Clear prompts expedite the exercise.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "expedite",
+          "gloss": "加速",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "viable",
+      "part_of_speech": "adj.",
+      "meaning_zh": "可行的",
+      "meaning_en": "workable in practice",
+      "example_en": "A shorter plan is viable this week.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "viable",
+          "gloss": "可行的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "skeleton",
+      "part_of_speech": "n.",
+      "meaning_zh": "骨架",
+      "meaning_en": "an outline structure",
+      "example_en": "The outline gives a skeleton for the essay.",
+      "exam_tags": [
+        "GRE",
+        "TOEFL",
+        "CET4"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "skeleton",
+          "gloss": "骨架",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "cardinal",
+      "part_of_speech": "adj.",
+      "meaning_zh": "基本的",
+      "meaning_en": "chief in importance",
+      "example_en": "Honesty is a cardinal rule here.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "cardinal",
+          "gloss": "基本的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "acute",
+      "part_of_speech": "adj.",
+      "meaning_zh": "敏锐的",
+      "meaning_en": "very perceptive or severe",
+      "example_en": "An acute reader notices subtle word choices.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "acute",
+          "gloss": "敏锐的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "adhere",
+      "part_of_speech": "v.",
+      "meaning_zh": "坚持",
+      "meaning_en": "to stick firmly to a rule",
+      "example_en": "Writers adhere to the same spelling standard.",
+      "exam_tags": [
+        "SAT",
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "adhere",
+          "gloss": "坚持",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "advocate",
+      "part_of_speech": "v.",
+      "meaning_zh": "提倡",
+      "meaning_en": "to support a cause publicly",
+      "example_en": "The guide would advocate regular spaced review.",
+      "exam_tags": [
+        "GRE",
+        "IELTS"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "advocate",
+          "gloss": "提倡",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "alleviate",
+      "part_of_speech": "v.",
+      "meaning_zh": "缓解",
+      "meaning_en": "to ease pain or difficulty",
+      "example_en": "Extra examples can alleviate confusion.",
+      "exam_tags": [
+        "SAT",
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "alleviate",
+          "gloss": "缓解",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "anomaly",
+      "part_of_speech": "n.",
+      "meaning_zh": "异常",
+      "meaning_en": "something that deviates from the usual",
+      "example_en": "The anomaly in the score data needs checking.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "anomaly",
+          "gloss": "异常",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "persuasive",
+      "part_of_speech": "adj.",
+      "meaning_zh": "有说服力的",
+      "meaning_en": "able to convince others",
+      "example_en": "A persuasive essay states its claim early.",
+      "exam_tags": [
+        "SAT",
+        "ACT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "persuasive",
+          "gloss": "有说服力的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "astute",
+      "part_of_speech": "adj.",
+      "meaning_zh": "精明的",
+      "meaning_en": "shrewdly perceptive",
+      "example_en": "An astute negotiator reads the other side carefully.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "astute",
+          "gloss": "精明的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "bolster",
+      "part_of_speech": "v.",
+      "meaning_zh": "支持",
+      "meaning_en": "to strengthen or prop up",
+      "example_en": "More data can bolster the conclusion.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "bolster",
+          "gloss": "支持",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "capable",
+      "part_of_speech": "adj.",
+      "meaning_zh": "有能力的",
+      "meaning_en": "having the skill needed",
+      "example_en": "A capable speaker handles unexpected questions.",
+      "exam_tags": [
+        "ACT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "capable",
+          "gloss": "有能力的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "cautious",
+      "part_of_speech": "adj.",
+      "meaning_zh": "谨慎的",
+      "meaning_en": "careful to avoid risk",
+      "example_en": "Be cautious when guessing unfamiliar words.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "cautious",
+          "gloss": "谨慎的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "coherence",
+      "part_of_speech": "n.",
+      "meaning_zh": "连贯",
+      "meaning_en": "logical connection between ideas",
+      "example_en": "Coherence matters more than long sentences.",
+      "exam_tags": [
+        "GRE",
+        "IELTS"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "coherence",
+          "gloss": "连贯",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "offset",
+      "part_of_speech": "v.",
+      "meaning_zh": "抵消",
+      "meaning_en": "to balance against something",
+      "example_en": "Extra examples offset the missing audio.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "offset",
+          "gloss": "抵消",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "condemn",
+      "part_of_speech": "v.",
+      "meaning_zh": "谴责",
+      "meaning_en": "to strongly disapprove of",
+      "example_en": "The report would condemn unfair grading.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "condemn",
+          "gloss": "谴责",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "confine",
+      "part_of_speech": "v.",
+      "meaning_zh": "限制",
+      "meaning_en": "to keep within limits",
+      "example_en": "Confine your answer to two paragraphs.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "confine",
+          "gloss": "限制",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "confront",
+      "part_of_speech": "v.",
+      "meaning_zh": "面对",
+      "meaning_en": "to deal with directly",
+      "example_en": "Students confront new words in context.",
+      "exam_tags": [
+        "ACT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "confront",
+          "gloss": "面对",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "conjecture",
+      "part_of_speech": "n.",
+      "meaning_zh": "推测",
+      "meaning_en": "a guess without proof",
+      "example_en": "The theory remains conjecture without evidence.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "conjecture",
+          "gloss": "推测",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "tentative",
+      "part_of_speech": "adj.",
+      "meaning_zh": "试探性的",
+      "meaning_en": "not definite or final",
+      "example_en": "The plan is tentative until the roster is set.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "tentative",
+          "gloss": "试探性的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "constrain",
+      "part_of_speech": "v.",
+      "meaning_zh": "约束",
+      "meaning_en": "to place limits on",
+      "example_en": "The deadline can constrain how much we revise.",
+      "exam_tags": [
+        "GRE",
+        "IELTS"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "constrain",
+          "gloss": "约束",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "converge",
+      "part_of_speech": "v.",
+      "meaning_zh": "汇聚",
+      "meaning_en": "to come together toward one point",
+      "example_en": "Evidence from two studies would converge here.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "converge",
+          "gloss": "汇聚",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "conversely",
+      "part_of_speech": "adv.",
+      "meaning_zh": "相反地",
+      "meaning_en": "in the reverse order",
+      "example_en": "Conversely, short answers lose marks.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "conversely",
+          "gloss": "相反地",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "convince",
+      "part_of_speech": "v.",
+      "meaning_zh": "说服",
+      "meaning_en": "to persuade someone to agree",
+      "example_en": "One strong example can convince the reader.",
+      "exam_tags": [
+        "ACT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "convince",
+          "gloss": "说服",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "correlate",
+      "part_of_speech": "v.",
+      "meaning_zh": "相关",
+      "meaning_en": "to be naturally connected",
+      "example_en": "Vocabulary size can correlate with reading fluency.",
+      "exam_tags": [
+        "GRE",
+        "IELTS",
+        "TOEFL"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "correlate",
+          "gloss": "相关",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "critique",
+      "part_of_speech": "n.",
+      "meaning_zh": "评论",
+      "meaning_en": "a careful critical analysis",
+      "example_en": "Peer critique improves each draft.",
+      "exam_tags": [
+        "SAT",
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "critique",
+          "gloss": "评论",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "surmise",
+      "part_of_speech": "v.",
+      "meaning_zh": "揣测",
+      "meaning_en": "to guess from limited evidence",
+      "example_en": "One may surmise the mood from the tone.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "surmise",
+          "gloss": "揣测",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "deficiency",
+      "part_of_speech": "n.",
+      "meaning_zh": "不足",
+      "meaning_en": "a lack of something needed",
+      "example_en": "The deficiency in audio slowed the exercise.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "deficiency",
+          "gloss": "不足",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "deter",
+      "part_of_speech": "v.",
+      "meaning_zh": "吓阻",
+      "meaning_en": "to discourage from acting",
+      "example_en": "Difficult words should not deter learners.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "deter",
+          "gloss": "吓阻",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "deviate",
+      "part_of_speech": "v.",
+      "meaning_zh": "偏离",
+      "meaning_en": "to depart from a standard",
+      "example_en": "Do not deviate from the main question.",
+      "exam_tags": [
+        "SAT",
+        "IELTS"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "deviate",
+          "gloss": "偏离",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "diligent",
+      "part_of_speech": "adj.",
+      "meaning_zh": "勤奋的",
+      "meaning_en": "showing steady hard work",
+      "example_en": "Diligent review builds lasting memory.",
+      "exam_tags": [
+        "ACT",
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "diligent",
+          "gloss": "勤奋的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "discourse",
+      "part_of_speech": "n.",
+      "meaning_zh": "论述",
+      "meaning_en": "extended discussion on a subject",
+      "example_en": "Academic discourse values evidence.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "discourse",
+          "gloss": "论述",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "resilient",
+      "part_of_speech": "adj.",
+      "meaning_zh": "有韧性的",
+      "meaning_en": "recovering quickly from setbacks",
+      "example_en": "Resilient learners return after each slip.",
+      "exam_tags": [
+        "SAT",
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "resilient",
+          "gloss": "有韧性的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "meticulous",
+      "part_of_speech": "adj.",
+      "meaning_zh": "细致的",
+      "meaning_en": "very careful about detail",
+      "example_en": "Meticulous notes help the review.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "meticulous",
+          "gloss": "细致的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "salience",
+      "part_of_speech": "n.",
+      "meaning_zh": "显著性",
+      "meaning_en": "the quality of standing out",
+      "example_en": "The salience of vocabulary grew in the plan.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "salience",
+          "gloss": "显著性",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "endure",
+      "part_of_speech": "v.",
+      "meaning_zh": "持久",
+      "meaning_en": "to last over time",
+      "example_en": "Good habits endure long after the course ends.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "endure",
+          "gloss": "持久",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "equitable",
+      "part_of_speech": "adj.",
+      "meaning_zh": "公平的",
+      "meaning_en": "fair and equal for all",
+      "example_en": "The scoring must be equitable for all.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "equitable",
+          "gloss": "公平的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "erratic",
+      "part_of_speech": "adj.",
+      "meaning_zh": "不稳定的",
+      "meaning_en": "irregular and inconsistent",
+      "example_en": "His erratic attendance hurt his progress.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "erratic",
+          "gloss": "不稳定的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "excerpt",
+      "part_of_speech": "n.",
+      "meaning_zh": "节选",
+      "meaning_en": "a passage taken from a longer work",
+      "example_en": "The excerpt comes from a modern essay.",
+      "exam_tags": [
+        "GRE",
+        "TOEFL"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "excerpt",
+          "gloss": "节选",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "exhaustive",
+      "part_of_speech": "adj.",
+      "meaning_zh": "详尽的",
+      "meaning_en": "covering every detail",
+      "example_en": "The list is not exhaustive and may grow.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "exhaustive",
+          "gloss": "详尽的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "exploit",
+      "part_of_speech": "v.",
+      "meaning_zh": "利用",
+      "meaning_en": "to make full use of",
+      "example_en": "Learners exploit context to guess meaning.",
+      "exam_tags": [
+        "GRE",
+        "IELTS"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "exploit",
+          "gloss": "利用",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "pave",
+      "part_of_speech": "v.",
+      "meaning_zh": "铺路",
+      "meaning_en": "to prepare the way for something",
+      "example_en": "Clear prompts pave the way for the exercise.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "pave",
+          "gloss": "铺路",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "practicable",
+      "part_of_speech": "adj.",
+      "meaning_zh": "可行的",
+      "meaning_en": "able to be put into practice",
+      "example_en": "A split-round plan is practicable this week.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "practicable",
+          "gloss": "可行的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "fragment",
+      "part_of_speech": "n.",
+      "meaning_zh": "碎片",
+      "meaning_en": "a small part of something",
+      "example_en": "A fragment of the sentence hints at the word.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "fragment",
+          "gloss": "碎片",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "scaffold",
+      "part_of_speech": "n.",
+      "meaning_zh": "支架",
+      "meaning_en": "a supporting structure for learning",
+      "example_en": "The outline provides a scaffold for the essay.",
+      "exam_tags": [
+        "GRE",
+        "TOEFL"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "scaffold",
+          "gloss": "支架",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "vital",
+      "part_of_speech": "adj.",
+      "meaning_zh": "至关重要的",
+      "meaning_en": "absolutely necessary",
+      "example_en": "Clear word order is a vital grammar point.",
+      "exam_tags": [
+        "ACT",
+        "TOEFL",
+        "CET4"
+      ],
+      "cefr_band": "B2",
+      "morphology": [
+        {
+          "text": "vital",
+          "gloss": "至关重要的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "hypothetical",
+      "part_of_speech": "adj.",
+      "meaning_zh": "假设的",
+      "meaning_en": "imagined for reasoning",
+      "example_en": "The question asks about a hypothetical case.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "hypothetical",
+          "gloss": "假设的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "impartial",
+      "part_of_speech": "adj.",
+      "meaning_zh": "公正的",
+      "meaning_en": "unbiased and fair",
+      "example_en": "The judge stays impartial toward both sides.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "impartial",
+          "gloss": "公正的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "impetus",
+      "part_of_speech": "n.",
+      "meaning_zh": "推动力",
+      "meaning_en": "a driving force",
+      "example_en": "The award gave fresh impetus to the team.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "impetus",
+          "gloss": "推动力",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "implicit",
+      "part_of_speech": "adj.",
+      "meaning_zh": "隐含的",
+      "meaning_en": "implied without being stated",
+      "example_en": "Tone carries an implicit attitude.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "implicit",
+          "gloss": "隐含的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "imply",
+      "part_of_speech": "v.",
+      "meaning_zh": "暗示",
+      "meaning_en": "to suggest indirectly",
+      "example_en": "The choice would imply a different view.",
+      "exam_tags": [
+        "ACT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "imply",
+          "gloss": "暗示",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "incurred",
+      "part_of_speech": "adj.",
+      "meaning_zh": "招致的",
+      "meaning_en": "brought upon oneself",
+      "example_en": "The delays incurred extra costs.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "incurred",
+          "gloss": "招致的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "indirect",
+      "part_of_speech": "adj.",
+      "meaning_zh": "间接的",
+      "meaning_en": "not straight or direct",
+      "example_en": "An indirect clue still leads to the answer.",
+      "exam_tags": [
+        "GRE",
+        "TOEFL"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "indirect",
+          "gloss": "间接的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "inherent",
+      "part_of_speech": "adj.",
+      "meaning_zh": "固有的",
+      "meaning_en": "existing as a natural part",
+      "example_en": "Reading skill has an inherent vocabulary base.",
+      "exam_tags": [
+        "SAT",
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "inherent",
+          "gloss": "固有的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "initiate",
+      "part_of_speech": "v.",
+      "meaning_zh": "发起",
+      "meaning_en": "to start a process",
+      "example_en": "The program will initiate a weekly review cycle.",
+      "exam_tags": [
+        "GRE",
+        "IELTS"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "initiate",
+          "gloss": "发起",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "innovation",
+      "part_of_speech": "n.",
+      "meaning_zh": "创新",
+      "meaning_en": "a new method or idea",
+      "example_en": "The app brings a useful innovation to practice.",
+      "exam_tags": [
+        "GRE",
+        "TOEFL"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "innovation",
+          "gloss": "创新",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "inspect",
+      "part_of_speech": "v.",
+      "meaning_zh": "检查",
+      "meaning_en": "to examine closely",
+      "example_en": "Inspect each spelling before submitting.",
+      "exam_tags": [
+        "ACT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "inspect",
+          "gloss": "检查",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "instance",
+      "part_of_speech": "n.",
+      "meaning_zh": "实例",
+      "meaning_en": "a single example",
+      "example_en": "For instance, note the verb form.",
+      "exam_tags": [
+        "GRE",
+        "TOEFL"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "instance",
+          "gloss": "实例",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "intricate",
+      "part_of_speech": "adj.",
+      "meaning_zh": "复杂精细的",
+      "meaning_en": "having many detailed parts",
+      "example_en": "The plot has an intricate structure.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "intricate",
+          "gloss": "复杂精细的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "irony",
+      "part_of_speech": "n.",
+      "meaning_zh": "反讽",
+      "meaning_en": "a contrast between expectation and result",
+      "example_en": "The essay uses irony to make its point.",
+      "exam_tags": [
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "irony",
+          "gloss": "反讽",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "mitigate",
+      "part_of_speech": "v.",
+      "meaning_zh": "减轻",
+      "meaning_en": "to make something less severe",
+      "example_en": "Practice can mitigate early mistakes.",
+      "exam_tags": [
+        "GRE",
+        "IELTS"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "mitigate",
+          "gloss": "减轻",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "acquiesce",
+      "part_of_speech": "v.",
+      "meaning_zh": "默许",
+      "meaning_en": "to agree without protest",
+      "example_en": "She would acquiesce to the revised schedule.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "acquiesce",
+          "gloss": "默许",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "adamant",
+      "part_of_speech": "adj.",
+      "meaning_zh": "坚定的",
+      "meaning_en": "refusing to change one's mind",
+      "example_en": "The reviewer remained adamant about the rule.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "adamant",
+          "gloss": "坚定的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "ambivalent",
+      "part_of_speech": "adj.",
+      "meaning_zh": "矛盾的",
+      "meaning_en": "having mixed feelings",
+      "example_en": "He felt ambivalent about the exam result.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "ambivalent",
+          "gloss": "矛盾的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "antipathy",
+      "part_of_speech": "n.",
+      "meaning_zh": "反感",
+      "meaning_en": "a strong feeling of dislike",
+      "example_en": "The essay expresses antipathy toward haste.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "antipathy",
+          "gloss": "反感",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "apathy",
+      "part_of_speech": "n.",
+      "meaning_zh": "冷漠",
+      "meaning_en": "lack of interest or concern",
+      "example_en": "Apathy hurts more than a low score.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "apathy",
+          "gloss": "冷漠",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "arduous",
+      "part_of_speech": "adj.",
+      "meaning_zh": "艰巨的",
+      "meaning_en": "difficult and tiring",
+      "example_en": "The revision process was arduous but worthwhile.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "arduous",
+          "gloss": "艰巨的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "ascetic",
+      "part_of_speech": "adj.",
+      "meaning_zh": "苦行的",
+      "meaning_en": "severe and simple in habits",
+      "example_en": "The ascetic monk owned few possessions.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "ascetic",
+          "gloss": "苦行的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "assiduous",
+      "part_of_speech": "adj.",
+      "meaning_zh": "勤勉的",
+      "meaning_en": "showing steady careful effort",
+      "example_en": "Assiduous note-taking aids recall.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "assiduous",
+          "gloss": "勤勉的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "audacious",
+      "part_of_speech": "adj.",
+      "meaning_zh": "大胆的",
+      "meaning_en": "bold and daring",
+      "example_en": "The audacious plan challenged convention.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "audacious",
+          "gloss": "大胆的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "austere",
+      "part_of_speech": "adj.",
+      "meaning_zh": "朴素严苛的",
+      "meaning_en": "severe and plain",
+      "example_en": "The austere room held no decoration.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "austere",
+          "gloss": "朴素严苛的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "benevolent",
+      "part_of_speech": "adj.",
+      "meaning_zh": "仁慈的",
+      "meaning_en": "kind and generous",
+      "example_en": "A benevolent mentor encourages rather than scolds.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "benevolent",
+          "gloss": "仁慈的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "brusque",
+      "part_of_speech": "adj.",
+      "meaning_zh": "唐突的",
+      "meaning_en": "blunt and short in manner",
+      "example_en": "His brusque reply offended the visitor.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "brusque",
+          "gloss": "唐突的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "capricious",
+      "part_of_speech": "adj.",
+      "meaning_zh": "反复无常的",
+      "meaning_en": "unpredictable in behavior",
+      "example_en": "The capricious weather upset the hike.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "capricious",
+          "gloss": "反复无常的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "caustic",
+      "part_of_speech": "adj.",
+      "meaning_zh": "尖刻的",
+      "meaning_en": "sarcastic and biting",
+      "example_en": "Her caustic remark silenced the room.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "caustic",
+          "gloss": "尖刻的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "circumspect",
+      "part_of_speech": "adj.",
+      "meaning_zh": "谨慎周到的",
+      "meaning_en": "careful to consider consequences",
+      "example_en": "Be circumspect before quoting the source.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "circumspect",
+          "gloss": "谨慎周到的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "cognizant",
+      "part_of_speech": "adj.",
+      "meaning_zh": "知晓的",
+      "meaning_en": "fully aware of something",
+      "example_en": "The author is cognizant of the limits of the study.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "cognizant",
+          "gloss": "知晓的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "complacent",
+      "part_of_speech": "adj.",
+      "meaning_zh": "自满的",
+      "meaning_en": "smugly satisfied without concern",
+      "example_en": "Do not grow complacent after one high score.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "complacent",
+          "gloss": "自满的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "conciliate",
+      "part_of_speech": "v.",
+      "meaning_zh": "安抚",
+      "meaning_en": "to win over by compromise",
+      "example_en": "He offered a compromise to conciliate the board.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "conciliate",
+          "gloss": "安抚",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "condescend",
+      "part_of_speech": "v.",
+      "meaning_zh": "屈尊",
+      "meaning_en": "to talk down to others",
+      "example_en": "The expert did not condescend to beginners.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "condescend",
+          "gloss": "屈尊",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "confound",
+      "part_of_speech": "v.",
+      "meaning_zh": "使困惑",
+      "meaning_en": "to puzzle and confuse",
+      "example_en": "The mixed results confound the researchers.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "confound",
+          "gloss": "使困惑",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "construe",
+      "part_of_speech": "v.",
+      "meaning_zh": "理解",
+      "meaning_en": "to interpret in a particular way",
+      "example_en": "Readers may construe the phrase as a refusal.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "construe",
+          "gloss": "理解",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "contrite",
+      "part_of_speech": "adj.",
+      "meaning_zh": "懊悔的",
+      "meaning_en": "feeling remorse",
+      "example_en": "The contrite student apologized for the slip.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "contrite",
+          "gloss": "懊悔的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "convoluted",
+      "part_of_speech": "adj.",
+      "meaning_zh": "绕弯的",
+      "meaning_en": "complex and hard to follow",
+      "example_en": "The convoluted argument confused the class.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "convoluted",
+          "gloss": "绕弯的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "corroborate",
+      "part_of_speech": "v.",
+      "meaning_zh": "证实",
+      "meaning_en": "to confirm with evidence",
+      "example_en": "Two sources corroborate the claim.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "corroborate",
+          "gloss": "证实",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "culpable",
+      "part_of_speech": "adj.",
+      "meaning_zh": "有罪的",
+      "meaning_en": "deserving blame",
+      "example_en": "The report found no party culpable.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "culpable",
+          "gloss": "有罪的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "cursory",
+      "part_of_speech": "adj.",
+      "meaning_zh": "粗略的",
+      "meaning_en": "hasty and not thorough",
+      "example_en": "A cursory glance misses the detail.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "cursory",
+          "gloss": "粗略的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "dearth",
+      "part_of_speech": "n.",
+      "meaning_zh": "匮乏",
+      "meaning_en": "a scarcity of something",
+      "example_en": "There is a dearth of reliable examples.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "dearth",
+          "gloss": "匮乏",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "deference",
+      "part_of_speech": "n.",
+      "meaning_zh": "敬重",
+      "meaning_en": "respectful regard for others",
+      "example_en": "She spoke with deference to the elders.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "deference",
+          "gloss": "敬重",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "deleterious",
+      "part_of_speech": "adj.",
+      "meaning_zh": "有害的",
+      "meaning_en": "causing harm",
+      "example_en": "The habit has deleterious effects on memory.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "deleterious",
+          "gloss": "有害的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "denigrate",
+      "part_of_speech": "v.",
+      "meaning_zh": "贬低",
+      "meaning_en": "to belittle or disparage",
+      "example_en": "Do not denigrate a peer's effort.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "denigrate",
+          "gloss": "贬低",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "despondent",
+      "part_of_speech": "adj.",
+      "meaning_zh": "沮丧的",
+      "meaning_en": "low in spirits and hopeless",
+      "example_en": "He felt despondent after the failure.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "despondent",
+          "gloss": "沮丧的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "dichotomy",
+      "part_of_speech": "n.",
+      "meaning_zh": "二分",
+      "meaning_en": "a division into two opposed parts",
+      "example_en": "The essay questions the nature–nurture dichotomy.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "dichotomy",
+          "gloss": "二分",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "didactic",
+      "part_of_speech": "adj.",
+      "meaning_zh": "说教的",
+      "meaning_en": "instructive in a preachy way",
+      "example_en": "The didactic tone bores young learners.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "didactic",
+          "gloss": "说教的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "diffident",
+      "part_of_speech": "adj.",
+      "meaning_zh": "羞怯的",
+      "meaning_en": "lacking confidence",
+      "example_en": "The diffident student rarely spoke up.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "diffident",
+          "gloss": "羞怯的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "disingenuous",
+      "part_of_speech": "adj.",
+      "meaning_zh": "不坦率的",
+      "meaning_en": "insincere and misleading",
+      "example_en": "Her disingenuous apology hid annoyance.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "disingenuous",
+          "gloss": "不坦率的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "disparage",
+      "part_of_speech": "v.",
+      "meaning_zh": "轻视",
+      "meaning_en": "to speak slightingly of",
+      "example_en": "Critics disparage the shallow plot.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "disparage",
+          "gloss": "轻视",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "disseminate",
+      "part_of_speech": "v.",
+      "meaning_zh": "传播",
+      "meaning_en": "to spread widely",
+      "example_en": "Journals disseminate new findings.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "disseminate",
+          "gloss": "传播",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "dogmatic",
+      "part_of_speech": "adj.",
+      "meaning_zh": "教条的",
+      "meaning_en": "rigidly opinionated",
+      "example_en": "A dogmatic teacher ignores counterevidence.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "dogmatic",
+          "gloss": "教条的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "ebullient",
+      "part_of_speech": "adj.",
+      "meaning_zh": "热情洋溢的",
+      "meaning_en": "cheerful and full of energy",
+      "example_en": "The ebullient team celebrated the result.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "ebullient",
+          "gloss": "热情洋溢的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "eclectic",
+      "part_of_speech": "adj.",
+      "meaning_zh": "折中的",
+      "meaning_en": "drawn from varied sources",
+      "example_en": "The reading list is eclectic in style.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "eclectic",
+          "gloss": "折中的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "egregious",
+      "part_of_speech": "adj.",
+      "meaning_zh": "极坏的",
+      "meaning_en": "flagrantly bad",
+      "example_en": "The egregious error ruined the data.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "egregious",
+          "gloss": "极坏的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "elucidate",
+      "part_of_speech": "v.",
+      "meaning_zh": "阐明",
+      "meaning_en": "to make clear by explanation",
+      "example_en": "The diagram would elucidate the process.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "elucidate",
+          "gloss": "阐明",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "embellish",
+      "part_of_speech": "v.",
+      "meaning_zh": "润饰",
+      "meaning_en": "to add decorative detail",
+      "example_en": "Writers embellish a plain story with imagery.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "embellish",
+          "gloss": "润饰",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "endemic",
+      "part_of_speech": "adj.",
+      "meaning_zh": "地方性的",
+      "meaning_en": "native to a particular region",
+      "example_en": "The bird is endemic to the island.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "endemic",
+          "gloss": "地方性的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "enervate",
+      "part_of_speech": "v.",
+      "meaning_zh": "使衰弱",
+      "meaning_en": "to drain energy from",
+      "example_en": "The humid heat can enervate the hikers.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "enervate",
+          "gloss": "使衰弱",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "engender",
+      "part_of_speech": "v.",
+      "meaning_zh": "产生",
+      "meaning_en": "to bring about or cause",
+      "example_en": "Respect would engender honest feedback.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "engender",
+          "gloss": "产生",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "ephemeral",
+      "part_of_speech": "adj.",
+      "meaning_zh": "短暂的",
+      "meaning_en": "lasting only a short time",
+      "example_en": "Fame can be ephemeral compared with skill.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "ephemeral",
+          "gloss": "短暂的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "equanimity",
+      "part_of_speech": "n.",
+      "meaning_zh": "镇定",
+      "meaning_en": "calm composure under pressure",
+      "example_en": "She answered the tough questions with equanimity.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "equanimity",
+          "gloss": "镇定",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "equivocal",
+      "part_of_speech": "adj.",
+      "meaning_zh": "模棱两可的",
+      "meaning_en": "open to multiple interpretations",
+      "example_en": "The evidence remains equivocal.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "equivocal",
+          "gloss": "模棱两可的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "erudite",
+      "part_of_speech": "adj.",
+      "meaning_zh": "博学的",
+      "meaning_en": "having great learning",
+      "example_en": "The erudite scholar cited many sources.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "erudite",
+          "gloss": "博学的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "esoteric",
+      "part_of_speech": "adj.",
+      "meaning_zh": "晦涩的",
+      "meaning_en": "understood by only a few",
+      "example_en": "The essay uses esoteric jargon.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "esoteric",
+          "gloss": "晦涩的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "exacerbate",
+      "part_of_speech": "v.",
+      "meaning_zh": "恶化",
+      "meaning_en": "to make worse",
+      "example_en": "Ignoring feedback would exacerbate the problem.",
+      "exam_tags": [
+        "GRE",
+        "IELTS"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "exacerbate",
+          "gloss": "恶化",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "exhort",
+      "part_of_speech": "v.",
+      "meaning_zh": "告诫",
+      "meaning_en": "to urge strongly",
+      "example_en": "The coach would exhort the players to focus.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "exhort",
+          "gloss": "告诫",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "fallacious",
+      "part_of_speech": "adj.",
+      "meaning_zh": "谬误的",
+      "meaning_en": "based on a mistaken idea",
+      "example_en": "The fallacious argument ignores the sample size.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "fallacious",
+          "gloss": "谬误的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "fastidious",
+      "part_of_speech": "adj.",
+      "meaning_zh": "挑剔的",
+      "meaning_en": "very careful about detail",
+      "example_en": "The fastidious editor checked every comma.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "fastidious",
+          "gloss": "挑剔的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "fortuitous",
+      "part_of_speech": "adj.",
+      "meaning_zh": "偶然的",
+      "meaning_en": "happening by lucky chance",
+      "example_en": "The meeting was fortuitous, not planned.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "fortuitous",
+          "gloss": "偶然的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "prudent",
+      "part_of_speech": "adj.",
+      "meaning_zh": "审慎的",
+      "meaning_en": "careful and sensible",
+      "example_en": "A prudent learner reviews before the test.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "prudent",
+          "gloss": "审慎的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "rationale",
+      "part_of_speech": "n.",
+      "meaning_zh": "理据",
+      "meaning_en": "the underlying reason",
+      "example_en": "The rationale for the rule is stated below.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "rationale",
+          "gloss": "理据",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "recalcitrant",
+      "part_of_speech": "adj.",
+      "meaning_zh": "顽抗的",
+      "meaning_en": "resisting authority or control",
+      "example_en": "The recalcitrant student ignored the warnings.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "recalcitrant",
+          "gloss": "顽抗的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "remonstrate",
+      "part_of_speech": "v.",
+      "meaning_zh": "抗议",
+      "meaning_en": "to protest formally",
+      "example_en": "Neighbors remonstrate against the noise each night.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "remonstrate",
+          "gloss": "抗议",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "ubiquitous",
+      "part_of_speech": "adj.",
+      "meaning_zh": "无处不在的",
+      "meaning_en": "present everywhere",
+      "example_en": "Smartphones are ubiquitous in class now.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "ubiquitous",
+          "gloss": "无处不在的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "plausible",
+      "part_of_speech": "adj.",
+      "meaning_zh": "貌似合理的",
+      "meaning_en": "seeming reasonable but not certain",
+      "example_en": "A plausible answer may still be wrong.",
+      "exam_tags": [
+        "GRE",
+        "SAT"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "plausible",
+          "gloss": "貌似合理的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "succinct",
+      "part_of_speech": "adj.",
+      "meaning_zh": "简明的",
+      "meaning_en": "brief and clear",
+      "example_en": "Keep the definition succinct.",
+      "exam_tags": [
+        "GRE",
+        "CET4"
+      ],
+      "cefr_band": "C1",
+      "morphology": [
+        {
+          "text": "succinct",
+          "gloss": "简明的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "pernicious",
+      "part_of_speech": "adj.",
+      "meaning_zh": "有害的",
+      "meaning_en": "deeply harmful in a subtle way",
+      "example_en": "The pernicious habit slows recall.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "pernicious",
+          "gloss": "有害的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "obsequious",
+      "part_of_speech": "adj.",
+      "meaning_zh": "谄媚的",
+      "meaning_en": "overly obedient to please",
+      "example_en": "The obsequious assistant agreed with everything.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "obsequious",
+          "gloss": "谄媚的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "sardonic",
+      "part_of_speech": "adj.",
+      "meaning_zh": "讥讽的",
+      "meaning_en": "dryly mocking",
+      "example_en": "His sardonic joke fell flat in class.",
+      "exam_tags": [
+        "GRE"
+      ],
+      "cefr_band": "C2",
+      "morphology": [
+        {
+          "text": "sardonic",
+          "gloss": "讥讽的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    }
+  ]
+}

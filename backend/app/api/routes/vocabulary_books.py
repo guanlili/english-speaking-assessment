@@ -45,6 +45,8 @@ from app.models import (
     VocabularyWordIn,
     VocabularyWordPublic,
     VocabularyWordUpdate,
+    normalize_cefr_band,
+    normalize_exam_tags,
 )
 from app.services import vocab_governance
 from app.services import vocab_levels as vocab_levels_service
@@ -378,6 +380,8 @@ def update_word(
             w.example_en,
             w.audio_url,
             json.dumps(w.morphology or [], sort_keys=True, ensure_ascii=False),
+            tuple(sorted(w.exam_tags or [])),
+            w.cefr_band,
         )
 
     old_content = _content_tuple(word)
@@ -402,6 +406,10 @@ def update_word(
     if "morphology" in payload:
         cleaned = normalize_morphology(payload["morphology"])
         word.morphology = cleaned or None
+    if "exam_tags" in payload:
+        word.exam_tags = normalize_exam_tags(payload["exam_tags"])
+    if "cefr_band" in payload:
+        word.cefr_band = normalize_cefr_band(payload["cefr_band"])
 
     # 同库重复键（headword.casefold() + meaning_zh）→ 409，不静默并入
     duplicate = find_duplicate_word(

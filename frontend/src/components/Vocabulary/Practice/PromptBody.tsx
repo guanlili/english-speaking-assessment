@@ -1,5 +1,6 @@
 import type { VocabularyTodayItem } from "@/client"
 import { Badge } from "@/components/ui/badge"
+import { CefrBandBadge } from "@/components/Vocabulary/WordTagBadges"
 import { useI18n } from "@/lib/i18n"
 import { vocabPromptMeta } from "@/lib/terms"
 
@@ -23,11 +24,12 @@ export default function PromptBody({ item }: { item: VocabularyTodayItem }) {
   if (promptType === "en_zh") {
     return (
       <div className="rounded-2xl bg-secondary/50 p-5 sm:p-6">
-        {item.part_of_speech && (
-          <Badge variant="outline" className="mb-2">
-            {item.part_of_speech}
-          </Badge>
-        )}
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          {item.part_of_speech && (
+            <Badge variant="outline">{item.part_of_speech}</Badge>
+          )}
+          <CefrBandBadge band={item.cefr_band} compact />
+        </div>
         <p className="break-words font-serif text-2xl font-semibold leading-snug tracking-wide sm:text-3xl">
           {item.headword}
         </p>
@@ -44,11 +46,12 @@ export default function PromptBody({ item }: { item: VocabularyTodayItem }) {
   if (promptType === "zh_en") {
     return (
       <div className="rounded-2xl bg-secondary/50 p-5 sm:p-6">
-        {item.part_of_speech && (
-          <Badge variant="outline" className="mb-2">
-            {item.part_of_speech}
-          </Badge>
-        )}
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          {item.part_of_speech && (
+            <Badge variant="outline">{item.part_of_speech}</Badge>
+          )}
+          <CefrBandBadge band={item.cefr_band} compact />
+        </div>
         <p className="text-xl font-semibold leading-snug sm:text-2xl">
           {item.meaning_zh}
         </p>

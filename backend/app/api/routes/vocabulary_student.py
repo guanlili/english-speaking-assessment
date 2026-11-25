@@ -153,7 +153,7 @@ def read_student_book(
     )
     return VocabularyBookDetail(
         **_book_public(book, len(all_words)).model_dump(),
-        words=[_word_public(w) for w in words],
+        words=[_word_public(w, include_exam_tags=False) for w in words],
     )
 
 

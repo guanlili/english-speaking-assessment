@@ -3,7 +3,45 @@
 import uuid
 from datetime import datetime
 
+from pydantic import field_validator
 from sqlmodel import Field, SQLModel
+
+# ── 考试标签与 CEFR 档位（#517 扩展区）──────────────────────────────
+# exam_tags 为多选内容标签；取值限定下列考试体系。CEFR 只是词条内容
+# 标签（A1–C2），不构成对学生的等级评定或测评结论。
+VOCAB_EXAM_TAGS = ("SAT", "ACT", "GRE", "CET4", "IELTS", "TOEFL")
+# 扩展区（高级备考词）判定标签：命中其一即进入高级分区。
+ADVANCED_EXAM_TAGS = ("SAT", "ACT", "GRE")
+VOCAB_CEFR_BANDS = ("A1", "A2", "B1", "B2", "C1", "C2")
+
+
+def normalize_exam_tags(raw: list[str] | None) -> list[str]:
+    """规范化考试标签：去空白、大写、去重；非法取值抛 ValueError。"""
+    if raw is None:
+        return []
+    cleaned: list[str] = []
+    for item in raw:
+        tag = str(item).strip().upper()
+        if not tag:
+            continue
+        if tag not in VOCAB_EXAM_TAGS:
+            raise ValueError(f"exam_tag_invalid:{tag}")
+        if tag not in cleaned:
+            cleaned.append(tag)
+    return cleaned
+
+
+def normalize_cefr_band(raw: str | None) -> str | None:
+    """规范化 CEFR 档位：空串 → None；非法取值抛 ValueError。"""
+    if raw is None:
+        return None
+    band = str(raw).strip().upper()
+    if not band:
+        return None
+    if band not in VOCAB_CEFR_BANDS:
+        raise ValueError("cefr_band_invalid")
+    return band
+
 
 # ── 词汇模块 API schema（请求/响应体，非表）────────────────────────
 
@@ -47,6 +85,21 @@ class VocabularyWordIn(SQLModel):
     # 词根词缀拆解：[{text, gloss, kind}]，kind ∈ prefix/root/suffix；
     # 拼接结果必须等于 headword 才可用于「词根拼装」题（发布时校验）
     morphology: list[dict[str, str]] | None = None
+    # 考试标签（多选）与 CEFR 档位：仅内容标签，不代表对学生的测评结论
+    exam_tags: list[str] | None = None
+    cefr_band: str | None = None
+
+    @field_validator("exam_tags")
+    @classmethod
+    def _check_exam_tags(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        return normalize_exam_tags(value)
+
+    @field_validator("cefr_band")
+    @classmethod
+    def _check_cefr_band(cls, value: str | None) -> str | None:
+        return normalize_cefr_band(value)
 
 
 class VocabularyWordUpdate(SQLModel):
@@ -60,8 +113,22 @@ class VocabularyWordUpdate(SQLModel):
     audio_url: str | None = None
     morphology: list[dict[str, str]] | None = None
     status: str | None = None
+    exam_tags: list[str] | None = None
+    cefr_band: str | None = None
     # 词条级乐观锁：UI 传当前 version；不一致 409
     expected_version: int | None = Field(default=None, ge=1)
+
+    @field_validator("exam_tags")
+    @classmethod
+    def _check_exam_tags(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        return normalize_exam_tags(value)
+
+    @field_validator("cefr_band")
+    @classmethod
+    def _check_cefr_band(cls, value: str | None) -> str | None:
+        return normalize_cefr_band(value)
 
 
 class VocabularyWordPublic(SQLModel):
@@ -85,6 +152,9 @@ class VocabularyWordPublic(SQLModel):
     # 五级归属（两模块共用分级数据源）：实际难度=最早一级；未命中分级时为 null
     level: str | None = None
     all_levels: list[str] = []
+    # 考试标签（多选）与 CEFR 档位：仅内容标签；学生侧只展示 CEFR，不做等级评定
+    exam_tags: list[str] = []
+    cefr_band: str | None = None
 
 
 class VocabularyBookCreate(SQLModel):
