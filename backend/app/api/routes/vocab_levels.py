@@ -46,6 +46,7 @@ from app.models import (
     VocabularyWordPublic,
     get_datetime_utc,
 )
+from app.services import vocab_governance
 from app.services import vocab_levels as levels_service
 from app.services.vocabulary import (
     _create_word,
@@ -418,6 +419,10 @@ def _create_level_words(
             reviewed_at=get_datetime_utc(),
             review_note=REVIEW_NOTE_LEVEL_CATALOG_VERIFIED,
         )
+        # 平台授权目录：台账记录平台目录为授权方、核对留痕为凭证，
+        # 不挂第三方教材授权（#517 发布门禁据此放行）。
+        word.license_owner = "平台五级词库目录"
+        word.license_ref = REVIEW_NOTE_LEVEL_CATALOG_VERIFIED
         session.flush()
         session.add(
             VocabularyBookItem(book_id=book.id, word_id=word.id, position=position)
@@ -487,6 +492,14 @@ def import_words_from_levels(
     if created:
         book.version += 1
         session.add(book)
+        # 版本快照（#517）：五级目录转入留一版
+        vocab_governance.capture_version(
+            session,
+            book,
+            actor=current_user,
+            action="add_words",
+            summary=f"五级目录转入 {created} 个词条",
+        )
     session.commit()
     session.refresh(book)
 

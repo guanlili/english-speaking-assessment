@@ -49,6 +49,22 @@ class VocabularyWord(SQLModel, table=True):
     # 教师上传或已授权的标准音；为空时练习端用浏览器朗读兜底（需标注）
     audio_url: str | None = Field(default=None, max_length=1024)
     status: str = Field(default="active", max_length=16, index=True)
+    # 版权/授权台账（#517）：来源类型与授权元数据；原 source 列保留兼容不删除。
+    # source_type: self_built | textbook | licensed | ai | demo
+    source_type: str = Field(
+        default="self_built",
+        max_length=16,
+        index=True,
+        sa_column_kwargs={"server_default": "self_built"},
+    )
+    license_owner: str | None = Field(default=None, max_length=120)
+    license_ref: str | None = Field(default=None, max_length=120)
+    license_expires_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    authorization_doc_url: str | None = Field(default=None, max_length=1024)
+    license_note: str | None = Field(default=None, max_length=512)
     # 内容治理（AC4）：来源 / 审核状态 / 审核人与留痕 / 词条乐观锁版本
     # source: teacher | ai | textbook | demo | import
     # review_status: draft | pending | approved | rejected（当前写路径只产生 pending/approved）
@@ -100,6 +116,21 @@ class VocabularyBook(SQLModel, table=True):
     )
     status: str = Field(default="active", max_length=16)
     version: int = Field(default=1, ge=1, sa_column_kwargs={"server_default": "1"})
+    # 版权/授权台账（#517）：词库级来源类型与授权元数据；与词条级字段同口径。
+    source_type: str = Field(
+        default="self_built",
+        max_length=16,
+        index=True,
+        sa_column_kwargs={"server_default": "self_built"},
+    )
+    license_owner: str | None = Field(default=None, max_length=120)
+    license_ref: str | None = Field(default=None, max_length=120)
+    license_expires_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    authorization_doc_url: str | None = Field(default=None, max_length=1024)
+    license_note: str | None = Field(default=None, max_length=512)
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -445,6 +476,103 @@ class VocabularyContentReviewAudit(SQLModel, table=True):
     from_status: str | None = Field(default=None, max_length=16)
     to_status: str | None = Field(default=None, max_length=16)
     note: str | None = Field(default=None, max_length=512)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class VocabularyLicenseAudit(SQLModel, table=True):
+    """版权/授权变更审计（#517）：词库或词条授权字段的前后值快照留痕。
+
+    target_type=book/word；book_id、word_id 允许为空（对方被清理后审计行
+    保留）。changes 为 ``{字段: {"from": 旧值, "to": 新值}}`` 的 JSON 快照，
+    actor_name/role 为事件发生时快照，后续改名不回溯审计行。
+    """
+
+    __tablename__ = "vocabulary_license_audit"
+    __table_args__ = (
+        Index(
+            "ix_vocab_license_audit_tenant_created_at",
+            "tenant_id",
+            "created_at",
+        ),
+    )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    target_type: str = Field(max_length=16, index=True)
+    book_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="vocabulary_book.id",
+        ondelete="SET NULL",
+        index=True,
+    )
+    word_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="vocabulary_word.id",
+        ondelete="SET NULL",
+        index=True,
+    )
+    actor_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL", index=True
+    )
+    actor_name: str | None = Field(default=None, max_length=120)
+    actor_role: str | None = Field(default=None, max_length=16)
+    changes: dict[str, dict[str, str | None]] = Field(
+        default_factory=dict, sa_column=Column("changes", JSON, nullable=False)
+    )
+    note: str | None = Field(default=None, max_length=512)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class VocabularyBookVersion(SQLModel, table=True):
+    """词库版本快照（#517）：每次改变词库内容的操作留一条不可变版本。
+
+    snapshot 为词条集合的必要字段快照（足以做词条级对比与回滚）；
+    content_hash 为归一化后的确定性哈希（同内容同值，与顺序无关）。
+    回滚只生成新版本、不删除历史；已有 ``vocabulary_assignment.snapshot_items``
+    永不被本表或回滚流程改写。
+    """
+
+    __tablename__ = "vocabulary_book_version"
+    __table_args__ = (
+        UniqueConstraint("book_id", "version_no", name="uq_vocab_book_version_no"),
+        Index(
+            "ix_vocab_book_version_tenant_created_at",
+            "tenant_id",
+            "created_at",
+        ),
+    )
+    # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
+    tenant_id: uuid.UUID = _tenant_id_field()
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    book_id: uuid.UUID = Field(
+        foreign_key="vocabulary_book.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+    version_no: int = Field(ge=1)
+    # 词条快照：[{word_id, headword, part_of_speech, meaning_zh, meaning_en,
+    #   accepted_spellings, example_en, audio_url, morphology, status}]
+    snapshot: list[dict[str, object]] = Field(
+        sa_column=Column("snapshot", JSON, nullable=False)
+    )
+    content_hash: str = Field(max_length=64, index=True)
+    actor_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", ondelete="SET NULL"
+    )
+    actor_name: str | None = Field(default=None, max_length=120)
+    actor_role: str | None = Field(default=None, max_length=16)
+    # create | add_words | remove_word | edit_word | review | rollback
+    action: str = Field(max_length=24, index=True)
+    summary: str | None = Field(default=None, max_length=512)
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore

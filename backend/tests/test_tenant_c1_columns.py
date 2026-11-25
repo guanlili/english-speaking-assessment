@@ -55,6 +55,8 @@ EXPECTED_TENANT_TABLES = {
     "vocabulary_content_review_audit",
     "vocabulary_leaderboard_participant",
     "vocabulary_leaderboard_setting",
+    "vocabulary_book_version",
+    "vocabulary_license_audit",
     "vocab_farm_plot",
     "vocab_placement_result",
     "vocab_pk_answer",

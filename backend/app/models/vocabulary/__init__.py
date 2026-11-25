@@ -129,6 +129,66 @@ from app.models.vocabulary.farm import FarmView as FarmView
 from app.models.vocabulary.farm import (
     VocabFarmPlot as VocabFarmPlot,
 )
+from app.models.vocabulary.governance import (
+    LICENSE_ERROR_EXPIRED as LICENSE_ERROR_EXPIRED,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_ERROR_OWNER_MISSING as LICENSE_ERROR_OWNER_MISSING,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_ERROR_REF_MISSING as LICENSE_ERROR_REF_MISSING,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_EXPIRING_DAYS as LICENSE_EXPIRING_DAYS,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_REQUIRED_SOURCE_TYPES as LICENSE_REQUIRED_SOURCE_TYPES,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_STATUS_ACTIVE as LICENSE_STATUS_ACTIVE,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_STATUS_EXPIRED as LICENSE_STATUS_EXPIRED,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_STATUS_EXPIRING as LICENSE_STATUS_EXPIRING,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_STATUS_NOT_REQUIRED as LICENSE_STATUS_NOT_REQUIRED,
+)
+from app.models.vocabulary.governance import (
+    VOCAB_SOURCE_TYPES as VOCAB_SOURCE_TYPES,
+)
+from app.models.vocabulary.governance import (
+    VocabularyBookLicenseDetail as VocabularyBookLicenseDetail,
+)
+from app.models.vocabulary.governance import (
+    VocabularyBookVersionEntry as VocabularyBookVersionEntry,
+)
+from app.models.vocabulary.governance import (
+    VocabularyBookVersionList as VocabularyBookVersionList,
+)
+from app.models.vocabulary.governance import (
+    VocabularyLicenseAlertItem as VocabularyLicenseAlertItem,
+)
+from app.models.vocabulary.governance import (
+    VocabularyLicenseAuditItem as VocabularyLicenseAuditItem,
+)
+from app.models.vocabulary.governance import (
+    VocabularyLicenseInfo as VocabularyLicenseInfo,
+)
+from app.models.vocabulary.governance import (
+    VocabularyLicenseUpdate as VocabularyLicenseUpdate,
+)
+from app.models.vocabulary.governance import (
+    VocabularyVersionCompare as VocabularyVersionCompare,
+)
+from app.models.vocabulary.governance import (
+    VocabularyVersionDiffEntry as VocabularyVersionDiffEntry,
+)
+from app.models.vocabulary.governance import (
+    VocabularyWordLicenseItem as VocabularyWordLicenseItem,
+)
 from app.models.vocabulary.leaderboard import (
     AUDIENCE_STUDENTS as AUDIENCE_STUDENTS,
 )
@@ -392,7 +452,13 @@ from app.models.vocabulary.tables import (
     VocabularyBookItem as VocabularyBookItem,
 )
 from app.models.vocabulary.tables import (
+    VocabularyBookVersion as VocabularyBookVersion,
+)
+from app.models.vocabulary.tables import (
     VocabularyContentReviewAudit as VocabularyContentReviewAudit,
+)
+from app.models.vocabulary.tables import (
+    VocabularyLicenseAudit as VocabularyLicenseAudit,
 )
 from app.models.vocabulary.tables import (
     VocabularySession as VocabularySession,
@@ -471,6 +537,28 @@ __all__ = [
     "VocabularyWord",
     "VocabularyBook",
     "VocabularyBookItem",
+    "VocabularyBookVersion",
+    "VocabularyLicenseAudit",
+    "VocabularyBookLicenseDetail",
+    "VocabularyBookVersionEntry",
+    "VocabularyBookVersionList",
+    "VocabularyLicenseAlertItem",
+    "VocabularyLicenseAuditItem",
+    "VocabularyLicenseInfo",
+    "VocabularyLicenseUpdate",
+    "VocabularyVersionCompare",
+    "VocabularyVersionDiffEntry",
+    "VocabularyWordLicenseItem",
+    "VOCAB_SOURCE_TYPES",
+    "LICENSE_REQUIRED_SOURCE_TYPES",
+    "LICENSE_EXPIRING_DAYS",
+    "LICENSE_STATUS_NOT_REQUIRED",
+    "LICENSE_STATUS_ACTIVE",
+    "LICENSE_STATUS_EXPIRING",
+    "LICENSE_STATUS_EXPIRED",
+    "LICENSE_ERROR_OWNER_MISSING",
+    "LICENSE_ERROR_REF_MISSING",
+    "LICENSE_ERROR_EXPIRED",
     "VocabularyContentReviewAudit",
     "VocabularyAssignment",
     "VocabularyAssignmentTarget",

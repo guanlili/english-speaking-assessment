@@ -56,6 +56,14 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **排名与隐私**：分数降序、同分并列（1,1,3）；前 10 名按 `rank <= 10` 返回（允许第 10 名并列超员），零分不进 entries；本人不在前 10 仍回 `my_entry`/`my_rank`。未参加学生 200 空榜（`entries=[]`、`my_entry/my_rank=null`、`my_score=0`、`participant_count=null`），看不到其他人与人数；教师可见参与人数。匿名时条目只带 `alias_no`，关闭匿名才展示 `display_name`；响应不下发 `student_id`/`user_id`/邮箱。
 - **API**（`/api/v1/classes/{code}/vocabulary/leaderboard`）：`GET/PUT …/settings`（本班授权教师含共管 / 本校管理员）、`PUT …/participation`（本班学生 `{joined}` → `{joined, alias_no}`）、`GET …?week_start=YYYY-MM-DD`。学生视角不可见（关闭或仅教师）返回 403 `leaderboard_unavailable`；教师设置页关闭时仍 200 预览。域逻辑在 `app/services/vocabulary_leaderboard.py`，路由 `app/api/routes/vocabulary_leaderboard.py`，模型 `app/models/vocabulary/leaderboard.py`。测试 `tests/api/routes/test_vocabulary_leaderboard.py`。
 
+### 版权/授权台账 + 词库版本历史（2026-11-25，#517，后端先行）
+
+- **授权台账**：`vocabulary_book` / `vocabulary_word` 各加 `source_type`（`self_built/textbook/licensed/ai/demo`）与 `license_owner/license_ref/license_expires_at/authorization_doc_url/license_note`；原 `source` 列保留兼容。存量回填：词条 `textbook→textbook、ai→ai、demo→demo、其他→self_built`，词库统一 `self_built`。
+- **发布门禁**：`textbook/licensed` 的词库或词条发布任务必须带授权方 + 凭证（文号或授权书 URL），有效期填写则须晚于当前时间；否则 422，稳定错误码 `vocabulary_license_owner_missing`（缺授权方）/ `vocabulary_license_ref_missing`（缺凭证）/ `vocabulary_license_expired`（已过期），detail 形如 `<code>:<n>`。`self_built/ai/demo` 不走授权门禁，仍受既有 approved 审核门禁约束；整本与显式 `word_ids` 两条路径同口径。
+- **审计与清单**：`vocabulary_license_audit` 记录授权变更的 actor、前后值快照、时间与租户；`GET /vocabulary/license/alerts`（临期 30 天内 / 已过期）、`GET /vocabulary/license/audit`、`GET /vocabulary/license/export.csv`（词库/词条、source_type、授权方、凭证、到期日、状态）；平台只读 `/admin/vocabulary/license/…`。授权更新仅学校管理员；跨校按 404 不泄露。
+- **版本快照**：`vocabulary_book_version` 存词条集合快照（必要字段）+ 确定性内容哈希（归一化后同内容同值、与顺序无关）+ 操作人/动作/摘要/租户。建库、加词、移除、编辑、审核通过/拒绝各留一版；内容无重复变化不落无意义版本。`GET …/versions`、`GET …/versions/compare?from_version=&to_version=`（新增/删除/改释义/改例句/改词法词条级 diff）、`POST …/versions/{no}/rollback`（仅管理员；回滚生成新 rollback 版本，不删历史；词库内容还原为目标版本；不改写任何 `vocabulary_assignment.snapshot_items`）。
+- **域逻辑**：`app/services/vocab_governance.py`；路由 `app/api/routes/vocabulary_governance.py`；模型 `app/models/vocabulary/governance.py`；迁移 `b6c7d8e9f0a1`。测试 `tests/api/routes/test_vocab_governance.py`、`tests/test_vocab_governance_migration.py`。
+
 ## 通用功能 G01–G05（2026-10-11）
 
 - 学生练习 `/p/{code}`、考试 `/exam/{code}` 各有独立入口与结果路由；共享录音/反馈组件，旧练习链接遇考试自动转考试模块。当前课堂发布仍沿用单一活动快照。

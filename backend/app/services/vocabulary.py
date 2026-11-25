@@ -53,7 +53,7 @@ from app.models import (
     VocabularyWrongWordItem,
     get_datetime_utc,
 )
-from app.services import vocab_quiz
+from app.services import vocab_governance, vocab_quiz
 from app.services import vocabulary_prompt_types as prompt_types_mod
 from app.services.vocab_quiz import DEFAULT_PASS_LINE
 
@@ -272,6 +272,9 @@ def resolve_publish_words(
             status_code=422,
             detail=f"vocabulary_words_not_approved:{len(not_approved)}",
         )
+    # 发布门禁（#517 版权台账）：textbook/licensed 的词库/词条授权不齐 → 422；
+    # self_built/ai/demo 不受本门禁约束，仍以上述 approved 门禁为准。
+    vocab_governance.enforce_publish_license(session, words)
     return words
 
 
@@ -2506,6 +2509,7 @@ def _create_word(
         audio_url=(word_in.audio_url or "").strip() or None,
         morphology=prompt_types_mod.normalize_morphology(word_in.morphology) or None,
         source=source,
+        source_type=vocab_governance.source_type_from_source(source),
         review_status=review_status,
         reviewer_id=reviewer_id,
         reviewed_at=reviewed_at,
@@ -2660,6 +2664,14 @@ def add_words_to_book(
     )
     if new_words:
         _attach_words_to_book(session, book, new_words, position)
+        # 版本快照（#517）：有实际新增才留版本；无变化重复调用不落无意义版本
+        vocab_governance.capture_version(
+            session,
+            book,
+            actor=reviewer,
+            action="add_words",
+            summary=f"新增 {len(new_words)} 个词条",
+        )
     session.commit()
     return len(new_words)
 
@@ -2931,6 +2943,24 @@ def review_words(
             to_status=target,
             note=note_text,
         )
+    # 版本快照（#517）：一次审核影响多本词库时，每个受影响词库各留一版
+    affected_book_ids = set(
+        session.exec(
+            select(VocabularyBookItem.book_id).where(
+                col(VocabularyBookItem.word_id).in_([w.id for w in words])  # type: ignore[operator]
+            )
+        ).all()
+    )
+    for book_id in affected_book_ids:
+        book = session.get(VocabularyBook, book_id)
+        if book is not None:
+            vocab_governance.capture_version(
+                session,
+                book,
+                actor=viewer,
+                action="review",
+                summary=f"批量{('通过' if target == 'approved' else '拒绝')} {len(words)} 个词条",
+            )
     session.commit()
     return len(words), target
 

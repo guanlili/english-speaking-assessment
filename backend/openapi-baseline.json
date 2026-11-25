@@ -13289,6 +13289,38 @@
         "title": "VocabularyBookDetail",
         "type": "object"
       },
+      "VocabularyBookLicenseDetail": {
+        "description": "按词库读取授权：词库级信息 + 词条级授权清单。",
+        "properties": {
+          "book_id": {
+            "format": "uuid",
+            "title": "Book Id",
+            "type": "string"
+          },
+          "license": {
+            "$ref": "#/components/schemas/VocabularyLicenseInfo"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "words": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyWordLicenseItem"
+            },
+            "title": "Words",
+            "type": "array"
+          }
+        },
+        "required": [
+          "book_id",
+          "title",
+          "license"
+        ],
+        "title": "VocabularyBookLicenseDetail",
+        "type": "object"
+      },
       "VocabularyBookPublic": {
         "properties": {
           "classroom_id": {
@@ -13409,6 +13441,111 @@
           }
         },
         "title": "VocabularyBookUpdate",
+        "type": "object"
+      },
+      "VocabularyBookVersionEntry": {
+        "description": "版本列表单行（不含完整快照内容）。",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name"
+          },
+          "actor_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Role"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          },
+          "word_count": {
+            "default": 0,
+            "title": "Word Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version_no",
+          "action",
+          "content_hash"
+        ],
+        "title": "VocabularyBookVersionEntry",
+        "type": "object"
+      },
+      "VocabularyBookVersionList": {
+        "properties": {
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyBookVersionEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "VocabularyBookVersionList",
         "type": "object"
       },
       "VocabularyChoice": {
@@ -14327,6 +14464,399 @@
           }
         },
         "title": "VocabularyLevelStats",
+        "type": "object"
+      },
+      "VocabularyLicenseAlertItem": {
+        "description": "到期提醒单行：临期 / 已过期的词库或词条。",
+        "properties": {
+          "authorization_doc_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Doc Url"
+          },
+          "book_id": {
+            "format": "uuid",
+            "title": "Book Id",
+            "type": "string"
+          },
+          "book_title": {
+            "title": "Book Title",
+            "type": "string"
+          },
+          "headword": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headword"
+          },
+          "license_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Expires At"
+          },
+          "license_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Owner"
+          },
+          "license_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Ref"
+          },
+          "license_status": {
+            "title": "License Status",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          },
+          "word_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Word Id"
+          }
+        },
+        "required": [
+          "target_type",
+          "book_id",
+          "book_title",
+          "source_type",
+          "license_status"
+        ],
+        "title": "VocabularyLicenseAlertItem",
+        "type": "object"
+      },
+      "VocabularyLicenseAuditItem": {
+        "description": "授权变更审计单行。",
+        "properties": {
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name"
+          },
+          "actor_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Role"
+          },
+          "book_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Id"
+          },
+          "changes": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "default": {},
+            "title": "Changes",
+            "type": "object"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          },
+          "tenant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Name"
+          },
+          "tenant_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Slug"
+          },
+          "word_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Word Id"
+          }
+        },
+        "required": [
+          "id",
+          "target_type"
+        ],
+        "title": "VocabularyLicenseAuditItem",
+        "type": "object"
+      },
+      "VocabularyLicenseInfo": {
+        "description": "授权信息（词库级或词条级通用视图）。",
+        "properties": {
+          "authorization_doc_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Doc Url"
+          },
+          "license_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Expires At"
+          },
+          "license_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Note"
+          },
+          "license_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Owner"
+          },
+          "license_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Ref"
+          },
+          "license_status": {
+            "title": "License Status",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_type",
+          "license_status"
+        ],
+        "title": "VocabularyLicenseInfo",
+        "type": "object"
+      },
+      "VocabularyLicenseUpdate": {
+        "description": "授权信息更新请求；缺省字段不修改，可空字段传 null 清空。",
+        "properties": {
+          "authorization_doc_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Doc Url"
+          },
+          "license_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Expires At"
+          },
+          "license_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Note"
+          },
+          "license_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Owner"
+          },
+          "license_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Ref"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          }
+        },
+        "title": "VocabularyLicenseUpdate",
         "type": "object"
       },
       "VocabularyMasteryReport": {
@@ -16689,6 +17219,116 @@
         "title": "VocabularyTodayPlan",
         "type": "object"
       },
+      "VocabularyVersionCompare": {
+        "properties": {
+          "added": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyVersionDiffEntry"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "book_id": {
+            "format": "uuid",
+            "title": "Book Id",
+            "type": "string"
+          },
+          "changed": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyVersionDiffEntry"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "from_version_no": {
+            "title": "From Version No",
+            "type": "integer"
+          },
+          "removed": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyVersionDiffEntry"
+            },
+            "title": "Removed",
+            "type": "array"
+          },
+          "to_version_no": {
+            "title": "To Version No",
+            "type": "integer"
+          },
+          "total_changed": {
+            "default": 0,
+            "title": "Total Changed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "book_id",
+          "from_version_no",
+          "to_version_no"
+        ],
+        "title": "VocabularyVersionCompare",
+        "type": "object"
+      },
+      "VocabularyVersionDiffEntry": {
+        "description": "词条级对比单行：新增 / 删除 / 变更（含变更维度与前后条目）。",
+        "properties": {
+          "change_kind": {
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "fields": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "from_entry": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Entry"
+          },
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "to_entry": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Entry"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word_id",
+          "headword",
+          "change_kind"
+        ],
+        "title": "VocabularyVersionDiffEntry",
+        "type": "object"
+      },
       "VocabularyWordIn": {
         "description": "创建/导入词条的请求体（词库内新增词）。",
         "properties": {
@@ -16789,6 +17429,92 @@
           "meaning_zh"
         ],
         "title": "VocabularyWordIn",
+        "type": "object"
+      },
+      "VocabularyWordLicenseItem": {
+        "description": "词库授权详情中的词条级授权行。",
+        "properties": {
+          "authorization_doc_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Doc Url"
+          },
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "license_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Expires At"
+          },
+          "license_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Note"
+          },
+          "license_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Owner"
+          },
+          "license_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Ref"
+          },
+          "license_status": {
+            "title": "License Status",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word_id",
+          "headword",
+          "source_type",
+          "license_status"
+        ],
+        "title": "VocabularyWordLicenseItem",
         "type": "object"
       },
       "VocabularyWordMisspelling": {
@@ -22174,6 +22900,103 @@
         "summary": "Vocab Level Stats",
         "tags": [
           "vocab-levels"
+        ]
+      }
+    },
+    "/api/v1/admin/vocabulary/license/audit": {
+      "get": {
+        "description": "平台跨校授权审计（只读）；附学校码与校名。",
+        "operationId": "admin-admin_list_license_audit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "book_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Book Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VocabularyLicenseAuditItem"
+                  },
+                  "title": "Response Admin-Admin List License Audit",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin List License Audit",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/vocabulary/license/export.csv": {
+      "get": {
+        "description": "平台跨校授权清单 CSV（只读）。",
+        "operationId": "admin-admin_export_license_csv",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin Export License Csv",
+        "tags": [
+          "admin"
         ]
       }
     },
@@ -31810,6 +32633,293 @@
         ]
       }
     },
+    "/api/v1/vocabulary/books/{book_id}/license": {
+      "get": {
+        "description": "按词库读取授权：词库级信息 + 词条级授权清单。",
+        "operationId": "vocabulary-read_book_license",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyBookLicenseDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Book License",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      },
+      "patch": {
+        "description": "更新词库授权（仅学校管理员）；逐字段写前后值审计。\n\n跨校对象先按 404 处理（不泄露存在性），再判管理员 403。",
+        "operationId": "vocabulary-update_book_license",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabularyLicenseUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyBookLicenseDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Book License",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/books/{book_id}/versions": {
+      "get": {
+        "description": "词库版本列表（版本号倒序）；跨校不可见。",
+        "operationId": "vocabulary-list_book_versions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyBookVersionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Book Versions",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/books/{book_id}/versions/compare": {
+      "get": {
+        "description": "两版本词条级对比：新增 / 删除 / 变更（释义 / 例句 / 词法 / 词形）。",
+        "operationId": "vocabulary-compare_book_versions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from_version",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "From Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_version",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "To Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyVersionCompare"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Compare Book Versions",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/books/{book_id}/versions/{version_no}/rollback": {
+      "post": {
+        "description": "回滚到指定版本：词库内容还原为目标快照，并生成一条新的 rollback 版本。\n\n仅学校管理员可执行；跨校词库先 404。已有发布任务快照\n（assignment.snapshot_items）不受影响。",
+        "operationId": "vocabulary-rollback_book_version",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_no",
+            "required": true,
+            "schema": {
+              "title": "Version No",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyBookVersionEntry"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Rollback Book Version",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      }
+    },
     "/api/v1/vocabulary/books/{book_id}/words": {
       "post": {
         "description": "词库加词（手动录入或导入确认）；重复词跳过并按新增数递增版本。\n\n未勾选已核对 → pending 待审；勾选 → 直接 approved（自评留痕）。",
@@ -31948,6 +33058,178 @@
         ],
         "summary": "Remove Book Word",
         "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/license/alerts": {
+      "get": {
+        "description": "临期（窗口内）/ 已过期的词库与词条；教师只见本人可见词库，管理员见全校。",
+        "operationId": "vocabulary-list_license_alerts",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 365,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VocabularyLicenseAlertItem"
+                  },
+                  "title": "Response Vocabulary-List License Alerts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List License Alerts",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/license/audit": {
+      "get": {
+        "description": "本校授权变更审计，按时间倒序。",
+        "operationId": "vocabulary-list_license_audit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "book_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Book Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "word_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Word Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VocabularyLicenseAuditItem"
+                  },
+                  "title": "Response Vocabulary-List License Audit",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List License Audit",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/license/export.csv": {
+      "get": {
+        "description": "授权清单 CSV（学校管理员）：词库/词条、来源类型、授权方、凭证、到期日、状态。",
+        "operationId": "vocabulary-export_license_csv",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Export License Csv",
+        "tags": [
+          "vocabulary",
           "vocabulary"
         ]
       }
@@ -32556,6 +33838,66 @@
         ],
         "summary": "Update Word",
         "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/words/{word_id}/license": {
+      "patch": {
+        "description": "更新词条授权（仅学校管理员）；跨校词条按 404 处理。",
+        "operationId": "vocabulary-update_word_license",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "word_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Word Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabularyLicenseUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Vocabulary-Update Word License"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Word License",
+        "tags": [
+          "vocabulary",
           "vocabulary"
         ]
       }
