@@ -53,6 +53,8 @@ EXPECTED_TENANT_TABLES = {
     "vocabulary_book",
     "vocabulary_book_item",
     "vocabulary_content_review_audit",
+    "vocabulary_leaderboard_participant",
+    "vocabulary_leaderboard_setting",
     "vocab_farm_plot",
     "vocab_placement_result",
     "vocab_pk_answer",

@@ -129,6 +129,42 @@ from app.models.vocabulary.farm import FarmView as FarmView
 from app.models.vocabulary.farm import (
     VocabFarmPlot as VocabFarmPlot,
 )
+from app.models.vocabulary.leaderboard import (
+    AUDIENCE_STUDENTS as AUDIENCE_STUDENTS,
+)
+from app.models.vocabulary.leaderboard import (
+    AUDIENCE_TEACHERS as AUDIENCE_TEACHERS,
+)
+from app.models.vocabulary.leaderboard import (
+    LEADERBOARD_AUDIENCES as LEADERBOARD_AUDIENCES,
+)
+from app.models.vocabulary.leaderboard import (
+    LEADERBOARD_TOP_N as LEADERBOARD_TOP_N,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyLeaderboardEntry as VocabularyLeaderboardEntry,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyLeaderboardParticipant as VocabularyLeaderboardParticipant,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyLeaderboardSetting as VocabularyLeaderboardSetting,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyLeaderboardSettings as VocabularyLeaderboardSettings,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyLeaderboardSettingsUpdate as VocabularyLeaderboardSettingsUpdate,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyLeaderboardView as VocabularyLeaderboardView,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyParticipationState as VocabularyParticipationState,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyParticipationUpdate as VocabularyParticipationUpdate,
+)
 from app.models.vocabulary.levels import (
     VOCAB_LEVEL_IMPORT_MAX_ROWS as VOCAB_LEVEL_IMPORT_MAX_ROWS,
 )
@@ -438,6 +474,18 @@ __all__ = [
     "VocabularyContentReviewAudit",
     "VocabularyAssignment",
     "VocabularyAssignmentTarget",
+    "VocabularyLeaderboardSetting",
+    "VocabularyLeaderboardParticipant",
+    "VocabularyLeaderboardSettings",
+    "VocabularyLeaderboardSettingsUpdate",
+    "VocabularyLeaderboardEntry",
+    "VocabularyLeaderboardView",
+    "VocabularyParticipationState",
+    "VocabularyParticipationUpdate",
+    "AUDIENCE_TEACHERS",
+    "AUDIENCE_STUDENTS",
+    "LEADERBOARD_AUDIENCES",
+    "LEADERBOARD_TOP_N",
     "VocabularySession",
     "VocabularyAnswer",
     "VOCAB_PROMPT_TYPES",
