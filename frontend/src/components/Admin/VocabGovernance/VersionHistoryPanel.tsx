@@ -497,10 +497,10 @@ function DiffGroup({
                         {t(diffDimensionLabel(dimension))}
                       </Badge>
                     </TableCell>
-                    <TableCell className="max-w-52 text-muted-foreground">
+                    <TableCell className="max-w-52 whitespace-normal break-words align-top text-muted-foreground">
                       {formatSnapshotField(entry.from_entry, dimension)}
                     </TableCell>
-                    <TableCell className="max-w-52">
+                    <TableCell className="max-w-52 whitespace-normal break-words align-top">
                       {formatSnapshotField(entry.to_entry, dimension)}
                     </TableCell>
                   </TableRow>
@@ -522,7 +522,7 @@ function DiffGroup({
                 <TableCell className="font-semibold">
                   {entry.headword}
                 </TableCell>
-                <TableCell className="max-w-72 text-muted-foreground">
+                <TableCell className="max-w-72 whitespace-normal break-words align-top text-muted-foreground">
                   {formatSnapshotField(snapshot, "meaning")}
                   {formatSnapshotField(snapshot, "example") !== "–" && (
                     <span className="mt-0.5 block">
