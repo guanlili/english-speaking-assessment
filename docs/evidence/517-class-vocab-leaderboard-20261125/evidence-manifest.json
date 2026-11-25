@@ -12,10 +12,41 @@
     "consoleErrorCount": 0,
     "rowCount": 11,
     "selfRowText": null,
-    "countBadgeText": "← 我的课堂口语练习词汇学习VOCABULARY TASK还没有进行中的词汇任务发布任务完成情况测分结果PK 对战学习榜词库审核学习榜设置按本周掌握词数排行；只读取作答记录，不改学生等级、授权或 XP。在本班开启学习榜可见范围仅教师可见（默认）学生可见匿名编号（默认开）：关闭后榜单显示学生姓名默认仅教师可见、默认匿名；学生默认不参加。未参加的学生看不到任何人，也看不到人数。切换为学生可见后，学生端才会出现加入入口。保存设置学生可见中本周预览参与 13 人2026/11/23本周名次学生本周掌握词数第 1 名同学024第 1 名同学014第 3 名同学043第 3 名同学033第 5 名同学102第 5 名同学092第 5 名同学072第 5 名同学112第 5 名同学082第 5 名同学052第 5 名同学062",
-    "mainText": "← 我的课堂\n口语练习\n词汇学习\nVOCABULARY TASK\n还没有进行中的词汇任务\n发布任务\n完成情况\n测分结果\nPK 对战\n学习榜\n词库审核\n学习榜设置\n按本周掌握词数排行；只读取作答记录，不改学生等级、授权或 XP。\n在本班开启学习榜\n可见范围\n仅教师可见（默认）\n学生可见\n匿名编号（默认开）：关闭后榜单显示学生姓名\n默认仅教师可见、默认匿名；学生默认不参加。\n未参加的学生看不到任何人，也看不到人数。\n切换为学生可见后，学生端才会出现加入入口。\n保存设置\n学生可见中\n本周预览\n参与 13 人\n2026/11/23本周\n名次\t学生\t本周掌握词数\n第 1 名\n同学\n02\n\t4\n第 1 名\n同学\n01\n\t4\n第 3 名\n同学\n04\n\t3\n第 3 名\n同学\n03\n\t3\n第 5 名\n同学\n10\n\t2\n第 5 名\n同学\n09\n\t2\n第 5 名\n同学\n07\n\t2\n第 5 名\n同学\n11\n\t2\n第 5 名\n同学\n08\n\t2\n第 5 名\n同学\n05\n\t2\n第 5 名\n同学\n06\n\t2",
+    "countBadgeText": "← 我的课堂口语练习词汇学习VOCABULARY TASK还没有进行中的词汇任务发布任务完成情况测分结果PK 对战学习榜词库审核学习榜设置按本周掌握词数排行；只读取作答记录，不改学生等级、授权或 XP。在本班开启学习榜可见范围仅教师可见（默认）学生可见匿名编号（默认开）：关闭后榜单显示学生姓名默认仅教师可见、默认匿名；学生默认不参加。未参加的学生看不到任何人，也看不到人数。切换为学生可见后，学生端才会出现加入入口。保存设置学生可见中本周预览参与 13 人2026/11/23本周名次学生本周掌握词数第 1 名同学014第 1 名同学024第 3 名同学043第 3 名同学033第 5 名同学072第 5 名同学062第 5 名同学052第 5 名同学102第 5 名同学112第 5 名同学092第 5 名同学082",
+    "mainText": "← 我的课堂\n口语练习\n词汇学习\nVOCABULARY TASK\n还没有进行中的词汇任务\n发布任务\n完成情况\n测分结果\nPK 对战\n学习榜\n词库审核\n学习榜设置\n按本周掌握词数排行；只读取作答记录，不改学生等级、授权或 XP。\n在本班开启学习榜\n可见范围\n仅教师可见（默认）\n学生可见\n匿名编号（默认开）：关闭后榜单显示学生姓名\n默认仅教师可见、默认匿名；学生默认不参加。\n未参加的学生看不到任何人，也看不到人数。\n切换为学生可见后，学生端才会出现加入入口。\n保存设置\n学生可见中\n本周预览\n参与 13 人\n2026/11/23本周\n名次\t学生\t本周掌握词数\n第 1 名\n同学\n01\n\t4\n第 1 名\n同学\n02\n\t4\n第 3 名\n同学\n04\n\t3\n第 3 名\n同学\n03\n\t3\n第 5 名\n同学\n07\n\t2\n第 5 名\n同学\n06\n\t2\n第 5 名\n同学\n05\n\t2\n第 5 名\n同学\n10\n\t2\n第 5 名\n同学\n11\n\t2\n第 5 名\n同学\n09\n\t2\n第 5 名\n同学\n08\n\t2",
     "pageErrors": [],
-    "consoleErrors": []
+    "consoleErrors": [],
+    "tableScrollW": 792,
+    "tableClientW": 792,
+    "tableOverflow": 0,
+    "headers": [
+      {
+        "label": "名次",
+        "left": 322,
+        "right": 402,
+        "width": 80
+      },
+      {
+        "label": "学生",
+        "left": 402,
+        "right": 709,
+        "width": 307
+      },
+      {
+        "label": "本周掌握词数",
+        "left": 709,
+        "right": 1114,
+        "width": 405
+      }
+    ],
+    "lastScoreCol": {
+      "left": 709,
+      "right": 1114
+    },
+    "scoreAlign": "right",
+    "lastHeaderRight": 1114,
+    "mainRight": 1180,
+    "lastColFullyVisible": true
   },
   {
     "file": "10-teacher-820-en-preview.png",
@@ -30,14 +61,45 @@
     "consoleErrorCount": 0,
     "rowCount": 11,
     "selfRowText": null,
-    "countBadgeText": "← My ClassroomsSpeakingVocabularyVOCABULARY TASKNo vocabulary task in progressAssignResultsPlacementPK BattleBoardReviewBoard settingsRanked by words mastered this week. Answers are read-only; student levels, roles and XP are never changed.Enable the class boardWho can see itTeachers only (default)Students can see itAnonymous IDs (default on): turn off to show student namesDefault is teacher-only and anonymous; students do not join by default.Students who haven't joined see nobody and no headcount.The join entry appears for students only after you switch to Students can see it.Save settingsVisible to studentsWeekly preview13 joined11/23/2026This weekRankStudentWords mastered#1Student024#1Student014#3Student043#3Student033#5Student102#5Student092#5Student072#5Student112#5Student082#5Student052#5Student062",
-    "mainText": "← My Classrooms\nSpeaking\nVocabulary\nVOCABULARY TASK\nNo vocabulary task in progress\nAssign\nResults\nPlacement\nPK Battle\nBoard\nReview\nBoard settings\nRanked by words mastered this week. Answers are read-only; student levels, roles and XP are never changed.\nEnable the class board\nWho can see it\nTeachers only (default)\nStudents can see it\nAnonymous IDs (default on): turn off to show student names\nDefault is teacher-only and anonymous; students do not join by default.\nStudents who haven't joined see nobody and no headcount.\nThe join entry appears for students only after you switch to Students can see it.\nSave settings\nVisible to students\nWeekly preview\n13 joined\n11/23/2026This week\nRANK\tSTUDENT\tWORDS MASTERED\n#1\nStudent\n02\n\t4\n#1\nStudent\n01\n\t4\n#3\nStudent\n04\n\t3\n#3\nStudent\n03\n\t3\n#5\nStudent\n10\n\t2\n#5\nStudent\n09\n\t2\n#5\nStudent\n07\n\t2\n#5\nStudent\n11\n\t2\n#5\nStudent\n08\n\t2\n#5\nStudent\n05\n\t2\n#5\nStudent\n06\n\t2",
+    "countBadgeText": "← My ClassroomsSpeakingVocabularyVOCABULARY TASKNo vocabulary task in progressAssignResultsPlacementPK BattleBoardReviewBoard settingsRanked by words mastered this week. Answers are read-only; student levels, roles and XP are never changed.Enable the class boardWho can see itTeachers only (default)Students can see itAnonymous IDs (default on): turn off to show student namesDefault is teacher-only and anonymous; students do not join by default.Students who haven't joined see nobody and no headcount.The join entry appears for students only after you switch to Students can see it.Save settingsVisible to studentsWeekly preview13 joined11/23/2026This weekRankStudentWords mastered#1Student014#1Student024#3Student043#3Student033#5Student072#5Student062#5Student052#5Student102#5Student112#5Student092#5Student082",
+    "mainText": "← My Classrooms\nSpeaking\nVocabulary\nVOCABULARY TASK\nNo vocabulary task in progress\nAssign\nResults\nPlacement\nPK Battle\nBoard\nReview\nBoard settings\nRanked by words mastered this week. Answers are read-only; student levels, roles and XP are never changed.\nEnable the class board\nWho can see it\nTeachers only (default)\nStudents can see it\nAnonymous IDs (default on): turn off to show student names\nDefault is teacher-only and anonymous; students do not join by default.\nStudents who haven't joined see nobody and no headcount.\nThe join entry appears for students only after you switch to Students can see it.\nSave settings\nVisible to students\nWeekly preview\n13 joined\n11/23/2026This week\nRANK\tSTUDENT\tWORDS MASTERED\n#1\nStudent\n01\n\t4\n#1\nStudent\n02\n\t4\n#3\nStudent\n04\n\t3\n#3\nStudent\n03\n\t3\n#5\nStudent\n07\n\t2\n#5\nStudent\n06\n\t2\n#5\nStudent\n05\n\t2\n#5\nStudent\n10\n\t2\n#5\nStudent\n11\n\t2\n#5\nStudent\n09\n\t2\n#5\nStudent\n08\n\t2",
     "pageErrors": [],
-    "consoleErrors": []
+    "consoleErrors": [],
+    "tableScrollW": 464,
+    "tableClientW": 464,
+    "tableOverflow": 0,
+    "headers": [
+      {
+        "label": "RANK",
+        "left": 306,
+        "right": 386,
+        "width": 80
+      },
+      {
+        "label": "STUDENT",
+        "left": 386,
+        "right": 541,
+        "width": 155
+      },
+      {
+        "label": "WORDS MASTERED",
+        "left": 541,
+        "right": 770,
+        "width": 229
+      }
+    ],
+    "lastScoreCol": {
+      "left": 541,
+      "right": 770
+    },
+    "scoreAlign": "right",
+    "lastHeaderRight": 770,
+    "mainRight": 820,
+    "lastColFullyVisible": true
   },
   {
     "file": "11-teacher-390-en-settings.png",
-    "note": "教师端英文 390 设置面板",
+    "note": "教师端英文 390 设置面板+周预览；三列 Rank/Student/Words mastered 完整可见，分数右对齐",
     "role": "teacher",
     "lang": "en",
     "viewport": "390x844",
@@ -48,10 +110,41 @@
     "consoleErrorCount": 0,
     "rowCount": 11,
     "selfRowText": null,
-    "countBadgeText": "← My ClassroomsSpeakingVocabularyVOCABULARY TASKNo vocabulary task in progressAssignResultsPlacementPK BattleBoardReviewBoard settingsRanked by words mastered this week. Answers are read-only; student levels, roles and XP are never changed.Enable the class boardWho can see itTeachers only (default)Students can see itAnonymous IDs (default on): turn off to show student namesDefault is teacher-only and anonymous; students do not join by default.Students who haven't joined see nobody and no headcount.The join entry appears for students only after you switch to Students can see it.Save settingsVisible to studentsWeekly preview13 joined11/23/2026This weekRankStudentWords mastered#1Student024#1Student014#3Student043#3Student033#5Student102#5Student092#5Student072#5Student112#5Student082#5Student052#5Student062",
-    "mainText": "← My Classrooms\nSpeaking\nVocabulary\nVOCABULARY TASK\nNo vocabulary task in progress\nAssign\nResults\nPlacement\nPK Battle\nBoard\nReview\nBoard settings\nRanked by words mastered this week. Answers are read-only; student levels, roles and XP are never changed.\nEnable the class board\nWho can see it\nTeachers only (default)\nStudents can see it\nAnonymous IDs (default on): turn off to show student names\nDefault is teacher-only and anonymous; students do not join by default.\nStudents who haven't joined see nobody and no headcount.\nThe join entry appears for students only after you switch to Students can see it.\nSave settings\nVisible to students\nWeekly preview\n13 joined\n11/23/2026This week\nRANK\tSTUDENT\tWORDS MASTERED\n#1\nStudent\n02\n\t4\n#1\nStudent\n01\n\t4\n#3\nStudent\n04\n\t3\n#3\nStudent\n03\n\t3\n#5\nStudent\n10\n\t2\n#5\nStudent\n09\n\t2\n#5\nStudent\n07\n\t2\n#5\nStudent\n11\n\t2\n#5\nStudent\n08\n\t2\n#5\nStudent\n05\n\t2\n#5\nStudent\n06\n\t2",
+    "countBadgeText": "← My ClassroomsSpeakingVocabularyVOCABULARY TASKNo vocabulary task in progressAssignResultsPlacementPK BattleBoardReviewBoard settingsRanked by words mastered this week. Answers are read-only; student levels, roles and XP are never changed.Enable the class boardWho can see itTeachers only (default)Students can see itAnonymous IDs (default on): turn off to show student namesDefault is teacher-only and anonymous; students do not join by default.Students who haven't joined see nobody and no headcount.The join entry appears for students only after you switch to Students can see it.Save settingsVisible to studentsWeekly preview13 joined11/23/2026This weekRankStudentWords mastered#1Student014#1Student024#3Student043#3Student033#5Student072#5Student062#5Student052#5Student102#5Student112#5Student092#5Student082",
+    "mainText": "← My Classrooms\nSpeaking\nVocabulary\nVOCABULARY TASK\nNo vocabulary task in progress\nAssign\nResults\nPlacement\nPK Battle\nBoard\nReview\nBoard settings\nRanked by words mastered this week. Answers are read-only; student levels, roles and XP are never changed.\nEnable the class board\nWho can see it\nTeachers only (default)\nStudents can see it\nAnonymous IDs (default on): turn off to show student names\nDefault is teacher-only and anonymous; students do not join by default.\nStudents who haven't joined see nobody and no headcount.\nThe join entry appears for students only after you switch to Students can see it.\nSave settings\nVisible to students\nWeekly preview\n13 joined\n11/23/2026This week\nRANK\tSTUDENT\tWORDS MASTERED\n#1\nStudent\n01\n\t4\n#1\nStudent\n02\n\t4\n#3\nStudent\n04\n\t3\n#3\nStudent\n03\n\t3\n#5\nStudent\n07\n\t2\n#5\nStudent\n06\n\t2\n#5\nStudent\n05\n\t2\n#5\nStudent\n10\n\t2\n#5\nStudent\n11\n\t2\n#5\nStudent\n09\n\t2\n#5\nStudent\n08\n\t2",
     "pageErrors": [],
-    "consoleErrors": []
+    "consoleErrors": [],
+    "tableScrollW": 306,
+    "tableClientW": 306,
+    "tableOverflow": 0,
+    "headers": [
+      {
+        "label": "RANK",
+        "left": 42,
+        "right": 106,
+        "width": 64
+      },
+      {
+        "label": "STUDENT",
+        "left": 106,
+        "right": 201,
+        "width": 95
+      },
+      {
+        "label": "WORDS MASTERED",
+        "left": 201,
+        "right": 348,
+        "width": 147
+      }
+    ],
+    "lastScoreCol": {
+      "left": 201,
+      "right": 348
+    },
+    "scoreAlign": "right",
+    "lastHeaderRight": 348,
+    "mainRight": 390,
+    "lastColFullyVisible": true
   },
   {
     "file": "03-student-home-1180-zh-joined.png",
