@@ -5,7 +5,7 @@
 - 环境：仅本机本地 docker compose（db 5433 / backend 8000 / 前端 5173、5174）；浏览器取证统一走 `http://localhost:5174`。**未连接/写入生产库与生产服务器，未触发部署，未改产品代码。**
 - 复用 A 校 `e2e-526-a`（仅 speaking，课堂码 `D5V8CH`）、B 校 `e2e-526-b`（仅 vocabulary，课堂码 `VJS6CD`）与既有 `.seed` 测试账号；未新建真实信息。截图仅含匿名代号、课堂码与合成邮箱后缀。
 - 本目录是 A 阶段证据（`../README.md`）的补充：G1 补齐 A 阶段未抓到的拦截面板首屏；G2 补三档视口 × 中英文；G3 验证未来 `effective_at` 到点自动放行；G4 补验 PR #532 合入后的教师轨迹子路由守卫。
-- 上线后浏览器补验（G4 三档视口补拍、导出 CSV 下载链路、跨班 FSRS 连续性、G3b PR #537 清单 45s staleTime 聚焦重取零 reload）见 [`上线后-20261123/README.md`](上线后-20261123/README.md)，基线 master `fe4a6b4`，分支 `docs/526-postlaunch-evidence`。
+- 上线后浏览器补验（G4 三档视口补拍、导出 CSV 下载链路、跨班 FSRS 连续性、G3b PR #537 清单 45s staleTime 聚焦重取零 reload）见 [`上线后-20261123/README.md`](上线后-20261123/README.md)，基线 master `fe4a6b4`。
 
 ## 1. G1 · ModuleDeniedPanel 双语首屏（补齐 A 阶段缺口）
 

@@ -1,7 +1,7 @@
 # #526 上线后浏览器补验证据（2026-11-23）
 
 - 验证日期：2026-11-23（Asia/Shanghai）
-- 代码基线：master `fe4a6b4dbfde2804a57cebbbe010ddafe9390bb3`；证据分支 `docs/526-postlaunch-evidence`，PR base `master`，**不合并**。
+- 代码基线：master `fe4a6b4dbfde2804a57cebbbe010ddafe9390bb3`；2026-11-25 整理为独立证据 PR 归档，**不改产品代码、不部署**。
 - 环境：仅本机本地 docker compose（db 5433 / backend 8000 / 前端 5173、5174）；浏览器取证统一走 `http://localhost:5174`。**未连接/写入生产库与生产服务器，未触发部署，未改产品代码。**
 - 复用 A 校 `e2e-526-a`（仅 speaking，课堂码 `D5V8CH`）、B 校 `e2e-526-b`（仅 vocabulary，课堂码 `VJS6CD`）与既有 `.seed` 匿名账号；本轮新建的临时班级/词库/作答状态验完已清理（见 §3 清理记录）。截图与机读证据仅含匿名代号、课堂码与合成邮箱后缀，无真实姓名/手机号/token。
 - 本目录是 `../README.md`（G1–G4 桌面阶段）的上线后补充：① G4 子路由面板补三档视口 × 中英；② 教师面板「导出 CSV」完整真实浏览器下载链路；③ 跨班 FSRS 复习连续性（浏览器级 + API 级）；④ G3b 验证 PR #537（清单 staleTime 45s + 聚焦重取）到点后零整页 reload 自动放行。
@@ -10,7 +10,7 @@
 
 ### 被测场景
 
-B 校教师（speaking off）直连教师进步轨迹子路由 `/t/VJS6CD/s/bea9fe6d-a905-4a79-8f13-14466c3aad65`（B 学生档案 ID，取自本地测试库 `student` 表，非编造）。守卫 `t.$code.s.$studentId.tsx` 在 `denied` 分支返回 `ModuleDeniedPanel`，**不发 navigate**，面板停留。
+B 校教师（speaking off）直连教师进步轨迹子路由 `/t/VJS6CD/s/[student-id]`（B 学生档案 ID，取自本地测试库 `student` 表，非编造）。守卫 `t.$code.s.$studentId.tsx` 在 `denied` 分支返回 `ModuleDeniedPanel`，**不发 navigate**，面板停留。
 
 ### 截图矩阵（390×844 / 820×1180 / 1180×820 × zh/en）
 
