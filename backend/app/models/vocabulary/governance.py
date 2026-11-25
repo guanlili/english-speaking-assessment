@@ -21,11 +21,13 @@ LICENSE_ERROR_OWNER_MISSING = "vocabulary_license_owner_missing"
 LICENSE_ERROR_REF_MISSING = "vocabulary_license_ref_missing"
 LICENSE_ERROR_EXPIRED = "vocabulary_license_expired"
 
-# 授权状态：not_required=免授权；active=有效；expiring=临期（窗口内）；expired=已过期
+# 授权状态：not_required=免授权；active=有效；expiring=临期（窗口内）；expired=已过期；
+# missing=应授权来源缺授权方或凭证（平台台账只读口径，不参与发布门禁状态机）
 LICENSE_STATUS_NOT_REQUIRED = "not_required"
 LICENSE_STATUS_ACTIVE = "active"
 LICENSE_STATUS_EXPIRING = "expiring"
 LICENSE_STATUS_EXPIRED = "expired"
+LICENSE_STATUS_MISSING = "missing"
 
 # 临期提醒窗口（天）
 LICENSE_EXPIRING_DAYS = 30
@@ -112,6 +114,30 @@ class VocabularyLicenseAlertItem(SQLModel):
     license_expires_at: datetime | None = None
     authorization_doc_url: str | None = None
     license_status: str
+
+
+class VocabularyLicenseStatusItem(SQLModel):
+    """平台授权台账单行：某校某词库的当前授权状态（只读，#517 运营台账页）。"""
+
+    book_id: uuid.UUID
+    title: str
+    tenant_slug: str | None = None
+    tenant_name: str | None = None
+    source_type: str
+    license_status: str
+    license_owner: str | None = None
+    license_ref: str | None = None
+    authorization_doc_url: str | None = None
+    license_expires_at: datetime | None = None
+    license_note: str | None = None
+    created_at: datetime | None = None
+
+
+class VocabularyLicenseStatusList(SQLModel):
+    """平台授权台账当前状态清单（只读）。"""
+
+    items: list[VocabularyLicenseStatusItem] = []
+    total: int = 0
 
 
 # ── 词库版本历史 ────────────────────────────────────────────────────

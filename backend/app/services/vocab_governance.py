@@ -30,6 +30,7 @@ from app.models import (
     LICENSE_STATUS_ACTIVE,
     LICENSE_STATUS_EXPIRED,
     LICENSE_STATUS_EXPIRING,
+    LICENSE_STATUS_MISSING,
     LICENSE_STATUS_NOT_REQUIRED,
     VOCAB_SOURCE_TYPES,
     VocabularyBook,
@@ -137,6 +138,23 @@ def license_status(
     if (expires_at - now).total_seconds() <= expiring_days * 86400:
         return LICENSE_STATUS_EXPIRING
     return LICENSE_STATUS_ACTIVE
+
+
+def license_gap_status(
+    source_type: str | None,
+    owner: str | None,
+    ref: str | None,
+    doc_url: str | None,
+    expires_at: datetime | None,
+    now: datetime,
+    expiring_days: int = LICENSE_EXPIRING_DAYS,
+) -> str:
+    """平台台账口径状态：应授权来源缺授权方 / 凭证记 ``missing``，其余走
+    :func:`license_status`。仅用于只读台账展示，不改变发布门禁状态机。"""
+    if source_type in LICENSE_REQUIRED_SOURCE_TYPES:
+        if not _clean_text(owner) or not (_clean_text(ref) or _clean_text(doc_url)):
+            return LICENSE_STATUS_MISSING
+    return license_status(source_type, expires_at, now, expiring_days)
 
 
 def _license_violation(

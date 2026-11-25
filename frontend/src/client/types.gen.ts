@@ -8378,6 +8378,78 @@ export type VocabularyLicenseInfo = {
 };
 
 /**
+ * VocabularyLicenseStatusItem
+ *
+ * 平台授权台账单行：某校某词库的当前授权状态（只读，#517 运营台账页）。
+ */
+export type VocabularyLicenseStatusItem = {
+    /**
+     * Book Id
+     */
+    book_id: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Tenant Slug
+     */
+    tenant_slug?: string | null;
+    /**
+     * Tenant Name
+     */
+    tenant_name?: string | null;
+    /**
+     * Source Type
+     */
+    source_type: string;
+    /**
+     * License Status
+     */
+    license_status: string;
+    /**
+     * License Owner
+     */
+    license_owner?: string | null;
+    /**
+     * License Ref
+     */
+    license_ref?: string | null;
+    /**
+     * Authorization Doc Url
+     */
+    authorization_doc_url?: string | null;
+    /**
+     * License Expires At
+     */
+    license_expires_at?: string | null;
+    /**
+     * License Note
+     */
+    license_note?: string | null;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+};
+
+/**
+ * VocabularyLicenseStatusList
+ *
+ * 平台授权台账当前状态清单（只读）。
+ */
+export type VocabularyLicenseStatusList = {
+    /**
+     * Items
+     */
+    items?: Array<VocabularyLicenseStatusItem>;
+    /**
+     * Total
+     */
+    total?: number;
+};
+
+/**
  * VocabularyLicenseUpdate
  *
  * 授权信息更新请求；缺省字段不修改，可空字段传 null 清空。
@@ -18963,6 +19035,48 @@ export type AdminAdminListLicenseAuditResponses = {
 };
 
 export type AdminAdminListLicenseAuditResponse = AdminAdminListLicenseAuditResponses[200 & keyof AdminAdminListLicenseAuditResponses];
+
+export type AdminAdminListLicenseStatusData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Tenant
+         */
+        tenant?: string | null;
+        /**
+         * Book
+         */
+        book?: string | null;
+        /**
+         * Status
+         */
+        status?: string | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/admin/vocabulary/license/status';
+};
+
+export type AdminAdminListLicenseStatusErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AdminAdminListLicenseStatusError = AdminAdminListLicenseStatusErrors[keyof AdminAdminListLicenseStatusErrors];
+
+export type AdminAdminListLicenseStatusResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyLicenseStatusList;
+};
+
+export type AdminAdminListLicenseStatusResponse = AdminAdminListLicenseStatusResponses[200 & keyof AdminAdminListLicenseStatusResponses];
 
 export type AdminAdminExportLicenseCsvData = {
     body?: never;

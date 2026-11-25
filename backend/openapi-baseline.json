@@ -15212,6 +15212,146 @@
         "title": "VocabularyLicenseInfo",
         "type": "object"
       },
+      "VocabularyLicenseStatusItem": {
+        "description": "平台授权台账单行：某校某词库的当前授权状态（只读，#517 运营台账页）。",
+        "properties": {
+          "authorization_doc_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Doc Url"
+          },
+          "book_id": {
+            "format": "uuid",
+            "title": "Book Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "license_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Expires At"
+          },
+          "license_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Note"
+          },
+          "license_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Owner"
+          },
+          "license_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Ref"
+          },
+          "license_status": {
+            "title": "License Status",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "tenant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Name"
+          },
+          "tenant_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Slug"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "book_id",
+          "title",
+          "source_type",
+          "license_status"
+        ],
+        "title": "VocabularyLicenseStatusItem",
+        "type": "object"
+      },
+      "VocabularyLicenseStatusList": {
+        "description": "平台授权台账当前状态清单（只读）。",
+        "properties": {
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyLicenseStatusItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "VocabularyLicenseStatusList",
+        "type": "object"
+      },
       "VocabularyLicenseUpdate": {
         "description": "授权信息更新请求；缺省字段不修改，可空字段传 null 清空。",
         "properties": {
@@ -23570,7 +23710,7 @@
     },
     "/api/v1/admin/vocabulary/license/export.csv": {
       "get": {
-        "description": "平台跨校授权清单 CSV（只读）。",
+        "description": "平台跨校授权清单 CSV（只读）：首列为学校，口径与台账页一致。",
         "operationId": "admin-admin_export_license_csv",
         "responses": {
           "200": {
@@ -23588,6 +23728,105 @@
           }
         ],
         "summary": "Admin Export License Csv",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/vocabulary/license/status": {
+      "get": {
+        "description": "平台跨校授权台账（只读当前状态）：按学校 / 词库 / 状态筛选。\n\n只读：不写授权、不复用学校 token；状态口径见\n:func:`vocab_governance.license_gap_status`。``active`` 筛选同时纳入\n``not_required``（免授权来源）。",
+        "operationId": "admin-admin_list_license_status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            }
+          },
+          {
+            "in": "query",
+            "name": "book",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Book"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyLicenseStatusList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin List License Status",
         "tags": [
           "admin"
         ]
