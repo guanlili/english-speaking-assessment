@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   SpellCheck,
   Swords,
+  TrendingUp,
   Trophy,
 } from "lucide-react"
 import { useEffect, useState } from "react"
@@ -21,6 +22,7 @@ import { LeaderboardTeacherPanel } from "@/components/Teaching/VocabTasks/Leader
 import { PkTeacherPanel } from "@/components/Teaching/VocabTasks/PkTeacherPanel"
 import { PlacementTeacherPanel } from "@/components/Teaching/VocabTasks/PlacementTeacherPanel"
 import { ResultsPanel } from "@/components/Teaching/VocabTasks/ResultsPanel"
+import { TrendTeacherPanel } from "@/components/Teaching/VocabTasks/TrendTeacherPanel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -49,7 +51,13 @@ function TeacherVocabPage() {
     }
   }, [modulesPending, hasModule, navigate])
   const [tab, setTab] = useState<
-    "assign" | "results" | "placement" | "pk" | "review" | "leaderboard"
+    | "assign"
+    | "results"
+    | "trend"
+    | "placement"
+    | "pk"
+    | "review"
+    | "leaderboard"
   >("assign")
   // 待审数量由审核面板数据回报（不另写 API URL）；>0 时在 tab 徽章提示
   const [pendingCount, setPendingCount] = useState(0)
@@ -295,6 +303,15 @@ function TeacherVocabPage() {
           {t({ zh: "完成情况", en: "Results" })}
         </Button>
         <Button
+          variant={tab === "trend" ? "default" : "outline"}
+          size="sm"
+          aria-pressed={tab === "trend"}
+          onClick={() => setTab("trend")}
+        >
+          <TrendingUp />
+          {t({ zh: "趋势", en: "Trends" })}
+        </Button>
+        <Button
           variant={tab === "placement" ? "default" : "outline"}
           size="sm"
           aria-pressed={tab === "placement"}
@@ -343,6 +360,8 @@ function TeacherVocabPage() {
           classroomId={classroomId}
           onGoReview={() => setTab("review")}
         />
+      ) : tab === "trend" ? (
+        <TrendTeacherPanel code={code} />
       ) : tab === "pk" ? (
         <PkTeacherPanel code={code} />
       ) : tab === "leaderboard" ? (
