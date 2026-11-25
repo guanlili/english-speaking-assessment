@@ -90,6 +90,7 @@ from app.services import vocabulary_prompt_types as prompt_types
 
 # ── 固定 demo 命名空间 ──────────────────────────────────────────────────
 TEACHER_EMAIL = "vocabdemo.teacher@example.com"
+ADMIN_EMAIL = "vocabdemo.admin@example.com"
 STUDENT_EMAIL_PREFIX = "vocabdemo.s"
 CLASSROOM_DEMO1 = "VOCDEMO1"
 CLASSROOM_DEMO2 = "VOCDEMO2"
@@ -259,6 +260,32 @@ def ensure_teacher(session: Session, tenant: Tenant, pw_hash: str) -> User:
         session.add(teacher)
         session.flush()
     return teacher
+
+
+def ensure_admin(session: Session, tenant: Tenant, pw_hash: str) -> User:
+    """演示校级管理员：供 /admin/vocabbooks 授权/版本管理取证。
+
+    角色 ``school_admin``：词库 CRUD、授权台账、版本历史、审计/CSV 导出等
+    校级端点均可访问；口令与教师/学生同一演示口令来源。幂等：重复 seed
+    不重复建。
+    """
+    admin = session.exec(
+        select(User).where(User.tenant_id == tenant.id, User.email == ADMIN_EMAIL)
+    ).first()
+    if admin is None:
+        admin = User(
+            tenant_id=tenant.id,
+            email=ADMIN_EMAIL,
+            full_name="演示管理员",
+            username="vocabdemo.admin",
+            role="school_admin",
+            is_active=True,
+            hashed_password=pw_hash,
+            must_change_password=False,
+        )
+        session.add(admin)
+        session.flush()
+    return admin
 
 
 def ensure_classrooms(
@@ -1169,6 +1196,7 @@ def main() -> None:
 
         ensure_module(session, tenant)
         teacher = ensure_teacher(session, tenant, pw_hash)
+        ensure_admin(session, tenant, pw_hash)
         rooms = ensure_classrooms(session, tenant, teacher)
         students_by_room = ensure_students(session, tenant, rooms, pw_hash)
         demo1_students = students_by_room[CLASSROOM_DEMO1]
@@ -1228,6 +1256,10 @@ def main() -> None:
             f"{CLASSROOM_DEMO2}（{len(demo2_students)} 学生）"
         )
         print(f"  教师账号: {TEACHER_EMAIL}（口令由环境变量 {PASSWORD_ENV} 提供）")
+        print(
+            f"  管理员账号: {ADMIN_EMAIL}（role=school_admin，"
+            f"口令由环境变量 {PASSWORD_ENV} 提供）"
+        )
         print(
             f"  学生账号: {STUDENT_EMAIL_PREFIX}01..{len(demo1_students):02d}@example.com 等"
         )

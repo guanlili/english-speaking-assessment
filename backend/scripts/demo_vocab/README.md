@@ -107,7 +107,7 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 \
 | 维度 | 固定标识 |
 | --- | --- |
 | 租户 slug | `vocabdemo` |
-| 账号邮箱 | `vocabdemo.teacher@example.com`、`vocabdemo.s01..@example.com`（`@example.com`） |
+| 账号邮箱 | `vocabdemo.admin@example.com`（school_admin）、`vocabdemo.teacher@example.com`、`vocabdemo.s01..@example.com`（`@example.com`） |
 | 课堂码 | `VOCDEMO1`（12 名学生）、`VOCDEMO2`（6 名学生，跨班 404 隔离演示） |
 | 词库 / 任务标题 | 前缀 `[DEMO]` |
 | 词条授权 | `license_owner = Demo Content Team`、`license_ref = DEMO-ONLY`、`source_type = demo` |
@@ -121,9 +121,34 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 \
   - `[DEMO] 过期授权词库`：`source_type=licensed`，有效期已过，10 词；
   - 3 条真实授权审计行（教材库续期备注、教材词条引用号变更、过期库授权落账），`changes` 带 `from / to` 前后值，可查可追溯。
 - **课堂与师生**：教师 `vocabdemo.teacher@example.com`（role=teacher，绑定两间课堂）；VOCDEMO1 12 名学生、VOCDEMO2 6 名学生，显示名为“演示学生01…”假名。
+- **演示校级管理员**：`vocabdemo.admin@example.com`（username `vocabdemo.admin`，role=`school_admin`，`tenant_id` 归属 `vocabdemo` 租户，显示名“演示管理员”），供 `/admin/vocabbooks` 词库授权 / 版本管理取证；口令来源与教师/学生相同（`VOCAB_DEMO_PASSWORD`，未设置走 README 本地 fallback）。幂等：重复 seed 不重复建；cleanup 按 demo 租户命名空间一并清掉。
 - **任务与作答**：VOCDEMO1 5 个教师任务，发布时间覆盖最近 5 个自然周（锚点 `2026-11-25`），题型覆盖 `meaning / cloze / roots`；12 名学生形成“完成 / 部分完成 / 未开始”三种状态，首答正确率 low / mid / high 分段；每任务有首轮 session 与 `attempt_no=1` 答案，部分错题带 `attempt_no=2` 重试（重试证据不进首答统计）。
 - **FSRS**：8 名学生 × 3 词共 24 条 `VocabularyReviewState`，选词跨 KET / CET4 / IELTS_TOEFL 三个任务词库，`due_at` 分布在过去（到期未复习）/ 本周 / 未来，保证近期周期趋势报告的 `due_unreviewed` 可回算出非零值。
 - **D/E 备用**：2 场已结束 PK（含大厅、对局、玩家、作答，不改任务统计）；5 个农场地块与 4 枚农场徽章。
+
+### 管理员账号与端点角色口径
+
+端点角色门禁以 `backend/app/api/deps.py` 为准（B3 身份拆分后无全局超管）：
+
+| 门禁 | 放行角色 | 覆盖的词库端点 |
+| --- | --- | --- |
+| `TeacherUserDep` | `teacher` / `school_admin` | 词库列表与 CRUD、词条授权台账、版本历史、授权审计、`GET /vocabulary/license/alerts` 提醒 |
+| `SchoolAdminDep` | 仅 `school_admin` | 校级授权清单 CSV：`GET /vocabulary/license/export.csv` |
+| `PlatformOperatorDep` | 平台运营（独立 `PlatformOperator` 身份 / operator token） | 跨校授权清单 CSV：`GET /admin/vocabulary/license/export.csv`；**校级账号不可访问**，本种子不造运营账号 |
+
+- 模块授权闸门 `require_module("vocabulary")`：种子已为 `vocabdemo` 租户写入 `TenantModule(module_key="vocabulary", enabled=True)`，管理员账号自动满足模块条件，无需额外授权行。
+- 前端可访问页面：`school_admin` 可进入 `/admin/vocabbooks`（词库管理、授权面板、版本历史、提醒面板、内容审核、校级 CSV 导出）、`/admin/units`、`/admin/sentenceframes`，以及教师三页；页面内写授权 / 回滚按钮按 `school_admin` 身份放开。
+
+### 管理员登录与访问实测（本地 `app` 库，TestClient 直连本地后端）
+
+以 `school=vocabdemo` 调用 `POST /api/v1/login/access-token`（表单 `username=vocabdemo.admin@example.com`，口令由 `VOCAB_DEMO_PASSWORD` 提供）：
+
+| 检查项 | 实测结果 |
+| --- | --- |
+| 登录 `POST /login/access-token?school=vocabdemo` | `200`；token `role=school_admin`，`tid` 为 vocabdemo 租户 UUID（与两间课堂同租户） |
+| `GET /vocabulary/license/alerts` | `200`，返回 11 条临期 / 已过期提醒 |
+| `GET /vocabulary/license/export.csv`（校级 CSV，SchoolAdminDep） | `200` |
+| `GET /admin/vocabulary/license/export.csv`（平台运营专属） | `401`，按预期拒绝校级 token |
 
 ### 清理规则与护栏
 
@@ -166,6 +191,7 @@ RLS 下所有写入必须落在 `vocabdemo` 租户，脚本与应用主引擎同
 | 词库版本快照 | 10 行（KET 3、教材 2、其余 5 库各 1） |
 | 授权审计行 | 3 条 |
 | 课堂 / 学生 | 2 间（VOCDEMO1 12、VOCDEMO2 6）/ 18 名学生 |
+| 演示账号（school_admin / teacher / 可登录学生） | 1 / 1 / 12 |
 | 教师任务 | 5 个 |
 | 会话（submitted / in_progress） | 49（37 / 12） |
 | 首答答案 / 重试答案 | 358 / 31 |
@@ -175,7 +201,7 @@ RLS 下所有写入必须落在 `vocabdemo` 租户，脚本与应用主引擎同
 
 ### 清理验证结果
 
-跑 `cleanup_demo.py` 后，demo 命名空间计数全部为 0；既有非 demo 数据总量与种子前基线逐项一致，未被改动：
+跑 `cleanup_demo.py` 后，demo 命名空间计数全部为 0（含管理员 `vocabdemo.admin@example.com` 在内共 14 行 demo 账号：12 名可登录学生 + 教师 + 管理员）；既有非 demo 数据总量与种子前基线逐项一致，未被改动：
 
 | 表 | 种子前基线 | 清理后 |
 | --- | --- | --- |
@@ -202,4 +228,6 @@ RLS 下所有写入必须落在 `vocabdemo` 租户，脚本与应用主引擎同
 - 跨班 404 仅由 VOCDEMO2 名单隔离体现，不构造跨班访问用例；
 - FSRS 调度参数为演示取值，不追求真实 FSRS 算法曲线；
 - `vocabulary_assignment.source_book_ids` 脚本做了双路径兼容：列存在时 INSERT 写入来源词库 id 数组；列缺失时退化为不带该字段（本地库当前已落地该列，5 个任务均写入非空 `source_book_ids`）；
-- 学生演示口令与教师共用 `VOCAB_DEMO_PASSWORD`（未单独设置），仅本地 mock。
+- 学生演示口令与教师共用 `VOCAB_DEMO_PASSWORD`（未单独设置），仅本地 mock；
+- 平台运营（`PlatformOperator` 身份 / operator token）及其专属跨校端点（`/admin/vocabulary/license/export.csv` 等）不在演示范围，种子不造运营账号；
+- VOCDEMO2 的 6 名学生只建 `Student` 名单行用于跨班 404 隔离演示，不建可登录 `User` 账号。
