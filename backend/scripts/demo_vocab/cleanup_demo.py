@@ -38,6 +38,7 @@ from app.core.tenant_context import install_tenant_bind, tenant_scope
 from app.models import (
     Classroom,
     ClassroomTeacher,
+    Passage,
     Student,
     StudentBadge,
     Tenant,
@@ -122,6 +123,7 @@ def _collect(session: Session, tenant: Tenant) -> dict[str, set[uuid.UUID]]:
         "students": set(),
         "books": set(),
         "words": set(),
+        "passages": set(),
         "assignments": set(),
         "sessions": set(),
         "lobbies": set(),
@@ -156,6 +158,12 @@ def _collect(session: Session, tenant: Tenant) -> dict[str, set[uuid.UUID]]:
         row.id
         for row in session.exec(
             select(VocabularyWord).where(VocabularyWord.tenant_id == tenant.id)
+        ).all()
+    }
+    ids["passages"] = {
+        row.id
+        for row in session.exec(
+            select(Passage).where(Passage.tenant_id == tenant.id)
         ).all()
     }
     # 注意：assignment 表的 ORM 字段 source_book_ids 在本地库可能尚未落地（C 后端
@@ -389,6 +397,11 @@ def _delete_ordered(
         "vocabulary_book",
     )
     _bulk(
+        Passage,
+        Passage.id.in_(ids["passages"]),
+        "passage",
+    )
+    _bulk(
         Student,
         Student.classroom_id.in_(ids["classrooms"]),
         "student",
@@ -469,6 +482,7 @@ def main() -> None:
             "student": len(ids["students"]),
             "vocabulary_book": len(ids["books"]),
             "vocabulary_word": len(ids["words"]),
+            "passage": len(ids["passages"]),
             "vocabulary_assignment": len(ids["assignments"]),
             "vocabulary_session": len(ids["sessions"]),
             "vocab_pk_lobby": len(ids["lobbies"]),
@@ -500,6 +514,7 @@ def main() -> None:
             ("student", "students"),
             ("vocabulary_book", "books"),
             ("vocabulary_word", "words"),
+            ("passage", "passages"),
             ("vocabulary_assignment", "assignments"),
             ("vocabulary_session", "sessions"),
             ("vocab_pk_lobby", "lobbies"),

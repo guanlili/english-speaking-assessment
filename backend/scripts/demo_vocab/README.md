@@ -122,6 +122,8 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 \
   - 3 条真实授权审计行（教材库续期备注、教材词条引用号变更、过期库授权落账），`changes` 带 `from / to` 前后值，可查可追溯。
 - **课堂与师生**：教师 `vocabdemo.teacher@example.com`（role=teacher，绑定两间课堂）；VOCDEMO1 12 名学生、VOCDEMO2 6 名学生，显示名为“演示学生01…”假名。
 - **演示校级管理员**：`vocabdemo.admin@example.com`（username `vocabdemo.admin`，role=`school_admin`，`tenant_id` 归属 `vocabdemo` 租户，显示名“演示管理员”），供 `/admin/vocabbooks` 词库授权 / 版本管理取证；口令来源与教师/学生相同（`VOCAB_DEMO_PASSWORD`，未设置走 README 本地 fallback）。幂等：重复 seed 不重复建；cleanup 按 demo 租户命名空间一并清掉。
+- **模块授权**：`vocabdemo` 整校开通两个模块，`enabled=True`、`grant_type=manual`，按 `(tenant_id, module_key)` 幂等补齐——`vocabulary`（词库 / PK / 农场 / FSRS 子能力）与 `speaking`（课堂看板底座闸门；未开通时课堂业务端点 403 `module_not_enabled:speaking`）。
+- **演示朗读篇目**：1 篇 `[DEMO] 演示朗读篇目`（slug `demo-board-passage`，激活，B1，原创短句，owner=演示教师），供 speaking 课堂看板解析题位骨架；不造复述句 / 问答题 / 口语练习会话。
 - **任务与作答**：VOCDEMO1 5 个教师任务，发布时间覆盖最近 5 个自然周（锚点 `2026-11-25`），题型覆盖 `meaning / cloze / roots`；12 名学生形成“完成 / 部分完成 / 未开始”三种状态，首答正确率 low / mid / high 分段；每任务有首轮 session 与 `attempt_no=1` 答案，部分错题带 `attempt_no=2` 重试（重试证据不进首答统计）。
 - **FSRS**：8 名学生 × 3 词共 24 条 `VocabularyReviewState`，选词跨 KET / CET4 / IELTS_TOEFL 三个任务词库，`due_at` 分布在过去（到期未复习）/ 本周 / 未来，保证近期周期趋势报告的 `due_unreviewed` 可回算出非零值。
 - **D/E 备用**：2 场已结束 PK（含大厅、对局、玩家、作答，不改任务统计）；5 个农场地块与 4 枚农场徽章。
@@ -136,7 +138,7 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 \
 | `SchoolAdminDep` | 仅 `school_admin` | 校级授权清单 CSV：`GET /vocabulary/license/export.csv` |
 | `PlatformOperatorDep` | 平台运营（独立 `PlatformOperator` 身份 / operator token） | 跨校授权清单 CSV：`GET /admin/vocabulary/license/export.csv`；**校级账号不可访问**，本种子不造运营账号 |
 
-- 模块授权闸门 `require_module("vocabulary")`：种子已为 `vocabdemo` 租户写入 `TenantModule(module_key="vocabulary", enabled=True)`，管理员账号自动满足模块条件，无需额外授权行。
+- 模块授权闸门：种子已为 `vocabdemo` 租户写入两行 `TenantModule`——`vocabulary`（校内词库 / AI 备课等 `require_module("vocabulary")` 端点）与 `speaking`（共享课堂路由 `require_speaking_classroom` 闸门，解析课堂与成员后判整校 speaking 授权）；管理员 / 教师账号自动满足模块条件，无需额外授权行。
 - 前端可访问页面：`school_admin` 可进入 `/admin/vocabbooks`（词库管理、授权面板、版本历史、提醒面板、内容审核、校级 CSV 导出）、`/admin/units`、`/admin/sentenceframes`，以及教师三页；页面内写授权 / 回滚按钮按 `school_admin` 身份放开。
 
 ### 管理员登录与访问实测（本地 `app` 库，TestClient 直连本地后端）
@@ -150,12 +152,26 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 \
 | `GET /vocabulary/license/export.csv`（校级 CSV，SchoolAdminDep） | `200` |
 | `GET /admin/vocabulary/license/export.csv`（平台运营专属） | `401`，按预期拒绝校级 token |
 
+### 课堂看板实测（teacher 登录，VOCDEMO1）
+
+以 `vocabdemo.teacher@example.com` 登录（`school=vocabdemo`）后访问课堂看板链路：
+
+| 检查项 | 实测结果 |
+| --- | --- |
+| `GET /classes/VOCDEMO1/board` | `200`（开通 speaking 前为 `403 module_not_enabled:speaking`）；`classroom_code=VOCDEMO1`、`class_size=12` |
+| 看板 `vocabulary_pk` | 非 null：最近对局 2026-11-19，胜者演示学生03（500），对手演示学生04（300）；`queue_count=0`、`active_match_count=0` |
+| 看板 `vocabulary_farm` | 非 null：`participants=5`、`mature_plots=2`、`harvested_total=6`，徽章 首次收获×3 / 七次收获×1， top 收获者演示学生01（3） |
+| `GET /classes/VOCDEMO1/vocabulary/teacher/farm-summary` | `200` |
+| `GET /classes/VOCDEMO1/vocabulary/pk/history` | `200` |
+
+> 看板底座的口语作答统计（`submitted / completed / pending`）在演示环境为 0：种子只建最小朗读篇目，不造口语练习会话；PK / 农场摘要来自 D/E 备用数据，不受口语作答缺口影响。
+
 ### 清理规则与护栏
 
 - `seed_demo.py` 默认先调用 `cleanup_demo.py` 的清理逻辑再写入，保证幂等；重复重跑不会产生重复对象。
 - 清理**只删上述命名空间**内的对象；**不按 `source_type=demo` 泛删**，避免误删其他人的演示数据。
 - 删除前先做外部引用护栏：若已有非 demo 数据引用将删对象（其他词库收录 demo 词条、其他任务名单挂 demo 学生、非 demo 账号复习状态引用 demo 词条等），停止并报错，不做级联误删。
-- 删除按外键安全顺序执行：PK 作答/玩家/对局/大厅 → 作答/会话/任务名单/任务 → 复习状态/徽章/地块 → 词条条目/审计/版本/词条/词库 → 学生/教师成员/课堂/租户模块/账号/租户。
+- 删除按外键安全顺序执行：PK 作答/玩家/对局/大厅 → 作答/会话/任务名单/任务 → 复习状态/徽章/地块 → 词条条目/审计/版本/词条/词库 → 演示篇目 → 学生/教师成员/课堂/租户模块/账号/租户。
 
 ### 租户上下文与归属一致性
 
@@ -191,6 +207,8 @@ RLS 下所有写入必须落在 `vocabdemo` 租户，脚本与应用主引擎同
 | 词库版本快照 | 10 行（KET 3、教材 2、其余 5 库各 1） |
 | 授权审计行 | 3 条 |
 | 课堂 / 学生 | 2 间（VOCDEMO1 12、VOCDEMO2 6）/ 18 名学生 |
+| 整校模块授权 | 2 行（`vocabulary` + `speaking`，均 enabled） |
+| 演示朗读篇目 | 1 篇（激活，slug `demo-board-passage`） |
 | 演示账号（school_admin / teacher / 可登录学生） | 1 / 1 / 12 |
 | 教师任务 | 5 个 |
 | 会话（submitted / in_progress） | 49（37 / 12） |
@@ -220,6 +238,8 @@ RLS 下所有写入必须落在 `vocabdemo` 租户，脚本与应用主引擎同
 | vocabulary_review_state | 26 | 26 |
 | vocab_pk_lobby / match / player / answer | 4 / 4 / 8 / 48 | 4 / 4 / 8 / 48 |
 | vocab_farm_plot / student_badge | 5 / 2 | 5 / 2 |
+| passage | 25 | 25 |
+| tenant_module | 25 | 25 |
 
 ## 已知未覆盖项
 
@@ -230,4 +250,5 @@ RLS 下所有写入必须落在 `vocabdemo` 租户，脚本与应用主引擎同
 - `vocabulary_assignment.source_book_ids` 脚本做了双路径兼容：列存在时 INSERT 写入来源词库 id 数组；列缺失时退化为不带该字段（本地库当前已落地该列，5 个任务均写入非空 `source_book_ids`）；
 - 学生演示口令与教师共用 `VOCAB_DEMO_PASSWORD`（未单独设置），仅本地 mock；
 - 平台运营（`PlatformOperator` 身份 / operator token）及其专属跨校端点（`/admin/vocabulary/license/export.csv` 等）不在演示范围，种子不造运营账号；
-- VOCDEMO2 的 6 名学生只建 `Student` 名单行用于跨班 404 隔离演示，不建可登录 `User` 账号。
+- VOCDEMO2 的 6 名学生只建 `Student` 名单行用于跨班 404 隔离演示，不建可登录 `User` 账号；
+- speaking 口语链路只建一篇最小激活朗读篇目供看板骨架解析：不造复述句 / 问答题 / 课堂发布快照（`ClassroomExercise`）/ 口语 `PracticeSession` 与作答，看板口语成绩统计在演示环境为空。

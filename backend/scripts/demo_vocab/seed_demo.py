@@ -63,6 +63,7 @@ from app.core.tenant_context import tenant_scope
 from app.models import (
     Classroom,
     ClassroomTeacher,
+    Passage,
     Student,
     StudentBadge,
     Tenant,
@@ -94,11 +95,15 @@ ADMIN_EMAIL = "vocabdemo.admin@example.com"
 STUDENT_EMAIL_PREFIX = "vocabdemo.s"
 CLASSROOM_DEMO1 = "VOCDEMO1"
 CLASSROOM_DEMO2 = "VOCDEMO2"
+DEMO_PASSAGE_SLUG = "demo-board-passage"
 DEMO1_STUDENTS = 12
 DEMO2_STUDENTS = 6
 TITLE_PREFIX = "[DEMO]"
 
 LEVELS = ["KET", "PET", "ACADEMIC", "CET4", "IELTS_TOEFL"]
+
+# 整校开通的模块：speaking 是课堂看板底座闸门，vocabulary 是词库/PK/农场子能力。
+DEMO_MODULE_KEYS = ("vocabulary", "speaking")
 
 DEMO_LICENSE_OWNER = "Demo Content Team"
 DEMO_LICENSE_REF = "DEMO-ONLY"
@@ -224,22 +229,27 @@ def ensure_tenant(session: Session) -> Tenant:
 
 
 def ensure_module(session: Session, tenant: Tenant) -> None:
-    existing = session.exec(
-        select(TenantModule).where(
-            TenantModule.tenant_id == tenant.id,
-            TenantModule.module_key == "vocabulary",
-        )
-    ).first()
-    if existing is None:
-        session.add(
-            TenantModule(
-                tenant_id=tenant.id,
-                module_key="vocabulary",
-                enabled=True,
-                grant_type="manual",
+    """整校模块授权：vocabulary（词库/PK/农场/FSRS 子能力）+ speaking（课堂看板底座）。
+
+    按 ``(tenant_id, module_key)`` 幂等补齐；cleanup 全量清理时随租户模块行一并删除。
+    """
+    for module_key in DEMO_MODULE_KEYS:
+        existing = session.exec(
+            select(TenantModule).where(
+                TenantModule.tenant_id == tenant.id,
+                TenantModule.module_key == module_key,
             )
-        )
-        session.flush()
+        ).first()
+        if existing is None:
+            session.add(
+                TenantModule(
+                    tenant_id=tenant.id,
+                    module_key=module_key,
+                    enabled=True,
+                    grant_type="manual",
+                )
+            )
+    session.flush()
 
 
 def ensure_teacher(session: Session, tenant: Tenant, pw_hash: str) -> User:
@@ -286,6 +296,38 @@ def ensure_admin(session: Session, tenant: Tenant, pw_hash: str) -> User:
         session.add(admin)
         session.flush()
     return admin
+
+
+def ensure_demo_passage(session: Session, tenant: Tenant, teacher: User) -> Passage:
+    """最小激活朗读篇目：让 speaking 课堂看板底座能解析题位骨架（board 200）。
+
+    只建一篇原创演示文本，不造复述句 / 问答题 / 练习会话；按 ``(tenant, slug)``
+    幂等补齐，cleanup 按租户命名空间一并删除。
+    """
+    passage = session.exec(
+        select(Passage).where(
+            Passage.tenant_id == tenant.id,
+            Passage.slug == DEMO_PASSAGE_SLUG,
+        )
+    ).first()
+    if passage is None:
+        passage = Passage(
+            tenant_id=tenant.id,
+            owner_id=teacher.id,
+            title=f"{TITLE_PREFIX} 演示朗读篇目",
+            slug=DEMO_PASSAGE_SLUG,
+            topic="demo",
+            cefr_band="B1",
+            text=(
+                "Welcome to our demo classroom. Today we will practice a short "
+                "reading passage together."
+            ),
+            is_active=True,
+            suggested_seconds=45,
+        )
+        session.add(passage)
+        session.flush()
+    return passage
 
 
 def ensure_classrooms(
@@ -1197,6 +1239,7 @@ def main() -> None:
         ensure_module(session, tenant)
         teacher = ensure_teacher(session, tenant, pw_hash)
         ensure_admin(session, tenant, pw_hash)
+        ensure_demo_passage(session, tenant, teacher)
         rooms = ensure_classrooms(session, tenant, teacher)
         students_by_room = ensure_students(session, tenant, rooms, pw_hash)
         demo1_students = students_by_room[CLASSROOM_DEMO1]
@@ -1255,6 +1298,8 @@ def main() -> None:
             f"  课堂: {CLASSROOM_DEMO1}（{len(demo1_students)} 学生）、"
             f"{CLASSROOM_DEMO2}（{len(demo2_students)} 学生）"
         )
+        print(f"  模块授权: {', '.join(DEMO_MODULE_KEYS)}（整校开通，幂等补齐）")
+        print("  演示朗读篇目: 1 篇（激活，供课堂看板骨架解析）")
         print(f"  教师账号: {TEACHER_EMAIL}（口令由环境变量 {PASSWORD_ENV} 提供）")
         print(
             f"  管理员账号: {ADMIN_EMAIL}（role=school_admin，"
