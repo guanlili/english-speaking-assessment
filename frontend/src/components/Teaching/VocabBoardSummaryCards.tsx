@@ -95,13 +95,13 @@ function PkBoardCard({ code, pk }: { code: string; pk: PkBoardSummary }) {
             {openLabel}
           </Badge>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {stats.map((stat) => (
             <div
               key={stat.label}
               className="rounded-2xl border bg-secondary/30 p-3"
             >
-              <p className="text-xs leading-5 text-muted-foreground">
+              <p className="whitespace-nowrap text-xs leading-5 text-muted-foreground">
                 {stat.label}
               </p>
               <p className="mt-1 text-2xl font-semibold tabular-nums">
@@ -173,14 +173,14 @@ function FarmBoardCard({
         </Link>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {stats.map((stat) => (
             <div
               key={stat.label}
               className="rounded-2xl border bg-secondary/30 p-3"
             >
               <div className="flex items-start justify-between gap-2">
-                <p className="text-xs leading-5 text-muted-foreground">
+                <p className="whitespace-nowrap text-xs leading-5 text-muted-foreground">
                   {stat.label}
                 </p>
                 <stat.icon
