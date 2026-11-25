@@ -17,6 +17,11 @@ import {
   VocabularyService,
   type VocabularyWordPublic,
 } from "@/client"
+import { BookLicensePanel } from "@/components/Admin/VocabGovernance/BookLicensePanel"
+import { LicenseAlertsPanel } from "@/components/Admin/VocabGovernance/LicenseAlertsPanel"
+import { useBookLicense } from "@/components/Admin/VocabGovernance/useBookLicense"
+import { VersionHistoryPanel } from "@/components/Admin/VocabGovernance/VersionHistoryPanel"
+import { WordLicenseDialog } from "@/components/Admin/VocabGovernance/WordLicenseDialog"
 import {
   type BookWordInput,
   toBookWordInput,
@@ -43,7 +48,7 @@ import {
 import { ContentReviewPanel } from "@/components/Vocabulary/ContentReviewPanel"
 import { WordEditDialog } from "@/components/Vocabulary/WordEditDialog"
 import { APP_NAME } from "@/config"
-import { isOperatorLoggedIn } from "@/hooks/useAuth"
+import { cachedRole, isOperatorLoggedIn } from "@/hooks/useAuth"
 import { useModules } from "@/hooks/useModules"
 import { downloadCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
@@ -52,6 +57,7 @@ import {
   reviewStatusLabel,
   sourceLabel,
 } from "@/lib/vocabContentReview"
+import { isDemoSource } from "@/lib/vocabGovernance"
 import { localizeImportIssue } from "@/lib/vocabImport"
 
 export const Route = createFileRoute("/_layout/admin/vocabbooks")({
@@ -76,6 +82,9 @@ function VocabBooksAdmin() {
   const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const isOperator = isOperatorLoggedIn()
+  // 旧值 admin 兼容（重登后为 school_admin）；写授权 / 回滚仅学校管理员
+  const isAdmin =
+    !isOperator && (cachedRole() === "school_admin" || cachedRole() === "admin")
   const { hasModule, isPending: modulesPending } = useModules(!isOperator)
   // 未购词汇模块的校级账号直连拦截；平台运营豁免。
   useEffect(() => {
@@ -100,6 +109,12 @@ function VocabBooksAdmin() {
     enabled: !!openBookId && !isOperator,
   })
 
+  // 授权台账：词库级 + 词条级授权清单（平台运营不走学校端点）
+  const licenseQuery = useBookLicense(openBookId, !isOperator)
+  const licenseWordMap = new Map(
+    (licenseQuery.data?.words ?? []).map((word) => [word.word_id, word]),
+  )
+
   // 新建词库（含导入确认）
   const [creating, setCreating] = useState(false)
   const [newTitle, setNewTitle] = useState("")
@@ -110,6 +125,9 @@ function VocabBooksAdmin() {
   // 词库详情表的审核状态筛选
   const [wordStatusFilter, setWordStatusFilter] = useState("all")
   const [editingWord, setEditingWord] = useState<VocabularyWordPublic | null>(
+    null,
+  )
+  const [licenseWord, setLicenseWord] = useState<VocabularyWordPublic | null>(
     null,
   )
 
@@ -301,6 +319,9 @@ function VocabBooksAdmin() {
       {/* 内容审核队列（全校；平台运营只读，不展示审核动作） */}
       <ContentReviewPanel readonly={isOperator} />
 
+      {/* 授权到期提醒（学校端点；平台运营禁用） */}
+      {!isOperator && <LicenseAlertsPanel enabled={!isOperator} />}
+
       {/* 词库列表（平台运营只读：隐藏校内词库维护区，仅保留上方审核队列） */}
       {!isOperator && (
         <Card>
@@ -442,6 +463,11 @@ function VocabBooksAdmin() {
               <CardTitle className="text-base">
                 <BookA className="mr-1.5 inline size-4 text-primary" />
                 {openBook.title}{" "}
+                {isDemoSource(licenseQuery.data?.license.source_type) && (
+                  <Badge variant="destructive">
+                    {t({ zh: "演示 Mock", en: "Demo mock" })}
+                  </Badge>
+                )}{" "}
                 <span className="text-sm font-normal text-muted-foreground">
                   · {detailQuery.data?.word_count ?? openBook.word_count ?? 0}{" "}
                   {t({ zh: "词", en: "words" })}
@@ -556,13 +582,22 @@ function VocabBooksAdmin() {
                         </TableCell>
                         <TableCell>{word.meaning_zh}</TableCell>
                         <TableCell>
-                          <Badge
-                            variant={
-                              word.source === "ai" ? "default" : "outline"
-                            }
-                          >
-                            {t(sourceLabel(word.source))}
-                          </Badge>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge
+                              variant={
+                                word.source === "ai" ? "default" : "outline"
+                              }
+                            >
+                              {t(sourceLabel(word.source))}
+                            </Badge>
+                            {isDemoSource(
+                              licenseWordMap.get(word.id)?.source_type,
+                            ) && (
+                              <Badge variant="destructive">
+                                {t({ zh: "演示 Mock", en: "Demo mock" })}
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -582,6 +617,13 @@ function VocabBooksAdmin() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setLicenseWord(word)}
+                            >
+                              {t({ zh: "授权", en: "License" })}
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -625,6 +667,17 @@ function VocabBooksAdmin() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {openBook && (
+        <>
+          <BookLicensePanel
+            bookId={openBook.id}
+            license={licenseQuery.data}
+            isAdmin={isAdmin}
+          />
+          <VersionHistoryPanel bookId={openBook.id} isAdmin={isAdmin} />
+        </>
       )}
 
       {/* 新建词库（含 CSV 导入预览） */}
@@ -881,6 +934,14 @@ function VocabBooksAdmin() {
           queryClient.invalidateQueries({ queryKey: ["admin", "vocab-books"] })
           queryClient.invalidateQueries({ queryKey: ["admin", "vocab-book"] })
         }}
+      />
+
+      <WordLicenseDialog
+        word={licenseWord}
+        initial={licenseWord ? licenseWordMap.get(licenseWord.id) : null}
+        isAdmin={isAdmin}
+        onClose={() => setLicenseWord(null)}
+        onSaved={() => setLicenseWord(null)}
       />
 
       <p className="pb-6 text-center text-xs text-muted-foreground">
