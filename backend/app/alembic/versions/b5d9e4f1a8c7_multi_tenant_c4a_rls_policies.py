@@ -67,6 +67,8 @@ RLS_TABLES = [
     "vocab_level_entry",
     "vocabulary_review_state",
     "vocabulary_content_review_audit",
+    "vocabulary_leaderboard_setting",
+    "vocabulary_leaderboard_participant",
     # 作答与导出
     "attempt",
     "export_job",

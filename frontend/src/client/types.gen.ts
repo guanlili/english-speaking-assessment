@@ -7579,6 +7579,112 @@ export type VocabularyImportRow = {
 };
 
 /**
+ * VocabularyLeaderboardEntry
+ *
+ * 榜单条目：匿名时 display_name 为 null，只带 alias_no。
+ */
+export type VocabularyLeaderboardEntry = {
+    /**
+     * Rank
+     */
+    rank: number;
+    /**
+     * Score
+     */
+    score: number;
+    /**
+     * Alias No
+     */
+    alias_no: number;
+    /**
+     * Display Name
+     */
+    display_name?: string | null;
+    /**
+     * Suffix
+     */
+    suffix?: string | null;
+};
+
+/**
+ * VocabularyLeaderboardSettings
+ *
+ * 榜单设置投影（无库行时由服务层填默认值）。
+ */
+export type VocabularyLeaderboardSettings = {
+    /**
+     * Enabled
+     */
+    enabled: boolean;
+    /**
+     * Audience
+     */
+    audience: string;
+    /**
+     * Anonymous
+     */
+    anonymous: boolean;
+    /**
+     * Top N
+     */
+    top_n?: number;
+};
+
+/**
+ * VocabularyLeaderboardSettingsUpdate
+ *
+ * 教师更新榜单设置。
+ */
+export type VocabularyLeaderboardSettingsUpdate = {
+    /**
+     * Enabled
+     */
+    enabled: boolean;
+    /**
+     * Audience
+     */
+    audience: 'teachers' | 'students';
+    /**
+     * Anonymous
+     */
+    anonymous: boolean;
+};
+
+/**
+ * VocabularyLeaderboardView
+ *
+ * GET /classes/{code}/vocabulary/leaderboard 响应。
+ */
+export type VocabularyLeaderboardView = {
+    /**
+     * Week Start
+     */
+    week_start: string;
+    settings: VocabularyLeaderboardSettings;
+    /**
+     * Entries
+     */
+    entries?: Array<VocabularyLeaderboardEntry>;
+    my_entry?: VocabularyLeaderboardEntry | null;
+    /**
+     * My Rank
+     */
+    my_rank?: number | null;
+    /**
+     * My Score
+     */
+    my_score?: number;
+    /**
+     * Joined
+     */
+    joined?: boolean;
+    /**
+     * Participant Count
+     */
+    participant_count?: number | null;
+};
+
+/**
  * VocabularyLevelEntryPublic
  */
 export type VocabularyLevelEntryPublic = {
@@ -7934,6 +8040,34 @@ export type VocabularyMorphSegment = {
      * Kind
      */
     kind: string;
+};
+
+/**
+ * VocabularyParticipationState
+ *
+ * 加入状态回执：alias_no 退出后为 null，重新加入复用原编号。
+ */
+export type VocabularyParticipationState = {
+    /**
+     * Joined
+     */
+    joined: boolean;
+    /**
+     * Alias No
+     */
+    alias_no?: number | null;
+};
+
+/**
+ * VocabularyParticipationUpdate
+ *
+ * 学生加入 / 退出榜单。
+ */
+export type VocabularyParticipationUpdate = {
+    /**
+     * Joined
+     */
+    joined: boolean;
 };
 
 /**
@@ -16919,6 +17053,131 @@ export type VocabularyPlacementResultsResponses = {
 };
 
 export type VocabularyPlacementResultsResponse = VocabularyPlacementResultsResponses[200 & keyof VocabularyPlacementResultsResponses];
+
+export type VocabularyReadLeaderboardSettingsData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/leaderboard/settings';
+};
+
+export type VocabularyReadLeaderboardSettingsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadLeaderboardSettingsError = VocabularyReadLeaderboardSettingsErrors[keyof VocabularyReadLeaderboardSettingsErrors];
+
+export type VocabularyReadLeaderboardSettingsResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyLeaderboardSettings;
+};
+
+export type VocabularyReadLeaderboardSettingsResponse = VocabularyReadLeaderboardSettingsResponses[200 & keyof VocabularyReadLeaderboardSettingsResponses];
+
+export type VocabularyUpdateLeaderboardSettingsData = {
+    body: VocabularyLeaderboardSettingsUpdate;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/leaderboard/settings';
+};
+
+export type VocabularyUpdateLeaderboardSettingsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyUpdateLeaderboardSettingsError = VocabularyUpdateLeaderboardSettingsErrors[keyof VocabularyUpdateLeaderboardSettingsErrors];
+
+export type VocabularyUpdateLeaderboardSettingsResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyLeaderboardSettings;
+};
+
+export type VocabularyUpdateLeaderboardSettingsResponse = VocabularyUpdateLeaderboardSettingsResponses[200 & keyof VocabularyUpdateLeaderboardSettingsResponses];
+
+export type VocabularyUpdateParticipationData = {
+    body: VocabularyParticipationUpdate;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/leaderboard/participation';
+};
+
+export type VocabularyUpdateParticipationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyUpdateParticipationError = VocabularyUpdateParticipationErrors[keyof VocabularyUpdateParticipationErrors];
+
+export type VocabularyUpdateParticipationResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyParticipationState;
+};
+
+export type VocabularyUpdateParticipationResponse = VocabularyUpdateParticipationResponses[200 & keyof VocabularyUpdateParticipationResponses];
+
+export type VocabularyReadLeaderboardData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: {
+        /**
+         * Week Start
+         */
+        week_start?: string | null;
+    };
+    url: '/api/v1/classes/{code}/vocabulary/leaderboard';
+};
+
+export type VocabularyReadLeaderboardErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadLeaderboardError = VocabularyReadLeaderboardErrors[keyof VocabularyReadLeaderboardErrors];
+
+export type VocabularyReadLeaderboardResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyLeaderboardView;
+};
+
+export type VocabularyReadLeaderboardResponse = VocabularyReadLeaderboardResponses[200 & keyof VocabularyReadLeaderboardResponses];
 
 export type VocabLevelsVocabLevelStatsData = {
     body?: never;

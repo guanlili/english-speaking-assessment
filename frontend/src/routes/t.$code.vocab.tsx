@@ -11,11 +11,13 @@ import {
   ShieldCheck,
   SpellCheck,
   Swords,
+  Trophy,
 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { ApiError, ClassesService, VocabularyService } from "@/client"
 import { VocabModuleSwitcher } from "@/components/Teaching/VocabModuleSwitcher"
 import { AssignPanel } from "@/components/Teaching/VocabTasks/AssignPanel"
+import { LeaderboardTeacherPanel } from "@/components/Teaching/VocabTasks/LeaderboardTeacherPanel"
 import { PkTeacherPanel } from "@/components/Teaching/VocabTasks/PkTeacherPanel"
 import { PlacementTeacherPanel } from "@/components/Teaching/VocabTasks/PlacementTeacherPanel"
 import { ResultsPanel } from "@/components/Teaching/VocabTasks/ResultsPanel"
@@ -47,7 +49,7 @@ function TeacherVocabPage() {
     }
   }, [modulesPending, hasModule, navigate])
   const [tab, setTab] = useState<
-    "assign" | "results" | "placement" | "pk" | "review"
+    "assign" | "results" | "placement" | "pk" | "review" | "leaderboard"
   >("assign")
   // 待审数量由审核面板数据回报（不另写 API URL）；>0 时在 tab 徽章提示
   const [pendingCount, setPendingCount] = useState(0)
@@ -311,6 +313,15 @@ function TeacherVocabPage() {
           {t({ zh: "PK 对战", en: "PK Battle" })}
         </Button>
         <Button
+          variant={tab === "leaderboard" ? "default" : "outline"}
+          size="sm"
+          aria-pressed={tab === "leaderboard"}
+          onClick={() => setTab("leaderboard")}
+        >
+          <Trophy />
+          {t({ zh: "学习榜", en: "Board" })}
+        </Button>
+        <Button
           variant={tab === "review" ? "default" : "outline"}
           size="sm"
           aria-pressed={tab === "review"}
@@ -334,6 +345,8 @@ function TeacherVocabPage() {
         />
       ) : tab === "pk" ? (
         <PkTeacherPanel code={code} />
+      ) : tab === "leaderboard" ? (
+        <LeaderboardTeacherPanel code={code} />
       ) : tab === "placement" ? (
         <PlacementTeacherPanel code={code} />
       ) : tab === "review" ? (

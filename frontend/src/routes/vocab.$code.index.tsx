@@ -44,6 +44,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { LeaderboardStudentCard } from "@/components/Vocabulary/Leaderboard/LeaderboardStudentCard"
 import { APP_NAME } from "@/config"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { loadStudent } from "@/lib/classroom-student"
@@ -316,6 +317,9 @@ function VocabHomePage() {
             })}
           </p>
         </section>
+
+        {/* 班内学习榜：仅整班开启且对学生可见时由卡片自行决定是否渲染 */}
+        <LeaderboardStudentCard code={code} />
 
         {/* 自主练习入口：从词库挑词，与教师任务分开记录 */}
         <section

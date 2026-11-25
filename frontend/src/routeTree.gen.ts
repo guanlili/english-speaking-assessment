@@ -60,6 +60,7 @@ import { Route as TCodeVocabRouteImport } from './routes/t.$code.vocab'
 import { Route as VocabCodeIndexRouteImport } from './routes/vocab.$code.index'
 import { Route as VocabCodeBooksRouteImport } from './routes/vocab.$code.books'
 import { Route as VocabCodeFarmRouteImport } from './routes/vocab.$code.farm'
+import { Route as VocabCodeLeaderboardRouteImport } from './routes/vocab.$code.leaderboard'
 import { Route as VocabCodePkRouteImport } from './routes/vocab.$code.pk'
 import { Route as VocabCodePlacementRouteImport } from './routes/vocab.$code.placement'
 import { Route as VocabCodePracticeRouteImport } from './routes/vocab.$code.practice'
@@ -322,6 +323,11 @@ const VocabCodeFarmRoute = VocabCodeFarmRouteImport.update({
   path: '/farm',
   getParentRoute: () => VocabCodeRoute,
 } as any)
+const VocabCodeLeaderboardRoute = VocabCodeLeaderboardRouteImport.update({
+  id: '/leaderboard',
+  path: '/leaderboard',
+  getParentRoute: () => VocabCodeRoute,
+} as any)
 const VocabCodePkRoute = VocabCodePkRouteImport.update({
   id: '/pk',
   path: '/pk',
@@ -399,6 +405,7 @@ export interface FileRoutesByFullPath {
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/farm': typeof VocabCodeFarmRoute
+  '/vocab/$code/leaderboard': typeof VocabCodeLeaderboardRoute
   '/vocab/$code/pk': typeof VocabCodePkRoute
   '/vocab/$code/placement': typeof VocabCodePlacementRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
@@ -452,6 +459,7 @@ export interface FileRoutesByTo {
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/farm': typeof VocabCodeFarmRoute
+  '/vocab/$code/leaderboard': typeof VocabCodeLeaderboardRoute
   '/vocab/$code/pk': typeof VocabCodePkRoute
   '/vocab/$code/placement': typeof VocabCodePlacementRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
@@ -512,6 +520,7 @@ export interface FileRoutesById {
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/farm': typeof VocabCodeFarmRoute
+  '/vocab/$code/leaderboard': typeof VocabCodeLeaderboardRoute
   '/vocab/$code/pk': typeof VocabCodePkRoute
   '/vocab/$code/placement': typeof VocabCodePlacementRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
@@ -572,6 +581,7 @@ export interface FileRouteTypes {
     | '/t/$code/vocab'
     | '/vocab/$code/books'
     | '/vocab/$code/farm'
+    | '/vocab/$code/leaderboard'
     | '/vocab/$code/pk'
     | '/vocab/$code/placement'
     | '/vocab/$code/practice'
@@ -625,6 +635,7 @@ export interface FileRouteTypes {
     | '/t/$code/vocab'
     | '/vocab/$code/books'
     | '/vocab/$code/farm'
+    | '/vocab/$code/leaderboard'
     | '/vocab/$code/pk'
     | '/vocab/$code/placement'
     | '/vocab/$code/practice'
@@ -684,6 +695,7 @@ export interface FileRouteTypes {
     | '/t/$code/vocab'
     | '/vocab/$code/books'
     | '/vocab/$code/farm'
+    | '/vocab/$code/leaderboard'
     | '/vocab/$code/pk'
     | '/vocab/$code/placement'
     | '/vocab/$code/practice'
@@ -1082,6 +1094,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VocabCodeFarmRouteImport
       parentRoute: typeof VocabCodeRoute
     }
+    '/vocab/$code/leaderboard': {
+      id: '/vocab/$code/leaderboard'
+      path: '/leaderboard'
+      fullPath: '/vocab/$code/leaderboard'
+      preLoaderRoute: typeof VocabCodeLeaderboardRouteImport
+      parentRoute: typeof VocabCodeRoute
+    }
     '/vocab/$code/pk': {
       id: '/vocab/$code/pk'
       path: '/pk'
@@ -1235,6 +1254,7 @@ const TCodeRouteWithChildren = TCodeRoute._addFileChildren(TCodeRouteChildren)
 interface VocabCodeRouteChildren {
   VocabCodeBooksRoute: typeof VocabCodeBooksRoute
   VocabCodeFarmRoute: typeof VocabCodeFarmRoute
+  VocabCodeLeaderboardRoute: typeof VocabCodeLeaderboardRoute
   VocabCodePkRoute: typeof VocabCodePkRoute
   VocabCodePlacementRoute: typeof VocabCodePlacementRoute
   VocabCodePracticeRoute: typeof VocabCodePracticeRoute
@@ -1246,6 +1266,7 @@ interface VocabCodeRouteChildren {
 const VocabCodeRouteChildren: VocabCodeRouteChildren = {
   VocabCodeBooksRoute: VocabCodeBooksRoute,
   VocabCodeFarmRoute: VocabCodeFarmRoute,
+  VocabCodeLeaderboardRoute: VocabCodeLeaderboardRoute,
   VocabCodePkRoute: VocabCodePkRoute,
   VocabCodePlacementRoute: VocabCodePlacementRoute,
   VocabCodePracticeRoute: VocabCodePracticeRoute,

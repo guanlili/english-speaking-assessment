@@ -47,6 +47,15 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **前端**：学生端 `/vocab/$code`（任务首页 + `/practice` 拼写练习 + 错词本），手机底部导航为「首页/口语/词汇/成长」；教师端 `/t/$code/vocab`（选词发布 + 完成情况），课堂面板可切换口语/词汇；管理端 `/admin/vocabbooks`（公共词库 CSV 导入预览）。无标准音的词练习用浏览器朗读兜底并标注「设备合成语音」。
 - 测试 `tests/api/routes/test_vocabulary.py`（权限/快照/判分/幂等/名单/统计）；响应式 e2e 覆盖词汇两页三档宽度。
 
+### 班内词汇学习榜（2026-11-25，#517，后端先行）
+
+- **数据表**：`vocabulary_leaderboard_setting`（一班一行：enabled / audience / anonymous；无行由服务层返回默认值，不写种子）+ `vocabulary_leaderboard_participant`（加入/退出状态、班内稳定 `alias_no`；unique 课堂×学生、课堂×编号）。两表同口径 ENABLE + FORCE RLS + `tenant_isolation`，删除课堂外键 CASCADE 清理。
+- **默认口径**：`enabled=true`、`audience="teachers"`（仅教师可见，学生看不到，直到教师显式放开）、`anonymous=true`（匿名编号）、`top_n=10`。学生默认无 participant 行即未参加；仅教师可见或整班关闭期间不允许学生加入。
+- **计分**（只读 `VocabularySession`/`VocabularyAnswer`，不读 XP/农场/PK/等级，不写任何成绩）：本周掌握词数 = 该词在本课堂**最早一次首答（attempt_no=1）正确**，且本周内至少有一条 `kind="review_fsrs"` 轮次**首答正确**记录；同一学生同一 `word_id` 一周只计 1 次。普通任务重练、自主练习、农场/PK 不计入；历史周由不可变作答记录决定，不随当前 FSRS state 回溯漂移。
+- **周界**：按 `PRACTICE_TZ` 自然周（周一 00:00 → 下周一 00:00）；`week_start` 必须是周一且不得晚于本周一，否则 422。教师可查任意不晚于本周的周一；学生只能查不早于本人首次加入周；未参加/已退出学生不可查看任何周。
+- **排名与隐私**：分数降序、同分并列（1,1,3）；前 10 名按 `rank <= 10` 返回（允许第 10 名并列超员），零分不进 entries；本人不在前 10 仍回 `my_entry`/`my_rank`。未参加学生 200 空榜（`entries=[]`、`my_entry/my_rank=null`、`my_score=0`、`participant_count=null`），看不到其他人与人数；教师可见参与人数。匿名时条目只带 `alias_no`，关闭匿名才展示 `display_name`；响应不下发 `student_id`/`user_id`/邮箱。
+- **API**（`/api/v1/classes/{code}/vocabulary/leaderboard`）：`GET/PUT …/settings`（本班授权教师含共管 / 本校管理员）、`PUT …/participation`（本班学生 `{joined}` → `{joined, alias_no}`）、`GET …?week_start=YYYY-MM-DD`。学生视角不可见（关闭或仅教师）返回 403 `leaderboard_unavailable`；教师设置页关闭时仍 200 预览。域逻辑在 `app/services/vocabulary_leaderboard.py`，路由 `app/api/routes/vocabulary_leaderboard.py`，模型 `app/models/vocabulary/leaderboard.py`。测试 `tests/api/routes/test_vocabulary_leaderboard.py`。
+
 ## 通用功能 G01–G05（2026-10-11）
 
 - 学生练习 `/p/{code}`、考试 `/exam/{code}` 各有独立入口与结果路由；共享录音/反馈组件，旧练习链接遇考试自动转考试模块。当前课堂发布仍沿用单一活动快照。
