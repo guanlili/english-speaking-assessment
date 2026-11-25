@@ -168,7 +168,7 @@ export function LeaderboardTeacherPanel({ code }: { code: string }) {
             <select
               value={audience}
               onChange={(event) => setAudience(event.target.value as Audience)}
-              className="min-h-11 rounded-xl border bg-card px-3 text-base"
+              className="h-11 rounded-xl border bg-card px-3 text-base"
             >
               <option value="teachers">
                 {t({ zh: "仅教师可见（默认）", en: "Teachers only (default)" })}

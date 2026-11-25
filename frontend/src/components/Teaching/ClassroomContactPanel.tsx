@@ -167,7 +167,7 @@ export function ClassroomContactPanel({
         <label className="flex flex-wrap items-center gap-3 text-sm">
           <span>{t({ zh: "求助记录", en: "Help requests" })}</span>
           <select
-            className="min-h-11 rounded-md border bg-background px-3 text-base"
+            className="h-11 rounded-md border bg-background px-3 text-base"
             aria-label={t({ zh: "求助记录", en: "Help requests" })}
             value={helpStatus}
             onChange={(event) => {
@@ -440,7 +440,7 @@ export function ClassroomContactPanel({
         <label className="mb-3 flex flex-wrap items-center gap-3 text-sm">
           <span>{t({ zh: "提醒状态", en: "Reminder status" })}</span>
           <select
-            className="min-h-11 rounded-md border bg-background px-3 text-base"
+            className="h-11 rounded-md border bg-background px-3 text-base"
             aria-label={t({ zh: "提醒状态", en: "Reminder status" })}
             value={reminderStatus}
             onChange={(event) => {

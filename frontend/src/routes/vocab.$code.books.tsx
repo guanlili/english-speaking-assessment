@@ -347,7 +347,7 @@ function VocabBooksPage() {
             {books.map((book) => {
               const active = book.id === selectedBookId
               return (
-                <li key={book.id}>
+                <li key={book.id} className="min-w-0">
                   <button
                     type="button"
                     aria-pressed={active}

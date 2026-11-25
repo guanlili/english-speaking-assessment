@@ -269,7 +269,7 @@ function StudentShell({
               </p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-3">
             <Link
               to="/classroom/$code"
               params={{ code }}
@@ -285,7 +285,7 @@ function StudentShell({
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="gap-1.5 px-1.5 sm:px-2"
+                  className="gap-1 px-1 sm:px-2"
                   aria-label={t({
                     zh: "学生账户菜单",
                     en: "Student account menu",
@@ -294,7 +294,7 @@ function StudentShell({
                   <span className="grid size-8 place-items-center rounded-full bg-secondary text-xs font-semibold text-primary">
                     {name.slice(0, 1)}
                   </span>
-                  <ChevronDown className="size-3 text-muted-foreground" />
+                  <ChevronDown className="hidden size-3 text-muted-foreground sm:block" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 rounded-2xl p-2">

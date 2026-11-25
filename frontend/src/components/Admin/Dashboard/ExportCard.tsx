@@ -100,9 +100,9 @@ function ExportCard() {
         {items.map((item) => (
           <div
             key={item.key}
-            className="flex flex-1 items-start justify-between gap-3 rounded-xl border p-4"
+            className="flex min-w-0 flex-1 items-start justify-between gap-3 rounded-xl border p-4"
           >
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-medium">{item.label}</p>
               <p className="mt-1 text-xs text-muted-foreground">{item.desc}</p>
             </div>

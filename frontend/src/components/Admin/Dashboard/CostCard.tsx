@@ -207,7 +207,7 @@ function CostCard() {
                 id="reconcile-month"
                 value={targetMonth}
                 onChange={(e) => setReconcileMonth(e.target.value)}
-                className="min-h-11 rounded-lg border bg-transparent px-3 text-base"
+                className="h-11 rounded-lg border bg-transparent px-3 text-base"
                 aria-label={t({ zh: "对账月份", en: "Reconcile month" })}
               >
                 {monthOptions.map((m) => (

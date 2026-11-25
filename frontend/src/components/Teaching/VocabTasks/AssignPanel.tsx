@@ -617,6 +617,7 @@ export function AssignPanel({
               <Button
                 type="button"
                 size="sm"
+                className="max-sm:h-11"
                 variant={!isQuiz ? "default" : "outline"}
                 aria-pressed={!isQuiz}
                 onClick={() => setIsQuiz(false)}
@@ -626,6 +627,7 @@ export function AssignPanel({
               <Button
                 type="button"
                 size="sm"
+                className="max-sm:h-11"
                 variant={isQuiz ? "default" : "outline"}
                 aria-pressed={isQuiz}
                 onClick={() => setIsQuiz(true)}
@@ -808,6 +810,7 @@ export function AssignPanel({
               <Button
                 type="button"
                 size="sm"
+                className="max-sm:h-11"
                 variant={scope === "all" ? "default" : "outline"}
                 onClick={() => setScope("all")}
               >
@@ -816,6 +819,7 @@ export function AssignPanel({
               <Button
                 type="button"
                 size="sm"
+                className="max-sm:h-11"
                 variant={scope === "selected" ? "default" : "outline"}
                 onClick={() => setScope("selected")}
               >

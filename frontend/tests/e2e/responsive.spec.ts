@@ -250,6 +250,44 @@ for (const vp of VIEWPORTS) {
   })
 }
 
+/** #517 C 块移动端审计：最窄 320 与大屏手机 430 两档不横向溢出。
+ *  仅做溢出与关键入口可达的回归锚点；真机/桌面缩放结论见 docs/qa/20261125/c-mobile-audit/README.md。 */
+const NARROW_VIEWPORTS = [
+  { name: "超窄手机 320", width: 320, height: 568 },
+  { name: "大屏手机 430", width: 430, height: 932 },
+]
+
+for (const vp of NARROW_VIEWPORTS) {
+  test(`登录页在${vp.name}无横向溢出`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height })
+    await page.goto("/login")
+    await expectNoHorizontalOverflow(page)
+    await expect(
+      page.getByRole("group", { name: "语言 / Language" }),
+    ).toBeVisible()
+  })
+
+  test(`教师词汇任务页在${vp.name}无横向溢出`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height })
+    await loginTeacherDemo(page)
+    await page.goto("/t/DEMO01/vocab")
+    await expect(
+      page.getByRole("button", { name: /发布任务|Assign/ }),
+    ).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+  })
+
+  test(`学生词库浏览页在${vp.name}无横向溢出`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height })
+    await loginStudentDemo(page)
+    await page.goto("/vocab/DEMO01/books")
+    await expect(
+      page.getByRole("heading", { name: /词库浏览|Word Books/ }),
+    ).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+  })
+}
+
 test("学生自主练习页（无 session 参数）在手机宽度显示空态引导", async ({
   page,
 }) => {
