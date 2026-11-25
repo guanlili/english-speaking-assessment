@@ -9,9 +9,11 @@ import {
   formatSnapshotField,
   isDemoSource,
   isoToLocalInput,
+  isSafeHttpUrl,
   LICENSE_ERROR_EXPIRED,
   LICENSE_ERROR_OWNER_MISSING,
   LICENSE_ERROR_REF_MISSING,
+  LICENSE_STATUS_MISSING,
   licenseStatusLabel,
   localInputToIso,
   shortHash,
@@ -127,4 +129,19 @@ test("describeQueryError：403 / 404 / 其他状态分别映射", () => {
   assert.match(describeQueryError(404).zh, /不存在/)
   assert.match(describeQueryError(500).zh, /重试/)
   assert.match(describeQueryError(undefined).en, /retry/)
+})
+
+test("missing 状态文案与安全 URL 判定（平台台账口径）", () => {
+  const missing = licenseStatusLabel(LICENSE_STATUS_MISSING)
+  assert.match(missing.zh, /缺失/)
+  assert.match(missing.en, /Missing/)
+
+  assert.equal(isSafeHttpUrl("https://example.com/doc.pdf"), true)
+  assert.equal(isSafeHttpUrl("http://example.com/doc.pdf"), true)
+  assert.equal(isSafeHttpUrl("  HTTPS://example.com "), true)
+  assert.equal(isSafeHttpUrl("javascript:alert(1)"), false)
+  assert.equal(isSafeHttpUrl("mailto:a@b.com"), false)
+  assert.equal(isSafeHttpUrl(""), false)
+  assert.equal(isSafeHttpUrl(null), false)
+  assert.equal(isSafeHttpUrl(undefined), false)
 })

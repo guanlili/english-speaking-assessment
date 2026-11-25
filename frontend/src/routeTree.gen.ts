@@ -49,6 +49,7 @@ import { Route as LayoutAdminSentenceframesRouteImport } from './routes/_layout/
 import { Route as LayoutAdminUnitsRouteImport } from './routes/_layout/admin.units'
 import { Route as LayoutAdminVocabbooksRouteImport } from './routes/_layout/admin.vocabbooks'
 import { Route as LayoutAdminVocablevelsRouteImport } from './routes/_layout/admin.vocablevels'
+import { Route as LayoutAdminVocabularyLicensesRouteImport } from './routes/_layout/admin.vocabulary-licenses'
 import { Route as LayoutSchoolMembersRouteImport } from './routes/_layout/school.members'
 import { Route as ExamCodeIndexRouteImport } from './routes/exam.$code.index'
 import { Route as ExamCodeResultRouteImport } from './routes/exam.$code.result'
@@ -268,6 +269,12 @@ const LayoutAdminVocablevelsRoute = LayoutAdminVocablevelsRouteImport.update({
   path: '/vocablevels',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
+const LayoutAdminVocabularyLicensesRoute =
+  LayoutAdminVocabularyLicensesRouteImport.update({
+    id: '/vocabulary-licenses',
+    path: '/vocabulary-licenses',
+    getParentRoute: () => LayoutAdminRoute,
+  } as any)
 const LayoutSchoolMembersRoute = LayoutSchoolMembersRouteImport.update({
   id: '/school/members',
   path: '/school/members',
@@ -398,6 +405,7 @@ export interface FileRoutesByFullPath {
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
+  '/admin/vocabulary-licenses': typeof LayoutAdminVocabularyLicensesRoute
   '/school/members': typeof LayoutSchoolMembersRoute
   '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
@@ -452,6 +460,7 @@ export interface FileRoutesByTo {
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
+  '/admin/vocabulary-licenses': typeof LayoutAdminVocabularyLicensesRoute
   '/school/members': typeof LayoutSchoolMembersRoute
   '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
@@ -513,6 +522,7 @@ export interface FileRoutesById {
   '/_layout/admin/units': typeof LayoutAdminUnitsRoute
   '/_layout/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/_layout/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
+  '/_layout/admin/vocabulary-licenses': typeof LayoutAdminVocabularyLicensesRoute
   '/_layout/school/members': typeof LayoutSchoolMembersRoute
   '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
@@ -574,6 +584,7 @@ export interface FileRouteTypes {
     | '/admin/units'
     | '/admin/vocabbooks'
     | '/admin/vocablevels'
+    | '/admin/vocabulary-licenses'
     | '/school/members'
     | '/exam/$code/result'
     | '/p/$code/result'
@@ -628,6 +639,7 @@ export interface FileRouteTypes {
     | '/admin/units'
     | '/admin/vocabbooks'
     | '/admin/vocablevels'
+    | '/admin/vocabulary-licenses'
     | '/school/members'
     | '/exam/$code/result'
     | '/p/$code/result'
@@ -688,6 +700,7 @@ export interface FileRouteTypes {
     | '/_layout/admin/units'
     | '/_layout/admin/vocabbooks'
     | '/_layout/admin/vocablevels'
+    | '/_layout/admin/vocabulary-licenses'
     | '/_layout/school/members'
     | '/exam/$code/result'
     | '/p/$code/result'
@@ -1017,6 +1030,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminVocablevelsRouteImport
       parentRoute: typeof LayoutAdminRoute
     }
+    '/_layout/admin/vocabulary-licenses': {
+      id: '/_layout/admin/vocabulary-licenses'
+      path: '/vocabulary-licenses'
+      fullPath: '/admin/vocabulary-licenses'
+      preLoaderRoute: typeof LayoutAdminVocabularyLicensesRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
     '/_layout/school/members': {
       id: '/_layout/school/members'
       path: '/school/members'
@@ -1157,6 +1177,7 @@ interface LayoutAdminRouteChildren {
   LayoutAdminUnitsRoute: typeof LayoutAdminUnitsRoute
   LayoutAdminVocabbooksRoute: typeof LayoutAdminVocabbooksRoute
   LayoutAdminVocablevelsRoute: typeof LayoutAdminVocablevelsRoute
+  LayoutAdminVocabularyLicensesRoute: typeof LayoutAdminVocabularyLicensesRoute
   LayoutAdminIndexRoute: typeof LayoutAdminIndexRoute
 }
 
@@ -1171,6 +1192,7 @@ const LayoutAdminRouteChildren: LayoutAdminRouteChildren = {
   LayoutAdminUnitsRoute: LayoutAdminUnitsRoute,
   LayoutAdminVocabbooksRoute: LayoutAdminVocabbooksRoute,
   LayoutAdminVocablevelsRoute: LayoutAdminVocablevelsRoute,
+  LayoutAdminVocabularyLicensesRoute: LayoutAdminVocabularyLicensesRoute,
   LayoutAdminIndexRoute: LayoutAdminIndexRoute,
 }
 
