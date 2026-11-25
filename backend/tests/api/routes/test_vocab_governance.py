@@ -541,6 +541,114 @@ def test_platform_admin_csv_export(
     resp = client.get(f"{ADMIN_LICENSE}/export.csv", headers=operator_token_headers)
     assert resp.status_code == 200, resp.text
     assert "text/csv" in resp.headers["content-type"]
+    text = resp.content.decode("utf-8-sig")
+    assert text.splitlines()[0].startswith("学校,")
+
+
+def test_platform_admin_status_ledger(
+    client: TestClient,
+    db: Session,
+    operator_token_headers: dict[str, str],
+) -> None:
+    """平台台账：当前状态清单 + 学校/词库/状态筛选；学校 token 不可达。"""
+    teacher, headers, _classroom, book = _approved_book(client, db, 1, "st-active")
+    _set_book(
+        db,
+        book["id"],
+        source_type="licensed",
+        license_owner="外研社",
+        license_ref="WY-1",
+        license_expires_at=FUTURE,
+    )
+
+    other = Tenant(slug=f"st-{uuid.uuid4().hex[:8]}", name_zh="授权乙校")
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+    db.add(TenantModule(tenant_id=other.id, module_key=MODULE_VOCABULARY, enabled=True))
+    db.commit()
+
+    missing = VocabularyBook(
+        tenant_id=other.id,
+        title="乙校缺失库",
+        source_type="textbook",
+    )
+    expired = VocabularyBook(
+        tenant_id=other.id,
+        title="乙校过期库",
+        source_type="licensed",
+        license_owner="外研社",
+        license_ref="WY-2",
+        license_expires_at=PAST,
+    )
+    self_built = VocabularyBook(
+        tenant_id=other.id, title="乙校自建库", source_type="self_built"
+    )
+    db.add_all([missing, expired, self_built])
+    db.commit()
+    for row in (missing, expired, self_built):
+        db.refresh(row)
+
+    resp = client.get(f"{ADMIN_LICENSE}/status", headers=operator_token_headers)
+    assert resp.status_code == 200, resp.text
+    payload = resp.json()
+    by_title = {item["title"]: item for item in payload["items"]}
+    assert payload["total"] == len(payload["items"])
+
+    assert by_title[book["title"]]["license_status"] == "active"
+    assert by_title[book["title"]]["tenant_name"]
+    assert by_title["乙校缺失库"]["license_status"] == "missing"
+    assert by_title["乙校过期库"]["license_status"] == "expired"
+    assert by_title["乙校自建库"]["license_status"] == "not_required"
+    assert by_title["乙校缺失库"]["tenant_name"] == "授权乙校"
+    assert by_title["乙校缺失库"]["authorization_doc_url"] is None
+
+    # 状态筛选：missing（测试库 session 级共享，只断言口径一致 + 目标行在内）
+    rows = client.get(
+        f"{ADMIN_LICENSE}/status",
+        params={"status": "missing"},
+        headers=operator_token_headers,
+    ).json()["items"]
+    assert all(row["license_status"] == "missing" for row in rows)
+    assert "乙校缺失库" in [row["title"] for row in rows]
+
+    # 状态筛选：active 桶纳入 not_required（免授权来源）
+    rows = client.get(
+        f"{ADMIN_LICENSE}/status",
+        params={"status": "active"},
+        headers=operator_token_headers,
+    ).json()["items"]
+    assert {row["license_status"] for row in rows} <= {"active", "not_required"}
+
+    # 学校筛选（中文名模糊）
+    rows = client.get(
+        f"{ADMIN_LICENSE}/status",
+        params={"tenant": "乙校"},
+        headers=operator_token_headers,
+    ).json()["items"]
+    assert all(row["tenant_name"] == "授权乙校" for row in rows)
+    assert "乙校缺失库" in [row["title"] for row in rows]
+
+    # 词库标题筛选
+    rows = client.get(
+        f"{ADMIN_LICENSE}/status",
+        params={"book": "过期"},
+        headers=operator_token_headers,
+    ).json()["items"]
+    assert all("过期" in row["title"] for row in rows)
+    assert "乙校过期库" in [row["title"] for row in rows]
+
+    # 非法状态值 422
+    bad = client.get(
+        f"{ADMIN_LICENSE}/status",
+        params={"status": "nope"},
+        headers=operator_token_headers,
+    )
+    assert bad.status_code == 422
+
+    # 学校 token 不可达平台台账（aud 不符 → 401）
+    forbidden = client.get(f"{ADMIN_LICENSE}/status", headers=headers)
+    assert forbidden.status_code == 401
 
 
 # ── B. 版本历史 / 对比 / 回滚 ────────────────────────────────────────

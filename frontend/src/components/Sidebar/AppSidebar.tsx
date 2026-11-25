@@ -9,6 +9,7 @@ import {
   Megaphone,
   MessageSquareQuote,
   School,
+  ShieldCheck,
   UserRoundCog,
   Users,
   UsersRound,
@@ -65,6 +66,11 @@ const adminOnlyItems: Item[] = [
     icon: BookA,
     title: { zh: "五级词库", en: "Leveled Word Source" },
     path: "/admin/vocablevels",
+  },
+  {
+    icon: ShieldCheck,
+    title: { zh: "授权台账", en: "License Ledger" },
+    path: "/admin/vocabulary-licenses",
   },
   {
     icon: UsersRound,

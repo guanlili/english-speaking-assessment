@@ -12,6 +12,7 @@
     POST  /vocabulary/books/{book_id}/versions/{version_no}/rollback  回滚（仅管理员）
 
 平台运营（PlatformSessionDep + PlatformOperatorDep，只读）：
+    GET   /admin/vocabulary/license/status              跨校当前授权台账
     GET   /admin/vocabulary/license/audit               跨校授权审计
     GET   /admin/vocabulary/license/export.csv          跨校授权清单 CSV
 
@@ -38,8 +39,11 @@ from app.api.deps import (
 from app.api.routes.vocabulary_shared import _book_visible
 from app.models import (
     LICENSE_EXPIRING_DAYS,
+    LICENSE_STATUS_ACTIVE,
     LICENSE_STATUS_EXPIRED,
     LICENSE_STATUS_EXPIRING,
+    LICENSE_STATUS_MISSING,
+    LICENSE_STATUS_NOT_REQUIRED,
     Tenant,
     User,
     VocabularyBook,
@@ -52,6 +56,8 @@ from app.models import (
     VocabularyLicenseAudit,
     VocabularyLicenseAuditItem,
     VocabularyLicenseInfo,
+    VocabularyLicenseStatusItem,
+    VocabularyLicenseStatusList,
     VocabularyLicenseUpdate,
     VocabularyVersionCompare,
     VocabularyWord,
@@ -397,10 +403,14 @@ def list_license_audit(
 
 
 def _license_csv_rows(
-    session: Session, books: list[VocabularyBook], now: datetime
+    session: Session,
+    books: list[VocabularyBook],
+    now: datetime,
+    tenant_labels: dict[uuid.UUID, str] | None = None,
 ) -> list[list[object]]:
     rows: list[list[object]] = []
     for book in books:
+        tenant_label = tenant_labels.get(book.tenant_id) if tenant_labels else None
         words = _book_words(session, book.id)
         targets: list[
             tuple[str, str | None, str | None, str | None, datetime | None, str | None]
@@ -427,23 +437,31 @@ def _license_csv_rows(
             )
         for label, source_type, owner, ref, expires_at, _ in targets:
             status = vocab_governance.license_status(source_type, expires_at, now)
-            rows.append(
-                [
-                    csv_safe(label),
-                    csv_safe(source_type),
-                    csv_safe(owner or ""),
-                    csv_safe(ref or ""),
-                    expires_at.isoformat() if expires_at else "",
-                    csv_safe(status),
-                ]
-            )
+            row: list[object] = [
+                csv_safe(label),
+                csv_safe(source_type),
+                csv_safe(owner or ""),
+                csv_safe(ref or ""),
+                expires_at.isoformat() if expires_at else "",
+                csv_safe(status),
+            ]
+            if tenant_labels is not None:
+                row.insert(0, csv_safe(tenant_label or ""))
+            rows.append(row)
     return rows
 
 
-def _license_csv_response(rows: list[list[object]], filename: str) -> Response:
+def _license_csv_response(
+    rows: list[list[object]], filename: str, include_tenant: bool = False
+) -> Response:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["词库/词条", "source_type", "授权方", "凭证", "到期日", "状态"])
+    header = (
+        ["学校", "词库/词条", "source_type", "授权方", "凭证", "到期日", "状态"]
+        if include_tenant
+        else ["词库/词条", "source_type", "授权方", "凭证", "到期日", "状态"]
+    )
+    writer.writerow(header)
     writer.writerows(rows)
     return Response(
         content=("\ufeff" + buffer.getvalue()).encode("utf-8"),
@@ -576,12 +594,110 @@ def admin_list_license_audit(
     return [_audit_item(row, tenant_map) for row in rows]
 
 
+@admin_router.get(
+    "/admin/vocabulary/license/status",
+    response_model=VocabularyLicenseStatusList,
+)
+def admin_list_license_status(
+    session: PlatformSessionDep,
+    _operator: PlatformOperatorDep,
+    tenant: str | None = Query(default=None),
+    book: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=1000),
+) -> Any:
+    """平台跨校授权台账（只读当前状态）：按学校 / 词库 / 状态筛选。
+
+    只读：不写授权、不复用学校 token；状态口径见
+    :func:`vocab_governance.license_gap_status`。``active`` 筛选同时纳入
+    ``not_required``（免授权来源）。
+    """
+    allowed_statuses = {
+        LICENSE_STATUS_ACTIVE,
+        LICENSE_STATUS_EXPIRING,
+        LICENSE_STATUS_EXPIRED,
+        LICENSE_STATUS_MISSING,
+    }
+    if status is not None and status not in allowed_statuses:
+        raise HTTPException(status_code=422, detail="vocabulary_license_status_invalid")
+
+    now = vocab_governance.get_datetime_utc()
+    stmt = select(VocabularyBook)
+    if book:
+        stmt = stmt.where(col(VocabularyBook.title).ilike(f"%{book.strip()}%"))
+    books = list(session.exec(stmt).all())
+
+    tenant_map = _tenant_map(session, [b.tenant_id for b in books])
+    tenant_query = tenant.strip().lower() if tenant and tenant.strip() else None
+
+    def _tenant_matches(t: Tenant | None) -> bool:
+        if tenant_query is None or t is None:
+            return tenant_query is None
+        haystack = f"{t.slug} {t.name_zh} {t.name_en or ''}".lower()
+        return tenant_query in haystack
+
+    def _status_matches(item_status: str) -> bool:
+        if status is None:
+            return True
+        if status == LICENSE_STATUS_ACTIVE:
+            return item_status in (LICENSE_STATUS_ACTIVE, LICENSE_STATUS_NOT_REQUIRED)
+        return item_status == status
+
+    items: list[VocabularyLicenseStatusItem] = []
+    for book_row in books:
+        tenant_row = tenant_map.get(book_row.tenant_id)
+        if not _tenant_matches(tenant_row):
+            continue
+        item_status = vocab_governance.license_gap_status(
+            book_row.source_type,
+            book_row.license_owner,
+            book_row.license_ref,
+            book_row.authorization_doc_url,
+            book_row.license_expires_at,
+            now,
+        )
+        if not _status_matches(item_status):
+            continue
+        items.append(
+            VocabularyLicenseStatusItem(
+                book_id=book_row.id,
+                title=book_row.title,
+                tenant_slug=tenant_row.slug if tenant_row else None,
+                tenant_name=tenant_row.name_zh if tenant_row else None,
+                source_type=book_row.source_type,
+                license_status=item_status,
+                license_owner=book_row.license_owner,
+                license_ref=book_row.license_ref,
+                authorization_doc_url=book_row.authorization_doc_url,
+                license_expires_at=book_row.license_expires_at,
+                license_note=book_row.license_note,
+                created_at=book_row.created_at,
+            )
+        )
+
+    items.sort(
+        key=lambda item: (
+            (item.tenant_name or item.tenant_slug or "").lower(),
+            item.title.lower(),
+        )
+    )
+    total = len(items)
+    return VocabularyLicenseStatusList(items=items[:limit], total=total)
+
+
 @admin_router.get("/admin/vocabulary/license/export.csv")
 def admin_export_license_csv(
     session: PlatformSessionDep, _operator: PlatformOperatorDep
 ) -> Response:
-    """平台跨校授权清单 CSV（只读）。"""
+    """平台跨校授权清单 CSV（只读）：首列为学校，口径与台账页一致。"""
     now = vocab_governance.get_datetime_utc()
     books = list(session.exec(select(VocabularyBook)).all())
-    rows = _license_csv_rows(session, books, now)
-    return _license_csv_response(rows, "vocabulary-license-all.csv")
+    tenant_map = _tenant_map(session, [b.tenant_id for b in books])
+    tenant_labels = {
+        tenant_id: (tenant.name_zh or tenant.slug)
+        for tenant_id, tenant in tenant_map.items()
+    }
+    rows = _license_csv_rows(session, books, now, tenant_labels)
+    return _license_csv_response(
+        rows, "vocabulary-license-all.csv", include_tenant=True
+    )

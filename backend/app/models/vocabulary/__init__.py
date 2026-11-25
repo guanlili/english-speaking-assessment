@@ -154,6 +154,9 @@ from app.models.vocabulary.governance import (
     LICENSE_STATUS_EXPIRING as LICENSE_STATUS_EXPIRING,
 )
 from app.models.vocabulary.governance import (
+    LICENSE_STATUS_MISSING as LICENSE_STATUS_MISSING,
+)
+from app.models.vocabulary.governance import (
     LICENSE_STATUS_NOT_REQUIRED as LICENSE_STATUS_NOT_REQUIRED,
 )
 from app.models.vocabulary.governance import (
@@ -176,6 +179,12 @@ from app.models.vocabulary.governance import (
 )
 from app.models.vocabulary.governance import (
     VocabularyLicenseInfo as VocabularyLicenseInfo,
+)
+from app.models.vocabulary.governance import (
+    VocabularyLicenseStatusItem as VocabularyLicenseStatusItem,
+)
+from app.models.vocabulary.governance import (
+    VocabularyLicenseStatusList as VocabularyLicenseStatusList,
 )
 from app.models.vocabulary.governance import (
     VocabularyLicenseUpdate as VocabularyLicenseUpdate,
@@ -569,6 +578,8 @@ __all__ = [
     "VocabularyLicenseAlertItem",
     "VocabularyLicenseAuditItem",
     "VocabularyLicenseInfo",
+    "VocabularyLicenseStatusItem",
+    "VocabularyLicenseStatusList",
     "VocabularyLicenseUpdate",
     "VocabularyVersionCompare",
     "VocabularyVersionDiffEntry",
@@ -580,6 +591,7 @@ __all__ = [
     "LICENSE_STATUS_ACTIVE",
     "LICENSE_STATUS_EXPIRING",
     "LICENSE_STATUS_EXPIRED",
+    "LICENSE_STATUS_MISSING",
     "LICENSE_ERROR_OWNER_MISSING",
     "LICENSE_ERROR_REF_MISSING",
     "LICENSE_ERROR_EXPIRED",

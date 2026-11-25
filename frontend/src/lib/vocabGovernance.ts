@@ -23,6 +23,8 @@ export const LICENSE_STATUS_NOT_REQUIRED = "not_required"
 export const LICENSE_STATUS_ACTIVE = "active"
 export const LICENSE_STATUS_EXPIRING = "expiring"
 export const LICENSE_STATUS_EXPIRED = "expired"
+/** 应授权来源缺授权方 / 凭证（平台台账只读口径） */
+export const LICENSE_STATUS_MISSING = "missing"
 
 /** 发布门禁 422 稳定错误码（与后端 LICENSE_ERROR_* 对齐） */
 export const LICENSE_ERROR_OWNER_MISSING = "vocabulary_license_owner_missing"
@@ -52,6 +54,13 @@ export const LICENSE_STATUS_LABELS: Record<string, BiString> = {
   [LICENSE_STATUS_ACTIVE]: { zh: "有效", en: "Active" },
   [LICENSE_STATUS_EXPIRING]: { zh: "临期", en: "Expiring soon" },
   [LICENSE_STATUS_EXPIRED]: { zh: "已过期", en: "Expired" },
+  [LICENSE_STATUS_MISSING]: { zh: "缺失", en: "Missing" },
+}
+
+/** 凭证链接只允许 http/https，其余（javascript: 等）按纯文本展示。 */
+export function isSafeHttpUrl(value: string | null | undefined): boolean {
+  if (!value) return false
+  return /^https?:\/\//i.test(value.trim())
 }
 
 export function licenseStatusLabel(
