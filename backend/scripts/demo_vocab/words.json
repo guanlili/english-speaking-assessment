@@ -1,0 +1,4243 @@
+{
+  "demo": true,
+  "license_owner": "Demo Content Team",
+  "license_ref": "DEMO-ONLY",
+  "note": "Local demo data only; not for production",
+  "words": [
+    {
+      "headword": "apple",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "苹果",
+      "meaning_en": "a round firm fruit with red or green skin",
+      "example_en": "I ate a fresh apple after the morning run.",
+      "morphology": [
+        {
+          "text": "apple",
+          "gloss": "苹果",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "banana",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "香蕉",
+      "meaning_en": "a long curved yellow fruit",
+      "example_en": "The monkey peeled a banana and sat on the branch.",
+      "morphology": [
+        {
+          "text": "banana",
+          "gloss": "香蕉",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "book",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "书",
+      "meaning_en": "a set of printed pages bound together",
+      "example_en": "She carried a thick book under her arm.",
+      "morphology": [
+        {
+          "text": "book",
+          "gloss": "书",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "pen",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "钢笔",
+      "meaning_en": "a tool that writes with ink",
+      "example_en": "My pen ran out of ink during the exam.",
+      "morphology": [
+        {
+          "text": "pen",
+          "gloss": "笔",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "table",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "桌子",
+      "meaning_en": "a piece of furniture with a flat top",
+      "example_en": "They put the flowers on the wooden table.",
+      "morphology": [
+        {
+          "text": "table",
+          "gloss": "桌子",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "chair",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "椅子",
+      "meaning_en": "a seat with a back and legs",
+      "example_en": "Please pull the chair closer to the window.",
+      "morphology": [
+        {
+          "text": "chair",
+          "gloss": "椅子",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "water",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "水",
+      "meaning_en": "the clear liquid people drink",
+      "example_en": "Drink enough water before the sports meet.",
+      "morphology": [
+        {
+          "text": "water",
+          "gloss": "水",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "bread",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "面包",
+      "meaning_en": "food baked from flour and water",
+      "example_en": "We bought warm bread at the corner shop.",
+      "morphology": [
+        {
+          "text": "bread",
+          "gloss": "面包",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "milk",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "牛奶",
+      "meaning_en": "the white liquid from cows",
+      "example_en": "He poured a glass of cold milk.",
+      "morphology": [
+        {
+          "text": "milk",
+          "gloss": "牛奶",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "rice",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "米饭；大米",
+      "meaning_en": "small white grains cooked as food",
+      "example_en": "The rice was served with fresh vegetables.",
+      "morphology": [
+        {
+          "text": "rice",
+          "gloss": "大米",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "school",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "学校",
+      "meaning_en": "a place where children learn",
+      "example_en": "Our school holds a reading week every autumn.",
+      "morphology": [
+        {
+          "text": "school",
+          "gloss": "学校",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "student",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "学生",
+      "meaning_en": "a person who studies at school",
+      "example_en": "Each student received a new timetable.",
+      "morphology": [
+        {
+          "text": "student",
+          "gloss": "学生",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "teacher",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "老师",
+      "meaning_en": "a person who teaches",
+      "example_en": "The teacher wrote the formula on the board.",
+      "morphology": [
+        {
+          "text": "teach",
+          "gloss": "教",
+          "kind": "root"
+        },
+        {
+          "text": "er",
+          "gloss": "表人",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "friend",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "朋友",
+      "meaning_en": "a person you like and spend time with",
+      "example_en": "My friend and I share the same hobby.",
+      "morphology": [
+        {
+          "text": "friend",
+          "gloss": "朋友",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "family",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "家庭",
+      "meaning_en": "a group of people related by blood",
+      "example_en": "Her family lives in a quiet town near the coast.",
+      "morphology": [
+        {
+          "text": "family",
+          "gloss": "家庭",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "home",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "家",
+      "meaning_en": "the place where one lives",
+      "example_en": "They returned home after a long walk.",
+      "morphology": [
+        {
+          "text": "home",
+          "gloss": "家",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "dog",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "狗",
+      "meaning_en": "a common pet that barks",
+      "example_en": "The dog ran across the garden chasing a ball.",
+      "morphology": [
+        {
+          "text": "dog",
+          "gloss": "狗",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "cat",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "猫",
+      "meaning_en": "a small furry pet that meows",
+      "example_en": "The cat curled up on the warm blanket.",
+      "morphology": [
+        {
+          "text": "cat",
+          "gloss": "猫",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "bird",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "鸟",
+      "meaning_en": "an animal with feathers that can fly",
+      "example_en": "A small bird landed on the balcony rail.",
+      "morphology": [
+        {
+          "text": "bird",
+          "gloss": "鸟",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "tree",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "树",
+      "meaning_en": "a tall plant with a trunk and branches",
+      "example_en": "We planted a young tree in the yard.",
+      "morphology": [
+        {
+          "text": "tree",
+          "gloss": "树",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "flower",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "花",
+      "meaning_en": "the colorful part of a plant",
+      "example_en": "The flower opened slowly in the morning sun.",
+      "morphology": [
+        {
+          "text": "flower",
+          "gloss": "花",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "rain",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "雨",
+      "meaning_en": "water falling from clouds",
+      "example_en": "The rain stopped before our picnic began.",
+      "morphology": [
+        {
+          "text": "rain",
+          "gloss": "雨",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "wind",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "风",
+      "meaning_en": "moving air",
+      "example_en": "A gentle wind blew through the open window.",
+      "morphology": [
+        {
+          "text": "wind",
+          "gloss": "风",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "day",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "一天；白天",
+      "meaning_en": "a period of twenty-four hours",
+      "example_en": "We spent a sunny day at the lake.",
+      "morphology": [
+        {
+          "text": "day",
+          "gloss": "天",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "night",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "夜晚",
+      "meaning_en": "the dark part of each day",
+      "example_en": "The city looked bright on a clear night.",
+      "morphology": [
+        {
+          "text": "night",
+          "gloss": "夜晚",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "happy",
+      "level": "KET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "开心的",
+      "meaning_en": "feeling pleased and glad",
+      "example_en": "The children looked happy with their gifts.",
+      "morphology": [
+        {
+          "text": "happy",
+          "gloss": "开心的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "sad",
+      "level": "KET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "难过的",
+      "meaning_en": "feeling unhappy",
+      "example_en": "He felt sad when the old movie ended.",
+      "morphology": [
+        {
+          "text": "sad",
+          "gloss": "难过的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "big",
+      "level": "KET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "大的",
+      "meaning_en": "large in size",
+      "example_en": "A big dog sat beside the door.",
+      "morphology": [
+        {
+          "text": "big",
+          "gloss": "大的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "classroom",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "教室",
+      "meaning_en": "a room where lessons are held",
+      "example_en": "The classroom faced a quiet playground.",
+      "morphology": [
+        {
+          "text": "class",
+          "gloss": "班级",
+          "kind": "root"
+        },
+        {
+          "text": "room",
+          "gloss": "房间",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "bedroom",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "卧室",
+      "meaning_en": "a room for sleeping",
+      "example_en": "Her bedroom overlooks the garden.",
+      "morphology": [
+        {
+          "text": "bed",
+          "gloss": "床",
+          "kind": "root"
+        },
+        {
+          "text": "room",
+          "gloss": "房间",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "football",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "足球",
+      "meaning_en": "a ball game played with the feet",
+      "example_en": "They practiced football every Saturday afternoon.",
+      "morphology": [
+        {
+          "text": "foot",
+          "gloss": "脚",
+          "kind": "root"
+        },
+        {
+          "text": "ball",
+          "gloss": "球",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "weekend",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "周末",
+      "meaning_en": "Saturday and Sunday",
+      "example_en": "We visited the museum last weekend.",
+      "morphology": [
+        {
+          "text": "week",
+          "gloss": "周",
+          "kind": "root"
+        },
+        {
+          "text": "end",
+          "gloss": "末尾",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "sunlight",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "阳光",
+      "meaning_en": "light from the sun",
+      "example_en": "Sunlight filled the whole kitchen.",
+      "morphology": [
+        {
+          "text": "sun",
+          "gloss": "太阳",
+          "kind": "root"
+        },
+        {
+          "text": "light",
+          "gloss": "光",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "bookmark",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "书签",
+      "meaning_en": "a mark placed in a book",
+      "example_en": "He put a bookmark in the page he stopped at.",
+      "morphology": [
+        {
+          "text": "book",
+          "gloss": "书",
+          "kind": "root"
+        },
+        {
+          "text": "mark",
+          "gloss": "标记",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "sunflower",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "向日葵",
+      "meaning_en": "a tall plant with a large yellow flower",
+      "example_en": "The sunflower turned toward the afternoon light.",
+      "morphology": [
+        {
+          "text": "sun",
+          "gloss": "太阳",
+          "kind": "root"
+        },
+        {
+          "text": "flower",
+          "gloss": "花",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "raindrop",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "雨滴",
+      "meaning_en": "a single drop of rain",
+      "example_en": "One raindrop slid down the window pane.",
+      "morphology": [
+        {
+          "text": "rain",
+          "gloss": "雨",
+          "kind": "root"
+        },
+        {
+          "text": "drop",
+          "gloss": "滴",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "doorway",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "门口",
+      "meaning_en": "the opening into a room or building",
+      "example_en": "She stood in the doorway waving goodbye.",
+      "morphology": [
+        {
+          "text": "door",
+          "gloss": "门",
+          "kind": "root"
+        },
+        {
+          "text": "way",
+          "gloss": "路",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "birthday",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "生日",
+      "meaning_en": "the date on which one was born",
+      "example_en": "We invited friends to her birthday party.",
+      "morphology": [
+        {
+          "text": "birth",
+          "gloss": "出生",
+          "kind": "root"
+        },
+        {
+          "text": "day",
+          "gloss": "日子",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "breakfast",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "早餐",
+      "meaning_en": "the first meal of the day",
+      "example_en": "He ate a simple breakfast before leaving.",
+      "morphology": [
+        {
+          "text": "break",
+          "gloss": "打破",
+          "kind": "root"
+        },
+        {
+          "text": "fast",
+          "gloss": "斋戒",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "homework",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "家庭作业",
+      "meaning_en": "school work done at home",
+      "example_en": "He finished his homework before dinner.",
+      "morphology": [
+        {
+          "text": "home",
+          "gloss": "家",
+          "kind": "root"
+        },
+        {
+          "text": "work",
+          "gloss": "工作",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "playground",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "操场",
+      "meaning_en": "an outdoor area for play",
+      "example_en": "Children laughed and ran in the playground.",
+      "morphology": [
+        {
+          "text": "play",
+          "gloss": "玩耍",
+          "kind": "root"
+        },
+        {
+          "text": "ground",
+          "gloss": "场地",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "blackboard",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "黑板",
+      "meaning_en": "a dark board for writing with chalk",
+      "example_en": "The key words were listed on the blackboard.",
+      "morphology": [
+        {
+          "text": "black",
+          "gloss": "黑色",
+          "kind": "root"
+        },
+        {
+          "text": "board",
+          "gloss": "板",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "bookstore",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "书店",
+      "meaning_en": "a shop that sells books",
+      "example_en": "She found the poetry book in a small bookstore.",
+      "morphology": [
+        {
+          "text": "book",
+          "gloss": "书",
+          "kind": "root"
+        },
+        {
+          "text": "store",
+          "gloss": "店铺",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "moonlight",
+      "level": "KET",
+      "part_of_speech": "n.",
+      "meaning_zh": "月光",
+      "meaning_en": "light from the moon",
+      "example_en": "The path glowed silver in the moonlight.",
+      "morphology": [
+        {
+          "text": "moon",
+          "gloss": "月亮",
+          "kind": "root"
+        },
+        {
+          "text": "light",
+          "gloss": "光",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "helpful",
+      "level": "PET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "有帮助的",
+      "meaning_en": "giving useful help",
+      "example_en": "Your clear notes were very helpful.",
+      "morphology": [
+        {
+          "text": "help",
+          "gloss": "帮助",
+          "kind": "root"
+        },
+        {
+          "text": "ful",
+          "gloss": "充满…的",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "careful",
+      "level": "PET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "小心的",
+      "meaning_en": "taking care; cautious",
+      "example_en": "Be careful when you cross the busy road.",
+      "morphology": [
+        {
+          "text": "care",
+          "gloss": "小心",
+          "kind": "root"
+        },
+        {
+          "text": "ful",
+          "gloss": "充满…的",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "useful",
+      "level": "PET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "有用的",
+      "meaning_en": "serving a purpose well",
+      "example_en": "This pocket dictionary is quite useful.",
+      "morphology": [
+        {
+          "text": "use",
+          "gloss": "使用",
+          "kind": "root"
+        },
+        {
+          "text": "ful",
+          "gloss": "充满…的",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "careless",
+      "level": "PET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "粗心的",
+      "meaning_en": "not giving enough attention",
+      "example_en": "A careless slip cost him the first point.",
+      "morphology": [
+        {
+          "text": "care",
+          "gloss": "小心",
+          "kind": "root"
+        },
+        {
+          "text": "less",
+          "gloss": "无…的",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "hopeless",
+      "level": "PET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "无望的",
+      "meaning_en": "without hope",
+      "example_en": "The rescue team did not call the search hopeless.",
+      "morphology": [
+        {
+          "text": "hope",
+          "gloss": "希望",
+          "kind": "root"
+        },
+        {
+          "text": "less",
+          "gloss": "无…的",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "useless",
+      "level": "PET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "无用的",
+      "meaning_en": "not helpful at all",
+      "example_en": "The broken watch was useless as a clock.",
+      "morphology": [
+        {
+          "text": "use",
+          "gloss": "使用",
+          "kind": "root"
+        },
+        {
+          "text": "less",
+          "gloss": "无…的",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "kindness",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "善意；仁慈",
+      "meaning_en": "the quality of being kind",
+      "example_en": "She remembered his kindness for many years.",
+      "morphology": [
+        {
+          "text": "kind",
+          "gloss": "善良的",
+          "kind": "root"
+        },
+        {
+          "text": "ness",
+          "gloss": "名词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "happiness",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "幸福；快乐",
+      "meaning_en": "the state of being happy",
+      "example_en": "Simple moments can bring real happiness.",
+      "morphology": [
+        {
+          "text": "happi",
+          "gloss": "开心的",
+          "kind": "root"
+        },
+        {
+          "text": "ness",
+          "gloss": "名词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "illness",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "疾病",
+      "meaning_en": "a state of being sick",
+      "example_en": "A short illness kept him home for a week.",
+      "morphology": [
+        {
+          "text": "ill",
+          "gloss": "生病的",
+          "kind": "root"
+        },
+        {
+          "text": "ness",
+          "gloss": "名词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "darkness",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "黑暗",
+      "meaning_en": "the absence of light",
+      "example_en": "The lamp cut through the sudden darkness.",
+      "morphology": [
+        {
+          "text": "dark",
+          "gloss": "黑暗的",
+          "kind": "root"
+        },
+        {
+          "text": "ness",
+          "gloss": "名词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "weakness",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "弱点；虚弱",
+      "meaning_en": "the state of being weak",
+      "example_en": "The coach listed each weakness to fix in practice.",
+      "morphology": [
+        {
+          "text": "weak",
+          "gloss": "虚弱的",
+          "kind": "root"
+        },
+        {
+          "text": "ness",
+          "gloss": "名词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "slowly",
+      "level": "PET",
+      "part_of_speech": "adv.",
+      "meaning_zh": "缓慢地",
+      "meaning_en": "at a low speed",
+      "example_en": "The old man walked slowly up the stairs.",
+      "morphology": [
+        {
+          "text": "slow",
+          "gloss": "慢的",
+          "kind": "root"
+        },
+        {
+          "text": "ly",
+          "gloss": "副词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "quickly",
+      "level": "PET",
+      "part_of_speech": "adv.",
+      "meaning_zh": "快速地",
+      "meaning_en": "at high speed",
+      "example_en": "She finished the task quickly and carefully.",
+      "morphology": [
+        {
+          "text": "quick",
+          "gloss": "快的",
+          "kind": "root"
+        },
+        {
+          "text": "ly",
+          "gloss": "副词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "quietly",
+      "level": "PET",
+      "part_of_speech": "adv.",
+      "meaning_zh": "安静地",
+      "meaning_en": "without making noise",
+      "example_en": "Please speak quietly in the reading room.",
+      "morphology": [
+        {
+          "text": "quiet",
+          "gloss": "安静的",
+          "kind": "root"
+        },
+        {
+          "text": "ly",
+          "gloss": "副词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "loudly",
+      "level": "PET",
+      "part_of_speech": "adv.",
+      "meaning_zh": "大声地",
+      "meaning_en": "in a loud voice",
+      "example_en": "The audience cheered loudly after the show.",
+      "morphology": [
+        {
+          "text": "loud",
+          "gloss": "大声的",
+          "kind": "root"
+        },
+        {
+          "text": "ly",
+          "gloss": "副词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "happily",
+      "level": "PET",
+      "part_of_speech": "adv.",
+      "meaning_zh": "快乐地",
+      "meaning_en": "in a happy way",
+      "example_en": "The children played happily in the yard.",
+      "morphology": [
+        {
+          "text": "happi",
+          "gloss": "开心的",
+          "kind": "root"
+        },
+        {
+          "text": "ly",
+          "gloss": "副词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "singer",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "歌手",
+      "meaning_en": "a person who sings",
+      "example_en": "The singer took a bow after the last song.",
+      "morphology": [
+        {
+          "text": "sing",
+          "gloss": "唱歌",
+          "kind": "root"
+        },
+        {
+          "text": "er",
+          "gloss": "表人",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "reader",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "读者",
+      "meaning_en": "a person who reads",
+      "example_en": "Each reader may keep the book for two weeks.",
+      "morphology": [
+        {
+          "text": "read",
+          "gloss": "阅读",
+          "kind": "root"
+        },
+        {
+          "text": "er",
+          "gloss": "表人",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "farmer",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "农民",
+      "meaning_en": "a person who works on a farm",
+      "example_en": "The farmer checked the wheat in the field.",
+      "morphology": [
+        {
+          "text": "farm",
+          "gloss": "农场",
+          "kind": "root"
+        },
+        {
+          "text": "er",
+          "gloss": "表人",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "driver",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "司机",
+      "meaning_en": "a person who drives a vehicle",
+      "example_en": "The driver waited patiently at the crossing.",
+      "morphology": [
+        {
+          "text": "driv",
+          "gloss": "驾驶",
+          "kind": "root"
+        },
+        {
+          "text": "er",
+          "gloss": "表人",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "worker",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "工人",
+      "meaning_en": "a person who works",
+      "example_en": "The worker repaired the fence before sunset.",
+      "morphology": [
+        {
+          "text": "work",
+          "gloss": "工作",
+          "kind": "root"
+        },
+        {
+          "text": "er",
+          "gloss": "表人",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "learner",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "学习者",
+      "meaning_en": "a person who learns something",
+      "example_en": "Every learner makes mistakes at first.",
+      "morphology": [
+        {
+          "text": "learn",
+          "gloss": "学习",
+          "kind": "root"
+        },
+        {
+          "text": "er",
+          "gloss": "表人",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "player",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "运动员；选手",
+      "meaning_en": "a person who plays a game",
+      "example_en": "The player passed the ball to the captain.",
+      "morphology": [
+        {
+          "text": "play",
+          "gloss": "玩耍",
+          "kind": "root"
+        },
+        {
+          "text": "er",
+          "gloss": "表人",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "dislike",
+      "level": "PET",
+      "part_of_speech": "v.",
+      "meaning_zh": "不喜欢",
+      "meaning_en": "feel not liking something",
+      "example_en": "I dislike waiting in a long queue.",
+      "morphology": [
+        {
+          "text": "dis",
+          "gloss": "否定",
+          "kind": "prefix"
+        },
+        {
+          "text": "like",
+          "gloss": "喜欢",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "unhappy",
+      "level": "PET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "不开心的",
+      "meaning_en": "not happy",
+      "example_en": "She looked unhappy about the delayed flight.",
+      "morphology": [
+        {
+          "text": "un",
+          "gloss": "不",
+          "kind": "prefix"
+        },
+        {
+          "text": "happy",
+          "gloss": "开心的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "unable",
+      "level": "PET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "不能的",
+      "meaning_en": "not able to do something",
+      "example_en": "He was unable to finish the race in time.",
+      "morphology": [
+        {
+          "text": "un",
+          "gloss": "不",
+          "kind": "prefix"
+        },
+        {
+          "text": "able",
+          "gloss": "能够的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "disagree",
+      "level": "PET",
+      "part_of_speech": "v.",
+      "meaning_zh": "不同意",
+      "meaning_en": "hold a different opinion",
+      "example_en": "Some members disagree with the new plan.",
+      "morphology": [
+        {
+          "text": "dis",
+          "gloss": "否定",
+          "kind": "prefix"
+        },
+        {
+          "text": "agree",
+          "gloss": "同意",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "review",
+      "level": "PET",
+      "part_of_speech": "v.",
+      "meaning_zh": "复习；回顾",
+      "meaning_en": "look over again",
+      "example_en": "We review the week's notes before the quiz.",
+      "morphology": [
+        {
+          "text": "re",
+          "gloss": "再",
+          "kind": "prefix"
+        },
+        {
+          "text": "view",
+          "gloss": "看",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "replay",
+      "level": "PET",
+      "part_of_speech": "v.",
+      "meaning_zh": "重播；重赛",
+      "meaning_en": "play again",
+      "example_en": "The coach asked them to replay the last round.",
+      "morphology": [
+        {
+          "text": "re",
+          "gloss": "再",
+          "kind": "prefix"
+        },
+        {
+          "text": "play",
+          "gloss": "玩耍",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "mistake",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "错误",
+      "meaning_en": "something done wrongly",
+      "example_en": "Find and correct each mistake in the sentence.",
+      "morphology": [
+        {
+          "text": "mis",
+          "gloss": "错误地",
+          "kind": "prefix"
+        },
+        {
+          "text": "take",
+          "gloss": "拿",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "preview",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "预览；预告",
+      "meaning_en": "a showing beforehand",
+      "example_en": "The preview showed clips from the new film.",
+      "morphology": [
+        {
+          "text": "pre",
+          "gloss": "预先",
+          "kind": "prefix"
+        },
+        {
+          "text": "view",
+          "gloss": "看",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "forecast",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "预报",
+      "meaning_en": "a statement about future conditions",
+      "example_en": "The weather forecast promised clear skies.",
+      "morphology": [
+        {
+          "text": "fore",
+          "gloss": "预先",
+          "kind": "prefix"
+        },
+        {
+          "text": "cast",
+          "gloss": "投掷",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "subway",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "地铁",
+      "meaning_en": "an underground railway",
+      "example_en": "We took the subway to the concert hall.",
+      "morphology": [
+        {
+          "text": "sub",
+          "gloss": "在下面",
+          "kind": "prefix"
+        },
+        {
+          "text": "way",
+          "gloss": "路",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "textbook",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "教科书",
+      "meaning_en": "a book used for a subject at school",
+      "example_en": "Write your name inside the textbook.",
+      "morphology": [
+        {
+          "text": "text",
+          "gloss": "课文",
+          "kind": "root"
+        },
+        {
+          "text": "book",
+          "gloss": "书",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "headline",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "标题",
+      "meaning_en": "the title at the top of a news story",
+      "example_en": "The headline announced the concert tour.",
+      "morphology": [
+        {
+          "text": "head",
+          "gloss": "头部",
+          "kind": "root"
+        },
+        {
+          "text": "line",
+          "gloss": "行",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "homepage",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "主页",
+      "meaning_en": "the main page of a website",
+      "example_en": "The school homepage lists the holiday dates.",
+      "morphology": [
+        {
+          "text": "home",
+          "gloss": "主页",
+          "kind": "root"
+        },
+        {
+          "text": "page",
+          "gloss": "页面",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "however",
+      "level": "PET",
+      "part_of_speech": "adv.",
+      "meaning_zh": "然而",
+      "meaning_en": "but; in spite of that",
+      "example_en": "It rained; however, the game went ahead.",
+      "morphology": [
+        {
+          "text": "how",
+          "gloss": "怎样",
+          "kind": "root"
+        },
+        {
+          "text": "ever",
+          "gloss": "无论",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "friendship",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "友谊",
+      "meaning_en": "the feeling between friends",
+      "example_en": "Their friendship grew during the long trip.",
+      "morphology": [
+        {
+          "text": "friend",
+          "gloss": "朋友",
+          "kind": "root"
+        },
+        {
+          "text": "ship",
+          "gloss": "关系",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "childhood",
+      "level": "PET",
+      "part_of_speech": "n.",
+      "meaning_zh": "童年",
+      "meaning_en": "the period of being a child",
+      "example_en": "He spent his childhood near the sea.",
+      "morphology": [
+        {
+          "text": "child",
+          "gloss": "孩子",
+          "kind": "root"
+        },
+        {
+          "text": "hood",
+          "gloss": "时期",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "foolish",
+      "level": "PET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "愚蠢的",
+      "meaning_en": "silly; not wise",
+      "example_en": "It would be foolish to skip the warm-up.",
+      "morphology": [
+        {
+          "text": "fool",
+          "gloss": "傻瓜",
+          "kind": "root"
+        },
+        {
+          "text": "ish",
+          "gloss": "像…的",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "childish",
+      "level": "PET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "孩子气的",
+      "meaning_en": "typical of a child",
+      "example_en": "His childish joke made everyone laugh.",
+      "morphology": [
+        {
+          "text": "child",
+          "gloss": "孩子",
+          "kind": "root"
+        },
+        {
+          "text": "ish",
+          "gloss": "像…的",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "selfish",
+      "level": "PET",
+      "part_of_speech": "adj.",
+      "meaning_zh": "自私的",
+      "meaning_en": "caring only for oneself",
+      "example_en": "Refusing to share felt selfish and unfair.",
+      "morphology": [
+        {
+          "text": "self",
+          "gloss": "自己",
+          "kind": "root"
+        },
+        {
+          "text": "ish",
+          "gloss": "像…的",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "shorten",
+      "level": "PET",
+      "part_of_speech": "v.",
+      "meaning_zh": "缩短",
+      "meaning_en": "make or become shorter",
+      "example_en": "The editor agreed to shorten the report.",
+      "morphology": [
+        {
+          "text": "short",
+          "gloss": "短的",
+          "kind": "root"
+        },
+        {
+          "text": "en",
+          "gloss": "使…",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "sharpen",
+      "level": "PET",
+      "part_of_speech": "v.",
+      "meaning_zh": "磨快；提高",
+      "meaning_en": "make sharp or sharper",
+      "example_en": "He stopped to sharpen his pencil.",
+      "morphology": [
+        {
+          "text": "sharp",
+          "gloss": "锋利的",
+          "kind": "root"
+        },
+        {
+          "text": "en",
+          "gloss": "使…",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "concept",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "概念",
+      "meaning_en": "an abstract idea",
+      "example_en": "The concept appears again in later chapters.",
+      "morphology": [
+        {
+          "text": "concept",
+          "gloss": "概念",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "context",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "上下文；语境",
+      "meaning_en": "the setting around a word",
+      "example_en": "Do not judge the phrase without its context.",
+      "morphology": [
+        {
+          "text": "con",
+          "gloss": "共同",
+          "kind": "prefix"
+        },
+        {
+          "text": "text",
+          "gloss": "编织",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "data",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "数据",
+      "meaning_en": "facts or statistics collected",
+      "example_en": "The data were organized into three tables.",
+      "morphology": [
+        {
+          "text": "data",
+          "gloss": "数据",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "factor",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "因素",
+      "meaning_en": "a fact that influences a result",
+      "example_en": "Sleep is a key factor in test performance.",
+      "morphology": [
+        {
+          "text": "factor",
+          "gloss": "因素",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "method",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "方法",
+      "meaning_en": "a systematic way of doing something",
+      "example_en": "The method worked well for small samples.",
+      "morphology": [
+        {
+          "text": "method",
+          "gloss": "方法",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "theory",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "理论",
+      "meaning_en": "a set of ideas explaining something",
+      "example_en": "The theory was tested in three experiments.",
+      "morphology": [
+        {
+          "text": "theory",
+          "gloss": "理论",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "evidence",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "证据",
+      "meaning_en": "facts that support a claim",
+      "example_en": "There is little evidence for that assumption.",
+      "morphology": [
+        {
+          "text": "evidence",
+          "gloss": "证据",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "assume",
+      "level": "ACADEMIC",
+      "part_of_speech": "v.",
+      "meaning_zh": "假定；承担",
+      "meaning_en": "suppose without proof",
+      "example_en": "Do not assume the result before the data arrive.",
+      "morphology": [
+        {
+          "text": "assume",
+          "gloss": "假定",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "derive",
+      "level": "ACADEMIC",
+      "part_of_speech": "v.",
+      "meaning_zh": "获得；派生",
+      "meaning_en": "obtain or come from a source",
+      "example_en": "Many English words derive from Latin roots.",
+      "morphology": [
+        {
+          "text": "derive",
+          "gloss": "派生",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "establish",
+      "level": "ACADEMIC",
+      "part_of_speech": "v.",
+      "meaning_zh": "建立",
+      "meaning_en": "set up firmly",
+      "example_en": "The study group will establish a clear schedule.",
+      "morphology": [
+        {
+          "text": "establish",
+          "gloss": "建立",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "indicate",
+      "level": "ACADEMIC",
+      "part_of_speech": "v.",
+      "meaning_zh": "表明",
+      "meaning_en": "show or point out",
+      "example_en": "The chart may indicate a steady rise in sales.",
+      "morphology": [
+        {
+          "text": "indicate",
+          "gloss": "表明",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "involve",
+      "level": "ACADEMIC",
+      "part_of_speech": "v.",
+      "meaning_zh": "涉及；包含",
+      "meaning_en": "include as necessary",
+      "example_en": "The experiment will involve two control groups.",
+      "morphology": [
+        {
+          "text": "involve",
+          "gloss": "涉及",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "obtain",
+      "level": "ACADEMIC",
+      "part_of_speech": "v.",
+      "meaning_zh": "获得",
+      "meaning_en": "get something through effort",
+      "example_en": "Students obtain the forms from the office.",
+      "morphology": [
+        {
+          "text": "obtain",
+          "gloss": "获得",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "occur",
+      "level": "ACADEMIC",
+      "part_of_speech": "v.",
+      "meaning_zh": "发生；出现",
+      "meaning_en": "happen or take place",
+      "example_en": "Similar errors occur in the second draft.",
+      "morphology": [
+        {
+          "text": "occur",
+          "gloss": "发生",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "require",
+      "level": "ACADEMIC",
+      "part_of_speech": "v.",
+      "meaning_zh": "要求",
+      "meaning_en": "need something essential",
+      "example_en": "The task does require careful reading.",
+      "morphology": [
+        {
+          "text": "require",
+          "gloss": "要求",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "approach",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "方法；接近",
+      "meaning_en": "a way of dealing with something",
+      "example_en": "Their approach combines interviews and surveys.",
+      "morphology": [
+        {
+          "text": "approach",
+          "gloss": "方法",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "assumption",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "假设",
+      "meaning_en": "something taken for granted",
+      "example_en": "Each assumption should be stated in the paper.",
+      "morphology": [
+        {
+          "text": "assumption",
+          "gloss": "假设",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "conclusion",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "结论",
+      "meaning_en": "the final judgement in a paper",
+      "example_en": "The conclusion follows directly from the findings.",
+      "morphology": [
+        {
+          "text": "conclusion",
+          "gloss": "结论",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "definition",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "定义",
+      "meaning_en": "a statement of meaning",
+      "example_en": "Check the definition before using the term.",
+      "morphology": [
+        {
+          "text": "definition",
+          "gloss": "定义",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "distinction",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "区别；差别",
+      "meaning_en": "a clear difference",
+      "example_en": "The distinction between the two groups is small.",
+      "morphology": [
+        {
+          "text": "distinction",
+          "gloss": "区别",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "emphasis",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "强调",
+      "meaning_en": "special importance given to something",
+      "example_en": "The course places emphasis on spoken practice.",
+      "morphology": [
+        {
+          "text": "emphasis",
+          "gloss": "强调",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "framework",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "框架",
+      "meaning_en": "a basic structure of ideas",
+      "example_en": "The chapter provides a framework for discussion.",
+      "morphology": [
+        {
+          "text": "frame",
+          "gloss": "框架",
+          "kind": "root"
+        },
+        {
+          "text": "work",
+          "gloss": "结构",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "guideline",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "指导方针",
+      "meaning_en": "a rule that guides action",
+      "example_en": "Each guideline in the handbook covers one topic.",
+      "morphology": [
+        {
+          "text": "guide",
+          "gloss": "引导",
+          "kind": "root"
+        },
+        {
+          "text": "line",
+          "gloss": "线",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "percentage",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "百分比",
+      "meaning_en": "a proportion out of a hundred",
+      "example_en": "A high percentage of respondents chose option two.",
+      "morphology": [
+        {
+          "text": "percent",
+          "gloss": "百分比",
+          "kind": "root"
+        },
+        {
+          "text": "age",
+          "gloss": "状态",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "resource",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "资源",
+      "meaning_en": "a material or supply available for use",
+      "example_en": "The library shares this online resource with students.",
+      "morphology": [
+        {
+          "text": "resource",
+          "gloss": "资源",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "source",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "来源",
+      "meaning_en": "where something comes from",
+      "example_en": "Always record the source of each quotation.",
+      "morphology": [
+        {
+          "text": "source",
+          "gloss": "来源",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "survey",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "调查",
+      "meaning_en": "a set of questions answered by people",
+      "example_en": "The survey collected responses from four classes.",
+      "morphology": [
+        {
+          "text": "survey",
+          "gloss": "调查",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "trend",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "趋势",
+      "meaning_en": "a general direction of change",
+      "example_en": "The data show a downward trend in missing homework.",
+      "morphology": [
+        {
+          "text": "trend",
+          "gloss": "趋势",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "outcome",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "结果",
+      "meaning_en": "the result of a process",
+      "example_en": "The outcome of the debate surprised the judges.",
+      "morphology": [
+        {
+          "text": "out",
+          "gloss": "向外",
+          "kind": "root"
+        },
+        {
+          "text": "come",
+          "gloss": "来",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "outline",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "提纲",
+      "meaning_en": "a plan showing main parts",
+      "example_en": "Write an outline before drafting the essay.",
+      "morphology": [
+        {
+          "text": "out",
+          "gloss": "向外",
+          "kind": "root"
+        },
+        {
+          "text": "line",
+          "gloss": "线",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "overview",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "概述",
+      "meaning_en": "a short general description",
+      "example_en": "The first chapter gives an overview of the topic.",
+      "morphology": [
+        {
+          "text": "over",
+          "gloss": "全面",
+          "kind": "prefix"
+        },
+        {
+          "text": "view",
+          "gloss": "看",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "feedback",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "反馈",
+      "meaning_en": "comments on work done",
+      "example_en": "The teacher's feedback helped revise the draft.",
+      "morphology": [
+        {
+          "text": "feed",
+          "gloss": "供给",
+          "kind": "root"
+        },
+        {
+          "text": "back",
+          "gloss": "回",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "input",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "输入；意见",
+      "meaning_en": "information put in; opinions offered",
+      "example_en": "We welcome input from every group member.",
+      "morphology": [
+        {
+          "text": "in",
+          "gloss": "向内",
+          "kind": "prefix"
+        },
+        {
+          "text": "put",
+          "gloss": "放",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "output",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "输出；成果",
+      "meaning_en": "something produced",
+      "example_en": "The output was checked for factual errors.",
+      "morphology": [
+        {
+          "text": "out",
+          "gloss": "向外",
+          "kind": "prefix"
+        },
+        {
+          "text": "put",
+          "gloss": "放",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "highlight",
+      "level": "ACADEMIC",
+      "part_of_speech": "v.",
+      "meaning_zh": "强调；标出",
+      "meaning_en": "mark as important",
+      "example_en": "The report will highlight three main risks.",
+      "morphology": [
+        {
+          "text": "high",
+          "gloss": "高",
+          "kind": "root"
+        },
+        {
+          "text": "light",
+          "gloss": "光",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "interpret",
+      "level": "ACADEMIC",
+      "part_of_speech": "v.",
+      "meaning_zh": "解释；口译",
+      "meaning_en": "explain the meaning of",
+      "example_en": "Readers may interpret the poem in different ways.",
+      "morphology": [
+        {
+          "text": "interpret",
+          "gloss": "解释",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "analyze",
+      "level": "ACADEMIC",
+      "part_of_speech": "v.",
+      "meaning_zh": "分析",
+      "meaning_en": "examine parts in detail",
+      "example_en": "The team will analyze the responses next week.",
+      "morphology": [
+        {
+          "text": "analyze",
+          "gloss": "分析",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "evaluate",
+      "level": "ACADEMIC",
+      "part_of_speech": "v.",
+      "meaning_zh": "评估",
+      "meaning_en": "judge the value of",
+      "example_en": "The rubric helps evaluate each presentation fairly.",
+      "morphology": [
+        {
+          "text": "evaluate",
+          "gloss": "评估",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "compare",
+      "level": "ACADEMIC",
+      "part_of_speech": "v.",
+      "meaning_zh": "比较",
+      "meaning_en": "look for similarities and differences",
+      "example_en": "Compare the two articles and note their views.",
+      "morphology": [
+        {
+          "text": "compare",
+          "gloss": "比较",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "contrast",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "对比",
+      "meaning_en": "a difference between things",
+      "example_en": "The contrast between the two years is clear.",
+      "morphology": [
+        {
+          "text": "contrast",
+          "gloss": "对比",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "alternative",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "替代方案",
+      "meaning_en": "another choice available",
+      "example_en": "The team proposed an alternative schedule.",
+      "morphology": [
+        {
+          "text": "alter",
+          "gloss": "改变",
+          "kind": "root"
+        },
+        {
+          "text": "native",
+          "gloss": "性质",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "cooperation",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "合作",
+      "meaning_en": "working together toward a goal",
+      "example_en": "Cooperation between groups made the project possible.",
+      "morphology": [
+        {
+          "text": "co",
+          "gloss": "共同",
+          "kind": "prefix"
+        },
+        {
+          "text": "operation",
+          "gloss": "运作",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "literature",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "文献；文学",
+      "meaning_en": "written works on a subject",
+      "example_en": "The review cites recent literature on the topic.",
+      "morphology": [
+        {
+          "text": "literature",
+          "gloss": "文献",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "database",
+      "level": "ACADEMIC",
+      "part_of_speech": "n.",
+      "meaning_zh": "数据库",
+      "meaning_en": "an organized collection of data",
+      "example_en": "The records are stored in a shared database.",
+      "morphology": [
+        {
+          "text": "data",
+          "gloss": "数据",
+          "kind": "root"
+        },
+        {
+          "text": "base",
+          "gloss": "库",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "achieve",
+      "level": "CET4",
+      "part_of_speech": "v.",
+      "meaning_zh": "达到；实现",
+      "meaning_en": "reach a goal by effort",
+      "example_en": "She hopes to achieve her target after months of practice.",
+      "morphology": [
+        {
+          "text": "achieve",
+          "gloss": "达到",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "acquire",
+      "level": "CET4",
+      "part_of_speech": "v.",
+      "meaning_zh": "获得；习得",
+      "meaning_en": "gain a skill or knowledge",
+      "example_en": "Children acquire language through daily use.",
+      "morphology": [
+        {
+          "text": "acquire",
+          "gloss": "获得",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "adapt",
+      "level": "CET4",
+      "part_of_speech": "v.",
+      "meaning_zh": "适应；改编",
+      "meaning_en": "adjust to new conditions",
+      "example_en": "Plants adapt to dry weather over time.",
+      "morphology": [
+        {
+          "text": "adapt",
+          "gloss": "适应",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "adequate",
+      "level": "CET4",
+      "part_of_speech": "adj.",
+      "meaning_zh": "足够的",
+      "meaning_en": "enough for a purpose",
+      "example_en": "The evidence is not adequate to support the claim.",
+      "morphology": [
+        {
+          "text": "adequate",
+          "gloss": "足够的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "admission",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "准入；录取",
+      "meaning_en": "the act of allowing entry",
+      "example_en": "Admission to the hall requires a ticket.",
+      "morphology": [
+        {
+          "text": "admission",
+          "gloss": "准入",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "advertise",
+      "level": "CET4",
+      "part_of_speech": "v.",
+      "meaning_zh": "做广告",
+      "meaning_en": "promote a product publicly",
+      "example_en": "They advertise the course on local notice boards.",
+      "morphology": [
+        {
+          "text": "advertise",
+          "gloss": "广告",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "arrangement",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "安排",
+      "meaning_en": "a plan made in advance",
+      "example_en": "The arrangement for the visit was confirmed by email.",
+      "morphology": [
+        {
+          "text": "arrange",
+          "gloss": "安排",
+          "kind": "root"
+        },
+        {
+          "text": "ment",
+          "gloss": "名词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "attitude",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "态度",
+      "meaning_en": "a way of thinking or feeling",
+      "example_en": "A positive attitude makes group work easier.",
+      "morphology": [
+        {
+          "text": "attitude",
+          "gloss": "态度",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "campaign",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "运动；战役",
+      "meaning_en": "an organized planned activity",
+      "example_en": "The school launched a recycling campaign.",
+      "morphology": [
+        {
+          "text": "campaign",
+          "gloss": "运动",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "candidate",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "候选人；考生",
+      "meaning_en": "a person applying for something",
+      "example_en": "Each candidate submitted a short personal statement.",
+      "morphology": [
+        {
+          "text": "candidate",
+          "gloss": "候选人",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "challenge",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "挑战",
+      "meaning_en": "something difficult that tests ability",
+      "example_en": "The team accepted the challenge calmly.",
+      "morphology": [
+        {
+          "text": "challenge",
+          "gloss": "挑战",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "community",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "社区；群体",
+      "meaning_en": "a group living in the same area",
+      "example_en": "The local community organized a book fair.",
+      "morphology": [
+        {
+          "text": "community",
+          "gloss": "社区",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "competition",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "竞争；比赛",
+      "meaning_en": "rivalry or a contest",
+      "example_en": "The debate competition drew eight schools.",
+      "morphology": [
+        {
+          "text": "competition",
+          "gloss": "比赛",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "concentrate",
+      "level": "CET4",
+      "part_of_speech": "v.",
+      "meaning_zh": "集中注意力",
+      "meaning_en": "focus attention on one thing",
+      "example_en": "It is hard to concentrate in a noisy room.",
+      "morphology": [
+        {
+          "text": "concentrate",
+          "gloss": "集中",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "confidence",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "信心",
+      "meaning_en": "belief in one's ability",
+      "example_en": "Rehearsals gave her confidence on stage.",
+      "morphology": [
+        {
+          "text": "confidence",
+          "gloss": "信心",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "convenience",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "便利",
+      "meaning_en": "the quality of being easy to use",
+      "example_en": "The app was designed for users' convenience.",
+      "morphology": [
+        {
+          "text": "convenience",
+          "gloss": "便利",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "device",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "设备",
+      "meaning_en": "a piece of equipment made for a purpose",
+      "example_en": "Each student may bring one recording device.",
+      "morphology": [
+        {
+          "text": "device",
+          "gloss": "设备",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "destination",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "目的地",
+      "meaning_en": "the place one travels to",
+      "example_en": "The train reached its destination at dusk.",
+      "morphology": [
+        {
+          "text": "destination",
+          "gloss": "目的地",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "facility",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "设施",
+      "meaning_en": "a building or equipment for a use",
+      "example_en": "The sports facility opens at six each morning.",
+      "morphology": [
+        {
+          "text": "facility",
+          "gloss": "设施",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "foundation",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "基础；基金会",
+      "meaning_en": "the base on which something rests",
+      "example_en": "Reading fluency is the foundation of later writing.",
+      "morphology": [
+        {
+          "text": "foundation",
+          "gloss": "基础",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "generation",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "一代人；产生",
+      "meaning_en": "a group born around the same time",
+      "example_en": "This generation grew up with online tools.",
+      "morphology": [
+        {
+          "text": "generation",
+          "gloss": "一代人",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "independence",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "独立",
+      "meaning_en": "the state of being free from control",
+      "example_en": "The workshop promotes independence in learning.",
+      "morphology": [
+        {
+          "text": "independence",
+          "gloss": "独立",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "journal",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "期刊；日志",
+      "meaning_en": "a daily record or periodical",
+      "example_en": "The article appeared in a monthly journal.",
+      "morphology": [
+        {
+          "text": "journal",
+          "gloss": "期刊",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "leisure",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "闲暇",
+      "meaning_en": "free time outside work",
+      "example_en": "He paints watercolors in his leisure time.",
+      "morphology": [
+        {
+          "text": "leisure",
+          "gloss": "闲暇",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "maintenance",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "维护；保养",
+      "meaning_en": "keeping something in good condition",
+      "example_en": "Regular maintenance keeps the bikes safe.",
+      "morphology": [
+        {
+          "text": "maintenance",
+          "gloss": "维护",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "motivation",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "动力",
+      "meaning_en": "a reason that drives action",
+      "example_en": "Clear goals can strengthen a learner's motivation.",
+      "morphology": [
+        {
+          "text": "motivation",
+          "gloss": "动力",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "wonderful",
+      "level": "CET4",
+      "part_of_speech": "adj.",
+      "meaning_zh": "精彩的；奇妙的",
+      "meaning_en": "very good or pleasing",
+      "example_en": "The concert ended on a wonderful high note.",
+      "morphology": [
+        {
+          "text": "wonder",
+          "gloss": "惊奇",
+          "kind": "root"
+        },
+        {
+          "text": "ful",
+          "gloss": "充满…的",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "dangerous",
+      "level": "CET4",
+      "part_of_speech": "adj.",
+      "meaning_zh": "危险的",
+      "meaning_en": "likely to cause harm",
+      "example_en": "The icy road was dangerous after the storm.",
+      "morphology": [
+        {
+          "text": "danger",
+          "gloss": "危险",
+          "kind": "root"
+        },
+        {
+          "text": "ous",
+          "gloss": "有…性质的",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "equality",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "平等",
+      "meaning_en": "the state of being equal",
+      "example_en": "The club promotes equality among its members.",
+      "morphology": [
+        {
+          "text": "equal",
+          "gloss": "平等的",
+          "kind": "root"
+        },
+        {
+          "text": "ity",
+          "gloss": "名词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "reality",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "现实",
+      "meaning_en": "the state of things as they are",
+      "example_en": "His plan met reality sooner than he expected.",
+      "morphology": [
+        {
+          "text": "real",
+          "gloss": "真实的",
+          "kind": "root"
+        },
+        {
+          "text": "ity",
+          "gloss": "名词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "national",
+      "level": "CET4",
+      "part_of_speech": "adj.",
+      "meaning_zh": "国家的",
+      "meaning_en": "relating to a whole country",
+      "example_en": "The national holiday falls in early October.",
+      "morphology": [
+        {
+          "text": "nation",
+          "gloss": "国家",
+          "kind": "root"
+        },
+        {
+          "text": "al",
+          "gloss": "形容词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "membership",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "会员资格",
+      "meaning_en": "the state of being a member",
+      "example_en": "Membership in the choir requires a short audition.",
+      "morphology": [
+        {
+          "text": "member",
+          "gloss": "成员",
+          "kind": "root"
+        },
+        {
+          "text": "ship",
+          "gloss": "身份",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "readable",
+      "level": "CET4",
+      "part_of_speech": "adj.",
+      "meaning_zh": "易读的",
+      "meaning_en": "clear and easy to read",
+      "example_en": "The revised draft was far more readable.",
+      "morphology": [
+        {
+          "text": "read",
+          "gloss": "阅读",
+          "kind": "root"
+        },
+        {
+          "text": "able",
+          "gloss": "可…的",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "acceptable",
+      "level": "CET4",
+      "part_of_speech": "adj.",
+      "meaning_zh": "可接受的",
+      "meaning_en": "good enough to be accepted",
+      "example_en": "A short delay is acceptable, but a full rewrite is not.",
+      "morphology": [
+        {
+          "text": "accept",
+          "gloss": "接受",
+          "kind": "root"
+        },
+        {
+          "text": "able",
+          "gloss": "可…的",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "underline",
+      "level": "CET4",
+      "part_of_speech": "v.",
+      "meaning_zh": "强调；在…下划线",
+      "meaning_en": "draw a line under; stress",
+      "example_en": "The report does underline the need for practice.",
+      "morphology": [
+        {
+          "text": "under",
+          "gloss": "在下面",
+          "kind": "prefix"
+        },
+        {
+          "text": "line",
+          "gloss": "线",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "understand",
+      "level": "CET4",
+      "part_of_speech": "v.",
+      "meaning_zh": "理解",
+      "meaning_en": "grasp the meaning of",
+      "example_en": "Students understand the rule after two examples.",
+      "morphology": [
+        {
+          "text": "under",
+          "gloss": "在下面",
+          "kind": "prefix"
+        },
+        {
+          "text": "stand",
+          "gloss": "站立",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "overcome",
+      "level": "CET4",
+      "part_of_speech": "v.",
+      "meaning_zh": "克服",
+      "meaning_en": "defeat a difficulty",
+      "example_en": "She needs to overcome her nerves before the speech.",
+      "morphology": [
+        {
+          "text": "over",
+          "gloss": "越过",
+          "kind": "prefix"
+        },
+        {
+          "text": "come",
+          "gloss": "来",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "return",
+      "level": "CET4",
+      "part_of_speech": "v.",
+      "meaning_zh": "返回；归还",
+      "meaning_en": "come or give back",
+      "example_en": "Please return the books to the shelf after use.",
+      "morphology": [
+        {
+          "text": "re",
+          "gloss": "回",
+          "kind": "prefix"
+        },
+        {
+          "text": "turn",
+          "gloss": "转动",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "renew",
+      "level": "CET4",
+      "part_of_speech": "v.",
+      "meaning_zh": "续期；更新",
+      "meaning_en": "make new again; extend",
+      "example_en": "They decided to renew the library card online.",
+      "morphology": [
+        {
+          "text": "re",
+          "gloss": "再",
+          "kind": "prefix"
+        },
+        {
+          "text": "new",
+          "gloss": "新的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "unfair",
+      "level": "CET4",
+      "part_of_speech": "adj.",
+      "meaning_zh": "不公平的",
+      "meaning_en": "not just or equal",
+      "example_en": "The judges called the final score unfair.",
+      "morphology": [
+        {
+          "text": "un",
+          "gloss": "不",
+          "kind": "prefix"
+        },
+        {
+          "text": "fair",
+          "gloss": "公平的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "disappear",
+      "level": "CET4",
+      "part_of_speech": "v.",
+      "meaning_zh": "消失",
+      "meaning_en": "go out of sight",
+      "example_en": "The last bus will disappear around the corner.",
+      "morphology": [
+        {
+          "text": "dis",
+          "gloss": "否定",
+          "kind": "prefix"
+        },
+        {
+          "text": "appear",
+          "gloss": "出现",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "misread",
+      "level": "CET4",
+      "part_of_speech": "v.",
+      "meaning_zh": "读错",
+      "meaning_en": "read wrongly",
+      "example_en": "He misread the timetable and missed the class.",
+      "morphology": [
+        {
+          "text": "mis",
+          "gloss": "错误地",
+          "kind": "prefix"
+        },
+        {
+          "text": "read",
+          "gloss": "阅读",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "agreement",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "协议；一致",
+      "meaning_en": "a mutual arrangement",
+      "example_en": "Both sides signed the agreement on Friday.",
+      "morphology": [
+        {
+          "text": "agree",
+          "gloss": "同意",
+          "kind": "root"
+        },
+        {
+          "text": "ment",
+          "gloss": "名词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "payment",
+      "level": "CET4",
+      "part_of_speech": "n.",
+      "meaning_zh": "付款",
+      "meaning_en": "an amount paid",
+      "example_en": "The first payment is due at the end of the month.",
+      "morphology": [
+        {
+          "text": "pay",
+          "gloss": "支付",
+          "kind": "root"
+        },
+        {
+          "text": "ment",
+          "gloss": "名词后缀",
+          "kind": "suffix"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "abundant",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adj.",
+      "meaning_zh": "丰富的",
+      "meaning_en": "existing in large quantities",
+      "example_en": "The region has abundant fresh water in summer.",
+      "morphology": [
+        {
+          "text": "abundant",
+          "gloss": "丰富的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "accelerate",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "加速",
+      "meaning_en": "increase speed",
+      "example_en": "Rising temperatures may accelerate the process.",
+      "morphology": [
+        {
+          "text": "accelerate",
+          "gloss": "加速",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "aggregate",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "n.",
+      "meaning_zh": "总计",
+      "meaning_en": "the total combined amount",
+      "example_en": "The aggregate score counts both tasks equally.",
+      "morphology": [
+        {
+          "text": "aggregate",
+          "gloss": "总计",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "ambiguous",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adj.",
+      "meaning_zh": "含糊的",
+      "meaning_en": "open to more than one meaning",
+      "example_en": "The phrase remained ambiguous in the second draft.",
+      "morphology": [
+        {
+          "text": "ambiguous",
+          "gloss": "含糊的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "analogy",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "n.",
+      "meaning_zh": "类比",
+      "meaning_en": "a comparison showing likeness",
+      "example_en": "The teacher used an analogy to explain the rule.",
+      "morphology": [
+        {
+          "text": "analogy",
+          "gloss": "类比",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "anticipate",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "预期",
+      "meaning_en": "expect and prepare for",
+      "example_en": "The organizers anticipate a large turnout.",
+      "morphology": [
+        {
+          "text": "anticipate",
+          "gloss": "预期",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "arbitrary",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adj.",
+      "meaning_zh": "任意的",
+      "meaning_en": "based on whim, not reason",
+      "example_en": "The selection should not be arbitrary or unfair.",
+      "morphology": [
+        {
+          "text": "arbitrary",
+          "gloss": "任意的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "articulate",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "清楚表达",
+      "meaning_en": "express ideas clearly",
+      "example_en": "She can articulate her argument in two sentences.",
+      "morphology": [
+        {
+          "text": "articulate",
+          "gloss": "表达清楚",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "ascertain",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "查明",
+      "meaning_en": "find out for certain",
+      "example_en": "The study sought to ascertain the real cause.",
+      "morphology": [
+        {
+          "text": "ascertain",
+          "gloss": "查明",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "aspect",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "n.",
+      "meaning_zh": "方面",
+      "meaning_en": "a particular side of a topic",
+      "example_en": "Every aspect of the plan was reviewed.",
+      "morphology": [
+        {
+          "text": "aspect",
+          "gloss": "方面",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "assert",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "断言",
+      "meaning_en": "state firmly",
+      "example_en": "The author does assert that practice changes outcomes.",
+      "morphology": [
+        {
+          "text": "assert",
+          "gloss": "断言",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "assess",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "评估",
+      "meaning_en": "judge carefully",
+      "example_en": "Experts assess the risk level each season.",
+      "morphology": [
+        {
+          "text": "assess",
+          "gloss": "评估",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "attain",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "达到",
+      "meaning_en": "succeed in reaching",
+      "example_en": "Few students attain the advanced level in one year.",
+      "morphology": [
+        {
+          "text": "attain",
+          "gloss": "达到",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "attribute",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "归因于",
+      "meaning_en": "regard as caused by",
+      "example_en": "She does attribute her progress to daily speaking.",
+      "morphology": [
+        {
+          "text": "attribute",
+          "gloss": "归因",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "bias",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "n.",
+      "meaning_zh": "偏见",
+      "meaning_en": "unfair preference for a side",
+      "example_en": "The sample should be checked for hidden bias.",
+      "morphology": [
+        {
+          "text": "bias",
+          "gloss": "偏见",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "coherent",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adj.",
+      "meaning_zh": "连贯的",
+      "meaning_en": "logically connected",
+      "example_en": "A coherent essay leads the reader step by step.",
+      "morphology": [
+        {
+          "text": "coherent",
+          "gloss": "连贯的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "compel",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "迫使",
+      "meaning_en": "force someone to act",
+      "example_en": "The evidence may compel them to revise the claim.",
+      "morphology": [
+        {
+          "text": "compel",
+          "gloss": "迫使",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "complement",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "补充",
+      "meaning_en": "complete by adding something",
+      "example_en": "Practice should complement the textbook lessons.",
+      "morphology": [
+        {
+          "text": "complement",
+          "gloss": "补充",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "comprehensive",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adj.",
+      "meaning_zh": "全面的",
+      "meaning_en": "covering all aspects",
+      "example_en": "The course offers a comprehensive review.",
+      "morphology": [
+        {
+          "text": "comprehensive",
+          "gloss": "全面的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "comprise",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "包含；由…组成",
+      "meaning_en": "consist of",
+      "example_en": "The dataset does comprise two hundred survey forms.",
+      "morphology": [
+        {
+          "text": "comprise",
+          "gloss": "包含",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "concede",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "承认；让步",
+      "meaning_en": "admit something reluctantly",
+      "example_en": "He did concede that his first draft was weak.",
+      "morphology": [
+        {
+          "text": "concede",
+          "gloss": "让步",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "consequently",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adv.",
+      "meaning_zh": "因此",
+      "meaning_en": "as a result",
+      "example_en": "The rain flooded the road; consequently, the match was delayed.",
+      "morphology": [
+        {
+          "text": "consequently",
+          "gloss": "因此",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "conservative",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adj.",
+      "meaning_zh": "保守的",
+      "meaning_en": "cautious; favoring the existing state",
+      "example_en": "The team took a conservative approach to the budget.",
+      "morphology": [
+        {
+          "text": "conservative",
+          "gloss": "保守的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "considerable",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adj.",
+      "meaning_zh": "相当大的",
+      "meaning_en": "large in amount or degree",
+      "example_en": "The project required considerable planning.",
+      "morphology": [
+        {
+          "text": "considerable",
+          "gloss": "相当大的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "constituent",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "n.",
+      "meaning_zh": "构成要素",
+      "meaning_en": "a part of a whole",
+      "example_en": "Language is a constituent of cultural identity.",
+      "morphology": [
+        {
+          "text": "constituent",
+          "gloss": "要素",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "contradiction",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "n.",
+      "meaning_zh": "矛盾",
+      "meaning_en": "a statement opposing another",
+      "example_en": "The two figures stood in clear contradiction.",
+      "morphology": [
+        {
+          "text": "contradiction",
+          "gloss": "矛盾",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "controversy",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "n.",
+      "meaning_zh": "争议",
+      "meaning_en": "public disagreement",
+      "example_en": "The proposal aroused controversy among scholars.",
+      "morphology": [
+        {
+          "text": "controversy",
+          "gloss": "争议",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "criterion",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "n.",
+      "meaning_zh": "标准",
+      "meaning_en": "a standard for judging",
+      "example_en": "Cost was not the only criterion used.",
+      "morphology": [
+        {
+          "text": "criterion",
+          "gloss": "标准",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "deduce",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "推断",
+      "meaning_en": "reach a conclusion from evidence",
+      "example_en": "Readers can deduce the author's attitude from the tone.",
+      "morphology": [
+        {
+          "text": "de",
+          "gloss": "向下",
+          "kind": "prefix"
+        },
+        {
+          "text": "duce",
+          "gloss": "引导",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "deliberate",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adj.",
+      "meaning_zh": "故意的；深思熟虑的",
+      "meaning_en": "done on purpose",
+      "example_en": "The changes were deliberate, not accidental.",
+      "morphology": [
+        {
+          "text": "deliberate",
+          "gloss": "故意的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "diminish",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "减少",
+      "meaning_en": "become less",
+      "example_en": "The sound of traffic began to diminish at night.",
+      "morphology": [
+        {
+          "text": "diminish",
+          "gloss": "减少",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "discrepancy",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "n.",
+      "meaning_zh": "差异；不一致",
+      "meaning_en": "a difference that should not exist",
+      "example_en": "Analysts noted a discrepancy between the two reports.",
+      "morphology": [
+        {
+          "text": "discrepancy",
+          "gloss": "差异",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "durable",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adj.",
+      "meaning_zh": "耐用的",
+      "meaning_en": "lasting a long time",
+      "example_en": "The chairs are made of durable local wood.",
+      "morphology": [
+        {
+          "text": "durable",
+          "gloss": "耐用的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "elaborate",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adj.",
+      "meaning_zh": "详尽的",
+      "meaning_en": "detailed and complex",
+      "example_en": "She gave an elaborate account of the method.",
+      "morphology": [
+        {
+          "text": "elaborate",
+          "gloss": "详尽的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "empirical",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adj.",
+      "meaning_zh": "实证的",
+      "meaning_en": "based on observation",
+      "example_en": "The claim rests on empirical data from three sites.",
+      "morphology": [
+        {
+          "text": "empirical",
+          "gloss": "实证的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "enhance",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "增强",
+      "meaning_en": "improve the quality of",
+      "example_en": "Pair work can enhance speaking confidence.",
+      "morphology": [
+        {
+          "text": "enhance",
+          "gloss": "增强",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "expose",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "暴露；使接触",
+      "meaning_en": "reveal; make familiar with",
+      "example_en": "The program will expose young children to many languages online.",
+      "morphology": [
+        {
+          "text": "ex",
+          "gloss": "向外",
+          "kind": "prefix"
+        },
+        {
+          "text": "pose",
+          "gloss": "放置",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "facilitate",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "促进",
+      "meaning_en": "make easier",
+      "example_en": "Clear instructions facilitate group discussion.",
+      "morphology": [
+        {
+          "text": "facilitate",
+          "gloss": "促进",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "feasible",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adj.",
+      "meaning_zh": "可行的",
+      "meaning_en": "possible to do successfully",
+      "example_en": "The plan proved feasible within the given budget.",
+      "morphology": [
+        {
+          "text": "feasible",
+          "gloss": "可行的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "fluctuate",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "波动",
+      "meaning_en": "rise and fall irregularly",
+      "example_en": "Temperatures fluctuate sharply between day and night.",
+      "morphology": [
+        {
+          "text": "fluctuate",
+          "gloss": "波动",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "fundamental",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "adj.",
+      "meaning_zh": "基本的",
+      "meaning_en": "forming a base; essential",
+      "example_en": "Listening is a fundamental speaking skill.",
+      "morphology": [
+        {
+          "text": "fundamental",
+          "gloss": "基本的",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "transport",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "运输",
+      "meaning_en": "carry people or goods from place to place",
+      "example_en": "Trains transport goods across the plain each night.",
+      "morphology": [
+        {
+          "text": "trans",
+          "gloss": "跨越",
+          "kind": "prefix"
+        },
+        {
+          "text": "port",
+          "gloss": "搬运",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "subject",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "n.",
+      "meaning_zh": "主题；学科",
+      "meaning_en": "a topic or branch of study",
+      "example_en": "The subject appears in three later chapters.",
+      "morphology": [
+        {
+          "text": "sub",
+          "gloss": "在下",
+          "kind": "prefix"
+        },
+        {
+          "text": "ject",
+          "gloss": "投掷",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    },
+    {
+      "headword": "cooperate",
+      "level": "IELTS_TOEFL",
+      "part_of_speech": "v.",
+      "meaning_zh": "合作",
+      "meaning_en": "work together toward a goal",
+      "example_en": "The two labs cooperate on the joint study.",
+      "morphology": [
+        {
+          "text": "co",
+          "gloss": "共同",
+          "kind": "prefix"
+        },
+        {
+          "text": "operate",
+          "gloss": "运作",
+          "kind": "root"
+        }
+      ],
+      "source_type": "demo",
+      "review_status": "approved"
+    }
+  ]
+}
