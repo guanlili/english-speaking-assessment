@@ -36,6 +36,19 @@ def set_platform_engine(engine_obj: object | None) -> None:
     _platform_engine_override = engine_obj
 
 
+def _idle_txn_connect_args() -> dict[str, str]:
+    """应用引擎连接参数：空闲事务超时（settings 可配；0=关闭）。
+
+    走 libpq ``options`` 下发 GUC ``idle_in_transaction_session_timeout``
+    （单位毫秒）。Alembic 迁移用 admin URI 自建 NullPool 引擎（env.py
+    ``engine_from_config``），不经此函数，长事务管理连接不受影响。
+    """
+    timeout_s = settings.DB_IDLE_IN_TXN_TIMEOUT_S
+    if timeout_s <= 0:
+        return {}
+    return {"options": f"-c idle_in_transaction_session_timeout={timeout_s * 1000}"}
+
+
 def _make_default_engine():
     # pool_pre_ping：PG 重启/连接被防火墙掐断后，借出前先探活，避免整批
     # "server closed the connection" 直到应用重启才恢复；
@@ -47,6 +60,7 @@ def _make_default_engine():
         pool_pre_ping=True,
         pool_size=10,
         max_overflow=20,
+        connect_args=_idle_txn_connect_args(),
     )
     # 多租户 C3：每次事务开始按 ContextVar 重绑 set_config（未绑定时零开销）
     install_tenant_bind(engine)
@@ -66,6 +80,7 @@ def _make_platform_engine():
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=10,
+        connect_args=_idle_txn_connect_args(),
     )
 
 
