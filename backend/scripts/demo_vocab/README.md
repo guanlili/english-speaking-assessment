@@ -122,7 +122,7 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 \
   - 3 条真实授权审计行（教材库续期备注、教材词条引用号变更、过期库授权落账），`changes` 带 `from / to` 前后值，可查可追溯。
 - **课堂与师生**：教师 `vocabdemo.teacher@example.com`（role=teacher，绑定两间课堂）；VOCDEMO1 12 名学生、VOCDEMO2 6 名学生，显示名为“演示学生01…”假名。
 - **任务与作答**：VOCDEMO1 5 个教师任务，发布时间覆盖最近 5 个自然周（锚点 `2026-11-25`），题型覆盖 `meaning / cloze / roots`；12 名学生形成“完成 / 部分完成 / 未开始”三种状态，首答正确率 low / mid / high 分段；每任务有首轮 session 与 `attempt_no=1` 答案，部分错题带 `attempt_no=2` 重试（重试证据不进首答统计）。
-- **FSRS**：8 名学生 × 3 词共 24 条 `VocabularyReviewState`，`due_at` 分布在过去（到期未复习）/ 本周 / 未来。
+- **FSRS**：8 名学生 × 3 词共 24 条 `VocabularyReviewState`，选词跨 KET / CET4 / IELTS_TOEFL 三个任务词库，`due_at` 分布在过去（到期未复习）/ 本周 / 未来，保证近期周期趋势报告的 `due_unreviewed` 可回算出非零值。
 - **D/E 备用**：2 场已结束 PK（含大厅、对局、玩家、作答，不改任务统计）；5 个农场地块与 4 枚农场徽章。
 
 ### 清理规则与护栏
@@ -131,6 +131,31 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 \
 - 清理**只删上述命名空间**内的对象；**不按 `source_type=demo` 泛删**，避免误删其他人的演示数据。
 - 删除前先做外部引用护栏：若已有非 demo 数据引用将删对象（其他词库收录 demo 词条、其他任务名单挂 demo 学生、非 demo 账号复习状态引用 demo 词条等），停止并报错，不做级联误删。
 - 删除按外键安全顺序执行：PK 作答/玩家/对局/大厅 → 作答/会话/任务名单/任务 → 复习状态/徽章/地块 → 词条条目/审计/版本/词条/词库 → 学生/教师成员/课堂/租户模块/账号/租户。
+
+### 租户上下文与归属一致性
+
+RLS 下所有写入必须落在 `vocabdemo` 租户，脚本与应用主引擎同口径处理：
+
+- 种子最外层用 `tenant_scope(tenant_id)` 包住全部写入；引擎装上租户绑定事件，每次事务开始自动 `set_config('app.tenant_id', ...)`，与 `app.core.db` 主引擎一致。
+- 每个模型构造时**显式带 `tenant_id`**（Student / VocabularySession / VocabularyAnswer / VocabularyReviewState / VocabularyAssignment / VocabularyBook / VocabularyBookItem / VocabularyWord / 版本快照 / 授权审计 / PK 四表 / 农场地块 / 徽章 / 账号 / 课堂 / 教师成员），不依赖 ORM 默认租户兜底，避免漏写时落到默认租户 `00000000-...0001`。
+- 清理脚本在同一 `tenant_scope` 上下文内执行；父表按 `tenant_id` 显式收敛，子表按父级 FK（课堂 / 大厅）归属命名空间，兼容旧版种子误落默认租户的残留行；不会因 RLS 看不见而漏删，也不跨命名空间误删。
+- 版本快照 / 授权审计行由治理服务 `capture_version` / `apply_license_update` 落库，`tenant_id` 继承自目标词库 / 词条。
+
+### 趋势报告复核实测（`build_trend_report`，VOCDEMO1，近 5 周）
+
+以 `tenant_scope(vocabdemo)` 打开 `Session` 调用 `build_trend_report(classroom=VOCDEMO1, granularity='week', periods=5, anchor=None, book_id=None, prompt_type=None)`，实测：
+
+| 周期 | assigned_targets | completion_rate | first_answered | due_unreviewed |
+| --- | --- | --- | --- | --- |
+| 2026-10-26 ~ 11-01 | 12 | 75 | 80 | 0 |
+| 2026-11-02 ~ 11-08 | 12 | 75 | 80 | 0 |
+| 2026-11-09 ~ 11-15 | 12 | 75 | 72 | 0 |
+| 2026-11-16 ~ 11-22 | 12 | 42 | 56 | 1 |
+| 2026-11-23 ~ 11-29 | 12 | 42 | 70 | 6 |
+| **汇总** | **60** | **5 个周期非空** | **358** | **7** |
+
+- 5 个教师任务 `source_book_ids` 均非空；按 `book_id` 筛选对应词库时，`assigned_targets=12`、`first_answered=80`，筛选有数据。
+- 教师账号 `vocabdemo.teacher@example.com` 的 `tenant_id` 与两间课堂一致；VOCDEMO1 12 名学生、VOCDEMO2 6 名学生 `tenant_id` 全部等于 `vocabdemo`，无错配。
 
 ### 实测最终计数（种子后，本地 `app` 库）
 
@@ -144,7 +169,7 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 \
 | 教师任务 | 5 个 |
 | 会话（submitted / in_progress） | 49（37 / 12） |
 | 首答答案 / 重试答案 | 358 / 31 |
-| FSRS 复习状态（overdue / 本周 / 未来） | 24（8 / 13 / 3） |
+| FSRS 复习状态（overdue / 本周 / 未来） | 24（8 / 9 / 7） |
 | PK（大厅 / 对局 / 玩家 / 作答） | 2 / 2 / 4 / 24 |
 | 农场（地块 / 徽章） | 5 / 4 |
 
@@ -176,5 +201,5 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 \
 - `quiz` 限时测验不在演示范围，种子任务 `mode` 全部为 `practice`；
 - 跨班 404 仅由 VOCDEMO2 名单隔离体现，不构造跨班访问用例；
 - FSRS 调度参数为演示取值，不追求真实 FSRS 算法曲线；
-- `vocabulary_assignment.source_book_ids` 列在本地库尚未落地（C 后端迁移进行中），脚本已做缺列兼容：列不存在时 INSERT 不带该字段；列落地后需重跑一次 seed 验证兼容路径；
+- `vocabulary_assignment.source_book_ids` 脚本做了双路径兼容：列存在时 INSERT 写入来源词库 id 数组；列缺失时退化为不带该字段（本地库当前已落地该列，5 个任务均写入非空 `source_book_ids`）；
 - 学生演示口令与教师共用 `VOCAB_DEMO_PASSWORD`（未单独设置），仅本地 mock。

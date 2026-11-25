@@ -34,6 +34,7 @@ from sqlalchemy import create_engine, delete
 from sqlmodel import Session, select
 
 from app.core.config import settings
+from app.core.tenant_context import install_tenant_bind, tenant_scope
 from app.models import (
     Classroom,
     ClassroomTeacher,
@@ -90,15 +91,30 @@ def _assert_local_uri(uri_str: str) -> None:
 
 
 def safe_engine():
-    """按实际 SQLAlchemy URL 做本地库守卫；非本地环境直接退出。"""
+    """按实际 SQLAlchemy URL 做本地库守卫；非本地环境直接退出。
+
+    同时装上租户绑定事件：``tenant_scope`` 内每次事务开始自动
+    ``set_config('app.tenant_id', ...)``，与应用主引擎同口径（RLS WITH CHECK
+    才放行）。
+    """
     uri_str = str(settings.SQLALCHEMY_ADMIN_DATABASE_URI)
     _assert_local_uri(uri_str)
-    return create_engine(uri_str)
+    engine = create_engine(uri_str)
+    install_tenant_bind(engine)
+    return engine
 
 
-def _collect(session: Session) -> dict[str, set[uuid.UUID]]:
-    """收集 demo 命名空间内全部对象 id；租户不存在时返回空集合。"""
-    tenant = session.exec(select(Tenant).where(Tenant.slug == TENANT_SLUG)).first()
+def _resolve_tenant(session: Session) -> Tenant | None:
+    """跨租户通道按 slug 解析演示租户（tenant 表不在 RLS 隔离清单）。"""
+    return session.exec(select(Tenant).where(Tenant.slug == TENANT_SLUG)).first()
+
+
+def _collect(session: Session, tenant: Tenant) -> dict[str, set[uuid.UUID]]:
+    """收集 demo 命名空间内全部对象 id。
+
+    学生/会话/对局等子表以父级 FK（课堂/大厅）归属命名空间——兼容旧版
+    种子误落默认租户的残留行；其余父表一律显式按 ``tenant_id`` 收敛。
+    """
     ids: dict[str, set[uuid.UUID]] = {
         "tenant": set(),
         "users": set(),
@@ -112,8 +128,6 @@ def _collect(session: Session) -> dict[str, set[uuid.UUID]]:
         "matches": set(),
         "players": set(),
     }
-    if tenant is None:
-        return ids
     ids["tenant"].add(tenant.id)
 
     ids["users"] = {
@@ -268,9 +282,16 @@ def _guard(session: Session, ids: Mapping[str, set[uuid.UUID]]) -> list[str]:
 
 
 def _delete_ordered(
-    session: Session, ids: Mapping[str, set[uuid.UUID]]
+    session: Session,
+    ids: Mapping[str, set[uuid.UUID]],
+    *,
+    keep_tenant: bool = False,
 ) -> dict[str, int]:
-    """按外键安全顺序删除 demo 命名空间对象，返回各类删除计数。"""
+    """按外键安全顺序删除 demo 命名空间对象，返回各类删除计数。
+
+    ``keep_tenant=True`` 时保留租户根行与其模块授权行（种子预清场景：
+    先清子表，再在同一租户下重建演示对象）。
+    """
     counts: dict[str, int] = {}
 
     def _bulk(model, where_clause, label: str) -> None:
@@ -382,40 +403,56 @@ def _delete_ordered(
         Classroom.id.in_(ids["classrooms"]),
         "classroom",
     )
-    _bulk(
-        TenantModule,
-        TenantModule.tenant_id == tenant_id,
-        "tenant_module",
-    )
     _bulk(User, User.tenant_id == tenant_id, "user")
-    _bulk(Tenant, Tenant.id == tenant_id, "tenant")
+    if not keep_tenant:
+        _bulk(
+            TenantModule,
+            TenantModule.tenant_id == tenant_id,
+            "tenant_module",
+        )
+        _bulk(Tenant, Tenant.id == tenant_id, "tenant")
     return counts
 
 
-def reset_demo_namespace(session: Session, *, commit: bool = True) -> dict[str, int]:
-    """供 seed 脚本复用：先护栏、再清空 demo 命名空间。返回删除计数。"""
-    ids = _collect(session)
-    violations = _guard(session, ids)
-    if violations:
-        for v in violations:
-            print(f"GUARD: {v}", file=sys.stderr)
-        session.rollback()
-        sys.exit(3)
-    if not ids["tenant"]:
+def reset_demo_namespace(
+    session: Session, *, commit: bool = True, keep_tenant: bool = False
+) -> dict[str, int]:
+    """供 seed 脚本复用：先护栏、再清空 demo 命名空间。返回删除计数。
+
+    在 ``vocabdemo`` 租户上下文内执行；调用方一般已在作用域内，这里嵌套
+    进入以保证绑定事件与租户条件同口径。``keep_tenant=True`` 保留租户根行
+    与模块授权行（种子预清场景）。
+    """
+    tenant = _resolve_tenant(session)
+    if tenant is None:
         return {}
-    counts = _delete_ordered(session, ids)
-    if commit:
-        session.commit()
+    with tenant_scope(tenant.id):
+        ids = _collect(session, tenant)
+        violations = _guard(session, ids)
+        if violations:
+            for v in violations:
+                print(f"GUARD: {v}", file=sys.stderr)
+            session.rollback()
+            sys.exit(3)
+        counts = _delete_ordered(session, ids, keep_tenant=keep_tenant)
+        if commit:
+            session.commit()
     return counts
 
 
 def main() -> None:
     engine = safe_engine()
-    with Session(engine) as session:
-        ids = _collect(session)
-        if not ids["tenant"]:
-            print("未发现 demo 命名空间（租户 vocabdemo），无需清理。")
-            return
+    # 先在跨租户通道解析演示租户；tenant 表不在 RLS 隔离清单。
+    with Session(engine) as resolve_session:
+        tenant = _resolve_tenant(resolve_session)
+    if tenant is None:
+        print("未发现 demo 命名空间（租户 vocabdemo），无需清理。")
+        return
+
+    # 收集 / 护栏 / 删除 / 复核全部在 vocabdemo 租户上下文内执行，
+    # 引擎绑定事件会在每次事务开始 set_config('app.tenant_id', ...)。
+    with tenant_scope(tenant.id), Session(engine) as session:
+        ids = _collect(session, tenant)
 
         violations = _guard(session, ids)
         if violations:
@@ -448,8 +485,13 @@ def main() -> None:
         for label, count in counts.items():
             print(f"  - {label}: {count}")
 
-        # 复核：demo 命名空间计数应全部为 0
-        leftover = _collect(session)
+        # 复核：demo 命名空间计数应全部为 0（重新查库解析租户，不沿用内存对象）
+        leftover_tenant = _resolve_tenant(session)
+        leftover = (
+            _collect(session, leftover_tenant)
+            if leftover_tenant is not None
+            else {key: set() for key in ids}
+        )
         print("\n清理后复核：")
         for label, bucket in (
             ("tenant", "tenant"),

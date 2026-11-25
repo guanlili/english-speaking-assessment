@@ -59,6 +59,7 @@ from sqlalchemy import insert, inspect
 from sqlmodel import Session, select
 
 from app.core.security import get_password_hash
+from app.core.tenant_context import tenant_scope
 from app.models import (
     Classroom,
     ClassroomTeacher,
@@ -340,6 +341,7 @@ def ensure_students(
             ).first()
             if student is None:
                 student = Student(
+                    tenant_id=tenant.id,
                     classroom_id=room.id,
                     user_id=user.id,
                     display_name=f"演示学生{idx:02d}",
@@ -898,54 +900,60 @@ def seed_review_states(
     students: list[Student],
     level_books: dict[str, VocabularyBook],
 ) -> int:
-    """8 名学生 × 3 个 KET 词造 FSRS 状态，due_at 覆盖过去 / 本周 / 未来。"""
-    ket_words = _book_words(session, level_books["KET"])[:24]
+    """8 名学生 × 3 词造 FSRS 状态，due_at 覆盖过去 / 本周 / 未来。
+
+    选词跨 KET / CET4 / IELTS_TOEFL 三个任务词库，保证近期周期快照词条与
+    复习状态有交集，趋势报告的 ``due_unreviewed`` 可回算出非零值。
+    """
+    pool: list[VocabularyWord] = []
+    for level in ("KET", "CET4", "IELTS_TOEFL"):
+        pool.extend(_book_words(session, level_books[level])[:8])
     now = datetime.now(UTC)
     states = 0
 
-    for slot, student in enumerate(students[:8]):
-        for k in range(3):
-            word = ket_words[slot * 3 + k]
-            capability = "spelling" if k % 2 == 0 else "recognition"
-            bucket = (slot + k) % 3
-            if bucket == 0:  # 过去：到期未复习
-                due_at = now - timedelta(days=1 + ((slot + k) % 4))
-                state, reps, lapses = "learning", 1, 1
-                last_review = now - timedelta(days=3)
-                last_rating, last_correct = "again", False
-                interval_days = 1
-            elif bucket == 1:  # 本周到期
-                due_at = now + timedelta(days=(slot + k) % 3)
-                state, reps, lapses = "learning", 2, 0
-                last_review = now - timedelta(days=1)
-                last_rating, last_correct = "good", True
-                interval_days = 2
-            else:  # 未来到期
-                due_at = now + timedelta(days=3 + ((slot + k) % 8))
-                state, reps, lapses = "review", 4, 0
-                last_review = now - timedelta(days=7)
-                last_rating, last_correct = "good", True
-                interval_days = 7
+    for index, word in enumerate(pool):
+        student = students[index % 8]
+        k = index % 3
+        capability = "spelling" if k % 2 == 0 else "recognition"
+        bucket = index % 3
+        if bucket == 0:  # 过去：到期未复习
+            due_at = now - timedelta(days=1 + (index % 4))
+            state, reps, lapses = "learning", 1, 1
+            last_review = now - timedelta(days=3)
+            last_rating, last_correct = "again", False
+            interval_days = 1
+        elif bucket == 1:  # 本周到期
+            due_at = now + timedelta(days=index % 3)
+            state, reps, lapses = "learning", 2, 0
+            last_review = now - timedelta(days=1)
+            last_rating, last_correct = "good", True
+            interval_days = 2
+        else:  # 未来到期
+            due_at = now + timedelta(days=3 + (index % 8))
+            state, reps, lapses = "review", 4, 0
+            last_review = now - timedelta(days=7)
+            last_rating, last_correct = "good", True
+            interval_days = 7
 
-            session.add(
-                VocabularyReviewState(
-                    tenant_id=tenant.id,
-                    user_id=student.user_id,  # type: ignore[arg-type]
-                    word_id=word.id,
-                    capability=capability,
-                    state=state,
-                    stability=float(reps),
-                    difficulty=5.0,
-                    reps=reps,
-                    lapses=lapses,
-                    interval_days=interval_days,
-                    due_at=due_at,
-                    last_review_at=last_review,
-                    last_rating=last_rating,
-                    last_is_correct=last_correct,
-                )
+        session.add(
+            VocabularyReviewState(
+                tenant_id=tenant.id,
+                user_id=student.user_id,  # type: ignore[arg-type]
+                word_id=word.id,
+                capability=capability,
+                state=state,
+                stability=float(reps),
+                difficulty=5.0,
+                reps=reps,
+                lapses=lapses,
+                interval_days=interval_days,
+                due_at=due_at,
+                last_review_at=last_review,
+                last_rating=last_rating,
+                last_is_correct=last_correct,
             )
-            states += 1
+        )
+        states += 1
     session.flush()
     return states
 
@@ -1145,11 +1153,20 @@ def main() -> None:
     password = os.environ.get(PASSWORD_ENV) or DEFAULT_DEMO_PASSWORD
     pw_hash = get_password_hash(password)
 
-    with Session(engine) as session:
-        # 幂等：先清空旧 demo 命名空间（护栏见 cleanup_demo.py）
-        reset_demo_namespace(session)
+    # 先在跨租户通道解析/创建演示租户根行（tenant 表不在 RLS 隔离清单）。
+    with Session(engine) as resolve_session:
+        tenant = ensure_tenant(resolve_session)
+        resolve_session.commit()
+        tenant_id = tenant.id
 
-        tenant = ensure_tenant(session)
+    # 全部写入包在 vocabdemo 租户上下文内；每个模型构造时显式带 tenant_id，
+    # 不依赖 ORM 默认租户兜底（避免漏写时落到默认租户）。
+    with tenant_scope(tenant_id), Session(engine) as session:
+        # 幂等：先清空旧 demo 命名空间（护栏见 cleanup_demo.py）；
+        # 保留租户根行与模块授权行，子表重建后挂回同一租户。
+        reset_demo_namespace(session, keep_tenant=True)
+        tenant = session.get(Tenant, tenant_id)
+
         ensure_module(session, tenant)
         teacher = ensure_teacher(session, tenant, pw_hash)
         rooms = ensure_classrooms(session, tenant, teacher)
