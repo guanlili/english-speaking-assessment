@@ -23,6 +23,14 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useI18n } from "@/lib/i18n"
 import {
+  CEFR_BAND_LABELS,
+  CEFR_BANDS,
+  type CefrBand,
+  EXAM_TAG_LABELS,
+  VOCAB_EXAM_TAGS,
+  type VocabExamTag,
+} from "@/lib/terms"
+import {
   CODE_DUPLICATE_WORD,
   CODE_VERSION_CONFLICT,
   MORPHOLOGY_KINDS,
@@ -44,6 +52,8 @@ interface DraftState {
   audioUrl: string
   spellings: string
   morphology: MorphologyPart[]
+  examTags: string[]
+  cefrBand: string
 }
 
 function emptyDraft(): DraftState {
@@ -55,6 +65,8 @@ function emptyDraft(): DraftState {
     audioUrl: "",
     spellings: "",
     morphology: [],
+    examTags: [],
+    cefrBand: "",
   }
 }
 
@@ -71,6 +83,8 @@ function draftFromWord(word: VocabularyWordPublic): DraftState {
       gloss: part.gloss ?? "",
       kind: part.kind ?? "",
     })),
+    examTags: [...(word.exam_tags ?? [])],
+    cefrBand: word.cefr_band ?? "",
   }
 }
 
@@ -114,6 +128,14 @@ export function WordEditDialog({
       ),
     }))
 
+  const toggleExamTag = (tag: string) =>
+    setDraft((prev) => ({
+      ...prev,
+      examTags: prev.examTags.includes(tag)
+        ? prev.examTags.filter((item) => item !== tag)
+        : [...prev.examTags, tag],
+    }))
+
   const save = useMutation({
     mutationFn: () => {
       if (!word) throw new Error("missing word")
@@ -129,6 +151,8 @@ export function WordEditDialog({
         example_en: draft.exampleEn.trim() || null,
         audio_url: draft.audioUrl.trim() || null,
         morphology: serializeMorphology(draft.morphology),
+        exam_tags: draft.examTags.length > 0 ? draft.examTags : null,
+        cefr_band: draft.cefrBand || null,
         expected_version: word.version ?? null,
       }
       return VocabularyService.updateWord({
@@ -316,6 +340,66 @@ export function WordEditDialog({
                 }
                 className="h-11 text-base"
               />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>
+                {t({
+                  zh: "考试标签（可多选，可选）",
+                  en: "Exam tags (multi-select, optional)",
+                })}
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                {VOCAB_EXAM_TAGS.map((tag: VocabExamTag) => {
+                  const checked = draft.examTags.includes(tag)
+                  return (
+                    <label
+                      key={tag}
+                      className={`flex h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 text-base transition-colors ${
+                        checked
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-input bg-card text-muted-foreground"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleExamTag(tag)}
+                        className="h-4 w-4"
+                      />
+                      {t(EXAM_TAG_LABELS[tag])}
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="word-edit-cefr">
+                {t({ zh: "CEFR 档位（可选）", en: "CEFR band (optional)" })}
+              </Label>
+              <select
+                id="word-edit-cefr"
+                value={draft.cefrBand}
+                onChange={(event) => setPatch({ cefrBand: event.target.value })}
+                className="h-11 w-full rounded-xl border border-input bg-card px-3 text-base text-foreground"
+              >
+                <option value="">
+                  {t({ zh: "未标注", en: "Not marked" })}
+                </option>
+                {CEFR_BANDS.map((band: CefrBand) => (
+                  <option key={band} value={band}>
+                    {t(CEFR_BAND_LABELS[band])}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {t({
+                  zh: "档位是词条内容标签，不代表对学生的能力评定。",
+                  en: "The band is a content label for the word, not a proficiency rating for students.",
+                })}
+              </p>
             </div>
           </div>
 

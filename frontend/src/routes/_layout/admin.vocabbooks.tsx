@@ -47,11 +47,20 @@ import {
 } from "@/components/ui/table"
 import { ContentReviewPanel } from "@/components/Vocabulary/ContentReviewPanel"
 import { WordEditDialog } from "@/components/Vocabulary/WordEditDialog"
+import { WordTagBadges } from "@/components/Vocabulary/WordTagBadges"
 import { APP_NAME } from "@/config"
 import { cachedRole, isOperatorLoggedIn } from "@/hooks/useAuth"
 import { useModules } from "@/hooks/useModules"
 import { downloadCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
+import {
+  CEFR_BAND_LABELS,
+  CEFR_BANDS,
+  type CefrBand,
+  EXAM_TAG_LABELS,
+  VOCAB_EXAM_TAGS,
+  type VocabExamTag,
+} from "@/lib/terms"
 import {
   deriveImportStats,
   reviewStatusLabel,
@@ -124,6 +133,9 @@ function VocabBooksAdmin() {
   const [reviewedOk, setReviewedOk] = useState(false)
   // 词库详情表的审核状态筛选
   const [wordStatusFilter, setWordStatusFilter] = useState("all")
+  // 考试标签 / CEFR 档位筛选（#517）
+  const [examTagFilter, setExamTagFilter] = useState("all")
+  const [cefrFilter, setCefrFilter] = useState("all")
   const [editingWord, setEditingWord] = useState<VocabularyWordPublic | null>(
     null,
   )
@@ -298,8 +310,11 @@ function VocabBooksAdmin() {
   const allDetailWords = detailQuery.data?.words ?? []
   const visibleDetailWords = allDetailWords.filter(
     (word) =>
-      wordStatusFilter === "all" ||
-      (word.review_status ?? "pending") === wordStatusFilter,
+      (wordStatusFilter === "all" ||
+        (word.review_status ?? "pending") === wordStatusFilter) &&
+      (examTagFilter === "all" ||
+        (word.exam_tags ?? []).includes(examTagFilter)) &&
+      (cefrFilter === "all" || word.cefr_band === cefrFilter),
   )
 
   return (
@@ -525,36 +540,75 @@ function VocabBooksAdmin() {
                       en: "Swipe the table sideways to see all fields.",
                     })}
                   </p>
-                  <select
-                    aria-label={t({
-                      zh: "按审核状态筛选",
-                      en: "Filter by review status",
-                    })}
-                    value={wordStatusFilter}
-                    onChange={(event) =>
-                      setWordStatusFilter(event.target.value)
-                    }
-                    className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
-                  >
-                    <option value="all">
-                      {t({ zh: "全部状态", en: "All statuses" })}
-                    </option>
-                    <option value="pending">
-                      {t({ zh: "待审", en: "Pending" })}
-                    </option>
-                    <option value="approved">
-                      {t({ zh: "已通过", en: "Approved" })}
-                    </option>
-                    <option value="rejected">
-                      {t({ zh: "已拒绝", en: "Rejected" })}
-                    </option>
-                  </select>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      aria-label={t({
+                        zh: "按审核状态筛选",
+                        en: "Filter by review status",
+                      })}
+                      value={wordStatusFilter}
+                      onChange={(event) =>
+                        setWordStatusFilter(event.target.value)
+                      }
+                      className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+                    >
+                      <option value="all">
+                        {t({ zh: "全部状态", en: "All statuses" })}
+                      </option>
+                      <option value="pending">
+                        {t({ zh: "待审", en: "Pending" })}
+                      </option>
+                      <option value="approved">
+                        {t({ zh: "已通过", en: "Approved" })}
+                      </option>
+                      <option value="rejected">
+                        {t({ zh: "已拒绝", en: "Rejected" })}
+                      </option>
+                    </select>
+                    <select
+                      aria-label={t({
+                        zh: "按考试标签筛选",
+                        en: "Filter by exam tag",
+                      })}
+                      value={examTagFilter}
+                      onChange={(event) => setExamTagFilter(event.target.value)}
+                      className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+                    >
+                      <option value="all">
+                        {t({ zh: "全部考试", en: "All exams" })}
+                      </option>
+                      {VOCAB_EXAM_TAGS.map((tag: VocabExamTag) => (
+                        <option key={tag} value={tag}>
+                          {t(EXAM_TAG_LABELS[tag])}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label={t({
+                        zh: "按 CEFR 档位筛选",
+                        en: "Filter by CEFR band",
+                      })}
+                      value={cefrFilter}
+                      onChange={(event) => setCefrFilter(event.target.value)}
+                      className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+                    >
+                      <option value="all">
+                        {t({ zh: "全部档位", en: "All bands" })}
+                      </option>
+                      {CEFR_BANDS.map((band: CefrBand) => (
+                        <option key={band} value={band}>
+                          {t(CEFR_BAND_LABELS[band])}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>{t({ zh: "单词", en: "Word" })}</TableHead>
                       <TableHead>{t({ zh: "词性", en: "POS" })}</TableHead>
+                      <TableHead>{t({ zh: "标签", en: "Tags" })}</TableHead>
                       <TableHead>
                         {t({ zh: "中文释义", en: "Chinese meaning" })}
                       </TableHead>
@@ -579,6 +633,12 @@ function VocabBooksAdmin() {
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {word.part_of_speech ?? "–"}
+                        </TableCell>
+                        <TableCell>
+                          <WordTagBadges
+                            exam_tags={word.exam_tags}
+                            cefr_band={word.cefr_band}
+                          />
                         </TableCell>
                         <TableCell>{word.meaning_zh}</TableCell>
                         <TableCell>
@@ -651,7 +711,7 @@ function VocabBooksAdmin() {
                     {visibleDetailWords.length === 0 && (
                       <TableRow>
                         <TableCell
-                          colSpan={7}
+                          colSpan={8}
                           className="text-center text-muted-foreground"
                         >
                           {t({

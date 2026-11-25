@@ -3,12 +3,14 @@
 import uuid
 from datetime import datetime
 
+from pydantic import field_validator
 from sqlalchemy import (
     JSON,
     Column,
     DateTime,
     Index,
     UniqueConstraint,
+    text,
 )
 from sqlmodel import Field, SQLModel
 
@@ -19,6 +21,8 @@ from app.models.base import (
 )
 from app.models.vocabulary.words import (
     VocabularyWordIn,
+    normalize_cefr_band,
+    normalize_exam_tags,
 )
 
 
@@ -65,6 +69,14 @@ class VocabularyLevelEntry(SQLModel, table=True):
     note: str | None = Field(default=None, max_length=512)
     # 来源标签列表（同词同级多来源合并保留）
     sources: list[str] = Field(default_factory=list, sa_column=Column("sources", JSON))
+    # 考试标签（多选）与 CEFR 档位：词条内容标签，不构成学生测评结论
+    exam_tags: list[str] = Field(
+        default_factory=list,
+        sa_column=Column(
+            "exam_tags", JSON, nullable=False, server_default=text("'[]'")
+        ),
+    )
+    cefr_band: str | None = Field(default=None, max_length=8)
     status: str = Field(default="active", max_length=16)
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
@@ -88,6 +100,8 @@ class VocabularyLevelEntryPublic(SQLModel):
     needs_review: bool = False
     note: str | None = None
     sources: list[str] = []
+    exam_tags: list[str] = []
+    cefr_band: str | None = None
     status: str = "active"
 
 
@@ -99,6 +113,20 @@ class VocabularyLevelEntryUpdate(SQLModel):
     note: str | None = None
     needs_review: bool | None = None
     status: str | None = None
+    exam_tags: list[str] | None = None
+    cefr_band: str | None = None
+
+    @field_validator("exam_tags")
+    @classmethod
+    def _check_exam_tags(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        return normalize_exam_tags(value)
+
+    @field_validator("cefr_band")
+    @classmethod
+    def _check_cefr_band(cls, value: str | None) -> str | None:
+        return normalize_cefr_band(value)
 
 
 class VocabularyLevelLevelCount(SQLModel):

@@ -29,7 +29,10 @@ from app.api.deps import (
 from app.api.routes.classes import _require_classroom_teacher
 from app.api.routes.vocabulary_shared import _book_public
 from app.models import (
+    ADVANCED_EXAM_TAGS,
     REVIEW_NOTE_LEVEL_CATALOG_VERIFIED,
+    VOCAB_CEFR_BANDS,
+    VOCAB_EXAM_TAGS,
     Classroom,
     User,
     VocabularyBook,
@@ -45,10 +48,13 @@ from app.models import (
     VocabularyWordIn,
     VocabularyWordPublic,
     get_datetime_utc,
+    normalize_cefr_band,
+    normalize_exam_tags,
 )
 from app.services import vocab_governance
 from app.services import vocab_levels as levels_service
 from app.services.vocabulary import (
+    MAX_BOOK_WORDS,
     _create_word,
     normalize_spelling,
 )
@@ -193,6 +199,10 @@ def update_vocab_level_entry(
         if update["status"] not in {"active", "archived"}:
             raise HTTPException(status_code=422, detail="状态只能是 active/archived")
         entry.status = update["status"]
+    if "exam_tags" in update:
+        entry.exam_tags = normalize_exam_tags(update["exam_tags"])
+    if "cefr_band" in update:
+        entry.cefr_band = normalize_cefr_band(update["cefr_band"])
     session.add(entry)
     session.commit()
     session.refresh(entry)
@@ -277,13 +287,18 @@ def list_teaching_words_by_level(
     return levels_service.attach_word_levels(session, page)
 
 
-class VocabularyFromLevelsRequest(SQLModel):
-    """从五级词库导入教学词条到词库（仅已核对、有释义的词条）。"""
+class ImportTargetBody(SQLModel):
+    """转入目标词库解析所需的共享字段（已有库或新建班级库）。"""
 
-    level: str
     book_id: uuid.UUID | None = None  # 省略则新建班级词库（需 classroom_id）
     classroom_id: uuid.UUID | None = None
     new_book_title: str | None = Field(default=None, max_length=255)
+
+
+class VocabularyFromLevelsRequest(ImportTargetBody):
+    """从五级词库导入教学词条到词库（仅已核对、有释义的词条）。"""
+
+    level: str
     limit: int = Field(default=200, ge=1, le=500)
 
 
@@ -299,9 +314,10 @@ class VocabularyFromLevelsResult(VocabularyBookDetail):
 def _resolve_import_target(
     session: Session,
     current_user: User,
-    body: VocabularyFromLevelsRequest,
+    body: ImportTargetBody,
 ) -> VocabularyBook:
     """解析已有词库，或按课堂新建一个班级词库。"""
+    level_label = getattr(body, "level", "") or ""
     if body.book_id is not None:
         book = _get_book(session, body.book_id)
         _require_book_editor(book, current_user)
@@ -318,7 +334,7 @@ def _resolve_import_target(
         raise HTTPException(status_code=404, detail="课堂不存在")
     _require_classroom_teacher(classroom, current_user, "vocabulary")
     book = VocabularyBook(
-        title=(body.new_book_title or "").strip() or f"五级词库 · {body.level}",
+        title=(body.new_book_title or "").strip() or f"五级词库 · {level_label}",
         scope="classroom",
         owner_id=current_user.id,
         classroom_id=classroom.id,
@@ -510,4 +526,227 @@ def import_words_from_levels(
         created_count=created,
         skipped_existing=skipped_existing,
         remaining_count=max(0, len(remaining) - created),
+    )
+
+
+# ── 扩展区：高级备考词（SAT/ACT/GRE）浏览与转入教学词库 ──────────────
+
+
+def _is_advanced_word(word: VocabularyWord) -> bool:
+    """命中任一高级考试标签即属于扩展区高级词。"""
+    return bool(set(word.exam_tags or []) & set(ADVANCED_EXAM_TAGS))
+
+
+@router.get(
+    "/vocabulary/advanced-words",
+    response_model=list[VocabularyWordPublic],
+    dependencies=[Depends(require_module("vocabulary"))],
+)
+def list_advanced_words(
+    session: SessionDep,
+    current_user: TeacherUserDep,
+    exam_tag: str | None = Query(default=None),
+    cefr_band: str | None = Query(default=None),
+    headword: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> Any:
+    """扩展区高级备考词浏览（教师）：仅返回可见词库中的 active 高级词。
+
+    可见性与选词列表同口径：本校公共库或本人班级库（管理员全看本校）。
+    可按考试标签、CEFR 档位、词头过滤。CEFR 仅为词条内容标签，学生侧不做
+    等级评定；本接口不下发任何测评推断。
+    """
+    if exam_tag is not None and exam_tag not in VOCAB_EXAM_TAGS:
+        raise HTTPException(status_code=422, detail="exam_tag_invalid")
+    if cefr_band is not None and cefr_band not in VOCAB_CEFR_BANDS:
+        raise HTTPException(status_code=422, detail="cefr_band_invalid")
+    visible_ids = _visible_book_ids(session, current_user)
+    stmt = select(VocabularyWord).where(
+        VocabularyWord.status == "active",
+        VocabularyWord.tenant_id == current_user.tenant_id,  # type: ignore[arg-type]
+    )
+    if visible_ids is not None:
+        stmt = stmt.join(
+            VocabularyBookItem,
+            VocabularyBookItem.word_id == VocabularyWord.id,  # ty: ignore[invalid-argument-type]
+        ).where(col(VocabularyBookItem.book_id).in_(visible_ids))  # type: ignore[operator]
+    rows = list(session.exec(stmt).all())
+
+    needle = normalize_spelling(headword) if headword else None
+    matched: list[VocabularyWord] = []
+    for word in rows:
+        tags = set(word.exam_tags or [])
+        if not (tags & set(ADVANCED_EXAM_TAGS)):
+            continue
+        if exam_tag is not None and exam_tag not in tags:
+            continue
+        if cefr_band is not None and word.cefr_band != cefr_band:
+            continue
+        if needle is not None and needle not in normalize_spelling(word.headword):
+            continue
+        matched.append(word)
+    matched.sort(key=lambda w: (w.headword.casefold(), w.id))
+    page = matched[offset : offset + limit]
+    return levels_service.attach_word_levels(session, page)
+
+
+class VocabularyAdvancedTransferRequest(ImportTargetBody):
+    """从扩展区把高级备考词转入教学词库（仅已审核、授权齐全的词条）。"""
+
+    word_ids: list[uuid.UUID] = Field(min_length=1)
+
+
+@router.post(
+    "/vocabulary/advanced-words/transfer",
+    response_model=VocabularyFromLevelsResult,
+    dependencies=[Depends(require_module("vocabulary"))],
+)
+def transfer_advanced_words(
+    session: SessionDep,
+    current_user: TeacherUserDep,
+    body: VocabularyAdvancedTransferRequest,
+) -> Any:
+    """扩展区高级词转入教学词库：审核与授权门禁与发布路径同口径。
+
+    门禁（不可绕过）：
+    - 源词条必须本校、active，且归属至少一本当前教师可见词库；
+    - 必须命中高级考试标签（SAT/ACT/GRE）；
+    - 审核状态必须 approved（pending/rejected 禁止转入）；
+    - textbook/licensed 来源授权不齐 → 422；demo/self_built/ai 免授权，
+      但仍受上述 approved 门禁约束。
+
+    转入为在目标词库新建教学词条副本，考试标签与 CEFR 档位随源词条携带；
+    同库已收（词头+释义一致）的词跳过。
+    """
+    if len(body.word_ids) > MAX_BOOK_WORDS:
+        raise HTTPException(
+            status_code=422, detail=f"单次最多转入 {MAX_BOOK_WORDS} 个词"
+        )
+    book = _resolve_import_target(session, current_user, body)
+
+    found = {
+        w.id: w
+        for w in session.exec(
+            select(VocabularyWord).where(
+                col(VocabularyWord.id).in_(body.word_ids),  # type: ignore[operator]
+                VocabularyWord.tenant_id == current_user.tenant_id,  # type: ignore[arg-type]
+            )
+        ).all()
+    }
+    missing = [
+        str(wid)
+        for wid in body.word_ids
+        if found.get(wid) is None or found[wid].status != "active"
+    ]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"advanced_words_unavailable:{len(missing)}",
+        )
+    sources = [found[wid] for wid in body.word_ids]
+
+    # 可见性：源词条必须归属至少一本可见词库（与发布清单核验同口径）
+    allowed = set(_visible_book_ids(session, current_user) or [])
+    owning_rows = session.exec(
+        select(VocabularyBookItem.word_id, VocabularyBookItem.book_id).where(
+            col(VocabularyBookItem.word_id).in_([w.id for w in sources])  # type: ignore[operator]
+        )
+    ).all()
+    visible_word_ids = {
+        word_id
+        for word_id, book_id_of_item in owning_rows
+        if book_id_of_item in allowed
+    }
+    not_visible = [str(w.id) for w in sources if w.id not in visible_word_ids]
+    if not_visible:
+        raise HTTPException(
+            status_code=403,
+            detail=f"advanced_words_not_visible:{len(not_visible)}",
+        )
+
+    not_advanced = [w for w in sources if not _is_advanced_word(w)]
+    if not_advanced:
+        raise HTTPException(
+            status_code=422,
+            detail=f"advanced_words_not_advanced:{len(not_advanced)}",
+        )
+
+    # 审核门禁：未 approved 禁止转入（与发布门禁同错误码口径）
+    not_approved = [w for w in sources if w.review_status != "approved"]
+    if not_approved:
+        raise HTTPException(
+            status_code=422,
+            detail=f"vocabulary_words_not_approved:{len(not_approved)}",
+        )
+    # 授权门禁：textbook/licensed 授权不齐拒绝；其余来源免授权
+    vocab_governance.enforce_publish_license(session, sources)
+
+    existing = _book_word_rows(session, book.id)
+    known = {(w.headword.casefold(), w.meaning_zh) for w in existing}
+    position = _next_position(session, book.id)
+    created = 0
+    skipped_existing = 0
+
+    for src in sources:
+        key = (src.headword.casefold(), src.meaning_zh)
+        if key in known:
+            skipped_existing += 1
+            continue
+        known.add(key)
+        word_in = VocabularyWordIn(
+            headword=src.headword,
+            part_of_speech=src.part_of_speech,
+            meaning_zh=src.meaning_zh,
+            meaning_en=src.meaning_en,
+            accepted_spellings=src.accepted_spellings,
+            example_en=src.example_en,
+            audio_url=src.audio_url,
+            morphology=src.morphology,
+            exam_tags=list(src.exam_tags or []),
+            cefr_band=src.cefr_band,
+        )
+        new_word = _create_word(
+            session,
+            word_in,
+            source=src.source,
+            review_status="approved",
+            reviewer_id=src.reviewer_id,
+            reviewed_at=src.reviewed_at,
+            review_note=src.review_note,
+        )
+        # 台账随源词条携带；授权门禁已确认源词条及其归属库授权齐全。
+        new_word.source_type = src.source_type
+        new_word.license_owner = src.license_owner
+        new_word.license_ref = src.license_ref
+        new_word.license_expires_at = src.license_expires_at
+        new_word.authorization_doc_url = src.authorization_doc_url
+        new_word.license_note = src.license_note
+        session.flush()
+        session.add(
+            VocabularyBookItem(book_id=book.id, word_id=new_word.id, position=position)
+        )
+        position += 1
+        created += 1
+
+    if created:
+        book.version += 1
+        session.add(book)
+        vocab_governance.capture_version(
+            session,
+            book,
+            actor=current_user,
+            action="add_words",
+            summary=f"扩展区转入 {created} 个高级备考词",
+        )
+    session.commit()
+    session.refresh(book)
+
+    items = _book_word_rows(session, book.id)
+    return VocabularyFromLevelsResult(
+        **_book_public(book, len(items)).model_dump(),
+        words=levels_service.attach_word_levels(session, list(items)),
+        created_count=created,
+        skipped_existing=skipped_existing,
+        remaining_count=0,
     )

@@ -46,6 +46,15 @@ class VocabularyWord(SQLModel, table=True):
     morphology: list[dict[str, str]] | None = Field(
         default=None, sa_column=Column("morphology", JSON, nullable=True)
     )
+    # 考试标签（多选：SAT/ACT/GRE/CET4/IELTS/TOEFL）与 CEFR 档位（A1–C2）。
+    # 两者都只是词条内容标签：CEFR 不构成对学生的等级评定或测评结论。
+    exam_tags: list[str] = Field(
+        default_factory=list,
+        sa_column=Column(
+            "exam_tags", JSON, nullable=False, server_default=text("'[]'")
+        ),
+    )
+    cefr_band: str | None = Field(default=None, max_length=8)
     # 教师上传或已授权的标准音；为空时练习端用浏览器朗读兜底（需标注）
     audio_url: str | None = Field(default=None, max_length=1024)
     status: str = Field(default="active", max_length=16, index=True)
