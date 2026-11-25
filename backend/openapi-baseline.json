@@ -12683,6 +12683,61 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VocabularyAdvancedTransferRequest": {
+        "description": "从扩展区把高级备考词转入教学词库（仅已审核、授权齐全的词条）。",
+        "properties": {
+          "book_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Id"
+          },
+          "classroom_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classroom Id"
+          },
+          "new_book_title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Book Title"
+          },
+          "word_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Word Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "word_ids"
+        ],
+        "title": "VocabularyAdvancedTransferRequest",
+        "type": "object"
+      },
       "VocabularyAiExplanationRequest": {
         "properties": {
           "force": {
@@ -14557,6 +14612,25 @@
       },
       "VocabularyLevelEntryPublic": {
         "properties": {
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
+          },
+          "exam_tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Exam Tags",
+            "type": "array"
+          },
           "headword": {
             "title": "Headword",
             "type": "string"
@@ -14643,6 +14717,31 @@
       "VocabularyLevelEntryUpdate": {
         "description": "人工核对修正：缺省不修改；needs_review=False 即「已核对」。",
         "properties": {
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
+          },
+          "exam_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Tags"
+          },
           "meaning_zh": {
             "anyOf": [
               {
@@ -16920,6 +17019,17 @@
             ],
             "title": "Audio Url"
           },
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
+          },
           "choices": {
             "default": [],
             "items": {
@@ -17560,6 +17670,17 @@
             ],
             "title": "Audio Url"
           },
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
+          },
           "choices": {
             "default": [],
             "items": {
@@ -18091,6 +18212,31 @@
             ],
             "title": "Audio Url"
           },
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
+          },
+          "exam_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Tags"
+          },
           "example_en": {
             "anyOf": [
               {
@@ -18302,6 +18448,25 @@
               }
             ],
             "title": "Audio Url"
+          },
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
+          },
+          "exam_tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Exam Tags",
+            "type": "array"
           },
           "example_en": {
             "anyOf": [
@@ -18521,6 +18686,31 @@
               }
             ],
             "title": "Audio Url"
+          },
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
+          },
+          "exam_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Tags"
           },
           "example_en": {
             "anyOf": [
@@ -33261,6 +33451,167 @@
         "summary": "Test Email",
         "tags": [
           "utils"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/advanced-words": {
+      "get": {
+        "description": "扩展区高级备考词浏览（教师）：仅返回可见词库中的 active 高级词。\n\n可见性与选词列表同口径：本校公共库或本人班级库（管理员全看本校）。\n可按考试标签、CEFR 档位、词头过滤。CEFR 仅为词条内容标签，学生侧不做\n等级评定；本接口不下发任何测评推断。",
+        "operationId": "vocab-levels-list_advanced_words",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "exam_tag",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exam Tag"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cefr_band",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cefr Band"
+            }
+          },
+          {
+            "in": "query",
+            "name": "headword",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Headword"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VocabularyWordPublic"
+                  },
+                  "title": "Response Vocab-Levels-List Advanced Words",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Advanced Words",
+        "tags": [
+          "vocab-levels"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/advanced-words/transfer": {
+      "post": {
+        "description": "扩展区高级词转入教学词库：审核与授权门禁与发布路径同口径。\n\n门禁（不可绕过）：\n- 源词条必须本校、active，且归属至少一本当前教师可见词库；\n- 必须命中高级考试标签（SAT/ACT/GRE）；\n- 审核状态必须 approved（pending/rejected 禁止转入）；\n- textbook/licensed 来源授权不齐 → 422；demo/self_built/ai 免授权，\n  但仍受上述 approved 门禁约束。\n\n转入为在目标词库新建教学词条副本，考试标签与 CEFR 档位随源词条携带；\n同库已收（词头+释义一致）的词跳过。",
+        "operationId": "vocab-levels-transfer_advanced_words",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabularyAdvancedTransferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyFromLevelsResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Transfer Advanced Words",
+        "tags": [
+          "vocab-levels"
         ]
       }
     },

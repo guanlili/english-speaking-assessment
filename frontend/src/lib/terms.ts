@@ -266,6 +266,61 @@ export const VOCAB_LEVEL_LABELS: Record<VocabLevel, BiString> = {
   IELTS_TOEFL: { zh: "雅思&托福词汇", en: "IELTS & TOEFL" },
 }
 
+/**
+ * 考试标签（#517）：词条内容分类，多选。
+ * 与后端 VOCAB_EXAM_TAGS 取值一致；SAT/ACT/GRE 命中即「高级词」进入扩展区。
+ */
+export const VOCAB_EXAM_TAGS = [
+  "SAT",
+  "ACT",
+  "GRE",
+  "CET4",
+  "IELTS",
+  "TOEFL",
+] as const
+
+export type VocabExamTag = (typeof VOCAB_EXAM_TAGS)[number]
+
+/** 高级考试标签子集：命中任一即扩展区高级词 */
+export const ADVANCED_EXAM_TAGS: readonly VocabExamTag[] = ["SAT", "ACT", "GRE"]
+
+/** 考试标签 → 双语名（徽标 / 筛选下拉共用） */
+export const EXAM_TAG_LABELS: Record<VocabExamTag, BiString> = {
+  SAT: { zh: "SAT", en: "SAT" },
+  ACT: { zh: "ACT", en: "ACT" },
+  GRE: { zh: "GRE", en: "GRE" },
+  CET4: { zh: "四级", en: "CET-4" },
+  IELTS: { zh: "雅思", en: "IELTS" },
+  TOEFL: { zh: "托福", en: "TOEFL" },
+}
+
+/** CEFR 档位（#517）：A1–C2，词条内容标签；不是对学生的能力评定。 */
+export const CEFR_BANDS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const
+
+export type CefrBand = (typeof CEFR_BANDS)[number]
+
+/** CEFR 档位 → 双语名（徽标 / 筛选下拉共用） */
+export const CEFR_BAND_LABELS: Record<CefrBand, BiString> = {
+  A1: { zh: "A1 入门", en: "A1 Beginner" },
+  A2: { zh: "A2 初级", en: "A2 Elementary" },
+  B1: { zh: "B1 中级", en: "B1 Intermediate" },
+  B2: { zh: "B2 中高级", en: "B2 Upper-Intermediate" },
+  C1: { zh: "C1 高级", en: "C1 Advanced" },
+  C2: { zh: "C2 精通", en: "C2 Proficient" },
+}
+
+/** 考试标签是否属于高级词（SAT/ACT/GRE） */
+export function isAdvancedExamTag(tag: string): boolean {
+  return ADVANCED_EXAM_TAGS.includes(tag as VocabExamTag)
+}
+
+/** 词条是否命中高级标签（用于扩展区判定兜底展示） */
+export function wordIsAdvanced(
+  tags: readonly string[] | null | undefined,
+): boolean {
+  return Array.isArray(tags) && tags.some(isAdvancedExamTag)
+}
+
 /** 分级题型训练：考试式题型（与级别两维分别建模） */
 export const EXAM_KIND_LABELS: Record<string, BiString> = {
   toefl_lnr: { zh: "TOEFL · 听令复述", en: "TOEFL · Listen & Repeat" },

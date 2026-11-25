@@ -6938,6 +6938,30 @@ export type ValidationError = {
 };
 
 /**
+ * VocabularyAdvancedTransferRequest
+ *
+ * 从扩展区把高级备考词转入教学词库（仅已审核、授权齐全的词条）。
+ */
+export type VocabularyAdvancedTransferRequest = {
+    /**
+     * Book Id
+     */
+    book_id?: string | null;
+    /**
+     * Classroom Id
+     */
+    classroom_id?: string | null;
+    /**
+     * New Book Title
+     */
+    new_book_title?: string | null;
+    /**
+     * Word Ids
+     */
+    word_ids: Array<string>;
+};
+
+/**
  * VocabularyAiExplanationRequest
  */
 export type VocabularyAiExplanationRequest = {
@@ -7787,10 +7811,6 @@ export type VocabularyContentReviewList = {
  */
 export type VocabularyFromLevelsRequest = {
     /**
-     * Level
-     */
-    level: string;
-    /**
      * Book Id
      */
     book_id?: string | null;
@@ -7802,6 +7822,10 @@ export type VocabularyFromLevelsRequest = {
      * New Book Title
      */
     new_book_title?: string | null;
+    /**
+     * Level
+     */
+    level: string;
     /**
      * Limit
      */
@@ -8064,6 +8088,14 @@ export type VocabularyLevelEntryPublic = {
      */
     sources?: Array<string>;
     /**
+     * Exam Tags
+     */
+    exam_tags?: Array<string>;
+    /**
+     * Cefr Band
+     */
+    cefr_band?: string | null;
+    /**
      * Status
      */
     status?: string;
@@ -8095,6 +8127,14 @@ export type VocabularyLevelEntryUpdate = {
      * Status
      */
     status?: string | null;
+    /**
+     * Exam Tags
+     */
+    exam_tags?: Array<string> | null;
+    /**
+     * Cefr Band
+     */
+    cefr_band?: string | null;
 };
 
 /**
@@ -9432,6 +9472,10 @@ export type VocabularyStudentItem = {
      */
     attempt_count?: number;
     /**
+     * Cefr Band
+     */
+    cefr_band?: string | null;
+    /**
      * First Choice Word Id
      */
     first_choice_word_id?: string | null;
@@ -9806,6 +9850,10 @@ export type VocabularyTodayItem = {
      */
     attempt_count?: number;
     /**
+     * Cefr Band
+     */
+    cefr_band?: string | null;
+    /**
      * First Choice Word Id
      */
     first_choice_word_id?: string | null;
@@ -10089,6 +10137,14 @@ export type VocabularyWordIn = {
     morphology?: Array<{
         [key: string]: string;
     }> | null;
+    /**
+     * Exam Tags
+     */
+    exam_tags?: Array<string> | null;
+    /**
+     * Cefr Band
+     */
+    cefr_band?: string | null;
 };
 
 /**
@@ -10227,6 +10283,14 @@ export type VocabularyWordPublic = {
      * All Levels
      */
     all_levels?: Array<string>;
+    /**
+     * Exam Tags
+     */
+    exam_tags?: Array<string>;
+    /**
+     * Cefr Band
+     */
+    cefr_band?: string | null;
 };
 
 /**
@@ -10309,6 +10373,14 @@ export type VocabularyWordUpdate = {
      * Status
      */
     status?: string | null;
+    /**
+     * Exam Tags
+     */
+    exam_tags?: Array<string> | null;
+    /**
+     * Cefr Band
+     */
+    cefr_band?: string | null;
     /**
      * Expected Version
      */
@@ -18654,6 +18726,79 @@ export type VocabLevelsImportWordsFromLevelsResponses = {
 };
 
 export type VocabLevelsImportWordsFromLevelsResponse = VocabLevelsImportWordsFromLevelsResponses[200 & keyof VocabLevelsImportWordsFromLevelsResponses];
+
+export type VocabLevelsListAdvancedWordsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Exam Tag
+         */
+        exam_tag?: string | null;
+        /**
+         * Cefr Band
+         */
+        cefr_band?: string | null;
+        /**
+         * Headword
+         */
+        headword?: string | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Offset
+         */
+        offset?: number;
+    };
+    url: '/api/v1/vocabulary/advanced-words';
+};
+
+export type VocabLevelsListAdvancedWordsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabLevelsListAdvancedWordsError = VocabLevelsListAdvancedWordsErrors[keyof VocabLevelsListAdvancedWordsErrors];
+
+export type VocabLevelsListAdvancedWordsResponses = {
+    /**
+     * Response Vocab-Levels-List Advanced Words
+     *
+     * Successful Response
+     */
+    200: Array<VocabularyWordPublic>;
+};
+
+export type VocabLevelsListAdvancedWordsResponse = VocabLevelsListAdvancedWordsResponses[200 & keyof VocabLevelsListAdvancedWordsResponses];
+
+export type VocabLevelsTransferAdvancedWordsData = {
+    body: VocabularyAdvancedTransferRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/vocabulary/advanced-words/transfer';
+};
+
+export type VocabLevelsTransferAdvancedWordsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabLevelsTransferAdvancedWordsError = VocabLevelsTransferAdvancedWordsErrors[keyof VocabLevelsTransferAdvancedWordsErrors];
+
+export type VocabLevelsTransferAdvancedWordsResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyFromLevelsResult;
+};
+
+export type VocabLevelsTransferAdvancedWordsResponse = VocabLevelsTransferAdvancedWordsResponses[200 & keyof VocabLevelsTransferAdvancedWordsResponses];
 
 export type VocabularyAiGenerateWordDraftsData = {
     body: VocabularyAiWordDraftsRequest;

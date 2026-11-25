@@ -15,12 +15,19 @@ import {
 import { Input } from "@/components/ui/input"
 import { NumberInput } from "@/components/ui/number-input"
 import { AiDraftPanel } from "@/components/Vocabulary/AiDraftPanel"
+import { WordTagBadges } from "@/components/Vocabulary/WordTagBadges"
 import { useI18n } from "@/lib/i18n"
 import {
+  CEFR_BAND_LABELS,
+  CEFR_BANDS,
+  type CefrBand,
+  EXAM_TAG_LABELS,
   TERMS,
+  VOCAB_EXAM_TAGS,
   VOCAB_LEVEL_LABELS,
   VOCAB_LEVEL_ORDER,
   VOCAB_PROMPT_META,
+  type VocabExamTag,
   type VocabLevel,
 } from "@/lib/terms"
 import {
@@ -36,6 +43,7 @@ import {
 } from "@/lib/vocabContentReview"
 import { describeLicensePublishError } from "@/lib/vocabGovernance"
 import { AddWordsToBook } from "./AddWordsToBook"
+import { AdvancedWordPanel } from "./AdvancedWordPanel"
 import { CreateClassroomBook } from "./CreateClassroomBook"
 
 const MAX_PUBLISH_WORDS = 100
@@ -73,9 +81,18 @@ export function AssignPanel({
     enabled: bookId !== null,
   })
   const words = detailQuery.data?.words ?? []
+  // 考试标签 / CEFR 档位筛选（#517，前端本地过滤）
+  const [examTagFilter, setExamTagFilter] = useState<string>("all")
+  const [cefrFilter, setCefrFilter] = useState<string>("all")
+  const filteredWords = words.filter(
+    (word) =>
+      (examTagFilter === "all" ||
+        (word.exam_tags ?? []).includes(examTagFilter)) &&
+      (cefrFilter === "all" || word.cefr_band === cefrFilter),
+  )
   // 发布门禁：只有 approved 且未归档的词条可勾选发布；其余灰色展示并标状态
-  const publishableWords = words.filter(isPublishableWord)
-  const notApprovedCount = countNotApproved(words)
+  const publishableWords = filteredWords.filter(isPublishableWord)
+  const notApprovedCount = countNotApproved(filteredWords)
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [title, setTitle] = useState("")
@@ -113,6 +130,8 @@ export function AssignPanel({
     setSelected(new Set())
     setTitle("")
     setLevelFilter("all")
+    setExamTagFilter("all")
+    setCefrFilter("all")
   }
   const toggleAll = (checked: boolean) => {
     setSelected(
@@ -362,6 +381,48 @@ export function AssignPanel({
                       </option>
                     ))}
                   </select>
+                  <select
+                    value={examTagFilter}
+                    onChange={(event) => {
+                      setExamTagFilter(event.target.value)
+                      setSelected(new Set())
+                    }}
+                    aria-label={t({
+                      zh: "按考试标签筛选",
+                      en: "Filter by exam tag",
+                    })}
+                    className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+                  >
+                    <option value="all">
+                      {t({ zh: "全部考试", en: "All exams" })}
+                    </option>
+                    {VOCAB_EXAM_TAGS.map((tag: VocabExamTag) => (
+                      <option key={tag} value={tag}>
+                        {t(EXAM_TAG_LABELS[tag])}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={cefrFilter}
+                    onChange={(event) => {
+                      setCefrFilter(event.target.value)
+                      setSelected(new Set())
+                    }}
+                    aria-label={t({
+                      zh: "按 CEFR 档位筛选",
+                      en: "Filter by CEFR band",
+                    })}
+                    className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+                  >
+                    <option value="all">
+                      {t({ zh: "全部档位", en: "All bands" })}
+                    </option>
+                    {CEFR_BANDS.map((band: CefrBand) => (
+                      <option key={band} value={band}>
+                        {t(CEFR_BAND_LABELS[band])}
+                      </option>
+                    ))}
+                  </select>
                   {detailQuery.data?.scope === "classroom" ? (
                     // key=bookId：切换词库即重挂载，清掉未确认的 CSV 预览，
                     // 防止 A 库的预览词条被确认进 B 库（飞行中的预览请求
@@ -400,7 +461,7 @@ export function AssignPanel({
                   </Button>
                 </div>
               </div>
-              {publishableCount === 0 && words.length === 0 && (
+              {publishableCount === 0 && filteredWords.length === 0 && (
                 <p role="status" className="text-sm text-muted-foreground">
                   {t({
                     zh: "这个词库还没有词：点上面的「CSV 加词」导入，或回到第一步新建词库。",
@@ -477,10 +538,14 @@ export function AssignPanel({
                           )}
                         </Badge>
                       )}
+                      <WordTagBadges
+                        exam_tags={word.exam_tags}
+                        cefr_band={word.cefr_band}
+                      />
                     </span>
                   </label>
                 ))}
-                {words
+                {filteredWords
                   .filter((word) => !isPublishableWord(word))
                   .map((word) => (
                     <div
@@ -500,6 +565,10 @@ export function AssignPanel({
                         <span className="ml-2 text-muted-foreground">
                           {word.meaning_zh}
                         </span>
+                        <WordTagBadges
+                          exam_tags={word.exam_tags}
+                          cefr_band={word.cefr_band}
+                        />
                       </span>
                       <Badge variant="outline">
                         {t(reviewStatusLabel(word.review_status))}
@@ -870,6 +939,8 @@ export function AssignPanel({
           </div>
         </CardContent>
       </Card>
+
+      <AdvancedWordPanel classroomId={classroomId} books={books} />
 
       <AiDraftPanel
         bookId={bookId}
