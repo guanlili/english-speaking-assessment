@@ -49,6 +49,7 @@ const ROUTES = [
   { key: "teacher-student", path: `/t/DEMO01/s/${STUDENT_ID}`, role: "teacher", critical: true },
   { key: "admin-dashboard", path: "/admin/dashboard", role: "operator", critical: true },
   { key: "admin-vocabbooks", path: "/admin/vocabbooks", role: "operator", critical: true },
+  { key: "admin-licenses", path: "/admin/vocabulary-licenses", role: "operator", critical: true, reveal: ".overflow-x-auto" },
   { key: "admin-users", path: "/admin", role: "operator", critical: false },
   { key: "admin-schools", path: "/admin/schools", role: "operator", critical: false },
 ]
@@ -236,6 +237,14 @@ const ACTIONS = [
     langs: ["zh", "en"],
     widths: [390, 320],
   },
+  {
+    key: "sidebar-nav",
+    role: "operator",
+    path: "/admin/vocabulary-licenses",
+    trigger: { kind: "sidebar" },
+    langs: ["zh", "en"],
+    widths: [390, 320],
+  },
 ]
 
 async function shootAction(context, action, viewport, lang) {
@@ -258,6 +267,15 @@ async function shootAction(context, action, viewport, lang) {
         await page.waitForTimeout(600)
       } else {
         note = "trigger-not-found"
+        status = "SKIP"
+      }
+    } else if (action.trigger.kind === "sidebar") {
+      const trigger = page.getByRole("button", { name: /切换导航栏|Toggle navigation/ })
+      if (await trigger.count()) {
+        await trigger.first().click()
+        await page.waitForTimeout(600)
+      } else {
+        note = "sidebar-trigger-not-found"
         status = "SKIP"
       }
     } else if (action.trigger.kind === "first-book") {
@@ -302,6 +320,16 @@ async function shoot(context, route, viewport, lang, label) {
     const file = `${route.key}-${lang}-${viewport.width}${suffix}.png`
     await page.screenshot({ path: path.join(SHOT_DIR, file), fullPage: false })
     finalPath = file
+    // 指定 reveal 选择器时，滚动到目标（如表格）补一张截图作为下方区域证据。
+    if (route.reveal) {
+      const target = page.locator(route.reveal).first()
+      if (await target.count()) {
+        await target.scrollIntoViewIfNeeded({ timeout: 5_000 })
+        await page.waitForTimeout(400)
+        const tableFile = `${route.key}-${lang}-${viewport.width}${suffix}-table.png`
+        await page.screenshot({ path: path.join(SHOT_DIR, tableFile), fullPage: false })
+      }
+    }
   } catch (err) {
     status = "ERROR"
     metrics = { error: String(err).slice(0, 200) }

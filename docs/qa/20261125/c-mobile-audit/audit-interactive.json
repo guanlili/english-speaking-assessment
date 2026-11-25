@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-25T15:15:23.940Z",
+  "generatedAt": "2026-11-25T15:59:15.336Z",
   "baseUrl": "http://127.0.0.1:5181",
   "environment": "local dev, Chrome CDP emulation (simulated, NOT a real device)",
   "mode": "interactive",
@@ -869,6 +869,198 @@
         "zoomLocked": false
       },
       "shot": "book-detail-en-320.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "sidebar-nav",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "zh",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 390,
+        "scrollWidth": 390,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "BELP.",
+            "w": 247,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "外观\n切换外观",
+            "w": 271,
+            "h": 32
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "safeArea": "0px"
+          },
+          {
+            "cls": "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "safeArea": "0px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "sidebar-nav-zh-390.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "sidebar-nav",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 390,
+        "scrollWidth": 390,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "BELP.",
+            "w": 247,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Appearance\nToggle appearance",
+            "w": 271,
+            "h": 32
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "safeArea": "0px"
+          },
+          {
+            "cls": "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "safeArea": "0px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "sidebar-nav-en-390.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "sidebar-nav",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "zh",
+      "viewport": {
+        "width": 320,
+        "height": 568,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 320,
+        "scrollWidth": 320,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "BELP.",
+            "w": 247,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "外观\n切换外观",
+            "w": 271,
+            "h": 32
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "safeArea": "0px"
+          },
+          {
+            "cls": "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "safeArea": "0px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "sidebar-nav-zh-320.png",
+      "note": "",
+      "errors": []
+    },
+    {
+      "route": "sidebar-nav",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "en",
+      "viewport": {
+        "width": 320,
+        "height": 568,
+        "orient": "portrait"
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 320,
+        "scrollWidth": 320,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "BELP.",
+            "w": 247,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Appearance\nToggle appearance",
+            "w": 271,
+            "h": 32
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "safeArea": "0px"
+          },
+          {
+            "cls": "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "safeArea": "0px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "sidebar-nav-en-320.png",
       "note": "",
       "errors": []
     }

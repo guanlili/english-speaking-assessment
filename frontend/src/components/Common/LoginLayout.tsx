@@ -38,7 +38,7 @@ export function LoginLayout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-[1440px] items-center gap-7 px-5 pb-10 pt-4 sm:px-10 lg:min-h-[calc(100svh-152px)] lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-16 lg:px-16 lg:py-8 xl:gap-24">
+      <main className="mx-auto grid max-w-[1440px] items-center gap-4 px-5 pb-6 pt-2 sm:gap-7 sm:px-10 sm:pb-10 sm:pt-4 lg:min-h-[calc(100svh-152px)] lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-16 lg:px-16 lg:py-8 xl:gap-24">
         <section
           className="mx-auto w-full max-w-[480px] lg:max-w-[560px]"
           aria-labelledby="login-intro"
@@ -55,14 +55,14 @@ export function LoginLayout({ children }: { children: ReactNode }) {
           </p>
           <h1
             id="login-intro"
-            className="text-[28px] font-semibold leading-[1.25] tracking-tight sm:text-3xl lg:text-[38px] xl:text-[44px]"
+            className="text-2xl font-semibold leading-snug tracking-tight sm:text-3xl lg:text-[38px] xl:text-[44px]"
           >
             {t({
               zh: "让表达，自然发生。",
               en: "Speak naturally. Grow confidently.",
             })}
           </h1>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground lg:text-base">
+          <p className="mt-2 text-sm leading-5 text-muted-foreground sm:mt-3 sm:leading-6 lg:text-base">
             {t({
               zh: "跟随课堂节奏，练习真实表达。",
               en: "Follow your class pace and practice speaking for real.",
@@ -136,7 +136,7 @@ export function LoginLayout({ children }: { children: ReactNode }) {
 
         <section
           aria-label={t({ zh: "登录 BELP", en: "Sign in to BELP" })}
-          className="relative mx-auto w-full max-w-[480px] rounded-2xl border border-brand-ink/12 bg-paper-card p-5 shadow-[var(--shadow-brand-card)] before:absolute before:-top-px before:left-6 before:h-[3px] before:w-12 before:bg-tan-clay sm:p-8 sm:before:left-9 lg:mx-0 lg:justify-self-end xl:p-10 dark:border-border dark:bg-card dark:shadow-none"
+          className="relative mx-auto w-full max-w-[480px] rounded-2xl border border-brand-ink/12 bg-paper-card p-4 shadow-[var(--shadow-brand-card)] before:absolute before:-top-px before:left-6 before:h-[3px] before:w-12 before:bg-tan-clay sm:p-8 sm:before:left-9 lg:mx-0 lg:justify-self-end xl:p-10 dark:border-border dark:bg-card dark:shadow-none"
         >
           {children}
         </section>

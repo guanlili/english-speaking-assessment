@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-25T15:14:16.309Z",
+  "generatedAt": "2026-11-25T15:57:50.496Z",
   "baseUrl": "http://127.0.0.1:5181",
   "environment": "local dev, Chrome CDP emulation (simulated, NOT a real device)",
   "mode": "matrix",
@@ -10334,6 +10334,382 @@
         "zoomLocked": false
       },
       "shot": "admin-vocabbooks-en-844-land.png",
+      "errors": []
+    },
+    {
+      "route": "admin-licenses",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "zh",
+      "viewport": {
+        "width": 320,
+        "height": 568,
+        "orient": "portrait"
+      },
+      "label": "admin-licenses",
+      "status": "PASS",
+      "metrics": {
+        "vw": 320,
+        "scrollWidth": 320,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [],
+        "smallFonts": [],
+        "fixedBottom": [],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "admin-licenses-zh-320.png",
+      "errors": []
+    },
+    {
+      "route": "admin-licenses",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "en",
+      "viewport": {
+        "width": 320,
+        "height": 568,
+        "orient": "portrait"
+      },
+      "label": "admin-licenses",
+      "status": "PASS",
+      "metrics": {
+        "vw": 320,
+        "scrollWidth": 320,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [],
+        "smallFonts": [],
+        "fixedBottom": [],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "admin-licenses-en-320.png",
+      "errors": []
+    },
+    {
+      "route": "admin-licenses",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "zh",
+      "viewport": {
+        "width": 360,
+        "height": 640,
+        "orient": "portrait"
+      },
+      "label": "admin-licenses",
+      "status": "PASS",
+      "metrics": {
+        "vw": 360,
+        "scrollWidth": 360,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [],
+        "smallFonts": [],
+        "fixedBottom": [],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "admin-licenses-zh-360.png",
+      "errors": []
+    },
+    {
+      "route": "admin-licenses",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "en",
+      "viewport": {
+        "width": 360,
+        "height": 640,
+        "orient": "portrait"
+      },
+      "label": "admin-licenses",
+      "status": "PASS",
+      "metrics": {
+        "vw": 360,
+        "scrollWidth": 360,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [],
+        "smallFonts": [],
+        "fixedBottom": [],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "admin-licenses-en-360.png",
+      "errors": []
+    },
+    {
+      "route": "admin-licenses",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "zh",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "orient": "portrait"
+      },
+      "label": "admin-licenses",
+      "status": "PASS",
+      "metrics": {
+        "vw": 390,
+        "scrollWidth": 390,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [],
+        "smallFonts": [],
+        "fixedBottom": [],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "admin-licenses-zh-390.png",
+      "errors": []
+    },
+    {
+      "route": "admin-licenses",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "orient": "portrait"
+      },
+      "label": "admin-licenses",
+      "status": "PASS",
+      "metrics": {
+        "vw": 390,
+        "scrollWidth": 390,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [],
+        "smallFonts": [],
+        "fixedBottom": [],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "admin-licenses-en-390.png",
+      "errors": []
+    },
+    {
+      "route": "admin-licenses",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "zh",
+      "viewport": {
+        "width": 430,
+        "height": 932,
+        "orient": "portrait"
+      },
+      "label": "admin-licenses",
+      "status": "PASS",
+      "metrics": {
+        "vw": 430,
+        "scrollWidth": 430,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [],
+        "smallFonts": [],
+        "fixedBottom": [],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "admin-licenses-zh-430.png",
+      "errors": []
+    },
+    {
+      "route": "admin-licenses",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "en",
+      "viewport": {
+        "width": 430,
+        "height": 932,
+        "orient": "portrait"
+      },
+      "label": "admin-licenses",
+      "status": "PASS",
+      "metrics": {
+        "vw": 430,
+        "scrollWidth": 430,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [],
+        "smallFonts": [],
+        "fixedBottom": [],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "admin-licenses-en-430.png",
+      "errors": []
+    },
+    {
+      "route": "admin-licenses",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "zh",
+      "viewport": {
+        "width": 844,
+        "height": 390,
+        "orient": "landscape"
+      },
+      "label": "admin-licenses",
+      "status": "PASS",
+      "metrics": {
+        "vw": 844,
+        "scrollWidth": 844,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "BELP.\n开口说 · 英语口语课堂",
+            "w": 215,
+            "h": 43
+          },
+          {
+            "tag": "button",
+            "label": "外观\n切换外观",
+            "w": 239,
+            "h": 32
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "Collapse Sidebar",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "-\nTanStack Router",
+            "w": 142,
+            "h": 30
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transi",
+            "safeArea": "0px"
+          },
+          {
+            "cls": "go314564661 TanStackRouterDevtoolsPanel go905199096 go163969",
+            "safeArea": "0px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "admin-licenses-zh-844-land.png",
+      "errors": []
+    },
+    {
+      "route": "admin-licenses",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "en",
+      "viewport": {
+        "width": 844,
+        "height": 390,
+        "orient": "landscape"
+      },
+      "label": "admin-licenses",
+      "status": "PASS",
+      "metrics": {
+        "vw": 844,
+        "scrollWidth": 844,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "BELP.\nSpeak up · Spoken Engl",
+            "w": 215,
+            "h": 43
+          },
+          {
+            "tag": "button",
+            "label": "Appearance\nToggle appearance",
+            "w": 239,
+            "h": 32
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "Collapse Sidebar",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "-\nTanStack Router",
+            "w": 142,
+            "h": 30
+          }
+        ],
+        "smallFonts": [],
+        "fixedBottom": [
+          {
+            "cls": "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transi",
+            "safeArea": "0px"
+          },
+          {
+            "cls": "go314564661 TanStackRouterDevtoolsPanel go905199096 go163969",
+            "safeArea": "0px"
+          }
+        ],
+        "viewportMeta": "width=device-width, initial-scale=1.0",
+        "zoomLocked": false
+      },
+      "shot": "admin-licenses-en-844-land.png",
       "errors": []
     },
     {

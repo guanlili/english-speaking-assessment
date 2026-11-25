@@ -1,0 +1,103 @@
+{
+  "generatedAt": "2026-11-25T15:42:27.031Z",
+  "baseUrl": "http://127.0.0.1:5181",
+  "environment": "CDP simulated scroll; top/bottom reachability",
+  "results": [
+    {
+      "route": "vocab-books",
+      "lang": "zh",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "status": "PASS",
+      "evidence": "长列表顶部/底部可达性，CDP 模拟滚动",
+      "metrics": {
+        "rowCount": 5,
+        "lastRow": {
+          "top": 752,
+          "bottom": 822,
+          "height": 70,
+          "visible": true
+        },
+        "scrollY": 0
+      },
+      "shots": [
+        "sim-longlist-vocab-books-zh-top.png",
+        "sim-longlist-vocab-books-zh-bottom.png"
+      ]
+    },
+    {
+      "route": "vocab-books",
+      "lang": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "status": "PASS",
+      "evidence": "长列表顶部/底部可达性，CDP 模拟滚动",
+      "metrics": {
+        "rowCount": 5,
+        "lastRow": {
+          "top": 752,
+          "bottom": 822,
+          "height": 70,
+          "visible": true
+        },
+        "scrollY": 0
+      },
+      "shots": [
+        "sim-longlist-vocab-books-en-top.png",
+        "sim-longlist-vocab-books-en-bottom.png"
+      ]
+    },
+    {
+      "route": "admin-licenses",
+      "lang": "zh",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "status": "PASS",
+      "evidence": "长列表顶部/底部可达性，CDP 模拟滚动",
+      "metrics": {
+        "rowCount": 8,
+        "lastRow": {
+          "top": 624,
+          "bottom": 685,
+          "height": 61,
+          "visible": true
+        },
+        "scrollY": 854
+      },
+      "shots": [
+        "sim-longlist-admin-licenses-zh-top.png",
+        "sim-longlist-admin-licenses-zh-bottom.png"
+      ]
+    },
+    {
+      "route": "admin-licenses",
+      "lang": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "status": "PASS",
+      "evidence": "长列表顶部/底部可达性，CDP 模拟滚动",
+      "metrics": {
+        "rowCount": 8,
+        "lastRow": {
+          "top": 624,
+          "bottom": 685,
+          "height": 61,
+          "visible": true
+        },
+        "scrollY": 878
+      },
+      "shots": [
+        "sim-longlist-admin-licenses-en-top.png",
+        "sim-longlist-admin-licenses-en-bottom.png"
+      ]
+    }
+  ]
+}

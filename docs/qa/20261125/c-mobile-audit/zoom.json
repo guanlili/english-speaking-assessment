@@ -1,0 +1,1307 @@
+{
+  "generatedAt": "2026-11-25T15:47:12.165Z",
+  "baseUrl": "http://127.0.0.1:5181",
+  "environment": "system Chrome desktop, 200% zoom simulated via halved CSS viewport + DSR2 (NOT real pinch)",
+  "results": [
+    {
+      "route": "login",
+      "path": "/login",
+      "role": "public",
+      "lang": "zh",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "切换外观",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "显示密码",
+            "w": 40,
+            "h": 48
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "a",
+            "label": "注册账号",
+            "w": 49,
+            "h": 16
+          },
+          {
+            "tag": "a",
+            "label": "",
+            "w": 83,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 83,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 97,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 83,
+            "h": 36
+          },
+          {
+            "tag": "a",
+            "label": "平台运营入口",
+            "w": 74,
+            "h": 16
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-login-zh-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    },
+    {
+      "route": "login",
+      "path": "/login",
+      "role": "public",
+      "lang": "en",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "Toggle appearance",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Show password",
+            "w": 40,
+            "h": 48
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "a",
+            "label": "Sign up",
+            "w": 42,
+            "h": 16
+          },
+          {
+            "tag": "a",
+            "label": "",
+            "w": 118,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 118,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 111,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 127,
+            "h": 36
+          },
+          {
+            "tag": "a",
+            "label": "Platform operator sign-in",
+            "w": 136,
+            "h": 16
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-login-en-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    },
+    {
+      "route": "student-home",
+      "path": "/home/DEMO01",
+      "role": "student",
+      "lang": "zh",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "今日任务",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "切换外观",
+            "w": 36,
+            "h": 36
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-student-home-zh-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    },
+    {
+      "route": "student-home",
+      "path": "/home/DEMO01",
+      "role": "student",
+      "lang": "en",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "Today’s Tasks",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "Toggle appearance",
+            "w": 36,
+            "h": 36
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-student-home-en-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    },
+    {
+      "route": "vocab-index",
+      "path": "/vocab/DEMO01",
+      "role": "student",
+      "lang": "zh",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "今日任务",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "切换外观",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "a",
+            "label": "去词库开一轮",
+            "w": 132,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "首答正确按每题第一次作答计算，重试不改变统计。",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "刷新",
+            "w": 42,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "错词不会因为答对一次就移除。这里分开展示历史错误次数、最",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "历史累计错误次数：按每轮第一次作答拼错累计，只增不减；一",
+            "w": 40,
+            "h": 40
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-vocab-index-zh-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    },
+    {
+      "route": "vocab-index",
+      "path": "/vocab/DEMO01",
+      "role": "student",
+      "lang": "en",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "a",
+            "label": "Today’s Tasks",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "Toggle appearance",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "a",
+            "label": "Start a round",
+            "w": 129,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "First-try correct counts eac",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Refresh",
+            "w": 42,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "A word stays in this book ev",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Historical cumulative misses",
+            "w": 40,
+            "h": 40
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-vocab-index-en-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    },
+    {
+      "route": "teacher-board",
+      "path": "/t/DEMO01",
+      "role": "teacher",
+      "lang": "zh",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "button",
+            "label": "Collapse Sidebar",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "a",
+            "label": "到题目库补充内容 →",
+            "w": 131,
+            "h": 36
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-teacher-board-zh-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    },
+    {
+      "route": "teacher-board",
+      "path": "/t/DEMO01",
+      "role": "teacher",
+      "lang": "en",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "button",
+            "label": "Collapse Sidebar",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "a",
+            "label": "Add content in the Question ",
+            "w": 236,
+            "h": 36
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-teacher-board-en-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    },
+    {
+      "route": "teacher-vocab",
+      "path": "/t/DEMO01/vocab",
+      "role": "teacher",
+      "lang": "zh",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "button",
+            "label": "Collapse Sidebar",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "a",
+            "label": "← 我的课堂",
+            "w": 73,
+            "h": 20
+          },
+          {
+            "tag": "a",
+            "label": "口语练习",
+            "w": 105,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "词汇学习",
+            "w": 103,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "发布任务",
+            "w": 103,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "完成情况",
+            "w": 105,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "趋势",
+            "w": 77,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "测分结果",
+            "w": 105,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "PK 对战",
+            "w": 98,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "农场",
+            "w": 77,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "学习榜",
+            "w": 91,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "词库审核",
+            "w": 105,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "新建班级词库",
+            "w": 120,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "练习（可重试）",
+            "w": 124,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "词汇测验",
+            "w": 83,
+            "h": 36
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 15,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 14,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "全班",
+            "w": 53,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "指定学生（手动分组）",
+            "w": 169,
+            "h": 36
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-teacher-vocab-zh-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    },
+    {
+      "route": "teacher-vocab",
+      "path": "/t/DEMO01/vocab",
+      "role": "teacher",
+      "lang": "en",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "button",
+            "label": "Collapse Sidebar",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "a",
+            "label": "← My Classrooms",
+            "w": 114,
+            "h": 20
+          },
+          {
+            "tag": "a",
+            "label": "Speaking",
+            "w": 109,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Vocabulary",
+            "w": 118,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Assign",
+            "w": 89,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Results",
+            "w": 94,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Trends",
+            "w": 91,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Placement",
+            "w": 116,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "PK Battle",
+            "w": 107,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Farm",
+            "w": 81,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Board",
+            "w": 87,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Review",
+            "w": 95,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "New classroom book",
+            "w": 162,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Practice (retries allowed)",
+            "w": 184,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Vocabulary Quiz",
+            "w": 132,
+            "h": 36
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 14,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 16,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 13,
+            "h": 16
+          },
+          {
+            "tag": "input",
+            "label": "",
+            "w": 13,
+            "h": 16
+          },
+          {
+            "tag": "button",
+            "label": "Whole class",
+            "w": 101,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "Selected students",
+            "w": 141,
+            "h": 36
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-teacher-vocab-en-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    },
+    {
+      "route": "admin-dashboard",
+      "path": "/admin/dashboard",
+      "role": "operator",
+      "lang": "zh",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "button",
+            "label": "Collapse Sidebar",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "活跃指当天有提交作答的学生或课堂（含评分失败）；练习日按",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "活跃指当天有提交作答的学生或课堂（含评分失败）；练习日按",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "活跃指当天有提交作答的学生或课堂（含评分失败）；练习日按",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "评分成功率 = 评分完成 ÷（完成 + 失败），不含排队",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "区间内上报过设备/音频/上传异常的练习轮数 + 评分失败",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "活跃指当天有提交作答的学生或课堂（含评分失败）；练习日按",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "活跃指当天有提交作答的学生或课堂（含评分失败）；练习日按",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "活跃指当天有提交作答的学生或课堂（含评分失败）；练习日按",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "评分成功率 = 评分完成 ÷（完成 + 失败），不含排队",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "区间内上报过设备/音频/上传异常的练习轮数 + 评分失败",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "活跃指当天有提交作答的学生或课堂（含评分失败）；练习日按",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "均分只统计评分完成（done）的作答；排队中、评分中或评",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "均分只统计评分完成（done）的作答；排队中、评分中或评",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "活跃指当天有提交作答的学生或课堂（含评分失败）；练习日按",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "实时数字为进程启动以来的累计（重启归零）；历史为每日快照",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "语音识别按作答音频秒数×单价（精确）。语言模型优先按真实",
+            "w": 40,
+            "h": 40
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-admin-dashboard-zh-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    },
+    {
+      "route": "admin-dashboard",
+      "path": "/admin/dashboard",
+      "role": "operator",
+      "lang": "en",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "button",
+            "label": "Collapse Sidebar",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "All",
+            "w": 41,
+            "h": 44
+          },
+          {
+            "tag": "button",
+            "label": "Active means a student or cl",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Active means a student or cl",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Active means a student or cl",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Success rate = scored done ÷",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Practice rounds that reporte",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Active means a student or cl",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Active means a student or cl",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Active means a student or cl",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Success rate = scored done ÷",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Practice rounds that reporte",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Active means a student or cl",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Averages include only attemp",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Averages include only attemp",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Active means a student or cl",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "Realtime figures accumulate ",
+            "w": 40,
+            "h": 40
+          },
+          {
+            "tag": "button",
+            "label": "ASR is exact (audio seconds ",
+            "w": 40,
+            "h": 40
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-admin-dashboard-en-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    },
+    {
+      "route": "admin-licenses",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "zh",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "button",
+            "label": "Collapse Sidebar",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-admin-licenses-zh-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    },
+    {
+      "route": "admin-licenses",
+      "path": "/admin/vocabulary-licenses",
+      "role": "operator",
+      "lang": "en",
+      "viewport": {
+        "width": 640,
+        "height": 900
+      },
+      "status": "PASS",
+      "metrics": {
+        "vw": 640,
+        "scrollWidth": 640,
+        "overflow": 0,
+        "offenders": [],
+        "targets": [
+          {
+            "tag": "button",
+            "label": "Collapse Sidebar",
+            "w": 36,
+            "h": 36
+          },
+          {
+            "tag": "button",
+            "label": "中",
+            "w": 36,
+            "h": 28
+          },
+          {
+            "tag": "button",
+            "label": "EN",
+            "w": 36,
+            "h": 28
+          }
+        ],
+        "smallFonts": []
+      },
+      "shot": "real-chrome-zoom-admin-licenses-en-640.png",
+      "errors": [],
+      "evidence": "系统 Chrome 桌面引擎；200% 缩放按 CSS 视口折半 + DSR2 模拟，非真机 pinch"
+    }
+  ]
+}

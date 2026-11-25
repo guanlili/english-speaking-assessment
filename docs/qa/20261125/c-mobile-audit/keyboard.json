@@ -1,0 +1,95 @@
+{
+  "generatedAt": "2026-11-25T15:59:23.721Z",
+  "baseUrl": "http://127.0.0.1:5181",
+  "environment": "CDP simulated soft keyboard via visualViewport + focus (NOT a real device keyboard)",
+  "results": [
+    {
+      "route": "login",
+      "lang": "zh",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "status": "PASS",
+      "evidence": "CDP 无真实软键盘；visualViewport + 聚焦模拟（simulated）",
+      "metrics": {
+        "innerHeight": 844,
+        "vvHeight": 844,
+        "vvOffsetTop": 0,
+        "submit": {
+          "top": 373,
+          "bottom": 417,
+          "height": 44,
+          "withinVv": true
+        }
+      },
+      "shot": "sim-keyboard-login-zh-390.png"
+    },
+    {
+      "route": "login",
+      "lang": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "status": "PASS",
+      "evidence": "CDP 无真实软键盘；visualViewport + 聚焦模拟（simulated）",
+      "metrics": {
+        "innerHeight": 844,
+        "vvHeight": 844,
+        "vvOffsetTop": 0,
+        "submit": {
+          "top": 769,
+          "bottom": 817,
+          "height": 48,
+          "withinVv": true
+        }
+      },
+      "shot": "sim-keyboard-login-en-390.png"
+    },
+    {
+      "route": "admin-licenses",
+      "lang": "zh",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "status": "PASS",
+      "evidence": "CDP 无真实软键盘；visualViewport + 聚焦模拟（simulated）",
+      "metrics": {
+        "innerHeight": 844,
+        "vvHeight": 844,
+        "vvOffsetTop": 0,
+        "submit": {
+          "top": 249,
+          "bottom": 293,
+          "height": 44,
+          "withinVv": true
+        }
+      },
+      "shot": "sim-keyboard-admin-licenses-zh-390.png"
+    },
+    {
+      "route": "admin-licenses",
+      "lang": "en",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "status": "PASS",
+      "evidence": "CDP 无真实软键盘；visualViewport + 聚焦模拟（simulated）",
+      "metrics": {
+        "innerHeight": 844,
+        "vvHeight": 844,
+        "vvOffsetTop": 0,
+        "submit": {
+          "top": 273,
+          "bottom": 317,
+          "height": 44,
+          "withinVv": true
+        }
+      },
+      "shot": "sim-keyboard-admin-licenses-en-390.png"
+    }
+  ]
+}

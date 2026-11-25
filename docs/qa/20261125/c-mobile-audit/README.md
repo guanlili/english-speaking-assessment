@@ -1,29 +1,41 @@
-# #517 C 块 · 移动端真机级审计（第一阶段，2026-11-25）
+# #517 C 块 · 移动端真机级审计（第二阶段，2026-11-25）
 
-本目录归档 issue #517「移动端真机级审计」C 块第一阶段成果：本地 CDP 设备模拟矩阵、阻断级缺陷修复、截图与指标证据。分支 `fix/mobile-audit-20261125`，基点 master `c1a1a8c`（已含 B #557）。
+本目录归档 issue #517「移动端真机级审计」C 块成果。分支 `fix/mobile-audit-20261125`；第一阶段提交 `cbb66bf`（基点 master `c1a1a8c`），第二阶段已 `git fetch origin && git merge origin/master`（merge commit `f3ba17d`，合入 A #556 授权页/侧栏、D #555 nginx/DB、B #557 CEFR/vocab），无冲突。
 
 ## 1. 环境与证据边界
 
 - 全部页面来自本 worktree 本地 dev：前端 **5181** → 后端 **8034** → 本机 Docker Postgres **5433**（库 `app`，本地 demo 合成数据）。**未连接生产/预发，未部署。**
-- 驱动方式：Playwright + 系统 Chrome，CDP 设备模拟（`isMobile` + `hasTouch`，deviceScaleFactor 2，headless）。
-- **重要口径：本阶段所有「通过」结论均为 CDP 模拟（simulated），不是真机结论。** 凡需真实设备 / 桌面缩放才能判定的项，见第 7 节「未覆盖与第二阶段待办」，不得在对外材料中写成「真机通过」。
-- 审计脚本：`scripts/audit.mjs`（`smoke | matrix | interactive`）；单页调试：`scripts/debug.mjs`。
-- 指标落盘：`audit.json`（矩阵 186 条）、`audit-interactive.json`（交互式 12 条）；截图：`screenshots/`，命名 `<route>-<lang>-<width>[-land].png`。
+- 驱动方式分四类，**禁止混标**：
+
+| 证据标签 | 引擎 / 手段 | 口径边界 |
+|---|---|---|
+| CDP 移动模拟（`audit.json` / `audit-interactive.json`） | Playwright + 系统 Chrome，`isMobile` + `hasTouch`，DSR 2，headless | 视口/触控模拟，**非真机触摸与手势** |
+| `real-chrome-zoom`（`zoom.json`） | 系统 Chrome 桌面引擎，200% 缩放按「CSS 视口折半（640 宽）+ DSR 2」模拟 | 非真机 pinch 缩放 / 系统字体大小缩放 |
+| `real-webkit`（`webkit.json`） | Playwright WebKit 27.2（v2388，Safari 同内核）headless | **不是 Safari.app 真机**；渲染内核等价，控件行为/字体回退以真机为准 |
+| `sim-keyboard`（`keyboard.json`） | CDP 输入聚焦 + visualViewport 读取 | CDP 无法真实唤起软键盘；**键盘遮挡未真机验证** |
+| `sim-longlist`（`longlist.json`） | CDP 模拟滚动到末行 | 仅两组样本顶部/底部可达；无限滚动未遍历 |
+
+- **真实 Safari.app 自动化：BLOCKED。** `safaridriver` 27.0 在线（`/status` ready），但建会话被拒：`You must enable 'Allow remote automation' in the Developer section of Safari Settings to control Safari via WebDriver.` 该开关只能在 Safari GUI 内手动打开，无法脚本开启。手动复核步骤见第 8.2 节。
+- 审计脚本：`scripts/audit.mjs`（`smoke | matrix | interactive`）；补充取证 `scripts/extra-evidence.mjs`（`zoom | webkit | keyboard | longlist`）；单页调试 `scripts/debug.mjs`。
 
 ## 2. 矩阵规模与覆盖口径
 
 | 维度 | 覆盖 |
 |---|---|
-| 路由 | 23 条：登录；学生 首页 / 作答 / 词汇首页 / 测分 / 自主复习 / 班内榜 / 词库浏览 / 记录；教师 课堂面板 / 词汇发布及 results / trend / placement / pk / farm / review / leaderboard 七子页 / 学生详情；管理端 dashboard / 词库 / 用户 / 学校 |
+| 路由 | 24 条：登录；学生 首页 / 作答 / 词汇首页 / 测分 / 自主复习 / 班内榜 / 词库浏览 / 记录；教师 课堂面板 / 词汇发布及 results / trend / placement / pk / farm / review / leaderboard 七子页 / 学生详情；管理端 dashboard / 词库 / **授权台账（A #556）** / 用户 / 学校 |
 | 竖屏视口 | 320×568、360×640、390×844、430×932 |
-| 横屏 | 844×390（iPad/手机横屏，≥sm 断点，桌面密度） |
+| 横屏 | 844×390（iPad/手机横屏） |
 | 语言 | `zh` / `en` 双语 |
-| 矩阵记录 | 186 条（关键页 4 宽 × 中英 + 横屏；其余页 320/390/430 × 中英冒烟） |
-| 交互式记录 | 12 条：添加用户弹窗、新建班级词库内联面板、学生词库卡片展开（390/320 × 中英） |
-| 截图 | 198 个 png（186 矩阵 + 12 交互式；debug 调试截图未入库） |
-| 最终状态 | 矩阵 **186 PASS / 0 FAIL**；交互式 **12 PASS / 0 FAIL** |
+| CDP 矩阵记录 | **196 条**：13 关键页 ×10（4 竖宽 + 横屏 × 中英），11 非关键页 ×6（320/390/430 × 中英） |
+| 交互式记录 | **16 条**：添加用户弹窗、新建班级词库内联面板、学生词库卡片展开、侧栏抽屉导航（390/320 × 中英） |
+| 桌面缩放记录 | **14 条**（`real-chrome-zoom`：7 关键页 × 中英，CSS 640 宽） |
+| WebKit 记录 | **14 条**（`real-webkit`：7 关键页 × 中英，390 宽） |
+| 软键盘记录 | **4 条**（`sim-keyboard`：登录密码框、授权页筛选框，中英） |
+| 长列表记录 | **4 条 / 8 张截图**（`sim-longlist`：学生词库浏览、授权台账，中英各 top/bottom） |
+| 截图 | **262 个 png**：矩阵 196 + 授权页表格 reveal 10 + 交互 16 + 缩放 14 + WebKit 14 + 软键盘 4 + 长列表 8；debug 调试截图未入库 |
+| 最终状态 | CDP 矩阵 **196 PASS / 0 FAIL**；交互 **16 PASS / 0 FAIL**；缩放 **14 PASS**；WebKit **14 PASS**；软键盘 **4 PASS**；长列表 **4 PASS** |
 
-状态口径：`PASS` = 采集指标全部达标；`FAIL` = 溢出 / 字号 / 目标尺寸越线；`SKIP` = 触发条件未满足（本阶段无 SKIP）。第 5 节「修复清单」中的缺陷在修复后复测均为 PASS；`audit.json` 记录的是修复后的最终状态。
+状态口径：`PASS` = 采集指标全部达标；`FAIL` = 溢出 / 字号 / 目标尺寸越线；`SKIP` = 触发条件未满足。各 JSON 记录的是修复后的最终状态。
 
 ### 采集指标（`collectMetrics`）
 
@@ -37,89 +49,74 @@
 
 | 红线 | 结果 | 证据 |
 |---|---|---|
-| 320 宽无横向溢出 | ✅ 52 条 320 记录最大溢出 1px（容差内），无 >1px 溢出 | `audit.json` → `metrics.overflow` / `offenders` |
+| 320 宽无横向溢出 | ✅ 196 条矩阵记录最大溢出 0px，无 >1px 溢出 | `audit.json` → `metrics.overflow` / `offenders` |
 | 触控目标 ≥44px（高频主操作） | ✅ 头部、主 CTA、主选择 chips、视图 tab、弹窗主按钮、Select 触发条均 ≥44；残留 36px 次级控件见第 6 节 P2 | `audit.json` → `metrics.targets` |
-| 表单字号 ≥16px | ✅ 全部可见 input/select/textarea 字号 16px；`smallFonts` 为空 | `audit.json` → `metrics.smallFonts` |
-| 安全区 / 软键盘不遮提交按钮 | ⚠️ 静态核对：学生底栏 `pb-[max(0.5rem,env(safe-area-inset-bottom))]`，内容区 `pb-20` 避让；**软键盘顶起未真机验证**（第 7 节） | `StudentShell.tsx` 底栏类名；`metrics.fixedBottom` |
-| 长列表可滚动、底部操作可达 | ✅ 首屏无溢出；表格内部横向滑动由 `overflow-x` 容器承担；逐屏滚动态未遍历（第 7 节） | DataTable `min-w-0` + 内部滚动容器 |
+| 表单字号 ≥16px | ✅ 全部可见 input/select/textarea 字号 16px；`smallFonts` 为空（CDP / WebKit 双引擎复核） | `audit.json`、`webkit.json` → `metrics.smallFonts` |
+| 安全区 / 软键盘不遮提交按钮 | ⚠️ 静态核对底栏安全区 padding；软键盘顶起仅 CDP 聚焦模拟（`sim-keyboard` 主按钮均在 visual viewport 内），**真实键盘遮挡未验证** | `keyboard.json`；`metrics.fixedBottom` |
+| 长列表可滚动、底部可达 | ✅ 两组样本（词库 5 条、台账 8 条）末行滚动后可见；其余长列表逐屏遍历未做 | `longlist.json` → `metrics.lastRow` |
 | 中英双语 | ✅ 每条路由 zh/en 双份截图与指标 | 截图文件名 lang 段 |
-| 缩放不被锁 | ✅ `viewport` meta 未禁止缩放 | `metrics.zoomLocked=false` |
+| 缩放不被锁 | ✅ `viewport` meta 未禁止缩放，`zoomLocked=false` | `metrics.zoomLocked` |
 
-## 4. 本阶段未触碰的范围
+## 4. A #556 授权台账页与侧栏入口覆盖
 
-- A #556 新增 `/admin/vocabulary-licenses` 授权页、`routes/_layout/admin.tsx`、`components/AppSidebar.tsx`、`lib/vocabGovernance.ts`、`src/client/`：**第一阶段未审、未改**，第二阶段 A 合入 master 后补。
-- 全局 `AppSidebar.tsx` 抽屉 / 底部入口：本阶段按要求未动。
-- D #555（nginx / `config.py` / `db.py` / 探针）：不影响本块 UI，第二阶段合并回归。
+新增路由 `/admin/vocabulary-licenses`（operator，`src/routes/_layout/admin.vocabulary-licenses.tsx`），第二阶段补审，结论 **10 条矩阵记录全 PASS、0 溢出、无 <16 字号、无 <44 高频目标**。
 
-## 5. 修复清单（页面 / 视口 / 现象 / 根因 / 修复 / 证据）
+- **统计卡**：有效 / 临期 / 已过期 / 缺失 4 张，窄屏 `grid-cols-2`，≥md 四列；演示数据有效 8、其余 0。
+- **筛选**：学校（输入）、词库（输入）、授权状态（原生 select）三项；输入框 h-11 / 16px / 全宽，select h-11 / 16px。
+- **表格**：8 列（学校 / 词库 / 来源类型 / 授权状态 / 授权方 / 到期日 / 凭证 / 备注登记时间），置于 `.overflow-x-auto` 内横向滑动；窄屏有「横向滑动表格」提示文案；10 张 `-table.png` 为滚到表格后的证据。
+- **导出 CSV**：`AdminService.adminExportLicenseCsv()` 返回文本 → Blob 下载 `vocabulary-license-all-<date>.csv`；按钮 h-11；headless 未触发真实下载，链路为代码级核对。
+- **凭证链接**：`isSafeHttpUrl` 仅放行 `http/https`；链接 `target="_blank" rel="noopener noreferrer"`；其余（含 `javascript:` 等）按纯文本展示。演示数据无 http/https 凭证，UI 中凭证列呈纯文本。
+- **侧栏入口**：`AppSidebar.tsx` 平台设置分组下「授权台账 / License Ledger」（ShieldCheck 图标，路径 `/admin/vocabulary-licenses`）；经 SidebarTrigger 打开抽屉后可见且当前态高亮，证据 `sidebar-nav-*.png`（4 条交互记录）。
+- **窄屏**：320 / 390 头部、卡片、筛选、表格横滚均无页面级横向溢出。
 
-### 5.1 横向溢出
+## 5. 修复清单
 
-| # | 页面 | 视口 | 现象 | 根因 | 修复 | 证据 |
+### 5.1 第一阶段（提交 `cbb66bf`，18 项，基线已复测全绿）
+
+窄屏溢出 8 项：登录页英文头部 nowrap、学生/作答/词汇头部控件超宽、教师词汇扩展区控件不收缩、新建词库内联长 token、趋势 / PK 面板筛选项、学生词库卡片 grid 项、表格与管理端卡片 `min-w-0`。
+
+触控目标 10 项：LanguageToggle、Appearance、SidebarTrigger、InfoHint、教师词汇 8 枚视图 tab、LoadingButton、弹窗关闭钮、Radix Select 触发条、发布面板 chips、口语/词汇模块切换，移动端统一抬到 ≥44px（桌面 `sm:` 档位还原）。
+
+字号：全站可见表单控件 16px，未触发 iOS 聚焦放大。
+
+### 5.2 第二阶段新修复（本分支工作树）
+
+| # | 页面 / 控件 | 视口 / 引擎 | 现象 | 根因 | 修复 | 证据 |
 |---|---|---|---|---|---|---|
-| 1 | 登录页 | 320–390 英文 | 头部横向溢出约 25px | Logo 副标题 `whitespace-nowrap`，英文长串不可收缩；头部右组 `gap-6` 过宽 | 副标题移动端 `max-sm:hidden`；头部右组 `gap-3 sm:gap-6` | `login-en-320/360/390/430.png` |
-| 2 | 学生首页 / 作答 / 词汇各页 | 320 | 头部横向溢出约 16px | 头部控件（语言钮、账户菜单箭头、间距）合计超宽 | 语言钮移动端去掉装饰图标、宽度 36→44；账户菜单箭头移动端隐藏、`padding/gap` 收紧 | `student-home-*`、`student-practice-*`、`vocab-*-*` 320 截图 |
-| 3 | 教师词汇 · 扩展区（AdvancedWordPanel） | 320–390 | 目标词库选择框 / 搜索框 / 名称输入撑破 393px | 控件固定 `max-w-*`，窄屏不收缩 | 选择框 / 搜索 / 名称输入 `w-full sm:w-auto`；转入按钮 `w-full sm:w-auto` | `teacher-vocab-*-320/390.png` |
-| 4 | 教师词汇 · 新建班级词库内联面板 | 320–390 | 长说明 token（CSV 表头）不换行顶破容器 | 说明 `span` 无 `min-w-0/flex-1/break-words`；导入 select 非全宽 | 说明段 `min-w-0 flex-1 break-words`；导入 select `w-full max-w-full` | `inline-new-book-*-320/390.png` |
-| 5 | 教师词汇 · 趋势面板 | 320–390 | 4 个筛选项（粒度/周期/词库/题型）窄屏不收缩 | `label` 不可收缩，`select` 无全宽；长说明 Badge 不换行 | `label min-w-0`、`select w-full`；Badge 移动端 `w-full break-words sm:w-auto` | `teacher-trend-*-320/390/430.png` |
-| 6 | 教师词汇 · PK 面板 | 320–390 | 3 个筛选项 label/select 溢出 | 同 5 | 3 个 `label min-w-0`、2 个 `select w-full` | `teacher-pk-*-320/390/430.png` |
-| 7 | 学生词库浏览 | 320–390 | 长词库名卡片撑破 grid | grid 项 `li` 缺 `min-w-0` | `li` 加 `min-w-0` | `vocab-books-*-320/390.png`、`book-detail-*` |
-| 8 | 表格与管理端卡片 | 320–390 | 外层 flex 容器不收缩，长内容顶破页面 | DataTable 外层/内层 flex、admin 根容器、ExportCard 卡片/文本块缺 `min-w-0` | 上述容器补 `min-w-0`（ExportCard 文本块 `min-w-0`）；表格内部仍由滚动容器横向滑动 | `admin-index/admin-dashboard/admin-vocabbooks/admin-schools-*` |
+| 19 | 登录页（英文） | 320 / 360 / 390，CDP | 主 CTA「Sign in to workspace」在折线下：320 底部 929（超 85px）、360 877（33px）、390 853（9px）；中文各宽均在屏内 | 移动端营销区（ eyebrow / 标题 / 描述）与登录卡片纵向间距偏大，英文标题/描述换行后把卡片下推 | `LoginLayout` 移动端收紧：main `gap-4 pt-2 pb-6`（sm 还原 `gap-7 pt-4 pb-10`）；标题 `text-2xl leading-snug`；描述 `mt-2 leading-5`（sm 还原）；卡片 `p-4`（sm `p-8`）。桌面 lg 布局不动 | 复测：en 360 底部 837、390 817、430 829 均在屏内；`login-*-*.png`、`keyboard-login-en-390.png` |
+| 20 | 原生 `<select>`（7 文件 9 处） | WebKit 27，390 | WebKit 下原生 select 不被 `min-height` 拉伸，控件高仅 27–28px；Chrome 下 `min-h-11` 生效故第一阶段未暴露 | WebKit 对原生替换元素的 `min-height` 不参与控件盒高计算；需显式 `height` | 9 处原生 select 的 `min-h-11` 改为 `h-11`（显式 44px）：`StudentClassroomInbox`（求助类型）、`Admin/Dashboard/CostCard`（对账月份）、`ClassroomContactPanel`（求助记录 / 提醒状态）、`LeaderboardTeacherPanel`（可见范围）、`LessonReview`（示例选择）、`FollowupManager`（筛选条件 / 来源练习）、`LearningReportCard`（时间范围 / 教学练习）。Button / summary / TabsTrigger 等非 select 未改动 | `webkit.json` 复测：上述 select 不再进入 `<44` 清单；0 溢出、无小字号 |
 
-### 5.2 触控目标（高频主操作 ≥44px）
+## 6. P2 遗留观察项（本阶段未修）
 
-| # | 控件 | 视口 | 现象 | 根因 | 修复 | 证据 |
-|---|---|---|---|---|---|---|
-| 9 | 语言切换 LanguageToggle | 320–430 | 移动端按钮 36×28 | 档位 `h-7 min-w-9` 为桌面密度 | 移动端 `h-11 min-w-11`、图标移动端隐藏；桌面 `sm:h-7 sm:min-w-9` 还原 | 各页 `*-zh/en-390.png` 头部 |
-| 10 | 外观切换 Appearance | 320–430 | 移动端 36×36 | 原类名写反：`size-9 sm:size-11`（移动小、桌面大） | 改为 `size-11 sm:size-9` | `student-home-*`、`vocab-*-*` 头部 |
-| 11 | 教师壳层 SidebarTrigger | 320–430 | 36×36 | `size-9` 无响应式档位 | `size-11 sm:size-9` | `teacher-board/teacher-vocab-*` 头部 |
-| 12 | InfoHint 问号 | 320–430 | 命中区约 20px | 图标按钮无显式尺寸 | `size-10 -m-1.5`（命中区 40px，视觉不变） | 各面板说明问号 |
-| 13 | 教师词汇 8 枚视图 tab | 320–430 | 36px | `size="sm"` 固定 h-9 | 8 枚 tab `h-11 sm:h-9` | `teacher-vocab-*-320/390/430.png` |
-| 14 | LoadingButton（主提交按钮） | 320–430 | 默认档位 36px | 档位表与 Button 基线不一致（default h-9 / sm h-8 / lg h-10 / icon size-9） | 对齐 Button：default `h-11`、sm `h-9`、lg `h-12`、icon `size-11` | 弹窗保存、面板主按钮；`audit-interactive.json` |
-| 15 | 弹窗关闭按钮 | 320–390 | 36×36 | Dialog close `size-9` | `size-11 sm:size-9` | `dialog-add-user-*` |
-| 16 | Radix Select 触发条 | 320–430 | 36px | SelectTrigger 默认 `h-9`，与 16px/44px 输入框基线不一致 | 默认档位 `h-11`，sm `h-9`；桌面筛选条同步抬高与输入框对齐 | `admin-users/admin-schools/dialog-add-user/inline-new-book-*` |
-| 17 | 发布面板 · 模式 / 范围 chips | 320–390 | 36px | `size="sm"` 固定 | 练习/测验、全班/指定学生四枚主选择 `max-sm:h-11` | `teacher-vocab-*`、`inline-new-book-*` |
-| 18 | 口语 / 词汇模块切换 | 320–390 | 36px | `size="sm"` 固定 | 两枚切换钮 `max-sm:h-11` | `teacher-vocab-*` 头部 |
-
-### 5.3 字号
-
-- 全站可见 `input/select/textarea` 计算字号均为 **16px**（`smallFonts` 为空），未触发 iOS 聚焦放大条件。
-- 残留 14px 仅为：原生 checkbox/radio（不计入缩放判定）、Radix Select 弹层文本（非原生控件，不触发聚焦缩放）、展示性文字。
-
-## 6. P2 遗留观察项（本阶段未修，建议第二阶段统一评估）
-
-以下项在竖屏模拟下未阻断主流程，按「不做无关视觉重设计」原则未抬高；均已在 `audit.json` 的 `targets` 留尺寸明细。
+以下项在竖屏模拟下未阻断主流程，按「不做无关视觉重设计」原则未抬高；均在对应 JSON 的 `targets` 留尺寸明细。
 
 1. **原生 checkbox / radio 16×16**：登录记住、词汇勾选、弹窗启用、词卡开关等；标签行整体可点，未单独放大命中区。
-2. **行内文字链接高 16–36px**：登录页「注册账号 / 平台运营入口」、面包屑「← 我的课堂 / 返回词汇首页」、「结果页 / 去词库开一轮 / 去词库挑词 / 到题目库补充内容」等；属行内次级导航。
-3. **h-9（36px）次级按钮**：刷新、整体学习建议 / 本次学情分析、结束任务、周翻页 42×36、新建班级词库 ghost 钮、CSV 选择 / 创建空词库、全选 / 清空、去审核等行内或次级操作。是否把 Button `sm` 档位在移动端统一抬高到 44，需结合桌面密度与视觉批量评估，不在本块单点改动。
+2. **行内文字链接高 16–36px**：登录「注册账号 / 平台运营入口」、面包屑「← 我的课堂 / 返回词汇首页」、「结果页 / 去词库开一轮 / 去词库挑词 / 到题目库补充内容」等行内次级导航。
+3. **h-9（36px）次级按钮**：刷新、整体学习建议 / 本次学情分析、结束任务、周翻页 42×36、新建班级词库 ghost 钮、CSV 选择 / 创建空词库等行内或次级操作。Button `sm` 档位是否在移动端统一抬高到 44，需结合桌面密度批量评估。
 4. **Radix Select 触发条 14px 文本**：非原生弹层，不触发 iOS 聚焦放大；字号沿用桌面密度。
-5. **开发态 TanStack Router devtools 浮层**：采集时已按 label 排除，生产不出现。
+5. **InfoHint 问号命中区约 16–20px**：CDP 与 WebKit 下均偏小；图标视觉不变，是否放大命中区留待统一评估。
+6. **侧栏抽屉底部外观切换钮**：抽屉内次级，高 32px；抽屉展开态才可见，不影响主流程。
+7. **320 宽英文登录页 CTA**：修复后 320 底部仍约 889（折线下约 45px），页面可一次滚动到达；360 及以上已在屏内。320 宽设备为 legacy 机型，记为 P2。
+8. **开发态 TanStack Router devtools 浮层**：采集时已按 label 排除，生产不出现。
 
-## 7. 未覆盖与第二阶段待办
+## 7. 未覆盖与边界（不可作为真机结论）
 
-### 7.1 本阶段未覆盖（不可作为真机结论）
-
-- **真机验证**：未在 iPhone / Android 实机跑触摸、滚动、手势；全部为 CDP 模拟。
-- **桌面 / 系统缩放**：未跑 macOS Safari / Chrome 的 pinch 缩放、字体大小缩放与动态字体。
-- **软键盘顶起**：CDP 无法真实唤起软键盘；输入聚焦后 visual viewport 上移、提交按钮是否被键盘遮挡，未验证。
+- **真机验证**：未在 iPhone / Android 实机跑触摸、滚动、手势；全部为 CDP / 无头引擎模拟。
+- **真实 Safari.app**：BLOCKED（第 1 节）；`real-webkit` 仅为同内核无头代理。
+- **桌面 / 系统缩放**：`real-chrome-zoom` 为 CSS 视口折半 + DSR2 模拟；未跑系统字体大小缩放、动态字体（Dynamic Type）与真机 pinch。
+- **软键盘顶起**：CDP 无法真实唤起软键盘；`sim-keyboard` 仅聚焦输入框并读取 visualViewport，提交按钮在模拟视口内；真实键盘弹起后的遮挡 / 回弹未验证。
 - **刘海 / 灵动岛 / Home Indicator 安全区**：仅静态核对 `env(safe-area-inset-*)` 类名与底栏 padding；真机异形屏表现未验证。
-- **长列表逐屏滚动**：采集首屏指标；下拉加载、滚到底部操作可达性未逐屏遍历。
-
-### 7.2 第二阶段（等 A #556 合入 master 后）
-
-1. `git fetch origin && git merge origin/master`，合入 A #556（及 D #555）；冲突时保留 A 的授权页 / 侧栏入口与 C 的移动端修复。
-2. 补审 `/admin/vocabulary-licenses` 页与侧栏入口，重跑全矩阵并补截图 / README。
-3. 审计全局 `AppSidebar.tsx` 移动端抽屉 / 底部入口。
-4. 真机 / 桌面缩放补证；P2（第 6 节）sm 档位统一评估。
-5. 最终 push、开 PR 到 master；PR 正文写明模拟 / 真机边界、页面×视口矩阵、修复清单、测试、`Refs #517`。**不 merge、不部署、不跑 devledger。**
+- **长列表逐屏滚动**：仅词库浏览（5 条）、授权台账（8 条）两组顶部/底部可达取证；分页加载、虚拟列表与超长列表未遍历。
 
 ## 8. 复现命令（本地 dev，非生产）
 
+### 8.1 起服务
+
 ```bash
 # 后端 8034 → 本机 Postgres 5433（工作树 backend 目录；复用主仓 .venv）
+# 注意：必须带 PYTHONPATH=.，避免 editable .pth 把 app 解析到主仓 backend
 cd backend
-ENVIRONMENT=local POSTGRES_SERVER=localhost POSTGRES_PORT=5433 POSTGRES_DB=app \
+PYTHONPATH=. ENVIRONMENT=local POSTGRES_SERVER=localhost POSTGRES_PORT=5433 POSTGRES_DB=app \
   POSTGRES_USER=postgres POSTGRES_PASSWORD=changethis \
   APP_POSTGRES_USER=esa_app APP_POSTGRES_PASSWORD=<...> \
   PLATFORM_POSTGRES_USER=esa_platform PLATFORM_POSTGRES_PASSWORD=<...> \
@@ -129,24 +126,41 @@ ENVIRONMENT=local POSTGRES_SERVER=localhost POSTGRES_PORT=5433 POSTGRES_DB=app \
 # 前端 5181（工作树 frontend 目录）
 cd frontend
 API_PROXY_TARGET=http://127.0.0.1:8034 npx vite --host 127.0.0.1 --port 5181 --strictPort
+```
 
-# 审计矩阵 / 交互式（在 frontend 目录下执行）
+### 8.2 审计与补充取证（在 frontend 目录下执行）
+
+```bash
+# CDP 矩阵 / 交互式
 node ../docs/qa/20261125/c-mobile-audit/scripts/audit.mjs matrix
 node ../docs/qa/20261125/c-mobile-audit/scripts/audit.mjs interactive
+
+# 补充取证：桌面缩放 / WebKit 内核 / 软键盘模拟 / 长列表可达
+node ../docs/qa/20261125/c-mobile-audit/scripts/extra-evidence.mjs zoom
+node ../docs/qa/20261125/c-mobile-audit/scripts/extra-evidence.mjs webkit
+node ../docs/qa/20261125/c-mobile-audit/scripts/extra-evidence.mjs keyboard
+node ../docs/qa/20261125/c-mobile-audit/scripts/extra-evidence.mjs longlist
 
 # 单页调试：<path> [role] [lang] [width] [height]
 node ../docs/qa/20261125/c-mobile-audit/scripts/debug.mjs /t/DEMO01/vocab teacher zh 390
 ```
 
+### 8.3 真实 Safari 手动复核步骤（自动化 BLOCKED 时）
+
+1. 打开 Safari → 菜单栏 `Safari` → `Settings…` → `Developer` 标签 → 勾选 **Allow remote automation**（允许远程自动化）。
+2. 复核页面：登录页 320/390 中英、学生首页、词汇首页、教师课堂面板、教师词汇、管理端 dashboard、授权台账 `/admin/vocabulary-licenses`。
+3. 重点看：320/390 头部是否溢出、表格横滚是否顺滑、固定底栏是否遮内容、弹窗主按钮是否可达、聚焦输入框时页面是否自动滚动避让。
+4. 复核后可 `safaridriver -p <port>` 建会话回归；未开开关前 `POST /session` 必然返回权限错误。
+
 ## 9. 回归测试
 
-- `frontend/tests/e2e/responsive.spec.ts`：新增 320 / 430 两档窄宽锚点（登录、教师词汇任务、学生词库浏览无横向溢出 + 关键入口可达），与既有 390 / 820 / 1180 用例同口径。
-- 本块改动为样式 / 类名调整，未改业务逻辑；既有单元 233 项、组件 131 项全绿（见第 10 节闸门）。
+- `frontend/tests/e2e/responsive.spec.ts`：320 / 430 窄宽锚点（登录、教师词汇、学生词库无横向溢出 + 关键入口可达），与既有 390 / 820 / 1180 用例同口径。
+- 本块改动为样式 / 类名调整，未改业务逻辑；未改 lockfile、未手改 `src/client/` 生成码、后端零改动。
 
-## 10. 本地闸门结果
+## 10. 本地闸门结果（第二阶段，合并 master 后）
 
-- 前端 `npm run typecheck`：✅ 通过
-- 前端 `npm run lint`：✅ 无错误（仅 biome schema 版本提示 2.6.4→2.6.7 信息级）
-- 前端 `npm test`（node --test 233 + vitest 131）：✅ 全绿
+- 前端 `npm run typecheck`（tsc --noEmit）：✅ 通过
+- 前端 `npm run lint`（biome）：✅ 无错误（仅 schema 版本 2.6.4→2.6.7 信息级提示）
+- 前端 `npm test`：✅ node --test **234 passed / 0 fail**，vitest **131 passed**（23 文件）
 - 前端 `npm run build`：✅ 构建成功
-- 后端 `bash scripts/verify.sh --openapi`：格式 / ruff / ty / **1225 passed, 2 skipped** 全绿；openapi 步骤报 3 处差异，均为 A #556 授权契约（`VocabularyLicenseStatusItem/List`、`/admin/vocabulary/license/status`、导出 CSV 描述）。原因：复用主仓 editable venv（`.pth` 指向主仓 backend），spec 从已合入 #556 的主仓 master 生成，而本工作树基线仍是基点 c1a1a8c；**本块零后端改动**。主仓 master 上 `openapi_diff.py` 实测零漂移（234 路径 / 335 schemas）。第二阶段合入 master 后基线自动对齐，无需 `--openapi-update`。
+- 后端 `bash scripts/verify.sh --openapi`（`PYTHONPATH=.` 指向工作树 backend）：格式 / ruff / ty / 测试全绿，**1231 passed, 2 skipped**；**openapi 零漂移（234 路径 / 335 schemas）**。第一阶段记录的 3 处差异系 editable venv `.pth` 指向主仓 backend 所致；本阶段在工作树 `PYTHONPATH=.` 下复跑，基线已含 A+B+D 全部端点，零漂移。
