@@ -39,6 +39,7 @@ import {
   SessionInsightDialog,
   WordExplanationDialog,
 } from "@/components/Vocabulary/VocabAi"
+import { CefrBandBadge } from "@/components/Vocabulary/WordTagBadges"
 import { APP_NAME } from "@/config"
 import {
   playAudio as playCachedAudio,
@@ -723,11 +724,12 @@ function VocabPracticePage() {
               <PromptBody item={item} />
             ) : (
               <div className="rounded-2xl bg-secondary/50 p-5 sm:p-6">
-                {item.part_of_speech && (
-                  <Badge variant="outline" className="mb-2">
-                    {item.part_of_speech}
-                  </Badge>
-                )}
+                <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                  {item.part_of_speech && (
+                    <Badge variant="outline">{item.part_of_speech}</Badge>
+                  )}
+                  <CefrBandBadge band={item.cefr_band} compact />
+                </div>
                 <p className="text-xl font-semibold leading-snug sm:text-2xl">
                   {item.meaning_zh}
                 </p>

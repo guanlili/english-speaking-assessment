@@ -26,6 +26,7 @@ from app.models import (
     REVIEW_NOTE_SELF_CONFIRMED,
     SELF_PRACTICE_MAX_WORDS,
     SELF_PRACTICE_MIX_WRONG_RATIO,
+    VOCAB_CEFR_BANDS,
     VOCAB_PROMPT_TYPES,
     Classroom,
     Student,
@@ -52,6 +53,8 @@ from app.models import (
     VocabularyWordStatRow,
     VocabularyWrongWordItem,
     get_datetime_utc,
+    normalize_cefr_band,
+    normalize_exam_tags,
 )
 from app.services import vocab_governance, vocab_quiz
 from app.services import vocabulary_prompt_types as prompt_types_mod
@@ -97,7 +100,20 @@ def build_word_snapshot(
         "audio_url": word.audio_url,
         "morphology": prompt_types_mod.normalize_morphology(word.morphology),
         "prompt_types": list(prompt_types),
+        "exam_tags": list(word.exam_tags or []),
+        "cefr_band": word.cefr_band,
     }
+
+
+def snapshot_cefr_band(snapshot_item: dict[str, object]) -> str | None:
+    """从快照取 CEFR 档位：旧快照无此字段时安全回落 None；非法值不展示。
+
+    CEFR 只是内容标签，学生侧据此只读展示，不做等级评定或推断文案。
+    """
+    band = snapshot_item.get("cefr_band")
+    if isinstance(band, str) and band.strip().upper() in VOCAB_CEFR_BANDS:
+        return band.strip().upper()
+    return None
 
 
 def validate_prompt_types(prompt_types: list[str]) -> list[str]:
@@ -2244,6 +2260,9 @@ def _plan_item(
         headword=(
             str(snapshot_item["headword"]) if (show_headword or revealed) else None
         ),
+        # CEFR 只读标签：来自发布快照；旧快照无该字段时回落 None。
+        # 学生侧不下发 exam_tags，也不据此输出「你的等级是 X」之类评定文案。
+        cefr_band=snapshot_cefr_band(snapshot_item),
         answered=first is not None,
         is_correct=(first.is_correct if first is not None else None)
         if answers_visible
@@ -2526,6 +2545,8 @@ def _create_word(
         example_en=(word_in.example_en or "").strip() or None,
         audio_url=(word_in.audio_url or "").strip() or None,
         morphology=prompt_types_mod.normalize_morphology(word_in.morphology) or None,
+        exam_tags=normalize_exam_tags(word_in.exam_tags),
+        cefr_band=normalize_cefr_band(word_in.cefr_band),
         source=source,
         source_type=vocab_governance.source_type_from_source(source),
         review_status=review_status,

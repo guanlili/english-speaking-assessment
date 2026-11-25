@@ -48,7 +48,9 @@ logger = logging.getLogger(__name__)
 # ── 权限与组装辅助 ──────────────────────────────────────────────────
 
 
-def _word_public(word: VocabularyWord) -> VocabularyWordPublic:
+def _word_public(
+    word: VocabularyWord, include_exam_tags: bool = True
+) -> VocabularyWordPublic:
     return VocabularyWordPublic(
         id=word.id,
         headword=word.headword,
@@ -66,6 +68,8 @@ def _word_public(word: VocabularyWord) -> VocabularyWordPublic:
         reviewed_at=word.reviewed_at,
         review_note=word.review_note,
         version=word.version,
+        exam_tags=list(word.exam_tags or []) if include_exam_tags else [],
+        cefr_band=word.cefr_band,
     )
 
 

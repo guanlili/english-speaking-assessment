@@ -65,6 +65,8 @@ VERSION_CONTENT_FIELDS = (
     "morphology",
     "status",
     "review_status",
+    "exam_tags",
+    "cefr_band",
 )
 
 # 对比维度 → 快照字段分组
@@ -77,6 +79,7 @@ _DIFF_FIELD_GROUPS: dict[str, tuple[str, ...]] = {
         "accepted_spellings",
         "morphology",
     ),
+    "exam": ("exam_tags", "cefr_band"),
 }
 
 _PRIORITY_ERRORS = (
@@ -290,6 +293,8 @@ def _entry_from_word(word: VocabularyWord) -> dict[str, object]:
         "morphology": prompt_types_mod.normalize_morphology(word.morphology),
         "status": word.status,
         "review_status": word.review_status,
+        "exam_tags": sorted(word.exam_tags or []),
+        "cefr_band": word.cefr_band,
     }
 
 
@@ -319,6 +324,10 @@ def _normalize_entry(entry: dict[str, object]) -> dict[str, object]:
     )
     normalized["morphology"] = prompt_types_mod.normalize_morphology(
         entry.get("morphology")
+    )
+    tags = entry.get("exam_tags")
+    normalized["exam_tags"] = (
+        sorted(str(item) for item in tags) if isinstance(tags, list) else []
     )
     return normalized
 
@@ -484,6 +493,8 @@ def _restore_content(word: VocabularyWord, entry: dict[str, object]) -> None:
     word.audio_url = _str_field(entry, "audio_url")
     word.morphology = prompt_types_mod.normalize_morphology(entry.get("morphology"))
     word.status = str(entry.get("status") or "active")
+    word.exam_tags = _str_list_field(entry, "exam_tags") or []
+    word.cefr_band = _str_field(entry, "cefr_band")
     word.version += 1
 
 
@@ -542,6 +553,8 @@ def rollback_to_version(
                 ),
                 status=str(entry.get("status") or "active"),
                 review_status=str(entry.get("review_status") or "pending"),
+                exam_tags=_str_list_field(entry, "exam_tags") or [],
+                cefr_band=_str_field(entry, "cefr_band"),
             )
             session.add(word)
             session.flush()

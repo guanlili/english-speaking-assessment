@@ -124,6 +124,9 @@ ASSIGNMENT_PLAN = [
 ]
 
 WORDS_FILE = Path(__file__).resolve().parent / "words.json"
+# 扩展区高级备考词（SAT/ACT/GRE 为主，B2–C2）；独立演示词库，不污染五级演示书。
+ADVANCED_WORDS_FILE = Path(__file__).resolve().parent / "advanced_words.json"
+ADVANCED_BOOK_TITLE = "[DEMO] Advanced Exam Prep"
 
 
 def _fail(message: str) -> None:
@@ -156,6 +159,14 @@ def _load_words() -> dict[str, list[dict[str, object]]]:
     return grouped
 
 
+def _load_advanced_words() -> list[dict[str, object]]:
+    """扩展区高级备考词；文件缺失时返回空列表（不阻断五级演示种子）。"""
+    if not ADVANCED_WORDS_FILE.exists():
+        return []
+    data = json.loads(ADVANCED_WORDS_FILE.read_text(encoding="utf-8"))
+    return list(data.get("words", []))
+
+
 def _make_word(
     session: Session,
     *,
@@ -168,6 +179,8 @@ def _make_word(
     license_expires_at: datetime | None,
     license_note: str | None,
     reviewer_id: uuid.UUID | None,
+    exam_tags: list[str] | None = None,
+    cefr_band: str | None = None,
 ) -> VocabularyWord:
     word = VocabularyWord(
         tenant_id=tenant_id,
@@ -188,6 +201,8 @@ def _make_word(
         reviewer_id=reviewer_id,
         reviewed_at=datetime.now(UTC),
         review_note="本地演示词条，不用于生产",
+        exam_tags=list(exam_tags or []),
+        cefr_band=cefr_band,
         version=1,
     )
     session.add(word)
@@ -716,6 +731,65 @@ def seed_license_books(
     return books
 
 
+def seed_advanced_book(
+    session: Session,
+    tenant: Tenant,
+    teacher: User,
+    advanced_rows: list[dict[str, object]],
+) -> VocabularyBook | None:
+    """扩展区高级备考词独立演示词库（#517）。
+
+    与五级演示书分开：全部 ``source_type=demo``、``approved``，带 exam_tags 与
+    CEFR 档位（仅内容标签，不是学生测评结论）。转入教学词库走应用层审核/授权
+    门禁；本脚本只造可演示的高级词来源，不伪造官方词表或考试认证。
+    """
+    if not advanced_rows:
+        return None
+
+    book = VocabularyBook(
+        tenant_id=tenant.id,
+        title=ADVANCED_BOOK_TITLE,
+        description="本地演示：扩展区高级备考词（SAT/ACT/GRE 为主），标签与 CEFR 仅为内容分类，禁止导入生产",
+        scope="public",
+        owner_id=teacher.id,
+        status="active",
+        version=1,
+        source_type="demo",
+        license_owner=DEMO_LICENSE_OWNER,
+        license_ref=DEMO_LICENSE_REF,
+        license_note=DEMO_LICENSE_NOTE,
+    )
+    session.add(book)
+    session.flush()
+
+    words = [
+        _make_word(
+            session,
+            tenant_id=tenant.id,
+            source_row=row,
+            source_type="demo",
+            legacy_source="demo",
+            license_owner=DEMO_LICENSE_OWNER,
+            license_ref=DEMO_LICENSE_REF,
+            license_expires_at=None,
+            license_note=DEMO_LICENSE_NOTE,
+            reviewer_id=teacher.id,
+            exam_tags=list(row.get("exam_tags") or []),  # type: ignore[arg-type]
+            cefr_band=row.get("cefr_band"),  # type: ignore[arg-type]
+        )
+        for row in advanced_rows
+    ]
+    _attach_items(session, book, words)
+    governance.capture_version(
+        session,
+        book,
+        actor=teacher,
+        action="create",
+        summary=f"创建扩展区高级备考演示词库，共 {len(words)} 词",
+    )
+    return book
+
+
 def _book_words(session: Session, book: VocabularyBook) -> list[VocabularyWord]:
     rows = session.exec(
         select(VocabularyWord)
@@ -1211,6 +1285,7 @@ def main() -> None:
     engine = safe_engine()
     anchor = _anchor_date()
     grouped = _load_words()
+    advanced_rows = _load_advanced_words()
 
     # 兼容 C 后端：assignment.source_book_ids 列可能尚未落地
     inspector = inspect(engine)
@@ -1247,6 +1322,7 @@ def main() -> None:
 
         level_books = seed_level_books(session, tenant, teacher, grouped)
         license_books = seed_license_books(session, tenant, teacher, grouped, anchor)
+        advanced_book = seed_advanced_book(session, tenant, teacher, advanced_rows)
         assignments = seed_assignments(
             session,
             tenant,
@@ -1276,6 +1352,9 @@ def main() -> None:
         license_word_total = sum(
             len(_book_words(session, b)) for b in license_books.values()
         )
+        advanced_word_total = (
+            len(_book_words(session, advanced_book)) if advanced_book is not None else 0
+        )
         version_rows = session.exec(
             select(VocabularyBookVersion).where(
                 VocabularyBookVersion.tenant_id == tenant.id
@@ -1290,6 +1369,9 @@ def main() -> None:
         print("本地演示数据种子完成（demo-only，不进生产）：")
         print(f"  五级演示词库: {len(level_books)} 个，词条 {word_total} 个")
         print(f"  授权演示词库: {len(license_books)} 个，词条 {license_word_total} 个")
+        print(
+            f"  扩展区高级备考词库: 词条 {advanced_word_total} 个（SAT/ACT/GRE 为主，B2–C2）"
+        )
         print(
             f"  词库版本快照: {len(version_rows)} 行（KET 3 版 / 教材 2 版 / 其余各 1 版）"
         )

@@ -9,6 +9,7 @@
 | 文件 | 说明 |
 | --- | --- |
 | `words.json` | 220 条演示词条（UTF-8，无 BOM），五级各 44 |
+| `advanced_words.json` | 150+ 扩展区高级备考词（SAT/ACT/GRE 为主，B2–C2），带 `exam_tags` 与 `cefr_band` |
 | `validate_words.py` | 纯标准库本地校验脚本，可重复运行 |
 | `seed_demo.py` | 幂等种子脚本：先清理旧 demo 命名空间，再写入一套可演示的 mock 数据 |
 | `cleanup_demo.py` | 一键清理脚本：只删除固定 demo 命名空间内的对象，删除前做外部引用护栏 |
@@ -71,6 +72,14 @@ python3 backend/scripts/demo_vocab/validate_words.py
 
 校验项：顶层 `demo / license_owner / license_ref / note` 标记齐全；总数 220、五级各 44；`headword` 唯一且为单个英文单词；例句含 `headword` 原形（大小写不敏感，按词边界匹配）；`morphology` 拼接等于 `headword`、`kind` 合法；每条 `source_type == "demo"`、`review_status == "approved"`；两段及以上拆解词条数 ≥ 80。退出码 `0` 通过，`1` 存在错误。
 
+`advanced_words.json` 另校验：`exam_tags` ∈ `SAT/ACT/GRE/CET4/IELTS/TOEFL` 且非空不重复；`cefr_band` ∈ `B2/C1/C2`；`headword` 与五级词表不重名、例句含原形；总数 ≥ 150。
+
+### 高级词口径（#517）
+
+- 高级词独立落在 `[DEMO] Advanced Exam Prep` 公共演示词库，**不混入**五级演示书；
+- `exam_tags` 与 `cefr_band` 只是词条内容分类标签，**不是对学生的等级评定**；种子不伪造官方考试大纲或认证；
+- 转入教学词库必须走应用层审核（`approved`）与授权门禁，demo 来源免授权但仍需审核状态，种子脚本不绕过。
+
 ---
 
 ## 种子与一键清理（本地 mock）
@@ -120,6 +129,7 @@ POSTGRES_SERVER=localhost POSTGRES_PORT=5433 \
   - `[DEMO] 授权教材词库`：`source_type=textbook`，有效期未来，20 词，2 个版本；
   - `[DEMO] 过期授权词库`：`source_type=licensed`，有效期已过，10 词；
   - 3 条真实授权审计行（教材库续期备注、教材词条引用号变更、过期库授权落账），`changes` 带 `from / to` 前后值，可查可追溯。
+- **扩展区高级备考词库**（#517）：`[DEMO] Advanced Exam Prep`，150+ 词来自 `advanced_words.json`；`source_type=demo`、`review_status=approved`，每条带 `exam_tags`（SAT/ACT/GRE 为主，含 CET4/IELTS/TOEFL）与 `cefr_band`（B2–C2）。标签仅作内容分类，不是学生测评结论；不伪造官方词表。
 - **课堂与师生**：教师 `vocabdemo.teacher@example.com`（role=teacher，绑定两间课堂）；VOCDEMO1 12 名学生、VOCDEMO2 6 名学生，显示名为“演示学生01…”假名。
 - **演示校级管理员**：`vocabdemo.admin@example.com`（username `vocabdemo.admin`，role=`school_admin`，`tenant_id` 归属 `vocabdemo` 租户，显示名“演示管理员”），供 `/admin/vocabbooks` 词库授权 / 版本管理取证；口令来源与教师/学生相同（`VOCAB_DEMO_PASSWORD`，未设置走 README 本地 fallback）。幂等：重复 seed 不重复建；cleanup 按 demo 租户命名空间一并清掉。
 - **模块授权**：`vocabdemo` 整校开通两个模块，`enabled=True`、`grant_type=manual`，按 `(tenant_id, module_key)` 幂等补齐——`vocabulary`（词库 / PK / 农场 / FSRS 子能力）与 `speaking`（课堂看板底座闸门；未开通时课堂业务端点 403 `module_not_enabled:speaking`）。

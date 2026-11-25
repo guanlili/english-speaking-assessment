@@ -594,6 +594,8 @@ def entry_public(entry: VocabularyLevelEntry) -> VocabularyLevelEntryPublic:
         needs_review=entry.needs_review,
         note=entry.note,
         sources=entry.sources or [],
+        exam_tags=list(entry.exam_tags or []),
+        cefr_band=entry.cefr_band,
         status=entry.status,
     )
 
