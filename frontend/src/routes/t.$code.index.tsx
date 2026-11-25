@@ -37,6 +37,7 @@ import {
 import { LessonReview } from "@/components/Teaching/LessonReview"
 import { ModuleDeniedPanel } from "@/components/Teaching/ModuleDeniedPanel"
 import { TeacherTeamCard } from "@/components/Teaching/TeacherTeamCard"
+import { VocabBoardSummaryCards } from "@/components/Teaching/VocabBoardSummaryCards"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -606,6 +607,11 @@ function TeacherBoardPage() {
               inactiveCount={inactiveCount}
             />
             <ClassTrendCard code={code} />
+            <VocabBoardSummaryCards
+              code={code}
+              pk={board.vocabulary_pk}
+              farm={board.vocabulary_farm}
+            />
             {board.current_exercise && (
               <ClassGapsCard
                 code={code}
