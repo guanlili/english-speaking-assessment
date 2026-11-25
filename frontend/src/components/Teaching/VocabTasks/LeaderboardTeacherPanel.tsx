@@ -318,11 +318,13 @@ export function LeaderboardTeacherPanel({ code }: { code: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-20">
+                  <TableHead className="w-16 px-2 sm:w-20 sm:px-4">
                     {t({ zh: "名次", en: "Rank" })}
                   </TableHead>
-                  <TableHead>{t({ zh: "学生", en: "Student" })}</TableHead>
-                  <TableHead className="text-right">
+                  <TableHead className="px-2 sm:px-4">
+                    {t({ zh: "学生", en: "Student" })}
+                  </TableHead>
+                  <TableHead className="whitespace-normal px-2 text-right sm:px-4">
                     {t({ zh: "本周掌握词数", en: "Words mastered" })}
                   </TableHead>
                 </TableRow>
@@ -330,16 +332,16 @@ export function LeaderboardTeacherPanel({ code }: { code: string }) {
               <TableBody>
                 {entries.map((entry) => (
                   <TableRow key={entry.alias_no}>
-                    <TableCell className="tabular-nums text-muted-foreground">
+                    <TableCell className="px-2 tabular-nums text-muted-foreground sm:px-4">
                       {t({ zh: `第 ${entry.rank} 名`, en: `#${entry.rank}` })}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="px-2 sm:px-4">
                       <EntryName
                         entry={entry}
                         anonymous={view?.settings.anonymous ?? true}
                       />
                     </TableCell>
-                    <TableCell className="text-right font-semibold tabular-nums">
+                    <TableCell className="px-2 text-right font-semibold tabular-nums sm:px-4">
                       {entry.score}
                     </TableCell>
                   </TableRow>
