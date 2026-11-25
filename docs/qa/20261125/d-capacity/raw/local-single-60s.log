@@ -1,0 +1,379 @@
+<worktree>/backend/app/core/config.py:280: UserWarning: The value of SECRET_KEY is "changethis", for security, please change it, at least for deployments.
+  warnings.warn(message, stacklevel=1)
+<worktree>/backend/app/core/config.py:280: UserWarning: The value of POSTGRES_PASSWORD is "changethis", for security, please change it, at least for deployments.
+  warnings.warn(message, stacklevel=1)
+<worktree>/backend/app/core/config.py:280: UserWarning: The value of FIRST_SUPERUSER_PASSWORD is "changethis", for security, please change it, at least for deployments.
+  warnings.warn(message, stacklevel=1)
+<worktree>/backend/app/core/config.py:280: UserWarning: The value of FIRST_OPERATOR_PASSWORD is "changethis", for security, please change it, at least for deployments.
+  warnings.warn(message, stacklevel=1)
+<main-repo>/backend/.venv/lib/python3.14/site-packages/sqlmodel/main.py:582: UserWarning: Field name "exam_settings" in "SentenceWithPassage" shadows an attribute in parent "RepeatSentence"
+  "SQLModel", super().__new__(cls, name, bases, dict_used, **config_kwargs)
+<main-repo>/backend/.venv/lib/python3.14/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 10 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+  return self._jws.encode(
+INFO:app.requests:http_request request_id=918b2e81be964fb7aaddfcf61984c72e method=POST route=/login/access-token status=200 duration_ms=46.4
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+<main-repo>/backend/.venv/lib/python3.14/site-packages/jwt/api_jwt.py:370: InsecureKeyLengthWarning: The HMAC key is 10 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+  decoded = self.decode_complete(
+<main-repo>/backend/.venv/lib/python3.14/site-packages/jwt/api_jwt.py:370: InsecureKeyLengthWarning: The HMAC key is 10 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+  decoded = self.decode_complete(
+INFO:app.requests:http_request request_id=f83176a946af466d8c2f5fb94812ee41 method=POST route=/vocabulary/books status=200 duration_ms=225.1
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/vocabulary/books "HTTP/1.1 200 OK"
+<main-repo>/backend/.venv/lib/python3.14/site-packages/jwt/api_jwt.py:370: InsecureKeyLengthWarning: The HMAC key is 10 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+  decoded = self.decode_complete(
+INFO:app.requests:http_request request_id=39918ec397834235a7c6fdd8610d8b8c method=POST route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=52.5
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+<main-repo>/backend/.venv/lib/python3.14/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 10 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+  return self._jws.encode(
+INFO:app.requests:http_request request_id=09debbbe398341bf926c4cd39d5ca2ca method=POST route=/login/access-token status=200 duration_ms=36.1
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=5dd1b3a55e6e478ca4b22aa3698944d6 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=30.7
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=1a334df34bf14ca6946f9dc345dc3cd8 method=POST route=/login/access-token status=200 duration_ms=68.8
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=bc7ad469c3a942d68a7b9bd55598e220 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=25.9
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=89d5d1bb60934e66950a97567da42302 method=POST route=/login/access-token status=200 duration_ms=35.7
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=0b59907b13fa46e3b6fc33c1b3f42662 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=19.4
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=05d64878ae754d0f88e5d77e5d50f752 method=POST route=/login/access-token status=200 duration_ms=37.2
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=bc64590eb6354f50bcc94447a7421425 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=24.5
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=3addb09ec1ca46868086b503215c8bb5 method=POST route=/login/access-token status=200 duration_ms=34.7
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=825c2e0f5bbf4fe9a598ebc992c03479 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=14.1
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=296f7080fdb44256a4dc3be9bb0c6715 method=POST route=/login/access-token status=200 duration_ms=34.5
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=09a805c204aa4f3b80ec1853e5065604 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=17.3
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=72baa3f63bd94cd88f10c1a02bce848e method=POST route=/login/access-token status=200 duration_ms=41.4
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=f6dad28684a34c94ab4cc8f0a57f0094 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=26.8
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=0b714f43c5e2443eb19354a6e5093569 method=POST route=/login/access-token status=200 duration_ms=36.4
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=6f16ece8abc04e1db1eccff97b98d5dc method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=25.8
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=25c3566b4b8c4a98b442fefd2357ca47 method=POST route=/login/access-token status=200 duration_ms=34.8
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=d23fb500cdf345a39070e234c551712b method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=22.8
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=faff190956154cd3b9e0d662f8fd3ec0 method=POST route=/login/access-token status=200 duration_ms=36.0
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=7c98baded68b40639afd47a1eb112ec6 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=27.2
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=3704d868c301447bb3a4090c626b57e4 method=POST route=/login/access-token status=200 duration_ms=36.1
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=0a101f30a415452b97e6c350a068b2ab method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=24.1
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=1959edd6d88a4761afc6f06d78ca0f22 method=POST route=/login/access-token status=200 duration_ms=33.9
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=3fbca5dff326402da34cef57b4498879 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=30.0
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=8a948dceadd04ce880e591a665999a93 method=POST route=/login/access-token status=200 duration_ms=42.3
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=9560b2e895d34231976476ac30829b08 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=27.3
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=83744326d27f4340bde31332c0c466d5 method=POST route=/login/access-token status=200 duration_ms=33.9
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=7fdda067fb514235938b7625597793ec method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=25.6
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=659b489f3fe84f82896bd67a6faca34f method=POST route=/login/access-token status=200 duration_ms=37.5
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=c0a034943e804d88b66208cc53999f70 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=32.2
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=02cb7b8cd8bf4deab45df794f08ee568 method=POST route=/login/access-token status=200 duration_ms=36.0
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=ce166085f4404818b1ef9a6dc7070048 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=18.7
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=c4ce891ffcfc4ab4a71ffa104a23f0b9 method=POST route=/login/access-token status=200 duration_ms=34.3
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=29e613509b8342a99af583b820e4158b method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=20.7
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=3e074a5610bc4fb88e0de3daf7538da1 method=POST route=/login/access-token status=200 duration_ms=45.1
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=f69ce68647ef41659b95adde0180b902 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=32.3
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=6d1d1affba1b4cbea27e39ee8b045965 method=POST route=/login/access-token status=200 duration_ms=32.9
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=0d7ba242063645608adbf92146e58b66 method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=24.2
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=1e3f229f524a450a9d499bb55e0953ff method=POST route=/login/access-token status=200 duration_ms=34.0
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/login/access-token "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=318e94006f6943ba982aaaa40510438b method=POST route=/classes/{code}/vocabulary/pk/lobby/join status=200 duration_ms=25.4
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby/join "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=e821a3dd1d1141b2a2a7588bb66d9bce method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=21.2
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=90994f90fd704ee5ab41985f55912a14 method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=19.2
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=f915eb63118b4ccca38c1c7f778dc5cf method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=14.9
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=a69aa23729fb453d88dd82a2cde8db76 method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=13.7
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=48e30461abf2448f9a878ecc9c2d8db3 method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=13.5
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=3589f94003594d3d918d6a4e9d9507df method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=12.6
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=5b813f05bfa9445885030f362c5b8960 method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=11.0
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=0faf457cccf04390b9f7dcea544b4106 method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=11.1
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=386eb87faf874df7a68f212b42acd2da method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=9.7
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=6f79c3c8efde48e5bd0782f26dd29ad0 method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=8.7
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=276d41f83721496f8c4761e7533aeeaa method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=8.7
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=8984fab247ce4cf78d64a2b885eaea56 method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=8.5
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=37b6f2a6e0cf46f1aca6ca8c6ec6f85c method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=8.4
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=2a7fe86381544b54a8d85b3ba2b81bc0 method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=9.2
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=bdc2441c341445f3a58ae2a23bff7454 method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=10.9
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=cd7dceeb051f4c0f80e02700ec2ce850 method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=16.1
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=71d7c53124d84c9dae9650f75bbd0f35 method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=9.8
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=2f545db9c17947a7881db42c4915fbea method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=9.2
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=badc29a77ee54a028b3e019d93d095fe method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=9.0
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=cdb13c2f529c4997b68f2b47fdcc7de5 method=GET route=/classes/{code}/vocabulary/pk/lobby status=200 duration_ms=9.5
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/lobby "HTTP/1.1 200 OK"
+
+规模：20 玩家 / 10 场 1v1（目标 20 玩家 / 10 场）· 副本数 1（副本0 20 人）
+
+INFO:app.requests:http_request request_id=cce81b05dc5a495bb3bd7eb93363d932 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=20.5
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=9d06593abf934c36bafd2435de5e8a49 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=48.5
+INFO:app.requests:http_request request_id=f32257ef6b10428c94b6f35dad1087da method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=50.0
+INFO:app.requests:http_request request_id=710bb85c6c494e0abca639c768b8ab51 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=46.5
+INFO:app.requests:http_request request_id=f363026b73c04dac957ee6a1d04340ac method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=44.8
+INFO:app.requests:http_request request_id=965956eaa3c24c7e82543680545dc4a9 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=39.9
+INFO:app.requests:http_request request_id=62dacd9e99424e5a8148ee58c93828e9 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=45.7
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=6ee48f5c342549a79674c29a5b7f8ed6 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=56.6
+INFO:app.requests:http_request request_id=6d4e087249fc460ca83ab547ce95fc3b method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=50.4
+INFO:app.requests:http_request request_id=936e9f45a906448682f82bc510fcd195 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=45.2
+INFO:app.requests:http_request request_id=18e2dfd443eb45b7830b26e233d0ed53 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=50.9
+INFO:app.requests:http_request request_id=e4e043dcea1c4d4998eb517026fa1cf4 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=43.6
+INFO:app.requests:http_request request_id=29e7e35f2ad44743a823c9acc9b9bd76 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=41.4
+INFO:app.requests:http_request request_id=c81ef37bb0a041faa413c075ee7aad7d method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=39.7
+INFO:app.requests:http_request request_id=a37847c75b244a09bff07dad6b876d13 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=51.1
+INFO:app.requests:http_request request_id=0a51809b8fd44c259b70d20395135d28 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=48.9
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=cd748ca6d6ce468384f4f278e755f3bb method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=35.2
+INFO:app.requests:http_request request_id=738802bb9389444e92b10077338aaf4a method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=44.2
+INFO:app.requests:http_request request_id=13c3ed29cc2944ee95351eda4e10123b method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=31.9
+INFO:app.requests:http_request request_id=a1e2616a9b094383bae5d78f6ab1c59b method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=52.9
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/f19635e5-b377-4994-90fb-2201c2c615e3/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/ab750e4f-6c4a-404d-823b-f346fc3b3bab/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/75f27f46-ffb2-4c42-a5ae-9eabbed43067/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/75f27f46-ffb2-4c42-a5ae-9eabbed43067/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/f19635e5-b377-4994-90fb-2201c2c615e3/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/ab750e4f-6c4a-404d-823b-f346fc3b3bab/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=4b00768b29ee421ba984afde73a0ba5e method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=10.0
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/55949e38-0e04-48e1-96c2-871f1f073f43/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/55949e38-0e04-48e1-96c2-871f1f073f43/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/b6deb0ad-4a2d-42d7-b3fd-480f5acd45ab/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=265aebf422c84c0b894577dc982aed50 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=26.2
+INFO:app.requests:http_request request_id=5821c0b7910542159d354cef15767e82 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=26.5
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/b6deb0ad-4a2d-42d7-b3fd-480f5acd45ab/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/answers "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=61138c2deec94e28bf3397277a839ec3 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=19.2
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=41fc05ceb6c64281ae8509a6f0b4c79a method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=21.7
+INFO:app.requests:http_request request_id=1ed859967af54a5db67f9b85bddc9d5f method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=18.4
+INFO:app.requests:http_request request_id=ad4f65b078f1423c9c918954444237c4 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=18.0
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/answers "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/answers "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/f19635e5-b377-4994-90fb-2201c2c615e3/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=3f074e2550c448f498a4039f7a1dd9d7 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=18.0
+INFO:app.requests:http_request request_id=6d65b1be05574a23a0671072d59c80b8 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=18.9
+INFO:app.requests:http_request request_id=4c44122ce41e4733822ab90e95ee24b6 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=19.6
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/answers "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/ab750e4f-6c4a-404d-823b-f346fc3b3bab/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=61cadb551dcf438ab81755435b1e04a4 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=16.5
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/f19635e5-b377-4994-90fb-2201c2c615e3/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=3672fc198fa2416d83c7e1cc806c4491 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=16.0
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/75f27f46-ffb2-4c42-a5ae-9eabbed43067/answers "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/55949e38-0e04-48e1-96c2-871f1f073f43/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=513fb3a727954875b1c7016fded4735b method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=16.5
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=222bea12e9ba4130a6c553c0834683a8 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=20.9
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=98014090bc104329a6dffb76fd61a310 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=20.2
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=aa9bf40a4dc249179672fe6a2b04c786 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=21.3
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/75f27f46-ffb2-4c42-a5ae-9eabbed43067/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=be492b607aa14ceb8e973b033f637417 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=20.4
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/b6deb0ad-4a2d-42d7-b3fd-480f5acd45ab/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=1f29f26ee80142c59d062ab49a1e5f99 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=19.2
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/b6deb0ad-4a2d-42d7-b3fd-480f5acd45ab/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=e2ae57895c5040d6ae20e9afb3b6b819 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=16.5
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/ab750e4f-6c4a-404d-823b-f346fc3b3bab/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=e40043019eae48d392b9b8d2195dcae1 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=15.3
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/55949e38-0e04-48e1-96c2-871f1f073f43/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=f826b57483d040d9873d43cccd18e000 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=4.8
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=8c1ac007e98a45608bc798814b079680 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=8.3
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/events "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=ba9e64f7d0f44d96ac2df256854c3846 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=9.6
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=3aeb1559fc7540168fb58fa68fdf17f0 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=15.1
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=278d3224c06940dcbe594c8fce2d790a method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=10.3
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=caadc6e470ba49c3800c2344bdf90d1a method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=13.2
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=be5e3f584c23491fa25e9022c3801bdb method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=12.9
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=03fb2c412f74484dac286b87579120ed method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=15.5
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/events "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=0df5982853744113bba4af5bc23ba59e method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=22.0
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=fc9073301a374aa7988948a212f17944 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=17.6
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=e0c0d2994f6d4ca5a8adf9b744e6587f method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=9.2
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=d13e3d5aa3a9446f9823d8ac19e39167 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=17.3
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=91fb209ebc284478ac1120de7071195c method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=11.2
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=2591d82ee18543859efa4c2f7aa6562e method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=13.7
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/events "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=879ac31d035c48b8b7fd416b84d2c92e method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=15.0
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=b7c6915a7947492cad10ccf244107d57 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=15.3
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=91f7b1d284f745a188fbf319e63abc0f method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=9.3
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=e72a3ad6e0e846d18d9044b981a90353 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=16.1
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=ef336e0313be45a198c5b1e544c3f604 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=11.9
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=70577eb1dbff4a288b39d7e41183a6b7 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=16.8
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/events "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=694b0923833b41e2a471132b31bdaae1 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=24.6
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=7d3e0fc4dc4743b0aca2102978f6c106 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=20.7
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=ae99feccfc5c4aba85b87188ef1077c0 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=8.2
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=4b46dbc55f3b4903adeb2573df6141ce method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=14.6
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=ccbb09db28034896b0a28a4b30bba8b7 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=12.5
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=7fe708d2c6a24a278d83ee8ec873ea7b method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=14.3
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/events "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=1fb387e470a043409bacbb397e6088af method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=20.9
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=dc0b26647f5f408bb983ac4e54b235ed method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=18.1
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=b6e79f4a82334841a34ee96dafeb1d5e method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=10.9
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=ef28bbdc541b4f59a0723b3a146e3491 method=POST route=/classes/{code}/vocabulary/pk/matches/{match_id}/answers status=200 duration_ms=19.6
+INFO:httpx:HTTP Request: POST http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/answers "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=ba32a04f8296455391c5858e6e60dfe6 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=25.3
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/events "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=83c63914b9604cef827184f6abc8b260 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=160.0
+INFO:app.requests:http_request request_id=8ba38da116774332b7857fcf97fc86b8 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=176.5
+INFO:app.requests:http_request request_id=6a548760d2bb49fab13387936dd51030 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=174.4
+INFO:app.requests:http_request request_id=0e4ae6bdaa0f44da976151cad81f54a9 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=174.5
+INFO:app.requests:http_request request_id=8e295082b0d14145b4c5d96d9f0b37ea method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=174.8
+INFO:app.requests:http_request request_id=0c3f84b49ec543f4aec0d9d9da923d96 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=170.5
+INFO:app.requests:http_request request_id=5a7f46e814b348a6b42c8e47937d387c method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=169.7
+INFO:app.requests:http_request request_id=6c678ad95fcf407694a7a3d7a1103b94 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=174.6
+INFO:app.requests:http_request request_id=1ff996e1793c45859f93d3af7e85b125 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=176.7
+INFO:app.requests:http_request request_id=723ed1c06ebe453db58b82542617c90a method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=174.9
+INFO:app.requests:http_request request_id=b9e8905c4d824cf08fed681fb968d02a method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=174.6
+INFO:app.requests:http_request request_id=ab6aeb189c7c45dc847f13fa1eef5250 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=166.8
+INFO:app.requests:http_request request_id=41a8c28ca8aa4265ac55143e28d3227b method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=174.6
+INFO:app.requests:http_request request_id=f95f74ce73b34b8fa416e6695716ab97 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=169.2
+INFO:app.requests:http_request request_id=502f129401e2460eadba7e33ab806e21 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=165.2
+INFO:app.requests:http_request request_id=db75b2a378964adf953ad555972a7014 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=168.0
+INFO:app.requests:http_request request_id=40686777a5d94d3ea34dea122f72508c method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=168.6
+INFO:app.requests:http_request request_id=dedc3578f73e42bc8ed64c78ddc90a59 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=166.5
+INFO:app.requests:http_request request_id=5550cc39a345406cb8b61901708bdca7 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/events status=200 duration_ms=163.0
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/f19635e5-b377-4994-90fb-2201c2c615e3/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/f19635e5-b377-4994-90fb-2201c2c615e3/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/ab750e4f-6c4a-404d-823b-f346fc3b3bab/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/55949e38-0e04-48e1-96c2-871f1f073f43/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/ab750e4f-6c4a-404d-823b-f346fc3b3bab/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/b6deb0ad-4a2d-42d7-b3fd-480f5acd45ab/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/75f27f46-ffb2-4c42-a5ae-9eabbed43067/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/75f27f46-ffb2-4c42-a5ae-9eabbed43067/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/55949e38-0e04-48e1-96c2-871f1f073f43/events "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/b6deb0ad-4a2d-42d7-b3fd-480f5acd45ab/events "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=2df9ca92878e4a798b748c74df8013aa method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=90.9
+INFO:app.requests:http_request request_id=09cc66f9b66b43c3bdd19101b3de8638 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=91.0
+INFO:app.requests:http_request request_id=74e1ce0f055e47b3a5365f3956b1c109 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=91.1
+INFO:app.requests:http_request request_id=def4ebbfb4a746099f91751cb50d41f7 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=89.0
+INFO:app.requests:http_request request_id=76b573ff98474ea3962ad7a0369a9f7f method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=99.8
+INFO:app.requests:http_request request_id=2567392ea2fd43d2a5ed7d8f3cec9a1e method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=100.8
+INFO:app.requests:http_request request_id=0ffe237f91924df0b65bc2f1bbd5b82b method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=92.3
+INFO:app.requests:http_request request_id=40416fb62da441d38dc22bdbbf2754e2 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=99.2
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=a38662271d274dc28dd8c480ac92c94d method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=93.4
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/1ffb6d62-578a-464e-9271-c009a57711f4/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=6eb84c28c6aa48499d401f811be6cb25 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=104.6
+INFO:app.requests:http_request request_id=9675be925a424888a7851ebef989804e method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=88.3
+INFO:app.requests:http_request request_id=7246117916074615bc0a1df29031c669 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=97.9
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=46c6d0a05dac4fd2b85a48a3dd8d2320 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=90.6
+INFO:app.requests:http_request request_id=6adba4c9eb83400f8a9628f2d101a900 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=90.5
+INFO:app.requests:http_request request_id=3e14f27377264b01a40a8667ca475582 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=94.6
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/4e7c99e4-e16d-4d61-b359-bf8f7846b113/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=2ae31cc2f5ad4a02b83ce02e01324434 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=99.3
+INFO:app.requests:http_request request_id=26b28319b88f4c859970c0703b9a196b method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=100.2
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/67fdee2e-a971-448f-9ac3-09008b039703/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/cee711b5-332d-4cbc-8eef-c46603b0931e/state "HTTP/1.1 200 OK"
+INFO:app.requests:http_request request_id=e6ae5bae9ce34c73b9f09d01ae5c9cd0 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=96.7
+INFO:app.requests:http_request request_id=4169f169093d44d78537634f7cffdd05 method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=92.0
+INFO:app.requests:http_request request_id=79a1fe25214745fb971fc8774b2ba06d method=GET route=/classes/{code}/vocabulary/pk/matches/{match_id}/state status=200 duration_ms=93.6
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/55949e38-0e04-48e1-96c2-871f1f073f43/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/d80f180f-91e6-4b01-bd8b-86d070bcce66/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/f19635e5-b377-4994-90fb-2201c2c615e3/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/55949e38-0e04-48e1-96c2-871f1f073f43/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/75f27f46-ffb2-4c42-a5ae-9eabbed43067/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/ab750e4f-6c4a-404d-823b-f346fc3b3bab/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/ab750e4f-6c4a-404d-823b-f346fc3b3bab/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/f19635e5-b377-4994-90fb-2201c2c615e3/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/75f27f46-ffb2-4c42-a5ae-9eabbed43067/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/b6deb0ad-4a2d-42d7-b3fd-480f5acd45ab/state "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: GET http://127.0.0.1:57432/api/v1/classes/PKPROBE/vocabulary/pk/matches/b6deb0ad-4a2d-42d7-b3fd-480f5acd45ab/state "HTTP/1.1 200 OK"
+
+== 容量报告（local-single · 1 副本） ==
+| 指标 | 实测 | 目标 | 判定 |
+|---|---|---|---|
+| 作答接口延迟（n=20） | P50 112.6 ms / P95 161.7 ms | P95 ≤ 300.0 ms | 达标 |
+| 作答副本分布 | 副本0 20 笔 | — | — |
+| 状态传播延迟（n=5） | P50 0.95s / P95 0.96s | P95 ≤ 1.5s | 达标 |
+| 并发通道 | SSE 20 条 · 轮询 20 条 （合计 40），保持 60s | 40 条 / 60s | 达标 |
+
+注：以上为本机参考环境实测值；线上容量需按部署规格复测。多 worker 部署时以前端轮询快照为准（设计稿 §1.2）。
