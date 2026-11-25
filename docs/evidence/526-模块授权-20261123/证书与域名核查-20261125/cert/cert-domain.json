@@ -1,0 +1,77 @@
+{
+  "task": "生产域名证书修复 · 真实浏览器只读验证",
+  "query_time_local": "2026-11-23 19:21:24 +08:00 (Asia/Shanghai)",
+  "query_time_utc": "2026-11-23T11:21:24Z",
+  "target": {
+    "domain": "outman.website",
+    "resolved_ip": "<服务器IP已脱敏>",
+    "landing_url": "https://outman.website/",
+    "login_url": "https://outman.website/login",
+    "classrooms_url": "https://outman.website/classrooms"
+  },
+  "certificate": {
+    "source": "本地 openssl s_client -connect outman.website:443 -servername outman.website -showcerts 取链解析；浏览器 JS 无公开 API 读取 TLS 证书主体/SAN，故证书字段以 openssl 链 + curl 交叉佐证，浏览器侧仅确认无证书拦截页。",
+    "subject": "/CN=outman.website",
+    "issuer": "/C=US/O=Let's Encrypt/CN=YE1",
+    "san": ["DNS:outman.website"],
+    "not_before": "2026-11-19 13:50:03 GMT",
+    "not_after": "2027-02-17 13:50:02 GMT",
+    "chain": [
+      "0 s:/CN=outman.website  i:/C=US/O=Let's Encrypt/CN=YE1",
+      "1 s:/C=US/O=Let's Encrypt/CN=YE1  i:/C=US/O=ISRG/CN=Root YE",
+      "2 s:/C=US/O=ISRG/CN=Root YE  i:/C=US/O=Internet Security Research Group/CN=ISRG Root X2",
+      "3 s:/C=US/O=Internet Security Research Group/CN=ISRG Root X2  i:/C=US/O=Internet Security Research Group/CN=ISRG Root X1"
+    ],
+    "chain_verify": "leaf 证书对 macOS 系统信任库 verify OK；untrusted bundle 内深度 2 为自签根，报 unable to get local issuer certificate 属预期，最终 leaf: OK。",
+    "browser_interstitial": "无。浏览器以 https 直接进入落地页与登录页，未出现证书错误/风险拦截页。"
+  },
+  "http_head_check": {
+    "command": "curl -sS -I --max-time 15 https://outman.website/",
+    "status": "HTTP/2 200",
+    "server": "nginx/1.31.9",
+    "strict_transport_security": "max-age=31536000",
+    "x_frame_options": "DENY",
+    "x_content_type_options": "nosniff",
+    "note": "curl 未报证书链错误；HSTS 已开启。"
+  },
+  "browser_observation": {
+    "api_host": "outman.website（同源，前端走相对路径 /api）",
+    "absolute_ip_api_observed": false,
+    "absolute_ip_api_examples": "未观察到任何指向 https://<服务器IP已脱敏> 的绝对地址 API 请求",
+    "api_requests_captured": [
+      {"method": "GET", "status": 200, "url": "https://outman.website/api/v1/login/options", "stage": "登录页"},
+      {"method": "POST", "status": 200, "url": "https://outman.website/api/v1/login/access-token?remember=false", "stage": "提交登录"},
+      {"method": "GET", "status": 200, "url": "https://outman.website/api/v1/modules/me", "stage": "登录后"},
+      {"method": "GET", "status": 200, "url": "https://outman.website/api/v1/exports", "stage": "登录后"},
+      {"method": "GET", "status": 200, "url": "https://outman.website/api/v1/classes", "stage": "登录后"},
+      {"method": "GET", "status": 200, "url": "https://outman.website/api/v1/users/me", "stage": "登录后"}
+    ],
+    "cors_errors": [],
+    "mixed_content_http_requests": [],
+    "certificate_errors": [],
+    "console_messages": [],
+    "login": {
+      "status": "success",
+      "account_source": "生产管理员账号（凭据值未打印、未入档、未出现在截图）",
+      "redirect_after_login": "/classrooms"
+    },
+    "classrooms_page": {
+      "status": "rendered",
+      "title": "我的课堂 / My Classrooms",
+      "classroom_count": 22,
+      "failed_api_requests": [],
+      "sidebar_entries_visible": ["教学工作台", "我的课堂", "录音导出", "题目库", "教师管理", "单元管理", "句型库", "平台更新"]
+    }
+  },
+  "evidence_files": [
+    "B1-域名登录页.png",
+    "cert-domain.json"
+  ],
+  "redaction": "截图与本 JSON 不含用户名、密码、token、身份证号、手机号；B2 元素截图仅含主内容区，已排除侧边栏账号名/邮箱块。",
+  "changes_made": "只读浏览与本地 openssl/curl 校验；未改生产 .env、未改 nginx 配置、未改 DNS/备案、未重启容器；本目录已作为独立证据归档；不改产品代码、不部署。",
+  "limitations": [
+    "浏览器页面 JS 无法读取 TLS 证书 subject/SAN/有效期，证书字段由本地 openssl 握手链解析并经 curl 200 交叉佐证。",
+    "bu 网络/控制台缓冲在每次调用后排空，所列请求为本次会话内实际抓到的条目，不排除存在未被缓冲保留的早期请求。",
+    "未在浏览器安全面板人工点开证书详情核对信任链；链完整性以 openssl verify 结果为准。"
+  ]
+}
