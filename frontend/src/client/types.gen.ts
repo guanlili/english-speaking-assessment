@@ -481,6 +481,8 @@ export type BoardData = {
      * Homework Exercise Id
      */
     homework_exercise_id?: string | null;
+    vocabulary_pk?: PkBoardSummary | null;
+    vocabulary_farm?: FarmBoardSummary | null;
 };
 
 /**
@@ -2481,6 +2483,26 @@ export type ExpressionFavoritePublic = {
 };
 
 /**
+ * FarmBadgeCount
+ *
+ * 班级徽章分布项：既有 ``student_badge`` 账本按 key 聚合的在册人数。
+ */
+export type FarmBadgeCount = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Count
+     */
+    count?: number;
+};
+
+/**
  * FarmBadgePublic
  *
  * 徽章展示项：带来源标注（只读，不参与任何结算口径）。
@@ -2506,6 +2528,37 @@ export type FarmBadgePublic = {
      * Source
      */
     source?: string;
+};
+
+/**
+ * FarmBoardSummary
+ *
+ * 课堂看板专注农场摘要（教师端只读聚合；不改 XP/徽章/streak/plot）。
+ *
+ * 地块按登录账号跨班连续；这里只统计当前在册学生名下地块，跨班地块
+ * 不重复计入。vocabulary 模块未开通时整段为 ``None``。
+ */
+export type FarmBoardSummary = {
+    /**
+     * Participants
+     */
+    participants?: number;
+    /**
+     * Mature Plots
+     */
+    mature_plots?: number;
+    /**
+     * Harvested Total
+     */
+    harvested_total?: number;
+    /**
+     * Badge Counts
+     */
+    badge_counts?: Array<FarmBadgeCount>;
+    /**
+     * Top Harvesters
+     */
+    top_harvesters?: Array<FarmTopHarvester>;
 };
 
 /**
@@ -2546,6 +2599,22 @@ export type FarmHarvestResult = {
      * Badges
      */
     badges?: Array<FarmBadgePublic>;
+};
+
+/**
+ * FarmTopHarvester
+ *
+ * 收获榜条目（教师看板，展示本班在册学生显示名；最多 5 人）。
+ */
+export type FarmTopHarvester = {
+    /**
+     * Display Name
+     */
+    display_name: string;
+    /**
+     * Harvest Count
+     */
+    harvest_count?: number;
 };
 
 /**
@@ -3741,6 +3810,85 @@ export type PkAnswerRequest = {
 };
 
 /**
+ * PkBoardLastMatch
+ *
+ * 看板 PK 最近一场精简摘要：时间、玩家显示名、比分/胜者。
+ */
+export type PkBoardLastMatch = {
+    /**
+     * At
+     */
+    at?: string | null;
+    /**
+     * Winner Display Name
+     */
+    winner_display_name?: string | null;
+    /**
+     * Winner Student Id
+     */
+    winner_student_id?: string | null;
+    /**
+     * Players
+     */
+    players?: Array<PkBoardLastMatchPlayer>;
+};
+
+/**
+ * PkBoardLastMatchPlayer
+ *
+ * 看板 PK 最近一场的单侧摘要：显示名、比分与胜负结果。
+ */
+export type PkBoardLastMatchPlayer = {
+    /**
+     * Student Id
+     */
+    student_id: string;
+    /**
+     * Display Name
+     */
+    display_name?: string | null;
+    /**
+     * Score
+     */
+    score?: number;
+    /**
+     * Result
+     */
+    result?: string;
+};
+
+/**
+ * PkBoardSummary
+ *
+ * 课堂看板 PK 摘要（教师端只读；开厅仍走既有教师 PK 面板，这里不提供写操作）。
+ *
+ * vocabulary 模块未开通时整段为 ``None``；不混入任务首答/掌握度/趋势口径。
+ */
+export type PkBoardSummary = {
+    /**
+     * Open
+     */
+    open?: boolean;
+    /**
+     * Queue Count
+     */
+    queue_count?: number;
+    /**
+     * Active Match Count
+     */
+    active_match_count?: number;
+    /**
+     * Matches This Week
+     */
+    matches_this_week?: number;
+    /**
+     * Last Match At
+     */
+    last_match_at?: string | null;
+    last_match?: PkBoardLastMatch | null;
+};
+
+/**
  * PkChoice
  */
 export type PkChoice = {
@@ -3764,6 +3912,114 @@ export type PkChoice = {
      * Is Answer
      */
     is_answer?: boolean;
+};
+
+/**
+ * PkHistoryList
+ *
+ * GET /classes/{code}/vocabulary/pk/history 响应。
+ */
+export type PkHistoryList = {
+    /**
+     * Matches
+     */
+    matches?: Array<PkHistoryMatch>;
+};
+
+/**
+ * PkHistoryMatch
+ *
+ * 教师端历史对局一行：仅已结束/已放弃对局，只读回看。
+ */
+export type PkHistoryMatch = {
+    /**
+     * Match Id
+     */
+    match_id: string;
+    /**
+     * Lobby Id
+     */
+    lobby_id: string;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Question Count
+     */
+    question_count: number;
+    /**
+     * Per Question Seconds
+     */
+    per_question_seconds: number;
+    /**
+     * Book Id
+     */
+    book_id?: string | null;
+    /**
+     * Book Title
+     */
+    book_title?: string | null;
+    /**
+     * Started At
+     */
+    started_at?: string | null;
+    /**
+     * Finished At
+     */
+    finished_at?: string | null;
+    /**
+     * End Reason
+     */
+    end_reason?: string | null;
+    /**
+     * Winner Display Name
+     */
+    winner_display_name?: string | null;
+    /**
+     * Winner Student Id
+     */
+    winner_student_id?: string | null;
+    /**
+     * Players
+     */
+    players?: Array<PkHistoryPlayer>;
+};
+
+/**
+ * PkHistoryPlayer
+ *
+ * 教师端历史对局单侧记录：比分、作答统计与胜负结果。
+ */
+export type PkHistoryPlayer = {
+    /**
+     * Student Id
+     */
+    student_id: string;
+    /**
+     * Display Name
+     */
+    display_name?: string | null;
+    /**
+     * Score
+     */
+    score?: number;
+    /**
+     * Correct Count
+     */
+    correct_count?: number;
+    /**
+     * Answered Count
+     */
+    answered_count?: number;
+    /**
+     * Total Seconds
+     */
+    total_seconds?: number;
+    /**
+     * Result
+     */
+    result?: string;
 };
 
 /**
@@ -17004,6 +17260,36 @@ export type VocabularyReadFarmResponses = {
 
 export type VocabularyReadFarmResponse = VocabularyReadFarmResponses[200 & keyof VocabularyReadFarmResponses];
 
+export type VocabularyReadTeacherFarmSummaryData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/teacher/farm-summary';
+};
+
+export type VocabularyReadTeacherFarmSummaryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadTeacherFarmSummaryError = VocabularyReadTeacherFarmSummaryErrors[keyof VocabularyReadTeacherFarmSummaryErrors];
+
+export type VocabularyReadTeacherFarmSummaryResponses = {
+    /**
+     * Successful Response
+     */
+    200: FarmBoardSummary;
+};
+
+export type VocabularyReadTeacherFarmSummaryResponse = VocabularyReadTeacherFarmSummaryResponses[200 & keyof VocabularyReadTeacherFarmSummaryResponses];
+
 export type VocabularyHarvestFarmData = {
     body?: never;
     path: {
@@ -17579,6 +17865,41 @@ export type VocabularyOpenPkLobbyResponses = {
 };
 
 export type VocabularyOpenPkLobbyResponse = VocabularyOpenPkLobbyResponses[200 & keyof VocabularyOpenPkLobbyResponses];
+
+export type VocabularyReadPkHistoryData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: {
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/classes/{code}/vocabulary/pk/history';
+};
+
+export type VocabularyReadPkHistoryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadPkHistoryError = VocabularyReadPkHistoryErrors[keyof VocabularyReadPkHistoryErrors];
+
+export type VocabularyReadPkHistoryResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkHistoryList;
+};
+
+export type VocabularyReadPkHistoryResponse = VocabularyReadPkHistoryResponses[200 & keyof VocabularyReadPkHistoryResponses];
 
 export type VocabularyClosePkLobbyData = {
     body?: never;
