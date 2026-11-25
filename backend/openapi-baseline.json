@@ -894,6 +894,26 @@
               }
             ],
             "title": "Teaching Goal"
+          },
+          "vocabulary_farm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FarmBoardSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vocabulary_pk": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PkBoardSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -4492,6 +4512,30 @@
         "title": "ExpressionFavoritePublic",
         "type": "object"
       },
+      "FarmBadgeCount": {
+        "description": "班级徽章分布项：既有 ``student_badge`` 账本按 key 聚合的在册人数。",
+        "properties": {
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "FarmBadgeCount",
+        "type": "object"
+      },
       "FarmBadgePublic": {
         "description": "徽章展示项：带来源标注（只读，不参与任何结算口径）。",
         "properties": {
@@ -4531,6 +4575,44 @@
           "description"
         ],
         "title": "FarmBadgePublic",
+        "type": "object"
+      },
+      "FarmBoardSummary": {
+        "description": "课堂看板专注农场摘要（教师端只读聚合；不改 XP/徽章/streak/plot）。\n\n地块按登录账号跨班连续；这里只统计当前在册学生名下地块，跨班地块\n不重复计入。vocabulary 模块未开通时整段为 ``None``。",
+        "properties": {
+          "badge_counts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FarmBadgeCount"
+            },
+            "title": "Badge Counts",
+            "type": "array"
+          },
+          "harvested_total": {
+            "default": 0,
+            "title": "Harvested Total",
+            "type": "integer"
+          },
+          "mature_plots": {
+            "default": 0,
+            "title": "Mature Plots",
+            "type": "integer"
+          },
+          "participants": {
+            "default": 0,
+            "title": "Participants",
+            "type": "integer"
+          },
+          "top_harvesters": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FarmTopHarvester"
+            },
+            "title": "Top Harvesters",
+            "type": "array"
+          }
+        },
+        "title": "FarmBoardSummary",
         "type": "object"
       },
       "FarmHarvestResult": {
@@ -4586,6 +4668,25 @@
           "harvested"
         ],
         "title": "FarmHarvestResult",
+        "type": "object"
+      },
+      "FarmTopHarvester": {
+        "description": "收获榜条目（教师看板，展示本班在册学生显示名；最多 5 人）。",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "harvest_count": {
+            "default": 0,
+            "title": "Harvest Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "title": "FarmTopHarvester",
         "type": "object"
       },
       "FarmView": {
@@ -6774,6 +6875,141 @@
         "title": "PkAnswerRequest",
         "type": "object"
       },
+      "PkBoardLastMatch": {
+        "description": "看板 PK 最近一场精简摘要：时间、玩家显示名、比分/胜者。",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "players": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkBoardLastMatchPlayer"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "winner_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Display Name"
+          },
+          "winner_student_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Student Id"
+          }
+        },
+        "title": "PkBoardLastMatch",
+        "type": "object"
+      },
+      "PkBoardLastMatchPlayer": {
+        "description": "看板 PK 最近一场的单侧摘要：显示名、比分与胜负结果。",
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "result": {
+            "default": "draw",
+            "title": "Result",
+            "type": "string"
+          },
+          "score": {
+            "default": 0,
+            "title": "Score",
+            "type": "integer"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "student_id"
+        ],
+        "title": "PkBoardLastMatchPlayer",
+        "type": "object"
+      },
+      "PkBoardSummary": {
+        "description": "课堂看板 PK 摘要（教师端只读；开厅仍走既有教师 PK 面板，这里不提供写操作）。\n\nvocabulary 模块未开通时整段为 ``None``；不混入任务首答/掌握度/趋势口径。",
+        "properties": {
+          "active_match_count": {
+            "default": 0,
+            "title": "Active Match Count",
+            "type": "integer"
+          },
+          "last_match": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PkBoardLastMatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_match_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Match At"
+          },
+          "matches_this_week": {
+            "default": 0,
+            "title": "Matches This Week",
+            "type": "integer"
+          },
+          "open": {
+            "default": false,
+            "title": "Open",
+            "type": "boolean"
+          },
+          "queue_count": {
+            "default": 0,
+            "title": "Queue Count",
+            "type": "integer"
+          }
+        },
+        "title": "PkBoardSummary",
+        "type": "object"
+      },
       "PkChoice": {
         "properties": {
           "headword": {
@@ -6812,6 +7048,197 @@
           "meaning_zh"
         ],
         "title": "PkChoice",
+        "type": "object"
+      },
+      "PkHistoryList": {
+        "description": "GET /classes/{code}/vocabulary/pk/history 响应。",
+        "properties": {
+          "matches": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkHistoryMatch"
+            },
+            "title": "Matches",
+            "type": "array"
+          }
+        },
+        "title": "PkHistoryList",
+        "type": "object"
+      },
+      "PkHistoryMatch": {
+        "description": "教师端历史对局一行：仅已结束/已放弃对局，只读回看。",
+        "properties": {
+          "book_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Id"
+          },
+          "book_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Title"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Reason"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "lobby_id": {
+            "format": "uuid",
+            "title": "Lobby Id",
+            "type": "string"
+          },
+          "match_id": {
+            "format": "uuid",
+            "title": "Match Id",
+            "type": "string"
+          },
+          "per_question_seconds": {
+            "title": "Per Question Seconds",
+            "type": "integer"
+          },
+          "players": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkHistoryPlayer"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "question_count": {
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "winner_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Display Name"
+          },
+          "winner_student_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Student Id"
+          }
+        },
+        "required": [
+          "match_id",
+          "lobby_id",
+          "status",
+          "question_count",
+          "per_question_seconds"
+        ],
+        "title": "PkHistoryMatch",
+        "type": "object"
+      },
+      "PkHistoryPlayer": {
+        "description": "教师端历史对局单侧记录：比分、作答统计与胜负结果。",
+        "properties": {
+          "answered_count": {
+            "default": 0,
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "correct_count": {
+            "default": 0,
+            "title": "Correct Count",
+            "type": "integer"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "result": {
+            "default": "draw",
+            "title": "Result",
+            "type": "string"
+          },
+          "score": {
+            "default": 0,
+            "title": "Score",
+            "type": "integer"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "total_seconds": {
+            "default": 0.0,
+            "title": "Total Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "student_id"
+        ],
+        "title": "PkHistoryPlayer",
         "type": "object"
       },
       "PkLobbyCreate": {
@@ -28767,6 +29194,66 @@
         ]
       }
     },
+    "/api/v1/classes/{code}/vocabulary/pk/history": {
+      "get": {
+        "description": "本班教师回看已结束/已放弃对局历史（只读）；学生/跨班按既有口径拒绝。",
+        "operationId": "vocabulary-read_pk_history",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkHistoryList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Pk History",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
     "/api/v1/classes/{code}/vocabulary/pk/lobby": {
       "get": {
         "operationId": "vocabulary-read_pk_lobby",
@@ -30167,6 +30654,54 @@
           }
         ],
         "summary": "Read Student Session",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/teacher/farm-summary": {
+      "get": {
+        "description": "班级农场聚合摘要（教师端独立面板）：与课堂看板内 ``vocabulary_farm`` 同口径。\n\n仅本班教师；只读聚合，不改 XP/徽章/streak/plot，跨班地块不重复计入。",
+        "operationId": "vocabulary-read_teacher_farm_summary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FarmBoardSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Teacher Farm Summary",
         "tags": [
           "vocabulary"
         ]

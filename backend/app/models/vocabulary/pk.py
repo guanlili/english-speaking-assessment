@@ -351,6 +351,43 @@ class PkMatchView(SQLModel):
     finished_at: datetime | None = None
 
 
+class PkHistoryPlayer(SQLModel):
+    """教师端历史对局单侧记录：比分、作答统计与胜负结果。"""
+
+    student_id: uuid.UUID
+    display_name: str | None = None
+    score: int = 0
+    correct_count: int = 0
+    answered_count: int = 0
+    total_seconds: float = 0.0
+    # win / lose / draw（平局双方均为 draw）
+    result: str = "draw"
+
+
+class PkHistoryMatch(SQLModel):
+    """教师端历史对局一行：仅已结束/已放弃对局，只读回看。"""
+
+    match_id: uuid.UUID
+    lobby_id: uuid.UUID
+    status: str
+    question_count: int
+    per_question_seconds: int
+    book_id: uuid.UUID | None = None
+    book_title: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    end_reason: str | None = None
+    winner_display_name: str | None = None
+    winner_student_id: uuid.UUID | None = None
+    players: list[PkHistoryPlayer] = []
+
+
+class PkHistoryList(SQLModel):
+    """GET /classes/{code}/vocabulary/pk/history 响应。"""
+
+    matches: list[PkHistoryMatch] = []
+
+
 class PkAnswerRequest(SQLModel):
     item_index: int = Field(ge=0)
     prompt_type: str = Field(default="meaning", max_length=16)

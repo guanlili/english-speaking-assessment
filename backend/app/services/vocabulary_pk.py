@@ -14,10 +14,12 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlmodel import Session, col, select
 
+from app.core.config import settings
 from app.crud import classroom_teacher_allowed
 from app.models import (
     MAX_ACTIVE_MATCHES,
@@ -27,7 +29,13 @@ from app.models import (
     PK_SPEED_BONUS_MAX,
     Classroom,
     PkAnswerResult,
+    PkBoardLastMatch,
+    PkBoardLastMatchPlayer,
+    PkBoardSummary,
     PkChoice,
+    PkHistoryList,
+    PkHistoryMatch,
+    PkHistoryPlayer,
     PkLobbyView,
     PkMatchItem,
     PkMatchResult,
@@ -40,6 +48,7 @@ from app.models import (
     VocabPkLobby,
     VocabPkMatch,
     VocabPkPlayer,
+    VocabularyBook,
 )
 from app.services import vocabulary as vocab_service
 from app.services import vocabulary_prompt_types as prompt_types_mod
@@ -866,3 +875,230 @@ def _opponent(session: Session, me: VocabPkPlayer) -> VocabPkPlayer | None:
         return None
     players = _match_players(session, match)
     return next((p for p in players if p.id != me.id), None)
+
+
+# ── 教师端历史列表 / 看板摘要（只读聚合，不写对局与任务统计）──────────
+
+
+# 历史只回看已结束/已放弃对局；进行中对局不进历史列表
+HISTORY_MATCH_STATUSES = ("finished", "abandoned")
+
+
+def _player_result(player: VocabPkPlayer, winner_student_id: uuid.UUID | None) -> str:
+    if winner_student_id is None:
+        return "draw"
+    return "win" if player.student_id == winner_student_id else "lose"
+
+
+def _display_names(
+    session: Session, student_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, str | None]:
+    if not student_ids:
+        return {}
+    students = session.exec(
+        select(Student).where(col(Student.id).in_(student_ids))  # type: ignore[arg-type]
+    ).all()
+    return {s.id: s.display_name for s in students}
+
+
+def _history_player_view(
+    player: VocabPkPlayer,
+    winner_student_id: uuid.UUID | None,
+    names: dict[uuid.UUID, str | None],
+) -> PkHistoryPlayer:
+    return PkHistoryPlayer(
+        student_id=player.student_id,
+        display_name=names.get(player.student_id),
+        score=player.score,
+        correct_count=player.correct_count,
+        answered_count=player.answered_count,
+        total_seconds=player.total_seconds,
+        result=_player_result(player, winner_student_id),
+    )
+
+
+def history_matches(
+    session: Session, classroom: Classroom, *, limit: int
+) -> PkHistoryList:
+    """本班已结束/已放弃对局历史：按 finished_at/created_at 倒序，批量加载玩家/学生/词库。
+
+    只读回看；PK 作答不写 ``VocabularyAnswer``，也不进任务首答/掌握度/趋势口径。
+    """
+    matches = list(
+        session.exec(
+            select(VocabPkMatch)
+            .where(
+                VocabPkMatch.classroom_id == classroom.id,  # type: ignore[arg-type]
+                col(VocabPkMatch.status).in_(HISTORY_MATCH_STATUSES),
+            )
+            .order_by(
+                col(VocabPkMatch.finished_at).desc().nulls_last(),
+                col(VocabPkMatch.created_at).desc(),
+            )
+            .limit(limit)
+        ).all()
+    )
+    if not matches:
+        return PkHistoryList(matches=[])
+
+    match_ids = [m.id for m in matches]
+    players = list(
+        session.exec(
+            select(VocabPkPlayer).where(col(VocabPkPlayer.match_id).in_(match_ids))  # type: ignore[arg-type]
+        ).all()
+    )
+    names = _display_names(session, {p.student_id for p in players})
+
+    lobby_ids = {m.lobby_id for m in matches}
+    lobbies = {
+        lobby.id: lobby
+        for lobby in session.exec(
+            select(VocabPkLobby).where(col(VocabPkLobby.id).in_(lobby_ids))  # type: ignore[arg-type]
+        ).all()
+    }
+    book_ids = {
+        lobby.book_id for lobby in lobbies.values() if lobby.book_id is not None
+    }
+    books: dict[uuid.UUID, VocabularyBook] = {}
+    if book_ids:
+        books = {
+            book.id: book
+            for book in session.exec(
+                select(VocabularyBook).where(col(VocabularyBook.id).in_(book_ids))  # type: ignore[arg-type]
+            ).all()
+        }
+
+    players_by_match: dict[uuid.UUID, list[VocabPkPlayer]] = {}
+    for player in players:
+        if player.match_id is None:
+            continue
+        players_by_match.setdefault(player.match_id, []).append(player)
+
+    items: list[PkHistoryMatch] = []
+    for match in matches:
+        lobby = lobbies.get(match.lobby_id)
+        book = books.get(lobby.book_id) if lobby is not None else None
+        match_players = sorted(
+            players_by_match.get(match.id, []),
+            key=lambda p: (p.side or "", p.joined_at or p.id),
+        )
+        player_views = [
+            _history_player_view(p, match.winner_student_id, names)
+            for p in match_players
+        ]
+        winner_name = (
+            names.get(match.winner_student_id)
+            if match.winner_student_id is not None
+            else None
+        )
+        items.append(
+            PkHistoryMatch(
+                match_id=match.id,
+                lobby_id=match.lobby_id,
+                status=match.status,
+                question_count=match.question_count,
+                per_question_seconds=match.per_question_seconds,
+                book_id=lobby.book_id if lobby is not None else None,
+                book_title=book.title if book is not None else None,
+                started_at=match.started_at,
+                finished_at=match.finished_at,
+                end_reason=match.end_reason,
+                winner_display_name=winner_name,
+                winner_student_id=match.winner_student_id,
+                players=player_views,
+            )
+        )
+    return PkHistoryList(matches=items)
+
+
+def _week_start_utc() -> datetime:
+    """本周一 00:00（PRACTICE_TZ）对应的 UTC 时间，与趋势周口径一致。"""
+    now = datetime.now(ZoneInfo(settings.PRACTICE_TZ))
+    monday = (now - timedelta(days=now.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return monday.astimezone(UTC)
+
+
+def _board_last_match(session: Session, match: VocabPkMatch) -> PkBoardLastMatch:
+    players = _match_players(session, match)
+    names = _display_names(session, {p.student_id for p in players})
+    player_views = [
+        PkBoardLastMatchPlayer(
+            student_id=p.student_id,
+            display_name=names.get(p.student_id),
+            score=p.score,
+            result=_player_result(p, match.winner_student_id),
+        )
+        for p in sorted(players, key=lambda p: (p.side or "", p.joined_at or p.id))
+    ]
+    winner_name = (
+        names.get(match.winner_student_id)
+        if match.winner_student_id is not None
+        else None
+    )
+    return PkBoardLastMatch(
+        at=match.finished_at or match.started_at,
+        winner_display_name=winner_name,
+        winner_student_id=match.winner_student_id,
+        players=player_views,
+    )
+
+
+def board_summary(session: Session, classroom: Classroom) -> PkBoardSummary:
+    """课堂看板 PK 只读摘要：大厅状态、排队/进行中场次、本周场次与最近一场。
+
+    不提供任何改分数/开厅写操作；开厅仍走既有教师 PK 面板。
+    """
+    lobby = get_lobby(session, classroom.id, open_only=True)
+    queue_count = 0
+    active_match_count = 0
+    if lobby is not None:
+        players = _players_of_lobby(session, lobby.id)
+        queue_count = sum(1 for p in players if p.status in ACTIVE_PLAYER_STATUSES)
+        active_match_count = len(
+            session.exec(
+                select(VocabPkMatch.id).where(
+                    VocabPkMatch.lobby_id == lobby.id,  # type: ignore[arg-type]
+                    VocabPkMatch.status == "active",
+                )
+            ).all()
+        )
+
+    matches_this_week = len(
+        session.exec(
+            select(VocabPkMatch.id).where(
+                VocabPkMatch.classroom_id == classroom.id,  # type: ignore[arg-type]
+                col(VocabPkMatch.started_at).is_not(None),
+                VocabPkMatch.started_at >= _week_start_utc(),  # type: ignore
+            )
+        ).all()
+    )
+
+    latest = session.exec(
+        select(VocabPkMatch)
+        .where(
+            VocabPkMatch.classroom_id == classroom.id,  # type: ignore[arg-type]
+            col(VocabPkMatch.status).in_(HISTORY_MATCH_STATUSES),
+        )
+        .order_by(
+            col(VocabPkMatch.finished_at).desc().nulls_last(),
+            col(VocabPkMatch.created_at).desc(),
+        )
+        .limit(1)
+    ).first()
+
+    last_match: PkBoardLastMatch | None = None
+    last_match_at: datetime | None = None
+    if latest is not None:
+        last_match_at = latest.finished_at or latest.started_at
+        last_match = _board_last_match(session, latest)
+
+    return PkBoardSummary(
+        open=lobby is not None,
+        queue_count=queue_count,
+        active_match_count=active_match_count,
+        matches_this_week=matches_this_week,
+        last_match_at=last_match_at,
+        last_match=last_match,
+    )

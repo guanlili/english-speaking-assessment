@@ -72,6 +72,13 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **到期未复习**：`due_unreviewed` 按**当前** `VocabularyReviewState` 回算（词 × 能力条目数，非去重词数）；历史周期不做状态还原，仅作教学参考（schema 注释已注明）。顶层固定 `teaching_reference=true`：趋势是教学参考，不是考试分数或能力认证。
 - **API**：`GET /api/v1/classes/{code}/vocabulary/trend`（JSON）与 `GET /api/v1/classes/{code}/vocabulary/trend.csv`（UTF-8 BOM，一行一周期，空值留空不写 0）。Query：`granularity`、`periods`、`anchor`、`book_id`、`prompt_type`。权限：仅本班教师；课堂不存在/跨校 404，非本班教师 403，vocabulary 模块未开通 403。域逻辑 `app/services/vocabulary_trend.py`；路由 `app/api/routes/vocabulary_trend.py`；模型 `app/models/vocabulary/reports.py`（`VocabularyTrendReport`/`VocabularyTrendPeriod`）。测试 `tests/api/routes/test_vocabulary_trend.py`。
 
+### 教师 PK 历史 + 看板 / 农场只读聚合（2026-11-25，#517 D/E，后端先行）
+
+- **PK 历史**：`GET /api/v1/classes/{code}/vocabulary/pk/history?limit=20`（`limit` 1–50，默认 20）。仅本班教师；学生 403，跨班/跨校 404。只列已结束/已放弃对局（`finished`/`abandoned`），按 `finished_at`/`created_at` 倒序；字段 `match_id, lobby_id, status, question_count, per_question_seconds, book_id, book_title, started_at, finished_at, end_reason, winner_display_name, winner_student_id, players[]`；`players[]` 含 `student_id, display_name, score, correct_count, answered_count, total_seconds, result(win/lose/draw)`。只读回看，PK 数据不进任务首答/掌握度/趋势口径。
+- **看板 PK 摘要**：`BoardData.vocabulary_pk`（optional，模块未开通 `null`）：`open, queue_count, active_match_count, matches_this_week, last_match_at, last_match`；`last_match` 为最近一场终态对局精简摘要（时间、玩家显示名、比分/胜者）。看板不提供开厅/改分数写操作，开厅仍走既有教师 PK 面板。
+- **农场聚合**：`BoardData.vocabulary_farm`（optional，模块未开通 `null`）与独立接口 `GET /api/v1/classes/{code}/vocabulary/teacher/farm-summary` 同口径：`participants`（本班在册学生中拥有地块的人数）、`mature_plots`、`harvested_total`、`badge_counts[{key,label,count}]`（既有 `student_badge` 账本按 key 聚合）、`top_harvesters[{display_name,harvest_count}]`（最多 5，收获 >0）。只读聚合，不改 XP/徽章/streak/plot；地块按登录账号跨班连续，只归集当前在册学生名下地块，跨班不重复计入。
+- **权限与口径**：农场独立接口仅本班教师，课堂不存在 404，非本班教师 403，vocabulary 模块未开通 403；看板在模块关闭时不 403，两段摘要均为 `null`，其余看板字段口径不变。批量按在册学生 `user_id`/`student_id` 一次查地块/徽章，无 N+1。域逻辑 `app/services/vocabulary_pk.py`（`history_matches`/`board_summary`）、`app/services/vocabulary_farm.py`（`teacher_summary`）；路由 `vocabulary_pk.py`/`vocabulary_farm.py`；模型 `app/models/vocabulary/pk.py`（`PkHistoryMatch/Player/List`）与 `app/models/learning.py`（`PkBoardSummary`/`FarmBoardSummary` 等）。测试 `tests/api/routes/test_vocabulary_pk_history.py`、`tests/api/routes/test_vocabulary_farm_summary.py`。
+
 ## 通用功能 G01–G05（2026-10-11）
 
 - 学生练习 `/p/{code}`、考试 `/exam/{code}` 各有独立入口与结果路由；共享录音/反馈组件，旧练习链接遇考试自动转考试模块。当前课堂发布仍沿用单一活动快照。
