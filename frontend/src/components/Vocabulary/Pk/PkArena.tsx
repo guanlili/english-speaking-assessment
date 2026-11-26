@@ -18,6 +18,7 @@ import { useI18n } from "@/lib/i18n"
 import {
   parseSseBuffer,
   pkAnswerKey,
+  pkLobbyPollInterval,
   pkNextItemIndex,
   pkOutcome,
   pkPhase,
@@ -39,10 +40,13 @@ export default function PkArena({ code }: { code: string }) {
   const queryClient = useQueryClient()
   const student = loadStudent(code)
 
+  const lobbyKey = useMemo(() => ["vocab", code, "pk-lobby"] as const, [code])
   const lobbyQuery = useQuery({
-    queryKey: ["vocab", code, "pk-lobby"],
+    queryKey: lobbyKey,
     queryFn: () => VocabularyService.readPkLobby({ code: code.toUpperCase() }),
     staleTime: 5_000,
+    // 配对由对方加入触发，大厅没有独立推送；排队期间短轮询兜底，配对到达即停。
+    refetchInterval: (query) => pkLobbyPollInterval(query.state.data),
   })
   const lobby = lobbyQuery.data ?? null
   const matchId = lobby?.my_match_id ?? null
@@ -56,11 +60,8 @@ export default function PkArena({ code }: { code: string }) {
   const lastEventAtRef = useRef<number | null>(null)
   const [, forceTick] = useState(0)
 
-  // D11（待真人慢速复测，未作为产品缺陷修改）：配对后的 my_match_id 来自大厅
-  // 快照，对局面板要等首份对局快照落地后才挂载；大厅查询只在自身 join/leave/
-  // 作答后失效重拉，配对由对方触发。headless 自动化曾观察到面板/题面滞后，
-  // 但尚未证明真人慢速操作下控件不可用。若复测确认滞后，优先排查：大厅快照
-  // 刷新时机（轮询/SSE 带出 my_match_id）与 matchQuery 首帧加载节奏。
+  // 对局快照落地后才挂载面板（见下方 matchId && !match 的加载态与 MatchPanel 空态防护）；
+  // 配对状态由大厅快照带出：join/leave 响应直接回填大厅缓存，排队期间短轮询覆盖对方触发的配对。
   const matchQuery = useQuery({
     queryKey: matchKey,
     queryFn: () =>
@@ -142,11 +143,16 @@ export default function PkArena({ code }: { code: string }) {
     }
   }, [code, matchId, matchKey, queryClient])
 
+  const matchPrefixKey = useMemo(
+    () => ["vocab", code, "pk-match"] as const,
+    [code],
+  )
+
   const joinMutation = useMutation({
     mutationFn: () =>
       VocabularyService.joinPkLobby({ code: code.toUpperCase() }),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ["vocab", code, "pk"] }),
+    // 响应即最新大厅快照，直接回填缓存；失效键前缀与查询键对齐，避免漏失效。
+    onSuccess: (data) => queryClient.setQueryData(lobbyKey, data),
     onError: () =>
       toast.error(
         t({
@@ -159,8 +165,10 @@ export default function PkArena({ code }: { code: string }) {
   const leaveMutation = useMutation({
     mutationFn: () =>
       VocabularyService.leavePkLobby({ code: code.toUpperCase() }),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ["vocab", code, "pk"] }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(lobbyKey, data)
+      void queryClient.invalidateQueries({ queryKey: matchPrefixKey })
+    },
     onError: () =>
       toast.error(
         t({
@@ -244,6 +252,14 @@ export default function PkArena({ code }: { code: string }) {
         </Card>
       )}
 
+      {matchId && !match && (
+        <Card>
+          <CardContent className="p-5 text-center text-sm text-muted-foreground">
+            {t({ zh: "对局准备中…", en: "Starting match…" })}
+          </CardContent>
+        </Card>
+      )}
+
       {match && (
         <MatchPanel
           code={code}
@@ -266,6 +282,8 @@ function MatchPanel({
 }) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
+  const lobbyKey = ["vocab", code, "pk-lobby"]
+  const matchPrefixKey = ["vocab", code, "pk-match"]
   const items = match.items ?? []
   const nextIndex = pkNextItemIndex(items)
   const currentItem = items[nextIndex] ?? null
@@ -296,7 +314,8 @@ function MatchPanel({
     onSuccess: () => {
       attemptRef.current += 1
       setDraft("")
-      void queryClient.invalidateQueries({ queryKey: ["vocab", code, "pk"] })
+      void queryClient.invalidateQueries({ queryKey: lobbyKey })
+      void queryClient.invalidateQueries({ queryKey: matchPrefixKey })
     },
     onError: () =>
       toast.error(
@@ -437,7 +456,11 @@ function MatchPanel({
               </div>
             )}
           </div>
-        ) : null}
+        ) : (
+          <div className="rounded-2xl bg-secondary/50 p-5 text-center text-sm text-muted-foreground">
+            {t({ zh: "对局加载中…", en: "Loading match…" })}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
