@@ -34,8 +34,8 @@
 | `SMOKE_EXPECT_VOCAB_STATUS` | 词汇端点期望码，生产默认 `403` | 生产保持 403 |
 | `SMOKE_EXPECT_VOCAB_MODULE` | `off`（生产默认）/`on`（本地开通环境） | 本地测试可设 on |
 | `SMOKE_DB_BASE` | 生产部署前 `alembic_version`，默认 `e5f6a7b8c9d0` | 变更基线时改 |
-| `SMOKE_EXPECT_DB_HEAD` | 部署后 head，默认 `f3a4b5c6d7e8` | 变更迁移时改 |
-| `SMOKE_EXPECT_CHAIN_LEN` | `e5 → head` 迁移支数，默认 `5` | 变更迁移时改 |
+| `SMOKE_EXPECT_DB_HEAD` | 部署后 head，默认 `d4e5f6a7b8c9` | 变更迁移时改 |
+| `SMOKE_EXPECT_CHAIN_LEN` | `e5 → head` 迁移支数，默认 `6` | 变更迁移时改 |
 | `SMOKE_APP_DB_USER` | 受限应用角色，默认 `esa_app` | 通常不改 |
 | `SMOKE_LOG_SINCE` | 日志回看窗口，默认 `30m` | 可选 |
 | `SMOKE_GH_BIN` | gh 可执行路径；默认 PATH 或 Homebrew 路径 | 可选 |
@@ -82,7 +82,7 @@ bash scripts/go-live-smoke.sh --post --execute
 | P04 | 备份文件存在：最新 `backups/app-*-predeploy.sql.gz` 或完整 bundle | 文件非空 | A/M | `SMOKE_BACKUP_FILE` 或 SSH |
 | P05 | 备份可读：`gzip -t` 通过 | exit 0 | A/M | 脚本 |
 | P06 | `:rollback` 镜像存在（backend/frontend） | `docker image inspect` 成功 | A/M | SSH 或服务器人工 |
-| P07 | 迁移清单与 head：`e5 → f3` 共 5 支 | n=5，head=`f3a4b5c6d7e8` | A | 脚本解析 Alembic 文件 |
+| P07 | 迁移清单与 head：`e5 → d4` 共 6 支 | n=6，head=`d4e5f6a7b8c9` | A | 脚本解析 Alembic 文件 |
 | P08 | 生产 DB 基线：`alembic_version=e5f6a7b8c9d0` | 只读查询相等 | M | `alembic current`（服务器） |
 | P09 | `tenant_module`：speaking on、vocabulary off | 全校 speaking 启用、vocabulary 均关闭 | A/M | HTTP `/modules/me`（抽样校）或 SQL 聚合 |
 | P10 | `ensure_db_roles` 在 prestart 中位于 Alembic 之后 | 行号 alembic < ensure | A | `backend/scripts/prestart.sh` |
@@ -98,6 +98,7 @@ e5f6a7b8c9d0
   → c7d8e9f0a2b3  （JSON 列）
   → d8e9f0a1b2c3  （索引 rename）
   → f3a4b5c6d7e8  （exam_tags / cefr_band）
+  → d4e5f6a7b8c9  （PK 作答幂等键按玩家维度隔离）
 ```
 
 ## 5. 部署后清单（20 项）
@@ -107,7 +108,7 @@ e5f6a7b8c9d0
 | S01 | ready | HTTP 200 且含 `Ready` | A | `GET /api/v1/utils/ready-check/` |
 | S02 | health | HTTP 200 且含 `true` | A | `GET /api/v1/utils/health-check/` |
 | S03 | 版本 SHA | 部署 SHA=目标 SHA | A/M | SSH `git rev-parse` 或 `SMOKE_DEPLOYED_SHA` |
-| S04 | 迁移 head | `alembic current` 含 `f3a4b5c6d7e8` | A/M | SSH `docker compose exec backend alembic current` |
+| S04 | 迁移 head | `alembic current` 含 `d4e5f6a7b8c9` | A/M | SSH `docker compose exec backend alembic current` |
 | S05 | 4 张新表存在 | 4 行均存在 | A/M | 只读 SQL：班内榜 2 + 授权审计 + 版本快照 |
 | S06 | `esa_app` 有 DML | 4 表 `SELECT/INSERT/UPDATE/DELETE` 均 true | A/M | `has_table_privilege` |
 | S07 | 无租户上下文读 0 行 | 4 表均 0 | A/M | `SET ROLE esa_app` + `count(*)` |
