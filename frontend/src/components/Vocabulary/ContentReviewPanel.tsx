@@ -335,16 +335,18 @@ export function ContentReviewPanel({
 
   const renderRowCheckbox = (item: VocabularyReviewItem) =>
     !readonly && item.review_status === "pending" ? (
-      <input
-        type="checkbox"
-        checked={selected.has(item.word_id)}
-        onChange={(event) => toggleOne(item.word_id, event.target.checked)}
-        className="size-4 accent-[var(--primary)]"
-        aria-label={t({
-          zh: `选择 ${item.headword}`,
-          en: `Select ${item.headword}`,
-        })}
-      />
+      <span className="flex items-center justify-center coarse:min-h-11 coarse:min-w-11">
+        <input
+          type="checkbox"
+          checked={selected.has(item.word_id)}
+          onChange={(event) => toggleOne(item.word_id, event.target.checked)}
+          className="size-4 accent-[var(--primary)]"
+          aria-label={t({
+            zh: `选择 ${item.headword}`,
+            en: `Select ${item.headword}`,
+          })}
+        />
+      </span>
     ) : null
 
   const renderActions = (
