@@ -256,7 +256,7 @@ check_backup() {
   if [[ -f "$f" ]]; then
     if gzip -t "$f" 2>/dev/null; then pass "P04/P05 备份存在且 gzip -t 通过：$(basename "$f")"; else fail "P05 gzip -t 失败：$f"; fi
   else
-    if ssh_run "gzip -t '$f'" >/dev/null; then pass "P04/P05 服务器备份存在且 gzip -t 通过：$(basename "$f")"; else fail "P05 服务器 gzip -t 失败：$f"; fi
+    if ssh_run "cd '$DEPLOY_PATH' && gzip -t '$f'" >/dev/null; then pass "P04/P05 服务器备份存在且 gzip -t 通过：$(basename "$f")"; else fail "P05 服务器 gzip -t 失败：$f"; fi
   fi
   manual "P06 完整 bundle 的 verify-backup / 恢复演练：按命令人工执行"
 }
