@@ -4,6 +4,8 @@
 > 用途：云资源迁移的输入清单。配套方案见 [cloud-migration-plan-2026-10.md](cloud-migration-plan-2026-10.md)
 > 口径：只记「实际在用」的资源；文档里计划要买但还没用的单列在第六节
 > **2026-11-19 更新**：新机已购（火山 `ecs.g4i.2xlarge` 8C32G/500G，IP `115.190.122.24`，细节见 [speakup-only 方案](migration-plan-speakup-only-2026-11.md)第三节）；第八节 1 已拍板（其他项目留老机）。
+>
+> **⚠️ 迁移后口径（2026-11-27 校准）**：本清单正文是 **2026-11-18 割接前**对老腾讯云机的只读快照。生产已于 2026-11-19/20 切到新机 `volc-belp` / `115.190.122.24`（`/srv/english-speaking-assessment`，compose 项目 `esa`）；下文出现的 `49.232.156.221`、`/opt/speakup`、`speakup-*` 容器名均指**遗留机**（compose `speakup`，留作回滚/数据兜底，不再承接 `outman.website` 流量），不是现网。现网拓扑以 [volc-account-migration-2026-11.md](volc-account-migration-2026-11.md) 第七节为准。
 
 ## 一、先说一条最要紧的边界
 
@@ -26,7 +28,7 @@
 | 地域 / 可用区 | `ap-beijing` / `ap-beijing-7`（北京七区） |
 | 规格 | 4 vCPU（AMD EPYC 7K62）、15G 内存 |
 | 系统盘 | 118G，已用 70G（62%），剩 44G |
-| 公网 IP | `49.232.156.221` |
+| 公网 IP | `49.232.156.221`（遗留机；现网生产为 `115.190.122.24`） |
 | 计费 | 包月，方案文档记 ¥185/月（腾讯 SA2.LARGE16），**带宽计费方式未核实** |
 | 部署形态 | 单机 Docker Compose，6 个服务：`acme`、`db`、`prestart`、`backend`、`frontend`、`mailcatcher` |
 | 操作系统 | Ubuntu（主机名 `VM-24-7-ubuntu`），uptime 69 天 |
@@ -51,7 +53,7 @@
 | 项目 | 现状（已核实） |
 | --- | --- |
 | 生产域名 | `outman.website`（`TLS_DOMAIN` / `FRONTEND_HOST`） |
-| 解析 | A 记录指向 `49.232.156.221`；NS 为 `drone.dnspod.net` / `same.dnspod.net` → **DNSPod（腾讯云解析）** |
+| 解析 | 割接前 A 记录指向 `49.232.156.221`（遗留机）；现网 `outman.website` 已解析到 `115.190.122.24`。NS 为 `drone.dnspod.net` / `same.dnspod.net` → **DNSPod（腾讯云解析）** |
 | 域名注册商 | **未核实**（DNSPod 解析 ≠ 注册商，过户前要查 whois 或登录原注册商） |
 | HTTPS 证书 | Let's Encrypt，容器内 `acme.sh` 自动续期；域名 `langbot.outman.press` 的证书也曾签发于此（历史遗留） |
 | 证书校验方式 | **DNS-01**，凭 `DP_Id` / `DP_Key`（DNSPod API 密钥）自动签发 |
@@ -77,8 +79,8 @@
 | 项目 | 现状 |
 | --- | --- |
 | 代码托管 | GitHub `guanlili/english-speaking-assessment`（公开仓库） |
-| 流水线 | GitHub Actions：`deploy.yml`（推送 master 自动部署）、`audit.yml`、`ops-watch.yml` |
-| 部署方式 | SSH 到 `SERVER_HOST`（`ubuntu@49.232.156.221`，密钥 `~/.ssh/esa_ops`），`DEPLOY_PATH=/opt/speakup` 下拉代码 + `docker compose up` |
+| 流水线 | GitHub Actions：`deploy.yml`（push `master` / PR 仅跑 CI，不触生产）、`deploy-prod.yml`（生产手动 `workflow_dispatch` 触发）、`audit.yml`、`ops-watch.yml` |
+| 部署方式 | 〔割接前口径〕SSH 到 `SERVER_HOST`（`ubuntu@49.232.156.221`，密钥 `~/.ssh/esa_ops`），`DEPLOY_PATH=/opt/speakup` 下拉代码 + `docker compose up`。〔现网〕SSH `volc-belp`，`DEPLOY_PATH=/srv/english-speaking-assessment`，由 `deploy-prod.yml` 流水线执行 |
 | Actions Secrets | 27 个：`SERVER_HOST` `SERVER_USER` `SERVER_SSH_KEY` `DEPLOY_PATH` `TLS_DOMAIN` `FRONTEND_HOST` `SECRET_KEY` `POSTGRES_*` `APP_POSTGRES_*` `PLATFORM_POSTGRES_*` `FIRST_SUPERUSER*` `FIRST_OPERATOR_EMAIL` `ARK_API_KEY` `ARK_TTS_API_KEY` `VOLC_ASR_API_KEY` `ASR_PROVIDER` `SCORING_PROVIDER` `AUDIO_TTL_DAYS` `COST_ALERT_EMAIL` `PROJECT_NAME` `COMPOSE_PROJECT_NAME` `APP_PORT` `DP_ID` `DP_KEY` |
 | 主机定时任务 | 每日 03:30 `scripts/backup-local.sh`（DB dump + 音频打包 + manifest），失败写 `backups/backup-failure.log` |
 

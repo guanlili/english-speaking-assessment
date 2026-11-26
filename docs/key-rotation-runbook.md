@@ -1,8 +1,8 @@
 # 密钥轮换手册 / Key rotation runbook
 
-> 位置：所有密钥只存在于两处——GitHub 仓库 Secrets（部署时由流水线写入生产 `.env`）与生产服务器 `/opt/speakup/.env`。**任何情况下不进仓库、不进聊天记录、不进截图。**轮换后旧值立即视为泄露处理。
+> 位置：所有密钥只存在于两处——GitHub 仓库 Secrets（部署时由流水线写入生产 `.env`）与生产服务器（`volc-belp` / `115.190.122.24`）`/srv/english-speaking-assessment/.env`。**任何情况下不进仓库、不进聊天记录、不进截图。**轮换后旧值立即视为泄露处理。
 
-> All secrets live in exactly two places: GitHub repository Secrets (written into the production `.env` by the deploy pipeline) and the server's `/opt/speakup/.env`. They never enter the repo, chats, or screenshots. Treat old values as compromised once rotated.
+> All secrets live in exactly two places: GitHub repository Secrets (written into the production `.env` by the deploy pipeline) and the production server's (`volc-belp` / `115.190.122.24`) `/srv/english-speaking-assessment/.env`. They never enter the repo, chats, or screenshots. Treat old values as compromised once rotated.
 
 ## 轮换速查 / Quick reference
 
