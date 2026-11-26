@@ -11,9 +11,9 @@ bash scripts/backup-local.sh
 bash scripts/verify-backup.sh /absolute/path/to/backups/bundle-TIMESTAMP-ID
 ```
 
-每个完整目录含 `database.sql.gz`（SQL）、`audio.tar.gz`（`/app/audio` 全卷，包括录音与标准音）、`config.env`（配置与密钥）、`metadata.txt`（提交与时间）和 `manifest.sha256`。只有所有步骤成功才发布目录；保留 14 天。执行失败退出非零，cron 记入 `backups/backup-failure.log`。目录和文件仅属主可读，**不得提交、共享或放进可公开下载的目录**。旧版 SQL/配置备份同样保留 14 天，完整新包成功后才清理到期文件。
+每个完整目录含 `database.sql.gz`（SQL）、`audio.tar.gz`（`/app/audio` 全卷，包括录音与标准音）、`config.env`（配置与密钥）、`metadata.txt`（提交与时间）和 `manifest.sha256`。只有所有步骤成功才发布目录；保留 14 天，年龄按包名 `bundle-YYYYMMDDTHHMMSSZ-*` 里的时间戳判定（不看目录 mtime，避免批量拷贝/恢复重置 mtime 导致超期包滞留）。执行失败退出非零，cron 记入 `backups/backup-failure.log`。产物属主归一到 `backups/` 目录当前属主（cron 下即 `deploy`），目录 `750`、文件 `640`，同组巡检监控用户可读 manifest；其他用户不可进入。**不得提交、共享或放进可公开下载的目录**。旧版 SQL/配置备份同样保留 14 天，完整新包成功后才清理到期文件。
 
-A bundle contains the SQL dump, the entire audio volume, deployment configuration (including secrets), commit/time metadata, and checksums. It is published only after every step succeeds. Retention is 14 days; failures return nonzero and cron records their timestamps. Keep bundles private and outside Git/public download directories. Legacy SQL/config backups also retain 14 days and expire only after a complete new bundle succeeds.
+A bundle contains the SQL dump, the entire audio volume, deployment configuration (including secrets), commit/time metadata, and checksums. It is published only after every step succeeds. Retention is 14 days, judged from the timestamp embedded in the bundle name `bundle-YYYYMMDDTHHMMSSZ-*` (not directory mtime, which bulk restores can reset). Failures return nonzero and cron records their timestamps. Bundles are owned by the current owner of the `backups/` directory (the cron user in production), with mode `750` on directories and `640` on files so the same-group monitoring user can read the manifest; other users cannot enter. Keep bundles private and outside Git/public download directories. Legacy SQL/config backups also retain 14 days and expire only after a complete new bundle succeeds.
 
 在线备份跨数据库与音频卷不是原子快照。需要严格一致时，先在入口暂停作答/内容写入，等待评分结束再备份；不要在评分中停止服务。记录实际备份和恢复耗时。当前**没有异地副本**，整机磁盘故障仍可能丢失所有本地备份。
 
