@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { type PkLobbyView, type PkMatchView, VocabularyService } from "@/client"
@@ -64,6 +64,22 @@ const ACTIVE_MATCH: PkMatchView = {
   result: null,
 }
 
+const INITIAL_LOBBY: PkLobbyView = {
+  lobby_id: "l0",
+  status: "open",
+  my_status: null,
+  queue_count: 0,
+  active_match_count: 0,
+  players: [],
+}
+
+const WAITING_LOBBY: PkLobbyView = {
+  ...INITIAL_LOBBY,
+  lobby_id: "l1",
+  my_status: "waiting",
+  queue_count: 1,
+}
+
 function renderArena() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -75,6 +91,7 @@ function renderArena() {
       </I18nProvider>
     </QueryClientProvider>,
   )
+  return { queryClient }
 }
 
 beforeEach(() => {
@@ -171,11 +188,91 @@ describe("PkArena", () => {
     // 首帧对局快照在途：不提前渲染空面板/拼写输入框
     await waitFor(() => expect(screen.getByText("PK 大厅")).toBeInTheDocument())
     expect(screen.queryByText("对战对局")).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByText("对局准备中…")).toBeInTheDocument(),
+    )
     await waitFor(() => expect(matchSpy).toHaveBeenCalled())
 
     resolveMatch(ACTIVE_MATCH)
     await waitFor(() =>
       expect(screen.getByText("对战对局")).toBeInTheDocument(),
     )
+  })
+
+  it("加入成功：响应快照直接回填大厅缓存，不再二次拉取大厅", async () => {
+    const lobbySpy = vi
+      .spyOn(VocabularyService, "readPkLobby")
+      .mockResolvedValue(INITIAL_LOBBY)
+    const joinSpy = vi
+      .spyOn(VocabularyService, "joinPkLobby")
+      .mockResolvedValue(WAITING_LOBBY)
+
+    renderArena()
+
+    const joinButton = await screen.findByRole("button", {
+      name: /加入 PK|Join PK/,
+    })
+    await act(async () => {
+      await joinButton.click()
+    })
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /离开排队|Leave queue/ }),
+      ).toBeInTheDocument(),
+    )
+    expect(joinSpy).toHaveBeenCalledTimes(1)
+    // 大厅缓存来自 join 响应；初始拉取之外没有第二次 lobby GET
+    expect(lobbySpy).toHaveBeenCalledTimes(1)
+  })
+
+  it("配对快照到达后：my_match_id 带出即启用对局查询并挂载面板（D11 竞态）", async () => {
+    vi.spyOn(VocabularyService, "readPkLobby").mockResolvedValue(WAITING_LOBBY)
+    const matchWithPrompt: PkMatchView = {
+      ...ACTIVE_MATCH,
+      items: [
+        {
+          item_index: 0,
+          prompt_type: "en_zh",
+          headword: "apple",
+          meaning_zh: "苹果",
+          choices: [
+            { word_id: "w1", headword: "apple", meaning_zh: "苹果" },
+            { word_id: "w2", headword: "banana", meaning_zh: "香蕉" },
+          ],
+        },
+      ],
+    }
+    vi.spyOn(VocabularyService, "readPkMatchState").mockResolvedValue(
+      matchWithPrompt,
+    )
+    const { queryClient } = renderArena()
+
+    await screen.findByRole("button", { name: /离开排队|Leave queue/ })
+
+    // 对方加入触发配对：大厅快照刷新带出 my_match_id（轮询交付后的缓存态）
+    act(() =>
+      queryClient.setQueryData(["vocab", "DEMO01", "pk-lobby"], ACTIVE_LOBBY),
+    )
+
+    await waitFor(() =>
+      expect(screen.getByTestId("pk-prompt")).toBeInTheDocument(),
+    )
+    expect(screen.getByTestId("pk-prompt")).toHaveTextContent("apple")
+  })
+
+  it("对局 active 但题面未就绪：展示加载占位，不渲染空选项/拼写框", async () => {
+    vi.spyOn(VocabularyService, "readPkLobby").mockResolvedValue(ACTIVE_LOBBY)
+    vi.spyOn(VocabularyService, "readPkMatchState").mockResolvedValue(
+      ACTIVE_MATCH,
+    )
+
+    renderArena()
+
+    await waitFor(() =>
+      expect(screen.getByText("对战对局")).toBeInTheDocument(),
+    )
+    expect(screen.getByText("对局加载中…")).toBeInTheDocument()
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
   })
 })

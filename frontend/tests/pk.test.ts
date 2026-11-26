@@ -6,9 +6,11 @@ import type {
   PkPlayerSummary,
 } from "../src/client/types.gen"
 import {
+  PK_LOBBY_POLL_MS,
   parseSseBuffer,
   pkActiveMatches,
   pkAnswerKey,
+  pkLobbyPollInterval,
   pkNextItemIndex,
   pkOutcome,
   pkPhase,
@@ -89,6 +91,18 @@ test("pkShouldPolling: closed SSE or stale event forces polling", () => {
     pkShouldPolling({ sseOpen: true, lastEventAt: now - 500, now }),
     false,
   )
+})
+
+test("pkLobbyPollInterval: only polls while waiting; stops once matched/left/unknown", () => {
+  assert.equal(pkLobbyPollInterval({ my_status: "waiting" }), PK_LOBBY_POLL_MS)
+  assert.equal(
+    pkLobbyPollInterval({ my_status: "active", my_match_id: "m1" }),
+    false,
+  )
+  assert.equal(pkLobbyPollInterval({ status: "open" }), false)
+  assert.equal(pkLobbyPollInterval({ my_status: null }), false)
+  assert.equal(pkLobbyPollInterval(null), false)
+  assert.equal(pkLobbyPollInterval(undefined), false)
 })
 
 test("pkOutcome: win/lose/drew/none", () => {

@@ -63,6 +63,19 @@ export function pkShouldPolling(options: {
 
 export type PkOutcome = "win" | "lose" | "drew" | "none"
 
+/** 排队中大厅轮询间隔（ms）：配对由对方加入触发，大厅无独立 SSE，轮询兜底带出 my_match_id。 */
+export const PK_LOBBY_POLL_MS = 2_500
+
+/**
+ * 大厅轮询节奏：仅本人仍在排队（waiting）时短轮询；已配对 / 离开 / 未入场即停。
+ * 与对局内 SSE / 1.5s 降级轮询互不影响。
+ */
+export function pkLobbyPollInterval(
+  lobby: PkLobbyLike | null | undefined,
+): number | false {
+  return lobby?.my_status === "waiting" ? PK_LOBBY_POLL_MS : false
+}
+
 /** 结算结果对本人的观感：胜 / 负 / 平 / 未结算。 */
 export function pkOutcome(
   result: PkMatchView["result"],
