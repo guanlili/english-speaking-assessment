@@ -352,7 +352,7 @@ def join_lobby(
 
 
 def leave_lobby(session: Session, classroom: Classroom, student: Student) -> None:
-    """离开大厅：排队中直接退出；对局中标记离场，由结算收口。"""
+    """离开大厅：排队中直接退出；对局中标记离场，写路径内收口结算并 commit。"""
     lobby = get_lobby(session, classroom.id, open_only=True)
     if lobby is None:
         return
@@ -364,11 +364,19 @@ def leave_lobby(session: Session, classroom: Classroom, student: Student) -> Non
     ).first()
     if player is None:
         return
-    if player.status == "active" and player.match_id is not None:
+    match = (
+        session.get(VocabPkMatch, player.match_id)
+        if player.match_id is not None
+        else None
+    )
+    if player.status == "active" and match is not None:
+        # 行锁：离场结算与作答/超时收口互斥；终局结果随本请求 commit 落库
+        session.refresh(match, with_for_update=True)
         player.status = "left"
         player.left_at = _now()
         session.add(player)
-        _settle_if_over(session, session.get(VocabPkMatch, player.match_id))
+        _settle_due(session, match)
+        _settle_if_over(session, match)
     else:
         player.status = "left"
         player.left_at = _now()
@@ -466,22 +474,7 @@ def submit_answer(
     idempotency_key: str | None,
 ) -> PkAnswerResult:
     """判分落库：每题只计首次有效提交；幂等重放不二次计分。"""
-    _settle_due(session, match)
-    if match.status != "active":
-        raise HTTPException(status_code=422, detail="对局已结束，不能继续作答")
-    if player.status not in ("active",):
-        raise HTTPException(status_code=422, detail="您已离开本局")
-
-    replay = _replay_answer(
-        session,
-        match,
-        player,
-        item_index=item_index,
-        prompt_type=prompt_type,
-        answer_raw=answer_raw,
-        idempotency_key=idempotency_key,
-    )
-
+    # 纯载荷预检：不触库状态，校验失败直接 422，不影响对局收口
     snapshots = match.snapshot_items
     if not 0 <= item_index < len(snapshots):
         raise HTTPException(status_code=422, detail="题目序号不在本局范围内")
@@ -496,9 +489,19 @@ def submit_answer(
     if len(normalized) > 255:
         raise HTTPException(status_code=422, detail="作答内容过长，请缩短后提交")
 
-    # 对局行锁：提交/超时结算共享，锁内重校验状态与服务端时间
+    # 对局行锁：超时收口与作答在同一锁内完成。已终局的对局先把结算 commit
+    # 落库再拒绝作答，避免终局状态随 422 回滚；超时推进同样先落库。
     session.refresh(match, with_for_update=True)
-    replay = replay or _replay_answer(
+    mutated = _settle_due(session, match)
+    if match.status != "active":
+        session.commit()
+        raise HTTPException(status_code=422, detail="对局已结束，不能继续作答")
+    if player.status != "active":
+        if mutated:
+            session.commit()
+        raise HTTPException(status_code=422, detail="您已离开本局")
+
+    replay = _replay_answer(
         session,
         match,
         player,
@@ -640,10 +643,15 @@ def _advance_if_both_ready(session: Session, match: VocabPkMatch) -> None:
         session.add(match)
 
 
-def _settle_due(session: Session, match: VocabPkMatch) -> None:
-    """惰性超时收口：当前题到时，未答者记 0 并推进；玩家答满即终结。"""
+def _settle_due(session: Session, match: VocabPkMatch) -> bool:
+    """惰性超时收口：当前题到时，未答者记 0 并推进；玩家答满即终结。
+
+    返回本函数是否产生了需要落库的状态变更（超时推进或终局结算）。
+    只读路径不得调用本函数；仅在 submit_answer / leave_lobby 等写路径内调用，
+    由调用方负责 commit，避免状态变更随 422/回滚丢失。
+    """
     if match.status != "active":
-        return
+        return False
     now = _now()
     players = _match_players(session, match)
     progressed = False
@@ -670,45 +678,61 @@ def _settle_due(session: Session, match: VocabPkMatch) -> None:
     if progressed:
         match.state_version += 1
         session.add(match)
-    _settle_if_over(session, match)
+    settled = _settle_if_over(session, match, reason_hint="timeout")
+    return progressed or settled
 
 
-def _settle_if_over(session: Session, match: VocabPkMatch | None) -> None:
-    """双方终结（答满/离场）→ 结算胜负；结算幂等。"""
+def _settle_if_over(
+    session: Session, match: VocabPkMatch | None, *, reason_hint: str | None = None
+) -> bool:
+    """双方终结（答满/离场/到时）→ 结算胜负；结算幂等。
+
+    - 终局后再次调用直接返回，不覆盖已写入的 winner/end_reason/finished_at；
+    - 双方离场 → abandoned，无胜者；一方离场 → walkover，另一方胜；
+    - 双方答满 → completion；题目全部到时 → timeout；
+    - 返回是否在本次调用中完成了结算。
+    """
     if match is None or match.status != "active":
-        return
+        return False
     players = _match_players(session, match)
     if len(players) < 2:
-        return
-    finished = [p for p in players if p.answered_count >= match.question_count]
+        return False
+    # 「答满」以真实作答行为准：超时推进只累加 answered_count 记 0，不算提交完成
+    submitted_all = [
+        p for p in players if len(_answered_slots(session, p)) >= match.question_count
+    ]
     left = [p for p in players if p.status == "left"]
-    if len(finished) < 2 and not (left and len(left) == 2):
-        return
+    active_players = [p for p in players if p.status != "left"]
+    all_elapsed = match.current_item_index >= match.question_count
+
+    if len(left) == 2:
+        end_reason = "abandoned"
+        winner: VocabPkPlayer | None = None
+    elif len(left) == 1:
+        # 一方离场：另一方弃权胜（active_players 恰为留场一方）
+        winner = active_players[0] if len(active_players) == 1 else None
+        end_reason = "walkover"
+    elif len(submitted_all) == 2:
+        winner = _decide_winner(players[0], players[1])
+        end_reason = "completion"
+    elif all_elapsed:
+        winner = _decide_winner(players[0], players[1])
+        end_reason = reason_hint or "timeout"
+    else:
+        return False
 
     match.status = "finished"
     match.finished_at = _now()
     match.state_version += 1
-
-    if len(left) == 2:
-        match.end_reason = "abandoned"
-        match.winner_student_id = None
-    else:
-        active_players = [p for p in players if p.status != "left"]
-        if len(active_players) == 1:
-            winner = active_players[0]
-            match.winner_student_id = winner.student_id
-            match.end_reason = "walkover"
-        else:
-            first, second = players[0], players[1]
-            winner = _decide_winner(first, second)
-            match.winner_student_id = winner.student_id if winner is not None else None
-            match.end_reason = "completion"
+    match.winner_student_id = winner.student_id if winner is not None else None
+    match.end_reason = end_reason
     for player in players:
         if player.status != "left":
             player.status = "finished"
             player.finished_at = match.finished_at
         session.add(player)
     session.add(match)
+    return True
 
 
 def _decide_winner(first: VocabPkPlayer, second: VocabPkPlayer) -> VocabPkPlayer | None:
@@ -747,7 +771,11 @@ def match_view(
     me: VocabPkPlayer,
     opponent: VocabPkPlayer | None,
 ) -> PkMatchView:
-    _settle_due(session, match)
+    """对局快照（GET / 轮询 / SSE 共用）：只读，不触发超时收口或结算落库。
+
+    终局由 submit_answer / leave_lobby 等写路径判定并 commit；本视图只反映
+    已落库的状态，刷新/轮询不会把未提交的超时结算写回数据库。
+    """
     my_answers = {
         a.item_index: a
         for a in session.exec(
