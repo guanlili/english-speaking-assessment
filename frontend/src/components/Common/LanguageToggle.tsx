@@ -14,7 +14,7 @@ export function LanguageToggle({ className }: { className?: string }) {
     <fieldset
       aria-label="语言 / Language"
       className={cn(
-        "inline-flex h-12 items-center rounded-full border border-border bg-card p-0.5 text-xs font-medium sm:h-8",
+        "inline-flex h-12 items-center rounded-full border border-border bg-card p-0.5 text-xs font-medium coarse:h-12 sm:h-8",
         className,
       )}
     >
@@ -29,7 +29,7 @@ export function LanguageToggle({ className }: { className?: string }) {
           aria-pressed={lang === choice.value}
           onClick={() => setLang(choice.value)}
           className={cn(
-            "h-11 min-w-11 rounded-full px-2 transition-colors hover:text-foreground sm:h-7 sm:min-w-9",
+            "h-11 min-w-11 rounded-full px-2 transition-colors hover:text-foreground coarse:h-11 coarse:min-w-11 coarse:text-base sm:h-7 sm:min-w-9",
             lang === choice.value
               ? "bg-foreground text-background"
               : "text-muted-foreground",

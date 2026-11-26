@@ -178,7 +178,7 @@ export function TeachingShell({ children }: { children: ReactNode }) {
           <div className="mx-auto flex min-h-20 max-w-7xl items-center gap-3 py-3 sm:gap-4">
             <SidebarTrigger
               aria-label={t({ zh: "切换导航栏", en: "Toggle navigation" })}
-              className="size-11 shrink-0 rounded-lg border border-border/80 text-muted-foreground hover:text-foreground sm:size-9"
+              className="size-11 shrink-0 rounded-lg border border-border/80 text-muted-foreground hover:text-foreground sm:size-9 coarse:size-11"
             />
             <div className="min-w-0 space-y-1">
               <p className="text-[11px] font-medium tracking-widest text-muted-foreground">

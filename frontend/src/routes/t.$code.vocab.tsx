@@ -176,9 +176,11 @@ function TeacherVocabPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link to="/classrooms" className="text-sm font-medium text-primary">
-          ← {t({ zh: "我的课堂", en: "My Classrooms" })}
-        </Link>
+        <Button variant="link" asChild className="coarse:text-base">
+          <Link to="/classrooms">
+            ← {t({ zh: "我的课堂", en: "My Classrooms" })}
+          </Link>
+        </Button>
         {/* 课堂内「口语 / 词汇」切换；口语入口按模块清单显隐 */}
         <VocabModuleSwitcher code={code} />
       </div>

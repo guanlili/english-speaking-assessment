@@ -22,7 +22,7 @@ function InfoHint({
         <button
           type="button"
           aria-label={label}
-          className="inline-flex size-10 -m-1.5 shrink-0 cursor-help items-center justify-center rounded-sm text-muted-foreground/70 transition hover:text-foreground"
+          className="inline-flex size-10 -m-1.5 coarse:size-11 coarse:-m-2 shrink-0 cursor-help items-center justify-center rounded-sm text-muted-foreground/70 transition hover:text-foreground"
         >
           <CircleHelp className="size-3.5" />
         </button>

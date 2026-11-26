@@ -211,9 +211,11 @@ function TeacherBoardPage() {
     }
     return (
       <div className="space-y-6">
-        <Link to="/classrooms" className="text-sm text-primary">
-          ← {t({ zh: "我的课堂", en: "My Classrooms" })}
-        </Link>
+        <Button variant="link" asChild className="coarse:text-base">
+          <Link to="/classrooms">
+            ← {t({ zh: "我的课堂", en: "My Classrooms" })}
+          </Link>
+        </Button>
         <h1 className="text-2xl font-bold">
           {t({
             zh: `课堂 ${code}`,

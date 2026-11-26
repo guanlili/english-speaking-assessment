@@ -36,6 +36,7 @@ export const SidebarAppearance = () => {
           <SidebarMenuButton
             tooltip={t({ zh: "外观", en: "Appearance" })}
             data-testid="theme-button"
+            className="coarse:min-h-11"
           >
             <Icon className="size-4 text-muted-foreground" />
             <span>{t({ zh: "外观", en: "Appearance" })}</span>
@@ -85,7 +86,7 @@ export const Appearance = () => {
             data-testid="theme-button"
             variant="outline"
             size="icon"
-            className="size-11 sm:size-9"
+            className="size-11 sm:size-9 coarse:size-11"
           >
             <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
             <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
