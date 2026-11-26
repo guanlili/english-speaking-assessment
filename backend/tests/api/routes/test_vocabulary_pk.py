@@ -311,6 +311,127 @@ def test_idempotent_replay_no_double_score(client: TestClient, db: Session) -> N
     assert conflict["_status"] == 422, conflict
 
 
+def test_idempotency_key_scoped_per_player(client: TestClient, db: Session) -> None:
+    """D12：幂等键按玩家维度隔离——同局两名玩家同题同键可各自提交并落库；
+    同玩家重复同键同答案走重放不二次计分；同玩家同键不同题/答案仍 422。"""
+    teacher, teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, teacher_headers)
+    book = _make_book(client, teacher_headers, classroom["id"], _words(8, "d"), "d1")
+    spelling = _spelling_map(client, teacher_headers, book["id"])
+    _open_lobby(
+        client,
+        teacher_headers,
+        classroom["code"],
+        book["id"],
+        question_count=4,
+        prompt_types=["meaning"],
+    )
+    a = make_student(db, client, classroom["code"], "甲")
+    b = make_student(db, client, classroom["code"], "乙")
+    _join(client, a["headers"], classroom["code"])
+    lobby_b = _join(client, b["headers"], classroom["code"])
+    match_id = lobby_b["my_match_id"]
+
+    item = _match(client, a["headers"], classroom["code"], match_id)["items"][0]
+    answer = spelling[item["meaning_zh"]]
+    key = f"pk-shared-{uuid.uuid4().hex[:8]}"
+
+    # 两玩家同题同键，均 200 且各自落库（旧全局键约束会让后到者 422）
+    res_a = _answer(
+        client,
+        a["headers"],
+        classroom["code"],
+        match_id,
+        0,
+        answer,
+        idempotency_key=key,
+    )
+    assert res_a["_status"] == 200, res_a
+    res_b = _answer(
+        client,
+        b["headers"],
+        classroom["code"],
+        match_id,
+        0,
+        answer,
+        idempotency_key=key,
+    )
+    assert res_b["_status"] == 200, res_b
+
+    rows = db.exec(
+        select(VocabPkAnswer).where(
+            VocabPkAnswer.match_id == match_id,  # type: ignore[arg-type]
+            VocabPkAnswer.item_index == 0,
+        )
+    ).all()
+    assert len(rows) == 2
+    assert {str(r.student_id) for r in rows} == {
+        a["student"]["id"],
+        b["student"]["id"],
+    }
+
+    # 各自重放同键同答案：replayed、不二次计分
+    score_a = res_a["my_score"]
+    replay_a = _answer(
+        client,
+        a["headers"],
+        classroom["code"],
+        match_id,
+        0,
+        answer,
+        idempotency_key=key,
+    )
+    assert replay_a["_status"] == 200, replay_a
+    assert replay_a["replayed"] is True
+    assert replay_a["my_score"] == score_a
+
+    score_b = res_b["my_score"]
+    replay_b = _answer(
+        client,
+        b["headers"],
+        classroom["code"],
+        match_id,
+        0,
+        answer,
+        idempotency_key=key,
+    )
+    assert replay_b["_status"] == 200, replay_b
+    assert replay_b["replayed"] is True
+    assert replay_b["my_score"] == score_b
+
+    # 同玩家同键不同答案 → 422
+    conflict_a = _answer(
+        client,
+        a["headers"],
+        classroom["code"],
+        match_id,
+        0,
+        f"wrong{answer}",
+        idempotency_key=key,
+    )
+    assert conflict_a["_status"] == 422, conflict_a
+
+    # 同玩家同键不同题 → 422
+    conflict_b = _answer(
+        client,
+        b["headers"],
+        classroom["code"],
+        match_id,
+        1,
+        "whatever",
+        idempotency_key=key,
+    )
+    assert conflict_b["_status"] == 422, conflict_b
+
+    rows = db.exec(
+        select(VocabPkAnswer).where(
+            VocabPkAnswer.match_id == match_id,  # type: ignore[arg-type]
+            VocabPkAnswer.item_index == 0,
+        )
+    ).all()
+    assert len(rows) == 2
+
+
 def test_reconnect_restores_question_clock_and_score(
     client: TestClient, db: Session
 ) -> None:
