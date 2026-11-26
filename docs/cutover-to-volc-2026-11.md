@@ -5,6 +5,8 @@
 >
 > 设计原则：**切换只改 GitHub Environment `production` 的 8 个键**，代码零改动；
 > 回滚是把这 8 个键改回去，旧机数据在释放前不动。
+>
+> 别名对照（割接已完成，本文为执行留档）：`esa-prod` = 遗留机 `49.232.156.221`（`/opt/speakup`）；`volc-belp` = 现网生产 `115.190.122.24`（`/srv/english-speaking-assessment`）。
 
 ## 0. 前置条件（缺一不可）
 
