@@ -261,6 +261,56 @@ def test_reset_and_remove_student(client: TestClient, db: Session) -> None:
         _cleanup(db, classroom_id, teacher)
 
 
+def test_roster_echoes_email_for_usernameless_bound_account(
+    client: TestClient, db: Session
+) -> None:
+    """D2: 种子账号无学号（仅邮箱）仍按 user_id 判为在班；名单回显 email 供前端兜底。"""
+    from app.core.security import get_password_hash
+
+    teacher, headers = _login_teacher(db, client)
+    classroom_id = None
+    student_user: User | None = None
+    try:
+        classroom = _new_classroom(client, headers)
+        classroom_id = uuid.UUID(classroom["id"])
+        email = random_email()
+        student_user = User(
+            email=email,
+            role="student",
+            hashed_password=get_password_hash(DEFAULT_STUDENT_PASSWORD),
+        )
+        db.add(student_user)
+        db.commit()
+        db.refresh(student_user)
+
+        login = client.post(
+            "/api/v1/login/access-token",
+            data={"username": email, "password": DEFAULT_STUDENT_PASSWORD},
+        )
+        assert login.status_code == 200, login.text
+        student_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        join = client.post(
+            f"/api/v1/classes/{classroom['code']}/join",
+            json={"display_name": "邮箱种子生"},
+            headers=student_headers,
+        )
+        assert join.status_code == 200, join.text
+
+        roster = client.get(
+            "/api/v1/students",
+            params={"classroom_id": classroom_id},
+            headers=headers,
+        ).json()
+        assert len(roster) == 1
+        row = roster[0]
+        # 绑定判定以 user_id 为准；学号为空不应被误判为已移出
+        assert row["student"]["user_id"] == str(student_user.id)
+        assert row["username"] is None
+        assert row["email"] == email
+    finally:
+        _cleanup(db, classroom_id, teacher, student_user)
+
+
 # ── 多班归属（2026-10）：一个账号可被不同教师分别导入各自班级 ────────────
 
 
