@@ -6,6 +6,17 @@ project_dir="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$project_dir"
 mkdir -p backups
 chmod 700 backups
+# flock availability check: refuse to run lockless instead of silently racing.
+# Linux ships flock in util-linux; macOS has no flock by default (see message below).
+if ! command -v flock >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+flock not found on PATH: refusing to run without an exclusive backup lock.
+  - Linux: install util-linux (provides flock), e.g. `apt install util-linux` or `yum install util-linux`.
+  - macOS: `brew install flock`, or run this backup on a Linux host/container where flock is available.
+Do not continue without a lock: concurrent cron/manual backups can produce a corrupted bundle.
+EOF
+  exit 1
+fi
 # Daily cron and manual runs must not race with each other or retention cleanup.
 exec 9>backups/.backup.lock
 flock -n 9 || { echo 'A backup is already running' >&2; exit 1; }
@@ -34,7 +45,9 @@ audio_bytes=$(wc -c < "$staging/audio.tar.gz")
   echo "Backup aborted: audio archive is ${audio_bytes}B, below floor ${min_audio_bytes}B" >&2
   exit 1
 }
-tables=$(zcat "$staging/database.sql.gz" | grep -c '^CREATE TABLE' || true)
+# gzip -dc instead of zcat: macOS zcat treats .gz as compress .Z and fails here,
+# which used to abort the bundle as "0 tables". gzip -dc works on both Linux and macOS.
+tables=$(gzip -dc "$staging/database.sql.gz" | grep -c '^CREATE TABLE' || true)
 [ "$tables" -ge "$min_tables" ] || {
   echo "Backup aborted: dump only carries ${tables} tables, expected >= ${min_tables}" >&2
   exit 1
