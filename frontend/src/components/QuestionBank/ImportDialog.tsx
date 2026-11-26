@@ -506,7 +506,7 @@ export function QuestionBankImportDialog({
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
-                      className="min-h-9"
+                      className="coarse:min-h-11"
                       onClick={() =>
                         setDecisions(
                           Object.fromEntries(
@@ -522,7 +522,7 @@ export function QuestionBankImportDialog({
                     </Button>
                     <Button
                       variant="outline"
-                      className="min-h-9"
+                      className="coarse:min-h-11"
                       onClick={() => setDecisions({})}
                     >
                       {t({ zh: "全部跳过", en: "Skip all" })}
@@ -780,7 +780,7 @@ export function QuestionBankImportDialog({
                             {kind === "repeat" && (
                               <Button
                                 variant="link"
-                                className="min-h-9 px-0 text-xs"
+                                className="px-0 text-xs"
                                 onClick={() => {
                                   onOpenChange(false)
                                   void navigate({ to: "/create" })
@@ -795,7 +795,7 @@ export function QuestionBankImportDialog({
                             {kind === "question" && (
                               <Button
                                 variant="link"
-                                className="min-h-9 px-0 text-xs"
+                                className="px-0 text-xs"
                                 onClick={() => {
                                   onOpenChange(false)
                                   void navigate({ to: "/admin/scenarios" })
