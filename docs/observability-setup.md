@@ -3,27 +3,26 @@
 > 两条链路的**代码与部署管线均已就绪**，只差在 GitHub Secrets 填值。
 > 本手册是唯一操作步骤——不需要改任何代码，填完手动运行一次 `Deploy Production` 部署即生效（push master 只跑 CI，不自动部署）。
 
-## 一、Sentry 前端错误上报
+## 一、错误监控（自建 GlitchTip，Sentry 协议）
 
-**现状**：`frontend/src/main.tsx` 已按需初始化（未配 DSN 时 Sentry 不打包进首屏，零成本）；
-部署链 `Secrets → generate-deploy-env.sh → compose build args → vite` 全通（PR#221 接线，CI 校验键一致）。
+**现状**：后端 `app/core/observability.py` 与前端 `main.tsx` 均已按需初始化——未配 DSN 时 SDK 不加载/不打包，零成本；
+部署链 `Secrets → generate-deploy-env.sh → 生产 .env / compose build args → vite` 全通。
+监控端为遗留机 `49.232.156.221` 上的自建 GlitchTip；ESA 组织与 `esa-backend` / `esa-frontend` 两个项目已建好。
+盘点、密钥、网络诊断与待决策端点方案见 `docs/qa/20261128/glitchtip/REPORT.md`。
 
-**开通步骤**：
+**待办（端点方案定稿后）**：
 
-1. 注册 [sentry.io](https://sentry.io)（免费档 5K errors/月够用）或自托管实例
-2. 创建项目，平台选 **React**，拿到 DSN（形如 `https://xxx@oXXX.ingest.sentry.io/YYY`）
-3. 填入 GitHub Secret：
+1. 确定 ingest 入口：后端可走 volc-belp 到监控机的 SSH 隧道（`127.0.0.1:8090`）；前端必须是学生浏览器可达的公网 HTTPS 子域反代。
+2. 填入 GitHub Secrets（DSN 形如 `https://<公钥>@<可达主机>/<项目id>`）：
    ```bash
-   # 本地终端执行（或仓库 Settings → Secrets → Actions 页面添加）
-   printf 'https://你的DSN' | gh secret set VITE_SENTRY_DSN --repo guanlili/english-speaking-assessment
+   printf '<后端 DSN>' | gh secret set SENTRY_DSN --repo guanlili/english-speaking-assessment --env production
+   printf '<前端 DSN>' | gh secret set VITE_SENTRY_DSN --repo guanlili/english-speaking-assessment --env production
    ```
-4. 手动运行 `Deploy Production` workflow（`deploy-prod.yml`）触发部署
+3. 手动运行 `Deploy Production` workflow（`deploy-prod.yml`）触发部署。
 
-**验证**：部署完成后打开网站 → 浏览器控制台执行 `setTimeout(() => { throw new Error('sentry-test') }, 100)`
-→ Sentry 后台几秒内出现该事件。
+**验证**：部署后后端容器内 `sentry_sdk.capture_message(...)`、前端控制台抛错，分别在 GlitchTip 两个项目看到事件；详见 QA 报告 5.2。
 
-**注意**：DSN 是公开标识不是密钥（会打进前端 bundle），泄露无风险；但想换项目时改 Secret 重新部署即可。
-国内访问 sentry.io 的 ingest 端点偶有抖动——若上报不稳定，考虑自托管或选用国内同类（如 FrontJS），代码侧只需换 DSN。
+**注意**：DSN 公钥是公开标识（前端 DSN 会打进 bundle），不是密钥；SDK 默认 `send_default_pii=False`，不传用户/IP/Cookie/请求体。当前生产到 49.232:8090 网络不通，端点未打通前 Secrets 保持空值，SDK 不上报。
 
 ## 二、SMTP 告警邮件（队列堆积/成本告警）
 
@@ -56,7 +55,8 @@
 
 | Secret | 用途 | 状态 |
 |---|---|---|
-| VITE_SENTRY_DSN | 前端错误上报 | ⬜ 待填（本手册一） |
+| SENTRY_DSN | 后端错误上报（GlitchTip） | ⬜ 待端点方案定稿后填（本手册一） |
+| VITE_SENTRY_DSN | 前端错误上报（GlitchTip） | ⬜ 待公网 HTTPS 入口就绪后填（本手册一） |
 | SMTP_HOST/USER/PASSWORD | 发件通道 | ⬜ 待填（本手册二） |
 | EMAILS_FROM_EMAIL | 发件人地址 | ⬜ 待填（同上） |
 | COST_ALERT_EMAIL | 告警收件人 | ⬜ 待填（同上） |
