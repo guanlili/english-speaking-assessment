@@ -436,7 +436,8 @@ def _replay_answer(
     normalized = vocab_service.normalize_spelling(answer_raw)
     existing = session.exec(
         select(VocabPkAnswer).where(
-            VocabPkAnswer.idempotency_key == idempotency_key  # type: ignore[arg-type]
+            VocabPkAnswer.player_id == player.id,  # type: ignore[arg-type]
+            VocabPkAnswer.idempotency_key == idempotency_key,  # type: ignore[arg-type]
         )
     ).first()
     if existing is None:

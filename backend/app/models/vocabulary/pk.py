@@ -205,14 +205,16 @@ class VocabPkPlayer(SQLModel, table=True):
 class VocabPkAnswer(SQLModel, table=True):
     """PK 作答记录：独立于 ``VocabularyAnswer``，不参与任务统计。
 
-    每题只计首次有效提交；幂等键全局唯一，断网重传同键返回首次结果，
-    不二次计分。
+    每题只计首次有效提交；幂等键按玩家维度唯一（同局两名玩家同题同 attempt
+    可各自提交），断网重传同键返回首次结果，不二次计分。
     """
 
     __tablename__ = "vocab_pk_answer"
     __table_args__ = (
         UniqueConstraint("player_id", "item_index", name="uq_vocab_pk_answer_slot"),
-        UniqueConstraint("idempotency_key", name="uq_vocab_pk_answer_idempotency"),
+        UniqueConstraint(
+            "player_id", "idempotency_key", name="uq_vocab_pk_answer_idempotency"
+        ),
     )
     tenant_id: uuid.UUID = _tenant_id_field()
 

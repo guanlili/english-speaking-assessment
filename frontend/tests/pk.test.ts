@@ -109,9 +109,27 @@ test("pkOutcome: win/lose/drew/none", () => {
   assert.equal(pkOutcome(ongoing, "s1"), "none")
 })
 
-test("pkAnswerKey: stable per match/item/attempt", () => {
-  assert.equal(pkAnswerKey("m1", 2, 1), "m1:2:1")
-  assert.notEqual(pkAnswerKey("m1", 2, 1), pkAnswerKey("m1", 2, 2))
+test("pkAnswerKey: stable per match/player/item/attempt", () => {
+  assert.equal(
+    pkAnswerKey("m1", "11111111-2222-3333-4444-555555555555", 2, 1),
+    "m1:11111111:2:1",
+  )
+  assert.notEqual(
+    pkAnswerKey("m1", "11111111-2222-3333-4444-555555555555", 2, 1),
+    pkAnswerKey("m1", "99999999-8888-7777-6666-555555555555", 2, 1),
+  )
+  assert.notEqual(
+    pkAnswerKey("m1", "11111111-2222-3333-4444-555555555555", 2, 1),
+    pkAnswerKey("m1", "11111111-2222-3333-4444-555555555555", 2, 2),
+  )
+  assert.equal(pkAnswerKey("m1", null, 2, 1), "m1:anon:2:1")
+  const real = pkAnswerKey(
+    "00000000-0000-4000-8000-000000000000",
+    "00000000-0000-4000-8000-000000000001",
+    12,
+    1,
+  )
+  assert.ok(real.length <= 64, `key too long: ${real}`)
 })
 
 test("parseSseBuffer: splits completed blocks, keeps partial tail", () => {

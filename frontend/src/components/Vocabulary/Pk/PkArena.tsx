@@ -287,6 +287,7 @@ function MatchPanel({
           ...payload,
           idempotency_key: pkAnswerKey(
             match.match_id,
+            myStudentId,
             payload.item_index,
             attemptRef.current,
           ),

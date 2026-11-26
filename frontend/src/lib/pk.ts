@@ -74,13 +74,19 @@ export function pkOutcome(
   return result.winner_student_id === myStudentId ? "win" : "lose"
 }
 
-/** 作答幂等键：同局同题同次尝试稳定唯一，断网重传不二次计分。 */
+/**
+ * 作答幂等键：同局同玩家同题同次尝试稳定唯一，断网重传不二次计分。
+ * 玩家维度取学生 ID 前 8 位（去横线）；服务端唯一约束/重放查询按 player_id
+ * 兜底，前缀仅用于把两名玩家的键区分开，整体长度控制在 64 以内。
+ */
 export function pkAnswerKey(
   matchId: string,
+  studentId: string | null | undefined,
   itemIndex: number,
   attempt: number,
 ): string {
-  return `${matchId}:${itemIndex}:${attempt}`
+  const player = (studentId ?? "").replace(/-/g, "").slice(0, 8) || "anon"
+  return `${matchId}:${player}:${itemIndex}:${attempt}`
 }
 
 /**
