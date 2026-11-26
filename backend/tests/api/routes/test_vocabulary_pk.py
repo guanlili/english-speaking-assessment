@@ -15,7 +15,10 @@ from sqlmodel import Session, select
 
 from app.models import (
     MAX_QUEUE_PLAYERS,
+    User,
     VocabPkAnswer,
+    VocabPkMatch,
+    VocabPkPlayer,
     VocabularyAnswer,
 )
 from tests.utils.credential import make_student
@@ -396,15 +399,28 @@ def test_timeout_settles_unanswered_as_zero(client: TestClient, db: Session) -> 
     match_id = lobby_b["my_match_id"]
 
     time.sleep(1.6)
+    # GET 只读：超时不会被读路径结算，对局仍保持 active
+    peek = _match(client, a["headers"], classroom["code"], match_id)
+    assert peek["status"] == "active"
+    # 写路径（作答尝试）触发超时收口并 commit 结算；终局后作答被 422 拒绝
+    attempt = _answer(client, a["headers"], classroom["code"], match_id, 0, "whatever")
+    assert attempt["_status"] == 422, attempt
+
     view = _match(client, a["headers"], classroom["code"], match_id)
     assert view["status"] == "finished"
     # 超时未答记 0；双方都未得分
     assert view["me"]["score"] == 0
     assert view["opponent"]["score"] == 0
-    assert (
-        view["result"]["end_reason"] == "timeout"
-        or view["result"]["end_reason"] == "completion"
-    )
+    assert view["result"]["end_reason"] == "timeout"
+
+    # 结算结果已落库：终局字段非空、平局无胜者
+    db.expire_all()
+    row = db.get(VocabPkMatch, uuid.UUID(match_id))
+    assert row is not None
+    assert row.status == "finished"
+    assert row.finished_at is not None
+    assert row.end_reason == "timeout"
+    assert row.winner_student_id is None
 
 
 def test_queue_capacity_limit(client: TestClient, db: Session) -> None:
@@ -504,3 +520,185 @@ def test_teacher_can_read_lobby_but_not_subscribe_match(
         headers=teacher_headers,
     )
     assert resp.status_code == 403, resp.text
+
+
+# ── D10：结算落库 / 只读视图 / 重复结算幂等 ──────────────────────────
+
+
+def _setup_active_match(
+    client: TestClient, db: Session, prefix: str, question_count: int = 4
+) -> tuple[User, dict[str, str], dict, dict, dict, dict, dict, str]:
+    teacher, teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, teacher_headers)
+    book = _make_book(
+        client, teacher_headers, classroom["id"], _words(8, prefix), f"{prefix}1"
+    )
+    spelling = _spelling_map(client, teacher_headers, book["id"])
+    _open_lobby(
+        client,
+        teacher_headers,
+        classroom["code"],
+        book["id"],
+        question_count=question_count,
+        prompt_types=["meaning"],
+    )
+    a = make_student(db, client, classroom["code"], f"{prefix}甲")
+    b = make_student(db, client, classroom["code"], f"{prefix}乙")
+    _join(client, a["headers"], classroom["code"])
+    lobby_b = _join(client, b["headers"], classroom["code"])
+    match_id = lobby_b["my_match_id"]
+    assert match_id is not None
+    return teacher, teacher_headers, classroom, book, spelling, a, b, match_id
+
+
+def _answer_all(
+    client: TestClient,
+    code: str,
+    spelling: dict[str, str],
+    a: dict,
+    b: dict,
+    match_id: str,
+    question_count: int,
+) -> None:
+    """甲前两题对、后两题错；乙全对，双方答满后由写路径结算。"""
+    view = client.get(
+        f"{PK.format(code=code)}/matches/{match_id}", headers=b["headers"]
+    ).json()
+    for idx, item in enumerate(view["items"][:question_count]):
+        answer = spelling[item["meaning_zh"]]
+        a_answer = answer if idx < 2 else f"x{answer}"
+        res = _answer(client, a["headers"], code, match_id, idx, a_answer)
+        assert res["_status"] == 200, res
+        res_b = _answer(client, b["headers"], code, match_id, idx, answer)
+        assert res_b["_status"] == 200, res_b
+
+
+def test_finished_match_settlement_persisted_to_db(
+    client: TestClient, db: Session
+) -> None:
+    """双方答满终局后，DB 落库 status/winner/end_reason/finished_at；重复读不覆盖。"""
+    teacher, headers, classroom, _book, spelling, a, b, match_id = _setup_active_match(
+        client, db, "d10"
+    )
+    _answer_all(client, classroom["code"], spelling, a, b, match_id, 4)
+
+    db.expire_all()
+    row = db.get(VocabPkMatch, uuid.UUID(match_id))
+    assert row is not None
+    assert row.status == "finished"
+    assert row.finished_at is not None
+    assert row.end_reason == "completion"
+    assert row.winner_student_id == uuid.UUID(b["student"]["id"])
+
+    players = db.exec(
+        select(VocabPkPlayer).where(VocabPkPlayer.match_id == uuid.UUID(match_id))
+    ).all()
+    by_student = {p.student_id: p for p in players}
+    winner = by_student[uuid.UUID(b["student"]["id"])]
+    loser = by_student[uuid.UUID(a["student"]["id"])]
+    assert winner.status == "finished"
+    assert winner.finished_at is not None
+    assert loser.status == "finished"
+    assert loser.finished_at is not None
+    assert winner.score > loser.score
+
+    # 重复 GET（轮询/快照读路径）不改变 winner 与结果
+    for _ in range(3):
+        view = _match(client, b["headers"], classroom["code"], match_id)
+        assert view["status"] == "finished"
+        assert view["result"]["winner_student_id"] == b["student"]["id"]
+    db.expire_all()
+    row2 = db.get(VocabPkMatch, uuid.UUID(match_id))
+    assert row2 is not None
+    assert row2.winner_student_id == uuid.UUID(b["student"]["id"])
+
+    # 重复结算幂等：不再覆盖已写入的 winner/end_reason
+    from app.services import vocabulary_pk as pk_service
+
+    assert pk_service._settle_if_over(db, row2) is False
+    assert pk_service._settle_if_over(db, row2) is False
+    assert row2.winner_student_id == uuid.UUID(b["student"]["id"])
+    assert row2.end_reason == "completion"
+
+    # 教师 pk/history 能查到已结束对局
+    hist = client.get(
+        f"{PK.format(code=classroom['code'])}/history", headers=headers
+    ).json()
+    assert len(hist["matches"]) == 1
+    assert hist["matches"][0]["winner_student_id"] == b["student"]["id"]
+    assert hist["matches"][0]["finished_at"] is not None
+
+
+def test_match_view_get_does_not_write_db(client: TestClient, db: Session) -> None:
+    """GET/轮询快照是只读路径：不推进题目、不改版本号、不落终局字段。"""
+    _teacher, _headers, classroom, _book, _spelling, a, _b, match_id = (
+        _setup_active_match(client, db, "ro")
+    )
+    db.expire_all()
+    row = db.get(VocabPkMatch, uuid.UUID(match_id))
+    assert row is not None
+    before = (row.status, row.state_version, row.current_item_index, row.finished_at)
+
+    for _ in range(3):
+        _match(client, a["headers"], classroom["code"], match_id)
+        client.get(f"{PK.format(code=classroom['code'])}/lobby", headers=a["headers"])
+
+    db.expire_all()
+    row2 = db.get(VocabPkMatch, uuid.UUID(match_id))
+    assert row2 is not None
+    after = (row2.status, row2.state_version, row2.current_item_index, row2.finished_at)
+    assert after == before
+
+
+def test_answer_after_finished_rejected_and_settlement_kept(
+    client: TestClient, db: Session
+) -> None:
+    """终局后再次作答 → 422；已落库的结算不被回滚或覆盖。"""
+    _teacher, _headers, classroom, _book, spelling, a, b, match_id = (
+        _setup_active_match(client, db, "idm")
+    )
+    _answer_all(client, classroom["code"], spelling, a, b, match_id, 4)
+
+    dup = _answer(client, a["headers"], classroom["code"], match_id, 0, "whatever")
+    assert dup["_status"] == 422, dup
+
+    db.expire_all()
+    row = db.get(VocabPkMatch, uuid.UUID(match_id))
+    assert row is not None
+    assert row.status == "finished"
+    assert row.winner_student_id == uuid.UUID(b["student"]["id"])
+    assert row.end_reason == "completion"
+
+
+def test_leave_mid_match_settles_walkover(client: TestClient, db: Session) -> None:
+    """对局中一方离场：写路径结算弃权胜，另一方落库为胜者。"""
+    _teacher, headers, classroom, _book, _spelling, a, b, match_id = (
+        _setup_active_match(client, db, "wo")
+    )
+    resp = client.delete(
+        f"{PK.format(code=classroom['code'])}/lobby/join", headers=a["headers"]
+    )
+    assert resp.status_code == 200, resp.text
+
+    db.expire_all()
+    row = db.get(VocabPkMatch, uuid.UUID(match_id))
+    assert row is not None
+    assert row.status == "finished"
+    assert row.finished_at is not None
+    assert row.end_reason == "walkover"
+    assert row.winner_student_id == uuid.UUID(b["student"]["id"])
+
+    players = db.exec(
+        select(VocabPkPlayer).where(VocabPkPlayer.match_id == uuid.UUID(match_id))
+    ).all()
+    by_student = {p.student_id: p for p in players}
+    assert by_student[uuid.UUID(a["student"]["id"])].status == "left"
+    winner = by_student[uuid.UUID(b["student"]["id"])]
+    assert winner.status == "finished"
+    assert winner.finished_at is not None
+
+    hist = client.get(
+        f"{PK.format(code=classroom['code'])}/history", headers=headers
+    ).json()
+    assert len(hist["matches"]) == 1
+    assert hist["matches"][0]["winner_student_id"] == b["student"]["id"]

@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, col, select
 
 from app import crud
-from app.models import User, UserCreate, VocabularyBook
+from app.models import User, UserCreate, VocabularyBook, VocabularyWord
 from tests.utils.credential import make_student
 from tests.utils.utils import random_email, random_lower_string
 
@@ -568,6 +568,57 @@ def test_word_edit_permission_scoped(
 
 
 # ── 评审修复项回归 ──────────────────────────────────────────────────
+
+
+def test_word_edit_accepted_spellings_null_or_empty(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    """D1: accepted_spellings 传 None / [] / 有值 三种 PATCH 都不得 500。
+
+    - None / 空列表落库为 None；有值按现有清洗逻辑去空白后落库；
+    - 导入词（无变体）只改 CEFR/exam_tags 时，标签必须正常落地。
+    """
+    book = _make_public_book(client, superuser_token_headers, WORDS_3)
+    word_id = book["words"][0]["id"]  # apple：导入时 accepted_spellings 为空
+
+    def _patch(spellings: object, **extra: object) -> dict:
+        body: dict = {"accepted_spellings": spellings}
+        body.update(extra)
+        resp = client.patch(
+            f"{VOCAB}/words/{word_id}",
+            json=body,
+            headers=superuser_token_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    # 1) null：无变体的导入词 PATCH CEFR/exam_tags，不 500 且标签落地
+    body = _patch(None, exam_tags=["IELTS"], cefr_band="B1")
+    assert body["accepted_spellings"] is None
+    assert body["exam_tags"] == ["IELTS"]
+    assert body["cefr_band"] == "B1"
+    db.expire_all()
+    row = db.get(VocabularyWord, uuid.UUID(word_id))
+    assert row is not None
+    assert row.accepted_spellings is None
+    assert row.exam_tags == ["IELTS"]
+    assert row.cefr_band == "B1"
+
+    # 2) []：空列表落库为 None
+    body = _patch([])
+    assert body["accepted_spellings"] is None
+    db.expire_all()
+    row = db.get(VocabularyWord, uuid.UUID(word_id))
+    assert row is not None
+    assert row.accepted_spellings is None
+
+    # 3) 有值：去首尾空白、剔除纯空白条目后落库
+    body = _patch(["  favourite ", "FAVORITE", "  "])
+    assert body["accepted_spellings"] == ["favourite", "FAVORITE"]
+    db.expire_all()
+    row = db.get(VocabularyWord, uuid.UUID(word_id))
+    assert row is not None
+    assert row.accepted_spellings == ["favourite", "FAVORITE"]
 
 
 def test_publish_cannot_use_other_teachers_words(

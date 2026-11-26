@@ -56,6 +56,11 @@ export default function PkArena({ code }: { code: string }) {
   const lastEventAtRef = useRef<number | null>(null)
   const [, forceTick] = useState(0)
 
+  // D11（待真人慢速复测，未作为产品缺陷修改）：配对后的 my_match_id 来自大厅
+  // 快照，对局面板要等首份对局快照落地后才挂载；大厅查询只在自身 join/leave/
+  // 作答后失效重拉，配对由对方触发。headless 自动化曾观察到面板/题面滞后，
+  // 但尚未证明真人慢速操作下控件不可用。若复测确认滞后，优先排查：大厅快照
+  // 刷新时机（轮询/SSE 带出 my_match_id）与 matchQuery 首帧加载节奏。
   const matchQuery = useQuery({
     queryKey: matchKey,
     queryFn: () =>

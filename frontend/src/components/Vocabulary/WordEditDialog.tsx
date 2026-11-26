@@ -147,7 +147,7 @@ export function WordEditDialog({
         part_of_speech: draft.partOfSpeech.trim() || null,
         meaning_zh: draft.meaningZh.trim(),
         meaning_en: draft.meaningEn.trim() || null,
-        accepted_spellings: spellings.length > 0 ? spellings : null,
+        accepted_spellings: spellings,
         example_en: draft.exampleEn.trim() || null,
         audio_url: draft.audioUrl.trim() || null,
         morphology: serializeMorphology(draft.morphology),

@@ -136,11 +136,14 @@ http_get() {
 }
 
 # 通过 SSH + docker compose 执行只读 SQL，SQL 走 stdin，避免嵌套引号。
+# 用户名/库名在 db 容器内展开（POSTGRES_USER/POSTGRES_DB 是容器环境变量）；
+# 不能在远端宿主 shell 展开——那里变量留空会落到默认角色 root，psql 直接报
+# role "root" 不存在。
 db_sql() {
   local sql="$1"
   printf '%s\n' "$sql" | ssh -o BatchMode=yes -o ConnectTimeout=8 \
     "$SSH_TARGET" \
-    "cd '$DEPLOY_PATH' && docker compose exec -T db psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -X -tA -q -v ON_ERROR_STOP=1" 2>&1
+    "cd '$DEPLOY_PATH' && docker compose exec -T db sh -c 'psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -X -tA -q -v ON_ERROR_STOP=1'" 2>&1
 }
 
 check_target_sha_ci() {

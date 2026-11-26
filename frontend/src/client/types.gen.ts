@@ -5823,6 +5823,10 @@ export type StudentAccountOut = {
      */
     username?: string | null;
     /**
+     * Email
+     */
+    email?: string | null;
+    /**
      * Full Name
      */
     full_name?: string | null;

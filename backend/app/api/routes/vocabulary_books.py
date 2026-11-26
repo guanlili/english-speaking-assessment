@@ -396,8 +396,9 @@ def update_word(
     if "meaning_zh" in payload and payload["meaning_zh"] is not None:
         word.meaning_zh = payload["meaning_zh"].strip()
     if "accepted_spellings" in payload:
+        spellings = payload.get("accepted_spellings") or []
         word.accepted_spellings = [
-            s.strip() for s in payload["accepted_spellings"] if s and s.strip()
+            s.strip() for s in spellings if s and s.strip()
         ] or None
     if "status" in payload and payload["status"] is not None:
         if payload["status"] not in {"active", "archived"}:

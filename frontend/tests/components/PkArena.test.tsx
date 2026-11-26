@@ -153,4 +153,29 @@ describe("PkArena", () => {
       }),
     )
   })
+
+  it("对局快照未就绪时不提前挂载面板；快照到达后再渲染（D11 就绪态）", async () => {
+    vi.spyOn(VocabularyService, "readPkLobby").mockResolvedValue(ACTIVE_LOBBY)
+    let resolveMatch: (value: PkMatchView) => void = () => undefined
+    const matchSpy = vi
+      .spyOn(VocabularyService, "readPkMatchState")
+      .mockImplementation(
+        () =>
+          new Promise<PkMatchView>((resolve) => {
+            resolveMatch = resolve
+          }),
+      )
+
+    renderArena()
+
+    // 首帧对局快照在途：不提前渲染空面板/拼写输入框
+    await waitFor(() => expect(screen.getByText("PK 大厅")).toBeInTheDocument())
+    expect(screen.queryByText("对战对局")).not.toBeInTheDocument()
+    await waitFor(() => expect(matchSpy).toHaveBeenCalled())
+
+    resolveMatch(ACTIVE_MATCH)
+    await waitFor(() =>
+      expect(screen.getByText("对战对局")).toBeInTheDocument(),
+    )
+  })
 })

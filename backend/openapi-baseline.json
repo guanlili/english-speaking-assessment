@@ -10677,6 +10677,17 @@
       },
       "StudentAccountOut": {
         "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
           "full_name": {
             "anyOf": [
               {
