@@ -15,9 +15,9 @@ bash scripts/verify-backup.sh /absolute/path/to/backups/bundle-TIMESTAMP-ID
 
 A bundle contains the SQL dump, the entire audio volume, deployment configuration (including secrets), commit/time metadata, and checksums. It is published only after every step succeeds. Retention is 14 days, judged from the timestamp embedded in the bundle name `bundle-YYYYMMDDTHHMMSSZ-*` (not directory mtime, which bulk restores can reset). Failures return nonzero and cron records their timestamps. Bundles are owned by the current owner of the `backups/` directory (the cron user in production), with mode `750` on directories and `640` on files so the same-group monitoring user can read the manifest; other users cannot enter. Keep bundles private and outside Git/public download directories. Legacy SQL/config backups also retain 14 days and expire only after a complete new bundle succeeds.
 
-在线备份跨数据库与音频卷不是原子快照。需要严格一致时，先在入口暂停作答/内容写入，等待评分结束再备份；不要在评分中停止服务。记录实际备份和恢复耗时。当前**没有异地副本**，整机磁盘故障仍可能丢失所有本地备份。
+在线备份跨数据库与音频卷不是原子快照。需要严格一致时，先在入口暂停作答/内容写入，等待评分结束再备份；不要在评分中停止服务。记录实际备份和恢复耗时。异地副本由 `scripts/backup-offsite.sh` 每日 04:00 推阿里云 OSS（凭证配齐后自动启用）；凭证未配置前为本地单副本，整机磁盘故障仍可能丢失所有本地备份。
 
-Online database/filesystem backups are not atomic. For strict consistency, pause new writes at ingress and let scoring finish before backing up. Record actual backup and restore times. Off-site upload is disabled; local backups do not survive loss of the host disk.
+Online database/filesystem backups are not atomic. For strict consistency, pause new writes at ingress and let scoring finish before backing up. Record actual backup and restore times. Off-site copies go to Aliyun OSS via `scripts/backup-offsite.sh` daily at 04:00 and enable automatically once credentials are configured; until then this is a single local copy that does not survive loss of the host disk.
 
 ## 隔离恢复演练 / Isolated recovery drill
 
