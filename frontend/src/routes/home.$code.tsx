@@ -11,6 +11,7 @@ import { DevicePreflight } from "@/components/Practice/DevicePreflight"
 import HeroArt from "@/components/Practice/HeroArt"
 import { PublishedClassSummaries } from "@/components/Practice/PublishedClassSummaries"
 import { StudentClassroomInbox } from "@/components/Practice/StudentClassroomInbox"
+import { StudentCourseCards } from "@/components/Practice/StudentCourseCards"
 import { StudentFollowups } from "@/components/Practice/StudentFollowups"
 import StudentShell from "@/components/Practice/StudentShell"
 import { Button } from "@/components/ui/button"
@@ -285,6 +286,11 @@ function HomePage() {
             </div>
           </div>
         </section>
+        <StudentCourseCards
+          code={code}
+          speakingDone={done}
+          speakingTotal={totalItems}
+        />
         <StudentFollowups code={code} />
         <StudentClassroomInbox code={code} />
         <PublishedClassSummaries code={code} />

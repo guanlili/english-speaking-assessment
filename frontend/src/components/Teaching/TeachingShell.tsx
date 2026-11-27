@@ -7,6 +7,7 @@ import { TenantModuleBanner } from "@/components/Teaching/TenantModuleBanner"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { cachedRole } from "@/hooks/useAuth"
 import { useModules } from "@/hooks/useModules"
+import { COURSES } from "@/lib/courses"
 import { type BiString, useI18n } from "@/lib/i18n"
 import { TERMS } from "@/lib/terms"
 
@@ -124,7 +125,7 @@ function getWorkspaceContext(pathname: string): WorkspaceContext {
       title: isStudentDetail
         ? TERMS.trailPage
         : isVocab
-          ? TERMS.vocabLearning
+          ? COURSES.vocabulary.name
           : { zh: "课堂面板", en: "Class Dashboard" },
       section: { zh: "我的课堂", en: "My Classrooms" },
       description: isStudentDetail
