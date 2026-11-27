@@ -95,10 +95,14 @@ def read_leaderboard(
     学生只能查不早于本人首次加入周。"""
     classroom = _get_classroom(session, code)
     if current_user.role == "student":
-        student = _student_profile_of(session, classroom, current_user, "vocabulary")
+        student = _student_profile_of(
+            session, classroom, current_user, "vocabulary", read_only=True
+        )
         viewer = "student"
     else:
-        _require_classroom_teacher(classroom, current_user, "vocabulary")
+        _require_classroom_teacher(
+            classroom, current_user, "vocabulary", read_only=True
+        )
         student = None
         viewer = "teacher"
     week = service.resolve_week_start(week_start)

@@ -56,6 +56,8 @@ def _resolve_trend(
     anchor: date | None,
     book_id: uuid.UUID | None,
     prompt_type: str | None,
+    *,
+    read_only: bool = False,
 ) -> VocabularyTrendReport:
     """权限校验 + 参数校验 + 聚合（JSON / CSV 共用同一事实源）。"""
     if granularity not in vocabulary_trend.GRANULARITIES:
@@ -67,7 +69,9 @@ def _resolve_trend(
         vocab_service.validate_prompt_types([prompt_type])
 
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user, "vocabulary")
+    _require_classroom_teacher(
+        classroom, current_user, "vocabulary", read_only=read_only
+    )
     return vocabulary_trend.build_trend_report(
         session,
         classroom=classroom,
@@ -107,6 +111,7 @@ def get_vocabulary_trend(
         anchor,
         book_id,
         prompt_type,
+        read_only=True,
     )
 
 
@@ -160,6 +165,7 @@ def get_vocabulary_trend_csv(
         anchor,
         book_id,
         prompt_type,
+        read_only=True,
     )
     buffer = io.StringIO()
     buffer.write(",".join(CSV_COLUMNS) + "\n")

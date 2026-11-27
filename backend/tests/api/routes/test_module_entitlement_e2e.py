@@ -311,10 +311,11 @@ def test_vocabulary_only_does_not_touch_speaking_tables(
 def test_speaking_only_vocab_routes_blocked_per_checklist(
     client: TestClient, db: Session
 ) -> None:
-    """只开 speaking：教师/学生两侧词汇端点逐条 403 ``module_not_enabled:vocabulary``。
+    """只开 speaking：写操作 / 内容管理 / 激励子能力词汇端点逐条 403；
 
-    前端导航隐藏与空卡片目检由 ``navigation-modules.test.ts`` /
-    ``module-guard.test.ts`` 与既有 e2e 规格旁证；本用例锁服务端逐条拦截口径。
+    显式只读的历史/导出 GET 在未购态也放行（#567 第 3 项只读口径），
+    其模块闸门不在本用例拦截清单内，由 ``test_module_readonly_history.py``
+    逐条固定。前端导航隐藏与空卡片目检由既有 e2e 规格旁证。
     """
     tenant = _mk_tenant(db, "sp-only")
     _grant(db, tenant.id, "speaking")
@@ -326,27 +327,16 @@ def test_speaking_only_vocab_routes_blocked_per_checklist(
     student_headers = _headers(student_user, tenant.id)
     code = classroom.code
 
+    # 严格 403：词库内容管理、激励/对战/配置类 GET 与全部写操作。
     teacher_routes: list[tuple[str, str, dict[str, str] | None]] = [
         ("GET", f"{API}/vocabulary/books", None),
-        ("GET", f"{API}/classes/{code}/vocabulary/assignments", None),
-        ("GET", f"{API}/classes/{code}/vocabulary/results", None),
-        ("GET", f"{API}/classes/{code}/vocabulary/trend", {"granularity": "week"}),
-        (
-            "GET",
-            f"{API}/classes/{code}/vocabulary/trend.csv",
-            {"granularity": "week"},
-        ),
         ("GET", f"{API}/classes/{code}/vocabulary/teacher/farm-summary", None),
         ("GET", f"{API}/classes/{code}/vocabulary/leaderboard/settings", None),
-        ("GET", f"{API}/classes/{code}/vocabulary/leaderboard", None),
         ("GET", f"{API}/classes/{code}/vocabulary/pk/lobby", None),
     ]
     student_routes: list[tuple[str, str, dict[str, str] | None]] = [
-        ("GET", f"{API}/classes/{code}/vocabulary/wrong-words", None),
         ("GET", f"{API}/classes/{code}/vocabulary/student/books", None),
-        ("GET", f"{API}/classes/{code}/vocabulary/student/history", None),
         ("GET", f"{API}/classes/{code}/vocabulary/student/review-queue", None),
-        ("GET", f"{API}/classes/{code}/vocabulary/student/review-stats", None),
         ("GET", f"{API}/classes/{code}/vocabulary/student/farm", None),
     ]
 
@@ -444,21 +434,20 @@ def test_disabled_blocks_vocab_but_retains_rows(
     assert blocked_student.status_code == 403, blocked_student.text
     assert blocked_student.json()["detail"] == "module_not_enabled:vocabulary"
 
-    blocked_teacher = client.get(
+    # 只读历史/导出在关闭态仍放行（#567 第 3 项）；逐条 200 口径见只读测试文件
+    open_results = client.get(
         f"{API}/classes/{classroom.code}/vocabulary/results",
         params={"assignment_id": loop["assignment_id"]},
         headers=loop["teacher_headers"],
     )
-    assert blocked_teacher.status_code == 403, blocked_teacher.text
-    assert blocked_teacher.json()["detail"] == "module_not_enabled:vocabulary"
+    assert open_results.status_code == 200, open_results.text
 
-    blocked_csv = client.get(
+    open_csv = client.get(
         f"{API}/classes/{classroom.code}/vocabulary/trend.csv",
         params={"granularity": "week"},
         headers=loop["teacher_headers"],
     )
-    assert blocked_csv.status_code == 403, blocked_csv.text
-    assert blocked_csv.json()["detail"] == "module_not_enabled:vocabulary"
+    assert open_csv.status_code == 200, open_csv.text
 
     after = _vocab_row_counts(db, tenant, classroom, loop["assignment_id"])
     assert after == before
@@ -498,21 +487,20 @@ def test_expired_blocks_retains_rows_reopen_restores_visibility(
     assert blocked_student.status_code == 403, blocked_student.text
     assert blocked_student.json()["detail"] == "module_expired:vocabulary"
 
-    blocked_teacher = client.get(
+    # 到期态只读历史/导出仍放行；写操作与复习队列保持 module_expired 403
+    open_results = client.get(
         f"{API}/classes/{classroom.code}/vocabulary/results",
         params={"assignment_id": loop["assignment_id"]},
         headers=loop["teacher_headers"],
     )
-    assert blocked_teacher.status_code == 403, blocked_teacher.text
-    assert blocked_teacher.json()["detail"] == "module_expired:vocabulary"
+    assert open_results.status_code == 200, open_results.text
 
-    blocked_csv = client.get(
+    open_csv = client.get(
         f"{API}/classes/{classroom.code}/vocabulary/trend.csv",
         params={"granularity": "week"},
         headers=loop["teacher_headers"],
     )
-    assert blocked_csv.status_code == 403, blocked_csv.text
-    assert blocked_csv.json()["detail"] == "module_expired:vocabulary"
+    assert open_csv.status_code == 200, open_csv.text
 
     retained = _vocab_row_counts(db, tenant, classroom, loop["assignment_id"])
     assert retained == before

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { ModuleKey } from "../src/hooks/useModules.ts"
-import { filterItemsByModule } from "../src/lib/module-filter.ts"
+import {
+  filterItemsByModule,
+  isModuleReadonlyState,
+} from "../src/lib/module-filter.ts"
 
 type Entry = { path: string; module?: ModuleKey | null }
 
@@ -52,4 +55,13 @@ test("只买单词：口语入口隐藏，单词与底座保留", () => {
 
 test("两模块均未购：仅剩共享底座入口", () => {
   assert.deepEqual(paths([]), ["/classrooms", "/help"])
+})
+
+test("只读判定：active 放行；未购/关闭/待生效/到期为只读；缺省按非只读", () => {
+  assert.equal(isModuleReadonlyState("active"), false)
+  for (const state of ["not_granted", "disabled", "scheduled", "expired"]) {
+    assert.equal(isModuleReadonlyState(state), state !== "active")
+  }
+  assert.equal(isModuleReadonlyState(undefined), false)
+  assert.equal(isModuleReadonlyState(null), false)
 })

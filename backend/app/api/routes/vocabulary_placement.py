@@ -36,9 +36,17 @@ from app.services import vocab_placement
 router = APIRouter()
 
 
-def _student_context(session: SessionDep, code: str, current_user: StudentUserDep):
+def _student_context(
+    session: SessionDep,
+    code: str,
+    current_user: StudentUserDep,
+    *,
+    read_only: bool = False,
+):
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user, "vocabulary")
+    student = _student_profile_of(
+        session, classroom, current_user, "vocabulary", read_only=read_only
+    )
     return classroom, student
 
 
@@ -96,7 +104,7 @@ def placement_history(
     current_user: StudentUserDep,
 ) -> Any:
     """本人全部测次（重测保留历史，按时间倒序）。"""
-    _classroom, student = _student_context(session, code, current_user)
+    _classroom, student = _student_context(session, code, current_user, read_only=True)
     items = vocab_placement.student_history_public(session, student)
     return PlacementHistoryResponse(items=items)
 
@@ -112,5 +120,5 @@ def placement_results(
 ) -> Any:
     """教师 / 管理员只读：本班学生最近一次测次，仅作教学参考。"""
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user, "vocabulary")
+    _require_classroom_teacher(classroom, current_user, "vocabulary", read_only=True)
     return vocab_placement.teacher_results(session, classroom.id)

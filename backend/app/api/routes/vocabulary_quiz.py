@@ -125,7 +125,7 @@ def read_quiz_answer_sheet(
 ) -> Any:
     """教师查看学生答卷（不受公布规则约束，全量揭示；默认最新一份答卷）。"""
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user, "vocabulary")
+    _require_classroom_teacher(classroom, current_user, "vocabulary", read_only=True)
     assignment = _get_quiz_assignment(session, classroom.id, assignment_id)
     rounds = session.exec(
         select(VocabularySession)
@@ -160,9 +160,11 @@ def export_quiz_results(
     import io
 
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user, "vocabulary")
+    _require_classroom_teacher(classroom, current_user, "vocabulary", read_only=True)
     assignment = _get_quiz_assignment(session, classroom.id, assignment_id)
-    results = read_vocab_results_payload(session, code, assignment_id, current_user)
+    results = read_vocab_results_payload(
+        session, code, assignment_id, current_user, read_only=True
+    )
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(

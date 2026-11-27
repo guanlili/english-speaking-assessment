@@ -32,7 +32,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { VocabReadonlyBanner } from "@/components/Vocabulary/VocabReadonlyBanner"
 import { APP_NAME } from "@/config"
+import { useModules } from "@/hooks/useModules"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
@@ -52,6 +54,9 @@ function VocabPlacementPage() {
   const { t, lang } = useI18n()
   const { code } = useParams({ from: "/vocab/$code/placement" })
   const student = loadStudent(code)
+  // 只读口径（#567 第 3 项）：模块非 active 时测分历史可回看，开始/重测隐藏。
+  const { readonlyOf } = useModules()
+  const readonly = readonlyOf("vocabulary") !== null
 
   const [stage, setStage] = useState<Stage>("intro")
   const [sessionId, setSessionId] = useState<string>("")
@@ -185,6 +190,8 @@ function VocabPlacementPage() {
           {t({ zh: "返回词汇首页", en: "Back to Vocabulary" })}
         </Link>
 
+        <VocabReadonlyBanner />
+
         {/* 说明 / 开始 */}
         {stage === "intro" && (
           <Card>
@@ -217,15 +224,17 @@ function VocabPlacementPage() {
                 })}
               </p>
               <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  onClick={() => startMutation.mutate()}
-                  disabled={startMutation.isPending}
-                >
-                  <Compass />
-                  {startMutation.isPending
-                    ? t({ zh: "准备中…", en: "Preparing…" })
-                    : t({ zh: "开始测一测", en: "Start the quiz" })}
-                </Button>
+                {!readonly && (
+                  <Button
+                    onClick={() => startMutation.mutate()}
+                    disabled={startMutation.isPending}
+                  >
+                    <Compass />
+                    {startMutation.isPending
+                      ? t({ zh: "准备中…", en: "Preparing…" })
+                      : t({ zh: "开始测一测", en: "Start the quiz" })}
+                  </Button>
+                )}
                 {historyItems.length > 0 && (
                   <Button
                     variant="outline"
@@ -412,10 +421,12 @@ function VocabPlacementPage() {
               </p>
 
               <div className="flex flex-wrap items-center gap-3">
-                <Button onClick={restart} disabled={startMutation.isPending}>
-                  <RotateCcw />
-                  {t({ zh: "再测一次", en: "Retake" })}
-                </Button>
+                {!readonly && (
+                  <Button onClick={restart} disabled={startMutation.isPending}>
+                    <RotateCcw />
+                    {t({ zh: "再测一次", en: "Retake" })}
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={() => setShowHistory((open) => !open)}

@@ -709,7 +709,8 @@ def test_trend_permission_gates(
         == 404
     )
 
-    # vocabulary 模块关闭 → 403（断言后恢复，避免污染同租户其他用例）
+    # vocabulary 模块关闭 → 趋势为只读历史端点，关闭态仍 200（#567 第 3 项）；
+    # 写操作的模块 403 口径由 test_module_readonly_history.py 逐条固定。
     module_rows = list(
         db.exec(
             select(TenantModule).where(
@@ -727,8 +728,7 @@ def test_trend_permission_gates(
             params={"granularity": "month"},
             headers=headers,
         )
-        assert resp.status_code == 403
-        assert "module_not_enabled" in resp.json()["detail"]
+        assert resp.status_code == 200, resp.text
     finally:
         for row in module_rows:
             row.enabled = True
