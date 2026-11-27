@@ -101,7 +101,11 @@ def copy_scenario(
     target_tenant_id: uuid.UUID | None = None,
 ) -> Scenario:
     session.refresh(source, with_for_update=True)
-    base = f"{source.topic[:93]} (copy)"
+    # 跨校复制保留原主题：情景问答按 topic 与本校单元主题精确匹配
+    # （class_shared._scenario_for_topic），加 "(copy)" 会让副本永远匹配不上
+    # 篇目，问答位在学生端恒为空。同校复制仍加后缀避让同名。
+    same_tenant = target_tenant_id is None or target_tenant_id == source.tenant_id
+    base = f"{source.topic[:93]} (copy)" if same_tenant else source.topic[:100]
     # 一次拉回同前缀已占用名（LIKE 通配符转义），不再逐后缀探测查询。
     # 前缀取所有候选名的公共前缀（最长后缀 " 501"=4 字符 → 100-4=96），
     # 保证任何候选的碰撞都落在集合内
@@ -115,13 +119,16 @@ def copy_scenario(
         taken_stmt = taken_stmt.where(Scenario.tenant_id == target_tenant_id)
     taken = set(session.exec(taken_stmt).all())
     topic = base if base not in taken else None
-    for index in range(2, 502):
-        suffix = f" {index}"
-        candidate = f"{base[: 100 - len(suffix)]}{suffix}"
-        if candidate in taken:
-            continue
-        topic = candidate
-        break
+    # 仅当 base 已被占用时才逐个后缀探测；修复前该循环无条件执行，会把已
+    # 选好的 base 覆盖成 "{base} 2"（同校复制出来的主题永远多一个 " 2"）
+    if topic is None:
+        for index in range(2, 502):
+            suffix = f" {index}"
+            candidate = f"{base[: 100 - len(suffix)]}{suffix}"
+            if candidate in taken:
+                continue
+            topic = candidate
+            break
     if topic is None:
         raise HTTPException(409, detail="Copy name conflict")
     copied = Scenario(
@@ -147,6 +154,38 @@ def copy_scenario(
     return copied
 
 
+def _target_scenario_for(
+    session: Session,
+    source_scenario: Scenario,
+    owner_id: uuid.UUID | None,
+    target_tenant_id: uuid.UUID,
+) -> Scenario:
+    """跨校复制单条问答时的容器：目标校已有同主题情景即复用，否则建一条同主题的。
+
+    必须把容器落到目标校：``deepcopy`` 会保留源校 ``scenario_id``，副本挂在
+    他校情景上，目标校在 RLS 下查不到，等于复制无效（#597）。
+    主题沿用源值不加后缀——情景问答按 topic 与本校单元主题精确匹配，加后缀
+    会让问答位匹配不上篇目。
+    """
+    existing = session.exec(
+        select(Scenario).where(
+            Scenario.topic == source_scenario.topic,
+            Scenario.tenant_id == target_tenant_id,
+        )
+    ).first()
+    if existing is not None:
+        return existing
+    created = Scenario(
+        topic=source_scenario.topic,
+        is_active=source_scenario.is_active,
+        owner_id=owner_id,
+        tenant_id=target_tenant_id,
+    )
+    session.add(created)
+    session.flush()
+    return created
+
+
 def copy_question(
     session: Session,
     source: ScenarioQuestion,
@@ -156,10 +195,12 @@ def copy_question(
     scenario = session.get(Scenario, source.scenario_id)
     if scenario is None:
         raise HTTPException(404, detail="Scenario not found")
+    if target_tenant_id is not None and target_tenant_id != scenario.tenant_id:
+        scenario = _target_scenario_for(session, scenario, owner_id, target_tenant_id)
     session.refresh(scenario, with_for_update=True)
     last_order = session.exec(
         select(func.max(ScenarioQuestion.order_index)).where(
-            ScenarioQuestion.scenario_id == source.scenario_id
+            ScenarioQuestion.scenario_id == scenario.id
         )
     ).one()
     payload = deepcopy(source.model_dump(exclude={"id"}))
@@ -169,6 +210,7 @@ def copy_question(
     payload.update(
         owner_id=owner_id,
         copied_from_id=source.id,
+        scenario_id=scenario.id,
         order_index=(last_order if last_order is not None else -1) + 1,
     )
     copied = ScenarioQuestion.model_validate(payload)

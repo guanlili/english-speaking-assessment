@@ -287,3 +287,69 @@ def test_copy_services_land_in_target_tenant(db: Session, b_tenant: Tenant) -> N
     )
     assert copied_instruction.tenant_id == tid
     db.commit()
+
+
+def test_cross_tenant_question_copy_lands_on_target_scenario(
+    db: Session, b_tenant: Tenant
+) -> None:
+    """跨校复制单条问答：容器必须落目标校（#597）。
+
+    修复前 deepcopy 保留源校 scenario_id，副本挂在源校情景上——目标校在
+    RLS 下查不到该情景，问答复制等于无效。主题沿用源值，保证
+    ``_scenario_for_topic`` 还能按单元主题匹配到它。
+    """
+    pack = _mk_pack(db, DEFAULT_TENANT_ID)
+    source_question = cast(ScenarioQuestion, pack["question"][2])
+    db.refresh(source_question)
+    source_scenario = db.get(Scenario, source_question.scenario_id)
+    assert source_scenario is not None
+    db.refresh(source_scenario)
+    owner = _mk_teacher(db, b_tenant.id, "svcq")
+    copied = content_copy.copy_question(
+        db, source_question, owner.id, target_tenant_id=b_tenant.id
+    )
+    assert copied.tenant_id == b_tenant.id
+    assert copied.scenario_id != source_question.scenario_id
+    container = db.get(Scenario, copied.scenario_id)
+    assert container is not None
+    assert container.tenant_id == b_tenant.id
+    assert container.topic == source_scenario.topic
+    db.commit()
+
+
+def test_cross_tenant_question_copy_reuses_same_topic_scenario(
+    db: Session, b_tenant: Tenant
+) -> None:
+    """目标校已有同主题情景时复用，不重复建容器。"""
+    pack = _mk_pack(db, DEFAULT_TENANT_ID)
+    question_one = cast(ScenarioQuestion, pack["question"][2])
+    db.refresh(question_one)
+    owner = _mk_teacher(db, b_tenant.id, "svcq2")
+    first = content_copy.copy_question(
+        db, question_one, owner.id, target_tenant_id=b_tenant.id
+    )
+    second = content_copy.copy_question(
+        db, question_one, owner.id, target_tenant_id=b_tenant.id
+    )
+    assert first.scenario_id == second.scenario_id
+    assert second.order_index == first.order_index + 1
+    db.commit()
+
+
+def test_cross_tenant_scenario_copy_keeps_topic(db: Session, b_tenant: Tenant) -> None:
+    """跨校复制情景保留原主题（供单元主题匹配）；同校复制仍加 (copy) 后缀。"""
+    pack = _mk_pack(db, DEFAULT_TENANT_ID)
+    source_scenario = cast(Scenario, pack["scenario"][2])
+    db.refresh(source_scenario)
+    owner = _mk_teacher(db, b_tenant.id, "svcs")
+    copied = content_copy.copy_scenario(
+        db, source_scenario, owner.id, target_tenant_id=b_tenant.id
+    )
+    assert copied.tenant_id == b_tenant.id
+    assert copied.id != source_scenario.id
+    assert copied.topic == source_scenario.topic
+    same_tenant = content_copy.copy_scenario(
+        db, copied, owner.id, target_tenant_id=b_tenant.id
+    )
+    assert same_tenant.topic == f"{source_scenario.topic} (copy)"
+    db.commit()
