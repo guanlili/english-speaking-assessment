@@ -74,7 +74,7 @@ describe("教师口语入口守卫", () => {
     renderHarness()
 
     await waitFor(() =>
-      expect(screen.getByText("本校暂未开通口语模块。")).toBeInTheDocument(),
+      expect(screen.getByText("本校暂未开通口语课。")).toBeInTheDocument(),
     )
     expect(screen.queryByText("课堂教学内容")).not.toBeInTheDocument()
     expect(screen.getByText("回课堂列表")).toBeInTheDocument()
@@ -92,7 +92,7 @@ describe("教师口语入口守卫", () => {
     await waitFor(() =>
       expect(screen.getByText("课堂教学内容")).toBeInTheDocument(),
     )
-    expect(screen.queryByText("本校暂未开通口语模块。")).not.toBeInTheDocument()
+    expect(screen.queryByText("本校暂未开通口语课。")).not.toBeInTheDocument()
   })
 
   it("模块请求失败：保守拦截，不渲染教学内容", async () => {
@@ -104,7 +104,7 @@ describe("教师口语入口守卫", () => {
     renderHarness()
 
     await waitFor(() =>
-      expect(screen.getByText("本校暂未开通口语模块。")).toBeInTheDocument(),
+      expect(screen.getByText("本校暂未开通口语课。")).toBeInTheDocument(),
     )
     expect(screen.queryByText("课堂教学内容")).not.toBeInTheDocument()
   })

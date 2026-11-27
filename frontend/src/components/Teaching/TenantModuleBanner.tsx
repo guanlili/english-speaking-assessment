@@ -2,6 +2,7 @@ import { Clock, ShieldAlert, TriangleAlert } from "lucide-react"
 import type { ModuleStatus } from "@/client"
 import type { ModuleKey } from "@/hooks/useModules"
 import type { BiString } from "@/lib/bi"
+import { COURSES } from "@/lib/courses"
 import { useI18n } from "@/lib/i18n"
 import {
   type BannerEntry,
@@ -11,8 +12,8 @@ import {
 } from "@/lib/tenantModules"
 
 const MODULE_NAMES: Record<ModuleKey, BiString> = {
-  speaking: { zh: "口语", en: "Speaking" },
-  vocabulary: { zh: "单词", en: "Vocabulary" },
+  speaking: COURSES.speaking.name,
+  vocabulary: COURSES.vocabulary.name,
 }
 
 const LEVEL_STYLES: Record<Exclude<BannerLevel, "none">, string> = {
@@ -82,11 +83,11 @@ export function TenantModuleBanner({
         const line: BiString =
           entry.level === "expired"
             ? {
-                zh: `${name}模块已到期，入口已关闭；数据保留，请联系平台续期。`,
-                en: `${name} module expired; entry closed. Data is retained. Contact the platform to renew.`,
+                zh: `${name}已到期，入口已关闭；数据保留，请联系平台续期。`,
+                en: `${name} has expired; entry closed. Data is retained. Contact the platform to renew.`,
               }
             : {
-                zh: `${name}模块试用还剩 ${entry.daysLeft ?? 0} 天`,
+                zh: `${name}试用还剩 ${entry.daysLeft ?? 0} 天`,
                 en: `${name} trial: ${daysLeftEn(entry.daysLeft)}`,
               }
         return (

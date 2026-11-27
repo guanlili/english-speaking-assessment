@@ -51,6 +51,7 @@ import { useClassroomMessages } from "@/hooks/useClassroomMessages"
 import { useExports } from "@/hooks/useExports"
 import { type ModuleKey, useModules } from "@/hooks/useModules"
 import { displayName, loadStudent } from "@/lib/classroom-student"
+import { COURSES } from "@/lib/courses"
 import { useI18n } from "@/lib/i18n"
 import { buildAttemptByItem } from "@/lib/practice-derive"
 import { TERMS } from "@/lib/terms"
@@ -78,7 +79,7 @@ const items: Array<{
   {
     key: "vocab",
     to: "/vocab/$code",
-    label: TERMS.vocabLearning,
+    label: COURSES.vocabulary.name,
     icon: BookA,
     module: "vocabulary",
   },
@@ -212,9 +213,14 @@ function StudentShell({
           aria-label={t({ zh: "学习导航", en: "Learning navigation" })}
           className="grid gap-1.5"
         >
+          {speakingNav.length > 0 && (
+            <p className="px-3 text-[10px] font-semibold tracking-[0.18em] text-muted-foreground">
+              {t(COURSES.speaking.name)}
+            </p>
+          )}
           {speakingNav
             .filter((item) => item.key !== "exam")
-            .map((item, index) => (
+            .map((item) => (
               <Link
                 key={item.key}
                 aria-current={activeKey === item.key ? "page" : undefined}
@@ -222,7 +228,6 @@ function StudentShell({
                 params={{ code }}
                 className={cn(
                   "group flex min-h-12 items-center gap-3 rounded-xl px-3.5 text-sm transition-colors",
-                  index === 3 && "mt-6",
                   activeKey === item.key
                     ? "bg-primary font-semibold text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
@@ -238,7 +243,7 @@ function StudentShell({
           {vocabNav.length > 0 && (
             <>
               <p className="mt-6 px-3 text-[10px] font-semibold tracking-[0.18em] text-muted-foreground">
-                {t(TERMS.vocabLearning)}
+                {t(COURSES.vocabulary.name)}
               </p>
               {vocabNav.map((item) => (
                 <Link

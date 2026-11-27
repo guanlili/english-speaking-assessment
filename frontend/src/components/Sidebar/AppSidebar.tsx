@@ -29,10 +29,13 @@ import useAuth, { cachedRole } from "@/hooks/useAuth"
 import { useChangelogHasNew } from "@/hooks/useChangelog"
 import { useExports } from "@/hooks/useExports"
 import { useModules } from "@/hooks/useModules"
+import { COURSES } from "@/lib/courses"
 import { useI18n } from "@/lib/i18n"
+import { TERMS } from "@/lib/terms"
 import { filterItemsByModule, type Item, isItemActive, Main } from "./Main"
 import { User } from "./User"
 
+// 共享底座：班级是口语课、单词课共用的组织单位，不随课程开关隐藏。
 const baseItems: Item[] = [
   {
     icon: School,
@@ -41,12 +44,45 @@ const baseItems: Item[] = [
   },
 ]
 
-const createHubItem: Item[] = [
+// 口语课：题目与录音是这门课的教学资产。
+const speakingItems: Item[] = [
   {
     icon: Library,
     title: { zh: "题目库", en: "Question Bank" },
     path: "/create",
     module: "speaking",
+  },
+  {
+    icon: FolderArchive,
+    title: { zh: "录音导出", en: "Audio Export" },
+    path: "/exports",
+    module: "speaking",
+  },
+]
+
+// 校级管理员在口语课下额外维护单元与句型。
+const speakingAdminItems: Item[] = [
+  {
+    icon: Layers,
+    title: { zh: "单元管理", en: "Units" },
+    path: "/admin/units",
+    module: "speaking",
+  },
+  {
+    icon: MessageSquareQuote,
+    title: { zh: "句型库", en: "Sentence Frames" },
+    path: "/admin/sentenceframes",
+    module: "speaking",
+  },
+]
+
+// 单词课：词库管理归校级管理员；教师在自己的课堂内发词汇任务。
+const vocabularyItems: Item[] = [
+  {
+    icon: BookA,
+    title: { zh: "词库管理", en: "Word Books" },
+    path: "/admin/vocabbooks",
+    module: "vocabulary",
   },
 ]
 
@@ -84,30 +120,12 @@ const adminOnlyItems: Item[] = [
   },
 ]
 
-// 校级管理员（学校业务，不随身份拆分外流）
-const schoolAdminExtraItems: Item[] = [
+// 校级管理员：学校业务（成员管理），课程内容入口已按课程归组到上方。
+const schoolAdminItems: Item[] = [
   {
     icon: UserRoundCog,
     title: { zh: "教师管理", en: "Teacher Accounts" },
     path: "/school/members",
-  },
-  {
-    icon: Layers,
-    title: { zh: "单元管理", en: "Units" },
-    path: "/admin/units",
-    module: "speaking",
-  },
-  {
-    icon: MessageSquareQuote,
-    title: { zh: "句型库", en: "Sentence Frames" },
-    path: "/admin/sentenceframes",
-    module: "speaking",
-  },
-  {
-    icon: BookA,
-    title: { zh: "词库管理", en: "Word Books" },
-    path: "/admin/vocabbooks",
-    module: "vocabulary",
   },
 ]
 
@@ -128,35 +146,44 @@ export function AppSidebar() {
   const currentPath = useRouterState({
     select: (state) => state.location.pathname,
   })
-  const isAdminActive =
-    adminOnlyItems.some((item) => isItemActive(item.path, currentPath)) ||
-    schoolAdminExtraItems.some((item) => isItemActive(item.path, currentPath))
 
-  // 教师只需理解课堂与题目；校级管理员另见校内词库管理；
-  // 平台运营只见平台区块（B3 身份拆分）。平台更新对教职工开放。
   const changelogItem: Item = {
     icon: Megaphone,
     title: { zh: "平台更新", en: "What's New" },
     path: "/changelog",
     dot: hasChangelogNew,
   }
-  const items = isSchoolStaff
-    ? filterByModule([
-        ...baseItems,
-        {
-          icon: FolderArchive,
-          title: { zh: "录音导出", en: "Audio Export" },
-          path: "/exports",
-          module: "speaking",
-          badge: unseenExports > 0 ? unseenExports : undefined,
-        },
-        ...createHubItem,
-        ...(isSchoolAdmin ? schoolAdminExtraItems : []),
-        changelogItem,
-      ])
+
+  // 课程板块：按已购课程分组渲染；未开通的整块隐藏（不是置灰占位）。
+  const speakingCourseNav = filterByModule([
+    ...speakingItems.map((item) =>
+      item.path === "/exports" && unseenExports > 0
+        ? { ...item, badge: unseenExports }
+        : item,
+    ),
+    ...(isSchoolAdmin ? speakingAdminItems : []),
+  ])
+  const vocabularyCourseNav = isSchoolAdmin
+    ? filterByModule(vocabularyItems)
+    : []
+
+  const teachingNav = isSchoolStaff
+    ? [...baseItems, changelogItem]
     : isOperator
       ? [changelogItem]
       : baseItems
+
+  const adminSectionItems = isOperator
+    ? adminOnlyItems
+    : isSchoolAdmin
+      ? schoolAdminItems
+      : []
+
+  const isAdminActive =
+    adminSectionItems.some((item) => isItemActive(item.path, currentPath)) ||
+    [...speakingAdminItems, ...vocabularyItems].some((item) =>
+      isItemActive(item.path, currentPath),
+    )
 
   return (
     <Sidebar collapsible="icon">
@@ -165,21 +192,24 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent className="gap-4 pb-4 group-data-[collapsible=icon]:overflow-y-auto">
         <Main
-          items={items}
-          label={{ zh: "教学工作台", en: "Teaching Workspace" }}
+          items={teachingNav}
+          label={
+            isOperator ? TERMS.learningHub : { zh: "教学", en: "Teaching" }
+          }
         />
+        {speakingCourseNav.length > 0 && (
+          <Main items={speakingCourseNav} label={COURSES.speaking.name} />
+        )}
+        {vocabularyCourseNav.length > 0 && (
+          <Main items={vocabularyCourseNav} label={COURSES.vocabulary.name} />
+        )}
         <p className="mx-5 border-l border-sidebar-border pl-3 text-[11px] leading-6 text-muted-foreground group-data-[collapsible=icon]:hidden">
           {t({
-            zh: "课前准备，课堂练习，课后回顾。",
-            en: "Prepare before class, practice in class, review after.",
-          })}
-          <br />
-          {t({
-            zh: "把更多时间，留给学生开口。",
-            en: "Leave more time for students to speak.",
+            zh: "口语课练开口，单词课练积累，共用同一个班级。",
+            en: "Speaking builds expression, vocabulary builds range — one class, many courses.",
           })}
         </p>
-        {(isOperator || isSchoolAdmin) && (
+        {adminSectionItems.length > 0 && (
           <div className="mt-4 border-t border-sidebar-border pt-4">
             {/* 新的管理页面默认展开，原生 details 仍允许手动收起。 */}
             <details
@@ -203,22 +233,10 @@ export function AppSidebar() {
                   className="ml-auto size-3.5 -rotate-90 transition-transform group-open/admin:rotate-0 motion-reduce:transition-none"
                 />
               </summary>
-              <Main
-                items={
-                  isOperator
-                    ? adminOnlyItems
-                    : filterByModule(schoolAdminExtraItems)
-                }
-              />
+              <Main items={adminSectionItems} />
             </details>
             <div className="hidden group-data-[collapsible=icon]:block">
-              <Main
-                items={
-                  isOperator
-                    ? adminOnlyItems
-                    : filterByModule(schoolAdminExtraItems)
-                }
-              />
+              <Main items={adminSectionItems} />
             </div>
           </div>
         )}

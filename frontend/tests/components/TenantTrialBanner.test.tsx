@@ -51,9 +51,7 @@ describe("TenantModuleBanner 角色门禁", () => {
     renderBanner(expiredSpeaking, "school_admin")
     expect(screen.getByTestId("tenant-trial-banner")).toBeInTheDocument()
     expect(
-      screen.getByText(
-        "口语模块已到期，入口已关闭；数据保留，请联系平台续期。",
-      ),
+      screen.getByText("口语课已到期，入口已关闭；数据保留，请联系平台续期。"),
     ).toBeInTheDocument()
   })
 
@@ -87,7 +85,7 @@ describe("TenantModuleBanner 试用档位", () => {
       ],
       "school_admin",
     )
-    expect(screen.getByText("单词模块试用还剩 30 天")).toBeInTheDocument()
+    expect(screen.getByText("单词课试用还剩 30 天")).toBeInTheDocument()
     expect(
       screen.getByText("到期后师生入口关闭，数据保留，请联系平台续期。"),
     ).toBeInTheDocument()
@@ -110,7 +108,7 @@ describe("TenantModuleBanner 试用档位", () => {
       ],
       "school_admin",
     )
-    expect(screen.getByText("口语模块试用还剩 7 天")).toBeInTheDocument()
+    expect(screen.getByText("口语课试用还剩 7 天")).toBeInTheDocument()
     expect(screen.getByTestId("tenant-trial-banner-item")).toHaveAttribute(
       "data-level",
       "warning",
@@ -130,7 +128,7 @@ describe("TenantModuleBanner 试用档位", () => {
       ],
       "school_admin",
     )
-    expect(screen.getByText("口语模块试用还剩 1 天")).toBeInTheDocument()
+    expect(screen.getByText("口语课试用还剩 1 天")).toBeInTheDocument()
     expect(screen.getByTestId("tenant-trial-banner-item")).toHaveAttribute(
       "data-level",
       "critical",
@@ -194,6 +192,6 @@ describe("TenantModuleBanner 试用档位", () => {
     expect(items).toHaveLength(2)
     expect(items[0]).toHaveAttribute("data-level", "expired")
     expect(items[1]).toHaveAttribute("data-level", "warning")
-    expect(screen.getByText("单词模块试用还剩 5 天")).toBeInTheDocument()
+    expect(screen.getByText("单词课试用还剩 5 天")).toBeInTheDocument()
   })
 })

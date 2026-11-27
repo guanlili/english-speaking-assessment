@@ -75,7 +75,7 @@ describe("教师进步轨迹子路由守卫", () => {
     renderTrailPage()
 
     await waitFor(() =>
-      expect(screen.getByText("本校暂未开通口语模块。")).toBeInTheDocument(),
+      expect(screen.getByText("本校暂未开通口语课。")).toBeInTheDocument(),
     )
     expect(screen.getByText("回课堂列表")).toBeInTheDocument()
     expect(trailSpy).not.toHaveBeenCalled()
@@ -92,7 +92,7 @@ describe("教师进步轨迹子路由守卫", () => {
     renderTrailPage()
 
     await waitFor(() => expect(screen.getByRole("status")).toBeInTheDocument())
-    expect(screen.queryByText("本校暂未开通口语模块。")).not.toBeInTheDocument()
+    expect(screen.queryByText("本校暂未开通口语课。")).not.toBeInTheDocument()
     expect(trailSpy).not.toHaveBeenCalled()
     expect(boardSpy).not.toHaveBeenCalled()
   })
@@ -113,7 +113,7 @@ describe("教师进步轨迹子路由守卫", () => {
     await waitFor(() =>
       expect(screen.getByText("正在加载进步轨迹…")).toBeInTheDocument(),
     )
-    expect(screen.queryByText("本校暂未开通口语模块。")).not.toBeInTheDocument()
+    expect(screen.queryByText("本校暂未开通口语课。")).not.toBeInTheDocument()
     expect(trailSpy).toHaveBeenCalled()
     expect(boardSpy).toHaveBeenCalled()
   })
