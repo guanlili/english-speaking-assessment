@@ -105,6 +105,12 @@ export const TERMS = {
   growthPage: { zh: "我的成长", en: "My Growth" },
   /** 教师端查看学生历史曲线的页面 */
   trailPage: { zh: "进步轨迹", en: "Progress Trail" },
+  /** 平台定位：综合英语学习中心（不是口语产品） */
+  learningHub: { zh: "英语学习中心", en: "English Learning Hub" },
+  /** 课程板块分组名（导航区块标题） */
+  myCourses: { zh: "我的课程", en: "My Courses" },
+  /** 课程板块的统称：口语课、单词课都属"课程" */
+  courseSection: { zh: "课程内容", en: "Course Content" },
 } as const satisfies Record<string, BiString>
 
 /** 词汇出题方式：正式名称 + 一句话玩法（教师端勾选、学生端题面共用同一份文案）。 */

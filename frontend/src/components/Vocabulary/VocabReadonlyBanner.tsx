@@ -4,7 +4,7 @@ import { useModules } from "@/hooks/useModules"
 import { useI18n } from "@/lib/i18n"
 
 /**
- * 词汇模块只读横幅（#567 第 3 项）：模块非 active（未开通/关闭/待生效/到期）时，
+ * 单词课只读横幅（#567 第 3 项）：课程非 active（未开通/关闭/待生效/到期）时，
  * 词汇页顶部提示「仅可查看历史记录与导出」；写入口由各页面按同一只读口径隐藏。
  * active 或清单加载中不渲染。文案双语，供外教查看。
  */
@@ -18,12 +18,12 @@ export function VocabReadonlyBanner() {
   const expired = status.state === "expired"
   const line = expired
     ? {
-        zh: "词汇模块已到期，仅可查看历史记录与导出，不能开始新的练习。",
-        en: "The vocabulary module has expired. History records and exports are available in read-only mode; new practice is closed.",
+        zh: "单词课已到期，仅可查看历史记录与导出，不能开始新的练习。",
+        en: "The vocabulary course has expired. History records and exports are available in read-only mode; new practice is closed.",
       }
     : {
-        zh: "词汇模块未开通，仅可查看历史记录与导出，不能开始新的练习。",
-        en: "The vocabulary module is not enabled. History records and exports are available in read-only mode; new practice is closed.",
+        zh: "单词课未开通，仅可查看历史记录与导出，不能开始新的练习。",
+        en: "The vocabulary course is not enabled. History records and exports are available in read-only mode; new practice is closed.",
       }
 
   return (
