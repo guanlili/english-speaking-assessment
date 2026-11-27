@@ -64,7 +64,9 @@ def read_wrong_words(
     practiceable 标注词条是否仍在当前可练词库内，可直接进错词专项复习。
     """
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user, "vocabulary")
+    student = _student_profile_of(
+        session, classroom, current_user, "vocabulary", read_only=True
+    )
     items = vocab_service.wrong_word_items(
         session,
         student.id,
@@ -113,6 +115,8 @@ def list_student_books(
     if limit is not None:
         books = books[:limit]
     counts = vocab_service.student_book_word_counts(session, [b.id for b in books])
+    # AC4：学生浏览只展示至少含 1 个 approved 词的词库；待审/驳回/空库不露出
+    books = [b for b in books if counts.get(b.id, 0) > 0]
     return [_book_public(b, counts.get(b.id, 0)) for b in books]
 
 
@@ -141,6 +145,9 @@ def read_student_book(
     # word_count 始终为全库 active 词条数（开练前的词数预告不受搜索影响）；
     # words 为搜索过滤后的列表（search 缺省 = 全部）
     all_words = vocab_service.student_book_words(session, book.id)
+    if not all_words:
+        # AC4：库内无 approved 词条 → 学生侧不可浏览（待审/驳回/空库不露出）
+        raise HTTPException(status_code=403, detail="没有权限查看这个词库")
     words = (
         vocab_service.student_book_words(session, book.id, search)
         if search
@@ -148,7 +155,7 @@ def read_student_book(
     )
     return VocabularyBookDetail(
         **_book_public(book, len(all_words)).model_dump(),
-        words=[_word_public(w) for w in words],
+        words=[_word_public(w, include_exam_tags=False) for w in words],
     )
 
 
@@ -220,7 +227,9 @@ def read_student_session(
     分母为 total_count，由前端分别展示。
     """
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user, "vocabulary")
+    student = _student_profile_of(
+        session, classroom, current_user, "vocabulary", read_only=True
+    )
     vocab_session = session.get(VocabularySession, session_id)
     if vocab_session is None or vocab_session.student_id != student.id:
         # 他人的/不存在的一律 404，不区分报错
@@ -240,7 +249,9 @@ def read_student_history(
 ) -> Any:
     """练习历史列表：任务轮/自主轮/复习轮统一（kind 区分），按开始倒序。"""
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user, "vocabulary")
+    student = _student_profile_of(
+        session, classroom, current_user, "vocabulary", read_only=True
+    )
     return VocabularyStudentHistory(
         items=vocab_service.history_rows(session, student.id, limit=limit)
     )
@@ -303,7 +314,7 @@ def read_review_stats(
     只做计数展示，不估算记忆留存率或掌握度等级。
     """
     classroom = _get_classroom(session, code)
-    _student_profile_of(session, classroom, current_user, "vocabulary")
+    _student_profile_of(session, classroom, current_user, "vocabulary", read_only=True)
     return vocabulary_review.review_stats(
         session, user_id=current_user.id, classroom_id=classroom.id
     )

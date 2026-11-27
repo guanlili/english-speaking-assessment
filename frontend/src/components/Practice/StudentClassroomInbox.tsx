@@ -202,7 +202,7 @@ export function StudentClassroomInbox({ code }: { code: string }) {
                   </span>
                   <select
                     aria-label={t({ zh: "求助类型", en: "Help category" })}
-                    className="min-h-11 w-full rounded-md border bg-background px-3 text-base"
+                    className="h-11 w-full rounded-md border bg-background px-3 text-base"
                     value={category}
                     onChange={(event) =>
                       setCategory(event.target.value as typeof category)

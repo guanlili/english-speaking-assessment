@@ -115,6 +115,9 @@ class VocabularyTodayItem(SQLModel):
     answered: bool = False
     is_correct: bool | None = None
     attempt_count: int = 0
+    # CEFR 档位只读标签（来自发布快照；旧快照回落 None）。
+    # 仅内容标签，不构成对学生的等级评定；学生侧不下发考试标签。
+    cefr_band: str | None = None
     # 选择题首答选了哪个词条（选择题专用；非选择题为 None）
     first_choice_word_id: uuid.UUID | None = None
 

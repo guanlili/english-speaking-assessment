@@ -1,0 +1,82 @@
+{
+  "captured_at": "2026-11-23T10:51:49Z",
+  "captured_at_local": "2026-11-23 18:51 (Asia/Shanghai)",
+  "purpose": "只读核实域名 ICP 备案状态：outman.website 是否有备案号/主体/接入服务商/审核时间；.website 后缀是否在工信部已批复可备案后缀内；test.zhiguan.online（及裸域 zhiguan.online）是否有备案记录。未登录任何云控制台，未改 DNS/备案，未触碰生产。",
+  "official_sources": [
+    {
+      "name": "工信部 ICP/IP地址/域名信息备案管理系统（公共查询）",
+      "url": "https://beian.miit.gov.cn/#/Integrated/recordQuery",
+      "note": "官方公共查询；查询框提示「请勿使用子域名或者带 http://www 等字符的网址查询」"
+    },
+    {
+      "name": "工信部 域名行业管理信息公示 · 中国互联网域名体系",
+      "url": "https://domain.miit.gov.cn/",
+      "note": "官方公布的国家/其他顶级域名（含英文 gTLD）体系列表"
+    }
+  ],
+  "queries": [
+    {
+      "query": "outman.website",
+      "source": "official",
+      "result": "filed",
+      "record_count": 1,
+      "subject_name": "管**",
+      "subject_nature": "个人",
+      "license_no": "京ICP备2022033467号",
+      "service_record_no": "京ICP备2022033467号-1",
+      "audit_date": "2022-11-25",
+      "domain": "outman.website",
+      "pre_approval": "无（服务前置审批项为空）",
+      "access_provider": null,
+      "access_provider_note": "工信部公共查询详情页仅展示主体信息（许可证号/审核通过日期/主办单位名称/性质）与服务信息（服务许可证号/网站域名/前置审批项），未公开接入服务商名称；本次未从官方渠道取得接入商。",
+      "screenshots": ["02-官方-outman列表.png", "03-官方-outman详情.png"],
+      "captcha": "查询触发滑块拼图校验，已按人工方式拖动对齐后通过；过程截图 01-官方-滑块校验-outman.png"
+    },
+    {
+      "query": "test.zhiguan.online",
+      "source": "official",
+      "result": "no_record",
+      "record_count": 0,
+      "page_message": "暂无数据，共 0 条",
+      "note": "test.zhiguan.online 为子域名；公共查询口径不以子域名作为备案主体，故另查裸域 zhiguan.online 交叉确认。",
+      "screenshots": ["06-官方-test-zhiguan-暂无数据.png"],
+      "captcha": "查询触发滑块拼图校验，已拖动通过；过程截图 05-官方-滑块2-zhiguan.png"
+    },
+    {
+      "query": "zhiguan.online",
+      "source": "official",
+      "result": "no_record",
+      "record_count": 0,
+      "page_message": "暂无数据，共 0 条",
+      "note": "裸域在工信部公共查询同样无备案记录。",
+      "screenshots": ["07-官方-zhiguan.online-暂无数据.png"]
+    }
+  ],
+  "suffix_check": {
+    "suffix": ".website",
+    "source": "official",
+    "listed_in_miit_domain_system": true,
+    "list_section": "其他顶级域名 · 英文顶级域名（gTLD）",
+    "list_position": "位于 .WANG 与 .WIKI 之间；英文顶级域名共 139 个",
+    "eligible_for_icp_filing": true,
+    "note": ".WEBSITE 出现在工信部中国互联网域名体系英文顶级域名列表内，属可提交 ICP 备案的后缀；后缀可备案不等于具体域名已完成备案。",
+    "screenshots": ["04-官方-域名体系-WEBSITE.png"]
+  },
+  "third_party_crosscheck": {
+    "status": "attempted_no_data",
+    "label": "第三方、非官方，未作为结论依据",
+    "attempts": [
+      {"site": "站长之家 chinaz", "url": "https://icp.chinaz.com/outman.website", "result": "页面未返回备案数据表（反爬/懒加载），未取得接入服务商"},
+      {"site": "爱站 aizhan", "url": "https://icp.aizhan.com/outman.website/", "result": "页面未返回备案数据表（反爬/懒加载），未取得接入服务商"}
+    ],
+    "note": "官方公共查询本身不披露接入服务商；两个第三方站点本次均未加载出数据，故接入商字段保持空缺，不以第三方缓存数据填充。"
+  },
+  "blockers_and_caveats": [
+    "三次查询均触发滑块拼图安全校验；通过 canvas 读取背景图缺口位置后人工式拖动对齐完成，未绕过校验、未使用打码平台。",
+    "接入服务商：官方公共查询不展示；第三方交叉未取到数据，本轮结论不含接入商名称。",
+    "备案状态以查询时刻（2026-11-23 10:47–10:51Z）工信部公共查询为准；备案可能后续新增/注销，需以官方实时查询为准。",
+    "test.zhiguan.online 为子域名，公共查询按裸域/主体/备案号检索；子域名无独立备案号属正常，已补查裸域 zhiguan.online。",
+    "证据仅含官方公示的主体性质（个人）、备案号、域名与日期；主体姓名已打码，未采集身份证号、手机号等敏感信息。"
+  ],
+  "privacy": "主体姓名已打码为「管**」；截图仅保留备案号、域名与日期，未包含证件号、手机号、邮箱等其他个人敏感信息。"
+}

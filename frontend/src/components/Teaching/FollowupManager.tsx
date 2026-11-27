@@ -441,7 +441,7 @@ export function FollowupCreateDialog({
             <label className="block space-y-2">
               <span>{t({ zh: "筛选条件", en: "Filter" })}</span>
               <select
-                className="min-h-11 w-full rounded-md border bg-background px-3 text-base"
+                className="h-11 w-full rounded-md border bg-background px-3 text-base"
                 value={rule}
                 onChange={(event) => setRule(event.target.value as typeof rule)}
                 disabled={suggest.isPending}
@@ -519,7 +519,7 @@ export function FollowupCreateDialog({
           <label className="block space-y-2 text-sm">
             <span>{t({ zh: "来源练习", en: "Source practice" })}</span>
             <select
-              className="min-h-11 w-full rounded-md border px-3 text-base"
+              className="h-11 w-full rounded-md border px-3 text-base"
               value={sourceId}
               onChange={(event) => {
                 setSource(event.target.value)

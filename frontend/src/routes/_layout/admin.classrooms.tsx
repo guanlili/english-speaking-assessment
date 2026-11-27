@@ -326,7 +326,7 @@ function ClassroomsAdmin() {
                               })
                             }
                           >
-                            <SelectTrigger className="h-8 w-40 text-xs">
+                            <SelectTrigger className="h-11 w-40 text-base">
                               <SelectValue
                                 placeholder={
                                   owner

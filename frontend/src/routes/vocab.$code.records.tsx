@@ -33,6 +33,7 @@ import {
   OverallInsightDialog,
   SessionInsightDialog,
 } from "@/components/Vocabulary/VocabAi"
+import { VocabReadonlyBanner } from "@/components/Vocabulary/VocabReadonlyBanner"
 import { APP_NAME } from "@/config"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { loadStudent } from "@/lib/classroom-student"
@@ -129,6 +130,7 @@ function VocabRecordsPage() {
 
   return (
     <StudentShell active="vocab" wide>
+      <VocabReadonlyBanner />
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button variant="ghost" size="sm" asChild>

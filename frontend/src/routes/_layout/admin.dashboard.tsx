@@ -72,7 +72,7 @@ function AdminDashboardPage() {
       : t({ zh: `近 ${days} 天`, en: `Last ${days} days` })
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
+    <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6 p-4 md:p-6">
       <header className="space-y-1">
         <h1 className="flex items-center gap-2 text-2xl font-bold">
           <LayoutDashboard className="size-6 text-primary" aria-hidden="true" />

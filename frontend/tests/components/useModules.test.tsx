@@ -43,6 +43,7 @@ describe("useModules", () => {
     login("teacher")
     vi.spyOn(ModulesService, "readModulesMe").mockResolvedValue({
       modules: ["speaking"],
+      statuses: [],
     })
 
     const { result } = renderHook(() => useModules(), { wrapper })
@@ -59,6 +60,7 @@ describe("useModules", () => {
     login("teacher")
     vi.spyOn(ModulesService, "readModulesMe").mockResolvedValue({
       modules: ["speaking", "vocabulary"],
+      statuses: [],
     })
 
     const { result } = renderHook(() => useModules(), { wrapper })
@@ -74,6 +76,7 @@ describe("useModules", () => {
     login("teacher")
     vi.spyOn(ModulesService, "readModulesMe").mockResolvedValue({
       modules: [],
+      statuses: [],
     })
 
     const { result } = renderHook(() => useModules(), { wrapper })
@@ -130,6 +133,7 @@ describe("窗口聚焦重取（staleTime 45s）", () => {
     login("teacher")
     vi.spyOn(ModulesService, "readModulesMe").mockResolvedValue({
       modules: ["vocabulary"],
+      statuses: [],
     })
 
     const { result } = renderHook(() => useModules(), { wrapper })
@@ -148,8 +152,11 @@ describe("窗口聚焦重取（staleTime 45s）", () => {
     login("teacher")
     const spy = vi
       .spyOn(ModulesService, "readModulesMe")
-      .mockResolvedValueOnce({ modules: [] })
-      .mockResolvedValueOnce({ modules: ["speaking", "vocabulary"] })
+      .mockResolvedValueOnce({ modules: [], statuses: [] })
+      .mockResolvedValueOnce({
+        modules: ["speaking", "vocabulary"],
+        statuses: [],
+      })
 
     const { result } = renderHook(() => useModules(), { wrapper })
     await act(async () => {

@@ -16,6 +16,7 @@ import {
   VOCAB_LEVEL_ORDER,
   type VocabLevel,
 } from "@/lib/terms"
+import { deriveImportStats } from "@/lib/vocabContentReview"
 import { localizeImportIssue } from "@/lib/vocabImport"
 import { toBookWordInput, type VocabCsvPreview } from "./types"
 
@@ -87,6 +88,8 @@ export function CreateClassroomBook({
     },
   })
   const [preview, setPreview] = useState<VocabCsvPreview | null>(null)
+  // “我已核对”：勾选直接通过审核；默认待审
+  const [reviewedOk, setReviewedOk] = useState(false)
 
   const importPreview = useMutation({
     mutationFn: (file: File) =>
@@ -125,16 +128,24 @@ export function CreateClassroomBook({
           scope: "classroom",
           classroom_id: classroomId,
           description: null,
+          source: "import",
+          confirm_reviewed: reviewedOk,
           words: preview?.words ?? [],
         },
       }),
     onSuccess: (book) => {
+      const stats = deriveImportStats(
+        preview?.words.length ?? 0,
+        0,
+        book.word_count ?? 0,
+      )
       toast.success(
         t({
-          zh: `班级词库已创建（${book.word_count ?? 0} 词）。`,
-          en: `Classroom book created (${book.word_count ?? 0} words).`,
+          zh: `班级词库已创建：新增 ${stats.added} 词，重复跳过 ${stats.skipped} 个。`,
+          en: `Classroom book created: ${stats.added} new, ${stats.skipped} duplicates skipped.`,
         }),
       )
+      setReviewedOk(false)
       onCreated(book.id)
     },
     onError: (error) => {
@@ -196,7 +207,7 @@ export function CreateClassroomBook({
             onChange={(event) =>
               setFromLevel((event.target.value || null) as VocabLevel | null)
             }
-            className="h-11 rounded-xl border border-input bg-card px-3 text-base text-foreground"
+            className="h-11 w-full max-w-full rounded-xl border border-input bg-card px-3 text-base text-foreground sm:w-auto"
           >
             <option value="">{t({ zh: "不导入", en: "Don't import" })}</option>
             {VOCAB_LEVEL_ORDER.map((level) => (
@@ -218,7 +229,7 @@ export function CreateClassroomBook({
               {t({ zh: "建库并导入", en: "Create & import" })}
             </Button>
           )}
-          <span className="text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1 text-xs text-muted-foreground">
             {t({
               zh: "只转入已人工核对且有释义的词条；词库管理页可继续核对其余词条。",
               en: "Only reviewed entries with meanings are imported; review the rest in Word Books admin.",
@@ -266,7 +277,7 @@ export function CreateClassroomBook({
               })
             : t({ zh: "创建空词库", en: "Create empty book" })}
         </Button>
-        <span className="text-xs text-muted-foreground">
+        <span className="min-w-0 flex-1 break-words text-xs text-muted-foreground">
           {t({
             zh: "CSV 表头：headword,meaning_zh（可选 part_of_speech/meaning_en/accepted_spellings/example_en/morphology）",
             en: "CSV header: headword,meaning_zh (optional part_of_speech/meaning_en/accepted_spellings/example_en/morphology)",
@@ -321,6 +332,18 @@ export function CreateClassroomBook({
                 ))}
             </ul>
           )}
+          <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={reviewedOk}
+              onChange={(event) => setReviewedOk(event.target.checked)}
+              className="size-4 accent-[var(--primary)]"
+            />
+            {t({
+              zh: "我已核对这些词条（勾选后直接通过审核）",
+              en: "I have checked these entries (approve directly)",
+            })}
+          </label>
         </div>
       )}
     </div>

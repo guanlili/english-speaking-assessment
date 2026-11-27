@@ -1,5 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
-import { Link, useNavigate, useParams } from "@tanstack/react-router"
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useRouterState,
+} from "@tanstack/react-router"
 import {
   ArrowRight,
   ArrowRightLeft,
@@ -23,7 +28,6 @@ import { Appearance } from "@/components/Common/Appearance"
 import { LanguageToggle } from "@/components/Common/LanguageToggle"
 import { Logo } from "@/components/Common/Logo"
 import { StudentClassroomInbox } from "@/components/Practice/StudentClassroomInbox"
-import { filterItemsByModule } from "@/components/Sidebar/Main"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -136,19 +140,59 @@ function StudentShell({
   const activeKey = active === "practice" || active === "exam" ? "home" : active
 
   // 模块授权：按本校已购模块过滤导航；直连未购模块页时回「我的班级」。
-  // 服务端闸门是最终裁决，前端过滤只减少无效直达。
+  // 词汇模块非 active（未开通/关闭/待生效/到期）走只读口径：历史回看入口保留，
+  // 写入口在各词汇页内隐藏；口语底座仍按未购严格拦截。服务端闸门是最终裁决。
   const navigate = useNavigate()
-  const { hasModule, isPending: modulesPending } = useModules()
-  const visibleItems = filterItemsByModule(items, hasModule)
+  const { hasModule, readonlyOf, isPending: modulesPending } = useModules()
+  const vocabReadonly = readonlyOf("vocabulary") !== null
+  const visibleItems = items.filter((entry) => {
+    if (!entry.module) return true
+    if (hasModule(entry.module)) return true
+    return entry.module === "vocabulary" && vocabReadonly
+  })
   const speakingNav = visibleItems.filter((item) => item.module === "speaking")
   const vocabNav = visibleItems.filter((item) => item.module === "vocabulary")
   const activeItem = items.find((item) => item.key === activeKey)
   useEffect(() => {
     if (modulesPending) return
-    if (activeItem?.module && !hasModule(activeItem.module)) {
-      void navigate({ to: "/join" })
+    if (!activeItem?.module) return
+    if (hasModule(activeItem.module)) return
+    if (activeItem.module === "vocabulary" && vocabReadonly) return
+    void navigate({ to: "/join" })
+  }, [modulesPending, activeItem, hasModule, vocabReadonly, navigate])
+
+  // 只读态直达词汇写子路由（练习/自主/词库/农场/PK）→ 回历史记录页；
+  // placement 页保留（测分历史回看），开始/重测按钮在页内按只读口径隐藏。
+  // 服务端对这些写端点仍保持 403，前端跳转只是避免落到报错页。
+  const currentPath = useRouterState({
+    select: (state) => state.location.pathname,
+  })
+  const WRITABLE_VOCAB_SUFFIXES = [
+    "/practice",
+    "/self",
+    "/books",
+    "/farm",
+    "/pk",
+  ]
+  const vocabBase = `/vocab/${code}`
+  useEffect(() => {
+    if (modulesPending || !vocabReadonly) return
+    if (
+      WRITABLE_VOCAB_SUFFIXES.some((suffix) =>
+        currentPath.startsWith(`${vocabBase}${suffix}`),
+      )
+    ) {
+      void navigate({ to: "/vocab/$code/records", params: { code } })
     }
-  }, [modulesPending, activeItem, hasModule, navigate])
+  }, [
+    modulesPending,
+    vocabReadonly,
+    currentPath,
+    vocabBase,
+    code,
+    navigate,
+    WRITABLE_VOCAB_SUFFIXES.some,
+  ])
 
   const current = visibleItems.find((item) => item.key === activeKey)
 
@@ -269,7 +313,7 @@ function StudentShell({
               </p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-3">
             <Link
               to="/classroom/$code"
               params={{ code }}
@@ -285,7 +329,7 @@ function StudentShell({
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="gap-1.5 px-1.5 sm:px-2"
+                  className="gap-1 px-1 sm:px-2"
                   aria-label={t({
                     zh: "学生账户菜单",
                     en: "Student account menu",
@@ -294,7 +338,7 @@ function StudentShell({
                   <span className="grid size-8 place-items-center rounded-full bg-secondary text-xs font-semibold text-primary">
                     {name.slice(0, 1)}
                   </span>
-                  <ChevronDown className="size-3 text-muted-foreground" />
+                  <ChevronDown className="hidden size-3 text-muted-foreground sm:block" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 rounded-2xl p-2">

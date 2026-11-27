@@ -594,6 +594,8 @@ def entry_public(entry: VocabularyLevelEntry) -> VocabularyLevelEntryPublic:
         needs_review=entry.needs_review,
         note=entry.note,
         sources=entry.sources or [],
+        exam_tags=list(entry.exam_tags or []),
+        cefr_band=entry.cefr_band,
         status=entry.status,
     )
 
@@ -613,20 +615,10 @@ def attach_word_levels(
     out: list[VocabularyWordPublic] = []
     for word in words:
         info = level_map.get(normalize_spelling(word.headword))
-        out.append(
-            VocabularyWordPublic(
-                id=word.id,
-                headword=word.headword,
-                part_of_speech=word.part_of_speech,
-                meaning_zh=word.meaning_zh,
-                meaning_en=word.meaning_en,
-                accepted_spellings=word.accepted_spellings,
-                example_en=word.example_en,
-                morphology=word.morphology,
-                audio_url=word.audio_url,
-                status=word.status,
-                level=info[0] if info else None,
-                all_levels=info[1] if info else [],
-            )
-        )
+        # 先按 ORM 实体全字段校验映射（含 source/review_status/reviewer_id/
+        # reviewed_at/review_note/version），再只覆盖五级归属，避免新增字段时漏映射。
+        public = VocabularyWordPublic.model_validate(word, from_attributes=True)
+        public.level = info[0] if info else None
+        public.all_levels = info[1] if info else []
+        out.append(public)
     return out

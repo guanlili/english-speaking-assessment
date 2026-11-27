@@ -894,6 +894,26 @@
               }
             ],
             "title": "Teaching Goal"
+          },
+          "vocabulary_farm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FarmBoardSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vocabulary_pk": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PkBoardSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -4492,6 +4512,30 @@
         "title": "ExpressionFavoritePublic",
         "type": "object"
       },
+      "FarmBadgeCount": {
+        "description": "班级徽章分布项：既有 ``student_badge`` 账本按 key 聚合的在册人数。",
+        "properties": {
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "FarmBadgeCount",
+        "type": "object"
+      },
       "FarmBadgePublic": {
         "description": "徽章展示项：带来源标注（只读，不参与任何结算口径）。",
         "properties": {
@@ -4531,6 +4575,44 @@
           "description"
         ],
         "title": "FarmBadgePublic",
+        "type": "object"
+      },
+      "FarmBoardSummary": {
+        "description": "课堂看板专注农场摘要（教师端只读聚合；不改 XP/徽章/streak/plot）。\n\n地块按登录账号跨班连续；这里只统计当前在册学生名下地块，跨班地块\n不重复计入。vocabulary 模块未开通时整段为 ``None``。",
+        "properties": {
+          "badge_counts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FarmBadgeCount"
+            },
+            "title": "Badge Counts",
+            "type": "array"
+          },
+          "harvested_total": {
+            "default": 0,
+            "title": "Harvested Total",
+            "type": "integer"
+          },
+          "mature_plots": {
+            "default": 0,
+            "title": "Mature Plots",
+            "type": "integer"
+          },
+          "participants": {
+            "default": 0,
+            "title": "Participants",
+            "type": "integer"
+          },
+          "top_harvesters": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FarmTopHarvester"
+            },
+            "title": "Top Harvesters",
+            "type": "array"
+          }
+        },
+        "title": "FarmBoardSummary",
         "type": "object"
       },
       "FarmHarvestResult": {
@@ -4586,6 +4668,25 @@
           "harvested"
         ],
         "title": "FarmHarvestResult",
+        "type": "object"
+      },
+      "FarmTopHarvester": {
+        "description": "收获榜条目（教师看板，展示本班在册学生显示名；最多 5 人）。",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "harvest_count": {
+            "default": 0,
+            "title": "Harvest Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "title": "FarmTopHarvester",
         "type": "object"
       },
       "FarmView": {
@@ -5761,6 +5862,94 @@
         "title": "Message",
         "type": "object"
       },
+      "ModuleStatus": {
+        "description": "单行模块授权的状态快照（与服务端闸门同一状态机口径）。",
+        "properties": {
+          "days_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Left"
+          },
+          "effective_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective At"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "grant_type": {
+            "title": "Grant Type",
+            "type": "string"
+          },
+          "granted_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Granted By"
+          },
+          "module_key": {
+            "title": "Module Key",
+            "type": "string"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "module_key",
+          "state",
+          "enabled",
+          "grant_type"
+        ],
+        "title": "ModuleStatus",
+        "type": "object"
+      },
       "ModulesMe": {
         "properties": {
           "modules": {
@@ -5769,10 +5958,18 @@
             },
             "title": "Modules",
             "type": "array"
+          },
+          "statuses": {
+            "items": {
+              "$ref": "#/components/schemas/ModuleStatus"
+            },
+            "title": "Statuses",
+            "type": "array"
           }
         },
         "required": [
-          "modules"
+          "modules",
+          "statuses"
         ],
         "title": "ModulesMe",
         "type": "object"
@@ -6678,6 +6875,141 @@
         "title": "PkAnswerRequest",
         "type": "object"
       },
+      "PkBoardLastMatch": {
+        "description": "看板 PK 最近一场精简摘要：时间、玩家显示名、比分/胜者。",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "players": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkBoardLastMatchPlayer"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "winner_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Display Name"
+          },
+          "winner_student_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Student Id"
+          }
+        },
+        "title": "PkBoardLastMatch",
+        "type": "object"
+      },
+      "PkBoardLastMatchPlayer": {
+        "description": "看板 PK 最近一场的单侧摘要：显示名、比分与胜负结果。",
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "result": {
+            "default": "draw",
+            "title": "Result",
+            "type": "string"
+          },
+          "score": {
+            "default": 0,
+            "title": "Score",
+            "type": "integer"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "student_id"
+        ],
+        "title": "PkBoardLastMatchPlayer",
+        "type": "object"
+      },
+      "PkBoardSummary": {
+        "description": "课堂看板 PK 摘要（教师端只读；开厅仍走既有教师 PK 面板，这里不提供写操作）。\n\nvocabulary 模块未开通时整段为 ``None``；不混入任务首答/掌握度/趋势口径。",
+        "properties": {
+          "active_match_count": {
+            "default": 0,
+            "title": "Active Match Count",
+            "type": "integer"
+          },
+          "last_match": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PkBoardLastMatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_match_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Match At"
+          },
+          "matches_this_week": {
+            "default": 0,
+            "title": "Matches This Week",
+            "type": "integer"
+          },
+          "open": {
+            "default": false,
+            "title": "Open",
+            "type": "boolean"
+          },
+          "queue_count": {
+            "default": 0,
+            "title": "Queue Count",
+            "type": "integer"
+          }
+        },
+        "title": "PkBoardSummary",
+        "type": "object"
+      },
       "PkChoice": {
         "properties": {
           "headword": {
@@ -6716,6 +7048,197 @@
           "meaning_zh"
         ],
         "title": "PkChoice",
+        "type": "object"
+      },
+      "PkHistoryList": {
+        "description": "GET /classes/{code}/vocabulary/pk/history 响应。",
+        "properties": {
+          "matches": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkHistoryMatch"
+            },
+            "title": "Matches",
+            "type": "array"
+          }
+        },
+        "title": "PkHistoryList",
+        "type": "object"
+      },
+      "PkHistoryMatch": {
+        "description": "教师端历史对局一行：仅已结束/已放弃对局，只读回看。",
+        "properties": {
+          "book_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Id"
+          },
+          "book_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Title"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Reason"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "lobby_id": {
+            "format": "uuid",
+            "title": "Lobby Id",
+            "type": "string"
+          },
+          "match_id": {
+            "format": "uuid",
+            "title": "Match Id",
+            "type": "string"
+          },
+          "per_question_seconds": {
+            "title": "Per Question Seconds",
+            "type": "integer"
+          },
+          "players": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkHistoryPlayer"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "question_count": {
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "winner_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Display Name"
+          },
+          "winner_student_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Student Id"
+          }
+        },
+        "required": [
+          "match_id",
+          "lobby_id",
+          "status",
+          "question_count",
+          "per_question_seconds"
+        ],
+        "title": "PkHistoryMatch",
+        "type": "object"
+      },
+      "PkHistoryPlayer": {
+        "description": "教师端历史对局单侧记录：比分、作答统计与胜负结果。",
+        "properties": {
+          "answered_count": {
+            "default": 0,
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "correct_count": {
+            "default": 0,
+            "title": "Correct Count",
+            "type": "integer"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "result": {
+            "default": "draw",
+            "title": "Result",
+            "type": "string"
+          },
+          "score": {
+            "default": 0,
+            "title": "Score",
+            "type": "integer"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "total_seconds": {
+            "default": 0.0,
+            "title": "Total Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "student_id"
+        ],
+        "title": "PkHistoryPlayer",
         "type": "object"
       },
       "PkLobbyCreate": {
@@ -7278,6 +7801,368 @@
           "status"
         ],
         "title": "PkPlayerSummary",
+        "type": "object"
+      },
+      "PlacementAnswerRequest": {
+        "properties": {
+          "answer": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "item_index": {
+            "minimum": 0.0,
+            "title": "Item Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_index",
+          "answer"
+        ],
+        "title": "PlacementAnswerRequest",
+        "type": "object"
+      },
+      "PlacementAnswerResponse": {
+        "properties": {
+          "answered_count": {
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "correct_headword": {
+            "title": "Correct Headword",
+            "type": "string"
+          },
+          "is_correct": {
+            "title": "Is Correct",
+            "type": "boolean"
+          },
+          "item_index": {
+            "title": "Item Index",
+            "type": "integer"
+          },
+          "meaning_zh": {
+            "title": "Meaning Zh",
+            "type": "string"
+          },
+          "planned_total": {
+            "title": "Planned Total",
+            "type": "integer"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlacementQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlacementResultPublic"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_index",
+          "is_correct",
+          "correct_headword",
+          "meaning_zh",
+          "answered_count",
+          "planned_total",
+          "status"
+        ],
+        "title": "PlacementAnswerResponse",
+        "type": "object"
+      },
+      "PlacementChoice": {
+        "description": "四选一选项（真实 approved 词条，不硬造释义）。",
+        "properties": {
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "meaning_zh": {
+            "title": "Meaning Zh",
+            "type": "string"
+          },
+          "part_of_speech": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Of Speech"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word_id",
+          "headword",
+          "meaning_zh"
+        ],
+        "title": "PlacementChoice",
+        "type": "object"
+      },
+      "PlacementHistoryResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlacementResultPublic"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PlacementHistoryResponse",
+        "type": "object"
+      },
+      "PlacementQuestion": {
+        "properties": {
+          "band": {
+            "title": "Band",
+            "type": "string"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/PlacementChoice"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "item_index": {
+            "title": "Item Index",
+            "type": "integer"
+          },
+          "part_of_speech": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Of Speech"
+          }
+        },
+        "required": [
+          "item_index",
+          "band",
+          "headword",
+          "choices"
+        ],
+        "title": "PlacementQuestion",
+        "type": "object"
+      },
+      "PlacementResultPublic": {
+        "properties": {
+          "answered_count": {
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "correct_count": {
+            "title": "Correct Count",
+            "type": "integer"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "limitation": {
+            "default": "none",
+            "title": "Limitation",
+            "type": "string"
+          },
+          "question_count": {
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "recommended_band": {
+            "title": "Recommended Band",
+            "type": "string"
+          },
+          "recommended_book_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Book Id"
+          },
+          "recommended_book_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Book Title"
+          },
+          "recommended_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Level"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suffix"
+          }
+        },
+        "required": [
+          "id",
+          "student_id",
+          "display_name",
+          "recommended_band",
+          "question_count",
+          "answered_count",
+          "correct_count"
+        ],
+        "title": "PlacementResultPublic",
+        "type": "object"
+      },
+      "PlacementStartResponse": {
+        "properties": {
+          "answered_count": {
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "degraded": {
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "limitation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limitation"
+          },
+          "planned_total": {
+            "title": "Planned Total",
+            "type": "integer"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlacementQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlacementResultPublic"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "status",
+          "planned_total",
+          "answered_count",
+          "degraded"
+        ],
+        "title": "PlacementStartResponse",
         "type": "object"
       },
       "PlanAttempt": {
@@ -9792,6 +10677,17 @@
       },
       "StudentAccountOut": {
         "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
           "full_name": {
             "anyOf": [
               {
@@ -10512,6 +11408,76 @@
             ],
             "title": "Enabled Before"
           },
+          "expires_at_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At After"
+          },
+          "expires_at_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At Before"
+          },
+          "grant_type_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grant Type After"
+          },
+          "grant_type_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grant Type Before"
+          },
+          "granted_by_after": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Granted By After"
+          },
+          "granted_by_before": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Granted By Before"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -10537,8 +11503,19 @@
         "type": "object"
       },
       "TenantModulePublic": {
-        "description": "运营/前端视角的单行授权。",
+        "description": "运营/前端视角的单行授权。\n\n``starts_at`` 是 ``effective_at`` 的只读镜像（同一事实，不另存列）；\n``state`` / ``days_left`` 由服务端状态机派生。",
         "properties": {
+          "days_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Left"
+          },
           "effective_at": {
             "anyOf": [
               {
@@ -10555,8 +11532,54 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "grant_type": {
+            "default": "manual",
+            "title": "Grant Type",
+            "type": "string"
+          },
+          "granted_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Granted By"
+          },
           "module_key": {
             "title": "Module Key",
+            "type": "string"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "state": {
+            "default": "not_granted",
+            "title": "State",
             "type": "string"
           },
           "tenant_id": {
@@ -10598,7 +11621,7 @@
         "type": "object"
       },
       "TenantModuleUpdate": {
-        "description": "运营改写单行授权的请求体。",
+        "description": "运营改写单行授权的请求体（PUT 整行语义）。\n\n省略的元数据字段保留旧值；``expires_at`` 显式传 ``null`` 表示清除到期日\n（转长期）。``effective_at`` 即开始时间，请求体不设重复的 starts_at。",
         "properties": {
           "effective_at": {
             "anyOf": [
@@ -10615,6 +11638,29 @@
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "grant_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grant Type"
           }
         },
         "required": [
@@ -10664,6 +11710,208 @@
           }
         },
         "title": "TenantUpdate",
+        "type": "object"
+      },
+      "TenantUsageDay": {
+        "properties": {
+          "active_students": {
+            "default": 0,
+            "title": "Active Students",
+            "type": "integer"
+          },
+          "active_teachers": {
+            "default": 0,
+            "title": "Active Teachers",
+            "type": "integer"
+          },
+          "completed_students": {
+            "default": 0,
+            "title": "Completed Students",
+            "type": "integer"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "exports": {
+            "default": 0,
+            "title": "Exports",
+            "type": "integer"
+          },
+          "farm_harvests": {
+            "default": 0,
+            "title": "Farm Harvests",
+            "type": "integer"
+          },
+          "pk_matches": {
+            "default": 0,
+            "title": "Pk Matches",
+            "type": "integer"
+          },
+          "placement_tests": {
+            "default": 0,
+            "title": "Placement Tests",
+            "type": "integer"
+          },
+          "published_tasks": {
+            "default": 0,
+            "title": "Published Tasks",
+            "type": "integer"
+          },
+          "vocab_answers": {
+            "default": 0,
+            "title": "Vocab Answers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "title": "TenantUsageDay",
+        "type": "object"
+      },
+      "TenantUsageMetrics": {
+        "description": "九项聚合指标（日行与区间总量共用结构）。",
+        "properties": {
+          "active_students": {
+            "default": 0,
+            "title": "Active Students",
+            "type": "integer"
+          },
+          "active_teachers": {
+            "default": 0,
+            "title": "Active Teachers",
+            "type": "integer"
+          },
+          "completed_students": {
+            "default": 0,
+            "title": "Completed Students",
+            "type": "integer"
+          },
+          "exports": {
+            "default": 0,
+            "title": "Exports",
+            "type": "integer"
+          },
+          "farm_harvests": {
+            "default": 0,
+            "title": "Farm Harvests",
+            "type": "integer"
+          },
+          "pk_matches": {
+            "default": 0,
+            "title": "Pk Matches",
+            "type": "integer"
+          },
+          "placement_tests": {
+            "default": 0,
+            "title": "Placement Tests",
+            "type": "integer"
+          },
+          "published_tasks": {
+            "default": 0,
+            "title": "Published Tasks",
+            "type": "integer"
+          },
+          "vocab_answers": {
+            "default": 0,
+            "title": "Vocab Answers",
+            "type": "integer"
+          }
+        },
+        "title": "TenantUsageMetrics",
+        "type": "object"
+      },
+      "TenantUsageResponse": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/TenantUsageDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "from": {
+            "title": "From",
+            "type": "string"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "to": {
+            "title": "To",
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/TenantUsageMetrics"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "from",
+          "to",
+          "timezone",
+          "days",
+          "totals",
+          "limitations"
+        ],
+        "title": "TenantUsageResponse",
+        "type": "object"
+      },
+      "TenantUsageSummaryItem": {
+        "properties": {
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "summary_30d": {
+            "$ref": "#/components/schemas/TenantUsageMetrics"
+          },
+          "summary_7d": {
+            "$ref": "#/components/schemas/TenantUsageMetrics"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "slug",
+          "summary_7d",
+          "summary_30d"
+        ],
+        "title": "TenantUsageSummaryItem",
+        "type": "object"
+      },
+      "TenantUsageSummaryResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TenantUsageSummaryItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TenantUsageSummaryResponse",
         "type": "object"
       },
       "TodayPlan": {
@@ -11446,6 +12694,61 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VocabularyAdvancedTransferRequest": {
+        "description": "从扩展区把高级备考词转入教学词库（仅已审核、授权齐全的词条）。",
+        "properties": {
+          "book_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Id"
+          },
+          "classroom_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classroom Id"
+          },
+          "new_book_title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Book Title"
+          },
+          "word_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Word Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "word_ids"
+        ],
+        "title": "VocabularyAdvancedTransferRequest",
+        "type": "object"
+      },
       "VocabularyAiExplanationRequest": {
         "properties": {
           "force": {
@@ -11778,6 +13081,11 @@
             "format": "uuid",
             "title": "Book Id",
             "type": "string"
+          },
+          "confirm_reviewed": {
+            "default": false,
+            "title": "Confirm Reviewed",
+            "type": "boolean"
           },
           "drafts": {
             "items": {
@@ -12335,6 +13643,11 @@
             ],
             "title": "Classroom Id"
           },
+          "confirm_reviewed": {
+            "default": false,
+            "title": "Confirm Reviewed",
+            "type": "boolean"
+          },
           "description": {
             "anyOf": [
               {
@@ -12351,6 +13664,12 @@
             "default": "classroom",
             "maxLength": 16,
             "title": "Scope",
+            "type": "string"
+          },
+          "source": {
+            "default": "teacher",
+            "maxLength": 16,
+            "title": "Source",
             "type": "string"
           },
           "title": {
@@ -12461,6 +13780,38 @@
           "status"
         ],
         "title": "VocabularyBookDetail",
+        "type": "object"
+      },
+      "VocabularyBookLicenseDetail": {
+        "description": "按词库读取授权：词库级信息 + 词条级授权清单。",
+        "properties": {
+          "book_id": {
+            "format": "uuid",
+            "title": "Book Id",
+            "type": "string"
+          },
+          "license": {
+            "$ref": "#/components/schemas/VocabularyLicenseInfo"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "words": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyWordLicenseItem"
+            },
+            "title": "Words",
+            "type": "array"
+          }
+        },
+        "required": [
+          "book_id",
+          "title",
+          "license"
+        ],
+        "title": "VocabularyBookLicenseDetail",
         "type": "object"
       },
       "VocabularyBookPublic": {
@@ -12583,6 +13934,111 @@
           }
         },
         "title": "VocabularyBookUpdate",
+        "type": "object"
+      },
+      "VocabularyBookVersionEntry": {
+        "description": "版本列表单行（不含完整快照内容）。",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name"
+          },
+          "actor_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Role"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          },
+          "word_count": {
+            "default": 0,
+            "title": "Word Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version_no",
+          "action",
+          "content_hash"
+        ],
+        "title": "VocabularyBookVersionEntry",
+        "type": "object"
+      },
+      "VocabularyBookVersionList": {
+        "properties": {
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyBookVersionEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "VocabularyBookVersionList",
         "type": "object"
       },
       "VocabularyChoice": {
@@ -12727,6 +14183,40 @@
           }
         },
         "title": "VocabularyClassResults",
+        "type": "object"
+      },
+      "VocabularyContentReviewList": {
+        "properties": {
+          "approved_count": {
+            "default": 0,
+            "title": "Approved Count",
+            "type": "integer"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyReviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "pending_count": {
+            "default": 0,
+            "title": "Pending Count",
+            "type": "integer"
+          },
+          "rejected_count": {
+            "default": 0,
+            "title": "Rejected Count",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "VocabularyContentReviewList",
         "type": "object"
       },
       "VocabularyFromLevelsRequest": {
@@ -12959,8 +14449,199 @@
         "title": "VocabularyImportRow",
         "type": "object"
       },
+      "VocabularyLeaderboardEntry": {
+        "description": "榜单条目：匿名时 display_name 为 null，只带 alias_no。",
+        "properties": {
+          "alias_no": {
+            "title": "Alias No",
+            "type": "integer"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "score": {
+            "title": "Score",
+            "type": "integer"
+          },
+          "suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suffix"
+          }
+        },
+        "required": [
+          "rank",
+          "score",
+          "alias_no"
+        ],
+        "title": "VocabularyLeaderboardEntry",
+        "type": "object"
+      },
+      "VocabularyLeaderboardSettings": {
+        "description": "榜单设置投影（无库行时由服务层填默认值）。",
+        "properties": {
+          "anonymous": {
+            "title": "Anonymous",
+            "type": "boolean"
+          },
+          "audience": {
+            "title": "Audience",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "top_n": {
+            "default": 10,
+            "title": "Top N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "audience",
+          "anonymous"
+        ],
+        "title": "VocabularyLeaderboardSettings",
+        "type": "object"
+      },
+      "VocabularyLeaderboardSettingsUpdate": {
+        "description": "教师更新榜单设置。",
+        "properties": {
+          "anonymous": {
+            "title": "Anonymous",
+            "type": "boolean"
+          },
+          "audience": {
+            "enum": [
+              "teachers",
+              "students"
+            ],
+            "title": "Audience",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "audience",
+          "anonymous"
+        ],
+        "title": "VocabularyLeaderboardSettingsUpdate",
+        "type": "object"
+      },
+      "VocabularyLeaderboardView": {
+        "description": "GET /classes/{code}/vocabulary/leaderboard 响应。",
+        "properties": {
+          "entries": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyLeaderboardEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "joined": {
+            "default": false,
+            "title": "Joined",
+            "type": "boolean"
+          },
+          "my_entry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VocabularyLeaderboardEntry"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "my_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Rank"
+          },
+          "my_score": {
+            "default": 0,
+            "title": "My Score",
+            "type": "integer"
+          },
+          "participant_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Count"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/VocabularyLeaderboardSettings"
+          },
+          "week_start": {
+            "format": "date",
+            "title": "Week Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "week_start",
+          "settings"
+        ],
+        "title": "VocabularyLeaderboardView",
+        "type": "object"
+      },
       "VocabularyLevelEntryPublic": {
         "properties": {
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
+          },
+          "exam_tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Exam Tags",
+            "type": "array"
+          },
           "headword": {
             "title": "Headword",
             "type": "string"
@@ -13047,6 +14728,31 @@
       "VocabularyLevelEntryUpdate": {
         "description": "人工核对修正：缺省不修改；needs_review=False 即「已核对」。",
         "properties": {
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
+          },
+          "exam_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Tags"
+          },
           "meaning_zh": {
             "anyOf": [
               {
@@ -13297,6 +15003,721 @@
         "title": "VocabularyLevelStats",
         "type": "object"
       },
+      "VocabularyLicenseAlertItem": {
+        "description": "到期提醒单行：临期 / 已过期的词库或词条。",
+        "properties": {
+          "authorization_doc_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Doc Url"
+          },
+          "book_id": {
+            "format": "uuid",
+            "title": "Book Id",
+            "type": "string"
+          },
+          "book_title": {
+            "title": "Book Title",
+            "type": "string"
+          },
+          "headword": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headword"
+          },
+          "license_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Expires At"
+          },
+          "license_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Owner"
+          },
+          "license_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Ref"
+          },
+          "license_status": {
+            "title": "License Status",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          },
+          "word_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Word Id"
+          }
+        },
+        "required": [
+          "target_type",
+          "book_id",
+          "book_title",
+          "source_type",
+          "license_status"
+        ],
+        "title": "VocabularyLicenseAlertItem",
+        "type": "object"
+      },
+      "VocabularyLicenseAuditItem": {
+        "description": "授权变更审计单行。",
+        "properties": {
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name"
+          },
+          "actor_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Role"
+          },
+          "book_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Id"
+          },
+          "changes": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "default": {},
+            "title": "Changes",
+            "type": "object"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          },
+          "tenant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Name"
+          },
+          "tenant_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Slug"
+          },
+          "word_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Word Id"
+          }
+        },
+        "required": [
+          "id",
+          "target_type"
+        ],
+        "title": "VocabularyLicenseAuditItem",
+        "type": "object"
+      },
+      "VocabularyLicenseInfo": {
+        "description": "授权信息（词库级或词条级通用视图）。",
+        "properties": {
+          "authorization_doc_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Doc Url"
+          },
+          "license_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Expires At"
+          },
+          "license_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Note"
+          },
+          "license_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Owner"
+          },
+          "license_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Ref"
+          },
+          "license_status": {
+            "title": "License Status",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_type",
+          "license_status"
+        ],
+        "title": "VocabularyLicenseInfo",
+        "type": "object"
+      },
+      "VocabularyLicenseStatusItem": {
+        "description": "平台授权台账单行：某校某词库的当前授权状态（只读，#517 运营台账页）。",
+        "properties": {
+          "authorization_doc_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Doc Url"
+          },
+          "book_id": {
+            "format": "uuid",
+            "title": "Book Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "license_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Expires At"
+          },
+          "license_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Note"
+          },
+          "license_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Owner"
+          },
+          "license_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Ref"
+          },
+          "license_status": {
+            "title": "License Status",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "tenant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Name"
+          },
+          "tenant_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Slug"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "book_id",
+          "title",
+          "source_type",
+          "license_status"
+        ],
+        "title": "VocabularyLicenseStatusItem",
+        "type": "object"
+      },
+      "VocabularyLicenseStatusList": {
+        "description": "平台授权台账当前状态清单（只读）。",
+        "properties": {
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyLicenseStatusItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "VocabularyLicenseStatusList",
+        "type": "object"
+      },
+      "VocabularyLicenseUpdate": {
+        "description": "授权信息更新请求；缺省字段不修改，可空字段传 null 清空。",
+        "properties": {
+          "authorization_doc_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Doc Url"
+          },
+          "license_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Expires At"
+          },
+          "license_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Note"
+          },
+          "license_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Owner"
+          },
+          "license_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Ref"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          }
+        },
+        "title": "VocabularyLicenseUpdate",
+        "type": "object"
+      },
+      "VocabularyMasteryReport": {
+        "description": "GET /classes/{code}/vocabulary/mastery 的班级掌握度载荷。",
+        "properties": {
+          "accuracy_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy Rate"
+          },
+          "answered_count": {
+            "default": 0,
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "assignment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignment Id"
+          },
+          "classroom_code": {
+            "title": "Classroom Code",
+            "type": "string"
+          },
+          "correct_first_count": {
+            "default": 0,
+            "title": "Correct First Count",
+            "type": "integer"
+          },
+          "due_count": {
+            "default": 0,
+            "title": "Due Count",
+            "type": "integer"
+          },
+          "fsrs_learning": {
+            "default": 0,
+            "title": "Fsrs Learning",
+            "type": "integer"
+          },
+          "fsrs_new": {
+            "default": 0,
+            "title": "Fsrs New",
+            "type": "integer"
+          },
+          "fsrs_review": {
+            "default": 0,
+            "title": "Fsrs Review",
+            "type": "integer"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "high_count": {
+            "default": 0,
+            "title": "High Count",
+            "type": "integer"
+          },
+          "low_count": {
+            "default": 0,
+            "title": "Low Count",
+            "type": "integer"
+          },
+          "mid_count": {
+            "default": 0,
+            "title": "Mid Count",
+            "type": "integer"
+          },
+          "no_data_count": {
+            "default": 0,
+            "title": "No Data Count",
+            "type": "integer"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "window_days": {
+            "title": "Window Days",
+            "type": "integer"
+          },
+          "words": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyMasteryWordRow"
+            },
+            "title": "Words",
+            "type": "array"
+          }
+        },
+        "required": [
+          "classroom_code",
+          "generated_at",
+          "window_days",
+          "scope"
+        ],
+        "title": "VocabularyMasteryReport",
+        "type": "object"
+      },
+      "VocabularyMasteryWordRow": {
+        "description": "逐词掌握度行：首答分段 + 该词在本班的 FSRS 状态条目分布。",
+        "properties": {
+          "accuracy_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy Rate"
+          },
+          "answered_count": {
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "band": {
+            "title": "Band",
+            "type": "string"
+          },
+          "correct_first_count": {
+            "title": "Correct First Count",
+            "type": "integer"
+          },
+          "due_count": {
+            "default": 0,
+            "title": "Due Count",
+            "type": "integer"
+          },
+          "fsrs_learning": {
+            "default": 0,
+            "title": "Fsrs Learning",
+            "type": "integer"
+          },
+          "fsrs_new": {
+            "default": 0,
+            "title": "Fsrs New",
+            "type": "integer"
+          },
+          "fsrs_review": {
+            "default": 0,
+            "title": "Fsrs Review",
+            "type": "integer"
+          },
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "meaning_zh": {
+            "title": "Meaning Zh",
+            "type": "string"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word_id",
+          "headword",
+          "meaning_zh",
+          "answered_count",
+          "correct_first_count",
+          "band"
+        ],
+        "title": "VocabularyMasteryWordRow",
+        "type": "object"
+      },
       "VocabularyMorphSegment": {
         "description": "词根拼装的语素块：text 用于拼接，gloss 是中文提示。",
         "properties": {
@@ -13319,6 +15740,45 @@
           "kind"
         ],
         "title": "VocabularyMorphSegment",
+        "type": "object"
+      },
+      "VocabularyParticipationState": {
+        "description": "加入状态回执：alias_no 退出后为 null，重新加入复用原编号。",
+        "properties": {
+          "alias_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alias No"
+          },
+          "joined": {
+            "title": "Joined",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "joined"
+        ],
+        "title": "VocabularyParticipationState",
+        "type": "object"
+      },
+      "VocabularyParticipationUpdate": {
+        "description": "学生加入 / 退出榜单。",
+        "properties": {
+          "joined": {
+            "title": "Joined",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "joined"
+        ],
+        "title": "VocabularyParticipationUpdate",
         "type": "object"
       },
       "VocabularyPromptTypeStat": {
@@ -13657,6 +16117,320 @@
           "wrong_count"
         ],
         "title": "VocabularyRecommendationFocus",
+        "type": "object"
+      },
+      "VocabularyReviewActionRequest": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "word_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Word Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "word_ids",
+          "action"
+        ],
+        "title": "VocabularyReviewActionRequest",
+        "type": "object"
+      },
+      "VocabularyReviewActionResult": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "updated",
+          "status"
+        ],
+        "title": "VocabularyReviewActionResult",
+        "type": "object"
+      },
+      "VocabularyReviewAuditItem": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name"
+          },
+          "actor_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Role"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "from_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Status"
+          },
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "tenant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Name"
+          },
+          "tenant_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Slug"
+          },
+          "to_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Status"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "word_id",
+          "headword",
+          "action"
+        ],
+        "title": "VocabularyReviewAuditItem",
+        "type": "object"
+      },
+      "VocabularyReviewItem": {
+        "description": "审核队列单行：词条当前内容 + 归属词库与审核留痕。",
+        "properties": {
+          "book_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Id"
+          },
+          "book_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Title"
+          },
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "meaning_zh": {
+            "title": "Meaning Zh",
+            "type": "string"
+          },
+          "part_of_speech": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Of Speech"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "review_status": {
+            "title": "Review Status",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "tenant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Name"
+          },
+          "tenant_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Slug"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word_id",
+          "headword",
+          "meaning_zh",
+          "source",
+          "review_status",
+          "version"
+        ],
+        "title": "VocabularyReviewItem",
         "type": "object"
       },
       "VocabularyReviewQueue": {
@@ -14255,6 +17029,17 @@
               }
             ],
             "title": "Audio Url"
+          },
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
           },
           "choices": {
             "default": [],
@@ -14896,6 +17681,17 @@
             ],
             "title": "Audio Url"
           },
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
+          },
           "choices": {
             "default": [],
             "items": {
@@ -15122,6 +17918,282 @@
         "title": "VocabularyTodayPlan",
         "type": "object"
       },
+      "VocabularyTrendPeriod": {
+        "description": "单个统计周期（周/月）的聚合结果。\n\n区间为**闭区间**：``period_start`` 00:00:00 至 ``period_end`` 23:59:59\n（Asia/Shanghai）。``completion_rate`` / ``first_accuracy`` 在无目标 /\n无首答时返回 ``null``，不折算 0%。\n\n``due_unreviewed`` 按**当前** ``VocabularyReviewState`` 回算（词 × 能力\n条目数，非去重词数）；历史周期的到期状态不做历史还原，仅作教学参考。",
+        "properties": {
+          "assigned_targets": {
+            "default": 0,
+            "title": "Assigned Targets",
+            "type": "integer"
+          },
+          "completed_targets": {
+            "default": 0,
+            "title": "Completed Targets",
+            "type": "integer"
+          },
+          "completion_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Rate"
+          },
+          "due_unreviewed": {
+            "default": 0,
+            "title": "Due Unreviewed",
+            "type": "integer"
+          },
+          "first_accuracy": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Accuracy"
+          },
+          "first_answered": {
+            "default": 0,
+            "title": "First Answered",
+            "type": "integer"
+          },
+          "first_correct": {
+            "default": 0,
+            "title": "First Correct",
+            "type": "integer"
+          },
+          "high_count": {
+            "default": 0,
+            "title": "High Count",
+            "type": "integer"
+          },
+          "low_count": {
+            "default": 0,
+            "title": "Low Count",
+            "type": "integer"
+          },
+          "mid_count": {
+            "default": 0,
+            "title": "Mid Count",
+            "type": "integer"
+          },
+          "no_data_count": {
+            "default": 0,
+            "title": "No Data Count",
+            "type": "integer"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period_start",
+          "period_end"
+        ],
+        "title": "VocabularyTrendPeriod",
+        "type": "object"
+      },
+      "VocabularyTrendReport": {
+        "description": "GET /classes/{code}/vocabulary/trend。\n\n``teaching_reference`` 固定为 ``true``：趋势为教学参考，不是考试分数或\n能力认证。",
+        "properties": {
+          "anchor": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor"
+          },
+          "book_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Id"
+          },
+          "classroom_code": {
+            "title": "Classroom Code",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "granularity": {
+            "title": "Granularity",
+            "type": "string"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyTrendPeriod"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "periods": {
+            "title": "Periods",
+            "type": "integer"
+          },
+          "prompt_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Type"
+          },
+          "teaching_reference": {
+            "default": true,
+            "title": "Teaching Reference",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "classroom_code",
+          "granularity",
+          "periods",
+          "generated_at"
+        ],
+        "title": "VocabularyTrendReport",
+        "type": "object"
+      },
+      "VocabularyVersionCompare": {
+        "properties": {
+          "added": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyVersionDiffEntry"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "book_id": {
+            "format": "uuid",
+            "title": "Book Id",
+            "type": "string"
+          },
+          "changed": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyVersionDiffEntry"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
+          "from_version_no": {
+            "title": "From Version No",
+            "type": "integer"
+          },
+          "removed": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VocabularyVersionDiffEntry"
+            },
+            "title": "Removed",
+            "type": "array"
+          },
+          "to_version_no": {
+            "title": "To Version No",
+            "type": "integer"
+          },
+          "total_changed": {
+            "default": 0,
+            "title": "Total Changed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "book_id",
+          "from_version_no",
+          "to_version_no"
+        ],
+        "title": "VocabularyVersionCompare",
+        "type": "object"
+      },
+      "VocabularyVersionDiffEntry": {
+        "description": "词条级对比单行：新增 / 删除 / 变更（含变更维度与前后条目）。",
+        "properties": {
+          "change_kind": {
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "fields": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "from_entry": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Entry"
+          },
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "to_entry": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Entry"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word_id",
+          "headword",
+          "change_kind"
+        ],
+        "title": "VocabularyVersionDiffEntry",
+        "type": "object"
+      },
       "VocabularyWordIn": {
         "description": "创建/导入词条的请求体（词库内新增词）。",
         "properties": {
@@ -15150,6 +18222,31 @@
               }
             ],
             "title": "Audio Url"
+          },
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
+          },
+          "exam_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Tags"
           },
           "example_en": {
             "anyOf": [
@@ -15224,6 +18321,92 @@
         "title": "VocabularyWordIn",
         "type": "object"
       },
+      "VocabularyWordLicenseItem": {
+        "description": "词库授权详情中的词条级授权行。",
+        "properties": {
+          "authorization_doc_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authorization Doc Url"
+          },
+          "headword": {
+            "title": "Headword",
+            "type": "string"
+          },
+          "license_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Expires At"
+          },
+          "license_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Note"
+          },
+          "license_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Owner"
+          },
+          "license_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Ref"
+          },
+          "license_status": {
+            "title": "License Status",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "word_id": {
+            "format": "uuid",
+            "title": "Word Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word_id",
+          "headword",
+          "source_type",
+          "license_status"
+        ],
+        "title": "VocabularyWordLicenseItem",
+        "type": "object"
+      },
       "VocabularyWordMisspelling": {
         "properties": {
           "answer": {
@@ -15276,6 +18459,25 @@
               }
             ],
             "title": "Audio Url"
+          },
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
+          },
+          "exam_tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Exam Tags",
+            "type": "array"
           },
           "example_en": {
             "anyOf": [
@@ -15351,10 +18553,60 @@
             ],
             "title": "Part Of Speech"
           },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "review_status": {
+            "default": "pending",
+            "title": "Review Status",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "source": {
+            "default": "teacher",
+            "title": "Source",
+            "type": "string"
+          },
           "status": {
             "default": "active",
             "title": "Status",
             "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -15446,6 +18698,31 @@
             ],
             "title": "Audio Url"
           },
+          "cefr_band": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cefr Band"
+          },
+          "exam_tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exam Tags"
+          },
           "example_en": {
             "anyOf": [
               {
@@ -15456,6 +18733,18 @@
               }
             ],
             "title": "Example En"
+          },
+          "expected_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
           },
           "meaning_en": {
             "anyOf": [
@@ -19513,6 +22802,24 @@
               ],
               "title": "Limit"
             }
+          },
+          {
+            "in": "query",
+            "name": "expiring_within_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 365,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expiring Within Days"
+            }
           }
         ],
         "responses": {
@@ -19591,6 +22898,33 @@
           }
         ],
         "summary": "Create Tenant",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/tenants/usage-summary": {
+      "get": {
+        "description": "运营列表：每校近 7 / 30 天核心聚合数（一次请求返回两组）。\n\n只返回租户 id、slug 与聚合数，不含任何学生 / 教师标识。静态路径\n``usage-summary`` 与 ``/{tenant_id}`` 不冲突。",
+        "operationId": "admin-usage_summary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantUsageSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Usage Summary",
         "tags": [
           "admin"
         ]
@@ -19725,7 +23059,7 @@
     },
     "/api/v1/admin/tenants/{tenant_id}/modules/{module_key}": {
       "put": {
-        "description": "整校模块开关（平台运营）：开启/关闭 speaking 或 vocabulary，可选生效时间。\n\n变更落 ``tenant_module_audit``：操作人、前后值、生效时间、时间戳一并留痕；\n学校管理员不可见、不可改本接口。",
+        "description": "整校模块开关（平台运营）：开启/关闭 speaking 或 vocabulary，可选租期。\n\n请求体为 PUT 整行语义：省略的元数据字段保留旧值；``expires_at`` 显式传\n``null`` 表示清除到期日（转长期）。``effective_at`` 即开始时间。\n变更落 ``tenant_module_audit``：操作人、前后值（含到期日/类型/授权人）、\n时间戳一并留痕；学校管理员不可见、不可改本接口。",
         "operationId": "admin-update_tenant_module",
         "parameters": [
           {
@@ -19786,6 +23120,170 @@
           }
         ],
         "summary": "Update Tenant Module",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/tenants/{tenant_id}/usage": {
+      "get": {
+        "description": "单校按天用量：范围内每天一行（无数据补零），附区间总量与限制说明。",
+        "operationId": "admin-tenant_usage_detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantUsageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Tenant Usage Detail",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/tenants/{tenant_id}/usage.csv": {
+      "get": {
+        "description": "单校按天用量 CSV（UTF-8 BOM，Excel 直开）；仅聚合数，无学生明细。",
+        "operationId": "admin-tenant_usage_csv",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Tenant Usage Csv",
         "tags": [
           "admin"
         ]
@@ -20336,6 +23834,419 @@
         "summary": "Vocab Level Stats",
         "tags": [
           "vocab-levels"
+        ]
+      }
+    },
+    "/api/v1/admin/vocabulary/license/audit": {
+      "get": {
+        "description": "平台跨校授权审计（只读）；附学校码与校名。",
+        "operationId": "admin-admin_list_license_audit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "book_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Book Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VocabularyLicenseAuditItem"
+                  },
+                  "title": "Response Admin-Admin List License Audit",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin List License Audit",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/vocabulary/license/export.csv": {
+      "get": {
+        "description": "平台跨校授权清单 CSV（只读）：首列为学校，口径与台账页一致。",
+        "operationId": "admin-admin_export_license_csv",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin Export License Csv",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/vocabulary/license/status": {
+      "get": {
+        "description": "平台跨校授权台账（只读当前状态）：按学校 / 词库 / 状态筛选。\n\n只读：不写授权、不复用学校 token；状态口径见\n:func:`vocab_governance.license_gap_status`。``active`` 筛选同时纳入\n``not_required``（免授权来源）。",
+        "operationId": "admin-admin_list_license_status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant"
+            }
+          },
+          {
+            "in": "query",
+            "name": "book",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Book"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyLicenseStatusList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin List License Status",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/vocabulary/reviews": {
+      "get": {
+        "description": "平台跨校审核队列（只读）；附学校码与校名。",
+        "operationId": "admin-admin_list_vocabulary_reviews",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "pending",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "book_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Book Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "classroom_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Classroom Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyContentReviewList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin List Vocabulary Reviews",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/vocabulary/reviews/audit": {
+      "get": {
+        "description": "平台跨校审核留痕（只读）；附学校码与校名。",
+        "operationId": "admin-admin_vocabulary_review_audit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "word_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Word Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VocabularyReviewAuditItem"
+                  },
+                  "title": "Response Admin-Admin Vocabulary Review Audit",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin Vocabulary Review Audit",
+        "tags": [
+          "admin"
         ]
       }
     },
@@ -25421,6 +29332,368 @@
         ]
       }
     },
+    "/api/v1/classes/{code}/vocabulary/leaderboard": {
+      "get": {
+        "description": "班内本周掌握词数榜；教师/本校管理员可查任意不晚于本周的周一，\n学生只能查不早于本人首次加入周。",
+        "operationId": "vocabulary-read_leaderboard",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "week_start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week Start"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyLeaderboardView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Leaderboard",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/leaderboard/participation": {
+      "put": {
+        "description": "学生加入 / 退出榜单；仅教师可见或整班关闭期间不允许加入（403）。",
+        "operationId": "vocabulary-update_participation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabularyParticipationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyParticipationState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Participation",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/leaderboard/settings": {
+      "get": {
+        "description": "榜单设置：仅本班授权教师（含共管）/本校管理员。无库行返回默认值。",
+        "operationId": "vocabulary-read_leaderboard_settings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyLeaderboardSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Leaderboard Settings",
+        "tags": [
+          "vocabulary"
+        ]
+      },
+      "put": {
+        "description": "更新榜单开关 / 可见范围 / 匿名口径（本班授权教师/本校管理员）。",
+        "operationId": "vocabulary-update_leaderboard_settings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabularyLeaderboardSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyLeaderboardSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Leaderboard Settings",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/mastery": {
+      "get": {
+        "description": "班级掌握度：首答正确率分段 + FSRS 状态分布 + 到期未复习条目数。\n\n口径提醒：掌握度不是考试分数、不是能力等级；只统计本班教师任务轮\n（kind=task）的首答，自主练习/错词复习/分班测不混入。``assignment_id``\n缺省 = 本班全部任务（all_tasks）；给定 = 单任务口径。时间窗 7/30/90 天，\n默认 30 天。",
+        "operationId": "vocabulary-read_vocab_mastery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assignment_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assignment Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyMasteryReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Vocab Mastery",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/pk/history": {
+      "get": {
+        "description": "本班教师回看已结束/已放弃对局历史（只读）；学生/跨班按既有口径拒绝。",
+        "operationId": "vocabulary-read_pk_history",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkHistoryList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Pk History",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
     "/api/v1/classes/{code}/vocabulary/pk/lobby": {
       "get": {
         "operationId": "vocabulary-read_pk_lobby",
@@ -25893,6 +30166,222 @@
           }
         ],
         "summary": "Read Pk Match State",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/placement/history": {
+      "get": {
+        "description": "本人全部测次（重测保留历史，按时间倒序）。",
+        "operationId": "vocabulary-placement_history",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlacementHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Placement History",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/placement/results": {
+      "get": {
+        "description": "教师 / 管理员只读：本班学生最近一次测次，仅作教学参考。",
+        "operationId": "vocabulary-placement_results",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlacementResultPublic"
+                  },
+                  "title": "Response Vocabulary-Placement Results",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Placement Results",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/placement/sessions/{session_id}/answer": {
+      "post": {
+        "description": "提交首答（每题一次）：返回正误 + 下一题或最终建议。",
+        "operationId": "vocabulary-answer_placement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlacementAnswerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlacementAnswerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Answer Placement",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/placement/start": {
+      "post": {
+        "description": "开始 / 续做一次粗分档小测；已有进行中轮次直接续做。",
+        "operationId": "vocabulary-start_placement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlacementStartResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Start Placement",
         "tags": [
           "vocabulary"
         ]
@@ -26610,6 +31099,54 @@
         ]
       }
     },
+    "/api/v1/classes/{code}/vocabulary/teacher/farm-summary": {
+      "get": {
+        "description": "班级农场聚合摘要（教师端独立面板）：与课堂看板内 ``vocabulary_farm`` 同口径。\n\n仅本班教师；只读聚合，不改 XP/徽章/streak/plot，跨班地块不重复计入。",
+        "operationId": "vocabulary-read_teacher_farm_summary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FarmBoardSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Teacher Farm Summary",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
     "/api/v1/classes/{code}/vocabulary/today": {
       "get": {
         "description": "学生词汇任务视图：任务列表 + 聚焦任务进度（未答题不透露拼写）。\n\nassignment_id 缺省 = 聚焦任务（最早截止的未完成者）；显式指定时返回\n该任务的聚焦轮次（多任务切换练习用）。round_no 显式回看指定轮次\n（只读，归属校验：只允许本人轮次，不存在 404）。",
@@ -26686,6 +31223,250 @@
           }
         ],
         "summary": "Read Vocab Today",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/trend": {
+      "get": {
+        "description": "班级词汇趋势：完成率 / 首答正确率 / 掌握度分段 / 到期未复习。",
+        "operationId": "vocabulary-get_vocabulary_trend",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "description": "week=按周；month=按月",
+            "in": "query",
+            "name": "granularity",
+            "required": true,
+            "schema": {
+              "description": "week=按周；month=按月",
+              "title": "Granularity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "periods",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "maximum": 24,
+              "minimum": 1,
+              "title": "Periods",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "锚定日期 YYYY-MM-DD，缺省=今天",
+            "in": "query",
+            "name": "anchor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "锚定日期 YYYY-MM-DD，缺省=今天",
+              "title": "Anchor"
+            }
+          },
+          {
+            "description": "按来源词库筛选",
+            "in": "query",
+            "name": "book_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按来源词库筛选",
+              "title": "Book Id"
+            }
+          },
+          {
+            "description": "按出题方式筛选",
+            "in": "query",
+            "name": "prompt_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按出题方式筛选",
+              "title": "Prompt Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyTrendReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Vocabulary Trend",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/trend.csv": {
+      "get": {
+        "description": "趋势 CSV（UTF-8 BOM）：一行一周期；空值留空，不写 0。",
+        "operationId": "vocabulary-get_vocabulary_trend_csv",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "granularity",
+            "required": true,
+            "schema": {
+              "title": "Granularity",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "periods",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "maximum": 24,
+              "minimum": 1,
+              "title": "Periods",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "anchor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Anchor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "book_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Book Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "prompt_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prompt Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Vocabulary Trend Csv",
         "tags": [
           "vocabulary"
         ]
@@ -28684,6 +33465,167 @@
         ]
       }
     },
+    "/api/v1/vocabulary/advanced-words": {
+      "get": {
+        "description": "扩展区高级备考词浏览（教师）：仅返回可见词库中的 active 高级词。\n\n可见性与选词列表同口径：本校公共库或本人班级库（管理员全看本校）。\n可按考试标签、CEFR 档位、词头过滤。CEFR 仅为词条内容标签，学生侧不做\n等级评定；本接口不下发任何测评推断。",
+        "operationId": "vocab-levels-list_advanced_words",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "exam_tag",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exam Tag"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cefr_band",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cefr Band"
+            }
+          },
+          {
+            "in": "query",
+            "name": "headword",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Headword"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VocabularyWordPublic"
+                  },
+                  "title": "Response Vocab-Levels-List Advanced Words",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Advanced Words",
+        "tags": [
+          "vocab-levels"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/advanced-words/transfer": {
+      "post": {
+        "description": "扩展区高级词转入教学词库：审核与授权门禁与发布路径同口径。\n\n门禁（不可绕过）：\n- 源词条必须本校、active，且归属至少一本当前教师可见词库；\n- 必须命中高级考试标签（SAT/ACT/GRE）；\n- 审核状态必须 approved（pending/rejected 禁止转入）；\n- textbook/licensed 来源授权不齐 → 422；demo/self_built/ai 免授权，\n  但仍受上述 approved 门禁约束。\n\n转入为在目标词库新建教学词条副本，考试标签与 CEFR 档位随源词条携带；\n同库已收（词头+释义一致）的词跳过。",
+        "operationId": "vocab-levels-transfer_advanced_words",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabularyAdvancedTransferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyFromLevelsResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Transfer Advanced Words",
+        "tags": [
+          "vocab-levels"
+        ]
+      }
+    },
     "/api/v1/vocabulary/ai/overall-insight": {
       "post": {
         "description": "整体学习建议：最近 limit 轮、days 天内的历史记录（未公布测验\n作答不计入）；缓存按窗口内作答指纹判定新旧。",
@@ -29237,9 +34179,296 @@
         ]
       }
     },
+    "/api/v1/vocabulary/books/{book_id}/license": {
+      "get": {
+        "description": "按词库读取授权：词库级信息 + 词条级授权清单。",
+        "operationId": "vocabulary-read_book_license",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyBookLicenseDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Book License",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      },
+      "patch": {
+        "description": "更新词库授权（仅学校管理员）；逐字段写前后值审计。\n\n跨校对象先按 404 处理（不泄露存在性），再判管理员 403。",
+        "operationId": "vocabulary-update_book_license",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabularyLicenseUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyBookLicenseDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Book License",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/books/{book_id}/versions": {
+      "get": {
+        "description": "词库版本列表（版本号倒序）；跨校不可见。",
+        "operationId": "vocabulary-list_book_versions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyBookVersionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Book Versions",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/books/{book_id}/versions/compare": {
+      "get": {
+        "description": "两版本词条级对比：新增 / 删除 / 变更（释义 / 例句 / 词法 / 词形）。",
+        "operationId": "vocabulary-compare_book_versions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from_version",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "From Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_version",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "To Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyVersionCompare"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Compare Book Versions",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/books/{book_id}/versions/{version_no}/rollback": {
+      "post": {
+        "description": "回滚到指定版本：词库内容还原为目标快照，并生成一条新的 rollback 版本。\n\n仅学校管理员可执行；跨校词库先 404。已有发布任务快照\n（assignment.snapshot_items）不受影响。",
+        "operationId": "vocabulary-rollback_book_version",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_no",
+            "required": true,
+            "schema": {
+              "title": "Version No",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyBookVersionEntry"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Rollback Book Version",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      }
+    },
     "/api/v1/vocabulary/books/{book_id}/words": {
       "post": {
-        "description": "词库加词（手动录入或导入确认）；重复词跳过并按新增数递增版本。",
+        "description": "词库加词（手动录入或导入确认）；重复词跳过并按新增数递增版本。\n\n未勾选已核对 → pending 待审；勾选 → 直接 approved（自评留痕）。",
         "operationId": "vocabulary-add_book_words",
         "parameters": [
           {
@@ -29250,6 +34479,26 @@
               "format": "uuid",
               "title": "Book Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "default": "teacher",
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "confirm_reviewed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Confirm Reviewed",
+              "type": "boolean"
             }
           }
         ],
@@ -29354,6 +34603,440 @@
           }
         ],
         "summary": "Remove Book Word",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/license/alerts": {
+      "get": {
+        "description": "临期（窗口内）/ 已过期的词库与词条；教师只见本人可见词库，管理员见全校。",
+        "operationId": "vocabulary-list_license_alerts",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 365,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VocabularyLicenseAlertItem"
+                  },
+                  "title": "Response Vocabulary-List License Alerts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List License Alerts",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/license/audit": {
+      "get": {
+        "description": "本校授权变更审计，按时间倒序。",
+        "operationId": "vocabulary-list_license_audit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "book_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Book Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "word_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Word Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VocabularyLicenseAuditItem"
+                  },
+                  "title": "Response Vocabulary-List License Audit",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List License Audit",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/license/export.csv": {
+      "get": {
+        "description": "授权清单 CSV（学校管理员）：词库/词条、来源类型、授权方、凭证、到期日、状态。",
+        "operationId": "vocabulary-export_license_csv",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Export License Csv",
+        "tags": [
+          "vocabulary",
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/reviews": {
+      "get": {
+        "description": "审核队列：教师只见本人班级库；school_admin 见全校。",
+        "operationId": "vocabulary-list_vocabulary_reviews",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "pending",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "book_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Book Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "classroom_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Classroom Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyContentReviewList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Vocabulary Reviews",
+        "tags": [
+          "vocabulary"
+        ]
+      },
+      "post": {
+        "description": "批量审核：非 pending 冲突 409；拒绝必须填意见；整批全有或全无，逐词审计。",
+        "operationId": "vocabulary-review_vocabulary_words",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabularyReviewActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyReviewActionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Review Vocabulary Words",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/reviews/audit": {
+      "get": {
+        "description": "本校审核留痕（通过 / 拒绝 / 审核后编辑回退），按时间倒序。",
+        "operationId": "vocabulary-vocabulary_review_audit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "word_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Word Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VocabularyReviewAuditItem"
+                  },
+                  "title": "Response Vocabulary-Vocabulary Review Audit",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Vocabulary Review Audit",
         "tags": [
           "vocabulary"
         ]
@@ -29701,6 +35384,66 @@
         ],
         "summary": "Update Word",
         "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/vocabulary/words/{word_id}/license": {
+      "patch": {
+        "description": "更新词条授权（仅学校管理员）；跨校词条按 404 处理。",
+        "operationId": "vocabulary-update_word_license",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "word_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Word Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VocabularyLicenseUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Vocabulary-Update Word License"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Update Word License",
+        "tags": [
+          "vocabulary",
           "vocabulary"
         ]
       }

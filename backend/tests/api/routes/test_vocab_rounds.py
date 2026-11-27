@@ -58,7 +58,12 @@ def _make_public_book(
 ) -> dict:
     resp = client.post(
         f"{VOCAB}/books",
-        json={"title": title, "scope": "public", "words": words},
+        json={
+            "title": title,
+            "scope": "public",
+            "words": words,
+            "confirm_reviewed": True,
+        },
         headers=admin_headers,
     )
     assert resp.status_code == 200, resp.text

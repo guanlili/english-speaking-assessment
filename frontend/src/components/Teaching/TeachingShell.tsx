@@ -3,7 +3,10 @@ import type { ReactNode } from "react"
 import { Footer } from "@/components/Common/Footer"
 import { LanguageToggle } from "@/components/Common/LanguageToggle"
 import AppSidebar from "@/components/Sidebar/AppSidebar"
+import { TenantModuleBanner } from "@/components/Teaching/TenantModuleBanner"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { cachedRole } from "@/hooks/useAuth"
+import { useModules } from "@/hooks/useModules"
 import { type BiString, useI18n } from "@/lib/i18n"
 import { TERMS } from "@/lib/terms"
 
@@ -158,6 +161,8 @@ export function TeachingShell({ children }: { children: ReactNode }) {
     select: (state) => state.location.pathname,
   })
   const context = getWorkspaceContext(pathname)
+  const { statuses } = useModules()
+  const role = cachedRole()
 
   return (
     <SidebarProvider>
@@ -173,7 +178,7 @@ export function TeachingShell({ children }: { children: ReactNode }) {
           <div className="mx-auto flex min-h-20 max-w-7xl items-center gap-3 py-3 sm:gap-4">
             <SidebarTrigger
               aria-label={t({ zh: "切换导航栏", en: "Toggle navigation" })}
-              className="size-9 shrink-0 rounded-lg border border-border/80 text-muted-foreground hover:text-foreground"
+              className="size-11 shrink-0 rounded-lg border border-border/80 text-muted-foreground hover:text-foreground sm:size-9 coarse:size-11"
             />
             <div className="min-w-0 space-y-1">
               <p className="text-[11px] font-medium tracking-widest text-muted-foreground">
@@ -195,7 +200,10 @@ export function TeachingShell({ children }: { children: ReactNode }) {
           aria-label={t(context.title)}
           className="min-w-0 flex-1 scroll-mt-24 px-4 py-6 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring sm:px-6 sm:py-8 lg:px-10 lg:py-10"
         >
-          <div className="mx-auto w-full min-w-0 max-w-7xl">{children}</div>
+          <div className="mx-auto w-full min-w-0 max-w-7xl">
+            <TenantModuleBanner statuses={statuses} role={role} />
+            {children}
+          </div>
         </main>
         <Footer />
       </div>

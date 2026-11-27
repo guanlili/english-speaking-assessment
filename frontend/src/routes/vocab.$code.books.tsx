@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { CefrBandBadge } from "@/components/Vocabulary/WordTagBadges"
 import { APP_NAME } from "@/config"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import type { BiString } from "@/lib/bi"
@@ -346,7 +347,7 @@ function VocabBooksPage() {
             {books.map((book) => {
               const active = book.id === selectedBookId
               return (
-                <li key={book.id}>
+                <li key={book.id} className="min-w-0">
                   <button
                     type="button"
                     aria-pressed={active}
@@ -476,6 +477,7 @@ function VocabBooksPage() {
                             {word.part_of_speech}
                           </span>
                         )}
+                        <CefrBandBadge band={word.cefr_band} compact />
                         <span className="min-w-0 flex-1 basis-24 truncate text-sm text-muted-foreground">
                           {word.meaning_zh}
                         </span>

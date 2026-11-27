@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 380" font-family="Helvetica, Arial, sans-serif">
+<text x="330.0" y="26" text-anchor="middle" font-size="16" font-weight="700">状态传播延迟：SSE 可见新版本（n=5/组）</text>
+<line x1="76" y1="316.0" x2="636" y2="316.0" stroke="#E2E8F0" stroke-width="1"/>
+<text x="68" y="320.0" text-anchor="end" font-size="11" fill="#4A5568">0s</text>
+<line x1="76" y1="251.0" x2="636" y2="251.0" stroke="#E2E8F0" stroke-width="1"/>
+<text x="68" y="255.0" text-anchor="end" font-size="11" fill="#4A5568">0.375s</text>
+<line x1="76" y1="186.0" x2="636" y2="186.0" stroke="#E2E8F0" stroke-width="1"/>
+<text x="68" y="190.0" text-anchor="end" font-size="11" fill="#4A5568">0.75s</text>
+<line x1="76" y1="121.0" x2="636" y2="121.0" stroke="#E2E8F0" stroke-width="1"/>
+<text x="68" y="125.0" text-anchor="end" font-size="11" fill="#4A5568">1.125s</text>
+<line x1="76" y1="56.0" x2="636" y2="56.0" stroke="#E2E8F0" stroke-width="1"/>
+<text x="68" y="60.0" text-anchor="end" font-size="11" fill="#4A5568">1.5s</text>
+<line x1="76" y1="56.0" x2="636" y2="56.0" stroke="#E53E3E" stroke-width="1.5" stroke-dasharray="6,4"/>
+<text x="636" y="50.0" text-anchor="end" font-size="11" fill="#E53E3E">目标 P95 ≤ 1.5s</text>
+<rect x="182.0" y="151.3" width="30.0" height="164.7" fill="#4C8BF5" rx="3"/>
+<text x="197.0" y="145.3" text-anchor="middle" font-size="11" fill="#2D3748">0.95s</text>
+<rect x="216.0" y="149.6" width="30.0" height="166.4" fill="#F59E4C" rx="3"/>
+<text x="231.0" y="143.6" text-anchor="middle" font-size="11" fill="#2D3748">0.96s</text>
+<text x="216.0" y="340" text-anchor="middle" font-size="12" fill="#2D3748">本机单副本</text>
+<rect x="462.0" y="149.6" width="30.0" height="166.4" fill="#4C8BF5" rx="3"/>
+<text x="477.0" y="143.6" text-anchor="middle" font-size="11" fill="#2D3748">0.96s</text>
+<rect x="496.0" y="144.4" width="30.0" height="171.6" fill="#F59E4C" rx="3"/>
+<text x="511.0" y="138.4" text-anchor="middle" font-size="11" fill="#2D3748">0.99s</text>
+<text x="496.0" y="340" text-anchor="middle" font-size="12" fill="#2D3748">本机双副本（跨副本 n=5）</text>
+<rect x="76" y="354" width="12" height="12" fill="#4C8BF5"/>
+<text x="94" y="364" font-size="11" fill="#2D3748">P50</text>
+<rect x="206" y="354" width="12" height="12" fill="#F59E4C"/>
+<text x="224" y="364" font-size="11" fill="#2D3748">P95</text>
+<text x="76" y="378" font-size="10" fill="#718096">双副本提交方与观察者分处不同进程；传播受 SSE 1s 服务端轮询周期下限约束</text>
+</svg>

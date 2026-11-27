@@ -129,6 +129,111 @@ from app.models.vocabulary.farm import FarmView as FarmView
 from app.models.vocabulary.farm import (
     VocabFarmPlot as VocabFarmPlot,
 )
+from app.models.vocabulary.governance import (
+    LICENSE_ERROR_EXPIRED as LICENSE_ERROR_EXPIRED,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_ERROR_OWNER_MISSING as LICENSE_ERROR_OWNER_MISSING,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_ERROR_REF_MISSING as LICENSE_ERROR_REF_MISSING,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_EXPIRING_DAYS as LICENSE_EXPIRING_DAYS,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_REQUIRED_SOURCE_TYPES as LICENSE_REQUIRED_SOURCE_TYPES,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_STATUS_ACTIVE as LICENSE_STATUS_ACTIVE,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_STATUS_EXPIRED as LICENSE_STATUS_EXPIRED,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_STATUS_EXPIRING as LICENSE_STATUS_EXPIRING,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_STATUS_MISSING as LICENSE_STATUS_MISSING,
+)
+from app.models.vocabulary.governance import (
+    LICENSE_STATUS_NOT_REQUIRED as LICENSE_STATUS_NOT_REQUIRED,
+)
+from app.models.vocabulary.governance import (
+    VOCAB_SOURCE_TYPES as VOCAB_SOURCE_TYPES,
+)
+from app.models.vocabulary.governance import (
+    VocabularyBookLicenseDetail as VocabularyBookLicenseDetail,
+)
+from app.models.vocabulary.governance import (
+    VocabularyBookVersionEntry as VocabularyBookVersionEntry,
+)
+from app.models.vocabulary.governance import (
+    VocabularyBookVersionList as VocabularyBookVersionList,
+)
+from app.models.vocabulary.governance import (
+    VocabularyLicenseAlertItem as VocabularyLicenseAlertItem,
+)
+from app.models.vocabulary.governance import (
+    VocabularyLicenseAuditItem as VocabularyLicenseAuditItem,
+)
+from app.models.vocabulary.governance import (
+    VocabularyLicenseInfo as VocabularyLicenseInfo,
+)
+from app.models.vocabulary.governance import (
+    VocabularyLicenseStatusItem as VocabularyLicenseStatusItem,
+)
+from app.models.vocabulary.governance import (
+    VocabularyLicenseStatusList as VocabularyLicenseStatusList,
+)
+from app.models.vocabulary.governance import (
+    VocabularyLicenseUpdate as VocabularyLicenseUpdate,
+)
+from app.models.vocabulary.governance import (
+    VocabularyVersionCompare as VocabularyVersionCompare,
+)
+from app.models.vocabulary.governance import (
+    VocabularyVersionDiffEntry as VocabularyVersionDiffEntry,
+)
+from app.models.vocabulary.governance import (
+    VocabularyWordLicenseItem as VocabularyWordLicenseItem,
+)
+from app.models.vocabulary.leaderboard import (
+    AUDIENCE_STUDENTS as AUDIENCE_STUDENTS,
+)
+from app.models.vocabulary.leaderboard import (
+    AUDIENCE_TEACHERS as AUDIENCE_TEACHERS,
+)
+from app.models.vocabulary.leaderboard import (
+    LEADERBOARD_AUDIENCES as LEADERBOARD_AUDIENCES,
+)
+from app.models.vocabulary.leaderboard import (
+    LEADERBOARD_TOP_N as LEADERBOARD_TOP_N,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyLeaderboardEntry as VocabularyLeaderboardEntry,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyLeaderboardParticipant as VocabularyLeaderboardParticipant,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyLeaderboardSetting as VocabularyLeaderboardSetting,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyLeaderboardSettings as VocabularyLeaderboardSettings,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyLeaderboardSettingsUpdate as VocabularyLeaderboardSettingsUpdate,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyLeaderboardView as VocabularyLeaderboardView,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyParticipationState as VocabularyParticipationState,
+)
+from app.models.vocabulary.leaderboard import (
+    VocabularyParticipationUpdate as VocabularyParticipationUpdate,
+)
 from app.models.vocabulary.levels import (
     VOCAB_LEVEL_IMPORT_MAX_ROWS as VOCAB_LEVEL_IMPORT_MAX_ROWS,
 )
@@ -175,6 +280,9 @@ from app.models.vocabulary.pk import (
     PkAnswerRequest,
     PkAnswerResult,
     PkChoice,
+    PkHistoryList,
+    PkHistoryMatch,
+    PkHistoryPlayer,
     PkLobbyCreate,
     PkLobbyView,
     PkMatchItem,
@@ -187,8 +295,68 @@ from app.models.vocabulary.pk import (
     VocabPkMatch,
     VocabPkPlayer,
 )
+from app.models.vocabulary.placement import (
+    LIMITATION_MATERIAL_LIMITED as LIMITATION_MATERIAL_LIMITED,
+)
+from app.models.vocabulary.placement import (
+    LIMITATION_NONE as LIMITATION_NONE,
+)
+from app.models.vocabulary.placement import (
+    PLACEMENT_BAND_LEVELS as PLACEMENT_BAND_LEVELS,
+)
+from app.models.vocabulary.placement import (
+    PLACEMENT_BAND_ORDER as PLACEMENT_BAND_ORDER,
+)
+from app.models.vocabulary.placement import (
+    PLACEMENT_BAND_PRIMARY_LEVEL as PLACEMENT_BAND_PRIMARY_LEVEL,
+)
+from app.models.vocabulary.placement import (
+    PLACEMENT_DEFAULT_TOTAL as PLACEMENT_DEFAULT_TOTAL,
+)
+from app.models.vocabulary.placement import (
+    PLACEMENT_KIND as PLACEMENT_KIND,
+)
+from app.models.vocabulary.placement import (
+    PLACEMENT_MIN_CHOICE_WORDS as PLACEMENT_MIN_CHOICE_WORDS,
+)
+from app.models.vocabulary.placement import (
+    PLACEMENT_PASS_CORRECT as PLACEMENT_PASS_CORRECT,
+)
+from app.models.vocabulary.placement import (
+    PLACEMENT_START_BAND as PLACEMENT_START_BAND,
+)
+from app.models.vocabulary.placement import (
+    PlacementAnswerRequest as PlacementAnswerRequest,
+)
+from app.models.vocabulary.placement import (
+    PlacementAnswerResponse as PlacementAnswerResponse,
+)
+from app.models.vocabulary.placement import (
+    PlacementChoice as PlacementChoice,
+)
+from app.models.vocabulary.placement import (
+    PlacementHistoryResponse as PlacementHistoryResponse,
+)
+from app.models.vocabulary.placement import (
+    PlacementQuestion as PlacementQuestion,
+)
+from app.models.vocabulary.placement import (
+    PlacementResultPublic as PlacementResultPublic,
+)
+from app.models.vocabulary.placement import (
+    PlacementStartResponse as PlacementStartResponse,
+)
+from app.models.vocabulary.placement import (
+    VocabPlacementResult as VocabPlacementResult,
+)
 from app.models.vocabulary.reports import (
     VocabularyClassResults as VocabularyClassResults,
+)
+from app.models.vocabulary.reports import (
+    VocabularyMasteryReport as VocabularyMasteryReport,
+)
+from app.models.vocabulary.reports import (
+    VocabularyMasteryWordRow as VocabularyMasteryWordRow,
 )
 from app.models.vocabulary.reports import (
     VocabularyPromptTypeStat as VocabularyPromptTypeStat,
@@ -207,6 +375,12 @@ from app.models.vocabulary.reports import (
 )
 from app.models.vocabulary.reports import (
     VocabularyTeacherAssignmentRow as VocabularyTeacherAssignmentRow,
+)
+from app.models.vocabulary.reports import (
+    VocabularyTrendPeriod as VocabularyTrendPeriod,
+)
+from app.models.vocabulary.reports import (
+    VocabularyTrendReport as VocabularyTrendReport,
 )
 from app.models.vocabulary.reports import (
     VocabularyWordMisspelling as VocabularyWordMisspelling,
@@ -296,13 +470,49 @@ from app.models.vocabulary.tables import (
     VocabularyBookItem as VocabularyBookItem,
 )
 from app.models.vocabulary.tables import (
+    VocabularyBookVersion as VocabularyBookVersion,
+)
+from app.models.vocabulary.tables import (
+    VocabularyContentReviewAudit as VocabularyContentReviewAudit,
+)
+from app.models.vocabulary.tables import (
+    VocabularyLicenseAudit as VocabularyLicenseAudit,
+)
+from app.models.vocabulary.tables import (
     VocabularySession as VocabularySession,
 )
 from app.models.vocabulary.tables import (
     VocabularyWord as VocabularyWord,
 )
 from app.models.vocabulary.words import (
+    ADVANCED_EXAM_TAGS as ADVANCED_EXAM_TAGS,
+)
+from app.models.vocabulary.words import (
+    REVIEW_NOTE_EDITED_AFTER_APPROVAL as REVIEW_NOTE_EDITED_AFTER_APPROVAL,
+)
+from app.models.vocabulary.words import (
+    REVIEW_NOTE_LEGACY as REVIEW_NOTE_LEGACY,
+)
+from app.models.vocabulary.words import (
+    REVIEW_NOTE_LEVEL_CATALOG_VERIFIED as REVIEW_NOTE_LEVEL_CATALOG_VERIFIED,
+)
+from app.models.vocabulary.words import (
+    REVIEW_NOTE_SELF_CONFIRMED as REVIEW_NOTE_SELF_CONFIRMED,
+)
+from app.models.vocabulary.words import (
+    VOCAB_CEFR_BANDS as VOCAB_CEFR_BANDS,
+)
+from app.models.vocabulary.words import (
+    VOCAB_EXAM_TAGS as VOCAB_EXAM_TAGS,
+)
+from app.models.vocabulary.words import (
     VOCAB_PROMPT_TYPES as VOCAB_PROMPT_TYPES,
+)
+from app.models.vocabulary.words import (
+    VOCAB_REVIEW_STATUSES as VOCAB_REVIEW_STATUSES,
+)
+from app.models.vocabulary.words import (
+    VOCAB_WORD_SOURCES as VOCAB_WORD_SOURCES,
 )
 from app.models.vocabulary.words import (
     VocabularyBookCreate as VocabularyBookCreate,
@@ -317,6 +527,9 @@ from app.models.vocabulary.words import (
     VocabularyBookUpdate as VocabularyBookUpdate,
 )
 from app.models.vocabulary.words import (
+    VocabularyContentReviewList as VocabularyContentReviewList,
+)
+from app.models.vocabulary.words import (
     VocabularyImportIssue as VocabularyImportIssue,
 )
 from app.models.vocabulary.words import (
@@ -324,6 +537,18 @@ from app.models.vocabulary.words import (
 )
 from app.models.vocabulary.words import (
     VocabularyImportRow as VocabularyImportRow,
+)
+from app.models.vocabulary.words import (
+    VocabularyReviewActionRequest as VocabularyReviewActionRequest,
+)
+from app.models.vocabulary.words import (
+    VocabularyReviewActionResult as VocabularyReviewActionResult,
+)
+from app.models.vocabulary.words import (
+    VocabularyReviewAuditItem as VocabularyReviewAuditItem,
+)
+from app.models.vocabulary.words import (
+    VocabularyReviewItem as VocabularyReviewItem,
 )
 from app.models.vocabulary.words import (
     VocabularyWordIn as VocabularyWordIn,
@@ -334,19 +559,79 @@ from app.models.vocabulary.words import (
 from app.models.vocabulary.words import (
     VocabularyWordUpdate as VocabularyWordUpdate,
 )
+from app.models.vocabulary.words import (
+    normalize_cefr_band as normalize_cefr_band,
+)
+from app.models.vocabulary.words import (
+    normalize_exam_tags as normalize_exam_tags,
+)
 
 __all__ = [
     "VocabularyWord",
     "VocabularyBook",
     "VocabularyBookItem",
+    "VocabularyBookVersion",
+    "VocabularyLicenseAudit",
+    "VocabularyBookLicenseDetail",
+    "VocabularyBookVersionEntry",
+    "VocabularyBookVersionList",
+    "VocabularyLicenseAlertItem",
+    "VocabularyLicenseAuditItem",
+    "VocabularyLicenseInfo",
+    "VocabularyLicenseStatusItem",
+    "VocabularyLicenseStatusList",
+    "VocabularyLicenseUpdate",
+    "VocabularyVersionCompare",
+    "VocabularyVersionDiffEntry",
+    "VocabularyWordLicenseItem",
+    "VOCAB_SOURCE_TYPES",
+    "LICENSE_REQUIRED_SOURCE_TYPES",
+    "LICENSE_EXPIRING_DAYS",
+    "LICENSE_STATUS_NOT_REQUIRED",
+    "LICENSE_STATUS_ACTIVE",
+    "LICENSE_STATUS_EXPIRING",
+    "LICENSE_STATUS_EXPIRED",
+    "LICENSE_STATUS_MISSING",
+    "LICENSE_ERROR_OWNER_MISSING",
+    "LICENSE_ERROR_REF_MISSING",
+    "LICENSE_ERROR_EXPIRED",
+    "VocabularyContentReviewAudit",
     "VocabularyAssignment",
     "VocabularyAssignmentTarget",
+    "VocabularyLeaderboardSetting",
+    "VocabularyLeaderboardParticipant",
+    "VocabularyLeaderboardSettings",
+    "VocabularyLeaderboardSettingsUpdate",
+    "VocabularyLeaderboardEntry",
+    "VocabularyLeaderboardView",
+    "VocabularyParticipationState",
+    "VocabularyParticipationUpdate",
+    "AUDIENCE_TEACHERS",
+    "AUDIENCE_STUDENTS",
+    "LEADERBOARD_AUDIENCES",
+    "LEADERBOARD_TOP_N",
     "VocabularySession",
     "VocabularyAnswer",
     "VOCAB_PROMPT_TYPES",
+    "ADVANCED_EXAM_TAGS",
+    "VOCAB_CEFR_BANDS",
+    "VOCAB_EXAM_TAGS",
+    "normalize_cefr_band",
+    "normalize_exam_tags",
     "VocabularyWordIn",
     "VocabularyWordUpdate",
     "VocabularyWordPublic",
+    "VocabularyReviewItem",
+    "VocabularyContentReviewList",
+    "VocabularyReviewActionRequest",
+    "VocabularyReviewActionResult",
+    "VocabularyReviewAuditItem",
+    "VOCAB_WORD_SOURCES",
+    "VOCAB_REVIEW_STATUSES",
+    "REVIEW_NOTE_LEGACY",
+    "REVIEW_NOTE_SELF_CONFIRMED",
+    "REVIEW_NOTE_LEVEL_CATALOG_VERIFIED",
+    "REVIEW_NOTE_EDITED_AFTER_APPROVAL",
     "VocabularyBookCreate",
     "VocabularyBookUpdate",
     "VocabularyBookPublic",
@@ -366,10 +651,14 @@ __all__ = [
     "VocabularyAnswerResult",
     "VocabularyQuizAnswerReceipt",
     "VocabularyStudentRoundRow",
+    "VocabularyTrendPeriod",
+    "VocabularyTrendReport",
     "VocabularyStudentResultRow",
     "VocabularyWordMisspelling",
     "VocabularyWordStatRow",
     "VocabularyClassResults",
+    "VocabularyMasteryReport",
+    "VocabularyMasteryWordRow",
     "VocabularyPromptTypeStat",
     "VocabularyRecommendation",
     "VocabularyRecommendationFocus",
@@ -427,6 +716,24 @@ __all__ = [
     "VocabPkLobby",
     "VocabPkMatch",
     "VocabPkPlayer",
+    "VocabPlacementResult",
+    "PLACEMENT_KIND",
+    "PLACEMENT_DEFAULT_TOTAL",
+    "PLACEMENT_MIN_CHOICE_WORDS",
+    "PLACEMENT_START_BAND",
+    "PLACEMENT_PASS_CORRECT",
+    "PLACEMENT_BAND_ORDER",
+    "PLACEMENT_BAND_LEVELS",
+    "PLACEMENT_BAND_PRIMARY_LEVEL",
+    "LIMITATION_NONE",
+    "LIMITATION_MATERIAL_LIMITED",
+    "PlacementChoice",
+    "PlacementQuestion",
+    "PlacementResultPublic",
+    "PlacementStartResponse",
+    "PlacementAnswerRequest",
+    "PlacementAnswerResponse",
+    "PlacementHistoryResponse",
     "VocabPkAnswer",
     "VocabFarmPlot",
     "FarmView",
@@ -443,6 +750,9 @@ __all__ = [
     "BADGE_FARM_HARVEST_7",
     "BADGE_SOURCE_FARM",
     "BADGE_SOURCE_CLASSROOM",
+    "PkHistoryMatch",
+    "PkHistoryList",
+    "PkHistoryPlayer",
     "PkLobbyCreate",
     "PkLobbyView",
     "PkPlayerSummary",

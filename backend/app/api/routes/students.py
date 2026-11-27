@@ -133,6 +133,7 @@ class StudentImportResult(SQLModel):
 class StudentAccountOut(SQLModel):
     student: StudentPublic
     username: str | None = None
+    email: str | None = None
     full_name: str | None = None
     must_change_password: bool = False
 
@@ -550,6 +551,7 @@ def list_students(
             StudentAccountOut(
                 student=StudentPublic.model_validate(s),
                 username=u.username if u else None,
+                email=u.email if u else None,
                 full_name=u.full_name if u else None,
                 must_change_password=u.must_change_password if u else False,
             )

@@ -97,7 +97,7 @@ export function LearningReportCard({
           <span>{t({ zh: "时间范围", en: "Period" })}</span>
           <select
             aria-label={t({ zh: "时间范围", en: "Period" })}
-            className="min-h-11 rounded-md border bg-background px-3 text-base"
+            className="h-11 rounded-md border bg-background px-3 text-base"
             value={days}
             onChange={(event) => setDays(Number(event.target.value))}
           >
@@ -117,7 +117,7 @@ export function LearningReportCard({
             <span>{t({ zh: "教学练习", en: "Practice" })}</span>
             <select
               aria-label={t({ zh: "教学练习", en: "Practice" })}
-              className="min-h-11 max-w-full rounded-md border bg-background px-3 text-base"
+              className="h-11 max-w-full rounded-md border bg-background px-3 text-base"
               value={exerciseId}
               onChange={(event) => setExerciseId(event.target.value)}
             >

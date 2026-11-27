@@ -37,6 +37,7 @@ import {
 import { LessonReview } from "@/components/Teaching/LessonReview"
 import { ModuleDeniedPanel } from "@/components/Teaching/ModuleDeniedPanel"
 import { TeacherTeamCard } from "@/components/Teaching/TeacherTeamCard"
+import { VocabBoardSummaryCards } from "@/components/Teaching/VocabBoardSummaryCards"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -210,9 +211,11 @@ function TeacherBoardPage() {
     }
     return (
       <div className="space-y-6">
-        <Link to="/classrooms" className="text-sm text-primary">
-          ← {t({ zh: "我的课堂", en: "My Classrooms" })}
-        </Link>
+        <Button variant="link" asChild className="coarse:text-base">
+          <Link to="/classrooms">
+            ← {t({ zh: "我的课堂", en: "My Classrooms" })}
+          </Link>
+        </Button>
         <h1 className="text-2xl font-bold">
           {t({
             zh: `课堂 ${code}`,
@@ -606,6 +609,11 @@ function TeacherBoardPage() {
               inactiveCount={inactiveCount}
             />
             <ClassTrendCard code={code} />
+            <VocabBoardSummaryCards
+              code={code}
+              pk={board.vocabulary_pk}
+              farm={board.vocabulary_farm}
+            />
             {board.current_exercise && (
               <ClassGapsCard
                 code={code}

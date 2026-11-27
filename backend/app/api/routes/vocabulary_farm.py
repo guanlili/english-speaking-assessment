@@ -11,13 +11,15 @@
 from typing import Any
 
 from fastapi import APIRouter
+from sqlmodel import select
 
-from app.api.deps import SessionDep, StudentUserDep
+from app.api.deps import CurrentUser, SessionDep, StudentUserDep
 from app.api.routes.classes import (
     _get_classroom,
+    _require_classroom_teacher,
     _student_profile_of,
 )
-from app.models import FarmHarvestResult, FarmView
+from app.models import FarmBoardSummary, FarmHarvestResult, FarmView, Student
 from app.services import vocabulary_farm as farm_service
 
 router = APIRouter()
@@ -36,6 +38,27 @@ def read_farm(
     classroom = _get_classroom(session, code)
     student = _student_profile_of(session, classroom, current_user, "vocabulary")
     return farm_service.plot_view(session, student=student, user_id=current_user.id)
+
+
+@router.get(
+    "/classes/{code}/vocabulary/teacher/farm-summary",
+    response_model=FarmBoardSummary,
+)
+def read_teacher_farm_summary(
+    session: SessionDep,
+    code: str,
+    current_user: CurrentUser,
+) -> Any:
+    """班级农场聚合摘要（教师端独立面板）：与课堂看板内 ``vocabulary_farm`` 同口径。
+
+    仅本班教师；只读聚合，不改 XP/徽章/streak/plot，跨班地块不重复计入。
+    """
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user, "vocabulary")
+    students = session.exec(
+        select(Student).where(Student.classroom_id == classroom.id)  # type: ignore[arg-type]
+    ).all()
+    return farm_service.teacher_summary(session, students)
 
 
 @router.post(

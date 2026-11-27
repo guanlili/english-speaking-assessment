@@ -11,6 +11,7 @@ from app.api.routes import (
     admin_question_io,
     admin_scenarios,
     admin_taxonomy,
+    admin_tenant_usage,
     admin_tenants,
     attempts,
     audio,
@@ -27,6 +28,8 @@ from app.api.routes import (
     vocab_ai,
     vocab_levels,
     vocabulary,
+    vocabulary_governance,
+    vocabulary_reviews,
 )
 
 api_router = APIRouter()
@@ -43,6 +46,7 @@ api_router.include_router(admin_passages.router)
 api_router.include_router(admin_scenarios.router)
 api_router.include_router(admin_taxonomy.router)
 api_router.include_router(admin_tenants.router)
+api_router.include_router(admin_tenant_usage.router)
 api_router.include_router(school_members.router)
 api_router.include_router(admin_content_copy.router)
 api_router.include_router(admin_composer.router)
@@ -55,4 +59,7 @@ api_router.include_router(audio.router)
 api_router.include_router(vocabulary.router)
 api_router.include_router(vocab_levels.router)
 api_router.include_router(vocab_ai.router)
+api_router.include_router(vocabulary_reviews.router)
+api_router.include_router(vocabulary_reviews.admin_router)
+api_router.include_router(vocabulary_governance.admin_router)
 api_router.include_router(changelog.router)

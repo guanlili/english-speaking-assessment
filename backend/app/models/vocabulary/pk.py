@@ -101,6 +101,13 @@ class VocabPkMatch(SQLModel, table=True):
     """
 
     __tablename__ = "vocab_pk_match"
+    __table_args__ = (
+        Index(
+            "ix_vocab_pk_match_tenant_started_at",
+            "tenant_id",
+            "started_at",
+        ),
+    )
     tenant_id: uuid.UUID = _tenant_id_field()
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -198,14 +205,16 @@ class VocabPkPlayer(SQLModel, table=True):
 class VocabPkAnswer(SQLModel, table=True):
     """PK 作答记录：独立于 ``VocabularyAnswer``，不参与任务统计。
 
-    每题只计首次有效提交；幂等键全局唯一，断网重传同键返回首次结果，
-    不二次计分。
+    每题只计首次有效提交；幂等键按玩家维度唯一（同局两名玩家同题同 attempt
+    可各自提交），断网重传同键返回首次结果，不二次计分。
     """
 
     __tablename__ = "vocab_pk_answer"
     __table_args__ = (
         UniqueConstraint("player_id", "item_index", name="uq_vocab_pk_answer_slot"),
-        UniqueConstraint("idempotency_key", name="uq_vocab_pk_answer_idempotency"),
+        UniqueConstraint(
+            "player_id", "idempotency_key", name="uq_vocab_pk_answer_idempotency"
+        ),
     )
     tenant_id: uuid.UUID = _tenant_id_field()
 
@@ -342,6 +351,43 @@ class PkMatchView(SQLModel):
     result: PkMatchResult | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+
+
+class PkHistoryPlayer(SQLModel):
+    """教师端历史对局单侧记录：比分、作答统计与胜负结果。"""
+
+    student_id: uuid.UUID
+    display_name: str | None = None
+    score: int = 0
+    correct_count: int = 0
+    answered_count: int = 0
+    total_seconds: float = 0.0
+    # win / lose / draw（平局双方均为 draw）
+    result: str = "draw"
+
+
+class PkHistoryMatch(SQLModel):
+    """教师端历史对局一行：仅已结束/已放弃对局，只读回看。"""
+
+    match_id: uuid.UUID
+    lobby_id: uuid.UUID
+    status: str
+    question_count: int
+    per_question_seconds: int
+    book_id: uuid.UUID | None = None
+    book_title: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    end_reason: str | None = None
+    winner_display_name: str | None = None
+    winner_student_id: uuid.UUID | None = None
+    players: list[PkHistoryPlayer] = []
+
+
+class PkHistoryList(SQLModel):
+    """GET /classes/{code}/vocabulary/pk/history 响应。"""
+
+    matches: list[PkHistoryMatch] = []
 
 
 class PkAnswerRequest(SQLModel):

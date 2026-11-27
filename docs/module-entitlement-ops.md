@@ -3,6 +3,8 @@
 > 面向：平台超管 / 运维。依据代码：`backend/app/models/core.py`、`backend/app/services/entitlement.py`、`backend/app/api/deps.py`、`backend/app/api/routes/modules.py`、`backend/app/api/routes/admin_tenants.py`、`backend/scripts/backfill_tenant_modules.py`、`frontend/src/hooks/useModules.ts`、`frontend/src/routes/_layout/admin.schools.tsx`。
 >
 > 配套生产切换步骤见 [`production-switch-checklist-526.md`](production-switch-checklist-526.md)。
+>
+> **2026-11-24 更新**：新增租期/试用/到期状态机（`expires_at`、`grant_type`、`granted_by`）。到期语义、403 区分与状态优先级以 [`tenant-module-lifecycle.md`](tenant-module-lifecycle.md) 为权威；本手册只保留运营操作与回填流程。
 
 ## 1. 概念与默认值
 
@@ -21,9 +23,10 @@
 
 ### 1.2 生效时间（effective_at）
 
-- `effective_at` 为**空 = 立即生效**。
-- `effective_at` 为**未来时间点 = 尚未生效**：即使 `enabled=true`，闸门仍按未购买处理（403），前端 badge 显示「待生效 / Scheduled」。
-- 判定口径（`entitlement._row_active`）：行不存在 → 关；`enabled=false` → 关；`effective_at` 非空且晚于当前 UTC 时间 → 关；其余 → 开。
+- `effective_at` 为**空 = 立即生效**；非空时即“开始时间”（API 响应中的 `starts_at` 是它的只读镜像，同一事实）。
+- `effective_at` 为**未来时间点 = 尚未生效**：即使 `enabled=true`，闸门仍按未购买处理（403 `module_not_enabled`），前端 badge 显示「待生效 / Scheduled」。
+- `expires_at` 为**空 = 长期有效**；非空且 `now >= expires_at` 即到期（无宽限），闸门返回 403 `module_expired`（与未开通的 `module_not_enabled` 区分）。
+- 判定优先级（`entitlement.compute_state`）：缺行 `not_granted` → `enabled=false` `disabled`（**优先于过期**）→ 未到开始 `scheduled` → 已过期 `expired` → `active`。完整状态机见 [`tenant-module-lifecycle.md`](tenant-module-lifecycle.md)。
 
 ### 1.3 存量 / 新校口径
 
@@ -50,16 +53,18 @@
 对话框内每个模块一张卡片（口语 speaking / 单词 vocabulary）：
 
 - **勾选框**：勾选 = 开，不勾 = 关。
-- **生效时间（选填，留空立即生效）**：`datetime-local` 输入框；留空提交后 `effective_at=null`（立即生效）；填写未来时间则到点生效。关闭模块时该输入框禁用（关闭即立即生效，不排期）。
+- **开始时间 / 生效时间（选填，留空立即生效）**：`datetime-local` 输入框；留空提交后 `effective_at=null`（立即生效）；填写未来时间则到点生效。关闭模块时该输入框禁用（关闭即立即生效，不排期）。
+- **到期时间（选填，留空=长期）**：`expires_at` 为空表示长期；试用（`grant_type=trial`）必须填到期时间。到点即过期，不做宽限。
+- **授权类型**：`trial`（试用）/ `paid`（付费）/ `manual`（人工配置）。类型只用于运营展示与筛选，不改变门禁判定。
 - 每张卡片有独立 **保存 / Save** 按钮；两个模块互不绑定，可分别保存。
-- 保存请求：`PUT /admin/tenants/{tenant_id}/modules/{module_key}`，body `{ "enabled": bool, "effective_at": ISO8601 或 null }`。
+- 保存请求：`PUT /admin/tenants/{tenant_id}/modules/{module_key}`，body `{ "enabled": bool, "effective_at": ISO8601|null, "expires_at": ISO8601|null, "grant_type": "trial|paid|manual" }`。省略的元数据保留旧值；显式 `expires_at: null` 表示转长期。
 
-列表 badge 三种状态：**开（On）**、**关（Off）**、**待生效（Scheduled）**——勾选了开但生效时间在未来，显示待生效。
+列表 badge 状态：**未开通（not_granted）/ 试用中·剩 N 天（trial）/ 已到期（expired）/ 已关闭（disabled）/ 待生效（scheduled）/ 使用中（paid/manual）**；`enabled=false` 永远显示已关闭，即使同时已过期。
 
 ### 2.3 保存后多久生效
 
 - **服务端：立即生效。** 模块闸门每个请求实时查 `tenant_module` 行，服务端无跨请求缓存；保存提交（`commit`）之后，新请求即按新口径裁决。
-- **前端：存在本地缓存窗口。** 校端导航经 `useModules()` 调 `GET /api/v1/modules/me`，react-query `staleTime` 为 **5 分钟**。已打开的旧页面最长 5 分钟后刷新清单；**重新登录、刷新页面或重进路由**会立刻拿到新清单。
+- **前端：存在本地缓存窗口。** 校端导航经 `useModules()` 调 `GET /api/v1/modules/me`，react-query `staleTime` 为 **45 秒**（窗口内切标签不重取，窗口外聚焦/可见才刷新）。已打开的旧页面最长约 45 秒后刷新清单；**重新登录、刷新页面或重进路由**会立刻拿到新清单。
 - 后台保存成功后只刷新运营后台的学校列表与本校审计历史，**不推送、不踢校端会话**；已登录的校端用户按上述缓存窗口收敛。
 
 ### 2.4 两个模块的导航表现
@@ -198,7 +203,7 @@ ORDER BY m.module_key;
 
 1. **看模块清单**：校端用户带 token 调 `GET /api/v1/modules/me`，返回 `{ "modules": [...] }`；目标 key 不在清单里即为未购/未生效（缺行、关闭、未到生效时间三种之一）。
 2. **核对 token 所属 tenant**：JWT 的 `tid` 须与用户行 `tenant_id` 一致；不一致 → 401（凭证失效），不是模块问题。注意 `/modules/me` 只服务学校用户，平台运营 token 调本端点会被 401 拒收。
-3. **查 `tenant_module` 行**：按 `tenant_id + module_key` 看是否有行、`enabled`、`effective_at`；缺行=未购，`enabled=false`=关，`effective_at` 在未来=待生效。
+3. **查 `tenant_module` 行**：按 `tenant_id + module_key` 看是否有行、`enabled`、`effective_at`、`expires_at`；缺行=未购，`enabled=false`=关（优先），`effective_at` 在未来=待生效，`expires_at` 已过=到期，其余=可用。
 
 ### 5.3 平台运营端点豁免
 

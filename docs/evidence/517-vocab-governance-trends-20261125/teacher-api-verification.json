@@ -1,0 +1,258 @@
+{
+  "schema_note": "只读取证记录；不含 access token、口令、用户 UUID、邮箱。所有请求经前端代理 http://127.0.0.1:5175/api/v1 到达本地后端。",
+  "teacher_login": {
+    "status": 200,
+    "role": "teacher",
+    "must_change_password": false
+  },
+  "trend_week_5": {
+    "status": 200,
+    "url": "/api/v1/classes/VOCDEMO1/vocabulary/trend?granularity=week&periods=5",
+    "teaching_reference": true,
+    "period_count": 5,
+    "periods": [
+      {
+        "period_start": "2026-10-26",
+        "assigned_targets": 12,
+        "completed_targets": 9,
+        "completion_rate": 75,
+        "first_answered": 80,
+        "first_correct": 60,
+        "first_accuracy": 75,
+        "due_unreviewed": 0
+      },
+      {
+        "period_start": "2026-11-02",
+        "assigned_targets": 12,
+        "completed_targets": 9,
+        "completion_rate": 75,
+        "first_answered": 80,
+        "first_correct": 54,
+        "first_accuracy": 68,
+        "due_unreviewed": 0
+      },
+      {
+        "period_start": "2026-11-09",
+        "assigned_targets": 12,
+        "completed_targets": 9,
+        "completion_rate": 75,
+        "first_answered": 72,
+        "first_correct": 50,
+        "first_accuracy": 69,
+        "due_unreviewed": 0
+      },
+      {
+        "period_start": "2026-11-16",
+        "assigned_targets": 12,
+        "completed_targets": 5,
+        "completion_rate": 42,
+        "first_answered": 56,
+        "first_correct": 43,
+        "first_accuracy": 77,
+        "due_unreviewed": 1
+      },
+      {
+        "period_start": "2026-11-23",
+        "assigned_targets": 12,
+        "completed_targets": 5,
+        "completion_rate": 42,
+        "first_answered": 70,
+        "first_correct": 54,
+        "first_accuracy": 77,
+        "due_unreviewed": 6
+      }
+    ]
+  },
+  "trend_csv": {
+    "status": 200,
+    "url": "/api/v1/classes/VOCDEMO1/vocabulary/trend.csv?granularity=week&periods=5",
+    "content_type": "text/csv; charset=utf-8",
+    "utf8_bom": true,
+    "header": [
+      "周期",
+      "period_start",
+      "period_end",
+      "目标数",
+      "完成数",
+      "完成率",
+      "首答数",
+      "首答正确",
+      "首答正确率",
+      "低分段",
+      "中分段",
+      "高分段",
+      "无数据",
+      "到期未复习"
+    ],
+    "row_count": 5
+  },
+  "pk_history": {
+    "status": 200,
+    "url": "/api/v1/classes/VOCDEMO1/vocabulary/pk/history?limit=10",
+    "match_count": 2,
+    "descending_by_time": true,
+    "matches": [
+      {
+        "status": "finished",
+        "winner_display_name": "演示学生03",
+        "at": "2026-11-19T10:10:00Z",
+        "players_count": 2,
+        "players": [
+          {
+            "display_name": "演示学生03",
+            "score": 500,
+            "result": "win",
+            "answered_count": 6,
+            "correct_count": 5
+          },
+          {
+            "display_name": "演示学生04",
+            "score": 300,
+            "result": "lose",
+            "answered_count": 6,
+            "correct_count": 3
+          }
+        ]
+      },
+      {
+        "status": "finished",
+        "winner_display_name": "演示学生01",
+        "at": "2026-11-13T10:10:00Z",
+        "players_count": 2,
+        "players": [
+          {
+            "display_name": "演示学生01",
+            "score": 500,
+            "result": "win",
+            "answered_count": 6,
+            "correct_count": 5
+          },
+          {
+            "display_name": "演示学生02",
+            "score": 300,
+            "result": "lose",
+            "answered_count": 6,
+            "correct_count": 3
+          }
+        ]
+      }
+    ]
+  },
+  "teacher_farm_summary": {
+    "status": 200,
+    "url": "/api/v1/classes/VOCDEMO1/vocabulary/teacher/farm-summary",
+    "participants": 5,
+    "mature_plots": 2,
+    "harvested_total": 6,
+    "badge_counts": [
+      {
+        "key": "farm_first_harvest",
+        "label": "首次收获",
+        "count": 3
+      },
+      {
+        "key": "farm_harvest_7",
+        "label": "七次收获",
+        "count": 1
+      }
+    ],
+    "top_harvesters": [
+      {
+        "display_name": "演示学生01",
+        "harvest_count": 3
+      },
+      {
+        "display_name": "演示学生05",
+        "harvest_count": 2
+      },
+      {
+        "display_name": "演示学生02",
+        "harvest_count": 1
+      }
+    ]
+  },
+  "board": {
+    "status": 200,
+    "url": "/api/v1/classes/VOCDEMO1/board",
+    "vocabulary_pk_present": true,
+    "vocabulary_farm_present": true,
+    "vocabulary_pk": {
+      "open": false,
+      "queue_count": 0,
+      "active_match_count": 0,
+      "matches_this_week": 0,
+      "last_match_at": "2026-11-19T10:10:00Z",
+      "last_match": {
+        "winner_display_name": "演示学生03",
+        "players": [
+          {
+            "display_name": "演示学生03",
+            "score": 500,
+            "result": "win",
+            "answered_count": null,
+            "correct_count": null
+          },
+          {
+            "display_name": "演示学生04",
+            "score": 300,
+            "result": "lose",
+            "answered_count": null,
+            "correct_count": null
+          }
+        ]
+      }
+    },
+    "vocabulary_farm": {
+      "participants": 5,
+      "mature_plots": 2,
+      "harvested_total": 6,
+      "badge_counts": [
+        {
+          "key": "farm_first_harvest",
+          "label": "首次收获",
+          "count": 3
+        },
+        {
+          "key": "farm_harvest_7",
+          "label": "七次收获",
+          "count": 1
+        }
+      ],
+      "top_harvesters": [
+        {
+          "display_name": "演示学生01",
+          "harvest_count": 3
+        },
+        {
+          "display_name": "演示学生05",
+          "harvest_count": 2
+        },
+        {
+          "display_name": "演示学生02",
+          "harvest_count": 1
+        }
+      ]
+    }
+  },
+  "student_permission_probe": {
+    "login_status": 200,
+    "login_role": "student",
+    "endpoints": [
+      {
+        "url": "/api/v1/classes/VOCDEMO1/vocabulary/teacher/farm-summary",
+        "status": 403,
+        "detail": "没有权限：您不是该课堂的授权教师，请联系管理员绑定后再查看"
+      },
+      {
+        "url": "/api/v1/classes/VOCDEMO1/vocabulary/trend?granularity=week&periods=5",
+        "status": 403,
+        "detail": "该操作需要角色：teacher"
+      },
+      {
+        "url": "/api/v1/classes/VOCDEMO1/vocabulary/pk/history?limit=10",
+        "status": 403,
+        "detail": "只有本班教师可以查看 PK 历史"
+      }
+    ]
+  }
+}

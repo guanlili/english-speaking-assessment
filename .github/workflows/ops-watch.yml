@@ -295,14 +295,23 @@ jobs:
             fi
             cd "$DEPLOY_PATH"
 
-            latest=$(ls -1dt backups/bundle-* 2>/dev/null | head -n1 || true)
+            # 按包名时间戳排序选最新包（不看目录 mtime：批量拷贝/恢复会重置 mtime，
+            # 曾让超期包看起来很新）；.BROKEN 是失败残留，不作为可用候选。
+            latest=$(ls -1d backups/bundle-* 2>/dev/null | grep -v '\.BROKEN$' | sort | tail -n1 || true)
             if [ -z "$latest" ]; then
               echo "::error::backups/ 下没有任何完整备份包（bundle-*）"
               exit 1
             fi
 
-            age_s=$(( $(date +%s) - $(stat -c %Y "$latest") ))
-            echo "最近备份：$latest（$(( age_s / 3600 )) 小时前）"
+            latest_name=$(basename "$latest")
+            stamp=$(printf '%s' "$latest_name" | sed -nE 's/^bundle-([0-9]{8}T[0-9]{6}Z)-.*/\1/p')
+            if [ -z "$stamp" ]; then
+              echo "::error::最新包名无法解析时间戳：$latest_name"
+              exit 1
+            fi
+            stamp_s=$(date -u -d "${stamp:0:4}-${stamp:4:2}-${stamp:6:2}T${stamp:9:2}:${stamp:11:2}:${stamp:13:2}Z" +%s)
+            age_s=$(( $(date +%s) - stamp_s ))
+            echo "最近备份：$latest_name（按包名时间戳 $(( age_s / 3600 )) 小时前）"
             if [ "$age_s" -gt $(( MAX_AGE_HOURS * 3600 )) ]; then
               echo "::error::最近备份已超过 ${MAX_AGE_HOURS} 小时，每日备份 cron 可能没有生效"
               exit 1

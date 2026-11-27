@@ -5,16 +5,31 @@ import {
   useNavigate,
   useParams,
 } from "@tanstack/react-router"
-import { ListChecks, SpellCheck, Swords } from "lucide-react"
+import {
+  Compass,
+  ListChecks,
+  ShieldCheck,
+  SpellCheck,
+  Sprout,
+  Swords,
+  TrendingUp,
+  Trophy,
+} from "lucide-react"
 import { useEffect, useState } from "react"
 import { ApiError, ClassesService, VocabularyService } from "@/client"
 import { VocabModuleSwitcher } from "@/components/Teaching/VocabModuleSwitcher"
 import { AssignPanel } from "@/components/Teaching/VocabTasks/AssignPanel"
+import { FarmTeacherPanel } from "@/components/Teaching/VocabTasks/FarmTeacherPanel"
+import { LeaderboardTeacherPanel } from "@/components/Teaching/VocabTasks/LeaderboardTeacherPanel"
 import { PkTeacherPanel } from "@/components/Teaching/VocabTasks/PkTeacherPanel"
+import { PlacementTeacherPanel } from "@/components/Teaching/VocabTasks/PlacementTeacherPanel"
 import { ResultsPanel } from "@/components/Teaching/VocabTasks/ResultsPanel"
+import { TrendTeacherPanel } from "@/components/Teaching/VocabTasks/TrendTeacherPanel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ContentReviewPanel } from "@/components/Vocabulary/ContentReviewPanel"
+import { VocabReadonlyBanner } from "@/components/Vocabulary/VocabReadonlyBanner"
 import { APP_NAME } from "@/config"
 import { useModules } from "@/hooks/useModules"
 import { useI18n } from "@/lib/i18n"
@@ -22,23 +37,79 @@ import { formatDateTime } from "@/lib/time"
 
 export const Route = createFileRoute("/t/$code/vocab")({
   component: TeacherVocabPage,
+  validateSearch: (search: Record<string, unknown>): { tab?: string } => {
+    const tab = search.tab
+    return typeof tab === "string" && tab !== "" ? { tab } : {}
+  },
   head: () => ({
     meta: [{ title: `词汇任务 / Vocabulary Tasks - ${APP_NAME}` }],
   }),
 })
 
+const VOCAB_TABS = [
+  "assign",
+  "results",
+  "trend",
+  "placement",
+  "pk",
+  "farm",
+  "review",
+  "leaderboard",
+] as const
+
+/** 只读态保留的历史/结果视图；发布、PK、农场、词库审核、榜单设置为写入口，隐藏。 */
+const READONLY_TABS = ["results", "trend", "placement"] as const
+
+const TAB_META: Array<{
+  key: VocabTab
+  icon: typeof ListChecks
+  label: { zh: string; en: string }
+}> = [
+  { key: "assign", icon: ListChecks, label: { zh: "发布任务", en: "Assign" } },
+  {
+    key: "results",
+    icon: SpellCheck,
+    label: { zh: "完成情况", en: "Results" },
+  },
+  { key: "trend", icon: TrendingUp, label: { zh: "趋势", en: "Trends" } },
+  {
+    key: "placement",
+    icon: Compass,
+    label: { zh: "测分结果", en: "Placement" },
+  },
+  { key: "pk", icon: Swords, label: { zh: "PK 对战", en: "PK Battle" } },
+  { key: "farm", icon: Sprout, label: { zh: "农场", en: "Farm" } },
+  { key: "leaderboard", icon: Trophy, label: { zh: "学习榜", en: "Board" } },
+  { key: "review", icon: ShieldCheck, label: { zh: "词库审核", en: "Review" } },
+]
+
+type VocabTab = (typeof VOCAB_TABS)[number]
+
 function TeacherVocabPage() {
   const { t, lang } = useI18n()
   const { code } = useParams({ from: "/t/$code/vocab" })
   const navigate = useNavigate()
-  const { hasModule, isPending: modulesPending } = useModules()
-  // 未购词汇模块：教师直连拦截，回课堂列表；服务端闸门为最终裁决。
+  const search = Route.useSearch()
+  const { hasModule, readonlyOf, isPending: modulesPending } = useModules()
+  // 只读口径（#567 第 3 项）：非 active 仍可看历史/结果/趋势/测分；写面板隐藏。
+  const readonly = readonlyOf("vocabulary") !== null
+  // 未购且无快照：教师直连拦截，回课堂列表；服务端闸门为最终裁决。
   useEffect(() => {
-    if (!modulesPending && !hasModule("vocabulary")) {
+    if (!modulesPending && !hasModule("vocabulary") && !readonly) {
       void navigate({ to: "/classrooms" })
     }
-  }, [modulesPending, hasModule, navigate])
-  const [tab, setTab] = useState<"assign" | "results" | "pk">("assign")
+  }, [modulesPending, hasModule, readonly, navigate])
+  const visibleTabs = readonly ? READONLY_TABS : VOCAB_TABS
+  const [tab, setTab] = useState<VocabTab>(() => {
+    const requested = search.tab as VocabTab
+    const tabs = visibleTabs as readonly VocabTab[]
+    if (VOCAB_TABS.includes(requested) && tabs.includes(requested)) {
+      return requested
+    }
+    return readonly ? "results" : "assign"
+  })
+  // 待审数量由审核面板数据回报（不另写 API URL）；>0 时在 tab 徽章提示
+  const [pendingCount, setPendingCount] = useState(0)
   // 查看哪一期：null = 当前进行中（后端默认最新发布）；任务列表点击后切换
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<
     string | null
@@ -71,7 +142,7 @@ function TeacherVocabPage() {
     )
   }
 
-  if (!hasModule("vocabulary")) {
+  if (!hasModule("vocabulary") && !readonly) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-muted-foreground">
         {t({
@@ -138,12 +209,16 @@ function TeacherVocabPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link to="/classrooms" className="text-sm font-medium text-primary">
-          ← {t({ zh: "我的课堂", en: "My Classrooms" })}
-        </Link>
+        <Button variant="link" asChild className="coarse:text-base">
+          <Link to="/classrooms">
+            ← {t({ zh: "我的课堂", en: "My Classrooms" })}
+          </Link>
+        </Button>
         {/* 课堂内「口语 / 词汇」切换；口语入口按模块清单显隐 */}
         <VocabModuleSwitcher code={code} />
       </div>
+
+      <VocabReadonlyBanner />
 
       {/* 当前任务概览 */}
       <div className="rounded-2xl border border-primary/10 bg-secondary/40 p-5 sm:p-6">
@@ -258,43 +333,56 @@ function TeacherVocabPage() {
       )}
 
       <div
-        className="flex gap-2"
+        className="flex flex-wrap gap-2"
         role="tablist"
         aria-label={t({ zh: "词汇任务视图", en: "Vocabulary task views" })}
       >
-        <Button
-          variant={tab === "assign" ? "default" : "outline"}
-          size="sm"
-          aria-pressed={tab === "assign"}
-          onClick={() => setTab("assign")}
-        >
-          <ListChecks />
-          {t({ zh: "发布任务", en: "Assign" })}
-        </Button>
-        <Button
-          variant={tab === "results" ? "default" : "outline"}
-          size="sm"
-          aria-pressed={tab === "results"}
-          onClick={() => setTab("results")}
-        >
-          <SpellCheck />
-          {t({ zh: "完成情况", en: "Results" })}
-        </Button>
-        <Button
-          variant={tab === "pk" ? "default" : "outline"}
-          size="sm"
-          aria-pressed={tab === "pk"}
-          onClick={() => setTab("pk")}
-        >
-          <Swords />
-          {t({ zh: "PK 对战", en: "PK Battle" })}
-        </Button>
+        {visibleTabs.map((key) => {
+          const meta = TAB_META.find((item) => item.key === key)
+          if (!meta) return null
+          const Icon = meta.icon
+          return (
+            <Button
+              key={key}
+              variant={tab === key ? "default" : "outline"}
+              size="sm"
+              className="h-11 sm:h-9"
+              aria-pressed={tab === key}
+              onClick={() => setTab(key)}
+            >
+              <Icon />
+              {t(meta.label)}
+              {key === "review" && pendingCount > 0 && (
+                <Badge variant="destructive" className="ml-1">
+                  {pendingCount}
+                </Badge>
+              )}
+            </Button>
+          )
+        })}
       </div>
 
-      {tab === "assign" ? (
-        <AssignPanel code={code} classroomId={classroomId} />
-      ) : tab === "pk" ? (
+      {!readonly && tab === "assign" ? (
+        <AssignPanel
+          code={code}
+          classroomId={classroomId}
+          onGoReview={() => setTab("review")}
+        />
+      ) : tab === "trend" ? (
+        <TrendTeacherPanel code={code} />
+      ) : !readonly && tab === "pk" ? (
         <PkTeacherPanel code={code} />
+      ) : !readonly && tab === "farm" ? (
+        <FarmTeacherPanel code={code} />
+      ) : !readonly && tab === "leaderboard" ? (
+        <LeaderboardTeacherPanel code={code} />
+      ) : tab === "placement" ? (
+        <PlacementTeacherPanel code={code} />
+      ) : !readonly && tab === "review" ? (
+        <ContentReviewPanel
+          classroomId={classroomId}
+          onPendingCountChange={setPendingCount}
+        />
       ) : (
         <ResultsPanel
           code={code}

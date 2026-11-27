@@ -47,6 +47,38 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **前端**：学生端 `/vocab/$code`（任务首页 + `/practice` 拼写练习 + 错词本），手机底部导航为「首页/口语/词汇/成长」；教师端 `/t/$code/vocab`（选词发布 + 完成情况），课堂面板可切换口语/词汇；管理端 `/admin/vocabbooks`（公共词库 CSV 导入预览）。无标准音的词练习用浏览器朗读兜底并标注「设备合成语音」。
 - 测试 `tests/api/routes/test_vocabulary.py`（权限/快照/判分/幂等/名单/统计）；响应式 e2e 覆盖词汇两页三档宽度。
 
+### 班内词汇学习榜（2026-11-25，#517，后端先行）
+
+- **数据表**：`vocabulary_leaderboard_setting`（一班一行：enabled / audience / anonymous；无行由服务层返回默认值，不写种子）+ `vocabulary_leaderboard_participant`（加入/退出状态、班内稳定 `alias_no`；unique 课堂×学生、课堂×编号）。两表同口径 ENABLE + FORCE RLS + `tenant_isolation`，删除课堂外键 CASCADE 清理。
+- **默认口径**：`enabled=true`、`audience="teachers"`（仅教师可见，学生看不到，直到教师显式放开）、`anonymous=true`（匿名编号）、`top_n=10`。学生默认无 participant 行即未参加；仅教师可见或整班关闭期间不允许学生加入。
+- **计分**（只读 `VocabularySession`/`VocabularyAnswer`，不读 XP/农场/PK/等级，不写任何成绩）：本周掌握词数 = 该词在本课堂**最早一次首答（attempt_no=1）正确**，且本周内至少有一条 `kind="review_fsrs"` 轮次**首答正确**记录；同一学生同一 `word_id` 一周只计 1 次。普通任务重练、自主练习、农场/PK 不计入；历史周由不可变作答记录决定，不随当前 FSRS state 回溯漂移。
+- **周界**：按 `PRACTICE_TZ` 自然周（周一 00:00 → 下周一 00:00）；`week_start` 必须是周一且不得晚于本周一，否则 422。教师可查任意不晚于本周的周一；学生只能查不早于本人首次加入周；未参加/已退出学生不可查看任何周。
+- **排名与隐私**：分数降序、同分并列（1,1,3）；前 10 名按 `rank <= 10` 返回（允许第 10 名并列超员），零分不进 entries；本人不在前 10 仍回 `my_entry`/`my_rank`。未参加学生 200 空榜（`entries=[]`、`my_entry/my_rank=null`、`my_score=0`、`participant_count=null`），看不到其他人与人数；教师可见参与人数。匿名时条目只带 `alias_no`，关闭匿名才展示 `display_name`；响应不下发 `student_id`/`user_id`/邮箱。
+- **API**（`/api/v1/classes/{code}/vocabulary/leaderboard`）：`GET/PUT …/settings`（本班授权教师含共管 / 本校管理员）、`PUT …/participation`（本班学生 `{joined}` → `{joined, alias_no}`）、`GET …?week_start=YYYY-MM-DD`。学生视角不可见（关闭或仅教师）返回 403 `leaderboard_unavailable`；教师设置页关闭时仍 200 预览。域逻辑在 `app/services/vocabulary_leaderboard.py`，路由 `app/api/routes/vocabulary_leaderboard.py`，模型 `app/models/vocabulary/leaderboard.py`。测试 `tests/api/routes/test_vocabulary_leaderboard.py`。
+
+### 版权/授权台账 + 词库版本历史（2026-11-25，#517，后端先行）
+
+- **授权台账**：`vocabulary_book` / `vocabulary_word` 各加 `source_type`（`self_built/textbook/licensed/ai/demo`）与 `license_owner/license_ref/license_expires_at/authorization_doc_url/license_note`；原 `source` 列保留兼容。存量回填：词条 `textbook→textbook、ai→ai、demo→demo、其他→self_built`，词库统一 `self_built`。
+- **发布门禁**：`textbook/licensed` 的词库或词条发布任务必须带授权方 + 凭证（文号或授权书 URL），有效期填写则须晚于当前时间；否则 422，稳定错误码 `vocabulary_license_owner_missing`（缺授权方）/ `vocabulary_license_ref_missing`（缺凭证）/ `vocabulary_license_expired`（已过期），detail 形如 `<code>:<n>`。`self_built/ai/demo` 不走授权门禁，仍受既有 approved 审核门禁约束；整本与显式 `word_ids` 两条路径同口径。
+- **审计与清单**：`vocabulary_license_audit` 记录授权变更的 actor、前后值快照、时间与租户；`GET /vocabulary/license/alerts`（临期 30 天内 / 已过期）、`GET /vocabulary/license/audit`、`GET /vocabulary/license/export.csv`（词库/词条、source_type、授权方、凭证、到期日、状态）；平台只读 `/admin/vocabulary/license/…`。授权更新仅学校管理员；跨校按 404 不泄露。
+- **版本快照**：`vocabulary_book_version` 存词条集合快照（必要字段）+ 确定性内容哈希（归一化后同内容同值、与顺序无关）+ 操作人/动作/摘要/租户。建库、加词、移除、编辑、审核通过/拒绝各留一版；内容无重复变化不落无意义版本。`GET …/versions`、`GET …/versions/compare?from_version=&to_version=`（新增/删除/改释义/改例句/改词法词条级 diff）、`POST …/versions/{no}/rollback`（仅管理员；回滚生成新 rollback 版本，不删历史；词库内容还原为目标版本；不改写任何 `vocabulary_assignment.snapshot_items`）。
+- **域逻辑**：`app/services/vocab_governance.py`；路由 `app/api/routes/vocabulary_governance.py`；模型 `app/models/vocabulary/governance.py`；迁移 `b6c7d8e9f0a1`。测试 `tests/api/routes/test_vocab_governance.py`、`tests/test_vocab_governance_migration.py`。
+
+### 教师跨任务 / 时间趋势（2026-11-25，#517，后端先行）
+
+- **来源词库归属**：`vocabulary_assignment` 加 `source_book_ids`（JSON 字符串列表，默认 `[]`）。发布时由 `book_id` 整本归属或显式 `word_ids` 经 `vocabulary_book_item` 反查词条归属词库，去重排序后写入；整本与显式名单两条路径同口径。存量回填空列表，不回溯改写既有 `snapshot_items`。迁移 `c7d8e9f0a2b3`（`down_revision=b6c7d8e9f0a1`，单 head）。
+- **周期口径**：`granularity=week|month`（必填），`periods` 默认 12、范围 1–24，`anchor=YYYY-MM-DD` 缺省为今天；按 `PRACTICE_TZ=Asia/Shanghai`，周一起、月 1 日起；返回含 anchor 周期在内的最近 N 个周期、时间升序；区间为闭区间（start 00:00:00 ～ end 23:59:59.999999）。
+- **聚合口径**（只读，不改写任务快照）：`assigned_targets` = 周期内发布任务目标名单中的当前在册学生（手动分组按实际名单）；`completed_targets` = 首轮首答覆盖全部题位（沿用 `progress_of_round1` 的 done 口径，不要求全对）；`completion_rate` 0–100 取整，无目标 → `null`。首答统计只取 `kind=task`、`round_no=1`、`attempt_no=1`，按 `answered_at` 落周期；无首答 `first_accuracy=null`。掌握度分段复用现有 mastery 阈值（<60 low / 60–85 mid / >85 high / 无首答 no_data），按周期任务快照词条全集逐词聚合全班首答；`book_id`/`prompt_type` 筛选同步缩小词条全集与首答范围。
+- **到期未复习**：`due_unreviewed` 按**当前** `VocabularyReviewState` 回算（词 × 能力条目数，非去重词数）；历史周期不做状态还原，仅作教学参考（schema 注释已注明）。顶层固定 `teaching_reference=true`：趋势是教学参考，不是考试分数或能力认证。
+- **API**：`GET /api/v1/classes/{code}/vocabulary/trend`（JSON）与 `GET /api/v1/classes/{code}/vocabulary/trend.csv`（UTF-8 BOM，一行一周期，空值留空不写 0）。Query：`granularity`、`periods`、`anchor`、`book_id`、`prompt_type`。权限：仅本班教师；课堂不存在/跨校 404，非本班教师 403，vocabulary 模块未开通 403。域逻辑 `app/services/vocabulary_trend.py`；路由 `app/api/routes/vocabulary_trend.py`；模型 `app/models/vocabulary/reports.py`（`VocabularyTrendReport`/`VocabularyTrendPeriod`）。测试 `tests/api/routes/test_vocabulary_trend.py`。
+
+### 教师 PK 历史 + 看板 / 农场只读聚合（2026-11-25，#517 D/E，后端先行）
+
+- **PK 历史**：`GET /api/v1/classes/{code}/vocabulary/pk/history?limit=20`（`limit` 1–50，默认 20）。仅本班教师；学生 403，跨班/跨校 404。只列已结束/已放弃对局（`finished`/`abandoned`），按 `finished_at`/`created_at` 倒序；字段 `match_id, lobby_id, status, question_count, per_question_seconds, book_id, book_title, started_at, finished_at, end_reason, winner_display_name, winner_student_id, players[]`；`players[]` 含 `student_id, display_name, score, correct_count, answered_count, total_seconds, result(win/lose/draw)`。只读回看，PK 数据不进任务首答/掌握度/趋势口径。
+- **看板 PK 摘要**：`BoardData.vocabulary_pk`（optional，模块未开通 `null`）：`open, queue_count, active_match_count, matches_this_week, last_match_at, last_match`；`last_match` 为最近一场终态对局精简摘要（时间、玩家显示名、比分/胜者）。看板不提供开厅/改分数写操作，开厅仍走既有教师 PK 面板。
+- **农场聚合**：`BoardData.vocabulary_farm`（optional，模块未开通 `null`）与独立接口 `GET /api/v1/classes/{code}/vocabulary/teacher/farm-summary` 同口径：`participants`（本班在册学生中拥有地块的人数）、`mature_plots`、`harvested_total`、`badge_counts[{key,label,count}]`（既有 `student_badge` 账本按 key 聚合）、`top_harvesters[{display_name,harvest_count}]`（最多 5，收获 >0）。只读聚合，不改 XP/徽章/streak/plot；地块按登录账号跨班连续，只归集当前在册学生名下地块，跨班不重复计入。
+- **权限与口径**：农场独立接口仅本班教师，课堂不存在 404，非本班教师 403，vocabulary 模块未开通 403；看板在模块关闭时不 403，两段摘要均为 `null`，其余看板字段口径不变。批量按在册学生 `user_id`/`student_id` 一次查地块/徽章，无 N+1。域逻辑 `app/services/vocabulary_pk.py`（`history_matches`/`board_summary`）、`app/services/vocabulary_farm.py`（`teacher_summary`）；路由 `vocabulary_pk.py`/`vocabulary_farm.py`；模型 `app/models/vocabulary/pk.py`（`PkHistoryMatch/Player/List`）与 `app/models/learning.py`（`PkBoardSummary`/`FarmBoardSummary` 等）。测试 `tests/api/routes/test_vocabulary_pk_history.py`、`tests/api/routes/test_vocabulary_farm_summary.py`。
+
 ## 通用功能 G01–G05（2026-10-11）
 
 - 学生练习 `/p/{code}`、考试 `/exam/{code}` 各有独立入口与结果路由；共享录音/反馈组件，旧练习链接遇考试自动转考试模块。当前课堂发布仍沿用单一活动快照。
@@ -246,3 +278,9 @@ KET → PET → 学术词汇 → 四级词汇 → 雅思&托福词汇，固定�
 - **接口**：`GET /classes/{code}/teachers`（团队可读）、`GET /classes/{code}/teacher-candidates?q=`（仅 owner/admin，同校 active teacher，排除已在本班）、`POST /classes/{code}/teachers`（仅 owner/admin，幂等）、`DELETE /classes/{code}/teachers/{user_id}`（owner/admin 移除他人，co_teacher 可退出自己，不能移除 owner）。列表 `ClassroomPublic` 增 `viewer_role/owner_name/co_teacher_count`；管理员改绑 owner 时同步 membership：旧 owner 降 co_teacher、新 owner 升 owner。
 - **前端**：课堂面板新增「教师团队」tab（`TeacherTeamCard`），主教师/管理员可搜索添加和移除，共管教师只能退出；课堂卡片显示「主教师：X · 共管 N 人」与共管 badge，co_teacher 隐藏班容、报告位置、删课堂等 owner-only 控件，服务端仍 403 兜底。403 文案改为提示联系主教师或校管理员加入团队。
 - **口径边界**：共管教师拥有教学权限，但**不能**改班级设置、不能管团队、不能删课堂；校管理员仅作管理兜底，不作为团队成员出现在 `classroom_teacher`。删除课堂前显式清 membership；`owner_id` 与 membership 不一致时授权回退到 `owner_id`，避免迁移漏回填锁死老班。
+
+## 学校模块授权生命周期与按校用量（2026-11-24，#517）
+
+- 租期 / 试用状态机（`not_granted / disabled / scheduled / expired / active`）、授权类型 `trial / paid / manual`、`days_left` 口径、审计前后值字段：[`tenant-module-lifecycle.md`](tenant-module-lifecycle.md)。
+- 按校按天用量九项指标、日界时区、两个口径缺口（仅登录不计活跃、农场收获为地块下限）与隐私边界：[`tenant-usage-metrics.md`](tenant-usage-metrics.md)。
+- 前端落点：运营端 `/admin/schools` 六态徽标、「7 天内到期」筛选、近 7/30 天紧凑用量列、模块授权弹窗（开关 / 类型 / 开始 / 到期 + 客户端校验）、单校用量弹窗（区间总量 + 每日明细 + CSV Blob 下载）；校管后台 `TenantModuleBanner` 试用到期 / 已到期提醒。状态、阈值、格式化与校验纯函数集中在 `frontend/src/lib/tenantModules.ts`。

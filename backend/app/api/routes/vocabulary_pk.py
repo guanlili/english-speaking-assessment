@@ -17,7 +17,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
@@ -26,6 +26,7 @@ from app.api.routes.classes import _get_classroom
 from app.core import db as _db
 from app.models import (
     PkAnswerRequest,
+    PkHistoryList,
     PkLobbyCreate,
     PkLobbyView,
     PkMatchView,
@@ -64,6 +65,23 @@ def read_pk_lobby(
 ):
     classroom, _role, student = _viewer(session, code, current_user)
     return pk_service.lobby_view(session, classroom, student)
+
+
+@router.get(
+    "/classes/{code}/vocabulary/pk/history",
+    response_model=PkHistoryList,
+)
+def read_pk_history(
+    session: SessionDep,
+    code: str,
+    current_user: CurrentUser,
+    limit: int = Query(20, ge=1, le=50),
+):
+    """本班教师回看已结束/已放弃对局历史（只读）；学生/跨班按既有口径拒绝。"""
+    classroom, role, _student = _viewer(session, code, current_user)
+    if role != "teacher":
+        raise HTTPException(status_code=403, detail="只有本班教师可以查看 PK 历史")
+    return pk_service.history_matches(session, classroom, limit=limit)
 
 
 @router.post("/classes/{code}/vocabulary/pk/lobby", response_model=PkLobbyView)
