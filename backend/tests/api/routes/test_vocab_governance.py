@@ -28,6 +28,8 @@ from app.models import (
     VocabularyAssignment,
     VocabularyBook,
     VocabularyBookItem,
+    VocabularyBookVersion,
+    VocabularyContentReviewAudit,
     VocabularyWord,
 )
 from app.services import vocab_governance
@@ -794,6 +796,129 @@ def test_rollback_restores_content_new_version_and_snapshot_unchanged(
     # 已发布任务快照未被改写
     db.refresh(assignment_row)
     assert assignment_row.snapshot_items == snapshot_before
+
+
+def test_rollback_restores_review_approved_snapshot_and_writes_audit(
+    client: TestClient, db: Session
+) -> None:
+    """D1 回归：回滚到已审版本应恢复 approved 审核快照（审核人/时间/清空 note），
+    并逐条写 rollback 审计（from/to 版本、操作者、时间）；回滚后再编辑仍回 pending。"""
+    teacher, headers, classroom, book = _approved_book(client, db, 2, "rbmeta")
+    make_student(db, client, classroom["code"])
+    words = _book_words(db, book["id"])
+    a = words[0]
+    original_meaning = a.meaning_zh
+
+    versions = client.get(
+        f"{VOCAB}/books/{book['id']}/versions", headers=headers
+    ).json()
+    review_row = next(v for v in versions["items"] if v["action"] == "review")
+    review_no = review_row["version_no"]
+
+    _admin, admin_headers = _login_admin(db, client, teacher)
+
+    # 编辑 approved 词条 → 回退 pending、清空审核人/时间、打编辑后待审标识
+    edited = client.patch(
+        f"{VOCAB}/words/{a.id}",
+        json={"meaning_zh": "释义被改掉"},
+        headers=headers,
+    )
+    assert edited.status_code == 200, edited.text
+    db.refresh(a)
+    assert a.review_status == "pending"
+    assert a.reviewer_id is None
+    assert a.reviewed_at is None
+    assert a.review_note == "edited_after_approval"
+
+    rollback = client.post(
+        f"{VOCAB}/books/{book['id']}/versions/{review_no}/rollback",
+        headers=admin_headers,
+    )
+    assert rollback.status_code == 200, rollback.text
+
+    db.refresh(a)
+    # 内容与审核快照一并复原
+    assert a.meaning_zh == original_meaning
+    assert a.review_status == "approved"
+    assert a.reviewer_id == teacher.id
+    assert a.reviewed_at is not None
+    assert a.review_note is None
+
+    # 逐条 rollback 审计：from pending → approved，note 带 from/to 版本与操作者
+    audits = list(
+        db.exec(
+            select(VocabularyContentReviewAudit).where(
+                VocabularyContentReviewAudit.word_id == a.id
+            )
+        )
+    )
+    rollback_rows = [row for row in audits if row.action == "rollback"]
+    assert len(rollback_rows) == 1
+    rb = rollback_rows[0]
+    assert rb.from_status == "pending"
+    assert rb.to_status == "approved"
+    assert rb.actor_id == _admin.id
+    assert f"v{review_no}" in (rb.note or "")
+
+    # 回滚后再次编辑：仍按既有门禁回 pending，并写 reset 审计
+    re_edit = client.patch(
+        f"{VOCAB}/words/{a.id}",
+        json={"meaning_zh": "又改一次"},
+        headers=headers,
+    )
+    assert re_edit.status_code == 200, re_edit.text
+    db.refresh(a)
+    assert a.review_status == "pending"
+    reset_rows = [row for row in audits if row.action == "reset"]
+    assert reset_rows, "再次编辑应写 reset 审计"
+
+
+def test_rollback_old_snapshot_without_review_meta_is_compatible(
+    client: TestClient, db: Session
+) -> None:
+    """兼容旧版本：快照未收录 reviewer/reviewed_at/note 时，回滚还原 review_status，
+    审核人/时间保留当前值，note 清空，不报错。"""
+    teacher, headers, _classroom, book = _approved_book(client, db, 1, "rbold")
+    words = _book_words(db, book["id"])
+    a = words[0]
+    _admin, admin_headers = _login_admin(db, client, teacher)
+
+    # 模拟旧快照：缺 reviewer_id / reviewed_at / review_note 键
+    entry = vocab_governance._entry_from_word(a)
+    for legacy_key in ("reviewer_id", "reviewed_at", "review_note"):
+        entry.pop(legacy_key, None)
+    legacy_row = VocabularyBookVersion(
+        tenant_id=teacher.tenant_id,
+        book_id=uuid.UUID(book["id"]),
+        version_no=99,
+        snapshot=[entry],
+        content_hash="legacy",
+        action="review",
+        summary="旧版快照（无审核元数据）",
+    )
+    db.add(legacy_row)
+    db.commit()
+
+    # 先编辑回退 pending、清空审核人
+    client.patch(
+        f"{VOCAB}/words/{a.id}",
+        json={"meaning_zh": "旧快照回归测试"},
+        headers=headers,
+    )
+    db.refresh(a)
+    assert a.review_status == "pending"
+    assert a.reviewer_id is None
+
+    book_row = db.get(VocabularyBook, uuid.UUID(book["id"]))
+    assert book_row is not None
+    vocab_governance.rollback_to_version(db, book_row, legacy_row, _admin)
+    db.commit()
+    db.refresh(a)
+
+    assert a.review_status == "approved"
+    assert a.review_note is None
+    # 旧快照无审核人快照：保留当前（已被清空），不臆造审核人
+    assert a.reviewer_id is None
 
 
 def test_rollback_forbidden_for_teacher(client: TestClient, db: Session) -> None:
