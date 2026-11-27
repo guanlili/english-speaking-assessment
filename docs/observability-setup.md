@@ -22,7 +22,7 @@
 
 **验证**：部署后后端容器内 `sentry_sdk.capture_message(...)`、前端控制台抛错，分别在 GlitchTip 两个项目看到事件；详见 QA 报告 5.2。
 
-**注意**：DSN 公钥是公开标识（前端 DSN 会打进 bundle），不是密钥；SDK 默认 `send_default_pii=False`，不传用户/IP/Cookie/请求体。当前生产到 49.232:8090 网络不通，端点未打通前 Secrets 保持空值，SDK 不上报。
+**注意**：DSN 公钥是公开标识（前端 DSN 会打进 bundle），不是密钥；后端显式 `send_default_pii=False`，前端 @sentry/react v11 默认不采集 PII，均不传用户/IP/Cookie/请求体。当前生产到 49.232:8090 网络不通，端点未打通前 Secrets 保持空值，SDK 不上报。
 
 ## 二、SMTP 告警邮件（队列堆积/成本告警）
 

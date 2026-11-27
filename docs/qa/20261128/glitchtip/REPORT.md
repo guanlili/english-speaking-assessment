@@ -17,7 +17,7 @@
 | ingest 自测 | ✅ 本机通过 | 两项目各收到 1 条自测事件并落库（见 3.3） |
 | volc-belp → 8090 网络 | ❌ 不可达 | TCP 8090 连接超时（curl rc=28，5002ms；TCP rc=124）；22 通、ICMP 5.8ms |
 | 后端 SDK 代码 | ✅ 已就绪 | DSN 为空时不初始化；显式 `send_default_pii=False` |
-| 前端 SDK 代码 | ✅ 已就绪 | DSN 为空时不打包；显式 `sendDefaultPii: false` |
+| 前端 SDK 代码 | ✅ 已就绪 | DSN 为空时不打包；@sentry/react v11 默认不采集 PII（该版本无显式 PII 开关） |
 | 生产 `.env` / Secrets | ⬜ 待端点决策 | `SENTRY_DSN=""` / `VITE_SENTRY_DSN=""` 保持空；端点方案未定前不写入不可达地址 |
 | 告警出口 | ⚠️ 未配置 | GlitchTip 侧无 SMTP、无告警规则；事件先落库，邮件/Webhook 告警待后续配置 |
 
@@ -63,7 +63,7 @@ DSN 格式：`<scheme>://<公钥hex>@<可达主机[:端口]>/<项目id>`。主�
 |------|------|
 | `backend/app/core/observability.py`（新增） | 集中 `init_sentry()`：DSN 为空或 `ENVIRONMENT=local` 不初始化；`environment` 按环境标签；`traces_sample_rate=0.1`；显式 `send_default_pii=False`（不传用户/IP/Cookie/Authorization）。 |
 | `backend/app/main.py` | 去掉模块内联 `sentry_sdk.init`，改为调用 `init_sentry()`。评分 worker 是后端进程内线程池，复用同一初始化，无需单独接入。 |
-| `frontend/src/main.tsx` | `Sentry.init` 增加 `sendDefaultPii: false`；未配 DSN 仍动态 import、不进首屏。 |
+| `frontend/src/main.tsx` | `Sentry.init` 配置 `environment` / `tracesSampleRate=0.1`；@sentry/react v11 默认不采集 PII（`sendDefaultPii` 选项在 v11 已移除，不可传）；未配 DSN 仍动态 import、不进首屏。 |
 | `.env.example` | DSN 注释更新为自建 GlitchTip 口径；注明前端 DSN 必须是学生浏览器可达的公网 HTTPS 地址。 |
 
 PII 边界：SDK 侧不传用户标识、IP、Cookie、认证头；GlitchTip 项目侧 `scrub_ip_addresses=True`（服务端再匿名化 IP）。当前 sentry-sdk 版本（2.x）初始化参数不含请求体开关，请求体不主动附加；如需更严的 body 剥离，后续在 ingest 侧 PII scrubber 配置。
