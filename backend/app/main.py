@@ -6,7 +6,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-import sentry_sdk
 from fastapi import FastAPI, Request, Response
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
@@ -14,6 +13,7 @@ from starlette.responses import JSONResponse
 
 from app.api.main import api_router
 from app.core.config import settings
+from app.core.observability import init_sentry
 from app.core.request_context import request_id
 from app.services import content_dedup  # noqa: F401 导入即注册查重哈希 flush 钩子
 
@@ -25,14 +25,7 @@ def custom_generate_unique_id(route: APIRoute) -> str:
     return f"{route.tags[0]}-{route.name}"
 
 
-if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
-    sentry_sdk.init(
-        dsn=str(settings.SENTRY_DSN),
-        enable_tracing=True,
-        # 按环境归因事件；全采样在 40 人课堂并发下会刷配额，0.1 起步
-        environment=settings.ENVIRONMENT,
-        traces_sample_rate=0.1,
-    )
+init_sentry()
 
 
 @asynccontextmanager
