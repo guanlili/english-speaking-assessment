@@ -146,6 +146,12 @@ jobs:
           SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
           # 可选 Secrets：不设置时为空，默认值统一由 generate-deploy-env.sh 落
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          # 阿里云 OSS 异地备份：四要素留空则 offsite 脚本安全跳过
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+          OSS_PREFIX: ${{ secrets.OSS_PREFIX }}
           SCORING_PROVIDER: ${{ secrets.SCORING_PROVIDER }}
           ASR_PROVIDER: ${{ secrets.ASR_PROVIDER }}
           VOLC_ASR_API_KEY: ${{ secrets.VOLC_ASR_API_KEY }}
@@ -383,6 +389,13 @@ jobs:
             { crontab -l 2>/dev/null || true; } | grep -v -e 'app-.*sql.gz' -e 'scripts/backup-local.sh' > /tmp/cron-register.new || true
             echo "30 3 * * * $backup_cmd" >> /tmp/cron-register.new
             crontab /tmp/cron-register.new && rm -f /tmp/cron-register.new
+
+            echo "=== 6/7 异地备份到阿里云 OSS（幂等注册，04:00；凭证留空则脚本自跳过） ==="
+            # 本地备份 03:30 完成后再推异地；脚本自行从 .env 读 OSS_*，失败记 offsite-failure.log。
+            offsite_cmd="cd '$PWD' && bash scripts/backup-offsite.sh || date >> '$PWD/backups/offsite-failure.log'"
+            { crontab -l 2>/dev/null || true; } | grep -v 'scripts/backup-offsite.sh' > /tmp/cron-offsite.new || true
+            echo "0 4 * * * $offsite_cmd" >> /tmp/cron-offsite.new
+            crontab /tmp/cron-offsite.new && rm -f /tmp/cron-offsite.new
             # 部署时顺手做一次当次备份，保证改库前总有快照；失败则中止部署（不能无快照改库）
             dump_tmp="backups/app-$(date +%Y%m%d-%H%M)-predeploy.sql"
             if docker compose -f compose.yml exec -T db sh -c 'pg_dump -U ${POSTGRES_USER} ${POSTGRES_DB}' > "$dump_tmp"; then
