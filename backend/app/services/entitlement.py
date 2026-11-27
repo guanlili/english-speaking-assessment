@@ -162,7 +162,11 @@ def is_module_enabled(session: Session, tenant_id: uuid.UUID, module_key: str) -
 
 
 def ensure_module_enabled(
-    session: Session, tenant_id: uuid.UUID, module_key: str
+    session: Session,
+    tenant_id: uuid.UUID,
+    module_key: str,
+    *,
+    allow_read_only: bool = False,
 ) -> None:
     """模块闸门：按状态机判定，403 detail 区分未购与到期。
 
@@ -174,15 +178,23 @@ def ensure_module_enabled(
 
     只认整校口径，不读班级、不做名单判断；班级成员 404 由各端点在
     成员解析阶段先行抛出（404 优先于模块 403）。401 不用于模块口径。
+
+    ``allow_read_only=True`` 专供**显式声明为只读**的历史/导出 GET/HEAD 端点：
+    非 active 状态（未购/关闭/待生效/到期）不再抛 403，保留历史回看与 CSV
+    导出；写操作端点一律用默认 ``False``，保持严格 403。该开关只放宽模块
+    闸门，不放宽成员/归属/跨租户权限——越权仍由各端点的成员门先拦。
     """
     if module_key not in MODULE_KEYS:
         raise HTTPException(status_code=500, detail=f"unknown module: {module_key}")
     row = get_module_row(session, tenant_id, module_key)
     state = compute_state(row, _now())
+    if state == STATE_ACTIVE:
+        return
+    if allow_read_only:
+        return
     if state == STATE_EXPIRED:
         raise HTTPException(status_code=403, detail=f"module_expired:{module_key}")
-    if state != STATE_ACTIVE:
-        raise HTTPException(status_code=403, detail=f"module_not_enabled:{module_key}")
+    raise HTTPException(status_code=403, detail=f"module_not_enabled:{module_key}")
 
 
 # ── 运营改写 + 审计 ──────────────────────────────────────────────────────

@@ -234,19 +234,29 @@ def require_speaking_classroom(
     return current_user
 
 
-def require_module(module_key: str) -> Callable[[SessionDep, CurrentUser], User]:
+def require_module(
+    module_key: str, *, allow_read_when_disabled: bool = False
+) -> Callable[[SessionDep, CurrentUser], User]:
     """模块授权闸门依赖工厂（#516）：未购/未生效 → 403。
 
     用于无课堂成员解析的校内端点（教师词库、AI 备课、五级选词等）；
     带课堂码的端点须在成员解析（404）之后再判模块 403，优先级固定为
     404 先于 403——这类端点走 services.entitlement.ensure_module_enabled
     在 handler 内成员解析后调用，不用本依赖。
+
+    ``allow_read_when_disabled=True`` 仅用于显式声明只读的历史/导出端点：
+    非 active 状态放行回看，不放宽成员与归属权限。默认严格 403。
     """
 
     def _dep(session: SessionDep, current_user: CurrentUser) -> User:
         from app.services import entitlement
 
-        entitlement.ensure_module_enabled(session, current_user.tenant_id, module_key)
+        entitlement.ensure_module_enabled(
+            session,
+            current_user.tenant_id,
+            module_key,
+            allow_read_only=allow_read_when_disabled,
+        )
         return current_user
 
     return _dep

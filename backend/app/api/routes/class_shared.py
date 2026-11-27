@@ -254,12 +254,17 @@ def _student_profile_of(
     classroom: Classroom,
     current_user: User,
     module_key: str | None = None,
+    *,
+    read_only: bool = False,
 ) -> Student:
     """学生登录档案解析：JWT → user → 该课堂的学生档案（未入班 404）。
 
     404 统一口径：学生档案不存在 = 未加入该课堂，前端引导去加入页。
     ``module_key`` 给定后在成员解析成功之后再判模块授权（404 优先于
     模块 403）；未给定（口语底座链路）不做模块闸门。
+
+    ``read_only=True`` 供显式只读的历史回看端点：非 active 状态不抛模块
+    403；成员/归属 404 优先级不变。写操作端点保持默认严格口径。
     """
     student = session.exec(
         select(Student).where(
@@ -272,7 +277,12 @@ def _student_profile_of(
     if module_key is not None:
         from app.services import entitlement
 
-        entitlement.ensure_module_enabled(session, current_user.tenant_id, module_key)
+        entitlement.ensure_module_enabled(
+            session,
+            current_user.tenant_id,
+            module_key,
+            allow_read_only=read_only,
+        )
     return student
 
 
@@ -286,7 +296,11 @@ def _include_type(classroom: Classroom, kind: str) -> bool:
 
 
 def _require_classroom_teacher(
-    classroom: Classroom, current_user: User, module_key: str | None = None
+    classroom: Classroom,
+    current_user: User,
+    module_key: str | None = None,
+    *,
+    read_only: bool = False,
 ) -> None:
     """教师端点：主教师/共管教师/本校管理员才能访问（课堂码不是教师凭据）。
 
@@ -294,6 +308,7 @@ def _require_classroom_teacher(
     本侧对停用课堂放行（owner 收尾操作：删除课堂/调班容等）。
     ``module_key`` 给定后在教师身份判定通过之后再判模块授权（成员/身份
     403 优先于模块 403）；未给定（口语底座链路）不做模块闸门。
+    ``read_only=True`` 供显式只读的历史/导出端点：非 active 不抛模块 403。
     """
     if not classroom_teacher_allowed(classroom, current_user):
         raise HTTPException(
@@ -304,7 +319,10 @@ def _require_classroom_teacher(
         from app.services import entitlement
 
         entitlement.ensure_module_enabled(
-            session_for(classroom), current_user.tenant_id, module_key
+            session_for(classroom),
+            current_user.tenant_id,
+            module_key,
+            allow_read_only=read_only,
         )
 
 

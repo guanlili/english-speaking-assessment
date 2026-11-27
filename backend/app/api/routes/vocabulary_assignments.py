@@ -70,7 +70,7 @@ def list_assignments(
 ) -> Any:
     """教师任务列表：全部任务（含已结束）+ 名单进度汇总，按发布倒序。"""
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user, "vocabulary")
+    _require_classroom_teacher(classroom, current_user, "vocabulary", read_only=True)
     return vocab_service.teacher_assignment_rows(session, classroom.id)
 
 
@@ -140,13 +140,17 @@ def read_vocab_results(
     补考授权等扩展字段。
     """
     if assignment_id is not None:
-        return read_vocab_results_payload(session, code, assignment_id, current_user)
+        return read_vocab_results_payload(
+            session, code, assignment_id, current_user, read_only=True
+        )
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user, "vocabulary")
+    _require_classroom_teacher(classroom, current_user, "vocabulary", read_only=True)
     assignment = vocab_service.current_published_assignment(session, classroom.id)
     if assignment is None:
         return VocabularyClassResults(assignment=None)
-    return read_vocab_results_payload(session, code, assignment.id, current_user)
+    return read_vocab_results_payload(
+        session, code, assignment.id, current_user, read_only=True
+    )
 
 
 @router.get(
@@ -168,7 +172,7 @@ def read_vocab_mastery(
     默认 30 天。
     """
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user, "vocabulary")
+    _require_classroom_teacher(classroom, current_user, "vocabulary", read_only=True)
     vocabulary_mastery.validate_window_days(window_days)
     assignment = None
     if assignment_id is not None:
@@ -197,7 +201,9 @@ def read_vocab_today(
     （只读，归属校验：只允许本人轮次，不存在 404）。
     """
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user, "vocabulary")
+    student = _student_profile_of(
+        session, classroom, current_user, "vocabulary", read_only=True
+    )
     return _today_plan_payload(
         session, classroom.id, student.id, assignment_id, round_no
     )

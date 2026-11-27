@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 
 import { type ModuleStatus, ModulesService } from "@/client"
 import { isLoggedIn, isOperatorLoggedIn } from "@/hooks/useAuth"
+import { isModuleReadonlyState } from "@/lib/module-filter"
 
 export type ModuleKey = "speaking" | "vocabulary"
 
@@ -55,5 +56,10 @@ export function useModules(enabled = true) {
     statusMap,
     hasModule: (key: ModuleKey) => modules.has(key),
     statusOf: (key: ModuleKey) => statusMap.get(key),
+    /** 非 active 状态下返回该模块快照（只读历史/导出可见）；active 或缺省返回 null。 */
+    readonlyOf: (key: ModuleKey): ModuleStatus | null => {
+      const status = statusMap.get(key)
+      return status && isModuleReadonlyState(status.state) ? status : null
+    },
   }
 }

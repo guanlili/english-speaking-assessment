@@ -64,7 +64,9 @@ def read_wrong_words(
     practiceable 标注词条是否仍在当前可练词库内，可直接进错词专项复习。
     """
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user, "vocabulary")
+    student = _student_profile_of(
+        session, classroom, current_user, "vocabulary", read_only=True
+    )
     items = vocab_service.wrong_word_items(
         session,
         student.id,
@@ -225,7 +227,9 @@ def read_student_session(
     分母为 total_count，由前端分别展示。
     """
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user, "vocabulary")
+    student = _student_profile_of(
+        session, classroom, current_user, "vocabulary", read_only=True
+    )
     vocab_session = session.get(VocabularySession, session_id)
     if vocab_session is None or vocab_session.student_id != student.id:
         # 他人的/不存在的一律 404，不区分报错
@@ -245,7 +249,9 @@ def read_student_history(
 ) -> Any:
     """练习历史列表：任务轮/自主轮/复习轮统一（kind 区分），按开始倒序。"""
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user, "vocabulary")
+    student = _student_profile_of(
+        session, classroom, current_user, "vocabulary", read_only=True
+    )
     return VocabularyStudentHistory(
         items=vocab_service.history_rows(session, student.id, limit=limit)
     )
@@ -308,7 +314,7 @@ def read_review_stats(
     只做计数展示，不估算记忆留存率或掌握度等级。
     """
     classroom = _get_classroom(session, code)
-    _student_profile_of(session, classroom, current_user, "vocabulary")
+    _student_profile_of(session, classroom, current_user, "vocabulary", read_only=True)
     return vocabulary_review.review_stats(
         session, user_id=current_user.id, classroom_id=classroom.id
     )
