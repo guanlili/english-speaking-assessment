@@ -91,7 +91,13 @@ except BlockingIOError:
         self.assertEqual(len(bundles), 1)
         bundle = bundles[0]
         self.assertEqual(self.verify(bundle).returncode, 0)
-        self.assertEqual((bundle / "config.env").stat().st_mode & 0o077, 0)
+        # 目录 750 / 文件 640：其他用户无任何权限，同组巡检用户可读 manifest。
+        config_mode = (bundle / "config.env").stat().st_mode
+        self.assertEqual(config_mode & 0o007, 0)
+        self.assertTrue(config_mode & 0o040)
+        dir_mode = bundle.stat().st_mode
+        self.assertEqual(dir_mode & 0o007, 0)
+        self.assertTrue(dir_mode & 0o010)
         audio_files = subprocess.check_output(
             ["tar", "-tzf", str(bundle / "audio.tar.gz")], text=True
         )
@@ -128,6 +134,26 @@ except BlockingIOError:
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("tables", result.stderr)
         self.assertEqual(list((self.project / "backups").glob("bundle-*")), [])
+
+
+    def test_retention_prunes_by_name_timestamp_and_drops_broken(self):
+        self.assertEqual(self.backup().returncode, 0)
+        backups = self.project / "backups"
+        # 包名时间戳远早于保留窗口；mtime 刻意留成当前时间，复现「mtime 被重置」场景。
+        old = backups / "bundle-20000101T000000Z-OLD0000"
+        old.mkdir()
+        (old / "database.sql.gz").write_bytes(b"x")
+        broken = backups / "bundle-20000102T000000Z-XXXX.BROKEN"
+        broken.mkdir()
+        (broken / "database.sql.gz").write_bytes(b"x")
+
+        result = self.backup()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        names = {p.name for p in backups.glob("bundle-*")}
+        self.assertNotIn(old.name, names)
+        self.assertNotIn(broken.name, names)
+        # 两次成功备份各留一个新鲜包。
+        self.assertEqual(len([n for n in names if not n.startswith(".")]), 2)
 
 
 if __name__ == "__main__":
