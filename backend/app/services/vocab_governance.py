@@ -36,6 +36,7 @@ from app.models import (
     VocabularyBook,
     VocabularyBookItem,
     VocabularyBookVersion,
+    VocabularyContentReviewAudit,
     VocabularyLicenseAudit,
     VocabularyVersionDiffEntry,
     VocabularyWord,
@@ -311,6 +312,9 @@ def _entry_from_word(word: VocabularyWord) -> dict[str, object]:
         "morphology": prompt_types_mod.normalize_morphology(word.morphology),
         "status": word.status,
         "review_status": word.review_status,
+        "reviewer_id": str(word.reviewer_id) if word.reviewer_id else None,
+        "reviewed_at": word.reviewed_at.isoformat() if word.reviewed_at else None,
+        "review_note": word.review_note,
         "exam_tags": sorted(word.exam_tags or []),
         "cefr_band": word.cefr_band,
     }
@@ -501,6 +505,36 @@ def compare_versions(
     return {"added": added, "removed": removed, "changed": changed}
 
 
+def _parse_reviewed_at(value: object) -> datetime | None:
+    """快照里的 reviewed_at 兼容解析：ISO 字符串 → datetime；其余/空 → None。"""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _restore_review_meta(word: VocabularyWord, entry: dict[str, object]) -> None:
+    """按目标快照还原审核状态机。
+
+    兼容旧快照（2026-11 之前版本未收录 reviewer/reviewed_at/review_note）：
+    - ``review_status``：快照有值则还原，缺键保留当前状态；
+    - ``reviewer_id`` / ``reviewed_at``：快照有键则按快照还原（可为空），缺键保留当前；
+    - ``review_note``：快照有键按快照还原；缺键（旧快照）清空编辑后待审标识。
+    """
+    if "review_status" in entry:
+        word.review_status = str(entry.get("review_status") or "pending")
+    if "reviewer_id" in entry:
+        reviewer_id = entry.get("reviewer_id")
+        word.reviewer_id = uuid.UUID(str(reviewer_id)) if reviewer_id else None
+    if "reviewed_at" in entry:
+        word.reviewed_at = _parse_reviewed_at(entry.get("reviewed_at"))
+    word.review_note = (
+        _str_field(entry, "review_note") if "review_note" in entry else None
+    )
+
+
 def _restore_content(word: VocabularyWord, entry: dict[str, object]) -> None:
     word.headword = str(entry["headword"])
     word.part_of_speech = _str_field(entry, "part_of_speech")
@@ -513,6 +547,7 @@ def _restore_content(word: VocabularyWord, entry: dict[str, object]) -> None:
     word.status = str(entry.get("status") or "active")
     word.exam_tags = _str_list_field(entry, "exam_tags") or []
     word.cefr_band = _str_field(entry, "cefr_band")
+    _restore_review_meta(word, entry)
     word.version += 1
 
 
@@ -530,6 +565,9 @@ def rollback_to_version(
     """
     target_entries: list[dict[str, object]] = list(target_row.snapshot or [])
     target_map = {str(e["word_id"]): e for e in target_entries}
+
+    latest_before = _latest_version(session, book.id)
+    from_version_no = latest_before.version_no if latest_before is not None else 0
 
     current_items = list(
         session.exec(
@@ -553,10 +591,14 @@ def rollback_to_version(
         ).all()
     }
 
+    audit_note = f"rollback v{from_version_no} → v{target_row.version_no}"
     for position, entry in enumerate(target_entries, start=1):
         wid = str(entry["word_id"])
         word = existing_words.get(wid)
+        from_status = word.review_status if word is not None else None
         if word is None:
+            reviewer_id = entry.get("reviewer_id")
+            reviewed_at = _parse_reviewed_at(entry.get("reviewed_at"))
             word = VocabularyWord(
                 tenant_id=book.tenant_id,  # type: ignore[union-attr]
                 headword=str(entry["headword"]),
@@ -571,6 +613,9 @@ def rollback_to_version(
                 ),
                 status=str(entry.get("status") or "active"),
                 review_status=str(entry.get("review_status") or "pending"),
+                reviewer_id=uuid.UUID(str(reviewer_id)) if reviewer_id else None,
+                reviewed_at=reviewed_at,
+                review_note=_str_field(entry, "review_note"),
                 exam_tags=_str_list_field(entry, "exam_tags") or [],
                 cefr_band=_str_field(entry, "cefr_band"),
             )
@@ -578,6 +623,22 @@ def rollback_to_version(
             session.flush()
         else:
             _restore_content(word, entry)
+        session.add(
+            VocabularyContentReviewAudit(
+                tenant_id=book.tenant_id,  # type: ignore[union-attr]
+                word_id=word.id,
+                headword=word.headword,
+                actor_id=actor.id if actor else None,
+                actor_name=(actor.full_name or actor.username or actor.email)
+                if actor
+                else None,
+                actor_role=actor.role if actor else None,
+                action="rollback",
+                from_status=from_status,
+                to_status=word.review_status,
+                note=audit_note,
+            )
+        )
         item = current_item_by_word.get(wid)
         if item is None:
             session.add(

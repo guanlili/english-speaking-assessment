@@ -293,7 +293,9 @@ function StudentShell({
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col pb-20 md:pb-0">
+      {/* 移动端底部留出固定 Tab 导航高度 + 安全区（env(safe-area-inset-bottom)），
+          避免农场/PK/榜单/任务列表最底部主操作被 fixed 导航压住；桌面端无 Tab，pb-0。 */}
+      <div className="flex min-w-0 flex-1 flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0">
         <header className="sticky top-0 z-20 flex h-[72px] shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-background/95 px-4 backdrop-blur-md sm:px-6 lg:px-9">
           <div className="flex min-w-0 items-center gap-3">
             <Link

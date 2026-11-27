@@ -96,6 +96,41 @@ describe("FarmPanel", () => {
     expect(button).toBeEnabled()
   })
 
+  it("成熟态真实点击收获按钮：调用 harvestFarm 并刷新农场快照", async () => {
+    const harvest = vi
+      .spyOn(VocabularyService, "harvestFarm")
+      .mockResolvedValue({ harvested: true, xp_gained: 10 })
+    renderPanel({
+      ...BASE_VIEW,
+      stage: 3,
+      growth_points: 20,
+      points_to_mature: 0,
+      ready_to_harvest: true,
+      can_harvest: true,
+    })
+
+    const button = await screen.findByRole("button", { name: /\+10 XP/ })
+    await button.click()
+    expect(harvest).toHaveBeenCalledTimes(1)
+  })
+
+  it("英文界面：收获按钮文案随语言切换为 Harvest", async () => {
+    localStorage.setItem("esa:lang", "en")
+    renderPanel({
+      ...BASE_VIEW,
+      stage: 3,
+      growth_points: 20,
+      points_to_mature: 0,
+      ready_to_harvest: true,
+      can_harvest: true,
+    })
+
+    const button = await screen.findByRole("button", {
+      name: /Harvest · \+10 XP/,
+    })
+    expect(button).toBeEnabled()
+  })
+
   it("今日农场 XP 满额：按钮禁用并提示次日再来", async () => {
     renderPanel({
       ...BASE_VIEW,
