@@ -11,15 +11,17 @@ export const changelogQueryKey = ["changelog"] as const
 /** 平台更新日志列表（教师/校级管理员/平台运营共用；侧栏红点与页面同键共享缓存）。 */
 export function useChangelog() {
   const { user } = useAuth()
+  // 优先用接口返回的 role（真值），兜底登录时缓存的 role。
+  // 不能只认字面量白名单：一旦出现未覆盖的角色值（如 B3 改名后的
+  // school_admin），enabled 恒为 false，查询永远停在 pending —— 页面就一直
+  // 显示「加载中…」且不报错，比 403 更难查。
+  const role = user?.role ?? cachedRole()
   return useQuery({
     queryKey: changelogQueryKey,
     queryFn: () => ChangelogService.readChangelog(),
-    // 学生不该发这个请求（API 403）——即使壳层已拦，请求仍会发出
-    enabled:
-      !!user &&
-      (cachedRole() === "teacher" ||
-        cachedRole() === "admin" ||
-        cachedRole() === "operator"),
+    // 读=教职工（school_admin/teacher，含旧值 admin）与平台运营；
+    // 仅排除学生——学生看这条是 403，不发请求。
+    enabled: !!user && !!role && role !== "student",
     staleTime: 5 * 60 * 1000,
   })
 }
