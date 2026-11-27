@@ -14,7 +14,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, UniqueConstraint
+from sqlalchemy import Date, DateTime, Index, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from app.models.base import _tenant_id_field, get_datetime_utc
@@ -49,7 +49,14 @@ class VocabFarmPlot(SQLModel, table=True):
     """
 
     __tablename__ = "vocab_farm_plot"
-    __table_args__ = (UniqueConstraint("user_id", name="uq_vocab_farm_plot_user"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_vocab_farm_plot_user"),
+        Index(
+            "ix_vocab_farm_plot_tenant_last_harvested_at",
+            "tenant_id",
+            "last_harvested_at",
+        ),
+    )
     # 多租户 C1：租户归属（默认租户兜底，同 B1 锚点定式）
     tenant_id: uuid.UUID = _tenant_id_field()
 

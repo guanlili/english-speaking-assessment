@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # 隔离恢复演练：生成备份包 → 独立 Compose 项目恢复 → 就绪/数据/登录核对。
-# 用法：bash scripts/recovery-drill.sh [--bundle <已校验的包目录>] [--keep]
-#   --bundle  使用已有备份包（需先通过 scripts/verify-backup.sh）；省略则现场生成
-#   --keep    演练结束后保留独立项目与卷（默认 down -v 清理）
+# 用法：bash scripts/recovery-drill.sh [--bundle <已校验的包目录>] [--keep] [--expected-revision <rev>]
+#   --bundle             使用已有备份包（需先通过 scripts/verify-backup.sh）；省略则现场生成
+#   --keep               演练结束后保留独立项目与卷（默认 down -v 清理）
+#   --expected-revision  基线落后 head 的迁移演练：导入后先校验演练库 alembic_version
+#                        等于该 revision；跳过启动前逐表计数，改在 prestart 迁移完成、
+#                        backend 启动之前再做一次源/演练逐表计数比对；不匹配则失败
 # 约束：只在独立 Compose 项目（默认 esa-drill）里操作，绝不触碰当前运行中的库；
 #      只启动 db/prestart/backend（不启前端与 acme），不发布任何端口，避免与线上端口冲突。
 set -euo pipefail
@@ -12,10 +15,12 @@ cd "$project_dir"
 
 bundle=""
 keep=0
+expected_revision=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --bundle) bundle="${2:?需要包目录}"; shift 2 ;;
     --keep) keep=1; shift ;;
+    --expected-revision) expected_revision="${2:?需要 revision}"; shift 2 ;;
     *) echo "未知参数: $1" >&2; exit 2 ;;
   esac
 done
@@ -97,6 +102,28 @@ export COMPOSE_ENV_FILE="$drill_env"
 # 否则会出现 backend 连演练库、db 里却是原库名的错配。
 compose=(docker compose -f compose.yml --env-file "$drill_env")
 
+# 等待一次性 prestart 容器退出 0；非 0 退出或超时即失败。
+wait_prestart() {
+  local cid status exit_code _
+  cid="$("${compose[@]}" ps -q prestart)"
+  [[ -n "$cid" ]] || { echo "prestart 容器不存在" >&2; return 1; }
+  for _ in $(seq 1 120); do
+    status="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || true)"
+    if [[ "$status" == "exited" ]]; then
+      exit_code="$(docker inspect -f '{{.State.ExitCode}}' "$cid" 2>/dev/null || true)"
+      if [[ "$exit_code" == "0" ]]; then
+        log "  prestart 迁移完成（ExitCode=0）"
+        return 0
+      fi
+      echo "prestart 迁移失败（ExitCode=${exit_code}）" >&2
+      return 1
+    fi
+    sleep 2
+  done
+  echo "等待 prestart 退出超时" >&2
+  return 1
+}
+
 cleanup_env() { rm -f "${drill_env:-}"; }
 trap 'cleanup_env' EXIT
 
@@ -136,23 +163,45 @@ fi
 gzip -dc "$bundle/database.sql.gz" | "${compose[@]}" exec -T db sh -c 'psql --quiet --set ON_ERROR_STOP=on -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null
 log "  数据库导入完成: $(( ($(now_ms)-t0)/1000 ))s"
 
-# ---------- 3b. 纯还原保真：启动前逐表计数 ----------
+# 基线落后 head 的迁移演练：导入后先核对 alembic_version，不匹配直接失败。
+if [[ -n "${expected_revision}" ]]; then
+  actual_rev="$("${compose[@]}" exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "select version_num from alembic_version"' | tr -d ' \r')"
+  if [[ "${actual_rev}" != "${expected_revision}" ]]; then
+    echo "演练库 alembic revision 不符：导入后为 ${actual_rev:-（空）}，期望 ${expected_revision}" >&2
+    exit 1
+  fi
+  log "  导入后 alembic revision: ${actual_rev}（与期望一致）"
+fi
+
+# ---------- 3b. 逐表计数比对 ----------
 # 必须在 prestart/backend 启动之前比：启动会回填派生快照（如 admin_metrics_daily
 # 的历史行），那是"启动行为"不是"还原结果"，混在一起会误判成备份差异。
+# 基线落后 head（--expected-revision）时跳过启动前比对：旧基线必然缺 head 新表，
+# 属预期迁移范围；改在 prestart 跑完迁移、backend 启动之前再比一次。
 count_sql="select table_name, (xpath('/row/c/text()', query_to_xml('select count(*) as c from public.'||quote_ident(table_name), false, true, '')))[1]::text::int as cnt from information_schema.tables where table_schema='public' and table_type='BASE TABLE' order by table_name"
-src_counts="$(src_compose exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"${count_sql}\"")"
-dst_counts="$("${compose[@]}" exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"${count_sql}\"")"
-printf '%-34s %10s %10s %s\n' 表 源 演练 一致
 mismatch=0
-tables=0
-while IFS='|' read -r name src; do
-  [[ -z "$name" ]] && continue
-  tables=$((tables+1))
-  dst="$(printf '%s\n' "$dst_counts" | awk -F'|' -v n="$name" '$1==n{print $2}')"
-  flag="OK"; [[ "$src" = "$dst" ]] || { flag="DIFF"; mismatch=$((mismatch+1)); }
-  printf '%-34s %10s %10s %s\n' "$name" "$src" "$dst" "$flag"
-done <<< "$src_counts"
-log "  还原后比对表数: ${tables}；差异: ${mismatch}（启动前口径）"
+
+compare_counts() {
+  local label="$1"
+  local src_counts dst_counts name src dst flag tables diff
+  src_counts="$(src_compose exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"${count_sql}\"")"
+  dst_counts="$("${compose[@]}" exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"${count_sql}\"")"
+  printf '%-34s %10s %10s %s\n' 表 源 演练 一致
+  tables=0; diff=0
+  while IFS='|' read -r name src; do
+    [[ -z "$name" ]] && continue
+    tables=$((tables+1))
+    dst="$(printf '%s\n' "$dst_counts" | awk -F'|' -v n="$name" '$1==n{print $2}')"
+    flag="OK"; [[ "$src" = "$dst" ]] || { flag="DIFF"; diff=$((diff+1)); }
+    printf '%-34s %10s %10s %s\n' "$name" "$src" "$dst" "$flag"
+  done <<< "$src_counts"
+  mismatch=$((mismatch+diff))
+  log "  ${label}：比对表数 ${tables}；差异 ${diff} 处"
+}
+
+if [[ -z "${expected_revision}" ]]; then
+  compare_counts "还原后比对（启动前口径）"
+fi
 
 # ---------- 4. 恢复音频到空卷并拉起 ----------
 t0=$(now_ms)
@@ -164,7 +213,16 @@ else
   "${compose[@]}" build backend >/dev/null
 fi
 "${compose[@]}" run --rm --no-deps -T --entrypoint sh backend -c 'test -z "$(ls -A /app/audio)" && tar -C /app/audio -xzf -' < "$bundle/audio.tar.gz"
-"${compose[@]}" up -d prestart backend
+if [[ -n "${expected_revision}" ]]; then
+  # 先只起 prestart（一次性迁移容器），等它 Exit 0 再做迁移后计数，最后才起 backend；
+  # 避免 backend 启动回填干扰计数比对。
+  "${compose[@]}" up -d prestart
+  wait_prestart
+  compare_counts "迁移后比对（prestart 完成、backend 启动前口径）"
+  "${compose[@]}" up -d backend
+else
+  "${compose[@]}" up -d prestart backend
+fi
 log "  音频恢复 + 拉起耗时: $(( ($(now_ms)-t0)/1000 ))s"
 
 for _ in $(seq 1 90); do
@@ -175,7 +233,7 @@ done
 
 # ---------- 5. 业务核对 ----------
 log "== 4/5 数据与登录核对 =="
-# 逐表计数已在 3b 完成（启动前口径）；这里只做启动后的可用性验证。
+# 逐表计数已在 3b（或迁移后口径）完成；这里只做启动后的可用性验证。
 
 drill_audio="$("${compose[@]}" exec -T backend sh -c 'ls -A /app/audio | wc -l' | tr -d ' ')"
 log "  演练库音频文件数: ${drill_audio}"
@@ -241,9 +299,11 @@ log "== 5/5 汇总 =="
 log "  备份包: $bundle"
 log "  独立库: ${drill_project} / ${drill_db}（与运行中库完全分离）"
 log "  表计数差异: ${mismatch} 处；音频指纹: ${audio_flag}；登录: $([[ ${login_ok} = 1 ]] && echo OK || echo FAIL)；业务探针: $([[ ${probe_ok} = 1 ]] && echo OK || echo FAIL)"
+drill_ok=1
 if [[ ${mismatch} -ne 0 || ${login_ok} -ne 1 || ${probe_ok} -ne 1 ]]; then
   log "  演练未通过，保留现场以便排查（--keep 生效）"
   keep=1
+  drill_ok=0
 fi
 
 if [[ ${keep} -eq 1 ]]; then
@@ -251,4 +311,11 @@ if [[ ${keep} -eq 1 ]]; then
 else
   "${compose[@]}" down -v >/dev/null 2>&1 || true
   log "  已清理独立项目与卷"
+fi
+
+# 失败必须以非 0 退出：即使 --keep 保留现场，CI/上线自动化也不能把失败误判成成功。
+if [[ ${drill_ok} -eq 1 ]]; then
+  exit 0
+else
+  exit 1
 fi

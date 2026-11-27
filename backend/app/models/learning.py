@@ -240,6 +240,67 @@ class BoardStudent(SQLModel):
     exam_ended: bool | None = None
 
 
+class PkBoardLastMatchPlayer(SQLModel):
+    """看板 PK 最近一场的单侧摘要：显示名、比分与胜负结果。"""
+
+    student_id: uuid.UUID
+    display_name: str | None = None
+    score: int = 0
+    result: str = "draw"  # win / lose / draw
+
+
+class PkBoardLastMatch(SQLModel):
+    """看板 PK 最近一场精简摘要：时间、玩家显示名、比分/胜者。"""
+
+    at: datetime | None = None
+    winner_display_name: str | None = None
+    winner_student_id: uuid.UUID | None = None
+    players: list[PkBoardLastMatchPlayer] = []
+
+
+class PkBoardSummary(SQLModel):
+    """课堂看板 PK 摘要（教师端只读；开厅仍走既有教师 PK 面板，这里不提供写操作）。
+
+    vocabulary 模块未开通时整段为 ``None``；不混入任务首答/掌握度/趋势口径。
+    """
+
+    open: bool = False
+    queue_count: int = 0
+    active_match_count: int = 0
+    matches_this_week: int = 0
+    last_match_at: datetime | None = None
+    last_match: PkBoardLastMatch | None = None
+
+
+class FarmBadgeCount(SQLModel):
+    """班级徽章分布项：既有 ``student_badge`` 账本按 key 聚合的在册人数。"""
+
+    key: str
+    label: str
+    count: int = 0
+
+
+class FarmTopHarvester(SQLModel):
+    """收获榜条目（教师看板，展示本班在册学生显示名；最多 5 人）。"""
+
+    display_name: str
+    harvest_count: int = 0
+
+
+class FarmBoardSummary(SQLModel):
+    """课堂看板专注农场摘要（教师端只读聚合；不改 XP/徽章/streak/plot）。
+
+    地块按登录账号跨班连续；这里只统计当前在册学生名下地块，跨班地块
+    不重复计入。vocabulary 模块未开通时整段为 ``None``。
+    """
+
+    participants: int = 0
+    mature_plots: int = 0
+    harvested_total: int = 0
+    badge_counts: list[FarmBadgeCount] = []
+    top_harvesters: list[FarmTopHarvester] = []
+
+
 class BoardData(SQLModel):
     classroom_code: str
     classroom_name: str
@@ -264,6 +325,9 @@ class BoardData(SQLModel):
     items: list[BoardItem]  # 题目骨架（顺序与各生 items 对齐）
     homework_title: str | None = None
     homework_exercise_id: uuid.UUID | None = None
+    # 词汇子模块只读摘要；vocabulary 模块未开通时为 null，不影响既有字段口径
+    vocabulary_pk: PkBoardSummary | None = None
+    vocabulary_farm: FarmBoardSummary | None = None
 
 
 class WeakWord(SQLModel):

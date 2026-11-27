@@ -32,16 +32,28 @@ from app.api.routes import (
     vocabulary_farm as _farm,
 )
 from app.api.routes import (
+    vocabulary_governance as _governance,
+)
+from app.api.routes import (
     vocabulary_import as _import,
 )
 from app.api.routes import (
+    vocabulary_leaderboard as _leaderboard,
+)
+from app.api.routes import (
     vocabulary_pk as _pk,
+)
+from app.api.routes import (
+    vocabulary_placement as _placement,
 )
 from app.api.routes import (
     vocabulary_quiz as _quiz,
 )
 from app.api.routes import (
     vocabulary_student as _student,
+)
+from app.api.routes import (
+    vocabulary_trend as _trend,
 )
 
 router = APIRouter()
@@ -52,10 +64,14 @@ _vocab_gate = [Depends(require_module("vocabulary"))]
 
 router.include_router(_import.router, tags=["vocabulary"], dependencies=_vocab_gate)
 router.include_router(_books.router, tags=["vocabulary"], dependencies=_vocab_gate)
+router.include_router(_governance.router, tags=["vocabulary"], dependencies=_vocab_gate)
 router.include_router(_assignments.router, tags=["vocabulary"])
+router.include_router(_trend.router, tags=["vocabulary"])
 router.include_router(_farm.router, tags=["vocabulary"])
 router.include_router(_quiz.router, tags=["vocabulary"])
 router.include_router(_student.router, tags=["vocabulary"])
 router.include_router(_pk.router, tags=["vocabulary"])
+router.include_router(_placement.router, tags=["vocabulary"])
+router.include_router(_leaderboard.router, tags=["vocabulary"])
 
 __all__ = ["router"]

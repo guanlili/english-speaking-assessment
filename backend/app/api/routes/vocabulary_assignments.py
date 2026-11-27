@@ -41,13 +41,21 @@ from app.models import (
     VocabularyAssignmentCreate,
     VocabularyAssignmentPublic,
     VocabularyClassResults,
+    VocabularyMasteryReport,
     VocabularyQuizAnswerReceipt,
     VocabularySession,
     VocabularySessionCreate,
     VocabularyTeacherAssignmentRow,
     VocabularyTodayPlan,
 )
-from app.services import entitlement, vocab_quiz, vocabulary_farm, vocabulary_review
+from app.models.vocabulary.reports import MASTERY_DEFAULT_WINDOW_DAYS
+from app.services import (
+    entitlement,
+    vocab_quiz,
+    vocabulary_farm,
+    vocabulary_mastery,
+    vocabulary_review,
+)
 from app.services import vocabulary as vocab_service
 
 router = APIRouter()
@@ -62,7 +70,7 @@ def list_assignments(
 ) -> Any:
     """教师任务列表：全部任务（含已结束）+ 名单进度汇总，按发布倒序。"""
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user, "vocabulary")
+    _require_classroom_teacher(classroom, current_user, "vocabulary", read_only=True)
     return vocab_service.teacher_assignment_rows(session, classroom.id)
 
 
@@ -132,13 +140,50 @@ def read_vocab_results(
     补考授权等扩展字段。
     """
     if assignment_id is not None:
-        return read_vocab_results_payload(session, code, assignment_id, current_user)
+        return read_vocab_results_payload(
+            session, code, assignment_id, current_user, read_only=True
+        )
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user, "vocabulary")
+    _require_classroom_teacher(classroom, current_user, "vocabulary", read_only=True)
     assignment = vocab_service.current_published_assignment(session, classroom.id)
     if assignment is None:
         return VocabularyClassResults(assignment=None)
-    return read_vocab_results_payload(session, code, assignment.id, current_user)
+    return read_vocab_results_payload(
+        session, code, assignment.id, current_user, read_only=True
+    )
+
+
+@router.get(
+    "/classes/{code}/vocabulary/mastery",
+    response_model=VocabularyMasteryReport,
+)
+def read_vocab_mastery(
+    session: SessionDep,
+    code: str,
+    current_user: TeacherUserDep,
+    assignment_id: uuid.UUID | None = None,
+    window_days: int = MASTERY_DEFAULT_WINDOW_DAYS,
+) -> Any:
+    """班级掌握度：首答正确率分段 + FSRS 状态分布 + 到期未复习条目数。
+
+    口径提醒：掌握度不是考试分数、不是能力等级；只统计本班教师任务轮
+    （kind=task）的首答，自主练习/错词复习/分班测不混入。``assignment_id``
+    缺省 = 本班全部任务（all_tasks）；给定 = 单任务口径。时间窗 7/30/90 天，
+    默认 30 天。
+    """
+    classroom = _get_classroom(session, code)
+    _require_classroom_teacher(classroom, current_user, "vocabulary", read_only=True)
+    vocabulary_mastery.validate_window_days(window_days)
+    assignment = None
+    if assignment_id is not None:
+        assignment = _get_assignment(session, classroom.id, assignment_id)
+    return vocabulary_mastery.class_vocabulary_mastery(
+        session,
+        classroom_id=classroom.id,
+        classroom_code=classroom.code,
+        assignment=assignment,
+        window_days=window_days,
+    )
 
 
 @router.get("/classes/{code}/vocabulary/today", response_model=VocabularyTodayPlan)
@@ -156,7 +201,9 @@ def read_vocab_today(
     （只读，归属校验：只允许本人轮次，不存在 404）。
     """
     classroom = _get_classroom(session, code)
-    student = _student_profile_of(session, classroom, current_user, "vocabulary")
+    student = _student_profile_of(
+        session, classroom, current_user, "vocabulary", read_only=True
+    )
     return _today_plan_payload(
         session, classroom.id, student.id, assignment_id, round_no
     )

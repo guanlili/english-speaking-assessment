@@ -49,6 +49,7 @@ import { Route as LayoutAdminSentenceframesRouteImport } from './routes/_layout/
 import { Route as LayoutAdminUnitsRouteImport } from './routes/_layout/admin.units'
 import { Route as LayoutAdminVocabbooksRouteImport } from './routes/_layout/admin.vocabbooks'
 import { Route as LayoutAdminVocablevelsRouteImport } from './routes/_layout/admin.vocablevels'
+import { Route as LayoutAdminVocabularyLicensesRouteImport } from './routes/_layout/admin.vocabulary-licenses'
 import { Route as LayoutSchoolMembersRouteImport } from './routes/_layout/school.members'
 import { Route as ExamCodeIndexRouteImport } from './routes/exam.$code.index'
 import { Route as ExamCodeResultRouteImport } from './routes/exam.$code.result'
@@ -60,7 +61,9 @@ import { Route as TCodeVocabRouteImport } from './routes/t.$code.vocab'
 import { Route as VocabCodeIndexRouteImport } from './routes/vocab.$code.index'
 import { Route as VocabCodeBooksRouteImport } from './routes/vocab.$code.books'
 import { Route as VocabCodeFarmRouteImport } from './routes/vocab.$code.farm'
+import { Route as VocabCodeLeaderboardRouteImport } from './routes/vocab.$code.leaderboard'
 import { Route as VocabCodePkRouteImport } from './routes/vocab.$code.pk'
+import { Route as VocabCodePlacementRouteImport } from './routes/vocab.$code.placement'
 import { Route as VocabCodePracticeRouteImport } from './routes/vocab.$code.practice'
 import { Route as VocabCodeRecordsRouteImport } from './routes/vocab.$code.records'
 import { Route as VocabCodeSelfRouteImport } from './routes/vocab.$code.self'
@@ -266,6 +269,12 @@ const LayoutAdminVocablevelsRoute = LayoutAdminVocablevelsRouteImport.update({
   path: '/vocablevels',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
+const LayoutAdminVocabularyLicensesRoute =
+  LayoutAdminVocabularyLicensesRouteImport.update({
+    id: '/vocabulary-licenses',
+    path: '/vocabulary-licenses',
+    getParentRoute: () => LayoutAdminRoute,
+  } as any)
 const LayoutSchoolMembersRoute = LayoutSchoolMembersRouteImport.update({
   id: '/school/members',
   path: '/school/members',
@@ -321,9 +330,19 @@ const VocabCodeFarmRoute = VocabCodeFarmRouteImport.update({
   path: '/farm',
   getParentRoute: () => VocabCodeRoute,
 } as any)
+const VocabCodeLeaderboardRoute = VocabCodeLeaderboardRouteImport.update({
+  id: '/leaderboard',
+  path: '/leaderboard',
+  getParentRoute: () => VocabCodeRoute,
+} as any)
 const VocabCodePkRoute = VocabCodePkRouteImport.update({
   id: '/pk',
   path: '/pk',
+  getParentRoute: () => VocabCodeRoute,
+} as any)
+const VocabCodePlacementRoute = VocabCodePlacementRouteImport.update({
+  id: '/placement',
+  path: '/placement',
   getParentRoute: () => VocabCodeRoute,
 } as any)
 const VocabCodePracticeRoute = VocabCodePracticeRouteImport.update({
@@ -386,6 +405,7 @@ export interface FileRoutesByFullPath {
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
+  '/admin/vocabulary-licenses': typeof LayoutAdminVocabularyLicensesRoute
   '/school/members': typeof LayoutSchoolMembersRoute
   '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
@@ -393,7 +413,9 @@ export interface FileRoutesByFullPath {
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/farm': typeof VocabCodeFarmRoute
+  '/vocab/$code/leaderboard': typeof VocabCodeLeaderboardRoute
   '/vocab/$code/pk': typeof VocabCodePkRoute
+  '/vocab/$code/placement': typeof VocabCodePlacementRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
   '/vocab/$code/self': typeof VocabCodeSelfRoute
@@ -438,6 +460,7 @@ export interface FileRoutesByTo {
   '/admin/units': typeof LayoutAdminUnitsRoute
   '/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
+  '/admin/vocabulary-licenses': typeof LayoutAdminVocabularyLicensesRoute
   '/school/members': typeof LayoutSchoolMembersRoute
   '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
@@ -445,7 +468,9 @@ export interface FileRoutesByTo {
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/farm': typeof VocabCodeFarmRoute
+  '/vocab/$code/leaderboard': typeof VocabCodeLeaderboardRoute
   '/vocab/$code/pk': typeof VocabCodePkRoute
+  '/vocab/$code/placement': typeof VocabCodePlacementRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
   '/vocab/$code/self': typeof VocabCodeSelfRoute
@@ -497,6 +522,7 @@ export interface FileRoutesById {
   '/_layout/admin/units': typeof LayoutAdminUnitsRoute
   '/_layout/admin/vocabbooks': typeof LayoutAdminVocabbooksRoute
   '/_layout/admin/vocablevels': typeof LayoutAdminVocablevelsRoute
+  '/_layout/admin/vocabulary-licenses': typeof LayoutAdminVocabularyLicensesRoute
   '/_layout/school/members': typeof LayoutSchoolMembersRoute
   '/exam/$code/result': typeof ExamCodeResultRoute
   '/p/$code/result': typeof PCodeResultRoute
@@ -504,7 +530,9 @@ export interface FileRoutesById {
   '/t/$code/vocab': typeof TCodeVocabRoute
   '/vocab/$code/books': typeof VocabCodeBooksRoute
   '/vocab/$code/farm': typeof VocabCodeFarmRoute
+  '/vocab/$code/leaderboard': typeof VocabCodeLeaderboardRoute
   '/vocab/$code/pk': typeof VocabCodePkRoute
+  '/vocab/$code/placement': typeof VocabCodePlacementRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
   '/vocab/$code/self': typeof VocabCodeSelfRoute
@@ -556,6 +584,7 @@ export interface FileRouteTypes {
     | '/admin/units'
     | '/admin/vocabbooks'
     | '/admin/vocablevels'
+    | '/admin/vocabulary-licenses'
     | '/school/members'
     | '/exam/$code/result'
     | '/p/$code/result'
@@ -563,7 +592,9 @@ export interface FileRouteTypes {
     | '/t/$code/vocab'
     | '/vocab/$code/books'
     | '/vocab/$code/farm'
+    | '/vocab/$code/leaderboard'
     | '/vocab/$code/pk'
+    | '/vocab/$code/placement'
     | '/vocab/$code/practice'
     | '/vocab/$code/records'
     | '/vocab/$code/self'
@@ -608,6 +639,7 @@ export interface FileRouteTypes {
     | '/admin/units'
     | '/admin/vocabbooks'
     | '/admin/vocablevels'
+    | '/admin/vocabulary-licenses'
     | '/school/members'
     | '/exam/$code/result'
     | '/p/$code/result'
@@ -615,7 +647,9 @@ export interface FileRouteTypes {
     | '/t/$code/vocab'
     | '/vocab/$code/books'
     | '/vocab/$code/farm'
+    | '/vocab/$code/leaderboard'
     | '/vocab/$code/pk'
+    | '/vocab/$code/placement'
     | '/vocab/$code/practice'
     | '/vocab/$code/records'
     | '/vocab/$code/self'
@@ -666,6 +700,7 @@ export interface FileRouteTypes {
     | '/_layout/admin/units'
     | '/_layout/admin/vocabbooks'
     | '/_layout/admin/vocablevels'
+    | '/_layout/admin/vocabulary-licenses'
     | '/_layout/school/members'
     | '/exam/$code/result'
     | '/p/$code/result'
@@ -673,7 +708,9 @@ export interface FileRouteTypes {
     | '/t/$code/vocab'
     | '/vocab/$code/books'
     | '/vocab/$code/farm'
+    | '/vocab/$code/leaderboard'
     | '/vocab/$code/pk'
+    | '/vocab/$code/placement'
     | '/vocab/$code/practice'
     | '/vocab/$code/records'
     | '/vocab/$code/self'
@@ -993,6 +1030,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminVocablevelsRouteImport
       parentRoute: typeof LayoutAdminRoute
     }
+    '/_layout/admin/vocabulary-licenses': {
+      id: '/_layout/admin/vocabulary-licenses'
+      path: '/vocabulary-licenses'
+      fullPath: '/admin/vocabulary-licenses'
+      preLoaderRoute: typeof LayoutAdminVocabularyLicensesRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
     '/_layout/school/members': {
       id: '/_layout/school/members'
       path: '/school/members'
@@ -1070,11 +1114,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VocabCodeFarmRouteImport
       parentRoute: typeof VocabCodeRoute
     }
+    '/vocab/$code/leaderboard': {
+      id: '/vocab/$code/leaderboard'
+      path: '/leaderboard'
+      fullPath: '/vocab/$code/leaderboard'
+      preLoaderRoute: typeof VocabCodeLeaderboardRouteImport
+      parentRoute: typeof VocabCodeRoute
+    }
     '/vocab/$code/pk': {
       id: '/vocab/$code/pk'
       path: '/pk'
       fullPath: '/vocab/$code/pk'
       preLoaderRoute: typeof VocabCodePkRouteImport
+      parentRoute: typeof VocabCodeRoute
+    }
+    '/vocab/$code/placement': {
+      id: '/vocab/$code/placement'
+      path: '/placement'
+      fullPath: '/vocab/$code/placement'
+      preLoaderRoute: typeof VocabCodePlacementRouteImport
       parentRoute: typeof VocabCodeRoute
     }
     '/vocab/$code/practice': {
@@ -1119,6 +1177,7 @@ interface LayoutAdminRouteChildren {
   LayoutAdminUnitsRoute: typeof LayoutAdminUnitsRoute
   LayoutAdminVocabbooksRoute: typeof LayoutAdminVocabbooksRoute
   LayoutAdminVocablevelsRoute: typeof LayoutAdminVocablevelsRoute
+  LayoutAdminVocabularyLicensesRoute: typeof LayoutAdminVocabularyLicensesRoute
   LayoutAdminIndexRoute: typeof LayoutAdminIndexRoute
 }
 
@@ -1133,6 +1192,7 @@ const LayoutAdminRouteChildren: LayoutAdminRouteChildren = {
   LayoutAdminUnitsRoute: LayoutAdminUnitsRoute,
   LayoutAdminVocabbooksRoute: LayoutAdminVocabbooksRoute,
   LayoutAdminVocablevelsRoute: LayoutAdminVocablevelsRoute,
+  LayoutAdminVocabularyLicensesRoute: LayoutAdminVocabularyLicensesRoute,
   LayoutAdminIndexRoute: LayoutAdminIndexRoute,
 }
 
@@ -1216,7 +1276,9 @@ const TCodeRouteWithChildren = TCodeRoute._addFileChildren(TCodeRouteChildren)
 interface VocabCodeRouteChildren {
   VocabCodeBooksRoute: typeof VocabCodeBooksRoute
   VocabCodeFarmRoute: typeof VocabCodeFarmRoute
+  VocabCodeLeaderboardRoute: typeof VocabCodeLeaderboardRoute
   VocabCodePkRoute: typeof VocabCodePkRoute
+  VocabCodePlacementRoute: typeof VocabCodePlacementRoute
   VocabCodePracticeRoute: typeof VocabCodePracticeRoute
   VocabCodeRecordsRoute: typeof VocabCodeRecordsRoute
   VocabCodeSelfRoute: typeof VocabCodeSelfRoute
@@ -1226,7 +1288,9 @@ interface VocabCodeRouteChildren {
 const VocabCodeRouteChildren: VocabCodeRouteChildren = {
   VocabCodeBooksRoute: VocabCodeBooksRoute,
   VocabCodeFarmRoute: VocabCodeFarmRoute,
+  VocabCodeLeaderboardRoute: VocabCodeLeaderboardRoute,
   VocabCodePkRoute: VocabCodePkRoute,
+  VocabCodePlacementRoute: VocabCodePlacementRoute,
   VocabCodePracticeRoute: VocabCodePracticeRoute,
   VocabCodeRecordsRoute: VocabCodeRecordsRoute,
   VocabCodeSelfRoute: VocabCodeSelfRoute,

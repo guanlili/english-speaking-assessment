@@ -1,0 +1,26 @@
+# backups 现存包清单（整改后，2026-11-26T23:44:46Z UTC，volc-belp 115.190.122.24）
+# 字段：mtime | 属主:组 | 权限 | 包名
+2026-11-19 22:58:07.107762814 +0800 | deploy:deploy | drwx------ | backups/bundle-20261119T145808Z-VqCpUnRy
+2026-11-20 03:31:17.318619401 +0800 | deploy:deploy | drwx------ | backups/bundle-20261119T193118Z-UPYhW52A
+2026-11-21 03:31:19.194625344 +0800 | deploy:deploy | drwx------ | backups/bundle-20261120T193120Z-4AH0SDkx
+2026-11-22 03:31:20.249683652 +0800 | deploy:deploy | drwx------ | backups/bundle-20261121T193121Z-yNsTh2q0
+2026-11-23 03:31:19.227823363 +0800 | deploy:deploy | drwx------ | backups/bundle-20261122T193120Z-7GUBOvrF
+2026-11-24 03:31:19.225573139 +0800 | deploy:deploy | drwx------ | backups/bundle-20261123T193120Z-JVz5erAH
+2026-11-25 03:31:19.471863921 +0800 | deploy:deploy | drwx------ | backups/bundle-20261124T193120Z-vdfYB6BP
+2026-11-26 03:31:18.476013146 +0800 | deploy:deploy | drwx------ | backups/bundle-20261125T193119Z-On8NfLO2
+2026-11-26 11:00:42.213307186 +0800 | deploy:deploy | drwxr-x--- | backups/bundle-20261126T030043Z-IXEoOPwQ
+2026-11-26 15:14:20.687277971 +0800 | deploy:deploy | drwxr-x--- | backups/bundle-20261126T071421Z-kmDT6xnx
+2026-11-26 16:54:29.904223073 +0800 | deploy:deploy | drwxr-x--- | backups/bundle-20261126T085431Z-lGVWNzL1
+2026-11-26 23:54:43.819269065 +0800 | deploy:deploy | drwxr-x--- | backups/bundle-20261126T155445Z-RgZWuSG7
+2026-11-27 03:31:19.383324121 +0800 | deploy:deploy | drwx------ | backups/bundle-20261126T193120Z-0ZFcyRnC
+2026-11-27 07:42:01.085122738 +0800 | deploy:deploy | drwx------ | backups/bundle-20261126T234202Z-JC0q5nyp
+
+# 总览：14 个 bundle，22G
+# 最新包元数据（bundle-20261126T234202Z-JC0q5nyp）：
+format=1
+created_at=2026-11-26T23:42:01Z
+commit=4011db1a61e6c22d58c7e3a74a9ab3527709bdc4
+consistency=online; stop writes for a consistent database/audio snapshot
+attempt_rows=4621
+database_bytes=2902905
+audio_bytes=1639488351

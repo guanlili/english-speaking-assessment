@@ -29,3 +29,13 @@ export function moduleGuardState(
   if (query.isError || !hasModule(key)) return "denied"
   return "allowed"
 }
+
+/**
+ * 只读口径（#567 第 3 项）：模块非 active（未购/关闭/待生效/到期）时，
+ * 历史回看与 CSV 导出仍可访问；写入口隐藏。state 缺省按非只读处理（保守拦截）。
+ */
+export function isModuleReadonlyState(
+  state: string | null | undefined,
+): boolean {
+  return state != null && state !== "active"
+}

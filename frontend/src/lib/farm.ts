@@ -153,3 +153,37 @@ export function badgeText(badge: {
       : null,
   }
 }
+
+/**
+ * 教师看板徽章分布：count 缺失按 0，剔除 ≤0，按人数降序、key 次序稳定。
+ * 后端已排序，这里做防御性归一，避免前端展示口径漂移。
+ */
+export function sortFarmBadges<
+  T extends { key: string; count?: number | null },
+>(badges: T[] | undefined): T[] {
+  return (badges ?? [])
+    .map((badge) => ({ ...badge, count: badge.count ?? 0 }))
+    .filter((badge) => (badge.count ?? 0) > 0)
+    .sort(
+      (a, b) => (b.count ?? 0) - (a.count ?? 0) || a.key.localeCompare(b.key),
+    )
+}
+
+/** 收获榜：剔除 harvest_count ≤0，按次数降序后取前 n。 */
+export function topFarmHarvesters<
+  T extends { display_name: string; harvest_count?: number | null },
+>(harvesters: T[] | undefined, n: number): T[] {
+  return (harvesters ?? [])
+    .filter((entry) => (entry.harvest_count ?? 0) > 0)
+    .sort((a, b) => (b.harvest_count ?? 0) - (a.harvest_count ?? 0))
+    .slice(0, n)
+}
+
+/** 徽章人数总和；列表为空返回 null（空态展示「–」，不折算成 0）。 */
+export function farmBadgeTotal(
+  badges: Array<{ count?: number | null }> | undefined,
+): number | null {
+  const list = badges ?? []
+  if (list.length === 0) return null
+  return list.reduce((acc, badge) => acc + (badge.count ?? 0), 0)
+}

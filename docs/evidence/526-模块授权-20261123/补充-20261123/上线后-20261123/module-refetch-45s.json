@@ -1,0 +1,125 @@
+{
+  "captured_at": "2026-11-23T10:34:50Z",
+  "block": "G3b",
+  "purpose": "#526 上线后补验第四块：在真浏览器里验证 PR #537「模块清单 staleTime 45s 并按陈旧度聚焦重取」的实际行为——A 校 speaking 置为未来 effective_at，教师先不见口语入口；到点后不整页 reload，靠缓存过期 + 聚焦/可见性重取使口语入口自动出现。",
+  "target": {
+    "pr": 537,
+    "pr_title": "fix(entitlement): 模块清单 staleTime 45s 并按陈旧度聚焦重取 (#517)",
+    "branch": "fix/modules-refetch-45s",
+    "head_sha": "8b1ece31bb82a4ffd0505a6cb158b644edb5e6e2",
+    "head_sha_short": "8b1ece3",
+    "worktree": "agents/s_000Vum426Xa/worktree-modules",
+    "dev_server": "http://127.0.0.1:5176（从该 worktree frontend 独立起的 Vite dev server，node_modules 已存在；/api 代理到 http://127.0.0.1:8000）",
+    "react_query_version": "5.107.1"
+  },
+  "environment": "本机本地 docker compose（db 5433 / backend 8000），本地测试库 app；未连接/写入生产库与生产服务器，未触发部署，未改产品代码。",
+  "account": {
+    "username": "teacher-a@e2e526.seed",
+    "role": "teacher",
+    "school_slug": "e2e-526-a",
+    "class_code": "D5V8CH",
+    "note": ".seed 合成匿名账号，无真实姓名/手机号/token 入档"
+  },
+  "code_under_test": {
+    "file": "frontend/src/hooks/useModules.ts",
+    "query_key": ["modulesMe"],
+    "stale_time_ms": 45000,
+    "refetch_on_window_focus": true,
+    "trigger_path": "react-query 内置 focusManager 监听 window visibilitychange；仅当缓存已超过 staleTime 才重取，不在 45s 内来回切 tab 时打请求，不另写全局 visibilitychange 轮询",
+    "sidebar_entries": {
+      "speaking_gated": [
+        {"title_zh": "题目库", "path": "/create", "module": "speaking"},
+        {"title_zh": "录音导出", "path": "/exports", "module": "speaking"}
+      ],
+      "always_visible": [
+        {"title_zh": "我的课堂", "path": "/classrooms"},
+        {"title_zh": "平台更新", "path": "/changelog"}
+      ]
+    }
+  },
+  "entitlement_setup": {
+    "baseline_before_grant": {"http": 200, "modules": ["speaking"]},
+    "grant": {
+      "endpoint": "PUT /admin/tenants/0b8be946-280a-45ad-9872-9dd8d1704467/modules/speaking",
+      "body": {"enabled": true, "effective_at": "2026-11-23T10:31:56.517077+00:00"},
+      "http": 200
+    },
+    "planned_effective_at": "2026-11-23T10:31:56.517077+00:00",
+    "pre_due_snapshot": {"captured_at": "2026-11-23T10:30:26Z", "http": 200, "modules": []}
+  },
+  "requests": [
+    {
+      "seq": 1,
+      "endpoint": "GET /api/v1/modules/me",
+      "trigger": "页面加载挂载（onMount）",
+      "epoch_ms": 1795429846392,
+      "iso_utc": "2026-11-23T10:30:46.392Z",
+      "duration_ms": 28,
+      "expected_body_modules": [],
+      "body_corroboration": "挂载在到点前；授权后 API 快照 pre_due_snapshot=[]，侧边栏口语门禁入口隐藏"
+    },
+    {
+      "seq": 2,
+      "endpoint": "GET /api/v1/modules/me",
+      "trigger": "window visibilitychange 派发（focusManager 注册在 window 的同一监听路径）",
+      "epoch_ms": 1795429969424,
+      "iso_utc": "2026-11-23T10:32:49.424Z",
+      "duration_ms": 20,
+      "expected_body_modules": ["speaking"],
+      "body_corroboration": "到点后直连 API 快照 post_due_snapshot=[\"speaking\"]；侧边栏口语入口出现"
+    }
+  ],
+  "request_timing": {
+    "interval_between_requests_ms": 123032,
+    "interval_between_requests_s": 123.032,
+    "cache_age_at_refetch_s": 123.032,
+    "stale_time_s": 45,
+    "refetch_after_due_s": 52.907,
+    "total_modules_me_requests_in_this_document": 2,
+    "polling_storm": false,
+    "note": "两次请求间隔 123.032s，远超 45s staleTime；文档生命周期内仅挂载一次重取 + 一次聚焦重取，无定时轮询、无 45s 内重复切 tab 触发的重复请求。"
+  },
+  "post_due_api_snapshot": {"captured_at": "2026-11-23T10:32:40Z", "http": 200, "modules": ["speaking"]},
+  "zero_reload_check": {
+    "marker_installed_after_mount": "g3b-marker",
+    "marker_alive_after_refetch": true,
+    "history_length_before": 50,
+    "history_length_after": 50,
+    "performance_buffer_retains_both_entries": true,
+    "note": "挂载后注入的 reload 标记在重取后仍存活；history.length 前后均为 50；PerformanceResourceTiming 缓冲仍同时保留 #1/#2 两条记录（整页 reload 会清空缓冲并只留一条挂载记录）。#1 到 #2 之间无整页导航/刷新。"
+  },
+  "sidebar_observation": {
+    "pre_due": ["我的课堂", "平台更新"],
+    "post_due": ["我的课堂", "录音导出", "题目库", "平台更新"],
+    "entry_appeared_without_reload": true
+  },
+  "browser_evidence": [
+    {
+      "file": "G3b-未到点-课堂列表-zh.png",
+      "view": "/classrooms（A 校教师，到点前）",
+      "visible": "侧边栏仅「我的课堂」「平台更新」；无「题目库」「录音导出」；课堂 D5V8CH 卡片可见"
+    },
+    {
+      "file": "G3b-到点后-入口自动出现.png",
+      "view": "/classrooms（A 校教师，到点后聚焦重取）",
+      "visible": "侧边栏在「我的课堂」与「平台更新」之间出现「录音导出」「题目库」；同一标签页、未整页刷新"
+    }
+  ],
+  "environment_caveats": [
+    "嵌入式自动化浏览器在真实切换标签时不派发原生 visibilitychange/focus 事件：页面内探针监听 visibilitychange 与 focus，切走再切回后日志为空，document.hasFocus()=false。本轮重取是在 window 上派发 visibilitychange 触发的，走的是 focusManager 注册在 window 的同一监听；真实浏览器原生 OS 聚焦/标签可见性路径未在本轮自动化中直接观察到。",
+    "页面内 fetch 包装器未截获 SDK 请求：生成客户端在初始化时持有 globalThis.fetch 引用，后装的包装不影响已绑定引用。请求次数与时间取自 PerformanceResourceTiming（performance.getEntriesByType('resource')），响应体由直连 API 快照佐证。",
+    "教师父路由 t.$code.index.tsx 在 guard=denied 的 effect 内立即 navigate 回 /classrooms，拦截面板只渲染一帧即 SPA 跳转；本轮未在该分支抓到稳定面板帧。双语拦截面板首屏已由本目录 G1/G4 既有 committed 证据覆盖，本块不重复抓拍、不补造面板截图。"
+  ],
+  "cleanup": {
+    "restore": {
+      "endpoint": "PUT /admin/tenants/0b8be946-280a-45ad-9872-9dd8d1704467/modules/speaking",
+      "body": {"enabled": true, "effective_at": null},
+      "http": 200,
+      "db_row": {"school_slug": "e2e-526-a", "module_key": "speaking", "enabled": true, "effective_at": null}
+    },
+    "post_cleanup_modules_me": {"http": 200, "modules": ["speaking"]},
+    "other_school_untouched": {"school_slug": "e2e-526-b", "modules": ["vocabulary"]},
+    "terminal_modules": {"a_D5V8CH": ["speaking"], "b_VJS6CD": ["vocabulary"]}
+  },
+  "conclusion": "PASS（附环境限制）：到点后清单缓存已超过 45s staleTime，聚焦/可见性路径触发一次 /modules/me 重取，清单由 [] 变为 [\"speaking\"]，侧边栏「题目库」「录音导出」口语入口自动出现；期间零整页 reload（标记存活、history.length 不变、性能缓冲保留两条记录），无轮询风暴。限制：嵌入式环境未派发原生聚焦/可见性事件，重取由 window 合成 visibilitychange 触发同一 focusManager 监听；原生浏览器聚焦路径与稳定 denied 面板帧未在本轮自动化内直接取证。"
+}

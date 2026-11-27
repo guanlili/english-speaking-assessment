@@ -6,11 +6,23 @@
 - 状态传播延迟：服务端状态变更 → 客户端 SSE 可见（目标 P95 ≤ 1.5 s）；
 - 并发通道：20 条对局 SSE + 20 条轮询快照通道（合计 40），保持 `--hold-seconds`。
 
-口径说明：
+两种副本形态（`--replicas`）：
 
-- 探针内部临时起一个单 worker uvicorn（ephemeral 端口），httpx 走真实 TCP，
-  避免 ASGI 测试传输缓冲 SSE 响应体；不触碰 8001/5175 上的既有进程。
-- 测量值只反映本机参考环境，不作为线上容量承诺。
+- ``1``（单副本基线）：探针内部临时起一个单 worker uvicorn（ephemeral 端口），
+  httpx 走真实 TCP；不触碰 8000/5173 上的既有开发进程。
+- ``2``（双副本）：拉起两个**独立 OS 子进程**（`pk_probe_server.py`），
+  共享同一本地探针库；作答与通道尽量跨副本分布，单独标注跨副本传播样本。
+  不用「同一进程两个线程」冒充副本。
+
+环境口径（三类数字严格区分，本机数字不写成生产承诺）：
+
+- 本机单副本：`--replicas 1`，开发机 + 本地 Docker Postgres(5433)；
+- 本机双副本：`--replicas 2`，同上，两进程共库；
+- 目标环境：预发/测试或生产同规格非生产环境复测（本脚本的安全闸拒绝连远端，
+  目标环境复测走独立 runbook，见 `docs/qa/20261125/d-capacity/README.md`）。
+
+其他口径：
+
 - 不写 `VocabularyAnswer`、不触教师任务统计；合成数据跑完随库清理。
 - 本脚本不入 CI lint / 无 runbook（与 `perf_baseline.py` 同类 dev-only 工具）。
 
@@ -18,7 +30,9 @@
 
   export PK_PROBE_PASSWORD="<本机合成库临时口令>"
   POSTGRES_SERVER=localhost POSTGRES_PORT=5433 \\
-    .venv/bin/python scripts/pk_capacity_probe.py
+    .venv/bin/python scripts/pk_capacity_probe.py --replicas 1
+  POSTGRES_SERVER=localhost POSTGRES_PORT=5433 \\
+    .venv/bin/python scripts/pk_capacity_probe.py --replicas 2
   # 可选：--players 20 --hold-seconds 60 --keep-db --port 8003
 
 探针教师/学生账号口令取自环境变量 ``PK_PROBE_PASSWORD``，脚本不内置默认弱口令；
@@ -31,9 +45,13 @@ import contextlib
 import json
 import os
 import statistics
+import subprocess
 import sys
 import threading
 import time
+
+import httpx
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
@@ -91,7 +109,7 @@ def _probe_uri() -> tuple[str, str]:
 
 
 def _prepare_database():
-    """创建本次专用探针库；`--keep-db` 时保留。返回 engine。"""
+    """创建本次专用探针库；`--keep-db` 时保留。返回 (engine, probe_uri)。"""
     from sqlalchemy import create_engine, text
     from sqlalchemy.pool import NullPool
 
@@ -107,7 +125,7 @@ def _prepare_database():
     # 池上限对齐 40 通道 + 作答并发；单 worker 前提（设计稿 §1.2）
     engine = create_engine(probe_uri, pool_pre_ping=True, pool_size=20, max_overflow=20)
     install_tenant_bind(engine)
-    return engine
+    return engine, probe_uri
 
 
 def _seed(engine, players: int) -> dict[str, object]:
@@ -115,7 +133,16 @@ def _seed(engine, players: int) -> dict[str, object]:
     from sqlmodel import Session, SQLModel
 
     from app.core.security import get_password_hash
-    from app.models import DEFAULT_TENANT_ID, Classroom, Student, Tenant, User
+    from app.models import (
+        DEFAULT_TENANT_ID,
+        MODULE_SPEAKING,
+        MODULE_VOCABULARY,
+        Classroom,
+        Student,
+        Tenant,
+        TenantModule,
+        User,
+    )
 
     SQLModel.metadata.create_all(engine)
     teacher_email = "pk-probe-teacher@local.test"
@@ -124,6 +151,15 @@ def _seed(engine, players: int) -> dict[str, object]:
             Tenant(id=DEFAULT_TENANT_ID, slug="pk-probe", name_zh="PK 探针租户")
         )
         session.flush()
+        # 探针租户显式双开模块（探针库不走 init_db 种子，缺行会被授权门 403）
+        for module_key in (MODULE_SPEAKING, MODULE_VOCABULARY):
+            session.add(
+                TenantModule(
+                    tenant_id=DEFAULT_TENANT_ID,
+                    module_key=module_key,
+                    enabled=True,
+                )
+            )
         teacher = User(
             email=teacher_email,
             full_name="PK 探针教师",
@@ -181,7 +217,28 @@ def _fmt_ms(value: float) -> str:
     return f"{value:.1f} ms"
 
 
-def _start_server(app, port: int) -> tuple[object, threading.Thread, str]:
+def _free_port() -> int:
+    import socket
+
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+@dataclass
+class Replica:
+    """一个后端副本；单副本模式走线程内 uvicorn，双副本走独立子进程。"""
+
+    index: int
+    base_url: str
+    proc: subprocess.Popen | None = None
+    thread: threading.Thread | None = None
+    server: object | None = None
+
+
+def _start_inthread_server(app, port: int) -> tuple[object, threading.Thread, str]:
     """后台线程起单 worker uvicorn；返回 (server, thread, base_url)。"""
     import uvicorn
 
@@ -198,8 +255,57 @@ def _start_server(app, port: int) -> tuple[object, threading.Thread, str]:
     return server, thread, base_url
 
 
-async def _login(client, username: str) -> dict[str, str]:
-    resp = await client.post(
+async def _wait_healthy(base_url: str, timeout_s: float = 15.0) -> None:
+    """轮询 liveness 端点直到进程响应（不触库；DB 连通性由首个业务请求验证）。"""
+    import httpx
+
+    deadline = time.monotonic() + timeout_s
+    async with httpx.AsyncClient(base_url=base_url, timeout=3.0) as client:
+        while time.monotonic() < deadline:
+            try:
+                resp = await client.get("/api/v1/utils/health-check/")
+                if resp.status_code == 200:
+                    return
+            except Exception:  # noqa: BLE001 - 进程尚未起来，继续等待
+                pass
+            await asyncio.sleep(0.1)
+    raise SystemExit(f"副本未在 {timeout_s}s 内就绪：{base_url}")
+
+
+async def _start_replicas(
+    args: argparse.Namespace, probe_uri: str
+) -> list[Replica]:
+    """按 --replicas 拉起 1（线程内基线）或 2（独立子进程）个副本。"""
+    from app.main import app
+
+    replicas: list[Replica] = []
+    if args.replicas == 1:
+        server, thread, base_url = _start_inthread_server(app, args.port)
+        replicas.append(Replica(0, base_url, thread=thread, server=server))
+        return replicas
+
+    for replica_id in range(args.replicas):
+        port = _free_port()
+        env = {
+            **os.environ,
+            "PK_PROBE_DATABASE_URI": probe_uri,
+            "PK_PROBE_PORT": str(port),
+            "PK_PROBE_REPLICA_ID": str(replica_id),
+        }
+        proc = subprocess.Popen(
+            [sys.executable, str(Path(__file__).parent / "pk_probe_server.py")],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        base_url = f"http://127.0.0.1:{port}"
+        await _wait_healthy(base_url)
+        replicas.append(Replica(replica_id, base_url, proc=proc))
+    return replicas
+
+
+async def _login(clients: list[httpx.AsyncClient], replica: int, username: str) -> dict[str, str]:
+    resp = await clients[replica].post(
         "/api/v1/login/access-token",
         data={"username": username, "password": PROBE_PASSWORD},
     )
@@ -209,7 +315,7 @@ async def _login(client, username: str) -> dict[str, str]:
 
 
 async def _subscribe_sse(
-    client,
+    client: httpx.AsyncClient,
     headers: dict[str, str],
     match_id: str,
     sink: list[tuple[float, dict]],
@@ -240,28 +346,34 @@ async def _subscribe_sse(
 async def run_probe(args: argparse.Namespace) -> int:
     from app.core.db import set_engine
 
-    engine = _prepare_database()
+    engine, probe_uri = _prepare_database()
     set_engine(engine)
     seed = _seed(engine, args.players)
     classroom_id = seed["classroom_id"]
     students = seed["students"]
 
-    import httpx
+    replicas = await _start_replicas(args, probe_uri)
+    clients = [httpx.AsyncClient(base_url=r.base_url, timeout=30.0) for r in replicas]
+    replica_count = len(replicas)
+    rr = {"n": 0}
 
-    from app.main import app
-
-    server, server_thread, base_url = _start_server(app, args.port)
-    client = httpx.AsyncClient(base_url=base_url, timeout=30.0)
+    def next_replica() -> int:
+        idx = rr["n"] % replica_count
+        rr["n"] += 1
+        return idx
 
     answer_latencies_ms: list[float] = []
+    answer_replicas: list[int] = []
     propagation_s: list[float] = []
+    propagation_cross: list[float] = []
     propagation_errors: list[str] = []
     channel_errors: list[str] = []
     sse_channels = 0
     poll_channels = 0
 
     try:
-        teacher_headers = await _login(client, str(seed["teacher_email"]))
+        teacher_replica = 0
+        teacher_headers = await _login(clients, teacher_replica, str(seed["teacher_email"]))
 
         words = [
             {
@@ -271,7 +383,7 @@ async def run_probe(args: argparse.Namespace) -> int:
             }
             for i in range(max(args.players, 12))
         ]
-        book_resp = await client.post(
+        book_resp = await clients[teacher_replica].post(
             "/api/v1/vocabulary/books",
             headers=teacher_headers,
             json={
@@ -279,13 +391,14 @@ async def run_probe(args: argparse.Namespace) -> int:
                 "scope": "classroom",
                 "classroom_id": classroom_id,
                 "words": words,
+                "confirm_reviewed": True,
             },
         )
         book_resp.raise_for_status()
         book = book_resp.json()
         spelling = {w["meaning_zh"]: w["headword"] for w in book["words"]}
 
-        lobby_resp = await client.post(
+        lobby_resp = await clients[teacher_replica].post(
             f"/api/v1/classes/{PROBE_CODE}/vocabulary/pk/lobby",
             headers=teacher_headers,
             json={
@@ -297,12 +410,13 @@ async def run_probe(args: argparse.Namespace) -> int:
         )
         lobby_resp.raise_for_status()
 
-        # 学生登录 + 加入排队；先加入方的首次响应可能尚未带上 match_id，
-        # 配对完成后再拉一次大厅快照补齐对局归属。
+        # 学生登录 + 加入排队；尽量跨副本分布。先加入方的首次响应可能尚未带上
+        # match_id，配对完成后再拉一次大厅快照补齐对局归属。
         player_clients: list[dict[str, object]] = []
         for student in students:
-            headers = await _login(client, str(student["username"]))
-            join_resp = await client.post(
+            replica = next_replica()
+            headers = await _login(clients, replica, str(student["username"]))
+            join_resp = await clients[replica].post(
                 f"/api/v1/classes/{PROBE_CODE}/vocabulary/pk/lobby/join",
                 headers=headers,
             )
@@ -312,12 +426,14 @@ async def run_probe(args: argparse.Namespace) -> int:
                     "headers": headers,
                     "student_id": str(student["student_id"]),
                     "match_id": None,
+                    "replica": replica,
                 }
             )
 
         for player in player_clients:
+            replica = int(player["replica"])
             lobby = (
-                await client.get(
+                await clients[replica].get(
                     f"/api/v1/classes/{PROBE_CODE}/vocabulary/pk/lobby",
                     headers=player["headers"],
                 )
@@ -332,16 +448,21 @@ async def run_probe(args: argparse.Namespace) -> int:
             for match_id, pair in matches.items()
             if match_id != "None" and match_id is not None
         }
+        replica_dist = ", ".join(
+            f"副本{r.index} {sum(p['replica'] == r.index for p in player_clients)} 人"
+            for r in replicas
+        )
         print(
             f"\n规模：{len(player_clients)} 玩家 / {len(active_matches)} 场 1v1"
-            f"（目标 20 玩家 / 10 场）· 服务 {base_url}\n"
+            f"（目标 20 玩家 / 10 场）· 副本数 {replica_count}（{replica_dist}）\n"
         )
 
         # ── 作答延迟：每名玩家提交第 1 题正确答案 ──────────────────────────
         async def _answer_first(player: dict[str, object]) -> None:
             headers = player["headers"]
+            replica = int(player["replica"])
             match_id = str(player["match_id"])
-            state = await client.get(
+            state = await clients[replica].get(
                 f"/api/v1/classes/{PROBE_CODE}/vocabulary/pk/matches/{match_id}/state",
                 headers=headers,
             )
@@ -349,7 +470,7 @@ async def run_probe(args: argparse.Namespace) -> int:
             item = state.json()["items"][0]
             answer = spelling[item["meaning_zh"]]
             started = time.monotonic()
-            resp = await client.post(
+            resp = await clients[replica].post(
                 f"/api/v1/classes/{PROBE_CODE}/vocabulary/pk/matches/{match_id}/answers",
                 headers=headers,
                 json={
@@ -361,6 +482,7 @@ async def run_probe(args: argparse.Namespace) -> int:
             )
             resp.raise_for_status()
             answer_latencies_ms.append((time.monotonic() - started) * 1000)
+            answer_replicas.append(replica)
 
         await asyncio.gather(*(_answer_first(p) for p in player_clients))
 
@@ -368,8 +490,13 @@ async def run_probe(args: argparse.Namespace) -> int:
         sample_matches = list(active_matches.items())[: args.propagation_matches]
         for match_id, pair in sample_matches:
             side_a, side_b = pair[0], pair[1]
+            watcher_replica = int(side_b["replica"])
+            # 提交方尽量走与观察者不同的副本（双副本下即跨副本样本）
+            submit_replica = (
+                1 - watcher_replica if replica_count > 1 else watcher_replica
+            )
             baseline = (
-                await client.get(
+                await clients[watcher_replica].get(
                     f"/api/v1/classes/{PROBE_CODE}/vocabulary/pk/matches/{match_id}/state",
                     headers=side_b["headers"],
                 )
@@ -379,18 +506,23 @@ async def run_probe(args: argparse.Namespace) -> int:
             stop = asyncio.Event()
             sub_task = asyncio.create_task(
                 _subscribe_sse(
-                    client, side_b["headers"], match_id, sink, stop, propagation_errors
+                    clients[watcher_replica],
+                    side_b["headers"],
+                    match_id,
+                    sink,
+                    stop,
+                    propagation_errors,
                 )
             )
 
             a_state = (
-                await client.get(
+                await clients[submit_replica].get(
                     f"/api/v1/classes/{PROBE_CODE}/vocabulary/pk/matches/{match_id}/state",
                     headers=side_a["headers"],
                 )
             ).json()
             a_answer = spelling[a_state["items"][1]["meaning_zh"]]
-            a_submit = await client.post(
+            a_submit = await clients[submit_replica].post(
                 f"/api/v1/classes/{PROBE_CODE}/vocabulary/pk/matches/{match_id}/answers",
                 headers=side_a["headers"],
                 json={
@@ -403,13 +535,13 @@ async def run_probe(args: argparse.Namespace) -> int:
             a_submit.raise_for_status()
 
             b_state = (
-                await client.get(
+                await clients[watcher_replica].get(
                     f"/api/v1/classes/{PROBE_CODE}/vocabulary/pk/matches/{match_id}/state",
                     headers=side_b["headers"],
                 )
             ).json()
             b_answer = spelling[b_state["items"][1]["meaning_zh"]]
-            b_submit = await client.post(
+            b_submit = await clients[watcher_replica].post(
                 f"/api/v1/classes/{PROBE_CODE}/vocabulary/pk/matches/{match_id}/answers",
                 headers=side_b["headers"],
                 json={
@@ -443,6 +575,8 @@ async def run_probe(args: argparse.Namespace) -> int:
                 propagation_errors.append(f"传播超时 {match_id}")
             else:
                 propagation_s.append(delta)
+                if submit_replica != watcher_replica:
+                    propagation_cross.append(delta)
 
         # ── 并发通道保持：20 SSE + 20 轮询，保持 hold-seconds ─────────────
         hold_stop = asyncio.Event()
@@ -452,8 +586,9 @@ async def run_probe(args: argparse.Namespace) -> int:
         async def _hold_sse(player: dict[str, object]) -> None:
             nonlocal sse_channels
             match_id = str(player["match_id"])
+            replica = int(player["replica"])
             try:
-                async with client.stream(
+                async with clients[replica].stream(
                     "GET",
                     f"/api/v1/classes/{PROBE_CODE}/vocabulary/pk/matches/{match_id}/events",
                     headers=player["headers"],
@@ -474,10 +609,11 @@ async def run_probe(args: argparse.Namespace) -> int:
         async def _hold_poll(player: dict[str, object]) -> None:
             nonlocal poll_channels
             match_id = str(player["match_id"])
+            replica = int(player["replica"])
             try:
                 poll_channels += 1
                 while not hold_stop.is_set():
-                    resp = await client.get(
+                    resp = await clients[replica].get(
                         f"/api/v1/classes/{PROBE_CODE}/vocabulary/pk/matches/{match_id}/state",
                         headers=player["headers"],
                     )
@@ -505,7 +641,12 @@ async def run_probe(args: argparse.Namespace) -> int:
         answer_p95 = _pct(answer_latencies_ms, 0.95)
         prop_p50 = statistics.median(propagation_s) if propagation_s else 0.0
         prop_p95 = _pct(propagation_s, 0.95)
+        cross_p95 = _pct(propagation_cross, 0.95) if propagation_cross else None
+        answer_dist = {
+            r.index: answer_replicas.count(r.index) for r in replicas
+        }
 
+        print(f"\n== 容量报告（{args.label} · {replica_count} 副本） ==")
         print("| 指标 | 实测 | 目标 | 判定 |")
         print("|---|---|---|---|")
         answer_ok = answer_p95 <= ANSWER_TARGET_MS
@@ -514,10 +655,17 @@ async def run_probe(args: argparse.Namespace) -> int:
             f"P50 {_fmt_ms(answer_p50)} / P95 {_fmt_ms(answer_p95)} | "
             f"P95 ≤ {_fmt_ms(ANSWER_TARGET_MS)} | {'达标' if answer_ok else '超目标'} |"
         )
+        dist_str = ", ".join(f"副本{k} {v} 笔" for k, v in sorted(answer_dist.items()))
+        print(f"| 作答副本分布 | {dist_str} | — | — |")
         prop_ok = prop_p95 <= PROPAGATION_TARGET_S
+        cross_note = (
+            f"；跨副本 n={len(propagation_cross)} P95 {cross_p95:.2f}s"
+            if propagation_cross
+            else ""
+        )
         print(
             f"| 状态传播延迟（n={len(propagation_s)}） | "
-            f"P50 {prop_p50:.2f}s / P95 {prop_p95:.2f}s | "
+            f"P50 {prop_p50:.2f}s / P95 {prop_p95:.2f}s{cross_note} | "
             f"P95 ≤ {PROPAGATION_TARGET_S}s | {'达标' if prop_ok else '超目标'} |"
         )
         channel_total = sse_channels + poll_channels
@@ -536,13 +684,27 @@ async def run_probe(args: argparse.Namespace) -> int:
             "\n注：以上为本机参考环境实测值；线上容量需按部署规格复测。"
             "多 worker 部署时以前端轮询快照为准（设计稿 §1.2）。"
         )
-        return 0 if answer_ok and prop_ok and channel_total >= 40 else 1
+        return (
+            0
+            if answer_ok and prop_ok and channel_total >= 40
+            else 1
+        )
     finally:
         set_engine(None)
-        with contextlib.suppress(Exception):
-            server.should_exit = True
-            server_thread.join(timeout=5)
-        await client.aclose()
+        for client in clients:
+            await client.aclose()
+        for replica in replicas:
+            if replica.proc is not None:
+                replica.proc.terminate()
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    replica.proc.wait(timeout=5)
+                if replica.proc.poll() is None:
+                    replica.proc.kill()
+            if replica.server is not None:
+                with contextlib.suppress(Exception):
+                    replica.server.should_exit = True
+            if replica.thread is not None:
+                replica.thread.join(timeout=5)
         engine.dispose()
         if not args.keep_db:
             from sqlalchemy import create_engine, text
@@ -570,7 +732,19 @@ def main() -> int:
         help="抽样测量传播延迟的对局数（其余只计入并发通道）",
     )
     parser.add_argument(
-        "--port", type=int, default=0, help="临时 uvicorn 端口（0=随机）"
+        "--replicas",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help="1=线程内单副本基线；2=两个独立子进程共库双副本",
+    )
+    parser.add_argument(
+        "--label",
+        default="local",
+        help="报告环境标注（local-single / local-dual / target-*），不改变任何行为",
+    )
+    parser.add_argument(
+        "--port", type=int, default=0, help="单副本模式临时 uvicorn 端口（0=随机）"
     )
     parser.add_argument("--keep-db", action="store_true", help="保留探针库便于排查")
     args = parser.parse_args()

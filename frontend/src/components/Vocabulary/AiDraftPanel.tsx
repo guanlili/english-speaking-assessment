@@ -58,6 +58,8 @@ export function AiDraftPanel({
   const [drafts, setDrafts] = useState<EditableDraft[] | null>(null)
   const [dropped, setDropped] = useState(0)
   const [generatedAt, setGeneratedAt] = useState<string | null>(null)
+  // AI 草稿默认待审；勾选“我已核对”才直接通过（自评留痕）
+  const [confirmReviewed, setConfirmReviewed] = useState(false)
 
   const generate = useMutation({
     mutationFn: () =>
@@ -114,16 +116,18 @@ export function AiDraftPanel({
             meaning_en: row.meaning_en.trim() || null,
             example_en: row.example_en.trim() || null,
           })),
+          confirm_reviewed: confirmReviewed,
         },
       }),
     onSuccess: (data) => {
       toast.success(
         t({
-          zh: `已加入词库：新增 ${data.added} 个，跳过重复 ${data.skipped} 个。`,
-          en: `Added to the book: ${data.added} new, ${data.skipped} duplicates skipped.`,
+          zh: `已加入词库：新增 ${data.added} 个，跳过重复 ${data.skipped} 个。${confirmReviewed ? "" : "词条默认待审，审核通过后才可发布。"}`,
+          en: `Added to the book: ${data.added} new, ${data.skipped} duplicates skipped.${confirmReviewed ? "" : " Entries stay pending until approved."}`,
         }),
       )
       setDrafts(null)
+      setConfirmReviewed(false)
       void queryClient.invalidateQueries({ queryKey: ["vocab-teacher"] })
     },
     onError: (error) => {
@@ -167,8 +171,8 @@ export function AiDraftPanel({
         </CardTitle>
         <CardDescription>
           {t({
-            zh: "AI 只起草，不发布任务：预览、编辑后确认加入词库。可接受拼写变体请之后在词条编辑里手动维护。",
-            en: "AI drafts only — nothing is published. Preview, edit, then confirm into a book. Accepted spelling variants are maintained manually afterwards.",
+            zh: "AI 只起草，不发布任务：预览、编辑后确认加入词库。草稿默认待审，审核通过后才可发布；可接受拼写变体请之后在词条编辑里手动维护。",
+            en: "AI drafts only — nothing is published. Preview, edit, then confirm into a book. Drafts stay pending until approved; accepted spelling variants are maintained manually afterwards.",
           })}
         </CardDescription>
       </CardHeader>
@@ -330,6 +334,18 @@ export function AiDraftPanel({
               ))}
             </ul>
             <div className="flex flex-wrap items-center gap-3">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={confirmReviewed}
+                  onChange={(event) => setConfirmReviewed(event.target.checked)}
+                  className="size-4 accent-[var(--primary)]"
+                />
+                {t({
+                  zh: "我已逐条核对这些 AI 草稿（默认待审，勾选后直接通过）",
+                  en: "I checked these AI drafts one by one (pending by default; approve directly if checked)",
+                })}
+              </label>
               <Button
                 disabled={!canImport}
                 onClick={() => importDrafts.mutate(included)}

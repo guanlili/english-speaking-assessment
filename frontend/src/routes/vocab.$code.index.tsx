@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Circle,
   Clock,
+  Compass,
   LibraryBig,
   ListChecks,
   RefreshCw,
@@ -43,7 +44,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { LeaderboardStudentCard } from "@/components/Vocabulary/Leaderboard/LeaderboardStudentCard"
+import { VocabReadonlyBanner } from "@/components/Vocabulary/VocabReadonlyBanner"
 import { APP_NAME } from "@/config"
+import { useModules } from "@/hooks/useModules"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { loadStudent } from "@/lib/classroom-student"
 import { useI18n } from "@/lib/i18n"
@@ -106,6 +110,11 @@ function VocabHomePage() {
     enabled: student !== null,
   })
 
+  // 只读口径（#567 第 3 项）：模块非 active 时历史/错词/导出可见，写入口隐藏；
+  // 复习队列、学习建议等写导向查询在只读态不再请求（后端对其仍保持 403）。
+  const { readonlyOf } = useModules()
+  const readonly = readonlyOf("vocabulary") !== null
+
   // 「再练一轮」：上一轮已完成后开新的复习轮（round_no=max+1），
   // 历史轮次与首轮任务成绩保持不变
   const newRound = useMutation({
@@ -167,7 +176,7 @@ function VocabHomePage() {
     queryKey: ["vocab", code, "review-queue", student?.id],
     queryFn: () =>
       VocabularyService.readReviewQueue({ code: code.toUpperCase() }),
-    enabled: student !== null,
+    enabled: student !== null && !readonly,
     staleTime: 30_000,
   })
 
@@ -214,7 +223,7 @@ function VocabHomePage() {
       VocabularyService.readStudentRecommendation({
         code: code.toUpperCase(),
       }),
-    enabled: student !== null,
+    enabled: student !== null && !readonly,
   })
 
   // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
@@ -316,6 +325,11 @@ function VocabHomePage() {
           </p>
         </section>
 
+        <VocabReadonlyBanner />
+
+        {/* 班内学习榜：仅整班开启且对学生可见时由卡片自行决定是否渲染 */}
+        <LeaderboardStudentCard code={code} />
+
         {/* 自主练习入口：从词库挑词，与教师任务分开记录 */}
         <section
           aria-label={t({ zh: "自主练习", en: "Self practice" })}
@@ -339,12 +353,14 @@ function VocabHomePage() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button asChild>
-                <Link to="/vocab/$code/books" params={{ code }}>
-                  <LibraryBig />
-                  {t({ zh: "去词库挑词", en: "Browse Word Books" })}
-                </Link>
-              </Button>
+              {!readonly && (
+                <Button asChild>
+                  <Link to="/vocab/$code/books" params={{ code }}>
+                    <LibraryBig />
+                    {t({ zh: "去词库挑词", en: "Browse Word Books" })}
+                  </Link>
+                </Button>
+              )}
               <Button asChild variant="outline">
                 <Link to="/vocab/$code/records" params={{ code }}>
                   {t(TERMS.practiceRecords)}
@@ -355,223 +371,268 @@ function VocabHomePage() {
           </div>
         </section>
 
-        {/* 课堂 PK 入口：自愿参与的 1v1 对战，独立于教师任务成绩 */}
-        <section
-          aria-label={t({ zh: "课堂对战 PK", en: "Classroom PK" })}
-          className="rounded-3xl border bg-card p-5 sm:p-6"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
-                <Swords className="size-5" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-base font-semibold">
-                  {t({ zh: "课堂对战 PK", en: "Classroom PK" })}
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {t({
-                    zh: "本班自愿加入，两人配对 1v1；对战反馈不影响老师任务成绩，结果仅本局可见。",
-                    en: "Optional in-class 1v1 pairing. Battle feedback never counts toward teacher tasks, and results are visible to this match only.",
-                  })}
-                </p>
+        {/* 粗分档小测入口：探针式建议起点，独立于任务/自主练习统计（只读态隐藏） */}
+        {!readonly && (
+          <section
+            aria-label={t({ zh: "测一测从哪开始", en: "Placement quiz" })}
+            className="rounded-3xl border bg-card p-5 sm:p-6"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                  <Compass className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-base font-semibold">
+                    {t({
+                      zh: "测一测从哪开始",
+                      en: "Find your starting level",
+                    })}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {t({
+                      zh: "一组自适应四选一，给出建议起点级别和推荐词库；粗分档建议，不是定级或考试分数。",
+                      en: "A short adaptive quiz suggests a starting level and word book. Rough guide, not a level or exam score.",
+                    })}
+                  </p>
+                </div>
               </div>
+              <Button asChild variant="outline">
+                <Link to="/vocab/$code/placement" params={{ code }}>
+                  <Compass />
+                  {t({ zh: "去测一测", en: "Start" })}
+                </Link>
+              </Button>
             </div>
-            <Button asChild variant="outline">
-              <Link to="/vocab/$code/pk" params={{ code }}>
-                <Swords />
-                {t({ zh: "进入 PK", en: "Open PK" })}
-              </Link>
-            </Button>
-          </div>
-        </section>
+          </section>
+        )}
 
-        {/* 专注农场入口：自愿参与的成长地块，XP/徽章复用既有课堂账本 */}
-        <section
-          aria-label={t({ zh: "专注农场", en: "Focus Farm" })}
-          className="rounded-3xl border bg-card p-5 sm:p-6"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
-                <Sprout className="size-5" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-base font-semibold">
-                  {t({ zh: "专注农场", en: "Focus Farm" })}
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {t({
-                    zh: "完成有效练习让地块成长，成熟后收获 XP；独立于教师任务成绩，不做公开排行。",
-                    en: "Grow your plot with valid practice and harvest XP when mature. Separate from teacher tasks, no public leaderboard.",
-                  })}
-                </p>
+        {/* 课堂 PK 入口：自愿参与的 1v1 对战，独立于教师任务成绩（只读态隐藏） */}
+        {!readonly && (
+          <section
+            aria-label={t({ zh: "课堂对战 PK", en: "Classroom PK" })}
+            className="rounded-3xl border bg-card p-5 sm:p-6"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                  <Swords className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-base font-semibold">
+                    {t({ zh: "课堂对战 PK", en: "Classroom PK" })}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {t({
+                      zh: "本班自愿加入，两人配对 1v1；对战反馈不影响老师任务成绩，结果仅本局可见。",
+                      en: "Optional in-class 1v1 pairing. Battle feedback never counts toward teacher tasks, and results are visible to this match only.",
+                    })}
+                  </p>
+                </div>
               </div>
+              <Button asChild variant="outline">
+                <Link to="/vocab/$code/pk" params={{ code }}>
+                  <Swords />
+                  {t({ zh: "进入 PK", en: "Open PK" })}
+                </Link>
+              </Button>
             </div>
-            <Button asChild variant="outline">
-              <Link to="/vocab/$code/farm" params={{ code }}>
-                <Sprout />
-                {t({ zh: "进入农场", en: "Open Farm" })}
-              </Link>
-            </Button>
-          </div>
-        </section>
+          </section>
+        )}
 
-        {/* 今日复习：FSRS 到期队列 + 每日负担控制（独立于首答统计与错词本） */}
-        <section
-          aria-label={t({ zh: "今日复习", en: "Today's Review" })}
-          className="rounded-3xl border bg-card p-5 sm:p-6"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
-                <BrainCircuit className="size-5" />
-              </span>
-              <div className="min-w-0">
-                <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
-                  {t({ zh: "今日复习", en: "Today's Review" })}
-                  <Badge variant="outline" className="text-[10px] font-normal">
-                    {t({ zh: "记忆调度", en: "Spaced Repetition" })}
-                  </Badge>
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {t({
-                    zh: "按记忆间隔排出今天该复习的词；认读与拼写分别记录。",
-                    en: "Words due today by spaced repetition; recognition and spelling are tracked separately.",
-                  })}
-                </p>
+        {/* 专注农场入口：自愿参与的成长地块，XP/徽章复用既有课堂账本（只读态隐藏） */}
+        {!readonly && (
+          <section
+            aria-label={t({ zh: "专注农场", en: "Focus Farm" })}
+            className="rounded-3xl border bg-card p-5 sm:p-6"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                  <Sprout className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-base font-semibold">
+                    {t({ zh: "专注农场", en: "Focus Farm" })}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {t({
+                      zh: "完成有效练习让地块成长，成熟后收获 XP；独立于教师任务成绩，不做公开排行。",
+                      en: "Grow your plot with valid practice and harvest XP when mature. Separate from teacher tasks, no public leaderboard.",
+                    })}
+                  </p>
+                </div>
               </div>
+              <Button asChild variant="outline">
+                <Link to="/vocab/$code/farm" params={{ code }}>
+                  <Sprout />
+                  {t({ zh: "进入农场", en: "Open Farm" })}
+                </Link>
+              </Button>
             </div>
-            <Button
-              onClick={() => startFsrsReview.mutate()}
-              disabled={!canStartFsrsReview || startFsrsReview.isPending}
-            >
-              <RotateCcw />
-              {startFsrsReview.isPending
-                ? t({ zh: "开一轮复习…", en: "Starting…" })
-                : t({ zh: "开始复习", en: "Start Review" })}
-            </Button>
-          </div>
+          </section>
+        )}
 
-          {/* 每日负担摘要：到期数 / 今日已复习 / 剩余额度 / 上限 */}
-          <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {(
-              [
-                {
-                  label: { zh: "今日到期", en: "Due today" },
-                  value: reviewQueue?.due_today_count ?? 0,
-                },
-                {
-                  label: { zh: "今日已复习", en: "Reviewed today" },
-                  value: reviewQueue?.reviewed_today_count ?? 0,
-                },
-                {
-                  label: { zh: "今日剩余额度", en: "Left today" },
-                  value: reviewQueue?.remaining_today_count ?? 0,
-                },
-                {
-                  label: { zh: "每日上限", en: "Daily limit" },
-                  value: reviewQueue?.daily_limit ?? 0,
-                },
-              ] as const
-            ).map((stat) => (
-              <div
-                key={stat.label.en}
-                className="rounded-2xl bg-secondary/50 px-4 py-3"
+        {/* 今日复习：FSRS 到期队列 + 每日负担控制（只读态隐藏） */}
+        {!readonly && (
+          <section
+            aria-label={t({ zh: "今日复习", en: "Today's Review" })}
+            className="rounded-3xl border bg-card p-5 sm:p-6"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                  <BrainCircuit className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
+                    {t({ zh: "今日复习", en: "Today's Review" })}
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-normal"
+                    >
+                      {t({ zh: "记忆调度", en: "Spaced Repetition" })}
+                    </Badge>
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {t({
+                      zh: "按记忆间隔排出今天该复习的词；认读与拼写分别记录。",
+                      en: "Words due today by spaced repetition; recognition and spelling are tracked separately.",
+                    })}
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => startFsrsReview.mutate()}
+                disabled={!canStartFsrsReview || startFsrsReview.isPending}
               >
-                <dt className="text-xs text-muted-foreground">
-                  {t(stat.label)}
-                </dt>
-                <dd className="mt-1 text-lg font-semibold tabular-nums">
-                  {stat.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
+                <RotateCcw />
+                {startFsrsReview.isPending
+                  ? t({ zh: "开一轮复习…", en: "Starting…" })
+                  : t({ zh: "开始复习", en: "Start Review" })}
+              </Button>
+            </div>
 
-          {reviewItems.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">
-              {reviewQueueQuery.isPending
-                ? t({ zh: "正在加载复习队列…", en: "Loading review queue…" })
-                : t({
-                    zh: "今天没有到期需要复习的词，继续保持！",
-                    en: "Nothing due for review today. Keep it up!",
-                  })}
-            </p>
-          ) : (
-            <ul className="mt-4 grid gap-2">
-              {reviewItems.slice(0, 6).map((item) => (
-                <li
-                  key={`${item.word_id}-${item.capability}`}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border px-4 py-3"
+            {/* 每日负担摘要：到期数 / 今日已复习 / 剩余额度 / 上限 */}
+            <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {(
+                [
+                  {
+                    label: { zh: "今日到期", en: "Due today" },
+                    value: reviewQueue?.due_today_count ?? 0,
+                  },
+                  {
+                    label: { zh: "今日已复习", en: "Reviewed today" },
+                    value: reviewQueue?.reviewed_today_count ?? 0,
+                  },
+                  {
+                    label: { zh: "今日剩余额度", en: "Left today" },
+                    value: reviewQueue?.remaining_today_count ?? 0,
+                  },
+                  {
+                    label: { zh: "每日上限", en: "Daily limit" },
+                    value: reviewQueue?.daily_limit ?? 0,
+                  },
+                ] as const
+              ).map((stat) => (
+                <div
+                  key={stat.label.en}
+                  className="rounded-2xl bg-secondary/50 px-4 py-3"
                 >
-                  <span className="min-w-0 flex-1">
-                    <span className="font-mono font-semibold">
-                      {item.headword}
+                  <dt className="text-xs text-muted-foreground">
+                    {t(stat.label)}
+                  </dt>
+                  <dd className="mt-1 text-lg font-semibold tabular-nums">
+                    {stat.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+
+            {reviewItems.length === 0 ? (
+              <p className="mt-4 text-sm text-muted-foreground">
+                {reviewQueueQuery.isPending
+                  ? t({ zh: "正在加载复习队列…", en: "Loading review queue…" })
+                  : t({
+                      zh: "今天没有到期需要复习的词，继续保持！",
+                      en: "Nothing due for review today. Keep it up!",
+                    })}
+              </p>
+            ) : (
+              <ul className="mt-4 grid gap-2">
+                {reviewItems.slice(0, 6).map((item) => (
+                  <li
+                    key={`${item.word_id}-${item.capability}`}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border px-4 py-3"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="font-mono font-semibold">
+                        {item.headword}
+                      </span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {item.meaning_zh}
+                      </span>
                     </span>
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {item.meaning_zh}
-                    </span>
-                  </span>
-                  <Badge variant="outline" className="shrink-0">
-                    {t(
-                      REVIEW_CAPABILITY_LABELS[
-                        item.capability as keyof typeof REVIEW_CAPABILITY_LABELS
-                      ] ?? { zh: item.capability, en: item.capability },
-                    )}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    {t(overdueLabel(item.overdue_days ?? 0))}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {item.last_is_correct === null ||
-                    item.last_is_correct === undefined
-                      ? "–"
-                      : item.last_is_correct
-                        ? t({ zh: "上次答对", en: "Last correct" })
-                        : t({ zh: "上次答错", en: "Last missed" })}
-                  </span>
-                  {item.interval_days != null && (
+                    <Badge variant="outline" className="shrink-0">
+                      {t(
+                        REVIEW_CAPABILITY_LABELS[
+                          item.capability as keyof typeof REVIEW_CAPABILITY_LABELS
+                        ] ?? { zh: item.capability, en: item.capability },
+                      )}
+                    </Badge>
                     <span className="text-xs text-muted-foreground">
+                      {t(overdueLabel(item.overdue_days ?? 0))}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {item.last_is_correct === null ||
+                      item.last_is_correct === undefined
+                        ? "–"
+                        : item.last_is_correct
+                          ? t({ zh: "上次答对", en: "Last correct" })
+                          : t({ zh: "上次答错", en: "Last missed" })}
+                    </span>
+                    {item.interval_days != null && (
+                      <span className="text-xs text-muted-foreground">
+                        {t({
+                          zh: `间隔 ${item.interval_days} 天`,
+                          en: `${item.interval_days}-day interval`,
+                        })}
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground tabular-nums">
                       {t({
-                        zh: `间隔 ${item.interval_days} 天`,
-                        en: `${item.interval_days}-day interval`,
+                        zh: `复习 ${item.reps ?? 0} · 遗忘 ${item.lapses ?? 0}`,
+                        en: `${item.reps ?? 0} reviews · ${item.lapses ?? 0} lapses`,
                       })}
                     </span>
-                  )}
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {t({
-                      zh: `复习 ${item.reps ?? 0} · 遗忘 ${item.lapses ?? 0}`,
-                      en: `${item.reps ?? 0} reviews · ${item.lapses ?? 0} lapses`,
-                    })}
-                  </span>
-                  {(item.suggested_prompt_types ?? []).length > 0 && (
-                    <span className="flex flex-wrap gap-1">
-                      {(item.suggested_prompt_types ?? []).map((type) => (
-                        <span
-                          key={type}
-                          className="rounded-lg border border-primary/25 bg-secondary/60 px-2 py-0.5 text-xs"
-                        >
-                          {t(vocabPromptMeta(type).label)}
-                        </span>
-                      ))}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+                    {(item.suggested_prompt_types ?? []).length > 0 && (
+                      <span className="flex flex-wrap gap-1">
+                        {(item.suggested_prompt_types ?? []).map((type) => (
+                          <span
+                            key={type}
+                            className="rounded-lg border border-primary/25 bg-secondary/60 px-2 py-0.5 text-xs"
+                          >
+                            {t(vocabPromptMeta(type).label)}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
 
-          <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-            {t({
-              zh: "复习状态跟随你的账号，换班后继续保留；历史练习记录与快照不会被改写。这里只展示真实计数，不预测记忆留存率。",
-              en: "Review state follows your account across classes; past records and snapshots are never rewritten. Counts are real only — no retention forecast.",
-            })}
-          </p>
-        </section>
+            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+              {t({
+                zh: "复习状态跟随你的账号，换班后继续保留；历史练习记录与快照不会被改写。这里只展示真实计数，不预测记忆留存率。",
+                en: "Review state follows your account across classes; past records and snapshots are never rewritten. Counts are real only — no retention forecast.",
+              })}
+            </p>
+          </section>
+        )}
 
-        {/* 今日练习建议：按真实首答记录生成，规则可解释，不是能力评定 */}
-        {recommendation && (
+        {/* 今日练习建议：按真实首答记录生成，规则可解释，不是能力评定（只读态隐藏） */}
+        {!readonly && recommendation && (
           <section
             aria-label={t(TERMS.vocabRecommendation)}
             className="rounded-3xl border bg-card p-5 sm:p-6"
@@ -660,7 +721,13 @@ function VocabHomePage() {
                       <span className="ml-2 text-xs text-muted-foreground">
                         {focus.meaning_zh}
                       </span>
-                      <span className="ml-2 text-xs text-destructive">
+                      <span
+                        className="ml-2 text-xs text-destructive"
+                        title={t({
+                          zh: "历史累计错误次数，只增不减；不是掌握度评估，只用于安排复习。",
+                          en: "Historical cumulative misses, never decreasing; not a mastery score — for review planning only.",
+                        })}
+                      >
                         {t({
                           zh: `错 ${focus.wrong_count} 次`,
                           en: `missed ×${focus.wrong_count}`,
@@ -710,11 +777,16 @@ function VocabHomePage() {
                   <button
                     type="button"
                     onClick={() =>
-                      void navigate({
-                        to: "/vocab/$code/practice",
-                        params: { code },
-                        search: { assignment: row.assignment_id },
-                      })
+                      readonly
+                        ? void navigate({
+                            to: "/vocab/$code/records",
+                            params: { code },
+                          })
+                        : void navigate({
+                            to: "/vocab/$code/practice",
+                            params: { code },
+                            search: { assignment: row.assignment_id },
+                          })
                     }
                     className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border bg-card px-4 py-3.5 text-left transition-colors hover:border-primary/40"
                   >
@@ -866,7 +938,14 @@ function VocabHomePage() {
                     {t({ zh: "刷新", en: "Refresh" })}
                   </span>
                 </Button>
-                {closedReason ? (
+                {readonly ? (
+                  <Button asChild variant="outline" size="sm">
+                    <Link to="/vocab/$code/records" params={{ code }}>
+                      {t(TERMS.practiceRecords)}
+                      <ArrowRight />
+                    </Link>
+                  </Button>
+                ) : closedReason ? (
                   <Badge variant="outline" className="shrink-0 text-amber-600">
                     <Clock className="size-3" />
                     {closedReason === "archived"
@@ -1096,17 +1175,18 @@ function VocabHomePage() {
                 </CardDescription>
               </div>
             </div>
-            {wrongWords.some((word) => word.practiceable !== false) && (
-              <Button
-                onClick={() => startReview.mutate()}
-                disabled={startReview.isPending}
-              >
-                <RotateCcw />
-                {startReview.isPending
-                  ? t({ zh: "开一轮复习…", en: "Starting…" })
-                  : t({ zh: "复习错词", en: "Review Wrong Words" })}
-              </Button>
-            )}
+            {!readonly &&
+              wrongWords.some((word) => word.practiceable !== false) && (
+                <Button
+                  onClick={() => startReview.mutate()}
+                  disabled={startReview.isPending}
+                >
+                  <RotateCcw />
+                  {startReview.isPending
+                    ? t({ zh: "开一轮复习…", en: "Starting…" })
+                    : t({ zh: "复习错词", en: "Review Wrong Words" })}
+                </Button>
+              )}
           </CardHeader>
           <CardContent className="pb-0">
             {wrongQuery.isPending ? (
@@ -1138,8 +1218,8 @@ function VocabHomePage() {
                           {t({ zh: "历史错误", en: "Misses" })}
                           <InfoHint
                             label={t({
-                              zh: "按每轮第一次作答拼错累计；一次答对不删除、不冲抵。",
-                              en: "Counts first-try misses across rounds. Getting it right once removes nothing.",
+                              zh: "历史累计错误次数：按每轮第一次作答拼错累计，只增不减；一次答对不删除、不冲抵。这不是掌握度评估，只用于安排复习。",
+                              en: "Historical cumulative misses: first-try misses counted across rounds, never decreasing; one correct answer removes nothing. This is not a mastery score — for review planning only.",
                             })}
                           />
                         </span>

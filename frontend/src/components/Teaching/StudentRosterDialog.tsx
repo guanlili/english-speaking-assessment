@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { Pencil, RotateCcw, Trash2, UserMinus } from "lucide-react"
 import { useState } from "react"
-import { ApiError, StudentsService } from "@/client"
+import { ApiError, type StudentAccountOut, StudentsService } from "@/client"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -28,6 +28,15 @@ import {
 import useCustomToast from "@/hooks/useCustomToast"
 import { useI18n } from "@/lib/i18n"
 import { extractErrorMessage } from "@/utils"
+
+/** 账号展示：优先学号；种子账号学号为空时回退邮箱前缀（如 qa.student1）。 */
+function accountLabel(row: StudentAccountOut): string {
+  const username = row.username?.trim()
+  if (username) return username
+  const email = row.email?.trim()
+  if (email) return email.split("@")[0]
+  return "—"
+}
 
 function StudentRosterDialog({
   classroomId,
@@ -238,88 +247,92 @@ function StudentRosterDialog({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {students.map((s) => (
-                <TableRow key={s.student.id}>
-                  <TableCell className="font-medium">
-                    {s.student.display_name}
-                  </TableCell>
-                  <TableCell className="font-mono">
-                    {s.username ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    {s.username ? (
-                      <Badge variant="outline">
-                        {t({ zh: "在班", en: "Enrolled" })}
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary">
-                        {t({ zh: "已移出", en: "Unlinked" })}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      {s.username && (
+              {students.map((s) => {
+                // 绑定状态以真实账号绑定（user_id）为准：种子账号学号可能为空，
+                // 不能用 username 真假判定「在班/已移出」。
+                const bound = Boolean(s.student.user_id)
+                const account = accountLabel(s)
+                return (
+                  <TableRow key={s.student.id}>
+                    <TableCell className="font-medium">
+                      {s.student.display_name}
+                    </TableCell>
+                    <TableCell className="font-mono">{account}</TableCell>
+                    <TableCell>
+                      {bound ? (
+                        <Badge variant="outline">
+                          {t({ zh: "在班", en: "Enrolled" })}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">
+                          {t({ zh: "已移出", en: "Unlinked" })}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        {bound && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t({
+                              zh: "重置密码",
+                              en: "Reset Password",
+                            })}
+                            disabled={resetPendingId === s.student.id}
+                            onClick={() => {
+                              resetMutation.mutate(s.student.id)
+                            }}
+                          >
+                            <RotateCcw className="size-3.5" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon-sm"
                           aria-label={t({
-                            zh: "重置密码",
-                            en: "Reset Password",
+                            zh: `修改 ${s.student.display_name} 的姓名`,
+                            en: `Rename ${s.student.display_name}`,
                           })}
-                          disabled={resetPendingId === s.student.id}
                           onClick={() => {
-                            resetMutation.mutate(s.student.id)
+                            setRenameValue(s.student.display_name)
+                            setRenameTarget({
+                              id: s.student.id,
+                              name: s.student.display_name,
+                            })
                           }}
                         >
-                          <RotateCcw className="size-3.5" />
+                          <Pencil className="size-3.5" />
                         </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={t({
-                          zh: `修改 ${s.student.display_name} 的姓名`,
-                          en: `Rename ${s.student.display_name}`,
-                        })}
-                        onClick={() => {
-                          setRenameValue(s.student.display_name)
-                          setRenameTarget({
-                            id: s.student.id,
-                            name: s.student.display_name,
-                          })
-                        }}
-                      >
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      {s.username && (
+                        {bound && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t({
+                              zh: "移出课堂",
+                              en: "Remove from classroom",
+                            })}
+                            onClick={() => setRemoveTarget(s.student.id)}
+                          >
+                            <UserMinus className="size-3.5" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon-sm"
                           aria-label={t({
-                            zh: "移出课堂",
-                            en: "Remove from classroom",
+                            zh: "从名单删除",
+                            en: "Delete from roster",
                           })}
-                          onClick={() => setRemoveTarget(s.student.id)}
+                          onClick={() => setDeleteTarget(s.student.id)}
                         >
-                          <UserMinus className="size-3.5" />
+                          <Trash2 className="size-3.5 text-destructive" />
                         </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={t({
-                          zh: "从名单删除",
-                          en: "Delete from roster",
-                        })}
-                        onClick={() => setDeleteTarget(s.student.id)}
-                      >
-                        <Trash2 className="size-3.5 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         )}

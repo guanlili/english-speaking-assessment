@@ -66,7 +66,10 @@ beforeEach(() => {
 describe("教师口语入口守卫", () => {
   it("未购 speaking：不渲染教学内容，展示拦截页与回课堂列表入口", async () => {
     loginTeacher()
-    vi.spyOn(ModulesService, "readModulesMe").mockResolvedValue({ modules: [] })
+    vi.spyOn(ModulesService, "readModulesMe").mockResolvedValue({
+      modules: [],
+      statuses: [],
+    })
 
     renderHarness()
 
@@ -81,6 +84,7 @@ describe("教师口语入口守卫", () => {
     loginTeacher()
     vi.spyOn(ModulesService, "readModulesMe").mockResolvedValue({
       modules: ["speaking"],
+      statuses: [],
     })
 
     renderHarness()
@@ -107,7 +111,10 @@ describe("教师口语入口守卫", () => {
 
   it("清单加载中：展示骨架态，不渲染教学内容", async () => {
     loginTeacher()
-    let resolveModules: (value: { modules: string[] }) => void = () => {}
+    let resolveModules: (value: {
+      modules: string[]
+      statuses: never[]
+    }) => void = () => {}
     vi.spyOn(ModulesService, "readModulesMe").mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -121,6 +128,6 @@ describe("教师口语入口守卫", () => {
       expect(screen.getByRole("status")).toHaveTextContent("模块加载中"),
     )
     expect(screen.queryByText("课堂教学内容")).not.toBeInTheDocument()
-    resolveModules({ modules: ["speaking"] })
+    resolveModules({ modules: ["speaking"], statuses: [] })
   })
 })

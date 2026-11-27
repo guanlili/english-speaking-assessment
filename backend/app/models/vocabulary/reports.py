@@ -1,7 +1,7 @@
 """词汇模型：班级结果、逐轮汇总、错词统计（拆分自 app/models/vocabulary.py，2026-11-07）。"""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlmodel import SQLModel
 
@@ -144,6 +144,65 @@ class VocabularyWrongWords(SQLModel):
     items: list[VocabularyWrongWordItem] = []
 
 
+# ── 班级掌握度（mastery）─────────────────────────────────────────────
+# 口径提醒（前后端文案一致遵守）：掌握度 = 窗口内教师任务轮首答正确率分段
+# + FSRS 状态分布 + 到期未复习条目数；它不是考试分数、不是能力等级。
+# ``wrong_count`` 仍只表示历史错误次数，不参与掌握度判定。
+MASTERY_BAND_LOW = "low"
+MASTERY_BAND_MID = "mid"
+MASTERY_BAND_HIGH = "high"
+MASTERY_BAND_NO_DATA = "no_data"
+
+# 可选时间窗（天）；缺省 30 天
+MASTERY_WINDOW_DAYS = (7, 30, 90)
+MASTERY_DEFAULT_WINDOW_DAYS = 30
+
+
+class VocabularyMasteryWordRow(SQLModel):
+    """逐词掌握度行：首答分段 + 该词在本班的 FSRS 状态条目分布。"""
+
+    word_id: uuid.UUID
+    headword: str
+    meaning_zh: str
+    answered_count: int
+    correct_first_count: int
+    # 首答正确率 0..100；无首答为 None（界面显示 –，不画成 0%）
+    accuracy_rate: int | None = None
+    # low / mid / high / no_data
+    band: str
+    # 本班学生在该词上的 FSRS 状态条目数（按 user × word × capability 计）
+    fsrs_new: int = 0
+    fsrs_learning: int = 0
+    fsrs_review: int = 0
+    # 已到期（含逾期）状态条目数；是条目数，不是去重词数
+    due_count: int = 0
+
+
+class VocabularyMasteryReport(SQLModel):
+    """GET /classes/{code}/vocabulary/mastery 的班级掌握度载荷。"""
+
+    classroom_code: str
+    generated_at: datetime
+    window_days: int
+    # all_tasks = 本班全部教师任务；assignment = 指定任务
+    scope: str
+    assignment_id: uuid.UUID | None = None
+    answered_count: int = 0
+    correct_first_count: int = 0
+    accuracy_rate: int | None = None
+    low_count: int = 0
+    mid_count: int = 0
+    high_count: int = 0
+    no_data_count: int = 0
+    # FSRS 状态条目分布（本班在册学生）
+    fsrs_new: int = 0
+    fsrs_learning: int = 0
+    fsrs_review: int = 0
+    # 到期未复习状态条目数（条目数，不是词数）
+    due_count: int = 0
+    words: list[VocabularyMasteryWordRow] = []
+
+
 class VocabularyRecommendationFocus(SQLModel):
     """推荐复习的错词（只列最近真实错过的词，不含预测）。"""
 
@@ -173,3 +232,54 @@ class VocabularyRecommendation(SQLModel):
     focus_words: list[VocabularyRecommendationFocus] = []
     # 固定文案：规则推荐，不作为能力等级或考试结论
     note_code: str = "rule_based_not_certification"
+
+
+# ── 跨任务 / 时间趋势（#517 C）─────────────────────────────────────
+
+
+class VocabularyTrendPeriod(SQLModel):
+    """单个统计周期（周/月）的聚合结果。
+
+    区间为**闭区间**：``period_start`` 00:00:00 至 ``period_end`` 23:59:59
+    （Asia/Shanghai）。``completion_rate`` / ``first_accuracy`` 在无目标 /
+    无首答时返回 ``null``，不折算 0%。
+
+    ``due_unreviewed`` 按**当前** ``VocabularyReviewState`` 回算（词 × 能力
+    条目数，非去重词数）；历史周期的到期状态不做历史还原，仅作教学参考。
+    """
+
+    period_start: date
+    period_end: date
+    assigned_targets: int = 0
+    completed_targets: int = 0
+    # 0–100 取整；assigned_targets=0 → null
+    completion_rate: int | None = None
+    first_answered: int = 0
+    first_correct: int = 0
+    # 0–100 取整；无首答 → null
+    first_accuracy: int | None = None
+    # 掌握度分段（与现有 mastery 同阈值：<60 / 60–85 / >85 / 无首答）
+    low_count: int = 0
+    mid_count: int = 0
+    high_count: int = 0
+    no_data_count: int = 0
+    # 当前状态回算的到期未复习条目数（历史周期仅教学参考）
+    due_unreviewed: int = 0
+
+
+class VocabularyTrendReport(SQLModel):
+    """GET /classes/{code}/vocabulary/trend。
+
+    ``teaching_reference`` 固定为 ``true``：趋势为教学参考，不是考试分数或
+    能力认证。
+    """
+
+    classroom_code: str
+    granularity: str  # week | month
+    periods: int
+    anchor: date | None = None
+    generated_at: datetime
+    book_id: uuid.UUID | None = None
+    prompt_type: str | None = None
+    teaching_reference: bool = True
+    items: list[VocabularyTrendPeriod] = []

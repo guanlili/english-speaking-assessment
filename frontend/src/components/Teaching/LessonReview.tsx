@@ -129,7 +129,7 @@ export function LessonReview({
           <label className="space-y-2">
             <span>{t({ zh: "选择示例", en: "Choose an example" })}</span>
             <select
-              className="min-h-11 w-full rounded-md border bg-background px-3 text-base"
+              className="h-11 w-full rounded-md border bg-background px-3 text-base"
               value={selected?.id ?? ""}
               onChange={(event) => {
                 if (

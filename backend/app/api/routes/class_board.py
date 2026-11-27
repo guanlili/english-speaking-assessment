@@ -44,8 +44,11 @@ from app.models import (
     WeakItem,
     WeakWord,
 )
+from app.services import entitlement
 from app.services import exam as exam_service
 from app.services import exercise as exercise_service
+from app.services import vocabulary_farm as farm_service
+from app.services import vocabulary_pk as pk_service
 from app.services.class_gaps import (
     aggregate_low_items,
     aggregate_word_gaps,
@@ -749,11 +752,14 @@ def _board_payload(
     *,
     current_exercise: ClassroomExercise | None,
     assigned_unit_board: Any,
+    vocabulary_pk: Any,
+    vocabulary_farm: Any,
 ) -> BoardData:
     """组装名单表响应（纯构造，无额外查询）。
 
     counts 是 (submitted, completed, pending) 三元组，与 `_build_board_rows`
-    的返回后三值同序。
+    的返回后三值同序。``vocabulary_pk`` / ``vocabulary_farm`` 是词汇子模块
+    的只读摘要；模块未开通时为 ``None``，不改变既有字段口径。
     """
     submitted_count, completed_count, pending_count = counts
     homework = _homework_exercise_of(session, classroom)
@@ -774,6 +780,8 @@ def _board_payload(
         items=skeleton,
         homework_title=homework.title if homework is not None else None,
         homework_exercise_id=homework.id if homework is not None else None,
+        vocabulary_pk=vocabulary_pk,
+        vocabulary_farm=vocabulary_farm,
     )
 
 
@@ -803,6 +811,14 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
     students, session_by_student = _load_board_sessions(
         session, classroom, today, current_exercise, board_passage
     )
+
+    # 词汇子模块只读摘要：模块未开通时两段均为 null，看板其余字段口径不变；
+    # 不开闸门 403（看板底座仍可访问口语数据）。
+    vocabulary_pk: Any = None
+    vocabulary_farm: Any = None
+    if entitlement.is_module_enabled(session, current_user.tenant_id, "vocabulary"):
+        vocabulary_pk = pk_service.board_summary(session, classroom)
+        vocabulary_farm = farm_service.teacher_summary(session, students)
 
     # 7 日未练口径：加入超过 7 天且窗口内无任何作答（US-10 简化实现）
     week_ago, week_ago_utc = _recent_active_window()
@@ -836,6 +852,8 @@ def read_class_board(session: SessionDep, code: str, current_user: CurrentUser) 
         (submitted_count, completed_count, pending_count),
         current_exercise=current_exercise,
         assigned_unit_board=assigned_unit_board,
+        vocabulary_pk=vocabulary_pk,
+        vocabulary_farm=vocabulary_farm,
     )
 
 

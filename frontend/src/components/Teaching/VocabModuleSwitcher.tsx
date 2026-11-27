@@ -19,14 +19,14 @@ export function VocabModuleSwitcher({ code }: { code: string }) {
   return (
     <div className="flex gap-2">
       {hasModule("speaking") && (
-        <Button variant="outline" size="sm" asChild>
+        <Button variant="outline" size="sm" className="max-sm:h-11" asChild>
           <Link to="/t/$code" params={{ code }}>
             <Mic />
             {t({ zh: "口语练习", en: "Speaking" })}
           </Link>
         </Button>
       )}
-      <Button size="sm" aria-current="page">
+      <Button size="sm" className="max-sm:h-11" aria-current="page">
         <BookA />
         {t(TERMS.vocabLearning)}
       </Button>

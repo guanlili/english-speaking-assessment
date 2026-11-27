@@ -114,7 +114,11 @@ export default function PublishSidebar({
           en: "Students use the latest confirmed publish. After changing selections, confirm a new publish to update their practice.",
         })}
       </p>
-      <Button variant="link" className="mt-2 h-auto px-0" asChild>
+      <Button
+        variant="link"
+        className="mt-2 h-auto px-0 coarse:min-h-11 coarse:items-center"
+        asChild
+      >
         <Link to="/create" search={{ kind: "reading", classroom: code }}>
           {t({
             zh: "到题目库补充内容 →",

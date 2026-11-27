@@ -38,11 +38,15 @@ from app.models import (
     Unit,
     User,
     VocabFarmPlot,
+    VocabPlacementResult,
     VocabularyAnswer,
     VocabularyAssignment,
     VocabularyAssignmentTarget,
     VocabularyBook,
     VocabularyBookItem,
+    VocabularyContentReviewAudit,
+    VocabularyLeaderboardParticipant,
+    VocabularyLeaderboardSetting,
     VocabularyLevelEntry,
     VocabularyReviewState,
     VocabularySession,
@@ -214,8 +218,12 @@ def db() -> Generator[Session]:
         session.exec(delete(VocabularyLevelEntry))  # type: ignore[call-overload]
         session.exec(delete(VocabularyAnswer))  # type: ignore[call-overload]
         session.exec(delete(VocabularySession))  # type: ignore[call-overload]
+        session.exec(delete(VocabularyLeaderboardParticipant))  # type: ignore[call-overload]
+        session.exec(delete(VocabularyLeaderboardSetting))  # type: ignore[call-overload]
         session.exec(delete(VocabularyReviewState))  # type: ignore[call-overload]
+        session.exec(delete(VocabularyContentReviewAudit))  # type: ignore[call-overload]
         session.exec(delete(VocabFarmPlot))  # type: ignore[call-overload]
+        session.exec(delete(VocabPlacementResult))  # type: ignore[call-overload]
         session.exec(delete(VocabularyAssignmentTarget))  # type: ignore[call-overload]
         session.exec(delete(VocabularyAssignment))  # type: ignore[call-overload]
         session.exec(delete(VocabularyBookItem))  # type: ignore[call-overload]

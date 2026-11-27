@@ -5,15 +5,18 @@ import { toast } from "sonner"
 import { ApiError, VocabularyService } from "@/client"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
+import { deriveImportStats } from "@/lib/vocabContentReview"
 import { localizeImportIssue } from "@/lib/vocabImport"
 import { toBookWordInput, type VocabCsvPreview } from "./types"
 
 /** 向已有班级词库补词：CSV 预览确认后调用 addBookWords（库里已有的自动跳过）。 */
 export function AddWordsToBook({
   bookId,
+  beforeWordCount,
   onAdded,
 }: {
   bookId: string
+  beforeWordCount?: number | null
   onAdded: () => void
 }) {
   const { t } = useI18n()
@@ -21,6 +24,8 @@ export function AddWordsToBook({
   const fileRef = useRef<HTMLInputElement>(null)
   // 预览同时保留问题行（无效/文件内重复），确认前让教师看清会跳过哪些
   const [preview, setPreview] = useState<VocabCsvPreview | null>(null)
+  // “我已核对”：勾选直接通过审核；默认待审
+  const [reviewedOk, setReviewedOk] = useState(false)
 
   const importPreview = useMutation({
     mutationFn: (file: File) =>
@@ -55,17 +60,25 @@ export function AddWordsToBook({
     mutationFn: () =>
       VocabularyService.addBookWords({
         book_id: bookId,
+        source: "import",
+        confirm_reviewed: reviewedOk,
         body: preview?.words ?? [],
       }),
     onSuccess: (data) => {
       const submitted = preview?.words.length ?? 0
+      const stats = deriveImportStats(
+        submitted,
+        beforeWordCount ?? null,
+        data.word_count ?? null,
+      )
       toast.success(
         t({
-          zh: `已处理 ${submitted} 行（库里已有的自动跳过），词库现有 ${data.word_count ?? 0} 词。`,
-          en: `Processed ${submitted} rows (existing words skipped); the book now has ${data.word_count ?? 0} words.`,
+          zh: `新增 ${stats.added} 个词条，重复跳过 ${stats.skipped} 个；词库现有 ${data.word_count ?? 0} 词。`,
+          en: `Added ${stats.added}, skipped ${stats.skipped} duplicates; the book now has ${data.word_count ?? 0} words.`,
         }),
       )
       setPreview(null)
+      setReviewedOk(false)
       queryClient.invalidateQueries({ queryKey: ["vocab-teacher", "books"] })
       onAdded()
     },
@@ -81,6 +94,13 @@ export function AddWordsToBook({
                 zh: "加词失败，请重试。",
                 en: "Failed to add words — please retry.",
               }),
+        )
+      } else {
+        toast.error(
+          t({
+            zh: "网络异常，加词未完成，请检查连接后重试。",
+            en: "Network error — words weren't added. Check your connection and retry.",
+          }),
         )
       }
     },
@@ -152,6 +172,18 @@ export function AddWordsToBook({
                 ))}
             </ul>
           )}
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={reviewedOk}
+              onChange={(event) => setReviewedOk(event.target.checked)}
+              className="size-4 accent-[var(--primary)]"
+            />
+            {t({
+              zh: "我已核对这些词条（勾选后直接通过审核）",
+              en: "I have checked these entries (approve directly)",
+            })}
+          </label>
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"

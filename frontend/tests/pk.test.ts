@@ -6,9 +6,11 @@ import type {
   PkPlayerSummary,
 } from "../src/client/types.gen"
 import {
+  PK_LOBBY_POLL_MS,
   parseSseBuffer,
   pkActiveMatches,
   pkAnswerKey,
+  pkLobbyPollInterval,
   pkNextItemIndex,
   pkOutcome,
   pkPhase,
@@ -91,6 +93,18 @@ test("pkShouldPolling: closed SSE or stale event forces polling", () => {
   )
 })
 
+test("pkLobbyPollInterval: only polls while waiting; stops once matched/left/unknown", () => {
+  assert.equal(pkLobbyPollInterval({ my_status: "waiting" }), PK_LOBBY_POLL_MS)
+  assert.equal(
+    pkLobbyPollInterval({ my_status: "active", my_match_id: "m1" }),
+    false,
+  )
+  assert.equal(pkLobbyPollInterval({ status: "open" }), false)
+  assert.equal(pkLobbyPollInterval({ my_status: null }), false)
+  assert.equal(pkLobbyPollInterval(null), false)
+  assert.equal(pkLobbyPollInterval(undefined), false)
+})
+
 test("pkOutcome: win/lose/drew/none", () => {
   assert.equal(pkOutcome(finishedMatch.result, "s1"), "win")
   assert.equal(pkOutcome(finishedMatch.result, "s2"), "lose")
@@ -109,9 +123,27 @@ test("pkOutcome: win/lose/drew/none", () => {
   assert.equal(pkOutcome(ongoing, "s1"), "none")
 })
 
-test("pkAnswerKey: stable per match/item/attempt", () => {
-  assert.equal(pkAnswerKey("m1", 2, 1), "m1:2:1")
-  assert.notEqual(pkAnswerKey("m1", 2, 1), pkAnswerKey("m1", 2, 2))
+test("pkAnswerKey: stable per match/player/item/attempt", () => {
+  assert.equal(
+    pkAnswerKey("m1", "11111111-2222-3333-4444-555555555555", 2, 1),
+    "m1:11111111:2:1",
+  )
+  assert.notEqual(
+    pkAnswerKey("m1", "11111111-2222-3333-4444-555555555555", 2, 1),
+    pkAnswerKey("m1", "99999999-8888-7777-6666-555555555555", 2, 1),
+  )
+  assert.notEqual(
+    pkAnswerKey("m1", "11111111-2222-3333-4444-555555555555", 2, 1),
+    pkAnswerKey("m1", "11111111-2222-3333-4444-555555555555", 2, 2),
+  )
+  assert.equal(pkAnswerKey("m1", null, 2, 1), "m1:anon:2:1")
+  const real = pkAnswerKey(
+    "00000000-0000-4000-8000-000000000000",
+    "00000000-0000-4000-8000-000000000001",
+    12,
+    1,
+  )
+  assert.ok(real.length <= 64, `key too long: ${real}`)
 })
 
 test("parseSseBuffer: splits completed blocks, keeps partial tail", () => {

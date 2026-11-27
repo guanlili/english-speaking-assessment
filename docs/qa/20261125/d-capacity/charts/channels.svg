@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 380" font-family="Helvetica, Arial, sans-serif">
+<text x="330.0" y="26" text-anchor="middle" font-size="16" font-weight="700">并发通道保持 60s：20 SSE + 20 轮询 = 40</text>
+<line x1="76" y1="316.0" x2="636" y2="316.0" stroke="#E2E8F0"/>
+<text x="68" y="320.0" text-anchor="end" font-size="11" fill="#4A5568">0</text>
+<line x1="76" y1="251.0" x2="636" y2="251.0" stroke="#E2E8F0"/>
+<text x="68" y="255.0" text-anchor="end" font-size="11" fill="#4A5568">10</text>
+<line x1="76" y1="186.0" x2="636" y2="186.0" stroke="#E2E8F0"/>
+<text x="68" y="190.0" text-anchor="end" font-size="11" fill="#4A5568">20</text>
+<line x1="76" y1="121.0" x2="636" y2="121.0" stroke="#E2E8F0"/>
+<text x="68" y="125.0" text-anchor="end" font-size="11" fill="#4A5568">30</text>
+<line x1="76" y1="56.0" x2="636" y2="56.0" stroke="#E2E8F0"/>
+<text x="68" y="60.0" text-anchor="end" font-size="11" fill="#4A5568">40</text>
+<line x1="76" y1="56.0" x2="636" y2="56.0" stroke="#E53E3E" stroke-width="1.5" stroke-dasharray="6,4"/>
+<text x="636" y="50.0" text-anchor="end" font-size="11" fill="#E53E3E">目标 40 通道 / 60s</text>
+<rect x="181.0" y="186.0" width="70" height="130.0" fill="#38A169" rx="3"/>
+<text x="216.0" y="251.0" text-anchor="middle" font-size="11" fill="#fff">SSE 20</text>
+<rect x="181.0" y="56.0" width="70" height="130.0" fill="#90CDF4" rx="3"/>
+<text x="216.0" y="121.0" text-anchor="middle" font-size="11" fill="#2D3748">轮询 20</text>
+<text x="216.0" y="48.0" text-anchor="middle" font-size="12" fill="#2D3748">合计 40</text>
+<text x="216.0" y="340" text-anchor="middle" font-size="12" fill="#2D3748">本机单副本</text>
+<rect x="461.0" y="186.0" width="70" height="130.0" fill="#38A169" rx="3"/>
+<text x="496.0" y="251.0" text-anchor="middle" font-size="11" fill="#fff">SSE 20</text>
+<rect x="461.0" y="56.0" width="70" height="130.0" fill="#90CDF4" rx="3"/>
+<text x="496.0" y="121.0" text-anchor="middle" font-size="11" fill="#2D3748">轮询 20</text>
+<text x="496.0" y="48.0" text-anchor="middle" font-size="12" fill="#2D3748">合计 40</text>
+<text x="496.0" y="340" text-anchor="middle" font-size="12" fill="#2D3748">本机双副本</text>
+<rect x="76" y="354" width="12" height="12" fill="#38A169"/>
+<text x="94" y="364" font-size="11" fill="#2D3748">SSE 长连接</text>
+<rect x="216" y="354" width="12" height="12" fill="#90CDF4"/>
+<text x="234" y="364" font-size="11" fill="#2D3748">轮询快照通道</text>
+</svg>

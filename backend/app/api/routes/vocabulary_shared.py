@@ -48,7 +48,9 @@ logger = logging.getLogger(__name__)
 # ── 权限与组装辅助 ──────────────────────────────────────────────────
 
 
-def _word_public(word: VocabularyWord) -> VocabularyWordPublic:
+def _word_public(
+    word: VocabularyWord, include_exam_tags: bool = True
+) -> VocabularyWordPublic:
     return VocabularyWordPublic(
         id=word.id,
         headword=word.headword,
@@ -60,6 +62,14 @@ def _word_public(word: VocabularyWord) -> VocabularyWordPublic:
         audio_url=word.audio_url,
         morphology=word.morphology,
         status=word.status,
+        source=word.source,
+        review_status=word.review_status,
+        reviewer_id=word.reviewer_id,
+        reviewed_at=word.reviewed_at,
+        review_note=word.review_note,
+        version=word.version,
+        exam_tags=list(word.exam_tags or []) if include_exam_tags else [],
+        cefr_band=word.cefr_band,
     )
 
 
@@ -474,11 +484,18 @@ def _csv_text_cell(value: object) -> object:
 
 
 def read_vocab_results_payload(
-    session: SessionDep, code: str, assignment_id: uuid.UUID, current_user: User
+    session: SessionDep,
+    code: str,
+    assignment_id: uuid.UUID,
+    current_user: User,
+    *,
+    read_only: bool = False,
 ) -> VocabularyClassResults:
     """教师结果载荷（results 路由与 CSV 导出共用）。"""
     classroom = _get_classroom(session, code)
-    _require_classroom_teacher(classroom, current_user, "vocabulary")
+    _require_classroom_teacher(
+        classroom, current_user, "vocabulary", read_only=read_only
+    )
     assignment = _get_assignment(session, classroom.id, assignment_id)
     student_rows, word_rows, prompt_stats = vocab_service.class_results(
         session, assignment

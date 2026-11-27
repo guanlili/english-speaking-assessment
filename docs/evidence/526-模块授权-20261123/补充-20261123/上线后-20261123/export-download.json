@@ -1,0 +1,57 @@
+{
+  "captured_at": "2026-11-23T09:56:29.637071+00:00",
+  "environment": "local docker compose; frontend http://localhost:5174, backend http://localhost:8000; 未连生产",
+  "trigger": {
+    "page": "/t/D5V8CH（A 校教师面板 · 学生结果/今日名单）",
+    "button_label_zh": "导出",
+    "button_label_en": "Export",
+    "source": "BoardRosterCard onExportCsv → boardRosterCsv(filteredStudents, classroom_code, t) → downloadCsv(rows, filename)",
+    "download_mechanism": "浏览器 Blob URL + <a download> 点击触发；CDP Page.setDownloadBehavior allow 到 downloads/ 目录捕获"
+  },
+  "file": {
+    "filename": "课堂D5V8CH-练习名单-2026-11-23.csv",
+    "bytes": 124,
+    "sha256": "9f9a39e8f155302935135a2fc23d9ec55abcb54cf656333a89773a2345361b9b",
+    "encoding": "UTF-8 with BOM (RFC 4180 CRLF)",
+    "committed": false,
+    "note": "原始下载 CSV 仅保留在本地 downloads/ 目录未入库（仓库 text=auto 会把 CRLF 规范化为 LF，导致入库字节/哈希与取证快照不一致）；取证以本条 sha256 / 字节数 / 表头 / 行数 / 名册对照为准。"
+  },
+  "csv": {
+    "header": [
+      "姓名",
+      "区分码",
+      "完成题数",
+      "跟读均分",
+      "情景问答均分",
+      "XP",
+      "连胜天数",
+      "状态"
+    ],
+    "data_row_count": 1,
+    "rows": [
+      [
+        "A校学生",
+        "",
+        "0/0",
+        "'-",
+        "'-",
+        "0",
+        "0",
+        "未提交"
+      ]
+    ]
+  },
+  "roster_comparison": {
+    "board_api_roster_count": 1,
+    "csv_data_row_count": 1,
+    "match": true,
+    "board_roster_names": [
+      "A校学生"
+    ]
+  },
+  "notes": [
+    "名单仅含匿名测试代号「A校学生」，无真实姓名/手机号/token。",
+    "为解锁本地空课堂的教师面板名单，A 校临时补了一条匿名测试篇目（标题含 [e2e-roster-probe] 标记），验完已删除，见 README 清理记录。",
+    "CSV 单元格 '-' 前缀按公式注入防护规则加单引号前缀，属预期转义。"
+  ]
+}

@@ -1,13 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { Plus, Power, PowerOff } from "lucide-react"
+import { BarChart3, Plus, Power, PowerOff } from "lucide-react"
 import { useState } from "react"
 import {
   AdminService,
   type TenantAdminPublic,
   type TenantCreate,
   type TenantModuleAuditPublic,
+  type TenantModuleUpdate,
+  type TenantUsageMetrics,
+  type TenantUsageSummaryItem,
 } from "@/client"
+import { TenantUsageDialog } from "@/components/Admin/TenantUsageDialog"
 import { ConfirmDialog } from "@/components/Common/ConfirmDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -30,6 +34,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -41,22 +52,34 @@ import {
 } from "@/components/ui/table"
 import useCustomToast from "@/hooks/useCustomToast"
 import type { ModuleKey } from "@/hooks/useModules"
+import type { BiString, Lang } from "@/lib/i18n"
 import { useI18n } from "@/lib/i18n"
+import {
+  type BadgeTone,
+  describeModuleBadge,
+  GRANT_TYPE_LABELS,
+  type GrantType,
+  type ModuleFormDraft,
+  normalizeGrantType,
+  readCompactUsage,
+  validateModuleForm,
+} from "@/lib/tenantModules"
 import { formatDateTime } from "@/lib/time"
 import { extractErrorMessage } from "@/utils"
 
-const MODULE_META: Array<{
-  key: ModuleKey
-  zh: string
-  en: string
-}> = [
-  { key: "speaking", zh: "口语", en: "Speaking" },
-  { key: "vocabulary", zh: "单词", en: "Vocabulary" },
+const MODULE_META: Array<{ key: ModuleKey; name: BiString }> = [
+  { key: "speaking", name: { zh: "口语", en: "Speaking" } },
+  { key: "vocabulary", name: { zh: "单词", en: "Vocabulary" } },
 ]
 
-interface ModuleFormState {
-  enabled: boolean
-  effective: string
+const TONE_VARIANT: Record<
+  BadgeTone,
+  "default" | "secondary" | "destructive" | "outline"
+> = {
+  muted: "secondary",
+  outline: "outline",
+  active: "default",
+  destructive: "destructive",
 }
 
 function moduleOf(row: TenantAdminPublic | undefined, key: ModuleKey) {
@@ -71,37 +94,95 @@ function toLocalInput(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-function moduleActive(row: TenantAdminPublic, key: ModuleKey): boolean {
-  const m = moduleOf(row, key)
-  if (!m?.enabled) return false
-  if (m.effective_at && new Date(m.effective_at) > new Date()) return false
-  return true
-}
-
 function onOff(
   value: boolean | null | undefined,
-  t: (s: { zh: string; en: string }) => string,
+  t: (s: BiString) => string,
 ): string {
   if (value === null || value === undefined)
     return t({ zh: "无记录", en: "none" })
   return value ? t({ zh: "开", en: "On" }) : t({ zh: "关", en: "Off" })
 }
 
+function grantLabel(
+  value: string | null | undefined,
+  t: (s: BiString) => string,
+): string {
+  if (value === null || value === undefined) return "–"
+  return t(GRANT_TYPE_LABELS[normalizeGrantType(value)])
+}
+
+/** 操作人不展示内部 UUID：有值统一归为平台运营，无值显示 –。 */
+function operatorLabel(
+  id: string | null | undefined,
+  t: (s: BiString) => string,
+): string {
+  if (!id) return "–"
+  return t({ zh: "平台运营", en: "Platform operator" })
+}
+
 function enabledLabel(
   audit: TenantModuleAuditPublic,
-  t: (s: { zh: string; en: string }) => string,
+  t: (s: BiString) => string,
 ): string {
   return `${onOff(audit.enabled_before, t)} → ${onOff(audit.enabled_after, t)}`
 }
 
+function grantTypeLabel(
+  audit: TenantModuleAuditPublic,
+  t: (s: BiString) => string,
+): string {
+  return `${grantLabel(audit.grant_type_before, t)} → ${grantLabel(audit.grant_type_after, t)}`
+}
+
 function effectiveLabel(
   audit: TenantModuleAuditPublic,
-  t: (s: { zh: string; en: string }) => string,
-  lang: "zh" | "en",
+  t: (s: BiString) => string,
+  lang: Lang,
 ): string {
   const fmt = (iso: string | null | undefined) =>
     iso ? formatDateTime(iso, lang) : t({ zh: "立即", en: "now" })
   return `${fmt(audit.effective_at_before)} → ${fmt(audit.effective_at_after)}`
+}
+
+function expiryLabel(
+  audit: TenantModuleAuditPublic,
+  t: (s: BiString) => string,
+  lang: Lang,
+): string {
+  const fmt = (iso: string | null | undefined) =>
+    iso ? formatDateTime(iso, lang) : t({ zh: "长期", en: "Long-term" })
+  return `${fmt(audit.expires_at_before)} → ${fmt(audit.expires_at_after)}`
+}
+
+/** 列表紧凑两行用量：第一行师生，第二行作答/任务/完成人数。无数据显示 `–`。 */
+function CompactUsageCell({
+  metrics,
+}: {
+  metrics: TenantUsageMetrics | null | undefined
+}) {
+  const { t } = useI18n()
+  if (!metrics) {
+    return <TableCell className="text-muted-foreground">–</TableCell>
+  }
+  const u = readCompactUsage(metrics)
+  return (
+    <TableCell>
+      <div className="text-xs leading-relaxed">
+        <div>
+          {t({
+            zh: `师 ${u.teachers} 生 ${u.students}`,
+            en: `T ${u.teachers} · S ${u.students}`,
+          })}
+        </div>
+        <div>
+          {t({
+            zh: `答 ${u.answers} 任 ${u.tasks} 完 ${u.completed}`,
+            en: `A ${u.answers} · T ${u.tasks} · C ${u.completed}`,
+          })}
+        </div>
+      </div>
+    </TableCell>
+  )
 }
 
 /**
@@ -124,22 +205,53 @@ function SchoolsAdminPage() {
     action: "pause" | "resume"
     name: string
   } | null>(null)
+  const [filter, setFilter] = useState<"all" | "expiring">("all")
   const [moduleDialog, setModuleDialog] = useState<{
     id: string
     slug: string
     name: string
   } | null>(null)
   const [moduleForm, setModuleForm] = useState<
-    Record<ModuleKey, ModuleFormState>
+    Record<ModuleKey, ModuleFormDraft>
   >({
-    speaking: { enabled: false, effective: "" },
-    vocabulary: { enabled: false, effective: "" },
+    speaking: {
+      enabled: false,
+      effective: "",
+      expires: "",
+      grant_type: "manual",
+    },
+    vocabulary: {
+      enabled: false,
+      effective: "",
+      expires: "",
+      grant_type: "manual",
+    },
   })
+  const [moduleErrors, setModuleErrors] = useState<
+    Partial<Record<ModuleKey, BiString>>
+  >({})
+  const [usageTenant, setUsageTenant] = useState<{
+    id: string
+    slug: string
+    name_zh: string
+  } | null>(null)
 
   const { data, isPending } = useQuery({
-    queryKey: ["admin", "tenants"],
-    queryFn: () => AdminService.listTenants(),
+    queryKey: ["admin", "tenants", filter],
+    queryFn: () =>
+      AdminService.listTenants(
+        filter === "expiring" ? { expiring_within_days: 7 } : {},
+      ),
   })
+
+  // 用量汇总一次请求；失败不拖垮学校列表（单元格回退 `–`）。
+  const usageQuery = useQuery({
+    queryKey: ["admin", "tenants", "usage-summary"],
+    queryFn: () => AdminService.usageSummary(),
+  })
+  const usageByTenant = new Map<string, TenantUsageSummaryItem>(
+    (usageQuery.data?.items ?? []).map((item) => [item.tenant_id, item]),
+  )
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["admin", "tenants"] })
@@ -153,14 +265,25 @@ function SchoolsAdminPage() {
 
   const openModuleDialog = (row: TenantAdminPublic) => {
     setModuleDialog({ id: row.id, slug: row.slug, name: row.name_zh })
+    setModuleErrors({})
     setModuleForm({
       speaking: {
-        enabled: moduleActive(row, "speaking"),
-        effective: toLocalInput(moduleOf(row, "speaking")?.effective_at),
+        enabled: moduleOf(row, "speaking")?.enabled ?? false,
+        effective: toLocalInput(
+          moduleOf(row, "speaking")?.effective_at ??
+            moduleOf(row, "speaking")?.starts_at,
+        ),
+        expires: toLocalInput(moduleOf(row, "speaking")?.expires_at),
+        grant_type: normalizeGrantType(moduleOf(row, "speaking")?.grant_type),
       },
       vocabulary: {
-        enabled: moduleActive(row, "vocabulary"),
-        effective: toLocalInput(moduleOf(row, "vocabulary")?.effective_at),
+        enabled: moduleOf(row, "vocabulary")?.enabled ?? false,
+        effective: toLocalInput(
+          moduleOf(row, "vocabulary")?.effective_at ??
+            moduleOf(row, "vocabulary")?.starts_at,
+        ),
+        expires: toLocalInput(moduleOf(row, "vocabulary")?.expires_at),
+        grant_type: normalizeGrantType(moduleOf(row, "vocabulary")?.grant_type),
       },
     })
   }
@@ -195,16 +318,12 @@ function SchoolsAdminPage() {
     mutationFn: (p: {
       id: string
       module_key: ModuleKey
-      enabled: boolean
-      effective_at: string | null
+      body: TenantModuleUpdate
     }) =>
       AdminService.updateTenantModule({
         tenant_id: p.id,
         module_key: p.module_key,
-        tenantModuleUpdate: {
-          enabled: p.enabled,
-          effective_at: p.effective_at,
-        },
+        tenantModuleUpdate: p.body,
       }),
     onSuccess: () => {
       showSuccessToast(t({ zh: "模块授权已更新", en: "Module updated" }))
@@ -220,15 +339,22 @@ function SchoolsAdminPage() {
 
   const saveModule = (key: ModuleKey) => {
     if (!moduleDialog) return
-    const form = moduleForm[key]
-    const effective_at = form.effective
-      ? new Date(form.effective).toISOString()
-      : null
+    const draft = moduleForm[key]
+    const result = validateModuleForm(draft)
+    if (result.error) {
+      setModuleErrors((prev) => ({ ...prev, [key]: result.error }))
+      return
+    }
+    setModuleErrors((prev) => ({ ...prev, [key]: undefined }))
     moduleMutation.mutate({
       id: moduleDialog.id,
       module_key: key,
-      enabled: form.enabled,
-      effective_at,
+      body: {
+        enabled: draft.enabled,
+        effective_at: result.effective_at,
+        expires_at: result.expires_at,
+        grant_type: result.grant_type,
+      },
     })
   }
 
@@ -254,120 +380,183 @@ function SchoolsAdminPage() {
         </div>
       </CardHeader>
       <CardContent>
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <Select
+            value={filter}
+            onValueChange={(next) => setFilter(next as "all" | "expiring")}
+          >
+            <SelectTrigger data-testid="admin-schools-filter" className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">
+                {t({ zh: "全部学校", en: "All schools" })}
+              </SelectItem>
+              <SelectItem value="expiring">
+                {t({ zh: "7 天内到期", en: "Expiring in 7 days" })}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         {isPending ? (
           <Skeleton className="h-48 w-full" />
+        ) : (data ?? []).length === 0 ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            {filter === "expiring"
+              ? t({
+                  zh: "近 7 天内没有即将到期的学校",
+                  en: "No schools expiring within the next 7 days",
+                })
+              : t({ zh: "暂无学校", en: "No schools yet" })}
+          </p>
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t({ zh: "学校码", en: "Code" })}</TableHead>
-                  <TableHead>{t({ zh: "名称", en: "Name" })}</TableHead>
-                  <TableHead>{t({ zh: "状态", en: "Status" })}</TableHead>
-                  <TableHead>{t({ zh: "模块", en: "Modules" })}</TableHead>
-                  <TableHead>{t({ zh: "账号数", en: "Users" })}</TableHead>
-                  <TableHead>
-                    {t({ zh: "登录入口", en: "Sign-in link" })}
-                  </TableHead>
-                  <TableHead className="text-right">
-                    {t({ zh: "操作", en: "Actions" })}
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(data ?? []).map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-mono">{row.slug}</TableCell>
-                    <TableCell>{row.name_zh}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          row.status === "active" ? "default" : "secondary"
-                        }
-                      >
-                        {row.status === "active"
-                          ? t({ zh: "使用中", en: "Active" })
-                          : t({ zh: "已停用", en: "Paused" })}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {MODULE_META.map((meta) => {
-                          const active = moduleActive(row, meta.key)
-                          const rowMeta = moduleOf(row, meta.key)
-                          const future =
-                            active === false &&
-                            rowMeta?.enabled &&
-                            rowMeta.effective_at &&
-                            new Date(rowMeta.effective_at) > new Date()
-                          return (
-                            <Badge
-                              key={meta.key}
-                              variant={active ? "default" : "secondary"}
-                            >
-                              {t({ zh: meta.zh, en: meta.en })}{" "}
-                              {future
-                                ? t({ zh: "待生效", en: "Scheduled" })
-                                : active
-                                  ? t({ zh: "开", en: "On" })
-                                  : t({ zh: "关", en: "Off" })}
-                            </Badge>
-                          )
-                        })}
-                      </div>
-                    </TableCell>
-                    <TableCell>{row.user_count}</TableCell>
-                    <TableCell className="font-mono text-xs">
-                      /s/{row.slug}/login
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="mr-2"
-                        onClick={() => openModuleDialog(row)}
-                      >
-                        {t({ zh: "模块", en: "Modules" })}
-                      </Button>
-                      {row.status === "active" ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            setPending({
-                              id: row.id,
-                              action: "pause",
-                              name: row.name_zh,
-                            })
-                          }
-                        >
-                          <PowerOff
-                            className="mr-2 size-4"
-                            aria-hidden="true"
-                          />
-                          {t({ zh: "停用", en: "Pause" })}
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            statusMutation.mutate({
-                              id: row.id,
-                              status: "active",
-                            })
-                          }
-                        >
-                          <Power className="mr-2 size-4" aria-hidden="true" />
-                          {t({ zh: "恢复", en: "Resume" })}
-                        </Button>
-                      )}
-                    </TableCell>
+          <>
+            <div className="overflow-x-auto">
+              <Table data-testid="admin-schools-table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t({ zh: "学校码", en: "Code" })}</TableHead>
+                    <TableHead>{t({ zh: "名称", en: "Name" })}</TableHead>
+                    <TableHead>{t({ zh: "状态", en: "Status" })}</TableHead>
+                    <TableHead>{t({ zh: "模块", en: "Modules" })}</TableHead>
+                    <TableHead>{t({ zh: "近 7 天", en: "Last 7d" })}</TableHead>
+                    <TableHead>
+                      {t({ zh: "近 30 天", en: "Last 30d" })}
+                    </TableHead>
+                    <TableHead>{t({ zh: "账号数", en: "Users" })}</TableHead>
+                    <TableHead>
+                      {t({ zh: "登录入口", en: "Sign-in link" })}
+                    </TableHead>
+                    <TableHead className="text-right">
+                      {t({ zh: "操作", en: "Actions" })}
+                    </TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {(data ?? []).map((row) => {
+                    const usage = usageByTenant.get(row.id)
+                    return (
+                      <TableRow key={row.id}>
+                        <TableCell className="font-mono">{row.slug}</TableCell>
+                        <TableCell>{row.name_zh}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              row.status === "active" ? "default" : "secondary"
+                            }
+                          >
+                            {row.status === "active"
+                              ? t({ zh: "使用中", en: "Active" })
+                              : t({ zh: "已停用", en: "Paused" })}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {MODULE_META.map((meta) => {
+                              const badge = describeModuleBadge(
+                                moduleOf(row, meta.key),
+                              )
+                              return (
+                                <Badge
+                                  key={meta.key}
+                                  variant={TONE_VARIANT[badge.tone]}
+                                  title={t(badge.hint)}
+                                >
+                                  {t(meta.name)} {t(badge.label)}
+                                </Badge>
+                              )
+                            })}
+                          </div>
+                        </TableCell>
+                        <CompactUsageCell metrics={usage?.summary_7d} />
+                        <CompactUsageCell metrics={usage?.summary_30d} />
+                        <TableCell>{row.user_count}</TableCell>
+                        <TableCell className="font-mono text-xs">
+                          /s/{row.slug}/login
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="min-h-10"
+                              onClick={() => openModuleDialog(row)}
+                            >
+                              {t({ zh: "模块", en: "Modules" })}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="min-h-10"
+                              data-testid="tenant-usage-button"
+                              onClick={() =>
+                                setUsageTenant({
+                                  id: row.id,
+                                  slug: row.slug,
+                                  name_zh: row.name_zh,
+                                })
+                              }
+                            >
+                              <BarChart3
+                                className="mr-2 size-4"
+                                aria-hidden="true"
+                              />
+                              {t({ zh: "用量", en: "Usage" })}
+                            </Button>
+                            {row.status === "active" ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="min-h-10"
+                                onClick={() =>
+                                  setPending({
+                                    id: row.id,
+                                    action: "pause",
+                                    name: row.name_zh,
+                                  })
+                                }
+                              >
+                                <PowerOff
+                                  className="mr-2 size-4"
+                                  aria-hidden="true"
+                                />
+                                {t({ zh: "停用", en: "Pause" })}
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="min-h-10"
+                                onClick={() =>
+                                  statusMutation.mutate({
+                                    id: row.id,
+                                    status: "active",
+                                  })
+                                }
+                              >
+                                <Power
+                                  className="mr-2 size-4"
+                                  aria-hidden="true"
+                                />
+                                {t({ zh: "恢复", en: "Resume" })}
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground sm:hidden">
+              {t({
+                zh: "表格较宽，可左右滑动查看完整信息",
+                en: "The table is wide; swipe horizontally to see all columns",
+              })}
+            </p>
+          </>
         )}
       </CardContent>
 
@@ -442,7 +631,7 @@ function SchoolsAdminPage() {
         open={moduleDialog !== null}
         onOpenChange={(open) => !open && setModuleDialog(null)}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl" data-testid="admin-module-dialog">
           <DialogHeader>
             <DialogTitle>
               {t({ zh: "模块授权", en: "Module access" })} ·{" "}
@@ -450,28 +639,30 @@ function SchoolsAdminPage() {
             </DialogTitle>
             <DialogDescription>
               {t({
-                zh: "整校开关：未开通的模块师生不可见；生效时间留空即立即生效。",
-                en: "School-wide switches: students and teachers cannot see a disabled module. Leave effective time empty to apply now.",
+                zh: "整校开关：未开通的模块师生不可见；生效时间留空即立即生效，到期时间留空即长期。",
+                en: "School-wide switches: students and teachers cannot see a disabled module. Leave effective time empty to apply now, expiry empty for a long-term license.",
               })}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-6">
             {MODULE_META.map((meta) => {
-              const form = moduleForm[meta.key]
+              const formState = moduleForm[meta.key]
               const metaRow = moduleOf(
                 (data ?? []).find((row) => row.id === moduleDialog?.id),
                 meta.key,
               )
+              const badge = describeModuleBadge(metaRow)
+              const error = moduleErrors[meta.key]
               return (
                 <div
                   key={meta.key}
                   className="grid gap-3 rounded-2xl border p-4"
                 >
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <Checkbox
                         id={`${meta.key}-enabled`}
-                        checked={form.enabled}
+                        checked={formState.enabled}
                         onCheckedChange={(checked) =>
                           setModuleForm((prev) => ({
                             ...prev,
@@ -483,53 +674,135 @@ function SchoolsAdminPage() {
                         }
                       />
                       <label htmlFor={`${meta.key}-enabled`}>
-                        {t({ zh: meta.zh, en: meta.en })}
+                        {t(meta.name)}
                       </label>
+                      <Badge variant={TONE_VARIANT[badge.tone]}>
+                        {t(badge.label)}
+                      </Badge>
                     </div>
                     <LoadingButton
                       size="sm"
+                      className="min-h-10"
                       loading={moduleMutation.isPending}
                       onClick={() => saveModule(meta.key)}
                     >
                       {t({ zh: "保存", en: "Save" })}
                     </LoadingButton>
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor={`${meta.key}-effective`}>
-                      {t({
-                        zh: "生效时间（选填，留空立即生效）",
-                        en: "Effective at (optional, empty = now)",
-                      })}
-                    </Label>
-                    <Input
-                      id={`${meta.key}-effective`}
-                      type="datetime-local"
-                      className="min-h-11 text-base"
-                      value={form.effective}
-                      disabled={!form.enabled}
-                      onChange={(e) =>
-                        setModuleForm((prev) => ({
-                          ...prev,
-                          [meta.key]: {
-                            ...prev[meta.key],
-                            effective: e.target.value,
-                          },
-                        }))
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {metaRow?.updated_at
-                        ? t({
-                            zh: `上次更新：${formatDateTime(metaRow.updated_at, lang)}`,
-                            en: `Last updated: ${formatDateTime(metaRow.updated_at, lang)}`,
-                          })
-                        : t({
-                            zh: "当前无授权记录（视为关闭）",
-                            en: "No record yet (treated as disabled)",
-                          })}
-                      {metaRow?.updated_by ? ` · ${metaRow.updated_by}` : ""}
-                    </p>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="grid gap-2">
+                      <Label htmlFor={`${meta.key}-grant`}>
+                        {t({ zh: "授权类型", en: "Grant type" })}
+                      </Label>
+                      <Select
+                        value={formState.grant_type}
+                        onValueChange={(next) =>
+                          setModuleForm((prev) => ({
+                            ...prev,
+                            [meta.key]: {
+                              ...prev[meta.key],
+                              grant_type: next as GrantType,
+                            },
+                          }))
+                        }
+                      >
+                        <SelectTrigger
+                          id={`${meta.key}-grant`}
+                          className="min-h-11 w-full"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="trial">
+                            {t(GRANT_TYPE_LABELS.trial)}
+                          </SelectItem>
+                          <SelectItem value="paid">
+                            {t(GRANT_TYPE_LABELS.paid)}
+                          </SelectItem>
+                          <SelectItem value="manual">
+                            {t(GRANT_TYPE_LABELS.manual)}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor={`${meta.key}-effective`}>
+                        {t({
+                          zh: "开始时间（选填，留空立即生效）",
+                          en: "Effective at (optional, empty = now)",
+                        })}
+                      </Label>
+                      <Input
+                        id={`${meta.key}-effective`}
+                        type="datetime-local"
+                        className="min-h-11 text-base"
+                        value={formState.effective}
+                        disabled={!formState.enabled}
+                        onChange={(e) =>
+                          setModuleForm((prev) => ({
+                            ...prev,
+                            [meta.key]: {
+                              ...prev[meta.key],
+                              effective: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-2 sm:col-span-2">
+                      <Label htmlFor={`${meta.key}-expires`}>
+                        {t({
+                          zh: "到期时间（选填，留空长期；试用必填）",
+                          en: "Expiry (optional, empty = long-term; required for trial)",
+                        })}
+                      </Label>
+                      <Input
+                        id={`${meta.key}-expires`}
+                        type="datetime-local"
+                        className="min-h-11 text-base"
+                        value={formState.expires}
+                        disabled={!formState.enabled}
+                        onChange={(e) =>
+                          setModuleForm((prev) => ({
+                            ...prev,
+                            [meta.key]: {
+                              ...prev[meta.key],
+                              expires: e.target.value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
                   </div>
+
+                  {error && (
+                    <p className="text-xs text-destructive">{t(error)}</p>
+                  )}
+
+                  {badge.daysLeft !== null && (
+                    <p className="text-xs text-muted-foreground">
+                      {t({
+                        zh: `剩余 ${badge.daysLeft} 天`,
+                        en: `${badge.daysLeft} days left`,
+                      })}
+                    </p>
+                  )}
+
+                  <p className="text-xs text-muted-foreground">
+                    {metaRow?.updated_at
+                      ? t({
+                          zh: `上次更新：${formatDateTime(metaRow.updated_at, lang)}`,
+                          en: `Last updated: ${formatDateTime(metaRow.updated_at, lang)}`,
+                        })
+                      : t({
+                          zh: "当前无授权记录（视为未开通）",
+                          en: "No record yet (treated as not granted)",
+                        })}
+                    {metaRow?.updated_by
+                      ? ` · ${operatorLabel(metaRow.updated_by, t)}`
+                      : ""}
+                  </p>
                 </div>
               )
             })}
@@ -548,14 +821,23 @@ function SchoolsAdminPage() {
                   {t({ zh: "暂无变更记录", en: "No change records" })}
                 </p>
               ) : (
-                <div className="max-h-64 overflow-y-auto rounded-2xl border">
-                  <Table>
+                <div className="max-h-64 overflow-auto rounded-2xl border">
+                  <Table
+                    data-testid="admin-module-audit-table"
+                    className="min-w-[880px]"
+                  >
                     <TableHeader>
                       <TableRow>
                         <TableHead>{t({ zh: "模块", en: "Module" })}</TableHead>
-                        <TableHead>{t({ zh: "变更", en: "Change" })}</TableHead>
+                        <TableHead>{t({ zh: "开关", en: "Switch" })}</TableHead>
                         <TableHead>
-                          {t({ zh: "生效时间", en: "Effective" })}
+                          {t({ zh: "类型", en: "Grant type" })}
+                        </TableHead>
+                        <TableHead>
+                          {t({ zh: "开始时间", en: "Effective" })}
+                        </TableHead>
+                        <TableHead>
+                          {t({ zh: "到期时间", en: "Expiry" })}
                         </TableHead>
                         <TableHead>
                           {t({ zh: "操作人", en: "Operator" })}
@@ -574,10 +856,16 @@ function SchoolsAdminPage() {
                               {enabledLabel(audit, t)}
                             </TableCell>
                             <TableCell className="text-xs">
+                              {grantTypeLabel(audit, t)}
+                            </TableCell>
+                            <TableCell className="text-xs">
                               {effectiveLabel(audit, t, lang)}
                             </TableCell>
-                            <TableCell className="font-mono text-xs">
-                              {audit.actor_operator_id ?? "–"}
+                            <TableCell className="text-xs">
+                              {expiryLabel(audit, t, lang)}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {operatorLabel(audit.actor_operator_id, t)}
                             </TableCell>
                             <TableCell className="text-xs">
                               {audit.created_at
@@ -595,6 +883,12 @@ function SchoolsAdminPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <TenantUsageDialog
+        open={usageTenant !== null}
+        onOpenChange={(open) => !open && setUsageTenant(null)}
+        tenant={usageTenant}
+      />
 
       <ConfirmDialog
         open={pending !== null}

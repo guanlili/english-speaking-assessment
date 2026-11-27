@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = ""
     # 测试专用库（conftest 会拒绝它指向开发库）。默认挂在同一实例上，CI/本地零配置
     POSTGRES_DB_TEST: str = "app_test"
+    # 应用引擎连接的「空闲事务超时」（秒）：事务开启后既未提交/回滚也无查询地
+    # 挂起超过该时长，PostgreSQL 主动终止该后端连接，兜底偶发异常路径占着
+    # 连接不释放把连接池耗尽的问题（PK 结算/中断场景）。0 = 关闭。
+    # 仅作用于应用业务引擎与平台通道引擎；Alembic 迁移与 admin/owner 管理
+    # 连接走独立引擎，不继承此参数。
+    DB_IDLE_IN_TXN_TIMEOUT_S: int = 30
     # 多租户 C4b 连接分层（全部「用户名+密码配齐才生效，否则回落」）：
     # - POSTGRES_USER/PASSWORD：admin/owner——迁移、角色管理、初始数据
     #   （prestart 专用；应用业务流量不得使用）

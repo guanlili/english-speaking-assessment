@@ -63,6 +63,19 @@ export function pkShouldPolling(options: {
 
 export type PkOutcome = "win" | "lose" | "drew" | "none"
 
+/** 排队中大厅轮询间隔（ms）：配对由对方加入触发，大厅无独立 SSE，轮询兜底带出 my_match_id。 */
+export const PK_LOBBY_POLL_MS = 2_500
+
+/**
+ * 大厅轮询节奏：仅本人仍在排队（waiting）时短轮询；已配对 / 离开 / 未入场即停。
+ * 与对局内 SSE / 1.5s 降级轮询互不影响。
+ */
+export function pkLobbyPollInterval(
+  lobby: PkLobbyLike | null | undefined,
+): number | false {
+  return lobby?.my_status === "waiting" ? PK_LOBBY_POLL_MS : false
+}
+
 /** 结算结果对本人的观感：胜 / 负 / 平 / 未结算。 */
 export function pkOutcome(
   result: PkMatchView["result"],
@@ -74,13 +87,19 @@ export function pkOutcome(
   return result.winner_student_id === myStudentId ? "win" : "lose"
 }
 
-/** 作答幂等键：同局同题同次尝试稳定唯一，断网重传不二次计分。 */
+/**
+ * 作答幂等键：同局同玩家同题同次尝试稳定唯一，断网重传不二次计分。
+ * 玩家维度取学生 ID 前 8 位（去横线）；服务端唯一约束/重放查询按 player_id
+ * 兜底，前缀仅用于把两名玩家的键区分开，整体长度控制在 64 以内。
+ */
 export function pkAnswerKey(
   matchId: string,
+  studentId: string | null | undefined,
   itemIndex: number,
   attempt: number,
 ): string {
-  return `${matchId}:${itemIndex}:${attempt}`
+  const player = (studentId ?? "").replace(/-/g, "").slice(0, 8) || "anon"
+  return `${matchId}:${player}:${itemIndex}:${attempt}`
 }
 
 /**
@@ -108,6 +127,40 @@ export function pkWaitingPlayers(
   players: PkPlayerSummary[] | undefined,
 ): PkPlayerSummary[] {
   return (players ?? []).filter((player) => player.status === "waiting")
+}
+
+/** 历史对局状态归类：finished 已结束 / abandoned 已放弃 / 其他未知状态。 */
+export type PkHistoryStatusKey = "finished" | "abandoned" | "other"
+
+export function pkHistoryStatusKey(status?: string | null): PkHistoryStatusKey {
+  if (status === "finished") return "finished"
+  if (status === "abandoned") return "abandoned"
+  return "other"
+}
+
+/** 历史玩家结果归类：win 胜 / lose 负 / draw 平（空值按平局兜底）。 */
+export type PkHistoryResultKey = "win" | "lose" | "draw"
+
+export function pkHistoryResultKey(result?: string | null): PkHistoryResultKey {
+  if (result === "win") return "win"
+  if (result === "lose") return "lose"
+  return "draw"
+}
+
+/** 胜者展示名：空串/无胜者（平局、放弃）返回 null，不折算成占位文案。 */
+export function pkHistoryWinnerName(match: {
+  winner_display_name?: string | null
+}): string | null {
+  const name = match.winner_display_name?.trim()
+  return name ? name : null
+}
+
+/** 历史对局展示时间：优先结束时间，其次开始时间；都为空返回 null。 */
+export function pkHistoryTime(match: {
+  finished_at?: string | null
+  started_at?: string | null
+}): string | null {
+  return match.finished_at ?? match.started_at ?? null
 }
 
 /** 进行中对局：active 且带 match_id 的玩家按对局分组；无对局返回空数组。 */

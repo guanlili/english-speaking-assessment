@@ -212,10 +212,14 @@ def import_word_drafts(
     book_id: uuid.UUID,
     drafts: list[dict[str, object]],
     current_user: User,
+    confirm_reviewed: bool = False,
 ) -> tuple[int, int, int]:
     """教师确认入库：剥离不可信字段（accepted_spellings 等），走既有加词
     去重语义（headword+meaning_zh 与词库现有词条重复即跳过）。
-    current_user = 完整教师用户（编辑权校验沿用既有规则）。"""
+    current_user = 完整教师用户（编辑权校验沿用既有规则）。
+
+    内容治理（AC4）：source 固定 ai；未勾选已核对 → pending 待审，
+    勾选 → 直接 approved（自评留痕）。"""
     from app.services.vocabulary import (
         MAX_BOOK_WORDS,
         add_words_to_book,
@@ -246,7 +250,14 @@ def import_word_drafts(
         if str(d.get("headword", "")).strip() and str(d.get("meaning_zh", "")).strip()
     ]
     valid = [w for w in words_in if w.headword and w.meaning_zh]
-    added = add_words_to_book(session, book, valid)
+    added = add_words_to_book(
+        session,
+        book,
+        valid,
+        source="ai",
+        confirm_reviewed=confirm_reviewed,
+        reviewer=current_user,
+    )
     from app.services.vocabulary import word_count_by_book
 
     counts = word_count_by_book(session, [book.id])

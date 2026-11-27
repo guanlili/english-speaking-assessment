@@ -75,6 +75,8 @@ P0 的「词库」是教师教学内容；P2 的「掌握度」是学生学习�
 | `VocabularySession` | `id`, `assignment_id?`, `student_id`, `round_no`, `kind`(task/self/review), `status`, `started_at`, `submitted_at?`, `quiz_started_at?`, `tab_switch_count` | 一次轮次；`(assignment_id, student_id, round_no)` 唯一；自主/复习轮题单固化在自身 `snapshot_items` |
 | `VocabularyAnswer` | `session_id`, `item_index`, `attempt_no`, `prompt_type`, `answer_raw`, `answer_normalized`, `is_correct`, `answered_at`，三元组唯一 | 可审计的原始作答与判分；练习保留多次尝试，测验仅允许首答 |
 | `VocabularyMastery`（P2） | `user_id`, `word_id`, `last_result`, `next_review_at`, `interval_days`, `correct_streak` | 跨课堂个人复习状态；教师只可看自己班级的任务与作答 |
+| `VocabularyLeaderboardSetting` | `classroom_id`(唯一), `enabled`, `audience`(teachers/students), `anonymous`, `updated_by` | 班内榜单开关与隐私口径；一班一行，无行时服务层返回默认值（开启 / 仅教师 / 匿名 / top_n=10），不写种子 |
+| `VocabularyLeaderboardParticipant` | `classroom_id`, `student_id`(课堂唯一), `active`, `alias_no`(课堂唯一), `joined_at`, `left_at` | 学生参与档案与稳定匿名编号；退出后重新加入复用原编号 |
 
 词库更新采用版本或归档，不做原词表的「整表替换」。任务发布、目标名单、题量与快照写入同一事务；历史提交永远按 `snapshot_items` 判分和展示。学生在多个课堂的任务分别绑定 `Student` 档案；将来跨课堂个人复习才按 `User` 汇总，并限制教师只能访问自己班级的数据。
 
@@ -103,6 +105,7 @@ P0 的「词库」是教师教学内容；P2 的「掌握度」是学生学习�
 - **练习**：可重试；首答和最终答分别保存，教师统计默认看首答，以免反复试错冲高正确率。
 - **测验**：每题只提交一次，服务端限时和截止时间为准；提交接口需幂等键，断网重发返回同一结果。到时自动结算未答题；答案可在统一公布时间后查看。发布时核对「所选词数、可出题数、最终题数」，不允许配置题量超过实际可出题量。
 - **切屏记录**：沿用现有模考的 `visibilitychange` 记录思路，标记「切屏次数」供教师参考。全屏和切屏检测不能证明作弊，不自动将测验定性为作弊或给学生贴标签。
+- **学习榜计分与隐私**（#517）：只读 `VocabularySession`/`VocabularyAnswer`，不读 XP/农场/PK/等级，不写任何成绩。本周掌握词数 = 本课堂最早一次首答（attempt_no=1）正确，且本周内至少一条 `review_fsrs` 轮次首答正确；同生同词一周计 1 次。周界按 `PRACTICE_TZ` 自然周；同分并列（1,1,3），前 10 名按 rank ≤ 10 返回。默认仅教师可见、匿名编号；未参加学生 200 空榜且看不到人数，匿名条目只下发 `alias_no`，响应不含 student_id/user_id/邮箱。
 - **权限**：词库公共内容允许学生只读；班级词库和任务仅本班成员可读；编辑/发布仅课堂所有者或管理员；原始答案与个人报告仅本人、该班教师和管理员可读。401 只表示登录失效，权限不足用 403。
 - **内容合规**：学校教材文本与音频由授权人员导入，仓库只放自写演示数据；不复制参考网站词库到生产库。
 
@@ -117,6 +120,9 @@ P0 的「词库」是教师教学内容；P2 的「掌握度」是学生学习�
 | 学生任务 | `GET /api/v1/classes/{code}/vocabulary/today`、`POST /.../sessions` | 返回任务及个人状态，创建/恢复会话 |
 | 作答 | `POST /api/v1/vocabulary/sessions/{id}/answers`、`POST /.../submit` | 请求含题号与幂等键；服务端判分、编号重试并校验计时 |
 | 报告 | `GET /api/v1/classes/{code}/vocabulary/results`、`GET /api/v1/vocabulary/me/wrong-words` | 班级聚合与个人错词 |
+| 榜单设置 | `GET/PUT /api/v1/classes/{code}/vocabulary/leaderboard/settings` | 本班授权教师（含共管）/本校管理员；body `{enabled, audience, anonymous}` |
+| 榜单参与 | `PUT /api/v1/classes/{code}/vocabulary/leaderboard/participation` | 本班学生 `{joined}` → `{joined, alias_no}`；不可见期间不允许加入 |
+| 榜单 | `GET /api/v1/classes/{code}/vocabulary/leaderboard?week_start=YYYY-MM-DD` | 本班学生或本班教师/管理员；默认本周；`week_start` 必须是周一且不晚于本周一 |
 
 实际前缀以现有 `api_router` 约定为准；所有客户端调用经 OpenAPI 生成的 `frontend/src/client/`，不手写 URL。前端建议在学生壳增加 `/vocab/$code` 入口，教师课堂下增加词汇 Tab，管理员新建公共词库页。新文案全部用 `useI18n().t({ zh, en })`；词义数据的语言字段与 UI 双语是两回事。表单字号至少 16px、主要触控目标至少 44px，按 390/820/1180 三档验证。
 

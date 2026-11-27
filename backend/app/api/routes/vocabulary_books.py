@@ -13,6 +13,7 @@
 401 只表示登录失效；权限不足一律 403。
 """
 
+import json
 import uuid
 from typing import Any
 
@@ -31,6 +32,8 @@ from app.api.routes.vocabulary_shared import (
     _word_public,
 )
 from app.models import (
+    REVIEW_NOTE_EDITED_AFTER_APPROVAL,
+    VOCAB_WORD_SOURCES,
     Classroom,
     VocabularyBook,
     VocabularyBookCreate,
@@ -42,11 +45,18 @@ from app.models import (
     VocabularyWordIn,
     VocabularyWordPublic,
     VocabularyWordUpdate,
+    normalize_cefr_band,
+    normalize_exam_tags,
 )
+from app.services import vocab_governance
 from app.services import vocab_levels as vocab_levels_service
 from app.services.vocabulary import (
     MAX_BOOK_WORDS,
     _create_word,
+    _review_meta_for_import,
+    _write_review_audit,
+    find_duplicate_word,
+    word_book_ids,
 )
 from app.services.vocabulary import (
     add_words_to_book as _add_words_to_book,
@@ -118,11 +128,16 @@ def create_book(
     title = book_in.title.strip()
     if not title:
         raise HTTPException(status_code=422, detail="词库名称不能为空")
+    if book_in.source not in VOCAB_WORD_SOURCES:
+        raise HTTPException(status_code=422, detail="词条来源标识不合法")
     if len(book_in.words) > MAX_BOOK_WORDS:
         raise HTTPException(
             status_code=422, detail=f"词库一次最多导入 {MAX_BOOK_WORDS} 个词"
         )
 
+    review_status, reviewer_id, reviewed_at, review_note = _review_meta_for_import(
+        confirm_reviewed=book_in.confirm_reviewed, reviewer=current_user
+    )
     book = VocabularyBook(
         title=title,
         description=(book_in.description or "").strip() or None,
@@ -136,11 +151,23 @@ def create_book(
     # Postgres 平局返回顺序不定——教师预览词序与学生测验词序可能不一致
     # （CI 与本地实测就返回不同顺序）
     for position, word_in in enumerate(book_in.words, start=1):
-        word = _create_word(session, word_in)
+        word = _create_word(
+            session,
+            word_in,
+            source=book_in.source,
+            review_status=review_status,
+            reviewer_id=reviewer_id,
+            reviewed_at=reviewed_at,
+            review_note=review_note,
+        )
         session.flush()
         session.add(
             VocabularyBookItem(book_id=book.id, word_id=word.id, position=position)
         )
+    # 版本快照（#517）：建库即首版
+    vocab_governance.capture_version(
+        session, book, actor=current_user, action="create", summary="创建词库"
+    )
     session.commit()
     session.refresh(book)
     items = session.exec(
@@ -226,17 +253,31 @@ def add_book_words(
     current_user: TeacherUserDep,
     book_id: uuid.UUID,
     words_in: list[VocabularyWordIn],
+    source: str = Query(default="teacher"),
+    confirm_reviewed: bool = Query(default=False),
 ) -> Any:
-    """词库加词（手动录入或导入确认）；重复词跳过并按新增数递增版本。"""
+    """词库加词（手动录入或导入确认）；重复词跳过并按新增数递增版本。
+
+    未勾选已核对 → pending 待审；勾选 → 直接 approved（自评留痕）。
+    """
     book = _get_book(session, book_id)
     _require_book_editor(book, current_user)
     if book.status != "active":
         raise HTTPException(status_code=422, detail="词库已归档，不能继续加词")
+    if source not in VOCAB_WORD_SOURCES:
+        raise HTTPException(status_code=422, detail="词条来源标识不合法")
     if len(words_in) > MAX_BOOK_WORDS:
         raise HTTPException(
             status_code=422, detail=f"单次最多加入 {MAX_BOOK_WORDS} 个词"
         )
-    _add_words_to_book(session, book, words_in)
+    _add_words_to_book(
+        session,
+        book,
+        words_in,
+        source=source,
+        confirm_reviewed=confirm_reviewed,
+        reviewer=current_user,
+    )
     session.refresh(book)
     items = session.exec(
         select(VocabularyWord)
@@ -278,6 +319,15 @@ def remove_book_word(
         .where(col(VocabularyBook.id) == book.id)
         .values(version=VocabularyBook.version + 1)
     )
+    removed_word = session.get(VocabularyWord, word_id)
+    # 版本快照（#517）：移除词条留一版
+    vocab_governance.capture_version(
+        session,
+        book,
+        actor=current_user,
+        action="remove_word",
+        summary=f"移除词条 {removed_word.headword}" if removed_word else "移除词条",
+    )
     session.commit()
     return {"message": "词条已从词库移除"}
 
@@ -313,28 +363,108 @@ def update_word(
         ).first()
         if editable_book is None:
             raise HTTPException(status_code=403, detail="没有权限编辑这个词条")
-    update = word_in.model_dump(exclude_unset=True)
+    payload = word_in.model_dump(exclude_unset=True)
+    # 词条级乐观锁：UI 带当前 version，不一致直接 409（不做静默覆盖）
+    if (
+        word_in.expected_version is not None
+        and word.version != word_in.expected_version
+    ):
+        raise HTTPException(status_code=409, detail="vocabulary_word_version_conflict")
+
+    def _content_tuple(w: VocabularyWord) -> tuple:
+        return (
+            w.part_of_speech,
+            w.meaning_zh,
+            w.meaning_en,
+            tuple(w.accepted_spellings or []),
+            w.example_en,
+            w.audio_url,
+            json.dumps(w.morphology or [], sort_keys=True, ensure_ascii=False),
+            tuple(sorted(w.exam_tags or [])),
+            w.cefr_band,
+        )
+
+    old_content = _content_tuple(word)
     for field in ("part_of_speech", "meaning_en", "example_en", "audio_url"):
-        if field in update:
-            value = update[field]
+        if field in payload:
+            value = payload[field]
             setattr(
                 word,
                 field,
                 (value or "").strip() or None if isinstance(value, str) else value,
             )
-    if "meaning_zh" in update and update["meaning_zh"] is not None:
-        word.meaning_zh = update["meaning_zh"].strip()
-    if "accepted_spellings" in update:
+    if "meaning_zh" in payload and payload["meaning_zh"] is not None:
+        word.meaning_zh = payload["meaning_zh"].strip()
+    if "accepted_spellings" in payload:
+        spellings = payload.get("accepted_spellings") or []
         word.accepted_spellings = [
-            s.strip() for s in update["accepted_spellings"] if s and s.strip()
+            s.strip() for s in spellings if s and s.strip()
         ] or None
-    if "status" in update and update["status"] is not None:
-        if update["status"] not in {"active", "archived"}:
+    if "status" in payload and payload["status"] is not None:
+        if payload["status"] not in {"active", "archived"}:
             raise HTTPException(status_code=422, detail="状态只能是 active/archived")
-        word.status = update["status"]
-    if "morphology" in update:
-        cleaned = normalize_morphology(update["morphology"])
+        word.status = payload["status"]
+    if "morphology" in payload:
+        cleaned = normalize_morphology(payload["morphology"])
         word.morphology = cleaned or None
+    if "exam_tags" in payload:
+        word.exam_tags = normalize_exam_tags(payload["exam_tags"])
+    if "cefr_band" in payload:
+        word.cefr_band = normalize_cefr_band(payload["cefr_band"])
+
+    # 同库重复键（headword.casefold() + meaning_zh）→ 409，不静默并入
+    duplicate = find_duplicate_word(
+        session,
+        headword=word.headword,
+        meaning_zh=word.meaning_zh,
+        exclude_word_id=word.id,
+        book_ids=word_book_ids(session, word.id),
+    )
+    if duplicate is not None:
+        raise HTTPException(
+            status_code=409, detail=f"vocabulary_word_duplicate:{duplicate.headword}"
+        )
+
+    content_changed = _content_tuple(word) != old_content
+    if content_changed and word.review_status in {"approved", "rejected"}:
+        from_status = word.review_status
+        if from_status == "approved":
+            word.review_note = REVIEW_NOTE_EDITED_AFTER_APPROVAL
+        # rejected：保留原拒绝理由 note；approved：改写为编辑后待审标识
+        word.review_status = "pending"
+        word.reviewer_id = None
+        word.reviewed_at = None
+        _write_review_audit(
+            session,
+            word=word,
+            actor=current_user,
+            action="reset",
+            from_status=from_status,
+            to_status="pending",
+            note=word.review_note,
+        )
+
+    # 词条与所属词库版本各自 +1（并发读-改-写由调用方锁/乐观锁兜底）
+    word.version += 1
+    affected_book_ids = word_book_ids(session, word.id)
+    for book_id in affected_book_ids:
+        session.execute(  # ty: ignore[deprecated] - exec() 不接受 update 语句
+            update(VocabularyBook)
+            .where(col(VocabularyBook.id) == book_id)
+            .values(version=VocabularyBook.version + 1)
+        )
+    # 版本快照（#517）：内容有变更才留编辑版；纯状态改动不落无意义版本
+    if content_changed:
+        for book_id in affected_book_ids:
+            book = session.get(VocabularyBook, book_id)
+            if book is not None:
+                vocab_governance.capture_version(
+                    session,
+                    book,
+                    actor=current_user,
+                    action="edit_word",
+                    summary=f"编辑词条 {word.headword}",
+                )
     session.add(word)
     session.commit()
     session.refresh(word)
