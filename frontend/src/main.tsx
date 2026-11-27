@@ -24,6 +24,7 @@ if (import.meta.env.VITE_SENTRY_DSN) {
       dsn: import.meta.env.VITE_SENTRY_DSN,
       environment: import.meta.env.MODE,
       tracesSampleRate: 0.1,
+      // @sentry/react v11 默认不采集 PII（不带用户标识/IP，不附请求体）。
     })
   })
 }
