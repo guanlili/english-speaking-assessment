@@ -68,6 +68,41 @@ def test_roots_judged_by_assembled_spelling() -> None:
     assert reg.judge_answer("roots", "w9", snapshot) is False
 
 
+def test_letters_payload_scrambles_deterministically() -> None:
+    """字母重排：字母一个不少、顺序不为原词、同词两次一致。"""
+    snapshot: dict[str, object] = {"headword": "teacher", "prompt_types": ["letters"]}
+    attach_prompt_payloads([snapshot], [_word(1, example=None)])
+    # 用真实词形覆盖 headword，payload 才会按它打乱
+    snapshot["headword"] = "teacher"
+    reg.require_plugin("letters").payload(0, _word(1), [], snapshot)
+    pool = cast("list[str]", snapshot["letters_pool"])
+    assert sorted(pool) == sorted("teacher")
+    assert "".join(pool).casefold() != "teacher"
+
+    second: dict[str, object] = {"headword": "teacher"}
+    reg.require_plugin("letters").payload(0, _word(1), [], second)
+    assert second["letters_pool"] == pool
+
+
+def test_letters_supports_only_plain_words() -> None:
+    plugin = reg.require_plugin("letters")
+    assert plugin.supports(SimpleNamespace(headword="teacher")) is True
+    assert plugin.supports(SimpleNamespace(headword="ab")) is False
+    assert plugin.supports(SimpleNamespace(headword="two words")) is False
+    assert plugin.supports(SimpleNamespace(headword="前缀")) is False
+
+
+def test_letters_judged_by_spelling() -> None:
+    snapshot: dict[str, object] = {
+        "word_id": "w3",
+        "headword": "teacher",
+        "accepted_spellings": [],
+        "prompt_types": ["letters"],
+    }
+    assert reg.judge_answer("letters", "Teacher", snapshot) is True
+    assert reg.judge_answer("letters", "teach", snapshot) is False
+
+
 def test_unknown_prompt_type_judges_false() -> None:
     """没注册的题型不再静默按拼写比对（避免误判对）。"""
     assert reg.judge_answer("not_registered", "apple", {"headword": "apple"}) is False

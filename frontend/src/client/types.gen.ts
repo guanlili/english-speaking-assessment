@@ -9643,6 +9643,10 @@ export type VocabularyStudentItem = {
      */
     morph_segments?: Array<VocabularyMorphSegment>;
     /**
+     * Letters Pool
+     */
+    letters_pool?: Array<string>;
+    /**
      * Headword
      */
     headword?: string | null;
@@ -10020,6 +10024,10 @@ export type VocabularyTodayItem = {
      * Morph Segments
      */
     morph_segments?: Array<VocabularyMorphSegment>;
+    /**
+     * Letters Pool
+     */
+    letters_pool?: Array<string>;
     /**
      * Headword
      */

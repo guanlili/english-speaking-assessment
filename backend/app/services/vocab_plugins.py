@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -169,6 +170,31 @@ def _payload_roots(
     snapshot["morph_segments"] = pt._build_morph_segments(word)
 
 
+def _supports_letters(word: Any) -> bool:
+    from app.services.vocabulary_prompt_types import letters_playable
+
+    return letters_playable(str(getattr(word, "headword", "")))
+
+
+def _payload_letters(
+    _idx: int, _word: Any, _words: list[Any], snapshot: dict[str, object]
+) -> None:
+    """把字母按词形稳定打乱；顺序不能等于原词（否则等于直接抄答案）。"""
+    headword = str(snapshot["headword"])
+    pool = [
+        ch
+        for _idx, ch in sorted(
+            enumerate(headword),
+            key=lambda pair: hashlib.sha256(
+                f"{headword}|{pair[0]}".encode()
+            ).hexdigest(),
+        )
+    ]
+    if "".join(pool).casefold() == headword.casefold() and len(pool) > 1:
+        pool = pool[1:] + pool[:1]
+    snapshot["letters_pool"] = pool
+
+
 def _judge_choice(answer: str, snapshot: dict[str, object], _key: str) -> bool:
     from app.services.vocabulary_prompt_types import choice_answer_matches
 
@@ -241,6 +267,17 @@ for _plugin in (
         supports=_supports_roots,
         payload=_payload_roots,
         judge=_judge_spelling,
+    ),
+    PromptPlugin(
+        key="letters",
+        label_zh="字母重排",
+        label_en="Letter tiles",
+        dimension="spelling",
+        requires=(REQUIRE_WORD,),
+        supports=_supports_letters,
+        payload=_payload_letters,
+        judge=_judge_spelling,
+        renderer="letter_tiles",
     ),
 ):
     register(_plugin)

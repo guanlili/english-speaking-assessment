@@ -17410,6 +17410,14 @@
             "title": "Item Index",
             "type": "integer"
           },
+          "letters_pool": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Letters Pool",
+            "type": "array"
+          },
           "meaning_en": {
             "anyOf": [
               {
@@ -18044,6 +18052,14 @@
           "item_index": {
             "title": "Item Index",
             "type": "integer"
+          },
+          "letters_pool": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Letters Pool",
+            "type": "array"
           },
           "meaning_en": {
             "anyOf": [

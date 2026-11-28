@@ -110,6 +110,8 @@ class VocabularyTodayItem(SQLModel):
     cloze_sentence: str | None = None
     # 词根拼装：打乱的语素块 + 少量干扰块，拼出的字符串必须等于 headword
     morph_segments: list[VocabularyMorphSegment] = []
+    # 字母重排：打乱后的字母块（示例玩法，答案仍是拼回的完整单词）
+    letters_pool: list[str] = []
     # 已答（首答存在）才回填拼写与对错
     headword: str | None = None
     answered: bool = False

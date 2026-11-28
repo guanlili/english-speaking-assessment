@@ -53,9 +53,17 @@ def normalize_cefr_band(raw: str | None) -> str | None:
 #   cloze   = 语境填空（例句挖空 → 输入目标词）
 #   roots   = 词根词缀拼装（给定语素块 → 拼出单词）
 # 前两种是拼写题，后四种是识别/组装题；判分统一在服务端、按首答计成绩。
-VOCAB_PROMPT_TYPES = ("meaning", "audio", "en_zh", "zh_en", "cloze", "roots")
+VOCAB_PROMPT_TYPES = (
+    "meaning",
+    "audio",
+    "en_zh",
+    "zh_en",
+    "cloze",
+    "roots",
+    "letters",
+)
 # 需要例句/词法素材的出题方式：内容不合格的词条不会进入这两种题
-CONTENT_PROMPT_TYPES = ("cloze", "roots")
+CONTENT_PROMPT_TYPES = ("cloze", "roots", "letters")
 # 选择题型：选项由发布时的词单生成并固化，保证同一任务选项不漂移
 CHOICE_PROMPT_TYPES = ("en_zh", "zh_en")
 

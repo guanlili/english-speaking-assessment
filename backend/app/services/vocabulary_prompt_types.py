@@ -121,7 +121,18 @@ def word_supports_prompt_type(word: Any, prompt_type: str) -> bool:
         morphology = normalize_morphology(getattr(word, "morphology", None))
         headword = str(getattr(word, "headword", ""))
         return morphology_assembles(headword, morphology) and len(morphology) >= 2
+    if prompt_type == "letters":
+        return letters_playable(str(getattr(word, "headword", "")))
     return False
+
+
+def letters_playable(headword: str) -> bool:
+    """字母重排能不能出题：纯英文单词、3–14 个字母、不含空格/连字符。
+
+    太短没有重排意义，太长屏幕上摆不下；专有名词/短语不参与，避免歧义。
+    """
+    word = headword.strip()
+    return word.isascii() and word.isalpha() and 3 <= len(word) <= 14
 
 
 def validate_content_availability(words: list[Any], prompt_types: list[str]) -> None:
@@ -387,4 +398,7 @@ def snapshot_payload(
     if prompt_type == "roots":
         segments = snapshot_item.get("morph_segments")
         payload["morph_segments"] = segments if isinstance(segments, list) else []
+    if prompt_type == "letters":
+        pool = snapshot_item.get("letters_pool")
+        payload["letters_pool"] = pool if isinstance(pool, list) else []
     return payload
