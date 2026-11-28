@@ -16,6 +16,7 @@ import DimensionTrendChart from "@/components/Practice/DimensionTrendChart"
 import { HistorySessionRow } from "@/components/Practice/HistorySessionRow"
 import { LearningReportCard } from "@/components/Practice/LearningReportCard"
 import StudentShell from "@/components/Practice/StudentShell"
+import { StudentVocabSnapshot } from "@/components/Practice/StudentVocabSnapshot"
 import TrailView from "@/components/Practice/TrailView"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -487,6 +488,7 @@ function MyTrailPage() {
                 <DiagnosticsCard data={diagnosticsQuery.data} />
                 <TrailView trail={trailQuery.data} period={period} />
                 <LearningReportCard code={code} />
+                <StudentVocabSnapshot code={code} />
               </>
             )}
           </>

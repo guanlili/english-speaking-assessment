@@ -41,6 +41,7 @@ import { Route as TCodeRouteImport } from './routes/t.$code'
 import { Route as VocabCodeRouteImport } from './routes/vocab.$code'
 import { Route as LayoutAdminIndexRouteImport } from './routes/_layout/admin.index'
 import { Route as LayoutAdminClassroomsRouteImport } from './routes/_layout/admin.classrooms'
+import { Route as LayoutAdminCoursesRouteImport } from './routes/_layout/admin.courses'
 import { Route as LayoutAdminDashboardRouteImport } from './routes/_layout/admin.dashboard'
 import { Route as LayoutAdminPassagesRouteImport } from './routes/_layout/admin.passages'
 import { Route as LayoutAdminQuestionsRouteImport } from './routes/_layout/admin.questions'
@@ -229,6 +230,11 @@ const LayoutAdminClassroomsRoute = LayoutAdminClassroomsRouteImport.update({
   path: '/classrooms',
   getParentRoute: () => LayoutAdminRoute,
 } as any)
+const LayoutAdminCoursesRoute = LayoutAdminCoursesRouteImport.update({
+  id: '/courses',
+  path: '/courses',
+  getParentRoute: () => LayoutAdminRoute,
+} as any)
 const LayoutAdminDashboardRoute = LayoutAdminDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -403,6 +409,7 @@ export interface FileRoutesByFullPath {
   '/t/$code': typeof TCodeRouteWithChildren
   '/vocab/$code': typeof VocabCodeRouteWithChildren
   '/admin/classrooms': typeof LayoutAdminClassroomsRoute
+  '/admin/courses': typeof LayoutAdminCoursesRoute
   '/admin/dashboard': typeof LayoutAdminDashboardRoute
   '/admin/passages': typeof LayoutAdminPassagesRoute
   '/admin/questions': typeof LayoutAdminQuestionsRoute
@@ -459,6 +466,7 @@ export interface FileRoutesByTo {
   '/me/$code': typeof MeCodeRoute
   '/platform/login': typeof PlatformLoginRoute
   '/admin/classrooms': typeof LayoutAdminClassroomsRoute
+  '/admin/courses': typeof LayoutAdminCoursesRoute
   '/admin/dashboard': typeof LayoutAdminDashboardRoute
   '/admin/passages': typeof LayoutAdminPassagesRoute
   '/admin/questions': typeof LayoutAdminQuestionsRoute
@@ -522,6 +530,7 @@ export interface FileRoutesById {
   '/t/$code': typeof TCodeRouteWithChildren
   '/vocab/$code': typeof VocabCodeRouteWithChildren
   '/_layout/admin/classrooms': typeof LayoutAdminClassroomsRoute
+  '/_layout/admin/courses': typeof LayoutAdminCoursesRoute
   '/_layout/admin/dashboard': typeof LayoutAdminDashboardRoute
   '/_layout/admin/passages': typeof LayoutAdminPassagesRoute
   '/_layout/admin/questions': typeof LayoutAdminQuestionsRoute
@@ -585,6 +594,7 @@ export interface FileRouteTypes {
     | '/t/$code'
     | '/vocab/$code'
     | '/admin/classrooms'
+    | '/admin/courses'
     | '/admin/dashboard'
     | '/admin/passages'
     | '/admin/questions'
@@ -641,6 +651,7 @@ export interface FileRouteTypes {
     | '/me/$code'
     | '/platform/login'
     | '/admin/classrooms'
+    | '/admin/courses'
     | '/admin/dashboard'
     | '/admin/passages'
     | '/admin/questions'
@@ -703,6 +714,7 @@ export interface FileRouteTypes {
     | '/t/$code'
     | '/vocab/$code'
     | '/_layout/admin/classrooms'
+    | '/_layout/admin/courses'
     | '/_layout/admin/dashboard'
     | '/_layout/admin/passages'
     | '/_layout/admin/questions'
@@ -986,6 +998,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminClassroomsRouteImport
       parentRoute: typeof LayoutAdminRoute
     }
+    '/_layout/admin/courses': {
+      id: '/_layout/admin/courses'
+      path: '/courses'
+      fullPath: '/admin/courses'
+      preLoaderRoute: typeof LayoutAdminCoursesRouteImport
+      parentRoute: typeof LayoutAdminRoute
+    }
     '/_layout/admin/dashboard': {
       id: '/_layout/admin/dashboard'
       path: '/dashboard'
@@ -1187,6 +1206,7 @@ declare module '@tanstack/react-router' {
 
 interface LayoutAdminRouteChildren {
   LayoutAdminClassroomsRoute: typeof LayoutAdminClassroomsRoute
+  LayoutAdminCoursesRoute: typeof LayoutAdminCoursesRoute
   LayoutAdminDashboardRoute: typeof LayoutAdminDashboardRoute
   LayoutAdminPassagesRoute: typeof LayoutAdminPassagesRoute
   LayoutAdminQuestionsRoute: typeof LayoutAdminQuestionsRoute
@@ -1202,6 +1222,7 @@ interface LayoutAdminRouteChildren {
 
 const LayoutAdminRouteChildren: LayoutAdminRouteChildren = {
   LayoutAdminClassroomsRoute: LayoutAdminClassroomsRoute,
+  LayoutAdminCoursesRoute: LayoutAdminCoursesRoute,
   LayoutAdminDashboardRoute: LayoutAdminDashboardRoute,
   LayoutAdminPassagesRoute: LayoutAdminPassagesRoute,
   LayoutAdminQuestionsRoute: LayoutAdminQuestionsRoute,

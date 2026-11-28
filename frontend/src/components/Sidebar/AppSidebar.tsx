@@ -1,5 +1,6 @@
 import { useRouterState } from "@tanstack/react-router"
 import {
+  BadgeCheck,
   BookA,
   ChevronDown,
   ClipboardList,
@@ -128,6 +129,11 @@ const adminOnlyItems: Item[] = [
 
 // 校级管理员：学校业务（成员管理），课程内容入口已按课程归组到上方。
 const schoolAdminItems: Item[] = [
+  {
+    icon: BadgeCheck,
+    title: { zh: "课程与授权", en: "Courses & Licences" },
+    path: "/admin/courses",
+  },
   {
     icon: UserRoundCog,
     title: { zh: "教师管理", en: "Teacher Accounts" },
