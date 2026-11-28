@@ -205,12 +205,12 @@ for (const vp of VIEWPORTS) {
     await expectNoHorizontalOverflow(page)
   })
 
-  test(`学生词汇学习页在${vp.name}无横向溢出`, async ({ page }) => {
+  test(`学生单词课页在${vp.name}无横向溢出`, async ({ page }) => {
     await page.setViewportSize({ width: vp.width, height: vp.height })
     await loginStudentDemo(page)
     await page.goto("/vocab/DEMO01")
     await expect(
-      page.getByRole("heading", { name: /词汇学习|Vocabulary/ }),
+      page.getByRole("heading", { name: /单词课|Vocabulary/ }),
     ).toBeVisible()
     await expect(page.getByText(/错词本|Wrong Words/).first()).toBeVisible()
     await expectNoHorizontalOverflow(page)

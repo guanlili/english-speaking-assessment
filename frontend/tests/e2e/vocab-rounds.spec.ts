@@ -240,7 +240,7 @@ test("多任务练习：完成 A 后刷新仍固定 A，进入 B 作答不串任
 
   // 回首页进入任务 B：作答 dog 必须判对（错投 A 会话会把 dog 判错）
   await page
-    .getByRole("link", { name: /返回词汇学习|Back to Vocabulary/ })
+    .getByRole("link", { name: /返回单词课|Back to Vocabulary/ })
     .click()
   await rowB.click()
   await page.waitForURL(/assignment=/, { timeout: 10_000 })
