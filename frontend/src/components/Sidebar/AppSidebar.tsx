@@ -2,6 +2,7 @@ import { useRouterState } from "@tanstack/react-router"
 import {
   BookA,
   ChevronDown,
+  ClipboardList,
   FolderArchive,
   Layers,
   LayoutDashboard,
@@ -37,6 +38,11 @@ import { User } from "./User"
 
 // 共享底座：班级是口语课、单词课共用的组织单位，不随课程开关隐藏。
 const baseItems: Item[] = [
+  {
+    icon: ClipboardList,
+    title: { zh: "教学任务中心", en: "Teaching Tasks" },
+    path: "/tasks",
+  },
   {
     icon: School,
     title: { zh: "我的课堂", en: "My Classrooms" },
