@@ -53,6 +53,9 @@ from app.api.routes import (
     vocabulary_quiz as _quiz,
 )
 from app.api.routes import (
+    vocabulary_room as _room,
+)
+from app.api.routes import (
     vocabulary_student as _student,
 )
 from app.api.routes import (
@@ -74,6 +77,7 @@ router.include_router(_farm.router, tags=["vocabulary"])
 router.include_router(_quiz.router, tags=["vocabulary"])
 router.include_router(_student.router, tags=["vocabulary"])
 router.include_router(_pk.router, tags=["vocabulary"])
+router.include_router(_room.router, tags=["vocabulary"])
 router.include_router(_placement.router, tags=["vocabulary"])
 router.include_router(_leaderboard.router, tags=["vocabulary"])
 router.include_router(_challenge.router, tags=["vocabulary"])

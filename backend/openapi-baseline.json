@@ -7808,6 +7808,804 @@
         "title": "PkPlayerSummary",
         "type": "object"
       },
+      "PkRoomAnswerRequest": {
+        "properties": {
+          "answer": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          },
+          "item_index": {
+            "minimum": 0.0,
+            "title": "Item Index",
+            "type": "integer"
+          },
+          "prompt_type": {
+            "default": "meaning",
+            "maxLength": 16,
+            "title": "Prompt Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_index",
+          "answer"
+        ],
+        "title": "PkRoomAnswerRequest",
+        "type": "object"
+      },
+      "PkRoomAnswerResult": {
+        "properties": {
+          "base_score": {
+            "default": 0,
+            "title": "Base Score",
+            "type": "integer"
+          },
+          "headword": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headword"
+          },
+          "is_correct": {
+            "title": "Is Correct",
+            "type": "boolean"
+          },
+          "item_index": {
+            "title": "Item Index",
+            "type": "integer"
+          },
+          "my_score": {
+            "default": 0,
+            "title": "My Score",
+            "type": "integer"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "score": {
+            "title": "Score",
+            "type": "integer"
+          },
+          "speed_bonus": {
+            "default": 0,
+            "title": "Speed Bonus",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_index",
+          "is_correct",
+          "score"
+        ],
+        "title": "PkRoomAnswerResult",
+        "type": "object"
+      },
+      "PkRoomCreate": {
+        "description": "教师开房：选词库、题量/限时/题型与赛制。",
+        "properties": {
+          "book_id": {
+            "format": "uuid",
+            "title": "Book Id",
+            "type": "string"
+          },
+          "mode": {
+            "default": "solo",
+            "maxLength": 8,
+            "title": "Mode",
+            "type": "string"
+          },
+          "per_question_seconds": {
+            "anyOf": [
+              {
+                "maximum": 60.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Question Seconds"
+          },
+          "prompt_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Types"
+          },
+          "question_count": {
+            "anyOf": [
+              {
+                "maximum": 20.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Count"
+          },
+          "team_count": {
+            "anyOf": [
+              {
+                "maximum": 6.0,
+                "minimum": 2.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Count"
+          }
+        },
+        "required": [
+          "book_id"
+        ],
+        "title": "PkRoomCreate",
+        "type": "object"
+      },
+      "PkRoomHostView": {
+        "properties": {
+          "book_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Id"
+          },
+          "classroom_id": {
+            "format": "uuid",
+            "title": "Classroom Id",
+            "type": "string"
+          },
+          "current_accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Accuracy"
+          },
+          "current_answered_count": {
+            "default": 0,
+            "title": "Current Answered Count",
+            "type": "integer"
+          },
+          "current_correct_count": {
+            "default": 0,
+            "title": "Current Correct Count",
+            "type": "integer"
+          },
+          "current_item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PkRoomQuestionStats"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_item_index": {
+            "default": 0,
+            "title": "Current Item Index",
+            "type": "integer"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "participant_count": {
+            "default": 0,
+            "title": "Participant Count",
+            "type": "integer"
+          },
+          "per_question_seconds": {
+            "title": "Per Question Seconds",
+            "type": "integer"
+          },
+          "players": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkRoomPlayerSummary"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "prompt_types": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Prompt Types",
+            "type": "array"
+          },
+          "question_count": {
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "questions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkRoomQuestionStats"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "remaining_seconds": {
+            "default": 0,
+            "title": "Remaining Seconds",
+            "type": "integer"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PkRoomResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "room_code": {
+            "title": "Room Code",
+            "type": "string"
+          },
+          "room_id": {
+            "format": "uuid",
+            "title": "Room Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "team_count": {
+            "default": 0,
+            "title": "Team Count",
+            "type": "integer"
+          },
+          "teams": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkRoomTeamSummary"
+            },
+            "title": "Teams",
+            "type": "array"
+          }
+        },
+        "required": [
+          "room_id",
+          "room_code",
+          "classroom_id",
+          "status",
+          "mode",
+          "question_count",
+          "per_question_seconds"
+        ],
+        "title": "PkRoomHostView",
+        "type": "object"
+      },
+      "PkRoomItem": {
+        "description": "当前题面：本人未答时不透露 headword。",
+        "properties": {
+          "answered": {
+            "default": false,
+            "title": "Answered",
+            "type": "boolean"
+          },
+          "choices": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "cloze_sentence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cloze Sentence"
+          },
+          "headword": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headword"
+          },
+          "is_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Correct"
+          },
+          "item_index": {
+            "title": "Item Index",
+            "type": "integer"
+          },
+          "meaning_en": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meaning En"
+          },
+          "meaning_zh": {
+            "default": "",
+            "title": "Meaning Zh",
+            "type": "string"
+          },
+          "morph_segments": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Morph Segments",
+            "type": "array"
+          },
+          "part_of_speech": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part Of Speech"
+          },
+          "prompt_type": {
+            "title": "Prompt Type",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "required": [
+          "item_index",
+          "prompt_type"
+        ],
+        "title": "PkRoomItem",
+        "type": "object"
+      },
+      "PkRoomJoin": {
+        "description": "学生凭 6 位码入场。",
+        "properties": {
+          "code": {
+            "maxLength": 6,
+            "minLength": 6,
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "PkRoomJoin",
+        "type": "object"
+      },
+      "PkRoomPlayerSummary": {
+        "properties": {
+          "answered_count": {
+            "default": 0,
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "answered_current": {
+            "default": false,
+            "title": "Answered Current",
+            "type": "boolean"
+          },
+          "correct_count": {
+            "default": 0,
+            "title": "Correct Count",
+            "type": "integer"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "score": {
+            "default": 0,
+            "title": "Score",
+            "type": "integer"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "team_index": {
+            "default": 0,
+            "title": "Team Index",
+            "type": "integer"
+          },
+          "total_seconds": {
+            "default": 0.0,
+            "title": "Total Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "student_id"
+        ],
+        "title": "PkRoomPlayerSummary",
+        "type": "object"
+      },
+      "PkRoomQuestionStats": {
+        "properties": {
+          "accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy"
+          },
+          "answered_count": {
+            "default": 0,
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "correct_count": {
+            "default": 0,
+            "title": "Correct Count",
+            "type": "integer"
+          },
+          "headword": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headword"
+          },
+          "item_index": {
+            "title": "Item Index",
+            "type": "integer"
+          },
+          "meaning_zh": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meaning Zh"
+          },
+          "prompt_type": {
+            "title": "Prompt Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_index",
+          "prompt_type"
+        ],
+        "title": "PkRoomQuestionStats",
+        "type": "object"
+      },
+      "PkRoomResult": {
+        "description": "结算：队伍/个人排名、每题正确率与易错词清单（只读，不回流任务）。",
+        "properties": {
+          "players": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkRoomPlayerSummary"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "questions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkRoomQuestionStats"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "teams": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkRoomResultRow"
+            },
+            "title": "Teams",
+            "type": "array"
+          },
+          "wrong_words": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Wrong Words",
+            "type": "array"
+          }
+        },
+        "title": "PkRoomResult",
+        "type": "object"
+      },
+      "PkRoomResultRow": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "member_count": {
+            "default": 0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "score": {
+            "title": "Score",
+            "type": "integer"
+          },
+          "team_index": {
+            "default": 0,
+            "title": "Team Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "label",
+          "score",
+          "rank"
+        ],
+        "title": "PkRoomResultRow",
+        "type": "object"
+      },
+      "PkRoomStudentView": {
+        "properties": {
+          "current_item_index": {
+            "default": 0,
+            "title": "Current Item Index",
+            "type": "integer"
+          },
+          "item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PkRoomItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "me": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PkRoomPlayerSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "participants": {
+            "default": 0,
+            "title": "Participants",
+            "type": "integer"
+          },
+          "per_question_seconds": {
+            "title": "Per Question Seconds",
+            "type": "integer"
+          },
+          "question_count": {
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "remaining_seconds": {
+            "default": 0,
+            "title": "Remaining Seconds",
+            "type": "integer"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PkRoomResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "room_code": {
+            "title": "Room Code",
+            "type": "string"
+          },
+          "room_id": {
+            "format": "uuid",
+            "title": "Room Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "team_count": {
+            "default": 0,
+            "title": "Team Count",
+            "type": "integer"
+          },
+          "teams": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PkRoomTeamSummary"
+            },
+            "title": "Teams",
+            "type": "array"
+          }
+        },
+        "required": [
+          "room_id",
+          "room_code",
+          "status",
+          "mode",
+          "question_count",
+          "per_question_seconds"
+        ],
+        "title": "PkRoomStudentView",
+        "type": "object"
+      },
+      "PkRoomTeamSummary": {
+        "properties": {
+          "answered_count": {
+            "default": 0,
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "correct_count": {
+            "default": 0,
+            "title": "Correct Count",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "member_count": {
+            "default": 0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "score": {
+            "default": 0,
+            "title": "Score",
+            "type": "integer"
+          },
+          "team_index": {
+            "title": "Team Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "team_index",
+          "label"
+        ],
+        "title": "PkRoomTeamSummary",
+        "type": "object"
+      },
       "PlacementAnswerRequest": {
         "properties": {
           "answer": {
@@ -30891,6 +31689,470 @@
           }
         ],
         "summary": "Read Vocab Results",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/room": {
+      "post": {
+        "operationId": "vocabulary-create_pk_room",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PkRoomCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkRoomHostView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Pk Room",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/room/current": {
+      "get": {
+        "operationId": "vocabulary-read_current_pk_room",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PkRoomHostView"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Vocabulary-Read Current Pk Room"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Current Pk Room",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/room/join": {
+      "post": {
+        "operationId": "vocabulary-join_pk_room",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PkRoomJoin"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkRoomStudentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Join Pk Room",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/room/{room_id}/answers": {
+      "post": {
+        "operationId": "vocabulary-answer_pk_room",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "room_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Room Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PkRoomAnswerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkRoomAnswerResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Answer Pk Room",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/room/{room_id}/board": {
+      "get": {
+        "operationId": "vocabulary-read_pk_room_board",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "room_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Room Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkRoomHostView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Pk Room Board",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/room/{room_id}/end": {
+      "post": {
+        "operationId": "vocabulary-end_pk_room",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "room_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Room Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkRoomHostView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "End Pk Room",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/room/{room_id}/me": {
+      "get": {
+        "operationId": "vocabulary-read_pk_room_as_student",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "room_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Room Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkRoomStudentView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Pk Room As Student",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/room/{room_id}/start": {
+      "post": {
+        "operationId": "vocabulary-start_pk_room",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "room_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Room Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PkRoomHostView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Start Pk Room",
         "tags": [
           "vocabulary"
         ]
