@@ -231,3 +231,60 @@ def test_teacher_candidates_excludes_members(client: TestClient, db: Session) ->
     ids = {row["id"] for row in candidates}
     assert str(owner.id) not in ids
     assert str(co.id) not in ids
+
+
+def test_teacher_joins_by_class_code(client: TestClient, db: Session) -> None:
+    """存量漏加教师的自助路径：拿课堂码加入，落 co_teacher，重复加入幂等。"""
+    owner, _ = _make_teacher(db, "主教师")
+    teacher, _ = _make_teacher(db, "未分配教师")
+    owner_headers = _login(client, owner)
+    teacher_headers = _login(client, teacher)
+    data = _create_class(client, owner_headers)
+    code = data["code"]
+    classroom = db.get(Classroom, uuid.UUID(data["id"]))
+    assert classroom is not None
+
+    resp = client.post(f"/api/v1/classes/{code}/teachers/join", headers=teacher_headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["role"] == "co_teacher"
+
+    members = _memberships(db, classroom.id)
+    assert {m.user_id for m in members} == {owner.id, teacher.id}
+    assert all(m.tenant_id == classroom.tenant_id for m in members)
+
+    # 幂等：再点一次不产生第二行
+    again = client.post(
+        f"/api/v1/classes/{code}/teachers/join", headers=teacher_headers
+    )
+    assert again.status_code == 200
+    assert len(_memberships(db, classroom.id)) == 2
+
+    # 加入后自己的课堂列表里能看到这个班，且角色是共管
+    listed = client.get("/api/v1/classes", headers=teacher_headers).json()
+    assert [row["viewer_role"] for row in listed] == ["co_teacher"]
+
+
+def test_owner_join_returns_owner_and_student_is_rejected(
+    client: TestClient, db: Session
+) -> None:
+    owner, _ = _make_teacher(db, "主教师")
+    owner_headers = _login(client, owner)
+    code = _create_class(client, owner_headers)["code"]
+
+    resp = client.post(f"/api/v1/classes/{code}/teachers/join", headers=owner_headers)
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "owner"
+
+    student = User(
+        username=f"s{uuid.uuid4().hex[:8]}",
+        full_name="学生",
+        role="student",
+        hashed_password=get_password_hash("studentpass123"),
+    )
+    db.add(student)
+    db.commit()
+    student_headers = _login(client, student, "studentpass123")
+    denied = client.post(
+        f"/api/v1/classes/{code}/teachers/join", headers=student_headers
+    )
+    assert denied.status_code in {401, 403}

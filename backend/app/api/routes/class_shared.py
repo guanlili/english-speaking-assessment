@@ -704,6 +704,62 @@ def add_class_teacher(
     return _teacher_public(session, target.id, "co_teacher", current_user)
 
 
+@router.post("/{code}/teachers/join", response_model=ClassroomTeacherPublic)
+def join_class_teacher(
+    session: SessionDep,
+    code: str,
+    current_user: TeacherUserDep,
+) -> Any:
+    """教师凭课堂码加入本班教师团队（共管）。
+
+    存量痛点：名单里的教师账号常常没被加进任何班级团队，进班即 403，而
+    主教师/校管又不知道要加谁。给教师一条自助路径：拿到课堂码自己加入，
+    由主教师/校管事后移除或调整。约束与「添加共管」一致：同校、教师角色、
+    未停用；重复加入幂等（含本人已是主教师的情况）。
+    """
+    classroom = get_classroom_by_code(session=session, code=code.upper())
+    if classroom is None:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+    if classroom.tenant_id != current_user.tenant_id:
+        # 与跨校入班同口径：不泄露他校课堂的任何信息
+        raise HTTPException(
+            status_code=403, detail="该课堂不属于你所在的学校，无法加入"
+        )
+    if classroom.owner_id == current_user.id:
+        return _teacher_public(session, current_user.id, "owner", current_user)
+    existing = session.exec(
+        select(ClassroomTeacher).where(
+            ClassroomTeacher.classroom_id == classroom.id,
+            ClassroomTeacher.user_id == current_user.id,
+        )
+    ).first()
+    if existing is not None:
+        return _teacher_public(session, existing.user_id, existing.role, current_user)
+    membership = ClassroomTeacher(
+        classroom_id=classroom.id,
+        user_id=current_user.id,
+        role="co_teacher",
+        tenant_id=classroom.tenant_id,
+        created_by=current_user.id,
+    )
+    session.add(membership)
+    try:
+        session.commit()
+    except IntegrityError:
+        # 并发重复加入：唯一索引兜底，回读已有成员，保持幂等
+        session.rollback()
+        existing = session.exec(
+            select(ClassroomTeacher).where(
+                ClassroomTeacher.classroom_id == classroom.id,
+                ClassroomTeacher.user_id == current_user.id,
+            )
+        ).first()
+        if existing is None:
+            raise
+        return _teacher_public(session, existing.user_id, existing.role, current_user)
+    return _teacher_public(session, current_user.id, "co_teacher", current_user)
+
+
 @router.delete("/{code}/teachers/{user_id}")
 def remove_class_teacher(
     session: SessionDep,
