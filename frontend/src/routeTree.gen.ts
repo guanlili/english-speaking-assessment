@@ -68,6 +68,7 @@ import { Route as VocabCodePkRouteImport } from './routes/vocab.$code.pk'
 import { Route as VocabCodePlacementRouteImport } from './routes/vocab.$code.placement'
 import { Route as VocabCodePracticeRouteImport } from './routes/vocab.$code.practice'
 import { Route as VocabCodeRecordsRouteImport } from './routes/vocab.$code.records'
+import { Route as VocabCodeRoomRouteImport } from './routes/vocab.$code.room'
 import { Route as VocabCodeSelfRouteImport } from './routes/vocab.$code.self'
 import { Route as TCodeSStudentIdRouteImport } from './routes/t.$code.s.$studentId'
 
@@ -367,6 +368,11 @@ const VocabCodeRecordsRoute = VocabCodeRecordsRouteImport.update({
   path: '/records',
   getParentRoute: () => VocabCodeRoute,
 } as any)
+const VocabCodeRoomRoute = VocabCodeRoomRouteImport.update({
+  id: '/room',
+  path: '/room',
+  getParentRoute: () => VocabCodeRoute,
+} as any)
 const VocabCodeSelfRoute = VocabCodeSelfRouteImport.update({
   id: '/self',
   path: '/self',
@@ -432,6 +438,7 @@ export interface FileRoutesByFullPath {
   '/vocab/$code/placement': typeof VocabCodePlacementRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
+  '/vocab/$code/room': typeof VocabCodeRoomRoute
   '/vocab/$code/self': typeof VocabCodeSelfRoute
   '/admin/': typeof LayoutAdminIndexRoute
   '/exam/$code/': typeof ExamCodeIndexRoute
@@ -489,6 +496,7 @@ export interface FileRoutesByTo {
   '/vocab/$code/placement': typeof VocabCodePlacementRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
+  '/vocab/$code/room': typeof VocabCodeRoomRoute
   '/vocab/$code/self': typeof VocabCodeSelfRoute
   '/admin': typeof LayoutAdminIndexRoute
   '/exam/$code': typeof ExamCodeIndexRoute
@@ -553,6 +561,7 @@ export interface FileRoutesById {
   '/vocab/$code/placement': typeof VocabCodePlacementRoute
   '/vocab/$code/practice': typeof VocabCodePracticeRoute
   '/vocab/$code/records': typeof VocabCodeRecordsRoute
+  '/vocab/$code/room': typeof VocabCodeRoomRoute
   '/vocab/$code/self': typeof VocabCodeSelfRoute
   '/_layout/admin/': typeof LayoutAdminIndexRoute
   '/exam/$code/': typeof ExamCodeIndexRoute
@@ -617,6 +626,7 @@ export interface FileRouteTypes {
     | '/vocab/$code/placement'
     | '/vocab/$code/practice'
     | '/vocab/$code/records'
+    | '/vocab/$code/room'
     | '/vocab/$code/self'
     | '/admin/'
     | '/exam/$code/'
@@ -674,6 +684,7 @@ export interface FileRouteTypes {
     | '/vocab/$code/placement'
     | '/vocab/$code/practice'
     | '/vocab/$code/records'
+    | '/vocab/$code/room'
     | '/vocab/$code/self'
     | '/admin'
     | '/exam/$code'
@@ -737,6 +748,7 @@ export interface FileRouteTypes {
     | '/vocab/$code/placement'
     | '/vocab/$code/practice'
     | '/vocab/$code/records'
+    | '/vocab/$code/room'
     | '/vocab/$code/self'
     | '/_layout/admin/'
     | '/exam/$code/'
@@ -1187,6 +1199,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VocabCodeRecordsRouteImport
       parentRoute: typeof VocabCodeRoute
     }
+    '/vocab/$code/room': {
+      id: '/vocab/$code/room'
+      path: '/room'
+      fullPath: '/vocab/$code/room'
+      preLoaderRoute: typeof VocabCodeRoomRouteImport
+      parentRoute: typeof VocabCodeRoute
+    }
     '/vocab/$code/self': {
       id: '/vocab/$code/self'
       path: '/self'
@@ -1323,6 +1342,7 @@ interface VocabCodeRouteChildren {
   VocabCodePlacementRoute: typeof VocabCodePlacementRoute
   VocabCodePracticeRoute: typeof VocabCodePracticeRoute
   VocabCodeRecordsRoute: typeof VocabCodeRecordsRoute
+  VocabCodeRoomRoute: typeof VocabCodeRoomRoute
   VocabCodeSelfRoute: typeof VocabCodeSelfRoute
   VocabCodeIndexRoute: typeof VocabCodeIndexRoute
 }
@@ -1335,6 +1355,7 @@ const VocabCodeRouteChildren: VocabCodeRouteChildren = {
   VocabCodePlacementRoute: VocabCodePlacementRoute,
   VocabCodePracticeRoute: VocabCodePracticeRoute,
   VocabCodeRecordsRoute: VocabCodeRecordsRoute,
+  VocabCodeRoomRoute: VocabCodeRoomRoute,
   VocabCodeSelfRoute: VocabCodeSelfRoute,
   VocabCodeIndexRoute: VocabCodeIndexRoute,
 }
