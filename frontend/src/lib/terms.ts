@@ -380,8 +380,8 @@ export const EXPLAIN_MASKED_WORDS = {
 
 /** 错词本口径：不删除、非掌握度评估（词汇首页/记录页触点共用） */
 export const EXPLAIN_WRONG_WORDS_POLICY = {
-  zh: "错词不会因为答对一次就移除。这里分开展示历史错误次数、最近独立首答和最近练对时间，只用于安排复习，不是科学掌握度评估。",
-  en: "A word stays in this book even after you get it right once. Historical misses, your latest first try, and your latest correct answer are shown separately — for review planning only, not a scientific mastery score.",
+  zh: "移出口径：最近一次首答拼错之后，连续两次首答都答对，就判定掌握、自动移出到「已掌握」，不再进复习题单；之后再拼错会自动回到待攻克区。历史错误次数只作记录、不冲减。这不是科学掌握度评估，只用于安排复习。",
+  en: "Move-out rule: after a first-try miss, two first-try successes in a row count as mastered — the word moves out of the active list and is no longer picked for review; a later first-try miss brings it back. Historical misses are kept, never netted off. For review planning only, not a scientific mastery score.",
 } as const satisfies BiString
 
 /** 首答正确率口径：分母为已答题数（自主练习报告/记录页触点共用） */

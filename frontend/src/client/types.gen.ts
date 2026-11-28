@@ -10416,6 +10416,10 @@ export type VocabularyWordUpdate = {
  * 不冲抵历史错误次数）；last_first_* 是最近一次独立首答（每轮第一次
  * 作答）的结果；last_correct_at 是最近一次答对时间。不是科学掌握度
  * 评估，只用于安排复习。
+ *
+ * mastered 是「移出」判定：最近一次首答判错后连续两次独立首答答对
+ * 即掌握，移出生词本待攻克区（mastered_at 为达成时间）；之后再首答
+ * 判错会自动回到待攻克区，掌握状态作废。它同样不是考试分数。
  */
 export type VocabularyWrongWordItem = {
     /**
@@ -10458,10 +10462,23 @@ export type VocabularyWrongWordItem = {
      * Practiceable
      */
     practiceable?: boolean;
+    /**
+     * Mastered
+     */
+    mastered?: boolean;
+    /**
+     * Mastered At
+     */
+    mastered_at?: string | null;
 };
 
 /**
  * VocabularyWrongWords
+ *
+ * 错词本分区响应：待攻克（items）+ 已掌握（mastered_items，自动移出）。
+ *
+ * 两区共用同一次聚合，计数与首页 wrong_word_count 同口径（都只算
+ * 待攻克）。已掌握区只做展示与凭据回看，不再进复习选题。
  */
 export type VocabularyWrongWords = {
     /**
@@ -10472,6 +10489,18 @@ export type VocabularyWrongWords = {
      * Items
      */
     items?: Array<VocabularyWrongWordItem>;
+    /**
+     * Mastered Items
+     */
+    mastered_items?: Array<VocabularyWrongWordItem>;
+    /**
+     * Active Count
+     */
+    active_count?: number;
+    /**
+     * Mastered Count
+     */
+    mastered_count?: number;
 };
 
 /**

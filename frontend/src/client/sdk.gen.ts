@@ -4982,7 +4982,10 @@ export class VocabularyService {
      *
      * 错词本：本课堂学生档案下全部词汇轮次的首答错词（跨任务/自主聚合）。
      *
-     * 历史错误次数、最近独立首答、最近答对三个维度分列（一次答对不删词）；
+     * 历史错误次数、最近独立首答、最近答对三个维度分列；词条分两区下发：
+     * - items：待攻克（复习选题池，最近错误优先）
+     * - mastered_items：已掌握（最近一次首答判错后连续两次首答答对，
+     * 自动移出待攻克区；仅展示，不再进复习选题）
      * practiceable 标注词条是否仍在当前可练词库内，可直接进错词专项复习。
      */
     public static readWrongWords<ThrowOnError extends boolean = true>(parameters: {
