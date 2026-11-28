@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query"
-import { Loader2, Upload } from "lucide-react"
+import { Download, Loader2, Upload } from "lucide-react"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
 import {
@@ -16,6 +16,7 @@ import {
   VOCAB_LEVEL_ORDER,
   type VocabLevel,
 } from "@/lib/terms"
+import { downloadVocabBookTemplate } from "@/lib/vocabBookCsv"
 import { deriveImportStats } from "@/lib/vocabContentReview"
 import { localizeImportIssue } from "@/lib/vocabImport"
 import { toBookWordInput, type VocabCsvPreview } from "./types"
@@ -262,6 +263,18 @@ export function CreateClassroomBook({
             event.target.value = ""
           }}
         />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={downloadVocabBookTemplate}
+          title={t({
+            zh: "下载标准 CSV 模板（可填好后上传预览）",
+            en: "Download the standard CSV template",
+          })}
+        >
+          <Download />
+          {t({ zh: "下载模板", en: "Template" })}
+        </Button>
         <Button
           size="sm"
           disabled={

@@ -51,7 +51,6 @@ import { WordTagBadges } from "@/components/Vocabulary/WordTagBadges"
 import { APP_NAME } from "@/config"
 import { cachedRole, isOperatorLoggedIn } from "@/hooks/useAuth"
 import { useModules } from "@/hooks/useModules"
-import { downloadCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
 import {
   CEFR_BAND_LABELS,
@@ -61,6 +60,10 @@ import {
   VOCAB_EXAM_TAGS,
   type VocabExamTag,
 } from "@/lib/terms"
+import {
+  downloadVocabBookTemplate,
+  exportVocabBookCsv,
+} from "@/lib/vocabBookCsv"
 import {
   deriveImportStats,
   reviewStatusLabel,
@@ -271,38 +274,32 @@ function VocabBooksAdmin() {
     },
   })
 
-  const downloadTemplate = () => {
-    downloadCsv(
-      [
-        [
-          "headword",
-          "part_of_speech",
-          "meaning_zh",
-          "meaning_en",
-          "accepted_spellings",
-          "example_en",
-          "morphology",
-        ],
-        [
-          "dog",
-          "n.",
-          "狗",
-          "a common pet",
-          "",
-          "My dog greets me at the door.",
-        ],
-        [
-          "favourite",
-          "adj.",
-          "最喜欢的",
-          "liked more than all others",
-          "favorite",
-          "Blue is my favourite color.",
-          '[{"text":"favour","gloss":"喜爱","kind":"root"},{"text":"ite","gloss":"形容词后缀","kind":"suffix"}]',
-        ],
-      ],
-      "vocab-book-template.csv",
-    )
+  // 模板与导出列口径统一在 lib/vocabBookCsv，避免两处表头各写一份
+  const downloadTemplate = () => downloadVocabBookTemplate()
+
+  const [exportingBookId, setExportingBookId] = useState<string | null>(null)
+  const exportBook = async (bookId: string, title: string) => {
+    setExportingBookId(bookId)
+    try {
+      const count = await exportVocabBookCsv(bookId, title)
+      toast.success(
+        t({
+          zh: `已导出 ${count} 个词条（可直接改后再导入）。`,
+          en: `Exported ${count} entries (edit and re-import if needed).`,
+        }),
+      )
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError && error.status === 403
+          ? t({
+              zh: "没有权限导出这个词库。",
+              en: "No permission to export this book.",
+            })
+          : t({ zh: "导出失败，请重试。", en: "Export failed — retry." }),
+      )
+    } finally {
+      setExportingBookId(null)
+    }
   }
 
   const openBook = books.find((book) => book.id === openBookId)
@@ -445,6 +442,19 @@ function VocabBooksAdmin() {
                             />
                             {t({ zh: "词条", en: "Words" })}
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={exportingBookId === book.id}
+                            onClick={() => void exportBook(book.id, book.title)}
+                          >
+                            {exportingBookId === book.id ? (
+                              <Loader2 className="animate-spin" />
+                            ) : (
+                              <Download />
+                            )}
+                            {t({ zh: "导出", en: "Export" })}
+                          </Button>
                           {book.status === "active" && (
                             <Button
                               variant="ghost"
@@ -500,6 +510,21 @@ function VocabBooksAdmin() {
                 <Download />
                 {t({ zh: "CSV 模板", en: "CSV Template" })}
               </Button>
+              {openBook && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={exportingBookId === openBook.id}
+                  onClick={() => void exportBook(openBook.id, openBook.title)}
+                >
+                  {exportingBookId === openBook.id ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <Download />
+                  )}
+                  {t({ zh: "导出词库", en: "Export Book" })}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
