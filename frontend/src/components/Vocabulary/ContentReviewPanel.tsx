@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { CheckCircle2, Loader2, Pencil, Search, XCircle } from "lucide-react"
+import {
+  CheckCircle2,
+  Download,
+  Loader2,
+  Pencil,
+  Search,
+  XCircle,
+} from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import {
@@ -32,6 +39,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { WordEditDialog } from "@/components/Vocabulary/WordEditDialog"
 import { useI18n } from "@/lib/i18n"
 import { formatDateTime } from "@/lib/time"
+import { exportVocabBookCsv } from "@/lib/vocabBookCsv"
 import {
   CODE_REVIEW_STATE_CONFLICT,
   parseDetailCount,
@@ -85,6 +93,32 @@ export function ContentReviewPanel({
     null,
   )
   const [editLoading, setEditLoading] = useState(false)
+  const [exportPending, setExportPending] = useState(false)
+
+  const handleExport = async () => {
+    if (!bookId) return
+    setExportPending(true)
+    try {
+      const count = await exportVocabBookCsv(bookId)
+      toast.success(
+        t({
+          zh: `已导出 ${count} 个词条（可直接改后再导入）。`,
+          en: `Exported ${count} entries (edit and re-import if needed).`,
+        }),
+      )
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError && error.status === 403
+          ? t({
+              zh: "没有权限导出这个词库。",
+              en: "No permission to export this book.",
+            })
+          : t({ zh: "导出失败，请重试。", en: "Export failed — retry." }),
+      )
+    } finally {
+      setExportPending(false)
+    }
+  }
 
   const reviewsQuery = useQuery({
     queryKey: [
@@ -414,6 +448,21 @@ export function ContentReviewPanel({
             })}
           </CardDescription>
         </div>
+        {!readonly && bookId ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={exportPending}
+            onClick={() => void handleExport()}
+          >
+            {exportPending ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <Download />
+            )}
+            {t({ zh: "导出词库", en: "Export Book" })}
+          </Button>
+        ) : null}
       </CardHeader>
       <CardContent className="space-y-4">
         {/* 筛选行 */}
