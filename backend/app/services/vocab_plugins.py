@@ -240,7 +240,7 @@ for _plugin in (
         requires=(REQUIRE_WORD, REQUIRE_MORPHOLOGY),
         supports=_supports_roots,
         payload=_payload_roots,
-        judge=_judge_choice,
+        judge=_judge_spelling,
     ),
 ):
     register(_plugin)

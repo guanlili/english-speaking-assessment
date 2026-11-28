@@ -55,6 +55,19 @@ def test_judge_choice_and_spelling_same_as_before() -> None:
     assert reg.judge_answer("meaning", "colours", spelling_snapshot) is False
 
 
+def test_roots_judged_by_assembled_spelling() -> None:
+    """词根题答的是拼回的词形，不是词条 ID（与既有口径一致）。"""
+    snapshot: dict[str, object] = {
+        "word_id": "w9",
+        "headword": "teacher",
+        "accepted_spellings": [],
+        "prompt_types": ["roots"],
+        "morph_segments": [],
+    }
+    assert reg.judge_answer("roots", "Teacher", snapshot) is True
+    assert reg.judge_answer("roots", "w9", snapshot) is False
+
+
 def test_unknown_prompt_type_judges_false() -> None:
     """没注册的题型不再静默按拼写比对（避免误判对）。"""
     assert reg.judge_answer("not_registered", "apple", {"headword": "apple"}) is False
