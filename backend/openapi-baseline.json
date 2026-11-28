@@ -14260,6 +14260,126 @@
         "title": "VocabularyContentReviewList",
         "type": "object"
       },
+      "VocabularyCoordinate": {
+        "description": "学生词汇坐标：一次只读计算的结果（不写学生等级字段，不改历史）。\n\nmeasured=False 表示「未测」（还没有任何独立首答，或当前没有可练词库），\n此时 percent / 台阶字段一律为 None，前端显示未测，不折算成 0%。",
+        "properties": {
+          "answered_first_count": {
+            "default": 0,
+            "title": "Answered First Count",
+            "type": "integer"
+          },
+          "basis_word_count": {
+            "default": 0,
+            "title": "Basis Word Count",
+            "type": "integer"
+          },
+          "classroom_code": {
+            "title": "Classroom Code",
+            "type": "string"
+          },
+          "mastered_first_try_count": {
+            "default": 0,
+            "title": "Mastered First Try Count",
+            "type": "integer"
+          },
+          "mastered_fsrs_count": {
+            "default": 0,
+            "title": "Mastered Fsrs Count",
+            "type": "integer"
+          },
+          "mastered_word_count": {
+            "default": 0,
+            "title": "Mastered Word Count",
+            "type": "integer"
+          },
+          "measured": {
+            "default": false,
+            "title": "Measured",
+            "type": "boolean"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          },
+          "rule_version": {
+            "default": "coord-v1",
+            "title": "Rule Version",
+            "type": "string"
+          },
+          "step_end_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step End Percent"
+          },
+          "step_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Index"
+          },
+          "step_start_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Start Percent"
+          },
+          "steps_total": {
+            "default": 12,
+            "title": "Steps Total",
+            "type": "integer"
+          },
+          "words_to_goal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Words To Goal"
+          },
+          "words_to_next_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Words To Next Step"
+          }
+        },
+        "required": [
+          "classroom_code"
+        ],
+        "title": "VocabularyCoordinate",
+        "type": "object"
+      },
       "VocabularyFromLevelsRequest": {
         "description": "从五级词库导入教学词条到词库（仅已核对、有释义的词条）。",
         "properties": {
@@ -30803,6 +30923,66 @@
           }
         ],
         "summary": "Read Student Book",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/student/coordinate": {
+      "get": {
+        "description": "学生词汇坐标：0%–100% 贯通进度 + 所在台阶（只读，不写任何等级字段）。\n\n口径（与 docs 一致，前端文案必须同款）：\n- 百分比 = 已掌握词数 ÷ 当前可练基准词表词数，两个数都下发，可自行复算；\n- 掌握证据只有两类：独立首答答对、FSRS 进入 review；不读 XP/农场/PK；\n- 一条首答都没有 → measured=false（未测），不折算 0%；\n- 台阶数量可传 steps（默认 12），等宽百分比区间、左闭右开、100% 归最后一阶；\n- 不是雅思/托福分数、不是能力认证。",
+        "operationId": "vocabulary-read_student_coordinate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "steps",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "maximum": 40,
+              "minimum": 2,
+              "title": "Steps",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyCoordinate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Student Coordinate",
         "tags": [
           "vocabulary"
         ]

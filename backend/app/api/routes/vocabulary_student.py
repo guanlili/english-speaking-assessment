@@ -29,10 +29,14 @@ from app.api.routes.vocabulary_shared import (
     _word_public,
 )
 from app.models import (
+    COORDINATE_STEP_COUNT_DEFAULT,
+    COORDINATE_STEP_COUNT_MAX,
+    COORDINATE_STEP_COUNT_MIN,
     SELF_PRACTICE_MAX_WORDS,
     VocabularyBook,
     VocabularyBookDetail,
     VocabularyBookPublic,
+    VocabularyCoordinate,
     VocabularyRecommendation,
     VocabularyReviewQueue,
     VocabularyReviewStats,
@@ -43,7 +47,7 @@ from app.models import (
     VocabularyStudentSessionCreated,
     VocabularyWrongWords,
 )
-from app.services import vocab_recommendation, vocabulary_review
+from app.services import vocab_coordinate, vocab_recommendation, vocabulary_review
 from app.services import vocabulary as vocab_service
 from app.services.vocabulary import (
     get_book_or_404 as _get_book,
@@ -90,6 +94,58 @@ def read_wrong_words(
         mastered_items=mastered_items,
         active_count=len(active_items),
         mastered_count=len(mastered_items),
+    )
+
+
+@router.get(
+    "/classes/{code}/vocabulary/student/coordinate",
+    response_model=VocabularyCoordinate,
+)
+def read_student_coordinate(
+    session: SessionDep,
+    code: str,
+    current_user: StudentUserDep,
+    steps: int = Query(
+        default=COORDINATE_STEP_COUNT_DEFAULT,
+        ge=COORDINATE_STEP_COUNT_MIN,
+        le=COORDINATE_STEP_COUNT_MAX,
+    ),
+) -> Any:
+    """学生词汇坐标：0%–100% 贯通进度 + 所在台阶（只读，不写任何等级字段）。
+
+    口径（与 docs 一致，前端文案必须同款）：
+    - 百分比 = 已掌握词数 ÷ 当前可练基准词表词数，两个数都下发，可自行复算；
+    - 掌握证据只有两类：独立首答答对、FSRS 进入 review；不读 XP/农场/PK；
+    - 一条首答都没有 → measured=false（未测），不折算 0%；
+    - 台阶数量可传 steps（默认 12），等宽百分比区间、左闭右开、100% 归最后一阶；
+    - 不是雅思/托福分数、不是能力认证。
+    """
+    classroom = _get_classroom(session, code)
+    student = _student_profile_of(
+        session, classroom, current_user, "vocabulary", read_only=True
+    )
+    snapshot = vocab_coordinate.coordinate_for_student(
+        session,
+        classroom_id=classroom.id,
+        student_id=student.id,
+        user_id=current_user.id,
+        steps=steps,
+    )
+    return VocabularyCoordinate(
+        classroom_code=classroom.code,
+        measured=snapshot.measured,
+        percent=snapshot.percent,
+        mastered_word_count=snapshot.mastered_word_count,
+        basis_word_count=snapshot.basis_word_count,
+        mastered_first_try_count=snapshot.mastered_first_try_count,
+        mastered_fsrs_count=snapshot.mastered_fsrs_count,
+        answered_first_count=snapshot.answered_first_count,
+        steps_total=snapshot.steps_total,
+        step_index=snapshot.step_index,
+        step_start_percent=snapshot.step_start_percent,
+        step_end_percent=snapshot.step_end_percent,
+        words_to_next_step=snapshot.words_to_next_step,
+        words_to_goal=snapshot.words_to_goal,
     )
 
 
