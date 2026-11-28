@@ -1323,3 +1323,111 @@ def test_instruction_excluded_from_history_results(
     assert sessions.json()[0]["is_exam"] == is_exam
     assert sessions.json()[0]["total_count"] == 1
     assert client.get(url, headers=made["headers"]).status_code == 403
+
+
+def test_unit_scenario_binding_drives_qa(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """#611：单元绑定情景后，即使单元主题与情景主题完全不同，问答照常发布。
+
+    未绑定时退回 topic 匹配，匹配不上就回 ``qa_unbound=True``（不再静默）。
+    """
+    classroom = _classroom(client, superuser_token_headers)
+    code = classroom["code"]
+    made = make_student(db, client, code, "绑定情景学生")
+
+    # 复刻线上形态：单元主题与任何情景主题都不一样
+    unit_topic = f"UnitTopic {uuid.uuid4().hex[:8]}"
+    unit = client.post(
+        "/api/v1/admin/units",
+        json={"order_index": 999, "title": "Binding Unit", "topic": unit_topic},
+        headers=superuser_token_headers,
+    ).json()
+    passage = client.post(
+        "/api/v1/admin/passages",
+        json={
+            "title": "Binding Passage",
+            "topic": unit_topic,
+            "cefr_band": "B1",
+            "text": "Many students read aloud every morning before class.",
+            "suggested_seconds": 30,
+            "unit_id": unit["id"],
+        },
+        headers=superuser_token_headers,
+    )
+    assert passage.status_code == 200, passage.text
+
+    scenario = client.post(
+        "/api/v1/admin/scenarios",
+        json={"topic": f"Binding {uuid.uuid4().hex[:8]}"},
+        headers=superuser_token_headers,
+    ).json()
+    question = client.post(
+        f"/api/v1/admin/scenarios/{scenario['id']}/questions",
+        json={"band": "B1", "text": "What do you do at the weekend?"},
+        headers=superuser_token_headers,
+    )
+    assert question.status_code == 200, question.text
+
+    try:
+        # 未绑定：主题匹配不到情景，发布不再静默——响应回 qa_unbound
+        resp = client.put(
+            f"/api/v1/classes/{code}/assignment",
+            json={
+                "unit_id": unit["id"],
+                "assign_reading": True,
+                "assign_repeat": False,
+                "assign_qa": True,
+            },
+            headers=superuser_token_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["qa_unbound"] is True, resp.text
+
+        # 绑定后：同一单元同一勾选，问答进入快照
+        bound = client.put(
+            f"/api/v1/admin/units/{unit['id']}",
+            json={"scenario_id": scenario["id"]},
+            headers=superuser_token_headers,
+        )
+        assert bound.status_code == 200, bound.text
+        assert bound.json()["scenario_id"] == scenario["id"]
+
+        resp = client.put(
+            f"/api/v1/classes/{code}/assignment",
+            json={
+                "unit_id": unit["id"],
+                "assign_reading": True,
+                "assign_repeat": False,
+                "assign_qa": True,
+            },
+            headers=superuser_token_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["qa_unbound"] is False, resp.text
+
+        plan = client.get(f"/api/v1/classes/{code}/today", headers=made["headers"])
+        assert plan.status_code == 200, plan.text
+        qa_slots = [item for item in plan.json()["items"] if item["type"] == "question"]
+        assert len(qa_slots) >= 1, (
+            f"绑定情景后应出现问答位，实际 {plan.json()['items']}"
+        )
+    finally:
+        client.put(
+            f"/api/v1/classes/{code}/assignment",
+            json={"unit_id": None},
+            headers=superuser_token_headers,
+        )
+        client.delete(
+            f"/api/v1/admin/passages/{passage.json()['id']}",
+            headers=superuser_token_headers,
+        )
+        client.delete(
+            f"/api/v1/admin/units/{unit['id']}", headers=superuser_token_headers
+        )
+        client.delete(
+            f"/api/v1/admin/scenarios/{scenario['id']}",
+            headers=superuser_token_headers,
+        )

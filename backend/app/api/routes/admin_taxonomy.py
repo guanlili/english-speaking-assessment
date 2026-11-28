@@ -74,10 +74,20 @@ def _active_passage_counts(session: SessionDep) -> dict[uuid.UUID, int]:
 
 
 # 单元增删改仅管理员：教师页面只读单元（出题选择），与权限矩阵一致
+def _require_scenario_of_tenant(
+    session: SessionDep, scenario_id: uuid.UUID | None, tenant_id: Any
+) -> None:
+    """单元绑定的情景必须属于同一租户（跨校绑定一律 404）。"""
+    if scenario_id is None:
+        return
+    scenario = session.get(Scenario, scenario_id)
+    if scenario is None or scenario.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+
+
 @router.post("/units", response_model=UnitPublic)
-def create_unit(
-    session: SessionDep, _admin: SchoolAdminDep, unit_in: UnitCreate
-) -> Any:
+def create_unit(session: SessionDep, admin: SchoolAdminDep, unit_in: UnitCreate) -> Any:
+    _require_scenario_of_tenant(session, unit_in.scenario_id, admin.tenant_id)
     unit = Unit.model_validate(unit_in)
     session.add(unit)
     session.commit()
@@ -97,6 +107,9 @@ def update_unit(
         raise HTTPException(status_code=404, detail="Unit not found")
     content_access.require_same_tenant(current_user, unit)
     update = unit_in.model_dump(exclude_unset=True)
+    _require_scenario_of_tenant(
+        session, update.get("scenario_id"), current_user.tenant_id
+    )
     # 非空字段不允许显式清空
     _reject_null_non_nullable(update, {"title", "topic", "order_index", "is_active"})
     unit.sqlmodel_update(update)

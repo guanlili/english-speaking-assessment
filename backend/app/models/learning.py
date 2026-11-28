@@ -124,6 +124,9 @@ class AssignmentInfo(SQLModel):
     assign_reading: bool | None = None
     assign_repeat: bool | None = None
     assign_qa: bool | None = None
+    # 问答位取不到情景（单元未绑定且 topic 无匹配）：本次发布不含问答题
+    # #611：不再静默——回给调用方，教师端可提示「去单元绑定情景」
+    qa_unbound: bool = False
 
 
 class LearningPath(SQLModel):

@@ -17,7 +17,7 @@ from app.api.routes.class_shared import (
     _get_classroom,
     _repeat_sentences_of_passages,
     _require_classroom_teacher,
-    _scenario_for_topic,
+    _scenario_for_passage,
     _student_profile_of,
     _today_in_practice_tz,
     router,
@@ -542,10 +542,9 @@ def _unit_snapshots(
                 for sentence in unit_sentences_by_passage.get(passage.id, [])
             )
     if classroom.assign_qa is not False:
-        # 主题未配情景时跳过问答快照，朗读/复述照常发布（不阻断发布）
-        scenario = _scenario_for_topic(
-            session, passages[0].topic, passages[0].tenant_id
-        )
+        # 取情景：单元绑定优先，未绑定时退回 topic 匹配（#611）。两者都没有时
+        # 跳过问答快照，朗读/复述照常发布（不阻断发布），响应里回 qa_unbound
+        scenario = _scenario_for_passage(session, passages[0])
         if scenario is not None:
             questions = session.exec(
                 select(ScenarioQuestion)
@@ -599,7 +598,23 @@ def _apply_unit_assignment(
         classroom.assigned_items = None  # 单元模式仍保留旧路径标识，快照为真源
         session.add(classroom)
         session.commit()
-        return AssignmentInfo(unit_id=unit.id, title=unit.title)
+        qa_unbound = (
+            classroom.assign_qa is not False
+            and _scenario_for_passage(session, passages[0]) is None
+        )
+        if qa_unbound:
+            logger.warning(
+                "unit assignment without QA scenario classroom=%s unit=%s topic=%s",
+                classroom.code,
+                unit.id,
+                passages[0].topic,
+            )
+        return AssignmentInfo(
+            unit_id=unit.id,
+            title=unit.title,
+            passage_count=len(passages),
+            qa_unbound=qa_unbound,
+        )
     # 只改题型勾选（未动单元）：返回当前指派单元
     session.add(classroom)
     session.commit()

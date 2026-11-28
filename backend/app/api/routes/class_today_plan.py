@@ -30,7 +30,7 @@ from app.api.routes.class_shared import (
     _repeat_sentences_of_passages,
     _resolve_active_daily_session,
     _resolve_homework_session,
-    _scenario_for_topic,
+    _scenario_for_passage,
     _snapshot_items_of,
     _student_profile_of,
     _today_in_practice_tz,
@@ -396,7 +396,7 @@ def _dynamic_questions(
     # 用锚点篇目确定 topic 取情景题；主题未配情景时降级为无问答，
     # 不让整轮题单 404（朗读/复述照常）
     anchor = reading_passages[0]
-    scenario = _scenario_for_topic(session, anchor.topic, anchor.tenant_id)
+    scenario = _scenario_for_passage(session, anchor)
     band = _question_band_for_session(session, practice_session, student)
     if scenario is None:
         return [], band, True
@@ -895,7 +895,7 @@ def _next_question_from_passage(
     if passage is None:
         return NextQuestion(question=None, exhausted=True)
 
-    scenario = _scenario_for_topic(session, passage.topic, passage.tenant_id)
+    scenario = _scenario_for_passage(session, passage)
     if scenario is None:
         # 主题未配情景：与「题库为空」同口径，优雅返回无题而非 404
         return NextQuestion(question=None, exhausted=True)
