@@ -7,6 +7,7 @@ from app.models import (
     MODULE_SPEAKING,
     MODULE_VOCABULARY,
     Classroom,
+    ClassroomTeacher,
     Passage,
     PassageCreate,
     RepeatSentence,
@@ -302,13 +303,36 @@ def _seed_demo_scenario(session: Session) -> None:
 
 
 def _seed_demo_classroom(session: Session) -> Classroom:
-    """演示班级 DEMO01。"""
+    """演示班级 DEMO01。
+
+    演示登录写死落 ``/t/DEMO01``，所以这个课堂必须有 owner + owner 席位，
+    否则演示视角进去就是一个「没人管、什么都不能改」的孤儿班。
+    """
     demo_classroom = session.exec(
         select(Classroom).where(Classroom.code == DEMO_CLASSROOM_CODE)
     ).first()
+    owner = crud.get_user_by_email(session=session, email=settings.FIRST_SUPERUSER)
     if demo_classroom is None:
         demo_classroom = Classroom(code=DEMO_CLASSROOM_CODE, class_size=60)
         session.add(demo_classroom)
+        session.commit()
+    if owner is not None and demo_classroom.owner_id is None:
+        demo_classroom.owner_id = owner.id
+        session.add(demo_classroom)
+        membership = session.exec(
+            select(ClassroomTeacher).where(
+                ClassroomTeacher.classroom_id == demo_classroom.id,
+                ClassroomTeacher.user_id == owner.id,
+            )
+        ).first()
+        if membership is None:
+            session.add(
+                ClassroomTeacher(
+                    classroom_id=demo_classroom.id,
+                    user_id=owner.id,
+                    role="owner",
+                )
+            )
         session.commit()
     return demo_classroom
 

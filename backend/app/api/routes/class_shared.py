@@ -233,6 +233,24 @@ def _scenario_for_topic(
     return session.exec(stmt).first()
 
 
+def _scenario_for_passage(session: Any, passage: Passage | None) -> Scenario | None:
+    """篇目 → 情景：单元显式绑定优先，其次退回 topic 匹配。
+
+    #611：单元 topic 与情景 topic 是两套口径（教材主题 vs 情景主题），
+    只靠 topic 匹配会让问答位静默为空。绑定是唯一可靠来源，未绑定时
+    才退回旧的 topic 精确匹配。
+    """
+    if passage is None:
+        return None
+    if passage.unit_id is not None:
+        unit = session.get(Unit, passage.unit_id)
+        if unit is not None and unit.scenario_id is not None:
+            scenario = session.get(Scenario, unit.scenario_id)
+            if scenario is not None and scenario.is_active:
+                return scenario
+    return _scenario_for_topic(session, passage.topic, passage.tenant_id)
+
+
 def _get_classroom(session: SessionDep, code: str) -> Classroom:
     classroom = get_classroom_by_code(session=session, code=code.upper())
     if classroom is None or not classroom.is_active:

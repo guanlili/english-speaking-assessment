@@ -145,6 +145,11 @@ class Unit(SQLModel, table=True):
     title: str = Field(min_length=1, max_length=255)
     topic: str = Field(max_length=100)
     is_active: bool = True
+    # 单元显式绑定的情景：问答取题的真实来源，优先于 topic 字符串匹配
+    # （#611：单元主题与情景主题口径不同，靠 topic 匹配会取不到情景）
+    scenario_id: uuid.UUID | None = Field(
+        default=None, foreign_key="scenario.id", ondelete="SET NULL", index=True
+    )
     # 题库查重预计算（services/content_dedup.py 维护）
     dedup_title_hash: str | None = Field(default=None, max_length=64, index=True)
 
@@ -155,6 +160,8 @@ class UnitPublic(SQLModel):
     title: str
     topic: str
     is_active: bool
+    # 单元绑定的情景（问答取题来源）；None = 未绑定，退回 topic 匹配
+    scenario_id: uuid.UUID | None = None
     # 单元下的启用篇目数：管理端/老师端指派前的完整性检查（0 = 指派后学生无内容）
     passage_count: int = 0
 
@@ -164,6 +171,7 @@ class UnitCreate(SQLModel):
     title: str = Field(min_length=1, max_length=255)
     topic: str = Field(max_length=100)
     is_active: bool = True
+    scenario_id: uuid.UUID | None = None
 
     @field_validator("title")
     @classmethod
@@ -178,6 +186,7 @@ class UnitUpdate(SQLModel):
     order_index: int | None = None
     title: str | None = None
     topic: str | None = None
+    scenario_id: uuid.UUID | None = None
     is_active: bool | None = None
 
     @field_validator("title")

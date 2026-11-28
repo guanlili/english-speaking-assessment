@@ -104,6 +104,10 @@ export type AssignmentInfo = {
      * Assign Qa
      */
     assign_qa?: boolean | null;
+    /**
+     * Qa Unbound
+     */
+    qa_unbound?: boolean;
 };
 
 /**
@@ -6681,6 +6685,10 @@ export type UnitCreate = {
      * Is Active
      */
     is_active?: boolean;
+    /**
+     * Scenario Id
+     */
+    scenario_id?: string | null;
 };
 
 /**
@@ -6708,6 +6716,10 @@ export type UnitPublic = {
      */
     is_active: boolean;
     /**
+     * Scenario Id
+     */
+    scenario_id?: string | null;
+    /**
      * Passage Count
      */
     passage_count?: number;
@@ -6729,6 +6741,10 @@ export type UnitUpdate = {
      * Topic
      */
     topic?: string | null;
+    /**
+     * Scenario Id
+     */
+    scenario_id?: string | null;
     /**
      * Is Active
      */

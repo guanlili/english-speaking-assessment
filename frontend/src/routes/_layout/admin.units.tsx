@@ -27,6 +27,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { NumberInput } from "@/components/ui/number-input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -52,9 +59,18 @@ interface UnitRow {
   topic: string
   is_active: boolean
   passage_count?: number
+  scenario_id?: string | null
 }
 
-const emptyForm = { order_index: 0, title: "", topic: "", is_active: true }
+const NO_SCENARIO = "__none__"
+
+const emptyForm = {
+  order_index: 0,
+  title: "",
+  topic: "",
+  is_active: true,
+  scenario_id: NO_SCENARIO,
+}
 
 export function UnitsAdmin({ embedded = false }: { embedded?: boolean }) {
   const { t } = useI18n()
@@ -69,11 +85,19 @@ export function UnitsAdmin({ embedded = false }: { embedded?: boolean }) {
     queryKey: ["admin", "topics"],
     queryFn: () => AdminService.listTopics(),
   })
+  // 单元绑定的问答情景：问答取题的唯一可靠来源（主题字符串两套口径）
+  const scenariosQuery = useQuery({
+    queryKey: ["admin", "scenarios", "unit-binding"],
+    queryFn: () => AdminService.listScenarios({ limit: 200 }),
+  })
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["admin", "units"] })
     void queryClient.invalidateQueries({ queryKey: ["admin", "topics"] })
     void queryClient.invalidateQueries({ queryKey: ["teacher"] })
+    void queryClient.invalidateQueries({
+      queryKey: ["admin", "scenarios", "unit-binding"],
+    })
   }
 
   const [formOpen, setFormOpen] = useState(false)
@@ -94,6 +118,7 @@ export function UnitsAdmin({ embedded = false }: { embedded?: boolean }) {
       title: unit.title,
       topic: unit.topic,
       is_active: unit.is_active,
+      scenario_id: unit.scenario_id ?? NO_SCENARIO,
     })
     setFormOpen(true)
   }
@@ -105,6 +130,7 @@ export function UnitsAdmin({ embedded = false }: { embedded?: boolean }) {
         title: form.title.trim(),
         topic: form.topic.trim(),
         is_active: form.is_active,
+        scenario_id: form.scenario_id === NO_SCENARIO ? null : form.scenario_id,
       }
       return editing
         ? AdminService.updateUnit({ unit_id: editing.id, unitUpdate: body })
@@ -238,6 +264,9 @@ export function UnitsAdmin({ embedded = false }: { embedded?: boolean }) {
                   </TableHead>
                   <TableHead>{t({ zh: "标题", en: "Title" })}</TableHead>
                   <TableHead>{t({ zh: "主题", en: "Topic" })}</TableHead>
+                  <TableHead>
+                    {t({ zh: "问答情景", en: "QA scenario" })}
+                  </TableHead>
                   <TableHead>{t({ zh: "篇目数", en: "Passages" })}</TableHead>
                   <TableHead>{t({ zh: "状态", en: "Status" })}</TableHead>
                   <TableHead />
@@ -251,6 +280,22 @@ export function UnitsAdmin({ embedded = false }: { embedded?: boolean }) {
                     </TableCell>
                     <TableCell className="font-medium">{unit.title}</TableCell>
                     <TableCell>{unit.topic}</TableCell>
+                    <TableCell>
+                      {(() => {
+                        const bound = (scenariosQuery.data?.data ?? []).find(
+                          (sc) => sc.id === unit.scenario_id,
+                        )
+                        return unit.scenario_id ? (
+                          <Badge variant="secondary">
+                            {bound?.topic ?? t({ zh: "已绑定", en: "Bound" })}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">
+                            {t({ zh: "未绑定", en: "Unbound" })}
+                          </Badge>
+                        )
+                      })()}
+                    </TableCell>
                     <TableCell>
                       {(unit.passage_count ?? 0) === 0 ? (
                         <Badge variant="destructive">
@@ -352,6 +397,43 @@ export function UnitsAdmin({ embedded = false }: { embedded?: boolean }) {
                   onChange={(topic) => setForm((f) => ({ ...f, topic }))}
                 />
               </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>{t({ zh: "问答情景", en: "QA scenario" })}</Label>
+              <Select
+                value={form.scenario_id}
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, scenario_id: v }))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue
+                    placeholder={t({ zh: "未绑定", en: "Unbound" })}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_SCENARIO}>
+                    {t({
+                      zh: "未绑定（仅按主题匹配）",
+                      en: "Unbound (topic match only)",
+                    })}
+                  </SelectItem>
+                  {(scenariosQuery.data?.data ?? []).map((sc) => (
+                    <SelectItem key={sc.id} value={sc.id}>
+                      {sc.topic}
+                      {sc.is_active
+                        ? ""
+                        : t({ zh: "（停用）", en: " (disabled)" })}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t({
+                  zh: "问答题取自该情景。未绑定且单元主题与任何情景主题都不一致时，发布的练习不含问答题。",
+                  en: "QA questions come from this scenario. Unbound units whose topic matches no scenario publish without QA.",
+                })}
+              </p>
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="unit-title">
