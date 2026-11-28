@@ -4308,6 +4308,467 @@ export type PkPlayerSummary = {
 };
 
 /**
+ * PkRoomAnswerRequest
+ */
+export type PkRoomAnswerRequest = {
+    /**
+     * Item Index
+     */
+    item_index: number;
+    /**
+     * Prompt Type
+     */
+    prompt_type?: string;
+    /**
+     * Answer
+     */
+    answer: string;
+};
+
+/**
+ * PkRoomAnswerResult
+ */
+export type PkRoomAnswerResult = {
+    /**
+     * Item Index
+     */
+    item_index: number;
+    /**
+     * Is Correct
+     */
+    is_correct: boolean;
+    /**
+     * Score
+     */
+    score: number;
+    /**
+     * Base Score
+     */
+    base_score?: number;
+    /**
+     * Speed Bonus
+     */
+    speed_bonus?: number;
+    /**
+     * Headword
+     */
+    headword?: string | null;
+    /**
+     * My Score
+     */
+    my_score?: number;
+    /**
+     * Rank
+     */
+    rank?: number | null;
+};
+
+/**
+ * PkRoomCreate
+ *
+ * 教师开房：选词库、题量/限时/题型与赛制。
+ */
+export type PkRoomCreate = {
+    /**
+     * Book Id
+     */
+    book_id: string;
+    /**
+     * Question Count
+     */
+    question_count?: number | null;
+    /**
+     * Per Question Seconds
+     */
+    per_question_seconds?: number | null;
+    /**
+     * Prompt Types
+     */
+    prompt_types?: Array<string> | null;
+    /**
+     * Mode
+     */
+    mode?: string;
+    /**
+     * Team Count
+     */
+    team_count?: number | null;
+};
+
+/**
+ * PkRoomHostView
+ */
+export type PkRoomHostView = {
+    /**
+     * Room Id
+     */
+    room_id: string;
+    /**
+     * Room Code
+     */
+    room_code: string;
+    /**
+     * Classroom Id
+     */
+    classroom_id: string;
+    /**
+     * Book Id
+     */
+    book_id?: string | null;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Mode
+     */
+    mode: string;
+    /**
+     * Team Count
+     */
+    team_count?: number;
+    /**
+     * Question Count
+     */
+    question_count: number;
+    /**
+     * Per Question Seconds
+     */
+    per_question_seconds: number;
+    /**
+     * Prompt Types
+     */
+    prompt_types?: Array<string>;
+    /**
+     * Current Item Index
+     */
+    current_item_index?: number;
+    /**
+     * Remaining Seconds
+     */
+    remaining_seconds?: number;
+    /**
+     * Participant Count
+     */
+    participant_count?: number;
+    /**
+     * Current Answered Count
+     */
+    current_answered_count?: number;
+    /**
+     * Current Correct Count
+     */
+    current_correct_count?: number;
+    /**
+     * Current Accuracy
+     */
+    current_accuracy?: number | null;
+    current_item?: PkRoomQuestionStats | null;
+    /**
+     * Players
+     */
+    players?: Array<PkRoomPlayerSummary>;
+    /**
+     * Teams
+     */
+    teams?: Array<PkRoomTeamSummary>;
+    /**
+     * Questions
+     */
+    questions?: Array<PkRoomQuestionStats>;
+    /**
+     * Started At
+     */
+    started_at?: string | null;
+    /**
+     * Ended At
+     */
+    ended_at?: string | null;
+    result?: PkRoomResult | null;
+};
+
+/**
+ * PkRoomItem
+ *
+ * 当前题面：本人未答时不透露 headword。
+ */
+export type PkRoomItem = {
+    /**
+     * Item Index
+     */
+    item_index: number;
+    /**
+     * Prompt Type
+     */
+    prompt_type: string;
+    /**
+     * Part Of Speech
+     */
+    part_of_speech?: string | null;
+    /**
+     * Meaning Zh
+     */
+    meaning_zh?: string;
+    /**
+     * Meaning En
+     */
+    meaning_en?: string | null;
+    /**
+     * Choices
+     */
+    choices?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Cloze Sentence
+     */
+    cloze_sentence?: string | null;
+    /**
+     * Morph Segments
+     */
+    morph_segments?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Headword
+     */
+    headword?: string | null;
+    /**
+     * Answered
+     */
+    answered?: boolean;
+    /**
+     * Is Correct
+     */
+    is_correct?: boolean | null;
+    /**
+     * Score
+     */
+    score?: number | null;
+};
+
+/**
+ * PkRoomJoin
+ *
+ * 学生凭 6 位码入场。
+ */
+export type PkRoomJoin = {
+    /**
+     * Code
+     */
+    code: string;
+};
+
+/**
+ * PkRoomPlayerSummary
+ */
+export type PkRoomPlayerSummary = {
+    /**
+     * Student Id
+     */
+    student_id: string;
+    /**
+     * Display Name
+     */
+    display_name?: string | null;
+    /**
+     * Team Index
+     */
+    team_index?: number;
+    /**
+     * Score
+     */
+    score?: number;
+    /**
+     * Answered Count
+     */
+    answered_count?: number;
+    /**
+     * Correct Count
+     */
+    correct_count?: number;
+    /**
+     * Total Seconds
+     */
+    total_seconds?: number;
+    /**
+     * Rank
+     */
+    rank?: number | null;
+    /**
+     * Answered Current
+     */
+    answered_current?: boolean;
+};
+
+/**
+ * PkRoomQuestionStats
+ */
+export type PkRoomQuestionStats = {
+    /**
+     * Item Index
+     */
+    item_index: number;
+    /**
+     * Prompt Type
+     */
+    prompt_type: string;
+    /**
+     * Answered Count
+     */
+    answered_count?: number;
+    /**
+     * Correct Count
+     */
+    correct_count?: number;
+    /**
+     * Accuracy
+     */
+    accuracy?: number | null;
+    /**
+     * Headword
+     */
+    headword?: string | null;
+    /**
+     * Meaning Zh
+     */
+    meaning_zh?: string | null;
+};
+
+/**
+ * PkRoomResult
+ *
+ * 结算：队伍/个人排名、每题正确率与易错词清单（只读，不回流任务）。
+ */
+export type PkRoomResult = {
+    /**
+     * Teams
+     */
+    teams?: Array<PkRoomResultRow>;
+    /**
+     * Players
+     */
+    players?: Array<PkRoomPlayerSummary>;
+    /**
+     * Questions
+     */
+    questions?: Array<PkRoomQuestionStats>;
+    /**
+     * Wrong Words
+     */
+    wrong_words?: Array<string>;
+};
+
+/**
+ * PkRoomResultRow
+ */
+export type PkRoomResultRow = {
+    /**
+     * Team Index
+     */
+    team_index?: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Score
+     */
+    score: number;
+    /**
+     * Rank
+     */
+    rank: number;
+    /**
+     * Member Count
+     */
+    member_count?: number;
+};
+
+/**
+ * PkRoomStudentView
+ */
+export type PkRoomStudentView = {
+    /**
+     * Room Id
+     */
+    room_id: string;
+    /**
+     * Room Code
+     */
+    room_code: string;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Mode
+     */
+    mode: string;
+    /**
+     * Team Count
+     */
+    team_count?: number;
+    /**
+     * Question Count
+     */
+    question_count: number;
+    /**
+     * Per Question Seconds
+     */
+    per_question_seconds: number;
+    /**
+     * Current Item Index
+     */
+    current_item_index?: number;
+    /**
+     * Remaining Seconds
+     */
+    remaining_seconds?: number;
+    item?: PkRoomItem | null;
+    me?: PkRoomPlayerSummary | null;
+    /**
+     * Participants
+     */
+    participants?: number;
+    /**
+     * Teams
+     */
+    teams?: Array<PkRoomTeamSummary>;
+    result?: PkRoomResult | null;
+};
+
+/**
+ * PkRoomTeamSummary
+ */
+export type PkRoomTeamSummary = {
+    /**
+     * Team Index
+     */
+    team_index: number;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Score
+     */
+    score?: number;
+    /**
+     * Member Count
+     */
+    member_count?: number;
+    /**
+     * Answered Count
+     */
+    answered_count?: number;
+    /**
+     * Correct Count
+     */
+    correct_count?: number;
+};
+
+/**
  * PlacementAnswerRequest
  */
 export type PlacementAnswerRequest = {
@@ -18555,6 +19016,268 @@ export type VocabularyPkMatchEventsResponses = {
      */
     200: unknown;
 };
+
+export type VocabularyCreatePkRoomData = {
+    body: PkRoomCreate;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/room';
+};
+
+export type VocabularyCreatePkRoomErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyCreatePkRoomError = VocabularyCreatePkRoomErrors[keyof VocabularyCreatePkRoomErrors];
+
+export type VocabularyCreatePkRoomResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkRoomHostView;
+};
+
+export type VocabularyCreatePkRoomResponse = VocabularyCreatePkRoomResponses[200 & keyof VocabularyCreatePkRoomResponses];
+
+export type VocabularyReadCurrentPkRoomData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/room/current';
+};
+
+export type VocabularyReadCurrentPkRoomErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadCurrentPkRoomError = VocabularyReadCurrentPkRoomErrors[keyof VocabularyReadCurrentPkRoomErrors];
+
+export type VocabularyReadCurrentPkRoomResponses = {
+    /**
+     * Response Vocabulary-Read Current Pk Room
+     *
+     * Successful Response
+     */
+    200: PkRoomHostView | null;
+};
+
+export type VocabularyReadCurrentPkRoomResponse = VocabularyReadCurrentPkRoomResponses[200 & keyof VocabularyReadCurrentPkRoomResponses];
+
+export type VocabularyStartPkRoomData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Room Id
+         */
+        room_id: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/room/{room_id}/start';
+};
+
+export type VocabularyStartPkRoomErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyStartPkRoomError = VocabularyStartPkRoomErrors[keyof VocabularyStartPkRoomErrors];
+
+export type VocabularyStartPkRoomResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkRoomHostView;
+};
+
+export type VocabularyStartPkRoomResponse = VocabularyStartPkRoomResponses[200 & keyof VocabularyStartPkRoomResponses];
+
+export type VocabularyEndPkRoomData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Room Id
+         */
+        room_id: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/room/{room_id}/end';
+};
+
+export type VocabularyEndPkRoomErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyEndPkRoomError = VocabularyEndPkRoomErrors[keyof VocabularyEndPkRoomErrors];
+
+export type VocabularyEndPkRoomResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkRoomHostView;
+};
+
+export type VocabularyEndPkRoomResponse = VocabularyEndPkRoomResponses[200 & keyof VocabularyEndPkRoomResponses];
+
+export type VocabularyReadPkRoomBoardData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Room Id
+         */
+        room_id: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/room/{room_id}/board';
+};
+
+export type VocabularyReadPkRoomBoardErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadPkRoomBoardError = VocabularyReadPkRoomBoardErrors[keyof VocabularyReadPkRoomBoardErrors];
+
+export type VocabularyReadPkRoomBoardResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkRoomHostView;
+};
+
+export type VocabularyReadPkRoomBoardResponse = VocabularyReadPkRoomBoardResponses[200 & keyof VocabularyReadPkRoomBoardResponses];
+
+export type VocabularyJoinPkRoomData = {
+    body: PkRoomJoin;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/room/join';
+};
+
+export type VocabularyJoinPkRoomErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyJoinPkRoomError = VocabularyJoinPkRoomErrors[keyof VocabularyJoinPkRoomErrors];
+
+export type VocabularyJoinPkRoomResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkRoomStudentView;
+};
+
+export type VocabularyJoinPkRoomResponse = VocabularyJoinPkRoomResponses[200 & keyof VocabularyJoinPkRoomResponses];
+
+export type VocabularyReadPkRoomAsStudentData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Room Id
+         */
+        room_id: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/room/{room_id}/me';
+};
+
+export type VocabularyReadPkRoomAsStudentErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadPkRoomAsStudentError = VocabularyReadPkRoomAsStudentErrors[keyof VocabularyReadPkRoomAsStudentErrors];
+
+export type VocabularyReadPkRoomAsStudentResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkRoomStudentView;
+};
+
+export type VocabularyReadPkRoomAsStudentResponse = VocabularyReadPkRoomAsStudentResponses[200 & keyof VocabularyReadPkRoomAsStudentResponses];
+
+export type VocabularyAnswerPkRoomData = {
+    body: PkRoomAnswerRequest;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+        /**
+         * Room Id
+         */
+        room_id: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/room/{room_id}/answers';
+};
+
+export type VocabularyAnswerPkRoomErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyAnswerPkRoomError = VocabularyAnswerPkRoomErrors[keyof VocabularyAnswerPkRoomErrors];
+
+export type VocabularyAnswerPkRoomResponses = {
+    /**
+     * Successful Response
+     */
+    200: PkRoomAnswerResult;
+};
+
+export type VocabularyAnswerPkRoomResponse = VocabularyAnswerPkRoomResponses[200 & keyof VocabularyAnswerPkRoomResponses];
 
 export type VocabularyStartPlacementData = {
     body?: never;
