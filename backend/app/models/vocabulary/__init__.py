@@ -88,6 +88,18 @@ from app.models.vocabulary.assignments import (
 from app.models.vocabulary.assignments import (
     VocabularyTodayPlan as VocabularyTodayPlan,
 )
+from app.models.vocabulary.challenge import (
+    VocabularyChallengeBlock as VocabularyChallengeBlock,
+)
+from app.models.vocabulary.challenge import (
+    VocabularyChallengeCreated as VocabularyChallengeCreated,
+)
+from app.models.vocabulary.challenge import (
+    VocabularyChallengeParticipation as VocabularyChallengeParticipation,
+)
+from app.models.vocabulary.challenge import (
+    VocabularyDailyChallenge as VocabularyDailyChallenge,
+)
 from app.models.vocabulary.coordinate import (
     COORDINATE_RULE_VERSION as COORDINATE_RULE_VERSION,
 )

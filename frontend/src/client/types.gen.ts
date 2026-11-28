@@ -7710,6 +7710,62 @@ export type VocabularyBookVersionList = {
 };
 
 /**
+ * VocabularyChallengeBlock
+ *
+ * 挑战包里的一块练习（维度 + 玩法 + 题量）。
+ */
+export type VocabularyChallengeBlock = {
+    /**
+     * Dimension
+     */
+    dimension: string;
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Item Count
+     */
+    item_count: number;
+};
+
+/**
+ * VocabularyChallengeCreated
+ *
+ * 开挑战轮返回会话 ID，前端复用自主练习作答页。
+ */
+export type VocabularyChallengeCreated = {
+    /**
+     * Session Id
+     */
+    session_id: string;
+    /**
+     * Total Items
+     */
+    total_items: number;
+};
+
+/**
+ * VocabularyChallengeParticipation
+ *
+ * 教师端只读参与情况（今天开过 / 已完成的人数）。
+ */
+export type VocabularyChallengeParticipation = {
+    /**
+     * Date
+     */
+    date: string;
+    /**
+     * Started Count
+     */
+    started_count: number;
+    /**
+     * Completed Count
+     */
+    completed_count: number;
+};
+
+/**
  * VocabularyChoice
  *
  * 选择题选项（选项冻结在发布快照里，同一任务不随词库改动漂移）。
@@ -7893,6 +7949,46 @@ export type VocabularyCoordinate = {
      * Rule Version
      */
     rule_version?: string;
+};
+
+/**
+ * VocabularyDailyChallenge
+ *
+ * 学生端「今日挑战」展示：配置 + 完成状态，不暴露答案。
+ */
+export type VocabularyDailyChallenge = {
+    /**
+     * Classroom Code
+     */
+    classroom_code: string;
+    /**
+     * Date
+     */
+    date: string;
+    /**
+     * Degraded
+     */
+    degraded: boolean;
+    /**
+     * Reason
+     */
+    reason?: string | null;
+    /**
+     * Blocks
+     */
+    blocks: Array<VocabularyChallengeBlock>;
+    /**
+     * Total Items
+     */
+    total_items: number;
+    /**
+     * Completed
+     */
+    completed: boolean;
+    /**
+     * Session Id
+     */
+    session_id?: string | null;
 };
 
 /**
@@ -18702,6 +18798,96 @@ export type VocabularyReadLeaderboardResponses = {
 };
 
 export type VocabularyReadLeaderboardResponse = VocabularyReadLeaderboardResponses[200 & keyof VocabularyReadLeaderboardResponses];
+
+export type VocabularyReadDailyChallengeData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/student/challenge';
+};
+
+export type VocabularyReadDailyChallengeErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadDailyChallengeError = VocabularyReadDailyChallengeErrors[keyof VocabularyReadDailyChallengeErrors];
+
+export type VocabularyReadDailyChallengeResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyDailyChallenge;
+};
+
+export type VocabularyReadDailyChallengeResponse = VocabularyReadDailyChallengeResponses[200 & keyof VocabularyReadDailyChallengeResponses];
+
+export type VocabularyStartDailyChallengeData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/student/challenge/sessions';
+};
+
+export type VocabularyStartDailyChallengeErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyStartDailyChallengeError = VocabularyStartDailyChallengeErrors[keyof VocabularyStartDailyChallengeErrors];
+
+export type VocabularyStartDailyChallengeResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyChallengeCreated;
+};
+
+export type VocabularyStartDailyChallengeResponse = VocabularyStartDailyChallengeResponses[200 & keyof VocabularyStartDailyChallengeResponses];
+
+export type VocabularyReadChallengeParticipationData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/vocabulary/challenge/participation';
+};
+
+export type VocabularyReadChallengeParticipationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadChallengeParticipationError = VocabularyReadChallengeParticipationErrors[keyof VocabularyReadChallengeParticipationErrors];
+
+export type VocabularyReadChallengeParticipationResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyChallengeParticipation;
+};
+
+export type VocabularyReadChallengeParticipationResponse = VocabularyReadChallengeParticipationResponses[200 & keyof VocabularyReadChallengeParticipationResponses];
 
 export type VocabLevelsVocabLevelStatsData = {
     body?: never;

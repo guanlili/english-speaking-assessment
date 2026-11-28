@@ -29,6 +29,9 @@ from app.api.routes import (
     vocabulary_books as _books,
 )
 from app.api.routes import (
+    vocabulary_challenge as _challenge,
+)
+from app.api.routes import (
     vocabulary_farm as _farm,
 )
 from app.api.routes import (
@@ -73,5 +76,6 @@ router.include_router(_student.router, tags=["vocabulary"])
 router.include_router(_pk.router, tags=["vocabulary"])
 router.include_router(_placement.router, tags=["vocabulary"])
 router.include_router(_leaderboard.router, tags=["vocabulary"])
+router.include_router(_challenge.router, tags=["vocabulary"])
 
 __all__ = ["router"]
