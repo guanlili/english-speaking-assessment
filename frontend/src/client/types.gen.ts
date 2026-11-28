@@ -11365,6 +11365,36 @@ export type ClassesTeacherCandidatesResponses = {
 
 export type ClassesTeacherCandidatesResponse = ClassesTeacherCandidatesResponses[200 & keyof ClassesTeacherCandidatesResponses];
 
+export type ClassesJoinClassTeacherData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: never;
+    url: '/api/v1/classes/{code}/teachers/join';
+};
+
+export type ClassesJoinClassTeacherErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ClassesJoinClassTeacherError = ClassesJoinClassTeacherErrors[keyof ClassesJoinClassTeacherErrors];
+
+export type ClassesJoinClassTeacherResponses = {
+    /**
+     * Successful Response
+     */
+    200: ClassroomTeacherPublic;
+};
+
+export type ClassesJoinClassTeacherResponse = ClassesJoinClassTeacherResponses[200 & keyof ClassesJoinClassTeacherResponses];
+
 export type ClassesRemoveClassTeacherData = {
     body?: never;
     path: {

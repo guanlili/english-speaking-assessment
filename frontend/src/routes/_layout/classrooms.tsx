@@ -97,6 +97,36 @@ function MyClassroomsPage() {
 
   const classrooms = classroomsQuery.data ?? []
 
+  // ── 凭课堂码加入课堂（教师团队漏加时的自助路径）──
+  const [joinOpen, setJoinOpen] = useState(false)
+  const [joinCode, setJoinCode] = useState("")
+  const joinMutation = useMutation({
+    mutationFn: () =>
+      ClassesService.joinClassTeacher({ code: joinCode.trim().toUpperCase() }),
+    onSuccess: (data) => {
+      showSuccessToast(
+        t({
+          zh: `已加入课堂 ${joinCode.trim().toUpperCase()}，身份：${
+            data.role === "owner" ? "主教师" : "共管教师"
+          }。`,
+          en: `Joined classroom ${joinCode.trim().toUpperCase()} as ${
+            data.role === "owner" ? "lead teacher" : "co-teacher"
+          }.`,
+        }),
+      )
+      setJoinOpen(false)
+      setJoinCode("")
+      invalidate()
+    },
+    onError: (error) =>
+      showErrorToast(
+        t({
+          zh: `加入失败：${extractErrorMessage(error)}`,
+          en: `Failed to join: ${extractErrorMessage(error)}`,
+        }),
+      ),
+  })
+
   return (
     <div className="flex flex-col gap-6">
       <TeachingPageHeader
@@ -107,10 +137,16 @@ function MyClassroomsPage() {
           en: "Open a classroom to assign practice, review recordings and follow each student's progress.",
         })}
         actions={
-          <Button variant="secondary" onClick={() => setCreateOpen(true)}>
-            <Plus />
-            {t({ zh: "新建课堂", en: "New Classroom" })}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setJoinOpen(true)}>
+              <ClipboardPaste />
+              {t({ zh: "加入课堂", en: "Join by code" })}
+            </Button>
+            <Button variant="secondary" onClick={() => setCreateOpen(true)}>
+              <Plus />
+              {t({ zh: "新建课堂", en: "New Classroom" })}
+            </Button>
+          </div>
         }
       />
       <details className="group rounded-xl border bg-card px-5">
@@ -168,6 +204,48 @@ function MyClassroomsPage() {
           ))}
         </div>
       </details>
+      <Dialog open={joinOpen} onOpenChange={setJoinOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t({ zh: "凭课堂码加入课堂", en: "Join a classroom by code" })}
+            </DialogTitle>
+            <DialogDescription>
+              {t({
+                zh: "向主教师或学校管理员要 6 位课堂码。加入后你成为共管教师，可以发练习、看结果；主教师或管理员可随时移除。",
+                en: "Ask the lead teacher or school admin for the 6-character code. You join as a co-teacher and can assign practice and review results.",
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="join-code">
+              {t({ zh: "课堂码", en: "Classroom code" })}
+            </Label>
+            <Input
+              id="join-code"
+              value={joinCode}
+              onChange={(event) =>
+                setJoinCode(event.target.value.toUpperCase())
+              }
+              placeholder="ABC23D"
+              className="min-h-11 max-w-48 font-mono text-lg tracking-widest"
+              maxLength={8}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setJoinOpen(false)}>
+              {t({ zh: "取消", en: "Cancel" })}
+            </Button>
+            <LoadingButton
+              loading={joinMutation.isPending}
+              disabled={joinCode.trim().length < 4}
+              onClick={() => joinMutation.mutate()}
+            >
+              {t({ zh: "加入", en: "Join" })}
+            </LoadingButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Card className="gap-0 overflow-hidden border-primary/10 py-0 shadow-sm">
         <CardHeader className="border-b bg-muted/30 py-5">
           <CardTitle className="text-base">
@@ -220,8 +298,8 @@ function MyClassroomsPage() {
           ) : classrooms.length === 0 ? (
             <p className="py-8 text-center text-muted-foreground">
               {t({
-                zh: "还没有课堂，点「新建课堂」开始：课堂码会发给学生配合学号账号使用。",
-                en: 'No classrooms yet — click "New Classroom" to start. The classroom code is given to students to use with their student ID accounts.',
+                zh: "还没有课堂。学校已给你分配课堂的话，点右上「加入课堂」输入课堂码；否则点「新建课堂」开始，课堂码发给学生配合账号使用。",
+                en: 'No classrooms yet. If your school already assigned you a class, click "Join by code"; otherwise click "New Classroom" — the code is handed to students to use with their accounts.',
               })}
             </p>
           ) : (

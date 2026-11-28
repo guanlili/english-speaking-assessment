@@ -148,6 +148,7 @@ _SPEAKING_BASELINE_TEMPLATES = {
     "{code}/report-settings",
     "{code}/teachers",
     "{code}/teacher-candidates",
+    "{code}/teachers/join",
     "{code}/teachers/{param}",
     "{code}/join",
     "{code}/my-messages",
