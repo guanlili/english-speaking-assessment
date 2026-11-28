@@ -19,6 +19,7 @@ import {
   ListChecks,
   RefreshCw,
   RotateCcw,
+  Sparkles,
   SpellCheck,
   Sprout,
   Swords,
@@ -68,6 +69,16 @@ import {
   overdueLabel,
   REVIEW_CAPABILITY_LABELS,
 } from "@/lib/vocab-review"
+
+/** 每日挑战玩法 → 双语标签（维度不同，标签不重复） */
+const CHALLENGE_MODE_LABELS: Record<string, { zh: string; en: string }> = {
+  meaning: { zh: "看词写义", en: "Meaning" },
+  audio: { zh: "听音拼写", en: "Audio spelling" },
+  en_zh: { zh: "英选中", en: "EN → ZH" },
+  zh_en: { zh: "中选英", en: "ZH → EN" },
+  cloze: { zh: "语境填词", en: "Cloze" },
+  roots: { zh: "词根组词", en: "Word roots" },
+}
 
 /** 学习建议依据 → 双语解释（规则可解释，不输出等级/预测） */
 const RECOMMENDATION_BASIS: Record<string, { zh: string; en: string }> = {
@@ -240,6 +251,39 @@ function VocabHomePage() {
     staleTime: 30_000,
   })
 
+  // 今日挑战：每天按「班级 + 日期」固定 3 款不同维度，同班同天人人一样
+  const challengeQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
+    queryKey: ["vocab", code, "challenge", student?.id],
+    queryFn: () =>
+      VocabularyService.readDailyChallenge({ code: code.toUpperCase() }),
+    enabled: student !== null && !readonly,
+    staleTime: 60_000,
+  })
+
+  // 开挑战轮：复用自主练习作答页；当日未完成的轮后端直接续做
+  const startChallenge = useMutation({
+    mutationFn: () =>
+      VocabularyService.startDailyChallenge({ code: code.toUpperCase() }),
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: ["vocab", code] })
+      void navigate({
+        to: "/vocab/$code/self",
+        params: { code },
+        search: { session: data.session_id },
+      })
+    },
+    onError: () => {
+      toast.error(
+        t({
+          zh: "今日素材不足，暂不能开挑战。",
+          en: "Not enough material for today's challenge yet.",
+        }),
+      )
+    },
+  })
+
   // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
   useStudentGuard(code, student, todayQuery)
 
@@ -307,6 +351,7 @@ function VocabHomePage() {
   const wrongWords = wrongQuery.data?.items ?? []
   const masteredWords = wrongQuery.data?.mastered_items ?? []
   const coordinate = coordinateQuery.data ?? null
+  const challenge = challengeQuery.data ?? null
   const reviewQueue = reviewQueueQuery.data ?? null
   const reviewSummary = reviewQueue
     ? {
@@ -993,6 +1038,95 @@ function VocabHomePage() {
           )}
         </section>
 
+        {/* 今日挑战：每天 3 款不同维度，按「班级 + 日期」固定，同班同天人人一样 */}
+        <section
+          aria-label={t({ zh: "今日挑战", en: "Today's challenge" })}
+          className="rounded-3xl border bg-card p-5 sm:p-6"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
+                <Sparkles className="size-4 text-primary" />
+                {t({ zh: "今日挑战", en: "Today's challenge" })}
+                {challenge !== null && (
+                  <Badge variant="outline" className="text-[10px] font-normal">
+                    {t({
+                      zh: `${challenge.blocks.length} 款 · ${challenge.total_items} 题`,
+                      en: `${challenge.blocks.length} modes · ${challenge.total_items} items`,
+                    })}
+                  </Badge>
+                )}
+                {challenge?.completed && (
+                  <Badge className="text-[10px] font-normal">
+                    {t({ zh: "今日已完成", en: "Done today" })}
+                  </Badge>
+                )}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t({
+                  zh: "每天换 3 个不同维度（拼写 / 认读 / 语境 / 词法），同班同天所有人题面一致；不计入老师任务完成率，只算你自己的加练。",
+                  en: "Three different skills rotate daily (spelling / recognition / context / morphology); everyone in the class gets the same set. Not counted in teacher task completion — it is your own extra practice.",
+                })}
+              </p>
+            </div>
+            {challenge !== null && challenge.blocks.length > 0 && (
+              <Button
+                size="sm"
+                onClick={() => startChallenge.mutate()}
+                disabled={startChallenge.isPending}
+              >
+                <Sparkles className="size-4" />
+                {challenge.completed
+                  ? t({ zh: "再练一轮", en: "Practice again" })
+                  : t({ zh: "开始挑战", en: "Start" })}
+              </Button>
+            )}
+          </div>
+
+          {challengeQuery.isPending ? (
+            <p className="mt-4 text-sm text-muted-foreground">
+              {t({ zh: "正在取今日挑战…", en: "Loading…" })}
+            </p>
+          ) : challenge === null || challenge.blocks.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">
+              {t({
+                zh: "今日暂无挑战：词库里的词还没够出题，等老师补词后再来。",
+                en: "No challenge today: not enough words to build one yet.",
+              })}
+            </p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {challenge.blocks.map((block) => (
+                  <span
+                    key={block.key}
+                    className="rounded-full border px-3 py-1 text-xs text-muted-foreground"
+                  >
+                    {t(
+                      CHALLENGE_MODE_LABELS[block.key] ?? {
+                        zh: block.key,
+                        en: block.key,
+                      },
+                    )}
+                    {" · "}
+                    {t({
+                      zh: `${block.item_count} 词`,
+                      en: `${block.item_count} words`,
+                    })}
+                  </span>
+                ))}
+              </div>
+              {challenge.degraded && challenge.reason && (
+                <p className="text-xs text-muted-foreground">
+                  {t({
+                    zh: `今天按现有素材降级出题：${challenge.reason}。`,
+                    en: `Degraded to available material today: ${challenge.reason}.`,
+                  })}
+                </p>
+              )}
+            </div>
+          )}
+        </section>
         {/* 错词本 */}
         <Card>
           <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">

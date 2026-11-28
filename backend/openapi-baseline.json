@@ -14082,6 +14082,75 @@
         "title": "VocabularyBookVersionList",
         "type": "object"
       },
+      "VocabularyChallengeBlock": {
+        "description": "挑战包里的一块练习（维度 + 玩法 + 题量）。",
+        "properties": {
+          "dimension": {
+            "title": "Dimension",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "key",
+          "item_count"
+        ],
+        "title": "VocabularyChallengeBlock",
+        "type": "object"
+      },
+      "VocabularyChallengeCreated": {
+        "description": "开挑战轮返回会话 ID，前端复用自主练习作答页。",
+        "properties": {
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "total_items": {
+            "title": "Total Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "session_id",
+          "total_items"
+        ],
+        "title": "VocabularyChallengeCreated",
+        "type": "object"
+      },
+      "VocabularyChallengeParticipation": {
+        "description": "教师端只读参与情况（今天开过 / 已完成的人数）。",
+        "properties": {
+          "completed_count": {
+            "title": "Completed Count",
+            "type": "integer"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "started_count": {
+            "title": "Started Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "started_count",
+          "completed_count"
+        ],
+        "title": "VocabularyChallengeParticipation",
+        "type": "object"
+      },
       "VocabularyChoice": {
         "description": "选择题选项（选项冻结在发布快照里，同一任务不随词库改动漂移）。",
         "properties": {
@@ -14378,6 +14447,72 @@
           "classroom_code"
         ],
         "title": "VocabularyCoordinate",
+        "type": "object"
+      },
+      "VocabularyDailyChallenge": {
+        "description": "学生端「今日挑战」展示：配置 + 完成状态，不暴露答案。",
+        "properties": {
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/VocabularyChallengeBlock"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "classroom_code": {
+            "title": "Classroom Code",
+            "type": "string"
+          },
+          "completed": {
+            "title": "Completed",
+            "type": "boolean"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "degraded": {
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "total_items": {
+            "title": "Total Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "classroom_code",
+          "date",
+          "degraded",
+          "blocks",
+          "total_items",
+          "completed"
+        ],
+        "title": "VocabularyDailyChallenge",
         "type": "object"
       },
       "VocabularyFromLevelsRequest": {
@@ -29577,6 +29712,54 @@
         ]
       }
     },
+    "/api/v1/classes/{code}/vocabulary/challenge/participation": {
+      "get": {
+        "description": "教师端只读参与情况（今天开过挑战 / 已完成的人数）。",
+        "operationId": "vocabulary-read_challenge_participation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyChallengeParticipation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Challenge Participation",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
     "/api/v1/classes/{code}/vocabulary/leaderboard": {
       "get": {
         "description": "班内本周掌握词数榜；教师/本校管理员可查任意不晚于本周的周一，\n学生只能查不早于本人首次加入周。",
@@ -30923,6 +31106,102 @@
           }
         ],
         "summary": "Read Student Book",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/student/challenge": {
+      "get": {
+        "description": "今日挑战配置 + 完成状态（同一天同班恒定，可反复刷新）。",
+        "operationId": "vocabulary-read_daily_challenge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyDailyChallenge"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Read Daily Challenge",
+        "tags": [
+          "vocabulary"
+        ]
+      }
+    },
+    "/api/v1/classes/{code}/vocabulary/student/challenge/sessions": {
+      "post": {
+        "description": "开今日挑战轮；当日未完成的轮直接续做，不重复开。",
+        "operationId": "vocabulary-start_daily_challenge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VocabularyChallengeCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Start Daily Challenge",
         "tags": [
           "vocabulary"
         ]
