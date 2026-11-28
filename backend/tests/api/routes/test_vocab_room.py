@@ -367,3 +367,32 @@ def test_room_persists_until_ended(client: TestClient, db: Session) -> None:
         select(VocabPkRoom).where(VocabPkRoom.id == uuid.UUID(room["room_id"]))
     ).first()
     assert stored is not None and stored.status == "ended"
+
+
+def test_en_zh_prompt_reveals_headword_before_answer(
+    client: TestClient, db: Session
+) -> None:
+    teacher, teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, teacher_headers)
+    book = _make_book(client, teacher_headers, classroom["id"], _words(8, "i"), "i1")
+    resp = client.post(
+        ROOM.format(code=classroom["code"]),
+        json={
+            "book_id": book["id"],
+            "question_count": 4,
+            "prompt_types": ["en_zh"],
+            "mode": "solo",
+        },
+        headers=teacher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    room = resp.json()
+    student = make_student(db, client, classroom["code"])
+    _join(client, student["headers"], classroom["code"], room["room_code"])
+    _start(client, teacher_headers, classroom["code"], room)
+
+    view = _me(client, student["headers"], classroom["code"], room)
+    # 英译中题面就是单词本身，作答前必须可见
+    assert view["item"]["prompt_type"] == "en_zh"
+    assert view["item"]["headword"]
+    assert view["item"]["answered"] is False

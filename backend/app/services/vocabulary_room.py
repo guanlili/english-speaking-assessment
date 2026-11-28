@@ -660,7 +660,8 @@ def _room_item(
     if isinstance(raw_segments, list):
         segments = [dict(seg) for seg in raw_segments]
 
-    revealed = reveal or answer is not None
+    # en_zh 的题面就是英文单词，作答前必须透出；其余题型 headword 是答案，不提前给
+    revealed = reveal or answer is not None or prompt_type == "en_zh"
     return PkRoomItem(
         item_index=index,
         prompt_type=prompt_type,

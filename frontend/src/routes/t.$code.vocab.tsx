@@ -8,6 +8,7 @@ import {
 import {
   Compass,
   ListChecks,
+  MonitorPlay,
   ShieldCheck,
   SpellCheck,
   Sprout,
@@ -21,6 +22,7 @@ import { VocabModuleSwitcher } from "@/components/Teaching/VocabModuleSwitcher"
 import { AssignPanel } from "@/components/Teaching/VocabTasks/AssignPanel"
 import { FarmTeacherPanel } from "@/components/Teaching/VocabTasks/FarmTeacherPanel"
 import { LeaderboardTeacherPanel } from "@/components/Teaching/VocabTasks/LeaderboardTeacherPanel"
+import { PkRoomHostPanel } from "@/components/Teaching/VocabTasks/PkRoomHostPanel"
 import { PkTeacherPanel } from "@/components/Teaching/VocabTasks/PkTeacherPanel"
 import { PlacementTeacherPanel } from "@/components/Teaching/VocabTasks/PlacementTeacherPanel"
 import { ResultsPanel } from "@/components/Teaching/VocabTasks/ResultsPanel"
@@ -52,6 +54,7 @@ const VOCAB_TABS = [
   "trend",
   "placement",
   "pk",
+  "room",
   "farm",
   "review",
   "leaderboard",
@@ -78,6 +81,11 @@ const TAB_META: Array<{
     label: { zh: "测分结果", en: "Placement" },
   },
   { key: "pk", icon: Swords, label: { zh: "PK 对战", en: "PK Battle" } },
+  {
+    key: "room",
+    icon: MonitorPlay,
+    label: { zh: "大屏 PK", en: "Big-screen PK" },
+  },
   { key: "farm", icon: Sprout, label: { zh: "农场", en: "Farm" } },
   { key: "leaderboard", icon: Trophy, label: { zh: "学习榜", en: "Board" } },
   { key: "review", icon: ShieldCheck, label: { zh: "词库审核", en: "Review" } },
@@ -372,6 +380,8 @@ function TeacherVocabPage() {
         <TrendTeacherPanel code={code} />
       ) : !readonly && tab === "pk" ? (
         <PkTeacherPanel code={code} />
+      ) : !readonly && tab === "room" ? (
+        <PkRoomHostPanel code={code} />
       ) : !readonly && tab === "farm" ? (
         <FarmTeacherPanel code={code} />
       ) : !readonly && tab === "leaderboard" ? (
