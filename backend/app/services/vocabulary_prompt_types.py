@@ -245,18 +245,15 @@ def attach_prompt_payloads(
     选项与语素块一律在这里固化，读题时不现算——否则词库改一次，
     老任务的选项就会跟着变。
     """
+    from app.services.vocab_plugins import get_plugin
+
     for idx, (snapshot, word) in enumerate(zip(snapshots, words, strict=False)):
         prompt_type = _single_prompt_type(snapshot)
-        if prompt_type in CHOICE_PROMPT_TYPES:
-            snapshot["choices"] = _build_choices(idx, word, words)
-        elif prompt_type == "cloze":
-            example = snapshot.get("example_en")
-            snapshot["cloze_sentence"] = build_cloze_sentence(
-                str(snapshot["headword"]),
-                example if isinstance(example, str) else None,
-            )
-        elif prompt_type == "roots":
-            snapshot["morph_segments"] = _build_morph_segments(word)
+        plugin = get_plugin(prompt_type)
+        # 未注册的题型不再静默补选项：宁可题面无载荷，也不给出错误选项
+        if plugin is None:
+            continue
+        plugin.payload(idx, word, words, snapshot)
 
 
 def _single_prompt_type(snapshot: dict[str, object]) -> str:

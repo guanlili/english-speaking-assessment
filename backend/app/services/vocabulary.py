@@ -1111,11 +1111,10 @@ def submit_answer(
 
     snapshot_item = _validate_answer_input(snapshot_items, item_index, prompt_type)
     normalized = _normalized_answer_or_422(answer_raw)
-    # 判分按题型分派：选择题比所选词条 ID，其余题型比快照里的可接受拼写
-    if prompt_type in prompt_types_mod.CHOICE_PROMPT_TYPES:
-        is_correct = prompt_types_mod.choice_answer_matches(answer_raw, snapshot_item)
-    else:
-        is_correct = check_spelling(answer_raw, snapshot_item)
+    # 判分按注册表分派：玩法自己声明怎么判；未注册的题型直接判错
+    from app.services.vocab_plugins import judge_answer
+
+    is_correct = judge_answer(prompt_type, answer_raw, snapshot_item)
 
     # 会话行锁（提交/交卷/结算共用）：锁内重校验，封死 check-then-insert 竞态
     session.refresh(vocab_session, with_for_update=True)

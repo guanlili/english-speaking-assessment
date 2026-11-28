@@ -27,6 +27,7 @@ from app.models import (
     VocabularySession,
     VocabularyWord,
 )
+from app.services import vocab_plugins
 from app.services import vocabulary as vocab_service
 from app.services import vocabulary_prompt_types as prompt_types_mod
 
@@ -36,22 +37,8 @@ CHALLENGE_WORDS_PER_BLOCK = 5
 # 一个维度至少要有这么多词能出题，才会被选进当日挑战
 CHALLENGE_MIN_WORDS_PER_BLOCK = 3
 
-# 维度 → 可用玩法（同维度内只取 1 款，保证「3 款不同维度」）
-CHALLENGE_DIMENSIONS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    ("spelling", "拼写", ("meaning", "audio")),
-    ("recognition", "认读", ("en_zh", "zh_en")),
-    ("context", "语境", ("cloze",)),
-    ("morphology", "词法", ("roots",)),
-)
 
-DIMENSION_LABELS: dict[str, tuple[str, str]] = {
-    "spelling": ("拼写", "Spelling"),
-    "recognition": ("认读", "Recognition"),
-    "context": ("语境", "Context"),
-    "morphology": ("词法", "Morphology"),
-}
-
-
+# 维度与候选玩法全部来自玩法注册表（新玩法注册后自动进挑战池）
 @dataclass(frozen=True)
 class ChallengeBlock:
     """今日挑战里的一块：一个玩法 + 本次要考的单词。"""
@@ -140,20 +127,17 @@ def compose_pack(session: Session, classroom_id: uuid.UUID, day: date) -> Challe
     used: set[uuid.UUID] = set()
 
     # 维度顺序由 seed 决定：同一天同班固定，不同班/不同天轮换
-    dimensions = list(CHALLENGE_DIMENSIONS)
-    dimensions.sort(key=lambda item: _stable_seed(day, classroom_id, item[0]))
+    dimension_keys = vocab_plugins.dimensions()
+    dimension_keys.sort(key=lambda dim: _stable_seed(day, classroom_id, dim))
 
-    for dimension, label_zh, keys in dimensions:
+    for dimension in dimension_keys:
         if len(pack.blocks) >= CHALLENGE_BLOCKS:
             break
+        label_zh = vocab_plugins.DIMENSION_LABELS.get(dimension, (dimension, ""))[0]
         best: tuple[int, str, list[VocabularyWord]] | None = None
-        for key in keys:
-            eligible = [
-                w
-                for w in usable
-                if w.id not in used
-                and prompt_types_mod.word_supports_prompt_type(w, key)
-            ]
+        for plugin in vocab_plugins.plugins_by_dimension(dimension):
+            key = plugin.key
+            eligible = [w for w in usable if w.id not in used and plugin.supports(w)]
             if len(eligible) < CHALLENGE_MIN_WORDS_PER_BLOCK:
                 continue
             candidate = (len(eligible), key, eligible[:CHALLENGE_WORDS_PER_BLOCK])
