@@ -2,7 +2,7 @@ import type { VocabularyTodayItem } from "@/client"
 import { Badge } from "@/components/ui/badge"
 import { CefrBandBadge } from "@/components/Vocabulary/WordTagBadges"
 import { useI18n } from "@/lib/i18n"
-import { vocabPromptMeta } from "@/lib/terms"
+import { VOCAB_PROMPT_META, vocabPromptMeta } from "@/lib/terms"
 
 /** 词块类型 → 双语小标签（词根拼装题面用） */
 const SEGMENT_KIND: Record<string, { zh: string; en: string }> = {
@@ -91,6 +91,35 @@ export default function PromptBody({ item }: { item: VocabularyTodayItem }) {
             zh: "读句子，填出横线上缺的那个单词。",
             en: "Read the sentence and fill in the missing word.",
           })}
+        </p>
+      </div>
+    )
+  }
+
+  if (promptType === "letters") {
+    return (
+      <div className="rounded-2xl bg-secondary/50 p-5 sm:p-6">
+        {item.meaning_zh && (
+          <p className="text-lg font-medium">{item.meaning_zh}</p>
+        )}
+        <p className="mt-2 text-xs text-muted-foreground">
+          {t({
+            zh: "把下面的字母重新排好，拼出这个单词：",
+            en: "Rearrange these letters to spell the word:",
+          })}
+        </p>
+        <ul className="mt-3 flex flex-wrap gap-2" aria-label="字母块">
+          {(item.letters_pool ?? []).map((letter, index) => (
+            <li
+              key={`${letter}-${index}`}
+              className="flex size-11 items-center justify-center rounded-xl border border-primary/25 bg-card font-mono text-lg font-semibold uppercase"
+            >
+              {letter}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-xs text-muted-foreground">
+          {t(VOCAB_PROMPT_META.letters.hint)}
         </p>
       </div>
     )

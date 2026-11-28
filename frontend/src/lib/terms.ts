@@ -85,6 +85,7 @@ export const TERMS = {
   promptCloze: { zh: "语境填空", en: "Fill the Gap" },
   /** 词根拼装：用前缀/词根/后缀片段拼出单词 */
   promptRoots: { zh: "词根拼装", en: "Word Parts" },
+  promptLetters: { zh: "字母重排", en: "Letter Tiles" },
   /** 学习建议（规则生成，不等于能力评定） */
   vocabRecommendation: { zh: "今日练习建议", en: "Today's Practice Plan" },
   /** 五级词库（口语与背单词共用的统一分级数据源） */
@@ -158,6 +159,13 @@ export const VOCAB_PROMPT_META: Record<
     hint: {
       zh: "用给出的词根词缀片段，拼出完整单词。",
       en: "Put the word parts together and spell the whole word.",
+    },
+  },
+  letters: {
+    label: TERMS.promptLetters,
+    hint: {
+      zh: "把打乱的字母重新排好，拼出对应中文释义的英文单词。",
+      en: "Rearrange the scrambled letters to spell the word for the Chinese meaning.",
     },
   },
 }

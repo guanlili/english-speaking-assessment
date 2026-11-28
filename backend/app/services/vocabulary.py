@@ -2314,6 +2314,7 @@ def _plan_item(
         choices=payload.get("choices", []),
         cloze_sentence=payload.get("cloze_sentence"),
         morph_segments=payload.get("morph_segments", []),
+        letters_pool=payload.get("letters_pool", []),
         headword=(
             str(snapshot_item["headword"]) if (show_headword or revealed) else None
         ),
