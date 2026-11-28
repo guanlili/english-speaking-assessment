@@ -27,6 +27,7 @@ import { Route as LayoutClassroomsRouteImport } from './routes/_layout/classroom
 import { Route as LayoutCreateRouteImport } from './routes/_layout/create'
 import { Route as LayoutExportsRouteImport } from './routes/_layout/exports'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
+import { Route as LayoutTasksRouteImport } from './routes/_layout/tasks'
 import { Route as ClassroomCodeRouteImport } from './routes/classroom.$code'
 import { Route as ExamCodeRouteImport } from './routes/exam.$code'
 import { Route as ExploreCodeRouteImport } from './routes/explore.$code'
@@ -156,6 +157,11 @@ const LayoutExportsRoute = LayoutExportsRouteImport.update({
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutTasksRoute = LayoutTasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
   getParentRoute: () => LayoutRoute,
 } as any)
 const ClassroomCodeRoute = ClassroomCodeRouteImport.update({
@@ -384,6 +390,7 @@ export interface FileRoutesByFullPath {
   '/create': typeof LayoutCreateRoute
   '/exports': typeof LayoutExportsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/tasks': typeof LayoutTasksRoute
   '/classroom/$code': typeof ClassroomCodeRoute
   '/exam/$code': typeof ExamCodeRouteWithChildren
   '/explore/$code': typeof ExploreCodeRoute
@@ -443,6 +450,7 @@ export interface FileRoutesByTo {
   '/create': typeof LayoutCreateRoute
   '/exports': typeof LayoutExportsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/tasks': typeof LayoutTasksRoute
   '/classroom/$code': typeof ClassroomCodeRoute
   '/explore/$code': typeof ExploreCodeRoute
   '/help/$code': typeof HelpCodeRoute
@@ -501,6 +509,7 @@ export interface FileRoutesById {
   '/_layout/create': typeof LayoutCreateRoute
   '/_layout/exports': typeof LayoutExportsRoute
   '/_layout/settings': typeof LayoutSettingsRoute
+  '/_layout/tasks': typeof LayoutTasksRoute
   '/classroom/$code': typeof ClassroomCodeRoute
   '/exam/$code': typeof ExamCodeRouteWithChildren
   '/explore/$code': typeof ExploreCodeRoute
@@ -563,6 +572,7 @@ export interface FileRouteTypes {
     | '/create'
     | '/exports'
     | '/settings'
+    | '/tasks'
     | '/classroom/$code'
     | '/exam/$code'
     | '/explore/$code'
@@ -622,6 +632,7 @@ export interface FileRouteTypes {
     | '/create'
     | '/exports'
     | '/settings'
+    | '/tasks'
     | '/classroom/$code'
     | '/explore/$code'
     | '/help/$code'
@@ -679,6 +690,7 @@ export interface FileRouteTypes {
     | '/_layout/create'
     | '/_layout/exports'
     | '/_layout/settings'
+    | '/_layout/tasks'
     | '/classroom/$code'
     | '/exam/$code'
     | '/explore/$code'
@@ -874,6 +886,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof LayoutSettingsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/tasks': {
+      id: '/_layout/tasks'
+      path: '/tasks'
+      fullPath: '/tasks'
+      preLoaderRoute: typeof LayoutTasksRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/classroom/$code': {
@@ -1207,6 +1226,7 @@ interface LayoutRouteChildren {
   LayoutCreateRoute: typeof LayoutCreateRoute
   LayoutExportsRoute: typeof LayoutExportsRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
+  LayoutTasksRoute: typeof LayoutTasksRoute
   LayoutSchoolMembersRoute: typeof LayoutSchoolMembersRoute
 }
 
@@ -1217,6 +1237,7 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutCreateRoute: LayoutCreateRoute,
   LayoutExportsRoute: LayoutExportsRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
+  LayoutTasksRoute: LayoutTasksRoute,
   LayoutSchoolMembersRoute: LayoutSchoolMembersRoute,
 }
 
