@@ -11,6 +11,7 @@ import {
   BookOpenCheck,
   BrainCircuit,
   CheckCircle2,
+  ChevronDown,
   Circle,
   Clock,
   Compass,
@@ -330,525 +331,6 @@ function VocabHomePage() {
 
         <VocabReadonlyBanner />
 
-        {/* 班内学习榜：仅整班开启且对学生可见时由卡片自行决定是否渲染 */}
-        <LeaderboardStudentCard code={code} />
-
-        {/* 自主练习入口：从词库挑词，与教师任务分开记录 */}
-        <section
-          aria-label={t({ zh: "自主练习", en: "Self practice" })}
-          className="rounded-3xl border bg-card p-5 sm:p-6"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
-                <LibraryBig className="size-5" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-base font-semibold">
-                  {t({ zh: "自主练习", en: "Self Practice" })}
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {t({
-                    zh: "从公共词库或本班词库挑词，自己开一轮（不占老师任务的成绩）。",
-                    en: "Pick a public or class word book and start a round on your own — it never counts toward teacher tasks.",
-                  })}
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {!readonly && (
-                <Button asChild>
-                  <Link to="/vocab/$code/books" params={{ code }}>
-                    <LibraryBig />
-                    {t({ zh: "去词库挑词", en: "Browse Word Books" })}
-                  </Link>
-                </Button>
-              )}
-              <Button asChild variant="outline">
-                <Link to="/vocab/$code/records" params={{ code }}>
-                  {t(TERMS.practiceRecords)}
-                  <ArrowRight />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </section>
-
-        {/* 粗分档小测入口：探针式建议起点，独立于任务/自主练习统计（只读态隐藏） */}
-        {!readonly && (
-          <section
-            aria-label={t({ zh: "测一测从哪开始", en: "Placement quiz" })}
-            className="rounded-3xl border bg-card p-5 sm:p-6"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
-                  <Compass className="size-5" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-base font-semibold">
-                    {t({
-                      zh: "测一测从哪开始",
-                      en: "Find your starting level",
-                    })}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {t({
-                      zh: "一组自适应四选一，给出建议起点级别和推荐词库；粗分档建议，不是定级或考试分数。",
-                      en: "A short adaptive quiz suggests a starting level and word book. Rough guide, not a level or exam score.",
-                    })}
-                  </p>
-                </div>
-              </div>
-              <Button asChild variant="outline">
-                <Link to="/vocab/$code/placement" params={{ code }}>
-                  <Compass />
-                  {t({ zh: "去测一测", en: "Start" })}
-                </Link>
-              </Button>
-            </div>
-          </section>
-        )}
-
-        {/* 课堂 PK 入口：自愿参与的 1v1 对战，独立于教师任务成绩（只读态隐藏） */}
-        {!readonly && (
-          <section
-            aria-label={t({ zh: "课堂对战 PK", en: "Classroom PK" })}
-            className="rounded-3xl border bg-card p-5 sm:p-6"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
-                  <Swords className="size-5" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-base font-semibold">
-                    {t({ zh: "课堂对战 PK", en: "Classroom PK" })}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {t({
-                      zh: "本班自愿加入，两人配对 1v1；对战反馈不影响老师任务成绩，结果仅本局可见。",
-                      en: "Optional in-class 1v1 pairing. Battle feedback never counts toward teacher tasks, and results are visible to this match only.",
-                    })}
-                  </p>
-                </div>
-              </div>
-              <Button asChild variant="outline">
-                <Link to="/vocab/$code/pk" params={{ code }}>
-                  <Swords />
-                  {t({ zh: "进入 PK", en: "Open PK" })}
-                </Link>
-              </Button>
-            </div>
-          </section>
-        )}
-
-        {/* 专注农场入口：自愿参与的成长地块，XP/徽章复用既有课堂账本（只读态隐藏） */}
-        {!readonly && (
-          <section
-            aria-label={t({ zh: "专注农场", en: "Focus Farm" })}
-            className="rounded-3xl border bg-card p-5 sm:p-6"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
-                  <Sprout className="size-5" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-base font-semibold">
-                    {t({ zh: "专注农场", en: "Focus Farm" })}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {t({
-                      zh: "完成有效练习让地块成长，成熟后收获 XP；独立于教师任务成绩，不做公开排行。",
-                      en: "Grow your plot with valid practice and harvest XP when mature. Separate from teacher tasks, no public leaderboard.",
-                    })}
-                  </p>
-                </div>
-              </div>
-              <Button asChild variant="outline">
-                <Link to="/vocab/$code/farm" params={{ code }}>
-                  <Sprout />
-                  {t({ zh: "进入农场", en: "Open Farm" })}
-                </Link>
-              </Button>
-            </div>
-          </section>
-        )}
-
-        {/* 今日复习：FSRS 到期队列 + 每日负担控制（只读态隐藏） */}
-        {!readonly && (
-          <section
-            aria-label={t({ zh: "今日复习", en: "Today's Review" })}
-            className="rounded-3xl border bg-card p-5 sm:p-6"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
-                  <BrainCircuit className="size-5" />
-                </span>
-                <div className="min-w-0">
-                  <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
-                    {t({ zh: "今日复习", en: "Today's Review" })}
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] font-normal"
-                    >
-                      {t({ zh: "记忆调度", en: "Spaced Repetition" })}
-                    </Badge>
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {t({
-                      zh: "按记忆间隔排出今天该复习的词；认读与拼写分别记录。",
-                      en: "Words due today by spaced repetition; recognition and spelling are tracked separately.",
-                    })}
-                  </p>
-                </div>
-              </div>
-              <Button
-                onClick={() => startFsrsReview.mutate()}
-                disabled={!canStartFsrsReview || startFsrsReview.isPending}
-              >
-                <RotateCcw />
-                {startFsrsReview.isPending
-                  ? t({ zh: "开一轮复习…", en: "Starting…" })
-                  : t({ zh: "开始复习", en: "Start Review" })}
-              </Button>
-            </div>
-
-            {/* 每日负担摘要：到期数 / 今日已复习 / 剩余额度 / 上限 */}
-            <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {(
-                [
-                  {
-                    label: { zh: "今日到期", en: "Due today" },
-                    value: reviewQueue?.due_today_count ?? 0,
-                  },
-                  {
-                    label: { zh: "今日已复习", en: "Reviewed today" },
-                    value: reviewQueue?.reviewed_today_count ?? 0,
-                  },
-                  {
-                    label: { zh: "今日剩余额度", en: "Left today" },
-                    value: reviewQueue?.remaining_today_count ?? 0,
-                  },
-                  {
-                    label: { zh: "每日上限", en: "Daily limit" },
-                    value: reviewQueue?.daily_limit ?? 0,
-                  },
-                ] as const
-              ).map((stat) => (
-                <div
-                  key={stat.label.en}
-                  className="rounded-2xl bg-secondary/50 px-4 py-3"
-                >
-                  <dt className="text-xs text-muted-foreground">
-                    {t(stat.label)}
-                  </dt>
-                  <dd className="mt-1 text-lg font-semibold tabular-nums">
-                    {stat.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-
-            {reviewItems.length === 0 ? (
-              <p className="mt-4 text-sm text-muted-foreground">
-                {reviewQueueQuery.isPending
-                  ? t({ zh: "正在加载复习队列…", en: "Loading review queue…" })
-                  : t({
-                      zh: "今天没有到期需要复习的词，继续保持！",
-                      en: "Nothing due for review today. Keep it up!",
-                    })}
-              </p>
-            ) : (
-              <ul className="mt-4 grid gap-2">
-                {reviewItems.slice(0, 6).map((item) => (
-                  <li
-                    key={`${item.word_id}-${item.capability}`}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border px-4 py-3"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="font-mono font-semibold">
-                        {item.headword}
-                      </span>
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {item.meaning_zh}
-                      </span>
-                    </span>
-                    <Badge variant="outline" className="shrink-0">
-                      {t(
-                        REVIEW_CAPABILITY_LABELS[
-                          item.capability as keyof typeof REVIEW_CAPABILITY_LABELS
-                        ] ?? { zh: item.capability, en: item.capability },
-                      )}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {t(overdueLabel(item.overdue_days ?? 0))}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {item.last_is_correct === null ||
-                      item.last_is_correct === undefined
-                        ? "–"
-                        : item.last_is_correct
-                          ? t({ zh: "上次答对", en: "Last correct" })
-                          : t({ zh: "上次答错", en: "Last missed" })}
-                    </span>
-                    {item.interval_days != null && (
-                      <span className="text-xs text-muted-foreground">
-                        {t({
-                          zh: `间隔 ${item.interval_days} 天`,
-                          en: `${item.interval_days}-day interval`,
-                        })}
-                      </span>
-                    )}
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {t({
-                        zh: `复习 ${item.reps ?? 0} · 遗忘 ${item.lapses ?? 0}`,
-                        en: `${item.reps ?? 0} reviews · ${item.lapses ?? 0} lapses`,
-                      })}
-                    </span>
-                    {(item.suggested_prompt_types ?? []).length > 0 && (
-                      <span className="flex flex-wrap gap-1">
-                        {(item.suggested_prompt_types ?? []).map((type) => (
-                          <span
-                            key={type}
-                            className="rounded-lg border border-primary/25 bg-secondary/60 px-2 py-0.5 text-xs"
-                          >
-                            {t(vocabPromptMeta(type).label)}
-                          </span>
-                        ))}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-              {t({
-                zh: "复习状态跟随你的账号，换班后继续保留；历史练习记录与快照不会被改写。这里只展示真实计数，不预测记忆留存率。",
-                en: "Review state follows your account across classes; past records and snapshots are never rewritten. Counts are real only — no retention forecast.",
-              })}
-            </p>
-          </section>
-        )}
-
-        {/* 今日练习建议：按真实首答记录生成，规则可解释，不是能力评定（只读态隐藏） */}
-        {!readonly && recommendation && (
-          <section
-            aria-label={t(TERMS.vocabRecommendation)}
-            className="rounded-3xl border bg-card p-5 sm:p-6"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
-                  {t(TERMS.vocabRecommendation)}
-                  <Badge variant="outline" className="text-[10px] font-normal">
-                    {t({
-                      zh: "规则生成 · 非能力评定",
-                      en: "Rule-based · not a level",
-                    })}
-                  </Badge>
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t({
-                    zh: "只按你的真实首答记录给下一步练法；不预测、不排名。",
-                    en: "Built only from your real first answers — no prediction, no ranking.",
-                  })}
-                </p>
-              </div>
-              {recommendation.accuracy != null && (
-                <p className="text-sm text-muted-foreground">
-                  {t({
-                    zh: `首答正确率 ${Math.round((recommendation.accuracy ?? 0) * 100)}%（${recommendation.answered_total ?? 0} 题）`,
-                    en: `${Math.round((recommendation.accuracy ?? 0) * 100)}% first-try over ${recommendation.answered_total ?? 0} items`,
-                  })}
-                </p>
-              )}
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              {(recommendation.basis ?? []).map((code) => (
-                <Badge key={code} variant="secondary" className="font-normal">
-                  {t(
-                    RECOMMENDATION_BASIS[code] ?? {
-                      zh: code,
-                      en: code,
-                    },
-                  )}
-                </Badge>
-              ))}
-            </div>
-
-            {(recommendation.suggested_prompt_types ?? []).length > 0 && (
-              <div className="mt-4 space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">
-                  {t({ zh: "建议这样练", en: "Suggested practice" })}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {(recommendation.suggested_prompt_types ?? []).map((type) => (
-                    <span
-                      key={type}
-                      className="rounded-xl border border-primary/25 bg-secondary/60 px-3 py-1.5 text-sm"
-                    >
-                      {t(vocabPromptMeta(type).label)}
-                    </span>
-                  ))}
-                  {(recommendation.suggested_word_count ?? 0) > 0 && (
-                    <span className="rounded-xl border px-3 py-1.5 text-sm text-muted-foreground">
-                      {t({
-                        zh: `约 ${recommendation.suggested_word_count} 词`,
-                        en: `about ${recommendation.suggested_word_count} words`,
-                      })}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {(recommendation.focus_words ?? []).length > 0 && (
-              <div className="mt-4 space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">
-                  {t({ zh: "优先复习的错词", en: "Words to revisit first" })}
-                </p>
-                <ul className="flex flex-wrap gap-2">
-                  {(recommendation.focus_words ?? []).map((focus) => (
-                    <li
-                      key={focus.word_id}
-                      className="rounded-xl border px-3 py-1.5 text-sm"
-                    >
-                      <span className="font-mono font-semibold">
-                        {focus.headword}
-                      </span>
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {focus.meaning_zh}
-                      </span>
-                      <span
-                        className="ml-2 text-xs text-destructive"
-                        title={t({
-                          zh: "历史累计错误次数，只增不减；不是掌握度评估，只用于安排复习。",
-                          en: "Historical cumulative misses, never decreasing; not a mastery score — for review planning only.",
-                        })}
-                      >
-                        {t({
-                          zh: `错 ${focus.wrong_count} 次`,
-                          en: `missed ×${focus.wrong_count}`,
-                        })}
-                      </span>
-                      {focus.practiceable === false && (
-                        <span className="ml-2 text-xs text-amber-600">
-                          {t({
-                            zh: "暂不在可练词库",
-                            en: "not in a practiceable book",
-                          })}
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {(recommendation.suggested_prompt_types ?? []).length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button asChild size="sm">
-                  <Link to="/vocab/$code/books" params={{ code }}>
-                    {t({ zh: "去词库开一轮", en: "Start a round" })}
-                    <ArrowRight />
-                  </Link>
-                </Button>
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* 我的任务列表（多任务并存：进行中与已结束都在，可切换练习） */}
-        {taskRows.length > 0 && (
-          <section
-            aria-label={t({ zh: "我的词汇任务", en: "My vocabulary tasks" })}
-          >
-            <p className="mb-2 text-xs font-medium text-muted-foreground">
-              {t({
-                zh: "我的任务（老师新发布的不会再结束旧任务）",
-                en: "My tasks (new ones no longer end older tasks)",
-              })}
-            </p>
-            <ul className="grid gap-2 md:grid-cols-2">
-              {taskRows.map((row) => (
-                <li key={row.assignment_id}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      readonly
-                        ? void navigate({
-                            to: "/vocab/$code/records",
-                            params: { code },
-                          })
-                        : void navigate({
-                            to: "/vocab/$code/practice",
-                            params: { code },
-                            search: { assignment: row.assignment_id },
-                          })
-                    }
-                    className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border bg-card px-4 py-3.5 text-left transition-colors hover:border-primary/40"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">
-                        {row.title}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {t({
-                          zh: `${row.word_count} 词 · 首答 ${row.correct_first_count}/${row.word_count}`,
-                          en: row.masked
-                            ? `${row.word_count} words`
-                            : `${row.word_count} words · ${row.correct_first_count}/${row.word_count} first-try`,
-                        })}
-                        {row.is_quiz && ` · ${t({ zh: "测验", en: "quiz" })}`}
-                        {(row.round_count ?? 0) > 1 &&
-                          !row.masked &&
-                          ` · ${t({
-                            zh: `已练 ${row.round_count ?? 0} 轮`,
-                            en: `${row.round_count ?? 0} rounds`,
-                          })}`}
-                        {row.due_at &&
-                          ` · ${t({ zh: "截止", en: "Due" })} ${formatDate(row.due_at, lang)}`}
-                      </span>
-                    </span>
-                    {row.overdue && (
-                      <Badge
-                        variant="outline"
-                        className="shrink-0 text-amber-600"
-                      >
-                        <Clock className="size-3" />
-                        {t({ zh: "已逾期", en: "Overdue" })}
-                      </Badge>
-                    )}
-                    <Badge
-                      variant={
-                        row.progress === "completed" ? "secondary" : "outline"
-                      }
-                      className={
-                        row.progress === "completed"
-                          ? "shrink-0 text-primary"
-                          : "shrink-0"
-                      }
-                    >
-                      {t(
-                        PROGRESS_LABEL[row.progress ?? ""] ?? {
-                          zh: row.progress ?? "",
-                          en: row.progress ?? "",
-                        },
-                      )}
-                    </Badge>
-                    <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
         {/* 聚焦任务练习卡 */}
         {assignment === null ? (
           <Card>
@@ -1155,6 +637,250 @@ function VocabHomePage() {
           </Card>
         )}
 
+        {/* 我的任务列表（多任务并存：进行中与已结束都在，可切换练习） */}
+        {taskRows.length > 0 && (
+          <section
+            aria-label={t({ zh: "我的词汇任务", en: "My vocabulary tasks" })}
+          >
+            <p className="mb-2 text-xs font-medium text-muted-foreground">
+              {t({
+                zh: "我的任务（老师新发布的不会再结束旧任务）",
+                en: "My tasks (new ones no longer end older tasks)",
+              })}
+            </p>
+            <ul className="grid gap-2 md:grid-cols-2">
+              {taskRows.map((row) => (
+                <li key={row.assignment_id}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      readonly
+                        ? void navigate({
+                            to: "/vocab/$code/records",
+                            params: { code },
+                          })
+                        : void navigate({
+                            to: "/vocab/$code/practice",
+                            params: { code },
+                            search: { assignment: row.assignment_id },
+                          })
+                    }
+                    className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border bg-card px-4 py-3.5 text-left transition-colors hover:border-primary/40"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {row.title}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        {t({
+                          zh: `${row.word_count} 词 · 首答 ${row.correct_first_count}/${row.word_count}`,
+                          en: row.masked
+                            ? `${row.word_count} words`
+                            : `${row.word_count} words · ${row.correct_first_count}/${row.word_count} first-try`,
+                        })}
+                        {row.is_quiz && ` · ${t({ zh: "测验", en: "quiz" })}`}
+                        {(row.round_count ?? 0) > 1 &&
+                          !row.masked &&
+                          ` · ${t({
+                            zh: `已练 ${row.round_count ?? 0} 轮`,
+                            en: `${row.round_count ?? 0} rounds`,
+                          })}`}
+                        {row.due_at &&
+                          ` · ${t({ zh: "截止", en: "Due" })} ${formatDate(row.due_at, lang)}`}
+                      </span>
+                    </span>
+                    {row.overdue && (
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 text-amber-600"
+                      >
+                        <Clock className="size-3" />
+                        {t({ zh: "已逾期", en: "Overdue" })}
+                      </Badge>
+                    )}
+                    <Badge
+                      variant={
+                        row.progress === "completed" ? "secondary" : "outline"
+                      }
+                      className={
+                        row.progress === "completed"
+                          ? "shrink-0 text-primary"
+                          : "shrink-0"
+                      }
+                    >
+                      {t(
+                        PROGRESS_LABEL[row.progress ?? ""] ?? {
+                          zh: row.progress ?? "",
+                          en: row.progress ?? "",
+                        },
+                      )}
+                    </Badge>
+                    <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {/* 今日复习：FSRS 到期队列 + 每日负担控制（只读态隐藏） */}
+        {!readonly && (
+          <section
+            aria-label={t({ zh: "今日复习", en: "Today's Review" })}
+            className="rounded-3xl border bg-card p-5 sm:p-6"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                  <BrainCircuit className="size-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
+                    {t({ zh: "今日复习", en: "Today's Review" })}
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-normal"
+                    >
+                      {t({ zh: "记忆调度", en: "Spaced Repetition" })}
+                    </Badge>
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {t({
+                      zh: "按记忆间隔排出今天该复习的词；认读与拼写分别记录。",
+                      en: "Words due today by spaced repetition; recognition and spelling are tracked separately.",
+                    })}
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => startFsrsReview.mutate()}
+                disabled={!canStartFsrsReview || startFsrsReview.isPending}
+              >
+                <RotateCcw />
+                {startFsrsReview.isPending
+                  ? t({ zh: "开一轮复习…", en: "Starting…" })
+                  : t({ zh: "开始复习", en: "Start Review" })}
+              </Button>
+            </div>
+
+            {/* 每日负担摘要：到期数 / 今日已复习 / 剩余额度 / 上限 */}
+            <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {(
+                [
+                  {
+                    label: { zh: "今日到期", en: "Due today" },
+                    value: reviewQueue?.due_today_count ?? 0,
+                  },
+                  {
+                    label: { zh: "今日已复习", en: "Reviewed today" },
+                    value: reviewQueue?.reviewed_today_count ?? 0,
+                  },
+                  {
+                    label: { zh: "今日剩余额度", en: "Left today" },
+                    value: reviewQueue?.remaining_today_count ?? 0,
+                  },
+                  {
+                    label: { zh: "每日上限", en: "Daily limit" },
+                    value: reviewQueue?.daily_limit ?? 0,
+                  },
+                ] as const
+              ).map((stat) => (
+                <div
+                  key={stat.label.en}
+                  className="rounded-2xl bg-secondary/50 px-4 py-3"
+                >
+                  <dt className="text-xs text-muted-foreground">
+                    {t(stat.label)}
+                  </dt>
+                  <dd className="mt-1 text-lg font-semibold tabular-nums">
+                    {stat.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+
+            {reviewItems.length === 0 ? (
+              <p className="mt-4 text-sm text-muted-foreground">
+                {reviewQueueQuery.isPending
+                  ? t({ zh: "正在加载复习队列…", en: "Loading review queue…" })
+                  : t({
+                      zh: "今天没有到期需要复习的词，继续保持！",
+                      en: "Nothing due for review today. Keep it up!",
+                    })}
+              </p>
+            ) : (
+              <ul className="mt-4 grid gap-2">
+                {reviewItems.slice(0, 6).map((item) => (
+                  <li
+                    key={`${item.word_id}-${item.capability}`}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border px-4 py-3"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="font-mono font-semibold">
+                        {item.headword}
+                      </span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {item.meaning_zh}
+                      </span>
+                    </span>
+                    <Badge variant="outline" className="shrink-0">
+                      {t(
+                        REVIEW_CAPABILITY_LABELS[
+                          item.capability as keyof typeof REVIEW_CAPABILITY_LABELS
+                        ] ?? { zh: item.capability, en: item.capability },
+                      )}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {t(overdueLabel(item.overdue_days ?? 0))}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {item.last_is_correct === null ||
+                      item.last_is_correct === undefined
+                        ? "–"
+                        : item.last_is_correct
+                          ? t({ zh: "上次答对", en: "Last correct" })
+                          : t({ zh: "上次答错", en: "Last missed" })}
+                    </span>
+                    {item.interval_days != null && (
+                      <span className="text-xs text-muted-foreground">
+                        {t({
+                          zh: `间隔 ${item.interval_days} 天`,
+                          en: `${item.interval_days}-day interval`,
+                        })}
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {t({
+                        zh: `复习 ${item.reps ?? 0} · 遗忘 ${item.lapses ?? 0}`,
+                        en: `${item.reps ?? 0} reviews · ${item.lapses ?? 0} lapses`,
+                      })}
+                    </span>
+                    {(item.suggested_prompt_types ?? []).length > 0 && (
+                      <span className="flex flex-wrap gap-1">
+                        {(item.suggested_prompt_types ?? []).map((type) => (
+                          <span
+                            key={type}
+                            className="rounded-lg border border-primary/25 bg-secondary/60 px-2 py-0.5 text-xs"
+                          >
+                            {t(vocabPromptMeta(type).label)}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+              {t({
+                zh: "复习状态跟随你的账号，换班后继续保留；历史练习记录与快照不会被改写。这里只展示真实计数，不预测记忆留存率。",
+                en: "Review state follows your account across classes; past records and snapshots are never rewritten. Counts are real only — no retention forecast.",
+              })}
+            </p>
+          </section>
+        )}
+
         {/* 错词本 */}
         <Card>
           <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
@@ -1293,6 +1019,292 @@ function VocabHomePage() {
             )}
           </CardContent>
         </Card>
+
+        {/* 今日练习建议：按真实首答记录生成，规则可解释，不是能力评定（只读态隐藏） */}
+        {!readonly && recommendation && (
+          <section
+            aria-label={t(TERMS.vocabRecommendation)}
+            className="rounded-3xl border bg-card p-5 sm:p-6"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
+                  {t(TERMS.vocabRecommendation)}
+                  <Badge variant="outline" className="text-[10px] font-normal">
+                    {t({
+                      zh: "规则生成 · 非能力评定",
+                      en: "Rule-based · not a level",
+                    })}
+                  </Badge>
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t({
+                    zh: "只按你的真实首答记录给下一步练法；不预测、不排名。",
+                    en: "Built only from your real first answers — no prediction, no ranking.",
+                  })}
+                </p>
+              </div>
+              {recommendation.accuracy != null && (
+                <p className="text-sm text-muted-foreground">
+                  {t({
+                    zh: `首答正确率 ${Math.round((recommendation.accuracy ?? 0) * 100)}%（${recommendation.answered_total ?? 0} 题）`,
+                    en: `${Math.round((recommendation.accuracy ?? 0) * 100)}% first-try over ${recommendation.answered_total ?? 0} items`,
+                  })}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {(recommendation.basis ?? []).map((code) => (
+                <Badge key={code} variant="secondary" className="font-normal">
+                  {t(
+                    RECOMMENDATION_BASIS[code] ?? {
+                      zh: code,
+                      en: code,
+                    },
+                  )}
+                </Badge>
+              ))}
+            </div>
+
+            {(recommendation.suggested_prompt_types ?? []).length > 0 && (
+              <div className="mt-4 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t({ zh: "建议这样练", en: "Suggested practice" })}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {(recommendation.suggested_prompt_types ?? []).map((type) => (
+                    <span
+                      key={type}
+                      className="rounded-xl border border-primary/25 bg-secondary/60 px-3 py-1.5 text-sm"
+                    >
+                      {t(vocabPromptMeta(type).label)}
+                    </span>
+                  ))}
+                  {(recommendation.suggested_word_count ?? 0) > 0 && (
+                    <span className="rounded-xl border px-3 py-1.5 text-sm text-muted-foreground">
+                      {t({
+                        zh: `约 ${recommendation.suggested_word_count} 词`,
+                        en: `about ${recommendation.suggested_word_count} words`,
+                      })}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {(recommendation.focus_words ?? []).length > 0 && (
+              <div className="mt-4 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t({ zh: "优先复习的错词", en: "Words to revisit first" })}
+                </p>
+                <ul className="flex flex-wrap gap-2">
+                  {(recommendation.focus_words ?? []).map((focus) => (
+                    <li
+                      key={focus.word_id}
+                      className="rounded-xl border px-3 py-1.5 text-sm"
+                    >
+                      <span className="font-mono font-semibold">
+                        {focus.headword}
+                      </span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {focus.meaning_zh}
+                      </span>
+                      <span
+                        className="ml-2 text-xs text-destructive"
+                        title={t({
+                          zh: "历史累计错误次数，只增不减；不是掌握度评估，只用于安排复习。",
+                          en: "Historical cumulative misses, never decreasing; not a mastery score — for review planning only.",
+                        })}
+                      >
+                        {t({
+                          zh: `错 ${focus.wrong_count} 次`,
+                          en: `missed ×${focus.wrong_count}`,
+                        })}
+                      </span>
+                      {focus.practiceable === false && (
+                        <span className="ml-2 text-xs text-amber-600">
+                          {t({
+                            zh: "暂不在可练词库",
+                            en: "not in a practiceable book",
+                          })}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {(recommendation.suggested_prompt_types ?? []).length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button asChild size="sm">
+                  <Link to="/vocab/$code/books" params={{ code }}>
+                    {t({ zh: "去词库开一轮", en: "Start a round" })}
+                    <ArrowRight />
+                  </Link>
+                </Button>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 更多练法：自主练习、测一测、PK、农场——低频入口收在一处，默认收起 */}
+        <details className="group/more rounded-3xl border bg-card px-5 py-4 sm:px-6">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">
+            <ChevronDown
+              aria-hidden="true"
+              className="size-4 -rotate-90 transition-transform group-open/more:rotate-0 motion-reduce:transition-none"
+            />
+            {t({
+              zh: "更多练法：自主练习 · 测一测 · PK · 农场",
+              en: "More practice: self practice · placement · PK · farm",
+            })}
+          </summary>
+          <div className="mt-4 space-y-4">
+            <section
+              aria-label={t({ zh: "自主练习", en: "Self practice" })}
+              className="rounded-3xl border bg-card p-5 sm:p-6"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                    <LibraryBig className="size-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-base font-semibold">
+                      {t({ zh: "自主练习", en: "Self Practice" })}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {t({
+                        zh: "从公共词库或本班词库挑词，自己开一轮（不占老师任务的成绩）。",
+                        en: "Pick a public or class word book and start a round on your own — it never counts toward teacher tasks.",
+                      })}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {!readonly && (
+                    <Button asChild>
+                      <Link to="/vocab/$code/books" params={{ code }}>
+                        <LibraryBig />
+                        {t({ zh: "去词库挑词", en: "Browse Word Books" })}
+                      </Link>
+                    </Button>
+                  )}
+                  <Button asChild variant="outline">
+                    <Link to="/vocab/$code/records" params={{ code }}>
+                      {t(TERMS.practiceRecords)}
+                      <ArrowRight />
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            </section>
+
+            {!readonly && (
+              <section
+                aria-label={t({ zh: "测一测从哪开始", en: "Placement quiz" })}
+                className="rounded-3xl border bg-card p-5 sm:p-6"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                      <Compass className="size-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold">
+                        {t({
+                          zh: "测一测从哪开始",
+                          en: "Find your starting level",
+                        })}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {t({
+                          zh: "一组自适应四选一，给出建议起点级别和推荐词库；粗分档建议，不是定级或考试分数。",
+                          en: "A short adaptive quiz suggests a starting level and word book. Rough guide, not a level or exam score.",
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                  <Button asChild variant="outline">
+                    <Link to="/vocab/$code/placement" params={{ code }}>
+                      <Compass />
+                      {t({ zh: "去测一测", en: "Start" })}
+                    </Link>
+                  </Button>
+                </div>
+              </section>
+            )}
+
+            {!readonly && (
+              <section
+                aria-label={t({ zh: "课堂对战 PK", en: "Classroom PK" })}
+                className="rounded-3xl border bg-card p-5 sm:p-6"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                      <Swords className="size-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold">
+                        {t({ zh: "课堂对战 PK", en: "Classroom PK" })}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {t({
+                          zh: "本班自愿加入，两人配对 1v1；对战反馈不影响老师任务成绩，结果仅本局可见。",
+                          en: "Optional in-class 1v1 pairing. Battle feedback never counts toward teacher tasks, and results are visible to this match only.",
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                  <Button asChild variant="outline">
+                    <Link to="/vocab/$code/pk" params={{ code }}>
+                      <Swords />
+                      {t({ zh: "进入 PK", en: "Open PK" })}
+                    </Link>
+                  </Button>
+                </div>
+              </section>
+            )}
+
+            {!readonly && (
+              <section
+                aria-label={t({ zh: "专注农场", en: "Focus Farm" })}
+                className="rounded-3xl border bg-card p-5 sm:p-6"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                      <Sprout className="size-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold">
+                        {t({ zh: "专注农场", en: "Focus Farm" })}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {t({
+                          zh: "完成有效练习让地块成长，成熟后收获 XP；独立于教师任务成绩，不做公开排行。",
+                          en: "Grow your plot with valid practice and harvest XP when mature. Separate from teacher tasks, no public leaderboard.",
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                  <Button asChild variant="outline">
+                    <Link to="/vocab/$code/farm" params={{ code }}>
+                      <Sprout />
+                      {t({ zh: "进入农场", en: "Open Farm" })}
+                    </Link>
+                  </Button>
+                </div>
+              </section>
+            )}
+          </div>
+        </details>
+
+        {/* 班内学习榜：仅整班开启且对学生可见时由卡片自行决定是否渲染 */}
+        <LeaderboardStudentCard code={code} />
 
         <p className="pb-4 text-center text-xs text-muted-foreground">
           {t({
