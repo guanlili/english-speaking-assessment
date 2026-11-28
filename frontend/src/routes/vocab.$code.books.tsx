@@ -265,7 +265,7 @@ function VocabBooksPage() {
           <Button variant="ghost" size="sm" asChild>
             <Link to="/vocab/$code" params={{ code }}>
               <ArrowLeft />
-              {t({ zh: "返回词汇学习", en: "Back to Vocabulary" })}
+              {t({ zh: "返回单词课", en: "Back to Vocabulary" })}
             </Link>
           </Button>
           <p className="text-xs text-muted-foreground">

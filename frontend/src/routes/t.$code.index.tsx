@@ -52,11 +52,11 @@ import {
   needsAttentionStudents,
 } from "@/lib/board-copy"
 import { copyText } from "@/lib/clipboard"
+import { COURSES } from "@/lib/courses"
 import { downloadCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
 import { moduleGuardState } from "@/lib/module-filter"
 import { pollWhileVisible } from "@/lib/poll"
-import { TERMS } from "@/lib/terms"
 
 export const Route = createFileRoute("/t/$code/")({
   component: TeacherBoardPage,
@@ -425,7 +425,7 @@ function TeacherBoardPage() {
               >
                 <Link to="/t/$code/vocab" params={{ code }}>
                   <BookA />
-                  {t(TERMS.vocabLearning)}
+                  {t(COURSES.vocabulary.name)}
                 </Link>
               </Button>
             )}

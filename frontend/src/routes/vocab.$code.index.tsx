@@ -50,6 +50,7 @@ import { APP_NAME } from "@/config"
 import { useModules } from "@/hooks/useModules"
 import { useStudentGuard } from "@/hooks/useStudentGuard"
 import { loadStudent } from "@/lib/classroom-student"
+import { COURSES } from "@/lib/courses"
 import { useI18n } from "@/lib/i18n"
 import {
   EXPLAIN_FIRST_TRY,
@@ -90,7 +91,9 @@ const PROGRESS_LABEL: Record<string, { zh: string; en: string }> = {
 export const Route = createFileRoute("/vocab/$code/")({
   component: VocabHomePage,
   head: () => ({
-    meta: [{ title: `${TERMS.vocabLearning.zh} / Vocabulary - ${APP_NAME}` }],
+    meta: [
+      { title: `${COURSES.vocabulary.name.zh} / Vocabulary - ${APP_NAME}` },
+    ],
   }),
 })
 
@@ -315,7 +318,7 @@ function VocabHomePage() {
             <span className="h-px w-6 bg-primary/40" /> VOCABULARY
           </p>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            {t(TERMS.vocabLearning)}
+            {t(COURSES.vocabulary.name)}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {t({

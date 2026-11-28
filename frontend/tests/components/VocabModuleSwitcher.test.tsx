@@ -69,11 +69,9 @@ describe("词汇页模块切换器", () => {
 
     renderSwitcher()
 
-    await waitFor(() =>
-      expect(screen.getByText("词汇学习")).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText("单词课")).toBeInTheDocument())
     expect(
-      screen.queryByRole("link", { name: "口语练习" }),
+      screen.queryByRole("link", { name: "口语课" }),
     ).not.toBeInTheDocument()
   })
 
@@ -87,11 +85,11 @@ describe("词汇页模块切换器", () => {
     renderSwitcher()
 
     await waitFor(() =>
-      expect(screen.getByRole("link", { name: "口语练习" })).toHaveAttribute(
+      expect(screen.getByRole("link", { name: "口语课" })).toHaveAttribute(
         "href",
         "/t/DEMO01",
       ),
     )
-    expect(screen.getByText("词汇学习")).toBeInTheDocument()
+    expect(screen.getByText("单词课")).toBeInTheDocument()
   })
 })

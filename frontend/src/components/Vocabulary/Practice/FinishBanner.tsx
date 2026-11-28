@@ -71,7 +71,7 @@ export default function FinishBanner({
             <div className="mt-3">
               <Button asChild size="sm" variant="outline">
                 <Link to="/vocab/$code" params={{ code }}>
-                  {t({ zh: "回词汇首页", en: "Back to Vocabulary home" })}
+                  {t({ zh: "回单词课首页", en: "Back to Vocabulary home" })}
                   <ArrowRight />
                 </Link>
               </Button>
@@ -101,7 +101,7 @@ export default function FinishBanner({
           <div className="mt-3 flex flex-wrap gap-2">
             <Button asChild size="sm" variant="outline">
               <Link to="/vocab/$code" params={{ code }}>
-                {t({ zh: "回词汇首页", en: "Back to Vocabulary home" })}
+                {t({ zh: "回单词课首页", en: "Back to Vocabulary home" })}
                 <ArrowRight />
               </Link>
             </Button>

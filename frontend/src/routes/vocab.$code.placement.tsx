@@ -187,7 +187,7 @@ function VocabPlacementPage() {
           className="inline-flex items-center gap-1.5 text-sm font-medium text-primary"
         >
           <ArrowLeft className="size-4" />
-          {t({ zh: "返回词汇首页", en: "Back to Vocabulary" })}
+          {t({ zh: "返回单词课", en: "Back to Vocabulary" })}
         </Link>
 
         <VocabReadonlyBanner />
