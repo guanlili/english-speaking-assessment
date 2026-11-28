@@ -230,6 +230,16 @@ function VocabHomePage() {
     enabled: student !== null && !readonly,
   })
 
+  const coordinateQuery = useQuery({
+    retry: 1,
+    retryDelay: 500,
+    queryKey: ["vocab", code, "coordinate", student?.id],
+    queryFn: () =>
+      VocabularyService.readStudentCoordinate({ code: code.toUpperCase() }),
+    enabled: student !== null,
+    staleTime: 30_000,
+  })
+
   // 身份失效（清库/课堂重建后 404）：清除本地身份，引导重新进入
   useStudentGuard(code, student, todayQuery)
 
@@ -296,6 +306,7 @@ function VocabHomePage() {
   const recommendation = recommendationQuery.data ?? null
   const wrongWords = wrongQuery.data?.items ?? []
   const masteredWords = wrongQuery.data?.mastered_items ?? []
+  const coordinate = coordinateQuery.data ?? null
   const reviewQueue = reviewQueueQuery.data ?? null
   const reviewSummary = reviewQueue
     ? {
@@ -881,6 +892,106 @@ function VocabHomePage() {
             </p>
           </section>
         )}
+
+        {/* 词汇坐标：0%–100% 贯通进度（只读计算，不是雅思分/能力认证） */}
+        <section
+          aria-label={t({ zh: "词汇坐标", en: "Vocabulary coordinate" })}
+          className="rounded-3xl border bg-card p-5 sm:p-6"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
+                <Compass className="size-4 text-primary" />
+                {t({ zh: "词汇坐标", en: "Vocabulary coordinate" })}
+                <Badge variant="outline" className="text-[10px] font-normal">
+                  {t({
+                    zh: "学习进度 · 不是雅思分",
+                    en: "Progress · not an IELTS score",
+                  })}
+                </Badge>
+                <InfoHint
+                  label={t({
+                    zh: "百分比 = 已掌握词数 ÷ 当前可练词表词数，两个数都在下面写出来，你可以自己复算。掌握只认两类证据：独立首答答对、FSRS 复习进入长期记忆；不读 XP、农场、PK。没有首答记录时显示「未测」，不折算成 0%。",
+                    en: "Percent = mastered words ÷ current practice word list; both numbers are shown so you can recompute. Mastery counts only two proofs: a correct first try, or FSRS reaching long-term review. XP, farm, PK are not read. With no first answers at all it shows Unmeasured — never 0%.",
+                  })}
+                />
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t({
+                  zh: "跨任务、自主练习、复习轮一起累计；词表变了百分比会整体复算。",
+                  en: "Accumulated across tasks, self practice and review rounds; if the word list changes, the percent is recomputed as a whole.",
+                })}
+              </p>
+            </div>
+          </div>
+
+          {coordinateQuery.isPending ? (
+            <p className="mt-4 text-sm text-muted-foreground">
+              {t({ zh: "正在计算坐标…", en: "Computing…" })}
+            </p>
+          ) : coordinate === null || !coordinate.measured ? (
+            <p className="mt-4 text-sm text-muted-foreground">
+              {t({
+                zh: "未测：完成任意一轮练习后开始计算，现在不按 0% 记。",
+                en: "Unmeasured: finish any round and the coordinate starts computing — it is not counted as 0% now.",
+              })}
+            </p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="text-2xl font-semibold tabular-nums">
+                  {coordinate.percent}%
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  {t({
+                    zh: `第 ${coordinate.step_index}/${coordinate.steps_total} 阶（${coordinate.step_start_percent}%–${coordinate.step_end_percent}%）`,
+                    en: `Step ${coordinate.step_index}/${coordinate.steps_total} (${coordinate.step_start_percent}%–${coordinate.step_end_percent}%)`,
+                  })}
+                </span>
+              </p>
+              <div
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={coordinate.percent ?? 0}
+                className="h-2 w-full overflow-hidden rounded-full bg-secondary"
+              >
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-500"
+                  style={{ width: `${coordinate.percent ?? 0}%` }}
+                />
+              </div>
+              <div className="grid gap-3 text-sm sm:grid-cols-3">
+                <p className="text-muted-foreground">
+                  {t({
+                    zh: `已掌握 ${coordinate.mastered_word_count} / 基准词表 ${coordinate.basis_word_count} 词`,
+                    en: `${coordinate.mastered_word_count} mastered of ${coordinate.basis_word_count} benchmark words`,
+                  })}
+                </p>
+                <p className="text-muted-foreground">
+                  {(coordinate.step_index ?? 0) >= (coordinate.steps_total ?? 0)
+                    ? t({ zh: "已在最后一阶", en: "On the last step" })
+                    : t({
+                        zh: `距本阶终点还差 ${coordinate.words_to_next_step} 词`,
+                        en: `${coordinate.words_to_next_step} words to this step's end`,
+                      })}
+                </p>
+                <p className="text-muted-foreground">
+                  {t({
+                    zh: `距 100% 还差 ${coordinate.words_to_goal} 词`,
+                    en: `${coordinate.words_to_goal} words to 100%`,
+                  })}
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t({
+                  zh: `掌握来源：首答答对 ${coordinate.mastered_first_try_count} 词 · 复习进入长期记忆 ${coordinate.mastered_fsrs_count} 词。不是雅思/托福分数，也不是能力认证。`,
+                  en: `Mastery sources: ${coordinate.mastered_first_try_count} first tries, ${coordinate.mastered_fsrs_count} via review. Not an IELTS/TOEFL score, not a certification.`,
+                })}
+              </p>
+            </div>
+          )}
+        </section>
 
         {/* 错词本 */}
         <Card>

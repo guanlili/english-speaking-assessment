@@ -88,6 +88,21 @@ from app.models.vocabulary.assignments import (
 from app.models.vocabulary.assignments import (
     VocabularyTodayPlan as VocabularyTodayPlan,
 )
+from app.models.vocabulary.coordinate import (
+    COORDINATE_RULE_VERSION as COORDINATE_RULE_VERSION,
+)
+from app.models.vocabulary.coordinate import (
+    COORDINATE_STEP_COUNT_DEFAULT as COORDINATE_STEP_COUNT_DEFAULT,
+)
+from app.models.vocabulary.coordinate import (
+    COORDINATE_STEP_COUNT_MAX as COORDINATE_STEP_COUNT_MAX,
+)
+from app.models.vocabulary.coordinate import (
+    COORDINATE_STEP_COUNT_MIN as COORDINATE_STEP_COUNT_MIN,
+)
+from app.models.vocabulary.coordinate import (
+    VocabularyCoordinate as VocabularyCoordinate,
+)
 from app.models.vocabulary.farm import (
     BADGE_FARM_FIRST_HARVEST as BADGE_FARM_FIRST_HARVEST,
 )
@@ -671,6 +686,7 @@ __all__ = [
     "REVIEW_CAPABILITIES",
     "VocabularyTeacherAssignmentRow",
     "VocabularyWrongWordItem",
+    "VocabularyCoordinate",
     "VocabularyWrongWords",
     "VocabularyChoice",
     "VocabularyMorphSegment",

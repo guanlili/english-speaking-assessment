@@ -7825,6 +7825,77 @@ export type VocabularyContentReviewList = {
 };
 
 /**
+ * VocabularyCoordinate
+ *
+ * 学生词汇坐标：一次只读计算的结果（不写学生等级字段，不改历史）。
+ *
+ * measured=False 表示「未测」（还没有任何独立首答，或当前没有可练词库），
+ * 此时 percent / 台阶字段一律为 None，前端显示未测，不折算成 0%。
+ */
+export type VocabularyCoordinate = {
+    /**
+     * Classroom Code
+     */
+    classroom_code: string;
+    /**
+     * Measured
+     */
+    measured?: boolean;
+    /**
+     * Percent
+     */
+    percent?: number | null;
+    /**
+     * Mastered Word Count
+     */
+    mastered_word_count?: number;
+    /**
+     * Basis Word Count
+     */
+    basis_word_count?: number;
+    /**
+     * Mastered First Try Count
+     */
+    mastered_first_try_count?: number;
+    /**
+     * Mastered Fsrs Count
+     */
+    mastered_fsrs_count?: number;
+    /**
+     * Answered First Count
+     */
+    answered_first_count?: number;
+    /**
+     * Steps Total
+     */
+    steps_total?: number;
+    /**
+     * Step Index
+     */
+    step_index?: number | null;
+    /**
+     * Step Start Percent
+     */
+    step_start_percent?: number | null;
+    /**
+     * Step End Percent
+     */
+    step_end_percent?: number | null;
+    /**
+     * Words To Next Step
+     */
+    words_to_next_step?: number | null;
+    /**
+     * Words To Goal
+     */
+    words_to_goal?: number | null;
+    /**
+     * Rule Version
+     */
+    rule_version?: string;
+};
+
+/**
  * VocabularyFromLevelsRequest
  *
  * 从五级词库导入教学词条到词库（仅已核对、有释义的词条）。
@@ -17755,6 +17826,41 @@ export type VocabularyReadWrongWordsResponses = {
 };
 
 export type VocabularyReadWrongWordsResponse = VocabularyReadWrongWordsResponses[200 & keyof VocabularyReadWrongWordsResponses];
+
+export type VocabularyReadStudentCoordinateData = {
+    body?: never;
+    path: {
+        /**
+         * Code
+         */
+        code: string;
+    };
+    query?: {
+        /**
+         * Steps
+         */
+        steps?: number;
+    };
+    url: '/api/v1/classes/{code}/vocabulary/student/coordinate';
+};
+
+export type VocabularyReadStudentCoordinateErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type VocabularyReadStudentCoordinateError = VocabularyReadStudentCoordinateErrors[keyof VocabularyReadStudentCoordinateErrors];
+
+export type VocabularyReadStudentCoordinateResponses = {
+    /**
+     * Successful Response
+     */
+    200: VocabularyCoordinate;
+};
+
+export type VocabularyReadStudentCoordinateResponse = VocabularyReadStudentCoordinateResponses[200 & keyof VocabularyReadStudentCoordinateResponses];
 
 export type VocabularyListStudentBooksData = {
     body?: never;
