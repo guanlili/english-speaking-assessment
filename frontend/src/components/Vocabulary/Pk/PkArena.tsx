@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Link } from "@tanstack/react-router"
 import { Clock, LogOut, Swords, Trophy, UsersRound } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
@@ -198,16 +197,15 @@ export default function PkArena({ code }: { code: string }) {
           })}
         </p>
         <div className="mt-3">
-          <Link
-            to="/vocab/$code/room"
-            params={{ code }}
+          <a
+            href={`/vocab/${code}/room`}
             className="text-sm font-medium text-primary underline-offset-4 hover:underline"
           >
             {t({
               zh: "老师开了大屏 PK？直接输入房间码加入 →",
               en: "Teacher running a big-screen PK? Enter the room code →",
             })}
-          </Link>
+          </a>
         </div>
       </section>
 
