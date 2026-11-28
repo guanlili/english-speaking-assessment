@@ -62,6 +62,12 @@ from app.services.vocab_quiz import DEFAULT_PASS_LINE
 
 MAX_TASK_WORDS = 100
 
+# 错词本移出口径：最近一次首答判错之后，连续 N 次独立首答（attempt_no=1）
+# 答对即判定掌握，自动移出生词本（历史错误次数只作记录，不冲抵）。
+# N 是常量而不是配置项：demo 阶段口径要可解释、可测；真要参数化再走
+# 课堂级配置，避免每个班一套口径说不清楚。
+WRONG_WORD_MASTERED_STREAK = 2
+
 
 def normalize_spelling(raw: str) -> str:
     """判分前规范化：NFKC（全角→半角等）+ 首尾空白 + casefold。
@@ -1621,6 +1627,9 @@ def _aggregate_wrong_words(
     - wrong_count 只统计独立首答（attempt_no=1）判错次数，只增不减
     - last_first_* 是最近一次独立首答的时间与对错
     - last_correct_at 是最近一次答对时间（任意尝试，含首次判错之前）
+    - mastered：最近一次首答判错之后连续 WRONG_WORD_MASTERED_STREAK 次
+      独立首答答对，即判掌握（mastered_at = 达成那一次的作答时间）；
+      之后再首答判错则退回待攻克，掌握状态作废。
     """
     # 全量作答证据：每个词条最近一次答对时间（时间序遍历，后写覆盖先写）
     last_correct_at: dict[uuid.UUID, datetime] = {}
@@ -1628,6 +1637,8 @@ def _aggregate_wrong_words(
         if answer.is_correct and answer.answered_at is not None:
             last_correct_at[answer.word_id] = answer.answered_at
     by_word: dict[uuid.UUID, VocabularyWrongWordItem] = {}
+    # 首答连对计数（只在 first 答对时累加，首答判错清零）
+    first_streak: dict[uuid.UUID, int] = {}
     for answer in answers:
         item = by_word.get(answer.word_id)
         if answer.attempt_no == 1 and answer.is_correct:
@@ -1635,6 +1646,11 @@ def _aggregate_wrong_words(
             if item is not None:
                 item.last_first_at = answer.answered_at
                 item.last_first_is_correct = True
+                streak = first_streak.get(answer.word_id, 0) + 1
+                first_streak[answer.word_id] = streak
+                if streak >= WRONG_WORD_MASTERED_STREAK and not item.mastered:
+                    item.mastered = True
+                    item.mastered_at = answer.answered_at
             continue
         if answer.attempt_no == 1:
             # 独立首答判错：累计历史错误次数（只增不减）
@@ -1652,6 +1668,10 @@ def _aggregate_wrong_words(
             item.last_wrong_at = answer.answered_at
             item.last_first_at = answer.answered_at
             item.last_first_is_correct = False
+            # 掌握后又判错：退回待攻克，掌握记录作废（不是永久毕业）
+            item.mastered = False
+            item.mastered_at = None
+            first_streak[answer.word_id] = 0
     return by_word, last_correct_at
 
 
@@ -1659,6 +1679,7 @@ def wrong_word_items(
     session: Session,
     student_id: uuid.UUID,
     practiceable_ids: set[uuid.UUID] | None = None,
+    status: str = "active",
 ) -> list[VocabularyWrongWordItem]:
     """错词本聚合：该学生全部词汇轮次里首答判错的词（跨任务/自主聚合）。
 
@@ -1672,13 +1693,24 @@ def wrong_word_items(
     - last_first_* 是最近一次独立首答的时间与对错（复盘过的词显示已纠正
       的首答，历史错误次数保持不变）；
     - last_correct_at 是最近一次答对时间（任意尝试，含首次判错之前），
-      仅作复习证据。
+      仅作复习证据；
+    - mastered / mastered_at 见 _aggregate_wrong_words。
     practiceable_ids 传入时标注词条是否仍在可练范围（active 公共/本班库
     内的 active 词条）——归档只影响能否再练，不删历史错词。
+
+    status 选择返回哪一区：active（默认，待攻克）/ mastered（已掌握，
+    自动移出）/ all。默认只回待攻克，复习选题与推荐拿到的是同一口径，
+    掌握的词不会再被拉进复习轮。
     """
     answers = _wrong_word_answers(session, student_id)
     by_word, last_correct_at = _aggregate_wrong_words(answers)
     items = sorted(by_word.values(), key=lambda i: (-i.wrong_count, i.headword))
+    if status == "active":
+        items = [i for i in items if not i.mastered]
+    elif status == "mastered":
+        items = [i for i in items if i.mastered]
+    elif status != "all":
+        raise ValueError(f"unknown wrong word status: {status}")
     for item in items:
         item.last_correct_at = last_correct_at.get(item.word_id)
     if practiceable_ids is not None:
@@ -1688,33 +1720,59 @@ def wrong_word_items(
 
 
 def wrong_word_count(session: Session, student_id: uuid.UUID) -> int:
-    """错词本词数（与 wrong_word_items 同口径的计数版）。
+    """错词本词数（待攻克口径，已掌握的自动移出不计入）。
 
-    今日视图高频调用只需要 len()，这里用 SQL 聚合避免拉全量作答历史
-    与整行 ORM 对象。口径：至少一次独立首答（attempt_no=1）判错的
-    去重词条数，测验答卷在答案公布前不计入（与 wrong_word_items 一致）。
+    今日视图高频调用只需要计数，这里按列查（不拉整行 ORM），再按与
+    wrong_word_items 完全相同的规则（独立首答判错、连续
+    WRONG_WORD_MASTERED_STREAK 次首答答对即掌握）判定，保证首页
+    数字和错词本列表永远一致。
     """
-    return int(
-        session.exec(
-            select(func.count(func.distinct(VocabularyAnswer.word_id)))
-            .join(
-                VocabularySession,
-                VocabularySession.id == VocabularyAnswer.session_id,  # ty: ignore[invalid-argument-type]
-            )
-            .outerjoin(
-                VocabularyAssignment,
-                VocabularyAssignment.id == VocabularySession.assignment_id,  # ty: ignore[invalid-argument-type]
-            )
-            .where(
-                VocabularySession.student_id == student_id,  # type: ignore[arg-type]
-                VocabularyAnswer.attempt_no == 1,
-                col(VocabularyAnswer.is_correct).is_(False),
-                (col(VocabularySession.assignment_id).is_(None))  # type: ignore[union-attr]
-                | (col(VocabularyAssignment.mode) != "quiz")  # type: ignore[operator]
-                | col(VocabularyAssignment.answers_published_at).is_not(None),  # type: ignore[union-attr]
-            )
-        ).one()
-    )
+    return wrong_word_status_counts(session, student_id)[0]
+
+
+def wrong_word_status_counts(
+    session: Session, student_id: uuid.UUID
+) -> tuple[int, int]:
+    """返回（待攻克词数, 已掌握词数）——首页与错词本共用同一判定。"""
+    rows = session.exec(
+        select(
+            VocabularyAnswer.word_id,
+            VocabularyAnswer.attempt_no,
+            VocabularyAnswer.is_correct,
+            VocabularyAnswer.answered_at,
+        )
+        .join(
+            VocabularySession,
+            VocabularySession.id == VocabularyAnswer.session_id,  # ty: ignore[invalid-argument-type]
+        )
+        .outerjoin(
+            VocabularyAssignment,
+            VocabularyAssignment.id == VocabularySession.assignment_id,  # ty: ignore[invalid-argument-type]
+        )
+        .where(
+            VocabularySession.student_id == student_id,  # type: ignore[arg-type]
+            (col(VocabularySession.assignment_id).is_(None))  # type: ignore[union-attr]
+            | (col(VocabularyAssignment.mode) != "quiz")  # type: ignore[operator]
+            | col(VocabularyAssignment.answers_published_at).is_not(None),  # type: ignore[union-attr]
+        )
+        .order_by(col(VocabularyAnswer.answered_at), col(VocabularyAnswer.attempt_no))
+    ).all()
+    mastered: set[uuid.UUID] = set()
+    in_book: set[uuid.UUID] = set()
+    streak: dict[uuid.UUID, int] = {}
+    for word_id, attempt_no, is_correct, _answered_at in rows:
+        if attempt_no == 1 and is_correct:
+            if word_id in in_book:
+                count = streak.get(word_id, 0) + 1
+                streak[word_id] = count
+                if count >= WRONG_WORD_MASTERED_STREAK:
+                    mastered.add(word_id)
+            continue
+        if attempt_no == 1:
+            in_book.add(word_id)
+            mastered.discard(word_id)
+            streak[word_id] = 0
+    return len(in_book - mastered), len(mastered)
 
 
 def pos_by_word_ids(

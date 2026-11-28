@@ -295,6 +295,7 @@ function VocabHomePage() {
     answered > 0 ? Math.round((correctFirst / answered) * 100) : null
   const recommendation = recommendationQuery.data ?? null
   const wrongWords = wrongQuery.data?.items ?? []
+  const masteredWords = wrongQuery.data?.mastered_items ?? []
   const reviewQueue = reviewQueueQuery.data ?? null
   const reviewSummary = reviewQueue
     ? {
@@ -894,12 +895,20 @@ function VocabHomePage() {
                   <span className="text-sm font-normal text-muted-foreground">
                     {wrongWords.length > 0 && `· ${wrongWords.length}`}
                   </span>
+                  {masteredWords.length > 0 && (
+                    <Badge variant="secondary" className="ml-2 font-normal">
+                      {t({
+                        zh: `已掌握 ${masteredWords.length}`,
+                        en: `${masteredWords.length} mastered`,
+                      })}
+                    </Badge>
+                  )}
                   <InfoHint label={t(EXPLAIN_WRONG_WORDS_POLICY)} />
                 </CardTitle>
                 <CardDescription>
                   {t({
-                    zh: "第一次没拼对的词都在这里，答对了也不会被移除。",
-                    en: "Words you missed on the first try live here — they stay even after you get them right.",
+                    zh: "第一次没拼对的词在这里；连续两次首答都答对，就自动移出到「已掌握」。",
+                    en: "Words you missed on the first try live here — two first-try successes in a row move them to Mastered.",
                   })}
                 </CardDescription>
               </div>
@@ -924,10 +933,15 @@ function VocabHomePage() {
               </div>
             ) : wrongWords.length === 0 ? (
               <p className="pb-6 text-sm text-muted-foreground">
-                {t({
-                  zh: "还没有拼错的词。继续保持！",
-                  en: "No misspelled words yet. Keep it up!",
-                })}
+                {masteredWords.length > 0
+                  ? t({
+                      zh: "待攻克的错词已经清空了 —— 全部连续两次首答答对，移到了下面的「已掌握」。",
+                      en: "No words left to conquer — all of them passed two first tries in a row and moved to Mastered below.",
+                    })
+                  : t({
+                      zh: "还没有拼错的词。继续保持！",
+                      en: "No misspelled words yet. Keep it up!",
+                    })}
               </p>
             ) : (
               <>
@@ -1016,6 +1030,39 @@ function VocabHomePage() {
                   </TableBody>
                 </Table>
               </>
+            )}
+
+            {masteredWords.length > 0 && (
+              <div className="mt-4 rounded-2xl border border-dashed p-4">
+                <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                  {t({ zh: "已掌握", en: "Mastered" })}
+                  <Badge variant="secondary" className="font-normal">
+                    {masteredWords.length}
+                  </Badge>
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t({
+                    zh: "连续两次首答答对后自动移出，不再进复习题单；之后再首答拼错，会自动回到上一区。历史错误次数保留。",
+                    en: "Auto-moved out after two first-try successes in a row and no longer picked for review. Miss it again on a first try and it comes back. Historical misses are kept.",
+                  })}
+                </p>
+                <ul className="mt-3 flex flex-wrap gap-2">
+                  {masteredWords.map((word) => (
+                    <li
+                      key={word.word_id}
+                      className="rounded-full border bg-card px-3 py-1 text-sm"
+                    >
+                      <span className="font-semibold">{word.headword}</span>
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        {word.meaning_zh}
+                        {word.mastered_at
+                          ? ` · ${formatDate(word.mastered_at, lang)}`
+                          : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </CardContent>
         </Card>

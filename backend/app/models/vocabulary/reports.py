@@ -122,6 +122,10 @@ class VocabularyWrongWordItem(SQLModel):
     不冲抵历史错误次数）；last_first_* 是最近一次独立首答（每轮第一次
     作答）的结果；last_correct_at 是最近一次答对时间。不是科学掌握度
     评估，只用于安排复习。
+
+    mastered 是「移出」判定：最近一次首答判错后连续两次独立首答答对
+    即掌握，移出生词本待攻克区（mastered_at 为达成时间）；之后再首答
+    判错会自动回到待攻克区，掌握状态作废。它同样不是考试分数。
     """
 
     word_id: uuid.UUID
@@ -137,11 +141,23 @@ class VocabularyWrongWordItem(SQLModel):
     last_correct_at: datetime | None = None
     # 词条是否仍在当前可练词库（active 公共库/本班库）内；不在则不能进复习
     practiceable: bool = True
+    # 是否已判定掌握（自动移出生词本待攻克区）
+    mastered: bool = False
+    mastered_at: datetime | None = None
 
 
 class VocabularyWrongWords(SQLModel):
+    """错词本分区响应：待攻克（items）+ 已掌握（mastered_items，自动移出）。
+
+    两区共用同一次聚合，计数与首页 wrong_word_count 同口径（都只算
+    待攻克）。已掌握区只做展示与凭据回看，不再进复习选题。
+    """
+
     classroom_code: str
     items: list[VocabularyWrongWordItem] = []
+    mastered_items: list[VocabularyWrongWordItem] = []
+    active_count: int = 0
+    mastered_count: int = 0
 
 
 # ── 班级掌握度（mastery）─────────────────────────────────────────────

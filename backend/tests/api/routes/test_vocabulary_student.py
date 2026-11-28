@@ -176,9 +176,19 @@ def _finish_round(
 
 
 def _wrong_words(client: TestClient, headers: dict[str, str], code: str) -> list[dict]:
+    """错词本待攻克区（已掌握的自动移出，不在这个列表里）。"""
     resp = client.get(WRONG.format(code=code), headers=headers)
     assert resp.status_code == 200, resp.text
     return resp.json()["items"]
+
+
+def _mastered_words(
+    client: TestClient, headers: dict[str, str], code: str
+) -> list[dict]:
+    """错词本已掌握区（连续两次独立首答答对后自动移出待攻克区）。"""
+    resp = client.get(WRONG.format(code=code), headers=headers)
+    assert resp.status_code == 200, resp.text
+    return resp.json()["mastered_items"]
 
 
 def _history(client: TestClient, headers: dict[str, str], code: str) -> list[dict]:
@@ -495,6 +505,80 @@ def test_self_practice_answers_and_task_independence(
     assert another["session_id"] != session_id  # 上一轮已结束，新开一轮
 
 
+# ── 错词本自动移出（连续两次独立首答答对）─────────────────────────
+
+
+def test_wrong_words_auto_mastery_and_reentry(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+) -> None:
+    """连对 2 次独立首答 → 移出待攻克区；之后再首答判错 → 自动退回。
+
+    词库 6 词、每轮考满 6 题 → 每轮都考到 w01，判定确定：
+    r1 判错 → r2 连对 1（仍在）→ r3 连对 2（移出）→ r4 再判错（退回）。
+    历史错误次数只增不减；mastered_at 只在掌握期有值。
+    """
+    _teacher, teacher_headers = _login_teacher(db, client)
+    classroom = _create_classroom(client, teacher_headers)
+    student = make_student(db, client, classroom["code"])
+    book = _make_class_book(client, teacher_headers, classroom["id"], _words(6))
+
+    def _wrong_board() -> tuple[list[dict], list[dict], dict]:
+        resp = client.get(
+            WRONG.format(code=classroom["code"]), headers=student["headers"]
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()["items"], resp.json()["mastered_items"], resp.json()
+
+    _seed_wrong_words(
+        client, student["headers"], classroom["code"], book["id"], ["w01"]
+    )
+    active, mastered, _payload = _wrong_board()
+    assert [w["headword"] for w in active] == ["w01"]
+    assert mastered == []
+
+    # r2 全对：连对 1 次，还不够
+    _seed_wrong_words(client, student["headers"], classroom["code"], book["id"], [])
+    active, mastered, _payload = _wrong_board()
+    assert [w["headword"] for w in active] == ["w01"]
+    assert active[0]["last_first_is_correct"] is True
+    assert active[0]["mastered"] is False
+    assert mastered == []
+
+    # r3 全对：连对 2 次 → 自动移出
+    _seed_wrong_words(client, student["headers"], classroom["code"], book["id"], [])
+    active, mastered, payload = _wrong_board()
+    assert active == []
+    assert payload["active_count"] == 0
+    assert payload["mastered_count"] == 1
+    assert [w["headword"] for w in mastered] == ["w01"]
+    assert mastered[0]["mastered"] is True
+    assert mastered[0]["mastered_at"] is not None
+    assert mastered[0]["wrong_count"] == 1  # 历史错误次数保留，不被移出冲抵
+
+    # 无待攻克错词 → 复习开轮 422（不把已掌握的拉回来）
+    resp = client.post(
+        f"{STUDENT.format(code=classroom['code'])}/sessions",
+        json={"kind": "review"},
+        headers=student["headers"],
+    )
+    assert resp.status_code == 422
+
+    # r4 再首答判错：退回待攻克区，掌握状态作废，错误次数累计到 2
+    _seed_wrong_words(
+        client, student["headers"], classroom["code"], book["id"], ["w01"]
+    )
+    active, mastered, payload = _wrong_board()
+    assert [w["headword"] for w in active] == ["w01"]
+    assert active[0]["mastered"] is False
+    assert active[0]["mastered_at"] is None
+    assert active[0]["wrong_count"] == 2
+    assert mastered == []
+    assert payload["active_count"] == 1
+    assert payload["mastered_count"] == 0
+
+
 # ── 混入错词 ───────────────────────────────────────────────────────
 
 
@@ -503,17 +587,29 @@ def test_self_session_mix_wrong_words(
     superuser_token_headers: dict[str, str],
     db: Session,
 ) -> None:
-    """混错词：30% 目标、最近错误优先、只取所选词库、不足补足、默认关闭。"""
+    """混错词：30% 目标、最近错误优先、只取所选词库、不足补足、默认关闭。
+
+    词库正好 10 词、每轮考满 10 题 → 每轮都会考到同一批词，掌握判定
+    因此是确定的：w01 被判错后在 r2/r3 连续首答答对 → 掌握移出；
+    w02 在 r3/r4 连续答对 → 掌握移出；w03（r3 错、r4 对，连对 1 次）、
+    w04（r4 错）仍在待攻克区。混错池只剩 2 个，不足 30% 目标不补别的错词。
+    """
     _teacher, teacher_headers = _login_teacher(db, client)
     classroom = _create_classroom(client, teacher_headers)
     student = make_student(db, client, classroom["code"])
-    book = _make_class_book(client, teacher_headers, classroom["id"], _words(30))
+    book = _make_class_book(client, teacher_headers, classroom["id"], _words(10))
 
     # 每轮错一个词（w01→w04，时间递增），其余答对
     for headword in ("w01", "w02", "w03", "w04"):
         _seed_wrong_words(
             client, student["headers"], classroom["code"], book["id"], [headword]
         )
+
+    # 移出规则：连续两次独立首答答对 → 已掌握
+    assert {
+        w["headword"]
+        for w in _mastered_words(client, student["headers"], classroom["code"])
+    } == {"w01", "w02"}
 
     created = _start_self(
         client,
@@ -523,17 +619,17 @@ def test_self_session_mix_wrong_words(
         word_count=10,
         mix_wrong=True,
     )
-    # 目标 30% → 3 个错词：取最近错误的 w04/w03/w02（不是最早的 w01）
+    # 待攻克只剩 w03/w04：混错词 2 个（目标 3 个，池子不够按实际）
     assert created["total_count"] == 10
-    assert created["wrong_word_count"] == 3
+    assert created["wrong_word_count"] == 2
     plan = _plan(client, student["headers"], classroom["code"], created["session_id"])
     from_wrong = [i for i in plan["items"] if i["from_wrong"]]
-    assert len(from_wrong) == 3
+    assert len(from_wrong) == 2
     spelling = _spelling_by_meaning(
         client, student["headers"], classroom["code"], book["id"]
     )
     picked = {spelling[i["meaning_zh"]] for i in from_wrong}
-    assert picked == {"w02", "w03", "w04"}
+    assert picked == {"w03", "w04"}  # 最近错误优先，已掌握的不再进池
 
     # 题单固化：再拉一次题序不变
     plan_again = _plan(
@@ -782,7 +878,13 @@ def test_review_session_scope_and_order(
             headword,
         )
 
-    # 限定授权范围：词库A 归档后，其中 2 个错词不能再进复习
+    # a01：r1 判错 → r2 首答对（连对 1）→ 本轮复习首答对（连对 2）→ 已掌握移出
+    assert "a01" in {
+        w["headword"]
+        for w in _mastered_words(client, student["headers"], classroom["code"])
+    }
+
+    # 限定授权范围：词库A 归档后，其中剩下的错词不能再进复习
     client.patch(
         f"{VOCAB}/books/{book_a['id']}",
         json={"status": "archived"},
@@ -790,12 +892,13 @@ def test_review_session_scope_and_order(
     )
     items = _wrong_words(client, student["headers"], classroom["code"])
     practiceable = {w["headword"]: w["practiceable"] for w in items}
-    assert practiceable["a01"] is False
+    assert "a01" not in practiceable  # 已掌握，不在待攻克区
+    assert practiceable["a02"] is False
     assert practiceable["b01"] is True
     review = _start_review(client, student["headers"], classroom["code"])
     assert review["total_count"] == 1  # 只剩词库B 的 b01
 
-    # 复习轮首答答对 → 错词本证据更新（不删除）
+    # 复习轮首答答对：b01 首次判错后连对 2 次 → 掌握移出，历史错误次数仍保留
     plan = _plan(client, student["headers"], classroom["code"], review["session_id"])
     _answer(
         client,
@@ -804,12 +907,17 @@ def test_review_session_scope_and_order(
         plan["items"][0]["item_index"],
         "b01",
     )
-    by_head = {
-        w["headword"]: w
+    assert {
+        w["headword"]
         for w in _wrong_words(client, student["headers"], classroom["code"])
+    } == {"a02"}  # a02 只连对 1 次，仍在待攻克（词库已归档、不可再练）
+    mastered_by_head = {
+        w["headword"]: w
+        for w in _mastered_words(client, student["headers"], classroom["code"])
     }
-    assert by_head["b01"]["last_first_is_correct"] is True
-    assert by_head["b01"]["wrong_count"] == 1
+    assert mastered_by_head["b01"]["wrong_count"] == 1
+    assert mastered_by_head["b01"]["last_first_is_correct"] is True
+    assert mastered_by_head["b01"]["mastered_at"] is not None
 
 
 # ── 历史列表与单次详情 ─────────────────────────────────────────────
